@@ -1349,14 +1349,82 @@ function BulkVariantPlatformPricingModal({ row, rows, platforms, productName, mo
     return [`${item.key}:${platformKey(platform)}`, { listPrice: String(status?.listPrice ?? item.listPrice ?? ''), salePrice: String(status?.salePrice ?? item.salePrice ?? '') }]
   }))) as Record<string, ChannelPricingDraft>
   const [matrixDrafts, setMatrixDrafts] = useState<Record<string, ChannelPricingDraft>>(initialMatrixDrafts)
+  const [matrixBulkEdit, setMatrixBulkEdit] = useState<{ platform: VariantPlatformStatus; field: keyof ChannelPricingDraft; label: string; value: string; error: string } | null>(null)
   useEffect(() => { setMatrixDrafts(initialMatrixDrafts()) }, [row.key, rows, platforms])
   const matrixDraft = (item: VariantDraft, platform: VariantPlatformStatus) => matrixDrafts[`${item.key}:${platformKey(platform)}`] ?? { listPrice: '', salePrice: '' }
   const updateMatrixDraft = (item: VariantDraft, platform: VariantPlatformStatus, field: keyof ChannelPricingDraft, value: string) => setMatrixDrafts(current => ({ ...current, [`${item.key}:${platformKey(platform)}`]: { ...matrixDraft(item, platform), [field]: value } }))
+  const openMatrixBulkEdit = (platform: VariantPlatformStatus, field: keyof ChannelPricingDraft, label: string) => setMatrixBulkEdit({ platform, field, label, value: matrixDraft(row, platform)[field], error: '' })
+  const applyMatrixBulkEdit = () => {
+    if (!matrixBulkEdit) return
+    const value = Number(matrixBulkEdit.value)
+    if (!matrixBulkEdit.value.trim() || !Number.isFinite(value) || value < 0) {
+      setMatrixBulkEdit(current => current ? { ...current, error: 'Sıfır veya daha büyük geçerli bir fiyat girin.' } : current)
+      return
+    }
+    const pairedField = matrixBulkEdit.field === 'listPrice' ? 'salePrice' : 'listPrice'
+    const violatesPriceOrder = sortedRows.some(item => {
+      const pairedValue = Number(matrixDraft(item, matrixBulkEdit.platform)[pairedField])
+      return Number.isFinite(pairedValue) && (matrixBulkEdit.field === 'listPrice' ? value < pairedValue : value > pairedValue)
+    })
+    if (violatesPriceOrder) {
+      setMatrixBulkEdit(current => current ? { ...current, error: matrixBulkEdit.field === 'listPrice' ? 'Liste fiyatı hiçbir varyantta satış fiyatından düşük olamaz.' : 'Satış fiyatı hiçbir varyantta liste fiyatından yüksek olamaz.' } : current)
+      return
+    }
+    setMatrixDrafts(current => {
+      const next = { ...current }
+      for (const item of sortedRows) {
+        const key = `${item.key}:${platformKey(matrixBulkEdit.platform)}`
+        const currentDraft = next[key] ?? { listPrice: '', salePrice: '' }
+        next[key] = { ...currentDraft, [matrixBulkEdit.field]: matrixBulkEdit.value }
+      }
+      return next
+    })
+    setMatrixBulkEdit(null)
+  }
   const renderMatrixHeader = (platform: VariantPlatformStatus, label: string) => {
     const key = platformKey(platform)
-    return <div className="variant-platform-pricing-matrix-cell variant-platform-pricing-matrix-head" key={`${key}:${label}`}><strong>{marketplacePlatformName(platform).toLocaleUpperCase('tr-TR')}</strong><span>{label.toLocaleUpperCase('tr-TR')}</span></div>
+    const field = label === 'Liste fiyatı' ? 'listPrice' : 'salePrice'
+    return <div className="variant-platform-pricing-matrix-cell variant-platform-pricing-matrix-head" key={`${key}:${label}`}><strong>{marketplacePlatformName(platform).toLocaleUpperCase('tr-TR')}</strong><span className="variant-platform-pricing-matrix-head-label">{label.toLocaleUpperCase('tr-TR')}<button type="button" className="variant-platform-pricing-bulk-trigger" aria-label={`${marketplacePlatformName(platform)} ${label} için tüm varyantlarda toplu düzenleme aç`} title={`${marketplacePlatformName(platform)} ${label.toLocaleLowerCase('tr-TR')} toplu değiştir`} aria-haspopup="dialog" aria-expanded={matrixBulkEdit?.platform === platform && matrixBulkEdit.field === field} onClick={() => openMatrixBulkEdit(platform, field, label)} disabled={saving || !platform.connectionId}><UiIcon name="edit" size={13} /></button></span></div>
   }
-  return <div className="workspace-modal-backdrop variant-platform-pricing-backdrop" role="presentation" onMouseDown={() => !saving && onClose()}><section className="workspace-modal variant-platform-pricing-modal" role="dialog" aria-modal="true" aria-labelledby="variant-platform-pricing-title" onMouseDown={event => event.stopPropagation()}><header><div><p className="eyebrow">PLATFORM FİYATLARI</p><h2 id="variant-platform-pricing-title">Varyant kanal fiyatları</h2><p className="variant-platform-pricing-product-context"><strong>{productName || 'Ürün adı belirtilmemiş'}</strong><span>Model kodu: {modelCode || '—'}</span></p></div><button type="button" className="modal-close" onClick={onClose} disabled={saving} aria-label="Fiyat penceresini kapat"><UiIcon name="close" /></button></header><div className="variant-platform-pricing-body"><section className="variant-platform-pricing-matrix" aria-label="Platformlara göre varyant fiyat matrisi"><div className="variant-platform-pricing-bulk-heading"><strong>Platform fiyatlarını toplu düzenle</strong><span>{rows.length} varyanta uygulanır · Panel ana fiyatı değişmez</span></div><div className="variant-platform-pricing-matrix-scroll"><div className="variant-platform-pricing-matrix-grid" style={{ gridTemplateColumns: `220px repeat(${platforms.length * 2}, 112px)` }}><div className="variant-platform-pricing-matrix-cell variant-platform-pricing-matrix-corner"><strong>Varyant</strong><small>Model / barkod</small></div>{platforms.flatMap(platform => [renderMatrixHeader(platform, 'Liste fiyatı'), renderMatrixHeader(platform, 'Satış fiyatı')])}{sortedRows.flatMap(item => { return [<div className="variant-platform-pricing-matrix-cell variant-platform-pricing-matrix-row-label" key={`${item.key}:label`}><strong>{item.optionSignature || item.sku}</strong><small>{item.barcode || item.sku}</small></div>, ...platforms.flatMap(platform => { const draft = matrixDraft(item, platform); return [<div className="variant-platform-pricing-matrix-cell" key={`${item.key}:${platformKey(platform)}:list`}><input aria-label={`${item.optionSignature || item.sku} ${marketplacePlatformName(platform)} liste fiyatı`} type="number" min="0" step="0.01" value={draft.listPrice} disabled={saving || !platform.connectionId} onChange={event => updateMatrixDraft(item, platform, 'listPrice', event.target.value)} /></div>, <div className="variant-platform-pricing-matrix-cell" key={`${item.key}:${platformKey(platform)}:sale`}><input aria-label={`${item.optionSignature || item.sku} ${marketplacePlatformName(platform)} satış fiyatı`} type="number" min="0" step="0.01" value={draft.salePrice} disabled={saving || !platform.connectionId} onChange={event => updateMatrixDraft(item, platform, 'salePrice', event.target.value)} /></div>] })] })}</div></div></section></div><footer><button type="button" onClick={() => onSave(matrixDrafts)} disabled={saving || !platforms.some(platform => platform.connectionId)}>{saving ? 'Kaydediliyor…' : 'Kaydet'}</button><button type="button" className="secondary" onClick={onClose} disabled={saving}>Vazgeç</button></footer></section></div>
+  return <>
+    <div className="workspace-modal-backdrop variant-platform-pricing-backdrop" role="presentation" onMouseDown={() => !saving && onClose()}>
+      <section className="workspace-modal variant-platform-pricing-modal" role="dialog" aria-modal="true" aria-labelledby="variant-platform-pricing-title" onMouseDown={event => event.stopPropagation()}>
+        <header><div><p className="eyebrow">PLATFORM FİYATLARI</p><h2 id="variant-platform-pricing-title">Varyant kanal fiyatları</h2><p className="variant-platform-pricing-product-context"><strong>{productName || 'Ürün adı belirtilmemiş'}</strong><span>Model kodu: {modelCode || '—'}</span></p></div><button type="button" className="modal-close" onClick={onClose} disabled={saving} aria-label="Fiyat penceresini kapat"><UiIcon name="close" /></button></header>
+        <div className="variant-platform-pricing-body">
+          <section className="variant-platform-pricing-matrix" aria-label="Platformlara göre varyant fiyat matrisi">
+            <div className="variant-platform-pricing-bulk-heading"><strong>Platform fiyatlarını toplu düzenle</strong><span>{rows.length} varyanta uygulanır · Panel ana fiyatı değişmez</span></div>
+            <div className="variant-platform-pricing-matrix-scroll">
+              <div className="variant-platform-pricing-matrix-grid" style={{ gridTemplateColumns: `220px repeat(${platforms.length * 2}, 112px)` }}>
+                <div className="variant-platform-pricing-matrix-cell variant-platform-pricing-matrix-corner"><strong>Varyant</strong><small>Model / barkod</small></div>
+                {platforms.flatMap(platform => [renderMatrixHeader(platform, 'Liste fiyatı'), renderMatrixHeader(platform, 'Satış fiyatı')])}
+                {sortedRows.flatMap(item => [
+                  <div className="variant-platform-pricing-matrix-cell variant-platform-pricing-matrix-row-label" key={`${item.key}:label`}><strong>{item.optionSignature || item.sku}</strong><small>{item.barcode || item.sku}</small></div>,
+                  ...platforms.flatMap(platform => {
+                    const draft = matrixDraft(item, platform)
+                    return [
+                      <div className="variant-platform-pricing-matrix-cell" key={`${item.key}:${platformKey(platform)}:list`}><input aria-label={`${item.optionSignature || item.sku} ${marketplacePlatformName(platform)} liste fiyatı`} type="number" min="0" step="0.01" value={draft.listPrice} disabled={saving || !platform.connectionId} onChange={event => updateMatrixDraft(item, platform, 'listPrice', event.target.value)} /></div>,
+                      <div className="variant-platform-pricing-matrix-cell" key={`${item.key}:${platformKey(platform)}:sale`}><input aria-label={`${item.optionSignature || item.sku} ${marketplacePlatformName(platform)} satış fiyatı`} type="number" min="0" step="0.01" value={draft.salePrice} disabled={saving || !platform.connectionId} onChange={event => updateMatrixDraft(item, platform, 'salePrice', event.target.value)} /></div>
+                    ]
+                  })
+                ])}
+              </div>
+            </div>
+          </section>
+        </div>
+        <footer><button type="button" onClick={() => onSave(matrixDrafts)} disabled={saving || !platforms.some(platform => platform.connectionId)}>{saving ? 'Kaydediliyor…' : 'Kaydet'}</button><button type="button" className="secondary" onClick={onClose} disabled={saving}>Vazgeç</button></footer>
+      </section>
+    </div>
+    {matrixBulkEdit && createPortal(
+      <div className="workspace-modal-backdrop variant-platform-pricing-bulk-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setMatrixBulkEdit(null) }}>
+        <section className="workspace-modal variant-bulk-edit-modal" role="dialog" aria-modal="true" aria-labelledby="variant-platform-pricing-bulk-title" onMouseDown={event => event.stopPropagation()}>
+          <header><div><p className="eyebrow">PLATFORM FİYATLARI</p><h2 id="variant-platform-pricing-bulk-title">{marketplacePlatformName(matrixBulkEdit.platform)} {matrixBulkEdit.label.toLocaleLowerCase('tr-TR')} toplu değiştir</h2><p>Değer {rows.length} varyantın bu platformdaki {matrixBulkEdit.label.toLocaleLowerCase('tr-TR')} alanına uygulanır.</p></div><button type="button" className="modal-close" onClick={() => setMatrixBulkEdit(null)} aria-label="Toplu fiyat değişikliği penceresini kapat"><UiIcon name="close" /></button></header>
+          <div className="variant-bulk-edit-body"><p className="variant-bulk-edit-scope">Uygula, sadece bu tablodaki taslakları değiştirir. Kalıcı olması için ardından ana penceredeki Kaydet düğmesine basın.</p><label htmlFor="variant-platform-pricing-bulk-value">Yeni fiyat<input id="variant-platform-pricing-bulk-value" autoFocus type="number" min="0" step="0.01" value={matrixBulkEdit.value} aria-describedby={matrixBulkEdit.error ? 'variant-platform-pricing-bulk-error' : undefined} onChange={event => setMatrixBulkEdit(current => current ? { ...current, value: event.target.value, error: '' } : current)} /></label>{matrixBulkEdit.error && <p className="variant-bulk-edit-error" id="variant-platform-pricing-bulk-error" role="alert">{matrixBulkEdit.error}</p>}</div>
+          <footer><button type="button" className="secondary" onClick={() => setMatrixBulkEdit(null)}>Vazgeç</button><button type="button" onClick={applyMatrixBulkEdit}>Uygula</button></footer>
+        </section>
+      </div>,
+      document.body
+    )}
+  </>
 }
 void LegacyVariantPlatformPricingModal
 void LegacyVariantPlatformPricingModalWithVariantsFirst

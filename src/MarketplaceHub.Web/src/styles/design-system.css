@@ -1865,6 +1865,11 @@
   .variant-platform-pricing-matrix-platform { display: flex; min-width: 0; align-items: center; gap: 6px; }
   .variant-platform-pricing-matrix-platform strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .variant-platform-pricing-matrix-head > span { color: var(--rv-color-muted); }
+  .variant-platform-pricing-matrix-head > .variant-platform-pricing-matrix-head-label { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 2px; }
+  .app-shell.stitch-shell main .variant-platform-pricing-matrix-head-label > .variant-platform-pricing-bulk-trigger { display: grid; width: 19px; min-width: 19px; height: 19px; min-height: 19px; flex: 0 0 19px; place-items: center; margin: 0; padding: 0; color: var(--rv-color-muted); background: transparent; border: 0; border-radius: var(--rv-radius-sm); line-height: 0; }
+  .app-shell.stitch-shell main .variant-platform-pricing-matrix-head-label > .variant-platform-pricing-bulk-trigger:hover:not(:disabled), .app-shell.stitch-shell main .variant-platform-pricing-matrix-head-label > .variant-platform-pricing-bulk-trigger:focus-visible { color: var(--rv-color-primary); background: var(--rv-color-primary-soft); outline: none; }
+  .app-shell.stitch-shell main .variant-platform-pricing-matrix-head-label > .variant-platform-pricing-bulk-trigger:disabled { cursor: not-allowed; opacity: .45; }
+  .variant-platform-pricing-bulk-trigger > .ui-icon { display: block; width: 13px; height: 13px; }
   .variant-platform-pricing-matrix-head > input { min-height: 30px; }
   .variant-platform-pricing-matrix-corner, .variant-platform-pricing-matrix-row-label { position: sticky; left: 0; z-index: 3; background: var(--rv-color-surface); box-shadow: 2px 0 0 var(--rv-color-border); }
   .variant-platform-pricing-matrix-corner { top: 0; z-index: 5; color: var(--rv-color-muted); }
