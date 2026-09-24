@@ -8565,19 +8565,25 @@ small,
   margin: 0;
   padding: 0;
   color: var(--rv-color-primary);
-  background: var(--rv-color-primary-soft);
-  border: 1px solid var(--rv-color-border-strong);
-  border-radius: var(--rv-radius-sm);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
   line-height: 0;
   vertical-align: middle;
 }
 
 .app-shell.stitch-shell main .variant-table-header-with-action .variant-bulk-edit-trigger:hover:not(:disabled),
 .app-shell.stitch-shell main .variant-table-header-with-action .variant-bulk-edit-trigger:focus-visible {
-  color: var(--rv-color-ink);
-  background: var(--rv-color-primary);
-  border-color: var(--rv-color-primary);
-  outline: none;
+  color: var(--rv-color-primary);
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.app-shell.stitch-shell main .variant-table-header-with-action .variant-bulk-edit-trigger:focus-visible {
+  outline: 2px solid var(--rv-color-primary);
+  outline-offset: 2px;
 }
 
 .app-shell.stitch-shell main .variant-bulk-edit-trigger > .ui-icon {

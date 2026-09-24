@@ -637,6 +637,8 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     {
         if (command.DefaultListPrice is < 0 || command.DefaultSalePrice is < 0) return Invalid<ProductView>("prices", "Fiyat negatif olamaz.");
         if (command.DefaultListPrice is decimal listPrice && command.DefaultSalePrice is decimal salePrice && listPrice < salePrice) return Invalid<ProductView>("prices", "Liste fiyatı satış fiyatından küçük olamaz.");
+        if (command.Variants.Any(variant => variant.DefaultListPrice is < 0 || variant.DefaultSalePrice is < 0)) return Invalid<ProductView>("variants", "Varyant fiyatı negatif olamaz.");
+        if (command.Variants.Any(variant => variant.DefaultListPrice is decimal variantList && variant.DefaultSalePrice is decimal variantSale && variantList < variantSale)) return Invalid<ProductView>("variants", "Varyant liste fiyatı satış fiyatından küçük olamaz.");
         var validation = await ValidateProductReferencesAsync(tenantId, command.Title, command.CategoryId, command.BrandId, cancellationToken);
         if (validation is not null) return ServiceResult<ProductView>.Fail(validation.Code, validation.Message, validation.Status, validation.FieldErrors);
         if (command.Variants.Count == 0) return Invalid<ProductView>("variants", "Ürün en az bir satış varyantı ister.");
@@ -676,7 +678,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var now = timeProvider.GetUtcNow();
         var productStatus = command.Status == "ACTIVE" ? ProductStatus.Active : (command.Status == "ARCHIVED" ? ProductStatus.Archived : ProductStatus.Draft); var product = new Product { Id = Guid.CreateVersion7(), TenantId = tenantId, Title = command.Title.Trim(), Description = command.Description.Trim(), BrandId = command.BrandId, CategoryId = command.CategoryId, DefaultListPrice = command.DefaultListPrice, DefaultSalePrice = command.DefaultSalePrice, Status = productStatus, CreatedAt = now, UpdatedAt = now };
         if (command.Variants.Any(variant => variant.CostPrice is < 0)) return Invalid<ProductView>("variants", "Maliyet negatif olamaz.");
-        var variants = command.Variants.Select((variant, index) => new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = product.Id, SortOrder = index, Sku = variant.Sku.Trim(), SkuNormalized = Normalize(variant.Sku), Barcode = NullTrim(variant.Barcode), BarcodeNormalized = string.IsNullOrWhiteSpace(variant.Barcode) ? null : Normalize(variant.Barcode), ModelCode = NullTrim(variant.ModelCode), OptionSignature = Signature(variant.Options), Status = productStatus, Weight = PositiveOrNull(variant.Weight), Width = PositiveOrNull(variant.Width), Height = PositiveOrNull(variant.Height), Length = PositiveOrNull(variant.Length), Desi = PositiveOrNull(variant.Desi), CostPrice = NonNegativeOrNull(variant.CostPrice), CreatedAt = now, UpdatedAt = now }).ToList();
+        var variants = command.Variants.Select((variant, index) => new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = product.Id, SortOrder = index, Sku = variant.Sku.Trim(), SkuNormalized = Normalize(variant.Sku), Barcode = NullTrim(variant.Barcode), BarcodeNormalized = string.IsNullOrWhiteSpace(variant.Barcode) ? null : Normalize(variant.Barcode), ModelCode = NullTrim(variant.ModelCode), OptionSignature = Signature(variant.Options), Status = productStatus, Weight = PositiveOrNull(variant.Weight), Width = PositiveOrNull(variant.Width), Height = PositiveOrNull(variant.Height), Length = PositiveOrNull(variant.Length), Desi = PositiveOrNull(variant.Desi), CostPrice = NonNegativeOrNull(variant.CostPrice), DefaultListPrice = variant.DefaultListPrice, DefaultSalePrice = variant.DefaultSalePrice, CreatedAt = now, UpdatedAt = now }).ToList();
         db.Products.Add(product);
         db.ProductVariants.AddRange(variants);
         db.ProductAttributeAssignments.AddRange(globalAssignments.Select(x => Assignment(tenantId, product.Id, null, x)));
@@ -775,6 +777,8 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var variantsToCreate = command.VariantsToCreate ?? [];
         var variantUpdates = command.VariantUpdates ?? [];
         if (variantUpdates.Any(variant => variant.CostPrice is < 0) || variantsToCreate.Any(variant => variant.CostPrice is < 0)) return Invalid<ProductView>("variants", "Maliyet negatif olamaz.");
+        if (variantUpdates.Any(variant => variant.DefaultListPrice is < 0 || variant.DefaultSalePrice is < 0) || variantsToCreate.Any(variant => variant.DefaultListPrice is < 0 || variant.DefaultSalePrice is < 0)) return Invalid<ProductView>("variants", "Varyant fiyatı negatif olamaz.");
+        if (variantsToCreate.Any(variant => variant.DefaultListPrice is decimal variantList && variant.DefaultSalePrice is decimal variantSale && variantList < variantSale)) return Invalid<ProductView>("variantsToCreate", "Varyant liste fiyatı satış fiyatından küçük olamaz.");
         // Status updates apply to every existing sale row as well. Load the rows
         // whenever status is present; otherwise a save that only changes the
         // product status leaves its variants on their previous status.
@@ -782,6 +786,15 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var existingVariants = variantsToCreate.Count > 0 || variantUpdates.Count > 0 || command.Status is not null
             ? await db.ProductVariants.Where(x => x.TenantId == tenantId && familyVariantProductIds.Contains(x.ProductId)).ToListAsync(cancellationToken)
             : [];
+        foreach (var update in variantUpdates)
+        {
+            var existing = existingVariants.SingleOrDefault(variant => variant.Id == update.Id);
+            if (existing is null) continue;
+            var effectiveVariantListPrice = update.DefaultListPrice ?? existing.DefaultListPrice ?? product.DefaultListPrice;
+            var effectiveVariantSalePrice = update.DefaultSalePrice ?? existing.DefaultSalePrice ?? product.DefaultSalePrice;
+            if (effectiveVariantListPrice is decimal variantList && effectiveVariantSalePrice is decimal variantSale && variantList < variantSale)
+                return Invalid<ProductView>("variantUpdates", "Varyant liste fiyatı satış fiyatından küçük olamaz.");
+        }
         if (variantUpdates.Count > 0)
         {
             if (variantUpdates.Select(x => x.Id).Distinct().Count() != variantUpdates.Count || variantUpdates.Any(x => !existingVariants.Any(existing => existing.Id == x.Id))) return Invalid<ProductView>("variantUpdates", "Güncellenecek varyant ürün kaydına ait değil.");
@@ -806,7 +819,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             foreach (var update in variantUpdates)
             {
                 var variant = existingVariants.Single(x => x.Id == update.Id);
-                variant.Sku = update.Sku.Trim(); variant.SkuNormalized = Normalize(update.Sku); variant.Barcode = NullTrim(update.Barcode); variant.BarcodeNormalized = string.IsNullOrWhiteSpace(update.Barcode) ? null : Normalize(update.Barcode); variant.ModelCode = NullTrim(update.ModelCode); variant.CostPrice = NonNegativeOrNull(update.CostPrice); variant.SortOrder = Math.Max(0, update.SortOrder);
+                variant.Sku = update.Sku.Trim(); variant.SkuNormalized = Normalize(update.Sku); variant.Barcode = NullTrim(update.Barcode); variant.BarcodeNormalized = string.IsNullOrWhiteSpace(update.Barcode) ? null : Normalize(update.Barcode); variant.ModelCode = NullTrim(update.ModelCode); variant.CostPrice = NonNegativeOrNull(update.CostPrice); if (update.DefaultListPrice is decimal variantDefaultListPrice) variant.DefaultListPrice = variantDefaultListPrice; if (update.DefaultSalePrice is decimal variantDefaultSalePrice) variant.DefaultSalePrice = variantDefaultSalePrice; variant.SortOrder = Math.Max(0, update.SortOrder);
                 if (update.Options is not null) variant.OptionSignature = Signature(update.Options);
                 variant.UpdatedAt = updatedAt; variant.Version++;
             }
@@ -865,7 +878,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                 "DRAFT" => ProductStatus.Draft,
                 _ => product.Status
             };
-            var newVariants = variantsToCreate.Select((variant, index) => new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = id, SortOrder = Math.Max(0, variant.SortOrder), Sku = variant.Sku.Trim(), SkuNormalized = Normalize(variant.Sku), Barcode = NullTrim(variant.Barcode), BarcodeNormalized = string.IsNullOrWhiteSpace(variant.Barcode) ? null : Normalize(variant.Barcode), ModelCode = NullTrim(variant.ModelCode), OptionSignature = Signature(variant.Options), Status = newVariantStatus, Weight = PositiveOrNull(variant.Weight), Width = PositiveOrNull(variant.Width), Height = PositiveOrNull(variant.Height), Length = PositiveOrNull(variant.Length), Desi = PositiveOrNull(variant.Desi), CostPrice = NonNegativeOrNull(variant.CostPrice), CreatedAt = now, UpdatedAt = now }).ToList();
+            var newVariants = variantsToCreate.Select((variant, index) => new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = id, SortOrder = Math.Max(0, variant.SortOrder), Sku = variant.Sku.Trim(), SkuNormalized = Normalize(variant.Sku), Barcode = NullTrim(variant.Barcode), BarcodeNormalized = string.IsNullOrWhiteSpace(variant.Barcode) ? null : Normalize(variant.Barcode), ModelCode = NullTrim(variant.ModelCode), OptionSignature = Signature(variant.Options), Status = newVariantStatus, Weight = PositiveOrNull(variant.Weight), Width = PositiveOrNull(variant.Width), Height = PositiveOrNull(variant.Height), Length = PositiveOrNull(variant.Length), Desi = PositiveOrNull(variant.Desi), CostPrice = NonNegativeOrNull(variant.CostPrice), DefaultListPrice = variant.DefaultListPrice, DefaultSalePrice = variant.DefaultSalePrice, CreatedAt = now, UpdatedAt = now }).ToList();
             db.ProductVariants.AddRange(newVariants);
             for (var index = 0; index < newVariants.Count; index++) db.ProductAttributeAssignments.AddRange((variantsToCreate[index].Attributes ?? []).Select(x => Assignment(tenantId, id, newVariants[index].Id, x)));
             await PersistVariantOptionsAsync(tenantId, id, newVariants, variantsToCreate, cancellationToken);
@@ -1243,7 +1256,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                             channelOffer?.Version);
                     })
                     .ToList();
-                return new ProductVariantView(variant.Id, variant.Sku, variant.Barcode, variant.ModelCode, variant.OptionSignature, variant.Status.ToString().ToUpperInvariant(), variant.Version, variant.Weight, variant.Width, variant.Height, variant.Length, variant.Desi, variant.CostPrice, inventory?.OnHand ?? 0, inventory?.Available ?? 0, inventory?.Version, offer?.Id, offer?.ListPrice, offer?.SalePrice, offer?.Currency, offer?.Status, offer?.PriceVersion, offer?.Version, offer?.VatRate, offer?.VatInclusion, offer?.RoundingMode, offer?.SafetyStock, mediaUrlsByVariant.GetValueOrDefault(variant.Id), variantOptionsByVariant.GetValueOrDefault(variant.Id), variantPlatformStatuses);
+                return new ProductVariantView(variant.Id, variant.Sku, variant.Barcode, variant.ModelCode, variant.OptionSignature, variant.Status.ToString().ToUpperInvariant(), variant.Version, variant.Weight, variant.Width, variant.Height, variant.Length, variant.Desi, variant.CostPrice, inventory?.OnHand ?? 0, inventory?.Available ?? 0, inventory?.Version, offer?.Id, offer?.ListPrice, offer?.SalePrice, offer?.Currency, offer?.Status, offer?.PriceVersion, offer?.Version, offer?.VatRate, offer?.VatInclusion, offer?.RoundingMode, offer?.SafetyStock, mediaUrlsByVariant.GetValueOrDefault(variant.Id), variantOptionsByVariant.GetValueOrDefault(variant.Id), variantPlatformStatuses, variant.DefaultListPrice, variant.DefaultSalePrice);
             }).ToList();
             var productConnectionIds = connections.Keys.ToList();
             var platformStatuses = productConnectionIds

@@ -127,6 +127,8 @@ public sealed class ProductVariant
     public decimal? Length { get; set; }
     public decimal? Desi { get; set; }
     public decimal? CostPrice { get; set; }
+    public decimal? DefaultListPrice { get; set; }
+    public decimal? DefaultSalePrice { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public long Version { get; set; } = 1;

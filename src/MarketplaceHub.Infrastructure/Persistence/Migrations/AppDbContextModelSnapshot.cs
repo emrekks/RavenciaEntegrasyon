@@ -3657,6 +3657,14 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasPrecision(19, 4)
                         .HasColumnType("numeric(19,4)");
 
+                    b.Property<decimal?>("DefaultListPrice")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<decimal?>("DefaultSalePrice")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 

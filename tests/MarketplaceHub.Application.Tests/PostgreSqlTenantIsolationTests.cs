@@ -20,7 +20,7 @@ namespace MarketplaceHub.Application.Tests;
 public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixture fixture) : IClassFixture<PostgreSqlTenantIsolationFixture>
 {
     [PostgreSqlFact]
-    public async Task ProductDefaultPrices_RoundTripThroughProductUpdateAndReload()
+    public async Task ProductAndVariantDefaultPrices_RoundTripThroughProductUpdateAndReload()
     {
         var tenant = NewTenant("product-price-defaults");
         var product = new Product
@@ -35,11 +35,25 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             UpdatedAt = fixture.Now,
             Version = 1
         };
-
+        var sku = $"PRICE-{Guid.NewGuid():N}";
+        var variant = new ProductVariant
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            ProductId = product.Id,
+            SortOrder = 0,
+            Sku = sku,
+            SkuNormalized = sku,
+            OptionSignature = "Renk=Test",
+            CreatedAt = fixture.Now,
+            UpdatedAt = fixture.Now,
+            Version = 1
+        };
         await using var db = fixture.CreateContext();
         await using var transaction = await db.Database.BeginTransactionAsync();
         db.Tenants.Add(tenant);
         db.Products.Add(product);
+        db.ProductVariants.Add(variant);
         await db.SaveChangesAsync();
 
         var service = new CatalogService(
@@ -52,17 +66,35 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             tenant.Id,
             product.Id,
             product.Version,
-            new UpdateProductCommand(product.Title, product.Description, null, null, DefaultListPrice: 699m, DefaultSalePrice: 0m),
+            new UpdateProductCommand(
+                product.Title,
+                product.Description,
+                null,
+                null,
+                VariantUpdates: [new UpdateVariantCommand(variant.Id, variant.Sku, null, null, DefaultListPrice: 899m, DefaultSalePrice: 799m)],
+                DefaultListPrice: 699m,
+                DefaultSalePrice: 0m),
             CancellationToken.None);
 
         Assert.True(updated.Succeeded, updated.Error?.Message);
         Assert.Equal(699m, updated.Value?.DefaultListPrice);
         Assert.Equal(0m, updated.Value?.DefaultSalePrice);
+        Assert.Equal(899m, updated.Value?.Variants.Single().DefaultListPrice);
+        Assert.Equal(799m, updated.Value?.Variants.Single().DefaultSalePrice);
+
+        var reloadedView = await service.GetProductAsync(tenant.Id, product.Id, CancellationToken.None);
+        Assert.Equal(699m, reloadedView.Value?.DefaultListPrice);
+        Assert.Equal(0m, reloadedView.Value?.DefaultSalePrice);
+        Assert.Equal(899m, reloadedView.Value?.Variants.Single().DefaultListPrice);
+        Assert.Equal(799m, reloadedView.Value?.Variants.Single().DefaultSalePrice);
 
         db.ChangeTracker.Clear();
         var reloaded = await db.Products.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.Id == product.Id);
         Assert.Equal(699m, reloaded.DefaultListPrice);
         Assert.Equal(0m, reloaded.DefaultSalePrice);
+        var reloadedVariant = await db.ProductVariants.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.Id == variant.Id);
+        Assert.Equal(899m, reloadedVariant.DefaultListPrice);
+        Assert.Equal(799m, reloadedVariant.DefaultSalePrice);
 
         await transaction.RollbackAsync();
     }
