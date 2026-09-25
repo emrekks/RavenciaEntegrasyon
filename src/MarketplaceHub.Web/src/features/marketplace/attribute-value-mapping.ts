@@ -46,6 +46,29 @@ export function valueMappingRowClassName(hasSelection: boolean, isRequired: bool
   return `value-mapping-row${hasSelection ? '' : ' is-empty'} ${isRequired ? 'is-required' : 'is-optional'}`
 }
 
+export type ReferencePanelSelections = Record<string, string>
+
+export function updatePanelValueReferenceSelection(
+  selections: ReferencePanelSelections,
+  externalId: string,
+  localId: string
+): ReferencePanelSelections {
+  const next = { ...selections }
+  if (!localId) {
+    delete next[externalId]
+    return next
+  }
+  for (const [selectedExternalId, selectedLocalId] of Object.entries(next)) {
+    if (selectedExternalId !== externalId && selectedLocalId === localId) delete next[selectedExternalId]
+  }
+  next[externalId] = localId
+  return next
+}
+
+export function planReferencePanelMappings(selections: ReferencePanelSelections) {
+  return Object.entries(selections).map(([externalId, localId]) => ({ localId, externalId }))
+}
+
 export function attributeValueMappingNeedsSave(
   existing: { externalId: string; snapshotId: string } | undefined,
   externalId: string,

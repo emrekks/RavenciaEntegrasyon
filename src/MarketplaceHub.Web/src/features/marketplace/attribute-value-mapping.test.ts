@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { attributeValueMappingNeedsSave, hasDirectReferenceValue, planDirectReferenceValues, valueMappingRowClassName } from './attribute-value-mapping'
+import { attributeValueMappingNeedsSave, hasDirectReferenceValue, planDirectReferenceValues, planReferencePanelMappings, updatePanelValueReferenceSelection, valueMappingRowClassName } from './attribute-value-mapping'
 
 describe('attribute value reference mappings', () => {
   it('matches labels despite whitespace around season separators', () => {
@@ -52,5 +52,25 @@ describe('attribute value reference mappings', () => {
     expect(valueMappingRowClassName(false, true)).toBe('value-mapping-row is-empty is-required')
     expect(valueMappingRowClassName(false, false)).toBe('value-mapping-row is-empty is-optional')
     expect(valueMappingRowClassName(true, true)).toBe('value-mapping-row is-required')
+  })
+
+  it('stores Trendyol-first selections as panel-to-Trendyol mappings', () => {
+    expect(planReferencePanelMappings({ dress: 'panel-dress', shirt: 'panel-shirt' })).toEqual([
+      { localId: 'panel-dress', externalId: 'dress' },
+      { localId: 'panel-shirt', externalId: 'shirt' }
+    ])
+  })
+
+  it('keeps a panel value assigned to at most one Trendyol value and supports clearing a selection', () => {
+    expect(updatePanelValueReferenceSelection(
+      { dress: 'panel-dress', shirt: 'panel-shirt' },
+      'shirt',
+      'panel-dress'
+    )).toEqual({ shirt: 'panel-dress' })
+    expect(updatePanelValueReferenceSelection(
+      { dress: 'panel-dress', shirt: 'panel-shirt' },
+      'shirt',
+      ''
+    )).toEqual({ dress: 'panel-dress' })
   })
 })
