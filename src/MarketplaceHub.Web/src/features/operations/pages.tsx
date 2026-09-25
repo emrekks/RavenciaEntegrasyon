@@ -274,9 +274,15 @@ const categoryTabs: Array<{ key: JobCategory; label: string; match: (type: strin
 type JobDetailQueryState = { isLoading: boolean; isError: boolean; data: JobDetail | undefined }
 type JobActionState = { isPending: boolean; isError: boolean; mutate: (variables: { id: string; verb: 'retry' | 'cancel' }) => void }
 
-function JobDetailDrawer({ selectedId, selected, detail, selectedIsRunning, elevated, retryable, cancellable, action, onClose }: { selectedId: string; selected: JobSummary | undefined; detail: JobDetailQueryState; selectedIsRunning: boolean; elevated: boolean; retryable: boolean | undefined; cancellable: boolean | undefined; action: JobActionState; onClose: () => void }) {
+function JobDetailDrawer({ selected, detail, selectedIsRunning, elevated, retryable, cancellable, action, onClose }: { selected: JobSummary | undefined; detail: JobDetailQueryState; selectedIsRunning: boolean; elevated: boolean; retryable: boolean | undefined; cancellable: boolean | undefined; action: JobActionState; onClose: () => void }) {
   return <div className="job-detail-backdrop jobs-reference-drawer-backdrop" role="presentation" onMouseDown={onClose}><aside className="job-detail-drawer jobs-reference-drawer panel" role="dialog" aria-modal="true" aria-labelledby="job-detail-title" onMouseDown={event => event.stopPropagation()}>
-    <div className="jobs-reference-drawer-header"><div><span className="jobs-reference-drawer-correlation">{selected?.correlationId ?? selectedId}</span>{selected && <span className={`jobs-reference-status ${jobStatusTone(selected.status)}`}><i aria-hidden="true" />{jobStatusLabel(selected.status)}</span>}<h2 id="job-detail-title">{selected ? jobPresentation(selected.jobType).title : 'İşlem ayrıntısı'}</h2><p>{selected ? `${jobSource(selected.jobType)} · ${selected.jobType}${selected.batchCount > 1 ? ` · Toplu işlem (${selected.batchCount} job)` : ''}` : 'İşlem ayrıntısı yükleniyor'}</p></div><button type="button" className="jobs-reference-drawer-close" aria-label="Detay panelini kapat" onClick={onClose}><UiIcon name="close" /></button></div>
+    <div className="jobs-reference-drawer-header">
+      <div>
+        <h2 id="job-detail-title">{selected ? jobPresentation(selected.jobType).title : 'İşlem ayrıntısı'}</h2>
+        <p>{selected ? `${jobSource(selected.jobType)} · ${selected.jobType}${selected.batchCount > 1 ? ` · Toplu işlem (${selected.batchCount} job)` : ''}` : 'İşlem ayrıntısı yükleniyor'}</p>
+      </div>
+      <button type="button" className="jobs-reference-drawer-close" aria-label="Detay panelini kapat" onClick={onClose}><UiIcon name="close" /></button>
+    </div>
     {detail.isLoading ? <p className="jobs-reference-state">Yükleniyor…</p> : detail.isError || !detail.data ? <div role="alert" className="jobs-reference-state jobs-reference-state-error">İşlem ayrıntısı alınamadı.</div> : (() => {
       const job = detail.data.job
       const change = detail.data.change ?? fallbackJobChange(job)
@@ -458,7 +464,7 @@ export function JobsPage({ me }: { me: Me }) {
         {filtered.length > 0 && <div className="jobs-reference-pagination"><strong>Toplam {filtered.length.toLocaleString('tr-TR')} kayıt</strong><Pagination className="jobs-reference-page-controls" page={currentPage} totalPages={totalPages} onPageChange={setPageNumber} onPrevious={() => setPageNumber(value => Math.max(1, value - 1))} onNext={() => setPageNumber(value => Math.min(totalPages, value + 1))} /></div>}
       </>}
     </div>
-     {selectedId && <JobDetailDrawer selectedId={selectedId} selected={selected} detail={detail} selectedIsRunning={Boolean(selectedIsRunning)} elevated={elevated} retryable={retryable} cancellable={cancellable} action={action} onClose={() => setSelectedId(null)} />}
+     {selectedId && <JobDetailDrawer selected={selected} detail={detail} selectedIsRunning={Boolean(selectedIsRunning)} elevated={elevated} retryable={retryable} cancellable={cancellable} action={action} onClose={() => setSelectedId(null)} />}
      {feedback && <Toast tone={feedback.tone}>{feedback.message}</Toast>}
   </section>
 }
