@@ -2083,9 +2083,11 @@ function CategoryAttributeWorkspace({ connectionId, localCategoryId, localCatego
   if (!categoryMapping.data) return <article className="panel mapping-step"><div className="editor-section-title"><span>4</span><div><h2>Trendyol kategori ve özellik eşlemeleri</h2><p>Ürün özellikleri ve seçenekleri kendi adımlarında tanımladıktan sonra değer karşılıklarını eşleyin.</p></div></div><div className="unknown"><strong>Kategori eşlemesi bekleniyor</strong><p>Önce 1. adımda panel kategorisini Trendyol kategorisiyle eşleştirin.</p></div></article>
   return <article className="panel mapping-step">
     <div className="editor-section-title"><span>4</span><div><h2>Kategori eşleştirmeleri</h2><p>Trendyol katalog alanlarını Web Color, Renk ve diğer panel özellikleriyle eşleyin.</p></div></div>
-    <label className="matched-category-select">Eşleşmiş panel kategorisi<select value={attributeCategoryId} onChange={event => setAttributeCategoryId(event.target.value)}>{matchedCategories.map(({ category }) => <option key={category.id} value={category.id}>{category.path}</option>)}</select></label>
+    <div className="mapping-category-toolbar-row">
+      <label className="matched-category-select">Eşleşmiş panel kategorisi<select value={attributeCategoryId} onChange={event => setAttributeCategoryId(event.target.value)}>{matchedCategories.map(({ category }) => <option key={category.id} value={category.id}>{category.path}</option>)}</select></label>
+      {!references.isLoading && !mappings.isLoading && !categoryRequirements.isLoading && !references.isError && !mappings.isError && !categoryRequirements.isError && <div className="mapping-section-toolbar"><div className="button-row"><button type="button" className="secondary" disabled={sync.isPending} onClick={() => sync.mutate()}>{sync.isPending ? 'Alanlar yenileniyor…' : 'Kategori alanlarını yenile'}</button>{optionCount > 0 && <button type="button" disabled={productSync.isPending} onClick={() => productSync.mutate()}>{productSync.isPending ? 'Ürünler eşitleniyor…' : 'Ürün seçeneklerini salt-okunur eşitle'}</button>}</div></div>}
+    </div>
     {references.isLoading || mappings.isLoading || categoryRequirements.isLoading ? <Busy text="Kategori özellikleri ve eşlemeler yükleniyor…" /> : references.isError || mappings.isError || categoryRequirements.isError ? <div className="unknown"><strong>Güncel kategori özellik verisi alınamadı</strong><p>Seçili Trendyol kategorisinin özellik listesini yeniden eşitleyin.</p><button type="button" disabled={sync.isPending} onClick={() => sync.mutate()}>{sync.isPending ? 'Kuyruğa alınıyor…' : 'Kategori özelliklerini eşitle'}</button></div> : <>
-      <div className="mapping-section-toolbar"><div className="button-row"><button type="button" className="secondary" disabled={sync.isPending} onClick={() => sync.mutate()}>{sync.isPending ? 'Alanlar yenileniyor…' : 'Kategori alanlarını yenile'}</button>{optionCount > 0 && <button type="button" disabled={productSync.isPending} onClick={() => productSync.mutate()}>{productSync.isPending ? 'Ürünler eşitleniyor…' : 'Ürün seçeneklerini salt-okunur eşitle'}</button>}</div></div>
       <section className="mapping-category-attributes-section"><div className="mapping-section-heading"><div><h3>Kategori özellikleri</h3><p>Normal Renk alanında panel renkleri doğrudan gönderilir; Web Color değerleri ayrı eşleştirilir.</p></div></div><div className="embedded-attribute-grid mapping-unified-grid mapping-attributes-grid">{specialColorOption && <WebColorMappingCard connectionId={connectionId} categoryScope={categoryScope} snapshotId={references.data!.snapshotId} localAttribute={specialColorOption.attribute} localAttributes={productAttributes} categoryOptionIds={categoryOptionIds} remoteAttribute={specialColorOption.remote} existingMapping={existingWebColorMapping} existingMappings={allMappings} onNotice={onNotice} />}{optionRemoteItems.length > 0 && optionAttributes.filter(item => !sizeOptionAttributeIds.has(item.id)).map(item => <OptionMappingCard key={`option-${item.id}`} connectionId={connectionId} categoryScope={categoryScope} snapshotId={references.data!.snapshotId} localAttribute={item} remoteAttributes={optionRemoteItems} existingMapping={optionMappings.find(mapping => mapping.localId === item.id && optionRemoteItems.some(remote => remote.externalId === mapping.externalId)) ?? null} onNotice={onNotice} />)}{productRemoteItems.map(item => <CategoryAttributeCard key={item.externalId} connectionId={connectionId} categoryScope={categoryScope} snapshotId={references.data!.snapshotId} localAttributes={productAttributes} categoryOptionIds={categoryOptionIds} remoteAttribute={item} existingMapping={productMappingByExternal.get(item.externalId) ?? null} onNotice={onNotice} />)}</div></section>
     </>}</article>
 }
@@ -2273,7 +2275,7 @@ function WebColorValueMappingEditor({ connectionId, categoryScope, attribute, ex
 }
 
 function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, externalAttributeId, customPanelColorValues = false, required = false }: { connectionId: string; categoryScope: string; attribute: LocalAttribute; externalAttributeId: string; customPanelColorValues?: boolean; required?: boolean }) {
-  const client = useQueryClient(); const [notice, setNotice] = useState(''); const [selections, setSelections] = useState<Record<string, string>>({}); const [selectionsReady, setSelectionsReady] = useState(false); const [saving, setSaving] = useState(false); const [autoMapping, setAutoMapping] = useState(false); const [quickValueOpen, setQuickValueOpen] = useState(false); const [quickValueDraft, setQuickValueDraft] = useState(''); const [quickValueSaving, setQuickValueSaving] = useState(false); const valueScope = `${categoryScope}/${externalAttributeId}`
+  const client = useQueryClient(); const [notice, setNotice] = useState(''); const [selections, setSelections] = useState<Record<string, string>>({}); const [selectionsReady, setSelectionsReady] = useState(false); const [initializedValueScope, setInitializedValueScope] = useState(''); const [saving, setSaving] = useState(false); const [autoMapping, setAutoMapping] = useState(false); const [quickValueOpen, setQuickValueOpen] = useState(false); const [quickValueDraft, setQuickValueDraft] = useState(''); const [quickValueSaving, setQuickValueSaving] = useState(false); const [editingQuickValue, setEditingQuickValue] = useState<{ id: string; value: string } | null>(null); const valueScope = `${categoryScope}/${externalAttributeId}`
   const referenceKey = ['reference-attribute-values', connectionId, valueScope] as const
   const references = useQuery({ queryKey: referenceKey, queryFn: () => hubApi<ReferenceData>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(externalAttributeId)}/values?connectionId=${encodeURIComponent(connectionId)}`), retry: false, enabled: !customPanelColorValues })
   const mappings = useQuery({ queryKey: ['attribute-value-mappings', connectionId, valueScope], queryFn: () => hubApi<CatalogMapping[]>(`/mappings/attribute-values?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(valueScope)}`), retry: false, enabled: !customPanelColorValues })
@@ -2303,21 +2305,31 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
   const remoteValues = allRemoteValues.filter(item => item.isActive || mappedExternalIds.has(item.externalId)).slice().sort((left, right) => left.name.localeCompare(right.name, 'tr-TR', { sensitivity: 'base', numeric: true }))
   const activeRemoteValues = allRemoteValues.filter(item => item.isActive)
   const directPlan = planDirectReferenceValues(localValues, activeRemoteValues)
-  const directMappingWorkCount = directPlan.mappings.filter(item => attributeValueMappingNeedsSave(mappingByLocal.get(item.localId), item.externalId, references.data?.snapshotId ?? '')).length
+  const currentSelectionsByLocal = new Map(planReferencePanelMappings(selections).map(item => [item.localId, item.externalId]))
+  const unsavedLocalIds = new Set(localValues.filter(item => (currentSelectionsByLocal.get(item.id) ?? '') !== (mappingByLocal.get(item.id)?.externalId ?? '')).map(item => item.id))
+  const unsavedExternalIds = new Set(planReferencePanelMappings(selections).filter(item => unsavedLocalIds.has(item.localId)).map(item => item.externalId))
+  const availableDirectMappings = directPlan.mappings.filter(item => !unsavedLocalIds.has(item.localId) && !unsavedExternalIds.has(item.externalId))
+  const directMappingWorkCount = availableDirectMappings.filter(item => attributeValueMappingNeedsSave(mappingByLocal.get(item.localId), item.externalId, references.data?.snapshotId ?? '')).length
   function updateAttributeCache(updated: LocalAttribute) {
     for (const queryKey of [['attributes', 'mapping-builder'], ['attributes', 'mapping']] as const) {
       client.setQueryData<Page<LocalAttribute>>(queryKey, current => current ? { ...current, items: current.items.map(item => item.id === updated.id ? updated : item) } : current)
     }
   }
   useEffect(() => {
-    if (!mappings.data) return
+    setSelections({})
+    setSelectionsReady(false)
+    setInitializedValueScope('')
+  }, [valueScope])
+  useEffect(() => {
+    if (!mappings.data || initializedValueScope === valueScope) return
     const grouped = mappings.data.reduce<Record<string, string>>((current, item) => {
       current[item.externalId] = item.localId
       return current
     }, {})
     setSelections(grouped)
     setSelectionsReady(true)
-  }, [mappings.data])
+    setInitializedValueScope(valueScope)
+  }, [mappings.data, valueScope, initializedValueScope])
   if (customPanelColorValues) {
     if (!localValues.length) return <div className="unknown"><strong>Panel renk değeri bulunamadı</strong><p>Normal Trendyol Renk alanı için panelde etkin renk seçeneği ekleyin.</p></div>
     return <div className="custom-panel-color-values"><div className="custom-panel-color-values-heading"><strong>Gönderilecek panel renkleri</strong><span>{localValues.length} renk · Trendyol’da değer eşlemesi gerekmiyor</span></div><div className="custom-panel-color-values-list">{localValues.map(localValue => <div className="custom-panel-color-value" key={localValue.id}><span>{localValue.value}</span><strong>{formatPanelColorValue(localValue.value)}</strong></div>)}</div></div>
@@ -2373,13 +2385,50 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
       setNotice(reason instanceof Error ? reason.message : 'Değer eklenemedi.')
     } finally { setQuickValueSaving(false) }
   }
+  async function updateQuickValue(valueId: string, nextValue: string, sortOrder: number) {
+    const value = nextValue.trim()
+    if (!value) {
+      setNotice('Değer boş olamaz.')
+      return
+    }
+    setQuickValueSaving(true)
+    try {
+      const updated = await hubApi<LocalAttribute>(`/catalog/attributes/${attribute.id}/values/${valueId}`, {
+        method: 'PUT',
+        headers: { 'If-Match': `"v${attribute.version}"` },
+        body: JSON.stringify({ value, sortOrder })
+      })
+      updateAttributeCache(updated)
+      await client.invalidateQueries({ queryKey: ['attributes'] })
+      setEditingQuickValue(null)
+      setNotice('Değer güncellendi.')
+    } catch (reason) {
+      setNotice(reason instanceof Error ? reason.message : 'Değer güncellenemedi.')
+    } finally { setQuickValueSaving(false) }
+  }
+  async function removeQuickValue(valueId: string) {
+    setQuickValueSaving(true)
+    try {
+      const updated = await hubApi<LocalAttribute>(`/catalog/attributes/${attribute.id}/values/${valueId}`, { method: 'DELETE' })
+      updateAttributeCache(updated)
+      await client.invalidateQueries({ queryKey: ['attributes'] })
+      setEditingQuickValue(null)
+      setNotice('Değer kaldırıldı.')
+    } catch (reason) {
+      setNotice(reason instanceof Error ? reason.message : 'Değer kaldırılamadı.')
+    } finally { setQuickValueSaving(false) }
+  }
   async function mapDirectMatchingValues() {
-    if (!references.data || !selectionsReady || !directMappingWorkCount || autoMapping || sync.isPending) return
+    if (!references.data || !selectionsReady || (!directMappingWorkCount && !unsavedLocalIds.size) || autoMapping || sync.isPending) return
+    if (!directMappingWorkCount) {
+      setNotice('Yeni birebir eşleşme bulunamadı. Kaydedilmemiş panel seçimleriniz korundu; kalıcı olması için “Tüm eşlemeleri kaydet” seçin.')
+      return
+    }
     setAutoMapping(true)
     setNotice('')
     let mappedCount = 0
     try {
-      for (const planned of directPlan.mappings) {
+      for (const planned of availableDirectMappings) {
         const existing = mappingByLocal.get(planned.localId)
         if (!attributeValueMappingNeedsSave(existing, planned.externalId, references.data.snapshotId)) continue
         await hubApi<CatalogMapping>(`/mappings/attribute-values/${planned.localId}`, {
@@ -2389,7 +2438,7 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
         })
         mappedCount++
       }
-      setSelections(current => directPlan.mappings.reduce((next, planned) => updatePanelValueReferenceSelection(next, planned.externalId, planned.localId), current))
+      setSelections(current => availableDirectMappings.reduce((next, planned) => updatePanelValueReferenceSelection(next, planned.externalId, planned.localId), current))
       await client.invalidateQueries({ queryKey: ['attribute-value-mappings', connectionId, valueScope] })
       const summary = `${mappedCount} panel değeri mevcut Trendyol karşılığıyla eşlendi.`
       setNotice(directPlan.ambiguousCount ? `${summary} Adı birden fazla eşleşen ${directPlan.ambiguousCount} seçenek otomatik eşlenmedi.` : summary)
@@ -2398,7 +2447,8 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
       setNotice(reason instanceof Error ? `Otomatik eşleme tamamlanamadı: ${reason.message}` : 'Otomatik eşleme tamamlanamadı.')
     } finally { setAutoMapping(false) }
   }
-  const quickValueModal = quickValueOpen && createPortal(<div className="panel-attribute-modal value-mapping-quick-value-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && !quickValueSaving) setQuickValueOpen(false) }}><section className="panel-attribute-modal-card panel-attribute-quick-modal-card" role="dialog" aria-modal="true" aria-labelledby="mapping-quick-value-title" onMouseDown={event => event.stopPropagation()}><header><div><strong id="mapping-quick-value-title">{attribute.name}</strong><small>Panel özelliği · bu başlığa yeni değer ekleyin</small></div><button type="button" aria-label="Değer ekleme penceresini kapat" onClick={() => setQuickValueOpen(false)} disabled={quickValueSaving}><UiIcon name="close" /></button></header><form className="panel-attribute-add-value panel-attribute-quick-add-value" onSubmit={event => { event.preventDefault(); void addQuickValues() }}><input autoFocus value={quickValueDraft} onChange={event => setQuickValueDraft(event.target.value)} placeholder="Yeni değerleri virgülle yazın" aria-label={`${attribute.name} için yeni değerler`} /><button type="submit" disabled={quickValueSaving || !quickValueDraft.trim()}>{quickValueSaving ? 'Ekleniyor…' : '+ Değer ekle'}</button></form><div className="panel-attribute-value-editor">{localValues.length ? localValues.map(value => <div key={value.id}><span>{value.value}</span></div>) : <span className="panel-value-empty">Henüz değer eklenmedi.</span>}</div><footer><button type="button" className="secondary" onClick={() => setQuickValueOpen(false)} disabled={quickValueSaving}>Kapat</button></footer></section></div>, document.body)
+  const closeQuickValueModal = () => { if (quickValueSaving) return; setQuickValueOpen(false); setEditingQuickValue(null) }
+  const quickValueModal = quickValueOpen && createPortal(<div className="panel-attribute-modal value-mapping-quick-value-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) closeQuickValueModal() }}><section className="panel-attribute-modal-card panel-attribute-quick-modal-card" role="dialog" aria-modal="true" aria-labelledby="mapping-quick-value-title" onMouseDown={event => event.stopPropagation()}><header><div><strong id="mapping-quick-value-title">{attribute.name}</strong><small>Panel özelliği · bu başlığa yeni değer ekleyin</small></div><button type="button" aria-label="Değer ekleme penceresini kapat" onClick={closeQuickValueModal} disabled={quickValueSaving}><UiIcon name="close" /></button></header><form className="panel-attribute-add-value panel-attribute-quick-add-value" onSubmit={event => { event.preventDefault(); void addQuickValues() }}><input autoFocus value={quickValueDraft} onChange={event => setQuickValueDraft(event.target.value)} placeholder="Yeni değerleri virgülle yazın" aria-label={`${attribute.name} için yeni değerler`} /><button type="submit" disabled={quickValueSaving || !quickValueDraft.trim()}>{quickValueSaving ? 'Ekleniyor…' : '+ Değer ekle'}</button></form><div className="panel-attribute-value-editor">{localValues.length ? localValues.map(value => <div key={value.id}>{editingQuickValue?.id === value.id ? <input autoFocus value={editingQuickValue.value} aria-label={`${value.value} değerini düzenle`} onChange={event => setEditingQuickValue({ id: value.id, value: event.target.value })} /> : <span>{value.value}</span>}<div>{editingQuickValue?.id === value.id ? <><button type="button" aria-label={`${value.value} değerini kaydet`} disabled={quickValueSaving} onClick={() => void updateQuickValue(value.id, editingQuickValue.value, value.sortOrder)}><UiIcon name="check" /></button><button type="button" aria-label="Değer düzenlemeyi iptal et" disabled={quickValueSaving} onClick={() => setEditingQuickValue(null)}><UiIcon name="close" /></button></> : <><button type="button" aria-label={`${value.value} değerini düzenle`} disabled={quickValueSaving} onClick={() => setEditingQuickValue({ id: value.id, value: value.value })}><UiIcon name="edit" /></button><button type="button" aria-label={`${value.value} değerini sil`} disabled={quickValueSaving} onClick={() => void removeQuickValue(value.id)}><UiIcon name="close" /></button></>}</div></div>) : <span className="panel-value-empty">Henüz değer eklenmedi.</span>}</div><footer><button type="button" className="secondary" onClick={closeQuickValueModal} disabled={quickValueSaving}>Kapat</button></footer></section></div>, document.body)
   if (references.isError) return <div className="unknown"><strong>Güncel özellik değerleri snapshot’ı yok</strong><p>Seçili kategori ve özellik için Trendyol’un salt-okunur değer listesini eşitleyin.</p>{notice && <p role="status">{notice}</p>}<div className="value-mapping-heading-actions"><button type="button" className="secondary" disabled={quickValueSaving} onClick={() => setQuickValueOpen(true)}>Hızlı değer oluştur</button><button type="button" disabled={sync.isPending} onClick={() => sync.mutate()}>{sync.isPending ? 'Eşitleniyor…' : 'Trendyol değerlerini eşitle'}</button></div>{quickValueModal}</div>
   if (references.isLoading || mappings.isLoading) return <Busy text="Özellik değerleri ve mevcut eşlemeler yükleniyor…" />
   if (mappings.isError) return <ErrorBox error={mappings.error} />
@@ -2408,7 +2458,7 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
       <div><h3>Değer eşleştirmeleri</h3><p>Trendyol değerlerini karşılık gelen panel değerleriyle eşleyin.</p></div>
       <div className="value-mapping-heading-actions">
         <button type="button" className="secondary" disabled={quickValueSaving || autoMapping || saving} onClick={() => setQuickValueOpen(true)}>Hızlı değer oluştur</button>
-        <button type="button" className="secondary" title={`Aynı adlı panel ve Trendyol değerlerini eşler.${directPlan.ambiguousCount ? ` Belirsiz ${directPlan.ambiguousCount} eşleşme atlanır.` : ''}`} disabled={!selectionsReady || autoMapping || saving || sync.isPending || quickValueSaving || directMappingWorkCount === 0} onClick={() => void mapDirectMatchingValues()}>{autoMapping ? 'Eşleştiriliyor…' : 'Birebir eşleşenleri eşle'}</button>
+        <button type="button" className="secondary" title={`Aynı adlı panel ve Trendyol değerlerini eşler.${directPlan.ambiguousCount ? ` Belirsiz ${directPlan.ambiguousCount} eşleşme atlanır.` : ''}`} disabled={!selectionsReady || autoMapping || saving || sync.isPending || quickValueSaving || (directMappingWorkCount === 0 && unsavedLocalIds.size === 0)} onClick={() => void mapDirectMatchingValues()}>{autoMapping ? 'Eşleştiriliyor…' : 'Birebir eşleşenleri eşle'}</button>
         <button type="button" className="secondary value-mapping-refresh-button" title="Trendyol’un güncel referans değer listesini yenile" disabled={sync.isPending || autoMapping || saving} onClick={() => sync.mutate()}>{sync.isPending ? 'Yenileniyor…' : 'Trendyol listesini yenile'}</button>
         <button type="button" disabled={!selectionsReady || saving || sync.isPending || autoMapping || quickValueSaving} onClick={() => void saveAll()}>{saving ? 'Kaydediliyor…' : 'Tüm eşlemeleri kaydet'}</button>
       </div>
