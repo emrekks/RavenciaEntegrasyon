@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { attributeValueMappingNeedsSave, hasDirectReferenceValue, planDirectReferenceValues } from './attribute-value-mapping'
+import { attributeValueMappingNeedsSave, hasDirectReferenceValue, planDirectReferenceValues, valueMappingRowClassName } from './attribute-value-mapping'
 
 describe('attribute value reference mappings', () => {
   it('matches labels despite whitespace around season separators', () => {
@@ -14,27 +14,28 @@ describe('attribute value reference mappings', () => {
     expect(attributeValueMappingNeedsSave({ externalId: 'winter', snapshotId: 'new' }, '', 'new')).toBe(false)
   })
 
-  it('plans exact-name additions and mappings while skipping ambiguous reference labels', () => {
+  it('maps exact-name panel values to unique Trendyol values while skipping ambiguous reference labels', () => {
     expect(planDirectReferenceValues(
-      [{ id: 'spring', value: 'İlkbahar / Sonbahar' }],
+      [
+        { id: 'spring', value: 'İlkbahar / Sonbahar' },
+        { id: 'winter', value: 'Sonbahar / Kış' }
+      ],
       [
         { externalId: 'spring', name: 'İlkbahar/Sonbahar' },
         { externalId: 'winter', name: 'Sonbahar / Kış' },
         { externalId: 'winter-2', name: 'Sonbahar/Kış' }
       ]
     )).toEqual({
-      missingValues: [],
       mappings: [{ localId: 'spring', externalId: 'spring' }],
       ambiguousCount: 2
     })
   })
 
-  it('plans absent unique Trendyol labels for one-click local creation', () => {
+  it('does not create panel values when no exact local value exists', () => {
     expect(planDirectReferenceValues(
       [{ id: 'winter', value: 'Kış' }],
       [{ externalId: 'winter', name: 'Kış' }, { externalId: 'summer', name: 'Yaz' }]
     )).toEqual({
-      missingValues: ['Yaz'],
       mappings: [{ localId: 'winter', externalId: 'winter' }],
       ambiguousCount: 0
     })
@@ -44,6 +45,12 @@ describe('attribute value reference mappings', () => {
     expect(planDirectReferenceValues(
       [{ id: 'one', value: 'İ' }, { id: 'two', value: 'i' }],
       [{ externalId: 'letter', name: 'i' }]
-    )).toEqual({ missingValues: [], mappings: [], ambiguousCount: 1 })
+    )).toEqual({ mappings: [], ambiguousCount: 1 })
+  })
+
+  it('marks empty required and optional rows with separate validation styles', () => {
+    expect(valueMappingRowClassName(false, true)).toBe('value-mapping-row is-empty is-required')
+    expect(valueMappingRowClassName(false, false)).toBe('value-mapping-row is-empty is-optional')
+    expect(valueMappingRowClassName(true, true)).toBe('value-mapping-row is-required')
   })
 })

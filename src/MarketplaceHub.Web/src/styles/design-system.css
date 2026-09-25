@@ -2736,13 +2736,12 @@
   .custom-panel-color-value { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: var(--rv-space-3); padding: var(--rv-space-3); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
   .custom-panel-color-value > span { min-width: 0; overflow-wrap: anywhere; color: var(--rv-color-muted); }
   .custom-panel-color-value > strong { color: var(--rv-color-ink); text-align: right; }
-  .value-mapping-row { display: grid; grid-template-columns: minmax(96px, .82fr) 24px minmax(140px, 1.28fr) auto; align-items: center; gap: var(--rv-space-2); min-width: 0; padding: var(--rv-space-3); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
+  .value-mapping-row { display: grid; grid-template-columns: minmax(96px, .82fr) 24px minmax(140px, 1.28fr); align-items: center; gap: var(--rv-space-2); min-width: 0; padding: var(--rv-space-3); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
   .value-mapping-row > span { min-width: 0; overflow-wrap: anywhere; font-weight: 750; }
   .value-mapping-row > b { display: grid; place-items: center; color: var(--rv-color-primary); }
   .value-mapping-row-link { width: 24px; height: 24px; }
   .value-mapping-row-link .ui-icon { width: 16px; height: 16px; }
   .value-mapping-row > select { min-width: 0; }
-  .value-mapping-row > small { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); font-weight: 750; text-align: right; white-space: nowrap; }
   .web-color-assignment-picker { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--rv-space-3); }
   .web-color-assignment-picker > label { display: grid; min-width: 0; align-content: end; gap: var(--rv-space-2); }
   .web-color-assignment-picker > label { color: var(--rv-color-ink); font-size: var(--rv-font-size-sm); font-weight: 750; }
@@ -2955,7 +2954,6 @@
   .mapping-values-modal .value-mapping-heading-actions { width: 100%; justify-content: flex-start; }
   .mapping-values-modal .value-mapping-heading-actions > button { flex: 1 1 180px; }
   .value-mapping-row { grid-template-columns: minmax(0, 1fr) 24px minmax(0, 1.2fr); }
-  .value-mapping-row > small { grid-column: 3; text-align: left; }
   .web-color-assignment-picker { grid-template-columns: 1fr; }
   .web-color-panel-value-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .web-color-assignment-groups > div { grid-template-columns: 1fr; }
@@ -3194,7 +3192,6 @@
   .dashboard-metrics { grid-template-columns: 1fr; }
   .value-mapping-row { grid-template-columns: 1fr; }
   .value-mapping-row > b { transform: rotate(90deg); }
-  .value-mapping-row > small { grid-column: auto; text-align: left; }
   .web-color-panel-value-grid { grid-template-columns: 1fr; }
   .operation-feedback-toast, .product-operation-toast { right: 16px; bottom: 16px; width: calc(100vw - 32px); }
   .invoice-reference-metrics, .invoice-detail-summary, .return-detail-summary, .return-detail-product-facts, .recovery-code-grid { grid-template-columns: 1fr; }
@@ -10643,6 +10640,15 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 }
 .app-shell.stitch-shell main .category-attribute-select-trigger.is-empty.is-required {
   color: var(--rv-color-ink);
+  border-color: color-mix(in srgb, var(--rv-color-danger) 32%, var(--rv-color-border-strong));
+}
+.app-shell.stitch-shell main .value-mapping-row.is-empty.is-optional {
+  border-color: color-mix(in srgb, #facc15 26%, var(--rv-color-border-strong));
+}
+.app-shell.stitch-shell main .value-mapping-row.is-empty.is-optional:focus-within {
+  border-color: color-mix(in srgb, #facc15 38%, var(--rv-color-border-strong));
+}
+.app-shell.stitch-shell main .value-mapping-row.is-empty.is-required {
   border-color: color-mix(in srgb, var(--rv-color-danger) 32%, var(--rv-color-border-strong));
 }
 

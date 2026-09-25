@@ -26,21 +26,24 @@ export function planDirectReferenceValues(
     remoteByName.set(normalized, group)
   }
 
-  const missingValues: string[] = []
   const mappings: Array<{ localId: string; externalId: string }> = []
   let ambiguousCount = 0
   for (const [normalized, remotes] of remoteByName) {
+    const locals = localByName.get(normalized) ?? []
+    if (!locals.length) continue
     if (remotes.length !== 1) {
       ambiguousCount += remotes.length
       continue
     }
-    const locals = localByName.get(normalized) ?? []
     if (locals.length > 1) ambiguousCount++
     else if (locals[0]) mappings.push({ localId: locals[0].id, externalId: remotes[0].externalId })
-    else missingValues.push(remotes[0].name)
   }
 
-  return { missingValues, mappings, ambiguousCount }
+  return { mappings, ambiguousCount }
+}
+
+export function valueMappingRowClassName(hasSelection: boolean, isRequired: boolean) {
+  return `value-mapping-row${hasSelection ? '' : ' is-empty'} ${isRequired ? 'is-required' : 'is-optional'}`
 }
 
 export function attributeValueMappingNeedsSave(
