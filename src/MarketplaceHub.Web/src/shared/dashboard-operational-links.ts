@@ -1,5 +1,5 @@
 export const dashboardOperationalLinks = {
-  pendingOrders: '/orders?status=PENDING',
+  pendingOrders: '/orders?status=NEW',
   pendingReturns: '/returns?status=ACTION_REQUIRED',
   pendingInvoices: '/invoices?tab=UNINVOICED',
   dueInvoices: '/invoices?tab=DUE_SOON'

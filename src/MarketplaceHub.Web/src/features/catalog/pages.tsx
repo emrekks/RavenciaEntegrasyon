@@ -697,7 +697,7 @@ function ProductVariantHover({ count, catalogCount, groups }: { count: number; c
       hoverTimerRef.current = null
       setOpen(true)
       window.requestAnimationFrame(updatePosition)
-    }, 2000)
+    }, 1000)
   }
 
   function hideTooltip() {
@@ -732,7 +732,7 @@ function ProductVariantHover({ count, catalogCount, groups }: { count: number; c
   }, [groups, open])
 
   return <>
-    <div ref={triggerRef} className="product-list-variants product-variant-hover" tabIndex={0} aria-label={`${catalogCount} seçenek, ${count} varyant. Tüm varyantları görmek için üzerine gelin`} title="Tüm varyantları görmek için 2 saniye bekleyin" onMouseEnter={showTooltip} onMouseLeave={hideTooltip} onFocus={showTooltipImmediately} onBlur={hideTooltip}>
+    <div ref={triggerRef} className="product-list-variants product-variant-hover" tabIndex={0} aria-label={`${catalogCount} seçenek, ${count} varyant`} onMouseEnter={showTooltip} onMouseLeave={hideTooltip} onFocus={showTooltipImmediately} onBlur={hideTooltip}>
       <strong>{catalogCount} seçenek</strong><span>{count} varyant</span>
     </div>
     {open && createPortal(
