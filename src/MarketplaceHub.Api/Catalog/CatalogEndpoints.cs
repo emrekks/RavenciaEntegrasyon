@@ -70,6 +70,12 @@ public static class CatalogEndpoints
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.BulkDeleteProductsAsync(tenant.TenantId, command, http.RequestAborted), count => Results.Ok(new { deletedCount = count })) : MissingContext(http));
         api.MapGet("/products/{id:guid}", async (Guid id, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant ? WithEtag(http, await service.GetProductAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http));
+        api.MapPost("/products/{id:guid}/duplicate", async (Guid id, HttpContext http, ICatalogService service) =>
+        {
+            if (Tenant(http) is not { } tenant) return Unauthorized(http);
+            var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
+            return Result(await service.DuplicateProductAsync(tenant.TenantId, id, http.RequestAborted), product => Results.Created($"/api/v1/products/{product.Id:D}", product));
+        });
         api.MapPost("/products", async (CreateProductCommand command, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Created(await service.CreateProductAsync(tenant.TenantId, command, http.RequestAborted), "/api/v1/products") : MissingContext(http));
         api.MapPatch("/products/{id:guid}", async (Guid id, UpdateProductCommand command, HttpContext http, ICatalogService service) =>

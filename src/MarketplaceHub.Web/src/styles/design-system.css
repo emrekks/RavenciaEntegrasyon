@@ -1594,7 +1594,7 @@
   .product-basics-grid .product-category-field { grid-column: span 2; }
   .product-identifiers-grid { display: grid; grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(140px, .75fr); gap: var(--rv-space-4); min-width: 0; }
   .product-identifiers-grid .desi-input-field { min-width: 0; }
-  .product-step-grid label, .product-media-url-field { display: grid; min-width: 0; gap: var(--rv-space-2); color: var(--rv-color-ink); font-size: var(--rv-font-size-sm); font-weight: 700; }
+  .product-step-grid label, .product-step-grid .product-description-field, .product-media-url-field { display: grid; min-width: 0; gap: var(--rv-space-2); color: var(--rv-color-ink); font-size: var(--rv-font-size-sm); font-weight: 700; }
   .desi-inline-control { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--rv-space-2); }
   .desi-inline-control button { min-width: 92px; }
   .marketplace-pricing-bars { margin-top: var(--rv-space-5); padding-top: var(--rv-space-5); border-top: 1px solid var(--rv-color-border); }
@@ -1605,11 +1605,11 @@
   .marketplace-pricing-bar-list { display: grid; gap: var(--rv-space-3); margin-top: var(--rv-space-4); }
   .marketplace-pricing-bar { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(120px, .72fr) minmax(120px, .72fr) auto; align-items: end; gap: var(--rv-space-3); margin: 0; padding: var(--rv-space-3); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
   .marketplace-pricing-bar.selected { border-color: var(--rv-color-primary); }
-  .marketplace-pricing-bar legend { display: contents; }
-  .marketplace-pricing-bar legend > span:last-child, .marketplace-pricing-bar label { display: grid; min-width: 0; gap: 3px; }
+  .marketplace-pricing-bar-heading { display: flex; min-width: 0; grid-column: 1 / -1; align-items: center; gap: var(--rv-space-3); padding: 0 0 var(--rv-space-3); border-bottom: 1px solid var(--rv-color-border); }
+  .marketplace-pricing-bar-heading > span:last-child, .marketplace-pricing-bar label { display: grid; min-width: 0; gap: 3px; }
   .product-top-sidebar .marketplace-pricing-bar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .product-top-sidebar .marketplace-pricing-bar > button { grid-column: 1 / -1; justify-self: start; }
-  .marketplace-pricing-bar legend > span:last-child small { color: var(--rv-color-muted); }
+  .marketplace-pricing-bar-heading small { color: var(--rv-color-muted); }
   .product-category-mapping-card { grid-column: 1 / -1; }
   .category-attribute-mapping-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--rv-space-3); }
   .category-attribute-field { display: grid; grid-template-columns: minmax(190px, .48fr) minmax(0, 1.52fr); align-items: center; gap: var(--rv-space-2); min-width: 0; padding: var(--rv-space-2); background: color-mix(in srgb, var(--rv-color-surface-raised) 88%, transparent); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); transition: border-color var(--rv-duration-fast) var(--rv-ease-standard), background var(--rv-duration-fast) var(--rv-ease-standard), box-shadow var(--rv-duration-fast) var(--rv-ease-standard); }
@@ -1796,8 +1796,7 @@
   .variant-platform-status.is-partial::after { background: var(--rv-color-warning); }
   .variant-platform-status.is-unlinked { opacity: .62; }
   .variant-platform-status-summary { margin-inline: auto; }
-  .variant-platform-status-summary .ui-icon { width: 17px; height: 17px; }
-  .variant-platform-status-summary > i { position: absolute; right: -5px; bottom: -5px; display: grid; min-width: 15px; height: 15px; place-items: center; padding: 0 2px; color: #fff; background: var(--rv-color-primary); border: 2px solid var(--rv-color-surface); border-radius: 999px; font-size: 8px; font-style: normal; font-weight: 800; line-height: 1; }
+  .variant-platform-status-summary .ui-icon { width: 21px; height: 21px; }
   .variant-platform-logo { display: block; width: 18px; height: 18px; object-fit: contain; object-position: center; }
   .variant-platform-logo.platform-logo-trendyol { object-fit: cover; }
   .variant-platform-empty { color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); }
@@ -6786,23 +6785,23 @@ small,
   .app-shell.stitch-shell main .marketplace-pricing-bar {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     grid-template-areas:
-      "legend legend"
+      "heading heading"
       "list-price sale-price"
       "toggle toggle";
     align-items: end;
     gap: var(--rv-space-3);
   }
 
-  .app-shell.stitch-shell main .marketplace-pricing-bar > legend {
+  .app-shell.stitch-shell main .marketplace-pricing-bar > .marketplace-pricing-bar-heading {
     display: grid;
-    grid-area: legend;
+    grid-area: heading;
     grid-template-columns: 42px minmax(0, 1fr);
     align-items: center;
     gap: var(--rv-space-3);
     min-width: 0;
   }
 
-  .app-shell.stitch-shell main .marketplace-pricing-bar > legend > span:last-child {
+  .app-shell.stitch-shell main .marketplace-pricing-bar > .marketplace-pricing-bar-heading > span:last-child {
     display: grid;
     min-width: 0;
     gap: 2px;
@@ -6819,14 +6818,14 @@ small,
     gap: var(--rv-space-3);
   }
 
-  .app-shell.stitch-shell main .marketplace-pricing-bar > legend,
+  .app-shell.stitch-shell main .marketplace-pricing-bar > .marketplace-pricing-bar-heading,
   .app-shell.stitch-shell main .marketplace-pricing-bar > label:nth-of-type(1),
   .app-shell.stitch-shell main .marketplace-pricing-bar > label:nth-of-type(2),
   .app-shell.stitch-shell main .marketplace-pricing-bar > button {
     grid-column: 1;
   }
 
-  .app-shell.stitch-shell main .marketplace-pricing-bar > legend {
+  .app-shell.stitch-shell main .marketplace-pricing-bar > .marketplace-pricing-bar-heading {
     display: grid;
     grid-template-columns: 42px minmax(0, 1fr);
     align-items: center;
@@ -10840,11 +10839,100 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .app-shell.stitch-shell main .variant-row-actions > .variant-platform-empty { flex: 0 0 34px; text-align: center; }
 .app-shell.stitch-shell main .variant-table-head > span:nth-child(9) { text-align: center; }
 
-/* A cancelled job remains readable without drawing another card around it. */
+/* Give the cancelled job panel balanced inset spacing and a clear frame. */
 .app-shell.stitch-shell main .publish-platform-job.is-cancelled {
-  background: transparent;
-  border-color: transparent;
+  margin: 12px;
+  padding: 12px;
+  background: var(--rv-color-surface-raised);
+  border: 1px solid color-mix(in srgb, var(--rv-color-muted) 42%, var(--rv-color-border));
+  border-radius: var(--rv-radius-sm);
   box-shadow: none;
+}
+
+/* Keep the refresh control icon-only and visually quiet beside the status. */
+.app-shell.stitch-shell main .publish-platform-fact-publication .publish-tracking-action {
+  color: var(--rv-color-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+.app-shell.stitch-shell main .publish-platform-fact-publication .publish-tracking-action:hover:not(:disabled),
+.app-shell.stitch-shell main .publish-platform-fact-publication .publish-tracking-action:focus-visible {
+  color: var(--rv-color-primary);
+  background: transparent;
+  border: 0;
+}
+
+/* Product copy action sits in a compact, keyboard-accessible overflow menu. */
+.app-shell.stitch-shell main .product-list-actions > .product-more-actions {
+  position: relative;
+  flex: 0 0 44px;
+}
+.app-shell.stitch-shell main .product-more-actions > summary {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  color: var(--rv-color-muted);
+  background: var(--rv-color-surface);
+  border: 1px solid var(--rv-color-border);
+  border-radius: var(--rv-radius-md);
+  cursor: pointer;
+  list-style: none;
+}
+.app-shell.stitch-shell main .product-more-actions > summary::-webkit-details-marker { display: none; }
+.app-shell.stitch-shell main .product-more-actions > summary:hover,
+.app-shell.stitch-shell main .product-more-actions[open] > summary,
+.app-shell.stitch-shell main .product-more-actions > summary:focus-visible {
+  color: var(--rv-color-primary);
+  background: var(--rv-color-primary-soft);
+  border-color: var(--rv-color-primary);
+  outline: none;
+}
+.app-shell.stitch-shell main .product-more-actions-menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  right: 0;
+  width: max-content;
+  min-width: 220px;
+  padding: 5px;
+  background: var(--rv-color-surface);
+  border: 1px solid var(--rv-color-border-strong);
+  border-radius: var(--rv-radius-md);
+  box-shadow: var(--rv-shadow-lg);
+}
+.app-shell.stitch-shell main .product-list-actions .product-more-actions-menu button {
+  display: flex;
+  width: 100%;
+  height: auto;
+  min-height: 40px;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--rv-space-2);
+  padding: 8px 10px;
+  color: var(--rv-color-ink);
+  background: transparent;
+  border: 0;
+  border-radius: var(--rv-radius-sm);
+  text-align: left;
+  white-space: nowrap;
+}
+.app-shell.stitch-shell main .product-list-actions .product-more-actions-menu button:hover:not(:disabled),
+.app-shell.stitch-shell main .product-list-actions .product-more-actions-menu button:focus-visible {
+  color: var(--rv-color-primary);
+  background: var(--rv-color-primary-soft);
+  outline: none;
+}
+.app-shell.stitch-shell main .product-list-actions .product-more-actions-menu button:disabled { cursor: wait; opacity: .65; }
+.app-shell.stitch-shell main .product-more-actions-menu .ui-icon { width: 18px; height: 18px; flex: 0 0 18px; }
+
+/* This summary opens the platform pricing detail directly; its state badges are redundant here. */
+.app-shell.stitch-shell main .variant-row-actions > .variant-platform-status-summary::after { display: none; }
+
+@media (max-width: 1400px) {
+  .app-shell.stitch-shell main .product-list-actions > .product-more-actions { flex-basis: 34px; }
+  .app-shell.stitch-shell main .product-more-actions > summary { width: 34px; height: 34px; }
 }
 .publish-platform-missing {
   color: var(--rv-color-danger);

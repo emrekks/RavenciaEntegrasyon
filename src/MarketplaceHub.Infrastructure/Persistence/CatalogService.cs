@@ -689,6 +689,188 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         return await GetProductAsync(tenantId, product.Id, cancellationToken);
     }
 
+    public async Task<ServiceResult<ProductView>> DuplicateProductAsync(Guid tenantId, Guid productId, CancellationToken cancellationToken)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
+        var source = await db.Products.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
+        if (source is null) return NotFound<ProductView>();
+
+        var familyProductIds = await ProductFamilyProductIdsAsync(tenantId, source, cancellationToken);
+        var sourceProducts = await db.Products.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && familyProductIds.Contains(x.Id))
+            .OrderBy(x => x.Id == productId ? 0 : 1).ThenBy(x => x.CreatedAt).ThenBy(x => x.Id)
+            .ToListAsync(cancellationToken);
+        var sourceProductIds = sourceProducts.Select(x => x.Id).ToArray();
+        var sourceVariants = await db.ProductVariants.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && sourceProductIds.Contains(x.ProductId))
+            .OrderBy(x => x.ProductId).ThenBy(x => x.SortOrder).ThenBy(x => x.Id)
+            .ToListAsync(cancellationToken);
+        if (sourceVariants.Count == 0) return Invalid<ProductView>("variants", "Varyantı olmayan ürün kopyalanamaz.");
+        if (sourceVariants.Count > 1000) return Invalid<ProductView>("variants", "Tek ürün kaydında en fazla 1000 varyant oluşturulabilir.");
+
+        var sourceAssignments = await db.ProductAttributeAssignments.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && sourceProductIds.Contains(x.ProductId))
+            .OrderBy(x => x.SortOrder).ThenBy(x => x.Id)
+            .ToListAsync(cancellationToken);
+        var sourceOptions = await db.ProductOptions.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && sourceProductIds.Contains(x.ProductId))
+            .OrderBy(x => x.SortOrder).ThenBy(x => x.Id)
+            .ToListAsync(cancellationToken);
+        var sourceOptionIds = sourceOptions.Select(x => x.Id).ToArray();
+        var sourceOptionValues = sourceOptionIds.Length == 0
+            ? []
+            : await db.ProductOptionValues.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && sourceOptionIds.Contains(x.OptionId))
+                .OrderBy(x => x.SortOrder).ThenBy(x => x.Id)
+                .ToListAsync(cancellationToken);
+        var sourceVariantIds = sourceVariants.Select(x => x.Id).ToArray();
+        var sourceVariantOptions = sourceVariantIds.Length == 0
+            ? []
+            : await db.VariantOptionValues.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && sourceVariantIds.Contains(x.VariantId))
+                .ToListAsync(cancellationToken);
+        var sourceMedia = await db.ProductMedia.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && sourceProductIds.Contains(x.ProductId) && x.Status == "ACTIVE")
+            .OrderBy(x => x.SortOrder).ThenBy(x => x.Id)
+            .ToListAsync(cancellationToken);
+
+        var usedSkus = (await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId).Select(x => x.SkuNormalized).ToListAsync(cancellationToken)).ToHashSet(StringComparer.Ordinal);
+        var usedBarcodes = (await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.BarcodeNormalized != null).Select(x => x.BarcodeNormalized!).ToListAsync(cancellationToken)).ToHashSet(StringComparer.Ordinal);
+        var usedModelCodes = (await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ModelCode != null).Select(x => x.ModelCode!).ToListAsync(cancellationToken)).Select(Normalize).ToHashSet(StringComparer.Ordinal);
+
+        var now = timeProvider.GetUtcNow();
+        var copyProductIds = new Dictionary<Guid, Guid>(sourceProducts.Count);
+        var copies = new List<Product>(sourceProducts.Count);
+        foreach (var sourceProduct in sourceProducts)
+        {
+            var copyId = Guid.CreateVersion7();
+            copyProductIds.Add(sourceProduct.Id, copyId);
+            copies.Add(new Product
+            {
+                Id = copyId,
+                TenantId = tenantId,
+                Title = ProductCopyCodePolicy.WithCopySuffix(sourceProduct.Title, 320),
+                Description = sourceProduct.Description,
+                BrandId = sourceProduct.BrandId,
+                CategoryId = sourceProduct.CategoryId,
+                DefaultListPrice = sourceProduct.DefaultListPrice,
+                DefaultSalePrice = sourceProduct.DefaultSalePrice,
+                Status = ProductStatus.Draft,
+                SourcePolicyVersion = sourceProduct.SourcePolicyVersion,
+                CreatedAt = now,
+                UpdatedAt = now
+            });
+        }
+
+        var token = copyProductIds[productId].ToString("N")[..8];
+        var modelCodeCopies = new Dictionary<string, string>(StringComparer.Ordinal);
+        var newVariants = new List<ProductVariant>(sourceVariants.Count);
+        var variantIdMap = new Dictionary<Guid, Guid>(sourceVariants.Count);
+        for (var variantIndex = 0; variantIndex < sourceVariants.Count; variantIndex++)
+        {
+            var sourceVariant = sourceVariants[variantIndex];
+            var newVariantId = Guid.CreateVersion7();
+            variantIdMap.Add(sourceVariant.Id, newVariantId);
+            var variantToken = $"{token}{variantIndex + 1}";
+            string? modelCode = null;
+            if (!string.IsNullOrWhiteSpace(sourceVariant.ModelCode))
+            {
+                var normalizedModelCode = Normalize(sourceVariant.ModelCode);
+                if (!modelCodeCopies.TryGetValue(normalizedModelCode, out modelCode))
+                {
+                    modelCode = ProductCopyCodePolicy.WithUniqueCopySuffix(sourceVariant.ModelCode, token, usedModelCodes, 160);
+                    modelCodeCopies.Add(normalizedModelCode, modelCode);
+                }
+            }
+
+            var sku = ProductCopyCodePolicy.WithUniqueCopySuffix(sourceVariant.Sku, variantToken, usedSkus);
+            var barcode = string.IsNullOrWhiteSpace(sourceVariant.Barcode)
+                ? null
+                : ProductCopyCodePolicy.WithUniqueCopySuffix(sourceVariant.Barcode, variantToken, usedBarcodes);
+            newVariants.Add(new ProductVariant
+            {
+                Id = newVariantId,
+                TenantId = tenantId,
+                ProductId = copyProductIds[sourceVariant.ProductId],
+                SortOrder = sourceVariant.SortOrder,
+                Sku = sku,
+                SkuNormalized = Normalize(sku),
+                Barcode = barcode,
+                BarcodeNormalized = barcode is null ? null : Normalize(barcode),
+                ModelCode = modelCode,
+                OptionSignature = sourceVariant.OptionSignature,
+                Status = ProductStatus.Draft,
+                Weight = sourceVariant.Weight,
+                Width = sourceVariant.Width,
+                Height = sourceVariant.Height,
+                Length = sourceVariant.Length,
+                Desi = sourceVariant.Desi,
+                CostPrice = sourceVariant.CostPrice,
+                DefaultListPrice = sourceVariant.DefaultListPrice,
+                DefaultSalePrice = sourceVariant.DefaultSalePrice,
+                CreatedAt = now,
+                UpdatedAt = now
+            });
+        }
+
+        var optionIdMap = new Dictionary<Guid, Guid>(sourceOptions.Count);
+        foreach (var option in sourceOptions)
+        {
+            var newOptionId = Guid.CreateVersion7();
+            optionIdMap.Add(option.Id, newOptionId);
+            db.ProductOptions.Add(new ProductOption { Id = newOptionId, TenantId = tenantId, ProductId = copyProductIds[option.ProductId], Label = option.Label, NormalizedKey = option.NormalizedKey, SortOrder = option.SortOrder });
+        }
+
+        var optionValueIdMap = new Dictionary<Guid, Guid>(sourceOptionValues.Count);
+        foreach (var optionValue in sourceOptionValues)
+        {
+            var newOptionValueId = Guid.CreateVersion7();
+            optionValueIdMap.Add(optionValue.Id, newOptionValueId);
+            db.ProductOptionValues.Add(new ProductOptionValue { Id = newOptionValueId, TenantId = tenantId, OptionId = optionIdMap[optionValue.OptionId], Label = optionValue.Label, NormalizedKey = optionValue.NormalizedKey, SortOrder = optionValue.SortOrder });
+        }
+
+        db.Products.AddRange(copies);
+        db.ProductVariants.AddRange(newVariants);
+        db.ProductAttributeAssignments.AddRange(sourceAssignments.Select(assignment => new ProductAttributeAssignment
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenantId,
+            ProductId = copyProductIds[assignment.ProductId],
+            VariantId = assignment.VariantId is Guid oldVariantId ? variantIdMap[oldVariantId] : null,
+            AttributeId = assignment.AttributeId,
+            ValueId = assignment.ValueId,
+            TextValue = assignment.TextValue,
+            NumberValue = assignment.NumberValue,
+            BooleanValue = assignment.BooleanValue,
+            SortOrder = assignment.SortOrder
+        }));
+        db.VariantOptionValues.AddRange(sourceVariantOptions.Select(assignment => new VariantOptionValue
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenantId,
+            VariantId = variantIdMap[assignment.VariantId],
+            OptionId = optionIdMap[assignment.OptionId],
+            OptionValueId = optionValueIdMap[assignment.OptionValueId]
+        }));
+        db.ProductMedia.AddRange(sourceMedia.Select(media => new ProductMedia
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenantId,
+            ProductId = copyProductIds[media.ProductId],
+            VariantId = media.VariantId is Guid oldVariantId ? variantIdMap[oldVariantId] : null,
+            FileAssetId = media.FileAssetId,
+            MediaRole = media.MediaRole,
+            SortOrder = media.SortOrder,
+            AltText = media.AltText,
+            Status = media.Status
+        }));
+
+        await EnsureMainInventoryAsync(tenantId, newVariants, cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return await GetProductAsync(tenantId, copyProductIds[productId], cancellationToken);
+    }
+
     public async Task<ServiceResult<ProductView>> GetProductAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
     {
         var product = await VisibleProducts(tenantId).SingleOrDefaultAsync(x => x.Id == id, cancellationToken); if (product is null) return NotFound<ProductView>();

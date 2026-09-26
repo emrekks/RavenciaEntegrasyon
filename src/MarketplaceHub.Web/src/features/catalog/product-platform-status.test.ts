@@ -26,6 +26,15 @@ describe('product platform list status', () => {
       .toBe('Trendyol üzerinde ürün kısmen yayında (1/2)')
   })
 
+  it('does not let a rejected sibling hide a confirmed live listing', () => {
+    const statuses = ['LIVE', 'CREATE_REJECTED']
+    const state = productPlatformDisplayState(statuses, false)
+
+    expect(state).toBe('partial')
+    expect(productPlatformDisplayLabel('Trendyol', statuses, 35, 70, state))
+      .toBe('Trendyol üzerinde ürün kısmen yayında (35/70)')
+  })
+
   it('keeps unmatched variants neutral until publication is confirmed', () => {
     expect(productPlatformDisplayState(['UNLINKED'], false)).toBe('inactive')
     expect(productPlatformDisplayState(['BATCH_IN_PROGRESS'], false)).toBe('processing')

@@ -45,9 +45,9 @@ export function productPlatformDisplayState(
 ): ProductPlatformDisplayState {
   const normalized = normalizedStatuses(statuses)
   if (isChecking || normalized.some(status => inProgressStatuses.has(status))) return 'processing'
-  if (normalized.some(status => errorStatuses.has(status))) return 'error'
   if (normalized.length > 0 && normalized.every(status => status === 'LIVE')) return 'active'
   if (normalized.some(status => status === 'LIVE' || status === 'PARTIAL_LIVE')) return 'partial'
+  if (normalized.some(status => errorStatuses.has(status))) return 'error'
 
   // Variant links only prove that local and remote variant identifiers were
   // paired at some point. They do not prove that a marketplace listing exists.
