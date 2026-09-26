@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
-import { Link, useNavigate, useParams } from 'react-router'
+import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import { createPortal } from 'react-dom'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, loadAllPages, type CursorPage } from '../../shared/api'
@@ -18,6 +18,7 @@ import { mergeVariantOptionEntries, normalizeVariantOptionValue } from './varian
 import { classifyPublicationAttributeIssues, type PublicationAttributeSelection, type PublicationMappingReference, type PublicationValueReferenceSet } from './publication-attribute-readiness'
 import { productMediaUrlIssue } from './product-media-url'
 import { barcodeClipboardIssue, parseBarcodeClipboardValues } from './product-barcode-paste'
+import { productCopyIdentifierConflicts } from './product-copy-identifiers'
 import { isPublicationStatusJobRunning, missingPublicationChecks, publicationStatusLabel, publicationStatusNote, publicationStatusTone } from './publication-status'
 import { productPlatformDisplayLabel, productPlatformDisplayState } from './product-platform-status'
 import { quickPlatformUpdateTargets } from './platform-update-targets'
@@ -891,7 +892,7 @@ function LowStockDetailsModal({ products, loading, error, onClose, onImageClick 
   </div>
 }
 
-function ProductColorRows({ group, selected, onSelect, onQuickEdit, onImageClick, onDelete, onDuplicate, duplicating }: { group: ProductGroup; selected: boolean; onSelect: () => void; onQuickEdit: (mode: QuickEditMode) => void; onImageClick: (url: string, title: string) => void; onDelete: () => void; onDuplicate: () => void; duplicating: boolean }) {
+function ProductColorRows({ group, selected, onSelect, onQuickEdit, onImageClick, onDelete, onDuplicate }: { group: ProductGroup; selected: boolean; onSelect: () => void; onQuickEdit: (mode: QuickEditMode) => void; onImageClick: (url: string, title: string) => void; onDelete: () => void; onDuplicate: () => void }) {
   const product = group.primary
   const platformStatuses = group.products.flatMap(item => item.platformStatuses ?? [])
   const platformStatusAggregates = new Map<string, { platform: string; platformCode: string; statuses: string[]; matchedVariantCount: number; variantCount: number; isChecking: boolean }>()
@@ -953,7 +954,7 @@ function ProductColorRows({ group, selected, onSelect, onQuickEdit, onImageClick
         <button type="button" className="product-list-stock clickable-cell" aria-label={`${product.title}: stoğu düzenle`} onClick={() => onQuickEdit('both')}><strong>{totalStock}</strong></button>
         <div className="product-list-platforms" aria-label="Platform durumları">{platformCards.length ? platformCards.map(card => <span className={`platform-state-icon ${card.state}`} key={card.key} title={card.label} aria-label={card.label}><PlatformSquareMark code={card.platformCode} name={card.label} /><i /></span>) : <span className="platform-state-icon inactive" title="Platform eşleşmesi bulunamadı" aria-label="Platform eşleşmesi bulunamadı"><PlatformSquareMark code="TRENDYOL" /><i /></span>}</div>
         <div className={`product-list-status pill ${statusTone}`.trim()}><span className="dot product-status-dot" aria-hidden="true" /><span className="product-status-label">{statusLabel}</span></div>
-        <div className="product-list-actions"><Link className="product-edit-link" to={`/products/${product.id}`} aria-label={`${product.title} ürününü düzenle`} title={group.products.length > 1 ? 'Ürün grubundaki ilk kaydı düzenle' : 'Ürünü düzenle'}><UiIcon className="product-action-icon" name="edit" /></Link><button type="button" className="product-delete-button" onClick={event => { event.stopPropagation(); onDelete() }} aria-label={`${product.title} ürün grubunu sil`} title={group.products.length > 1 ? 'Ürün grubundaki tüm kayıtları sil' : 'Ürünü sil'}><UiIcon className="product-action-icon" name="trash" /></button><details className="product-more-actions"><summary aria-label={`${product.title} için diğer işlemler`} title="Diğer işlemler"><UiIcon className="product-action-icon" name="moreVertical" /></summary><div className="product-more-actions-menu"><button type="button" onClick={event => { event.stopPropagation(); onDuplicate() }} disabled={duplicating}><UiIcon name="copy" />{duplicating ? 'Kopya hazırlanıyor…' : 'Ürünün kopyasını oluştur'}</button></div></details></div>
+        <div className="product-list-actions"><Link className="product-edit-link" to={`/products/${product.id}`} aria-label={`${product.title} ürününü düzenle`} title={group.products.length > 1 ? 'Ürün grubundaki ilk kaydı düzenle' : 'Ürünü düzenle'}><UiIcon className="product-action-icon" name="edit" /></Link><button type="button" className="product-delete-button" onClick={event => { event.stopPropagation(); onDelete() }} aria-label={`${product.title} ürün grubunu sil`} title={group.products.length > 1 ? 'Ürün grubundaki tüm kayıtları sil' : 'Ürünü sil'}><UiIcon className="product-action-icon" name="trash" /></button><details className="product-more-actions"><summary aria-label={`${product.title} için diğer işlemler`} title="Diğer işlemler"><UiIcon className="product-action-icon" name="moreVertical" /></summary><div className="product-more-actions-menu"><button type="button" onClick={event => { event.stopPropagation(); onDuplicate() }}><UiIcon name="copy" />Yeni ürün olarak düzenle</button></div></details></div>
       </div>
     </article>
 }
@@ -1010,18 +1011,6 @@ export function ProductsPage() {
   const totalCount = query.data?.totalCount ?? products.length; const totalPages = Math.max(1, Math.ceil(totalCount / pageSize)); const currentPage = Math.min(pageNumber, totalPages); const pageProducts = currentPage === pageNumber ? products : []; const pageProductGroups = useMemo(() => productRowsAsCards(pageProducts), [pageProducts])
   const activeProductSyncJobs = useMemo(() => (productSyncJobsQuery.data ?? []).filter(job => ['TRENDYOL_PRODUCT_SYNC', 'SHOPIFY_PRODUCT_SYNC'].includes(job.jobType) && !['SUCCEEDED', 'CANCELLED', 'BLOCKED', 'MANUAL_REVIEW', 'DEAD'].includes(job.status) && (!productImportConnectionIds.length || (job.connectionId && productImportConnectionIds.includes(job.connectionId)))), [productImportConnectionIds, productSyncJobsQuery.data])
   const cancelProductSync = useMutation({ mutationFn: (jobId: string) => hubApi(`/jobs/${jobId}/cancel`, { method: 'POST', headers: { 'Idempotency-Key': `cancel-product-import:${jobId}` } }), onSuccess: () => { void productSyncJobsQuery.refetch(); void client.invalidateQueries({ queryKey: ['jobs'] }) } })
-  const duplicateProduct = useMutation({
-    mutationFn: (productId: string) => hubApi<Product>(`/products/${productId}/duplicate`, { method: 'POST', headers: { 'Idempotency-Key': key() } }),
-    onSuccess: async product => {
-      await Promise.all([
-        client.invalidateQueries({ queryKey: ['products'] }),
-        client.invalidateQueries({ queryKey: ['products', 'summary'] })
-      ])
-      appendNotification('Ürün ailesinin kopyası taslak olarak oluşturuldu; stok 0 bırakıldı. Varsa Kopya eki eklenen barkodları yayınlamadan önce gerçek barkodla değiştirin.', 'success')
-      navigate(`/products/${product.id}`)
-    },
-    onError: reason => appendNotification(reason instanceof Error ? reason.message : 'Ürün kopyası oluşturulamadı.', 'error')
-  })
   const quickEditProducts = quickEdit
     ? quickEdit.productIds.map(id => selectedProductCache[id] ?? products.find(product => product.id === id)).filter((product): product is Product => Boolean(product))
     : []
@@ -1328,7 +1317,7 @@ export function ProductsPage() {
             <span>Varyant</span><span>Fiyat</span><span>Stok</span><span>Platform Durumu</span><span>Durum</span><span>İşlem</span>
           </div>
           {pageProductGroups.map(group => (
-            <ProductColorRows key={group.id} group={group} selected={group.products.every(product => selectedProductIds.includes(product.id))} onSelect={() => toggleProductGroup(group)} onQuickEdit={mode => setQuickEdit({ productIds: group.products.map(product => product.id), mode })} onImageClick={(url, title) => setLightboxImage({ url, title })} onDelete={() => requestDeleteProductGroup(group)} onDuplicate={() => duplicateProduct.mutate(group.primary.id)} duplicating={duplicateProduct.isPending} />
+            <ProductColorRows key={group.id} group={group} selected={group.products.every(product => selectedProductIds.includes(product.id))} onSelect={() => toggleProductGroup(group)} onQuickEdit={mode => setQuickEdit({ productIds: group.products.map(product => product.id), mode })} onImageClick={(url, title) => setLightboxImage({ url, title })} onDelete={() => requestDeleteProductGroup(group)} onDuplicate={() => navigate('/products/new', { state: { duplicateProductId: group.primary.id } })} />
           ))}
         </div>
       </div>
@@ -1976,7 +1965,10 @@ function PublicationJobProgress({ jobId, productId, connectionId }: { jobId: str
 
 export function NewProductPage({ editProductId }: { editProductId?: string } = {}) {
   const client = useQueryClient();
+  const location = useLocation()
   const navigate = useNavigate()
+  const routeState = location.state as { duplicateProductId?: unknown } | null
+  const duplicateProductId = typeof routeState?.duplicateProductId === 'string' ? routeState.duplicateProductId : undefined
   const [error, setError] = useState<unknown>(); const [, setNotice] = useState(''); const [feedback, setFeedback] = useState<OperationFeedback | null>(null); const [submitting, setSubmitting] = useState(false); const [calculateDesi, setCalculateDesi] = useState(false); const [desiCalculatorOpen, setDesiCalculatorOpen] = useState(false)
   const [form, setForm] = useState({ title: '', description: '', brandId: '', categoryId: '', baseSku: '', barcode: '', modelCode: '', weight: '', width: '', length: '', height: '', desi: '1', listPrice: '699.90', salePrice: '549.90', costPrice: '0', currency: 'TRY', vatRate: '10', vatIncluded: 'INCLUDED', initialStock: '0', safetyStock: '0', mediaUrls: '', status: 'ACTIVE' })
   const [attributeSelections, setAttributeSelections] = useState<Record<string, string[]>>({}); const [attributeTextValues, setAttributeTextValues] = useState<Record<string, string>>({}); const [variantAttributeIds, setVariantAttributeIds] = useState<string[]>([]); const [variantRows, setVariantRows] = useState<VariantDraft[]>([]); const [variantFilterSelections, setVariantFilterSelections] = useState<VariantFilterSelections>({}); const [variantFilterOpen, setVariantFilterOpen] = useState(false); const [draggedVariantKey, setDraggedVariantKey] = useState<string | null>(null); const [dragOverVariantKey, setDragOverVariantKey] = useState<string | null>(null); const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]); const [channelPricing, setChannelPricing] = useState<Record<string, ChannelPricingDraft>>({})
@@ -2057,6 +2049,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     }
   }
   const productToEdit = useQuery({ queryKey: ['product', editProductId], queryFn: () => hubApi<Product>(`/products/${editProductId}`), enabled: !!editProductId })
+  const productToCopy = useQuery({ queryKey: ['product', duplicateProductId], queryFn: () => hubApi<Product>(`/products/${duplicateProductId}`), enabled: !editProductId && Boolean(duplicateProductId) })
+  const seedProduct = editProductId ? productToEdit.data : productToCopy.data
   const categories = useQuery({ queryKey: ['categories', 'new-product'], queryFn: () => loadAllPages<Category>('/catalog/categories') })
   const brands = useQuery({ queryKey: ['brands', 'new-product'], queryFn: () => loadAllPages<Brand>('/catalog/brands') })
   const connections = useQuery({ queryKey: ['connections', 'new-product'], queryFn: () => loadAllPages<MarketplaceConnection>('/connections') })
@@ -2089,10 +2083,10 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   }, [optionRequirements])
   const visibleOptionRequirements = optionRequirements
 
-  useEffect(() => {
-    const product = productToEdit.data
+  useLayoutEffect(() => {
+    const product = seedProduct
     if (!product) return
-    const productKey = `${product.id}:${product.version}`
+    const productKey = `${editProductId ? 'edit' : 'copy'}:${product.id}:${product.version}`
     if (initializedEditProductKey.current === productKey) return
     initializedEditProductKey.current = productKey
     const primary = product.variants[0]
@@ -2100,8 +2094,11 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     const sortedVariants = sortVariantsAlphabetically(product.variants)
     const savedMediaUrls = orderMediaUrlsByVariants(product.variants, product.mediaUrls ?? [], product.primaryImageUrl, product.hasCustomMediaOrder)
     const savedFamilyMediaUrls = product.familyMediaItems?.map(item => item.url) ?? product.familyMediaUrls ?? []
+    const initialListPrice = product.defaultListPrice ?? primary?.listPrice ?? primary?.salePrice ?? 0
+    const initialSalePrice = product.defaultSalePrice ?? primary?.salePrice ?? 0
     initialEditModelCode.current = initialModelCode.trim()
-    setForm({ title: product.title, description: product.description ?? '', brandId: product.brandId ?? '', categoryId: product.categoryId ?? '', baseSku: primary?.sku ?? '', barcode: primary?.barcode ?? '', modelCode: initialModelCode, weight: String(primary?.weight ?? ''), width: String(primary?.width ?? ''), length: String(primary?.length ?? ''), height: String(primary?.height ?? ''), desi: String(primary?.desi ?? 1), listPrice: String(product.defaultListPrice ?? primary?.listPrice ?? primary?.salePrice ?? 0), salePrice: String(product.defaultSalePrice ?? primary?.salePrice ?? 0), costPrice: String(primary?.costPrice ?? 0), currency: primary?.currency ?? 'TRY', vatRate: String(primary?.vatRate ?? 10), vatIncluded: primary?.vatInclusion ?? 'INCLUDED', initialStock: String(primary?.onHand ?? 0), safetyStock: String(primary?.safetyStock ?? 0), mediaUrls: savedMediaUrls.join('\n'), status: product.status || 'ACTIVE' })
+    setForm({ title: product.title, description: product.description ?? '', brandId: product.brandId ?? '', categoryId: product.categoryId ?? '', baseSku: primary?.sku ?? '', barcode: primary?.barcode ?? '', modelCode: initialModelCode, weight: String(primary?.weight ?? ''), width: String(primary?.width ?? ''), length: String(primary?.length ?? ''), height: String(primary?.height ?? ''), desi: String(primary?.desi ?? 1), listPrice: String(initialListPrice), salePrice: String(initialSalePrice), costPrice: String(primary?.costPrice ?? 0), currency: primary?.currency ?? 'TRY', vatRate: String(primary?.vatRate ?? 10), vatIncluded: primary?.vatInclusion ?? 'INCLUDED', initialStock: String(primary?.onHand ?? 0), safetyStock: String(primary?.safetyStock ?? 0), mediaUrls: savedMediaUrls.join('\n'), status: product.status || 'ACTIVE' })
+    if (!editProductId && duplicateProductId) setChannelPricing(Object.fromEntries((primary?.platformStatuses ?? []).flatMap(platform => platform.connectionId ? [[platform.connectionId, { listPrice: String(platform.listPrice ?? initialListPrice), salePrice: String(platform.salePrice ?? initialSalePrice) }] as const] : [])))
     initialEditMediaUrl.current = savedMediaUrls.join('\n')
     setFamilyMediaOrder(uniqueMediaUrls(product.familyOrderedMediaUrls?.length
       ? product.familyOrderedMediaUrls
@@ -2113,31 +2110,33 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     initialEditVariantMediaRefs.current = Object.fromEntries(mediaRefsByVariantId)
     setVariantRows(sortedVariants.map(variant => {
       const options = Object.fromEntries(variantOptionEntries(variant).map(option => [option.name, option.value]))
-      return { key: variant.id, optionSignature: variant.optionSignature && variant.optionSignature !== '-' ? variant.optionSignature : optionSignatureFromOptions(options) || 'Tek Ürün', options, attributeValueIds: {}, sku: variant.sku, barcode: variant.barcode ?? '', stock: variant.onHand, salePrice: variant.defaultSalePrice ?? product.defaultSalePrice ?? variant.salePrice ?? 0, listPrice: variant.defaultListPrice ?? product.defaultListPrice ?? variant.listPrice ?? variant.salePrice ?? 0, costPrice: variant.costPrice ?? 0, mediaRefs: mediaRefsByVariantId.get(variant.id) ?? [], platformStatuses: variant.platformStatuses ?? [] }
+      return { key: variant.id, optionSignature: variant.optionSignature && variant.optionSignature !== '-' ? variant.optionSignature : optionSignatureFromOptions(options) || 'Tek Ürün', options, attributeValueIds: {}, sku: variant.sku, barcode: variant.barcode ?? '', stock: variant.onHand, salePrice: variant.defaultSalePrice ?? product.defaultSalePrice ?? variant.salePrice ?? 0, listPrice: variant.defaultListPrice ?? product.defaultListPrice ?? variant.listPrice ?? variant.salePrice ?? 0, costPrice: variant.costPrice ?? 0, mediaRefs: mediaRefsByVariantId.get(variant.id) ?? [], ...(editProductId ? { platformStatuses: variant.platformStatuses ?? [] } : {}) }
     }))
     const selected: Record<string, string[]> = {}; const typed: Record<string, string> = {}
     for (const attribute of product.attributes ?? []) { if (attribute.valueId) selected[attribute.attributeId] = [...(selected[attribute.attributeId] ?? []), attribute.valueId]; else if (attribute.textValue != null) typed[attribute.attributeId] = attribute.textValue; else if (attribute.numberValue != null) typed[attribute.attributeId] = String(attribute.numberValue); else if (attribute.booleanValue != null) typed[attribute.attributeId] = attribute.booleanValue ? 'evet' : 'hayır' }
     setAttributeSelections(selected); setAttributeTextValues(typed); setVariantAttributeIds([])
-  }, [productToEdit.data?.id, productToEdit.data?.version])
+  }, [editProductId, seedProduct?.id, seedProduct?.version])
 
   useEffect(() => {
-    if (!editProductId || !productToEdit.data || !webColorRequirement || requirements.isLoading) return
-    const productKey = `${productToEdit.data.id}:${productToEdit.data.version}`
+    const product = seedProduct
+    if ((!editProductId && !duplicateProductId) || !product || !webColorRequirement || requirements.isLoading) return
+    const productKey = `${editProductId ? 'edit' : 'copy'}:${product.id}:${product.version}`
     if (initializedEditWebColorKey.current === productKey) return
     initializedEditWebColorKey.current = productKey
-    const savedManualColor = productToEdit.data.attributes?.find(item => item.attributeId === webColorRequirement.attributeId && item.valueId)
+    const savedManualColor = product.attributes?.find(item => item.attributeId === webColorRequirement.attributeId && item.valueId)
     setWebColorAutoEnabled(!savedManualColor)
     setManualWebColorValueId(savedManualColor?.valueId ?? '')
-  }, [editProductId, productToEdit.data, requirements.isLoading, webColorRequirement])
+  }, [duplicateProductId, editProductId, requirements.isLoading, seedProduct, webColorRequirement])
 
   useEffect(() => {
-    if (!editProductId || !productToEdit.data || !allRequirements.length || requirements.isLoading) return
-    const productKey = `${productToEdit.data.id}:${productToEdit.data.version}`
+    const product = seedProduct
+    if ((!editProductId && !duplicateProductId) || !product || !allRequirements.length || requirements.isLoading) return
+    const productKey = `${editProductId ? 'edit' : 'copy'}:${product.id}:${product.version}`
     if (initializedEditOptionsKey.current === productKey) return
     initializedEditOptionsKey.current = productKey
     const inferred: Record<string, string[]> = {}
     for (const requirement of optionRequirements) {
-      const valuesInVariants = new Set(productToEdit.data.variants.flatMap(variant => variantOptionEntries(variant)
+      const valuesInVariants = new Set(product.variants.flatMap(variant => variantOptionEntries(variant)
         .filter(option => option.name.trim().toLocaleLowerCase('tr-TR') === requirement.attribute.name.trim().toLocaleLowerCase('tr-TR'))
         .map(option => option.value.trim().toLocaleLowerCase('tr-TR'))))
       const ids = requirement.attribute.values.filter(value => valuesInVariants.has(value.value.trim().toLocaleLowerCase('tr-TR'))).map(value => value.id)
@@ -2146,7 +2145,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     setAttributeSelections(current => ({ ...current, ...inferred }))
     setVariantAttributeIds(Object.keys(inferred))
     setVariantRows(rows => rows.map(row => {
-      const source = productToEdit.data!.variants.find(variant => variant.id === row.key)
+      const source = product.variants.find(variant => variant.id === row.key)
       if (!source) return row
       const options = Object.fromEntries(variantOptionEntries(source).map(option => [option.name, option.value]))
       const attributeValueIds = Object.fromEntries(optionRequirements.flatMap(requirement => {
@@ -2156,7 +2155,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       }))
       return { ...row, optionSignature: source.optionSignature && source.optionSignature !== '-' ? source.optionSignature : optionSignatureFromOptions(options) || row.optionSignature, options, attributeValueIds }
     }))
-  }, [allRequirements, editProductId, optionRequirements, productToEdit.data, requirements.isLoading])
+  }, [allRequirements, duplicateProductId, editProductId, optionRequirements, requirements.isLoading, seedProduct])
 
   function updateField(name: keyof typeof form, value: string) { setForm(current => ({ ...current, [name]: value })) }
   function toggleAttributeValue(attributeId: string, valueId: string) {
@@ -2920,6 +2919,11 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     const skus = rows.map(row => row.sku.trim().toLocaleUpperCase('tr-TR')); if (skus.some(value => !value)) issues.push('Tüm varyantlarda stok kodu zorunludur.'); if (new Set(skus).size !== skus.length) issues.push('Stok kodları benzersiz olmalıdır.')
     const signatures = rows.map(row => row.optionSignature); if (new Set(signatures).size !== signatures.length) issues.push('Aynı varyant kombinasyonu iki kez oluşturulamaz.')
     const barcodes = rows.map(row => row.barcode.trim()).filter(Boolean); if (new Set(barcodes.map(value => value.toLocaleUpperCase('tr-TR'))).size !== barcodes.length) issues.push('Barkodlar benzersiz olmalıdır.')
+    if (duplicateProductId && productToCopy.data) {
+      const conflicts = productCopyIdentifierConflicts(productToCopy.data.variants, rows)
+      if (conflicts.barcodes) issues.push('Kaynak ürünün barkodları zaten kayıtlı. Yeni ürünü oluşturmak için çakışan barkodları değiştirin.')
+      if (conflicts.skus) issues.push('Kaynak ürünün stok kodları zaten kayıtlı. Yeni ürünü oluşturmak için çakışan stok kodlarını değiştirin.')
+    }
      if (rows.some(row => row.salePrice < 0 || row.listPrice < row.salePrice)) issues.push('Her varyantta liste fiyatı satış fiyatından küçük olamaz.')
      if (!form.desi.trim() || !Number.isFinite(Number(form.desi)) || Number(form.desi) <= 0) issues.push('Desi sıfırdan büyük olmalıdır.')
      if (requireCompleteCatalog && requirePublicationReadiness && selectedChannelIds.length) {
@@ -3165,6 +3169,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const barcodeRowCount = variantRows.filter(row => row.barcode.trim()).length
   const emptySkuBarcodeRowCount = variantRows.filter(row => row.barcode.trim() && !row.sku.trim()).length
   const emptyBarcodeRowCount = variantRows.length - barcodeRowCount
+  const generatedCodePreview = buildSequentialVariantIdentifiers(form.modelCode, 1)[0]?.barcode ?? 'MODEL-01'
   const selectedBulkMediaGroup = variantMediaModal?.mode === 'bulk' ? bulkMediaGroups.find(group => group.id === variantMediaModal.groupId) : undefined
   const selectedBulkMediaValueId = variantMediaModal?.mode === 'bulk' ? variantMediaModal.valueId : undefined
   const selectedBulkMediaValue = selectedBulkMediaGroup?.values.find(value => value.id === selectedBulkMediaValueId)
@@ -3251,6 +3256,10 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     } catch { return false }
   }, [attributeSelections, automaticBarcodeGeneration, fallbackCostPrice, fallbackListPrice, fallbackSalePrice, form.baseSku, form.modelCode, form.title, initialStock, mappedRequirements, variantAttributeIds, variantRows])
   const selectedVariantPlatformRow = variantPlatformPricing ? variantRows.find(row => row.key === variantPlatformPricing.rowKey) : undefined
+  const showVariantStockTotal = Boolean(editProductId || (duplicateProductId && variantRows.length))
+
+  if (duplicateProductId && productToCopy.isLoading) return <Page title="Yeni Ürün Ekle" eyebrow="Katalog"><div className="panel" role="status">Kaynak ürünün bilgileri forma hazırlanıyor…</div></Page>
+  if (duplicateProductId && productToCopy.isError) return <Page title="Yeni Ürün Ekle" eyebrow="Katalog"><ErrorBox error={productToCopy.error} /><Link className="button-link secondary" to="/products">Ürünlere dön</Link></Page>
 
   return <Page className={`product-add-page${editProductId ? ' product-edit-page' : ''}`} title={editProductId ? "Ürün Düzenle" : "Yeni Ürün Ekle"} eyebrow="Katalog">
     {variantPlatformPricing && selectedVariantPlatformRow && <BulkVariantPlatformPricingModal row={selectedVariantPlatformRow} rows={variantRows} platforms={selectedVariantPlatformRow.platformStatuses ?? []} productName={form.title} modelCode={form.modelCode} saving={variantPlatformPricingSaving} onClose={() => setVariantPlatformPricing(null)} onSave={drafts => void saveVariantPlatformPricingMatrix(drafts)} />}
@@ -3284,7 +3293,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
             <label>Para birimi<select value={form.currency} onChange={event => updateField('currency', event.target.value)}><option>TRY</option><option>USD</option><option>EUR</option></select></label>
             <label>KDV oranı<select value={form.vatRate} onChange={event => updateField('vatRate', event.target.value)}><option value="1">%1</option><option value="10">%10</option><option value="20">%20</option></select></label>
             <label>KDV dahil mi<select value={form.vatIncluded} onChange={event => updateField('vatIncluded', event.target.value)}><option value="INCLUDED">Evet</option><option value="EXCLUDED">Hayır</option></select></label>
-            <label>{editProductId ? 'Varyantların toplam stoğu' : 'Stok'}<input value={editProductId ? String(variantStockTotal) : form.initialStock} onChange={event => updateField('initialStock', event.target.value)} type="number" min="0" step="1" readOnly={Boolean(editProductId)} /></label>
+            <label>{showVariantStockTotal ? 'Varyantların toplam stoğu' : 'Stok'}<input value={showVariantStockTotal ? String(variantStockTotal) : form.initialStock} onChange={event => updateField('initialStock', event.target.value)} type="number" min="0" step="1" readOnly={showVariantStockTotal} /></label>
             <label>Güvenlik stoğu<input value={form.safetyStock} onChange={event => updateField('safetyStock', event.target.value)} type="number" min="0" step="1" /></label>
           </div>
           {platformCards.length > 0 && <section className="marketplace-pricing-bars" aria-label="Pazaryerlerine özel fiyatlandırma">
@@ -3525,18 +3534,22 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     <ErrorBox error={error ?? categories.error ?? brands.error ?? connections.error} />
     <OperationFeedbackToast feedback={feedback} onClose={() => { setFeedback(null); setNotice('') }} />
     {barcodePasteMenuOpen && <VariantHeaderActionMenu anchorRef={barcodePasteActionRef}>
-      <p className="variant-header-action-menu-title">Barkod işlemleri</p>
-      <button type="button" role="menuitem" disabled={!variantRows.length || !form.modelCode.trim()} onClick={regenerateVariantIdentifiers}><span><strong>Model kodundan barkod ve stok kodu üret</strong><small>{variantRows.length.toLocaleString('tr-TR')} varyant · iki kod alanı da değişir</small></span><UiIcon name="refresh" /></button>
-      <p className="variant-header-action-menu-title">Panodan barkod yapıştır</p>
-      <button type="button" role="menuitem" disabled={!emptyBarcodeRowCount} onClick={() => void pasteBarcodesFromClipboard('missing')}><span><strong>Boş barkodları doldur</strong><small>{emptyBarcodeRowCount.toLocaleString('tr-TR')} boş varyant</small></span><UiIcon name="arrowRight" /></button>
-      <button type="button" role="menuitem" disabled={!variantRows.length} onClick={() => void pasteBarcodesFromClipboard('all')}><span><strong>Tüm barkodları değiştir</strong><small>{variantRows.length.toLocaleString('tr-TR')} varyant sırası</small></span><UiIcon name="alert" /></button>
-      <p>Otomatik üretim mevcut barkod ve stok kodlarının üzerine yazar. Değişiklikleri ayrıca Kaydet ile kaydedin.</p>
+      <section className="variant-header-action-menu-group" role="group" aria-label="Model kodundan barkod ve stok kodu üret">
+        <p className="variant-header-action-menu-title">Model koduyla üret</p>
+        <button type="button" role="menuitem" disabled={!variantRows.length || !form.modelCode.trim()} onClick={regenerateVariantIdentifiers}><span><strong>Model kodundan barkod ve stok kodu üret</strong><small>Barkod: {generatedCodePreview} · Stok Kodu: {generatedCodePreview} · {variantRows.length.toLocaleString('tr-TR')} varyant</small></span><UiIcon name="refresh" /></button>
+      </section>
+      <section className="variant-header-action-menu-group" role="group" aria-label="Panodan barkod yapıştır">
+        <p className="variant-header-action-menu-title">Panodan barkod yapıştır</p>
+        <button type="button" role="menuitem" disabled={!emptyBarcodeRowCount} onClick={() => void pasteBarcodesFromClipboard('missing')}><span><strong>Boş barkodları doldur</strong><small>{emptyBarcodeRowCount.toLocaleString('tr-TR')} boş varyant</small></span><UiIcon name="arrowRight" /></button>
+        <button type="button" role="menuitem" disabled={!variantRows.length} onClick={() => void pasteBarcodesFromClipboard('all')}><span><strong>Tüm barkodları değiştir</strong><small>{variantRows.length.toLocaleString('tr-TR')} varyant sırası</small></span><UiIcon name="alert" /></button>
+      </section>
     </VariantHeaderActionMenu>}
     {barcodeSkuMenuOpen && <VariantHeaderActionMenu anchorRef={barcodeSkuActionRef}>
-      <p className="variant-header-action-menu-title">Stok kodlarını barkodlardan düzenle</p>
-      <button type="button" role="menuitem" disabled={!emptySkuBarcodeRowCount} onClick={() => applyBarcodeToSku('missing')}><span><strong>Eksik stok kodlarını doldur</strong><small>{emptySkuBarcodeRowCount.toLocaleString('tr-TR')} boş satır · mevcut kodlar korunur</small></span><UiIcon name="arrowRight" /></button>
-      <button type="button" role="menuitem" disabled={!barcodeRowCount} onClick={() => applyBarcodeToSku('all')}><span><strong>Barkodları stok koduna kopyala</strong><small>{barcodeRowCount.toLocaleString('tr-TR')} barkodlu satır</small></span><UiIcon name="alert" /></button>
-      <p>İlk seçenek yalnız eksik kodları doldurur. İkinci seçenek mevcut kodları değiştirir; çakışan değerler uygulanmaz.</p>
+      <section className="variant-header-action-menu-group" role="group" aria-label="Stok kodlarını barkodlardan düzenle">
+        <p className="variant-header-action-menu-title">Stok kodlarını barkodlardan düzenle</p>
+        <button type="button" role="menuitem" disabled={!emptySkuBarcodeRowCount} onClick={() => applyBarcodeToSku('missing')}><span><strong>Eksik stok kodlarını doldur</strong><small>Sadece boş satırlar · {emptySkuBarcodeRowCount.toLocaleString('tr-TR')} satır</small></span><UiIcon name="arrowRight" /></button>
+        <button type="button" role="menuitem" disabled={!barcodeRowCount} onClick={() => applyBarcodeToSku('all')}><span><strong>Barkodları stok koduna uygula</strong><small>Stok kodu sütunu · {barcodeRowCount.toLocaleString('tr-TR')} barkodlu satır</small></span><UiIcon name="alert" /></button>
+      </section>
     </VariantHeaderActionMenu>}
     {platformUpdateDialogOpen && createPortal(
       <div className="workspace-modal-backdrop platform-update-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setPlatformUpdateDialogOpen(false) }}>

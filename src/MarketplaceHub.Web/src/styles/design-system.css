@@ -10686,8 +10686,17 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
   border-radius: var(--rv-radius-md);
   box-shadow: var(--rv-shadow-lg);
 }
+.variant-header-action-menu-portal .variant-header-action-menu-group {
+  display: grid;
+  gap: 4px;
+  padding: 7px;
+  background: var(--rv-color-surface-raised);
+  border: 1px solid var(--rv-color-border);
+  border-radius: var(--rv-radius-sm);
+}
+.variant-header-action-menu-portal .variant-header-action-menu-group + .variant-header-action-menu-group { margin-top: 8px; }
 .variant-header-action-menu-portal .variant-header-action-menu-title {
-  margin: 2px 8px 6px;
+  margin: 2px 4px 4px;
   color: var(--rv-color-ink);
   font-size: var(--rv-font-size-sm);
   font-weight: 800;
@@ -10706,15 +10715,21 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
   border-radius: var(--rv-radius-sm);
   text-align: left;
 }
-.variant-header-action-menu-portal button + button { margin-top: 4px; border-top: 1px solid var(--rv-color-border); }
+.variant-header-action-menu-portal .variant-header-action-menu-group button {
+  min-height: 54px;
+  padding: 8px;
+  background: var(--rv-color-surface);
+  border: 1px solid var(--rv-color-border);
+  border-radius: var(--rv-radius-sm);
+}
+.variant-header-action-menu-portal .variant-header-action-menu-group button + button { margin-top: 0; }
 .variant-header-action-menu-portal button:hover:not(:disabled),
 .variant-header-action-menu-portal button:focus-visible { background: var(--rv-color-surface-raised); outline: 2px solid var(--rv-color-primary); outline-offset: -2px; }
 .variant-header-action-menu-portal button:disabled { cursor: not-allowed; opacity: .48; }
 .variant-header-action-menu-portal button > span { display: grid; min-width: 0; gap: 3px; }
 .variant-header-action-menu-portal button strong { font-size: var(--rv-font-size-sm); }
 .variant-header-action-menu-portal button small,
-.variant-header-action-menu-portal > p:last-child { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); line-height: 1.45; }
-.variant-header-action-menu-portal > p:last-child { margin: 6px 8px 4px; padding-top: 8px; border-top: 1px solid var(--rv-color-border); }
+.variant-header-action-menu-portal .variant-header-action-menu-group button small { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); line-height: 1.45; }
 
 .publish-platform-facts { grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: start; gap: 12px; }
 .publish-platform-facts > div { min-width: 0; align-content: start; }
