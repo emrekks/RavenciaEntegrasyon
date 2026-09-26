@@ -134,6 +134,48 @@ public static class OrderInventoryReservationPolicy
     }
 }
 
+public static class OrderInventoryStockPolicy
+{
+    public static decimal TargetCommittedQuantity(decimal orderedQuantity, decimal cancelledQuantity, decimal shippedQuantity)
+    {
+        if (orderedQuantity < 0 || cancelledQuantity < 0 || shippedQuantity < 0)
+            throw new ArgumentOutOfRangeException(nameof(orderedQuantity));
+
+        var ordered = orderedQuantity;
+        var active = Math.Max(0m, ordered - Math.Min(ordered, cancelledQuantity));
+        var shipped = Math.Min(ordered, shippedQuantity);
+        return Math.Max(active, shipped);
+    }
+
+    // Shipments recorded before order-time stock deduction already reduced
+    // physical stock. Treat them as the opening baseline, not as a new debit.
+    public static decimal InitialBaselineQuantity(decimal legacyShippedQuantity, decimal observedShippedQuantity)
+    {
+        if (legacyShippedQuantity < 0 || observedShippedQuantity < 0)
+            throw new ArgumentOutOfRangeException(nameof(legacyShippedQuantity));
+        return Math.Max(legacyShippedQuantity, observedShippedQuantity);
+    }
+
+    // Ledger deltas use the stock direction: negative means stock was consumed,
+    // positive means it was restored. The baseline is not a new stock movement.
+    public static decimal OnHandDelta(decimal baselineQuantity, decimal receivedLedgerDelta, decimal targetCommittedQuantity)
+    {
+        if (baselineQuantity < 0 || targetCommittedQuantity < 0)
+            throw new ArgumentOutOfRangeException(nameof(baselineQuantity));
+        var currentlyCommitted = Math.Max(0m, baselineQuantity - receivedLedgerDelta);
+        return currentlyCommitted - targetCommittedQuantity;
+    }
+
+    public static decimal LimitToAvailableStock(decimal onHand, decimal available, decimal sourceReservation, decimal requestedDelta, bool negativeStockAllowed)
+    {
+        if (available < 0 || sourceReservation < 0)
+            throw new ArgumentOutOfRangeException(nameof(available));
+        if (requestedDelta >= 0 || negativeStockAllowed) return requestedDelta;
+        var consumable = Math.Max(0m, Math.Min(onHand, available + sourceReservation));
+        return Math.Max(requestedDelta, -consumable);
+    }
+}
+
 public static class InventoryAuthorityPolicy
 {
     public const string Central = "CENTRAL";

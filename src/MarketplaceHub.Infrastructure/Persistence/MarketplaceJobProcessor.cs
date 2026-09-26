@@ -4788,15 +4788,36 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 .Where(x => x.TenantId == tenantId && x.SourceType == "ORDER_LINE" && itemIds.Contains(x.InventoryItemId) && sourceIds.Contains(x.SourceId))
                 .ToListAsync(cancellationToken);
         var reservationsByKey = reservations.ToDictionary(x => (x.InventoryItemId, x.SourceId), x => x);
-        Dictionary<string, decimal> shippedLedger = itemIds.Length == 0
-            ? new(StringComparer.Ordinal)
+        List<StockLedgerEntry> orderLedgerRows = itemIds.Length == 0
+            ? []
             : await db.StockLedgerEntries.AsNoTracking()
-                .Where(x => x.TenantId == tenantId
-                    && x.MovementType == "ORDER_SHIPPED"
-                    && sourceIds.Contains(x.SourceId))
-                .GroupBy(x => x.SourceId)
-                .Select(group => new { SourceId = group.Key, Quantity = -group.Sum(x => x.QuantityDelta) })
-                .ToDictionaryAsync(x => x.SourceId, x => Math.Max(0m, x.Quantity), StringComparer.Ordinal, cancellationToken);
+                .Where(x => x.TenantId == tenantId && itemIds.Contains(x.InventoryItemId) && sourceIds.Contains(x.SourceId)
+                    && (x.MovementType == "ORDER_SHIPPED"
+                        || x.MovementType == "ORDER_SHIPMENT_PROGRESS"
+                        || x.MovementType == "ORDER_RECEIVED"
+                        || x.MovementType == "ORDER_STOCK_BASELINE"))
+                .ToListAsync(cancellationToken);
+        var persistedLedgerIds = orderLedgerRows.Select(x => x.Id).ToHashSet();
+        orderLedgerRows.AddRange(db.StockLedgerEntries.Local.Where(x => x.TenantId == tenantId
+            && itemIds.Contains(x.InventoryItemId) && sourceIds.Contains(x.SourceId) && persistedLedgerIds.Add(x.Id)
+            && (x.MovementType == "ORDER_SHIPPED" || x.MovementType == "ORDER_SHIPMENT_PROGRESS"
+                || x.MovementType == "ORDER_RECEIVED" || x.MovementType == "ORDER_STOCK_BASELINE")));
+        var legacyShippedLedger = orderLedgerRows
+            .Where(x => x.MovementType == "ORDER_SHIPPED")
+            .GroupBy(x => x.SourceId)
+            .ToDictionary(group => group.Key, group => Math.Max(0m, -group.Sum(x => x.QuantityDelta)), StringComparer.Ordinal);
+        var shippedLedger = orderLedgerRows
+            .Where(x => x.MovementType is "ORDER_SHIPPED" or "ORDER_SHIPMENT_PROGRESS")
+            .GroupBy(x => x.SourceId)
+            .ToDictionary(group => group.Key, group => Math.Max(0m, -group.Sum(x => x.QuantityDelta)), StringComparer.Ordinal);
+        var receivedLedgerDeltas = orderLedgerRows
+            .Where(x => x.MovementType == "ORDER_RECEIVED")
+            .GroupBy(x => x.SourceId)
+            .ToDictionary(group => group.Key, group => group.Sum(x => x.QuantityDelta), StringComparer.Ordinal);
+        var stockBaselines = orderLedgerRows
+            .Where(x => x.MovementType == "ORDER_STOCK_BASELINE")
+            .GroupBy(x => x.SourceId)
+            .ToDictionary(group => group.Key, group => group.Sum(x => x.QuantityDelta), StringComparer.Ordinal);
         var now = timeProvider.GetUtcNow();
         var outbox = new Dictionary<string, (Guid VariantId, string EventId)>(StringComparer.Ordinal);
         foreach (var line in lines)
@@ -4806,7 +4827,6 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             var sourceId = line.Id.ToString("D");
             reservationsByKey.TryGetValue((item.Id, sourceId), out var reservation);
             var current = reservation is { Status: ReservationStatus.Active } ? reservation.Quantity : 0m;
-            var reservationEnabled = OrderInventoryReservationPolicy.IsReservationEnabled(inventoryPolicy, line.RawStatus);
             var targetShipped = Math.Min(
                 Math.Max(0m, line.OrderedQuantity),
                 Math.Max(line.ShippedQuantity, line.DeliveredQuantity));
@@ -4814,75 +4834,122 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             var shipmentDelta = Math.Max(0m, targetShipped - consumedShipped);
             var eventId = $"{line.Id:N}:{modifiedAtByLine[line.Id].ToUnixTimeMilliseconds()}";
 
-            // A first observation of an already-shipped historical order has no
-            // local reservation to consume. This avoids rewriting the opening
-            // physical-stock baseline. Once a local reservation exists, a
-            // shipment consumes it exactly once through the ledger.
-            if (shipmentDelta > 0 && reservation is { Status: ReservationStatus.Active })
+            if (!stockBaselines.TryGetValue(sourceId, out var baselineQuantity))
             {
-                if (inventoryPolicy?.NegativeStockAllowed != true && item.OnHand - shipmentDelta < 0)
+                baselineQuantity = OrderInventoryStockPolicy.InitialBaselineQuantity(
+                    legacyShippedLedger.GetValueOrDefault(sourceId),
+                    targetShipped);
+                stockBaselines[sourceId] = baselineQuantity;
+                db.StockLedgerEntries.Add(new StockLedgerEntry
                 {
-                    await RecordIssue(
-                        tenantId,
-                        $"stock-shipment-consumption:{line.Id:N}",
-                        "STOCK_SHIPMENT_CONSUMPTION_BLOCKED",
-                        "Sevk edilen miktar fiziksel stoktan düşülemedi; negatif stok politikası kapalı olduğu için rezervasyon korunuyor.",
-                        cancellationToken);
-                }
-                else
-                {
-                    item.OnHand = decimal.Round(item.OnHand - shipmentDelta, 4, MidpointRounding.ToEven);
-                    item.Available = InventoryProjection.Available(item.OnHand, item.Reserved);
-                    item.ProjectionVersion++;
-                    item.Version++;
-                    shippedLedger[sourceId] = targetShipped;
-                    var shipmentEventId = $"{line.Id:N}:shipped:{targetShipped.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)}";
-                    db.StockLedgerEntries.Add(new StockLedgerEntry
-                    {
-                        Id = Guid.CreateVersion7(),
-                        TenantId = tenantId,
-                        InventoryItemId = item.Id,
-                        MovementType = "ORDER_SHIPPED",
-                        QuantityDelta = -shipmentDelta,
-                        SourceType = "ORDER_LINE",
-                        SourceId = sourceId,
-                        SourceEventId = shipmentEventId,
-                        IdempotencyKey = $"order-shipment:{shipmentEventId}",
-                        OccurredAt = modifiedAtByLine[line.Id],
-                        RecordedAt = now,
-                        CorrelationId = $"order:{line.OrderId:N}"
-                    });
-                    outbox[StockProjectionOutboxPolicy.DedupKey(connectionId, variantId, item.ProjectionVersion)] = (variantId, shipmentEventId);
-                    consumedShipped = targetShipped;
-                }
+                    Id = Guid.CreateVersion7(),
+                    TenantId = tenantId,
+                    InventoryItemId = item.Id,
+                    MovementType = "ORDER_STOCK_BASELINE",
+                    QuantityDelta = baselineQuantity,
+                    SourceType = "ORDER_LINE",
+                    SourceId = sourceId,
+                    SourceEventId = $"baseline:{sourceId}",
+                    IdempotencyKey = $"order-stock-baseline:{item.Id:N}:{sourceId}",
+                    OccurredAt = modifiedAtByLine[line.Id],
+                    RecordedAt = now,
+                    CorrelationId = $"order:{line.OrderId:N}"
+                });
             }
 
-            var desired = OrderInventoryReservationPolicy.DesiredQuantity(
-                line.OrderedQuantity,
-                line.CancelledQuantity,
-                consumedShipped,
-                reservationEnabled);
-            if (current == desired) continue;
-            if (reservation is null && desired > 0)
+            var targetCommitted = Math.Max(
+                OrderInventoryStockPolicy.TargetCommittedQuantity(line.OrderedQuantity, line.CancelledQuantity, targetShipped),
+                consumedShipped);
+            var receivedLedgerDelta = receivedLedgerDeltas.GetValueOrDefault(sourceId);
+            // Physical stock leaves OnHand as soon as the order is ingested.
+            // Shipment progress is tracked separately so a later fulfillment
+            // update cannot deduct the same unit for a second time.
+            var onHandDelta = OrderInventoryStockPolicy.OnHandDelta(baselineQuantity, receivedLedgerDelta, targetCommitted);
+            var actualOnHandDelta = OrderInventoryStockPolicy.LimitToAvailableStock(
+                item.OnHand, item.Available, current, onHandDelta, inventoryPolicy?.NegativeStockAllowed == true);
+            if (actualOnHandDelta != 0)
             {
-                reservation = new StockReservation { Id = Guid.CreateVersion7(), TenantId = tenantId, InventoryItemId = item.Id, SourceType = "ORDER_LINE", SourceId = sourceId, Quantity = desired, Status = ReservationStatus.Active, Version = 1 };
-                db.StockReservations.Add(reservation);
-                reservationsByKey[(item.Id, sourceId)] = reservation;
+                item.OnHand = decimal.Round(item.OnHand + actualOnHandDelta, 4, MidpointRounding.ToEven);
+                item.Available = InventoryProjection.Available(item.OnHand, item.Reserved);
+                item.ProjectionVersion++;
+                item.Version++;
+                var committedBeforeMovement = Math.Max(0m, baselineQuantity - receivedLedgerDelta);
+                var committedAfterStockDelta = Math.Max(0m, committedBeforeMovement - actualOnHandDelta);
+                var stockEventId = $"{eventId}:committed:{committedBeforeMovement.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)}:{committedAfterStockDelta.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)}";
+                db.StockLedgerEntries.Add(new StockLedgerEntry
+                {
+                    Id = Guid.CreateVersion7(),
+                    TenantId = tenantId,
+                    InventoryItemId = item.Id,
+                    MovementType = "ORDER_RECEIVED",
+                    QuantityDelta = actualOnHandDelta,
+                    SourceType = "ORDER_LINE",
+                    SourceId = sourceId,
+                    SourceEventId = stockEventId,
+                    IdempotencyKey = $"order-stock-received:{item.Id:N}:{stockEventId}",
+                    OccurredAt = modifiedAtByLine[line.Id],
+                    RecordedAt = now,
+                    CorrelationId = $"order:{line.OrderId:N}"
+                });
+                receivedLedgerDeltas[sourceId] = receivedLedgerDelta + actualOnHandDelta;
+                outbox[StockProjectionOutboxPolicy.DedupKey(connectionId, variantId, item.ProjectionVersion)] = (variantId, stockEventId);
             }
-            else if (reservation is not null)
+            var committedAfterMovement = Math.Max(0m, baselineQuantity - receivedLedgerDeltas.GetValueOrDefault(sourceId));
+            var desired = Math.Max(0m, targetCommitted - committedAfterMovement);
+            if (desired > 0 && actualOnHandDelta != onHandDelta)
             {
-                if (desired == 0) { reservation.Status = ReservationStatus.Released; reservation.ReleasedAt = now; }
-                else { reservation.Quantity = desired; reservation.Status = ReservationStatus.Active; reservation.ReleasedAt = null; }
-                reservation.Version++;
+                await RecordIssue(
+                    tenantId,
+                    $"stock-order-consumption:{line.Id:N}",
+                    "STOCK_ORDER_CONSUMPTION_BLOCKED",
+                    "Sipariş stoğu kısmen düşürüldü; kalan miktar rezervasyonda tutuluyor çünkü fiziksel stok yetersiz.",
+                    cancellationToken);
             }
-            var delta = desired - current;
-            item.Reserved = Math.Max(0, item.Reserved + delta);
-            item.Available = InventoryProjection.Available(item.OnHand, item.Reserved);
-            item.ProjectionVersion++;
-            item.Version++;
-            var reservationEventId = $"{eventId}:{desired.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)}";
-            db.StockLedgerEntries.Add(new StockLedgerEntry { Id = Guid.CreateVersion7(), TenantId = tenantId, InventoryItemId = item.Id, MovementType = delta > 0 ? "ORDER_RESERVED" : "ORDER_RESERVATION_RELEASED", QuantityDelta = -delta, SourceType = "ORDER_LINE", SourceId = sourceId, SourceEventId = reservationEventId, IdempotencyKey = $"order-reservation:{reservationEventId}", OccurredAt = modifiedAtByLine[line.Id], RecordedAt = now, CorrelationId = $"order:{line.OrderId:N}" });
-            outbox[StockProjectionOutboxPolicy.DedupKey(connectionId, variantId, item.ProjectionVersion)] = (variantId, reservationEventId);
+
+            if (current != desired)
+            {
+                if (reservation is null && desired > 0)
+                {
+                    reservation = new StockReservation { Id = Guid.CreateVersion7(), TenantId = tenantId, InventoryItemId = item.Id, SourceType = "ORDER_LINE", SourceId = sourceId, Quantity = desired, Status = ReservationStatus.Active, Version = 1 };
+                    db.StockReservations.Add(reservation);
+                    reservationsByKey[(item.Id, sourceId)] = reservation;
+                }
+                else if (reservation is not null)
+                {
+                    if (desired == 0) { reservation.Status = ReservationStatus.Released; reservation.ReleasedAt = now; }
+                    else { reservation.Quantity = desired; reservation.Status = ReservationStatus.Active; reservation.ReleasedAt = null; }
+                    reservation.Version++;
+                }
+                var delta = desired - current;
+                item.Reserved = Math.Max(0, item.Reserved + delta);
+                item.Available = InventoryProjection.Available(item.OnHand, item.Reserved);
+                item.ProjectionVersion++;
+                item.Version++;
+                var reservationEventId = $"{eventId}:{desired.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)}";
+                db.StockLedgerEntries.Add(new StockLedgerEntry { Id = Guid.CreateVersion7(), TenantId = tenantId, InventoryItemId = item.Id, MovementType = delta > 0 ? "ORDER_RESERVED" : "ORDER_RESERVATION_RELEASED", QuantityDelta = -delta, SourceType = "ORDER_LINE", SourceId = sourceId, SourceEventId = reservationEventId, IdempotencyKey = $"order-reservation:{reservationEventId}", OccurredAt = modifiedAtByLine[line.Id], RecordedAt = now, CorrelationId = $"order:{line.OrderId:N}" });
+                outbox[StockProjectionOutboxPolicy.DedupKey(connectionId, variantId, item.ProjectionVersion)] = (variantId, reservationEventId);
+            }
+
+            if (shipmentDelta > 0)
+            {
+                var shipmentEventId = $"{line.Id:N}:shipment-progress:{targetShipped.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)}";
+                db.StockLedgerEntries.Add(new StockLedgerEntry
+                {
+                    Id = Guid.CreateVersion7(),
+                    TenantId = tenantId,
+                    InventoryItemId = item.Id,
+                    MovementType = "ORDER_SHIPMENT_PROGRESS",
+                    QuantityDelta = -shipmentDelta,
+                    SourceType = "ORDER_LINE",
+                    SourceId = sourceId,
+                    SourceEventId = shipmentEventId,
+                    IdempotencyKey = $"order-shipment-progress:{item.Id:N}:{shipmentEventId}",
+                    OccurredAt = modifiedAtByLine[line.Id],
+                    RecordedAt = now,
+                    CorrelationId = $"order:{line.OrderId:N}"
+                });
+                shippedLedger[sourceId] = consumedShipped + shipmentDelta;
+            }
         }
         if (outbox.Count == 0) return;
         var dedupKeys = outbox.Keys.ToArray();

@@ -27,7 +27,12 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
         var afterId = Decode(after);
         var itemIds = db.InventoryItems.Where(x => x.TenantId == tenantId && x.VariantId == variantId).Select(x => x.Id);
         var rows = await db.StockLedgerEntries.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && itemIds.Contains(x.InventoryItemId) && (afterId == Guid.Empty || x.Id.CompareTo(afterId) > 0))
+            // Opening balances and shipment-progress markers are reconciliation
+            // metadata, not new physical stock movements shown in this ledger.
+            .Where(x => x.TenantId == tenantId
+                && x.MovementType != "ORDER_STOCK_BASELINE"
+                && x.MovementType != "ORDER_SHIPMENT_PROGRESS"
+                && itemIds.Contains(x.InventoryItemId) && (afterId == Guid.Empty || x.Id.CompareTo(afterId) > 0))
             .OrderBy(x => x.Id).Take(limit + 1)
             .Select(x => new LedgerEntryView(x.Id, x.MovementType, x.QuantityDelta, x.SourceType, x.SourceId, x.OccurredAt, x.CorrelationId))
             .ToListAsync(cancellationToken);
