@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { createPortal } from 'react-dom'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -22,6 +22,7 @@ import { isPublicationStatusJobRunning, missingPublicationChecks, publicationSta
 import { productPlatformDisplayLabel, productPlatformDisplayState } from './product-platform-status'
 import { quickPlatformUpdateTargets } from './platform-update-targets'
 import { readVariantMediaAssignmentDraft, updateVariantMediaAssignmentDraft, variantMediaAssignmentKey, type VariantMediaAssignmentDrafts } from './variant-media-assignments'
+import { OperationFeedbackToast, type OperationFeedback } from './operation-feedback-toast'
 
 type Versioned = { id: string; version: number }
 type Category = Versioned & { name: string; path: string; depth: number; isLeaf: boolean; isActive: boolean }
@@ -226,16 +227,6 @@ async function fetchProductPage(limit: number, filters: ProductListFilters, afte
   return hubApi<CursorPage<Product>>(`/products?${params.toString()}`)
 }
 const ErrorBox = ({ error }: { error: unknown }) => error ? <Callout tone="danger">{error instanceof Error ? error.message : 'İşlem tamamlanamadı.'}</Callout> : null
-const OPERATION_FEEDBACK_TOAST_DURATION_MS = 3500
-type OperationFeedback = { message: string; kind: 'success' | 'error' | 'info' }
-function OperationFeedbackToast({ feedback, onClose }: { feedback: OperationFeedback | null; onClose: () => void }) {
-  useEffect(() => {
-    if (feedback) appendNotification(feedback.message, feedback.kind)
-  }, [feedback])
-  if (!feedback) return null
-  const title = feedback.kind === 'success' ? 'İşlem başarılı' : feedback.kind === 'error' ? 'İşlem başarısız' : 'İşlem sürüyor'
-  return <div key={`${feedback.kind}:${feedback.message}`} className={`rv-toast rv-toast-${feedback.kind === 'error' ? 'danger' : feedback.kind} operation-feedback-toast ${feedback.kind}`} style={{ '--operation-feedback-toast-duration': `${OPERATION_FEEDBACK_TOAST_DURATION_MS}ms` } as CSSProperties} role={feedback.kind === 'error' ? 'alert' : 'status'} aria-live={feedback.kind === 'error' ? 'assertive' : 'polite'}><span className="rv-toast-icon" aria-hidden="true" /><div className="rv-toast-content"><strong>{title}</strong><p>{feedback.message}</p></div><button type="button" onClick={onClose} aria-label="Durum raporunu kapat"><UiIcon name="close" /></button><span className="operation-feedback-toast-progress" aria-hidden="true" /></div>
-}
 
 function VariantHeaderActionMenu({ anchorRef, children }: { anchorRef: { current: HTMLDivElement | null }; children: ReactNode }) {
   const menuRef = useRef<HTMLDivElement>(null)
@@ -2025,7 +2016,6 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const [variantPlatformPricing, setVariantPlatformPricing] = useState<{ rowKey: string; platform: VariantPlatformStatus } | null>(null)
   const [variantPlatformPricingDraft, setVariantPlatformPricingDraft] = useState<ChannelPricingDraft>({ listPrice: '', salePrice: '' })
   const [variantPlatformPricingSaving, setVariantPlatformPricingSaving] = useState(false)
-  const feedbackTimer = useRef<number | null>(null)
   const initialEditMediaUrl = useRef('')
   const initialEditModelCode = useRef('')
   const initialEditVariantMediaRefs = useRef<Record<string, string[]>>({})
@@ -2046,10 +2036,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     document.addEventListener('keydown', closeOnEscape)
     return () => { document.removeEventListener('pointerdown', closeBarcodeMenus); document.removeEventListener('keydown', closeOnEscape) }
   }, [barcodeSkuMenuOpen, barcodePasteMenuOpen])
-  function showFeedback(message: string, kind: OperationFeedback['kind']) {
-    if (feedbackTimer.current !== null) window.clearTimeout(feedbackTimer.current)
-    setFeedback({ message, kind })
-    feedbackTimer.current = window.setTimeout(() => setFeedback(null), OPERATION_FEEDBACK_TOAST_DURATION_MS)
+  function showFeedback(message: string, kind: OperationFeedback['kind'], options: { persistent?: boolean } = {}) {
+    setFeedback({ message, kind, ...options })
   }
   function handleMediaFiles(files: File[]) {
     const accepted: File[] = []
@@ -2068,7 +2056,6 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       const message = `${accepted.length} görsel seçildi.`; setNotice(message); showFeedback(message, 'info')
     }
   }
-  useEffect(() => () => { if (feedbackTimer.current !== null) window.clearTimeout(feedbackTimer.current) }, [])
   const productToEdit = useQuery({ queryKey: ['product', editProductId], queryFn: () => hubApi<Product>(`/products/${editProductId}`), enabled: !!editProductId })
   const categories = useQuery({ queryKey: ['categories', 'new-product'], queryFn: () => loadAllPages<Category>('/catalog/categories') })
   const brands = useQuery({ queryKey: ['brands', 'new-product'], queryFn: () => loadAllPages<Brand>('/catalog/brands') })
@@ -2977,7 +2964,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       setWizardStep(2)
       return
     }
-    setError(undefined); setNotice(''); showFeedback(editProductId ? 'Ürün değişiklikleri kaydediliyor…' : 'Ürün oluşturuluyor…', 'info'); setSubmitting(true); let productCreated: Product | undefined; let familyMediaChanged = false
+    setError(undefined); setNotice(''); showFeedback(editProductId ? 'Ürün değişiklikleri kaydediliyor…' : 'Ürün oluşturuluyor…', 'info', { persistent: true }); setSubmitting(true); let productCreated: Product | undefined; let familyMediaChanged = false
     try {
       if (requireCompleteCatalog && form.categoryId && requirements.isLoading) throw new Error('Kategori özellikleri yükleniyor. Kaydetmeden önce kısa süre bekleyin.')
       if (requireCompleteCatalog && form.categoryId && requirements.isError) throw new Error('Kategori özellikleri alınamadı. Önce kategori eşleştirmesini kontrol edin.')
@@ -3087,12 +3074,12 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       const updateSummary = platformUpdate ? ` Seçilen ${platformUpdate.connectionIds.length} platform için ${platformUpdate.includeProductInformation ? 'ürün bilgisi ve fiyat-stok' : 'fiyat-stok'} güncelleme işi kuyruğa alındı.` : ''
       const message = `${editProductId ? 'Ürün güncellendi.' : `${completed.join(', ')} kaydedildi.`}${updateSummary}${warnings.length ? ` Yayın uyarısı: ${warnings.join(' ')}` : ''}`
       setNotice(createOnly ? 'Ürün oluşturuldu. Ürün sayfası açılıyor.' : message)
-      if (!createOnly) showFeedback(message, warnings.length ? 'info' : 'success')
       await client.invalidateQueries({ queryKey: ['products'] })
       if (editProductId) {
         await client.invalidateQueries({ queryKey: ['product', editProductId] })
         await productToEdit.refetch()
       }
+      if (!createOnly) showFeedback(message, warnings.length ? 'info' : 'success')
       if (createOnly && productCreated) {
         appendNotification('Ürün oluşturuldu. Ürün sayfası açılıyor.', 'success')
         navigate(`/products/${productCreated.id}`)

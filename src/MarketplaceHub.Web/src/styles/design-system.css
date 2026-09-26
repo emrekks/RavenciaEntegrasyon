@@ -11026,9 +11026,15 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
   animation: operation-feedback-toast-countdown var(--operation-feedback-toast-duration, 3500ms) linear forwards;
   pointer-events: none;
 }
+.operation-feedback-toast.is-pending .operation-feedback-toast-progress {
+  width: 28%;
+  transform: translateX(-100%);
+  animation: operation-feedback-toast-indeterminate 1.15s ease-in-out infinite;
+}
 .operation-feedback-toast.success .operation-feedback-toast-progress { background: var(--rv-color-accent); }
 .operation-feedback-toast.error .operation-feedback-toast-progress { background: var(--rv-color-danger); }
 @keyframes operation-feedback-toast-countdown { to { transform: scaleX(0); } }
+@keyframes operation-feedback-toast-indeterminate { to { transform: translateX(460%); } }
 
 @media (max-width: 1100px) {
   .publish-platform-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
