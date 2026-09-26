@@ -18,7 +18,7 @@ import { mergeVariantOptionEntries, normalizeVariantOptionValue } from './varian
 import { classifyPublicationAttributeIssues, type PublicationAttributeSelection, type PublicationMappingReference, type PublicationValueReferenceSet } from './publication-attribute-readiness'
 import { productMediaUrlIssue } from './product-media-url'
 import { barcodeClipboardIssue, parseBarcodeClipboardValues } from './product-barcode-paste'
-import { isPublicationStatusJobRunning, missingPublicationChecks, publicationStatusLabel, publicationStatusTone } from './publication-status'
+import { isPublicationStatusJobRunning, missingPublicationChecks, publicationStatusLabel, publicationStatusNote, publicationStatusTone } from './publication-status'
 import { productPlatformDisplayLabel, productPlatformDisplayState } from './product-platform-status'
 import { quickPlatformUpdateTargets } from './platform-update-targets'
 import { readVariantMediaAssignmentDraft, updateVariantMediaAssignmentDraft, variantMediaAssignmentKey, type VariantMediaAssignmentDrafts } from './variant-media-assignments'
@@ -1843,6 +1843,7 @@ function PublishPlatformCard({ card, selected, productId, categoryId, productChe
       ? 'Yayın durumu alınamadı'
       : publicationStatusLabel(publication.data?.actualStatus, publication.data?.lastJobStatus)
   const publicationTone = publicationStatusTone(publication.data?.actualStatus, publication.data?.lastJobStatus)
+  const publicationNote = publicationStatusNote(publication.data?.lastRejectionCode)
   const missingChecks = missingPublicationChecks(productChecks)
   const mappingReadiness = useQuery({
     queryKey: ['publication-attribute-readiness', card.connection.id, categoryId, selectedAttributes],
@@ -1919,7 +1920,7 @@ function PublishPlatformCard({ card, selected, productId, categoryId, productChe
       <div><dt>Mağaza</dt><dd>{card.connection.externalStoreId || '—'}</dd></div>
       <div><dt>Platform</dt><dd>{card.connection.platformCode}</dd></div>
       <div><dt>Bağlantı</dt><dd><span className="publish-platform-status active"><i aria-hidden="true" />Aktif bağlantı</span></dd></div>
-      {productId && <div className="publish-platform-fact-publication" aria-live="polite"><dt>Yayın durumu</dt><dd><span className={`publish-platform-status status-${publicationTone}`}><i aria-hidden="true" />{publicationLabel}</span>{publication.data?.profileId && publication.data.actualStatus && publication.data.actualStatus !== 'UNKNOWN' && <button type="button" className="publish-tracking-action" aria-label={`${card.name} yayın durumunu güncelle`} title="Platformdaki mevcut durumu yeniden sorgula" disabled={refreshPublication.isPending || isPublicationStatusJobRunning(publication.data.lastJobStatus)} onClick={() => refreshPublication.mutate()}><UiIcon name="refresh" /></button>}</dd>{publication.data?.lastRejectionCode && <small>Red kodu: {publication.data.lastRejectionCode}</small>}</div>}
+      {productId && <div className="publish-platform-fact-publication" aria-live="polite"><dt>Yayın durumu</dt><dd><span className={`publish-platform-status status-${publicationTone}`}><i aria-hidden="true" />{publicationLabel}</span>{publication.data?.profileId && publication.data.actualStatus && publication.data.actualStatus !== 'UNKNOWN' && <button type="button" className="publish-tracking-action" aria-label={`${card.name} yayın durumunu güncelle`} title="Platformdaki mevcut durumu yeniden sorgula" disabled={refreshPublication.isPending || isPublicationStatusJobRunning(publication.data.lastJobStatus)} onClick={() => refreshPublication.mutate()}><UiIcon name="refresh" /></button>}</dd>{publicationNote && <small>{publicationNote}</small>}</div>}
     </dl>
     {productId && publication.data?.lastJobId && <PublicationJobProgress jobId={publication.data.lastJobId} productId={productId} connectionId={card.connection.id} />}
     {blockedIssues.length > 0 && <div id={`${issueListId}-required`} className="publish-platform-missing" role="alert" aria-label={`${card.name} zorunlu yayın eksikleri`}>

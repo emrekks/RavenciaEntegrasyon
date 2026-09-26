@@ -1,25 +1,67 @@
 using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
+using Microsoft.Extensions.Hosting;
 
 namespace MarketplaceHub.Worker;
 
-public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> logger, IConfiguration configuration) : BackgroundService
+public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> logger, IConfiguration configuration, IHostApplicationLifetime applicationLifetime) : BackgroundService
 {
     private readonly string healthFile = configuration["Worker:HealthFile"] ?? "/tmp/marketplacehub-worker-heartbeat";
     private readonly TimeSpan schedulerScanInterval = TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("Worker:SchedulerScanSeconds", 5), 1, 30));
     private readonly int hotPriorityCeiling = Math.Clamp(configuration.GetValue("Worker:HotPriorityCeiling", 2), 0, 5);
     private readonly TimeSpan healthStaleAfter = TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("Worker:HealthStaleAfterSeconds", 120), 30, 900));
+    private readonly bool schedulerEnabled = configuration.GetValue("Worker:EnableScheduler", true);
+    private readonly string? singleJobIdText = string.IsNullOrWhiteSpace(configuration["Worker:SingleJobId"]) ? null : configuration["Worker:SingleJobId"]!.Trim();
+    private readonly Guid? singleJobId = Guid.TryParse(configuration["Worker:SingleJobId"], out var parsedJobId) ? parsedJobId : null;
+    private readonly string? singleJobType = string.IsNullOrWhiteSpace(configuration["Worker:SingleJobType"]) ? null : configuration["Worker:SingleJobType"]!.Trim();
     private long lastDatabaseContactUnixMilliseconds = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await RecoverAtStartupAsync(stoppingToken);
-        await Task.WhenAll(
-            RunSchedulerAsync(stoppingToken),
+        if (singleJobIdText is not null && singleJobId is null)
+            throw new InvalidOperationException("Worker:SingleJobId must be a valid job identifier.");
+        if (singleJobId.HasValue)
+        {
+            if (schedulerEnabled || singleJobType != MarketplaceJobTypes.ProductApprovalReconcile)
+                throw new InvalidOperationException("Single-job mode requires the scheduler disabled and the product approval reconciliation job type.");
+            await ExecuteSingleJobAsync(stoppingToken);
+            return;
+        }
+        if (singleJobType is not null)
+            throw new InvalidOperationException("Worker:SingleJobType can only be used together with Worker:SingleJobId.");
+
+        if (schedulerEnabled) await RecoverAtStartupAsync(stoppingToken);
+        else TouchHealthFile();
+        var loops = new List<Task>
+        {
             RunLeaseLaneAsync("hot", hotPriorityCeiling, null, stoppingToken),
             RunLeaseLaneAsync("background", null, hotPriorityCeiling + 1, stoppingToken),
-            RunHealthWatchdogAsync(stoppingToken));
+            RunHealthWatchdogAsync(stoppingToken)
+        };
+        if (schedulerEnabled) loops.Add(RunSchedulerAsync(stoppingToken));
+        await Task.WhenAll(loops);
+    }
+
+    private async Task ExecuteSingleJobAsync(CancellationToken stoppingToken)
+    {
+        try
+        {
+            TouchHealthFile();
+            var job = await LeaseNextAsync(null, null, stoppingToken);
+            if (job is null)
+            {
+                logger.LogWarning("Single approval reconciliation job {JobId} was not available to lease", singleJobId);
+                return;
+            }
+
+            logger.LogInformation("Single approval reconciliation job {JobId} leased", job.Id);
+            await ExecuteLeasedJobAsync(job, stoppingToken);
+        }
+        finally
+        {
+            applicationLifetime.StopApplication();
+        }
     }
 
     private async Task RecoverAtStartupAsync(CancellationToken cancellationToken)
@@ -107,9 +149,9 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var jobs = scope.ServiceProvider.GetRequiredService<IJobLeaseService>();
-        var reaped = minimumPriority is null ? await jobs.ReapExpiredAsync(cancellationToken) : 0;
+        var reaped = minimumPriority is null && !singleJobId.HasValue ? await jobs.ReapExpiredAsync(cancellationToken) : 0;
         if (reaped > 0) logger.LogWarning("Reaped {Count} expired job leases", reaped);
-        return await jobs.TryLeaseAsync(JobRetryPolicy.DefaultLeaseDuration, maximumPriority, minimumPriority, cancellationToken);
+        return await jobs.TryLeaseAsync(JobRetryPolicy.DefaultLeaseDuration, maximumPriority, minimumPriority, cancellationToken, singleJobType, singleJobId);
     }
 
     private async Task ExecuteLeasedJobAsync(LeasedJob job, CancellationToken stoppingToken)

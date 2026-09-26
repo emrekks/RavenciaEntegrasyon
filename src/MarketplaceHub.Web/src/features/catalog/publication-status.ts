@@ -82,3 +82,8 @@ export function publicationStatusTone(actualStatus?: string | null, lastJobStatu
   if (isPublicationStatusPending(actualStatus, lastJobStatus)) return 'info' as const
   return 'neutral' as const
 }
+
+export function publicationStatusNote(statusCode?: string | null) {
+  if (statusCode?.trim().toUpperCase() === 'PRODUCT_APPROVAL_CONTENT_SPLIT') return null
+  return statusCode ? `Red kodu: ${statusCode}` : null
+}

@@ -410,18 +410,16 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         if (approvedStatuses.Any(x => string.IsNullOrWhiteSpace(x.ExternalProductId) || string.IsNullOrWhiteSpace(x.ExternalVariantId)))
             return await MarkApprovalResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_APPROVAL_IDENTIFIERS_MISSING", JobExecutionResult.ManualReview("PRODUCT_APPROVAL_IDENTIFIERS_MISSING", "Onaylanan ürün yanıtında contentId veya variantId bulunamadı."), cancellationToken);
         var approvedContentIds = approvedStatuses.Select(x => x.ExternalProductId!).Distinct(StringComparer.Ordinal).ToList();
-        if (approvedContentIds.Count > 1)
-            return await MarkApprovalResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_APPROVAL_CONTENT_SPLIT", JobExecutionResult.ManualReview("PRODUCT_APPROVAL_CONTENT_SPLIT", "Tek yerel ürünün varyantları birden fazla Trendyol content kimliğine ayrılmış görünüyor."), cancellationToken);
+        var hasSplitApprovedContents = ProductApprovalReconciliationPolicy.HasSplitApprovedContents(remoteByBarcode.Values);
         var approvedVariantIds = approvedStatuses.Select(x => x.ExternalVariantId!).ToList();
         if (approvedVariantIds.Distinct(StringComparer.Ordinal).Count() != approvedVariantIds.Count)
             return await MarkApprovalResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_APPROVAL_VARIANT_ID_DUPLICATE", JobExecutionResult.ManualReview("PRODUCT_APPROVAL_VARIANT_ID_DUPLICATE", "Trendyol onay yanıtı birden fazla barkod için aynı variantId değerini döndürdü."), cancellationToken);
-        if (approvedContentIds.Count == 1)
+        if (approvedContentIds.Count > 0)
         {
-            var approvedContentId = approvedContentIds[0];
-            if (await db.MarketplaceProductLinks.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == approvedContentId && x.ProductId != payload.ProductId, cancellationToken))
+            if (await db.MarketplaceProductLinks.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && approvedContentIds.Contains(x.ExternalId) && x.ProductId != payload.ProductId, cancellationToken))
                 return await MarkApprovalResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_APPROVAL_IDENTITY_CONFLICT", JobExecutionResult.ManualReview("PRODUCT_APPROVAL_IDENTITY_CONFLICT", "Trendyol content kimliği başka bir yerel ürünle eşleşiyor."), cancellationToken);
             var localProductLink = await db.MarketplaceProductLinks.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == payload.ProductId, cancellationToken);
-            if (localProductLink is not null && !string.Equals(localProductLink.ExternalId, approvedContentId, StringComparison.Ordinal))
+            if (localProductLink is not null && !approvedContentIds.Contains(localProductLink.ExternalId, StringComparer.Ordinal))
                 return await MarkApprovalResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_APPROVAL_IDENTITY_CONFLICT", JobExecutionResult.ManualReview("PRODUCT_APPROVAL_IDENTITY_CONFLICT", "Yerel ürün daha önce farklı bir Trendyol content kimliğiyle eşleştirilmiş."), cancellationToken);
         }
         if (approvedVariantIds.Count > 0 && await db.MarketplaceVariantLinks.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && approvedVariantIds.Contains(x.ExternalId) && !localVariantIds.Contains(x.VariantId), cancellationToken))
@@ -491,18 +489,24 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         if (exceptional > 0)
         {
             profile.ActualStatus = "MANUAL_REVIEW";
-            profile.LastRejectionCode = firstCode;
+            profile.LastRejectionCode = hasSplitApprovedContents ? ProductApprovalReconciliationPolicy.SplitApprovedContentsCode : firstCode;
         }
         else if (pending > 0)
         {
             profile.ActualStatus = live + rejected > 0 ? "APPROVAL_PARTIAL_PENDING" : "APPROVAL_PENDING";
-            profile.LastRejectionCode = firstCode;
+            profile.LastRejectionCode = hasSplitApprovedContents ? ProductApprovalReconciliationPolicy.SplitApprovedContentsCode : firstCode;
         }
         else if (live == listings.Count)
         {
             profile.ActualStatus = "LIVE";
-            profile.LastRejectionCode = null;
-            await MarkProductLinkPublished(tenantId, connectionId, payload.ProductId, cancellationToken);
+            profile.LastRejectionCode = hasSplitApprovedContents ? ProductApprovalReconciliationPolicy.SplitApprovedContentsCode : null;
+            if (!hasSplitApprovedContents)
+                await MarkProductLinkPublished(tenantId, connectionId, payload.ProductId, cancellationToken);
+        }
+        else if (hasSplitApprovedContents && live > 0)
+        {
+            profile.ActualStatus = "PARTIAL_LIVE";
+            profile.LastRejectionCode = ProductApprovalReconciliationPolicy.SplitApprovedContentsCode;
         }
         else if (rejected == listings.Count)
         {

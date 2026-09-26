@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isPublicationStatusJobRunning, isPublicationStatusPending, missingPublicationChecks, publicationStatusLabel, publicationStatusTone } from './publication-status'
+import { isPublicationStatusJobRunning, isPublicationStatusPending, missingPublicationChecks, publicationStatusLabel, publicationStatusNote, publicationStatusTone } from './publication-status'
 
 describe('product publication status', () => {
   it('describes the marketplace result rather than the connection state', () => {
@@ -33,5 +33,12 @@ describe('product publication status', () => {
     expect(publicationStatusTone('LIVE')).toBe('success')
     expect(publicationStatusTone('QUEUED')).toBe('info')
     expect(publicationStatusTone('CREATE_REJECTED')).toBe('danger')
+  })
+
+  it('hides the split-content note while preserving live status and other rejection codes', () => {
+    expect(publicationStatusTone('LIVE')).toBe('success')
+    expect(publicationStatusTone('PARTIAL_LIVE')).toBe('success')
+    expect(publicationStatusNote('PRODUCT_APPROVAL_CONTENT_SPLIT')).toBeNull()
+    expect(publicationStatusNote('PRODUCT_CREATE_REJECTED')).toBe('Red kodu: PRODUCT_CREATE_REJECTED')
   })
 })

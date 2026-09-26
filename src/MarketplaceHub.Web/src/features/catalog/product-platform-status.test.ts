@@ -35,6 +35,14 @@ describe('product platform list status', () => {
       .toBe('Trendyol üzerinde ürün kısmen yayında (35/70)')
   })
 
+  it('keeps a split-content product visibly partially live when only some variants are approved', () => {
+    const state = productPlatformDisplayState(['PARTIAL_LIVE'], false)
+
+    expect(state).toBe('partial')
+    expect(productPlatformDisplayLabel('Trendyol', ['PARTIAL_LIVE'], 17, 35, state))
+      .toBe('Trendyol üzerinde ürün kısmen yayında (17/35)')
+  })
+
   it('keeps unmatched variants neutral until publication is confirmed', () => {
     expect(productPlatformDisplayState(['UNLINKED'], false)).toBe('inactive')
     expect(productPlatformDisplayState(['BATCH_IN_PROGRESS'], false)).toBe('processing')
