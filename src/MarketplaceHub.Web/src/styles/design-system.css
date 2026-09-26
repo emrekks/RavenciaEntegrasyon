@@ -11023,7 +11023,7 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
   background: var(--rv-color-primary);
   transform: scaleX(1);
   transform-origin: left center;
-  animation: operation-feedback-toast-countdown 3.5s linear forwards;
+  animation: operation-feedback-toast-countdown var(--operation-feedback-toast-duration, 3500ms) linear forwards;
   pointer-events: none;
 }
 .operation-feedback-toast.success .operation-feedback-toast-progress { background: var(--rv-color-accent); }

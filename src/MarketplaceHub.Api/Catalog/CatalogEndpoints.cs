@@ -178,6 +178,7 @@ public static class CatalogEndpoints
         api.MapPost("/files/product-media-url", RegisterProductMediaUrlAsync);
         api.MapPut("/files/product-media-reconcile", ReconcileProductMediaAsync);
         api.MapPut("/files/product-media-family-reorder", ReorderProductFamilyMediaAsync);
+        api.MapDelete("/files/product-media-item", DeleteProductMediaItemAsync);
         api.MapDelete("/files/product-media-items", DeleteProductMediaItemsAsync);
         api.MapDelete("/files/product-media", ClearProductMediaAsync);
         api.MapDelete("/files/product-media-variant", ClearProductVariantMediaAsync);
@@ -829,6 +830,85 @@ public static class CatalogEndpoints
         return Results.Ok(new { deletedCount = media.Count });
     }
 
+    private static async Task<IResult> DeleteProductMediaItemAsync([FromBody] DeleteProductMediaItemCommand command, HttpContext http, AppDbContext db, TimeProvider timeProvider)
+    {
+        if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        if (RequireIdempotency(http) is { } keyFailure) return keyFailure;
+        if (!TryIfMatch(http, out var expectedVersion, out var versionFailure)) return versionFailure!;
+
+        var product = await db.Products.SingleOrDefaultAsync(item => item.TenantId == tenant.TenantId && item.Id == command.ProductId, http.RequestAborted);
+        if (product is null) return Problem(http, new("RESOURCE_NOT_FOUND", "Ürün bulunamadı.", 404));
+        if (product.Version != expectedVersion)
+        {
+            http.Response.Headers.ETag = $"\"v{product.Version}\"";
+            return Problem(http, new("PRECONDITION_FAILED", "Ürün başka bir işlemle değişti. Sayfayı yenileyip tekrar deneyin.", 412));
+        }
+
+        Guid assetId;
+        if (TryGetStoredProductMediaAssetId(command.Url, out var storedAssetId))
+        {
+            assetId = storedAssetId;
+        }
+        else
+        {
+            if (!TryNormalizePublicProductMediaUrl(command.Url, out var normalizedUrl, out var issue))
+                return Problem(http, new("PRODUCT_MEDIA_URL_INVALID", issue!, 422));
+            var remoteAsset = await db.FileAssets.AsNoTracking().SingleOrDefaultAsync(asset =>
+                asset.TenantId == tenant.TenantId && asset.RelativePath == normalizedUrl && asset.Classification == "PRODUCT_MEDIA_URL" && asset.Status == "ACTIVE",
+                http.RequestAborted);
+            if (remoteAsset is null) return Problem(http, new("PRODUCT_MEDIA_NOT_FOUND", "Görsel üründe artık etkin değil.", 404));
+            assetId = remoteAsset.Id;
+        }
+
+        var asset = await db.FileAssets.AsNoTracking().SingleOrDefaultAsync(item =>
+            item.TenantId == tenant.TenantId && item.Id == assetId && item.Status == "ACTIVE" && (item.Classification == "PRODUCT_MEDIA" || item.Classification == "PRODUCT_MEDIA_URL"),
+            http.RequestAborted);
+        if (asset is null) return Problem(http, new("PRODUCT_MEDIA_NOT_FOUND", "Görsel üründe artık etkin değil.", 404));
+
+        var modelCode = await db.ProductVariants.AsNoTracking()
+            .Where(variant => variant.TenantId == tenant.TenantId && variant.ProductId == product.Id && variant.ModelCode != null && variant.ModelCode != "")
+            .OrderBy(variant => variant.SortOrder).ThenBy(variant => variant.Id)
+            .Select(variant => variant.ModelCode)
+            .FirstOrDefaultAsync(http.RequestAborted);
+        var familyProductIds = string.IsNullOrWhiteSpace(modelCode)
+            ? new List<Guid> { product.Id }
+            : await db.ProductVariants.AsNoTracking()
+                .Where(variant => variant.TenantId == tenant.TenantId
+                    && variant.ModelCode != null
+                    && variant.ModelCode.ToUpper() == modelCode.ToUpper()
+                    && (!db.MarketplaceProductLinks.Any(link => link.TenantId == tenant.TenantId && link.ProductId == variant.ProductId)
+                        || db.MarketplaceProductLinks.Any(link => link.TenantId == tenant.TenantId && link.ProductId == variant.ProductId
+                            && db.PlatformConnections.Any(connection => connection.TenantId == tenant.TenantId && connection.Id == link.ConnectionId
+                                && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")))))
+                .Select(variant => variant.ProductId)
+                .Distinct()
+                .ToListAsync(http.RequestAborted);
+        if (!familyProductIds.Contains(product.Id)) familyProductIds.Add(product.Id);
+
+        await using var transaction = await db.Database.BeginTransactionAsync(http.RequestAborted);
+        var media = await db.ProductMedia
+            .Where(item => item.TenantId == tenant.TenantId && familyProductIds.Contains(item.ProductId) && item.FileAssetId == assetId && item.Status == "ACTIVE")
+            .ToListAsync(http.RequestAborted);
+        if (media.Count == 0) return Problem(http, new("PRODUCT_MEDIA_NOT_FOUND", "Görsel ürün ailesinde artık etkin değil.", 404));
+
+        foreach (var item in media) item.Status = "ARCHIVED";
+        var affectedProductIds = media.Select(item => item.ProductId).Distinct().ToArray();
+        var affectedProducts = await db.Products
+            .Where(item => item.TenantId == tenant.TenantId && affectedProductIds.Contains(item.Id))
+            .ToListAsync(http.RequestAborted);
+        var now = timeProvider.GetUtcNow();
+        foreach (var affectedProduct in affectedProducts)
+        {
+            affectedProduct.UpdatedAt = now;
+            affectedProduct.Version++;
+        }
+        await db.SaveChangesAsync(http.RequestAborted);
+        await transaction.CommitAsync(http.RequestAborted);
+        var version = affectedProducts.SingleOrDefault(item => item.Id == product.Id)?.Version ?? product.Version;
+        http.Response.Headers.ETag = $"\"v{version}\"";
+        return Results.Ok(new { deletedCount = media.Count, version, productVersions = affectedProducts.ToDictionary(item => item.Id.ToString("D"), item => item.Version) });
+    }
+
     private static bool IsPublicAddress(IPAddress address)
     {
         if (IPAddress.IsLoopback(address) || address.Equals(IPAddress.Any) || address.Equals(IPAddress.IPv6Any) || address.Equals(IPAddress.None) || address.Equals(IPAddress.IPv6None)) return false;
@@ -918,4 +998,5 @@ public static class CatalogEndpoints
     private sealed record ProductFamilyMediaRow(ProductMedia Media, string Url, string ImageKey);
     private sealed record ProductFamilyImageGroup(string Key, string Url, ProductFamilyMediaRow[] Rows, int SortOrder, Guid FirstProductId, Guid FirstMediaId);
     public sealed record DeleteProductMediaItemsCommand(IReadOnlyList<Guid>? MediaIds);
+    public sealed record DeleteProductMediaItemCommand(Guid ProductId, string? Url);
 }

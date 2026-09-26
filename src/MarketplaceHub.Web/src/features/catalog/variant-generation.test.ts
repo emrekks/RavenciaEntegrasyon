@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildVariantGenerationDefaults, resolveVariantSyncAttributeIds } from './variant-generation'
+import { buildSequentialVariantCode, buildSequentialVariantIdentifiers, buildVariantGenerationDefaults, resolveVariantSyncAttributeIds } from './variant-generation'
 
 describe('variant generation defaults', () => {
   it('uses the model code for sequential automatic barcodes and leaves SKU and prices empty', () => {
@@ -24,6 +24,31 @@ describe('variant generation defaults', () => {
 
     expect(result.barcode).toHaveLength(40)
     expect(result.barcode.endsWith('-01')).toBe(true)
+  })
+
+  it('creates matching barcode and SKU values from the model code for every variant', () => {
+    expect(buildSequentialVariantIdentifiers('MZ049BOC', 4)).toEqual([
+      { barcode: 'MZ049BOC-01', sku: 'MZ049BOC-01' },
+      { barcode: 'MZ049BOC-02', sku: 'MZ049BOC-02' },
+      { barcode: 'MZ049BOC-03', sku: 'MZ049BOC-03' },
+      { barcode: 'MZ049BOC-04', sku: 'MZ049BOC-04' },
+    ])
+  })
+
+  it('normalizes model codes, expands past two digits, and rejects invalid generation requests', () => {
+    expect(buildSequentialVariantCode(' MZ 049BÖC ', 1)).toBe('MZ-049BOC-01')
+    expect(buildSequentialVariantCode('MZ049BOC', 100)).toBe('MZ049BOC-100')
+    expect(buildSequentialVariantIdentifiers('', 2)).toEqual([])
+    expect(buildSequentialVariantIdentifiers('MZ049BOC', 0)).toEqual([])
+    expect(buildSequentialVariantIdentifiers('MZ049BOC', 1001)).toEqual([])
+  })
+
+  it('produces unique generated identifiers for a large variant set', () => {
+    const identifiers = buildSequentialVariantIdentifiers('MZ049BOC', 100)
+
+    expect(new Set(identifiers.map(item => item.barcode)).size).toBe(100)
+    expect(new Set(identifiers.map(item => item.sku)).size).toBe(100)
+    expect(identifiers.every(item => item.barcode === item.sku)).toBe(true)
   })
 })
 

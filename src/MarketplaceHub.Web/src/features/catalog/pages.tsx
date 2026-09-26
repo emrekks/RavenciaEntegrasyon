@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { createPortal } from 'react-dom'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -13,7 +13,7 @@ import { toggleProductAttributeValue } from './attribute-selection'
 import { filterAttributeOptionValues } from './attribute-value-search'
 import { isStoredProductMediaUrl, mediaImageKey, mediaRefsEqual, mediaRefsSameSet, mediaUrlsInPreferredOrder, modelCodeForExistingVariant, publicProductMediaUrls, reorderMediaUrls, uniqueMediaUrls } from './product-media-editor'
 import { applyVariantBulkEditValue, variantBulkEditIssue, type VariantBulkEditField } from './variant-bulk-edit'
-import { buildVariantGenerationDefaults, resolveVariantSyncAttributeIds } from './variant-generation'
+import { buildSequentialVariantIdentifiers, buildVariantGenerationDefaults, resolveVariantSyncAttributeIds } from './variant-generation'
 import { mergeVariantOptionEntries, normalizeVariantOptionValue } from './variant-option-matching'
 import { classifyPublicationAttributeIssues, type PublicationAttributeSelection, type PublicationMappingReference, type PublicationValueReferenceSet } from './publication-attribute-readiness'
 import { productMediaUrlIssue } from './product-media-url'
@@ -226,6 +226,7 @@ async function fetchProductPage(limit: number, filters: ProductListFilters, afte
   return hubApi<CursorPage<Product>>(`/products?${params.toString()}`)
 }
 const ErrorBox = ({ error }: { error: unknown }) => error ? <Callout tone="danger">{error instanceof Error ? error.message : 'İşlem tamamlanamadı.'}</Callout> : null
+const OPERATION_FEEDBACK_TOAST_DURATION_MS = 3500
 type OperationFeedback = { message: string; kind: 'success' | 'error' | 'info' }
 function OperationFeedbackToast({ feedback, onClose }: { feedback: OperationFeedback | null; onClose: () => void }) {
   useEffect(() => {
@@ -233,7 +234,7 @@ function OperationFeedbackToast({ feedback, onClose }: { feedback: OperationFeed
   }, [feedback])
   if (!feedback) return null
   const title = feedback.kind === 'success' ? 'İşlem başarılı' : feedback.kind === 'error' ? 'İşlem başarısız' : 'İşlem sürüyor'
-  return <div key={`${feedback.kind}:${feedback.message}`} className={`rv-toast rv-toast-${feedback.kind === 'error' ? 'danger' : feedback.kind} operation-feedback-toast ${feedback.kind}`} role={feedback.kind === 'error' ? 'alert' : 'status'} aria-live={feedback.kind === 'error' ? 'assertive' : 'polite'}><span className="rv-toast-icon" aria-hidden="true" /><div className="rv-toast-content"><strong>{title}</strong><p>{feedback.message}</p></div><button type="button" onClick={onClose} aria-label="Durum raporunu kapat"><UiIcon name="close" /></button><span className="operation-feedback-toast-progress" aria-hidden="true" /></div>
+  return <div key={`${feedback.kind}:${feedback.message}`} className={`rv-toast rv-toast-${feedback.kind === 'error' ? 'danger' : feedback.kind} operation-feedback-toast ${feedback.kind}`} style={{ '--operation-feedback-toast-duration': `${OPERATION_FEEDBACK_TOAST_DURATION_MS}ms` } as CSSProperties} role={feedback.kind === 'error' ? 'alert' : 'status'} aria-live={feedback.kind === 'error' ? 'assertive' : 'polite'}><span className="rv-toast-icon" aria-hidden="true" /><div className="rv-toast-content"><strong>{title}</strong><p>{feedback.message}</p></div><button type="button" onClick={onClose} aria-label="Durum raporunu kapat"><UiIcon name="close" /></button><span className="operation-feedback-toast-progress" aria-hidden="true" /></div>
 }
 
 function VariantHeaderActionMenu({ anchorRef, children }: { anchorRef: { current: HTMLDivElement | null }; children: ReactNode }) {
@@ -2013,6 +2014,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const [variantBulkEdit, setVariantBulkEdit] = useState<{ field: VariantBulkEditField; value: string; error: string } | null>(null)
   const [mediaFiles, setMediaFiles] = useState<File[]>([])
   const [deletingFamilyMediaKey, setDeletingFamilyMediaKey] = useState<string | null>(null)
+  const [deletingProductMediaKey, setDeletingProductMediaKey] = useState<string | null>(null)
   const [familyMediaOrder, setFamilyMediaOrder] = useState<string[]>([])
   const [familyMediaOrderDirty, setFamilyMediaOrderDirty] = useState(false)
   const [draggedMediaIndex, setDraggedMediaIndex] = useState<number | null>(null); const [dragOverMediaIndex, setDragOverMediaIndex] = useState<number | null>(null)
@@ -2047,7 +2049,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   function showFeedback(message: string, kind: OperationFeedback['kind']) {
     if (feedbackTimer.current !== null) window.clearTimeout(feedbackTimer.current)
     setFeedback({ message, kind })
-    feedbackTimer.current = window.setTimeout(() => setFeedback(null), 3500)
+    feedbackTimer.current = window.setTimeout(() => setFeedback(null), OPERATION_FEEDBACK_TOAST_DURATION_MS)
   }
   function handleMediaFiles(files: File[]) {
     const accepted: File[] = []
@@ -2323,6 +2325,58 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     setDraggedMediaIndex(null)
     setDragOverMediaIndex(null)
     showFeedback('Ürün ve varyant görselleri temizlendi. Kalıcı olması için kaydedin.', 'info')
+  }
+  async function removeProductMedia(url: string) {
+    const targetKey = mediaImageKey(url)
+    const savedMediaUrls = initialEditMediaUrl.current.split(/\r?\n|[;|]/u).map(item => item.trim()).filter(Boolean)
+    const isPersisted = Boolean(editProductId && productToEdit.data && savedMediaUrls.some(item => mediaImageKey(item) === targetKey))
+    const nextDraftMediaUrls = mediaUrls.filter(item => mediaImageKey(item) !== targetKey)
+    const removeVariantReference = (reference: string) => !reference.startsWith('url|') || mediaImageKey(reference.slice(4)) !== targetKey
+
+    if (!isPersisted || !editProductId || !productToEdit.data) {
+      updateField('mediaUrls', nextDraftMediaUrls.join('\n'))
+      setVariantRows(rows => rows.map(row => ({ ...row, mediaRefs: row.mediaRefs.filter(removeVariantReference) })))
+      showFeedback('Görsel taslaktan kaldırıldı. Kalıcı olması için Kaydet’e basın.', 'info')
+      return
+    }
+
+    if (!window.confirm('Bu görsel aynı model ailesindeki ürün ve varyant kayıtlarından hemen kaldırılacak. Pazaryerindeki görsel değiştirilmez. Devam edilsin mi?')) return
+    setDeletingProductMediaKey(targetKey)
+    try {
+      const product = productToEdit.data
+      const result = await hubApi<{ deletedCount: number; version: number; productVersions: Record<string, number> }>('/files/product-media-item', {
+        method: 'DELETE',
+        headers: { 'Idempotency-Key': key(), 'If-Match': `"v${product.version}"` },
+        body: JSON.stringify({ productId: product.id, url })
+      })
+      initialEditMediaUrl.current = savedMediaUrls.filter(item => mediaImageKey(item) !== targetKey).join('\n')
+      initialEditVariantMediaRefs.current = Object.fromEntries(Object.entries(initialEditVariantMediaRefs.current).map(([variantId, references]) => [variantId, references.filter(removeVariantReference)]))
+      updateField('mediaUrls', nextDraftMediaUrls.join('\n'))
+      setVariantRows(rows => rows.map(row => ({ ...row, mediaRefs: row.mediaRefs.filter(removeVariantReference) })))
+      setFamilyMediaOrder(current => current.filter(item => mediaImageKey(item) !== targetKey))
+
+      const cachedProduct = client.getQueryData<Product>(['product', product.id]) ?? product
+      const cachedMediaUrls = (cachedProduct.mediaUrls ?? []).filter(item => mediaImageKey(item) !== targetKey)
+      const productVersion = result.productVersions[product.id] ?? result.version
+      initializedEditProductKey.current = `${product.id}:${productVersion}`
+      client.setQueryData<Product>(['product', product.id], {
+        ...cachedProduct,
+        version: productVersion,
+        mediaUrls: cachedMediaUrls,
+        primaryImageUrl: cachedProduct.primaryImageUrl && mediaImageKey(cachedProduct.primaryImageUrl) === targetKey ? cachedMediaUrls[0] ?? null : cachedProduct.primaryImageUrl,
+        familyMediaUrls: (cachedProduct.familyMediaUrls ?? []).filter(item => mediaImageKey(item) !== targetKey),
+        familyMediaItems: (cachedProduct.familyMediaItems ?? []).filter(item => mediaImageKey(item.url) !== targetKey),
+        familyOrderedMediaUrls: cachedProduct.familyOrderedMediaUrls?.filter(item => mediaImageKey(item) !== targetKey),
+        variants: cachedProduct.variants.map(variant => ({ ...variant, mediaUrls: (variant.mediaUrls ?? []).filter(item => mediaImageKey(item) !== targetKey) }))
+      })
+      await productToEdit.refetch()
+      await client.invalidateQueries({ queryKey: ['products'] })
+      showFeedback(`${result.deletedCount} görsel bağlantısı kaldırıldı ve ürün yenilendi.`, 'success')
+    } catch (reason) {
+      showFeedback(reason instanceof Error ? reason.message : 'Görsel kaldırılamadı.', 'error')
+    } finally {
+      setDeletingProductMediaKey(null)
+    }
   }
   async function removeFamilyMedia(item: { url: string; mediaIds: string[]; sourceProductTitles: string[] }) {
     if (item.mediaIds.length === 0) {
@@ -2697,6 +2751,22 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       ? `${safeRows.length} varyanta uygulandı; ${skippedCount} satır çakışma nedeniyle korunuyor.`
       : `${safeRows.length} varyantın stok kodu barkoddan güncellendi.`
     setNotice(message); showFeedback(message, skippedCount ? 'info' : 'success'); setBarcodeSkuMenuOpen(false)
+  }
+
+  function regenerateVariantIdentifiers() {
+    const identifiers = buildSequentialVariantIdentifiers(form.modelCode, variantRows.length)
+    if (!identifiers.length) {
+      const message = !form.modelCode.trim() ? 'Otomatik kod üretmek için önce model kodunu girin.' : 'Kod üretimi için varyant sayısı 1-1000 arasında olmalıdır.'
+      setNotice(message); showFeedback(message, 'error'); setBarcodePasteMenuOpen(false)
+      return
+    }
+    const firstCode = identifiers[0].barcode
+    const lastCode = identifiers.at(-1)?.barcode ?? firstCode
+    if (!window.confirm(`${variantRows.length} varyantın mevcut barkod ve stok kodları silinip ${firstCode}${firstCode === lastCode ? '' : ` – ${lastCode}`} olarak değiştirilecek. Başka üründe kullanılan kodlar Kaydet sırasında reddedilir. Devam edilsin mi?`)) return
+
+    setVariantRows(rows => rows.map((row, index) => ({ ...row, barcode: identifiers[index].barcode, sku: identifiers[index].sku })))
+    const message = `${identifiers.length} varyant için barkod ve stok kodu model kodundan yeniden oluşturuldu. Kalıcı olması için Kaydet’e basın.`
+    setNotice(message); showFeedback(message, 'success'); setBarcodePasteMenuOpen(false)
   }
 
   async function pasteBarcodesFromClipboard(mode: 'missing' | 'all') {
@@ -3287,12 +3357,13 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
             const ownIndex = ownedUrl === undefined ? -1 : mediaUrls.findIndex(current => mediaImageKey(current) === mediaImageKey(url))
             const familyItem = familyMediaItems.find(item => mediaImageKey(item.url) === mediaImageKey(url))
             const isProductMedia = ownIndex >= 0
+            const deletingProductMedia = deletingProductMediaKey === mediaImageKey(url)
             const pendingKey = familyItem?.mediaIds.join(',') ?? ''
             const deleting = pendingKey !== '' && deletingFamilyMediaKey === pendingKey
-            return <figure key={`family-${mediaImageKey(url)}`} className={`image-preview-card media-sortable${isProductMedia ? '' : ' family-media-preview'} ${dragOverMediaIndex === index ? 'is-media-drag-over' : ''}`} draggable={!submitting} onDragStart={event => { setDraggedMediaIndex(index); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', String(index)) }} onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDragOverMediaIndex(index) }} onDrop={event => { event.preventDefault(); const transferValue = event.dataTransfer.getData('text/plain'); const transferIndex = transferValue === '' ? draggedMediaIndex ?? -1 : Number(transferValue); reorderMedia(Number.isInteger(transferIndex) ? transferIndex : -1, index) }} onDragEnd={() => { setDraggedMediaIndex(null); setDragOverMediaIndex(null) }}>
+            return <figure key={`family-${mediaImageKey(url)}`} className={`image-preview-card media-sortable${isProductMedia ? '' : ' family-media-preview'} ${dragOverMediaIndex === index ? 'is-media-drag-over' : ''}`} draggable={!submitting && !deletingProductMediaKey} onDragStart={event => { setDraggedMediaIndex(index); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', String(index)) }} onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDragOverMediaIndex(index) }} onDrop={event => { event.preventDefault(); const transferValue = event.dataTransfer.getData('text/plain'); const transferIndex = transferValue === '' ? draggedMediaIndex ?? -1 : Number(transferValue); reorderMedia(Number.isInteger(transferIndex) ? transferIndex : -1, index) }} onDragEnd={() => { setDraggedMediaIndex(null); setDragOverMediaIndex(null) }}>
               <img src={url} alt={`${form.title || 'Ürün'} ${index + 1}`} className="clickable-thumb" onClick={() => setLightboxImage({ url, title: isProductMedia ? form.title || 'Ürün Görseli' : `${form.title || 'Ürün'} · Renk ailesi` })} title="Büyütmek için tıklayın" />
               {isProductMedia
-                ? <button type="button" className="image-remove-btn" title="Görseli kaldır" onClick={event => { event.stopPropagation(); updateField('mediaUrls', mediaUrls.filter(current => mediaImageKey(current) !== mediaImageKey(url)).join('\n')); const removedRef = `url|${ownedUrl}`; setVariantRows(rows => rows.map(row => ({ ...row, mediaRefs: row.mediaRefs.filter(reference => reference !== removedRef) }))) }}><UiIcon name="close" /></button>
+                ? <button type="button" className="image-remove-btn" disabled={deletingProductMedia || submitting} title="Görseli üründen hemen kaldır" aria-label="Görseli üründen hemen kaldır" onClick={event => { event.stopPropagation(); if (ownedUrl) void removeProductMedia(ownedUrl) }}><UiIcon name={deletingProductMedia ? 'loader' : 'close'} /></button>
                 : <button type="button" className="image-remove-btn" disabled={deleting || !familyItem} title="Renk ailesi görselini kaynak kayıtlardan kaldır" aria-label="Renk ailesi görselini kaldır" onClick={event => { event.stopPropagation(); if (familyItem) void removeFamilyMedia(familyItem) }}><UiIcon name={deleting ? 'loader' : 'close'} /></button>}
               <figcaption>{isProductMedia ? `${ownIndex === 0 && !mediaFiles.length ? 'Ana görsel' : `${ownIndex + 1}. görsel`} · sürükle` : 'Renk varyantı görseli · sürükle'}</figcaption>
             </figure>
@@ -3467,9 +3538,12 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     <ErrorBox error={error ?? categories.error ?? brands.error ?? connections.error} />
     <OperationFeedbackToast feedback={feedback} onClose={() => { setFeedback(null); setNotice('') }} />
     {barcodePasteMenuOpen && <VariantHeaderActionMenu anchorRef={barcodePasteActionRef}>
-      <p className="variant-header-action-menu-title">Barkodları panodan yapıştır</p>
+      <p className="variant-header-action-menu-title">Barkod işlemleri</p>
+      <button type="button" role="menuitem" disabled={!variantRows.length || !form.modelCode.trim()} onClick={regenerateVariantIdentifiers}><span><strong>Model kodundan barkod ve stok kodu üret</strong><small>{variantRows.length.toLocaleString('tr-TR')} varyant · iki kod alanı da değişir</small></span><UiIcon name="refresh" /></button>
+      <p className="variant-header-action-menu-title">Panodan barkod yapıştır</p>
       <button type="button" role="menuitem" disabled={!emptyBarcodeRowCount} onClick={() => void pasteBarcodesFromClipboard('missing')}><span><strong>Boş barkodları doldur</strong><small>{emptyBarcodeRowCount.toLocaleString('tr-TR')} boş varyant</small></span><UiIcon name="arrowRight" /></button>
       <button type="button" role="menuitem" disabled={!variantRows.length} onClick={() => void pasteBarcodesFromClipboard('all')}><span><strong>Tüm barkodları değiştir</strong><small>{variantRows.length.toLocaleString('tr-TR')} varyant sırası</small></span><UiIcon name="alert" /></button>
+      <p>Otomatik üretim mevcut barkod ve stok kodlarının üzerine yazar. Değişiklikleri ayrıca Kaydet ile kaydedin.</p>
     </VariantHeaderActionMenu>}
     {barcodeSkuMenuOpen && <VariantHeaderActionMenu anchorRef={barcodeSkuActionRef}>
       <p className="variant-header-action-menu-title">Stok kodlarını barkodlardan düzenle</p>
