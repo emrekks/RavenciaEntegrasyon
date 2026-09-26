@@ -19,7 +19,7 @@ import { classifyPublicationAttributeIssues, type PublicationAttributeSelection,
 import { productMediaUrlIssue } from './product-media-url'
 import { barcodeClipboardIssue, parseBarcodeClipboardValues } from './product-barcode-paste'
 import { productCopyIdentifierConflicts } from './product-copy-identifiers'
-import { isPublicationStatusJobRunning, missingPublicationChecks, publicationStatusLabel, publicationStatusNote, publicationStatusTone } from './publication-status'
+import { isPublicationLive, isPublicationSelectionDisabled, isPublicationStatusJobRunning, missingPublicationChecks, publicationStatusLabel, publicationStatusNote, publicationStatusTone } from './publication-status'
 import { productPlatformDisplayLabel, productPlatformDisplayState } from './product-platform-status'
 import { quickPlatformUpdateTargets } from './platform-update-targets'
 import { readVariantMediaAssignmentDraft, updateVariantMediaAssignmentDraft, variantMediaAssignmentKey, type VariantMediaAssignmentDrafts } from './variant-media-assignments'
@@ -1781,7 +1781,7 @@ function CategoryAttributeMappingPanel({
   </section>
 }
 
-function PublishPlatformCard({ card, selected, productId, categoryId, productChecks, selectedAttributes, onSelect }: {
+function PublishPlatformCard({ card, selected, productId, categoryId, productChecks, selectedAttributes, onSelect, onDeselect }: {
   card: { code: string; name: string; initial: string; tone: string; connection: MarketplaceConnection }
   selected: boolean
   productId?: string
@@ -1789,6 +1789,7 @@ function PublishPlatformCard({ card, selected, productId, categoryId, productChe
   productChecks: Array<{ title: string; detail: string; ok: boolean }>
   selectedAttributes: PublicationAttributeSelection[]
   onSelect: () => void
+  onDeselect: () => void
 }) {
   const client = useQueryClient()
   const statusKey = ['publication-status', productId, card.connection.id]
@@ -1824,6 +1825,12 @@ function PublishPlatformCard({ card, selected, productId, categoryId, productChe
       ? 'Yayın durumu alınamadı'
       : publicationStatusLabel(publication.data?.actualStatus, publication.data?.lastJobStatus)
   const publicationTone = publicationStatusTone(publication.data?.actualStatus, publication.data?.lastJobStatus)
+  const alreadyPublished = isPublicationLive(publication.data?.actualStatus)
+  const publicationCheckPending = Boolean(productId && publication.isPending)
+  const publicationCheckUnavailable = Boolean(productId && publication.isError && !publication.data)
+  useEffect(() => {
+    if (alreadyPublished && selected) onDeselect()
+  }, [alreadyPublished, onDeselect, selected])
   const publicationNote = publicationStatusNote(publication.data?.lastRejectionCode)
   const missingChecks = missingPublicationChecks(productChecks)
   const mappingReadiness = useQuery({
@@ -1892,9 +1899,9 @@ function PublishPlatformCard({ card, selected, productId, categoryId, productChe
     optionalMappingWarnings.length ? `${issueListId}-optional` : ''
   ].filter(Boolean).join(' ') || undefined
   return <article className={`publish-platform-card ${selected ? 'selected' : ''}`}>
-    <button type="button" className="publish-platform-card-head" onClick={onSelect} aria-pressed={selected} aria-describedby={issueDescriptionIds} disabled={!selected && selectionBlocked}>
+    <button type="button" className="publish-platform-card-head" onClick={onSelect} aria-pressed={selected} aria-describedby={issueDescriptionIds} title={alreadyPublished ? 'Ürün bu platformda zaten yayında.' : undefined} disabled={isPublicationSelectionDisabled(publication.data?.actualStatus, selected, publicationCheckPending, publicationCheckUnavailable, selectionBlocked)}>
       <span className={`publish-platform-mark ${card.tone}`}><img className={`publish-platform-logo ${platformLogoClass(card.connection.platformCode)}`} src={platformLogoSource(card.connection.platformCode) ?? '/platforms/trendyol.png'} alt="" aria-hidden="true" /></span>
-      <span><strong>{card.name}</strong><small>{selected ? 'Yayın için seçildi' : mappingCheckPending ? 'Zorunlu alanlar kontrol ediliyor…' : selectionBlocked ? 'Zorunlu eksikler giderilmeden seçilemez' : 'Yayın için seçilmedi'}</small></span>
+      <span><strong>{card.name}</strong><small>{alreadyPublished ? 'Zaten yayında · yeniden seçilemez' : publicationCheckPending ? 'Yayın durumu kontrol ediliyor…' : publicationCheckUnavailable ? 'Yayın durumu doğrulanamadı' : selected ? 'Yayın için seçildi' : mappingCheckPending ? 'Zorunlu alanlar kontrol ediliyor…' : selectionBlocked ? 'Zorunlu eksikler giderilmeden seçilemez' : 'Yayın için seçilmedi'}</small></span>
       <i className={`publish-platform-toggle ${selected ? 'on' : ''}`} aria-hidden="true"><b /></i>
     </button>
     <dl className="publish-platform-facts">
@@ -3519,6 +3526,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
               productChecks={productChecks}
               selectedAttributes={publicationAttributeSelections}
               onSelect={() => updateChannel(card.connection.id)}
+              onDeselect={() => setSelectedChannelIds(current => current.filter(id => id !== card.connection.id))}
             />) : <div className="publish-connections-empty"><strong>Aktif bağlantı bulunamadı</strong><p>Yayınlama için önce Platformlar sayfasından aktif bir bağlantı oluşturun.</p><Link to="/integrations">Platformları yönet <UiIcon name="arrowRight" /></Link></div>}
           </div>
           <div className="publish-selection-footer">

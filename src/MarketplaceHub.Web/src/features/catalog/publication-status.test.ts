@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isPublicationStatusJobRunning, isPublicationStatusPending, missingPublicationChecks, publicationStatusLabel, publicationStatusNote, publicationStatusTone } from './publication-status'
+import { isPublicationLive, isPublicationSelectionDisabled, isPublicationStatusJobRunning, isPublicationStatusPending, missingPublicationChecks, publicationStatusLabel, publicationStatusNote, publicationStatusTone } from './publication-status'
 
 describe('product publication status', () => {
   it('describes the marketplace result rather than the connection state', () => {
@@ -14,6 +14,23 @@ describe('product publication status', () => {
     expect(isPublicationStatusPending('LIVE', 'COMPLETED')).toBe(false)
     expect(isPublicationStatusJobRunning('PENDING')).toBe(true)
     expect(isPublicationStatusJobRunning('RETRY_SCHEDULED')).toBe(false)
+  })
+
+  it('locks only fully live listings against selecting them for publication again', () => {
+    expect(isPublicationLive('LIVE')).toBe(true)
+    expect(isPublicationLive(' live ')).toBe(true)
+    expect(isPublicationLive('PARTIAL_LIVE')).toBe(false)
+    expect(isPublicationLive('UNKNOWN')).toBe(false)
+    expect(isPublicationLive(null)).toBe(false)
+  })
+
+  it('blocks live listings and fails closed while publication status is unavailable', () => {
+    expect(isPublicationSelectionDisabled('LIVE', false, false, false, false)).toBe(true)
+    expect(isPublicationSelectionDisabled('LIVE', true, false, false, false)).toBe(true)
+    expect(isPublicationSelectionDisabled('UNKNOWN', false, true, false, false)).toBe(true)
+    expect(isPublicationSelectionDisabled('UNKNOWN', false, false, true, false)).toBe(true)
+    expect(isPublicationSelectionDisabled('PARTIAL_LIVE', false, false, false, false)).toBe(false)
+    expect(isPublicationSelectionDisabled('UNKNOWN', true, false, false, true)).toBe(false)
   })
 
   it('shows an unknown listing as not published after a successful missing-product check', () => {

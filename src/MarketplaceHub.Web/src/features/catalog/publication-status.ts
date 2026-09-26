@@ -61,6 +61,21 @@ export function isPublicationStatusJobRunning(lastJobStatus?: string | null) {
   return activelyRunningJobStatuses.has(lastJobStatus?.trim().toUpperCase() ?? '')
 }
 
+export function isPublicationLive(actualStatus?: string | null) {
+  return actualStatus?.trim().toUpperCase() === 'LIVE'
+}
+
+export function isPublicationSelectionDisabled(
+  actualStatus: string | null | undefined,
+  selected: boolean,
+  statusPending: boolean,
+  statusUnavailable: boolean,
+  readinessBlocked: boolean
+) {
+  return isPublicationLive(actualStatus)
+    || (!selected && (statusPending || statusUnavailable || readinessBlocked))
+}
+
 export function publicationStatusLabel(actualStatus?: string | null, lastJobStatus?: string | null) {
   const status = actualStatus?.trim().toUpperCase() ?? ''
   if (status && status !== 'UNKNOWN') return publicationLabels[status] ?? statusLabel(status)
