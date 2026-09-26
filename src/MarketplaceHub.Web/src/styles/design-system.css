@@ -11191,3 +11191,12 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Keep the connection and live labels readable against the dark publication card. */
+.app-shell.stitch-shell main .publish-platform-facts .publish-platform-status.active,
+.app-shell.stitch-shell main .publish-platform-fact-publication .publish-platform-status.status-success {
+  min-height: 28px;
+  padding-inline: 8px;
+  color: #fff;
+  border-color: var(--rv-color-border-strong);
+}
