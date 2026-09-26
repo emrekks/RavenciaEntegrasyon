@@ -11198,11 +11198,39 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
   }
 }
 
-/* Keep the connection and live labels readable against the dark publication card. */
+/* Keep publication facts, labels and badges on one shared alignment scale. */
+.app-shell.stitch-shell main .publish-platform-facts > div {
+  grid-template-rows: 20px minmax(28px, auto) auto;
+  align-content: start;
+  gap: 5px;
+}
+.app-shell.stitch-shell main .publish-platform-facts dt {
+  display: flex;
+  min-height: 20px;
+  align-items: center;
+  font-size: 12px;
+  line-height: 20px;
+}
+.app-shell.stitch-shell main .publish-platform-facts dd {
+  display: flex;
+  min-width: 0;
+  min-height: 28px;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+}
+.app-shell.stitch-shell main .publish-platform-facts .publish-platform-status {
+  min-height: 28px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.2;
+}
 .app-shell.stitch-shell main .publish-platform-facts .publish-platform-status.active,
 .app-shell.stitch-shell main .publish-platform-fact-publication .publish-platform-status.status-success {
-  min-height: 28px;
-  padding-inline: 8px;
-  color: #fff;
-  border-color: var(--rv-color-border-strong);
+  min-width: 108px;
+  color: var(--rv-color-ink);
+  background: color-mix(in srgb, var(--rv-color-accent) 20%, var(--rv-color-surface-raised));
+  border-color: color-mix(in srgb, var(--rv-color-accent) 48%, var(--rv-color-border));
+  justify-content: center;
 }
