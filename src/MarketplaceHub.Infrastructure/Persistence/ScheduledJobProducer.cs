@@ -240,16 +240,25 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         {
             var defaultsForConnection = DefaultPolicies()
                 .Where(defaults => connection.PlatformCode != "SHOPIFY" || IsShopifyReadPolicy(defaults.ResourceType))
-                .Select(defaults => connection.PlatformCode == "SHOPIFY" && defaults.ResourceType == "ORDERS"
-                    ? defaults with { IntervalSeconds = 900, JitterSeconds = 30 }
-                    : defaults);
+                .Select(defaults =>
+                {
+                    var cadence = ScheduledOrderPollingCadencePolicy.ForPlatform(
+                        connection.PlatformCode,
+                        defaults.ResourceType,
+                        defaults.IntervalSeconds,
+                        defaults.JitterSeconds);
+                    return defaults with { IntervalSeconds = cadence.IntervalSeconds, JitterSeconds = cadence.JitterSeconds };
+                });
             foreach (var defaults in defaultsForConnection)
             {
                 var current = existing.SingleOrDefault(x => x.TenantId == connection.TenantId && x.ConnectionId == connection.ConnectionId && x.ResourceType == defaults.ResourceType);
                 if (current is not null)
                 {
                     // Upgrade only exact application defaults. Explicit user choices remain untouched.
-                    if (IsKnownDefault(current))
+                    if (IsKnownDefault(current)
+                        && (current.IntervalSeconds != defaults.IntervalSeconds
+                            || current.OverlapSeconds != defaults.OverlapSeconds
+                            || current.JitterSeconds != defaults.JitterSeconds))
                     {
                         current.IntervalSeconds = defaults.IntervalSeconds;
                         current.OverlapSeconds = defaults.OverlapSeconds;
@@ -306,11 +315,15 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         {
             "ORDERS" => current.IntervalSeconds == 30 && current.OverlapSeconds == 600 && current.JitterSeconds == 2
                 || current.IntervalSeconds == 60 && current.OverlapSeconds == 600 && (current.JitterSeconds == 0 || current.JitterSeconds == 5)
+                || current.IntervalSeconds == 180 && current.OverlapSeconds == 600 && (current.JitterSeconds == 0 || current.JitterSeconds == 5)
+                || current.IntervalSeconds == 480 && current.OverlapSeconds == 600 && (current.JitterSeconds == 0 || current.JitterSeconds == 30)
                 || current.IntervalSeconds == 900 && current.OverlapSeconds == 600 && (current.JitterSeconds == 0 || current.JitterSeconds == 30),
             "ORDER_RECOVERY" => current.IntervalSeconds == 900 && current.OverlapSeconds == 600 && (current.JitterSeconds == 0 || current.JitterSeconds == 30),
             "RETURNS" => current.IntervalSeconds == 60 && current.OverlapSeconds == 900 && current.JitterSeconds == 5
                 || current.IntervalSeconds == 180 && current.OverlapSeconds == 900 && (current.JitterSeconds == 0 || current.JitterSeconds == 10),
-            "ORDER_LIFECYCLE" or "RETURN_LIFECYCLE" => current.IntervalSeconds == 180 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 10),
+            "ORDER_LIFECYCLE" => current.IntervalSeconds == 180 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 10)
+                || current.IntervalSeconds == 480 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 10),
+            "RETURN_LIFECYCLE" => current.IntervalSeconds == 180 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 10),
             "ORDER_RECONCILE_SHORT" or "RETURN_RECONCILE_SHORT" or "STOCK_RECONCILE_SHORT" => current.IntervalSeconds == 900 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 30),
             "ORDER_RECONCILE_MEDIUM" or "RETURN_RECONCILE_MEDIUM" or "STOCK_RECONCILE_MEDIUM" => current.IntervalSeconds == 3600 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 120),
             "ORDER_RECONCILE_DAILY" or "RETURN_RECONCILE_DAILY" or "STOCK_RECONCILE_DAILY" => current.IntervalSeconds == 86_400 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 900),
