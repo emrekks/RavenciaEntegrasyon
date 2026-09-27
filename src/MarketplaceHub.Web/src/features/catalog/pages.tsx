@@ -13,7 +13,7 @@ import { toggleProductAttributeValue } from './attribute-selection'
 import { filterAttributeOptionValues } from './attribute-value-search'
 import { isStoredProductMediaUrl, mediaImageKey, mediaRefsEqual, mediaRefsSameSet, mediaUrlsInPreferredOrder, modelCodeForExistingVariant, publicProductMediaUrls, reorderMediaUrls, uniqueMediaUrls } from './product-media-editor'
 import { applyVariantBulkEditValue, variantBulkEditIssue, type VariantBulkEditField } from './variant-bulk-edit'
-import { buildSequentialVariantIdentifiers, buildVariantGenerationDefaults, resolveVariantSyncAttributeIds } from './variant-generation'
+import { applyGeneratedVariantCodes, buildSequentialVariantCodes, buildVariantGenerationDefaults, resolveVariantSyncAttributeIds } from './variant-generation'
 import { mergeVariantOptionEntries, normalizeVariantOptionValue } from './variant-option-matching'
 import { classifyPublicationAttributeIssues, type PublicationAttributeSelection, type PublicationMappingReference, type PublicationValueReferenceSet } from './publication-attribute-readiness'
 import { productMediaUrlIssue } from './product-media-url'
@@ -2757,20 +2757,21 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     setNotice(message); showFeedback(message, skippedCount ? 'info' : 'success'); setBarcodeSkuMenuOpen(false)
   }
 
-  function regenerateVariantIdentifiers() {
-    const identifiers = buildSequentialVariantIdentifiers(form.modelCode, variantRows.length)
-    if (!identifiers.length) {
+  function regenerateVariantCodes(target: 'barcode' | 'sku') {
+    const codes = buildSequentialVariantCodes(form.modelCode, variantRows.length)
+    if (!codes.length) {
       const message = !form.modelCode.trim() ? 'Otomatik kod üretmek için önce model kodunu girin.' : 'Kod üretimi için varyant sayısı 1-1000 arasında olmalıdır.'
-      setNotice(message); showFeedback(message, 'error'); setBarcodePasteMenuOpen(false)
+      setNotice(message); showFeedback(message, 'error'); setBarcodePasteMenuOpen(false); setBarcodeSkuMenuOpen(false)
       return
     }
-    const firstCode = identifiers[0].barcode
-    const lastCode = identifiers.at(-1)?.barcode ?? firstCode
-    if (!window.confirm(`${variantRows.length} varyantın mevcut barkod ve stok kodları silinip ${firstCode}${firstCode === lastCode ? '' : ` – ${lastCode}`} olarak değiştirilecek. Başka üründe kullanılan kodlar Kaydet sırasında reddedilir. Devam edilsin mi?`)) return
+    const firstCode = codes[0]
+    const lastCode = codes.at(-1) ?? firstCode
+    const fieldLabel = target === 'barcode' ? 'barkodları' : 'stok kodları'
+    if (!window.confirm(`${variantRows.length} varyantın mevcut ${fieldLabel} ${firstCode}${firstCode === lastCode ? '' : ` – ${lastCode}`} olarak değiştirilecek. Diğer kod alanı korunur. Başka üründe kullanılan kodlar Kaydet sırasında reddedilir. Devam edilsin mi?`)) return
 
-    setVariantRows(rows => rows.map((row, index) => ({ ...row, barcode: identifiers[index].barcode, sku: identifiers[index].sku })))
-    const message = `${identifiers.length} varyant için barkod ve stok kodu model kodundan yeniden oluşturuldu. Kalıcı olması için Kaydet’e basın.`
-    setNotice(message); showFeedback(message, 'success'); setBarcodePasteMenuOpen(false)
+    setVariantRows(rows => applyGeneratedVariantCodes(rows, target, codes))
+    const message = `${codes.length} varyantın ${target === 'barcode' ? 'barkodu' : 'stok kodu'} model kodundan oluşturuldu; diğer kod alanı korundu. Kalıcı olması için Kaydet’e basın.`
+    setNotice(message); showFeedback(message, 'success'); setBarcodePasteMenuOpen(false); setBarcodeSkuMenuOpen(false)
   }
 
   async function pasteBarcodesFromClipboard(mode: 'missing' | 'all') {
@@ -3201,7 +3202,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const barcodeRowCount = variantRows.filter(row => row.barcode.trim()).length
   const emptySkuBarcodeRowCount = variantRows.filter(row => row.barcode.trim() && !row.sku.trim()).length
   const emptyBarcodeRowCount = variantRows.length - barcodeRowCount
-  const generatedCodePreview = buildSequentialVariantIdentifiers(form.modelCode, 1)[0]?.barcode ?? 'MODEL-01'
+  const generatedCodePreview = buildSequentialVariantCodes(form.modelCode, 1)[0] ?? 'MODEL-01'
   const selectedBulkMediaGroup = variantMediaModal?.mode === 'bulk' ? bulkMediaGroups.find(group => group.id === variantMediaModal.groupId) : undefined
   const selectedBulkMediaValueId = variantMediaModal?.mode === 'bulk' ? variantMediaModal.valueId : undefined
   const selectedBulkMediaValue = selectedBulkMediaGroup?.values.find(value => value.id === selectedBulkMediaValueId)
@@ -3568,9 +3569,9 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     <ErrorBox error={error ?? categories.error ?? brands.error ?? connections.error} />
     <OperationFeedbackToast feedback={feedback} onClose={() => { setFeedback(null); setNotice('') }} />
     {barcodePasteMenuOpen && <VariantHeaderActionMenu anchorRef={barcodePasteActionRef}>
-      <section className="variant-header-action-menu-group" role="group" aria-label="Model kodundan barkod ve stok kodu üret">
+      <section className="variant-header-action-menu-group" role="group" aria-label="Barkod üret">
         <p className="variant-header-action-menu-title">Model koduyla üret</p>
-        <button type="button" role="menuitem" disabled={!variantRows.length || !form.modelCode.trim()} onClick={regenerateVariantIdentifiers}><span><strong>Model kodundan barkod ve stok kodu üret</strong><small>Barkod: {generatedCodePreview} · Stok Kodu: {generatedCodePreview} · {variantRows.length.toLocaleString('tr-TR')} varyant</small></span><UiIcon name="refresh" /></button>
+        <button type="button" role="menuitem" disabled={!variantRows.length || !form.modelCode.trim()} onClick={() => regenerateVariantCodes('barcode')}><span><strong>Model kodundan barkod üret</strong><small>Barkod: {generatedCodePreview} · {variantRows.length.toLocaleString('tr-TR')} varyant</small></span><UiIcon name="refresh" /></button>
       </section>
       <section className="variant-header-action-menu-group" role="group" aria-label="Panodan barkod yapıştır">
         <p className="variant-header-action-menu-title">Panodan barkod yapıştır</p>
@@ -3579,6 +3580,10 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       </section>
     </VariantHeaderActionMenu>}
     {barcodeSkuMenuOpen && <VariantHeaderActionMenu anchorRef={barcodeSkuActionRef}>
+      <section className="variant-header-action-menu-group" role="group" aria-label="Model kodundan stok kodu üret">
+        <p className="variant-header-action-menu-title">Model koduyla üret</p>
+        <button type="button" role="menuitem" disabled={!variantRows.length || !form.modelCode.trim()} onClick={() => regenerateVariantCodes('sku')}><span><strong>Model kodundan stok kodu üret</strong><small>Stok Kodu: {generatedCodePreview} · {variantRows.length.toLocaleString('tr-TR')} varyant</small></span><UiIcon name="refresh" /></button>
+      </section>
       <section className="variant-header-action-menu-group" role="group" aria-label="Stok kodlarını barkodlardan düzenle">
         <p className="variant-header-action-menu-title">Stok kodlarını barkodlardan düzenle</p>
         <button type="button" role="menuitem" disabled={!emptySkuBarcodeRowCount} onClick={() => applyBarcodeToSku('missing')}><span><strong>Eksik stok kodlarını doldur</strong><small>Sadece boş satırlar · {emptySkuBarcodeRowCount.toLocaleString('tr-TR')} satır</small></span><UiIcon name="arrowRight" /></button>

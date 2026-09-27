@@ -23,13 +23,19 @@ export function buildSequentialVariantCode(modelCode: string, sequence: number):
 }
 
 export function buildSequentialVariantIdentifiers(modelCode: string, variantCount: number) {
+  return buildSequentialVariantCodes(modelCode, variantCount).map(code => ({ barcode: code, sku: code }))
+}
+
+export function buildSequentialVariantCodes(modelCode: string, variantCount: number) {
   const count = Math.floor(variantCount)
   if (!modelCode.trim() || count < 1 || count > 1000) return []
 
-  return Array.from({ length: count }, (_, index) => {
-    const code = buildSequentialVariantCode(modelCode, index + 1)
-    return { barcode: code, sku: code }
-  })
+  return Array.from({ length: count }, (_, index) => buildSequentialVariantCode(modelCode, index + 1))
+}
+
+export function applyGeneratedVariantCodes<T extends { barcode: string; sku: string }>(rows: T[], target: 'barcode' | 'sku', codes: string[]) {
+  if (rows.length !== codes.length) return rows
+  return rows.map((row, index) => ({ ...row, [target]: codes[index] }))
 }
 
 export function buildVariantGenerationDefaults({ baseSku, modelCode, sequence, automaticBarcodes, fallbackSalePrice, fallbackListPrice }: VariantGenerationDefaultsInput) {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildSequentialVariantCode, buildSequentialVariantIdentifiers, buildVariantGenerationDefaults, resolveVariantSyncAttributeIds } from './variant-generation'
+import { applyGeneratedVariantCodes, buildSequentialVariantCode, buildSequentialVariantCodes, buildSequentialVariantIdentifiers, buildVariantGenerationDefaults, resolveVariantSyncAttributeIds } from './variant-generation'
 
 describe('variant generation defaults', () => {
   it('uses the model code for sequential automatic barcodes and leaves SKU and prices empty', () => {
@@ -32,6 +32,22 @@ describe('variant generation defaults', () => {
       { barcode: 'MZ049BOC-02', sku: 'MZ049BOC-02' },
       { barcode: 'MZ049BOC-03', sku: 'MZ049BOC-03' },
       { barcode: 'MZ049BOC-04', sku: 'MZ049BOC-04' },
+    ])
+  })
+
+  it('generates model-based codes independently for a selected identifier column', () => {
+    expect(buildSequentialVariantCodes('MZ051BYC', 3)).toEqual(['MZ051BYC-01', 'MZ051BYC-02', 'MZ051BYC-03'])
+  })
+
+  it('updates only the barcode field when barcodes are generated', () => {
+    expect(applyGeneratedVariantCodes([{ barcode: 'old-barcode', sku: 'keep-sku' }], 'barcode', ['MZ051BYC-01'])).toEqual([
+      { barcode: 'MZ051BYC-01', sku: 'keep-sku' },
+    ])
+  })
+
+  it('updates only the SKU field when stock codes are generated', () => {
+    expect(applyGeneratedVariantCodes([{ barcode: 'keep-barcode', sku: 'old-sku' }], 'sku', ['MZ051BYC-01'])).toEqual([
+      { barcode: 'keep-barcode', sku: 'MZ051BYC-01' },
     ])
   })
 
