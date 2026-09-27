@@ -63,8 +63,20 @@ export function classifyPublicationAttributeIssues(input: {
   const mappedExternalIds = new Set(currentAttributeMappings.map(mapping => mapping.externalId))
 
   for (const remote of remoteById.values()) {
-    if (remote.isRequired && !mappedExternalIds.has(remote.externalId)) {
+    if (!remote.isRequired) continue
+    if (!mappedExternalIds.has(remote.externalId)) {
       addIssue(true, { attribute: remote.name, detail: 'Zorunlu Trendyol özelliği için güncel ve doğrulanmış eşleme yok.' })
+      continue
+    }
+
+    const mappedLocalIds = new Set(currentAttributeMappings
+      .filter(mapping => mapping.externalId === remote.externalId)
+      .map(mapping => mapping.localId))
+    const hasSelectedValue = input.selectedAttributes.some(selected =>
+      mappedLocalIds.has(selected.attributeId) && (selected.values.length > 0 || selected.hasCustomValue)
+    )
+    if (!hasSelectedValue) {
+      addIssue(true, { attribute: remote.name, detail: 'Zorunlu Trendyol özelliği için ürün veya varyant değeri seçilmemiş ya da girilmemiş.' })
     }
   }
 

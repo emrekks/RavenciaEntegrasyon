@@ -62,6 +62,28 @@ describe('publication attribute readiness', () => {
     expect(result.requiredIssues).toEqual([{ attribute: 'Beden', detail: 'Zorunlu Trendyol özelliği için güncel ve doğrulanmış eşleme yok.' }])
   })
 
+  it('flags a required Trendyol attribute that is mapped but has no product or variant value', () => {
+    const result = classifyPublicationAttributeIssues({
+      ...baseInput,
+      selectedAttributes: [{ ...baseInput.selectedAttributes[0], values: [], hasCustomValue: false }],
+      remoteAttributes: [{ ...baseInput.remoteAttributes[0], isRequired: true }]
+    })
+
+    expect(result.requiredIssues).toEqual([{
+      attribute: 'Ek Özellik',
+      detail: 'Zorunlu Trendyol özelliği için ürün veya varyant değeri seçilmemiş ya da girilmemiş.'
+    }])
+  })
+
+  it('accepts a populated value for a mapped required Trendyol attribute', () => {
+    const result = classifyPublicationAttributeIssues({
+      ...baseInput,
+      remoteAttributes: [{ ...baseInput.remoteAttributes[0], isRequired: true }]
+    })
+
+    expect(result.requiredIssues).toEqual([])
+  })
+
   it('does not warn for an unused optional attribute', () => {
     const result = classifyPublicationAttributeIssues({
       ...baseInput,

@@ -3290,6 +3290,12 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       if (rowValueId) valueIds.add(rowValueId)
       else if (optionValue && isOptionRequirement(requirement)) hasCustomValue = true
     }
+    const usesManualWebColor = requirement.attributeId === webColorRequirement?.attributeId && !webColorAutoEnabled
+    if (usesManualWebColor) {
+      valueIds.clear()
+      if (manualWebColorValueId) valueIds.add(manualWebColorValueId)
+      hasCustomValue = false
+    }
     return {
       attributeId: requirement.attributeId,
       name: requirement.attribute.name,
@@ -3297,7 +3303,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       values: [...valueIds].map(id => ({ id, label: requirement.attribute.values.find(value => value.id === id)?.value ?? '' })),
       hasCustomValue
     }
-  }), [allRequirements, attributeSelections, attributeTextValues, variantRows])
+  }), [allRequirements, attributeSelections, attributeTextValues, manualWebColorValueId, variantRows, webColorAutoEnabled, webColorRequirement])
   const canAddVariantCombinations = useMemo(() => {
     if (!variantAttributeIds.length || (automaticBarcodeGeneration && !form.modelCode.trim())) return false
     try {
