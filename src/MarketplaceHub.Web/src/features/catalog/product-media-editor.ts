@@ -9,9 +9,13 @@ export function publicProductMediaUrls(urls: string[]): string[] {
 }
 
 export function reorderMediaUrls(urls: string[], sourceIndex: number, targetIndex: number): string[] {
-  if (sourceIndex < 0 || targetIndex < 0 || sourceIndex >= urls.length || targetIndex >= urls.length || sourceIndex === targetIndex) return urls
+  return reorderItems(urls, sourceIndex, targetIndex)
+}
 
-  const next = [...urls]
+export function reorderItems<T>(items: T[], sourceIndex: number, targetIndex: number): T[] {
+  if (sourceIndex < 0 || targetIndex < 0 || sourceIndex >= items.length || targetIndex >= items.length || sourceIndex === targetIndex) return items
+
+  const next = [...items]
   const [moved] = next.splice(sourceIndex, 1)
   next.splice(targetIndex, 0, moved)
   return next

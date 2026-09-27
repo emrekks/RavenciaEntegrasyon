@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isStoredProductMediaUrl, mediaImageKey, mediaRefsEqual, mediaRefsSameSet, mediaUrlsInPreferredOrder, modelCodeForExistingVariant, publicProductMediaUrls, reorderMediaUrls, uniqueMediaUrls } from './product-media-editor'
+import { isStoredProductMediaUrl, mediaImageKey, mediaRefsEqual, mediaRefsSameSet, mediaUrlsInPreferredOrder, modelCodeForExistingVariant, publicProductMediaUrls, reorderItems, reorderMediaUrls, uniqueMediaUrls } from './product-media-editor'
 
 describe('product media editing', () => {
   it('does not import a family image when it is outside the editable product media list', () => {
@@ -11,6 +11,14 @@ describe('product media editing', () => {
   it('reorders only URLs owned by the editable media list', () => {
     expect(reorderMediaUrls(['first.jpg', 'second.jpg', 'third.jpg'], 2, 0))
       .toEqual(['third.jpg', 'first.jpg', 'second.jpg'])
+  })
+
+  it('reorders newly selected upload files before the first product save', () => {
+    const first = { id: 'first', name: 'front.jpg' }
+    const second = { id: 'second', name: 'side.jpg' }
+    const third = { id: 'third', name: 'back.jpg' }
+
+    expect(reorderItems([first, second, third], 2, 0)).toEqual([third, first, second])
   })
 
   it('supports repeated reorders by stable positions, including repeated image URLs', () => {

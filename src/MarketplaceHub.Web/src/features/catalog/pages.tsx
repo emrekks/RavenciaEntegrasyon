@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import { createPortal } from 'react-dom'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -11,9 +11,10 @@ import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { appendNotification } from '../../shared/notifications'
 import { toggleProductAttributeValue } from './attribute-selection'
 import { filterAttributeOptionValues } from './attribute-value-search'
-import { isStoredProductMediaUrl, mediaImageKey, mediaRefsEqual, mediaRefsSameSet, mediaUrlsInPreferredOrder, modelCodeForExistingVariant, publicProductMediaUrls, reorderMediaUrls, uniqueMediaUrls } from './product-media-editor'
+import { isStoredProductMediaUrl, mediaImageKey, mediaRefsEqual, mediaRefsSameSet, mediaUrlsInPreferredOrder, modelCodeForExistingVariant, publicProductMediaUrls, reorderItems, reorderMediaUrls, uniqueMediaUrls } from './product-media-editor'
 import { applyVariantBulkEditValue, variantBulkEditIssue, type VariantBulkEditField } from './variant-bulk-edit'
 import { applyGeneratedVariantCodes, buildSequentialVariantCodes, buildVariantGenerationDefaults, resolveVariantSyncAttributeIds } from './variant-generation'
+import { filterVariantsByOptions, selectVariantDraftsByKeys, type VariantOptionFilterSelections } from './variant-filtering'
 import { mergeVariantOptionEntries, normalizeVariantOptionValue } from './variant-option-matching'
 import { classifyPublicationAttributeIssues, type PublicationAttributeSelection, type PublicationMappingReference, type PublicationValueReferenceSet } from './publication-attribute-readiness'
 import { productMediaUrlIssue } from './product-media-url'
@@ -255,14 +256,14 @@ function VariantHeaderActionMenu({ anchorRef, children }: { anchorRef: { current
   return createPortal(<div ref={menuRef} className="variant-header-action-menu variant-header-action-menu-portal" role="menu" data-variant-header-popover="true" style={position}>{children}</div>, document.body)
 }
 
-function LocalImagePreview({ file, alt, caption: _caption, onRemove, onZoom }: { file: File, alt: string, caption: string, onRemove?: () => void, onZoom?: (url: string) => void }) {
+function LocalImagePreview({ file, alt, caption: _caption, onRemove, onZoom, draggable = false, isDragOver = false, onDragStart, onDragOver, onDrop, onDragEnd }: { file: File, alt: string, caption: string, onRemove?: () => void, onZoom?: (url: string) => void, draggable?: boolean, isDragOver?: boolean, onDragStart?: (event: DragEvent<HTMLElement>) => void, onDragOver?: (event: DragEvent<HTMLElement>) => void, onDrop?: (event: DragEvent<HTMLElement>) => void, onDragEnd?: () => void }) {
   const [url, setUrl] = useState('');
   useEffect(() => {
     const objectUrl = URL.createObjectURL(file);
     setUrl(objectUrl);
     return () => URL.revokeObjectURL(objectUrl);
   }, [file]);
-  return <figure className="image-preview-card"><img src={url} alt={alt} className="clickable-thumb" onClick={() => onZoom?.(url)} title="Büyütmek için tıklayın" />{onRemove && <button type="button" className="image-remove-btn" title="Görseli sil" onClick={e => { e.stopPropagation(); onRemove(); }}><UiIcon name="close" /></button>}</figure>;
+  return <figure className={`image-preview-card${draggable ? ' media-sortable' : ''}${isDragOver ? ' is-media-drag-over' : ''}`} draggable={draggable} onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop} onDragEnd={onDragEnd}><img src={url} alt={alt} className="clickable-thumb" draggable={false} onClick={() => onZoom?.(url)} title={draggable ? 'Sıralamak için sürükleyin; büyütmek için tıklayın' : 'Büyütmek için tıklayın'} />{onRemove && <button type="button" className="image-remove-btn" title="Görseli sil" onClick={e => { e.stopPropagation(); onRemove(); }}><UiIcon name="close" /></button>}</figure>;
 }
 function ImageLightboxModal({ image, onClose }: { image: { url: string; title: string }; onClose: () => void }) {
   return (
@@ -285,6 +286,7 @@ function ImageLightboxModal({ image, onClose }: { image: { url: string; title: s
 }
 
 type ProductMediaOption = { value: string; label: string; url?: string; file?: File }
+type PendingProductMediaFile = { id: string; file: File }
 type VariantMediaGroup = { id: string; name: string; values: Array<{ id: string; value: string }>; attributeId?: string }
 type VariantMediaModalState = { mode: 'variant'; rowKey: string; draftRefs: string[] } | { mode: 'bulk'; draftsBySelection: VariantMediaAssignmentDrafts; groupId: string; valueId: string }
 type VariantFilterSelections = Record<string, string[]>
@@ -599,7 +601,7 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
   return <div className="workspace-modal-backdrop product-quick-edit-backdrop" role="presentation" onMouseDown={onClose}>
     <section className="workspace-modal product-quick-edit-modal" role="dialog" aria-modal="true" aria-label={title} onMouseDown={event => event.stopPropagation()}>
       <header>
-        <div><p className="eyebrow">{eyebrow}</p><h2>{title}</h2><p className="quick-edit-product-context"><span className="quick-edit-product-title">{contextTitle}</span>{contextModelCode && <span className="quick-edit-product-model">Model kodu: {contextModelCode}</span>}</p></div>
+        <div><p className="eyebrow">{eyebrow}</p><p className="quick-edit-product-context"><span className="quick-edit-product-title">{contextTitle}</span>{contextModelCode && <span className="quick-edit-product-model">Model kodu: {contextModelCode}</span>}</p></div>
         <button type="button" className="modal-close" onClick={onClose} aria-label="Pencereyi kapat"><UiIcon name="close" /></button>
       </header>
       <form onSubmit={apply}>
@@ -1369,7 +1371,7 @@ function LegacyVariantPlatformPricingModalWithVariantsFirst({ row, rows, platfor
 function VariantPlatformPricingModal({ row, rows, platforms, selectedPlatform, draft, saving, onClose, onSelectRow, onSelectPlatform, onDraftChange, onSave }: { row: VariantDraft; rows: VariantDraft[]; platforms: VariantPlatformStatus[]; selectedPlatform: VariantPlatformStatus; draft: ChannelPricingDraft; saving: boolean; onClose: () => void; onSelectRow: (row: VariantDraft) => void; onSelectPlatform: (platform: VariantPlatformStatus) => void; onDraftChange: (field: keyof ChannelPricingDraft, value: string) => void; onSave: () => void }) {
   return <div className="workspace-modal-backdrop variant-platform-pricing-backdrop" role="presentation" onMouseDown={() => !saving && onClose()}><section className="workspace-modal variant-platform-pricing-modal" role="dialog" aria-modal="true" aria-labelledby="variant-platform-pricing-title" onMouseDown={event => event.stopPropagation()}><header><div><p className="eyebrow">PLATFORM FİYATLARI</p><h2 id="variant-platform-pricing-title">Varyant kanal fiyatları</h2><p>{row.optionSignature} · {row.barcode || row.sku}</p></div><button type="button" className="modal-close" onClick={onClose} disabled={saving} aria-label="Fiyat penceresini kapat"><UiIcon name="close" /></button></header><div className="variant-platform-pricing-body"><div className="variant-platform-pricing-list">{platforms.map(platform => { const active = platform.connectionId === selectedPlatform.connectionId; return <article className={`variant-platform-pricing-card${active ? ' is-selected' : ''}`} key={`${platform.platformCode}:${platform.connectionId ?? platform.platform}`}><div className="variant-platform-pricing-card-head"><span className={`publish-platform-mark ${platform.platformCode.toLocaleLowerCase('tr-TR')}`}><img className={`publish-platform-logo ${platformLogoClass(platform.platformCode)}`} src={platformLogoSource(platform.platformCode) ?? '/platforms/trendyol.png'} alt="" /></span><div><strong>{marketplacePlatformName(platform)}</strong><small>{platform.isLinked ? 'Bağlı' : 'Bağlı değil'}</small></div><span className={`variant-platform-pricing-state ${platform.isLinked ? 'is-linked' : 'is-unlinked'}`} /></div><dl><div><dt>Liste</dt><dd>{marketplacePriceLabel(platform.listPrice, platform.currency)}</dd></div><div><dt>Satış</dt><dd>{marketplacePriceLabel(platform.salePrice, platform.currency)}</dd></div></dl><button type="button" className="secondary" onClick={() => onSelectPlatform(platform)} disabled={saving}>{active ? 'Düzenleniyor' : 'Düzenle'}</button></article> })}</div><section className="variant-platform-pricing-variant-list" aria-label="Tüm varyantlar"><div className="variant-platform-pricing-variant-list-head"><strong>Tüm varyantlar</strong><span>{rows.length} varyant · {marketplacePlatformName(selectedPlatform)} fiyatları</span></div><div className="variant-platform-pricing-variant-items" role="listbox" aria-label="Ürün varyantları">{rows.map(item => { const variantPlatform = item.platformStatuses?.find(platform => platform.platformCode === selectedPlatform.platformCode) ?? item.platformStatuses?.[0]; const priceSummary = variantPlatform ? `Liste ${marketplacePriceLabel(variantPlatform.listPrice, variantPlatform.currency)} · Satış ${marketplacePriceLabel(variantPlatform.salePrice, variantPlatform.currency)}` : 'Fiyat tanımlı değil'; return <button type="button" role="option" aria-selected={item.key === row.key} className={`variant-platform-pricing-variant-item${item.key === row.key ? ' is-selected' : ''}`} key={item.key} onClick={() => onSelectRow(item)} disabled={saving} aria-label={`${item.optionSignature || item.sku} · ${priceSummary}`}><span><strong>{item.optionSignature || item.sku}</strong><small>{item.barcode || item.sku}</small><em>{priceSummary}</em></span><i>{item.platformStatuses?.length ?? 0}</i></button> })}</div></section><div className="variant-platform-pricing-editor"><div><strong>{marketplacePlatformName(selectedPlatform)} fiyatını düzenle</strong><small>Panel ana fiyatı değişmeden yalnızca bu kanal teklifini günceller.</small></div><div className="variant-platform-pricing-fields"><label>Liste fiyatı<input autoFocus type="number" min="0" step="0.01" value={draft.listPrice} onChange={event => onDraftChange('listPrice', event.target.value)} /></label><label>Satış fiyatı<input type="number" min="0" step="0.01" value={draft.salePrice} onChange={event => onDraftChange('salePrice', event.target.value)} /></label></div></div></div><footer><button type="button" className="secondary" onClick={onClose} disabled={saving}>Vazgeç</button><button type="button" onClick={onSave} disabled={saving || !selectedPlatform.connectionId}>{saving ? 'Kaydediliyor…' : 'Fiyatı kaydet'}</button></footer></section></div>
 }
-function BulkVariantPlatformPricingModal({ row, rows, platforms, savedDrafts, productName, modelCode, saving, onClose, onSave }: { row: VariantDraft; rows: VariantDraft[]; platforms: VariantPlatformStatus[]; savedDrafts: Record<string, ChannelPricingDraft>; productName: string; modelCode: string; saving: boolean; onClose: () => void; onSave: (drafts: Record<string, ChannelPricingDraft>) => void }) {
+function BulkVariantPlatformPricingModal({ row, rows, platforms, savedDrafts, productName, modelCode, filterGroups, matchesFilterValue, saving, onClose, onSave }: { row: VariantDraft; rows: VariantDraft[]; platforms: VariantPlatformStatus[]; savedDrafts: Record<string, ChannelPricingDraft>; productName: string; modelCode: string; filterGroups: VariantMediaGroup[]; matchesFilterValue: (row: VariantDraft, group: VariantMediaGroup, value: { id: string; value: string }) => boolean; saving: boolean; onClose: () => void; onSave: (drafts: Record<string, ChannelPricingDraft>) => void }) {
   const sortedRows = sortVariantsAlphabetically(rows)
   const platformKey = (platform: VariantPlatformStatus) => `${platform.platformCode}:${platform.connectionId ?? platform.platform}`
   const initialMatrixDrafts = () => Object.fromEntries(sortedRows.flatMap(item => platforms.map(platform => {
@@ -1378,11 +1380,18 @@ function BulkVariantPlatformPricingModal({ row, rows, platforms, savedDrafts, pr
     return [`${item.key}:${platformKey(platform)}`, { listPrice: String(saved?.listPrice ?? status?.listPrice ?? platform.listPrice ?? item.listPrice ?? ''), salePrice: String(saved?.salePrice ?? status?.salePrice ?? platform.salePrice ?? item.salePrice ?? '') }]
   }))) as Record<string, ChannelPricingDraft>
   const [matrixDrafts, setMatrixDrafts] = useState<Record<string, ChannelPricingDraft>>(initialMatrixDrafts)
+  const [dirtyMatrixDraftKeys, setDirtyMatrixDraftKeys] = useState<string[]>([])
   const [matrixBulkEdit, setMatrixBulkEdit] = useState<{ platform: VariantPlatformStatus; field: keyof ChannelPricingDraft; label: string; value: string; error: string } | null>(null)
-  useEffect(() => { setMatrixDrafts(initialMatrixDrafts()) }, [row.key, rows, platforms, savedDrafts])
+  const [filterSelections, setFilterSelections] = useState<VariantOptionFilterSelections>({})
+  useEffect(() => { setMatrixDrafts(initialMatrixDrafts()); setDirtyMatrixDraftKeys([]) }, [row.key, rows, platforms, savedDrafts])
+  const matchingRows = filterVariantsByOptions(sortedRows, filterGroups, filterSelections, matchesFilterValue)
   const matrixDraft = (item: VariantDraft, platform: VariantPlatformStatus) => matrixDrafts[`${item.key}:${platformKey(platform)}`] ?? { listPrice: '', salePrice: '' }
-  const updateMatrixDraft = (item: VariantDraft, platform: VariantPlatformStatus, field: keyof ChannelPricingDraft, value: string) => setMatrixDrafts(current => ({ ...current, [`${item.key}:${platformKey(platform)}`]: { ...matrixDraft(item, platform), [field]: value } }))
-  const openMatrixBulkEdit = (platform: VariantPlatformStatus, field: keyof ChannelPricingDraft, label: string) => setMatrixBulkEdit({ platform, field, label, value: matrixDraft(row, platform)[field], error: '' })
+  const updateMatrixDraft = (item: VariantDraft, platform: VariantPlatformStatus, field: keyof ChannelPricingDraft, value: string) => {
+    const draftKey = `${item.key}:${platformKey(platform)}`
+    setDirtyMatrixDraftKeys(current => current.includes(draftKey) ? current : [...current, draftKey])
+    setMatrixDrafts(current => ({ ...current, [draftKey]: { ...(current[draftKey] ?? { listPrice: '', salePrice: '' }), [field]: value } }))
+  }
+  const openMatrixBulkEdit = (platform: VariantPlatformStatus, field: keyof ChannelPricingDraft, label: string) => setMatrixBulkEdit({ platform, field, label, value: matrixDraft(matchingRows[0] ?? row, platform)[field], error: '' })
   const applyMatrixBulkEdit = () => {
     if (!matrixBulkEdit) return
     const value = Number(matrixBulkEdit.value)
@@ -1391,7 +1400,11 @@ function BulkVariantPlatformPricingModal({ row, rows, platforms, savedDrafts, pr
       return
     }
     const pairedField = matrixBulkEdit.field === 'listPrice' ? 'salePrice' : 'listPrice'
-    const violatesPriceOrder = sortedRows.some(item => {
+    if (!matchingRows.length) {
+      setMatrixBulkEdit(current => current ? { ...current, error: 'Seçili renk ve bedenlerle eşleşen varyant bulunamadı.' } : current)
+      return
+    }
+    const violatesPriceOrder = matchingRows.some(item => {
       const pairedValue = Number(matrixDraft(item, matrixBulkEdit.platform)[pairedField])
       return Number.isFinite(pairedValue) && (matrixBulkEdit.field === 'listPrice' ? value < pairedValue : value > pairedValue)
     })
@@ -1401,27 +1414,29 @@ function BulkVariantPlatformPricingModal({ row, rows, platforms, savedDrafts, pr
     }
     setMatrixDrafts(current => {
       const next = { ...current }
-      for (const item of sortedRows) {
+      for (const item of matchingRows) {
         const key = `${item.key}:${platformKey(matrixBulkEdit.platform)}`
         const currentDraft = next[key] ?? { listPrice: '', salePrice: '' }
         next[key] = { ...currentDraft, [matrixBulkEdit.field]: matrixBulkEdit.value }
       }
       return next
     })
+    setDirtyMatrixDraftKeys(current => [...new Set([...current, ...matchingRows.map(item => `${item.key}:${platformKey(matrixBulkEdit.platform)}`)])])
     setMatrixBulkEdit(null)
   }
   const renderMatrixHeader = (platform: VariantPlatformStatus, label: string) => {
     const key = platformKey(platform)
     const field = label === 'Liste fiyatı' ? 'listPrice' : 'salePrice'
-    return <div className="variant-platform-pricing-matrix-cell variant-platform-pricing-matrix-head" key={`${key}:${label}`}><strong>{marketplacePlatformName(platform).toLocaleUpperCase('tr-TR')}</strong><span className="variant-platform-pricing-matrix-head-label">{label.toLocaleUpperCase('tr-TR')}<button type="button" className="variant-platform-pricing-bulk-trigger" aria-label={`${marketplacePlatformName(platform)} ${label} için tüm varyantlarda toplu düzenleme aç`} title={`${marketplacePlatformName(platform)} ${label.toLocaleLowerCase('tr-TR')} toplu değiştir`} aria-haspopup="dialog" aria-expanded={matrixBulkEdit?.platform === platform && matrixBulkEdit.field === field} onClick={() => openMatrixBulkEdit(platform, field, label)} disabled={saving || !platform.connectionId}><UiIcon name="edit" size={13} /></button></span></div>
+    return <div className="variant-platform-pricing-matrix-cell variant-platform-pricing-matrix-head" key={`${key}:${label}`}><strong>{marketplacePlatformName(platform).toLocaleUpperCase('tr-TR')}</strong><span className="variant-platform-pricing-matrix-head-label">{label.toLocaleUpperCase('tr-TR')}<button type="button" className="variant-platform-pricing-bulk-trigger" aria-label={`${marketplacePlatformName(platform)} ${label} için filtreye uyan varyantlarda toplu düzenleme aç`} title={`${marketplacePlatformName(platform)} ${label.toLocaleLowerCase('tr-TR')} toplu değiştir`} aria-haspopup="dialog" aria-expanded={matrixBulkEdit?.platform === platform && matrixBulkEdit.field === field} onClick={() => openMatrixBulkEdit(platform, field, label)} disabled={saving || !platform.connectionId}><UiIcon name="edit" size={13} /></button></span></div>
   }
   return <>
     <div className="workspace-modal-backdrop variant-platform-pricing-backdrop" role="presentation" onMouseDown={() => !saving && onClose()}>
-      <section className="workspace-modal variant-platform-pricing-modal" role="dialog" aria-modal="true" aria-labelledby="variant-platform-pricing-title" onMouseDown={event => event.stopPropagation()}>
-        <header><div><p className="eyebrow">PLATFORM FİYATLARI</p><h2 id="variant-platform-pricing-title">Varyant kanal fiyatları</h2><p className="variant-platform-pricing-product-context"><strong>{productName || 'Ürün adı belirtilmemiş'}</strong><span>Model kodu: {modelCode || '—'}</span></p></div><button type="button" className="modal-close" onClick={onClose} disabled={saving} aria-label="Fiyat penceresini kapat"><UiIcon name="close" /></button></header>
+      <section className="workspace-modal variant-platform-pricing-modal" role="dialog" aria-modal="true" aria-label="Platform fiyatları" onMouseDown={event => event.stopPropagation()}>
+        <header><div><p className="eyebrow">PLATFORM FİYATLARI</p><p className="variant-platform-pricing-product-context"><strong>{productName || 'Ürün adı belirtilmemiş'}</strong><span>Model kodu: {modelCode || '—'}</span></p></div><button type="button" className="modal-close" onClick={onClose} disabled={saving} aria-label="Fiyat penceresini kapat"><UiIcon name="close" /></button></header>
         <div className="variant-platform-pricing-body">
           <section className="variant-platform-pricing-matrix" aria-label="Platformlara göre varyant fiyat matrisi">
-            <div className="variant-platform-pricing-bulk-heading"><strong>Platform fiyatlarını toplu düzenle</strong><span>{rows.length} varyanta uygulanır · Panel ana fiyatı değişmez</span></div>
+            <div className="variant-platform-pricing-bulk-heading"><strong>Platform fiyatlarını toplu düzenle</strong><span>{matchingRows.length} / {rows.length} varyant eşleşti · Panel ana fiyatı değişmez</span></div>
+            {filterGroups.length > 0 && <div className="variant-platform-pricing-filter-grid" aria-label="Platform fiyatı renk ve beden filtreleri">{filterGroups.map(group => <VariantFilterDropdown key={group.id} group={group} selectedValueIds={filterSelections[group.id] ?? []} onToggle={valueId => setFilterSelections(current => ({ ...current, [group.id]: (current[group.id] ?? []).includes(valueId) ? current[group.id].filter(id => id !== valueId) : [...(current[group.id] ?? []), valueId] }))} onClear={() => setFilterSelections(current => ({ ...current, [group.id]: [] }))} />)}</div>}
             <div className="variant-platform-pricing-matrix-scroll">
               <div className="variant-platform-pricing-matrix-grid" style={{ gridTemplateColumns: `220px repeat(${platforms.length * 2}, 112px)` }}>
                 <div className="variant-platform-pricing-matrix-cell variant-platform-pricing-matrix-corner"><strong>Varyant</strong><small>Model / barkod</small></div>
@@ -1440,15 +1455,15 @@ function BulkVariantPlatformPricingModal({ row, rows, platforms, savedDrafts, pr
             </div>
           </section>
         </div>
-        <footer><button type="button" onClick={() => onSave(matrixDrafts)} disabled={saving || !platforms.some(platform => platform.connectionId)}>{saving ? 'Kaydediliyor…' : 'Kaydet'}</button><button type="button" className="secondary" onClick={onClose} disabled={saving}>Vazgeç</button></footer>
+        <footer><button type="button" onClick={() => onSave(selectVariantDraftsByKeys(matrixDrafts, dirtyMatrixDraftKeys))} disabled={saving || !dirtyMatrixDraftKeys.length || !platforms.some(platform => platform.connectionId)}>{saving ? 'Kaydediliyor…' : 'Kaydet'}</button><button type="button" className="secondary" onClick={onClose} disabled={saving}>Vazgeç</button></footer>
       </section>
     </div>
     {matrixBulkEdit && createPortal(
       <div className="workspace-modal-backdrop variant-platform-pricing-bulk-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setMatrixBulkEdit(null) }}>
         <section className="workspace-modal variant-bulk-edit-modal" role="dialog" aria-modal="true" aria-labelledby="variant-platform-pricing-bulk-title" onMouseDown={event => event.stopPropagation()}>
-          <header><div><p className="eyebrow">PLATFORM FİYATLARI</p><h2 id="variant-platform-pricing-bulk-title">{marketplacePlatformName(matrixBulkEdit.platform)} {matrixBulkEdit.label.toLocaleLowerCase('tr-TR')} toplu değiştir</h2><p>Değer {rows.length} varyantın bu platformdaki {matrixBulkEdit.label.toLocaleLowerCase('tr-TR')} alanına uygulanır.</p></div><button type="button" className="modal-close" onClick={() => setMatrixBulkEdit(null)} aria-label="Toplu fiyat değişikliği penceresini kapat"><UiIcon name="close" /></button></header>
-          <div className="variant-bulk-edit-body"><p className="variant-bulk-edit-scope">Uygula, sadece bu tablodaki taslakları değiştirir. Kalıcı olması için ardından ana penceredeki Kaydet düğmesine basın.</p><label htmlFor="variant-platform-pricing-bulk-value">Yeni fiyat<input id="variant-platform-pricing-bulk-value" autoFocus type="number" min="0" step="0.01" value={matrixBulkEdit.value} aria-describedby={matrixBulkEdit.error ? 'variant-platform-pricing-bulk-error' : undefined} onChange={event => setMatrixBulkEdit(current => current ? { ...current, value: event.target.value, error: '' } : current)} /></label>{matrixBulkEdit.error && <p className="variant-bulk-edit-error" id="variant-platform-pricing-bulk-error" role="alert">{matrixBulkEdit.error}</p>}</div>
-          <footer><button type="button" className="secondary" onClick={() => setMatrixBulkEdit(null)}>Vazgeç</button><button type="button" onClick={applyMatrixBulkEdit}>Uygula</button></footer>
+          <header><div><p className="eyebrow">PLATFORM FİYATLARI</p><h2 id="variant-platform-pricing-bulk-title">{marketplacePlatformName(matrixBulkEdit.platform)} {matrixBulkEdit.label.toLocaleLowerCase('tr-TR')} toplu değiştir</h2><p>Değer seçili renk ve bedenlerle eşleşen {matchingRows.length} varyantın bu platformdaki {matrixBulkEdit.label.toLocaleLowerCase('tr-TR')} alanına uygulanır.</p></div><button type="button" className="modal-close" onClick={() => setMatrixBulkEdit(null)} aria-label="Toplu fiyat değişikliği penceresini kapat"><UiIcon name="close" /></button></header>
+          <div className="variant-bulk-edit-body"><p className="variant-bulk-edit-target"><span>Uygulanacak varyant</span><strong>{matchingRows.length.toLocaleString('tr-TR')} satır</strong></p><p className="variant-bulk-edit-scope">Uygula, yalnızca seçilen renk ve bedenlerin bu platformdaki taslaklarını değiştirir. Kalıcı olması için ardından ana penceredeki Kaydet düğmesine basın.</p><label htmlFor="variant-platform-pricing-bulk-value">Yeni fiyat<input id="variant-platform-pricing-bulk-value" autoFocus type="number" min="0" step="0.01" value={matrixBulkEdit.value} aria-describedby={matrixBulkEdit.error ? 'variant-platform-pricing-bulk-error' : undefined} onChange={event => setMatrixBulkEdit(current => current ? { ...current, value: event.target.value, error: '' } : current)} /></label>{matrixBulkEdit.error && <p className="variant-bulk-edit-error" id="variant-platform-pricing-bulk-error" role="alert">{matrixBulkEdit.error}</p>}</div>
+          <footer><button type="button" className="secondary" onClick={() => setMatrixBulkEdit(null)}>Vazgeç</button><button type="button" onClick={applyMatrixBulkEdit} disabled={!matchingRows.length}>Uygula</button></footer>
         </section>
       </div>,
       document.body
@@ -2003,12 +2018,13 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const [expandedOptionGroupIds, setExpandedOptionGroupIds] = useState<Record<string, boolean>>({})
   const [bulkStock, setBulkStock] = useState(''); const [bulkSalePrice, setBulkSalePrice] = useState(''); const [bulkCostPrice, setBulkCostPrice] = useState(''); const [bulkListPrice, setBulkListPrice] = useState('')
   const [variantBulkEdit, setVariantBulkEdit] = useState<{ field: VariantBulkEditField; value: string; error: string } | null>(null)
-  const [mediaFiles, setMediaFiles] = useState<File[]>([])
+  const [variantBulkEditFilterSelections, setVariantBulkEditFilterSelections] = useState<VariantFilterSelections>({})
+  const [mediaFiles, setMediaFiles] = useState<PendingProductMediaFile[]>([])
   const [deletingFamilyMediaKey, setDeletingFamilyMediaKey] = useState<string | null>(null)
   const [deletingProductMediaKey, setDeletingProductMediaKey] = useState<string | null>(null)
   const [familyMediaOrder, setFamilyMediaOrder] = useState<string[]>([])
   const [familyMediaOrderDirty, setFamilyMediaOrderDirty] = useState(false)
-  const [draggedMediaIndex, setDraggedMediaIndex] = useState<number | null>(null); const [dragOverMediaIndex, setDragOverMediaIndex] = useState<number | null>(null)
+  const [draggedMedia, setDraggedMedia] = useState<{ kind: 'file' | 'url'; index: number } | null>(null); const [dragOverMedia, setDragOverMedia] = useState<{ kind: 'file' | 'url'; index: number } | null>(null)
   const [pointerDraggedVariantKey, setPointerDraggedVariantKey] = useState<string | null>(null)
   const pointerDraggedVariantRef = useRef<string | null>(null)
   const pointerDragSourceRef = useRef<HTMLDivElement | null>(null)
@@ -2048,7 +2064,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       if (file.size <= 0 || file.size > MAX_PRODUCT_MEDIA_BYTES) { rejected.push(`${file.name}: dosya başına en fazla 6 MB olabilir.`); continue }
       accepted.push(file)
     }
-    if (accepted.length) setMediaFiles(current => [...current, ...accepted])
+    if (accepted.length) setMediaFiles(current => [...current, ...accepted.map(file => ({ id: crypto.randomUUID(), file }))])
     if (rejected.length) {
       const message = rejected.length === 1 ? rejected[0] : `${rejected.length} görsel eklenemedi. Dosya türü ve 6 MB sınırını kontrol edin.`
       setNotice(message); showFeedback(message, 'error')
@@ -2303,7 +2319,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   }
   function reorderMedia(sourceIndex: number, targetIndex: number) {
     const next = reorderMediaUrls(visibleMediaUrls, sourceIndex, targetIndex)
-    setDraggedMediaIndex(null); setDragOverMediaIndex(null)
+    setDraggedMedia(null); setDragOverMedia(null)
     if (next === visibleMediaUrls) return
     setFamilyMediaOrder(next)
     setFamilyMediaOrderDirty(Boolean(editProductId))
@@ -2311,13 +2327,20 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     if (!mediaRefsEqual(orderedProductMediaUrls, mediaUrls)) updateField('mediaUrls', orderedProductMediaUrls.join('\n'))
     showFeedback(editProductId ? 'Görsel sırası diğer renklerle birlikte Kaydet’te uygulanacak.' : 'Görsel sırası güncellendi. Kalıcı olması için kaydedin.', 'info')
   }
+  function reorderUploadedMedia(sourceIndex: number, targetIndex: number) {
+    const next = reorderItems(mediaFiles, sourceIndex, targetIndex)
+    setDraggedMedia(null); setDragOverMedia(null)
+    if (next === mediaFiles) return
+    setMediaFiles(next)
+    showFeedback('Yüklenen görsel sırası güncellendi. Kalıcı olması için ürünü kaydedin.', 'info')
+  }
   function clearAllMedia() {
     setMediaFiles([])
     updateField('mediaUrls', '')
     setFamilyMediaOrder([])
     setVariantRows(rows => rows.map(row => ({ ...row, mediaRefs: [] })))
-    setDraggedMediaIndex(null)
-    setDragOverMediaIndex(null)
+    setDraggedMedia(null)
+    setDragOverMedia(null)
     showFeedback('Ürün ve varyant görselleri temizlendi. Kalıcı olması için kaydedin.', 'info')
   }
   async function removeProductMedia(url: string) {
@@ -2697,6 +2720,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   }
 
   function openVariantBulkEdit(field: VariantBulkEditField) {
+    setVariantBulkEditFilterSelections({})
     setVariantBulkEdit({ field, value: '', error: '' })
   }
 
@@ -2706,7 +2730,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       setVariantBulkEdit(current => current ? { ...current, error: 'Uygulanacak değeri girin.' } : current)
       return
     }
-    const targetRows = variantRows.filter(row => rowMatchesVariantFilters(row))
+    const targetRows = filterVariantsByOptions(variantRows, variantBulkEditFilterGroups, variantBulkEditFilterSelections, rowMatchesVariantMediaValue)
     if (!targetRows.length) {
       setVariantBulkEdit(current => current ? { ...current, error: 'Seçili filtreyle eşleşen varyant bulunamadı.' } : current)
       return
@@ -2719,7 +2743,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     }
     const rowKeys = new Set(targetRows.map(row => row.key))
     setVariantRows(rows => applyVariantBulkEditValue(rows, rowKeys, variantBulkEdit.field, value))
-    showFeedback(`${variantBulkEditLabels[variantBulkEdit.field]} değeri ${hasVariantFilters ? `${targetRows.length} filtre eşleşen varyanta` : `tüm ${targetRows.length} varyanta`} uygulandı.`, 'success')
+    showFeedback(`${variantBulkEditLabels[variantBulkEdit.field]} değeri ${hasVariantBulkEditFilters ? `${targetRows.length} filtre eşleşen varyanta` : `tüm ${targetRows.length} varyanta`} uygulandı.`, 'success')
     setVariantBulkEdit(null)
   }
 
@@ -2866,11 +2890,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     return Boolean((group.attributeId && row.attributeValueIds[group.attributeId] === value.id) || normalizeVariantOptionValue(rowOptionValue(row, group)) === normalizeVariantOptionValue(value.value))
   }
   function rowMatchesVariantFilters(row: VariantDraft) {
-    return variantFilterGroups.every(group => {
-      const selectedValueIds = variantFilterSelections[group.id] ?? []
-      if (!selectedValueIds.length) return true
-      return group.values.filter(value => selectedValueIds.includes(value.id)).some(value => rowMatchesVariantMediaValue(row, group, value))
-    })
+    return filterVariantsByOptions([row], variantFilterGroups, variantFilterSelections, rowMatchesVariantMediaValue).length > 0
   }
   function applyVariantMediaSelection() {
     if (!variantMediaModal) return
@@ -3022,7 +3042,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
         ? !mediaRefsEqual(mediaUrls, initialProductMediaUrls) && !(familyMediaOrderDirty && mediaRefsSameSet(mediaUrls, initialProductMediaUrls))
         : mediaUrls.length > 0
       if (productMediaChanged) await hubApi('/files/product-media-reconcile', { method: 'PUT', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ productId: product.id, variantId: null, items: mediaUrls.map((url, sortOrder) => ({ url, sortOrder })), altText: form.title }) })
-      for (const [fileIndex, file] of mediaFiles.entries()) { const data = new FormData(); data.set('file', file); data.set('productId', product.id); data.set('mediaRole', mediaUrls.length + fileIndex === 0 ? 'PRIMARY' : 'GALLERY'); data.set('sortOrder', String(mediaUrls.length + fileIndex)); data.set('altText', form.title); await hubApi('/files/product-media', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: data }) }
+      for (const [fileIndex, pendingMedia] of mediaFiles.entries()) { const data = new FormData(); data.set('file', pendingMedia.file); data.set('productId', product.id); data.set('mediaRole', mediaUrls.length + fileIndex === 0 ? 'PRIMARY' : 'GALLERY'); data.set('sortOrder', String(mediaUrls.length + fileIndex)); data.set('altText', form.title); await hubApi('/files/product-media', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: data }) }
       const rowsBySku = new Map(rows.map(row => [row.sku.trim().toLocaleUpperCase('tr-TR'), row]))
       for (const variant of product.variants) {
         const row = rowsBySku.get(variant.sku.trim().toLocaleUpperCase('tr-TR'))
@@ -3032,7 +3052,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
         await hubApi('/files/product-media-reconcile', { method: 'PUT', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ productId: product.id, variantId: variant.id, items: row.mediaRefs.flatMap((mediaRef, sortOrder) => mediaRef.startsWith('url|') ? [{ url: mediaRef.slice(4), sortOrder }] : []), altText: `${form.title} · ${row.optionSignature}` }) })
         for (const [mediaIndex, mediaRef] of row.mediaRefs.entries()) {
           if (mediaRef.startsWith('file|')) {
-            const file = mediaFiles[Number(mediaRef.slice(5))]
+            const file = mediaFiles.find(item => item.id === mediaRef.slice(5))?.file
             if (file) { const data = new FormData(); data.set('file', file); data.set('productId', product.id); data.set('variantId', variant.id); data.set('mediaRole', mediaIndex === 0 ? 'PRIMARY' : 'GALLERY'); data.set('sortOrder', String(mediaIndex)); data.set('altText', `${form.title} · ${row.optionSignature}`); await hubApi('/files/product-media', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: data }) }
           }
         }
@@ -3152,7 +3172,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     ? productToEdit.data.familyOrderedMediaUrls
     : [...mediaUrls, ...familyMediaItems.map(item => item.url)]
   const visibleMediaUrls = mediaUrlsInPreferredOrder(uniqueMediaUrls(defaultFamilyOrder), familyMediaOrder.length ? familyMediaOrder : defaultFamilyOrder)
-  const mediaChoices: ProductMediaOption[] = ([...new Set([...mediaUrls, ...familyMediaUrls, ...assignedMediaUrls])].map((url, index) => ({ value: `url|${url}`, label: `Görsel ${String(index + 1).padStart(2, '0')}`, url })) as ProductMediaOption[]).concat(mediaFiles.map((file, index) => ({ value: `file|${index}`, label: `Yüklenen görsel · ${file.name}`, file })))
+  const mediaChoices: ProductMediaOption[] = ([...new Set([...mediaUrls, ...familyMediaUrls, ...assignedMediaUrls])].map((url, index) => ({ value: `url|${url}`, label: `Görsel ${String(index + 1).padStart(2, '0')}`, url })) as ProductMediaOption[]).concat(mediaFiles.map(item => ({ value: `file|${item.id}`, label: `Yüklenen görsel · ${item.file.name}`, file: item.file })))
   const bulkMediaGroups = useMemo<VariantMediaGroup[]>(() => {
     const groups: VariantMediaGroup[] = []
     const names = new Set<string>()
@@ -3196,6 +3216,9 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     return groups
   }, [attributeSelections, optionRequirements, productToEdit.data?.options, variantRows])
   const variantFilterGroups = useMemo(() => bulkMediaGroups.filter(group => variantRows.some(row => rowOptionValue(row, group).trim())), [bulkMediaGroups, variantRows])
+  const variantBulkEditFilterGroups = variantFilterGroups.filter(group => isColorOptionName(group.name) || isSizeOptionName(group.name))
+  const variantBulkEditMatchingRows = filterVariantsByOptions(variantRows, variantBulkEditFilterGroups, variantBulkEditFilterSelections, rowMatchesVariantMediaValue)
+  const hasVariantBulkEditFilters = Object.values(variantBulkEditFilterSelections).some(valueIds => valueIds.length > 0)
   const activeVariantFilterEntries = variantFilterGroups.map(group => ({ group, valueIds: variantFilterSelections[group.id] ?? [] })).filter(entry => entry.valueIds.length > 0)
   const hasVariantFilters = activeVariantFilterEntries.length > 0
   const matchingVariantCount = variantRows.filter(row => rowMatchesVariantFilters(row)).length
@@ -3295,7 +3318,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   if (duplicateProductId && productToCopy.isError) return <Page title="Yeni Ürün Ekle" eyebrow="Katalog"><ErrorBox error={productToCopy.error} /><Link className="button-link secondary" to="/products">Ürünlere dön</Link></Page>
 
   return <Page className={`product-add-page${editProductId ? ' product-edit-page' : ''}`} title={editProductId ? "Ürün Düzenle" : "Yeni Ürün Ekle"} eyebrow="Katalog">
-    {variantPlatformPricing && selectedVariantPlatformRow && <BulkVariantPlatformPricingModal row={selectedVariantPlatformRow} rows={variantRows} platforms={selectedVariantPlatformRow.platformStatuses?.length ? selectedVariantPlatformRow.platformStatuses : variantPricingPlatforms} savedDrafts={variantChannelPricing} productName={form.title} modelCode={form.modelCode} saving={variantPlatformPricingSaving} onClose={() => setVariantPlatformPricing(null)} onSave={drafts => void saveVariantPlatformPricingMatrix(drafts)} />}
+    {variantPlatformPricing && selectedVariantPlatformRow && <BulkVariantPlatformPricingModal row={selectedVariantPlatformRow} rows={variantRows} platforms={selectedVariantPlatformRow.platformStatuses?.length ? selectedVariantPlatformRow.platformStatuses : variantPricingPlatforms} savedDrafts={variantChannelPricing} productName={form.title} modelCode={form.modelCode} filterGroups={variantFilterGroups.filter(group => isColorOptionName(group.name) || isSizeOptionName(group.name))} matchesFilterValue={rowMatchesVariantMediaValue} saving={variantPlatformPricingSaving} onClose={() => setVariantPlatformPricing(null)} onSave={drafts => void saveVariantPlatformPricingMatrix(drafts)} />}
     {/* @ts-ignore: legacy inline modal is disabled while the shared multi-platform modal is used above. */}
     {false && variantPlatformPricing && selectedVariantPlatformRow && <div className="workspace-modal-backdrop variant-platform-pricing-backdrop" role="presentation" onMouseDown={() => !variantPlatformPricingSaving && setVariantPlatformPricing(null)}><section className="workspace-modal variant-platform-pricing-modal" role="dialog" aria-modal="true" aria-labelledby="variant-platform-pricing-title" onMouseDown={event => event.stopPropagation()}><header><div><p className="eyebrow">VARYANT KANAL FİYATI</p><h2 id="variant-platform-pricing-title">{platformDisplayName(variantPlatformPricing.platform)} fiyatlandırması</h2><p>{selectedVariantPlatformRow.optionSignature} · {selectedVariantPlatformRow.barcode || selectedVariantPlatformRow.sku}</p></div><button type="button" className="modal-close" onClick={() => setVariantPlatformPricing(null)} disabled={variantPlatformPricingSaving} aria-label="Fiyat penceresini kapat"><UiIcon name="close" /></button></header><div className="variant-platform-pricing-body"><div className="variant-platform-pricing-channel"><span className={`publish-platform-mark ${variantPlatformPricing.platform.platformCode.toLocaleLowerCase('tr-TR')}`}><img className={`publish-platform-logo ${platformLogoClass(variantPlatformPricing.platform.platformCode)}`} src={platformLogoSource(variantPlatformPricing.platform.platformCode) ?? '/platforms/trendyol.png'} alt="" /></span><div><strong>{platformDisplayName(variantPlatformPricing.platform)}</strong><small>{variantPlatformPricing.platform.isLinked ? 'Bu varyant platforma bağlı.' : 'Bu varyant için bağlantı henüz eşleşmemiş.'}</small></div></div><div className="variant-platform-pricing-fields"><label>Liste fiyatı<input autoFocus type="number" min="0" step="0.01" value={variantPlatformPricingDraft.listPrice} onChange={event => setVariantPlatformPricingDraft(current => ({ ...current, listPrice: event.target.value }))} /></label><label>Satış fiyatı<input type="number" min="0" step="0.01" value={variantPlatformPricingDraft.salePrice} onChange={event => setVariantPlatformPricingDraft(current => ({ ...current, salePrice: event.target.value }))} /></label></div><p className="variant-platform-pricing-help">Bu değer yalnızca seçtiğiniz varyantın {platformDisplayName(variantPlatformPricing.platform)} kanal teklifine kaydedilir; panel ana fiyatı değişmez.</p></div><footer><button type="button" className="secondary" onClick={() => setVariantPlatformPricing(null)} disabled={variantPlatformPricingSaving}>Vazgeç</button><button type="button" onClick={() => void saveVariantPlatformPricing()} disabled={variantPlatformPricingSaving || !variantPlatformPricing.platform.connectionId}>{variantPlatformPricingSaving ? 'Kaydediliyor…' : 'Fiyatı kaydet'}</button></footer></section></div>}
     <p className="lede page-lede">Ürün bilgilerini ve varyantları hazırlayın; yayınlama adımında kanalları seçip gönderim kuyruğunu başlatın.</p><div className="product-add-wizardbar"><div className="product-add-stepper"><div className="product-add-progress" role="tablist" aria-label={editProductId ? 'Ürün düzenleme adımları' : 'Ürün ekleme adımları'}><button type="button" className={wizardStep === 1 ? 'active' : ''} role="tab" aria-selected={wizardStep === 1} onClick={() => setWizardStep(1)}><span>1</span><strong>Ürün bilgileri ve varyantlar</strong></button><i aria-hidden="true" /><button type="button" className={wizardStep === 2 ? 'active' : ''} role="tab" aria-selected={wizardStep === 2} onClick={() => setWizardStep(2)}><span>2</span><strong>Yayınlama</strong></button></div></div></div><form id="product-creation-form" className="product-creation-workspace product-add-workspace" data-wizard-step={wizardStep} onSubmit={submit} onInvalidCapture={handleInvalid} noValidate>
@@ -3369,7 +3392,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       <section className="panel product-step-card product-media-card">
         <div className="editor-section-title">
           <span>4</span>
-            <div><h2>Görseller</h2><p>JPEG/PNG dosyası yükleyebilirsiniz. Aynı modelin diğer renk görselleri de burada görünür; sıralama değişiklikleri kaydedilirken renk ürünlerine de uygulanır.</p></div>
+            <div><h2>Görseller</h2><p>JPEG/PNG dosyası yükleyebilirsiniz. Görselleri sürükleyerek sıralayın; aynı modelin diğer renk görselleri de burada görünür ve sıralama kayıtta renk ürünlerine uygulanır.</p></div>
             <div className="product-media-header-actions">
               {(mediaUrls.length > 0 || mediaFiles.length > 0 || variantRows.some(row => row.mediaRefs.length > 0)) && <button type="button" className="secondary product-media-clear-all-button" onClick={clearAllMedia}>Tümünü temizle</button>}
             </div>
@@ -3380,7 +3403,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           <small>Adet sınırı yok · JPEG veya PNG · dosya başına en fazla 6 MB</small>
         </label>
         {(mediaUrls.length > 0 || mediaFiles.length > 0 || familyOnlyMediaItems.length > 0) && <div className="media-preview-strip">
-          {mediaFiles.map((file, index) => <LocalImagePreview key={`${file.name}-${file.lastModified}-${index}`} file={file} alt={`${form.title || 'Ürün'} ${index + 1}`} caption={index === 0 && !mediaUrls.length ? 'Ana görsel' : file.name} onRemove={() => setMediaFiles(files => files.filter((_, i) => i !== index))} onZoom={url => setLightboxImage({ url, title: form.title || 'Ürün Görseli' })} />)}
+          {mediaFiles.map((item, index) => <LocalImagePreview key={item.id} file={item.file} alt={`${form.title || 'Ürün'} ${index + 1}`} caption={index === 0 && !mediaUrls.length ? 'Ana görsel' : item.file.name} draggable={!submitting} isDragOver={dragOverMedia?.kind === 'file' && dragOverMedia.index === index} onDragStart={event => { setDraggedMedia({ kind: 'file', index }); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', `file:${index}`) }} onDragOver={event => { if (draggedMedia?.kind !== 'file') return; event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDragOverMedia({ kind: 'file', index }) }} onDrop={event => { event.preventDefault(); const transferValue = event.dataTransfer.getData('text/plain'); const transferIndex = transferValue.startsWith('file:') ? Number(transferValue.slice(5)) : draggedMedia?.kind === 'file' ? draggedMedia.index : -1; if (draggedMedia?.kind === 'file' && Number.isInteger(transferIndex)) reorderUploadedMedia(transferIndex, index) }} onDragEnd={() => { setDraggedMedia(null); setDragOverMedia(null) }} onRemove={() => setMediaFiles(files => files.filter(file => file.id !== item.id))} onZoom={url => setLightboxImage({ url, title: form.title || 'Ürün Görseli' })} />)}
           {visibleMediaUrls.map((url, index) => {
             const ownedUrl = mediaUrls.find(current => mediaImageKey(current) === mediaImageKey(url))
             const ownIndex = ownedUrl === undefined ? -1 : mediaUrls.findIndex(current => mediaImageKey(current) === mediaImageKey(url))
@@ -3389,8 +3412,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
             const deletingProductMedia = deletingProductMediaKey === mediaImageKey(url)
             const pendingKey = familyItem?.mediaIds.join(',') ?? ''
             const deleting = pendingKey !== '' && deletingFamilyMediaKey === pendingKey
-            return <figure key={`family-${mediaImageKey(url)}`} className={`image-preview-card media-sortable${isProductMedia ? '' : ' family-media-preview'} ${dragOverMediaIndex === index ? 'is-media-drag-over' : ''}`} draggable={!submitting && !deletingProductMediaKey} onDragStart={event => { setDraggedMediaIndex(index); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', String(index)) }} onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDragOverMediaIndex(index) }} onDrop={event => { event.preventDefault(); const transferValue = event.dataTransfer.getData('text/plain'); const transferIndex = transferValue === '' ? draggedMediaIndex ?? -1 : Number(transferValue); reorderMedia(Number.isInteger(transferIndex) ? transferIndex : -1, index) }} onDragEnd={() => { setDraggedMediaIndex(null); setDragOverMediaIndex(null) }}>
-              <img src={url} alt={`${form.title || 'Ürün'} ${index + 1}`} className="clickable-thumb" onClick={() => setLightboxImage({ url, title: isProductMedia ? form.title || 'Ürün Görseli' : `${form.title || 'Ürün'} · Renk ailesi` })} title="Büyütmek için tıklayın" />
+            return <figure key={`family-${mediaImageKey(url)}`} className={`image-preview-card media-sortable${isProductMedia ? '' : ' family-media-preview'} ${dragOverMedia?.kind === 'url' && dragOverMedia.index === index ? 'is-media-drag-over' : ''}`} draggable={!submitting && !deletingProductMediaKey} onDragStart={event => { setDraggedMedia({ kind: 'url', index }); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', `url:${index}`) }} onDragOver={event => { if (draggedMedia?.kind !== 'url') return; event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDragOverMedia({ kind: 'url', index }) }} onDrop={event => { event.preventDefault(); const transferValue = event.dataTransfer.getData('text/plain'); const transferIndex = transferValue.startsWith('url:') ? Number(transferValue.slice(4)) : draggedMedia?.kind === 'url' ? draggedMedia.index : -1; if (draggedMedia?.kind === 'url' && Number.isInteger(transferIndex)) reorderMedia(transferIndex, index) }} onDragEnd={() => { setDraggedMedia(null); setDragOverMedia(null) }}>
+              <img src={url} alt={`${form.title || 'Ürün'} ${index + 1}`} className="clickable-thumb" draggable={false} onClick={() => setLightboxImage({ url, title: isProductMedia ? form.title || 'Ürün Görseli' : `${form.title || 'Ürün'} · Renk ailesi` })} title="Büyütmek için tıklayın" />
               {isProductMedia
                 ? <button type="button" className="image-remove-btn" disabled={deletingProductMedia || submitting} title="Görseli üründen hemen kaldır" aria-label="Görseli üründen hemen kaldır" onClick={event => { event.stopPropagation(); if (ownedUrl) void removeProductMedia(ownedUrl) }}><UiIcon name={deletingProductMedia ? 'loader' : 'close'} /></button>
                 : <button type="button" className="image-remove-btn" disabled={deleting || !familyItem} title="Renk ailesi görselini kaynak kayıtlardan kaldır" aria-label="Renk ailesi görselini kaldır" onClick={event => { event.stopPropagation(); if (familyItem) void removeFamilyMedia(familyItem) }}><UiIcon name={deleting ? 'loader' : 'close'} /></button>}
@@ -3571,7 +3594,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     {barcodePasteMenuOpen && <VariantHeaderActionMenu anchorRef={barcodePasteActionRef}>
       <section className="variant-header-action-menu-group" role="group" aria-label="Barkod üret">
         <p className="variant-header-action-menu-title">Model koduyla üret</p>
-        <button type="button" role="menuitem" disabled={!variantRows.length || !form.modelCode.trim()} onClick={() => regenerateVariantCodes('barcode')}><span><strong>Model kodundan barkod üret</strong><small>Barkod: {generatedCodePreview} · {variantRows.length.toLocaleString('tr-TR')} varyant</small></span><UiIcon name="refresh" /></button>
+        <button type="button" role="menuitem" disabled={!variantRows.length || !form.modelCode.trim()} onClick={() => regenerateVariantCodes('barcode')}><span><strong>Model kodundan barkod üret</strong><small className="variant-code-generation-preview"><span>Barkod: {generatedCodePreview}</span><span>{variantRows.length.toLocaleString('tr-TR')} varyant</span></small></span><UiIcon name="refresh" /></button>
       </section>
       <section className="variant-header-action-menu-group" role="group" aria-label="Panodan barkod yapıştır">
         <p className="variant-header-action-menu-title">Panodan barkod yapıştır</p>
@@ -3582,7 +3605,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     {barcodeSkuMenuOpen && <VariantHeaderActionMenu anchorRef={barcodeSkuActionRef}>
       <section className="variant-header-action-menu-group" role="group" aria-label="Model kodundan stok kodu üret">
         <p className="variant-header-action-menu-title">Model koduyla üret</p>
-        <button type="button" role="menuitem" disabled={!variantRows.length || !form.modelCode.trim()} onClick={() => regenerateVariantCodes('sku')}><span><strong>Model kodundan stok kodu üret</strong><small>Stok Kodu: {generatedCodePreview} · {variantRows.length.toLocaleString('tr-TR')} varyant</small></span><UiIcon name="refresh" /></button>
+        <button type="button" role="menuitem" disabled={!variantRows.length || !form.modelCode.trim()} onClick={() => regenerateVariantCodes('sku')}><span><strong>Model kodundan stok kodu üret</strong><small className="variant-code-generation-preview"><span>Stok Kodu: {generatedCodePreview}</span><span>{variantRows.length.toLocaleString('tr-TR')} varyant</span></small></span><UiIcon name="refresh" /></button>
       </section>
       <section className="variant-header-action-menu-group" role="group" aria-label="Stok kodlarını barkodlardan düzenle">
         <p className="variant-header-action-menu-title">Stok kodlarını barkodlardan düzenle</p>
@@ -3639,7 +3662,19 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       onApply={applyVariantMediaSelection}
       onClose={() => setVariantMediaModal(null)}
     />}
-    {variantBulkEdit && <div className="workspace-modal-backdrop variant-bulk-edit-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setVariantBulkEdit(null) }}><section id="variant-bulk-edit-dialog" className="workspace-modal variant-bulk-edit-modal" role="dialog" aria-modal="true" aria-labelledby="variant-bulk-edit-title" onMouseDown={event => event.stopPropagation()}><header><div><p className="eyebrow">VARYANTLAR</p><h2 id="variant-bulk-edit-title">Toplu {variantBulkEditLabels[variantBulkEdit.field]} değiştir</h2><p>Değer seçilen varyant satırlarına uygulanır.</p></div><button type="button" className="modal-close" onClick={() => setVariantBulkEdit(null)} aria-label="Toplu değişiklik penceresini kapat"><UiIcon name="close" /></button></header><div className="variant-bulk-edit-body"><div className="variant-bulk-edit-target"><span>Uygulanacak varyant</span><strong>{matchingVariantCount.toLocaleString('tr-TR')} satır</strong></div><label htmlFor="variant-bulk-edit-value">Yeni {variantBulkEditLabels[variantBulkEdit.field].toLocaleLowerCase('tr-TR')} değeri<input id="variant-bulk-edit-value" autoFocus type="number" min="0" step={variantBulkEdit.field === 'stock' ? '1' : '0.01'} value={variantBulkEdit.value} aria-describedby={`variant-bulk-edit-help${variantBulkEdit.error ? ' variant-bulk-edit-error' : ''}`} onChange={event => setVariantBulkEdit(current => current ? { ...current, value: event.target.value, error: '' } : current)} /></label><small id="variant-bulk-edit-help">{variantBulkEdit.field === 'stock' ? 'Stok tam sayı ve sıfırdan büyük veya eşit olmalıdır.' : 'Tutar sıfır veya daha büyük olmalıdır.'}</small>{variantBulkEdit.error && <p id="variant-bulk-edit-error" className="variant-bulk-edit-error" role="alert">{variantBulkEdit.error}</p>}</div><footer><button type="button" className="secondary" onClick={() => setVariantBulkEdit(null)}>Vazgeç</button><button type="button" onClick={applyVariantBulkEdit}>Uygula</button></footer></section></div>}
+    {variantBulkEdit && <div className="workspace-modal-backdrop variant-bulk-edit-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setVariantBulkEdit(null) }}>
+      <section id="variant-bulk-edit-dialog" className="workspace-modal variant-bulk-edit-modal" role="dialog" aria-modal="true" aria-labelledby="variant-bulk-edit-title" onMouseDown={event => event.stopPropagation()}>
+        <header><div><p className="eyebrow">VARYANTLAR</p><h2 id="variant-bulk-edit-title">Toplu {variantBulkEditLabels[variantBulkEdit.field]} değiştir</h2><p>Filtrelerle eşleşen varyant satırlarına uygulanır.</p></div><button type="button" className="modal-close" onClick={() => setVariantBulkEdit(null)} aria-label="Toplu değişiklik penceresini kapat"><UiIcon name="close" /></button></header>
+        <div className="variant-bulk-edit-body">
+          {variantBulkEditFilterGroups.length > 0 && <section className="variant-bulk-edit-filters" aria-label="Renk ve beden filtreleri"><strong>Renk ve beden seçin</strong><div>{variantBulkEditFilterGroups.map(group => <VariantFilterDropdown key={group.id} group={group} selectedValueIds={variantBulkEditFilterSelections[group.id] ?? []} onToggle={valueId => setVariantBulkEditFilterSelections(current => ({ ...current, [group.id]: (current[group.id] ?? []).includes(valueId) ? current[group.id].filter(id => id !== valueId) : [...(current[group.id] ?? []), valueId] }))} onClear={() => setVariantBulkEditFilterSelections(current => ({ ...current, [group.id]: [] }))} />)}</div></section>}
+          <div className="variant-bulk-edit-target"><span>Uygulanacak varyant</span><strong>{variantBulkEditMatchingRows.length.toLocaleString('tr-TR')} / {variantRows.length.toLocaleString('tr-TR')} satır</strong></div>
+          <label htmlFor="variant-bulk-edit-value">Yeni {variantBulkEditLabels[variantBulkEdit.field].toLocaleLowerCase('tr-TR')} değeri<input id="variant-bulk-edit-value" autoFocus type="number" min="0" step={variantBulkEdit.field === 'stock' ? '1' : '0.01'} value={variantBulkEdit.value} aria-describedby={variantBulkEdit.error ? 'variant-bulk-edit-help variant-bulk-edit-error' : 'variant-bulk-edit-help'} onChange={event => setVariantBulkEdit(current => current ? { ...current, value: event.target.value, error: '' } : current)} /></label>
+          <small id="variant-bulk-edit-help">{variantBulkEdit.field === 'stock' ? 'Stok tam sayı ve sıfırdan büyük veya eşit olmalıdır.' : 'Tutar sıfır veya daha büyük olmalıdır.'}</small>
+          {variantBulkEdit.error && <p id="variant-bulk-edit-error" className="variant-bulk-edit-error" role="alert">{variantBulkEdit.error}</p>}
+        </div>
+        <footer><button type="button" className="secondary" onClick={() => setVariantBulkEdit(null)}>Vazgeç</button><button type="button" onClick={applyVariantBulkEdit} disabled={!variantBulkEditMatchingRows.length}>Uygula</button></footer>
+      </section>
+    </div>}
   </form></Page>
 }
 
