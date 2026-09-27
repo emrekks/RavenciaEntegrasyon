@@ -8,8 +8,16 @@ public sealed class ScheduledOrderPollingCadencePolicyTests
     [Theory]
     [InlineData("TRENDYOL", "ORDERS", 60, 5, 180, 5)]
     [InlineData("TRENDYOL", "ORDER_LIFECYCLE", 180, 10, 180, 10)]
-    [InlineData("SHOPIFY", "ORDERS", 60, 5, 480, 30)]
-    [InlineData("SHOPIFY", "ORDER_LIFECYCLE", 180, 10, 480, 10)]
+    [InlineData("SHOPIFY", "ORDERS", 60, 5, 540, 30)]
+    [InlineData("SHOPIFY", "ORDER_LIFECYCLE", 180, 10, 540, 10)]
+    [InlineData("TRENDYOL", "ORDER_RECOVERY", 900, 30, 900, 30)]
+    [InlineData("SHOPIFY", "ORDER_RECOVERY", 900, 30, 2700, 30)]
+    [InlineData("TRENDYOL", "ORDER_RECONCILE_SHORT", 900, 30, 900, 30)]
+    [InlineData("SHOPIFY", "ORDER_RECONCILE_SHORT", 900, 30, 2700, 30)]
+    [InlineData("TRENDYOL", "ORDER_RECONCILE_MEDIUM", 3600, 120, 3600, 120)]
+    [InlineData("SHOPIFY", "ORDER_RECONCILE_MEDIUM", 3600, 120, 10800, 120)]
+    [InlineData("TRENDYOL", "ORDER_RECONCILE_DAILY", 86400, 900, 86400, 900)]
+    [InlineData("SHOPIFY", "ORDER_RECONCILE_DAILY", 86400, 900, 259200, 900)]
     public void ForPlatform_UsesRequestedOrderCadence(
         string platformCode,
         string resourceType,
@@ -29,7 +37,6 @@ public sealed class ScheduledOrderPollingCadencePolicyTests
 
     [Theory]
     [InlineData("SHOPIFY", "RETURNS", 180, 10)]
-    [InlineData("TRENDYOL", "ORDER_RECOVERY", 900, 30)]
     [InlineData("OTHER", "ORDERS", 60, 5)]
     public void ForPlatform_LeavesOtherSchedulesUnchanged(
         string platformCode,
