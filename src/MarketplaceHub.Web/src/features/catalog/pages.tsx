@@ -24,6 +24,7 @@ import { productCopyIdentifierConflicts } from './product-copy-identifiers'
 import { isPublicationLive, isPublicationSelectionDisabled, isPublicationStatusJobRunning, missingPublicationChecks, publicationStatusLabel, publicationStatusNote, publicationStatusTone } from './publication-status'
 import { productPlatformDisplayLabel, productPlatformDisplayState } from './product-platform-status'
 import { quickPlatformUpdateTargets } from './platform-update-targets'
+import { productPublicationTargets } from './product-publication-submit'
 import { readVariantMediaAssignmentDraft, updateVariantMediaAssignmentDraft, variantMediaAssignmentKey, type VariantMediaAssignmentDrafts } from './variant-media-assignments'
 import { OperationFeedbackToast, type OperationFeedback } from './operation-feedback-toast'
 
@@ -1983,7 +1984,7 @@ function PublicationJobProgress({ jobId, productId, connectionId }: { jobId: str
     : detail.progressTotal == null ? null : `${detail.progressCurrent.toLocaleString('tr-TR')} / ${detail.progressTotal.toLocaleString('tr-TR')}`
   return <div className={`publish-platform-job ${terminal ? `is-${status.toLowerCase()}` : 'is-active'}`} role="status" aria-live="polite">
     <div className="publish-platform-job-heading"><strong>{detail.progressLabel || 'Yayın işlemi'}</strong><span>{statusLabel(status)}</span></div>
-    {!terminal && <progress aria-label="Yayın işlemi ilerlemesi" max={100} {...(percent === null ? {} : { value: percent })} />}
+    {!terminal && <div className={`publish-platform-job-progress${percent === null ? ' is-indeterminate' : ''}`} role="progressbar" aria-label="Yayın işlemi ilerlemesi" aria-valuemin={0} aria-valuemax={100} {...(percent === null ? {} : { 'aria-valuenow': percent })}><span style={percent === null ? undefined : { width: `${percent}%` }} /></div>}
     {(progressText || detail.lastErrorSummary) && <small>{detail.lastErrorSummary || progressText}</small>}
     {!terminal && <div className="publish-platform-job-actions"><small>Durdurma, platforma gönderilmiş bir isteği geri alamayabilir.</small><button type="button" className="secondary" disabled={cancel.isPending} onClick={() => cancel.mutate()}>{cancel.isPending ? 'Durduruluyor…' : 'İşlemi durdur'}</button></div>}
   </div>
@@ -3106,7 +3107,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
         }
       }
       if (rows.some(row => row.stock > 0)) completed.push('stok'); if (targetConnectionIds.length) completed.push('kanal fiyatları')
-      for (const connectionId of targetConnectionIds) {
+      const publicationConnectionIds = productPublicationTargets(saveAndStay, targetConnectionIds)
+      for (const connectionId of publicationConnectionIds) {
         try {
           if (platformUpdate) {
             if (platformUpdate.includeProductInformation) {
