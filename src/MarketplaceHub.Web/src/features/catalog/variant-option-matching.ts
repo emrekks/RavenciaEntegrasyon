@@ -1,4 +1,5 @@
 export type VariantOptionEntry = { name: string; value: string }
+export type VariantOptionValue = { id: string; value: string }
 
 function normalizeOptionName(name: string) {
   return name.replace(/[\s_-]+/g, '').toLocaleUpperCase('tr-TR')
@@ -23,4 +24,13 @@ export function normalizeVariantOptionValue(value: string) {
     .replace(/\s+/g, ' ')
     .toLocaleLowerCase('tr-TR')
     .replace(/ı/g, 'i')
+}
+
+export function mergeVariantOptionValues(existing: VariantOptionValue[], incoming: VariantOptionValue[]) {
+  const values = new Map<string, VariantOptionValue>()
+  for (const item of [...existing, ...incoming]) {
+    const key = normalizeVariantOptionValue(item.value)
+    if (key && !values.has(key)) values.set(key, item)
+  }
+  return [...values.values()]
 }

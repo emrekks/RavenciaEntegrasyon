@@ -16,7 +16,7 @@ import { isStoredProductMediaUrl, mediaImageKey, mediaRefsEqual, mediaRefsSameSe
 import { applyVariantBulkEditValue, variantBulkEditIssue, type VariantBulkEditField } from './variant-bulk-edit'
 import { applyGeneratedVariantCodes, buildSequentialVariantCodes, buildVariantGenerationDefaults, resolveVariantSyncAttributeIds } from './variant-generation'
 import { filterVariantsByOptions, selectVariantDraftsByKeys, type VariantOptionFilterSelections } from './variant-filtering'
-import { mergeVariantOptionEntries, normalizeVariantOptionValue } from './variant-option-matching'
+import { mergeVariantOptionEntries, mergeVariantOptionValues, normalizeVariantOptionValue } from './variant-option-matching'
 import { classifyPublicationAttributeIssues, type PublicationAttributeSelection, type PublicationMappingReference, type PublicationValueReferenceSet } from './publication-attribute-readiness'
 import { productMediaUrlIssue } from './product-media-url'
 import { barcodeClipboardIssue, parseBarcodeClipboardValues } from './product-barcode-paste'
@@ -3216,7 +3216,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const mediaChoices: ProductMediaOption[] = ([...new Set([...mediaUrls, ...familyMediaUrls, ...assignedMediaUrls])].map((url, index) => ({ value: `url|${url}`, label: `Görsel ${String(index + 1).padStart(2, '0')}`, url })) as ProductMediaOption[]).concat(mediaFiles.map(item => ({ value: `file|${item.id}`, label: `Yüklenen görsel · ${item.file.name}`, file: item.file })))
   const bulkMediaGroups = useMemo<VariantMediaGroup[]>(() => {
     const groups: VariantMediaGroup[] = []
-    const names = new Set<string>()
+    const groupsByName = new Map<string, VariantMediaGroup>()
     const hasPanelColorSource = (productToEdit.data?.options ?? []).some(option => isColorOptionName(option.label) && !isWebColorOptionName(option.label))
       || optionRequirements.some(item => isColorOptionName(item.attribute.name) && !isWebColorOptionName(item.attribute.name))
       || variantRows.some(row => variantOptionEntries(row).some(option => isColorOptionName(option.name) && !isWebColorOptionName(option.name)))
@@ -3224,9 +3224,16 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       if (hasPanelColorSource && isWebColorOptionName(group.name)) return
       const canonicalName = isColorOptionName(group.name) ? 'Renk' : group.name.trim()
       const name = canonicalName.toLocaleLowerCase('tr-TR')
-      if (!group.values.length || names.has(name)) return
-      names.add(name)
-      groups.push({ ...group, name: canonicalName })
+      if (!group.values.length) return
+      const existing = groupsByName.get(name)
+      if (existing) {
+        existing.values = sortOptionValues(canonicalName, mergeVariantOptionValues(existing.values, group.values))
+        existing.attributeId ??= group.attributeId
+        return
+      }
+      const mergedGroup = { ...group, name: canonicalName, values: sortOptionValues(canonicalName, group.values) }
+      groupsByName.set(name, mergedGroup)
+      groups.push(mergedGroup)
     }
     // Existing products expose their persisted option groups separately from
     // category requirements. Prefer these IDs/values so imported variants such

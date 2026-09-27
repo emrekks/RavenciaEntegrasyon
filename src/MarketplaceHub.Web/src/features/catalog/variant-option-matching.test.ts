@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mergeVariantOptionEntries, normalizeVariantOptionValue } from './variant-option-matching'
+import { mergeVariantOptionEntries, mergeVariantOptionValues, normalizeVariantOptionValue } from './variant-option-matching'
 
 describe('variant option matching', () => {
   it('treats Turkish dotted and ASCII-uppercase I spellings as the same option value', () => {
@@ -19,5 +19,27 @@ describe('variant option matching', () => {
       [{ name: 'Renk', value: 'Yeşil' }],
       [{ name: 'Renk', value: 'Haki' }]
     )).toEqual([{ name: 'Renk', value: 'Haki' }])
+  })
+
+  it('merges category colors with variant-row colors while keeping one entry for normalized duplicates', () => {
+    expect(mergeVariantOptionValues(
+      [{ id: 'bordo-id', value: 'Bordo' }, { id: 'mor-id', value: 'Mor' }],
+      [
+        { id: 'gri', value: 'Gri' },
+        { id: 'haki', value: 'HAKI' },
+        { id: 'kahverengi', value: 'Kahverengi' },
+        { id: 'lacivert', value: 'Lacivert' },
+        { id: 'siyah', value: 'Siyah' },
+        { id: 'gri-duplicate', value: 'GRI' },
+      ]
+    )).toEqual([
+      { id: 'bordo-id', value: 'Bordo' },
+      { id: 'mor-id', value: 'Mor' },
+      { id: 'gri', value: 'Gri' },
+      { id: 'haki', value: 'HAKI' },
+      { id: 'kahverengi', value: 'Kahverengi' },
+      { id: 'lacivert', value: 'Lacivert' },
+      { id: 'siyah', value: 'Siyah' },
+    ])
   })
 })
