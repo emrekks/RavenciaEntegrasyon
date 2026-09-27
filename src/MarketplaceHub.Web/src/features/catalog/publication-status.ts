@@ -65,6 +65,10 @@ export function isPublicationLive(actualStatus?: string | null) {
   return actualStatus?.trim().toUpperCase() === 'LIVE'
 }
 
+export function shouldCheckPublicationAttributes(categoryId?: string | null, actualStatus?: string | null, lastJobStatus?: string | null) {
+  return Boolean(categoryId) && !isPublicationLive(actualStatus) && !isPublicationStatusPending(actualStatus, lastJobStatus)
+}
+
 export function isPublicationSelectionDisabled(
   actualStatus: string | null | undefined,
   selected: boolean,

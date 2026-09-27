@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isPublicationLive, isPublicationSelectionDisabled, isPublicationStatusJobRunning, isPublicationStatusPending, missingPublicationChecks, publicationStatusLabel, publicationStatusNote, publicationStatusTone } from './publication-status'
+import { isPublicationLive, isPublicationSelectionDisabled, isPublicationStatusJobRunning, isPublicationStatusPending, missingPublicationChecks, publicationStatusLabel, publicationStatusNote, publicationStatusTone, shouldCheckPublicationAttributes } from './publication-status'
 
 describe('product publication status', () => {
   it('describes the marketplace result rather than the connection state', () => {
@@ -22,6 +22,14 @@ describe('product publication status', () => {
     expect(isPublicationLive('PARTIAL_LIVE')).toBe(false)
     expect(isPublicationLive('UNKNOWN')).toBe(false)
     expect(isPublicationLive(null)).toBe(false)
+  })
+
+  it('skips attribute-readiness checks for live listings and jobs awaiting publication results', () => {
+    expect(shouldCheckPublicationAttributes('category', 'LIVE', 'SUCCEEDED')).toBe(false)
+    expect(shouldCheckPublicationAttributes('category', 'APPROVAL_PENDING', 'RETRY_SCHEDULED')).toBe(false)
+    expect(shouldCheckPublicationAttributes('category', 'UNKNOWN', 'PENDING')).toBe(false)
+    expect(shouldCheckPublicationAttributes('category', 'UNKNOWN', 'SUCCEEDED')).toBe(true)
+    expect(shouldCheckPublicationAttributes(null, 'UNKNOWN', 'SUCCEEDED')).toBe(false)
   })
 
   it('blocks live listings and fails closed while publication status is unavailable', () => {

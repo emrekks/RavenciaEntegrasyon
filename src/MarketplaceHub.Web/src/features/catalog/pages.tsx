@@ -21,7 +21,7 @@ import { classifyPublicationAttributeIssues, type PublicationAttributeSelection,
 import { productMediaUrlIssue } from './product-media-url'
 import { barcodeClipboardIssue, parseBarcodeClipboardValues } from './product-barcode-paste'
 import { productCopyIdentifierConflicts } from './product-copy-identifiers'
-import { isPublicationLive, isPublicationSelectionDisabled, isPublicationStatusJobRunning, missingPublicationChecks, publicationStatusLabel, publicationStatusNote, publicationStatusTone } from './publication-status'
+import { isPublicationLive, isPublicationSelectionDisabled, isPublicationStatusJobRunning, missingPublicationChecks, publicationStatusLabel, publicationStatusNote, publicationStatusTone, shouldCheckPublicationAttributes } from './publication-status'
 import { productPlatformDisplayLabel, productPlatformDisplayState } from './product-platform-status'
 import { quickPlatformUpdateTargets } from './platform-update-targets'
 import { productPublicationTargets } from './product-publication-submit'
@@ -1853,6 +1853,8 @@ function PublishPlatformCard({ card, selected, productId, categoryId, productChe
   }, [alreadyPublished, onDeselect, selected])
   const publicationNote = publicationStatusNote(publication.data?.lastRejectionCode)
   const missingChecks = missingPublicationChecks(productChecks)
+  const mappingReadinessEnabled = (!productId || !publication.isPending)
+    && shouldCheckPublicationAttributes(categoryId, publication.data?.actualStatus, publication.data?.lastJobStatus)
   const mappingReadiness = useQuery({
     queryKey: ['publication-attribute-readiness', card.connection.id, categoryId, selectedAttributes],
     queryFn: async () => {
@@ -1898,14 +1900,14 @@ function PublishPlatformCard({ card, selected, productId, categoryId, productChe
       })
       return result
     },
-    enabled: Boolean(categoryId),
+    enabled: mappingReadinessEnabled,
     retry: false,
     staleTime: 15_000
   })
-  const requiredMappingIssues = mappingReadiness.data?.requiredIssues ?? []
-  const optionalMappingWarnings = mappingReadiness.data?.optionalWarnings ?? []
-  const mappingCheckFailed = mappingReadiness.isError
-  const mappingCheckPending = Boolean(categoryId) && mappingReadiness.isPending
+  const requiredMappingIssues = mappingReadinessEnabled ? mappingReadiness.data?.requiredIssues ?? [] : []
+  const optionalMappingWarnings = mappingReadinessEnabled ? mappingReadiness.data?.optionalWarnings ?? [] : []
+  const mappingCheckFailed = mappingReadinessEnabled && mappingReadiness.isError
+  const mappingCheckPending = mappingReadinessEnabled && mappingReadiness.isPending
   const blockedIssues = [
     ...missingChecks.map(check => ({ attribute: check.title, detail: check.detail })),
     ...requiredMappingIssues,
@@ -1978,12 +1980,13 @@ function PublicationJobProgress({ jobId, productId, connectionId }: { jobId: str
   const detail = job.data.job
   const status = detail.status.trim().toUpperCase()
   const terminal = ['SUCCEEDED', 'DEAD', 'CANCELLED'].includes(status)
+  const retryScheduled = ['RETRY_SCHEDULED', 'RETRYABLE_FAILURE'].includes(status)
   const percent = detail.progressPercent == null ? null : Math.max(0, Math.min(100, detail.progressPercent))
   const progressText = percent !== null
     ? `${percent}%${detail.progressTotal == null ? '' : ` · ${detail.progressCurrent.toLocaleString('tr-TR')} / ${detail.progressTotal.toLocaleString('tr-TR')}`}`
     : detail.progressTotal == null ? null : `${detail.progressCurrent.toLocaleString('tr-TR')} / ${detail.progressTotal.toLocaleString('tr-TR')}`
   return <div className={`publish-platform-job ${terminal ? `is-${status.toLowerCase()}` : 'is-active'}`} role="status" aria-live="polite">
-    <div className="publish-platform-job-heading"><strong>{detail.progressLabel || 'Yayın işlemi'}</strong><span>{statusLabel(status)}</span></div>
+    <div className="publish-platform-job-heading"><strong>{detail.progressLabel || 'Yayın işlemi'}</strong>{!retryScheduled && <span>{statusLabel(status)}</span>}</div>
     {!terminal && <div className={`publish-platform-job-progress${percent === null ? ' is-indeterminate' : ''}`} role="progressbar" aria-label="Yayın işlemi ilerlemesi" aria-valuemin={0} aria-valuemax={100} {...(percent === null ? {} : { 'aria-valuenow': percent })}><span style={percent === null ? undefined : { width: `${percent}%` }} /></div>}
     {(progressText || detail.lastErrorSummary) && <small>{detail.lastErrorSummary || progressText}</small>}
     {!terminal && <div className="publish-platform-job-actions"><small>Durdurma, platforma gönderilmiş bir isteği geri alamayabilir.</small><button type="button" className="secondary" disabled={cancel.isPending} onClick={() => cancel.mutate()}>{cancel.isPending ? 'Durduruluyor…' : 'İşlemi durdur'}</button></div>}
