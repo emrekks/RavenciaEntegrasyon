@@ -323,18 +323,22 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
-    public async Task JobLease_PriorityLanes_HandleNullOptionalFilters()
+    public async Task JobLease_AllPriorityLanes_HandleNullOptionalFilters()
     {
         var tenant = NewTenant("lease-priority-lanes");
+        var unboundedJob = NewJob(tenant.Id);
+        unboundedJob.Priority = 0;
         var hotJob = NewJob(tenant.Id);
-        hotJob.Priority = 0;
+        hotJob.Priority = 1;
         var backgroundJob = NewJob(tenant.Id);
-        backgroundJob.Priority = 5;
+        backgroundJob.Priority = 3;
+        var boundedJob = NewJob(tenant.Id);
+        boundedJob.Priority = 5;
 
         await using (var setup = fixture.CreateContext())
         {
             setup.Tenants.Add(tenant);
-            setup.IntegrationJobs.AddRange(hotJob, backgroundJob);
+            setup.IntegrationJobs.AddRange(unboundedJob, hotJob, backgroundJob, boundedJob);
             await setup.SaveChangesAsync();
         }
 
@@ -343,16 +347,21 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             await using var db = fixture.CreateContext();
             var leaseService = new JobLeaseService(db, fixture.TokenHasher, fixture.TimeProvider);
 
+            var unboundedLease = await leaseService.TryLeaseAsync(TimeSpan.FromMinutes(2), null, null, CancellationToken.None);
             var backgroundLease = await leaseService.TryLeaseAsync(TimeSpan.FromMinutes(2), null, 3, CancellationToken.None);
             var hotLease = await leaseService.TryLeaseAsync(TimeSpan.FromMinutes(2), 2, null, CancellationToken.None);
+            var boundedLease = await leaseService.TryLeaseAsync(TimeSpan.FromMinutes(2), 6, 4, CancellationToken.None);
 
+            Assert.Equal(unboundedJob.Id, unboundedLease?.Id);
             Assert.Equal(backgroundJob.Id, backgroundLease?.Id);
             Assert.Equal(hotJob.Id, hotLease?.Id);
+            Assert.Equal(boundedJob.Id, boundedLease?.Id);
         }
         finally
         {
             await using var cleanup = fixture.CreateContext();
-            await cleanup.IntegrationJobs.Where(x => x.Id == hotJob.Id || x.Id == backgroundJob.Id).ExecuteDeleteAsync();
+            var jobIds = new[] { unboundedJob.Id, hotJob.Id, backgroundJob.Id, boundedJob.Id };
+            await cleanup.IntegrationJobs.Where(x => jobIds.Contains(x.Id)).ExecuteDeleteAsync();
             await cleanup.Tenants.Where(x => x.Id == tenant.Id).ExecuteDeleteAsync();
         }
     }
