@@ -10894,6 +10894,15 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 
 /* Keep the refresh control icon-only and visually quiet beside the status. */
 .app-shell.stitch-shell main .publish-platform-fact-publication .publish-tracking-action {
+  display: grid;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  min-height: 30px;
+  flex: 0 0 30px;
+  place-items: center;
+  padding: 0;
+  box-sizing: border-box;
   color: var(--rv-color-muted);
   background: transparent;
   border: 0;
