@@ -26,6 +26,11 @@ export function normalizeVariantOptionValue(value: string) {
     .replace(/ı/g, 'i')
 }
 
+export function formatColorOptionValue(value: string) {
+  const normalized = value.normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('tr-TR')
+  return normalized.replace(/(^|[\s\/-])(\p{L})/gu, (_, separator: string, letter: string) => `${separator}${letter.toLocaleUpperCase('tr-TR')}`)
+}
+
 export function mergeVariantOptionValues(existing: VariantOptionValue[], incoming: VariantOptionValue[]) {
   const values = new Map<string, VariantOptionValue>()
   for (const item of [...existing, ...incoming]) {

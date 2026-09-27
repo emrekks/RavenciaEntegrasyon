@@ -16,7 +16,7 @@ import { isStoredProductMediaUrl, mediaImageKey, mediaRefsEqual, mediaRefsSameSe
 import { applyVariantBulkEditValue, variantBulkEditIssue, type VariantBulkEditField } from './variant-bulk-edit'
 import { applyGeneratedVariantCodes, buildSequentialVariantCodes, buildVariantGenerationDefaults, resolveVariantSyncAttributeIds } from './variant-generation'
 import { filterVariantsByOptions, selectVariantDraftsByKeys, type VariantOptionFilterSelections } from './variant-filtering'
-import { mergeVariantOptionEntries, mergeVariantOptionValues, normalizeVariantOptionValue } from './variant-option-matching'
+import { formatColorOptionValue, mergeVariantOptionEntries, mergeVariantOptionValues, normalizeVariantOptionValue } from './variant-option-matching'
 import { classifyPublicationAttributeIssues, type PublicationAttributeSelection, type PublicationMappingReference, type PublicationValueReferenceSet } from './publication-attribute-readiness'
 import { productMediaUrlIssue } from './product-media-url'
 import { barcodeClipboardIssue, parseBarcodeClipboardValues } from './product-barcode-paste'
@@ -3225,13 +3225,16 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       const canonicalName = isColorOptionName(group.name) ? 'Renk' : group.name.trim()
       const name = canonicalName.toLocaleLowerCase('tr-TR')
       if (!group.values.length) return
+      const formatValues = (values: VariantMediaGroup['values']) => isColorOptionName(canonicalName)
+        ? values.map(value => ({ ...value, value: formatColorOptionValue(value.value) }))
+        : values
       const existing = groupsByName.get(name)
       if (existing) {
-        existing.values = sortOptionValues(canonicalName, mergeVariantOptionValues(existing.values, group.values))
+        existing.values = sortOptionValues(canonicalName, formatValues(mergeVariantOptionValues(existing.values, group.values)))
         existing.attributeId ??= group.attributeId
         return
       }
-      const mergedGroup = { ...group, name: canonicalName, values: sortOptionValues(canonicalName, group.values) }
+      const mergedGroup = { ...group, name: canonicalName, values: sortOptionValues(canonicalName, formatValues(group.values)) }
       groupsByName.set(name, mergedGroup)
       groups.push(mergedGroup)
     }

@@ -1,10 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { mergeVariantOptionEntries, mergeVariantOptionValues, normalizeVariantOptionValue } from './variant-option-matching'
+import { formatColorOptionValue, mergeVariantOptionEntries, mergeVariantOptionValues, normalizeVariantOptionValue } from './variant-option-matching'
 
 describe('variant option matching', () => {
   it('treats Turkish dotted and ASCII-uppercase I spellings as the same option value', () => {
     expect(normalizeVariantOptionValue('HAKI')).toBe(normalizeVariantOptionValue('Haki'))
     expect(normalizeVariantOptionValue('  Haki   ')).toBe(normalizeVariantOptionValue('Haki'))
+  })
+
+  it('formats color labels in Turkish title case', () => {
+    expect(formatColorOptionValue('BORDO')).toBe('Bordo')
+    expect(formatColorOptionValue('  AÇIK   MAVİ ')).toBe('Açık Mavi')
+    expect(formatColorOptionValue('KIRMIZI-BEYAZ')).toBe('Kırmızı-Beyaz')
   })
 
   it('keeps options missing from a partial variant signature', () => {
