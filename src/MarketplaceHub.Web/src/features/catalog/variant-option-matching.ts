@@ -26,6 +26,11 @@ export function normalizeVariantOptionValue(value: string) {
     .replace(/ı/g, 'i')
 }
 
+export function matchingVariantOptionValues<T extends VariantOptionValue>(values: T[], candidates: string[]) {
+  const candidateKeys = new Set(candidates.map(normalizeVariantOptionValue).filter(Boolean))
+  return values.filter(value => candidateKeys.has(normalizeVariantOptionValue(value.value)))
+}
+
 export function formatColorOptionValue(value: string) {
   const normalized = value.normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('tr-TR')
   return normalized.replace(/(^|[\s\/-])(\p{L})/gu, (_, separator: string, letter: string) => `${separator}${letter.toLocaleUpperCase('tr-TR')}`)

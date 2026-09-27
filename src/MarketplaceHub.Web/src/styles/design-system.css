@@ -1026,6 +1026,13 @@
   .product-import-progress-track > i { display: block; height: 100%; background: linear-gradient(90deg, var(--rv-color-primary), var(--rv-color-accent)); border-radius: inherit; }
   .product-import-progress-track.indeterminate > i { width: 35%; animation: rv-product-progress 1.2s ease-in-out infinite alternate; }
   .product-import-progress-counters { display: flex; flex-wrap: wrap; gap: var(--rv-space-2) var(--rv-space-3); color: var(--rv-color-muted); }
+  .product-import-page-tracker { position: sticky; bottom: 0; z-index: var(--rv-z-sticky); max-height: min(42vh, 360px); overflow-y: auto; margin-top: var(--rv-space-4); background: color-mix(in srgb, var(--rv-color-surface) 96%, transparent); box-shadow: var(--rv-shadow-md); backdrop-filter: blur(12px); }
+  .product-import-page-tracker .product-import-progress-heading > div { display: grid; gap: 3px; }
+  .product-import-page-tracker .product-import-progress-heading small { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); }
+  .product-import-tracker-link { display: inline-flex; align-items: center; gap: var(--rv-space-1); color: var(--rv-color-primary); font-size: var(--rv-font-size-sm); font-weight: 800; text-decoration: none; }
+  .product-import-tracker-link:hover { color: var(--rv-color-ink); }
+  .product-import-tracker-link svg { width: 16px; height: 16px; }
+  .product-import-page-tracker .product-import-progress-track.queued { background: var(--rv-color-surface-soft); }
   .product-import-modal > footer > button { min-width: 132px; }
   @keyframes rv-product-progress { from { transform: translateX(-20%); } to { transform: translateX(205%); } }
   .order-search { min-width: 0; }

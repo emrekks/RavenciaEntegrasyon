@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatColorOptionValue, mergeVariantOptionEntries, mergeVariantOptionValues, normalizeVariantOptionValue } from './variant-option-matching'
+import { formatColorOptionValue, matchingVariantOptionValues, mergeVariantOptionEntries, mergeVariantOptionValues, normalizeVariantOptionValue } from './variant-option-matching'
 
 describe('variant option matching', () => {
   it('treats Turkish dotted and ASCII-uppercase I spellings as the same option value', () => {
@@ -11,6 +11,21 @@ describe('variant option matching', () => {
     expect(formatColorOptionValue('BORDO')).toBe('Bordo')
     expect(formatColorOptionValue('  AÇIK   MAVİ ')).toBe('Açık Mavi')
     expect(formatColorOptionValue('KIRMIZI-BEYAZ')).toBe('Kırmızı-Beyaz')
+  })
+
+  it('matches imported uppercase Turkish variant values to catalog values when inferring selections', () => {
+    const catalogColors = [
+      { id: 'bordo', value: 'Bordo' },
+      { id: 'gri', value: 'Gri' },
+      { id: 'haki', value: 'Haki' },
+      { id: 'kahverengi', value: 'Kahverengi' },
+      { id: 'lacivert', value: 'Lacivert' },
+      { id: 'mor', value: 'Mor' },
+      { id: 'siyah', value: 'Siyah' },
+    ]
+
+    expect(matchingVariantOptionValues(catalogColors, ['BORDO', 'GRI', 'HAKI', 'KAHVERENGI', 'LACIVERT', 'MOR', 'SIYAH']))
+      .toEqual(catalogColors)
   })
 
   it('keeps options missing from a partial variant signature', () => {
