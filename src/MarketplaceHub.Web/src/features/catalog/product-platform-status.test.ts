@@ -2,12 +2,28 @@ import { describe, expect, it } from 'vitest'
 import { productPlatformDisplayLabel, productPlatformDisplayState } from './product-platform-status'
 
 describe('product platform list status', () => {
-  it('does not present full variant links as a published listing', () => {
-    const state = productPlatformDisplayState(['LINKED'], false)
+  it('shows imported and fully matched variants as linked without claiming publication', () => {
+    const state = productPlatformDisplayState(['LINKED'], false, 35)
 
-    expect(state).toBe('inactive')
+    expect(state).toBe('linked')
     expect(productPlatformDisplayLabel('Ravencia Canlı', ['LINKED'], 35, 35, state))
-      .toBe('35/35 varyant eşleşmesi var; yayın durumu doğrulanmadı')
+      .toBe('Ravencia Canlı bağlantısı var (35/35 varyant); yayın durumu ayrıca doğrulanmalı')
+  })
+
+  it('shows partial marketplace matching as linked with its coverage', () => {
+    const state = productPlatformDisplayState(['PARTIAL_LINKED'], false, 2)
+
+    expect(state).toBe('linked')
+    expect(productPlatformDisplayLabel('Trendyol', ['PARTIAL_LINKED'], 2, 4, state))
+      .toBe('Trendyol bağlantısı var (2/4 varyant); yayın durumu ayrıca doğrulanmalı')
+  })
+
+  it('recognizes explicit mapping status when counts are unavailable', () => {
+    const state = productPlatformDisplayState(['MAPPED'], false)
+
+    expect(state).toBe('linked')
+    expect(productPlatformDisplayLabel('Trendyol', ['MAPPED'], 0, 0, state))
+      .toBe('Trendyol bağlantısı var; yayın durumu ayrıca doğrulanmalı')
   })
 
   it('shows a confirmed live listing as active', () => {

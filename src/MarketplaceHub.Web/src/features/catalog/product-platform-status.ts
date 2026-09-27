@@ -1,4 +1,4 @@
-export type ProductPlatformDisplayState = 'active' | 'partial' | 'processing' | 'error' | 'inactive'
+export type ProductPlatformDisplayState = 'active' | 'linked' | 'partial' | 'processing' | 'error' | 'inactive'
 
 const inProgressStatuses = new Set([
   'QUEUED',
@@ -41,7 +41,8 @@ function normalizedStatuses(statuses: readonly string[]) {
 
 export function productPlatformDisplayState(
   statuses: readonly string[],
-  isChecking: boolean
+  isChecking: boolean,
+  matchedVariantCount = 0
 ): ProductPlatformDisplayState {
   const normalized = normalizedStatuses(statuses)
   if (isChecking || normalized.some(status => inProgressStatuses.has(status))) return 'processing'
@@ -49,8 +50,10 @@ export function productPlatformDisplayState(
   if (normalized.some(status => status === 'LIVE' || status === 'PARTIAL_LIVE')) return 'partial'
   if (normalized.some(status => errorStatuses.has(status))) return 'error'
 
-  // Variant links only prove that local and remote variant identifiers were
-  // paired at some point. They do not prove that a marketplace listing exists.
+  // A catalog import/mapping confirms that the local variants are connected
+  // to marketplace variants; publication state remains a separate status.
+  if (matchedVariantCount > 0 || normalized.some(status => status === 'LINKED' || status === 'PARTIAL_LINKED' || status === 'MAPPED')) return 'linked'
+
   return 'inactive'
 }
 
@@ -62,13 +65,15 @@ export function productPlatformDisplayLabel(
   state: ProductPlatformDisplayState
 ) {
   const normalized = normalizedStatuses(statuses)
-  const coverage = variantCount > 0 ? ` (${matchedVariantCount}/${variantCount})` : ''
+  const coverage = matchedVariantCount > 0 && variantCount > 0 ? ` (${matchedVariantCount}/${variantCount})` : ''
+  const linkedCoverage = matchedVariantCount > 0 && variantCount > 0 ? ` (${matchedVariantCount}/${variantCount} varyant)` : ''
 
   if (state === 'processing') return `${platform} yayın durumu güncelleniyor`
   if (state === 'error') return `${platform} yayın işlemi başarısız veya incelemede`
   if (state === 'active') return `${platform} üzerinde tüm varyantlar yayında${coverage}`
   if (state === 'partial') return `${platform} üzerinde ürün kısmen yayında${coverage}`
-  if (normalized.includes('ARCHIVED')) return `${platform} ilanı arşivlenmiş`
+  if (normalized.includes('ARCHIVED')) return `${platform} ilanı arşivlenmiş${coverage}`
+  if (state === 'linked') return `${platform} bağlantısı var${linkedCoverage}; yayın durumu ayrıca doğrulanmalı`
 
   if (matchedVariantCount > 0) {
     const publicationNote = normalized.includes('UNKNOWN')

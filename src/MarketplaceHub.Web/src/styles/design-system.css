@@ -8044,6 +8044,15 @@ small,
   opacity: .42;
 }
 
+/* A mapped marketplace listing is connected, but not necessarily published. */
+.app-shell.stitch-shell main .platform-state-icon.linked::after {
+  background: var(--rv-color-primary);
+}
+
+.app-shell.stitch-shell main .platform-state-icon.linked .platform-square-mark {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--rv-color-primary) 48%, transparent);
+}
+
 .app-shell.stitch-shell main .product-select-all {
   gap: var(--rv-space-3);
 }

@@ -925,7 +925,7 @@ function ProductColorRows({ group, selected, onSelect, onQuickEdit, onImageClick
     }
   }
   const platformCards = [...platformStatusAggregates.entries()].map(([key, item]) => {
-    const state = productPlatformDisplayState(item.statuses, item.isChecking)
+    const state = productPlatformDisplayState(item.statuses, item.isChecking, item.matchedVariantCount)
     const unmatched = unmatchedVariantDetails.get(key)
     // Keep the hover summary compact. The complete list made the native
     // browser tooltip span the whole product row and cover the controls.
