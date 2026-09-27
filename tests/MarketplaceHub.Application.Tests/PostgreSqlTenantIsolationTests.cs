@@ -323,6 +323,41 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task JobLease_PriorityLanes_HandleNullOptionalFilters()
+    {
+        var tenant = NewTenant("lease-priority-lanes");
+        var hotJob = NewJob(tenant.Id);
+        hotJob.Priority = 0;
+        var backgroundJob = NewJob(tenant.Id);
+        backgroundJob.Priority = 5;
+
+        await using (var setup = fixture.CreateContext())
+        {
+            setup.Tenants.Add(tenant);
+            setup.IntegrationJobs.AddRange(hotJob, backgroundJob);
+            await setup.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var leaseService = new JobLeaseService(db, fixture.TokenHasher, fixture.TimeProvider);
+
+            var backgroundLease = await leaseService.TryLeaseAsync(TimeSpan.FromMinutes(2), null, 3, CancellationToken.None);
+            var hotLease = await leaseService.TryLeaseAsync(TimeSpan.FromMinutes(2), 2, null, CancellationToken.None);
+
+            Assert.Equal(backgroundJob.Id, backgroundLease?.Id);
+            Assert.Equal(hotJob.Id, hotLease?.Id);
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateContext();
+            await cleanup.IntegrationJobs.Where(x => x.Id == hotJob.Id || x.Id == backgroundJob.Id).ExecuteDeleteAsync();
+            await cleanup.Tenants.Where(x => x.Id == tenant.Id).ExecuteDeleteAsync();
+        }
+    }
+
+    [PostgreSqlFact]
     public async Task ApiIdempotencyKey_IsScopedToTenant_ButDuplicateWithinTenantIsRejected()
     {
         var firstTenant = NewTenant("idempotency-a");
