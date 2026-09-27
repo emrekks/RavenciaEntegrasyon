@@ -10769,10 +10769,7 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .publish-platform-fact-publication .publish-platform-status { max-width: 100%; min-height: 28px; padding-inline: 8px; font-size: 11px; white-space: nowrap; }
 .publish-platform-fact-publication > small { color: var(--rv-color-danger); font-size: 11px; }
 .publish-platform-fact-publication .publish-tracking-action { display: grid; width: 28px; min-width: 28px; height: 28px; min-height: 28px; place-items: center; padding: 0; }
-.publish-platform-job { display: grid; gap: 7px; margin: 0 12px 12px; padding: 11px 12px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-sm); }
-.publish-platform-job.is-succeeded { border-color: color-mix(in srgb, var(--rv-color-success) 35%, var(--rv-color-border)); }
-.publish-platform-job.is-dead { border-color: color-mix(in srgb, var(--rv-color-danger) 42%, var(--rv-color-border)); }
-.publish-platform-job.is-cancelled { border-color: color-mix(in srgb, var(--rv-color-muted) 42%, var(--rv-color-border)); }
+.publish-platform-job { display: grid; min-width: 0; gap: 8px; margin: 0; padding: 0 var(--rv-space-4) var(--rv-space-4); background: transparent; border: 0; border-radius: 0; box-shadow: none; }
 .publish-platform-job-heading, .publish-platform-job-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .publish-platform-job-heading > strong { min-width: 0; overflow-wrap: anywhere; }
 .publish-platform-job-heading > span { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); white-space: nowrap; }
@@ -10780,6 +10777,10 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .publish-platform-job > small, .publish-platform-job-actions > small { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); line-height: 1.4; }
 .publish-platform-job-actions > small { min-width: 0; }
 .publish-platform-job-actions > button { flex: 0 0 auto; min-height: 34px; }
+@media (max-width: 560px) {
+  .publish-platform-job-actions { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .publish-platform-job-actions > button { justify-self: end; }
+}
 
 /* Compact, consistent presentation for the quick attribute-value editor. */
 .value-mapping-quick-value-backdrop .panel-attribute-quick-modal-card {
@@ -10886,26 +10887,6 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .app-shell.stitch-shell main .variant-row-actions > .variant-row-action-delete { color: var(--rv-color-primary); }
 .app-shell.stitch-shell main .variant-row-actions > .variant-platform-empty { flex: 0 0 34px; text-align: center; }
 .app-shell.stitch-shell main .variant-table-head > span:nth-child(9) { text-align: center; }
-
-/* Give the cancelled job panel balanced inset spacing and a clear frame. */
-.app-shell.stitch-shell main .publish-platform-job.is-cancelled {
-  margin: 12px;
-  padding: 12px;
-  background: var(--rv-color-surface-raised);
-  border: 1px solid color-mix(in srgb, var(--rv-color-muted) 42%, var(--rv-color-border));
-  border-radius: var(--rv-radius-sm);
-  box-shadow: none;
-}
-
-/* Align successful publication feedback with the facts row instead of boxing it separately. */
-.app-shell.stitch-shell main .publish-platform-job.is-succeeded {
-  margin: 0;
-  padding: 12px 16px 16px;
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-}
 
 /* Keep the refresh control icon-only and visually quiet beside the status. */
 .app-shell.stitch-shell main .publish-platform-fact-publication .publish-tracking-action {
