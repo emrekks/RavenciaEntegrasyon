@@ -11256,3 +11256,49 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
   border-color: color-mix(in srgb, var(--rv-color-accent) 48%, var(--rv-color-border));
   justify-content: center;
 }
+
+/* Size the product catalogue from its available content area, not the whole
+   browser viewport (the fixed sidebar can make that area much narrower). */
+.app-shell.stitch-shell main .product-catalog-scroll {
+  container: product-catalog / inline-size;
+}
+
+@container product-catalog (max-width: 1215px) {
+  .preferred-product-catalog,
+  .product-catalog-table {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .product-catalog-head,
+  .product-catalog-row {
+    grid-template-columns: 34px 68px minmax(136px, 2fr) minmax(82px, .8fr) minmax(64px, .55fr) minmax(52px, .45fr) minmax(76px, .65fr) minmax(108px, .75fr) minmax(120px, .85fr);
+  }
+
+  .product-catalog-head > *,
+  .product-catalog-row > * {
+    padding-inline: 4px;
+  }
+
+  .product-list-thumb,
+  .product-list-placeholder {
+    width: 60px;
+    height: 90px;
+    min-height: 90px;
+  }
+
+  .product-list-platforms { gap: 4px; }
+  .app-shell.stitch-shell main .product-list-actions { gap: 4px; }
+  .product-list-actions a,
+  .product-list-actions button,
+  .app-shell.stitch-shell main .product-more-actions > summary {
+    width: 34px;
+    height: 34px;
+    min-height: 34px;
+  }
+  .product-list-actions > a,
+  .product-list-actions > button,
+  .app-shell.stitch-shell main .product-list-actions > .product-more-actions {
+    flex: 0 0 34px;
+  }
+}
