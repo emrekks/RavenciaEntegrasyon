@@ -20,9 +20,11 @@ namespace MarketplaceHub.Application.Tests;
 public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixture fixture) : IClassFixture<PostgreSqlTenantIsolationFixture>
 {
     [PostgreSqlFact]
-    public async Task ProductAndVariantDefaultPrices_RoundTripThroughProductUpdateAndReload()
+    public async Task ProductVariantAttributesAndDefaultPrices_RoundTripThroughProductUpdateAndReload()
     {
         var tenant = NewTenant("product-price-defaults");
+        var attributeId = Guid.CreateVersion7();
+        var valueId = Guid.CreateVersion7();
         var product = new Product
         {
             Id = Guid.CreateVersion7(),
@@ -49,11 +51,45 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             UpdatedAt = fixture.Now,
             Version = 1
         };
+        var attribute = new AttributeDefinition
+        {
+            Id = attributeId,
+            TenantId = tenant.Id,
+            Code = $"TEST-{Guid.NewGuid():N}",
+            Name = "Test varyant özelliği",
+            DataType = AttributeDataType.SingleSelect,
+            CreatedAt = fixture.Now,
+            UpdatedAt = fixture.Now,
+            Version = 1
+        };
+        var attributeValue = new AttributeValue
+        {
+            Id = valueId,
+            TenantId = tenant.Id,
+            AttributeId = attributeId,
+            Value = "Değer",
+            NormalizedValue = "DEGER",
+            SortOrder = 0,
+            Version = 1
+        };
         await using var db = fixture.CreateContext();
         await using var transaction = await db.Database.BeginTransactionAsync();
         db.Tenants.Add(tenant);
         db.Products.Add(product);
         db.ProductVariants.Add(variant);
+        db.AttributeDefinitions.Add(attribute);
+        db.AttributeValues.Add(attributeValue);
+        db.ProductAttributeAssignments.Add(new ProductAttributeAssignment
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            ProductId = product.Id,
+            VariantId = variant.Id,
+            AttributeId = attributeId,
+            ValueId = valueId,
+            SortOrder = 0,
+            Version = 1
+        });
         await db.SaveChangesAsync();
 
         var service = new CatalogService(
@@ -81,12 +117,14 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         Assert.Equal(0m, updated.Value?.DefaultSalePrice);
         Assert.Equal(899m, updated.Value?.Variants.Single().DefaultListPrice);
         Assert.Equal(799m, updated.Value?.Variants.Single().DefaultSalePrice);
+        Assert.Equal(valueId, Assert.Single(updated.Value!.Variants.Single().Attributes!).ValueId);
 
         var reloadedView = await service.GetProductAsync(tenant.Id, product.Id, CancellationToken.None);
         Assert.Equal(699m, reloadedView.Value?.DefaultListPrice);
         Assert.Equal(0m, reloadedView.Value?.DefaultSalePrice);
         Assert.Equal(899m, reloadedView.Value?.Variants.Single().DefaultListPrice);
         Assert.Equal(799m, reloadedView.Value?.Variants.Single().DefaultSalePrice);
+        Assert.Equal(valueId, Assert.Single(reloadedView.Value!.Variants.Single().Attributes!).ValueId);
 
         db.ChangeTracker.Clear();
         var reloaded = await db.Products.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.Id == product.Id);

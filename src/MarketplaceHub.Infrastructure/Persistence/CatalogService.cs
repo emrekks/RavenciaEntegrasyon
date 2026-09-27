@@ -892,7 +892,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var familyVariants = await db.ProductVariants.AsNoTracking()
             .Where(x => x.TenantId == tenantId && familyProductIds.Contains(x.ProductId))
             .ToListAsync(cancellationToken);
-        var familyViews = await BuildProductViewsAsync(tenantId, familyProducts, familyVariants, cancellationToken);
+        var familyViews = await BuildProductViewsAsync(tenantId, familyProducts, familyVariants, cancellationToken, id);
         var primaryView = familyViews.First(x => x.Id == id);
         var allVariants = familyViews.SelectMany(x => x.Variants).ToList();
         var allOptions = familyViews.SelectMany(x => x.Options ?? [])
@@ -1430,7 +1430,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         return ids;
     }
 
-    private async Task<IReadOnlyList<ProductView>> BuildProductViewsAsync(Guid tenantId, IReadOnlyList<Product> products, IReadOnlyList<ProductVariant> variants, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<ProductView>> BuildProductViewsAsync(Guid tenantId, IReadOnlyList<Product> products, IReadOnlyList<ProductVariant> variants, CancellationToken cancellationToken, Guid? variantAttributeProductId = null)
     {
         if (products.Count == 0) return [];
         var productIds = products.Select(x => x.Id).ToArray();
@@ -1452,6 +1452,16 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             .Where(x => x.TenantId == tenantId && productIds.Contains(x.ProductId) && x.VariantId == null)
             .OrderBy(x => x.SortOrder)
             .ToListAsync(cancellationToken);
+        var variantAttributeRows = variantAttributeProductId is Guid attributeProductId
+            ? await db.ProductAttributeAssignments.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ProductId == attributeProductId && x.VariantId != null && variantIds.Contains(x.VariantId.Value))
+                .OrderBy(x => x.SortOrder)
+                .Select(x => new { VariantId = x.VariantId!.Value, Assignment = new ProductAttributeAssignmentView(x.AttributeId, x.ValueId, x.TextValue, x.NumberValue, x.BooleanValue, x.SortOrder) })
+                .ToListAsync(cancellationToken)
+            : [];
+        var variantAttributesByVariant = variantAttributeRows
+            .GroupBy(x => x.VariantId)
+            .ToDictionary(group => group.Key, group => (IReadOnlyList<ProductAttributeAssignmentView>)group.Select(x => x.Assignment).ToList());
         var productOptions = await db.ProductOptions.AsNoTracking()
             .Where(x => x.TenantId == tenantId && productIds.Contains(x.ProductId))
             .OrderBy(x => x.SortOrder)
@@ -1553,7 +1563,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                             channelOffer?.Version);
                     })
                     .ToList();
-                return new ProductVariantView(variant.Id, variant.Sku, variant.Barcode, variant.ModelCode, variant.OptionSignature, variant.Status.ToString().ToUpperInvariant(), variant.Version, variant.Weight, variant.Width, variant.Height, variant.Length, variant.Desi, variant.CostPrice, inventory?.OnHand ?? 0, inventory?.Available ?? 0, inventory?.Version, offer?.Id, offer?.ListPrice, offer?.SalePrice, offer?.Currency, offer?.Status, offer?.PriceVersion, offer?.Version, offer?.VatRate, offer?.VatInclusion, offer?.RoundingMode, offer?.SafetyStock, mediaUrlsByVariant.GetValueOrDefault(variant.Id), variantOptionsByVariant.GetValueOrDefault(variant.Id), variantPlatformStatuses, variant.DefaultListPrice, variant.DefaultSalePrice);
+                return new ProductVariantView(variant.Id, variant.Sku, variant.Barcode, variant.ModelCode, variant.OptionSignature, variant.Status.ToString().ToUpperInvariant(), variant.Version, variant.Weight, variant.Width, variant.Height, variant.Length, variant.Desi, variant.CostPrice, inventory?.OnHand ?? 0, inventory?.Available ?? 0, inventory?.Version, offer?.Id, offer?.ListPrice, offer?.SalePrice, offer?.Currency, offer?.Status, offer?.PriceVersion, offer?.Version, offer?.VatRate, offer?.VatInclusion, offer?.RoundingMode, offer?.SafetyStock, mediaUrlsByVariant.GetValueOrDefault(variant.Id), variantOptionsByVariant.GetValueOrDefault(variant.Id), variantPlatformStatuses, variant.DefaultListPrice, variant.DefaultSalePrice, variantAttributesByVariant.GetValueOrDefault(variant.Id));
             }).ToList();
             var productConnectionIds = connections.Keys.ToList();
             var platformStatuses = productConnectionIds
@@ -1578,7 +1588,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             var prices = variantViews.Where(x => x.SalePrice is not null).Select(x => x.SalePrice!.Value).ToList();
             var currency = variantViews.Select(x => x.Currency).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? "TRY";
             var modelCode = variantViews.Select(x => x.ModelCode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
-            var attributes = productAttributes.Where(x => x.ProductId == product.Id)
+            var attributes = productAttributes.Where(x => x.ProductId == product.Id && x.VariantId is null)
                 .Select(x => new ProductAttributeAssignmentView(x.AttributeId, x.ValueId, x.TextValue, x.NumberValue, x.BooleanValue, x.SortOrder))
                 .ToList();
             var options = productOptions.Where(x => x.ProductId == product.Id)

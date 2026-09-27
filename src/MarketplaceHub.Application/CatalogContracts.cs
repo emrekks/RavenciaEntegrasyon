@@ -45,7 +45,8 @@ public sealed record ProductVariantView(
     IReadOnlyDictionary<string, string>? Options = null,
     IReadOnlyList<ProductVariantPlatformStatusView>? PlatformStatuses = null,
     decimal? DefaultListPrice = null,
-    decimal? DefaultSalePrice = null);
+    decimal? DefaultSalePrice = null,
+    IReadOnlyList<ProductAttributeAssignmentView>? Attributes = null);
 public sealed record ProductAttributeAssignmentView(Guid AttributeId, Guid? ValueId, string? TextValue, decimal? NumberValue, bool? BooleanValue, int SortOrder);
 public sealed record ProductOptionValueView(Guid Id, string Label);
 public sealed record ProductOptionView(Guid Id, string Label, IReadOnlyList<ProductOptionValueView> Values);
