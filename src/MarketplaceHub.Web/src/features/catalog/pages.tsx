@@ -2020,6 +2020,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const barcodeSkuActionRef = useRef<HTMLDivElement>(null)
   const [barcodePasteMenuOpen, setBarcodePasteMenuOpen] = useState(false)
   const barcodePasteActionRef = useRef<HTMLDivElement>(null)
+  const [pendingVariantCodeGeneration, setPendingVariantCodeGeneration] = useState<{ target: 'barcode' | 'sku'; codes: string[] } | null>(null)
   const variantRowsRef = useRef(variantRows)
   variantRowsRef.current = variantRows
   const [expandedOptionGroupIds, setExpandedOptionGroupIds] = useState<Record<string, boolean>>({})
@@ -2059,6 +2060,14 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     document.addEventListener('keydown', closeOnEscape)
     return () => { document.removeEventListener('pointerdown', closeBarcodeMenus); document.removeEventListener('keydown', closeOnEscape) }
   }, [barcodeSkuMenuOpen, barcodePasteMenuOpen])
+  useEffect(() => {
+    if (!pendingVariantCodeGeneration) return
+    function closeCodeGenerationOnEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') setPendingVariantCodeGeneration(null)
+    }
+    document.addEventListener('keydown', closeCodeGenerationOnEscape)
+    return () => document.removeEventListener('keydown', closeCodeGenerationOnEscape)
+  }, [pendingVariantCodeGeneration])
   function showFeedback(message: string, kind: OperationFeedback['kind'], options: { persistent?: boolean } = {}) {
     setFeedback({ message, kind, ...options })
   }
@@ -2797,14 +2806,24 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       setNotice(message); showFeedback(message, 'error'); setBarcodePasteMenuOpen(false); setBarcodeSkuMenuOpen(false)
       return
     }
-    const firstCode = codes[0]
-    const lastCode = codes.at(-1) ?? firstCode
-    const fieldLabel = target === 'barcode' ? 'barkodları' : 'stok kodları'
-    if (!window.confirm(`${variantRows.length} varyantın mevcut ${fieldLabel} ${firstCode}${firstCode === lastCode ? '' : ` – ${lastCode}`} olarak değiştirilecek. Diğer kod alanı korunur. Başka üründe kullanılan kodlar Kaydet sırasında reddedilir. Devam edilsin mi?`)) return
+    setPendingVariantCodeGeneration({ target, codes })
+    setBarcodePasteMenuOpen(false)
+    setBarcodeSkuMenuOpen(false)
+  }
 
-    setVariantRows(rows => applyGeneratedVariantCodes(rows, target, codes))
-    const message = `${codes.length} varyantın ${target === 'barcode' ? 'barkodu' : 'stok kodu'} model kodundan oluşturuldu; diğer kod alanı korundu. Kalıcı olması için Kaydet’e basın.`
-    setNotice(message); showFeedback(message, 'success'); setBarcodePasteMenuOpen(false); setBarcodeSkuMenuOpen(false)
+  function confirmVariantCodeGeneration() {
+    const request = pendingVariantCodeGeneration
+    if (!request) return
+    if (variantRowsRef.current.length !== request.codes.length) {
+      const message = 'Varyant sayısı değiştiği için kodlar üretilmedi. Menüyü yeniden açıp tekrar deneyin.'
+      setNotice(message); showFeedback(message, 'error'); setPendingVariantCodeGeneration(null)
+      return
+    }
+
+    setVariantRows(rows => applyGeneratedVariantCodes(rows, request.target, request.codes))
+    if (request.target === 'barcode') setForm(current => ({ ...current, barcode: request.codes[0] }))
+    const message = `${request.codes.length} varyantın ${request.target === 'barcode' ? 'barkodu' : 'stok kodu'} model kodundan oluşturuldu; diğer kod alanı korundu.${request.target === 'barcode' ? ' Üst barkod alanı ilk varyantla eşitlendi.' : ''} Kalıcı olması için Kaydet’e basın.`
+    setNotice(message); showFeedback(message, 'success'); setPendingVariantCodeGeneration(null)
   }
 
   async function pasteBarcodesFromClipboard(mode: 'missing' | 'all') {
@@ -3641,6 +3660,30 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
         <button type="button" role="menuitem" disabled={!barcodeRowCount} onClick={() => applyBarcodeToSku('all')}><span><strong>Barkodları stok koduna uygula</strong><small>Stok kodu sütunu · {barcodeRowCount.toLocaleString('tr-TR')} barkodlu satır</small></span><UiIcon name="alert" /></button>
       </section>
     </VariantHeaderActionMenu>}
+    {pendingVariantCodeGeneration && createPortal(
+      <div className="workspace-modal-backdrop variant-code-confirm-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setPendingVariantCodeGeneration(null) }}>
+        <section className="workspace-modal variant-code-confirm-modal" role="alertdialog" aria-modal="true" aria-labelledby="variant-code-confirm-title" aria-describedby="variant-code-confirm-description" onMouseDown={event => event.stopPropagation()}>
+          <header>
+            <div>
+              <p className="eyebrow">VARYANT KODLARI</p>
+              <h2 id="variant-code-confirm-title">{pendingVariantCodeGeneration.target === 'barcode' ? 'Barkodları model kodundan üret' : 'Stok kodlarını model kodundan üret'}</h2>
+              <p id="variant-code-confirm-description">Mevcut {pendingVariantCodeGeneration.target === 'barcode' ? 'barkod' : 'stok kodu'} alanı {pendingVariantCodeGeneration.codes.length.toLocaleString('tr-TR')} varyant için değiştirilecek.</p>
+            </div>
+            <button type="button" className="modal-close" onClick={() => setPendingVariantCodeGeneration(null)} aria-label="Kod üretme onayını kapat"><UiIcon name="close" /></button>
+          </header>
+          <div className="variant-code-confirm-body">
+            <p>Üretilecek kod aralığı</p>
+            <code>{pendingVariantCodeGeneration.codes[0]}{pendingVariantCodeGeneration.codes.length > 1 ? ` – ${pendingVariantCodeGeneration.codes.at(-1)}` : ''}</code>
+            <small>Onaylayınca kodlar, Kaydet’e basmadan bu formdaki varyantlara uygulanır. Diğer kod sütunu korunur; başka üründe kullanılan kodlar Kaydet sırasında reddedilebilir.</small>
+          </div>
+          <footer>
+            <button type="button" className="secondary" autoFocus onClick={() => setPendingVariantCodeGeneration(null)}>Vazgeç</button>
+            <button type="button" onClick={confirmVariantCodeGeneration}>{pendingVariantCodeGeneration.target === 'barcode' ? 'Barkodları üret' : 'Stok kodlarını üret'}</button>
+          </footer>
+        </section>
+      </div>,
+      document.body
+    )}
     {platformUpdateDialogOpen && createPortal(
       <div className="workspace-modal-backdrop platform-update-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setPlatformUpdateDialogOpen(false) }}>
         <section className="workspace-modal platform-update-modal" role="dialog" aria-modal="true" aria-labelledby="platform-update-title" onMouseDown={event => event.stopPropagation()}>

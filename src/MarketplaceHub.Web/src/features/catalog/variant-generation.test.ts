@@ -45,6 +45,18 @@ describe('variant generation defaults', () => {
     ])
   })
 
+  it('replaces copied variant barcodes with the edited model-code range before save and preserves their SKUs', () => {
+    const rows = Array.from({ length: 35 }, (_, index) => ({ barcode: `MZ051BYC-${String(index + 1).padStart(2, '0')}`, sku: `SKU-${index + 1}` }))
+    const codes = buildSequentialVariantCodes('MZ052BOD', rows.length)
+    const updated = applyGeneratedVariantCodes(rows, 'barcode', codes)
+
+    expect(codes).toHaveLength(35)
+    expect(updated).toHaveLength(35)
+    expect(updated.map(row => row.barcode)).toEqual(codes)
+    expect(updated[0]).toEqual({ barcode: 'MZ052BOD-01', sku: 'SKU-1' })
+    expect(updated.at(-1)).toEqual({ barcode: 'MZ052BOD-35', sku: 'SKU-35' })
+  })
+
   it('updates only the SKU field when stock codes are generated', () => {
     expect(applyGeneratedVariantCodes([{ barcode: 'keep-barcode', sku: 'old-sku' }], 'sku', ['MZ051BYC-01'])).toEqual([
       { barcode: 'keep-barcode', sku: 'MZ051BYC-01' },
