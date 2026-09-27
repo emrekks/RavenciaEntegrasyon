@@ -10327,6 +10327,13 @@ small,
   font-size: 12px;
   line-height: 1.25;
 }
+.app-shell.stitch-shell main .order-reference-row.micro-export .order-reference-invoice.invoice-pending .invoice-status-label {
+  width: min(100%, 140px);
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  text-align: center;
+}
 .app-shell.stitch-shell main .invoice-status-label {
   color: var(--rv-color-ink);
   font-weight: 750;
