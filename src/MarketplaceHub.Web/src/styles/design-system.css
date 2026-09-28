@@ -1005,10 +1005,9 @@
   .product-import-body > fieldset:nth-of-type(3) > legend { grid-column: 1 / -1; }
   /* Full and existing-only imports always refresh their matched cards in place;
      there is no alternate content-preservation mode to expose. */
-  .product-import-body > fieldset:nth-of-type(3) > .product-import-mode:first-of-type:not(:only-of-type) { display: none; }
-  /* Mapping always scans the complete existing catalog, including archived and
-     draft records, so its scope is not configurable in the dialog. */
-  .product-import-body:has(input[value='MAPPING_ONLY']:checked) > fieldset:nth-of-type(3) { display: none; }
+  .product-import-body > fieldset:nth-of-type(3) > .product-import-update-existing-option { display: none; }
+  /* Mapping keeps its catalog scope fixed, but still exposes the optional
+     Trendyol approval-pending scan. */
   .product-import-scan-grid .product-import-mode { min-height: 100%; }
   .product-import-connection, .product-import-mode { display: grid; grid-template-columns: 18px minmax(0, 1fr); align-items: center; gap: var(--rv-space-3); min-width: 0; padding: var(--rv-space-3); color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); cursor: pointer; }
   .product-import-connection:hover, .product-import-mode:hover, .product-import-connection.selected, .product-import-mode.selected { background: var(--rv-color-primary-soft); border-color: var(--rv-color-primary); }
@@ -9684,9 +9683,25 @@ small,
   overscroll-behavior: contain;
 }
 
-/* Edit/remove controls in the attribute library and job detail actions share
-   one predictable square hit area. */
-.app-shell.stitch-shell main .panel-attribute-record-actions > button:not(.panel-attribute-category-button),
+/* Keep the attribute library's compact controls aligned with its 34px rows. */
+.app-shell.stitch-shell main .panel-attribute-record-actions > button:not(.panel-attribute-category-button) {
+  box-sizing: border-box;
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  min-height: 34px;
+  flex: 0 0 34px;
+  padding: 0;
+  place-items: center;
+}
+
+.app-shell.stitch-shell main .panel-attribute-record-actions > .panel-attribute-category-button {
+  box-sizing: border-box;
+  height: 34px;
+  min-height: 34px;
+  padding: 0 10px;
+}
+
 .app-shell.stitch-shell main .jobs-reference-table .jobs-reference-row-action {
   box-sizing: border-box;
   width: 44px;

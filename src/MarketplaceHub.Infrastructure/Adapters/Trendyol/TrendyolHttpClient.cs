@@ -92,9 +92,10 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
     {
         var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (authorized is null) return AdapterResult<AdapterPageResult<RemoteCatalogProduct>>.Failure(TrendyolErrorMapper.Configuration());
+        var catalogPage = TrendyolCatalogCursorPolicy.Resolve(filter.IncludePendingApproval, page.Cursor);
         var size = Math.Clamp(page.Limit, 1, 100);
         var query = new List<string> { $"size={size}" };
-        if (TryProductCursor(page.Cursor, out var pageNumber, out var nextPageToken))
+        if (TryProductCursor(catalogPage.Cursor, out var pageNumber, out var nextPageToken))
         {
             if (!string.IsNullOrWhiteSpace(nextPageToken)) query.Add("nextPageToken=" + Uri.EscapeDataString(nextPageToken));
             else query.Add($"page={pageNumber}");
@@ -102,15 +103,27 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
         else query.Add("page=0");
         if (!string.IsNullOrWhiteSpace(filter.Barcode)) query.Add("barcode=" + Uri.EscapeDataString(filter.Barcode));
         if (!string.IsNullOrWhiteSpace(filter.ProductMainId)) query.Add("productMainId=" + Uri.EscapeDataString(filter.ProductMainId));
-        if (!string.IsNullOrWhiteSpace(filter.ContentId)) query.Add("contentId=" + Uri.EscapeDataString(filter.ContentId));
-        if (filter.ModifiedAfter is not null)
+        if (!catalogPage.IsPendingApproval && !string.IsNullOrWhiteSpace(filter.ContentId)) query.Add("contentId=" + Uri.EscapeDataString(filter.ContentId));
+        if (filter.ModifiedAfter is not null && !catalogPage.IsPendingApproval)
         {
             query.Add("startDate=" + filter.ModifiedAfter.Value.ToUnixTimeMilliseconds());
             query.Add("dateQueryType=VARIANT_MODIFIED_DATE");
         }
-        var response = await SendAsync(authorized, HttpMethod.Get, TrendyolEndpoints.ApprovedProducts(authorized.Connection.ExternalStoreId) + "?" + string.Join('&', query), null, cancellationToken);
+        if (catalogPage.IsPendingApproval) query.Add("status=pendingApproval");
+        var endpoint = catalogPage.IsPendingApproval
+            ? TrendyolEndpoints.UnapprovedProducts(authorized.Connection.ExternalStoreId)
+            : TrendyolEndpoints.ApprovedProducts(authorized.Connection.ExternalStoreId);
+        var response = await SendAsync(authorized, HttpMethod.Get, endpoint + "?" + string.Join('&', query), null, cancellationToken);
         if (!response.IsSuccess) return AdapterResult<AdapterPageResult<RemoteCatalogProduct>>.Failure(response.Error!, response.RateLimit);
-        try { return AdapterResult<AdapterPageResult<RemoteCatalogProduct>>.Success(TrendyolJsonMapper.CatalogProducts(response.Value!), response.RateLimit); }
+        try
+        {
+            var result = catalogPage.IsPendingApproval
+                ? TrendyolJsonMapper.PendingApprovalCatalogProducts(response.Value!)
+                : TrendyolJsonMapper.CatalogProducts(response.Value!);
+            return AdapterResult<AdapterPageResult<RemoteCatalogProduct>>.Success(
+                TrendyolCatalogCursorPolicy.Advance(result, filter.IncludePendingApproval, catalogPage.IsPendingApproval),
+                response.RateLimit);
+        }
         catch (JsonException) { return AdapterResult<AdapterPageResult<RemoteCatalogProduct>>.Failure(TrendyolErrorMapper.Contract()); }
     }
 

@@ -168,12 +168,16 @@ public static class TrendyolJsonMapper
         return new(rows, next, !string.IsNullOrWhiteSpace(next), total is > int.MaxValue ? int.MaxValue : (int?)total);
     }
 
-    public static AdapterPageResult<RemoteCatalogProduct> CatalogProducts(string json)
+    public static AdapterPageResult<RemoteCatalogProduct> CatalogProducts(string json) => CatalogProducts(json, isPendingApproval: false);
+
+    public static AdapterPageResult<RemoteCatalogProduct> PendingApprovalCatalogProducts(string json) => CatalogProducts(json, isPendingApproval: true);
+
+    private static AdapterPageResult<RemoteCatalogProduct> CatalogProducts(string json, bool isPendingApproval)
     {
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
         var rows = Content(root)
-            .Select(ProductSnapshot)
+            .Select(product => ProductSnapshot(product, isPendingApproval))
             .Where(x => !string.IsNullOrWhiteSpace(x.ExternalProductId))
             .ToList();
         var currentPage = Long(root, "page");
@@ -195,7 +199,7 @@ public static class TrendyolJsonMapper
         return ProductSnapshot(document.RootElement);
     }
 
-    private static RemoteCatalogProduct ProductSnapshot(JsonElement product)
+    private static RemoteCatalogProduct ProductSnapshot(JsonElement product, bool isPendingApproval = false)
     {
         var productId = Text(product, "contentId", "id", "productMainId");
         var productMainId = NullText(product, "productMainId", "contentId");
@@ -286,7 +290,7 @@ public static class TrendyolJsonMapper
             .Select(url => url.Trim())
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
-        return new(productId, productMainId, title, description, brand.Id, brand.Name, category.Id, category.Name, allImages, variants, product.GetRawText());
+        return new(productId, productMainId, title, description, brand.Id, brand.Name, category.Id, category.Name, allImages, variants, product.GetRawText(), IsPendingApproval: isPendingApproval);
     }
 
     private static (string? Id, string? Name) NamedReference(JsonElement value, string propertyName)

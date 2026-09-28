@@ -8,6 +8,53 @@ namespace MarketplaceHub.Application.Tests;
 public sealed class TrendyolCatalogMapperTests
 {
     [Fact]
+    public void PendingApprovalProductResponse_MapsFlatVariantAsPendingCatalogRow()
+    {
+        const string json = """
+        {
+          "content": [
+            {
+              "productMainId": "MODEL-PENDING-1",
+              "status": "pendingApproval",
+              "title": "Onay bekleyen ürün",
+              "description": "Açıklama",
+              "brand": { "id": 17, "name": "Ravencia" },
+              "category": { "id": 28, "name": "Triko" },
+              "barcode": "869000000701",
+              "stockCode": "MODEL-PENDING-1-M",
+              "quantity": 4,
+              "listPrice": 599,
+              "salePrice": 499,
+              "media": [{ "url": "https://cdn.example.test/pending.jpg" }],
+              "attributes": [
+                { "attributeName": "Renk", "attributeValue": "Bordo" },
+                { "attributeName": "Beden", "attributeValue": "M" }
+              ]
+            }
+          ],
+          "page": 0,
+          "size": 100,
+          "totalPages": 1,
+          "totalElements": 1
+        }
+        """;
+
+        var result = TrendyolJsonMapper.PendingApprovalCatalogProducts(json);
+
+        var product = Assert.Single(result.Items);
+        Assert.True(product.IsPendingApproval);
+        Assert.Equal("MODEL-PENDING-1", product.ExternalProductId);
+        Assert.Equal("MODEL-PENDING-1", product.ProductMainId);
+        var variant = Assert.Single(product.Variants);
+        Assert.Equal("869000000701", variant.ExternalVariantId);
+        Assert.Equal("MODEL-PENDING-1-M", variant.Sku);
+        Assert.Equal("Bordo", variant.Options["Renk"]);
+        Assert.Equal("M", variant.Options["Beden"]);
+        Assert.Equal(4m, variant.StockQuantity);
+        Assert.Equal(499m, variant.SalePrice);
+    }
+
+    [Fact]
     public void ReturnClaim_ReadsScalarCargoProvider()
     {
         const string json = """

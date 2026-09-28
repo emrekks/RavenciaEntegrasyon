@@ -1780,6 +1780,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var existingOnly = ReadBoolean(payloadJson, "existingOnly");
         var mappingOnly = ReadBoolean(payloadJson, "mappingOnly");
         var includeArchived = ReadBoolean(payloadJson, "includeArchived");
+        var includePendingApproval = !isShopify && ReadBoolean(payloadJson, "includePendingApproval");
         var updateExistingProducts = ReadBooleanOrDefault(payloadJson, "updateExistingProducts", true);
         // Shopify's single inactive-product option intentionally covers both
         // archived variants and draft products; keep older payloads compatible.
@@ -1806,7 +1807,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var draftLabel = includeDrafts ? " · Taslak ürünleri dahil" : " · Taslak ürünleri hariç";
         var lifecycleLabel = isShopify
             ? includeArchived ? " · Arşiv ve taslak ürünler dahil" : " · Arşiv ve taslak ürünler hariç"
-            : archiveLabel + draftLabel;
+            : archiveLabel + draftLabel + (includePendingApproval ? " · Onay bekleyen ürünler dahil" : " · Onay bekleyen ürünler hariç");
         var contentLabel = !newOnly && !mappingOnly
             ? updateExistingProducts ? " · Mevcut ürün bilgileri güncellenecek" : " · Mevcut ürün bilgileri korunacak"
             : "";
@@ -1882,7 +1883,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             await db.SaveChangesAsync(cancellationToken);
         }
         DateTimeOffset? modifiedAfter = !effectiveFullScan && !singleLookup && hasSnapshots && cursor.LastModifiedWatermark is not null ? cursor.LastModifiedWatermark.Value.AddMinutes(-2) : null;
-        var productFilter = ProductImportFilter(modifiedAfter, productLookup);
+        var productFilter = ProductImportFilter(modifiedAfter, productLookup, includePendingApproval);
         // Read the remote catalog into the durable staging pool before preparing
         // the larger Trendyol reference snapshots. The worker can therefore
         // resume the scan and finalize complete model groups without retaining
@@ -1929,6 +1930,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             totalProducts ??= result.Value.TotalCount;
             var pageSnapshots = result.Value.Items
                 .Where(snapshot => includeDrafts || !snapshot.IsDraft)
+                .Where(snapshot => includePendingApproval || !snapshot.IsPendingApproval)
                 .Select(snapshot => includeArchived
                     ? snapshot
                     : snapshot with { Variants = snapshot.Variants.Where(variant => !variant.Archived).ToList() })
@@ -5247,10 +5249,10 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         catch (JsonException) { return null; }
     }
 
-    private static ProductReadFilter ProductImportFilter(DateTimeOffset? modifiedAfter, string? lookup)
+    private static ProductReadFilter ProductImportFilter(DateTimeOffset? modifiedAfter, string? lookup, bool includePendingApproval)
     {
         var value = lookup?.Trim();
-        if (string.IsNullOrWhiteSpace(value)) return new(modifiedAfter);
+        if (string.IsNullOrWhiteSpace(value)) return new(modifiedAfter, IncludePendingApproval: includePendingApproval);
         if (Uri.TryCreate(value, UriKind.Absolute, out var uri))
         {
             const string marker = "-p-";
@@ -5258,11 +5260,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             if (markerIndex >= 0)
             {
                 var contentId = uri.AbsolutePath[(markerIndex + marker.Length)..].Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault();
-                if (!string.IsNullOrWhiteSpace(contentId)) return new(null, ContentId: contentId, ProductUrl: value);
+                if (!string.IsNullOrWhiteSpace(contentId)) return new(null, ContentId: contentId, ProductUrl: value, IncludePendingApproval: includePendingApproval);
             }
-            return new(null, ProductMainId: value, ProductUrl: value);
+            return new(null, ProductMainId: value, ProductUrl: value, IncludePendingApproval: includePendingApproval);
         }
-        return new(null, ProductMainId: value);
+        return new(null, ProductMainId: value, IncludePendingApproval: includePendingApproval);
     }
 
     private static ReturnSyncState ReadReturnSyncState(SyncCursor cursor, DateTimeOffset now, TimeSpan overlap, bool forceFull = false)
