@@ -1990,6 +1990,9 @@
   .quick-edit-footer > span { min-width: 0; margin-right: auto; overflow: hidden; font-size: var(--rv-font-size-sm); text-overflow: ellipsis; white-space: nowrap; }
   .product-delete-modal { width: min(760px, 100%); }
   .variant-code-confirm-modal { width: min(560px, 100%); }
+  .media-removal-confirm-modal { width: min(520px, 100%); }
+  .media-removal-confirm-body { padding: var(--rv-space-5) var(--rv-space-6); }
+  .media-removal-confirm-body > p { margin: 0; color: var(--rv-color-muted); line-height: 1.6; overflow-wrap: anywhere; }
   .variant-code-confirm-body { display: grid; gap: var(--rv-space-3); padding: var(--rv-space-5) var(--rv-space-6); }
   .variant-code-confirm-body > p, .variant-code-confirm-body > small { margin: 0; color: var(--rv-color-muted); }
   .variant-code-confirm-body > code { min-width: 0; overflow-wrap: anywhere; padding: var(--rv-space-3); color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); font-size: var(--rv-font-size-sm); }
@@ -8186,6 +8189,42 @@ small,
 .rv-callout > div,
 .app-shell.stitch-shell main :is(.error, .notice) > span {
   min-width: 0;
+}
+
+.rv-error-box-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+
+.rv-error-box-content > span {
+  min-width: 0;
+}
+
+.rv-error-box-dismiss {
+  display: inline-grid;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  place-items: center;
+  color: inherit;
+  background: transparent;
+  border: 1px solid currentcolor;
+  border-radius: 6px;
+  cursor: pointer;
+  opacity: .85;
+}
+
+.rv-error-box-dismiss:hover {
+  opacity: 1;
+}
+
+.rv-error-box-dismiss:focus-visible {
+  outline: 2px solid currentcolor;
+  outline-offset: 2px;
 }
 
 .rv-callout-icon,

@@ -21,6 +21,7 @@ import { classifyPublicationAttributeIssues, type PublicationAttributeSelection,
 import { productMediaUrlIssue } from './product-media-url'
 import { barcodeClipboardIssue, parseBarcodeClipboardValues } from './product-barcode-paste'
 import { productCopyIdentifierConflicts } from './product-copy-identifiers'
+import { sameProductSnapshotIgnoringVersion } from './product-save-version'
 import { isPublicationLive, isPublicationSelectionDisabled, isPublicationStatusJobRunning, missingPublicationChecks, publicationStatusLabel, publicationStatusNote, publicationStatusTone, shouldCheckPublicationAttributes } from './publication-status'
 import { productPlatformDisplayLabel, productPlatformDisplayState } from './product-platform-status'
 import { quickPlatformUpdateTargets } from './platform-update-targets'
@@ -232,7 +233,7 @@ async function fetchProductPage(limit: number, filters: ProductListFilters, afte
   if (filters.stock) params.set('stock', filters.stock)
   return hubApi<CursorPage<Product>>(`/products?${params.toString()}`)
 }
-const ErrorBox = ({ error }: { error: unknown }) => error ? <Callout tone="danger">{error instanceof Error ? error.message : 'İşlem tamamlanamadı.'}</Callout> : null
+const ErrorBox = ({ error, onDismiss }: { error: unknown; onDismiss?: () => void }) => error ? <Callout tone="danger"><div className="rv-error-box-content"><span>{error instanceof Error ? error.message : 'İşlem tamamlanamadı.'}</span>{onDismiss && <button type="button" className="rv-error-box-dismiss" aria-label="Hata bildirimini kapat" title="Kapat" onClick={onDismiss}><UiIcon name="close" /></button>}</div></Callout> : null
 
 function VariantHeaderActionMenu({ anchorRef, children }: { anchorRef: { current: HTMLDivElement | null }; children: ReactNode }) {
   const menuRef = useRef<HTMLDivElement>(null)
@@ -290,6 +291,8 @@ function ImageLightboxModal({ image, onClose }: { image: { url: string; title: s
 }
 
 type ProductMediaOption = { value: string; label: string; url?: string; file?: File }
+type ProductFamilyMediaItem = NonNullable<Product['familyMediaItems']>[number]
+type MediaRemovalConfirmation = { kind: 'product'; url: string } | { kind: 'family'; item: ProductFamilyMediaItem }
 type PendingProductMediaFile = { id: string; file: File }
 type VariantMediaGroup = { id: string; name: string; values: Array<{ id: string; value: string }>; attributeId?: string }
 type VariantMediaModalState = { mode: 'variant'; rowKey: string; draftRefs: string[] } | { mode: 'bulk'; draftsBySelection: VariantMediaAssignmentDrafts; groupId: string; valueId: string }
@@ -2125,6 +2128,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const [mediaFiles, setMediaFiles] = useState<PendingProductMediaFile[]>([])
   const [deletingFamilyMediaKey, setDeletingFamilyMediaKey] = useState<string | null>(null)
   const [deletingProductMediaKey, setDeletingProductMediaKey] = useState<string | null>(null)
+  const [mediaRemovalConfirmation, setMediaRemovalConfirmation] = useState<MediaRemovalConfirmation | null>(null)
   const [familyMediaOrder, setFamilyMediaOrder] = useState<string[]>([])
   const [familyMediaOrderDirty, setFamilyMediaOrderDirty] = useState(false)
   const [draggedMedia, setDraggedMedia] = useState<{ kind: 'file' | 'url'; index: number } | null>(null); const [dragOverMedia, setDragOverMedia] = useState<{ kind: 'file' | 'url'; index: number } | null>(null)
@@ -2456,7 +2460,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     setDragOverMedia(null)
     showFeedback('Ürün ve varyant görselleri temizlendi. Kalıcı olması için kaydedin.', 'info')
   }
-  async function removeProductMedia(url: string) {
+  async function removeProductMedia(url: string, confirmed = false) {
     const targetKey = mediaImageKey(url)
     const savedMediaUrls = initialEditMediaUrl.current.split(/\r?\n|[;|]/u).map(item => item.trim()).filter(Boolean)
     const isPersisted = Boolean(editProductId && productToEdit.data && savedMediaUrls.some(item => mediaImageKey(item) === targetKey))
@@ -2470,7 +2474,10 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       return
     }
 
-    if (!window.confirm('Bu görsel aynı model ailesindeki ürün ve varyant kayıtlarından hemen kaldırılacak. Pazaryerindeki görsel değiştirilmez. Devam edilsin mi?')) return
+    if (!confirmed) {
+      setMediaRemovalConfirmation({ kind: 'product', url })
+      return
+    }
     setDeletingProductMediaKey(targetKey)
     try {
       const product = productToEdit.data
@@ -2508,13 +2515,15 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       setDeletingProductMediaKey(null)
     }
   }
-  async function removeFamilyMedia(item: { url: string; mediaIds: string[]; sourceProductTitles: string[] }) {
+  async function removeFamilyMedia(item: ProductFamilyMediaItem, confirmed = false) {
     if (item.mediaIds.length === 0) {
       showFeedback('Görselin kaynak bağlantıları yüklenemedi. Sayfayı yenileyip tekrar deneyin.', 'error')
       return
     }
-    const sourceNames = item.sourceProductTitles.length ? item.sourceProductTitles.join(', ') : 'ürün ailesindeki kaynak ürünler'
-    if (!window.confirm(`Bu renk ailesi görselini ${sourceNames} kayıtlarından kaldırmak istiyor musunuz? Bu işlem yalnızca paneldeki görsel bağlantılarını kaldırır; pazaryerindeki ürün/görseli silmez.`)) return
+    if (!confirmed) {
+      setMediaRemovalConfirmation({ kind: 'family', item })
+      return
+    }
     const pendingKey = item.mediaIds.join(',')
     setDeletingFamilyMediaKey(pendingKey)
     try {
@@ -2532,6 +2541,13 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     } finally {
       setDeletingFamilyMediaKey(null)
     }
+  }
+  function confirmMediaRemoval() {
+    const confirmation = mediaRemovalConfirmation
+    setMediaRemovalConfirmation(null)
+    if (!confirmation) return
+    if (confirmation.kind === 'product') void removeProductMedia(confirmation.url, true)
+    else void removeFamilyMedia(confirmation.item, true)
   }
   function updateChannel(id: string) {
     const selected = selectedChannelIds.includes(id)
@@ -3114,6 +3130,12 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     showFeedback(message, 'error')
   }
 
+  function dismissProductError() {
+    setError(undefined)
+    setNotice('')
+    setFeedback(current => current?.kind === 'error' ? null : current)
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const platformUpdate = pendingPlatformUpdate.current
@@ -3168,9 +3190,59 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
         initialEditModelCode.current,
         productToEdit.data?.variants.find(variant => variant.id === variantId)?.modelCode
       )
-      const product = productToEdit.data
-        ? await hubApi<Product>(`/products/${productToEdit.data.id}`, { method: 'PATCH', headers: { 'If-Match': `"v${productToEdit.data.version}"` }, body: JSON.stringify({ title: form.title, status: form.status, description: safeDescription, brandId: form.brandId || null, categoryId: form.categoryId || null, defaultListPrice: Number(form.listPrice || 0), defaultSalePrice: Number(form.salePrice || 0), ...(shouldPersistAttributes ? { attributes: globalAttributes } : {}), variantsToCreate: rows.filter(row => !existingVariantIds.has(row.key)).map(variantPayload), variantUpdates: rows.filter(row => existingVariantIds.has(row.key)).map(row => ({ id: row.key, sku: row.sku, barcode: row.barcode || null, modelCode: modelCodeForRow(row.key), costPrice: row.costPrice, defaultListPrice: row.listPrice, defaultSalePrice: row.salePrice, sortOrder: rows.findIndex(candidate => candidate.key === row.key), options: row.options, attributes: variantAttributesForPayload(row) })) }) })
-        : await hubApi<Product>('/products', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ title: form.title, status: form.status, description: safeDescription, brandId: form.brandId || null, categoryId: form.categoryId || null, defaultListPrice: Number(form.listPrice || 0), defaultSalePrice: Number(form.salePrice || 0), attributes: globalAttributes, variants: rows.map(variantPayload) }) })
+      let product: Product
+      let productVersionRetryUsed = false
+      if (productToEdit.data) {
+        const editProduct = productToEdit.data
+        const updatePayload = {
+          title: form.title,
+          status: form.status,
+          description: safeDescription,
+          brandId: form.brandId || null,
+          categoryId: form.categoryId || null,
+          defaultListPrice: Number(form.listPrice || 0),
+          defaultSalePrice: Number(form.salePrice || 0),
+          ...(shouldPersistAttributes ? { attributes: globalAttributes } : {}),
+          variantsToCreate: rows.filter(row => !existingVariantIds.has(row.key)).map(variantPayload),
+          variantUpdates: rows.filter(row => existingVariantIds.has(row.key)).map(row => ({
+            id: row.key,
+            sku: row.sku,
+            barcode: row.barcode || null,
+            modelCode: modelCodeForRow(row.key),
+            costPrice: row.costPrice,
+            defaultListPrice: row.listPrice,
+            defaultSalePrice: row.salePrice,
+            sortOrder: rows.findIndex(candidate => candidate.key === row.key),
+            options: row.options,
+            attributes: variantAttributesForPayload(row)
+          }))
+        }
+        const updateProductAtVersion = (version: number) => hubApi<Product>(`/products/${editProduct.id}`, {
+          method: 'PATCH',
+          headers: { 'If-Match': `"v${version}"` },
+          body: JSON.stringify(updatePayload)
+        })
+        try {
+          product = await updateProductAtVersion(editProduct.version)
+        } catch (reason) {
+          if (!(reason instanceof ApiRequestError) || reason.status !== 412) throw reason
+          const latestProduct = await hubApi<Product>(`/products/${editProduct.id}`)
+          if (!sameProductSnapshotIgnoringVersion(editProduct, latestProduct)) {
+            throw new Error(`Ürün bu form açıkken başka bir işlemle değişti (güncel sürüm v${latestProduct.version}). Diğer değişiklikleri korumak için sayfayı yenileyip tekrar deneyin.`)
+          }
+          try {
+            product = await updateProductAtVersion(latestProduct.version)
+            productVersionRetryUsed = true
+          } catch (retryReason) {
+            if (retryReason instanceof ApiRequestError && retryReason.status === 412) {
+              throw new Error('Ürün kaydedilirken yeniden değişti. Güncel veriyi korumak için sayfayı yenileyip tekrar deneyin.')
+            }
+            throw retryReason
+          }
+        }
+      } else {
+        product = await hubApi<Product>('/products', { method: 'POST', headers: { 'Idempotency-Key': key() }, body: JSON.stringify({ title: form.title, status: form.status, description: safeDescription, brandId: form.brandId || null, categoryId: form.categoryId || null, defaultListPrice: Number(form.listPrice || 0), defaultSalePrice: Number(form.salePrice || 0), attributes: globalAttributes, variants: rows.map(variantPayload) }) })
+      }
       productCreated = product; const completed = ['ürün']; const warnings: string[] = []
       const initialProductMediaUrls = initialEditMediaUrl.current.split(/\r?\n|[;|]/u).map(url => url.trim()).filter(Boolean)
       const productMediaChanged = editProductId
@@ -3252,7 +3324,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
         } catch (reason) { warnings.push(reason instanceof Error ? reason.message : 'Yayın işi oluşturulamadı.') }
       }
       const updateSummary = platformUpdate ? ` Seçilen ${platformUpdate.connectionIds.length} platform için ${platformUpdate.includeProductInformation ? 'ürün bilgisi ve fiyat-stok' : 'fiyat-stok'} güncelleme işi kuyruğa alındı.` : ''
-      const message = `${editProductId ? 'Ürün güncellendi.' : `${completed.join(', ')} kaydedildi.`}${updateSummary}${warnings.length ? ` Yayın uyarısı: ${warnings.join(' ')}` : ''}`
+      const versionRetrySummary = productVersionRetryUsed ? ' Daha güncel kayıt sürümüyle güvenli şekilde tekrar denendi.' : ''
+      const message = `${editProductId ? 'Ürün güncellendi.' : `${completed.join(', ')} kaydedildi.`}${versionRetrySummary}${updateSummary}${warnings.length ? ` Yayın uyarısı: ${warnings.join(' ')}` : ''}`
       setNotice(createOnly ? 'Ürün oluşturuldu. Ürün sayfası açılıyor.' : message)
       await client.invalidateQueries({ queryKey: ['products'] })
       if (editProductId) {
@@ -3473,7 +3546,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     {variantPlatformPricing && selectedVariantPlatformRow && <BulkVariantPlatformPricingModal row={selectedVariantPlatformRow} rows={variantRows} platforms={selectedVariantPlatformRow.platformStatuses?.length ? selectedVariantPlatformRow.platformStatuses : variantPricingPlatforms} savedDrafts={variantChannelPricing} productName={form.title} modelCode={form.modelCode} filterGroups={variantFilterGroups.filter(group => isColorOptionName(group.name) || isSizeOptionName(group.name))} matchesFilterValue={rowMatchesVariantMediaValue} saving={variantPlatformPricingSaving} onClose={() => setVariantPlatformPricing(null)} onSave={drafts => void saveVariantPlatformPricingMatrix(drafts)} />}
     {/* @ts-ignore: legacy inline modal is disabled while the shared multi-platform modal is used above. */}
     {false && variantPlatformPricing && selectedVariantPlatformRow && <div className="workspace-modal-backdrop variant-platform-pricing-backdrop" role="presentation" onMouseDown={() => !variantPlatformPricingSaving && setVariantPlatformPricing(null)}><section className="workspace-modal variant-platform-pricing-modal" role="dialog" aria-modal="true" aria-labelledby="variant-platform-pricing-title" onMouseDown={event => event.stopPropagation()}><header><div><p className="eyebrow">VARYANT KANAL FİYATI</p><h2 id="variant-platform-pricing-title">{platformDisplayName(variantPlatformPricing.platform)} fiyatlandırması</h2><p>{selectedVariantPlatformRow.optionSignature} · {selectedVariantPlatformRow.barcode || selectedVariantPlatformRow.sku}</p></div><button type="button" className="modal-close" onClick={() => setVariantPlatformPricing(null)} disabled={variantPlatformPricingSaving} aria-label="Fiyat penceresini kapat"><UiIcon name="close" /></button></header><div className="variant-platform-pricing-body"><div className="variant-platform-pricing-channel"><span className={`publish-platform-mark ${variantPlatformPricing.platform.platformCode.toLocaleLowerCase('tr-TR')}`}><img className={`publish-platform-logo ${platformLogoClass(variantPlatformPricing.platform.platformCode)}`} src={platformLogoSource(variantPlatformPricing.platform.platformCode) ?? '/platforms/trendyol.png'} alt="" /></span><div><strong>{platformDisplayName(variantPlatformPricing.platform)}</strong><small>{variantPlatformPricing.platform.isLinked ? 'Bu varyant platforma bağlı.' : 'Bu varyant için bağlantı henüz eşleşmemiş.'}</small></div></div><div className="variant-platform-pricing-fields"><label>Liste fiyatı<input autoFocus type="number" min="0" step="0.01" value={variantPlatformPricingDraft.listPrice} onChange={event => setVariantPlatformPricingDraft(current => ({ ...current, listPrice: event.target.value }))} /></label><label>Satış fiyatı<input type="number" min="0" step="0.01" value={variantPlatformPricingDraft.salePrice} onChange={event => setVariantPlatformPricingDraft(current => ({ ...current, salePrice: event.target.value }))} /></label></div><p className="variant-platform-pricing-help">Bu değer yalnızca seçtiğiniz varyantın {platformDisplayName(variantPlatformPricing.platform)} kanal teklifine kaydedilir; panel ana fiyatı değişmez.</p></div><footer><button type="button" className="secondary" onClick={() => setVariantPlatformPricing(null)} disabled={variantPlatformPricingSaving}>Vazgeç</button><button type="button" onClick={() => void saveVariantPlatformPricing()} disabled={variantPlatformPricingSaving || !variantPlatformPricing.platform.connectionId}>{variantPlatformPricingSaving ? 'Kaydediliyor…' : 'Fiyatı kaydet'}</button></footer></section></div>}
-    <p className="lede page-lede">Ürün bilgilerini ve varyantları hazırlayın; yayınlama adımında kanalları seçip gönderim kuyruğunu başlatın.</p><div className="product-add-wizardbar"><div className="product-add-stepper"><div className="product-add-progress" role="tablist" aria-label={editProductId ? 'Ürün düzenleme adımları' : 'Ürün ekleme adımları'}><button type="button" className={wizardStep === 1 ? 'active' : ''} role="tab" aria-selected={wizardStep === 1} onClick={() => setWizardStep(1)}><span>1</span><strong>Ürün bilgileri ve varyantlar</strong></button><i aria-hidden="true" /><button type="button" className={wizardStep === 2 ? 'active' : ''} role="tab" aria-selected={wizardStep === 2} onClick={() => setWizardStep(2)}><span>2</span><strong>Yayınlama</strong></button></div></div></div><form id="product-creation-form" className="product-creation-workspace product-add-workspace" data-wizard-step={wizardStep} onSubmit={submit} onInvalidCapture={handleInvalid} noValidate>
+    <p className="lede page-lede">Ürün bilgilerini ve varyantları hazırlayın; yayınlama adımında kanalları seçip gönderim kuyruğunu başlatın.</p><div className="product-add-wizardbar"><div className="product-add-stepper"><div className="product-add-progress" role="tablist" aria-label={editProductId ? 'Ürün düzenleme adımları' : 'Ürün ekleme adımları'}><button type="button" className={wizardStep === 1 ? 'active' : ''} role="tab" aria-selected={wizardStep === 1} onClick={() => setWizardStep(1)}><span>1</span><strong>Ürün bilgileri ve varyantlar</strong></button><i aria-hidden="true" /><button type="button" className={wizardStep === 2 ? 'active' : ''} role="tab" aria-selected={wizardStep === 2} onClick={() => setWizardStep(2)}><span>2</span><strong>Yayınlama</strong></button></div></div></div><form id="product-creation-form" className="product-creation-workspace product-add-workspace" data-wizard-step={wizardStep} onSubmit={submit} onInvalidCapture={handleInvalid} onChange={dismissProductError} noValidate>
     <div className="product-top-layout">
       <section className="panel product-step-card product-basics-card">
         <div className="editor-section-title"><span>1</span><div><h2>Temel ürün bilgileri</h2><p>Ürün kartının temel başlığı ve katalog bilgileri.</p></div></div>
@@ -3555,7 +3628,6 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           <small>Adet sınırı yok · JPEG veya PNG · dosya başına en fazla 6 MB</small>
         </label>
         {(mediaUrls.length > 0 || mediaFiles.length > 0 || familyOnlyMediaItems.length > 0) && <div className="media-preview-strip">
-          {mediaFiles.map((item, index) => <LocalImagePreview key={item.id} file={item.file} alt={`${form.title || 'Ürün'} ${index + 1}`} caption={index === 0 && !mediaUrls.length ? 'Ana görsel' : item.file.name} draggable={!submitting} isDragOver={dragOverMedia?.kind === 'file' && dragOverMedia.index === index} onDragStart={event => { setDraggedMedia({ kind: 'file', index }); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', `file:${index}`) }} onDragOver={event => { if (draggedMedia?.kind !== 'file') return; event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDragOverMedia({ kind: 'file', index }) }} onDrop={event => { event.preventDefault(); const transferValue = event.dataTransfer.getData('text/plain'); const transferIndex = transferValue.startsWith('file:') ? Number(transferValue.slice(5)) : draggedMedia?.kind === 'file' ? draggedMedia.index : -1; if (draggedMedia?.kind === 'file' && Number.isInteger(transferIndex)) reorderUploadedMedia(transferIndex, index) }} onDragEnd={() => { setDraggedMedia(null); setDragOverMedia(null) }} onRemove={() => setMediaFiles(files => files.filter(file => file.id !== item.id))} onZoom={url => setLightboxImage({ url, title: form.title || 'Ürün Görseli' })} />)}
           {visibleMediaUrls.map((url, index) => {
             const ownedUrl = mediaUrls.find(current => mediaImageKey(current) === mediaImageKey(url))
             const ownIndex = ownedUrl === undefined ? -1 : mediaUrls.findIndex(current => mediaImageKey(current) === mediaImageKey(url))
@@ -3569,9 +3641,10 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
               {isProductMedia
                 ? <button type="button" className="image-remove-btn" disabled={deletingProductMedia || submitting} title="Görseli üründen hemen kaldır" aria-label="Görseli üründen hemen kaldır" onClick={event => { event.stopPropagation(); if (ownedUrl) void removeProductMedia(ownedUrl) }}><UiIcon name={deletingProductMedia ? 'loader' : 'close'} /></button>
                 : <button type="button" className="image-remove-btn" disabled={deleting || !familyItem} title="Renk ailesi görselini kaynak kayıtlardan kaldır" aria-label="Renk ailesi görselini kaldır" onClick={event => { event.stopPropagation(); if (familyItem) void removeFamilyMedia(familyItem) }}><UiIcon name={deleting ? 'loader' : 'close'} /></button>}
-              <figcaption>{isProductMedia ? `${ownIndex === 0 && !mediaFiles.length ? 'Ana görsel' : `${ownIndex + 1}. görsel`} · sürükle` : 'Renk varyantı görseli · sürükle'}</figcaption>
+              <figcaption>{isProductMedia ? `${ownIndex === 0 ? 'Ana görsel' : `${ownIndex + 1}. görsel`} · sürükle` : 'Renk varyantı görseli · sürükle'}</figcaption>
             </figure>
           })}
+          {mediaFiles.map((item, index) => <LocalImagePreview key={item.id} file={item.file} alt={`${form.title || 'Ürün'} ${visibleMediaUrls.length + index + 1}`} caption={index === 0 && !visibleMediaUrls.length ? 'Ana görsel' : item.file.name} draggable={!submitting} isDragOver={dragOverMedia?.kind === 'file' && dragOverMedia.index === index} onDragStart={event => { setDraggedMedia({ kind: 'file', index }); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', `file:${index}`) }} onDragOver={event => { if (draggedMedia?.kind !== 'file') return; event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDragOverMedia({ kind: 'file', index }) }} onDrop={event => { event.preventDefault(); const transferValue = event.dataTransfer.getData('text/plain'); const transferIndex = transferValue.startsWith('file:') ? Number(transferValue.slice(5)) : draggedMedia?.kind === 'file' ? draggedMedia.index : -1; if (draggedMedia?.kind === 'file' && Number.isInteger(transferIndex)) reorderUploadedMedia(transferIndex, index) }} onDragEnd={() => { setDraggedMedia(null); setDragOverMedia(null) }} onRemove={() => setMediaFiles(files => files.filter(file => file.id !== item.id))} onZoom={url => setLightboxImage({ url, title: form.title || 'Ürün Görseli' })} />)}
         </div>}
       </section>
 
@@ -3741,7 +3814,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     </section>
 
     <section className="product-submit-sticky"><div><strong>{editProductId ? 'Ürün düzenlemeye hazır' : 'Ürün bilgileri hazır'}</strong><p>{variantRows.length || 1} satış satırı · {selectedChannelIds.length} seçili kanal</p></div><div className="product-submit-actions">{editProductId ? <button type="submit" name="intent" value="save" className="secondary" data-submit-intent="save" form="product-creation-form" disabled={submitting}>{submitting ? 'Kaydediliyor…' : 'Kaydet'}</button> : <button type="submit" name="intent" value="create" className="secondary" data-submit-intent="create" form="product-creation-form" disabled={submitting}>{submitting ? 'Oluşturuluyor…' : 'Ürünü oluştur'}</button>}{editProductId && <div className="platform-update-split" role="group" aria-label="Platform güncelleme"><button type="button" className="platform-update-quick" onClick={startQuickPlatformUpdate} disabled={submitting || connections.isLoading} title="Seçili aktif platformlarda yalnız fiyat ve stoku güncelle"><span>Hızlı güncelle</span><UiIcon name="refresh" /></button><button type="button" className="platform-update-settings" onClick={openPlatformUpdateDialog} disabled={submitting || connections.isLoading} aria-label="Platform güncelleme ayarları" title="Platform güncelleme ayarları" aria-haspopup="dialog"><UiIcon name="arrowUp" /></button></div>}<button type="button" onClick={() => setWizardStep(2)}>Yayınlamaya devam et <UiIcon name="arrowRight" /></button></div></section>
-    <ErrorBox error={error ?? categories.error ?? brands.error ?? connections.error} />
+    <ErrorBox error={error ?? categories.error ?? brands.error ?? connections.error} onDismiss={dismissProductError} />
     <OperationFeedbackToast feedback={feedback} onClose={() => { setFeedback(null); setNotice('') }} />
     {barcodePasteMenuOpen && <VariantHeaderActionMenu anchorRef={barcodePasteActionRef}>
       <section className="variant-header-action-menu-group" role="group" aria-label="Barkod üret">
@@ -3765,6 +3838,29 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
         <button type="button" role="menuitem" disabled={!barcodeRowCount} onClick={() => applyBarcodeToSku('all')}><span><strong>Barkodları stok koduna uygula</strong><small>Stok kodu sütunu · {barcodeRowCount.toLocaleString('tr-TR')} barkodlu satır</small></span><UiIcon name="alert" /></button>
       </section>
     </VariantHeaderActionMenu>}
+    {mediaRemovalConfirmation && createPortal(
+      <div className="workspace-modal-backdrop media-removal-confirm-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setMediaRemovalConfirmation(null) }}>
+        <section className="workspace-modal media-removal-confirm-modal" role="alertdialog" aria-modal="true" aria-labelledby="media-removal-confirm-title" aria-describedby="media-removal-confirm-description" onMouseDown={event => event.stopPropagation()} onKeyDown={event => { if (event.key === 'Escape') setMediaRemovalConfirmation(null) }}>
+          <header>
+            <div>
+              <p className="eyebrow">GÖRSEL YÖNETİMİ</p>
+              <h2 id="media-removal-confirm-title">{mediaRemovalConfirmation.kind === 'product' ? 'Görseli hemen kaldır' : 'Renk ailesi görselini kaldır'}</h2>
+            </div>
+            <button type="button" className="modal-close" onClick={() => setMediaRemovalConfirmation(null)} aria-label="Görsel kaldırma onayını kapat"><UiIcon name="close" /></button>
+          </header>
+          <div className="media-removal-confirm-body">
+            <p id="media-removal-confirm-description">{mediaRemovalConfirmation.kind === 'product'
+              ? 'Bu görsel aynı model ailesindeki ürün ve varyant kayıtlarından hemen kaldırılacak. Pazaryerindeki görsel değiştirilmez.'
+              : `Bu renk ailesi görseli ${(mediaRemovalConfirmation.item.sourceProductTitles.length ? mediaRemovalConfirmation.item.sourceProductTitles.join(', ') : 'ürün ailesindeki kaynak ürünler')} kayıtlarından kaldırılacak. İşlem yalnızca paneldeki görsel bağlantılarını etkiler; pazaryerindeki ürün veya görsel silinmez.`}</p>
+          </div>
+          <footer>
+            <button type="button" className="secondary" autoFocus onClick={() => setMediaRemovalConfirmation(null)}>Vazgeç</button>
+            <button type="button" className="destructive" onClick={confirmMediaRemoval}>Görseli kaldır</button>
+          </footer>
+        </section>
+      </div>,
+      document.body
+    )}
     {pendingVariantCodeGeneration && createPortal(
       <div className="workspace-modal-backdrop variant-code-confirm-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setPendingVariantCodeGeneration(null) }}>
         <section className="workspace-modal variant-code-confirm-modal" role="alertdialog" aria-modal="true" aria-labelledby="variant-code-confirm-title" aria-describedby="variant-code-confirm-description" onMouseDown={event => event.stopPropagation()}>
