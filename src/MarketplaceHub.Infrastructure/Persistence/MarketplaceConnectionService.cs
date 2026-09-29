@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
+using MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.Shopify;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Contracts;
@@ -31,13 +32,18 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         MarketplaceCapabilities.ConnectionTest, MarketplaceCapabilities.ProductRead,
         MarketplaceCapabilities.OrderRead
     ];
+    internal static readonly string[] HepsiburadaCapabilityCodes =
+    [
+        MarketplaceCapabilities.ConnectionTest, MarketplaceCapabilities.ReferenceRead, MarketplaceCapabilities.ProductRead,
+        MarketplaceCapabilities.OrderRead, MarketplaceCapabilities.ReturnRead
+    ];
     private static readonly HashSet<string> ResourceTypes = new(StringComparer.Ordinal) { "ORDERS", "ORDER_RECOVERY", "ORDER_LIFECYCLE", "ORDER_RECONCILE_SHORT", "ORDER_RECONCILE_MEDIUM", "ORDER_RECONCILE_DAILY", "ORDER_INVOICE_RECONCILIATION", "RETURNS", "RETURN_LIFECYCLE", "RETURN_RECONCILE_SHORT", "RETURN_RECONCILE_MEDIUM", "RETURN_RECONCILE_DAILY", "STOCK_RECONCILE_SHORT", "STOCK_RECONCILE_MEDIUM", "STOCK_RECONCILE_DAILY", "REFERENCE_DATA", MarketplaceExternalWritePolicies.Price, MarketplaceExternalWritePolicies.Stock, MarketplaceExternalWritePolicies.Shipment, MarketplaceExternalWritePolicies.Return };
     private readonly IDataProtector _credentialProtector = dataProtection.CreateProtector("MarketplaceHub.PlatformCredential.v1");
     private readonly IDataProtector _webhookProtector = dataProtection.CreateProtector("MarketplaceHub.WebhookVerifier.v1");
 
     public async Task<PageResult<ConnectionView>> ListAsync(Guid tenantId, int limit, string? after, CancellationToken cancellationToken)
     {
-        var afterId = Decode(after); var query = db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Status != "DELETED" && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "TRENDYOL_EFATURAM" || x.PlatformCode == "SHOPIFY"));
+        var afterId = Decode(after); var query = db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Status != "DELETED" && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "TRENDYOL_EFATURAM" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA"));
         if (afterId != Guid.Empty) query = query.Where(x => x.Id.CompareTo(afterId) > 0);
         var rows = await query.OrderBy(x => x.Id).Take(limit + 1).ToListAsync(cancellationToken);
         var credentialIds = await ActiveCredentialConnectionIds(tenantId, rows.Select(x => x.Id), cancellationToken);
@@ -55,6 +61,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         var apiVersion = command.ApiVersion.Trim();
         if (platform == "TRENDYOL" && !string.Equals(apiVersion, "V2", StringComparison.OrdinalIgnoreCase)) return Invalid<ConnectionView>("apiVersion", "Trendyol marketplace bağlantısı yalnız Product Integration V2 kullanır.");
         if (platform == "SHOPIFY" && !string.Equals(apiVersion, "2026-07", StringComparison.OrdinalIgnoreCase)) return Invalid<ConnectionView>("apiVersion", "Shopify bağlantısı yalnız GraphQL Admin API 2026-07 kullanır.");
+        if (platform == "HEPSIBURADA" && !string.Equals(apiVersion, "V1.0", StringComparison.OrdinalIgnoreCase)) return Invalid<ConnectionView>("apiVersion", "Hepsiburada bağlantısı sipariş/listeleme API sürümü V1.0 ile pinlenmelidir.");
         if (platform == "TRENDYOL_EFATURAM" && !string.Equals(apiVersion, "1.0.0", StringComparison.OrdinalIgnoreCase)) return Invalid<ConnectionView>("apiVersion", "E-Faturam bağlantısı doğrulanmış doküman sürümü 1.0.0 ile pinlenmelidir.");
         if (string.IsNullOrWhiteSpace(command.DisplayName) || string.IsNullOrWhiteSpace(command.ExternalStoreId) || platform == "TRENDYOL" && string.IsNullOrWhiteSpace(command.UserAgentIdentity)) return Invalid<ConnectionView>("connection", "Ad ve mağaza kapsamı; Trendyol için ayrıca User-Agent kimliği zorunludur.");
         var externalStoreId = platform == "SHOPIFY" ? NormalizeShopifyStore(command.ExternalStoreId) : command.ExternalStoreId.Trim();
@@ -71,13 +78,13 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             Environment = environment,
             DisplayName = command.DisplayName.Trim(),
             ExternalStoreId = externalStoreId!,
-            ApiVersion = platform == "TRENDYOL" ? "V2" : platform == "SHOPIFY" ? "2026-07" : "1.0.0",
+            ApiVersion = platform == "TRENDYOL" ? "V2" : platform == "SHOPIFY" ? "2026-07" : platform == "HEPSIBURADA" ? "V1.0" : "1.0.0",
             Status = "DRAFT",
-            SettingsJson = platform == "TRENDYOL" ? JsonSerializer.Serialize(new ConnectionSettings(command.UserAgentIdentity!.Trim(), false, true)) : platform == "SHOPIFY" ? JsonSerializer.Serialize(new ShopifyConnectionSettings(false, true)) : JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings(false)),
+            SettingsJson = platform == "TRENDYOL" ? JsonSerializer.Serialize(new ConnectionSettings(command.UserAgentIdentity!.Trim(), false, true)) : platform == "SHOPIFY" ? JsonSerializer.Serialize(new ShopifyConnectionSettings(false, true)) : platform == "HEPSIBURADA" ? "{}" : JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings(false)),
             Version = 1
         };
         db.PlatformConnections.Add(connection);
-        var capabilities = platform == "TRENDYOL" ? TrendyolCapabilityCodes : platform == "SHOPIFY" ? ShopifyCapabilityCodes : EfaturamCapabilityCodes;
+        var capabilities = platform == "TRENDYOL" ? TrendyolCapabilityCodes : platform == "SHOPIFY" ? ShopifyCapabilityCodes : platform == "HEPSIBURADA" ? HepsiburadaCapabilityCodes : EfaturamCapabilityCodes;
         db.PlatformCapabilities.AddRange(capabilities.Select(code => new PlatformCapability
         {
             Id = Guid.CreateVersion7(),
@@ -117,13 +124,15 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
 
     public async Task<ServiceResult<ConnectionView>> UpdateAsync(Guid tenantId, Guid id, long expectedVersion, UpdateConnectionCommand command, CancellationToken cancellationToken)
     {
-        var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "TRENDYOL_EFATURAM" || x.PlatformCode == "SHOPIFY"), cancellationToken);
+        var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "TRENDYOL_EFATURAM" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA"), cancellationToken);
         if (connection is null) return NotFound<ConnectionView>();
         if (!ActiveIntegrationScope.Contains(connection.PlatformCode)) return Deferred<ConnectionView>();
         if (connection.Version != expectedVersion) return Precondition<ConnectionView>(connection.Version);
         if (string.IsNullOrWhiteSpace(command.DisplayName)) return Invalid<ConnectionView>("connection", "Bağlantı adı zorunludur.");
         if (command.InvoiceCreationEnabled.HasValue && !ActiveIntegrationScope.IsMarketplace(connection.PlatformCode))
             return Invalid<ConnectionView>("invoiceCreationEnabled", "Fatura oluşturma ayarı yalnız pazaryeri bağlantılarında kullanılabilir.");
+        if (connection.PlatformCode == "HEPSIBURADA" && command.InvoiceCreationEnabled == true)
+            return Invalid<ConnectionView>("invoiceCreationEnabled", "Hepsiburada fatura aktarımı SIT doğrulaması tamamlanana kadar kapalıdır.");
 
         var requestedEnvironment = command.Environment?.Trim().ToUpperInvariant();
         if (requestedEnvironment is not null && requestedEnvironment is not ("STAGE" or "PRODUCTION")) return Invalid<ConnectionView>("environment", "Ortam STAGE veya PRODUCTION olmalıdır.");
@@ -164,6 +173,8 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         }
         else if (connection.PlatformCode == "TRENDYOL_EFATURAM")
             connection.SettingsJson = JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings(ReadEfaturamSettings(connection).ExternalWritesEnabled));
+        else if (connection.PlatformCode == "HEPSIBURADA")
+            connection.SettingsJson = "{}";
         else
             connection.SettingsJson = JsonSerializer.Serialize(new ShopifyConnectionSettings(false, command.InvoiceCreationEnabled ?? invoiceCreationEnabled));
 
@@ -198,8 +209,9 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
 
     public async Task<ServiceResult<ConnectionView>> RotateCredentialAsync(Guid tenantId, Guid id, long expectedVersion, CredentialCommand command, CancellationToken cancellationToken)
     {
-        var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "TRENDYOL_EFATURAM" || x.PlatformCode == "SHOPIFY"), cancellationToken); if (connection is null) return NotFound<ConnectionView>(); if (!ActiveIntegrationScope.Contains(connection.PlatformCode)) return Deferred<ConnectionView>(); if (connection.Version != expectedVersion) return Precondition<ConnectionView>(connection.Version);
+        var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "TRENDYOL_EFATURAM" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA"), cancellationToken); if (connection is null) return NotFound<ConnectionView>(); if (!ActiveIntegrationScope.Contains(connection.PlatformCode)) return Deferred<ConnectionView>(); if (connection.Version != expectedVersion) return Precondition<ConnectionView>(connection.Version);
         if (connection.PlatformCode == "TRENDYOL" && (string.IsNullOrWhiteSpace(command.ApiKey) || string.IsNullOrWhiteSpace(command.ApiSecret))) return Invalid<ConnectionView>("credential", "Trendyol API kimliği ve gizli anahtarı zorunludur.");
+        if (connection.PlatformCode == "HEPSIBURADA" && (string.IsNullOrWhiteSpace(command.ApiKey) || string.IsNullOrWhiteSpace(command.ApiSecret))) return Invalid<ConnectionView>("credential", "Hepsiburada kullanıcı adı ve servis parolası zorunludur.");
         if (connection.PlatformCode == "SHOPIFY" && string.IsNullOrWhiteSpace(command.ShopifyAccessToken)) return Invalid<ConnectionView>("shopifyAccessToken", "Shopify uygulama tokenı zorunludur.");
         TrendyolEFaturamCredentialPayload? efaturamCredential = null;
         if (connection.PlatformCode == "TRENDYOL_EFATURAM")
@@ -212,21 +224,25 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         var payload = connection.PlatformCode switch
         {
             "TRENDYOL" => JsonSerializer.Serialize(new CredentialPayload(command.ApiKey!, command.ApiSecret!)),
+            "HEPSIBURADA" => JsonSerializer.Serialize(new CredentialPayload(command.ApiKey!.Trim(), command.ApiSecret!)),
             "SHOPIFY" => JsonSerializer.Serialize(new ShopifyCredentialPayload(command.ShopifyAccessToken!.Trim())),
             _ => JsonSerializer.Serialize(efaturamCredential!)
         };
         var hint = connection.PlatformCode switch
         {
             "TRENDYOL" => Mask(command.ApiKey!),
+            "HEPSIBURADA" => Mask(command.ApiKey!.Trim()),
             "SHOPIFY" => Mask(command.ShopifyAccessToken!.Trim()),
             _ => MaskEmail(efaturamCredential!.Email!)
         };
-        var credentialType = connection.PlatformCode == "TRENDYOL" ? "BASIC" : connection.PlatformCode == "SHOPIFY" ? "SHOPIFY_ACCESS_TOKEN" : "EMAIL_PASSWORD";
+        var credentialType = connection.PlatformCode is "TRENDYOL" or "HEPSIBURADA" ? "BASIC" : connection.PlatformCode == "SHOPIFY" ? "SHOPIFY_ACCESS_TOKEN" : "EMAIL_PASSWORD";
         db.PlatformCredentials.Add(new PlatformCredential { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = id, CredentialType = credentialType, ProtectedPayload = _credentialProtector.Protect(payload), MaskedHint = hint, CreatedAt = now, Version = 1 });
         if (connection.PlatformCode == "TRENDYOL_EFATURAM")
             connection.SettingsJson = JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings(ReadEfaturamSettings(connection).ExternalWritesEnabled));
         else if (connection.PlatformCode == "SHOPIFY")
             connection.SettingsJson = JsonSerializer.Serialize(new ShopifyConnectionSettings(false, MarketplaceInvoiceCreationPolicy.IsEnabled(connection.PlatformCode, connection.SettingsJson)));
+        else if (connection.PlatformCode == "HEPSIBURADA")
+            connection.SettingsJson = "{}";
         connection.LastTestedAt = null; connection.LastSuccessAt = null; connection.LastErrorCode = null; connection.Status = "DRAFT"; connection.Version++;
         foreach (var capability in await db.PlatformCapabilities.Where(x => x.TenantId == tenantId && x.ConnectionId == id).ToListAsync(cancellationToken)) { capability.SupportLevel = CapabilitySupportLevel.Unknown; capability.VerifiedAt = null; capability.EvidenceNote = "Credential rotasyonu sonrası yeniden doğrulama gerekiyor."; capability.Version++; }
         await db.SaveChangesAsync(cancellationToken); return ServiceResult<ConnectionView>.Ok(Map(connection, true));
@@ -244,18 +260,18 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
 
     public async Task<ServiceResult<ConnectionView>> SetActiveAsync(Guid tenantId, Guid id, long expectedVersion, bool active, CancellationToken cancellationToken)
     {
-        var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "TRENDYOL_EFATURAM" || x.PlatformCode == "SHOPIFY"), cancellationToken); if (connection is null) return NotFound<ConnectionView>(); if (!ActiveIntegrationScope.Contains(connection.PlatformCode) && active) return Deferred<ConnectionView>(); if (connection.Version != expectedVersion) return Precondition<ConnectionView>(connection.Version);
+        var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "TRENDYOL_EFATURAM" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA"), cancellationToken); if (connection is null) return NotFound<ConnectionView>(); if (!ActiveIntegrationScope.Contains(connection.PlatformCode) && active) return Deferred<ConnectionView>(); if (connection.Version != expectedVersion) return Precondition<ConnectionView>(connection.Version);
         var queueActivationBootstrap = false;
         if (active)
         {
-            var connectionTestCode = connection.PlatformCode is "TRENDYOL" or "SHOPIFY" ? MarketplaceCapabilities.ConnectionTest : InvoicingCapabilities.ConnectionTest;
+            var connectionTestCode = connection.PlatformCode is "TRENDYOL" or "SHOPIFY" or "HEPSIBURADA" ? MarketplaceCapabilities.ConnectionTest : InvoicingCapabilities.ConnectionTest;
             var connectionTest = await db.PlatformCapabilities.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == id && x.Code == connectionTestCode && x.Environment == connection.Environment && x.StoreScope == connection.ExternalStoreId, cancellationToken);
             if (connection.LastSuccessAt is null || connectionTest?.SupportLevel != CapabilitySupportLevel.Supported) return ServiceResult<ConnectionView>.Fail("CONNECTION_TEST_REQUIRED", "Bağlantı etkinleştirilmeden önce başarılı Stage/Production testi gerekir.", 422);
             // Re-activation after data was hidden or purged must always rebuild the
             // marketplace snapshot. Checking for remaining rows is not reliable:
             // reference snapshots can survive an operational data reset while the
             // connection is still missing orders/products/returns.
-            queueActivationBootstrap = connection.PlatformCode is "TRENDYOL" or "SHOPIFY"
+            queueActivationBootstrap = connection.PlatformCode is "TRENDYOL" or "SHOPIFY" or "HEPSIBURADA"
                 && connection.Status is not ("ACTIVE" or "VERIFIED");
             connection.Status = "ACTIVE";
         }
@@ -264,6 +280,8 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             connection.SettingsJson = JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings(ReadEfaturamSettings(connection).ExternalWritesEnabled));
         else if (connection.PlatformCode == "SHOPIFY")
             connection.SettingsJson = JsonSerializer.Serialize(new ShopifyConnectionSettings(false, MarketplaceInvoiceCreationPolicy.IsEnabled(connection.PlatformCode, connection.SettingsJson)));
+        else if (connection.PlatformCode == "HEPSIBURADA")
+            connection.SettingsJson = "{}";
         connection.Version++;
         if (queueActivationBootstrap)
         {
@@ -275,7 +293,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
 
     public async Task<ServiceResult<IReadOnlyList<CapabilityView>>> CapabilitiesAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
     {
-        var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "TRENDYOL_EFATURAM" || x.PlatformCode == "SHOPIFY"), cancellationToken);
+        var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "TRENDYOL_EFATURAM" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA"), cancellationToken);
         if (connection is null) return NotFound<IReadOnlyList<CapabilityView>>();
         await EnsureCapabilityRowsAsync(connection, cancellationToken);
         var rows = await db.PlatformCapabilities.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == id).OrderBy(x => x.Code).Select(x => new CapabilityView(x.Code, x.SupportLevel.ToString().ToUpperInvariant(), x.ApiVersion, x.Environment, x.StoreScope, x.SourceUrl, x.VerifiedAt, x.ConstraintsJson, x.EvidenceNote, x.Version)).ToListAsync(cancellationToken);
@@ -284,11 +302,11 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
 
     public async Task<ServiceResult<CapabilityView>> RecordCapabilityEvidenceAsync(Guid tenantId, Guid actorUserId, Guid id, string code, long expectedVersion, RecordCapabilityEvidenceCommand command, string correlationId, CancellationToken cancellationToken)
     {
-        var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "TRENDYOL_EFATURAM" || x.PlatformCode == "SHOPIFY"), cancellationToken);
+        var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "TRENDYOL_EFATURAM" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA"), cancellationToken);
         if (connection is null) return NotFound<CapabilityView>();
         await EnsureCapabilityRowsAsync(connection, cancellationToken);
         var normalizedCode = code.Trim().ToUpperInvariant();
-        var expectedCodes = connection.PlatformCode == "TRENDYOL" ? TrendyolCapabilityCodes : connection.PlatformCode == "SHOPIFY" ? ShopifyCapabilityCodes : EfaturamCapabilityCodes;
+        var expectedCodes = connection.PlatformCode == "TRENDYOL" ? TrendyolCapabilityCodes : connection.PlatformCode == "SHOPIFY" ? ShopifyCapabilityCodes : connection.PlatformCode == "HEPSIBURADA" ? HepsiburadaCapabilityCodes : EfaturamCapabilityCodes;
         if (!expectedCodes.Contains(normalizedCode, StringComparer.Ordinal)) return Invalid<CapabilityView>("code", "Bu bağlantı türü için tanımlı capability değildir.");
         var capability = await db.PlatformCapabilities.SingleAsync(x => x.TenantId == tenantId && x.ConnectionId == id && x.Code == normalizedCode, cancellationToken);
         if (capability.Version != expectedVersion) return Precondition<CapabilityView>(capability.Version);
@@ -324,7 +342,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
 
     public async Task<ServiceResult<IReadOnlyList<SyncPolicyView>>> SyncPoliciesAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
     {
-        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY"), cancellationToken);
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA"), cancellationToken);
         if (connection is null) return NotFound<IReadOnlyList<SyncPolicyView>>();
         var externalWritesEnabled = WritesEnabled(connection.SettingsJson);
         var policies = await db.ConnectionSyncPolicies.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == id && x.ResourceType != "PRODUCTS" && x.ResourceType != "PRODUCT_WRITE" && x.ResourceType != "PRICE_STOCK_WRITE").OrderBy(x => x.ResourceType).ToListAsync(cancellationToken);
@@ -354,7 +372,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         var minimumInterval = MarketplaceExternalWritePolicies.IsPolicy(normalized) ? 0 : 30;
         var maximumInterval = MarketplaceExternalWritePolicies.IsPolicy(normalized) ? 86_400 : ScheduledOrderPollingCadencePolicy.MaximumIntervalSeconds;
         if (command.IntervalSeconds < minimumInterval || command.IntervalSeconds > maximumInterval || command.OverlapSeconds is < 0 or > 1_209_599 || command.JitterSeconds is < 0 or > 3_600) return Invalid<SyncPolicyView>("interval", MarketplaceExternalWritePolicies.IsPolicy(normalized) ? "Dış yazma sıklığı anında veya 30 saniye-24 saat arasında olmalıdır." : "Sync aralığı 30 saniye-72 saat, overlap 0-14 gün ve jitter 0-1 saat arasında olmalıdır.");
-        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY"), cancellationToken); if (connection is null) return NotFound<SyncPolicyView>(); if (!ActiveIntegrationScope.Contains(connection.PlatformCode)) return Deferred<SyncPolicyView>();
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA"), cancellationToken); if (connection is null) return NotFound<SyncPolicyView>(); if (!ActiveIntegrationScope.Contains(connection.PlatformCode)) return Deferred<SyncPolicyView>();
         if (command.Enabled && MarketplaceSyncPolicyRules.RequiresExternalWrites(normalized) && !WritesEnabled(connection.SettingsJson))
             return ServiceResult<SyncPolicyView>.Fail("EXTERNAL_WRITES_DISABLED", "Dış yazma kapalıyken bu otomatik akış açılamaz.", 422);
         var policy = await db.ConnectionSyncPolicies.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == id && x.ResourceType == normalized, cancellationToken);
@@ -381,10 +399,10 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         db.WebhookSubscriptions.Add(subscription); await db.SaveChangesAsync(cancellationToken); return ServiceResult<CreatedWebhookSubscription>.Ok(new(Map(subscription), connection.PublicId, routeToken));
     }
 
-    private Task<PlatformConnection?> Find(Guid tenantId, Guid id, CancellationToken cancellationToken) => db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "TRENDYOL_EFATURAM" || x.PlatformCode == "SHOPIFY"), cancellationToken);
+    private Task<PlatformConnection?> Find(Guid tenantId, Guid id, CancellationToken cancellationToken) => db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "TRENDYOL_EFATURAM" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA"), cancellationToken);
     private async Task EnsureCapabilityRowsAsync(PlatformConnection connection, CancellationToken cancellationToken)
     {
-        var expected = connection.PlatformCode == "TRENDYOL" ? TrendyolCapabilityCodes : connection.PlatformCode == "SHOPIFY" ? ShopifyCapabilityCodes : EfaturamCapabilityCodes;
+        var expected = connection.PlatformCode == "TRENDYOL" ? TrendyolCapabilityCodes : connection.PlatformCode == "SHOPIFY" ? ShopifyCapabilityCodes : connection.PlatformCode == "HEPSIBURADA" ? HepsiburadaCapabilityCodes : EfaturamCapabilityCodes;
         var existing = await db.PlatformCapabilities.Where(x => x.TenantId == connection.TenantId && x.ConnectionId == connection.Id).Select(x => x.Code).ToListAsync(cancellationToken);
         var missing = expected.Except(existing, StringComparer.Ordinal).ToArray();
         if (missing.Length == 0) return;
@@ -455,6 +473,12 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         }
         var orderType = MarketplaceJobTypes.ForPlatform(connection.PlatformCode, MarketplaceJobTypes.OrderRecoverySync);
         AddBootstrapJob(tenantId, connection.Id, orderType, $"{prefix}orders", JsonSerializer.Serialize(new { connectionId = connection.Id, externalOrderId = (string?)null, full = true }), correlationId);
+        if (connection.PlatformCode == "HEPSIBURADA")
+        {
+            if (ShouldBootstrapHepsiburadaCatalogReferences(connection.Environment, configuration[$"{HepsiburadaOptions.SectionName}:ProductionCatalogBaseAddress"]))
+                AddBootstrapJob(tenantId, connection.Id, MarketplaceJobTypes.ReferenceSync, $"{prefix}categories", JsonSerializer.Serialize(new { connectionId = connection.Id, resourceType = "CATEGORIES", parentExternalId = (string?)null }), correlationId);
+            AddBootstrapJob(tenantId, connection.Id, MarketplaceJobTypes.HepsiburadaProductSync, $"{prefix}products", JsonSerializer.Serialize(new { connectionId = connection.Id, full = true, updateExistingProducts = false }), correlationId);
+        }
         if (connection.PlatformCode == "TRENDYOL")
             AddBootstrapJob(tenantId, connection.Id, MarketplaceJobTypes.ReturnSync, $"{prefix}returns", JsonSerializer.Serialize(new { connectionId = connection.Id, forceFull = true }), correlationId);
     }
@@ -464,13 +488,22 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         job.Priority = 1;
         db.IntegrationJobs.Add(job);
     }
+    internal static bool ShouldBootstrapHepsiburadaCatalogReferences(string environment, string? productionCatalogBaseAddress)
+    {
+        if (string.Equals(environment, "STAGE", StringComparison.OrdinalIgnoreCase)) return true;
+        return string.Equals(environment, "PRODUCTION", StringComparison.OrdinalIgnoreCase)
+            && Uri.TryCreate(productionCatalogBaseAddress, UriKind.Absolute, out var address)
+            && address.Scheme == Uri.UriSchemeHttps;
+    }
     private async Task<HashSet<Guid>> ActiveCredentialConnectionIds(Guid tenantId, IEnumerable<Guid> connectionIds, CancellationToken cancellationToken) => (await db.PlatformCredentials.AsNoTracking().Where(x => x.TenantId == tenantId && connectionIds.Contains(x.ConnectionId) && x.RevokedAt == null).Select(x => x.ConnectionId).ToListAsync(cancellationToken)).ToHashSet();
     private Guid Decode(string? cursor) => cursors.TryDecode(cursor, out var id) ? id : throw new ArgumentException("Cursor geçersiz veya süresi dolmuş.", nameof(cursor));
     private PageResult<TView> Page<TEntity, TView>(List<TEntity> rows, int limit, Func<TEntity, TView> map) where TEntity : class { var hasMore = rows.Count > limit; var items = rows.Take(limit).Select(map).ToList(); var next = hasMore ? cursors.Encode((Guid)typeof(TEntity).GetProperty("Id")!.GetValue(rows[limit - 1])!) : null; return new(items, next, hasMore); }
     private ConnectionView Map(PlatformConnection x, bool hasCredential)
     {
-        var externalWritesEnabled = x.PlatformCode != "SHOPIFY" && configuration.GetValue<bool>("FeatureFlags:ExternalWrites") && (x.PlatformCode == "TRENDYOL" ? ReadSettings(x).ExternalWritesEnabled : ReadEfaturamSettings(x).ExternalWritesEnabled);
-        var invoiceCreationEnabled = MarketplaceInvoiceCreationPolicy.IsEnabled(x.PlatformCode, x.SettingsJson);
+        var externalWritesEnabled = configuration.GetValue<bool>("FeatureFlags:ExternalWrites") && (x.PlatformCode == "TRENDYOL"
+            ? ReadSettings(x).ExternalWritesEnabled
+            : x.PlatformCode == "TRENDYOL_EFATURAM" && ReadEfaturamSettings(x).ExternalWritesEnabled);
+        var invoiceCreationEnabled = x.PlatformCode != "HEPSIBURADA" && MarketplaceInvoiceCreationPolicy.IsEnabled(x.PlatformCode, x.SettingsJson);
         return new(x.Id, x.PublicId, x.PlatformCode, x.Environment, x.DisplayName, x.ExternalStoreId, x.Status, x.ApiVersion, x.LastTestedAt, x.LastSuccessAt, x.LastErrorCode, hasCredential, externalWritesEnabled, x.Version, invoiceCreationEnabled);
     }
     private static SyncPolicyView Map(ConnectionSyncPolicy x) => new(x.Id, x.ResourceType, x.IntervalSeconds, x.OverlapSeconds, x.JitterSeconds, x.Enabled, x.Version, RequiresExternalWrites: MarketplaceSyncPolicyRules.RequiresExternalWrites(x.ResourceType));

@@ -124,9 +124,10 @@ public static class ShipmentPackageStatusPolicy
     public static ShipmentPackageStatus FromRemote(string? rawStatus) => (rawStatus ?? string.Empty).Trim().ToUpperInvariant() switch
     {
         "CREATED" => ShipmentPackageStatus.New,
+        "OPEN" => ShipmentPackageStatus.ReadyToShip,
         "PICKING" => ShipmentPackageStatus.Processing,
         "INVOICED" or "READY_TO_SHIP" or "READYTOSHIP" => ShipmentPackageStatus.ReadyToShip,
-        "SHIPPED" => ShipmentPackageStatus.Shipped,
+        "SHIPPED" or "IN_TRANSIT" or "INTRANSIT" => ShipmentPackageStatus.Shipped,
         "DELIVERED" => ShipmentPackageStatus.Delivered,
         "PARTIALLY_CANCELLED" or "PARTIALLYCANCELLED" => ShipmentPackageStatus.PartiallyCancelled,
         "CANCELLED" or "CANCELED" or "UNSUPPLIED" => ShipmentPackageStatus.Cancelled,

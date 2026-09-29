@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -13,7 +14,7 @@ using Npgsql;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort connections, IReferenceDataPort references, IProductPort products, IInventoryPricePort inventoryPrice, IOrderPort orders, IReturnPort returns, IPrivateFileStorage files, IConfiguration configuration, TimeProvider timeProvider) : IMarketplaceJobProcessor
+public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort connections, IReferenceDataPort references, IProductPort products, IInventoryPricePort inventoryPrice, IOrderPort orders, IOrderPackageReadPort orderPackages, IReturnPort returns, IPrivateFileStorage files, IConfiguration configuration, TimeProvider timeProvider) : IMarketplaceJobProcessor
 {
     // The payload deadline is the authoritative approval bound. The worker currently
     // applies exponential backoff, but this ceiling also keeps retry accounting from
@@ -49,7 +50,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             return JobExecutionResult.Retry("INITIAL_SYNC_PENDING", "İlk kapsamlı veri aktarımı tamamlanmadan artımlı senkronizasyon başlatılmayacak.", TimeSpan.FromSeconds(30));
         // A disabled connection may still be tested so it can be reactivated, but
         // no data sync or marketplace operation may execute while it is passive.
-        if (jobType is not (MarketplaceJobTypes.ConnectionTest or MarketplaceJobTypes.ShopifyConnectionTest) && connectionState?.Status is not ("ACTIVE" or "VERIFIED"))
+        if (jobType is not (MarketplaceJobTypes.ConnectionTest or MarketplaceJobTypes.ShopifyConnectionTest or MarketplaceJobTypes.HepsiburadaConnectionTest) && connectionState?.Status is not ("ACTIVE" or "VERIFIED"))
             return JobExecutionResult.Blocked("CONNECTION_INACTIVE", "Bağlantı pasif olduğu için işlem çalıştırılmadı.");
         var syncLock = await MarketplaceSyncExecutionLock.TryAcquireAsync(db, connectionId.Value, jobType, cancellationToken);
         if (syncLock is null)
@@ -89,15 +90,15 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 }
                 var succeeded = jobType switch
                 {
-                    MarketplaceJobTypes.ConnectionTest or MarketplaceJobTypes.ShopifyConnectionTest => await TestConnection(tenantId, connectionId.Value, correlationId, cancellationToken),
+                    MarketplaceJobTypes.ConnectionTest or MarketplaceJobTypes.ShopifyConnectionTest or MarketplaceJobTypes.HepsiburadaConnectionTest => await TestConnection(tenantId, connectionId.Value, correlationId, cancellationToken),
                     MarketplaceJobTypes.ReferenceSync => await SyncReferences(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
-                    MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync => await SyncOrders(tenantId, connectionId.Value, payloadJson, correlationId, "ORDERS_HOT", allowBaseline: false, cancellationToken),
-                    MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync => await SyncOrders(tenantId, connectionId.Value, payloadJson, correlationId, "ORDERS_RECOVERY", allowBaseline: true, cancellationToken),
+                    MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync => await SyncOrders(tenantId, connectionId.Value, payloadJson, correlationId, "ORDERS_HOT", allowBaseline: false, cancellationToken),
+                    MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync or MarketplaceJobTypes.HepsiburadaOrderRecoverySync => await SyncOrders(tenantId, connectionId.Value, payloadJson, correlationId, "ORDERS_RECOVERY", allowBaseline: true, cancellationToken),
                     MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.ShopifyOrderStatusSync => await SyncOpenOrders(tenantId, connectionId.Value, correlationId, cancellationToken),
                     MarketplaceJobTypes.OrderReconciliation or MarketplaceJobTypes.ShopifyOrderReconciliation => await ReconcileOrders(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                     MarketplaceJobTypes.OrderInvoiceReconciliation or MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation => await ReconcileOrderInvoices(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
-                    MarketplaceJobTypes.ProductSync or MarketplaceJobTypes.ShopifyProductSync => await SyncProducts(tenantId, connectionId.Value, payloadJson, correlationId, jobId, cancellationToken),
-                    MarketplaceJobTypes.ReturnSync => await SyncReturns(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
+                    MarketplaceJobTypes.ProductSync or MarketplaceJobTypes.ShopifyProductSync or MarketplaceJobTypes.HepsiburadaProductSync => await SyncProducts(tenantId, connectionId.Value, payloadJson, correlationId, jobId, cancellationToken),
+                    MarketplaceJobTypes.ReturnSync or MarketplaceJobTypes.HepsiburadaReturnSync => await SyncReturns(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                     MarketplaceJobTypes.ReturnStatusSync => await SyncOpenReturns(tenantId, connectionId.Value, correlationId, cancellationToken),
                     MarketplaceJobTypes.ReturnReconciliation => await ReconcileReturns(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                     MarketplaceJobTypes.StockReconciliation => await ReconcileStock(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
@@ -128,17 +129,17 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
     private static string? TelemetryResource(string jobType) => jobType switch
     {
-        MarketplaceJobTypes.ConnectionTest or MarketplaceJobTypes.ShopifyConnectionTest => "CONNECTION_TEST",
+        MarketplaceJobTypes.ConnectionTest or MarketplaceJobTypes.ShopifyConnectionTest or MarketplaceJobTypes.HepsiburadaConnectionTest => "CONNECTION_TEST",
         MarketplaceJobTypes.ReferenceSync => "REFERENCE_DATA",
-        MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync => "ORDERS_HOT",
-        MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync => "ORDERS_RECOVERY",
+        MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync => "ORDERS_HOT",
+        MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync or MarketplaceJobTypes.HepsiburadaOrderRecoverySync => "ORDERS_RECOVERY",
         MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.ShopifyOrderStatusSync => "ORDER_LIFECYCLE",
         MarketplaceJobTypes.OrderReconciliation or MarketplaceJobTypes.ShopifyOrderReconciliation => "ORDER_RECONCILIATION",
         MarketplaceJobTypes.OrderInvoiceReconciliation or MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation => "ORDER_INVOICE_RECONCILIATION",
-        MarketplaceJobTypes.ReturnSync => "RETURNS",
+        MarketplaceJobTypes.ReturnSync or MarketplaceJobTypes.HepsiburadaReturnSync => "RETURNS",
         MarketplaceJobTypes.ReturnStatusSync => "RETURN_LIFECYCLE",
         MarketplaceJobTypes.ReturnReconciliation => "RETURN_RECONCILIATION",
-        MarketplaceJobTypes.ProductSync or MarketplaceJobTypes.ShopifyProductSync => "PRODUCTS",
+        MarketplaceJobTypes.ProductSync or MarketplaceJobTypes.ShopifyProductSync or MarketplaceJobTypes.HepsiburadaProductSync => "PRODUCTS",
         MarketplaceJobTypes.ProductCreate => "PRODUCT_CREATE",
         MarketplaceJobTypes.ProductApprovalReconcile => "PRODUCT_APPROVAL",
         MarketplaceJobTypes.ProductUpdate => "PRODUCT_UPDATE",
@@ -159,8 +160,10 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         MarketplaceJobTypes.ReferenceSync
         or MarketplaceJobTypes.OrderSync
         or MarketplaceJobTypes.ShopifyOrderSync
+        or MarketplaceJobTypes.HepsiburadaOrderSync
         or MarketplaceJobTypes.OrderRecoverySync
         or MarketplaceJobTypes.ShopifyOrderRecoverySync
+        or MarketplaceJobTypes.HepsiburadaOrderRecoverySync
         or MarketplaceJobTypes.OrderStatusSync
         or MarketplaceJobTypes.ShopifyOrderStatusSync
         or MarketplaceJobTypes.OrderReconciliation
@@ -169,7 +172,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         or MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation
         or MarketplaceJobTypes.ProductSync
         or MarketplaceJobTypes.ShopifyProductSync
+        or MarketplaceJobTypes.HepsiburadaProductSync
         or MarketplaceJobTypes.ReturnSync
+        or MarketplaceJobTypes.HepsiburadaReturnSync
         or MarketplaceJobTypes.ReturnStatusSync
         or MarketplaceJobTypes.ReturnReconciliation
         or MarketplaceJobTypes.StockReconciliation;
@@ -237,6 +242,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         if (changed) telemetryChangedCount++;
         else telemetrySkippedCount++;
     }
+    private void TrackSkipped() => telemetrySkippedCount++;
     private void TrackResultFailure(AdapterError? error)
     {
         telemetryFailedCount++;
@@ -257,7 +263,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
         if (string.Equals(payload.Phase, "SUBMIT", StringComparison.OrdinalIgnoreCase))
         {
-            if (!await ExternalWriteMasterAllowedAsync(tenantId, connectionId, cancellationToken)) return await MarkPublicationResult(tenantId, connectionId, profile, "BLOCKED", "EXTERNAL_WRITES_DISABLED", JobExecutionResult.Blocked("EXTERNAL_WRITES_DISABLED", "Dış yazma anahtarı kapalı; Trendyol’a gönderim yapılmadı."), cancellationToken);
+            if (!await ExternalWriteMasterAllowedAsync(tenantId, connectionId, cancellationToken)) return await MarkPublicationResult(tenantId, connectionId, profile, "BLOCKED", "EXTERNAL_WRITES_DISABLED", JobExecutionResult.Blocked("EXTERNAL_WRITES_DISABLED", "Dış yazma anahtarı kapalı; pazar yeri isteği gönderilmedi."), cancellationToken);
             var existingEffect = await db.ExternalEffectRecords.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.EffectType == MarketplaceJobTypes.ProductCreate && x.IdempotencyKey == job.EffectIdempotencyKey, cancellationToken);
             if (existingEffect is not null) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "EXTERNAL_EFFECT_AMBIGUOUS", JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Önceki dış yazmanın sonucu kesinleştirilemedi; tekrar gönderim engellendi."), cancellationToken);
 
@@ -747,7 +753,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var phase = payload.Phase.Trim().ToUpperInvariant();
         if (phase.StartsWith("SUBMIT_", StringComparison.Ordinal))
         {
-            if (!await ExternalWriteMasterAllowedAsync(tenantId, connectionId, cancellationToken)) return await MarkPublicationResult(tenantId, connectionId, profile, "UPDATE_BLOCKED", "EXTERNAL_WRITES_DISABLED", JobExecutionResult.Blocked("EXTERNAL_WRITES_DISABLED", "Dış yazma anahtarı kapalı; Trendyol’a gönderim yapılmadı."), cancellationToken);
+            if (!await ExternalWriteMasterAllowedAsync(tenantId, connectionId, cancellationToken)) return await MarkPublicationResult(tenantId, connectionId, profile, "UPDATE_BLOCKED", "EXTERNAL_WRITES_DISABLED", JobExecutionResult.Blocked("EXTERNAL_WRITES_DISABLED", "Dış yazma anahtarı kapalı; pazar yeri isteği gönderilmedi."), cancellationToken);
             var phasePayload = UpdatePayload(payload, phase);
             if (!HasItems(phasePayload))
             {
@@ -870,7 +876,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var phase = payload.Phase.Trim().ToUpperInvariant();
         if (phase == "SUBMIT")
         {
-            if (!await ExternalWriteMasterAllowedAsync(tenantId, connectionId, cancellationToken)) return await MarkPublicationResult(tenantId, connectionId, profile, "ARCHIVE_BLOCKED", "EXTERNAL_WRITES_DISABLED", JobExecutionResult.Blocked("EXTERNAL_WRITES_DISABLED", "Dış yazma anahtarı kapalı; Trendyol’a gönderim yapılmadı."), cancellationToken);
+            if (!await ExternalWriteMasterAllowedAsync(tenantId, connectionId, cancellationToken)) return await MarkPublicationResult(tenantId, connectionId, profile, "ARCHIVE_BLOCKED", "EXTERNAL_WRITES_DISABLED", JobExecutionResult.Blocked("EXTERNAL_WRITES_DISABLED", "Dış yazma anahtarı kapalı; pazar yeri isteği gönderilmedi."), cancellationToken);
             var effectKey = job.EffectIdempotencyKey;
             if (await db.ExternalEffectRecords.AnyAsync(x => x.TenantId == tenantId && x.EffectType == MarketplaceJobTypes.ProductArchive && x.IdempotencyKey == effectKey, cancellationToken)) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "EXTERNAL_EFFECT_AMBIGUOUS", JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Önceki arşiv çağrısının sonucu kesinleştirilemedi."), cancellationToken);
             var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = MarketplaceJobTypes.ProductArchive, IdempotencyKey = effectKey, CreatedAt = timeProvider.GetUtcNow() };
@@ -960,7 +966,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 return JobExecutionResult.Blocked("EXTERNAL_WRITES_DISABLED", "Dış yazma kapalı olduğu için fiyat-stok gönderimi çalıştırılmadı.");
             var writePolicy = payload.VariantId.HasValue ? MarketplaceExternalWritePolicies.Stock : MarketplaceExternalWritePolicies.Price;
             if (!await ExternalWritePolicyEnabledAsync(tenantId, connectionId, writePolicy, cancellationToken))
-                return JobExecutionResult.Blocked("EXTERNAL_WRITE_POLICY_DISABLED", writePolicy == MarketplaceExternalWritePolicies.Stock ? "Stok dış yazma akışı kapalı; Trendyol’a gönderim yapılmadı." : "Fiyat dış yazma akışı kapalı; Trendyol’a gönderim yapılmadı.");
+                return JobExecutionResult.Blocked("EXTERNAL_WRITE_POLICY_DISABLED", writePolicy == MarketplaceExternalWritePolicies.Stock ? "Stok dış yazma akışı kapalı; pazar yeri isteği gönderilmedi." : "Fiyat dış yazma akışı kapalı; pazar yeri isteği gönderilmedi.");
             var current = await new PriceInventoryComposer(db).BuildAsync(tenantId, connectionId, cancellationToken, payload.VariantId, payload.ProductId);
             if (!current.Succeeded)
             {
@@ -1014,11 +1020,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             if (!lineByBarcode.TryGetValue(line.Barcode, out var remoteLine)) return JobExecutionResult.ManualReview("PRICE_INVENTORY_BATCH_CONTRACT_INVALID", "Fiyat-stok batch sonucu tüm barkodları içermiyor.", payload.ExternalOperationId);
             var offer = offers[line.OfferId];
             if (remoteLine.Succeeded) { offer.LastPriceHash = line.PriceHash; offer.LastStockProjectionVersion = line.ProjectionVersion; offer.Version++; success++; }
-            else { failed++; await RecordIssue(tenantId, $"price-inventory:{connectionId}:{line.Barcode}:{SafeCode(remoteLine.ErrorCode)}", SafeCode(remoteLine.ErrorCode) ?? "PRICE_INVENTORY_LINE_REJECTED", $"Trendyol fiyat-stok satırı reddedildi: {line.Barcode}.", cancellationToken); }
+            else { failed++; await RecordIssue(tenantId, $"price-inventory:{connectionId}:{line.Barcode}:{SafeCode(remoteLine.ErrorCode)}", SafeCode(remoteLine.ErrorCode) ?? "PRICE_INVENTORY_LINE_REJECTED", $"Pazar yeri fiyat-stok satırı reddedildi: {line.Barcode}.", cancellationToken); }
         }
         await db.SaveChangesAsync(cancellationToken);
         if (failed == 0) return JobExecutionResult.Success();
-        return success == 0 ? JobExecutionResult.Blocked("PRICE_INVENTORY_REJECTED", "Trendyol fiyat-stok batch içindeki tüm satırları reddetti.", payload.ExternalOperationId) : JobExecutionResult.ManualReview("PRICE_INVENTORY_PARTIAL_FAILURE", "Trendyol fiyat-stok batch kısmi başarısızlıkla tamamlandı.", payload.ExternalOperationId);
+        return success == 0 ? JobExecutionResult.Blocked("PRICE_INVENTORY_REJECTED", "Pazar yeri fiyat-stok batch içindeki tüm satırları reddetti.", payload.ExternalOperationId) : JobExecutionResult.ManualReview("PRICE_INVENTORY_PARTIAL_FAILURE", "Pazar yeri fiyat-stok batch kısmi başarısızlıkla tamamlandı.", payload.ExternalOperationId);
     }
 
     private async Task<JobExecutionResult> LabelCapabilityProbe(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
@@ -1197,7 +1203,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         } while (!cancellationToken.IsCancellationRequested);
 
         cancellationToken.ThrowIfCancellationRequested();
-        if (items.Count == 0 && resourceType is "CATEGORIES" or "BRANDS") throw new JobProcessingException(JobExecutionResult.Blocked("REFERENCE_EMPTY_RESPONSE", $"Trendyol {resourceType} salt-okunur çağrısı boş koleksiyon döndürdü; mevcut snapshot korunuyor."));
+        if (items.Count == 0 && resourceType is "CATEGORIES" or "BRANDS") throw new JobProcessingException(JobExecutionResult.Blocked("REFERENCE_EMPTY_RESPONSE", $"Marketplace {resourceType} salt-okunur çağrısı boş koleksiyon döndürdü; mevcut snapshot korunuyor."));
         if (items.Any(x => !string.Equals(x.ResourceType, resourceType, StringComparison.Ordinal) || string.IsNullOrWhiteSpace(x.ExternalId) || string.IsNullOrWhiteSpace(x.Name))) throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_CONTRACT_INVALID", "Referans yanıtı zorunlu kimlik, ad veya kapsam sözleşmesini sağlamıyor."));
         var ordered = items.OrderBy(x => x.ExternalId, StringComparer.Ordinal).ToList();
         if (ordered.Select(x => x.ExternalId).Distinct(StringComparer.Ordinal).Count() != ordered.Count) throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_IDENTIFIERS_DUPLICATE", "Referans yanıtı yinelenen uzak kimlik içeriyor."));
@@ -1395,7 +1401,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
     private async Task<bool> TestConnection(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
     {
-        var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY"), cancellationToken); if (connection is null) return false; var now = timeProvider.GetUtcNow(); connection.LastTestedAt = now;
+        var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA"), cancellationToken); if (connection is null) return false; var now = timeProvider.GetUtcNow(); connection.LastTestedAt = now;
         IConnectionPort port = connections;
         var context = Context(tenantId, connectionId, correlationId, "connection-test"); TrackRequest(); var result = await port.TestAsync(context, cancellationToken); if (!result.IsSuccess) { TrackResultFailure(result.Error); connection.LastErrorCode = result.Error!.Code; connection.Version++; await db.SaveChangesAsync(cancellationToken); throw JobProcessingException.FromAdapter(result.Error!); }
         TrackRequest(); var discovery = await port.DiscoverCapabilitiesAsync(context, cancellationToken); if (!discovery.IsSuccess) { TrackResultFailure(discovery.Error); connection.LastErrorCode = discovery.Error!.Code; connection.Version++; await db.SaveChangesAsync(cancellationToken); throw JobProcessingException.FromAdapter(discovery.Error!); }
@@ -1404,6 +1410,15 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         {
             var capability = await db.PlatformCapabilities.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == evidence.Code, cancellationToken); if (capability is null) continue;
             capability.SupportLevel = string.Equals(evidence.SupportLevel, "SUPPORTED", StringComparison.Ordinal) ? CapabilitySupportLevel.Supported : CapabilitySupportLevel.Unknown; capability.SourceUrl = evidence.SourceUrl; capability.SourceVersion = evidence.SourceVersion; capability.RequiredScope = evidence.RequiredScope; capability.ConstraintsJson = evidence.ConstraintsJson; capability.EvidenceNote = evidence.EvidenceNote; capability.FixtureChecksum = evidence.FixtureChecksum; capability.VerifiedAt = evidence.VerifiedAt; capability.Version++;
+        }
+        if (connection.PlatformCode == "HEPSIBURADA" && discovery.Value is not null
+            && !new[] { MarketplaceCapabilities.ProductRead, MarketplaceCapabilities.OrderRead }.All(code => discovery.Value.Any(item => item.Code == code && item.SupportLevel == "SUPPORTED")))
+        {
+            connection.LastErrorCode = "HEPSIBURADA_REQUIRED_READ_CAPABILITY";
+            connection.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+            throw JobProcessingException.FromAdapter(new AdapterError(AdapterErrorClass.NotSupported, connection.LastErrorCode,
+                "Hepsiburada bağlantısı etkinleştirilemez: ürün ve sipariş okuma yeteneklerinin ikisi de doğrulanmalıdır.", null, null, null));
         }
         if (connection.PlatformCode == "SHOPIFY" && discovery.Value is not null
             && !new[] { MarketplaceCapabilities.ProductRead, MarketplaceCapabilities.OrderRead }.All(code => discovery.Value.Any(item => item.Code == code && item.SupportLevel == "SUPPORTED")))
@@ -1426,6 +1441,261 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     }
 
 
+    private async Task<bool> SyncHepsiburadaOrders(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, string cursorResourceType, bool allowBaseline, CancellationToken cancellationToken)
+    {
+        string? externalOrderId = null;
+        var full = false;
+        try
+        {
+            using var payload = JsonDocument.Parse(payloadJson);
+            if (payload.RootElement.TryGetProperty("externalOrderId", out var id) && id.ValueKind == JsonValueKind.String) externalOrderId = id.GetString();
+            if (payload.RootElement.TryGetProperty("full", out var fullValue) && fullValue.ValueKind is JsonValueKind.True or JsonValueKind.False) full = fullValue.GetBoolean();
+        }
+        catch (JsonException) { return false; }
+
+        if (!string.IsNullOrWhiteSpace(externalOrderId))
+        {
+            TrackRequest();
+            var single = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"hepsiburada-order-get:{externalOrderId}"), externalOrderId.Trim(), cancellationToken);
+            if (!single.IsSuccess) { TrackResultFailure(single.Error); throw JobProcessingException.FromAdapter(single.Error!); }
+            TrackReceived();
+            await UpsertOrder(tenantId, connectionId, single.Value!, cancellationToken);
+            return true;
+        }
+
+        var cursor = await Cursor(tenantId, connectionId, cursorResourceType, cancellationToken);
+        var now = timeProvider.GetUtcNow();
+        var overlapSeconds = await db.ConnectionSyncPolicies.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "ORDERS")
+            .Select(x => (int?)x.OverlapSeconds)
+            .SingleOrDefaultAsync(cancellationToken) ?? DefaultOrderSyncOverlapSeconds;
+        var overlap = TimeSpan.FromSeconds(Math.Clamp(overlapSeconds, 0, 86_399));
+        var hasSnapshots = await db.Orders.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken);
+        var retryAfterFailure = cursor.ConsecutiveFailureCount > 0 || !string.IsNullOrWhiteSpace(cursor.LastError);
+        var forceBaseline = allowBaseline && (full || !hasSnapshots || retryAfterFailure);
+        HepsiburadaOrderSyncState? state = null;
+        if (!forceBaseline && !string.IsNullOrWhiteSpace(cursor.OpaqueCursor))
+        {
+            try
+            {
+                var saved = JsonSerializer.Deserialize<HepsiburadaOrderSyncState>(cursor.OpaqueCursor);
+                if (saved is { Version: HepsiburadaOrderSyncStateVersion, WindowIndex: >= 0, Offset: >= 0 }) state = saved;
+            }
+            catch (JsonException) { }
+        }
+        if (state is null)
+        {
+            var anchor = now;
+            var oldestAvailable = anchor.AddMonths(-3);
+            var watermark = cursor.LastModifiedWatermark ?? cursor.LastSuccessAt ?? anchor.AddHours(-24);
+            if (watermark > anchor) watermark = anchor;
+            var start = forceBaseline ? oldestAvailable : watermark.Subtract(overlap);
+            if (start < oldestAvailable) start = oldestAvailable;
+            state = new(HepsiburadaOrderSyncStateVersion, anchor, start, 0, 0);
+        }
+
+        while (true)
+        {
+            var windowEnd = state.AnchorEnd.AddDays(-state.WindowIndex);
+            if (windowEnd > state.AnchorEnd) windowEnd = state.AnchorEnd;
+            if (windowEnd <= state.StartAt)
+            {
+                cursor.OpaqueCursor = null;
+                cursor.LastModifiedWatermark = state.AnchorEnd;
+                cursor.LastSuccessAt = timeProvider.GetUtcNow();
+                cursor.LastError = null;
+                cursor.LastErrorAt = null;
+                cursor.ConsecutiveFailureCount = 0;
+                cursor.Version++;
+                await db.SaveChangesAsync(cancellationToken);
+                return true;
+            }
+
+            var windowStart = windowEnd.Subtract(TimeSpan.FromHours(24));
+            if (windowStart < state.StartAt) windowStart = state.StartAt;
+            TrackRequest();
+            var page = await orders.PollAsync(
+                Context(tenantId, connectionId, correlationId, $"hepsiburada-orders:{state.WindowIndex}:{state.Offset}"),
+                new OrderPollWindow(windowStart, windowEnd),
+                new(state.Offset.ToString(System.Globalization.CultureInfo.InvariantCulture), 10),
+                cancellationToken);
+            if (!page.IsSuccess) { TrackResultFailure(page.Error); throw JobProcessingException.FromAdapter(page.Error!); }
+            foreach (var _ in page.Value!.Items) TrackReceived();
+            await UpsertOrders(tenantId, connectionId, page.Value.Items, cancellationToken);
+
+            if (page.Value.HasMore)
+            {
+                if (!int.TryParse(page.Value.NextCursor, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var nextOffset)
+                    || nextOffset <= state.Offset)
+                    throw new InvalidOperationException("Hepsiburada sayfalaması hasMore=true döndürdü ancak ileri offset üretmedi.");
+                state = state with { Offset = nextOffset };
+            }
+            else
+            {
+                state = state with { WindowIndex = state.WindowIndex + 1, Offset = 0 };
+            }
+            cursor.OpaqueCursor = JsonSerializer.Serialize(state);
+            cursor.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+        }
+    }
+
+    private const string HepsiburadaOrderSyncStateVersion = "hepsiburada-orders-v1";
+    private sealed record HepsiburadaOrderSyncState(string Version, DateTimeOffset AnchorEnd, DateTimeOffset StartAt, int WindowIndex, int Offset);
+
+    private async Task<bool> SyncHepsiburadaPackages(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    {
+        if (!configuration.GetValue("Marketplace:PersistOrderSnapshots", true)) return true;
+
+        var full = false;
+        try
+        {
+            using var payload = JsonDocument.Parse(payloadJson);
+            if (payload.RootElement.TryGetProperty("full", out var fullValue) && fullValue.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                full = fullValue.GetBoolean();
+        }
+        catch (JsonException) { return false; }
+
+        var cursor = await Cursor(tenantId, connectionId, "PACKAGES", cancellationToken);
+        var now = timeProvider.GetUtcNow();
+        var overlapSeconds = await db.ConnectionSyncPolicies.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "PACKAGES")
+            .Select(x => (int?)x.OverlapSeconds)
+            .SingleOrDefaultAsync(cancellationToken) ?? 600;
+        var overlap = TimeSpan.FromSeconds(Math.Clamp(overlapSeconds, 0, 86_399));
+        var forceBaseline = full || cursor.LastSuccessAt is null || cursor.ConsecutiveFailureCount > 0 || !string.IsNullOrWhiteSpace(cursor.LastError);
+        HepsiburadaPackageSyncState? state = null;
+        if (!forceBaseline && !string.IsNullOrWhiteSpace(cursor.OpaqueCursor))
+        {
+            try
+            {
+                var saved = JsonSerializer.Deserialize<HepsiburadaPackageSyncState>(cursor.OpaqueCursor);
+                if (saved is { Version: HepsiburadaPackageSyncStateVersion, WindowIndex: >= 0 }) state = saved;
+            }
+            catch (JsonException) { }
+        }
+        if (state is null)
+        {
+            var anchor = now;
+            var oldestAvailable = anchor.AddDays(-30);
+            var watermark = cursor.LastModifiedWatermark ?? cursor.LastSuccessAt ?? anchor.AddHours(-24);
+            if (watermark > anchor) watermark = anchor;
+            var start = forceBaseline ? oldestAvailable : watermark.Subtract(overlap);
+            if (start < oldestAvailable) start = oldestAvailable;
+            state = new(HepsiburadaPackageSyncStateVersion, anchor, start, 0);
+        }
+
+        while (true)
+        {
+            var windowEnd = state.AnchorEnd.AddDays(-state.WindowIndex);
+            if (windowEnd > state.AnchorEnd) windowEnd = state.AnchorEnd;
+            if (windowEnd <= state.StartAt)
+            {
+                cursor.OpaqueCursor = null;
+                cursor.LastModifiedWatermark = state.AnchorEnd;
+                cursor.LastSuccessAt = timeProvider.GetUtcNow();
+                cursor.LastError = null;
+                cursor.LastErrorAt = null;
+                cursor.ConsecutiveFailureCount = 0;
+                cursor.Version++;
+                await db.SaveChangesAsync(cancellationToken);
+                return true;
+            }
+
+            var windowStart = windowEnd.Subtract(TimeSpan.FromHours(24));
+            if (windowStart < state.StartAt) windowStart = state.StartAt;
+            var offset = 0;
+            var windowPackages = new List<RemoteOrderPackage>();
+            while (true)
+            {
+                TrackRequest();
+                var page = await orderPackages.PollPackagesAsync(
+                    Context(tenantId, connectionId, correlationId, $"hepsiburada-packages:{state.WindowIndex}:{offset}"),
+                    new PackagePollWindow(windowStart, windowEnd),
+                    new(offset.ToString(System.Globalization.CultureInfo.InvariantCulture), 10),
+                    cancellationToken);
+                if (!page.IsSuccess) { TrackResultFailure(page.Error); throw JobProcessingException.FromAdapter(page.Error!); }
+                foreach (var item in page.Value!.Items) { TrackReceived(); windowPackages.Add(item); }
+                foreach (var issue in page.Value.Issues ?? [])
+                    await RecordIssue(tenantId, $"package-contract:{connectionId}:{issue.Identity}:{issue.Code}", issue.Code, issue.Message, cancellationToken);
+                if (!page.Value.HasMore) break;
+                if (!int.TryParse(page.Value.NextCursor, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var nextOffset)
+                    || nextOffset <= offset)
+                    throw new InvalidOperationException("Hepsiburada paket sayfalaması hasMore=true döndürdü ancak ileri offset üretmedi.");
+                offset = nextOffset;
+            }
+
+            foreach (var orderPackagesForOrder in windowPackages
+                         .GroupBy(x => x.ExternalOrderId, StringComparer.Ordinal)
+                         .OrderBy(x => x.Key, StringComparer.Ordinal))
+            {
+                TrackRequest();
+                var detail = await orders.GetAsync(
+                    Context(tenantId, connectionId, correlationId, $"hepsiburada-package-order:{orderPackagesForOrder.Key}"),
+                    orderPackagesForOrder.Key,
+                    cancellationToken);
+                if (!detail.IsSuccess)
+                {
+                    if (detail.Error?.Class == AdapterErrorClass.NotFound)
+                    {
+                        await RecordIssue(tenantId, $"package-order-not-found:{connectionId}:{orderPackagesForOrder.Key}", "HEPSIBURADA_PACKAGE_ORDER_NOT_FOUND", "Paket yanıtındaki sipariş numarasıyla sipariş detayı bulunamadı; paket yerel siparişe bağlanmadı.", cancellationToken);
+                        continue;
+                    }
+                    TrackResultFailure(detail.Error);
+                    throw JobProcessingException.FromAdapter(detail.Error!);
+                }
+
+                var packagesById = detail.Value!.Packages.ToDictionary(x => x.ExternalPackageId, StringComparer.Ordinal);
+                foreach (var incoming in orderPackagesForOrder.Select(x => x.Package))
+                {
+                    if (packagesById.TryGetValue(incoming.ExternalPackageId, out var existing))
+                    {
+                        packagesById[incoming.ExternalPackageId] = incoming with
+                        {
+                            OriginExternalPackageId = incoming.OriginExternalPackageId ?? existing.OriginExternalPackageId,
+                            CargoProviderExternalId = incoming.CargoProviderExternalId ?? existing.CargoProviderExternalId,
+                            CargoTrackingNumber = incoming.CargoTrackingNumber ?? existing.CargoTrackingNumber,
+                            Allocations = incoming.Allocations.Count > 0 ? incoming.Allocations : existing.Allocations,
+                            GrossAmount = incoming.GrossAmount == 0 ? existing.GrossAmount : incoming.GrossAmount,
+                            DiscountAmount = incoming.DiscountAmount == 0 ? existing.DiscountAmount : incoming.DiscountAmount,
+                            NetAmount = incoming.NetAmount == 0 ? existing.NetAmount : incoming.NetAmount,
+                            Invoice = incoming.Invoice ?? existing.Invoice,
+                            CreatedBy = incoming.CreatedBy ?? existing.CreatedBy
+                        };
+                    }
+                    else packagesById.Add(incoming.ExternalPackageId, incoming);
+                }
+
+                var mergedPackages = packagesById.Values.OrderBy(x => x.ExternalPackageId, StringComparer.Ordinal).ToArray();
+                var coveredLines = mergedPackages.SelectMany(x => x.Allocations).Select(x => x.ExternalLineId).ToHashSet(StringComparer.Ordinal);
+                var uncoveredLines = detail.Value.Lines.Where(x => !coveredLines.Contains(x.ExternalLineId)).Select(x => x.ExternalLineId).ToArray();
+                if (detail.Value.Lines.Count == 0 || uncoveredLines.Length > 0)
+                {
+                    var reason = uncoveredLines.Length == 0 ? "Sipariş detayında kalem bulunmadı." : $"{uncoveredLines.Length} sipariş kalemi için paket allocation bağlantısı yok.";
+                    await RecordIssue(tenantId, $"package-coverage:{connectionId}:{orderPackagesForOrder.Key}:{state.WindowIndex}", "HEPSIBURADA_PACKAGE_LINE_COVERAGE_MISSING", $"{reason} Paket bilgisi sipariş kalemlerine güvenle uygulanmadı.", cancellationToken);
+                    continue;
+                }
+
+                var packageModifiedAt = orderPackagesForOrder.Max(x => x.Package.OccurredAt);
+                var mergedOrder = detail.Value with
+                {
+                    Packages = mergedPackages,
+                    LastModifiedAt = detail.Value.LastModifiedAt > packageModifiedAt ? detail.Value.LastModifiedAt : packageModifiedAt
+                };
+                TrackReceived();
+                await UpsertOrder(tenantId, connectionId, mergedOrder, cancellationToken);
+            }
+
+            state = state with { WindowIndex = state.WindowIndex + 1 };
+            cursor.OpaqueCursor = JsonSerializer.Serialize(state);
+            cursor.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+        }
+    }
+
+    private const string HepsiburadaPackageSyncStateVersion = "hepsiburada-packages-v1";
+    private sealed record HepsiburadaPackageSyncState(string Version, DateTimeOffset AnchorEnd, DateTimeOffset StartAt, int WindowIndex);
+
     private async Task<bool> SyncOrders(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, string cursorResourceType, bool allowBaseline, CancellationToken cancellationToken)
     {
         if (!configuration.GetValue("Marketplace:PersistOrderSnapshots", true))
@@ -1437,6 +1707,20 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             .SingleOrDefaultAsync(cancellationToken);
         if (platform == "SHOPIFY")
             return await SyncShopifyOrders(tenantId, connectionId, payloadJson, correlationId, cursorResourceType, allowBaseline, cancellationToken);
+        if (platform == "HEPSIBURADA")
+        {
+            var ordersSynced = await SyncHepsiburadaOrders(tenantId, connectionId, payloadJson, correlationId, cursorResourceType, allowBaseline, cancellationToken);
+            if (!ordersSynced || cursorResourceType != "ORDERS_RECOVERY") return ordersSynced;
+            try
+            {
+                using var payload = JsonDocument.Parse(payloadJson);
+                if (payload.RootElement.TryGetProperty("externalOrderId", out var requestedOrderId)
+                    && requestedOrderId.ValueKind == JsonValueKind.String
+                    && !string.IsNullOrWhiteSpace(requestedOrderId.GetString())) return true;
+            }
+            catch (JsonException) { return false; }
+            return await SyncHepsiburadaPackages(tenantId, connectionId, payloadJson, correlationId, cancellationToken);
+        }
 
         string? externalOrderId = null;
         var full = false;
@@ -1765,8 +2049,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     private async Task<bool> SyncProducts(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, Guid? jobId, CancellationToken cancellationToken)
     {
         var connection = await db.PlatformConnections.AsNoTracking()
-            .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY"), cancellationToken);
+            .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA"), cancellationToken);
         var isShopify = connection?.PlatformCode == "SHOPIFY";
+        var isHepsiburada = connection?.PlatformCode == "HEPSIBURADA";
         // Product import is read-only on the remote platform and writes only to
         // Ravencia's local catalog. Shopify observations never become local
         // price/stock authority.
@@ -1780,7 +2065,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var existingOnly = ReadBoolean(payloadJson, "existingOnly");
         var mappingOnly = ReadBoolean(payloadJson, "mappingOnly");
         var includeArchived = ReadBoolean(payloadJson, "includeArchived");
-        var includePendingApproval = !isShopify && ReadBoolean(payloadJson, "includePendingApproval");
+        var includePendingApproval = !isShopify && !isHepsiburada && ReadBoolean(payloadJson, "includePendingApproval");
         var updateExistingProducts = ReadBooleanOrDefault(payloadJson, "updateExistingProducts", true);
         // Shopify's single inactive-product option intentionally covers both
         // archived variants and draft products; keep older payloads compatible.
@@ -1872,11 +2157,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 .Where(identity => !string.IsNullOrWhiteSpace(identity))
                 .ToHashSet(StringComparer.Ordinal)
             : null;
-        var hasCategoryMappings = !isShopify && await db.CategoryMappings.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == "VERIFIED", cancellationToken);
+        var hasCategoryMappings = !isShopify && !isHepsiburada && await db.CategoryMappings.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == "VERIFIED", cancellationToken);
         // The first attribute backfill must revisit the already imported catalog. Keep
         // LastModifiedWatermark null until that full pass is complete so a retry cannot
         // accidentally switch to the incremental window halfway through the backfill.
-        if (!hasCategoryMappings && cursor.OpaqueCursor is null && cursor.LastModifiedWatermark is not null)
+        if (!isShopify && !isHepsiburada && !hasCategoryMappings && cursor.OpaqueCursor is null && cursor.LastModifiedWatermark is not null)
         {
             cursor.LastModifiedWatermark = null;
             cursor.Version++;
@@ -1979,7 +2264,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
             var hasMore = result.Value.HasMore;
             if (hasMore && string.IsNullOrWhiteSpace(result.Value.NextCursor))
-                throw new InvalidOperationException("Trendyol ürün sayfası hasMore=true ancak nextPageToken boş döndü.");
+                throw new InvalidOperationException("Pazar yeri ürün sayfası hasMore=true ancak nextPageToken boş döndü.");
             nextCursor = hasMore ? result.Value.NextCursor : null;
             var pageSession = await db.ProductImportSessions.SingleAsync(x => x.TenantId == tenantId && x.JobId == importJobId, cancellationToken);
             pageSession.NextCursor = nextCursor;
@@ -1997,7 +2282,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 telemetryFailedCount++;
                 try
                 {
-                    await RecordProductImportFailure(tenantId, connectionId, invalidSnapshot, new InvalidOperationException("Trendyol ürün kimliği boş döndü."), cancellationToken);
+                    await RecordProductImportFailure(tenantId, connectionId, invalidSnapshot, new InvalidOperationException("Pazar yeri ürün kimliği boş döndü."), cancellationToken);
                 }
                 catch (Exception issueException) when (issueException is not OperationCanceledException)
                 {
@@ -2038,7 +2323,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         // catalog rows are being materialized. These calls intentionally happen
         // after remote product paging so a cold reference cache cannot hide
         // product-read progress.
-        brandReferences = isShopify ? null : await EnsureReferenceSnapshot(tenantId, connectionId, "BRANDS", null, correlationId, cancellationToken);
+        brandReferences = isShopify || isHepsiburada ? null : await EnsureReferenceSnapshot(tenantId, connectionId, "BRANDS", null, correlationId, cancellationToken);
         if (jobId is { } categoryReferenceJob)
             await UpdateProductSyncProgressAsync(
                 tenantId,
@@ -2126,7 +2411,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     var categoryContext = categoryReferences is null
                         ? null
                         : await EnsureCategoryAttributeContext(tenantId, connectionId, categoryReferences, snapshot, categoryItems, importedAttributeLibrary, categoryContexts, correlationId, cancellationToken);
-                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, brandReferences?.Id, inventoryPolicy, cancellationToken, saveChanges: false, onlyNewVariants: newOnly && productAlreadyLinked, observeOnly: isShopify, preferBarcode: isShopify, onlyExistingVariants: existingOnly && isShopify, updateExistingProducts: updateExistingProducts);
+                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, brandReferences?.Id, inventoryPolicy, cancellationToken, saveChanges: false, onlyNewVariants: newOnly && productAlreadyLinked, observeOnly: isShopify || isHepsiburada, preferBarcode: isShopify, onlyExistingVariants: existingOnly && isShopify, updateExistingProducts: updateExistingProducts);
                     existingProductExternalIds?.Add(snapshot.ExternalProductId);
                     if (existingVariantExternalIds is not null)
                         foreach (var variant in snapshot.Variants)
@@ -2213,7 +2498,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
     private Task<int> UpdateProductSyncProgressAsync(Guid tenantId, Guid jobId, int current, int? total, int? percent, string label, CancellationToken cancellationToken, bool keepExistingTotal = false)
     {
-        var query = db.IntegrationJobs.Where(x => x.TenantId == tenantId && x.Id == jobId && (x.JobType == MarketplaceJobTypes.ProductSync || x.JobType == MarketplaceJobTypes.ShopifyProductSync));
+        var query = db.IntegrationJobs.Where(x => x.TenantId == tenantId && x.Id == jobId && (x.JobType == MarketplaceJobTypes.ProductSync || x.JobType == MarketplaceJobTypes.ShopifyProductSync || x.JobType == MarketplaceJobTypes.HepsiburadaProductSync));
         return keepExistingTotal
             ? query.ExecuteUpdateAsync(setters => setters.SetProperty(x => x.ProgressCurrent, current).SetProperty(x => x.ProgressPercent, percent).SetProperty(x => x.ProgressLabel, label).SetProperty(x => x.ProgressReceived, current).SetProperty(x => x.ProgressProcessed, telemetryImportProcessedCount).SetProperty(x => x.ProgressSkipped, telemetryImportSkippedCount).SetProperty(x => x.ProgressFailed, telemetryImportFailedCount), cancellationToken)
             : query.ExecuteUpdateAsync(setters => setters.SetProperty(x => x.ProgressCurrent, current).SetProperty(x => x.ProgressTotal, total).SetProperty(x => x.ProgressPercent, percent).SetProperty(x => x.ProgressLabel, label).SetProperty(x => x.ProgressReceived, current).SetProperty(x => x.ProgressProcessed, telemetryImportProcessedCount).SetProperty(x => x.ProgressSkipped, telemetryImportSkippedCount).SetProperty(x => x.ProgressFailed, telemetryImportFailedCount), cancellationToken);
@@ -2237,7 +2522,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var constraint = root is PostgresException postgres
             ? $"sqlState={postgres.SqlState}; constraint={postgres.ConstraintName ?? "—"}; table={postgres.TableName ?? "—"}; detail={postgres.Detail ?? postgres.MessageText}"
             : $"exception={root.GetType().Name}; detail={root.Message}";
-        var summary = Short($"Trendyol ürünü '{(string.IsNullOrWhiteSpace(externalProductId) ? "kimlik yok" : externalProductId)}' aktarılmadı; sonraki ürünle devam edildi. Veritabanı ayrıntısı: {constraint}", 2_000);
+        var summary = Short($"Pazar yeri ürünü '{(string.IsNullOrWhiteSpace(externalProductId) ? "kimlik yok" : externalProductId)}' aktarılmadı; sonraki ürünle devam edildi. Veritabanı ayrıntısı: {constraint}", 2_000);
         await RecordIssue(tenantId, $"product-sync-import:{connectionId}:{issueIdentity}", "PRODUCT_IMPORT_FAILED", summary, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
     }
@@ -2258,7 +2543,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
         catch (JobProcessingException exception)
         {
-            await RecordIssue(tenantId, $"product-reference-sync:{connectionId}:{resourceType}:{scope}", exception.Result.ErrorCode ?? "REFERENCE_SYNC_FAILED", exception.Result.ErrorSummary ?? "Trendyol kategori referansı eşitlenemedi; mevcut panel kayıtları korundu.", cancellationToken);
+            await RecordIssue(tenantId, $"product-reference-sync:{connectionId}:{resourceType}:{scope}", exception.Result.ErrorCode ?? "REFERENCE_SYNC_FAILED", exception.Result.ErrorSummary ?? "Pazar yeri kategori/özellik referansı eşitlenemedi; mevcut panel kayıtları korundu.", cancellationToken);
             return current;
         }
 
@@ -2291,7 +2576,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var categoryItem = categoryItems.FirstOrDefault(x => string.Equals(x.ExternalId, externalCategoryId, StringComparison.Ordinal));
         if (categoryItem is null)
         {
-            await RecordIssue(tenantId, $"product-category-reference:{connectionId}:{externalCategoryId}", "PRODUCT_CATEGORY_REFERENCE_MISSING", "Ürünün Trendyol kategori kimliği güncel kategori snapshot'ında bulunamadı; kategori özellikleri eşlenmedi.", cancellationToken);
+            await RecordIssue(tenantId, $"product-category-reference:{connectionId}:{externalCategoryId}", "PRODUCT_CATEGORY_REFERENCE_MISSING", "Ürünün kategori kimliği güncel pazar yeri snapshot'ında bulunamadı; kategori özellikleri eşlenmedi.", cancellationToken);
             return null;
         }
 
@@ -2770,13 +3055,13 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             }
             else
             {
-                await RecordIssue(tenantId, $"product-attribute-value:{product.Id}:{variant.Id}:{mapped.Definition.Id}:{valueKey}", "PRODUCT_ATTRIBUTE_VALUE_UNMAPPED", $"Trendyol ürün özelliği '{pair.Key}: {pair.Value}' için güncel panel değeri bulunamadı; atama yapılmadı.", cancellationToken);
+                await RecordIssue(tenantId, $"product-attribute-value:{product.Id}:{variant.Id}:{mapped.Definition.Id}:{valueKey}", "PRODUCT_ATTRIBUTE_VALUE_UNMAPPED", $"Pazar yeri ürün özelliği '{pair.Key}: {pair.Value}' için güncel panel değeri bulunamadı; atama yapılmadı.", cancellationToken);
                 sortOrder++;
                 continue;
             }
             if (valueId is null && textValue is null && numberValue is null && booleanValue is null)
             {
-                await RecordIssue(tenantId, $"product-attribute-value:{product.Id}:{variant.Id}:{mapped.Definition.Id}:{valueKey}", "PRODUCT_ATTRIBUTE_VALUE_UNMAPPED", $"Trendyol ürün özelliği '{pair.Key}: {pair.Value}' için panel değeri eşlenemedi; atama yapılmadı.", cancellationToken);
+                await RecordIssue(tenantId, $"product-attribute-value:{product.Id}:{variant.Id}:{mapped.Definition.Id}:{valueKey}", "PRODUCT_ATTRIBUTE_VALUE_UNMAPPED", $"Pazar yeri ürün özelliği '{pair.Key}: {pair.Value}' için panel değeri eşlenemedi; atama yapılmadı.", cancellationToken);
                 sortOrder++;
                 continue;
             }
@@ -2825,7 +3110,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var localColorValue = await ResolveMappedAttributeValue(tenantId, connectionId, categoryContext, colorAttribute, remoteColorValue, realColor.Value, cancellationToken);
         if (localColorValue is null)
         {
-            await RecordIssue(tenantId, $"product-web-color-value:{product.Id}:{variant.Id}:{NormalizeCatalogKey(realColor.Value, 320)}", "PRODUCT_WEBCOLOR_VALUE_UNMAPPED", $"Trendyol Renk değeri '{realColor.Value}' için panel Renk değeri bulunamadı; Web Color atanmadı.", cancellationToken);
+            await RecordIssue(tenantId, $"product-web-color-value:{product.Id}:{variant.Id}:{NormalizeCatalogKey(realColor.Value, 320)}", "PRODUCT_WEBCOLOR_VALUE_UNMAPPED", $"Pazar yeri Renk değeri '{realColor.Value}' için panel Renk değeri bulunamadı; Web Color atanmadı.", cancellationToken);
             return;
         }
 
@@ -3645,7 +3930,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 ?? await db.ProductVariants.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.SkuNormalized == skuNormalized, cancellationToken);
         if (variant is not null && variant.ProductId != product.Id && !(preferBarcode && onlyExistingVariants))
         {
-            await RecordIssue(tenantId, $"product-sync-variant-conflict:{connectionId}:{externalVariantId}", "PRODUCT_VARIANT_CONFLICT", "Trendyol varyantı başka bir yerel üründe kullanılan stok koduyla eşleşti; mevcut kayıt korunarak atlandı.", cancellationToken);
+            await RecordIssue(tenantId, $"product-sync-variant-conflict:{connectionId}:{externalVariantId}", "PRODUCT_VARIANT_CONFLICT", "Pazar yeri varyantı başka bir yerel üründe kullanılan stok koduyla eşleşti; mevcut kayıt korunarak atlandı.", cancellationToken);
             return null;
         }
         if (!preferBarcode && variant is null && !string.IsNullOrWhiteSpace(barcodeNormalized))
@@ -3693,7 +3978,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             }
             else if (!string.Equals(existingVariantLink.ExternalId, externalVariantId, StringComparison.Ordinal))
             {
-                await RecordIssue(tenantId, $"product-sync-variant-link-conflict:{connectionId}:{externalVariantId}", "PRODUCT_VARIANT_LINK_CONFLICT", "Aynı yerel varyantın başka bir Trendyol varyant linki zaten var; ikinci link güvenli biçimde atlandı.", cancellationToken);
+            await RecordIssue(tenantId, $"product-sync-variant-link-conflict:{connectionId}:{externalVariantId}", "PRODUCT_VARIANT_LINK_CONFLICT", "Aynı yerel varyantın başka bir pazar yeri varyant bağlantısı zaten var; ikinci bağlantı güvenli biçimde atlandı.", cancellationToken);
                 return null;
             }
         }
@@ -4141,7 +4426,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
     }
 
-    private static string ProductTitle(string? title, string externalId) => Short(string.IsNullOrWhiteSpace(title) ? $"Trendyol ürün {externalId}" : title.Trim(), 320);
+    private static string ProductTitle(string? title, string externalId) => Short(string.IsNullOrWhiteSpace(title) ? $"Pazar yeri ürünü {externalId}" : title.Trim(), 320);
     private static string CleanCatalogOptionValue(string? value) => string.IsNullOrWhiteSpace(value) ? "" : value.Trim().Trim('"', '“', '”').Trim();
     private static string OptionSignature(IReadOnlyDictionary<string, string> options) => string.Join(" | ", options.Select(x => $"{Short(x.Key, 80)}: {Short(CleanCatalogOptionValue(x.Value), 120)}"));
     private TimeSpan ProductUpdatePollDelay(DateTimeOffset submittedAt)
@@ -4403,7 +4688,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         IReadOnlyDictionary<string, decimal> remoteLineQuantities;
         if (remote.Lines.Count == 0 || remote.Packages.Count == 0)
         {
-            await RecordIssue(tenantId, $"order-contract:{connectionId}:{remote.ExternalOrderId}:{remote.LastModifiedAt.ToUnixTimeMilliseconds()}", "ORDER_CONTRACT_INVALID", "Trendyol siparişinde satır veya paket verisi eksikti; eksik sipariş projeksiyonu uygulanmadı.", cancellationToken);
+            await RecordIssue(tenantId, $"order-contract:{connectionId}:{remote.ExternalOrderId}:{remote.LastModifiedAt.ToUnixTimeMilliseconds()}", "ORDER_CONTRACT_INVALID", "Pazar yeri siparişinde satır veya paket verisi eksikti; eksik sipariş projeksiyonu uygulanmadı.", cancellationToken);
             if (saveChanges) await db.SaveChangesAsync(cancellationToken);
             return;
         }
@@ -4425,7 +4710,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var allocatedLineIds = remote.Packages.SelectMany(x => x.Allocations).Select(x => x.ExternalLineId).ToHashSet(StringComparer.Ordinal);
         if (remoteLineQuantities.Keys.Any(lineId => !allocatedLineIds.Contains(lineId)))
         {
-            await RecordIssue(tenantId, $"order-coverage:{connectionId}:{remote.ExternalOrderId}:{remote.LastModifiedAt.ToUnixTimeMilliseconds()}", "ORDER_LINE_COVERAGE_INVALID", "Trendyol cevabındaki sipariş satırlarının tamamı package allocation içinde yer almıyordu; eksik veri uygulanmadı.", cancellationToken);
+            await RecordIssue(tenantId, $"order-coverage:{connectionId}:{remote.ExternalOrderId}:{remote.LastModifiedAt.ToUnixTimeMilliseconds()}", "ORDER_LINE_COVERAGE_INVALID", "Pazar yeri cevabındaki sipariş satırlarının tamamı paket tahsisinde yer almıyordu; eksik veri uygulanmadı.", cancellationToken);
             if (saveChanges) await db.SaveChangesAsync(cancellationToken);
             return;
         }
@@ -5034,9 +5319,19 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     // the previous all-time cursor makes the next read start at three months.
     private const string ReturnSyncStateVersion = "returns-v10";
     private sealed record ReturnSyncState(string Version, int StoreFrontIndex, int Page, bool Full = true, DateTimeOffset? StartAt = null, DateTimeOffset? EndAt = null);
+    private const string HepsiburadaReturnSyncStateVersion = "hepsiburada-returns-v1";
+    private static readonly string[] HepsiburadaClaimStatuses = ["NewRequest", "AwaitingAction", "InDispute", "Accepted", "Rejected", "Refunded", "Cancelled", "AwaitingPreApproval"];
+    private sealed record HepsiburadaReturnSyncState(string Version, int StatusIndex, int Offset);
 
     private async Task<bool> SyncReturns(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
+        var platformCode = await db.PlatformConnections.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.Id == connectionId)
+            .Select(x => x.PlatformCode)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase))
+            return await SyncHepsiburadaReturns(tenantId, connectionId, correlationId, cancellationToken);
+
         var cursor = await Cursor(tenantId, connectionId, "RETURNS", cancellationToken);
         var configuredOverlapSeconds = await db.ConnectionSyncPolicies.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "RETURNS")
@@ -5104,6 +5399,82 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             await db.SaveChangesAsync(cancellationToken);
         } while (!cancellationToken.IsCancellationRequested);
         return true;
+    }
+
+    private async Task<bool> SyncHepsiburadaReturns(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
+    {
+        var cursor = await Cursor(tenantId, connectionId, "RETURNS", cancellationToken);
+        var state = ReadHepsiburadaReturnSyncState(cursor.OpaqueCursor);
+        var productSnapshots = new Dictionary<string, string?>(StringComparer.Ordinal);
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            var status = HepsiburadaClaimStatuses[state.StatusIndex];
+            TrackRequest();
+            var result = await returns.PollAsync(
+                Context(tenantId, connectionId, correlationId, $"hepsiburada-return-sync:{status}:{state.Offset}"),
+                new ReturnPollWindow(null, null, Status: status),
+                new(state.Offset.ToString(CultureInfo.InvariantCulture), 100),
+                cancellationToken);
+            if (!result.IsSuccess)
+            {
+                TrackResultFailure(result.Error);
+                throw JobProcessingException.FromAdapter(result.Error!);
+            }
+
+            var pageResult = result.Value!;
+            foreach (var issue in pageResult.Issues ?? [])
+            {
+                TrackSkipped();
+                await RecordIssue(tenantId, $"hepsiburada-return:{connectionId}:{status}:{issue.Identity}", issue.Code, issue.Message, cancellationToken);
+            }
+            foreach (var claim in pageResult.Items)
+            {
+                TrackReceived();
+                await ResolveIssue(tenantId, $"hepsiburada-return:{connectionId}:{status}:{claim.ExternalClaimId}", cancellationToken);
+                await UpsertReturn(tenantId, connectionId, correlationId, claim, productSnapshots, cancellationToken);
+            }
+
+            if (pageResult.HasMore)
+            {
+                var nextOffset = int.TryParse(pageResult.NextCursor, NumberStyles.None, CultureInfo.InvariantCulture, out var parsedOffset)
+                    ? Math.Max(state.Offset + 1, parsedOffset)
+                    : state.Offset + Math.Max(1, pageResult.Items.Count + (pageResult.Issues?.Count ?? 0));
+                state = state with { Offset = nextOffset };
+            }
+            else if (state.StatusIndex + 1 < HepsiburadaClaimStatuses.Length)
+            {
+                state = new(HepsiburadaReturnSyncStateVersion, state.StatusIndex + 1, 0);
+            }
+            else
+            {
+                cursor.OpaqueCursor = null;
+                cursor.LastModifiedWatermark = timeProvider.GetUtcNow();
+                cursor.Version++;
+                await db.SaveChangesAsync(cancellationToken);
+                break;
+            }
+
+            cursor.OpaqueCursor = JsonSerializer.Serialize(state);
+            cursor.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        return true;
+    }
+
+    private static HepsiburadaReturnSyncState ReadHepsiburadaReturnSyncState(string? opaqueCursor)
+    {
+        if (!string.IsNullOrWhiteSpace(opaqueCursor))
+        {
+            try
+            {
+                var state = JsonSerializer.Deserialize<HepsiburadaReturnSyncState>(opaqueCursor);
+                if (state is { Version: HepsiburadaReturnSyncStateVersion, StatusIndex: >= 0, Offset: >= 0 }
+                    && state.StatusIndex < HepsiburadaClaimStatuses.Length)
+                    return state;
+            }
+            catch (JsonException) { }
+        }
+        return new(HepsiburadaReturnSyncStateVersion, 0, 0);
     }
 
     private async Task<bool> SyncOpenReturns(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
@@ -5387,7 +5758,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var job = await db.IntegrationJobs.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == payload.JobId && x.ConnectionId == connectionId && x.JobType == MarketplaceJobTypes.ShipmentAction, cancellationToken);
         var package = await db.ShipmentPackages.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == payload.PackageId && x.ConnectionId == connectionId, cancellationToken);
         if (job is null || package is null) return false;
-        if (!await ExternalWriteAllowedAsync(tenantId, connectionId, MarketplaceExternalWritePolicies.Shipment, cancellationToken)) throw new JobProcessingException(JobExecutionResult.Blocked("EXTERNAL_WRITE_POLICY_DISABLED", "Kargo dış yazma akışı kapalı; Trendyol’a gönderim yapılmadı."));
+        if (!await ExternalWriteAllowedAsync(tenantId, connectionId, MarketplaceExternalWritePolicies.Shipment, cancellationToken)) throw new JobProcessingException(JobExecutionResult.Blocked("EXTERNAL_WRITE_POLICY_DISABLED", "Kargo dış yazma akışı kapalı; pazar yeri isteği gönderilmedi."));
         var effect = await db.ExternalEffectRecords.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.EffectType == MarketplaceJobTypes.ShipmentAction && x.IdempotencyKey == job.EffectIdempotencyKey, cancellationToken);
         if (effect is not null && effect.CompletedAt is null) throw new JobProcessingException(JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Önceki paket aksiyonunun sonucu kesinleştirilemedi; tekrar gönderim engellendi."));
         if (effect is not null && effect.CompletedAt is not null) return true;
@@ -5424,7 +5795,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             if (decision.Status == "SUCCEEDED") return true;
             if (decision.Status == "MANUAL_REVIEW") throw new JobProcessingException(JobExecutionResult.ManualReview(decision.ErrorCode ?? "RETURN_ACTION_REVIEW_REQUIRED", "İade kararı manuel inceleme bekliyor.", decision.ExternalOperationId));
             var claim = await db.ReturnClaims.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.Id == decision.ClaimId && x.ConnectionId == connectionId, cancellationToken);
-            if (!await ExternalWriteAllowedAsync(tenantId, connectionId, MarketplaceExternalWritePolicies.Return, cancellationToken)) throw new JobProcessingException(JobExecutionResult.Blocked("EXTERNAL_WRITE_POLICY_DISABLED", "İade dış yazma akışı kapalı; Trendyol’a gönderim yapılmadı."));
+            if (!await ExternalWriteAllowedAsync(tenantId, connectionId, MarketplaceExternalWritePolicies.Return, cancellationToken)) throw new JobProcessingException(JobExecutionResult.Blocked("EXTERNAL_WRITE_POLICY_DISABLED", "İade dış yazma akışı kapalı; pazar yeri isteği gönderilmedi."));
             var returnLines = db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.ClaimId == claim.Id);
             if (selectedReturnLineIds is not null) returnLines = returnLines.Where(x => selectedReturnLineIds.Contains(x.Id));
             var lineIds = await returnLines.OrderBy(x => x.Id).Select(x => x.ExternalLineId).ToListAsync(cancellationToken);
@@ -5491,6 +5862,6 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     private async Task ResolveIssue(Guid tenantId, string key, CancellationToken cancellationToken) { var issue = await db.OperationalIssues.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.DedupeKey == key, cancellationToken); if (issue is not null) issue.Status = IssueStatus.Resolved; }
     private AdapterContext Context(Guid tenantId, Guid connectionId, string correlationId, string idempotency) => new(tenantId, connectionId, correlationId, idempotency, timeProvider.GetUtcNow().AddMinutes(2));
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
-    private static ReturnClaimStatus CanonicalReturn(string raw, string? cargoTrackingLink = null) => raw.ToUpperInvariant() switch { "CREATED" when !string.IsNullOrWhiteSpace(cargoTrackingLink) => ReturnClaimStatus.InTransit, "CREATED" => ReturnClaimStatus.Requested, "WAITINGFORSHIPMENT" => ReturnClaimStatus.AwaitingShipment, "WAITINGINCARGO" => ReturnClaimStatus.InTransit, "INTRANSIT" or "RETURNINTRANSIT" or "SHIPPED" => ReturnClaimStatus.InTransit, "WAITINGINACTION" or "INANALYSIS" or "WAITINGFRAUDCHECK" => ReturnClaimStatus.ActionRequired, "ACCEPTED" => ReturnClaimStatus.Approved, "REJECTED" => ReturnClaimStatus.Rejected, "UNRESOLVED" => ReturnClaimStatus.Disputed, "COMPLETED" => ReturnClaimStatus.Completed, "CANCELLED" => ReturnClaimStatus.Cancelled, _ => ReturnClaimStatus.ActionRequired };
+    private static ReturnClaimStatus CanonicalReturn(string raw, string? cargoTrackingLink = null) => raw.ToUpperInvariant() switch { "CREATED" when !string.IsNullOrWhiteSpace(cargoTrackingLink) => ReturnClaimStatus.InTransit, "CREATED" or "NEWREQUEST" or "AWAITINGPREAPPROVAL" => ReturnClaimStatus.Requested, "WAITINGFORSHIPMENT" => ReturnClaimStatus.AwaitingShipment, "WAITINGINCARGO" => ReturnClaimStatus.InTransit, "INTRANSIT" or "RETURNINTRANSIT" or "SHIPPED" => ReturnClaimStatus.InTransit, "WAITINGINACTION" or "AWAITINGACTION" or "INANALYSIS" or "WAITINGFRAUDCHECK" => ReturnClaimStatus.ActionRequired, "ACCEPTED" => ReturnClaimStatus.Approved, "REJECTED" => ReturnClaimStatus.Rejected, "UNRESOLVED" or "INDISPUTE" => ReturnClaimStatus.Disputed, "COMPLETED" or "REFUNDED" => ReturnClaimStatus.Completed, "CANCELLED" => ReturnClaimStatus.Cancelled, _ => ReturnClaimStatus.ActionRequired };
     private static string Wire<T>(T value) where T : Enum => string.Concat(value.ToString().Select((ch, index) => char.IsUpper(ch) && index > 0 ? "_" + ch : ch.ToString())).ToUpperInvariant();
 }

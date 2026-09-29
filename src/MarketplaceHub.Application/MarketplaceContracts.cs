@@ -2,9 +2,9 @@ namespace MarketplaceHub.Application;
 
 public static class ActiveIntegrationScope
 {
-    public static bool Contains(string? platformCode) => platformCode is "TRENDYOL" or "TRENDYOL_EFATURAM" or "SHOPIFY";
+    public static bool Contains(string? platformCode) => platformCode is "TRENDYOL" or "TRENDYOL_EFATURAM" or "SHOPIFY" or "HEPSIBURADA";
 
-    public static bool IsMarketplace(string? platformCode) => platformCode is "TRENDYOL" or "SHOPIFY";
+    public static bool IsMarketplace(string? platformCode) => platformCode is "TRENDYOL" or "SHOPIFY" or "HEPSIBURADA";
 }
 
 public static class MarketplaceJobTypes
@@ -42,22 +42,37 @@ public static class MarketplaceJobTypes
     public const string ShopifyOrderReconciliation = "SHOPIFY_ORDER_RECONCILIATION";
     public const string ShopifyOrderInvoiceReconciliation = "SHOPIFY_ORDER_INVOICE_RECONCILIATION";
     public const string ShopifyWebhookIngest = "SHOPIFY_WEBHOOK_INGEST";
+    public const string HepsiburadaConnectionTest = "HEPSIBURADA_CONNECTION_TEST";
+    public const string HepsiburadaProductSync = "HEPSIBURADA_PRODUCT_SYNC";
+    public const string HepsiburadaOrderSync = "HEPSIBURADA_ORDER_SYNC";
+    public const string HepsiburadaOrderRecoverySync = "HEPSIBURADA_ORDER_RECOVERY_SYNC";
+    public const string HepsiburadaReturnSync = "HEPSIBURADA_RETURN_SYNC";
 
-    public static string ForPlatform(string? platformCode, string jobType) =>
-        string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase)
-            ? jobType switch
-            {
-                ConnectionTest => ShopifyConnectionTest,
-                ProductSync => ShopifyProductSync,
-                OrderSync => ShopifyOrderSync,
-                OrderRecoverySync => ShopifyOrderRecoverySync,
-                OrderStatusSync => ShopifyOrderStatusSync,
-                OrderReconciliation => ShopifyOrderReconciliation,
-                OrderInvoiceReconciliation => ShopifyOrderInvoiceReconciliation,
-                WebhookIngest => ShopifyWebhookIngest,
-                _ => jobType
-            }
-            : jobType;
+    public static string ForPlatform(string? platformCode, string jobType) => platformCode?.Trim().ToUpperInvariant() switch
+    {
+        "SHOPIFY" => jobType switch
+        {
+            ConnectionTest => ShopifyConnectionTest,
+            ProductSync => ShopifyProductSync,
+            OrderSync => ShopifyOrderSync,
+            OrderRecoverySync => ShopifyOrderRecoverySync,
+            OrderStatusSync => ShopifyOrderStatusSync,
+            OrderReconciliation => ShopifyOrderReconciliation,
+            OrderInvoiceReconciliation => ShopifyOrderInvoiceReconciliation,
+            WebhookIngest => ShopifyWebhookIngest,
+            _ => jobType
+        },
+        "HEPSIBURADA" => jobType switch
+        {
+            ConnectionTest => HepsiburadaConnectionTest,
+            ProductSync => HepsiburadaProductSync,
+            OrderSync => HepsiburadaOrderSync,
+            OrderRecoverySync => HepsiburadaOrderRecoverySync,
+            ReturnSync => HepsiburadaReturnSync,
+            _ => jobType
+        },
+        _ => jobType
+    };
 }
 
 public static class MarketplaceSyncPolicyRules
@@ -123,7 +138,7 @@ public enum AdapterErrorClass
 
 public sealed record AdapterContext(Guid TenantId, Guid ConnectionId, string CorrelationId, string IdempotencyKey, DateTimeOffset DeadlineUtc, bool IsStageCapabilityProbe = false, IntegrationOperation Operation = IntegrationOperation.Manual);
 public sealed record AdapterError(AdapterErrorClass Class, string Code, string SafeMessage, int? HttpStatus, TimeSpan? RetryAfter, string? RemoteRequestId);
-public sealed record RateLimitMetadata(int? Remaining, DateTimeOffset? ResetAt, TimeSpan? RetryAfter);
+public sealed record RateLimitMetadata(int? Remaining, DateTimeOffset? ResetAt, TimeSpan? RetryAfter, int? Limit = null);
 public sealed record AdapterResult<T>(bool IsSuccess, T? Value, AdapterError? Error, RateLimitMetadata? RateLimit)
 {
     public static AdapterResult<T> Success(T value, RateLimitMetadata? rateLimit = null) => new(true, value, null, rateLimit);
@@ -193,6 +208,8 @@ public sealed record RemotePackageInvoiceObservation(string? RawStatus, string? 
 public sealed record RemotePackage(string ExternalPackageId, string? OriginExternalPackageId, string RawStatus, DateTimeOffset OccurredAt, string? CargoProviderExternalId, string? CargoTrackingNumber, IReadOnlyList<RemotePackageAllocation> Allocations, decimal GrossAmount = 0, decimal DiscountAmount = 0, decimal NetAmount = 0, RemotePackageInvoiceObservation? Invoice = null, string? CreatedBy = null);
 public sealed record RemoteOrderRefund(string ExternalRefundId, DateTimeOffset OccurredAt, decimal Amount, string Currency, string RawJson);
 public sealed record RemoteOrder(string ExternalOrderId, string OrderNumber, DateTimeOffset OrderedAt, DateTimeOffset LastModifiedAt, string Currency, decimal GrossAmount, decimal DiscountAmount, decimal NetAmount, string CustomerSnapshotJson, string ShipmentAddressSnapshotJson, string InvoiceAddressSnapshotJson, IReadOnlyList<RemoteOrderLine> Lines, IReadOnlyList<RemotePackage> Packages, string RawJson, DateTimeOffset? ShipmentDueAt = null, string PaymentStatus = "UNKNOWN", string CancellationStatus = "NOT_CANCELLED", string RefundStatus = "NOT_REFUNDED", decimal RefundedAmount = 0, IReadOnlyList<RemoteOrderRefund>? Refunds = null);
+public sealed record PackagePollWindow(DateTimeOffset? ModifiedAfter, DateTimeOffset? ModifiedBefore);
+public sealed record RemoteOrderPackage(string ExternalOrderId, RemotePackage Package);
 
 public sealed record ShopifyOrderCsvImportResult(
     int FileRows,
@@ -225,7 +242,7 @@ public sealed record CommonLabelJobPayload(Guid JobId, Guid PackageId, string Ph
 public sealed record CapabilityProbeJobPayload(Guid JobId, Guid PackageId, Guid ActorUserId, string CapabilityCode, int BoxQuantity, decimal VolumetricHeight, DateTimeOffset StartedAt, DateTimeOffset DeadlineAt);
 public sealed record StageTestOrderJobPayload(Guid JobId, Guid ActorUserId, string Barcode, DateTimeOffset StartedAt);
 public sealed record StageTestOrderResult(string OrderNumber);
-public sealed record ReturnPollWindow(DateTimeOffset? ModifiedAfter, DateTimeOffset? ModifiedBefore, string? StoreFrontCode = null);
+public sealed record ReturnPollWindow(DateTimeOffset? ModifiedAfter, DateTimeOffset? ModifiedBefore, string? StoreFrontCode = null, string? Status = null);
 public sealed record RemoteReturnLine(string ExternalLineId, string ExternalOrderLineId, decimal Quantity, IReadOnlyList<string>? AlternateExternalOrderLineIds = null);
 public sealed record RemoteReturnClaim(string ExternalClaimId, string ExternalOrderId, string RawStatus, string? ReasonCode, string? ReasonText, DateTimeOffset? ActionDueAt, DateTimeOffset LastModifiedAt, IReadOnlyList<RemoteReturnLine> Lines, string RawJson, string? CargoProviderName = null, string? CargoTrackingNumber = null, string? CargoTrackingLink = null);
 public sealed record ReturnEvidenceFile(string FileName, string MimeType, byte[] Content);
@@ -277,6 +294,11 @@ public interface IOrderPort
     Task<AdapterResult<bool>> CreateCommonLabelAsync(AdapterContext context, CommonLabelRequest request, CancellationToken cancellationToken);
     Task<AdapterResult<CommonLabelDocument>> GetCommonLabelAsync(AdapterContext context, string cargoTrackingNumber, CancellationToken cancellationToken);
     Task<AdapterResult<StageTestOrderResult>> CreateStageTestOrderAsync(AdapterContext context, string barcode, CancellationToken cancellationToken);
+}
+
+public interface IOrderPackageReadPort
+{
+    Task<AdapterResult<AdapterPageResult<RemoteOrderPackage>>> PollPackagesAsync(AdapterContext context, PackagePollWindow window, AdapterPageRequest page, CancellationToken cancellationToken);
 }
 
 public interface IReturnPort

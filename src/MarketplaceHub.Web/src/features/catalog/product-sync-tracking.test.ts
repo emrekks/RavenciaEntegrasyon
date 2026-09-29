@@ -10,6 +10,7 @@ describe('product sync tracking', () => {
 
   it('matches job type and status without depending on UI connection selection or letter case', () => {
     expect(isActiveProductSyncJob({ jobType: ' shopify_product_sync ', status: 'pending' })).toBe(true)
+    expect(isActiveProductSyncJob({ jobType: ' hepsiburada_product_sync ', status: 'pending' })).toBe(true)
   })
 
   it('does not treat completed or unrelated jobs as active product imports', () => {

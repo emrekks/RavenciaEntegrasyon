@@ -1,5 +1,6 @@
 using System.Security.Cryptography.X509Certificates;
 using MarketplaceHub.Application;
+using MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
 using MarketplaceHub.Infrastructure.Adapters.Shopify;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam;
@@ -64,6 +65,7 @@ public static class DependencyInjection
         services.AddScoped<IReferenceDataService, ReferenceDataService>();
         services.Configure<TrendyolOptions>(configuration.GetSection(TrendyolOptions.SectionName));
         services.Configure<ShopifyOptions>(configuration.GetSection(ShopifyOptions.SectionName));
+        services.Configure<HepsiburadaOptions>(configuration.GetSection(HepsiburadaOptions.SectionName));
         services.AddSingleton<TrendyolResilienceState>();
         services.AddTransient<TrendyolResilienceHandler>();
         services.AddHttpClient("Trendyol", client => client.Timeout = Timeout.InfiniteTimeSpan)
@@ -76,6 +78,10 @@ public static class DependencyInjection
         services.AddScoped<ShopifyAuthenticationHandler>();
         services.AddScoped<ShopifyHttpClient>();
         services.AddScoped<ShopifyWebhookVerifier>();
+        services.AddHttpClient("Hepsiburada", client => client.Timeout = Timeout.InfiniteTimeSpan)
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AutomaticDecompression = System.Net.DecompressionMethods.All, PooledConnectionLifetime = TimeSpan.FromMinutes(10) });
+        services.AddScoped<HepsiburadaAuthenticationHandler>();
+        services.AddScoped<HepsiburadaHttpClient>();
         services.AddScoped<MarketplacePortRouter>();
         services.AddScoped<IConnectionPort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
         services.AddScoped<IReferenceDataPort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
@@ -83,6 +89,7 @@ public static class DependencyInjection
         services.AddScoped<IProductVisualLookupPort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
         services.AddScoped<IInventoryPricePort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
         services.AddScoped<IOrderPort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
+        services.AddScoped<IOrderPackageReadPort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
         services.AddScoped<IReturnPort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
         services.AddScoped<TrendyolWebhookVerifier>();
         services.AddScoped<IWebhookVerifier, MarketplaceWebhookVerifier>();
@@ -105,7 +112,7 @@ public static class DependencyInjection
         services.AddScoped<TrendyolEFaturamAuthenticationHandler>();
         services.AddScoped<TrendyolEFaturamHttpClient>();
         services.AddScoped<IInvoiceProviderPort>(provider => provider.GetRequiredService<TrendyolEFaturamHttpClient>());
-        services.AddScoped<IInvoiceMarketplacePort>(provider => provider.GetRequiredService<TrendyolHttpClient>());
+        services.AddScoped<IInvoiceMarketplacePort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
         services.AddScoped<IInvoicingBillingService, InvoicingBillingService>();
         services.AddScoped<IInvoicingJobProcessor, InvoicingJobProcessor>();
         services.AddScoped<IInvoicingReconciliationService, InvoicingReconciliationService>();

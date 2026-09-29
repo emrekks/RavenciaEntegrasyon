@@ -197,6 +197,7 @@ public sealed class MandatorySynchronizationScenariosTests
     {
         Assert.True(ProductImportConcurrencyPolicy.RejectsModeCollision("TRENDYOL_PRODUCT_SYNC", "TRENDYOL_PRODUCT_SYNC"));
         Assert.True(ProductImportConcurrencyPolicy.RejectsModeCollision("SHOPIFY_PRODUCT_SYNC", "SHOPIFY_PRODUCT_SYNC"));
+        Assert.True(ProductImportConcurrencyPolicy.RejectsModeCollision("HEPSIBURADA_PRODUCT_SYNC", "HEPSIBURADA_PRODUCT_SYNC"));
         Assert.False(ProductImportConcurrencyPolicy.RejectsModeCollision("TRENDYOL_ORDER_SYNC", "TRENDYOL_PRODUCT_SYNC"));
     }
 

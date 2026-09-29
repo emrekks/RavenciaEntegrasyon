@@ -20,6 +20,8 @@ public sealed class ShipmentPackageStatusPolicyTests
     [Theory]
     [InlineData("PARTIALLY_CANCELLED", ShipmentPackageStatus.PartiallyCancelled)]
     [InlineData("RETURN_IN_TRANSIT", ShipmentPackageStatus.ReturnInTransit)]
+    [InlineData("Open", ShipmentPackageStatus.ReadyToShip)]
+    [InlineData("Intransit", ShipmentPackageStatus.Shipped)]
     [InlineData("CANCELED", ShipmentPackageStatus.Cancelled)]
     public void FromRemote_MapsKnownProviderStatuses(string rawStatus, ShipmentPackageStatus expected)
     {

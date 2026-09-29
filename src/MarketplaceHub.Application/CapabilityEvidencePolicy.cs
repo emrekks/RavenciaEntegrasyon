@@ -6,6 +6,7 @@ public static class CapabilityEvidencePolicy
     {
         "TRENDYOL" => "developers.trendyol.com",
         "TRENDYOL_EFATURAM" => "developers.trendyolefaturam.com",
+        "HEPSIBURADA" => "developers.hepsiburada.com",
         _ => throw new ArgumentOutOfRangeException(nameof(platformCode), "Unsupported platform capability evidence scope.")
     };
 

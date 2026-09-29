@@ -22,9 +22,9 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                                join connection in db.PlatformConnections.AsNoTracking()
                                    on new { policy.TenantId, Id = policy.ConnectionId } equals new { connection.TenantId, connection.Id }
                                where policy.Enabled && policy.ResourceType != "PRODUCTS" && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")
-                                   && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "SHOPIFY")
+                                   && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "SHOPIFY" || connection.PlatformCode == "HEPSIBURADA")
                                select new { Policy = policy, Connection = connection }).ToListAsync(cancellationToken))
-            .Where(row => row.Connection.PlatformCode == "TRENDYOL" || IsShopifyReadPolicy(row.Policy.ResourceType))
+            .Where(row => row.Connection.PlatformCode == "TRENDYOL" || row.Connection.PlatformCode == "SHOPIFY" && IsShopifyReadPolicy(row.Policy.ResourceType) || row.Connection.PlatformCode == "HEPSIBURADA" && IsHepsiburadaReadPolicy(row.Policy.ResourceType))
             // Keep the hot order stream ahead of lifecycle and reconciliation
             // scans. The query has no guaranteed row order, so an incidental
             // database order could otherwise enqueue a long lifecycle scan
@@ -61,9 +61,10 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                 .ToListAsync(cancellationToken);
             var executionGroup = MarketplaceSyncExecutionLock.GroupFor(definition.Value.JobType);
             var active = activeJobTypes.Any(jobType => MarketplaceSyncExecutionLock.GroupFor(jobType) == executionGroup);
-            var isHotOrder = definition.Value.JobType is MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync;
+            var isHotOrder = definition.Value.JobType is MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync;
             var hotOrderAlreadyQueued = activeJobTypes.Contains(MarketplaceJobTypes.OrderSync, StringComparer.Ordinal)
-                || activeJobTypes.Contains(MarketplaceJobTypes.ShopifyOrderSync, StringComparer.Ordinal);
+                || activeJobTypes.Contains(MarketplaceJobTypes.ShopifyOrderSync, StringComparer.Ordinal)
+                || activeJobTypes.Contains(MarketplaceJobTypes.HepsiburadaOrderSync, StringComparer.Ordinal);
             var isOrderLifecycle = definition.Value.JobType is MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.ShopifyOrderStatusSync;
             var lifecycleAlreadyQueued = activeJobTypes.Contains(MarketplaceJobTypes.OrderStatusSync, StringComparer.Ordinal)
                 || activeJobTypes.Contains(MarketplaceJobTypes.ShopifyOrderStatusSync, StringComparer.Ordinal);
@@ -88,7 +89,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             var latest = await db.IntegrationJobs.AsNoTracking()
                 .Where(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id && x.JobType == definition.Value.JobType && x.JobDedupKey.StartsWith(definition.Value.DedupPrefix))
                 .OrderByDescending(x => x.CreatedAt).Select(x => (DateTimeOffset?)x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
-            var hasOrderSnapshots = definition.Value.JobType is not (MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync)
+            var hasOrderSnapshots = definition.Value.JobType is not (MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync)
                 || await db.Orders.AsNoTracking().AnyAsync(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id, cancellationToken);
             var jitterSeconds = StableJitterSeconds(row.Connection.Id, row.Policy.ResourceType, row.Policy.JitterSeconds);
             if (hasOrderSnapshots && latest is not null && latest.Value.AddSeconds(interval + jitterSeconds) > now) continue;
@@ -214,7 +215,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
     private async Task EnsureDefaultPoliciesAsync(CancellationToken cancellationToken)
     {
         var operationalConnections = await db.PlatformConnections.AsNoTracking()
-            .Where(x => (x.Status == "ACTIVE" || x.Status == "VERIFIED") && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY"))
+            .Where(x => (x.Status == "ACTIVE" || x.Status == "VERIFIED") && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA"))
             .Select(x => new { x.TenantId, ConnectionId = x.Id, x.PlatformCode })
             .ToListAsync(cancellationToken);
         if (operationalConnections.Count == 0) return;
@@ -239,7 +240,12 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         foreach (var connection in operationalConnections)
         {
             var defaultsForConnection = DefaultPolicies()
-                .Where(defaults => connection.PlatformCode != "SHOPIFY" || IsShopifyReadPolicy(defaults.ResourceType))
+                .Where(defaults => connection.PlatformCode switch
+                {
+                    "SHOPIFY" => IsShopifyReadPolicy(defaults.ResourceType),
+                    "HEPSIBURADA" => IsHepsiburadaReadPolicy(defaults.ResourceType),
+                    _ => true
+                })
                 .Select(defaults =>
                 {
                     var cadence = ScheduledOrderPollingCadencePolicy.ForPlatform(
@@ -366,6 +372,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
     private static bool IsOrderBackgroundJob(string jobType) =>
         jobType is MarketplaceJobTypes.OrderRecoverySync
             or MarketplaceJobTypes.ShopifyOrderRecoverySync
+            or MarketplaceJobTypes.HepsiburadaOrderRecoverySync
             or MarketplaceJobTypes.OrderReconciliation
             or MarketplaceJobTypes.ShopifyOrderReconciliation
             or MarketplaceJobTypes.OrderInvoiceReconciliation
@@ -379,6 +386,8 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         or "ORDER_RECONCILE_MEDIUM"
         or "ORDER_RECONCILE_DAILY";
 
+    private static bool IsHepsiburadaReadPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "RETURNS";
+
     private (string JobType, string DedupPrefix, string PayloadJson)? Definition(string resourceType, Guid connectionId, string platformCode) => resourceType switch
     {
         "ORDERS" => (MarketplaceJobTypes.ForPlatform(platformCode, MarketplaceJobTypes.OrderSync), $"scheduled:orders:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, externalOrderId = (string?)null })),
@@ -388,7 +397,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         "ORDER_RECONCILE_MEDIUM" => (MarketplaceJobTypes.ForPlatform(platformCode, MarketplaceJobTypes.OrderReconciliation), $"scheduled:order-reconcile-medium:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, lookbackDays = ConfigInt("MarketplaceSync:OrderReconciliation:MediumLookbackDays", 3, 1, 30), batchSize = ConfigInt("MarketplaceSync:OrderReconciliation:MediumBatchSize", 50, 1, 100) })),
         "ORDER_RECONCILE_DAILY" => (MarketplaceJobTypes.ForPlatform(platformCode, MarketplaceJobTypes.OrderReconciliation), $"scheduled:order-reconcile-daily:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, lookbackDays = ConfigInt("MarketplaceSync:OrderReconciliation:DailyLookbackDays", 90, 1, 90), batchSize = ConfigInt("MarketplaceSync:OrderReconciliation:DailyBatchSize", 50, 1, 100) })),
         "ORDER_INVOICE_RECONCILIATION" => (MarketplaceJobTypes.ForPlatform(platformCode, MarketplaceJobTypes.OrderInvoiceReconciliation), $"scheduled:order-invoice-reconciliation:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, batchSize = ConfigInt("MarketplaceSync:OrderInvoiceReconciliation:BatchSize", 20, 1, 250) })),
-        "RETURNS" => (MarketplaceJobTypes.ReturnSync, $"scheduled:returns:{connectionId:N}", JsonSerializer.Serialize(new { connectionId })),
+        "RETURNS" => (MarketplaceJobTypes.ForPlatform(platformCode, MarketplaceJobTypes.ReturnSync), $"scheduled:returns:{connectionId:N}", JsonSerializer.Serialize(new { connectionId })),
         "RETURN_LIFECYCLE" => (MarketplaceJobTypes.ReturnStatusSync, $"scheduled:return-lifecycle:{connectionId:N}", JsonSerializer.Serialize(new { connectionId })),
         "RETURN_RECONCILE_SHORT" => (MarketplaceJobTypes.ReturnReconciliation, $"scheduled:return-reconcile-short:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, lookbackDays = ConfigInt("MarketplaceSync:ReturnReconciliation:ShortLookbackDays", 1, 1, 14) })),
         "RETURN_RECONCILE_MEDIUM" => (MarketplaceJobTypes.ReturnReconciliation, $"scheduled:return-reconcile-medium:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, lookbackDays = ConfigInt("MarketplaceSync:ReturnReconciliation:MediumLookbackDays", 3, 1, 30) })),
