@@ -3704,6 +3704,11 @@ button,
 .mapping-category-platform-tabs { width: 100%; margin: 0; }
 .mapping-category-platform-tabs > button { min-height: 34px; }
 .mapping-category-builder > .mapping-category-platform-tabs { margin-top: var(--rv-space-3); margin-bottom: var(--rv-space-3); }
+.mapping-reference-refresh-row { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: var(--rv-space-3); margin: 0 0 var(--rv-space-4); padding: var(--rv-space-3) var(--rv-space-4); color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); font-size: var(--rv-font-size-sm); }
+.mapping-reference-refresh-row > span { min-width: 0; overflow-wrap: anywhere; }
+.mapping-reference-refresh-row > button { flex: 0 0 auto; }
+.mapping-connection-empty { margin: var(--rv-space-3) 0 var(--rv-space-4); }
+.mapping-connection-empty > p { max-width: 42rem; }
 .mapping-category-builder .mapping-target-controls { gap: var(--rv-space-2); }
 .brand-library-list .category-chip-remove { width: 24px; min-width: 24px; height: 24px; min-height: 24px; color: var(--rv-color-muted); background: transparent; border-left-color: var(--rv-color-border); border-radius: 0 var(--rv-radius-sm) var(--rv-radius-sm) 0; }
 .brand-library-list .category-chip-remove:hover { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); }
