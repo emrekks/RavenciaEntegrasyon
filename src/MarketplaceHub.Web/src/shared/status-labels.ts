@@ -4,6 +4,8 @@ const statusLabels: Record<string, string> = {
   APPROVE: 'Onayla',
   APPROVED: 'Onaylandı',
   ACCEPTED: 'Kabul edildi',
+  AWAITINGPREAPPROVAL: 'Ön onay bekliyor',
+  AWAITING_PRE_APPROVAL: 'Ön onay bekliyor',
   ARCHIVED: 'Arşivlendi',
   BLOCKED: 'Engellendi',
   CANCELLED: 'İptal edildi',
@@ -43,6 +45,7 @@ const statusLabels: Record<string, string> = {
   ON_HOLD: 'Beklemede',
   PENDING: 'Bekliyor',
   PROCESSING: 'İşleme alındı',
+  PREAPPROVAL_CONFIRM_SUBMITTED: 'İnceleme talebi gönderildi',
   READY: 'Hazır',
   READY_TO_SHIP: 'Kargoya hazır',
   REJECTED: 'Reddedildi',
@@ -134,7 +137,7 @@ export function statusLabel(value: string | null | undefined) {
 export function statusTone(value: string) {
   const normalized = normalizedStatus(value)
   if (['ACTIVE', 'APPROVED', 'ACCEPTED', 'COMPLETED', 'CONNECTED', 'CREATED', 'DELIVERED', 'HEALTHY', 'READY', 'SUCCESS', 'SUCCEEDED', 'SUPPORTED', 'VERIFIED'].includes(normalized)) return 'good' as const
-  if (['BLOCKED', 'CANCELLATION_PENDING', 'DEAD', 'DEGRADED', 'DELAYED', 'FAILED', 'MANUAL_REVIEW', 'UNKNOWN', 'UNKNOWN_RESULT', 'UNAPPROVED'].includes(normalized)) return 'warn' as const
+  if (['AWAITINGPREAPPROVAL', 'AWAITING_PRE_APPROVAL', 'BLOCKED', 'CANCELLATION_PENDING', 'DEAD', 'DEGRADED', 'DELAYED', 'FAILED', 'MANUAL_REVIEW', 'UNKNOWN', 'UNKNOWN_RESULT', 'UNAPPROVED'].includes(normalized)) return 'warn' as const
   return 'neutral' as const
 }
 

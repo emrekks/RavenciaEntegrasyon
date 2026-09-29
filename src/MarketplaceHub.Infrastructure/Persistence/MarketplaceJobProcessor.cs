@@ -5783,9 +5783,12 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         if (decision is not null)
         {
             var confirmed = decision.Action == "APPROVE" && target is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed
-                || decision.Action == "REJECT" && target is ReturnClaimStatus.Rejected or ReturnClaimStatus.Disputed;
+                || decision.Action == "REJECT" && target is ReturnClaimStatus.Rejected or ReturnClaimStatus.Disputed
+                || decision.Action == "PREAPPROVAL_CONFIRM" && (target is ReturnClaimStatus.AwaitingShipment or ReturnClaimStatus.InTransit
+                    || target == ReturnClaimStatus.ActionRequired && !HepsiburadaReturnActionPolicy.IsAwaitingPreApproval(remote.RawStatus));
             var conflictingTerminal = decision.Action == "APPROVE" && target is ReturnClaimStatus.Rejected or ReturnClaimStatus.Cancelled
-                || decision.Action == "REJECT" && target is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed;
+                || decision.Action == "REJECT" && target is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed
+                || decision.Action == "PREAPPROVAL_CONFIRM" && target is ReturnClaimStatus.Approved or ReturnClaimStatus.Rejected or ReturnClaimStatus.Cancelled;
             if (confirmed) { decision.Status = "SUCCEEDED"; decision.ErrorCode = null; decision.CompletedAt = now; }
             else if (conflictingTerminal) { decision.Status = "MANUAL_REVIEW"; decision.ErrorCode = "RETURN_ACTION_READBACK_CONFLICT"; decision.CompletedAt = now; }
             else decision.Status = "SUBMITTED";
@@ -5906,6 +5909,6 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     private async Task ResolveIssue(Guid tenantId, string key, CancellationToken cancellationToken) { var issue = await db.OperationalIssues.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.DedupeKey == key, cancellationToken); if (issue is not null) issue.Status = IssueStatus.Resolved; }
     private AdapterContext Context(Guid tenantId, Guid connectionId, string correlationId, string idempotency) => new(tenantId, connectionId, correlationId, idempotency, timeProvider.GetUtcNow().AddMinutes(2));
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
-    private static ReturnClaimStatus CanonicalReturn(string raw, string? cargoTrackingLink = null) => raw.ToUpperInvariant() switch { "CREATED" when !string.IsNullOrWhiteSpace(cargoTrackingLink) => ReturnClaimStatus.InTransit, "CREATED" or "NEWREQUEST" or "AWAITINGPREAPPROVAL" => ReturnClaimStatus.Requested, "WAITINGFORSHIPMENT" => ReturnClaimStatus.AwaitingShipment, "WAITINGINCARGO" => ReturnClaimStatus.InTransit, "INTRANSIT" or "RETURNINTRANSIT" or "SHIPPED" => ReturnClaimStatus.InTransit, "WAITINGINACTION" or "AWAITINGACTION" or "INANALYSIS" or "WAITINGFRAUDCHECK" => ReturnClaimStatus.ActionRequired, "ACCEPTED" => ReturnClaimStatus.Approved, "REJECTED" => ReturnClaimStatus.Rejected, "UNRESOLVED" or "INDISPUTE" => ReturnClaimStatus.Disputed, "COMPLETED" or "REFUNDED" => ReturnClaimStatus.Completed, "CANCELLED" => ReturnClaimStatus.Cancelled, _ => ReturnClaimStatus.ActionRequired };
+    private static ReturnClaimStatus CanonicalReturn(string raw, string? cargoTrackingLink = null) => raw.ToUpperInvariant() switch { "CREATED" when !string.IsNullOrWhiteSpace(cargoTrackingLink) => ReturnClaimStatus.InTransit, "CREATED" or "NEWREQUEST" => ReturnClaimStatus.Requested, "AWAITINGPREAPPROVAL" or "WAITINGINACTION" or "AWAITINGACTION" or "INANALYSIS" or "WAITINGFRAUDCHECK" => ReturnClaimStatus.ActionRequired, "WAITINGFORSHIPMENT" => ReturnClaimStatus.AwaitingShipment, "WAITINGINCARGO" => ReturnClaimStatus.InTransit, "INTRANSIT" or "RETURNINTRANSIT" or "SHIPPED" => ReturnClaimStatus.InTransit, "ACCEPTED" => ReturnClaimStatus.Approved, "REJECTED" => ReturnClaimStatus.Rejected, "UNRESOLVED" or "INDISPUTE" => ReturnClaimStatus.Disputed, "COMPLETED" or "REFUNDED" => ReturnClaimStatus.Completed, "CANCELLED" => ReturnClaimStatus.Cancelled, _ => ReturnClaimStatus.ActionRequired };
     private static string Wire<T>(T value) where T : Enum => string.Concat(value.ToString().Select((ch, index) => char.IsUpper(ch) && index > 0 ? "_" + ch : ch.ToString())).ToUpperInvariant();
 }

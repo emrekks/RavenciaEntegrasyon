@@ -21,9 +21,9 @@ public static class ReturnClaimStateMachine
         new Dictionary<ReturnClaimStatus, ReturnClaimStatus[]>
         {
             [ReturnClaimStatus.Requested] = [ReturnClaimStatus.AwaitingShipment, ReturnClaimStatus.InTransit, ReturnClaimStatus.ActionRequired, ReturnClaimStatus.Approved, ReturnClaimStatus.Rejected, ReturnClaimStatus.Cancelled],
-            [ReturnClaimStatus.AwaitingShipment] = [ReturnClaimStatus.InTransit, ReturnClaimStatus.Cancelled],
+            [ReturnClaimStatus.AwaitingShipment] = [ReturnClaimStatus.InTransit, ReturnClaimStatus.ActionRequired, ReturnClaimStatus.Cancelled],
             [ReturnClaimStatus.InTransit] = [ReturnClaimStatus.ActionRequired, ReturnClaimStatus.Approved, ReturnClaimStatus.Disputed],
-            [ReturnClaimStatus.ActionRequired] = [ReturnClaimStatus.Approved, ReturnClaimStatus.Rejected, ReturnClaimStatus.Disputed],
+            [ReturnClaimStatus.ActionRequired] = [ReturnClaimStatus.AwaitingShipment, ReturnClaimStatus.Approved, ReturnClaimStatus.Rejected, ReturnClaimStatus.Disputed],
             [ReturnClaimStatus.Approved] = [ReturnClaimStatus.Disputed, ReturnClaimStatus.Completed],
             [ReturnClaimStatus.Rejected] = [ReturnClaimStatus.Disputed, ReturnClaimStatus.Completed],
             [ReturnClaimStatus.Disputed] = [ReturnClaimStatus.Approved, ReturnClaimStatus.Rejected, ReturnClaimStatus.Completed]

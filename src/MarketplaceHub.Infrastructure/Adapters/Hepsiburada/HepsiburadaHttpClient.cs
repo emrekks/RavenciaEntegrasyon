@@ -337,6 +337,12 @@ public sealed class HepsiburadaHttpClient(
             body = new { FinalizedWith = finalizedWith };
             resultStatus = "ACCEPTED";
         }
+        else if (action == "PREAPPROVAL_CONFIRM")
+        {
+            path = ConfirmClaimPreApproval(account, command.ExternalClaimId);
+            body = new { preApprovalReason = "ProductInvestigation" };
+            resultStatus = "PREAPPROVAL_CONFIRM_SUBMITTED";
+        }
         else if (action == "REJECT")
         {
             if (string.IsNullOrWhiteSpace(command.ReasonCode) || !ClaimRejectionReasons.Any(reason => reason.Id == command.ReasonCode)
@@ -347,7 +353,7 @@ public sealed class HepsiburadaHttpClient(
             resultStatus = "REJECTED";
         }
         else
-            return Failure<ReturnActionResult>(AdapterErrorClass.Validation, "HEPSIBURADA_CLAIM_ACTION_INVALID", "Talep aksiyonu APPROVE veya REJECT olmalıdır.", HttpStatusCode.BadRequest);
+            return Failure<ReturnActionResult>(AdapterErrorClass.Validation, "HEPSIBURADA_CLAIM_ACTION_INVALID", "Talep aksiyonu APPROVE, PREAPPROVAL_CONFIRM veya REJECT olmalıdır.", HttpStatusCode.BadRequest);
 
         using var content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
         var response = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Post, path, content, cancellationToken);
@@ -419,6 +425,7 @@ public sealed class HepsiburadaHttpClient(
     internal static string Listings(HepsiburadaRequestContext context, string query) => $"listings/merchantid/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}?{query}";
     internal static string Claims(HepsiburadaRequestContext context, string status, string query) => $"claims/merchantId/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}/status/{Uri.EscapeDataString(status)}?{query}";
     internal static string AcceptClaim(HepsiburadaRequestContext context, string claimNumber) => $"claims/number/{Uri.EscapeDataString(claimNumber)}/accept";
+    internal static string ConfirmClaimPreApproval(HepsiburadaRequestContext context, string claimNumber) => $"claims/number/{Uri.EscapeDataString(claimNumber)}/preapprovalconfirm";
     internal static string RejectClaim(HepsiburadaRequestContext context, string claimNumber) => $"claims/number/{Uri.EscapeDataString(claimNumber)}/reject";
     internal static string ClaimQuery(int offset, int limit, DateTimeOffset? beginDate, DateTimeOffset? endDate)
     {

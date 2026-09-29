@@ -833,6 +833,9 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         if (order is null) return NotFound<ReturnDetailView>();
         var stageConnection = await IsStageConnection(tenantId, claim.ConnectionId, cancellationToken);
         var externalWritesEnabled = stageConnection || await WritesEnabled(tenantId, claim.ConnectionId, cancellationToken);
+        var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == claim.ConnectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        var isHepsiburada = string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase);
+        var awaitingPreApproval = isHepsiburada && HepsiburadaReturnActionPolicy.IsAwaitingPreApproval(claim.RawStatus);
         // ActionRequired is the provider's decision point. Supported return
         // adapters expose explicit APPROVE/REJECT implementations, so the
         // UI must not hide those controls just because a production capability
@@ -847,7 +850,10 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var decisionPending = pendingDecision != Guid.Empty;
         var actions = claim.Status switch
         {
+            ReturnClaimStatus.Requested when awaitingPreApproval => HepsiburadaReturnActionPolicy.AllowedActions(claim.RawStatus, decisionPending),
             ReturnClaimStatus.Requested or ReturnClaimStatus.InTransit => ["RECEIVE"],
+            ReturnClaimStatus.AwaitingShipment when isHepsiburada => Array.Empty<string>(),
+            ReturnClaimStatus.ActionRequired when isHepsiburada => HepsiburadaReturnActionPolicy.AllowedActions(claim.RawStatus, decisionPending),
             ReturnClaimStatus.ActionRequired when !decisionPending => ReturnActions,
             ReturnClaimStatus.ActionRequired => Array.Empty<string>(),
             _ => await CapabilityValues(tenantId, claim.ConnectionId, MarketplaceCapabilities.ReturnWrite, "allowedActions", cancellationToken)
@@ -882,7 +888,6 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         }).ToList();
         var package = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id).OrderByDescending(x => x.StatusOccurredAt).FirstOrDefaultAsync(cancellationToken);
         var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
-        var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == claim.ConnectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
         return ServiceResult<ReturnDetailView>.Ok(new(claim.Id, claim.ExternalClaimId, order.OrderNumber, Wire(claim.Status), claim.RawStatus, claim.ReasonCode, claim.ReasonText, claim.ActionDueAt, actions, claim.Version,
             customer.Name, order.OrderedAt, order.NetAmount, order.Currency, claim.CargoProviderName, claim.CargoTrackingNumber, lines, claim.Status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed, approvedAt, externalWritesEnabled, decisionPending, platformCode));
     }
@@ -950,8 +955,11 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var effectType = isHepsiburada ? "HEPSIBURADA_INSTANT_RETURN_ACTION" : "TRENDYOL_INSTANT_RETURN_ACTION";
         if (claim.Version != expectedVersion) return Precondition<ReturnDetailView>(claim.Version);
         var action = command.Action.Trim().ToUpperInvariant();
-        if (action is not ("APPROVE" or "REJECT")) return Invalid<ReturnDetailView>("action", "İade aksiyonu APPROVE veya REJECT olmalıdır.");
-        if (claim.Status != ReturnClaimStatus.ActionRequired) return ServiceResult<ReturnDetailView>.Fail("RETURN_ACTION_NOT_ALLOWED", "İade aksiyonu yalnız ACTION_REQUIRED durumunda kullanılabilir.", 409);
+        var preApprovalConfirm = action == "PREAPPROVAL_CONFIRM";
+        var awaitingPreApproval = isHepsiburada && HepsiburadaReturnActionPolicy.IsAwaitingPreApproval(claim.RawStatus);
+        if (action is not ("APPROVE" or "REJECT") && !preApprovalConfirm) return Invalid<ReturnDetailView>("action", "İade aksiyonu APPROVE, PREAPPROVAL_CONFIRM veya REJECT olmalıdır.");
+        if (preApprovalConfirm && !awaitingPreApproval) return ServiceResult<ReturnDetailView>.Fail("HEPSIBURADA_PREAPPROVAL_ACTION_NOT_ALLOWED", "İnceleme için geri gönderim yalnız Hepsiburada AwaitingPreApproval durumunda kullanılabilir.", 409);
+        if (claim.Status != ReturnClaimStatus.ActionRequired && !(awaitingPreApproval && claim.Status == ReturnClaimStatus.Requested)) return ServiceResult<ReturnDetailView>.Fail("RETURN_ACTION_NOT_ALLOWED", "İade aksiyonu yalnız sağlayıcının aksiyon beklediği durumda kullanılabilir.", 409);
 
         var claimLineIds = await db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.ClaimId == claimId).Select(x => x.Id).ToListAsync(cancellationToken);
         if (claimLineIds.Count == 0) return Invalid<ReturnDetailView>("returnLineIds", "İade işleminde en az bir ürün satırı bulunmalıdır.");
@@ -967,6 +975,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         if (action == "REJECT" && (string.IsNullOrWhiteSpace(command.ReasonCode) || string.IsNullOrWhiteSpace(command.Explanation) || command.Explanation.Trim().Length > 500)) return Invalid<ReturnDetailView>("explanation", "REJECT için reasonCode ve en fazla 500 karakter açıklama gerekir.");
         var evidenceOptional = command.ReasonCode is "1651" or "451" or "2101";
         if (action == "REJECT" && !isHepsiburada && !evidenceOptional && (command.EvidenceAssetIds is null || command.EvidenceAssetIds.Count == 0)) return Invalid<ReturnDetailView>("evidenceAssetIds", "Seçilen ret nedeni için en az bir kanıt dosyası gerekir.");
+        if (preApprovalConfirm && (!string.IsNullOrWhiteSpace(command.FinalizedWith) || !string.IsNullOrWhiteSpace(command.ReasonCode) || !string.IsNullOrWhiteSpace(command.Explanation) || command.EvidenceAssetIds is { Count: > 0 })) return Invalid<ReturnDetailView>("action", "Hepsiburada ön onay incelemesi ek kabul, ret veya kanıt alanı almaz.");
 
         var stage = await IsStageConnection(tenantId, claim.ConnectionId, cancellationToken);
         if (!stage && !await IsProductionConnection(tenantId, claim.ConnectionId, cancellationToken)) return ServiceResult<ReturnDetailView>.Fail("ENVIRONMENT_INVALID", "İade aksiyonu yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
@@ -1036,8 +1045,18 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         decision.ExternalOperationId = result.Value?.ExternalOperationId;
         decision.ErrorCode = null;
         effect.CompletedAt = timeProvider.GetUtcNow();
-        claim.Status = action == "APPROVE" ? ReturnClaimStatus.Approved : ReturnClaimStatus.Rejected;
-        claim.RawStatus = result.Value?.Status ?? (action == "APPROVE" ? "ACCEPTED" : "REJECTED");
+        claim.Status = action switch
+        {
+            "APPROVE" => ReturnClaimStatus.Approved,
+            "REJECT" => ReturnClaimStatus.Rejected,
+            _ => ReturnClaimStatus.AwaitingShipment
+        };
+        claim.RawStatus = result.Value?.Status ?? (action switch
+        {
+            "APPROVE" => "ACCEPTED",
+            "REJECT" => "REJECTED",
+            _ => "PREAPPROVAL_CONFIRM_SUBMITTED"
+        });
         claim.UpdatedAt = effect.CompletedAt.Value;
         claim.Version++;
         await db.SaveChangesAsync(cancellationToken);
@@ -1060,9 +1079,12 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             claim.UpdatedAt = timeProvider.GetUtcNow();
             claim.Version++;
             var confirmed = action == "APPROVE" && remoteStatus is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed
-                || action == "REJECT" && remoteStatus is ReturnClaimStatus.Rejected or ReturnClaimStatus.Disputed;
+                || action == "REJECT" && remoteStatus is ReturnClaimStatus.Rejected or ReturnClaimStatus.Disputed
+                || preApprovalConfirm && (remoteStatus is ReturnClaimStatus.AwaitingShipment or ReturnClaimStatus.InTransit
+                    || remoteStatus == ReturnClaimStatus.ActionRequired && !HepsiburadaReturnActionPolicy.IsAwaitingPreApproval(readback.Value.RawStatus));
             var conflicting = action == "APPROVE" && remoteStatus is ReturnClaimStatus.Rejected or ReturnClaimStatus.Cancelled
-                || action == "REJECT" && remoteStatus is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed;
+                || action == "REJECT" && remoteStatus is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed
+                || preApprovalConfirm && remoteStatus is ReturnClaimStatus.Approved or ReturnClaimStatus.Rejected or ReturnClaimStatus.Cancelled;
             if (confirmed) { decision.Status = "SUCCEEDED"; decision.CompletedAt = claim.UpdatedAt; }
             else if (conflicting) { decision.Status = "MANUAL_REVIEW"; decision.ErrorCode = "RETURN_ACTION_READBACK_CONFLICT"; decision.CompletedAt = claim.UpdatedAt; }
         }
@@ -1549,7 +1571,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     private PageResult<T> Page<T>(List<T> rows, int limit, Func<T, Guid> id) { var hasMore = rows.Count > limit; var items = rows.Take(limit).ToList(); return new(items, hasMore ? cursors.Encode(id(items[^1])) : null, hasMore); }
     private static ShipmentView Map(ShipmentPackage x, string orderNumber) => new(x.Id, x.OrderId, orderNumber, x.ExternalPackageId, Wire(x.Status), x.RawStatus, x.CargoTrackingNumber, x.StatusOccurredAt, x.Version, x.CargoProviderExternalId, ShipmentPackageClassification.IsResend(x.CreatedBy, x.OriginExternalPackageId));
     private static string Wire<T>(T value) where T : Enum => string.Concat(value.ToString().Select((ch, index) => char.IsUpper(ch) && index > 0 ? "_" + ch : ch.ToString())).ToUpperInvariant();
-    private static ReturnClaimStatus CanonicalReturn(string raw, string? cargoTrackingLink = null) => raw.ToUpperInvariant() switch { "CREATED" when !string.IsNullOrWhiteSpace(cargoTrackingLink) => ReturnClaimStatus.InTransit, "CREATED" => ReturnClaimStatus.Requested, "WAITINGFORSHIPMENT" => ReturnClaimStatus.AwaitingShipment, "WAITINGINCARGO" => ReturnClaimStatus.InTransit, "INTRANSIT" or "RETURNINTRANSIT" or "SHIPPED" => ReturnClaimStatus.InTransit, "WAITINGINACTION" or "INANALYSIS" or "WAITINGFRAUDCHECK" => ReturnClaimStatus.ActionRequired, "ACCEPTED" => ReturnClaimStatus.Approved, "REJECTED" => ReturnClaimStatus.Rejected, "UNRESOLVED" => ReturnClaimStatus.Disputed, "COMPLETED" => ReturnClaimStatus.Completed, "CANCELLED" => ReturnClaimStatus.Cancelled, _ => ReturnClaimStatus.ActionRequired };
+    private static ReturnClaimStatus CanonicalReturn(string raw, string? cargoTrackingLink = null) => raw.ToUpperInvariant() switch { "CREATED" when !string.IsNullOrWhiteSpace(cargoTrackingLink) => ReturnClaimStatus.InTransit, "CREATED" => ReturnClaimStatus.Requested, "AWAITINGPREAPPROVAL" => ReturnClaimStatus.ActionRequired, "WAITINGFORSHIPMENT" => ReturnClaimStatus.AwaitingShipment, "WAITINGINCARGO" => ReturnClaimStatus.InTransit, "INTRANSIT" or "RETURNINTRANSIT" or "SHIPPED" => ReturnClaimStatus.InTransit, "WAITINGINACTION" or "AWAITINGACTION" or "INANALYSIS" or "WAITINGFRAUDCHECK" => ReturnClaimStatus.ActionRequired, "ACCEPTED" => ReturnClaimStatus.Approved, "REJECTED" => ReturnClaimStatus.Rejected, "UNRESOLVED" => ReturnClaimStatus.Disputed, "COMPLETED" => ReturnClaimStatus.Completed, "CANCELLED" => ReturnClaimStatus.Cancelled, _ => ReturnClaimStatus.ActionRequired };
     private static bool IsAmbiguous(AdapterError error) => error.Class is AdapterErrorClass.TransientNetwork or AdapterErrorClass.Remote5xx or AdapterErrorClass.ContractViolation or AdapterErrorClass.InternalBug;
     private static ServiceResult<T> Invalid<T>(string field, string message) => ServiceResult<T>.Fail("VALIDATION_FAILED", message, 422, new Dictionary<string, string[]> { [field] = [message] });
     private static ServiceResult<T> NotFound<T>() => ServiceResult<T>.Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", 404);

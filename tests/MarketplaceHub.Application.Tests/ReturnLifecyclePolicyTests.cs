@@ -1,4 +1,5 @@
 using MarketplaceHub.Domain;
+using MarketplaceHub.Application;
 using Xunit;
 
 namespace MarketplaceHub.Application.Tests;
@@ -9,6 +10,8 @@ public sealed class ReturnLifecyclePolicyTests
     [InlineData(ReturnClaimStatus.InTransit, ReturnClaimStatus.ActionRequired)]
     [InlineData(ReturnClaimStatus.ActionRequired, ReturnClaimStatus.Approved)]
     [InlineData(ReturnClaimStatus.ActionRequired, ReturnClaimStatus.Rejected)]
+    [InlineData(ReturnClaimStatus.ActionRequired, ReturnClaimStatus.AwaitingShipment)]
+    [InlineData(ReturnClaimStatus.AwaitingShipment, ReturnClaimStatus.ActionRequired)]
     [InlineData(ReturnClaimStatus.Disputed, ReturnClaimStatus.Approved)]
     [InlineData(ReturnClaimStatus.Disputed, ReturnClaimStatus.Rejected)]
     [InlineData(ReturnClaimStatus.Approved, ReturnClaimStatus.Completed)]
@@ -38,5 +41,15 @@ public sealed class ReturnLifecyclePolicyTests
     public void OpenLifecyclePolicy_PollsOnlyNonTerminalReturns(ReturnClaimStatus status, bool expected)
     {
         Assert.Equal(expected, OpenReturnLifecyclePolicy.ShouldPoll(status));
+    }
+
+    [Fact]
+    public void HepsiburadaAwaitingPreApproval_ExposesOnlyDocumentedActionsAndHidesThemWhilePending()
+    {
+        Assert.True(HepsiburadaReturnActionPolicy.IsAwaitingPreApproval("AwaitingPreApproval"));
+        Assert.True(HepsiburadaReturnActionPolicy.IsAwaitingPreApproval("AWAITING_PRE_APPROVAL"));
+        Assert.Equal(new[] { "PREAPPROVAL_CONFIRM", "APPROVE", "REJECT" }, HepsiburadaReturnActionPolicy.AllowedActions("AwaitingPreApproval", false));
+        Assert.Equal(new[] { "APPROVE", "REJECT" }, HepsiburadaReturnActionPolicy.AllowedActions("AwaitingAction", false));
+        Assert.Empty(HepsiburadaReturnActionPolicy.AllowedActions("AwaitingPreApproval", true));
     }
 }
