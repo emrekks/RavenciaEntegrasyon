@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
+using MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping;
 using MarketplaceHub.Infrastructure.Imports;
@@ -96,7 +97,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync or MarketplaceJobTypes.HepsiburadaOrderRecoverySync => await SyncOrders(tenantId, connectionId.Value, payloadJson, correlationId, "ORDERS_RECOVERY", allowBaseline: true, cancellationToken),
                     MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.ShopifyOrderStatusSync => await SyncOpenOrders(tenantId, connectionId.Value, correlationId, cancellationToken),
                     MarketplaceJobTypes.OrderReconciliation or MarketplaceJobTypes.ShopifyOrderReconciliation => await ReconcileOrders(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
-                    MarketplaceJobTypes.OrderInvoiceReconciliation or MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation => await ReconcileOrderInvoices(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
+                    MarketplaceJobTypes.OrderInvoiceReconciliation or MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation or MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation => await ReconcileOrderInvoices(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                     MarketplaceJobTypes.ProductSync or MarketplaceJobTypes.ShopifyProductSync or MarketplaceJobTypes.HepsiburadaProductSync => await SyncProducts(tenantId, connectionId.Value, payloadJson, correlationId, jobId, cancellationToken),
                     MarketplaceJobTypes.ReturnSync or MarketplaceJobTypes.HepsiburadaReturnSync => await SyncReturns(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                     MarketplaceJobTypes.ReturnStatusSync => await SyncOpenReturns(tenantId, connectionId.Value, correlationId, cancellationToken),
@@ -135,7 +136,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync or MarketplaceJobTypes.HepsiburadaOrderRecoverySync => "ORDERS_RECOVERY",
         MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.ShopifyOrderStatusSync => "ORDER_LIFECYCLE",
         MarketplaceJobTypes.OrderReconciliation or MarketplaceJobTypes.ShopifyOrderReconciliation => "ORDER_RECONCILIATION",
-        MarketplaceJobTypes.OrderInvoiceReconciliation or MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation => "ORDER_INVOICE_RECONCILIATION",
+        MarketplaceJobTypes.OrderInvoiceReconciliation or MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation or MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation => "ORDER_INVOICE_RECONCILIATION",
         MarketplaceJobTypes.ReturnSync or MarketplaceJobTypes.HepsiburadaReturnSync => "RETURNS",
         MarketplaceJobTypes.ReturnStatusSync => "RETURN_LIFECYCLE",
         MarketplaceJobTypes.ReturnReconciliation => "RETURN_RECONCILIATION",
@@ -170,6 +171,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         or MarketplaceJobTypes.ShopifyOrderReconciliation
         or MarketplaceJobTypes.OrderInvoiceReconciliation
         or MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation
+        or MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation
         or MarketplaceJobTypes.ProductSync
         or MarketplaceJobTypes.ShopifyProductSync
         or MarketplaceJobTypes.HepsiburadaProductSync
@@ -1911,10 +1913,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
     private async Task<bool> SyncOpenOrders(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
     {
-        var isShopify = await db.PlatformConnections.AsNoTracking()
+        var platformCode = await db.PlatformConnections.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.Id == connectionId)
-            .Select(x => x.PlatformCode == "SHOPIFY")
+            .Select(x => x.PlatformCode)
             .SingleOrDefaultAsync(cancellationToken);
+        var isShopify = platformCode == "SHOPIFY";
         var lifecycleBatchSize = Math.Clamp(configuration.GetValue("MarketplaceSync:OrderLifecycle:BatchSize", 25), 1, 100);
         var externalOrderIds = await (from package in db.ShipmentPackages.AsNoTracking()
                                       join order in db.Orders.AsNoTracking()
@@ -2005,10 +2008,12 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
     private async Task<bool> ReconcileOrderInvoices(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
-        var isShopify = await db.PlatformConnections.AsNoTracking()
+        var platformCode = await db.PlatformConnections.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.Id == connectionId)
-            .Select(x => x.PlatformCode == "SHOPIFY")
+            .Select(x => x.PlatformCode)
             .SingleOrDefaultAsync(cancellationToken);
+        var isShopify = platformCode == "SHOPIFY";
+        var isHepsiburada = platformCode == "HEPSIBURADA";
         var batchSize = ReadBoundedInt(payloadJson, "batchSize", 50, 1, 250);
         var externalOrderIds = await (from package in db.ShipmentPackages.AsNoTracking()
                                       join order in db.Orders.AsNoTracking()
@@ -2039,11 +2044,50 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             }
 
             TrackReceived();
+            if (isHepsiburada)
+                await MergeHepsiburadaOrderInvoiceState(tenantId, connectionId, result.Value!, cancellationToken);
             await UpsertOrder(tenantId, connectionId, result.Value!, cancellationToken, projectReservations: !isShopify, persistFinancialObservations: isShopify);
             await ResolveIssue(tenantId, $"order-invoice-reconciliation:{connectionId}:{externalOrderId}", cancellationToken);
         }
 
         return true;
+    }
+
+    private async Task MergeHepsiburadaOrderInvoiceState(Guid tenantId, Guid connectionId, RemoteOrder remote, CancellationToken cancellationToken)
+    {
+        bool hasInvoice;
+        try
+        {
+            using var snapshot = JsonDocument.Parse(remote.RawJson);
+            hasInvoice = HepsiburadaJsonMapper.InvoiceUploaded(snapshot.RootElement);
+        }
+        catch (JsonException)
+        {
+            return;
+        }
+
+        var order = await db.Orders.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalOrderId == remote.ExternalOrderId, cancellationToken);
+        if (order is null) return;
+
+        var packages = await db.ShipmentPackages
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.OrderId == order.Id && x.Status != ShipmentPackageStatus.Cancelled)
+            .ToListAsync(cancellationToken);
+        var rawStatus = hasInvoice ? "INVOICED" : "NOT_INVOICED";
+        foreach (var package in packages)
+        {
+            var observation = new RemotePackageInvoiceObservation(rawStatus, null, null, null);
+            var remotePackage = new RemotePackage(
+                package.ExternalPackageId,
+                null,
+                package.RawStatus,
+                remote.LastModifiedAt,
+                package.CargoProviderExternalId,
+                package.CargoTrackingNumber,
+                [],
+                Invoice: observation);
+            await MergeMarketplaceInvoiceState(package, remotePackage, cancellationToken);
+        }
     }
 
     private async Task<bool> SyncProducts(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, Guid? jobId, CancellationToken cancellationToken)

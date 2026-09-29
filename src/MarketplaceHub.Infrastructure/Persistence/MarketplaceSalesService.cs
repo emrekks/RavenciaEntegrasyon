@@ -732,11 +732,11 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
 
     public async Task<PageResult<ReturnListView>> ReturnsAsync(Guid tenantId, int limit, string? after, ReturnListQuery options, bool latest, CancellationToken cancellationToken)
     {
-        var hasOperationalTrendyol = await db.PlatformConnections.AsNoTracking()
+        var hasOperationalReturnConnection = await db.PlatformConnections.AsNoTracking()
             .AnyAsync(x => x.TenantId == tenantId
-                && x.PlatformCode == "TRENDYOL"
+                && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "HEPSIBURADA")
                 && (x.Status == "ACTIVE" || x.Status == "VERIFIED"), cancellationToken);
-        if (!hasOperationalTrendyol) return new([], null, false);
+        if (!hasOperationalReturnConnection) return new([], null, false);
 
         var query = db.ReturnClaims.AsNoTracking().Where(x => x.TenantId == tenantId
             && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")));
@@ -833,8 +833,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         if (order is null) return NotFound<ReturnDetailView>();
         var stageConnection = await IsStageConnection(tenantId, claim.ConnectionId, cancellationToken);
         var externalWritesEnabled = stageConnection || await WritesEnabled(tenantId, claim.ConnectionId, cancellationToken);
-        // ActionRequired is the provider's decision point. The Trendyol return
-        // adapter already has explicit APPROVE/REJECT implementations, so the
+        // ActionRequired is the provider's decision point. Supported return
+        // adapters expose explicit APPROVE/REJECT implementations, so the
         // UI must not hide those controls just because a production capability
         // evidence row was not recorded. The write policy is still enforced by
         // ProcessReturnActionInstantAsync enforces the policy before any external
@@ -882,8 +882,9 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         }).ToList();
         var package = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id).OrderByDescending(x => x.StatusOccurredAt).FirstOrDefaultAsync(cancellationToken);
         var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
+        var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == claim.ConnectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
         return ServiceResult<ReturnDetailView>.Ok(new(claim.Id, claim.ExternalClaimId, order.OrderNumber, Wire(claim.Status), claim.RawStatus, claim.ReasonCode, claim.ReasonText, claim.ActionDueAt, actions, claim.Version,
-            customer.Name, order.OrderedAt, order.NetAmount, order.Currency, claim.CargoProviderName, claim.CargoTrackingNumber, lines, claim.Status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed, approvedAt, externalWritesEnabled, decisionPending));
+            customer.Name, order.OrderedAt, order.NetAmount, order.Currency, claim.CargoProviderName, claim.CargoTrackingNumber, lines, claim.Status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed, approvedAt, externalWritesEnabled, decisionPending, platformCode));
     }
 
     public async Task<ServiceResult<IReadOnlyList<ReturnIssueReason>>> ReturnIssueReasonsAsync(Guid tenantId, Guid id, string correlationId, CancellationToken cancellationToken)
@@ -931,7 +932,6 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
 
     public async Task<ServiceResult<ReturnDetailView>> ProcessReturnActionInstantAsync(Guid tenantId, Guid userId, Guid claimId, long expectedVersion, ReturnDecisionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
     {
-        const string effectType = "TRENDYOL_INSTANT_RETURN_ACTION";
         var normalizedKey = idempotencyKey.Trim();
         var prior = await db.ReturnDecisions.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.IdempotencyKey == normalizedKey, cancellationToken);
         if (prior is not null)
@@ -945,6 +945,9 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var claim = await db.ReturnClaims.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == claimId
             && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")), cancellationToken);
         if (claim is null) return NotFound<ReturnDetailView>();
+        var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == claim.ConnectionId).Select(x => x.PlatformCode).SingleAsync(cancellationToken);
+        var isHepsiburada = string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase);
+        var effectType = isHepsiburada ? "HEPSIBURADA_INSTANT_RETURN_ACTION" : "TRENDYOL_INSTANT_RETURN_ACTION";
         if (claim.Version != expectedVersion) return Precondition<ReturnDetailView>(claim.Version);
         var action = command.Action.Trim().ToUpperInvariant();
         if (action is not ("APPROVE" or "REJECT")) return Invalid<ReturnDetailView>("action", "İade aksiyonu APPROVE veya REJECT olmalıdır.");
@@ -954,15 +957,21 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         if (claimLineIds.Count == 0) return Invalid<ReturnDetailView>("returnLineIds", "İade işleminde en az bir ürün satırı bulunmalıdır.");
         var returnLineIds = command.ReturnLineIds?.Distinct().ToArray() ?? claimLineIds.ToArray();
         if (returnLineIds.Length == 0 || returnLineIds.Except(claimLineIds).Any()) return Invalid<ReturnDetailView>("returnLineIds", "İşlem yapılacak ürün satırları bu iadeye ait olmalıdır.");
+        if (isHepsiburada && returnLineIds.Length != claimLineIds.Count) return Invalid<ReturnDetailView>("returnLineIds", "Hepsiburada talep kabul/red işlemi talebin tüm ürün satırlarına uygulanır; kısmi satır seçimi desteklenmez.");
+        var finalizedWith = command.FinalizedWith?.Trim();
+        if (isHepsiburada && action == "APPROVE" && finalizedWith is not ("Refund" or "Change")) return Invalid<ReturnDetailView>("finalizedWith", "Hepsiburada talep kabulünde iade veya ürün değişimi seçilmelidir.");
+        if ((!isHepsiburada || action != "APPROVE") && !string.IsNullOrWhiteSpace(finalizedWith)) return Invalid<ReturnDetailView>("finalizedWith", "Kabul türü yalnız Hepsiburada talebini kabul ederken gönderilebilir.");
+        if (isHepsiburada && action == "APPROVE" && string.Equals(claim.ReasonCode, "MissingInvoice", StringComparison.OrdinalIgnoreCase)) return ServiceResult<ReturnDetailView>.Fail("HEPSIBURADA_MISSING_INVOICE_MANUAL", "Eksik fatura taleplerinin kabul işlemi Hepsiburada panelinden yapılmalıdır.", 409);
         var activeDecision = await db.ReturnDecisions.AsNoTracking().Where(x => x.TenantId == tenantId && x.ClaimId == claimId && (x.Status == "PENDING" || x.Status == "RETRY_SCHEDULED" || x.Status == "MANUAL_REVIEW" || (x.Status == "SUBMITTED" && db.ExternalEffectRecords.Any(effect => effect.TenantId == x.TenantId && effect.IdempotencyKey == x.IdempotencyKey)))).OrderByDescending(x => x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
-        if (activeDecision is not null) return ServiceResult<ReturnDetailView>.Fail("RETURN_DECISION_IN_PROGRESS", "Bu iade kararı Trendyol’a gönderildi; Trendyol’dan sonuç kesinleşene kadar yeni bir karar gönderilemez.", 409);
+        if (activeDecision is not null) return ServiceResult<ReturnDetailView>.Fail("RETURN_DECISION_IN_PROGRESS", "Bu iade kararı pazaryerine gönderildi; sonuç kesinleşene kadar yeni bir karar gönderilemez.", 409);
         if (action == "REJECT" && (string.IsNullOrWhiteSpace(command.ReasonCode) || string.IsNullOrWhiteSpace(command.Explanation) || command.Explanation.Trim().Length > 500)) return Invalid<ReturnDetailView>("explanation", "REJECT için reasonCode ve en fazla 500 karakter açıklama gerekir.");
         var evidenceOptional = command.ReasonCode is "1651" or "451" or "2101";
-        if (action == "REJECT" && !evidenceOptional && (command.EvidenceAssetIds is null || command.EvidenceAssetIds.Count == 0)) return Invalid<ReturnDetailView>("evidenceAssetIds", "Seçilen ret nedeni için en az bir kanıt dosyası gerekir.");
+        if (action == "REJECT" && !isHepsiburada && !evidenceOptional && (command.EvidenceAssetIds is null || command.EvidenceAssetIds.Count == 0)) return Invalid<ReturnDetailView>("evidenceAssetIds", "Seçilen ret nedeni için en az bir kanıt dosyası gerekir.");
 
         var stage = await IsStageConnection(tenantId, claim.ConnectionId, cancellationToken);
         if (!stage && !await IsProductionConnection(tenantId, claim.ConnectionId, cancellationToken)) return ServiceResult<ReturnDetailView>.Fail("ENVIRONMENT_INVALID", "İade aksiyonu yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
         if (!stage && !await WritesEnabled(tenantId, claim.ConnectionId, cancellationToken)) return ServiceResult<ReturnDetailView>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
+        if (isHepsiburada && !stage && !await Supported(tenantId, claim.ConnectionId, MarketplaceCapabilities.ReturnWrite, cancellationToken)) return ServiceResult<ReturnDetailView>.Fail("CAPABILITY_EVIDENCE_REQUIRED", "Hepsiburada talep yazması için aynı mağaza ve ortamda doğrulanmış SIT yetenek kanıtı gerekir.", 422);
         if (!await ExternalWritePolicyEnabledAsync(tenantId, claim.ConnectionId, MarketplaceExternalWritePolicies.Return, cancellationToken)) return ServiceResult<ReturnDetailView>.Fail("EXTERNAL_WRITE_POLICY_DISABLED", "İade dış yazma akışı kapalı.", 422);
 
         var now = timeProvider.GetUtcNow();
@@ -972,7 +981,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             TenantId = tenantId,
             ClaimId = claimId,
             Action = action,
-            ReasonCode = string.IsNullOrWhiteSpace(command.ReasonCode) ? null : command.ReasonCode.Trim(),
+            ReasonCode = isHepsiburada && action == "APPROVE" ? finalizedWith : string.IsNullOrWhiteSpace(command.ReasonCode) ? null : command.ReasonCode.Trim(),
             Explanation = string.IsNullOrWhiteSpace(command.Explanation) ? null : command.Explanation.Trim(),
             IdempotencyKey = normalizedKey,
             Status = "PENDING",
@@ -1004,7 +1013,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
 
         var lineIds = await db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.ClaimId == claimId && returnLineIds.Contains(x.Id)).OrderBy(x => x.Id).Select(x => x.ExternalLineId).ToListAsync(cancellationToken);
         var context = new AdapterContext(tenantId, claim.ConnectionId, correlationId, normalizedKey, now.AddSeconds(30));
-        var result = await returns.ExecuteAsync(context, new(claim.ExternalClaimId, lineIds, action, decision.ReasonCode, decision.Explanation, evidenceFiles), cancellationToken);
+        var result = await returns.ExecuteAsync(context, new(claim.ExternalClaimId, lineIds, action, action == "APPROVE" && isHepsiburada ? null : decision.ReasonCode, decision.Explanation, evidenceFiles, isHepsiburada ? finalizedWith : null), cancellationToken);
         if (!result.IsSuccess)
         {
             var error = result.Error;
@@ -1015,7 +1024,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             {
                 decision.Status = "MANUAL_REVIEW";
                 await db.SaveChangesAsync(cancellationToken);
-                return ServiceResult<ReturnDetailView>.Fail("EXTERNAL_EFFECT_AMBIGUOUS", error?.SafeMessage ?? "Trendyol iade isteğine yanıt vermedi; tekrar gönderim engellendi.", 409);
+                return ServiceResult<ReturnDetailView>.Fail("EXTERNAL_EFFECT_AMBIGUOUS", error?.SafeMessage ?? "Pazaryeri iade isteğine yanıt vermedi; tekrar gönderim engellendi.", 409);
             }
             db.ExternalEffectRecords.Remove(effect);
             decision.Status = "FAILED";

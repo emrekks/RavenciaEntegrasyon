@@ -135,6 +135,12 @@ internal static class HepsiburadaJsonMapper
 
     public static (IReadOnlyList<JsonElement> Items, int? TotalCount) OrderPage(JsonElement root) => ListingPage(root);
 
+    public static bool InvoiceUploaded(JsonElement root)
+    {
+        var value = Boolean(Unwrap(root), "hasInvoice", "HasInvoice");
+        return value ?? throw new JsonException("Hepsiburada sipariş yanıtında hasInvoice alanı yok veya boolean değil.");
+    }
+
     public static (IReadOnlyList<JsonElement> Items, int? TotalCount) PackagePage(JsonElement root) => ListingPage(root);
 
     public static (IReadOnlyList<JsonElement> Items, int? TotalCount) ClaimPage(JsonElement root) => ListingPage(root);
@@ -187,11 +193,15 @@ internal static class HepsiburadaJsonMapper
         var reasonText = string.IsNullOrWhiteSpace(rejection) ? explanation
             : string.IsNullOrWhiteSpace(explanation) ? rejection
             : $"{explanation}\n{rejection}";
+        var claimType = Text(item, "claimType", "ClaimType", "type", "Type");
+        var reasonCode = string.Equals(claimType, "MissingInvoice", StringComparison.OrdinalIgnoreCase)
+            ? claimType
+            : Text(item, "reason", "Reason") ?? claimType;
         return new(
             claimId,
             orderNumber,
             status,
-            Text(item, "reason", "Reason") ?? Text(item, "claimType", "ClaimType", "type", "Type"),
+            reasonCode,
             reasonText,
             Date(item, "awaitingActionExpireDate", "AwaitingActionExpireDate"),
             modifiedAt,
@@ -232,7 +242,8 @@ internal static class HepsiburadaJsonMapper
             occurredAt.Value,
             Text(item, "cargoCompany", "CargoCompany", "cargoCompanyName", "CargoCompanyName"),
             Text(item, "trackingInfoCode", "TrackingInfoCode", "barcode", "Barcode"),
-            allocations);
+            allocations,
+            Invoice: InvoiceObservation(item));
         return new(orderNumber, package);
     }
 
@@ -262,8 +273,9 @@ internal static class HepsiburadaJsonMapper
         var customer = Find(order, "customer", "Customer");
         var shipmentAddress = Find(order, "deliveryAddress", "DeliveryAddress", "shipmentAddress", "ShipmentAddress");
         var invoiceAddress = Find(order, "invoiceAddress", "InvoiceAddress", "billingAddress", "BillingAddress");
-        var packages = Packages(order, lines, orderedAt.Value);
         var modified = Date(order, "lastStatusUpdateDate", "LastStatusUpdateDate", "lastModifiedAt", "LastModifiedAt") ?? orderedAt.Value;
+        var invoiceUploaded = Boolean(order, "hasInvoice", "HasInvoice");
+        var packages = Packages(order, lines, orderedAt.Value, invoiceUploaded);
         var dueAt = Date(order, "dueDate", "DueDate", "shipmentDueAt", "ShipmentDueAt");
         // The common sales model uses the order number for GetAsync lookups. Hepsiburada's
         // detail endpoint is keyed by orderNumber, so keep that value as the stable key.
@@ -304,7 +316,7 @@ internal static class HepsiburadaJsonMapper
         return new(lineId, sku, Text(line, "barcode", "Barcode"), Text(line, "name", "Name", "productName", "ProductName") ?? sku, quantity, unitPrice, Decimal(line, "vatRate", "VatRate") ?? 0m, status, line.GetRawText(), cancelled);
     }
 
-    private static IReadOnlyList<RemotePackage> Packages(JsonElement order, IReadOnlyList<RemoteOrderLine> lines, DateTimeOffset orderDate)
+    private static IReadOnlyList<RemotePackage> Packages(JsonElement order, IReadOnlyList<RemoteOrderLine> lines, DateTimeOffset orderDate, bool? orderInvoiceUploaded)
     {
         var element = Find(order, "packages", "Packages", "shipments", "Shipments");
         if (element.ValueKind != JsonValueKind.Array) return [];
@@ -316,6 +328,9 @@ internal static class HepsiburadaJsonMapper
             if (string.IsNullOrWhiteSpace(packageId) || packageItems.ValueKind != JsonValueKind.Array) continue;
             var status = Text(package, "status", "Status") ?? "UNKNOWN";
             var tracking = Text(package, "trackingInfoCode", "TrackingInfoCode", "barcode", "Barcode");
+            var invoice = InvoiceObservation(package) ?? (orderInvoiceUploaded is { } hasInvoice
+                ? new RemotePackageInvoiceObservation(hasInvoice ? "INVOICED" : "NOT_INVOICED", null, null, null)
+                : null);
             var allocations = new List<RemotePackageAllocation>();
             foreach (var item in packageItems.EnumerateArray())
             {
@@ -326,7 +341,7 @@ internal static class HepsiburadaJsonMapper
             }
             if (allocations.Count == 0) continue;
             var occurred = Date(package, "shippedDate", "ShippedDate", "createdAt", "CreatedAt") ?? orderDate;
-            packages.Add(new RemotePackage(packageId, null, status, occurred, Text(package, "cargoCompany", "CargoCompany"), tracking, allocations));
+            packages.Add(new RemotePackage(packageId, null, status, occurred, Text(package, "cargoCompany", "CargoCompany"), tracking, allocations, Invoice: invoice));
         }
         return packages;
     }
@@ -362,6 +377,15 @@ internal static class HepsiburadaJsonMapper
 
     private static string Snapshot(JsonElement value) => value.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null ? "{}" : value.GetRawText();
     private static string? First(params string?[] values) => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+    private static RemotePackageInvoiceObservation? InvoiceObservation(JsonElement source)
+    {
+        var status = Text(source, "invoiceStatus", "InvoiceStatus");
+        var uploaded = Boolean(source, "hasInvoice", "HasInvoice");
+        status ??= uploaded is { } hasInvoice ? (hasInvoice ? "INVOICED" : "NOT_INVOICED") : null;
+        return status is null
+            ? null
+            : new(status, Text(source, "invoiceNumber", "InvoiceNumber"), Text(source, "invoiceUrl", "InvoiceUrl"), Date(source, "invoiceUpdatedAt", "InvoiceUpdatedAt"));
+    }
     private static bool? Boolean(JsonElement element, params string[] names)
     {
         var value = Find(element, names);

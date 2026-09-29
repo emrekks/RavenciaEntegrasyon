@@ -4,6 +4,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -14,11 +15,38 @@ public sealed class HepsiburadaHttpClient(
     HepsiburadaAuthenticationHandler authentication,
     IOptions<HepsiburadaOptions> options,
     TimeProvider timeProvider,
+    IConfiguration configuration,
     ILogger<HepsiburadaHttpClient> logger)
     : IConnectionPort, IReferenceDataPort, IProductPort, IProductVisualLookupPort, IInventoryPricePort, IOrderPort, IOrderPackageReadPort, IReturnPort, IInvoiceMarketplacePort
 {
     private readonly HepsiburadaOptions settings = options.Value;
+    private bool GlobalWritesEnabled => configuration.GetValue<bool>("FeatureFlags:ExternalWrites");
     private static readonly string[] ClaimStatuses = ["NewRequest", "AwaitingAction", "InDispute", "Accepted", "Rejected", "Refunded", "Cancelled", "AwaitingPreApproval"];
+    private static readonly ReturnIssueReason[] ClaimRejectionReasons =
+    [
+        new("CustomerReturnedWrongItem", "İade edilen ürün siparişteki ürün değil", false),
+        new("ProductIsDamaged", "İade edilen ürün kusurlu veya hasarlı", false),
+        new("MissingQuantity", "İade edilen ürün adedi eksik", false),
+        new("NoSuchAccessory", "İade edilen ürün tekrar satılabilir durumda değil", false),
+        new("BoxIsEmptyWithReport", "Paket boş, tutanak mevcut", false),
+        new("BoxIsEmptyWithoutReport", "Paket boş, tutanak yok", false),
+        new("SomePartsOrSomeAccessoriesOrSomePapersAreMissing", "Ürün parçası, aksesuarı veya faturası eksik", false),
+        new("ReturnedProductIsNotDelivered", "İade ürünü teslim edilmedi", false),
+        new("NewProductWillBeSent", "Müşteriye yeni ürün gönderilecek", false),
+        new("ExtraProductHasBeenReturned", "Fazla gönderilen ürün iade edildi", false),
+        new("ProductNotWrong", "Gönderilen ürün yanlış değil", false),
+        new("ProductNotDefective", "Gönderilen ürün kusurlu değil", false),
+        new("StockProblem", "Stok sorunu nedeniyle değişim yapılamıyor", false),
+        new("ReturnedProductHasAccountOrPassword", "Üründe hesap veya parola bulunuyor", false),
+        new("MarkedAsServiceProcess", "Ürün servis veya analiz sürecine alınacak", false),
+        new("ProductSentComplete", "Ürün eksiksiz gönderildi", false),
+        new("MissingItemOrPartCannotBeSupplied", "Eksik ürün veya parça tedarik edilemiyor", false),
+        new("ClaimedComponentIsNotPartOfTheProduct", "Talep edilen parça ürün içeriğine dahil değil", false),
+        new("InvoiceReplacesWarranty", "Fatura garanti belgesi yerine geçer", false),
+        new("PartialShipmentMissingPackageWillBeDelivered", "Eksik paket kısmi sevkiyatla teslim edilecek", false),
+        new("CustomerProblemSolved", "Müşteri sorunu çözüldü", false),
+        new("Other", "Diğer", false)
+    ];
     private const string OrderGuide = "https://developers.hepsiburada.com/tr/companies/hepsiburada?guide=siparis-entegrasyonu-onemli-bilgiler&product=siparis-olusturma-entegrasyonu&view=guide";
     private const string ListingGuide = "https://developers.hepsiburada.com/tr/companies/hepsiburada?category=baslangic&op=Listing+Bilgilerini+Sorgulama&product=listeleme&version=v1&view=endpoint";
     private const string CategoryEndpointGuide = "https://developers.hepsiburada.com/tr/companies/hepsiburada?category=katalog-urun-entegrasyonu&product=katalog-urun-entegrasyonu&version=v1.0&op=getAllCategoriesByParameters&view=endpoint";
@@ -283,17 +311,115 @@ public sealed class HepsiburadaHttpClient(
             return Failure<AdapterPageResult<RemoteReturnClaim>>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_CLAIM_LIST_CONTRACT_INVALID", "Hepsiburada talep listesi beklenen sayfa sözleşmesiyle eşleşmiyor.", HttpStatusCode.BadGateway);
         }
     }
-    async Task<AdapterResult<RemoteReturnClaim>> IReturnPort.GetAsync(AdapterContext context, string externalReturnId, CancellationToken cancellationToken) => await Unsupported<RemoteReturnClaim>("Hepsiburada iade okuması sonraki aşamada eklenecektir.");
-    public Task<AdapterResult<IReadOnlyList<ReturnIssueReason>>> IssueReasonsAsync(AdapterContext context, CancellationToken cancellationToken) => Unsupported<IReadOnlyList<ReturnIssueReason>>("Hepsiburada iade okuması sonraki aşamada eklenecektir.");
-    public Task<AdapterResult<ReturnActionResult>> ExecuteAsync(AdapterContext context, ReturnActionCommand command, CancellationToken cancellationToken) => Unsupported<ReturnActionResult>("Hepsiburada iade yazması SIT kanıtı ve ayrı yetenek kapısı açılana kadar kapalıdır.");
-    public Task<AdapterResult<InvoiceDeliveryResult>> DeliverAsync(AdapterContext context, InvoiceDeliveryCommand command, CancellationToken cancellationToken) => Unsupported<InvoiceDeliveryResult>("Hepsiburada fatura teslim yazması SIT sözleşmesi ve ayrı yetenek kapısı doğrulanana kadar kapalıdır.");
-    public Task<AdapterResult<InvoiceDeliveryStatus>> QueryDeliveryAsync(AdapterContext context, ExternalInvoiceDeliveryReference reference, CancellationToken cancellationToken) => Unsupported<InvoiceDeliveryStatus>("Hepsiburada fatura teslim durumu okuması SIT sözleşmesi doğrulanana kadar desteklenmiyor.");
+    async Task<AdapterResult<RemoteReturnClaim>> IReturnPort.GetAsync(AdapterContext context, string externalReturnId, CancellationToken cancellationToken) => await Unsupported<RemoteReturnClaim>("Hepsiburada tekil talep detayı için belgeli bir GET endpoint'i sunmuyor; durum taramasıyla güncellenmeye devam edecek.");
+    public Task<AdapterResult<IReadOnlyList<ReturnIssueReason>>> IssueReasonsAsync(AdapterContext context, CancellationToken cancellationToken) => Task.FromResult(AdapterResult<IReadOnlyList<ReturnIssueReason>>.Success(ClaimRejectionReasons));
+    public async Task<AdapterResult<ReturnActionResult>> ExecuteAsync(AdapterContext context, ReturnActionCommand command, CancellationToken cancellationToken)
+    {
+        if (!string.Equals(settings.AuthenticationMode, "BASIC", StringComparison.OrdinalIgnoreCase))
+            return await Unsupported<ReturnActionResult>("Hepsiburada auth biçimi SIT hesabında doğrulanana kadar talep aksiyonu gönderilmedi.");
+        var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
+        if (account is null) return Failure<ReturnActionResult>(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIAL_INVALID", "Hepsiburada bağlantı bilgileri bulunamadı.", HttpStatusCode.Unauthorized);
+        if (!IntegrationRuntimePolicy.AllowsExternalWrite(account.Connection, context, GlobalWritesEnabled, ConnectionWritesEnabled(account.Connection.SettingsJson)))
+            return await Unsupported<ReturnActionResult>("Hepsiburada talep aksiyonu yalnız doğrulanmış Stage bağlantısında veya dış yazma kapıları açılmış canlı bağlantıda kullanılabilir.");
+        if (string.IsNullOrWhiteSpace(command.ExternalClaimId))
+            return Failure<ReturnActionResult>(AdapterErrorClass.Validation, "HEPSIBURADA_CLAIM_NUMBER_REQUIRED", "Talep numarası zorunludur.", HttpStatusCode.BadRequest);
+
+        var action = command.Action.Trim().ToUpperInvariant();
+        string path;
+        object body;
+        string resultStatus;
+        if (action == "APPROVE")
+        {
+            var finalizedWith = command.FinalizedWith?.Trim();
+            if (finalizedWith is not ("Refund" or "Change"))
+                return Failure<ReturnActionResult>(AdapterErrorClass.Validation, "HEPSIBURADA_FINALIZED_WITH_REQUIRED", "Talep kabulünde iade veya ürün değişimi seçilmelidir.", HttpStatusCode.BadRequest);
+            path = AcceptClaim(account, command.ExternalClaimId);
+            body = new { FinalizedWith = finalizedWith };
+            resultStatus = "ACCEPTED";
+        }
+        else if (action == "REJECT")
+        {
+            if (string.IsNullOrWhiteSpace(command.ReasonCode) || !ClaimRejectionReasons.Any(reason => reason.Id == command.ReasonCode)
+                || string.IsNullOrWhiteSpace(command.Explanation) || command.Explanation.Trim().Length > 500)
+                return Failure<ReturnActionResult>(AdapterErrorClass.Validation, "HEPSIBURADA_CLAIM_REJECTION_INVALID", "Talep reddinde belgelenmiş ret nedeni ve en fazla 500 karakterlik açıklama zorunludur.", HttpStatusCode.BadRequest);
+            path = RejectClaim(account, command.ExternalClaimId);
+            body = new { ClaimRejectionReason = command.ReasonCode, MerchantStatement = command.Explanation.Trim() };
+            resultStatus = "REJECTED";
+        }
+        else
+            return Failure<ReturnActionResult>(AdapterErrorClass.Validation, "HEPSIBURADA_CLAIM_ACTION_INVALID", "Talep aksiyonu APPROVE veya REJECT olmalıdır.", HttpStatusCode.BadRequest);
+
+        using var content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
+        var response = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Post, path, content, cancellationToken);
+        return response.IsSuccess
+            ? AdapterResult<ReturnActionResult>.Success(new(command.ExternalClaimId, resultStatus, null), response.RateLimit)
+            : AdapterResult<ReturnActionResult>.Failure(response.Error!, response.RateLimit);
+    }
+    public async Task<AdapterResult<InvoiceDeliveryResult>> DeliverAsync(AdapterContext context, InvoiceDeliveryCommand command, CancellationToken cancellationToken)
+    {
+        if (!string.Equals(settings.AuthenticationMode, "BASIC", StringComparison.OrdinalIgnoreCase))
+            return await Unsupported<InvoiceDeliveryResult>("Hepsiburada auth biçimi SIT hesabında doğrulanana kadar fatura bağlantısı gönderilmedi.");
+        var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
+        if (account is null) return Failure<InvoiceDeliveryResult>(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIAL_INVALID", "Hepsiburada bağlantı bilgileri bulunamadı.", HttpStatusCode.Unauthorized);
+        if (!IntegrationRuntimePolicy.AllowsExternalWrite(account.Connection, context, GlobalWritesEnabled, ConnectionWritesEnabled(account.Connection.SettingsJson)))
+            return await Unsupported<InvoiceDeliveryResult>("Hepsiburada fatura teslimi yalnız doğrulanmış Stage bağlantısında veya dış yazma kapıları açılmış canlı bağlantıda kullanılabilir.");
+        if (!HepsiburadaInvoiceDeliveryPolicy.TryCreate(command, out var invoice, out var validationError))
+            return Failure<InvoiceDeliveryResult>(AdapterErrorClass.Validation, "HEPSIBURADA_INVOICE_DELIVERY_INVALID", validationError, HttpStatusCode.BadRequest);
+
+        var body = JsonSerializer.Serialize(new
+        {
+            arrangementDate = invoice!.ArrangementDate,
+            invoiceLink = invoice.InvoiceLink.AbsoluteUri,
+            invoices = new[]
+            {
+                new
+                {
+                    arrangementDate = invoice.ArrangementDate,
+                    contentType = invoice.ContentType,
+                    invoiceLink = invoice.InvoiceLink.AbsoluteUri,
+                    orderNumber = invoice.OrderNumber
+                }
+            }
+        });
+        using var content = new StringContent(body, Encoding.UTF8, "application/json");
+        var path = InvoiceLink(account, invoice.PackageNumber);
+        var response = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Put, path, content, cancellationToken);
+        if (!response.IsSuccess) return AdapterResult<InvoiceDeliveryResult>.Failure(response.Error!, response.RateLimit);
+        return AdapterResult<InvoiceDeliveryResult>.Success(new(invoice.PackageNumber, "SUBMITTED"), response.RateLimit);
+    }
+
+    public async Task<AdapterResult<InvoiceDeliveryStatus>> QueryDeliveryAsync(AdapterContext context, ExternalInvoiceDeliveryReference reference, CancellationToken cancellationToken)
+    {
+        if (!string.Equals(settings.AuthenticationMode, "BASIC", StringComparison.OrdinalIgnoreCase))
+            return await Unsupported<InvoiceDeliveryStatus>("Hepsiburada auth biçimi SIT hesabında doğrulanana kadar fatura durumu sorgulanmadı.");
+        var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
+        if (account is null) return Failure<InvoiceDeliveryStatus>(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIAL_INVALID", "Hepsiburada bağlantı bilgileri bulunamadı.", HttpStatusCode.Unauthorized);
+        if (!IntegrationRuntimePolicy.AllowsManualRead(account.Connection))
+            return await Unsupported<InvoiceDeliveryStatus>("Hepsiburada fatura durumu yalnız etkin veya doğrulanmış bağlantıdan okunabilir.");
+        if (string.IsNullOrWhiteSpace(reference.OrderNumber))
+            return Failure<InvoiceDeliveryStatus>(AdapterErrorClass.Validation, "HEPSIBURADA_ORDER_NUMBER_REQUIRED", "Hepsiburada fatura durumu için sipariş numarası zorunludur.", HttpStatusCode.BadRequest);
+
+        var response = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Get, OrderDetails(account, reference.OrderNumber), cancellationToken);
+        if (!response.IsSuccess) return AdapterResult<InvoiceDeliveryStatus>.Failure(response.Error!, response.RateLimit);
+        try
+        {
+            var uploaded = HepsiburadaJsonMapper.InvoiceUploaded(response.Value!.RootElement);
+            return AdapterResult<InvoiceDeliveryStatus>.Success(new(reference.ExternalReference, uploaded ? "INVOICED" : "NOT_INVOICED", uploaded), response.RateLimit);
+        }
+        catch (JsonException)
+        {
+            return Failure<InvoiceDeliveryStatus>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_INVOICE_STATUS_CONTRACT_INVALID", "Hepsiburada sipariş yanıtında fatura durumu beklenen hasInvoice alanıyla eşleşmiyor.", HttpStatusCode.BadGateway);
+        }
+    }
 
     internal static string Orders(HepsiburadaRequestContext context, string query) => $"orders/merchantid/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}?{query}";
     internal static string OrderDetails(HepsiburadaRequestContext context, string orderNumber) => $"orders/merchantid/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}/ordernumber/{Uri.EscapeDataString(orderNumber)}";
     internal static string Packages(HepsiburadaRequestContext context, string query) => $"packages/merchantid/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}?{query}";
+    internal static string InvoiceLink(HepsiburadaRequestContext context, string packageNumber) => $"packages/merchantid/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}/packagenumber/{Uri.EscapeDataString(packageNumber)}/invoice";
     internal static string Listings(HepsiburadaRequestContext context, string query) => $"listings/merchantid/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}?{query}";
     internal static string Claims(HepsiburadaRequestContext context, string status, string query) => $"claims/merchantId/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}/status/{Uri.EscapeDataString(status)}?{query}";
+    internal static string AcceptClaim(HepsiburadaRequestContext context, string claimNumber) => $"claims/number/{Uri.EscapeDataString(claimNumber)}/accept";
+    internal static string RejectClaim(HepsiburadaRequestContext context, string claimNumber) => $"claims/number/{Uri.EscapeDataString(claimNumber)}/reject";
     internal static string ClaimQuery(int offset, int limit, DateTimeOffset? beginDate, DateTimeOffset? endDate)
     {
         var query = new List<string>
@@ -319,12 +445,16 @@ public sealed class HepsiburadaHttpClient(
         return match is not null;
     }
 
-    private async Task<AdapterResult<JsonDocument>> SendAsync(HepsiburadaRequestContext context, Uri baseAddress, HttpMethod method, string path, CancellationToken cancellationToken)
+    private async Task<AdapterResult<JsonDocument>> SendAsync(HepsiburadaRequestContext context, Uri baseAddress, HttpMethod method, string path, CancellationToken cancellationToken) =>
+        await SendAsync(context, baseAddress, method, path, null, cancellationToken);
+
+    private async Task<AdapterResult<JsonDocument>> SendAsync(HepsiburadaRequestContext context, Uri baseAddress, HttpMethod method, string path, HttpContent? content, CancellationToken cancellationToken)
     {
         if (!string.Equals(settings.AuthenticationMode, "BASIC", StringComparison.OrdinalIgnoreCase))
             return AdapterResult<JsonDocument>.Failure(new(AdapterErrorClass.NotSupported, "HEPSIBURADA_AUTHENTICATION_UNVERIFIED", "Hepsiburada auth biçimi SIT hesabında doğrulanana kadar bağlantı isteği gönderilmedi.", null, null, null));
         var client = clients.CreateClient("Hepsiburada");
         using var request = new HttpRequestMessage(method, new Uri(baseAddress, path));
+        request.Content = content;
         var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{context.Username}:{context.Password}"));
         request.Headers.Authorization = new AuthenticationHeaderValue("Basic", credentials);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
@@ -347,7 +477,7 @@ public sealed class HepsiburadaHttpClient(
                 logger.LogWarning("Hepsiburada API isteği reddedildi. ConnectionId: {ConnectionId}, Status: {Status}, Code: {Code}, RequestId: {RequestId}, Limit: {Limit}, Remaining: {Remaining}, ResetAt: {ResetAt}, RetryAfterSeconds: {RetryAfterSeconds}", context.Connection.Id, (int)response.StatusCode, error.Code, requestId, rate?.Limit, rate?.Remaining, rate?.ResetAt, error.RetryAfter?.TotalSeconds ?? rate?.RetryAfter?.TotalSeconds);
                 return AdapterResult<JsonDocument>.Failure(error, rate);
             }
-            try { return AdapterResult<JsonDocument>.Success(JsonDocument.Parse(body), rate); }
+            try { return AdapterResult<JsonDocument>.Success(JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body), rate); }
             catch (JsonException)
             {
                 return AdapterResult<JsonDocument>.Failure(new(AdapterErrorClass.ContractViolation, "HEPSIBURADA_JSON_INVALID", "Hepsiburada geçerli JSON yanıtı vermedi.", (int)response.StatusCode, null, requestId), rate);
@@ -368,6 +498,16 @@ public sealed class HepsiburadaHttpClient(
     {
         var offset = int.TryParse(page.Cursor, NumberStyles.None, CultureInfo.InvariantCulture, out var parsed) ? Math.Max(0, parsed) : 0;
         return (offset, Math.Clamp(page.Limit, 1, Math.Clamp(configuredLimit, 1, 10)));
+    }
+
+    private static bool ConnectionWritesEnabled(string settingsJson)
+    {
+        try
+        {
+            using var settings = JsonDocument.Parse(settingsJson);
+            return settings.RootElement.TryGetProperty("ExternalWritesEnabled", out var enabled) && enabled.ValueKind == JsonValueKind.True;
+        }
+        catch (JsonException) { return false; }
     }
 
     private static (int Page, int Limit) ReferencePage(AdapterPageRequest page, int maximumLimit)

@@ -2,6 +2,7 @@ using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
 using MarketplaceHub.Infrastructure.Persistence;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Xunit;
@@ -291,6 +292,7 @@ public sealed class HepsiburadaAdapterTests
     public void HepsiburadaReferenceReadIsRegisteredAndCatalogBootstrapRequiresAConfiguredProductionUrl()
     {
         Assert.Contains(MarketplaceCapabilities.ReferenceRead, MarketplaceConnectionService.HepsiburadaCapabilityCodes);
+        Assert.Contains(InvoicingCapabilities.InvoiceDeliver, MarketplaceConnectionService.HepsiburadaCapabilityCodes);
         Assert.True(MarketplaceConnectionService.ShouldBootstrapHepsiburadaCatalogReferences("STAGE", null));
         Assert.False(MarketplaceConnectionService.ShouldBootstrapHepsiburadaCatalogReferences("PRODUCTION", null));
         Assert.False(MarketplaceConnectionService.ShouldBootstrapHepsiburadaCatalogReferences("PRODUCTION", "http://catalog.example/product/"));
@@ -305,6 +307,7 @@ public sealed class HepsiburadaAdapterTests
             null!,
             Options.Create(new HepsiburadaOptions()),
             TimeProvider.System,
+            new ConfigurationBuilder().Build(),
             NullLogger<HepsiburadaHttpClient>.Instance);
         using var response = new HttpResponseMessage(System.Net.HttpStatusCode.TooManyRequests);
         response.Headers.TryAddWithoutValidation("X-RateLimit-Limit", "1000");
@@ -337,6 +340,7 @@ public sealed class HepsiburadaAdapterTests
             null!,
             Options.Create(options),
             TimeProvider.System,
+            new ConfigurationBuilder().Build(),
             NullLogger<HepsiburadaHttpClient>.Instance);
 
         var writes = new[]
@@ -362,6 +366,7 @@ public sealed class HepsiburadaAdapterTests
             null!,
             Options.Create(new HepsiburadaOptions()),
             TimeProvider.System,
+            new ConfigurationBuilder().Build(),
             NullLogger<HepsiburadaHttpClient>.Instance);
 
         var delivery = await adapter.DeliverAsync(null!, new InvoiceDeliveryCommand("package-1", "LINK", "{}", "hash"), CancellationToken.None);
@@ -378,13 +383,53 @@ public sealed class HepsiburadaAdapterTests
     }
 
     [Fact]
-    public async Task HepsiburadaReturnAndShipmentWritesRemainDisabled()
+    public void InvoiceDeliveryPolicy_RequiresMatchingPackageHttpsLinkDateAndSupportedContentType()
+    {
+        var command = new InvoiceDeliveryCommand("package-1", "LINK", """
+        {
+          "shipmentPackageId": "package-1",
+          "orderNumber": "order-1",
+          "invoiceLink": "https://files.example/invoice.pdf",
+          "arrangementDate": "2026-09-29T12:00:00+03:00",
+          "contentType": "Application/PDF"
+        }
+        """, "hash");
+
+        Assert.True(HepsiburadaInvoiceDeliveryPolicy.TryCreate(command, out var request, out var error));
+        Assert.Empty(error);
+        Assert.NotNull(request);
+        Assert.Equal("package-1", request.PackageNumber);
+        Assert.Equal("order-1", request.OrderNumber);
+        Assert.Equal("application/pdf", request.ContentType);
+        Assert.Equal("https", request.InvoiceLink.Scheme);
+
+        var mismatchedPackage = command with { PayloadJson = command.PayloadJson.Replace("package-1", "package-2", StringComparison.Ordinal) };
+        Assert.False(HepsiburadaInvoiceDeliveryPolicy.TryCreate(mismatchedPackage, out _, out _));
+        var httpLink = command with { PayloadJson = command.PayloadJson.Replace("https://", "http://", StringComparison.Ordinal) };
+        Assert.False(HepsiburadaInvoiceDeliveryPolicy.TryCreate(httpLink, out _, out _));
+        var unsupportedContentType = command with { PayloadJson = command.PayloadJson.Replace("Application/PDF", "image/png", StringComparison.Ordinal) };
+        Assert.False(HepsiburadaInvoiceDeliveryPolicy.TryCreate(unsupportedContentType, out _, out _));
+    }
+
+    [Theory]
+    [InlineData("true", true)]
+    [InlineData("false", false)]
+    public void InvoiceStatusMapper_ReadsHasInvoice(string rawValue, bool expected)
+    {
+        using var json = JsonDocument.Parse($"{{\"hasInvoice\":{rawValue}}}");
+
+        Assert.Equal(expected, HepsiburadaJsonMapper.InvoiceUploaded(json.RootElement));
+    }
+
+    [Fact]
+    public async Task HepsiburadaReturnWriteRemainsAuthGatedAndReasonsAreAvailable()
     {
         var adapter = new HepsiburadaHttpClient(
             null!,
             null!,
             Options.Create(new HepsiburadaOptions()),
             TimeProvider.System,
+            new ConfigurationBuilder().Build(),
             NullLogger<HepsiburadaHttpClient>.Instance);
 
         var returnAction = await adapter.ExecuteAsync(null!, new ReturnActionCommand("claim-1", [], "APPROVE", null, null, []), CancellationToken.None);
@@ -393,7 +438,8 @@ public sealed class HepsiburadaAdapterTests
         var label = await adapter.GetCommonLabelAsync(null!, "tracking", CancellationToken.None);
 
         Assert.Equal(AdapterErrorClass.NotSupported, returnAction.Error!.Class);
-        Assert.Equal(AdapterErrorClass.NotSupported, reasons.Error!.Class);
+        Assert.True(reasons.IsSuccess);
+        Assert.Contains(reasons.Value!, reason => reason.Id == "ProductNotDefective");
         Assert.Equal(AdapterErrorClass.NotSupported, packageAction.Error!.Class);
         Assert.Equal(AdapterErrorClass.NotSupported, label.Error!.Class);
     }

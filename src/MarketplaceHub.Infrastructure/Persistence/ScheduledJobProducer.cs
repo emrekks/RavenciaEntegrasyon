@@ -386,7 +386,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         or "ORDER_RECONCILE_MEDIUM"
         or "ORDER_RECONCILE_DAILY";
 
-    private static bool IsHepsiburadaReadPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "RETURNS";
+    private static bool IsHepsiburadaReadPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "ORDER_INVOICE_RECONCILIATION" or "RETURNS";
 
     private (string JobType, string DedupPrefix, string PayloadJson)? Definition(string resourceType, Guid connectionId, string platformCode) => resourceType switch
     {

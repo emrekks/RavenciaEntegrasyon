@@ -600,6 +600,20 @@ public sealed partial class InvoicingBillingService(
     {
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
         if (connection is null) return false;
+        if (string.Equals(connection.PlatformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase))
+        {
+            var evidence = await db.PlatformCapabilities.AsNoTracking().AnyAsync(x =>
+                x.TenantId == tenantId
+                && x.ConnectionId == connectionId
+                && x.Code == capability
+                && x.SupportLevel == CapabilitySupportLevel.Supported
+                && x.Environment == connection.Environment
+                && x.StoreScope == connection.ExternalStoreId
+                && x.VerifiedAt != null
+                && x.FixtureChecksum != null,
+                cancellationToken);
+            if (!evidence) return false;
+        }
         var enabled = ConnectionWritesEnabled(connection.SettingsJson);
         var manual = new AdapterContext(tenantId, connectionId, "runtime-gate", "runtime-gate", timeProvider.GetUtcNow());
         return IntegrationRuntimePolicy.AllowsManualWrite(connection, manual, configuration.GetValue<bool>("FeatureFlags:ExternalWrites"), enabled);

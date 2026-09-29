@@ -47,6 +47,7 @@ public static class MarketplaceJobTypes
     public const string HepsiburadaOrderSync = "HEPSIBURADA_ORDER_SYNC";
     public const string HepsiburadaOrderRecoverySync = "HEPSIBURADA_ORDER_RECOVERY_SYNC";
     public const string HepsiburadaReturnSync = "HEPSIBURADA_RETURN_SYNC";
+    public const string HepsiburadaOrderInvoiceReconciliation = "HEPSIBURADA_ORDER_INVOICE_RECONCILIATION";
 
     public static string ForPlatform(string? platformCode, string jobType) => platformCode?.Trim().ToUpperInvariant() switch
     {
@@ -69,6 +70,7 @@ public static class MarketplaceJobTypes
             OrderSync => HepsiburadaOrderSync,
             OrderRecoverySync => HepsiburadaOrderRecoverySync,
             ReturnSync => HepsiburadaReturnSync,
+            OrderInvoiceReconciliation => HepsiburadaOrderInvoiceReconciliation,
             _ => jobType
         },
         _ => jobType
@@ -246,7 +248,7 @@ public sealed record ReturnPollWindow(DateTimeOffset? ModifiedAfter, DateTimeOff
 public sealed record RemoteReturnLine(string ExternalLineId, string ExternalOrderLineId, decimal Quantity, IReadOnlyList<string>? AlternateExternalOrderLineIds = null);
 public sealed record RemoteReturnClaim(string ExternalClaimId, string ExternalOrderId, string RawStatus, string? ReasonCode, string? ReasonText, DateTimeOffset? ActionDueAt, DateTimeOffset LastModifiedAt, IReadOnlyList<RemoteReturnLine> Lines, string RawJson, string? CargoProviderName = null, string? CargoTrackingNumber = null, string? CargoTrackingLink = null);
 public sealed record ReturnEvidenceFile(string FileName, string MimeType, byte[] Content);
-public sealed record ReturnActionCommand(string ExternalClaimId, IReadOnlyList<string> ExternalLineItemIds, string Action, string? ReasonCode, string? Explanation, IReadOnlyList<ReturnEvidenceFile> EvidenceFiles);
+public sealed record ReturnActionCommand(string ExternalClaimId, IReadOnlyList<string> ExternalLineItemIds, string Action, string? ReasonCode, string? Explanation, IReadOnlyList<ReturnEvidenceFile> EvidenceFiles, string? FinalizedWith = null);
 public sealed record ReturnActionResult(string ExternalClaimId, string Status, string? ExternalOperationId);
 public sealed record ReturnIssueReason(string Id, string Name, bool EvidenceRequired);
 public sealed record VerifiedWebhookEnvelope(string ExternalMessageId, string PayloadHash, string ResourceType, string RawJson);
@@ -582,8 +584,9 @@ public sealed record ReturnDetailView(
     bool StockDispositionAvailable = false,
     DateTimeOffset? ApprovedAt = null,
     bool ExternalWritesEnabled = false,
-    bool DecisionPending = false);
-public sealed record ReturnDecisionCommand(string Action, string? ReasonCode, string? Explanation, IReadOnlyList<Guid>? EvidenceAssetIds, IReadOnlyList<Guid>? ReturnLineIds = null);
+    bool DecisionPending = false,
+    string? PlatformCode = null);
+public sealed record ReturnDecisionCommand(string Action, string? ReasonCode, string? Explanation, IReadOnlyList<Guid>? EvidenceAssetIds, IReadOnlyList<Guid>? ReturnLineIds = null, string? FinalizedWith = null);
 public sealed record ReturnDispositionCommand(Guid ReturnLineId, string Disposition, decimal Quantity, string Reason);
 
 public interface IMarketplaceSalesService

@@ -31,7 +31,7 @@ public sealed record InvoiceCancellation(string ExternalReference, string? EttnU
 public sealed record InvoiceCancellationResult(string ExternalReference, string RawStatus, string CanonicalStatus, bool IsTerminal);
 public sealed record InvoiceDeliveryCommand(string ExternalPackageId, string DeliveryType, string PayloadJson, string RequestHash);
 public sealed record InvoiceDeliveryResult(string ExternalReference, string RawStatus);
-public sealed record ExternalInvoiceDeliveryReference(string ExternalReference);
+public sealed record ExternalInvoiceDeliveryReference(string ExternalReference, string? OrderNumber = null);
 public sealed record InvoiceDeliveryStatus(string ExternalReference, string RawStatus, bool IsTerminal);
 
 public enum InvoiceDeliveryFailureDisposition

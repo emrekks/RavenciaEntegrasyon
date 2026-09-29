@@ -35,7 +35,10 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
     internal static readonly string[] HepsiburadaCapabilityCodes =
     [
         MarketplaceCapabilities.ConnectionTest, MarketplaceCapabilities.ReferenceRead, MarketplaceCapabilities.ProductRead,
-        MarketplaceCapabilities.OrderRead, MarketplaceCapabilities.ReturnRead
+        MarketplaceCapabilities.ProductWrite, MarketplaceCapabilities.InventoryWrite, MarketplaceCapabilities.PriceWrite,
+        MarketplaceCapabilities.OrderRead, MarketplaceCapabilities.ShipmentWrite, MarketplaceCapabilities.LabelRead,
+        MarketplaceCapabilities.LabelWrite, MarketplaceCapabilities.ReturnRead, MarketplaceCapabilities.ReturnWrite,
+        InvoicingCapabilities.InvoiceDeliver
     ];
     private static readonly HashSet<string> ResourceTypes = new(StringComparer.Ordinal) { "ORDERS", "ORDER_RECOVERY", "ORDER_LIFECYCLE", "ORDER_RECONCILE_SHORT", "ORDER_RECONCILE_MEDIUM", "ORDER_RECONCILE_DAILY", "ORDER_INVOICE_RECONCILIATION", "RETURNS", "RETURN_LIFECYCLE", "RETURN_RECONCILE_SHORT", "RETURN_RECONCILE_MEDIUM", "RETURN_RECONCILE_DAILY", "STOCK_RECONCILE_SHORT", "STOCK_RECONCILE_MEDIUM", "STOCK_RECONCILE_DAILY", "REFERENCE_DATA", MarketplaceExternalWritePolicies.Price, MarketplaceExternalWritePolicies.Stock, MarketplaceExternalWritePolicies.Shipment, MarketplaceExternalWritePolicies.Return };
     private readonly IDataProtector _credentialProtector = dataProtection.CreateProtector("MarketplaceHub.PlatformCredential.v1");
