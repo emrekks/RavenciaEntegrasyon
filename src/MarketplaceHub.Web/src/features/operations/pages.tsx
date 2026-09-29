@@ -79,7 +79,10 @@ type JobPresentation = { title: string; icon: JobTypeIconName; description: stri
 
 function jobPresentation(jobType: string): JobPresentation {
   const type = jobType.toUpperCase()
-  if (type.includes('PRICE') || type.includes('INVENTORY') || type.includes('STOCK')) return { title: 'Fiyat ve Stok Güncellemesi', icon: 'price', description: 'Ürün fiyatı veya stok bilgisi pazaryeriyle karşılaştırılır ve güncellenir.' }
+  if (type === 'STOCK_PROJECTION_DISPATCH') return { title: 'Stok Gönderim Hazırlığı', icon: 'price', description: 'Yerel stok değişikliği gönderim kuyruğuna aktarılır. Dış yazma kapalıysa pazaryerine değişiklik gönderilmez; başarılı durumu yalnızca bu hazırlık adımının işlendiğini gösterir.' }
+  if (type === 'TRENDYOL_STOCK_RECONCILIATION') return { title: 'Stok Uzlaştırma', icon: 'price', description: 'Yerel stok projection kayıtları kontrol edilir. Bu tarama tek başına pazaryerine stok gönderildiği anlamına gelmez.' }
+  if (type === 'TRENDYOL_PRICE_INVENTORY_SYNC') return { title: 'Fiyat ve Stok Gönderimi', icon: 'price', description: 'Fiyat veya stok bilgisi Trendyol’a gönderilir. Dış yazma kapalıysa yeni gönderim engellenir.' }
+  if (type.includes('PRICE') || type.includes('INVENTORY') || type.includes('STOCK')) return { title: 'Fiyat ve Stok İşlemi', icon: 'price', description: 'Fiyat veya stokla ilgili arka plan işlemi yürütülür; ayrıntılar için kaydı açabilirsiniz.' }
   if (type === 'TRENDYOL_ORDER_STATUS_SYNC') return { title: 'Sipariş Durum Kontrolü', icon: 'order', description: 'Açık siparişlerin paket ve taşıma durumları kontrol edilerek yerel kayıtlar güncellenir.' }
   if (type === 'TRENDYOL_ORDER_RECONCILIATION') return { title: 'Sipariş Mutabakatı', icon: 'order', description: 'Yerel siparişlerle Trendyol kayıtları karşılaştırılır; eksik veya farklı durumlar düzeltilir.' }
   if (type === 'TRENDYOL_ORDER_INVOICE_RECONCILIATION') return { title: 'Paket Fatura Durum Kontrolü', icon: 'invoice', description: 'Trendyol’daki açık paketlerin fatura durumu okunur ve yerel pakete işlenir. Yeni fatura oluşturmaz.' }
@@ -105,6 +108,9 @@ function jobSource(jobType: string) {
 
 function fallbackJobChange(job: JobSummary): JobChange {
   const type = job.jobType.toUpperCase()
+  if (type === 'STOCK_PROJECTION_DISPATCH') return { label: 'İşlem türü', value: 'Stok gönderim hazırlığı', detail: 'Bu adım dış API’ye yazmaz. Dış yazma açıksa ayrı bir fiyat-stok gönderim işi oluşturur.' }
+  if (type === 'TRENDYOL_STOCK_RECONCILIATION') return { label: 'İşlem türü', value: 'Stok uzlaştırma taraması', detail: 'Bu kayıt tek başına pazaryerine stok gönderildiği anlamına gelmez.' }
+  if (type === 'TRENDYOL_PRICE_INVENTORY_SYNC') return { label: 'İşlem türü', value: 'Fiyat ve stok gönderimi', detail: 'Dış yazma kapalıysa Trendyol’a yeni gönderim yapılmaz.' }
   if (type.includes('SHIPMENT_ACTION')) return { label: 'Yapılan değişiklik', value: 'Paket işlemi', detail: 'Paket işlemi Trendyol’a gönderildi.' }
   if (type === 'TRENDYOL_ORDER_STATUS_SYNC') return { label: 'Tarama türü', value: 'Sipariş durum taraması', detail: 'Açık siparişlerin paket ve taşıma durumları kontrol edilerek yerel durum güncellenir.' }
   if (type === 'TRENDYOL_ORDER_RECONCILIATION') return { label: 'Tarama türü', value: 'Kapsamlı sipariş taraması', detail: 'Yerel siparişler ile pazaryeri kayıtları karşılaştırılır; durum ve paket farklılıkları düzeltilir.' }

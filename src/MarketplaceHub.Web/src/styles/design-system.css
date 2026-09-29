@@ -1354,7 +1354,7 @@
   .invoice-reference-workspace > header h2, .invoice-reference-workspace > header p { margin-bottom: var(--rv-space-1); }
   .invoice-reference-page-size { display: flex; align-items: center; gap: var(--rv-space-2); color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); white-space: nowrap; }
   .invoice-reference-page-size select { width: auto; min-width: 84px; }
-  .product-catalog-workspace-head .invoice-reference-page-size select { width: 68px; min-width: 68px; padding-inline: 8px; }
+  .product-catalog-workspace-head .invoice-reference-page-size select { width: 104px; min-width: 104px; padding-inline: 8px; }
   .invoice-reference-table { width: 100%; min-width: 0; overflow-x: auto; }
   .invoice-reference-head, .invoice-reference-row { display: grid; grid-template-columns: minmax(150px, 1.05fr) minmax(120px, .75fr) minmax(145px, 1fr) minmax(132px, .9fr) minmax(150px, 1.05fr) minmax(112px, .78fr) minmax(135px, .9fr); align-items: stretch; min-width: 0; }
   .invoice-reference-head { min-height: 50px; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border-bottom: 1px solid var(--rv-color-border); font-size: var(--rv-font-size-xs); font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
@@ -2921,7 +2921,7 @@
   .product-list-actions .product-action-icon { width: 16px; height: 16px; }
   .variant-table-head, .variant-table-row { min-width: 1120px; grid-template-columns: 42px minmax(150px, 1.2fr) minmax(118px, .9fr) minmax(118px, .9fr) 84px 96px 104px 96px 132px; }
   .variant-table-head > *, .variant-table-row > * { padding-inline: 6px; }
-  .order-reference-head, .order-reference-grid { min-width: 0; grid-template-columns: 32px minmax(145px, .9fr) minmax(90px, .55fr) minmax(220px, 1.4fr) minmax(92px, .55fr) minmax(115px, .65fr) minmax(130px, .76fr) minmax(138px, .78fr); }
+  .order-reference-head, .order-reference-grid { min-width: 0; grid-template-columns: 32px minmax(112px, .72fr) minmax(70px, .42fr) minmax(165px, 1.15fr) minmax(72px, .42fr) minmax(84px, .52fr) minmax(96px, .68fr) minmax(106px, .68fr); }
   .order-reference-products > article { grid-template-columns: 68px minmax(0, 1fr); }
   .order-reference-products img, .reference-product-placeholder { width: 68px; }
   .reference-product-media { width: 68px; min-width: 68px; height: 102px; min-height: 102px; }
@@ -6131,6 +6131,7 @@ small,
 .shopify-order-status-form-grid {
   grid-template-columns: minmax(0, 1fr);
   align-items: start;
+  padding: var(--rv-space-5) var(--rv-space-6);
 }
 
 .shopify-order-status-form-grid > label {
@@ -6165,6 +6166,17 @@ small,
   box-sizing: border-box;
   width: 100%;
   min-height: 44px;
+}
+
+.app-shell.stitch-shell main .shopify-invoice-status-form > label > select {
+  appearance: auto;
+  -webkit-appearance: menulist;
+  padding: 0;
+  background-color: transparent;
+  background-image: none;
+  border: 0;
+  border-bottom: 1px solid var(--rv-color-border-strong);
+  border-radius: 0;
 }
 
 .shopify-invoice-status-form > .notice,
@@ -10431,11 +10443,11 @@ small,
   display: inline-flex;
   min-height: 26px;
   align-items: center;
-  padding: 4px 7px;
+  padding: 0;
   color: var(--rv-color-ink);
-  background: var(--rv-color-accent-soft);
-  border: 1px solid color-mix(in srgb, var(--rv-color-accent) 45%, var(--rv-color-border));
-  border-radius: var(--rv-radius-sm);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
   font-size: 12px;
   font-weight: 750;
   line-height: 1.25;
@@ -10444,8 +10456,7 @@ small,
 
 .app-shell.stitch-shell main .invoice-document-link:hover {
   color: var(--rv-color-ink);
-  background: color-mix(in srgb, var(--rv-color-accent-soft) 78%, var(--rv-color-accent));
-  border-color: var(--rv-color-accent);
+  background: transparent;
   text-decoration: none;
 }
 

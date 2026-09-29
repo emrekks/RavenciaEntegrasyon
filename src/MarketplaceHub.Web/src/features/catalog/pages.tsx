@@ -29,6 +29,7 @@ import { productPublicationTargets } from './product-publication-submit'
 import { activeProductSyncJobs as filterActiveProductSyncJobs } from './product-sync-tracking'
 import { readVariantMediaAssignmentDraft, updateVariantMediaAssignmentDraft, variantMediaAssignmentKey, type VariantMediaAssignmentDrafts } from './variant-media-assignments'
 import { OperationFeedbackToast, type OperationFeedback } from './operation-feedback-toast'
+import { formatPanelColorValue } from '../marketplace/color-value-format'
 
 type Versioned = { id: string; version: number }
 type Category = Versioned & { name: string; path: string; depth: number; isLeaf: boolean; isActive: boolean }
@@ -315,6 +316,21 @@ function isSizeOptionName(name: string) {
   return ['BEDEN', 'BEDENLER', 'SIZE', 'SIZES', 'BOYUT', 'BOYUTLAR', 'NUMARA', 'NUMARALAR', 'SHOESIZE', 'AYAKKABINUMARASI'].includes(normalizeVariantOptionName(name))
 }
 
+function formatCatalogOptionLabel(value: string) {
+  const legacyColorLabels: Record<string, string> = {
+    GRI: 'Gri',
+    HAKI: 'Haki',
+    KAHVERENGI: 'Kahverengi',
+    LACIVERT: 'Lacivert',
+    SIYAH: 'Siyah',
+    YESIL: 'Yeşil',
+    MAVI: 'Mavi',
+    KIRMIZI: 'Kırmızı'
+  }
+  const key = value.trim().toLocaleUpperCase('tr-TR')
+  return legacyColorLabels[key] ?? formatPanelColorValue(value)
+}
+
 function preferredColorOption(options: ParsedVariantOption[]) {
   return options.find(option => isColorOptionName(option.name) && !isWebColorOptionName(option.name))
     ?? options.find(option => isColorOptionName(option.name))
@@ -328,6 +344,12 @@ function parseVariantOptionSignature(signature: string): ParsedVariantOption[] {
     const value = cleanOptionValue(part.slice(separatorIndex).replace(/^\s*[:=]\s*/, ''))
     return name && value ? [{ name, value }] : []
   })
+}
+
+function displayVariantOptionSignature(signature: string) {
+  const options = parseVariantOptionSignature(signature)
+  if (!options.length) return signature
+  return options.map(({ name, value }) => `${formatCatalogOptionLabel(name)}: ${isSizeOptionName(name) ? value.toLocaleUpperCase('tr-TR') : formatCatalogOptionLabel(value)}`).join(' · ')
 }
 
 function variantOptionEntries(variant: Pick<Variant, 'optionSignature' | 'options'>) {
@@ -546,7 +568,7 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
   const colorOf = (item: typeof variants[number]) => variantColorKey(item.variant) || 'Diğer'
   const colorLabelOf = (item: typeof variants[number]) => preferredColorOption(variantOptionEntries(item.variant))?.value.trim() || 'Diğer'
   const sizeOf = (item: typeof variants[number]) => optionValue(item.variant.optionSignature || '', ['BEDEN', 'SIZE'], item.variant.optionSignature || 'Ana varyant')
-  const colorLabels = sortedVariants.reduce<Record<string, string>>((result, item) => { const key = colorOf(item); result[key] ??= colorLabelOf(item); return result }, {})
+  const colorLabels = sortedVariants.reduce<Record<string, string>>((result, item) => { const key = colorOf(item); result[key] ??= formatCatalogOptionLabel(colorLabelOf(item)); return result }, {})
   const colorOptions = Object.keys(groups).sort((left, right) => compareLabelsAlphabetically(colorLabels[left] || left, colorLabels[right] || right))
   const [selectionDraft, setSelectionDraft] = useState<string[]>([])
   const [selectedColors, setSelectedColors] = useState<string[]>([])
@@ -616,8 +638,8 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
           <summary><span><b>1</b> Varyantları seç</span><UiIcon name="chevronDown" /></summary>
           <div className="quick-edit-filter-row">
             <details className="quick-edit-filter">
-              <summary><span>Renk</span><small>{selectedColors.length ? `${selectedColors.length} renk seçildi` : 'Renk seçin'}</small><UiIcon name="chevronDown" /></summary>
-              <div className="quick-edit-filter-options">{colorOptions.map(color => <label key={color}><input type="checkbox" checked={selectedColors.includes(color)} onChange={() => toggleColor(color)} /><span>{colorLabels[color] || color}</span><small>{groups[color].length} varyant</small></label>)}</div>
+              <summary><span>Renk</span><small>{selectedColors.length ? `${selectedColors.length} renk seçildi` : 'Tümü'}</small><UiIcon name="chevronDown" /></summary>
+              <div className="quick-edit-filter-options"><label><input type="checkbox" checked={!selectedColors.length} onChange={() => { setSelectedColors([]); applyFilterSelection([], selectedSizes) }} /><span>Tümü</span><small>{variants.filter(item => !selectedSizes.length || selectedSizes.includes(sizeOf(item))).length} varyant</small></label>{colorOptions.map(color => <label key={color}><input type="checkbox" checked={selectedColors.includes(color)} onChange={() => toggleColor(color)} /><span>{colorLabels[color] || formatCatalogOptionLabel(color)}</span><small>{groups[color].length} varyant</small></label>)}</div>
             </details>
             <details className="quick-edit-filter">
               <summary><span>Beden</span><small>{selectedSizes.length ? `${selectedSizes.length} beden seçildi` : 'Beden seçin'}</small><UiIcon name="chevronDown" /></summary>
@@ -631,8 +653,8 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
                 const isOpen = openColorGroups.includes(color)
                 const selectedCount = items.filter(item => selectedSet.has(item.variant.id)).length
                 return <section className={`quick-edit-color${isOpen ? ' is-open' : ''}`} key={color}>
-                  <button type="button" className="quick-edit-color-toggle" aria-expanded={isOpen} onClick={() => toggleColorGroup(color)}><span><strong>{colorLabels[color] || color}</strong><small>{selectedCount ? `${selectedCount}/${items.length} seçili` : 'Renk varyantlarını göster'}</small></span><b>{items.length}</b><UiIcon name="chevronDown" /></button>
-                  {isOpen && <div className="quick-edit-color-variants" role="region" aria-label={`${colorLabels[color] || color} varyantları`}>{renderVariantList(items)}</div>}
+                  <button type="button" className="quick-edit-color-toggle" aria-expanded={isOpen} onClick={() => toggleColorGroup(color)}><span><strong>{colorLabels[color] || formatCatalogOptionLabel(color)}</strong><small>{selectedCount ? `${selectedCount}/${items.length} seçili` : 'Renk varyantlarını göster'}</small></span><b>{items.length}</b><UiIcon name="chevronDown" /></button>
+                  {isOpen && <div className="quick-edit-color-variants" role="region" aria-label={`${colorLabels[color] || formatCatalogOptionLabel(color)} varyantları`}>{renderVariantList(items)}</div>}
                 </section>
               })}
             </div>
@@ -959,7 +981,7 @@ function ProductColorRows({ group, selected, onSelect, onQuickEdit, onImageClick
         <ProductCatalogImage url={product.primaryImageUrl} title={product.title} onClick={() => onImageClick(product.primaryImageUrl!, product.title)} />
         <div className="product-list-identity"><strong>{product.title}</strong><small>Model Kodu: <code className="technical-text model-code-value">{modelCode}</code></small></div>
         <ProductVariantHover count={group.variants.length} catalogCount={group.products.length} groups={variantDisplayGroups} />
-        <button type="button" className="product-list-price clickable-cell" aria-label={`${product.title}: fiyatı düzenle`} onClick={() => onQuickEdit('both')}><strong>{money(startingPrice, product.currency)}</strong></button>
+        <button type="button" className="product-list-price clickable-cell" aria-label={`${product.title}: fiyatı düzenle`} onClick={() => onQuickEdit('both')}><strong>{money(startingPrice ?? 0, product.currency)}</strong></button>
         <button type="button" className="product-list-stock clickable-cell" aria-label={`${product.title}: stoğu düzenle`} onClick={() => onQuickEdit('both')}><strong>{totalStock}</strong></button>
         <div className="product-list-platforms" aria-label="Platform durumları">{platformCards.length ? platformCards.map(card => <span className={`platform-state-icon ${card.state}`} key={card.key} title={card.label} aria-label={card.label}><PlatformSquareMark code={card.platformCode} name={card.label} /><i /></span>) : <span className="platform-state-icon inactive" title="Platform eşleşmesi bulunamadı" aria-label="Platform eşleşmesi bulunamadı"><PlatformSquareMark code="TRENDYOL" /><i /></span>}</div>
         <div className={`product-list-status pill ${statusTone}`.trim()}><span className="dot product-status-dot" aria-hidden="true" /><span className="product-status-label">{statusLabel}</span></div>
@@ -3769,7 +3791,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
                 const rowPlatforms = row.platformStatuses?.length ? row.platformStatuses : !editProductId ? variantPricingPlatforms : []
                 return <div data-variant-row-key={row.key} className={`variant-table-row ${hasVariantFilters && matchesFilter ? 'is-filter-match' : ''} ${hasVariantFilters && !matchesFilter ? 'is-filter-dimmed' : ''} ${draggedVariantKey === row.key ? 'is-dragging' : ''} ${dragOverVariantKey === row.key ? 'is-drag-target' : ''}`} key={row.key}>
                   <div className="variant-row-lead" title="Sıralamak için tutup sürükleyin" aria-label={`${row.optionSignature} varyantını sıralamak için sürükleyin`} onPointerDown={event => beginVariantPointerDrag(event, row.key)}><span className="variant-row-number">{index + 1}</span><span className="variant-drag-handle"><VariantDragHandleIcon /></span></div>
-                  <input aria-label={`${index + 1}. varyant seçenekleri`} value={row.optionSignature} readOnly />
+                  <input aria-label={`${index + 1}. varyant seçenekleri`} value={displayVariantOptionSignature(row.optionSignature)} readOnly />
                   <input aria-label={`${row.optionSignature} barkod`} className="technical-field barcode-value" value={row.barcode} onChange={event => updateVariantRow(row.key, 'barcode', event.target.value)} placeholder="EAN / barkod" />
                   <input aria-label={`${row.optionSignature} stok kodu`} className="technical-field sku-value" value={row.sku} onChange={event => updateVariantRow(row.key, 'sku', event.target.value)} placeholder="Varyant SKU" />
                   <input aria-label={`${row.optionSignature} stok`} value={row.stock} onChange={event => updateVariantRow(row.key, 'stock', event.target.value)} type="number" min="0" step="1" />
