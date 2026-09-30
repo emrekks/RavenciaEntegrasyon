@@ -51,6 +51,22 @@ public static class MarketplaceJobTypes
     public const string HepsiburadaReturnSync = "HEPSIBURADA_RETURN_SYNC";
     public const string HepsiburadaOrderInvoiceReconciliation = "HEPSIBURADA_ORDER_INVOICE_RECONCILIATION";
 
+    public static bool IsMarketplaceProcessorJob(string? jobType) => jobType is
+        ConnectionTest or ShopifyConnectionTest or HepsiburadaConnectionTest
+        or ReferenceSync
+        or ProductSync or ShopifyProductSync or HepsiburadaProductSync
+        or ProductCreate or ProductApprovalReconcile or ProductUpdate or ProductArchive
+        or PriceInventorySync or StockProjectionDispatch
+        or OrderSync or ShopifyOrderSync or HepsiburadaOrderSync
+        or OrderRecoverySync or ShopifyOrderRecoverySync or HepsiburadaOrderRecoverySync
+        or OrderStatusSync or ShopifyOrderStatusSync or HepsiburadaOrderStatusSync
+        or OrderReconciliation or ShopifyOrderReconciliation
+        or OrderInvoiceReconciliation or ShopifyOrderInvoiceReconciliation or HepsiburadaOrderInvoiceReconciliation
+        or ShipmentAction or CommonLabel or CapabilityProbe or StageTestOrder
+        or ReturnSync or HepsiburadaReturnSync or ReturnStatusSync or ReturnReconciliation or ReturnAction
+        or StockReconciliation
+        or WebhookIngest or ShopifyWebhookIngest or HepsiburadaWebhookIngest;
+
     public static string ForPlatform(string? platformCode, string jobType) => platformCode?.Trim().ToUpperInvariant() switch
     {
         "SHOPIFY" => jobType switch
