@@ -58,10 +58,36 @@ public sealed partial class HepsiburadaHttpClient(
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return Failure<ConnectionIdentity>(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIAL_INVALID", "Hepsiburada bağlantısı veya şifreli kullanıcı bilgileri eksik ya da geçersiz.", HttpStatusCode.Unauthorized);
         var result = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Get, Orders(account, "offset=0&limit=1"), cancellationToken);
+        string? verifiedUsernameToPersist = null;
+        if (!result.IsSuccess && string.Equals(result.Error?.Code, "HEPSIBURADA_CREDENTIALS_REJECTED", StringComparison.Ordinal))
+        {
+            var alternateUsername = HepsiburadaAuthenticationHandler.MerchantIdUsernameFallback(account.Username, account.Connection.ExternalStoreId);
+            if (alternateUsername is not null)
+            {
+                var alternateAccount = account with { Username = alternateUsername };
+                var alternateResult = await SendAsync(alternateAccount, alternateAccount.OmsBaseAddress, HttpMethod.Get, Orders(alternateAccount, "offset=0&limit=1"), cancellationToken);
+                if (alternateResult.IsSuccess)
+                {
+                    account = alternateAccount;
+                    result = alternateResult;
+                    verifiedUsernameToPersist = alternateUsername;
+                }
+                else if (alternateResult.Error?.HttpStatus == (int)HttpStatusCode.Unauthorized)
+                {
+                    return AdapterResult<ConnectionIdentity>.Failure(new(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIALS_REJECTED", "Hepsiburada canlı sipariş servisi entegratör kullanıcı adıyla da mağaza ID’siyle de kimlik doğrulamasını reddetti. Aynı aktif entegratör kaydının güncel canlı servis anahtarını ve mağaza yetkisini kontrol edin.", (int)HttpStatusCode.Unauthorized, alternateResult.Error.RetryAfter, alternateResult.Error.RemoteRequestId), alternateResult.RateLimit ?? result.RateLimit);
+                }
+                else
+                {
+                    return AdapterResult<ConnectionIdentity>.Failure(alternateResult.Error!, alternateResult.RateLimit);
+                }
+            }
+        }
         if (!result.IsSuccess) return AdapterResult<ConnectionIdentity>.Failure(result.Error!, result.RateLimit);
         try
         {
             HepsiburadaJsonMapper.OrderPage(result.Value!.RootElement);
+            if (verifiedUsernameToPersist is not null && !await authentication.SaveBasicUsernameAsync(context.TenantId, context.ConnectionId, verifiedUsernameToPersist, cancellationToken))
+                return Failure<ConnectionIdentity>(AdapterErrorClass.Authentication, "HEPSIBURADA_AUTH_USERNAME_SAVE_FAILED", "Hepsiburada mağaza ID’si ile doğrulama başarılı oldu ancak eşzamanlı kimlik bilgisi değişikliği nedeniyle çalışan Basic kullanıcı adı kaydedilemedi. Kimlik bilgilerini yeniden kaydedip tekrar deneyin.", HttpStatusCode.Conflict);
             return AdapterResult<ConnectionIdentity>.Success(new("HEPSIBURADA", account.Connection.Environment, account.Connection.ExternalStoreId, account.Connection.ApiVersion, account.Connection.ExternalStoreId), result.RateLimit);
         }
         catch (JsonException)

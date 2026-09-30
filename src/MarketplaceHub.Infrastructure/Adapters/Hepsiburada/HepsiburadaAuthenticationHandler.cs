@@ -58,6 +58,47 @@ public sealed class HepsiburadaAuthenticationHandler(
     internal static (string Username, string Password) ResolveBasicCredentials(string integratorUsername, string serviceKey) =>
         (integratorUsername.Trim(), serviceKey.Trim());
 
+    internal static string? MerchantIdUsernameFallback(string currentUsername, string merchantId)
+    {
+        var candidate = merchantId.Trim();
+        return candidate.Length == 0 || string.Equals(currentUsername.Trim(), candidate, StringComparison.OrdinalIgnoreCase)
+            ? null
+            : candidate;
+    }
+
+    public async Task<bool> SaveBasicUsernameAsync(Guid tenantId, Guid connectionId, string username, CancellationToken cancellationToken)
+    {
+        var credential = await db.PlatformCredentials
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.CredentialType == "BASIC" && x.RevokedAt == null)
+            .OrderByDescending(x => x.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (credential is null) return false;
+
+        CredentialPayload? payload;
+        try { payload = JsonSerializer.Deserialize<CredentialPayload>(protector.Unprotect(credential.ProtectedPayload)); }
+        catch (Exception exception) when (exception is CryptographicException or JsonException)
+        {
+            logger.LogWarning(exception, "Hepsiburada credential çözülemedi; doğrulanan Basic kullanıcı adı saklanamadı. ConnectionId: {ConnectionId}", connectionId);
+            return false;
+        }
+        if (payload is null || string.IsNullOrWhiteSpace(payload.ApiSecret) || string.IsNullOrWhiteSpace(username)) return false;
+        if (string.Equals(payload.ApiKey, username, StringComparison.Ordinal)) return true;
+
+        credential.ProtectedPayload = protector.Protect(JsonSerializer.Serialize(payload with { ApiKey = username }));
+        credential.Version++;
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            logger.LogInformation("Hepsiburada bağlantısı için doğrulanan Basic kullanıcı adı şifreli kayda alındı. ConnectionId: {ConnectionId}", connectionId);
+            return true;
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            logger.LogInformation("Hepsiburada credential eşzamanlı değişti; doğrulanan Basic kullanıcı adı saklanmadı. ConnectionId: {ConnectionId}", connectionId);
+            return false;
+        }
+    }
+
     public async Task<bool> HasVerifiedWriteEvidenceAsync(PlatformConnection connection, CancellationToken cancellationToken, params string[] capabilityCodes)
     {
         var capabilities = await db.PlatformCapabilities.AsNoTracking()

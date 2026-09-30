@@ -753,6 +753,16 @@ public sealed class HepsiburadaAdapterTests
     }
 
     [Fact]
+    public void HepsiburadaBasicAuthCanRetryWithMerchantIdAndAvoidDuplicateFallback()
+    {
+        const string merchantId = "62201bf1-2e64-4d18-9aac-fc38d1ea040c";
+
+        Assert.Equal(merchantId, HepsiburadaAuthenticationHandler.MerchantIdUsernameFallback("kodanka_dev", merchantId));
+        Assert.Null(HepsiburadaAuthenticationHandler.MerchantIdUsernameFallback(merchantId, merchantId));
+        Assert.Null(HepsiburadaAuthenticationHandler.MerchantIdUsernameFallback("kodanka_dev", " "));
+    }
+
+    [Fact]
     public void HepsiburadaAuthenticationErrorsDistinguishRejectedCredentialsFromForbiddenAccess()
     {
         var credentialsRejected = HepsiburadaHttpClient.Error(System.Net.HttpStatusCode.Unauthorized, null, null);
