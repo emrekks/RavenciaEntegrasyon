@@ -7,6 +7,7 @@ public sealed class HepsiburadaOptions
     // calls disabled until the account's SIT credential pairing is confirmed.
     public string AuthenticationMode { get; init; } = "UNVERIFIED";
     public Uri StageOmsBaseAddress { get; init; } = new("https://oms-external-sit.hepsiburada.com/");
+    public Uri StageTestOrderBaseAddress { get; init; } = new("https://oms-stub-external-sit.hepsiburada.com/");
     public Uri ProductionOmsBaseAddress { get; init; } = new("https://oms-external.hepsiburada.com/");
     public Uri StageListingBaseAddress { get; init; } = new("https://listing-external-sit.hepsiburada.com/");
     public Uri ProductionListingBaseAddress { get; init; } = new("https://listing-external.hepsiburada.com/");

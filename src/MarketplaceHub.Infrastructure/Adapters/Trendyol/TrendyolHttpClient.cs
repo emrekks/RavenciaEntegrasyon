@@ -349,6 +349,15 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
         }
     }
 
+    public Task<AdapterResult<IReadOnlyList<RemoteCargoCompany>>> GetChangeableCargoCompaniesAsync(AdapterContext context, string externalPackageId, CancellationToken cancellationToken) =>
+        Task.FromResult(AdapterResult<IReadOnlyList<RemoteCargoCompany>>.Failure(new(AdapterErrorClass.NotSupported, "TRENDYOL_CARGO_COMPANY_LIST_UNSUPPORTED", "Bu bağlantı kargo firması listesini sağlamıyor.", 501, null, null)));
+
+    public Task<AdapterResult<IReadOnlyList<RemotePackageableLine>>> GetPackageableLineItemsAsync(AdapterContext context, string externalLineItemId, CancellationToken cancellationToken) =>
+        Task.FromResult(AdapterResult<IReadOnlyList<RemotePackageableLine>>.Failure(new(AdapterErrorClass.NotSupported, "TRENDYOL_PACKAGEABLE_LINES_UNSUPPORTED", "Bu bağlantı Hepsiburada paketlenebilir kalem listesini sağlamıyor.", 501, null, null)));
+
+    public Task<AdapterResult<CreateOrderPackageResult>> CreateOrderPackageAsync(AdapterContext context, CreateOrderPackageCommand command, CancellationToken cancellationToken) =>
+        Task.FromResult(AdapterResult<CreateOrderPackageResult>.Failure(new(AdapterErrorClass.NotSupported, "TRENDYOL_PACKAGE_CREATE_UNSUPPORTED", "Bu bağlantı Hepsiburada paket oluşturma işlemini sağlamıyor.", 501, null, null)));
+
     public async Task<AdapterResult<bool>> CreateCommonLabelAsync(AdapterContext context, CommonLabelRequest request, CancellationToken cancellationToken)
     {
         var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken); if (authorized is null) return AdapterResult<bool>.Failure(TrendyolErrorMapper.Configuration()); if (!CanWrite(authorized, context)) return AdapterResult<bool>.Failure(TrendyolErrorMapper.WriteClosed());
@@ -358,7 +367,7 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
         return response.IsSuccess ? AdapterResult<bool>.Success(true, response.RateLimit) : AdapterResult<bool>.Failure(response.Error!, response.RateLimit);
     }
 
-    public async Task<AdapterResult<CommonLabelDocument>> GetCommonLabelAsync(AdapterContext context, string cargoTrackingNumber, CancellationToken cancellationToken)
+    public async Task<AdapterResult<CommonLabelDocument>> GetCommonLabelAsync(AdapterContext context, string cargoTrackingNumber, CancellationToken cancellationToken, string requestedFormat = "ZPL")
     {
         var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken); if (authorized is null) return AdapterResult<CommonLabelDocument>.Failure(TrendyolErrorMapper.Configuration());
         var response = await SendAsync(authorized, HttpMethod.Get, TrendyolEndpoints.CommonLabel(authorized.Connection.ExternalStoreId, cargoTrackingNumber), null, cancellationToken); if (!response.IsSuccess) return AdapterResult<CommonLabelDocument>.Failure(response.Error!, response.RateLimit);

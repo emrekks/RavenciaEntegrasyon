@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Persistence;
 using Microsoft.AspNetCore.DataProtection;
@@ -48,8 +49,17 @@ public sealed class HepsiburadaAuthenticationHandler(
 
         return new(connection, omsBaseAddress, listingBaseAddress, payload.ApiKey, payload.ApiSecret)
         {
-            CatalogBaseAddress = ResolveCatalogBaseAddress(connection.Environment)
+            CatalogBaseAddress = ResolveCatalogBaseAddress(connection.Environment),
+            StageTestOrderBaseAddress = string.Equals(connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase) ? settings.StageTestOrderBaseAddress : null
         };
+    }
+
+    public async Task<bool> HasVerifiedWriteEvidenceAsync(PlatformConnection connection, CancellationToken cancellationToken, params string[] capabilityCodes)
+    {
+        var capabilities = await db.PlatformCapabilities.AsNoTracking()
+            .Where(x => x.TenantId == connection.TenantId && x.ConnectionId == connection.Id && capabilityCodes.Contains(x.Code))
+            .ToListAsync(cancellationToken);
+        return capabilityCodes.All(code => CapabilityEvidencePolicy.IsVerifiedWriteCapability(capabilities.SingleOrDefault(x => x.Code == code), connection, code));
     }
 
     private Uri? ResolveCatalogBaseAddress(string environment)
@@ -88,4 +98,5 @@ public sealed class HepsiburadaAuthenticationHandler(
 public sealed record HepsiburadaRequestContext(PlatformConnection Connection, Uri OmsBaseAddress, Uri ListingBaseAddress, string Username, string Password)
 {
     public Uri? CatalogBaseAddress { get; init; }
+    public Uri? StageTestOrderBaseAddress { get; init; }
 }

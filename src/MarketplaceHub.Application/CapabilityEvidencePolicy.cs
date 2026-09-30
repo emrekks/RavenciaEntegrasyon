@@ -1,3 +1,5 @@
+using MarketplaceHub.Domain;
+
 namespace MarketplaceHub.Application;
 
 public static class CapabilityEvidencePolicy
@@ -14,4 +16,24 @@ public static class CapabilityEvidencePolicy
         MarketplaceCapabilities.ProductWrite or MarketplaceCapabilities.InventoryWrite or MarketplaceCapabilities.PriceWrite
         or MarketplaceCapabilities.ShipmentWrite or MarketplaceCapabilities.LabelWrite or MarketplaceCapabilities.ReturnWrite
         or InvoicingCapabilities.InvoiceSubmit or InvoicingCapabilities.InvoiceCancel or InvoicingCapabilities.InvoiceDeliver;
+
+    public static bool IsVerifiedWriteCapability(PlatformCapability? capability, PlatformConnection connection, string capabilityCode)
+    {
+        if (capability is null
+            || capability.TenantId != connection.TenantId
+            || capability.ConnectionId != connection.Id
+            || !string.Equals(capability.Code, capabilityCode, StringComparison.OrdinalIgnoreCase)
+            || capability.SupportLevel != CapabilitySupportLevel.Supported
+            || !string.Equals(capability.ApiVersion, connection.ApiVersion, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(capability.Environment, connection.Environment, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(capability.StoreScope, connection.ExternalStoreId, StringComparison.Ordinal)
+            || capability.VerifiedAt is null
+            || !Uri.TryCreate(capability.SourceUrl, UriKind.Absolute, out var source)
+            || source.Scheme != Uri.UriSchemeHttps
+            || !source.Host.Equals(OfficialDocumentationHost(connection.PlatformCode), StringComparison.OrdinalIgnoreCase)) return false;
+
+        if (!RequiresStageFixtureChecksum(capabilityCode)) return true;
+        var checksum = capability.FixtureChecksum;
+        return checksum is { Length: 64 } && checksum.All(Uri.IsHexDigit);
+    }
 }

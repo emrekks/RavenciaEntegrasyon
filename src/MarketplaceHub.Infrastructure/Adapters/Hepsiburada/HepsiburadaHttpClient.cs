@@ -1,8 +1,10 @@
 using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Xml.Linq;
 using MarketplaceHub.Application;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -10,14 +12,14 @@ using Microsoft.Extensions.Options;
 
 namespace MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
 
-public sealed class HepsiburadaHttpClient(
+public sealed partial class HepsiburadaHttpClient(
     IHttpClientFactory clients,
     HepsiburadaAuthenticationHandler authentication,
     IOptions<HepsiburadaOptions> options,
     TimeProvider timeProvider,
     IConfiguration configuration,
     ILogger<HepsiburadaHttpClient> logger)
-    : IConnectionPort, IReferenceDataPort, IProductPort, IProductVisualLookupPort, IInventoryPricePort, IOrderPort, IOrderPackageReadPort, IReturnPort, IInvoiceMarketplacePort
+    : IConnectionPort, IReferenceDataPort, IProductPort, IHepsiburadaProductMatchPort, IProductVisualLookupPort, IInventoryPricePort, IOrderPort, IOrderPackageReadPort, IReturnPort, IInvoiceMarketplacePort
 {
     private readonly HepsiburadaOptions settings = options.Value;
     private bool GlobalWritesEnabled => configuration.GetValue<bool>("FeatureFlags:ExternalWrites");
@@ -139,6 +141,59 @@ public sealed class HepsiburadaHttpClient(
         return AdapterResult<AdapterPageResult<RemoteProduct>>.Success(new(products, result.Value.NextCursor, result.Value.HasMore, result.Value.TotalCount, result.Value.Issues), result.RateLimit);
     }
 
+    public async Task<AdapterResult<AdapterPageResult<RemoteProductMatch>>> ListPendingProductMatchesAsync(AdapterContext context, AdapterPageRequest page, CancellationToken cancellationToken)
+    {
+        if (!string.Equals(settings.AuthenticationMode, "BASIC", StringComparison.OrdinalIgnoreCase))
+            return await Unsupported<AdapterPageResult<RemoteProductMatch>>("Hepsiburada auth biçimi SIT hesabında doğrulanana kadar eşleşen ürünler okunmadı.");
+        var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
+        if (account is null) return Failure<AdapterPageResult<RemoteProductMatch>>(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIAL_INVALID", "Hepsiburada bağlantı bilgileri bulunamadı.", HttpStatusCode.Unauthorized);
+        if (!IntegrationRuntimePolicy.AllowsManualRead(account.Connection)) return await Unsupported<AdapterPageResult<RemoteProductMatch>>("Hepsiburada eşleşme kuyruğu yalnız etkin veya doğrulanmış bağlantıdan okunabilir.");
+        if (account.CatalogBaseAddress is null) return await Unsupported<AdapterPageResult<RemoteProductMatch>>("Hepsiburada katalog base URL'si yapılandırılmamış.");
+        var (pageNumber, limit) = ReferencePage(page, 100);
+        var endpoint = PendingProductMatches(account, pageNumber, limit);
+        var response = await SendAsync(account, account.CatalogBaseAddress, HttpMethod.Get, endpoint, cancellationToken);
+        if (!response.IsSuccess) return AdapterResult<AdapterPageResult<RemoteProductMatch>>.Failure(response.Error!, response.RateLimit);
+        try
+        {
+            var mapped = HepsiburadaJsonMapper.PendingProductMatches(response.Value!.RootElement, pageNumber, limit);
+            return AdapterResult<AdapterPageResult<RemoteProductMatch>>.Success(mapped, response.RateLimit);
+        }
+        catch (JsonException)
+        {
+            return Failure<AdapterPageResult<RemoteProductMatch>>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_PRODUCT_MATCH_CONTRACT_INVALID", "Hepsiburada eşleşen ürün yanıtı beklenen mağaza/SKU sözleşmesiyle eşleşmiyor.", HttpStatusCode.BadGateway);
+        }
+    }
+
+    public async Task<AdapterResult<bool>> ReviewProductMatchesAsync(AdapterContext context, IReadOnlyList<string> merchantSkus, bool approve, CancellationToken cancellationToken)
+    {
+        if (!string.Equals(settings.AuthenticationMode, "BASIC", StringComparison.OrdinalIgnoreCase))
+            return await Unsupported<bool>("Hepsiburada auth biçimi SIT hesabında doğrulanana kadar ürün eşleşmesi kararı gönderilmedi.");
+        var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
+        if (account is null) return Failure<bool>(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIAL_INVALID", "Hepsiburada bağlantı bilgileri bulunamadı.", HttpStatusCode.Unauthorized);
+        if (account.CatalogBaseAddress is null) return await Unsupported<bool>("Hepsiburada katalog base URL'si yapılandırılmamış.");
+        if (!IntegrationRuntimePolicy.AllowsExternalWrite(account.Connection, context, GlobalWritesEnabled, ConnectionWritesEnabled(account.Connection.SettingsJson))
+            || !await authentication.HasVerifiedWriteEvidenceAsync(account.Connection, cancellationToken, MarketplaceCapabilities.ProductWrite))
+            return await Unsupported<bool>("Ürün eşleşmesi kararı yalnız mevcut dış yazma kapıları ve mağaza/ortam kapsamlı PRODUCT_WRITE SIT fixture kanıtı sağlandığında kullanılabilir.");
+        if (!ValidMatchDecisionSkus(merchantSkus))
+            return Failure<bool>(AdapterErrorClass.Validation, "HEPSIBURADA_PRODUCT_MATCH_SKUS_INVALID", "Eşleşme kararı için 1-100 benzersiz, boşluksuz büyük harf merchantSku gerekir.", HttpStatusCode.BadRequest);
+
+        var body = ProductMatchDecisionPayload(account.Connection.ExternalStoreId, merchantSkus);
+        using var content = new StringContent(body, Encoding.UTF8, "application/json");
+        var endpoint = ProductMatchDecision(approve);
+        var response = await SendAsync(account, account.CatalogBaseAddress, HttpMethod.Post, endpoint, content, cancellationToken);
+        if (!response.IsSuccess) return AdapterResult<bool>.Failure(response.Error!, response.RateLimit);
+        try
+        {
+            if (!HepsiburadaJsonMapper.ProductMatchDecisionAccepted(response.Value!.RootElement))
+                return Failure<bool>(AdapterErrorClass.Validation, "HEPSIBURADA_PRODUCT_MATCH_DECISION_REJECTED", "Hepsiburada eşleşme kararı yanıtı başarısızlık bildirdi.", HttpStatusCode.BadGateway);
+            return AdapterResult<bool>.Success(true, response.RateLimit);
+        }
+        catch (JsonException)
+        {
+            return Failure<bool>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_PRODUCT_MATCH_DECISION_CONTRACT_INVALID", "Hepsiburada eşleşme kararı yanıtı beklenen sözleşmeyle eşleşmiyor.", HttpStatusCode.BadGateway);
+        }
+    }
+
     public async Task<AdapterResult<AdapterPageResult<RemoteCatalogProduct>>> ListCatalogAsync(AdapterContext context, AdapterPageRequest page, ProductReadFilter filter, CancellationToken cancellationToken)
     {
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
@@ -163,17 +218,137 @@ public sealed class HepsiburadaHttpClient(
         }
     }
 
-    public Task<AdapterResult<RemoteOperationRef>> CreateAsync(AdapterContext context, ProductPublication publication, CancellationToken cancellationToken) =>
-        Unsupported<RemoteOperationRef>("Hepsiburada ürün yazması SIT kanıtı ve ayrı yetenek kapısı açılana kadar kapalıdır.");
+    public async Task<AdapterResult<RemoteOperationRef>> CreateAsync(AdapterContext context, ProductPublication publication, CancellationToken cancellationToken)
+    {
+        if (!string.Equals(settings.AuthenticationMode, "BASIC", StringComparison.OrdinalIgnoreCase))
+            return await Unsupported<RemoteOperationRef>("Hepsiburada auth biçimi SIT hesabında doğrulanana kadar ürün dosyası gönderilmedi.");
+        var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
+        if (account is null) return Failure<RemoteOperationRef>(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIAL_INVALID", "Hepsiburada bağlantı bilgileri bulunamadı.", HttpStatusCode.Unauthorized);
+        if (account.CatalogBaseAddress is null) return await Unsupported<RemoteOperationRef>("Hepsiburada ürün import için doğrulanmış katalog base URL'si yok.");
+        if (!IntegrationRuntimePolicy.AllowsExternalWrite(account.Connection, context, GlobalWritesEnabled, ConnectionWritesEnabled(account.Connection.SettingsJson))
+            || !await authentication.HasVerifiedWriteEvidenceAsync(account.Connection, cancellationToken, MarketplaceCapabilities.ProductWrite, MarketplaceCapabilities.PriceWrite, MarketplaceCapabilities.InventoryWrite))
+            return await Unsupported<RemoteOperationRef>("Hepsiburada ürün import yalnız write kapıları ve PRODUCT_WRITE/PRICE_WRITE/INVENTORY_WRITE SIT fixture kanıtları açıldıktan sonra kullanılabilir.");
+        if (publication.ProductId == Guid.Empty || string.IsNullOrWhiteSpace(publication.PayloadHash) || !ValidProductImportPayload(publication.PayloadJson, account.Connection.ExternalStoreId))
+            return Failure<RemoteOperationRef>(AdapterErrorClass.Validation, "HEPSIBURADA_PRODUCT_IMPORT_PAYLOAD_INVALID", "Hepsiburada ürün import dosyası beklenen en fazla 1000 satırlık JSON sözleşmesini sağlamıyor.", HttpStatusCode.BadRequest);
+
+        using var content = new MultipartFormDataContent();
+        var file = new ByteArrayContent(Encoding.UTF8.GetBytes(publication.PayloadJson));
+        file.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+        content.Add(file, "file", "products.json");
+        var response = await SendAsync(account, account.CatalogBaseAddress, HttpMethod.Post, ProductImportUpload(), content, cancellationToken);
+        if (!response.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(response.Error!, response.RateLimit);
+        try
+        {
+            var trackingId = HepsiburadaJsonMapper.ProductImportTrackingId(response.Value!.RootElement);
+            return AdapterResult<RemoteOperationRef>.Success(new(trackingId, "PRODUCT_IMPORT", timeProvider.GetUtcNow()), response.RateLimit);
+        }
+        catch (JsonException)
+        {
+            return Failure<RemoteOperationRef>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_PRODUCT_IMPORT_CONTRACT_INVALID", "Hepsiburada ürün import yanıtında trackingId bulunamadı.", HttpStatusCode.BadGateway);
+        }
+    }
+
+    private async Task<AdapterResult<RemoteOperationRef>> SubmitProductUpdateAsync(AdapterContext context, ProductUpdatePublication publication, string payloadJson, CancellationToken cancellationToken)
+    {
+        if (!string.Equals(settings.AuthenticationMode, "BASIC", StringComparison.OrdinalIgnoreCase))
+            return await Unsupported<RemoteOperationRef>("Hepsiburada auth biçimi SIT hesabında doğrulanana kadar ürün güncelleme dosyası gönderilmedi.");
+        var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
+        if (account is null) return Failure<RemoteOperationRef>(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIAL_INVALID", "Hepsiburada bağlantı bilgileri bulunamadı.", HttpStatusCode.Unauthorized);
+        if (account.CatalogBaseAddress is null) return await Unsupported<RemoteOperationRef>("Hepsiburada ürün güncelleme için doğrulanmış katalog base URL'si yok.");
+        if (!IntegrationRuntimePolicy.AllowsExternalWrite(account.Connection, context, GlobalWritesEnabled, ConnectionWritesEnabled(account.Connection.SettingsJson))
+            || !await authentication.HasVerifiedWriteEvidenceAsync(account.Connection, cancellationToken, MarketplaceCapabilities.ProductWrite))
+            return await Unsupported<RemoteOperationRef>("Hepsiburada ürün güncellemesi yalnız dış yazma kapıları ve mağaza/ortam kapsamlı PRODUCT_WRITE SIT fixture kanıtı sağlandığında kullanılabilir.");
+        if (publication.ProductId == Guid.Empty || string.IsNullOrWhiteSpace(publication.PayloadHash) || !ValidProductUpdatePayload(payloadJson, account.Connection.ExternalStoreId))
+            return Failure<RemoteOperationRef>(AdapterErrorClass.Validation, "HEPSIBURADA_PRODUCT_UPDATE_PAYLOAD_INVALID", "Hepsiburada ürün güncelleme dosyası merchantId/hbSku/merchantSku sözleşmesini sağlamıyor.", HttpStatusCode.BadRequest);
+
+        using var content = new MultipartFormDataContent();
+        var file = new ByteArrayContent(Encoding.UTF8.GetBytes(payloadJson));
+        file.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+        content.Add(file, "file", "product-updates.json");
+        var response = await SendAsync(account, account.CatalogBaseAddress, HttpMethod.Post, ProductUpdateUpload(), content, cancellationToken);
+        if (!response.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(response.Error!, response.RateLimit);
+        try
+        {
+            var trackingId = HepsiburadaJsonMapper.ProductImportTrackingId(response.Value!.RootElement);
+            return AdapterResult<RemoteOperationRef>.Success(new($"PRODUCT_UPDATE:{trackingId}", "PRODUCT_UPDATE_IMPORT", timeProvider.GetUtcNow()), response.RateLimit);
+        }
+        catch (JsonException)
+        {
+            return Failure<RemoteOperationRef>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_PRODUCT_UPDATE_CONTRACT_INVALID", "Hepsiburada ürün güncelleme yanıtında trackingId bulunamadı.", HttpStatusCode.BadGateway);
+        }
+    }
+
     public Task<AdapterResult<RemoteOperationRef>> UpdateUnapprovedAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) =>
-        Unsupported<RemoteOperationRef>("Hepsiburada ürün yazması SIT kanıtı ve ayrı yetenek kapısı açılana kadar kapalıdır.");
+        publication is null ? Unsupported<RemoteOperationRef>("Hepsiburada ürün güncelleme içeriği zorunludur.") : SubmitProductUpdateAsync(context, publication, publication.UnapprovedPayloadJson, cancellationToken);
     public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedContentAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) =>
-        Unsupported<RemoteOperationRef>("Hepsiburada ürün yazması SIT kanıtı ve ayrı yetenek kapısı açılana kadar kapalıdır.");
+        publication is null ? Unsupported<RemoteOperationRef>("Hepsiburada ürün güncelleme içeriği zorunludur.") : SubmitProductUpdateAsync(context, publication, publication.ApprovedContentPayloadJson, cancellationToken);
     public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedVariantsAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) =>
         Unsupported<RemoteOperationRef>("Hepsiburada ürün yazması SIT kanıtı ve ayrı yetenek kapısı açılana kadar kapalıdır.");
     public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedDeliveryAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) =>
         Unsupported<RemoteOperationRef>("Hepsiburada ürün yazması SIT kanıtı ve ayrı yetenek kapısı açılana kadar kapalıdır.");
-    public Task<AdapterResult<RemoteOperationStatus>> GetOperationAsync(AdapterContext context, string externalOperationId, CancellationToken cancellationToken) => Unsupported<RemoteOperationStatus>("Hepsiburada ürün gönderim sonucu okuması bu aşamada desteklenmiyor.");
+    public async Task<AdapterResult<RemoteOperationStatus>> GetOperationAsync(AdapterContext context, string externalOperationId, CancellationToken cancellationToken)
+    {
+        if (!string.Equals(settings.AuthenticationMode, "BASIC", StringComparison.OrdinalIgnoreCase))
+            return await Unsupported<RemoteOperationStatus>("Hepsiburada auth biçimi SIT hesabında doğrulanana kadar trackingId sorgulanmadı.");
+        var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
+        if (account is null) return Failure<RemoteOperationStatus>(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIAL_INVALID", "Hepsiburada bağlantı bilgileri bulunamadı.", HttpStatusCode.Unauthorized);
+        if (!IntegrationRuntimePolicy.AllowsManualRead(account.Connection)) return await Unsupported<RemoteOperationStatus>("Hepsiburada import durumu yalnız etkin veya doğrulanmış bağlantıda okunabilir.");
+        if (string.IsNullOrWhiteSpace(externalOperationId) || externalOperationId.Length > 240)
+            return Failure<RemoteOperationStatus>(AdapterErrorClass.Validation, "HEPSIBURADA_TRACKING_ID_INVALID", "Hepsiburada trackingId geçersiz.", HttpStatusCode.BadRequest);
+
+        var isProductUpdate = externalOperationId.StartsWith("PRODUCT_UPDATE:", StringComparison.Ordinal);
+        var isInventoryUpload = externalOperationId.StartsWith("LISTING_INVENTORY:", StringComparison.Ordinal);
+        var operationId = isProductUpdate ? externalOperationId["PRODUCT_UPDATE:".Length..]
+            : isInventoryUpload ? externalOperationId["LISTING_INVENTORY:".Length..]
+            : externalOperationId;
+        if (!isInventoryUpload && account.CatalogBaseAddress is null) return await Unsupported<RemoteOperationStatus>("Hepsiburada ürün import status base URL'si yapılandırılmamış.");
+        if (isInventoryUpload)
+        {
+            if (string.IsNullOrWhiteSpace(operationId) || operationId.Length > 200)
+                return Failure<RemoteOperationStatus>(AdapterErrorClass.Validation, "HEPSIBURADA_INVENTORY_UPLOAD_ID_INVALID", "Hepsiburada inventoryUploadId geçersiz.", HttpStatusCode.BadRequest);
+            var statusResponse = await SendAsync(account, account.ListingBaseAddress, HttpMethod.Get, InventoryUploadStatus(account, operationId), cancellationToken);
+            if (!statusResponse.IsSuccess) return AdapterResult<RemoteOperationStatus>.Failure(statusResponse.Error!, statusResponse.RateLimit);
+            try { return AdapterResult<RemoteOperationStatus>.Success(HepsiburadaJsonMapper.InventoryUploadStatus(statusResponse.Value!.RootElement, operationId), statusResponse.RateLimit); }
+            catch (JsonException)
+            {
+                return Failure<RemoteOperationStatus>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_INVENTORY_STATUS_CONTRACT_INVALID", "Hepsiburada listing güncelleme durumu beklenen sözleşmeyle eşleşmiyor.", HttpStatusCode.BadGateway);
+            }
+        }
+        var trackingId = operationId;
+        if (string.IsNullOrWhiteSpace(trackingId) || trackingId.Length > 200)
+            return Failure<RemoteOperationStatus>(AdapterErrorClass.Validation, "HEPSIBURADA_TRACKING_ID_INVALID", "Hepsiburada trackingId geçersiz.", HttpStatusCode.BadRequest);
+
+        var allLines = new List<RemoteOperationLine>();
+        var operationStatus = "IN_PROGRESS";
+        RateLimitMetadata? rate = null;
+        int? totalCount = null;
+        for (var page = 0; page < 10; page++)
+        {
+            var statusEndpoint = isProductUpdate ? ProductUpdateStatus(trackingId, page, 100) : ProductImportStatus(trackingId, page, 100);
+            var response = await SendAsync(account, account.CatalogBaseAddress!, HttpMethod.Get, statusEndpoint, cancellationToken);
+            if (!response.IsSuccess) return AdapterResult<RemoteOperationStatus>.Failure(response.Error!, response.RateLimit);
+            rate = response.RateLimit ?? rate;
+            try
+            {
+                var mapped = HepsiburadaJsonMapper.ProductImportStatus(response.Value!.RootElement, trackingId);
+                operationStatus = mapped.Status;
+                if (operationStatus == "IN_PROGRESS") return AdapterResult<RemoteOperationStatus>.Success(mapped, rate);
+                allLines.AddRange(mapped.Lines);
+                totalCount = HepsiburadaJsonMapper.ProductImportTotalCount(response.Value.RootElement) ?? totalCount;
+                if (totalCount is { } expected && allLines.Count >= expected) break;
+                if (mapped.Lines.Count < 100) break;
+            }
+            catch (JsonException)
+            {
+                return Failure<RemoteOperationStatus>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_PRODUCT_STATUS_CONTRACT_INVALID", "Hepsiburada ürün import durum yanıtı beklenen sözleşmeyle eşleşmiyor.", HttpStatusCode.BadGateway);
+            }
+        }
+        if (totalCount is { } expectedCount && allLines.Count != expectedCount)
+            return Failure<RemoteOperationStatus>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_PRODUCT_STATUS_INCOMPLETE", "Hepsiburada trackingId sayfalaması tüm ürün satırlarını döndürmedi.", HttpStatusCode.BadGateway);
+        if (allLines.Count > 1000 || allLines.GroupBy(x => x.ExternalKey, StringComparer.OrdinalIgnoreCase).Any(group => group.Count() > 1))
+            return Failure<RemoteOperationStatus>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_PRODUCT_STATUS_DUPLICATE", "Hepsiburada ürün durum yanıtında satır sayısı sınırı aşıldı veya merchantSku yinelendi.", HttpStatusCode.BadGateway);
+        return AdapterResult<RemoteOperationStatus>.Success(new(externalOperationId, operationStatus, allLines), rate);
+    }
     public Task<AdapterResult<RemotePublicationStatus>> GetPublicationStatusAsync(AdapterContext context, string barcode, CancellationToken cancellationToken) => Unsupported<RemotePublicationStatus>("Hepsiburada ürün durum okuması bu aşamada desteklenmiyor.");
     public Task<AdapterResult<RemoteOperationRef>> ArchiveAsync(AdapterContext context, string payloadJson, CancellationToken cancellationToken) => Unsupported<RemoteOperationRef>("Hepsiburada ürün yazması SIT kanıtı ve ayrı yetenek kapısı açılana kadar kapalıdır.");
     public async Task<AdapterResult<RemoteProduct?>> FindByBarcodeAsync(AdapterContext context, string barcode, CancellationToken cancellationToken)
@@ -183,8 +358,31 @@ public sealed class HepsiburadaHttpClient(
         var product = page.Value!.Items.FirstOrDefault(item => string.Equals(item.Barcode, barcode, StringComparison.OrdinalIgnoreCase));
         return AdapterResult<RemoteProduct?>.Success(product, page.RateLimit);
     }
-    public Task<AdapterResult<RemoteOperationRef>> PushPriceAndInventoryAsync(AdapterContext context, string payloadJson, CancellationToken cancellationToken) =>
-        Unsupported<RemoteOperationRef>("Hepsiburada fiyat ve stok yazması SIT kanıtı ve ayrı yetenek kapısı açılana kadar kapalıdır.");
+    public async Task<AdapterResult<RemoteOperationRef>> PushPriceAndInventoryAsync(AdapterContext context, string payloadJson, CancellationToken cancellationToken)
+    {
+        if (!string.Equals(settings.AuthenticationMode, "BASIC", StringComparison.OrdinalIgnoreCase))
+            return await Unsupported<RemoteOperationRef>("Hepsiburada auth biçimi SIT hesabında doğrulanana kadar fiyat/stok yüklemesi gönderilmedi.");
+        var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
+        if (account is null) return Failure<RemoteOperationRef>(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIAL_INVALID", "Hepsiburada bağlantı bilgileri bulunamadı.", HttpStatusCode.Unauthorized);
+        if (!IntegrationRuntimePolicy.AllowsExternalWrite(account.Connection, context, GlobalWritesEnabled, ConnectionWritesEnabled(account.Connection.SettingsJson))
+            || !await authentication.HasVerifiedWriteEvidenceAsync(account.Connection, cancellationToken, MarketplaceCapabilities.PriceWrite, MarketplaceCapabilities.InventoryWrite))
+            return await Unsupported<RemoteOperationRef>("Hepsiburada fiyat/stok yüklemesi yalnız dış yazma kapıları ve mağaza/ortam kapsamlı PRICE_WRITE/INVENTORY_WRITE SIT kanıtları sağlandığında kullanılabilir.");
+        if (!ValidPriceInventoryPayload(payloadJson, account.Connection.ExternalStoreId))
+            return Failure<RemoteOperationRef>(AdapterErrorClass.Validation, "HEPSIBURADA_PRICE_INVENTORY_PAYLOAD_INVALID", "Hepsiburada fiyat/stok yüklemesi merchantId, hbSku, merchantSku, fiyat ve adet sözleşmesini sağlamıyor.", HttpStatusCode.BadRequest);
+
+        using var content = new StringContent(BuildInventoryUploadXml(payloadJson), Encoding.UTF8, "application/xml");
+        var response = await SendAsync(account, account.ListingBaseAddress, HttpMethod.Post, InventoryUpload(account), content, cancellationToken);
+        if (!response.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(response.Error!, response.RateLimit);
+        try
+        {
+            var uploadId = HepsiburadaJsonMapper.InventoryUploadId(response.Value!.RootElement);
+            return AdapterResult<RemoteOperationRef>.Success(new($"LISTING_INVENTORY:{uploadId}", "LISTING_INVENTORY_UPLOAD", timeProvider.GetUtcNow()), response.RateLimit);
+        }
+        catch (JsonException)
+        {
+            return Failure<RemoteOperationRef>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_INVENTORY_UPLOAD_CONTRACT_INVALID", "Hepsiburada listing yanıtında inventoryUploadId bulunamadı.", HttpStatusCode.BadGateway);
+        }
+    }
 
     public async Task<AdapterResult<AdapterPageResult<RemoteOrder>>> PollAsync(AdapterContext context, OrderPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken)
     {
@@ -267,11 +465,27 @@ public sealed class HepsiburadaHttpClient(
         }
     }
 
-    public Task<AdapterResult<PackageActionResult>> ExecutePackageActionAsync(AdapterContext context, PackageActionCommand command, CancellationToken cancellationToken) =>
-        Unsupported<PackageActionResult>("Hepsiburada paket ve kargo yazması SIT kanıtı ve ayrı yetenek kapısı açılana kadar kapalıdır.");
-    public Task<AdapterResult<bool>> CreateCommonLabelAsync(AdapterContext context, CommonLabelRequest request, CancellationToken cancellationToken) => Unsupported<bool>("Hepsiburada etiket dış yazması bu aşamada kapalıdır.");
-    public Task<AdapterResult<CommonLabelDocument>> GetCommonLabelAsync(AdapterContext context, string cargoTrackingNumber, CancellationToken cancellationToken) => Unsupported<CommonLabelDocument>("Hepsiburada kargo etiketi okuması bu aşamada desteklenmiyor.");
-    public Task<AdapterResult<StageTestOrderResult>> CreateStageTestOrderAsync(AdapterContext context, string barcode, CancellationToken cancellationToken) => Unsupported<StageTestOrderResult>("Test siparişi oluşturmak için ayrıca onay ve SIT fixture akışı gerekir; bağlantı testi dış yazma yapmaz.");
+    public async Task<AdapterResult<StageTestOrderResult>> CreateStageTestOrderAsync(AdapterContext context, string sku, CancellationToken cancellationToken)
+    {
+        if (!string.Equals(settings.AuthenticationMode, "BASIC", StringComparison.OrdinalIgnoreCase))
+            return await Unsupported<StageTestOrderResult>("Hepsiburada auth biçimi SIT hesabında doğrulanana kadar test siparişi gönderilmedi.");
+        var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
+        if (account is null) return Failure<StageTestOrderResult>(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIAL_INVALID", "Hepsiburada bağlantı bilgileri bulunamadı.", HttpStatusCode.Unauthorized);
+        if (!context.IsStageCapabilityProbe || !string.Equals(account.Connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase)
+            || !IntegrationRuntimePolicy.AllowsExternalWrite(account.Connection, context, GlobalWritesEnabled, ConnectionWritesEnabled(account.Connection.SettingsJson)))
+            return AdapterResult<StageTestOrderResult>.Failure(new(AdapterErrorClass.NotSupported, "HEPSIBURADA_TEST_ORDER_STAGE_ONLY", "Hepsiburada test siparişi yalnız kullanıcı tarafından başlatılan Stage capability fixture'ında kullanılabilir.", null, null, null));
+        if (account.StageTestOrderBaseAddress is null || !ValidTestOrderSku(sku))
+            return Failure<StageTestOrderResult>(AdapterErrorClass.Validation, "HEPSIBURADA_TEST_ORDER_INPUT_INVALID", "Stage test siparişi için doğrulanmış HBSKU ve test ortamı adresi gerekir.", HttpStatusCode.BadRequest);
+
+        var orderNumber = RandomNumberGenerator.GetInt32(1_000_000_000, int.MaxValue).ToString(CultureInfo.InvariantCulture);
+        using var content = new StringContent(TestOrderPayload(account.Connection.ExternalStoreId, orderNumber, sku, timeProvider.GetUtcNow()), Encoding.UTF8, "application/json");
+        var response = await SendAsync(account, account.StageTestOrderBaseAddress, HttpMethod.Post, StageTestOrder(account, account.Connection.ExternalStoreId), content, cancellationToken);
+        if (!response.IsSuccess) return AdapterResult<StageTestOrderResult>.Failure(response.Error!, response.RateLimit);
+        var responseOrderNumber = Text(response.Value!.RootElement, "orderNumber", "OrderNumber");
+        return string.IsNullOrWhiteSpace(responseOrderNumber)
+            ? Failure<StageTestOrderResult>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_TEST_ORDER_CONTRACT_INVALID", "Hepsiburada test siparişi yanıtında orderNumber bulunamadı.", HttpStatusCode.BadGateway)
+            : AdapterResult<StageTestOrderResult>.Success(new(responseOrderNumber), response.RateLimit);
+    }
     public async Task<AdapterResult<AdapterPageResult<RemoteReturnClaim>>> PollAsync(AdapterContext context, ReturnPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken)
     {
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
@@ -441,6 +655,108 @@ public sealed class HepsiburadaHttpClient(
         return string.Join('&', query);
     }
     internal static string Categories(int page, int limit) => $"api/categories/get-all-categories?leaf=true&status=ACTIVE&available=true&version=1&page={page.ToString(CultureInfo.InvariantCulture)}&size={limit.ToString(CultureInfo.InvariantCulture)}";
+    internal static string ProductImportUpload() => "api/products/import?version=1";
+    internal static string ProductImportStatus(string trackingId, int page, int size) => $"api/products/status/{Uri.EscapeDataString(trackingId)}?version=1&page={page.ToString(CultureInfo.InvariantCulture)}&size={size.ToString(CultureInfo.InvariantCulture)}";
+    internal static string ProductUpdateUpload() => "/ticket-api/api/integrator/import?version=1";
+    internal static string ProductUpdateStatus(string trackingId, int page, int size) => $"/ticket-api/api/integrator/status/{Uri.EscapeDataString(trackingId)}?version=1&page={page.ToString(CultureInfo.InvariantCulture)}&size={size.ToString(CultureInfo.InvariantCulture)}";
+    internal static string InventoryUpload(HepsiburadaRequestContext context) => $"listings/merchantid/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}/inventory-uploads";
+    internal static string InventoryUploadStatus(HepsiburadaRequestContext context, string uploadId) => $"listings/merchantid/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}/inventory-uploads/id/{Uri.EscapeDataString(uploadId)}";
+    internal static string InventoryUploadStatus(string merchantId, string uploadId) => $"listings/merchantid/{Uri.EscapeDataString(merchantId)}/inventory-uploads/id/{Uri.EscapeDataString(uploadId)}";
+    internal static string StageTestOrder(HepsiburadaRequestContext context, string merchantId) => $"orders/merchantId/{Uri.EscapeDataString(merchantId)}";
+    internal static bool ValidTestOrderSku(string? sku) => !string.IsNullOrWhiteSpace(sku) && sku == sku.Trim() && !sku.Any(char.IsWhiteSpace) && sku.Length <= 100;
+    internal static string TestOrderPayload(string merchantId, string orderNumber, string sku, DateTimeOffset orderDate) => JsonSerializer.Serialize(new
+    {
+        OrderNumber = orderNumber,
+        OrderDate = orderDate.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture),
+        PaymentStatus = "Paid",
+        Customer = new { CustomerId = "stage-customer", Name = "Stage Test" },
+        DeliveryAddress = new { AddressId = "stage-address", Name = "Stage Test", AddressDetail = "Test adresi", Email = "stage-test@example.invalid", CountryCode = "TR", PhoneNumber = "0000000000", AlternatePhoneNumber = "0000000000", Town = "Kadikoy", District = "Test", City = "Istanbul" },
+        LineItems = new[] { new { Sku = sku, MerchantId = merchantId, Quantity = 1, Price = new { Amount = 1m, Currency = "TRY" }, Vat = 0m, TotalPrice = new { Amount = 1m, Currency = "TRY" }, CargoCompanyId = 1, DeliveryOptionId = 1 } }
+    });
+    internal static bool ValidPriceInventoryPayload(string payloadJson, string merchantId)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(payloadJson);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("merchantId", out var merchant) || merchant.ValueKind != JsonValueKind.String
+                || !string.Equals(merchant.GetString(), merchantId, StringComparison.Ordinal)
+                || !root.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array || items.GetArrayLength() is < 1 or > 4000) return false;
+            var merchantSkus = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var hbSkus = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var item in items.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.Object) return false;
+                var merchantSku = item.TryGetProperty("merchantSku", out var merchantSkuValue) && merchantSkuValue.ValueKind == JsonValueKind.String ? merchantSkuValue.GetString() : null;
+                var hbSku = item.TryGetProperty("hepsiburadaSku", out var hbSkuValue) && hbSkuValue.ValueKind == JsonValueKind.String ? hbSkuValue.GetString() : null;
+                if (string.IsNullOrWhiteSpace(merchantSku) || merchantSku != merchantSku.Trim() || merchantSku.Any(char.IsWhiteSpace)
+                    || string.IsNullOrWhiteSpace(hbSku) || hbSku != hbSku.Trim() || hbSku.Any(char.IsWhiteSpace)
+                    || !merchantSkus.Add(merchantSku) || !hbSkus.Add(hbSku)) return false;
+                if (!item.TryGetProperty("availableStock", out var stockValue) || !stockValue.TryGetInt32(out var stock) || stock < 0) return false;
+                if (!item.TryGetProperty("price", out var priceValue) || !priceValue.TryGetDecimal(out var price) || price <= 0 || decimal.Round(price, 2) != price) return false;
+            }
+            return true;
+        }
+        catch (JsonException) { return false; }
+    }
+    internal static string BuildInventoryUploadXml(string payloadJson)
+    {
+        using var document = JsonDocument.Parse(payloadJson);
+        var items = document.RootElement.GetProperty("items").EnumerateArray().Select(item => new XElement("listing",
+            new XElement("HepsiburadaSku", item.GetProperty("hepsiburadaSku").GetString()),
+            new XElement("MerchantSku", item.GetProperty("merchantSku").GetString()),
+            new XElement("Price", item.GetProperty("price").GetDecimal().ToString("0.00", CultureInfo.GetCultureInfo("tr-TR"))),
+            new XElement("AvailableStock", item.GetProperty("availableStock").GetInt32().ToString(CultureInfo.InvariantCulture))));
+        return new XDocument(new XElement("listings", items)).ToString(SaveOptions.DisableFormatting);
+    }
+    private static string? Text(JsonElement element, params string[] names)
+    {
+        foreach (var property in element.EnumerateObject())
+            if (names.Any(name => string.Equals(name, property.Name, StringComparison.OrdinalIgnoreCase)) && property.Value.ValueKind is JsonValueKind.String or JsonValueKind.Number)
+                return property.Value.ToString();
+        return null;
+    }
+    internal static bool ValidProductUpdatePayload(string payloadJson, string merchantId)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(payloadJson);
+            var root = document.RootElement;
+            var payloadMerchantId = root.ValueKind == JsonValueKind.Object && root.TryGetProperty("merchantId", out var merchant) && merchant.ValueKind == JsonValueKind.String ? merchant.GetString() : null;
+            if (!string.Equals(payloadMerchantId, merchantId, StringComparison.Ordinal)) return false;
+            if (!root.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array || items.GetArrayLength() is < 1 or > 1000) return false;
+            var merchantSkus = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var hbSkus = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var item in items.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.Object) return false;
+                var merchantSku = item.TryGetProperty("merchantSku", out var skuValue) && skuValue.ValueKind == JsonValueKind.String ? skuValue.GetString() : null;
+                var hbSku = item.TryGetProperty("hbSku", out var hbValue) && hbValue.ValueKind == JsonValueKind.String ? hbValue.GetString() : null;
+                if (string.IsNullOrWhiteSpace(merchantSku) || merchantSku != merchantSku.Trim() || merchantSku.Any(char.IsWhiteSpace)
+                    || string.IsNullOrWhiteSpace(hbSku) || hbSku != hbSku.Trim() || hbSku.Any(char.IsWhiteSpace)
+                    || !merchantSkus.Add(merchantSku) || !hbSkus.Add(hbSku)) return false;
+                if (item.TryGetProperty("attributes", out var attributes))
+                {
+                    if (attributes.ValueKind != JsonValueKind.Object) return false;
+                    foreach (var attribute in attributes.EnumerateObject())
+                        if (!attribute.Name.StartsWith("attribute-", StringComparison.OrdinalIgnoreCase) || attribute.Value.ValueKind is not (JsonValueKind.String or JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False)) return false;
+                }
+                for (var imageIndex = 1; imageIndex <= 10; imageIndex++)
+                {
+                    if (!item.TryGetProperty($"image{imageIndex}", out var imageValue)) continue;
+                    if (imageValue.ValueKind != JsonValueKind.String || !Uri.TryCreate(imageValue.GetString(), UriKind.Absolute, out var imageUri) || imageUri.Scheme != Uri.UriSchemeHttps || !string.IsNullOrEmpty(imageUri.UserInfo)) return false;
+                }
+            }
+            return true;
+        }
+        catch (JsonException) { return false; }
+    }
+    internal static string PendingProductMatches(HepsiburadaRequestContext context, int page, int size) => $"api/products/products-by-merchant-and-status?merchantId={Uri.EscapeDataString(context.Connection.ExternalStoreId)}&productStatus=PRE_MATCHED&taskStatus=false&version=1&page={page.ToString(CultureInfo.InvariantCulture)}&size={size.ToString(CultureInfo.InvariantCulture)}";
+    internal static string ProductMatchDecision(bool approve) => approve ? "api/products/approve-prematch" : "api/products/reject-prematch";
+    internal static string ProductMatchDecisionPayload(string merchantId, IReadOnlyList<string> merchantSkus) => JsonSerializer.Serialize(new[] { new { merchant = merchantId, merchantSkuList = merchantSkus.Select(sku => sku.Trim()).ToArray() } });
+    internal static bool ValidMatchDecisionSkus(IReadOnlyList<string> merchantSkus) => merchantSkus.Count is > 0 and <= 100
+        && merchantSkus.All(sku => !string.IsNullOrWhiteSpace(sku) && sku == sku.Trim() && sku == sku.ToUpperInvariant() && !sku.Any(char.IsWhiteSpace))
+        && merchantSkus.Distinct(StringComparer.OrdinalIgnoreCase).Count() == merchantSkus.Count;
     internal static string CategoryAttributes(string categoryId) => $"api/categories/{Uri.EscapeDataString(categoryId)}/attributes?version=2";
     internal static string AttributeValues(string categoryId, string attributeId, int page, int limit) => $"api/categories/{Uri.EscapeDataString(categoryId)}/attribute/{Uri.EscapeDataString(attributeId)}/values?version=5&page={page.ToString(CultureInfo.InvariantCulture)}&size={limit.ToString(CultureInfo.InvariantCulture)}";
 
@@ -515,6 +831,69 @@ public sealed class HepsiburadaHttpClient(
             return settings.RootElement.TryGetProperty("ExternalWritesEnabled", out var enabled) && enabled.ValueKind == JsonValueKind.True;
         }
         catch (JsonException) { return false; }
+    }
+
+    internal static bool ValidProductImportPayload(string payloadJson, string merchantId)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(payloadJson);
+            if (document.RootElement.ValueKind != JsonValueKind.Array || document.RootElement.GetArrayLength() is < 1 or > 1000) return false;
+            var merchantSkus = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var barcodes = new HashSet<string>(StringComparer.Ordinal);
+            string? variantGroupId = null;
+            foreach (var item in document.RootElement.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.Object || !item.TryGetProperty("categoryId", out var category) || category.ValueKind != JsonValueKind.Number || !category.TryGetInt32(out var categoryId) || categoryId <= 0) return false;
+                if (!item.TryGetProperty("merchant", out var merchant) || merchant.ValueKind != JsonValueKind.String || !string.Equals(merchant.GetString(), merchantId, StringComparison.Ordinal)) return false;
+                if (!item.TryGetProperty("attributes", out var attributes) || attributes.ValueKind != JsonValueKind.Object) return false;
+                if (!attributes.TryGetProperty("merchantSku", out var skuValue) || skuValue.ValueKind != JsonValueKind.String) return false;
+                var sku = skuValue.GetString();
+                if (string.IsNullOrWhiteSpace(sku) || sku != sku.ToUpperInvariant() || sku.Any(char.IsWhiteSpace) || !merchantSkus.Add(sku)) return false;
+                if (!attributes.TryGetProperty("VaryantGroupID", out var groupValue) || groupValue.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(groupValue.GetString())) return false;
+                variantGroupId ??= groupValue.GetString();
+                if (!string.Equals(groupValue.GetString(), variantGroupId, StringComparison.Ordinal)) return false;
+                if (!attributes.TryGetProperty("Barcode", out var barcodeValue) || barcodeValue.ValueKind != JsonValueKind.String || !ValidEan13(barcodeValue.GetString()) || !barcodes.Add(barcodeValue.GetString()!)) return false;
+                if (!attributes.TryGetProperty("UrunAdi", out var titleValue) || titleValue.ValueKind != JsonValueKind.String || !attributes.TryGetProperty("Marka", out var brandValue) || brandValue.ValueKind != JsonValueKind.String || !StartsWithBrand(titleValue.GetString(), brandValue.GetString())) return false;
+                if (!attributes.TryGetProperty("UrunAciklamasi", out var descriptionValue) || descriptionValue.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(descriptionValue.GetString())) return false;
+                if (!attributes.TryGetProperty("tax_vat_rate", out var vatValue) || vatValue.ValueKind != JsonValueKind.String || !int.TryParse(vatValue.GetString(), NumberStyles.None, CultureInfo.InvariantCulture, out var vatRate) || vatRate is < 0 or > 100) return false;
+                if (!attributes.TryGetProperty("price", out var priceValue) || priceValue.ValueKind != JsonValueKind.String || !decimal.TryParse(priceValue.GetString(), NumberStyles.Number, CultureInfo.GetCultureInfo("tr-TR"), out var price) || price <= 0 || price != decimal.Round(price, 2) || priceValue.GetString() != price.ToString("0.00", CultureInfo.GetCultureInfo("tr-TR"))) return false;
+                if (!attributes.TryGetProperty("stock", out var stockValue) || stockValue.ValueKind != JsonValueKind.String || !int.TryParse(stockValue.GetString(), NumberStyles.None, CultureInfo.InvariantCulture, out var stock) || stock < 0) return false;
+                var imageCount = 0;
+                foreach (var imageProperty in attributes.EnumerateObject().Where(property => property.Name.StartsWith("Image", StringComparison.Ordinal)))
+                {
+                    if (!int.TryParse(imageProperty.Name.AsSpan("Image".Length), NumberStyles.None, CultureInfo.InvariantCulture, out var imageIndex) || imageIndex is < 1 or > 5 || imageProperty.Value.ValueKind != JsonValueKind.String || !IsPublicHttpsUri(imageProperty.Value.GetString())) return false;
+                    imageCount++;
+                }
+                if (imageCount == 0 || attributes.EnumerateObject().Any(property => property.Value.ValueKind == JsonValueKind.Array)) return false;
+            }
+            return true;
+        }
+        catch (JsonException) { return false; }
+    }
+
+    private static bool ValidEan13(string? value)
+    {
+        if (value is null || value.Length != 13 || value.Any(character => !char.IsAsciiDigit(character))) return false;
+        var sum = 0;
+        for (var index = 0; index < 12; index++) sum += (value[index] - '0') * (index % 2 == 0 ? 1 : 3);
+        return (10 - sum % 10) % 10 == value[12] - '0';
+    }
+
+    private static bool IsPublicHttpsUri(string? value) => Uri.TryCreate(value, UriKind.Absolute, out var uri)
+        && uri.Scheme == Uri.UriSchemeHttps
+        && !string.IsNullOrWhiteSpace(uri.Host)
+        && string.IsNullOrEmpty(uri.UserInfo)
+        && !uri.IsLoopback
+        && !uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+        && !uri.Host.EndsWith(".local", StringComparison.OrdinalIgnoreCase)
+        && !uri.Host.EndsWith(".internal", StringComparison.OrdinalIgnoreCase)
+        && !uri.Host.EndsWith(".lan", StringComparison.OrdinalIgnoreCase);
+
+    private static bool StartsWithBrand(string? title, string? brand)
+    {
+        if (string.IsNullOrWhiteSpace(title) || string.IsNullOrWhiteSpace(brand) || !title.StartsWith(brand, StringComparison.OrdinalIgnoreCase)) return false;
+        return title.Length == brand.Length || !char.IsLetterOrDigit(title[brand.Length]);
     }
 
     private static (int Page, int Limit) ReferencePage(AdapterPageRequest page, int maximumLimit)

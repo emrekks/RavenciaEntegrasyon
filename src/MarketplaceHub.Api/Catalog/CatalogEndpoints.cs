@@ -23,6 +23,8 @@ public static class CatalogEndpoints
             catch (ArgumentException exception) { return Problem(context.HttpContext, new("INVALID_CURSOR", exception.Message, 400)); }
         });
 
+        api.MapHepsiburadaProductMatchEndpoints();
+
         api.MapGet("/catalog/categories", async (HttpContext http, ICatalogService service, int? limit, string? after) =>
             Tenant(http) is { } tenant ? Results.Ok(await service.ListCategoriesAsync(tenant.TenantId, PageSize(limit), after, http.RequestAborted)) : Unauthorized(http));
         api.MapGet("/catalog/categories/{id:guid}", async (Guid id, HttpContext http, ICatalogService service) =>

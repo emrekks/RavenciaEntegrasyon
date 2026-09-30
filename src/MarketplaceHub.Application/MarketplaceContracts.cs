@@ -46,6 +46,7 @@ public static class MarketplaceJobTypes
     public const string HepsiburadaProductSync = "HEPSIBURADA_PRODUCT_SYNC";
     public const string HepsiburadaOrderSync = "HEPSIBURADA_ORDER_SYNC";
     public const string HepsiburadaOrderRecoverySync = "HEPSIBURADA_ORDER_RECOVERY_SYNC";
+    public const string HepsiburadaWebhookIngest = "HEPSIBURADA_WEBHOOK_INGEST";
     public const string HepsiburadaReturnSync = "HEPSIBURADA_RETURN_SYNC";
     public const string HepsiburadaOrderInvoiceReconciliation = "HEPSIBURADA_ORDER_INVOICE_RECONCILIATION";
 
@@ -69,6 +70,7 @@ public static class MarketplaceJobTypes
             ProductSync => HepsiburadaProductSync,
             OrderSync => HepsiburadaOrderSync,
             OrderRecoverySync => HepsiburadaOrderRecoverySync,
+            WebhookIngest => HepsiburadaWebhookIngest,
             ReturnSync => HepsiburadaReturnSync,
             OrderInvoiceReconciliation => HepsiburadaOrderInvoiceReconciliation,
             _ => jobType
@@ -155,11 +157,11 @@ public sealed record CapabilityEvidence(string Code, string SupportLevel, string
 public sealed record RemoteReferenceItem(string ResourceType, string ExternalId, string? ParentExternalId, string Name, string Path, int Depth, bool IsLeaf, bool IsActive, string RawJson, bool? IsRequired = null, bool? AllowsCustomValue = null, bool? AllowsMultipleValues = null);
 public sealed record ReferenceResource(string ResourceType, string? ParentExternalId);
 public sealed record RemoteOperationRef(string ExternalOperationId, string Kind, DateTimeOffset SubmittedAt);
-public sealed record RemoteOperationLine(string ExternalKey, bool Succeeded, string? ExternalId, string? ErrorCode, bool Retryable);
+public sealed record RemoteOperationLine(string ExternalKey, bool Succeeded, string? ExternalId, string? ErrorCode, bool Retryable, string? Status = null);
 public sealed record RemoteOperationStatus(string ExternalOperationId, string Status, IReadOnlyList<RemoteOperationLine> Lines);
 public sealed record ProductPublication(Guid ProductId, string PayloadHash, string PayloadJson);
 public sealed record ProductPublicationJobPayload(Guid JobId, Guid ProductId, Guid ProfileId, string Phase, string PayloadHash, string PayloadJson, string? ExternalOperationId, DateTimeOffset? SubmittedAt);
-public sealed record ProductApprovalReconciliationJobPayload(Guid JobId, Guid ProductId, Guid ProfileId, string PayloadHash, DateTimeOffset StartedAt, DateTimeOffset DeadlineAt);
+public sealed record ProductApprovalReconciliationJobPayload(Guid JobId, Guid ProductId, Guid ProfileId, string PayloadHash, DateTimeOffset StartedAt, DateTimeOffset DeadlineAt, string? ExternalOperationId = null);
 public sealed record ProductUpdatePublication(Guid ProductId, string Mode, string PayloadHash, string UnapprovedPayloadJson, string ApprovedContentPayloadJson, string ApprovedVariantPayloadJson, string ApprovedDeliveryPayloadJson);
 public sealed record ProductUpdateJobPayload(Guid JobId, Guid ProductId, Guid ProfileId, string Phase, string Mode, string PayloadHash, string UnapprovedPayloadJson, string ApprovedContentPayloadJson, string ApprovedVariantPayloadJson, string ApprovedDeliveryPayloadJson, string? ExternalOperationId, DateTimeOffset? SubmittedAt);
 public sealed record ProductArchiveJobPayload(Guid JobId, Guid ProductId, Guid ProfileId, bool Archived, string Phase, string PayloadHash, string PayloadJson, string? ExternalOperationId, DateTimeOffset StartedAt, DateTimeOffset DeadlineAt);
@@ -179,6 +181,7 @@ public sealed record RemoteCatalogProduct(
     string RawJson,
     bool IsDraft = false,
     bool IsPendingApproval = false);
+public sealed record RemoteProductMatch(string MerchantSku, string Status, string? HepsiburadaSku, string? ProductName, string? BrandName, IReadOnlyList<string> ImageUrls, string? Barcode, string RawJson);
 public sealed record RemoteInventoryLevel(string ExternalLocationId, string? LocationName, decimal Quantity, string RawJson);
 public sealed record RemoteCatalogVariant(
     string ExternalVariantId,
@@ -199,7 +202,7 @@ public sealed record RemotePublicationStatus(string Barcode, string Status, stri
 public sealed record ProductReadFilter(DateTimeOffset? ModifiedAfter, string? Barcode = null, string? ProductMainId = null, string? ContentId = null, string? ProductUrl = null, bool IncludePendingApproval = false);
 public sealed record StockPushLine(Guid VariantId, string Barcode, decimal Quantity, long ProjectionVersion);
 public sealed record PricePushLine(Guid VariantId, string Barcode, decimal ListPrice, decimal SalePrice, string Currency, long PriceVersion);
-public sealed record PriceInventoryPushLine(Guid VariantId, Guid OfferId, string Barcode, decimal Quantity, decimal ListPrice, decimal SalePrice, string Currency, long ProjectionVersion, long PriceVersion, string PriceHash);
+public sealed record PriceInventoryPushLine(Guid VariantId, Guid OfferId, string Barcode, decimal Quantity, decimal ListPrice, decimal SalePrice, string Currency, long ProjectionVersion, long PriceVersion, string PriceHash, string? MerchantSku = null, string? HepsiburadaSku = null);
 public sealed record PriceInventoryJobPayload(Guid JobId, Guid ConnectionId, string Phase, string PayloadHash, string PayloadJson, IReadOnlyList<PriceInventoryPushLine> Lines, string? ExternalOperationId, DateTimeOffset? SubmittedAt, Guid? VariantId = null, Guid? ProductId = null);
 public sealed record BatchLineResult(Guid LocalId, bool Succeeded, string? ErrorCode, bool Retryable);
 public sealed record BatchResult<T>(IReadOnlyList<T> Lines, string? ExternalOperationId, bool IsPartial);
@@ -238,9 +241,16 @@ public interface IShopifyOrderCsvImportService
 public sealed record PackageActionCommand(string ExternalPackageId, string Action, string PayloadJson);
 public sealed record ShipmentActionJobPayload(Guid JobId, Guid PackageId, string Action, string PayloadJson);
 public sealed record PackageActionResult(string ExternalPackageId, string Status, string? ExternalOperationId);
+public sealed record RemoteCargoCompany(string ShortName, string Name);
+public sealed record RemotePackageableLine(string LineItemId, int Quantity);
+public sealed record PackageCreateLineRequest(Guid OrderLineId, int Quantity);
+public sealed record RemotePackageCreateLineRequest(string LineItemId, int Quantity);
+public sealed record OrderPackageCreateRequest(string Barcode, string CargoCompany, string Carrier, string CreationReason, int Deci, int ParcelQuantity, string ShippingAddressLabel, string ShippingModel, IReadOnlyList<PackageCreateLineRequest> LineItems);
+public sealed record CreateOrderPackageCommand(string Barcode, string CargoCompany, string Carrier, string CreationReason, int Deci, int ParcelQuantity, string ShippingAddressLabel, string ShippingModel, IReadOnlyList<RemotePackageCreateLineRequest> LineItems);
+public sealed record CreateOrderPackageResult(string PackageNumber);
 public sealed record CommonLabelRequest(string CargoTrackingNumber, int BoxQuantity, decimal VolumetricHeight);
 public sealed record CommonLabelDocument(string CargoTrackingNumber, string Format, byte[] Content);
-public sealed record CommonLabelJobPayload(Guid JobId, Guid PackageId, string Phase, int BoxQuantity, decimal VolumetricHeight, DateTimeOffset StartedAt, DateTimeOffset DeadlineAt);
+public sealed record CommonLabelJobPayload(Guid JobId, Guid PackageId, string Phase, int BoxQuantity, decimal VolumetricHeight, DateTimeOffset StartedAt, DateTimeOffset DeadlineAt, string Format = "ZPL");
 public sealed record CapabilityProbeJobPayload(Guid JobId, Guid PackageId, Guid ActorUserId, string CapabilityCode, int BoxQuantity, decimal VolumetricHeight, DateTimeOffset StartedAt, DateTimeOffset DeadlineAt);
 public sealed record StageTestOrderJobPayload(Guid JobId, Guid ActorUserId, string Barcode, DateTimeOffset StartedAt);
 public sealed record StageTestOrderResult(string OrderNumber);
@@ -278,6 +288,12 @@ public interface IProductPort
     Task<AdapterResult<RemoteOperationRef>> ArchiveAsync(AdapterContext context, string payloadJson, CancellationToken cancellationToken);
 }
 
+public interface IHepsiburadaProductMatchPort
+{
+    Task<AdapterResult<AdapterPageResult<RemoteProductMatch>>> ListPendingProductMatchesAsync(AdapterContext context, AdapterPageRequest page, CancellationToken cancellationToken);
+    Task<AdapterResult<bool>> ReviewProductMatchesAsync(AdapterContext context, IReadOnlyList<string> merchantSkus, bool approve, CancellationToken cancellationToken);
+}
+
 public interface IProductVisualLookupPort
 {
     Task<AdapterResult<RemoteProduct?>> FindByBarcodeAsync(AdapterContext context, string barcode, CancellationToken cancellationToken);
@@ -293,8 +309,11 @@ public interface IOrderPort
     Task<AdapterResult<AdapterPageResult<RemoteOrder>>> PollAsync(AdapterContext context, OrderPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken);
     Task<AdapterResult<RemoteOrder>> GetAsync(AdapterContext context, string externalOrderId, CancellationToken cancellationToken);
     Task<AdapterResult<PackageActionResult>> ExecutePackageActionAsync(AdapterContext context, PackageActionCommand command, CancellationToken cancellationToken);
+    Task<AdapterResult<IReadOnlyList<RemoteCargoCompany>>> GetChangeableCargoCompaniesAsync(AdapterContext context, string externalPackageId, CancellationToken cancellationToken);
+    Task<AdapterResult<IReadOnlyList<RemotePackageableLine>>> GetPackageableLineItemsAsync(AdapterContext context, string externalLineItemId, CancellationToken cancellationToken);
+    Task<AdapterResult<CreateOrderPackageResult>> CreateOrderPackageAsync(AdapterContext context, CreateOrderPackageCommand command, CancellationToken cancellationToken);
     Task<AdapterResult<bool>> CreateCommonLabelAsync(AdapterContext context, CommonLabelRequest request, CancellationToken cancellationToken);
-    Task<AdapterResult<CommonLabelDocument>> GetCommonLabelAsync(AdapterContext context, string cargoTrackingNumber, CancellationToken cancellationToken);
+    Task<AdapterResult<CommonLabelDocument>> GetCommonLabelAsync(AdapterContext context, string cargoTrackingNumber, CancellationToken cancellationToken, string format = "ZPL");
     Task<AdapterResult<StageTestOrderResult>> CreateStageTestOrderAsync(AdapterContext context, string barcode, CancellationToken cancellationToken);
 }
 
@@ -319,7 +338,7 @@ public interface IWebhookVerifier
 public sealed record ConnectionView(Guid Id, Guid PublicId, string PlatformCode, string Environment, string DisplayName, string ExternalStoreId, string Status, string ApiVersion, DateTimeOffset? LastTestedAt, DateTimeOffset? LastSuccessAt, string? LastErrorCode, bool HasCredential, bool ExternalWritesEnabled, long Version, bool InvoiceCreationEnabled = true);
 public sealed record CapabilityView(string Code, string SupportLevel, string ApiVersion, string Environment, string StoreScope, string? SourceUrl, DateTimeOffset? VerifiedAt, string? ConstraintsJson, string? EvidenceNote, long Version);
 public sealed record RecordCapabilityEvidenceCommand(string SupportLevel, string SourceUrl, string SourceVersion, string Environment, string StoreScope, string EvidenceNote, string? FixtureChecksum, string? ConstraintsJson, DateTimeOffset VerifiedAt);
-public sealed record CreateConnectionCommand(string DisplayName, string Environment, string ExternalStoreId, string ApiVersion, string? UserAgentIdentity, string? PlatformCode = null, string? ShopifyAccessToken = null);
+public sealed record CreateConnectionCommand(string DisplayName, string Environment, string ExternalStoreId, string ApiVersion, string? UserAgentIdentity, string? PlatformCode = null, string? ShopifyAccessToken = null, string? HepsiburadaUsername = null, string? HepsiburadaServiceKey = null);
 public sealed record UpdateConnectionCommand(string DisplayName, string? UserAgentIdentity, string? Environment = null, string? ExternalStoreId = null, bool? ExternalWritesEnabled = null, bool? InvoiceCreationEnabled = null);
 public sealed record CredentialCommand(
     string? ApiKey,
@@ -470,7 +489,8 @@ public sealed record OrderLineView(
     Guid? VariantId = null,
     string? ModelCode = null,
     string? OptionSignature = null,
-    string? ImageUrl = null);
+    string? ImageUrl = null,
+    decimal AllocatedQuantity = 0);
 public sealed record ShipmentView(
     Guid Id,
     Guid OrderId,
@@ -510,7 +530,7 @@ public sealed record OrderDetailView(
     string? CustomerPhone = null,
     bool? IsEInvoiceAvailable = null,
     string? InvoiceDocumentUrl = null);
-public sealed record ShipmentDetailView(ShipmentView Package, IReadOnlyList<string> AllowedActions, IReadOnlyList<string> SupportedLabelFormats, bool IsStageConnection, IReadOnlyList<ShipmentDocumentView> Documents);
+public sealed record ShipmentDetailView(ShipmentView Package, IReadOnlyList<string> AllowedActions, IReadOnlyList<string> SupportedLabelFormats, bool IsStageConnection, IReadOnlyList<ShipmentDocumentView> Documents, string PlatformCode = "TRENDYOL");
 public sealed record ShipmentDocumentView(Guid Id, string DocumentKind, string Format, string Source, int DocumentVersion, DateTimeOffset CreatedAt, DateTimeOffset? ExpiresAt);
 public sealed record ShipmentActionCommand(string Action, string PayloadJson);
 public sealed record ReturnLineView(
@@ -597,13 +617,15 @@ public interface IMarketplaceSalesService
     Task<ServiceResult<OrderDetailView>> OrderAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
     Task<PageResult<ShipmentView>> ShipmentsAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken);
     Task<ServiceResult<ShipmentDetailView>> ShipmentAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
+    Task<ServiceResult<IReadOnlyList<RemoteCargoCompany>>> ChangeableCargoCompaniesAsync(Guid tenantId, Guid packageId, string correlationId, CancellationToken cancellationToken);
+    Task<ServiceResult<CreateOrderPackageResult>> CreateOrderPackageInstantAsync(Guid tenantId, Guid orderId, long expectedVersion, OrderPackageCreateRequest command, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueOrderSyncAsync(Guid tenantId, Guid connectionId, string? externalOrderId, bool full, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueReferenceSyncAsync(Guid tenantId, Guid connectionId, string resourceType, string? parentExternalId, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueProductSyncAsync(Guid tenantId, Guid connectionId, bool full, bool newOnly, bool existingOnly, bool mappingOnly, bool includeArchived, bool includeDrafts, bool includePendingApproval, bool updateExistingProducts, string? productLookup, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueShipmentActionAsync(Guid tenantId, Guid packageId, long expectedVersion, ShipmentActionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<ShipmentView>> ProcessShipmentInstantAsync(Guid tenantId, Guid packageId, long expectedVersion, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<ShipmentView>> ChangeCargoProviderInstantAsync(Guid tenantId, Guid packageId, long expectedVersion, ShipmentActionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
-    Task<ServiceResult<Guid>> EnqueueCommonLabelAsync(Guid tenantId, Guid packageId, long expectedVersion, int boxQuantity, decimal volumetricHeight, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
+    Task<ServiceResult<Guid>> EnqueueCommonLabelAsync(Guid tenantId, Guid packageId, long expectedVersion, int boxQuantity, decimal volumetricHeight, string idempotencyKey, string correlationId, CancellationToken cancellationToken, string format = "ZPL");
     Task<ServiceResult<Guid>> EnqueueLabelCapabilityProbeAsync(Guid tenantId, Guid actorUserId, Guid packageId, long expectedVersion, string capabilityCode, int boxQuantity, decimal volumetricHeight, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueStageTestOrderAsync(Guid tenantId, Guid actorUserId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<PageResult<ReturnListView>> ReturnsAsync(Guid tenantId, int limit, string? after, ReturnListQuery query, bool latest, CancellationToken cancellationToken);

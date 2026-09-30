@@ -223,6 +223,89 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         }
     }
 
+    [PostgreSqlFact]
+    public async Task ReceiveAsync_HepsiburadaClaimPackageQueuesPlatformSpecificIngestJob()
+    {
+        var tenant = NewTenant("hepsiburada-claim-package-webhook");
+        var connection = new PlatformConnection
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            PublicId = Guid.CreateVersion7(),
+            PlatformCode = "HEPSIBURADA",
+            Environment = "STAGE",
+            DisplayName = "Hepsiburada claim package webhook test",
+            ExternalStoreId = $"merchant-{Guid.NewGuid():N}",
+            Status = "ACTIVE",
+            ApiVersion = "V1.0",
+            Version = 1
+        };
+        const string routeToken = "hepsiburada-claim-package-route-token";
+        var subscription = new WebhookSubscription
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            ConnectionId = connection.Id,
+            RouteTokenHash = fixture.TokenHasher.Hash(routeToken),
+            AuthenticationType = "API_KEY",
+            ProtectedVerifierSecret = "test-secret",
+            Status = "ACTIVE",
+            Version = 1
+        };
+        const string externalMessageId = "claim_package:replacement-17:stable-hash";
+        const string rawJson = """
+        {
+          "packageNumber":"replacement-17",
+          "status":"Open",
+          "claims":[{
+            "number":"claim-17",
+            "status":"Accepted",
+            "claimType":"RenewProduct",
+            "claimDate":"2026-09-28T12:15:00Z",
+            "orderNumber":"order-17",
+            "orderDate":"2026-09-20T10:00:00Z",
+            "quantity":1,
+            "line":{"lineItemId":"line-17","quantity":1,"merchantSku":"sku-17","price":9.99}
+          }]
+        }
+        """;
+        var verifier = new FixedWebhookVerifier(new(externalMessageId, "payload-hash", "CLAIM_PACKAGE", rawJson));
+
+        try
+        {
+            await using (var setupDb = fixture.CreateContext())
+            {
+                setupDb.Tenants.Add(tenant);
+                setupDb.PlatformConnections.Add(connection);
+                setupDb.WebhookSubscriptions.Add(subscription);
+                await setupDb.SaveChangesAsync();
+            }
+
+            var received = await ReceiveWebhookAsync(connection.PublicId, routeToken, rawJson, "claim-package-webhook-test", verifier);
+
+            Assert.True(received.Succeeded, received.Error?.Code);
+            await using var verifyDb = fixture.CreateContext();
+            var inbox = await verifyDb.InboxMessages.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id);
+            var job = await verifyDb.IntegrationJobs.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id);
+            using var jobPayload = System.Text.Json.JsonDocument.Parse(job.PayloadJson);
+            Assert.Equal("HEPSIBURADA_WEBHOOK", inbox.Source);
+            Assert.Equal($"{connection.Id:N}:{externalMessageId}", inbox.ExternalMessageId);
+            Assert.Equal(MarketplaceJobTypes.HepsiburadaWebhookIngest, job.JobType);
+            Assert.Equal("CLAIM_PACKAGE", jobPayload.RootElement.GetProperty("resourceType").GetString());
+            Assert.Equal($"{connection.Id:N}:{externalMessageId}", jobPayload.RootElement.GetProperty("externalMessageId").GetString());
+        }
+        finally
+        {
+            await using var cleanupDb = fixture.CreateContext();
+            await cleanupDb.IntegrationJobs.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanupDb.InboxMessages.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanupDb.IntegrationOutboxEvents.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanupDb.WebhookSubscriptions.Where(x => x.Id == subscription.Id).ExecuteDeleteAsync();
+            await cleanupDb.PlatformConnections.Where(x => x.Id == connection.Id).ExecuteDeleteAsync();
+            await cleanupDb.Tenants.Where(x => x.Id == tenant.Id).ExecuteDeleteAsync();
+        }
+    }
+
     private async Task<ServiceResult<bool>> ReceiveWebhookAsync(Guid connectionPublicId, string routeToken, string rawJson, string correlationId, IWebhookVerifier verifier)
     {
         await using var db = fixture.CreateContext();

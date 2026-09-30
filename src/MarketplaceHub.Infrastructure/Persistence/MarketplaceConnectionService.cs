@@ -70,6 +70,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         var externalStoreId = platform == "SHOPIFY" ? NormalizeShopifyStore(command.ExternalStoreId) : command.ExternalStoreId.Trim();
         if (platform == "SHOPIFY" && externalStoreId is null) return Invalid<ConnectionView>("externalStoreId", "Shopify mağaza adı kısa ad veya myshopify.com adresi olarak girilmelidir.");
         if (platform == "SHOPIFY" && string.IsNullOrWhiteSpace(command.ShopifyAccessToken)) return Invalid<ConnectionView>("shopifyAccessToken", "Shopify uygulama tokenı zorunludur.");
+        if (platform == "HEPSIBURADA" && (string.IsNullOrWhiteSpace(command.HepsiburadaUsername) || string.IsNullOrWhiteSpace(command.HepsiburadaServiceKey))) return Invalid<ConnectionView>("credential", "Hepsiburada bağlantısı için kullanıcı adı ve servis anahtarı zorunludur.");
         if (await db.PlatformConnections.AnyAsync(x => x.TenantId == tenantId && x.Status != "DELETED" && x.PlatformCode == platform && x.Environment == environment && x.ExternalStoreId == externalStoreId, cancellationToken)) return ServiceResult<ConnectionView>.Fail("CONNECTION_ALREADY_EXISTS", "Bu platform kapsamı ve environment için bağlantı zaten var.", 409);
 
         var now = timeProvider.GetUtcNow(); var connection = new PlatformConnection
@@ -116,8 +117,23 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
                 Version = 1
             });
         }
+        else if (platform == "HEPSIBURADA")
+        {
+            var username = command.HepsiburadaUsername!.Trim();
+            db.PlatformCredentials.Add(new PlatformCredential
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenantId,
+                ConnectionId = connection.Id,
+                CredentialType = "BASIC",
+                ProtectedPayload = _credentialProtector.Protect(JsonSerializer.Serialize(new CredentialPayload(username, command.HepsiburadaServiceKey!))),
+                MaskedHint = Mask(username),
+                CreatedAt = now,
+                Version = 1
+            });
+        }
         await db.SaveChangesAsync(cancellationToken);
-        return ServiceResult<ConnectionView>.Ok(Map(connection, platform == "SHOPIFY"));
+        return ServiceResult<ConnectionView>.Ok(Map(connection, platform is "SHOPIFY" or "HEPSIBURADA"));
     }
 
     public async Task<ServiceResult<ConnectionView>> GetAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
@@ -386,14 +402,14 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
 
     public async Task<ServiceResult<IReadOnlyList<WebhookSubscriptionView>>> WebhooksAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
     {
-        if (!await db.PlatformConnections.AnyAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY"), cancellationToken)) return NotFound<IReadOnlyList<WebhookSubscriptionView>>();
+        if (!await db.PlatformConnections.AnyAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA"), cancellationToken)) return NotFound<IReadOnlyList<WebhookSubscriptionView>>();
         var rows = await db.WebhookSubscriptions.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == id).OrderBy(x => x.Id).Select(x => new WebhookSubscriptionView(x.Id, x.AuthenticationType, x.Status, x.ExternalSubscriptionId, x.VerifiedAt, x.LastReceivedAt, x.Version)).ToListAsync(cancellationToken);
         return ServiceResult<IReadOnlyList<WebhookSubscriptionView>>.Ok(rows);
     }
 
     public async Task<ServiceResult<CreatedWebhookSubscription>> CreateWebhookAsync(Guid tenantId, Guid id, CreateWebhookSubscriptionCommand command, CancellationToken cancellationToken)
     {
-        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY"), cancellationToken); if (connection is null) return NotFound<CreatedWebhookSubscription>(); if (!ActiveIntegrationScope.Contains(connection.PlatformCode)) return Deferred<CreatedWebhookSubscription>(); var type = command.AuthenticationType.Trim().ToUpperInvariant();
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA"), cancellationToken); if (connection is null) return NotFound<CreatedWebhookSubscription>(); if (!ActiveIntegrationScope.Contains(connection.PlatformCode)) return Deferred<CreatedWebhookSubscription>(); var type = command.AuthenticationType.Trim().ToUpperInvariant();
         WebhookVerifierPayload payload;
         if (type == "API_KEY" && !string.IsNullOrWhiteSpace(command.ApiKey)) payload = new(null, null, command.ApiKey, null);
         else if (type == "BASIC_AUTHENTICATION" && !string.IsNullOrWhiteSpace(command.Username) && !string.IsNullOrWhiteSpace(command.Password)) payload = new(command.Username, command.Password, null, null);

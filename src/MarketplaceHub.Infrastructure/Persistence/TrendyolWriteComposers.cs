@@ -22,6 +22,9 @@ internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration conf
 
     public async Task<ServiceResult<ProductUpdateDraft>> BuildAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken)
     {
+        var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        if (string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase))
+            return await new HepsiburadaProductUpdateComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken);
         var create = await new ProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken);
         if (!create.Succeeded) return ServiceResult<ProductUpdateDraft>.Fail(create.Error!.Code, create.Error.Message, create.Error.Status, create.Error.FieldErrors);
         var draft = create.Value!;
@@ -110,17 +113,26 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
 
     public async Task<ServiceResult<PriceInventoryDraft>> BuildAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken, Guid? variantId = null, Guid? productId = null)
     {
+        var connection = await db.PlatformConnections.AsNoTracking()
+            .Where(item => item.TenantId == tenantId && item.Id == connectionId)
+            .Select(item => new { item.PlatformCode, item.ExternalStoreId })
+            .SingleOrDefaultAsync(cancellationToken);
+        if (connection is null) return ServiceResult<PriceInventoryDraft>.Fail("CONNECTION_NOT_FOUND", "Pazaryeri bağlantısı bulunamadı.", 404);
+        var isHepsiburada = string.Equals(connection.PlatformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase);
         var rows = await (from offer in db.ChannelOffers.AsNoTracking()
                           join variant in db.ProductVariants.AsNoTracking() on new { offer.TenantId, offer.VariantId } equals new { variant.TenantId, VariantId = variant.Id }
                           join listingState in db.MarketplaceListingStates.AsNoTracking() on new { offer.TenantId, offer.ConnectionId, offer.VariantId } equals new { listingState.TenantId, listingState.ConnectionId, listingState.VariantId }
                           join profile in db.ChannelListingProfiles.AsNoTracking() on new { offer.TenantId, offer.ConnectionId, ProductId = variant.ProductId } equals new { profile.TenantId, profile.ConnectionId, profile.ProductId }
                           join listingVariant in db.ChannelListingVariants.AsNoTracking() on new { profile.TenantId, ProfileId = profile.Id, VariantId = variant.Id } equals new { listingVariant.TenantId, listingVariant.ProfileId, listingVariant.VariantId }
+                          join remoteLink in db.MarketplaceVariantLinks.AsNoTracking().Where(link => link.TenantId == tenantId && link.ConnectionId == connectionId)
+                              on new { offer.TenantId, offer.ConnectionId, offer.VariantId } equals new { remoteLink.TenantId, remoteLink.ConnectionId, remoteLink.VariantId } into remoteLinks
+                          from remoteLink in remoteLinks.DefaultIfEmpty()
                           join inventory in db.InventoryItems.AsNoTracking().Where(x => x.LocationCode == "MAIN") on new { offer.TenantId, offer.VariantId } equals new { inventory.TenantId, inventory.VariantId }
                           where offer.TenantId == tenantId && offer.ConnectionId == connectionId && offer.Status == "ACTIVE" && listingState.ActualStatus == "LIVE" && listingVariant.ExternalBarcode != null
                                && (variantId == null || offer.VariantId == variantId)
                                && (productId == null || variant.ProductId == productId)
                           orderby variant.Id
-                          select new { Offer = offer, Variant = variant, Inventory = inventory, Barcode = listingVariant.ExternalBarcode! }).ToListAsync(cancellationToken);
+                          select new { Offer = offer, Variant = variant, Inventory = inventory, Barcode = listingVariant.ExternalBarcode!, MerchantSku = listingVariant.ExternalSku, HepsiburadaSku = remoteLink == null ? null : remoteLink.ExternalId }).ToListAsync(cancellationToken);
         if (rows.Count == 0) return ServiceResult<PriceInventoryDraft>.Fail("LIVE_OFFER_REQUIRED", "Fiyat-stok gönderimi için LIVE eşleşmiş varyant ve ACTIVE teklif gerekir.", 422);
 
         var lines = new List<PriceInventoryPushLine>();
@@ -128,18 +140,26 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         {
             if (!string.Equals(row.Offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase) || row.Offer.SalePrice <= 0 || row.Offer.ListPrice < row.Offer.SalePrice)
                 return ServiceResult<PriceInventoryDraft>.Fail("CHANNEL_OFFER_INVALID", $"'{row.Variant.Sku}' için TRY ve listPrice >= salePrice > 0 kuralı gerekir.", 422);
+            if (isHepsiburada && (string.IsNullOrWhiteSpace(row.MerchantSku) || !string.Equals(row.MerchantSku, row.Variant.Sku, StringComparison.Ordinal) || string.IsNullOrWhiteSpace(row.HepsiburadaSku)))
+                return ServiceResult<PriceInventoryDraft>.Fail("HEPSIBURADA_LISTING_LINK_REQUIRED", $"'{row.Variant.Sku}' için doğrulanmış merchantSku ve hbSku eşleştirmesi gerekir.", 409);
             var publishable = Math.Max(0, row.Inventory.Available - row.Offer.SafetyStock);
             var quantity = decimal.Floor(publishable);
             var priceHash = Hash($"{row.Offer.ListPrice:0.####}|{row.Offer.SalePrice:0.####}|TRY|{row.Offer.PriceVersion}");
             if (row.Offer.LastPriceHash == priceHash && row.Offer.LastStockProjectionVersion == row.Inventory.ProjectionVersion) continue;
-            lines.Add(new(row.Variant.Id, row.Offer.Id, row.Barcode.Trim(), quantity, row.Offer.ListPrice, row.Offer.SalePrice, "TRY", row.Inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash));
+            lines.Add(new(row.Variant.Id, row.Offer.Id, row.Barcode.Trim(), quantity, row.Offer.ListPrice, row.Offer.SalePrice, "TRY", row.Inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash, row.MerchantSku?.Trim(), row.HepsiburadaSku?.Trim()));
         }
-        if (lines.Count == 0) return ServiceResult<PriceInventoryDraft>.Fail("NO_EXTERNAL_CHANGES", "Trendyol'a gönderilecek yeni fiyat veya stok değişikliği yok.", 409);
+        if (lines.Count == 0) return ServiceResult<PriceInventoryDraft>.Fail("NO_EXTERNAL_CHANGES", "Pazaryerine gönderilecek yeni fiyat veya stok değişikliği yok.", 409);
         // Dirty filtering must happen before the provider batch limit. A large
         // catalog with only a few changed offers is a valid request, while a
         // larger dirty set is drained deterministically in follow-up passes.
-        lines = lines.Take(MaximumBatchSize).ToList();
-        var payload = JsonSerializer.Serialize(new { items = lines.Select(x => new { barcode = x.Barcode, quantity = checked((int)Math.Min((decimal)int.MaxValue, x.Quantity)), salePrice = x.SalePrice, listPrice = x.ListPrice }).ToArray() });
+        lines = lines.Take(isHepsiburada ? 4000 : MaximumBatchSize).ToList();
+        var payload = isHepsiburada
+            ? JsonSerializer.Serialize(new
+            {
+                merchantId = connection.ExternalStoreId,
+                items = lines.Select(x => new { hepsiburadaSku = x.HepsiburadaSku, merchantSku = x.MerchantSku, price = x.SalePrice, availableStock = checked((int)Math.Min((decimal)int.MaxValue, x.Quantity)) }).ToArray()
+            })
+            : JsonSerializer.Serialize(new { items = lines.Select(x => new { barcode = x.Barcode, quantity = checked((int)Math.Min((decimal)int.MaxValue, x.Quantity)), salePrice = x.SalePrice, listPrice = x.ListPrice }).ToArray() });
         return ServiceResult<PriceInventoryDraft>.Ok(new(Hash(payload), payload, lines));
     }
 

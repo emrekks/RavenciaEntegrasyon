@@ -346,6 +346,13 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         if (order is null) return NotFound<OrderDetailView>();
         var orderLines = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == id).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         var activeOrderLines = orderLines.Where(line => OrderLinePresentationPolicy.HasActiveQuantity(line.OrderedQuantity, line.CancelledQuantity)).ToList();
+        var activeLineIds = activeOrderLines.Select(line => line.Id).ToArray();
+        var allocationRows = await db.PackageLineAllocations.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && activeLineIds.Contains(x.OrderLineId))
+            .Select(x => new { x.OrderLineId, x.AllocatedQuantity, x.CancelledQuantity })
+            .ToListAsync(cancellationToken);
+        var allocatedQuantities = allocationRows.GroupBy(row => row.OrderLineId)
+            .ToDictionary(group => group.Key, group => group.Sum(row => Math.Max(0m, row.AllocatedQuantity - row.CancelledQuantity)));
         var variantIds = activeOrderLines.Where(x => x.VariantId is not null).Select(x => x.VariantId!.Value).Distinct().ToArray();
         var lineSkus = activeOrderLines.Select(x => x.Sku).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToArray();
         var lineSkuKeys = activeOrderLines.Select(x => NormalizeCatalogKey(x.Sku, 160)).Where(x => x.Length > 0).Distinct().ToArray();
@@ -362,7 +369,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         {
             var variant = ResolveVariant(x, variants, variantsBySku, variantsByBarcode);
             var source = SourceLine(x.SourceSnapshotJson);
-            return new OrderLineView(x.Id, x.Sku, x.Barcode, x.TitleSnapshot, x.OrderedQuantity, x.CancelledQuantity, x.ShippedQuantity, x.DeliveredQuantity, x.ReturnedQuantity, x.UnitPrice, x.VatRate, x.RawStatus, x.VariantId, variant?.ModelCode ?? source.ModelCode, variant?.OptionSignature ?? source.OptionSignature, source.ImageUrl ?? (variant is null ? null : imageUrls.GetValueOrDefault(variant.Id)));
+            return new OrderLineView(x.Id, x.Sku, x.Barcode, x.TitleSnapshot, x.OrderedQuantity, x.CancelledQuantity, x.ShippedQuantity, x.DeliveredQuantity, x.ReturnedQuantity, x.UnitPrice, x.VatRate, x.RawStatus, x.VariantId, variant?.ModelCode ?? source.ModelCode, variant?.OptionSignature ?? source.OptionSignature, source.ImageUrl ?? (variant is null ? null : imageUrls.GetValueOrDefault(variant.Id)), allocatedQuantities.GetValueOrDefault(x.Id));
         }).ToList();
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == order.ConnectionId, cancellationToken);
         var packages = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == id).OrderBy(x => x.Id).ToListAsync(cancellationToken);
@@ -423,16 +430,164 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
 
     public async Task<ServiceResult<ShipmentDetailView>> ShipmentAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
     {
-        var row = await (from package in db.ShipmentPackages.AsNoTracking() where package.TenantId == tenantId && package.Id == id && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == package.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")) join order in db.Orders.AsNoTracking() on new { package.TenantId, package.OrderId } equals new { order.TenantId, OrderId = order.Id } select new { Package = package, order.OrderNumber }).SingleOrDefaultAsync(cancellationToken); if (row is null) return NotFound<ShipmentDetailView>();
+        var row = await (from package in db.ShipmentPackages.AsNoTracking() where package.TenantId == tenantId && package.Id == id && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == package.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")) join order in db.Orders.AsNoTracking() on new { package.TenantId, package.OrderId } equals new { order.TenantId, OrderId = order.Id } join connection in db.PlatformConnections.AsNoTracking() on new { package.TenantId, ConnectionId = package.ConnectionId } equals new { connection.TenantId, ConnectionId = connection.Id } select new { Package = package, order.OrderNumber, connection.PlatformCode }).SingleOrDefaultAsync(cancellationToken); if (row is null) return NotFound<ShipmentDetailView>();
         var stage = await IsStageConnection(tenantId, row.Package.ConnectionId, cancellationToken);
         var actions = stage
-            ? ShipmentActions
+            ? row.PlatformCode == "HEPSIBURADA" ? HepsiburadaShipmentActionsFor(row.Package) : ShipmentActions
             : await CapabilityValues(tenantId, row.Package.ConnectionId, MarketplaceCapabilities.ShipmentWrite, "allowedActions", cancellationToken);
-        var formats = stage
-            ? StageLabelFormats
-            : await CapabilityValues(tenantId, row.Package.ConnectionId, MarketplaceCapabilities.LabelRead, "formats", cancellationToken);
+        if (!stage && row.PlatformCode == "HEPSIBURADA")
+        {
+            var evidencedActions = actions;
+            actions = HepsiburadaShipmentActionsFor(row.Package)
+                .Where(action => evidencedActions.Contains(action, StringComparer.OrdinalIgnoreCase))
+                .ToArray();
+        }
+        IReadOnlyList<string> formats;
+        if (row.PlatformCode == "HEPSIBURADA")
+        {
+            formats = !CommonLabelCarrierPolicy.SupportsHepsiburada(row.Package.CargoProviderExternalId)
+                ? []
+                : stage
+                    ? HepsiburadaLabelFormats
+                    : (await CapabilityValues(tenantId, row.Package.ConnectionId, MarketplaceCapabilities.LabelRead, "formats", cancellationToken))
+                        .Where(format => HepsiburadaLabelFormats.Contains(format, StringComparer.OrdinalIgnoreCase))
+                        .ToArray();
+        }
+        else
+        {
+            formats = stage
+                ? StageLabelFormats
+                : await CapabilityValues(tenantId, row.Package.ConnectionId, MarketplaceCapabilities.LabelRead, "formats", cancellationToken);
+        }
         var documents = await db.ShipmentDocuments.AsNoTracking().Where(x => x.TenantId == tenantId && x.PackageId == id).OrderByDescending(x => x.DocumentVersion).Select(x => new ShipmentDocumentView(x.Id, x.DocumentKind, x.Format, x.Source, x.DocumentVersion, x.CreatedAt, x.ExpiresAt)).ToListAsync(cancellationToken);
-        return ServiceResult<ShipmentDetailView>.Ok(new(Map(row.Package, row.OrderNumber), actions, formats, stage, documents));
+        return ServiceResult<ShipmentDetailView>.Ok(new(Map(row.Package, row.OrderNumber), actions, formats, stage, documents, row.PlatformCode));
+    }
+
+    public async Task<ServiceResult<IReadOnlyList<RemoteCargoCompany>>> ChangeableCargoCompaniesAsync(Guid tenantId, Guid packageId, string correlationId, CancellationToken cancellationToken)
+    {
+        var row = await (from package in db.ShipmentPackages.AsNoTracking()
+                         join connection in db.PlatformConnections.AsNoTracking() on new { package.TenantId, package.ConnectionId } equals new { connection.TenantId, ConnectionId = connection.Id }
+                         where package.TenantId == tenantId && package.Id == packageId && connection.PlatformCode == "HEPSIBURADA" && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")
+                         select new { package.ConnectionId, package.ExternalPackageId }).SingleOrDefaultAsync(cancellationToken);
+        if (row is null) return ServiceResult<IReadOnlyList<RemoteCargoCompany>>.Fail("HEPSIBURADA_PACKAGE_NOT_FOUND", "Etkin Hepsiburada paketi bulunamadı.", 404);
+        var result = await orders.GetChangeableCargoCompaniesAsync(
+            new AdapterContext(tenantId, row.ConnectionId, correlationId, $"hb-carriers:{packageId:N}", timeProvider.GetUtcNow().AddSeconds(30)),
+            row.ExternalPackageId,
+            cancellationToken);
+        return result.IsSuccess
+            ? ServiceResult<IReadOnlyList<RemoteCargoCompany>>.Ok(result.Value!)
+            : ServiceResult<IReadOnlyList<RemoteCargoCompany>>.Fail(result.Error?.Code ?? "HEPSIBURADA_CARGO_COMPANIES_FAILED", result.Error?.SafeMessage ?? "Hepsiburada kargo firmaları okunamadı.", result.Error?.HttpStatus is >= 400 and <= 599 ? result.Error.HttpStatus.Value : 502);
+    }
+
+    public async Task<ServiceResult<CreateOrderPackageResult>> CreateOrderPackageInstantAsync(Guid tenantId, Guid orderId, long expectedVersion, OrderPackageCreateRequest command, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(idempotencyKey) || idempotencyKey.Trim().Length > 256) return Invalid<CreateOrderPackageResult>("idempotencyKey", "1 ile 256 karakter arasında Idempotency-Key başlığı gereklidir.");
+        if (command is null) return Invalid<CreateOrderPackageResult>("package", "Paket alanları gereklidir.");
+        var order = await db.Orders.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == orderId, cancellationToken);
+        if (order is null) return NotFound<CreateOrderPackageResult>();
+        if (order.Version != expectedVersion) return Precondition<CreateOrderPackageResult>(order.Version);
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == order.ConnectionId && x.PlatformCode == "HEPSIBURADA" && (x.Status == "ACTIVE" || x.Status == "VERIFIED"), cancellationToken);
+        if (connection is null) return ServiceResult<CreateOrderPackageResult>.Fail("HEPSIBURADA_CONNECTION_REQUIRED", "Sipariş etkin Hepsiburada bağlantısına bağlı olmalıdır.", 422);
+        if (!PackageCreateFieldsValid(command)) return Invalid<CreateOrderPackageResult>("package", "Paket başlığı ve en az bir geçerli sipariş kalemi gereklidir.");
+
+        var selectedIds = command.LineItems.Select(line => line.OrderLineId).ToArray();
+        if (selectedIds.Distinct().Count() != selectedIds.Length) return Invalid<CreateOrderPackageResult>("lineItems", "Aynı sipariş kalemi pakette bir kez bulunabilir.");
+        var lines = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == orderId && selectedIds.Contains(x.Id)).ToListAsync(cancellationToken);
+        if (lines.Count != selectedIds.Length) return ServiceResult<CreateOrderPackageResult>.Fail("ORDER_PACKAGE_LINES_INVALID", "Seçili sipariş kalemlerinden biri bu siparişe ait değil.", 422);
+        var allocationRows = await db.PackageLineAllocations.AsNoTracking().Where(x => x.TenantId == tenantId && selectedIds.Contains(x.OrderLineId))
+            .Select(x => new { x.OrderLineId, x.AllocatedQuantity, x.CancelledQuantity }).ToListAsync(cancellationToken);
+        var allocations = allocationRows.GroupBy(item => item.OrderLineId).ToDictionary(group => group.Key, group => group.Sum(item => Math.Max(0m, item.AllocatedQuantity - item.CancelledQuantity)));
+        var remoteLines = new List<RemotePackageCreateLineRequest>();
+        foreach (var requested in command.LineItems)
+        {
+            var line = lines.Single(item => item.Id == requested.OrderLineId);
+            var remaining = Math.Max(0m, line.OrderedQuantity - line.CancelledQuantity - (allocations.GetValueOrDefault(line.Id)));
+            if (requested.Quantity <= 0 || requested.Quantity > remaining || requested.Quantity != decimal.Truncate(requested.Quantity))
+                return ServiceResult<CreateOrderPackageResult>.Fail("ORDER_PACKAGE_QUANTITY_INVALID", $"{line.Sku} için kalan paketlenebilir miktar {remaining} adetten fazla olamaz.", 422);
+            if (string.IsNullOrWhiteSpace(line.ExternalLineId) || line.ExternalLineId.Any(char.IsWhiteSpace))
+                return ServiceResult<CreateOrderPackageResult>.Fail("ORDER_PACKAGE_LINE_ID_INVALID", $"{line.Sku} Hepsiburada kalem kimliği geçersiz.", 422);
+            remoteLines.Add(new(line.ExternalLineId, requested.Quantity));
+        }
+
+        var stage = string.Equals(connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase);
+        if (!stage && !string.Equals(connection.Environment, "PRODUCTION", StringComparison.OrdinalIgnoreCase)) return ServiceResult<CreateOrderPackageResult>.Fail("ENVIRONMENT_INVALID", "Paket oluşturma yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
+        if (!stage && !await WritesEnabled(tenantId, connection.Id, cancellationToken)) return ServiceResult<CreateOrderPackageResult>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
+        var policy = await ExternalWritePolicyAsync(tenantId, connection.Id, MarketplaceExternalWritePolicies.Shipment, cancellationToken);
+        if (!policy.Enabled) return ServiceResult<CreateOrderPackageResult>.Fail("EXTERNAL_WRITE_POLICY_DISABLED", "Kargo dış yazma akışı kapalı.", 422);
+
+        var normalizedKey = idempotencyKey.Trim();
+        var effectPrefix = $"HEPSIBURADA_PACKAGE_CREATE:{connection.Id:N}:{order.Id:N}";
+        var existing = await db.ExternalEffectRecords.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.IdempotencyKey == normalizedKey && x.EffectType.StartsWith(effectPrefix), cancellationToken);
+        if (existing is not null)
+        {
+            if (existing.CompletedAt is null) return ServiceResult<CreateOrderPackageResult>.Fail("EXTERNAL_EFFECT_AMBIGUOUS", "Önceki paket oluşturma isteğinin sonucu kesinleşmedi; sipariş eşitlemesini bekleyin.", 409);
+            var packageNumber = existing.EffectType[(effectPrefix.Length + 1)..];
+            return packageNumber.Length > 0
+                ? ServiceResult<CreateOrderPackageResult>.Ok(new(Uri.UnescapeDataString(packageNumber)))
+                : ServiceResult<CreateOrderPackageResult>.Fail("PACKAGE_CREATE_READBACK_REQUIRED", "Paket oluşturma daha önce tamamlandı; sipariş eşitlemesinden paket numarasını kontrol edin.", 409);
+        }
+        var completedPackageEffects = await db.ExternalEffectRecords.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.EffectType.StartsWith(effectPrefix + ":") && x.CompletedAt != null)
+            .Select(x => x.EffectType)
+            .ToListAsync(cancellationToken);
+        if (completedPackageEffects.Count > 0)
+        {
+            var knownPackageNumbers = await db.ShipmentPackages.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ConnectionId == connection.Id && x.OrderId == orderId)
+                .Select(x => x.ExternalPackageId)
+                .ToListAsync(cancellationToken);
+            var readbackPending = completedPackageEffects.Any(effectType =>
+            {
+                var encodedPackageNumber = effectType[(effectPrefix.Length + 1)..];
+                var packageNumber = Uri.UnescapeDataString(encodedPackageNumber);
+                return !knownPackageNumbers.Contains(packageNumber, StringComparer.Ordinal);
+            });
+            if (readbackPending) return ServiceResult<CreateOrderPackageResult>.Fail("PACKAGE_CREATE_READBACK_REQUIRED", "Önceki paket Hepsiburada’da oluşturuldu; sipariş/paket eşitlemesi tamamlanmadan başka paket açılamaz.", 409);
+        }
+        var pendingReservation = await db.ExternalEffectRecords.AsNoTracking().AnyAsync(
+            x => x.TenantId == tenantId && x.IdempotencyKey == effectPrefix && x.EffectType == effectPrefix && x.CompletedAt == null,
+            cancellationToken);
+        if (pendingReservation) return ServiceResult<CreateOrderPackageResult>.Fail("EXTERNAL_EFFECT_AMBIGUOUS", "Bu sipariş için önceki paket oluşturma isteğinin sonucu kesinleşmedi; yeni paket isteği engellendi.", 409);
+
+        var seed = remoteLines[0];
+        var eligible = await orders.GetPackageableLineItemsAsync(new AdapterContext(tenantId, connection.Id, correlationId, $"{normalizedKey}:eligible", timeProvider.GetUtcNow().AddSeconds(30)), seed.LineItemId, cancellationToken);
+        if (!eligible.IsSuccess && eligible.Error?.Class != AdapterErrorClass.NotFound)
+            return ServiceResult<CreateOrderPackageResult>.Fail(eligible.Error?.Code ?? "PACKAGEABLE_LINES_READ_FAILED", eligible.Error?.SafeMessage ?? "Paketlenebilir kalemler okunamadı.", eligible.Error?.HttpStatus is >= 400 and <= 599 ? eligible.Error.HttpStatus.Value : 502);
+        // Hepsiburada returns 404 when no *additional* lines can join the seed.
+        // The seed itself can still be packaged, so preserve it as eligible.
+        var eligibleLines = eligible.IsSuccess ? eligible.Value! : Array.Empty<RemotePackageableLine>();
+        var compatibleIds = eligibleLines.Select(line => line.LineItemId).Append(seed.LineItemId).ToHashSet(StringComparer.Ordinal);
+        if (remoteLines.Skip(1).Any(line => !compatibleIds.Contains(line.LineItemId))) return ServiceResult<CreateOrderPackageResult>.Fail("HEPSIBURADA_PACKAGE_LINES_NOT_COMPATIBLE", "Seçili kalemlerden biri Hepsiburada yanıtına göre aynı pakete eklenemez.", 422);
+
+        var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = effectPrefix, IdempotencyKey = effectPrefix, CreatedAt = timeProvider.GetUtcNow() };
+        db.ExternalEffectRecords.Add(effect);
+        try { await db.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateException)
+        {
+            db.ChangeTracker.Clear();
+            return ServiceResult<CreateOrderPackageResult>.Fail("EXTERNAL_EFFECT_AMBIGUOUS", "Bu paket isteği başka bir işlemde ele alınıyor; sipariş durumunu kontrol edin.", 409);
+        }
+
+        var result = await orders.CreateOrderPackageAsync(
+            new AdapterContext(tenantId, connection.Id, correlationId, normalizedKey, timeProvider.GetUtcNow().AddSeconds(30)),
+            new(command.Barcode.Trim(), command.CargoCompany.Trim(), command.Carrier.Trim(), command.CreationReason.Trim(), command.Deci, command.ParcelQuantity,
+                command.ShippingAddressLabel.Trim(), command.ShippingModel.Trim(), remoteLines),
+            cancellationToken);
+        if (!result.IsSuccess)
+        {
+            var error = result.Error;
+            if (error is null || IsAmbiguous(error)) return ServiceResult<CreateOrderPackageResult>.Fail("EXTERNAL_EFFECT_AMBIGUOUS", error?.SafeMessage ?? "Hepsiburada paket oluşturma isteğine yanıt vermedi; tekrar gönderim engellendi.", 409);
+            db.ExternalEffectRecords.Remove(effect);
+            await db.SaveChangesAsync(cancellationToken);
+            return ServiceResult<CreateOrderPackageResult>.Fail(error.Code, error.SafeMessage, error.HttpStatus is >= 400 and <= 599 ? error.HttpStatus.Value : 502);
+        }
+
+        effect.EffectType = $"{effectPrefix}:{Uri.EscapeDataString(result.Value!.PackageNumber)}";
+        effect.IdempotencyKey = normalizedKey;
+        effect.CompletedAt = timeProvider.GetUtcNow();
+        await db.SaveChangesAsync(cancellationToken);
+        _ = await EnqueueOrderSyncAsync(tenantId, connection.Id, order.OrderNumber, false, correlationId, cancellationToken);
+        return ServiceResult<CreateOrderPackageResult>.Ok(result.Value!);
     }
 
     public async Task<ServiceResult<Guid>> EnqueueOrderSyncAsync(Guid tenantId, Guid connectionId, string? externalOrderId, bool full, string correlationId, CancellationToken cancellationToken)
@@ -495,6 +650,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var package = await db.ShipmentPackages.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == packageId, cancellationToken); if (package is null) return NotFound<Guid>(); if (package.Version != expectedVersion) return Precondition<Guid>(package.Version);
         var action = command.Action.Trim().ToUpperInvariant();
         var commandPayload = command.PayloadJson;
+        var platform = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.ConnectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
         if (action == "PICKING" && IsEmptyJsonObject(commandPayload))
         {
             var packageLines = await (from allocation in db.PackageLineAllocations.AsNoTracking()
@@ -505,7 +661,10 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 return ServiceResult<Guid>.Fail("PICKING_LINES_REQUIRED", "Paket satırları Trendyol Picking isteği için hazırlanamadı.", 422);
             commandPayload = JsonSerializer.Serialize(new { lines = packageLines.Select(line => new { lineId = long.Parse(line.ExternalLineId), quantity = (int)line.AllocatedQuantity }), @params = new { }, status = "Picking" });
         }
-        var validation = ValidateShipmentAction(package, action, commandPayload); if (validation is not null) return ServiceResult<Guid>.Fail(validation.Code, validation.Message, validation.Status, validation.FieldErrors);
+        var validation = platform == "HEPSIBURADA"
+            ? ValidateHepsiburadaShipmentAction(package, action, commandPayload)
+            : ValidateShipmentAction(package, action, commandPayload);
+        if (validation is not null) return ServiceResult<Guid>.Fail(validation.Code, validation.Message, validation.Status, validation.FieldErrors);
         var stage = await IsStageConnection(tenantId, package.ConnectionId, cancellationToken);
         if (!stage && !await IsProductionConnection(tenantId, package.ConnectionId, cancellationToken)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Shipment işlemi yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
         if (!stage && !await WritesEnabled(tenantId, package.ConnectionId, cancellationToken)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
@@ -668,24 +827,40 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         return ServiceResult<ShipmentView>.Ok(Map(package, orderNumber));
     }
 
-    public async Task<ServiceResult<Guid>> EnqueueCommonLabelAsync(Guid tenantId, Guid packageId, long expectedVersion, int boxQuantity, decimal volumetricHeight, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
+    public async Task<ServiceResult<Guid>> EnqueueCommonLabelAsync(Guid tenantId, Guid packageId, long expectedVersion, int boxQuantity, decimal volumetricHeight, string idempotencyKey, string correlationId, CancellationToken cancellationToken, string format = "ZPL")
     {
         var package = await db.ShipmentPackages.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == packageId, cancellationToken); if (package is null) return NotFound<Guid>(); if (package.Version != expectedVersion) return Precondition<Guid>(package.Version);
-        if (string.IsNullOrWhiteSpace(package.CargoTrackingNumber)) return ServiceResult<Guid>.Fail("CARGO_TRACKING_REQUIRED", "Ortak etiket için kargo takip numarası gerekir.", 422);
-        if (!CommonLabelCarrierPolicy.Supports(package.CargoProviderExternalId)) return ServiceResult<Guid>.Fail("COMMON_LABEL_CARRIER_UNSUPPORTED", "Ortak etiket yalnız Trendyol öder Aras Kargo veya TEX gönderilerinde kullanılabilir.", 422);
+        var platform = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.ConnectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        var hepsiburada = platform == "HEPSIBURADA";
+        var requestedFormat = hepsiburada ? (format ?? string.Empty).Trim().ToUpperInvariant() : "ZPL";
+        if (hepsiburada && !HepsiburadaLabelFormats.Contains(requestedFormat, StringComparer.OrdinalIgnoreCase))
+            return Invalid<Guid>("format", "Hepsiburada etiket biçimi ZPL, BASE64ZPL, PDF, PNG veya JPG olmalıdır.");
+        if (string.IsNullOrWhiteSpace(package.ExternalPackageId) || !hepsiburada && string.IsNullOrWhiteSpace(package.CargoTrackingNumber)) return ServiceResult<Guid>.Fail("CARGO_TRACKING_REQUIRED", "Etiket için paket veya kargo takip numarası gerekir.", 422);
+        if (hepsiburada ? !CommonLabelCarrierPolicy.SupportsHepsiburada(package.CargoProviderExternalId) : !CommonLabelCarrierPolicy.Supports(package.CargoProviderExternalId)) return ServiceResult<Guid>.Fail("COMMON_LABEL_CARRIER_UNSUPPORTED", hepsiburada ? "Hepsiburada ortak etiket yalnız HepsiJet ve Aras paketlerinde desteklenir." : "Ortak etiket yalnız Trendyol öder Aras Kargo veya TEX gönderilerinde kullanılabilir.", 422);
         if (boxQuantity is < 1 or > 50) return Invalid<Guid>("boxQuantity", "boxQuantity 1-50 arasında olmalıdır.");
         if (volumetricHeight < 0 || volumetricHeight > 10000) return Invalid<Guid>("volumetricHeight", "volumetricHeight 0-10000 arasında olmalıdır.");
         var stage = await IsStageConnection(tenantId, package.ConnectionId, cancellationToken);
         if (!stage && !await IsProductionConnection(tenantId, package.ConnectionId, cancellationToken)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Ortak etiket yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
-        if (!stage && !await WritesEnabled(tenantId, package.ConnectionId, cancellationToken)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
-        if (!await ExternalWritePolicyEnabledAsync(tenantId, package.ConnectionId, MarketplaceExternalWritePolicies.Shipment, cancellationToken)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITE_POLICY_DISABLED", "Kargo dış yazma akışı kapalı.", 422);
+        if (hepsiburada)
+        {
+            var supportedFormats = stage
+                ? HepsiburadaLabelFormats
+                : await CapabilityValues(tenantId, package.ConnectionId, MarketplaceCapabilities.LabelRead, "formats", cancellationToken);
+            if (!supportedFormats.Contains(requestedFormat, StringComparer.OrdinalIgnoreCase))
+                return ServiceResult<Guid>.Fail("LABEL_READ_CAPABILITY_REQUIRED", $"Production Hepsiburada etiket okuması için doğrulanmış LABEL_READ/{requestedFormat} kanıtı gerekir.", 422);
+        }
+        if (!hepsiburada)
+        {
+            if (!stage && !await WritesEnabled(tenantId, package.ConnectionId, cancellationToken)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
+            if (!await ExternalWritePolicyEnabledAsync(tenantId, package.ConnectionId, MarketplaceExternalWritePolicies.Shipment, cancellationToken)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITE_POLICY_DISABLED", "Kargo dış yazma akışı kapalı.", 422);
+        }
         var normalizedKey = idempotencyKey.Trim(); var existingAttempt = await db.ShipmentDocumentAttempts.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.IdempotencyKey == normalizedKey, cancellationToken);
         if (existingAttempt is not null)
         {
             var existingJob = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.CommonLabel && x.EffectIdempotencyKey == normalizedKey, cancellationToken);
             return existingJob is null ? ServiceResult<Guid>.Fail("LABEL_ATTEMPT_STATE_CONFLICT", "Etiket denemesi var ancak job kaydı bulunamadı.", 409) : ServiceResult<Guid>.Ok(existingJob.Id);
         }
-        var now = timeProvider.GetUtcNow(); var jobId = Guid.CreateVersion7(); var payload = JsonSerializer.Serialize(new CommonLabelJobPayload(jobId, package.Id, "SUBMIT", boxQuantity, decimal.Round(volumetricHeight, 2, MidpointRounding.ToEven), now, now.AddMinutes(15)));
+        var now = timeProvider.GetUtcNow(); var jobId = Guid.CreateVersion7(); var payload = JsonSerializer.Serialize(new CommonLabelJobPayload(jobId, package.Id, "SUBMIT", boxQuantity, decimal.Round(volumetricHeight, 2, MidpointRounding.ToEven), now, now.AddMinutes(15), requestedFormat));
         var job = NewJob(tenantId, package.ConnectionId, MarketplaceJobTypes.CommonLabel, $"common-label:{package.Id}:{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalizedKey)))}", payload, correlationId); job.Id = jobId; job.EffectIdempotencyKey = normalizedKey; job.MaxAttempts = 30;
         db.ShipmentDocumentAttempts.Add(new ShipmentDocumentAttempt { Id = Guid.CreateVersion7(), TenantId = tenantId, PackageId = package.Id, IdempotencyKey = normalizedKey, Status = "PENDING", CreatedAt = now }); db.IntegrationJobs.Add(job); await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(jobId);
     }
@@ -716,16 +891,31 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
 
     public async Task<ServiceResult<Guid>> EnqueueStageTestOrderAsync(Guid tenantId, Guid actorUserId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
     {
-        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "TRENDYOL", cancellationToken);
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "HEPSIBURADA"), cancellationToken);
         if (connection is null) return NotFound<Guid>();
-        if (!string.Equals(connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase) || !string.Equals(connection.ExternalStoreId, "2738", StringComparison.Ordinal)) return ServiceResult<Guid>.Fail("STAGE_TEST_ORDER_SCOPE_REQUIRED", "Taze test siparişi yalnız Trendyol STAGE seller 2738 kapsamındadır.", 422);
+        if (!string.Equals(connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase)
+            || connection.PlatformCode == "TRENDYOL" && !string.Equals(connection.ExternalStoreId, "2738", StringComparison.Ordinal))
+            return ServiceResult<Guid>.Fail("STAGE_TEST_ORDER_SCOPE_REQUIRED", "Taze test siparişi yalnız desteklenen Stage bağlantılarında oluşturulabilir.", 422);
+        var barcode = "9900000000486";
+        if (connection.PlatformCode == "HEPSIBURADA")
+        {
+            barcode = await (from listing in db.ChannelListingVariants.AsNoTracking()
+                             join profile in db.ChannelListingProfiles.AsNoTracking() on new { listing.TenantId, ProfileId = listing.ProfileId } equals new { profile.TenantId, ProfileId = profile.Id }
+                             join state in db.MarketplaceListingStates.AsNoTracking() on new { listing.TenantId, profile.ConnectionId, listing.VariantId } equals new { state.TenantId, state.ConnectionId, state.VariantId }
+                             join link in db.MarketplaceVariantLinks.AsNoTracking() on new { listing.TenantId, profile.ConnectionId, listing.VariantId } equals new { link.TenantId, link.ConnectionId, link.VariantId }
+                             where listing.TenantId == tenantId && profile.ConnectionId == connectionId && profile.Enabled && state.ActualStatus == "LIVE"
+                                   && listing.ExternalBarcode != null && !string.IsNullOrWhiteSpace(link.ExternalId)
+                             orderby listing.VariantId
+                             select listing.ExternalBarcode!).FirstOrDefaultAsync(cancellationToken);
+            if (string.IsNullOrWhiteSpace(barcode)) return ServiceResult<Guid>.Fail("HEPSIBURADA_STAGE_LISTING_REQUIRED", "Test siparişi için Stage ortamında bağlı Hepsiburada SKU’su bulunan LIVE bir ürün gerekir.", 409);
+        }
         var normalizedKey = idempotencyKey.Trim();
         var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.StageTestOrder && x.EffectIdempotencyKey == normalizedKey, cancellationToken);
         if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);
-        var now = timeProvider.GetUtcNow(); var jobId = Guid.CreateVersion7(); var payload = JsonSerializer.Serialize(new StageTestOrderJobPayload(jobId, actorUserId, "9900000000486", now));
+        var now = timeProvider.GetUtcNow(); var jobId = Guid.CreateVersion7(); var payload = JsonSerializer.Serialize(new StageTestOrderJobPayload(jobId, actorUserId, barcode, now));
         var job = NewJob(tenantId, connectionId, MarketplaceJobTypes.StageTestOrder, $"stage-test-order:{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalizedKey)))}", payload, correlationId);
         job.Id = jobId; job.EffectIdempotencyKey = normalizedKey; job.MaxAttempts = 1; db.IntegrationJobs.Add(job);
-        db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = actorUserId, Action = "STAGE_TEST_ORDER_ENQUEUED", TargetType = "PlatformConnection", TargetId = connectionId.ToString("D"), Reason = "official-stage-test-order-fixture", CorrelationId = correlationId, CreatedAt = now });
+        db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = actorUserId, Action = "STAGE_TEST_ORDER_ENQUEUED", TargetType = "PlatformConnection", TargetId = connectionId.ToString("D"), Reason = $"official-stage-test-order-fixture:{connection.PlatformCode}", CorrelationId = correlationId, CreatedAt = now });
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<Guid>.Ok(jobId);
     }
@@ -1142,9 +1332,26 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     }
 
     private static readonly IReadOnlyList<string> ShipmentActions = ["PICKING", "INVOICED", "TRACKING_NUMBER", "CANCEL_ITEMS", "SPLIT", "MULTI_SPLIT", "CHANGE_CARGO_PROVIDER", "ALTERNATIVE_DELIVERY", "MANUAL_DELIVER", "MANUAL_RETURN"];
+    private static readonly IReadOnlyList<string> HepsiburadaShipmentActions = ["UNPACK", "CHANGE_CARGO_PROVIDER"];
+    private static readonly IReadOnlyList<string> HepsiburadaLabelFormats = ["ZPL", "BASE64ZPL", "PDF", "PNG", "JPG"];
+    private static IReadOnlyList<string> HepsiburadaShipmentActionsFor(ShipmentPackage package) =>
+        package.Status is ShipmentPackageStatus.Shipped or ShipmentPackageStatus.Delivered or ShipmentPackageStatus.Returned or ShipmentPackageStatus.Cancelled
+            ? []
+            : HepsiburadaShipmentActions;
     private static bool IsEmptyJsonObject(string value) { try { using var document = JsonDocument.Parse(value); return document.RootElement.ValueKind == JsonValueKind.Object && !document.RootElement.EnumerateObject().Any(); } catch (JsonException) { return false; } }
     private static readonly IReadOnlyList<string> StageLabelFormats = ["PDF"];
     private static readonly IReadOnlyList<string> ReturnActions = ["APPROVE", "REJECT"];
+
+    private static bool PackageCreateFieldsValid(OrderPackageCreateRequest command)
+    {
+        static bool Text(string? value, int maxLength) => !string.IsNullOrWhiteSpace(value) && value == value.Trim() && value.Length <= maxLength;
+        return Text(command.Barcode, 128) && !command.Barcode.Any(char.IsWhiteSpace)
+            && Text(command.CargoCompany, 100) && Text(command.Carrier, 100) && Text(command.CreationReason, 100)
+            && Text(command.ShippingAddressLabel, 100) && Text(command.ShippingModel, 100)
+            && command.Deci is >= 0 and <= 10000 && command.ParcelQuantity is >= 1 and <= 100
+            && command.LineItems is { Count: > 0 and <= 100 }
+            && command.LineItems.All(line => line.OrderLineId != Guid.Empty && line.Quantity is > 0 and <= 10000);
+    }
 
     private static ServiceError? ValidateShipmentAction(ShipmentPackage package, string action, string payloadJson)
     {
@@ -1179,6 +1386,29 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             return valid ? null : new("SHIPMENT_ACTION_PAYLOAD_INVALID", $"{action} için zorunlu body alanları eksik.", 422);
         }
         catch (JsonException) { return new("SHIPMENT_ACTION_PAYLOAD_INVALID", "Paket aksiyonu body geçerli JSON olmalıdır.", 422); }
+    }
+
+    private static ServiceError? ValidateHepsiburadaShipmentAction(ShipmentPackage package, string action, string payloadJson)
+    {
+        if (action is not ("UNPACK" or "CHANGE_CARGO_PROVIDER")) return new("SHIPMENT_ACTION_UNSUPPORTED", "Hepsiburada için yalnız paketi açma ve izin verilen kargo firmasını değiştirme desteklenir.", 422);
+        if (HepsiburadaShipmentActionsFor(package).Count == 0)
+            return new("SHIPMENT_STATE_CONFLICT", "Sevk edilmiş veya terminal pakette Hepsiburada kargo işlemi yapılamaz.", 409);
+        try
+        {
+            using var document = JsonDocument.Parse(payloadJson);
+            if (document.RootElement.ValueKind != JsonValueKind.Object) return new("SHIPMENT_ACTION_PAYLOAD_INVALID", "Paket aksiyonu body nesne olmalıdır.", 422);
+            if (action == "UNPACK")
+                return document.RootElement.EnumerateObject().Any() ? new("SHIPMENT_ACTION_PAYLOAD_INVALID", "UNPACK payloadı boş JSON nesnesi olmalıdır.", 422) : null;
+            var shortName = document.RootElement.TryGetProperty("CargoCompanyShortName", out var shortNameValue) && shortNameValue.ValueKind == JsonValueKind.String
+                ? shortNameValue.GetString()
+                : document.RootElement.TryGetProperty("cargoCompanyShortName", out shortNameValue) && shortNameValue.ValueKind == JsonValueKind.String
+                    ? shortNameValue.GetString()
+                    : null;
+            return !string.IsNullOrWhiteSpace(shortName) && shortName == shortName.Trim() && shortName.Length <= 80 && !shortName.Any(char.IsWhiteSpace)
+                ? null
+                : new("SHIPMENT_ACTION_PAYLOAD_INVALID", "CargoCompanyShortName zorunludur.", 422);
+        }
+        catch (JsonException) { return new("SHIPMENT_ACTION_PAYLOAD_INVALID", "Paket aksiyonu geçerli JSON olmalıdır.", 422); }
     }
 
     private async Task<ServiceResult<Guid>> EnqueueRead(Guid tenantId, Guid connectionId, string capability, string type, string payload, string correlationId, CancellationToken cancellationToken)

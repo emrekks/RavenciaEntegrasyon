@@ -1126,9 +1126,14 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     {
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
-        if (connection is null || connection.PlatformCode != "TRENDYOL" || !IntegrationRuntimePolicy.IsManualProductWriteReady(connection)) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Yayın için ACTIVE veya doğrulanmış STAGE Trendyol bağlantısı gerekir.", 422);
+        if (connection is null || connection.PlatformCode is not ("TRENDYOL" or "HEPSIBURADA") || !IntegrationRuntimePolicy.IsManualProductWriteReady(connection)) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Yayın için ACTIVE veya doğrulanmış STAGE marketplace bağlantısı gerekir.", 422);
         if (!IntegrationRuntimePolicy.IsSupportedEnvironment(connection)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Yayın yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
         if (IntegrationRuntimePolicy.IsProduction(connection) && !WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
+        if (connection.PlatformCode == "HEPSIBURADA")
+        {
+            if (!string.Equals(configuration["Hepsiburada:AuthenticationMode"], "BASIC", StringComparison.OrdinalIgnoreCase)) return ServiceResult<Guid>.Fail("HEPSIBURADA_AUTHENTICATION_UNVERIFIED", "Hepsiburada auth biçimi SIT hesabında doğrulanana kadar ürün yayını kuyruğa alınamaz.", 422);
+            if (!await HasHepsiburadaPublicationEvidenceAsync(connection, cancellationToken)) return ServiceResult<Guid>.Fail("HEPSIBURADA_WRITE_CAPABILITY_EVIDENCE_REQUIRED", "Ürün aktarımı fiyat ve stok da içerdiğinden PRODUCT_WRITE, PRICE_WRITE ve INVENTORY_WRITE için aynı bağlantı/ortam SIT kanıtı gerekir.", 422);
+        }
         var draftResult = await new ProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken);
         if (!draftResult.Succeeded) return ServiceResult<Guid>.Fail(draftResult.Error!.Code, draftResult.Error.Message, draftResult.Error.Status, draftResult.Error.FieldErrors);
         var draft = draftResult.Value!;
@@ -1217,7 +1222,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     {
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
-        if (connection is null || connection.PlatformCode != "TRENDYOL" || !IntegrationRuntimePolicy.IsManualProductWriteReady(connection)) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Güncelleme için ACTIVE veya doğrulanmış STAGE Trendyol bağlantısı gerekir.", 422);
+        if (connection is null || connection.PlatformCode is not ("TRENDYOL" or "HEPSIBURADA") || !IntegrationRuntimePolicy.IsManualProductWriteReady(connection)) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Güncelleme için ACTIVE veya doğrulanmış STAGE marketplace bağlantısı gerekir.", 422);
         if (!IntegrationRuntimePolicy.IsSupportedEnvironment(connection)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Güncelleme yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
         if (IntegrationRuntimePolicy.IsProduction(connection) && !WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
         var build = await new ProductUpdateComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken);
@@ -1407,6 +1412,15 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         if (!configuration.GetValue<bool>("FeatureFlags:ExternalWrites")) return false;
         try { using var document = JsonDocument.Parse(settingsJson); return document.RootElement.TryGetProperty("ExternalWritesEnabled", out var enabled) && enabled.ValueKind == JsonValueKind.True; }
         catch (JsonException) { return false; }
+    }
+
+    private async Task<bool> HasHepsiburadaPublicationEvidenceAsync(PlatformConnection connection, CancellationToken cancellationToken)
+    {
+        var required = new[] { MarketplaceCapabilities.ProductWrite, MarketplaceCapabilities.PriceWrite, MarketplaceCapabilities.InventoryWrite };
+        var capabilities = await db.PlatformCapabilities.AsNoTracking()
+            .Where(x => x.TenantId == connection.TenantId && x.ConnectionId == connection.Id && required.Contains(x.Code))
+            .ToListAsync(cancellationToken);
+        return required.All(code => CapabilityEvidencePolicy.IsVerifiedWriteCapability(capabilities.SingleOrDefault(x => x.Code == code), connection, code));
     }
     private static string NormalizeKey(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value.Trim())));
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
