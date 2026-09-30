@@ -1446,7 +1446,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var activeJobs = await db.IntegrationJobs.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId
                 && (x.Status == JobStatus.Pending || x.Status == JobStatus.Leased || x.Status == JobStatus.RetryScheduled))
-            .Select(x => new { x.Id, x.JobType, x.JobDedupKey })
+            .Select(x => new { x.Id, x.JobType, x.JobDedupKey, x.Status, x.PayloadJson, x.AttemptCount, x.StartedAt })
             .ToListAsync(cancellationToken);
         var active = activeJobs.FirstOrDefault(x => x.JobType == type && (recurringRead ? x.JobDedupKey.StartsWith(dedup, StringComparison.Ordinal) : x.JobDedupKey == dedup));
         if (active is not null) return ServiceResult<Guid>.Ok(active.Id);
@@ -1456,9 +1456,59 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         // the worker; otherwise the advisory lock turns a normal overlap into a
         // visible SYNC_LOCK_BUSY retry storm.
         var executionGroup = MarketplaceSyncExecutionLock.GroupFor(type);
-        var conflicting = activeJobs.FirstOrDefault(x => MarketplaceSyncExecutionLock.GroupFor(x.JobType) == executionGroup);
+        var fullScanRequest = IsFullOrderScanRequest(type, payload);
+        var conflictingJobs = activeJobs.Where(x => MarketplaceSyncExecutionLock.GroupFor(x.JobType) == executionGroup).ToList();
+        var conflicting = fullScanRequest
+            ? conflictingJobs.FirstOrDefault(x => FullOrderSyncConflictPolicy.Resolve(
+                type,
+                x.JobType,
+                x.Status,
+                requestedFullScan: true,
+                conflictingJobTargetsSingleOrder: HasTargetedExternalOrderId(x.PayloadJson),
+                conflictingJobHasStarted: x.AttemptCount > 0 || x.StartedAt is not null) == FullOrderSyncConflictResolution.PromotePending)
+                ?? conflictingJobs.FirstOrDefault()
+            : conflictingJobs.FirstOrDefault();
         if (conflicting is not null)
         {
+            var conflictResolution = FullOrderSyncConflictPolicy.Resolve(
+                type,
+                conflicting.JobType,
+                conflicting.Status,
+                fullScanRequest,
+                HasTargetedExternalOrderId(conflicting.PayloadJson),
+                conflicting.AttemptCount > 0 || conflicting.StartedAt is not null);
+            if (conflictResolution == FullOrderSyncConflictResolution.PromotePending)
+            {
+                var now = timeProvider.GetUtcNow();
+                var payloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload)));
+                var updated = await db.IntegrationJobs
+                    .Where(x => x.TenantId == tenantId && x.Id == conflicting.Id
+                        && x.Status == JobStatus.Pending && x.AttemptCount == 0 && x.StartedAt == null)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(x => x.JobType, type)
+                        .SetProperty(x => x.PayloadJson, payload)
+                        .SetProperty(x => x.PayloadVersion, 1)
+                        .SetProperty(x => x.PayloadHash, payloadHash)
+                        .SetProperty(x => x.Priority, x => Math.Min(x.Priority, Priority(type)))
+                        .SetProperty(x => x.AvailableAt, now)
+                        .SetProperty(x => x.CreatedAt, now)
+                        .SetProperty(x => x.CorrelationId, correlationId)
+                        .SetProperty(x => x.ProgressCurrent, 0)
+                        .SetProperty(x => x.ProgressTotal, (int?)null)
+                        .SetProperty(x => x.ProgressPercent, (int?)null)
+                        .SetProperty(x => x.ProgressLabel, (string?)null)
+                        .SetProperty(x => x.ProgressReceived, 0)
+                        .SetProperty(x => x.ProgressProcessed, 0)
+                        .SetProperty(x => x.ProgressSkipped, 0)
+                        .SetProperty(x => x.ProgressFailed, 0)
+                        .SetProperty(x => x.Version, x => x.Version + 1),
+                        cancellationToken);
+                if (updated == 0)
+                    return ServiceResult<Guid>.Fail("ORDER_SYNC_ALREADY_RUNNING", "Tam sipariş taraması, bağlantıdaki sipariş işlemi başlarken kuyruğa alınamadı. İşlem tamamlanınca yeniden deneyin.", 409);
+                return ServiceResult<Guid>.Ok(conflicting.Id);
+            }
+            if (conflictResolution == FullOrderSyncConflictResolution.Reject)
+                return ServiceResult<Guid>.Fail("ORDER_SYNC_ALREADY_RUNNING", "Tam sipariş taraması, bağlantıda başka bir sipariş işlemi çalıştığı için kuyruğa alınamadı. İşlem tamamlanınca yeniden deneyin.", 409);
             if (ProductImportConcurrencyPolicy.RejectsModeCollision(type, conflicting.JobType))
                 return ServiceResult<Guid>.Fail("PRODUCT_SYNC_ALREADY_RUNNING", "Bu bağlantıda başka bir ürün aktarımı çalışıyor. Önce mevcut işlemi durdurup eşlemeyi yeniden başlatın.", 409);
             return ServiceResult<Guid>.Ok(conflicting.Id);
@@ -1466,6 +1516,28 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
 
         var job = NewJob(tenantId, connectionId, type, recurringRead ? $"{dedup}:{timeProvider.GetUtcNow().ToUnixTimeMilliseconds()}" : dedup, payload, correlationId);
         db.IntegrationJobs.Add(job); await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(job.Id);
+    }
+    private static bool IsFullOrderScanRequest(string jobType, string payload)
+    {
+        if (jobType is not (MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync or MarketplaceJobTypes.HepsiburadaOrderRecoverySync)) return false;
+        try
+        {
+            using var document = JsonDocument.Parse(payload);
+            return document.RootElement.TryGetProperty("full", out var full) && full.ValueKind == JsonValueKind.True;
+        }
+        catch (JsonException) { return false; }
+    }
+
+    private static bool HasTargetedExternalOrderId(string payload)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(payload);
+            return document.RootElement.TryGetProperty("externalOrderId", out var id)
+                && id.ValueKind == JsonValueKind.String
+                && !string.IsNullOrWhiteSpace(id.GetString());
+        }
+        catch (JsonException) { return false; }
     }
     private IntegrationJob NewJob(Guid tenantId, Guid connectionId, string type, string dedup, string payload, string correlationId) => new() { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, JobType = type, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))), JobDedupKey = dedup, EffectIdempotencyKey = dedup, Priority = Priority(type), AvailableAt = timeProvider.GetUtcNow(), CorrelationId = correlationId, Version = 1 };
     private static int Priority(string type) => type switch

@@ -1,3 +1,5 @@
+using MarketplaceHub.Domain;
+
 namespace MarketplaceHub.Application;
 
 public static class ActiveIntegrationScope
@@ -94,6 +96,49 @@ public static class MarketplaceJobTypes
             _ => jobType
         },
         _ => jobType
+    };
+}
+
+public enum FullOrderSyncConflictResolution
+{
+    ReuseExisting,
+    PromotePending,
+    Reject
+}
+
+public static class FullOrderSyncConflictPolicy
+{
+    public static FullOrderSyncConflictResolution Resolve(
+        string? requestedJobType,
+        string? conflictingJobType,
+        JobStatus conflictingStatus,
+        bool requestedFullScan,
+        bool conflictingJobTargetsSingleOrder,
+        bool conflictingJobHasStarted)
+    {
+        if (!requestedFullScan || !IsRecoverySyncType(requestedJobType))
+            return FullOrderSyncConflictResolution.ReuseExisting;
+
+        if (conflictingStatus == JobStatus.Pending
+            && !conflictingJobTargetsSingleOrder
+            && !conflictingJobHasStarted
+            && IsPromotableOrderSyncType(requestedJobType, conflictingJobType))
+            return FullOrderSyncConflictResolution.PromotePending;
+
+        return FullOrderSyncConflictResolution.Reject;
+    }
+
+    private static bool IsRecoverySyncType(string? jobType) => jobType is
+        MarketplaceJobTypes.OrderRecoverySync
+        or MarketplaceJobTypes.ShopifyOrderRecoverySync
+        or MarketplaceJobTypes.HepsiburadaOrderRecoverySync;
+
+    private static bool IsPromotableOrderSyncType(string? requestedJobType, string? conflictingJobType) => requestedJobType switch
+    {
+        MarketplaceJobTypes.OrderRecoverySync => conflictingJobType is MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.OrderStatusSync,
+        MarketplaceJobTypes.ShopifyOrderRecoverySync => conflictingJobType is MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.ShopifyOrderRecoverySync or MarketplaceJobTypes.ShopifyOrderStatusSync,
+        MarketplaceJobTypes.HepsiburadaOrderRecoverySync => conflictingJobType is MarketplaceJobTypes.HepsiburadaOrderSync or MarketplaceJobTypes.HepsiburadaOrderRecoverySync or MarketplaceJobTypes.HepsiburadaOrderStatusSync,
+        _ => false
     };
 }
 
