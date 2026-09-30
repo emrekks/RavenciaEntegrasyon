@@ -744,6 +744,25 @@ public sealed class HepsiburadaAdapterTests
     }
 
     [Fact]
+    public void HepsiburadaBasicAuthUsesStoreIdAsUsernameAndServiceKeyAsPassword()
+    {
+        var connection = new MarketplaceHub.Domain.PlatformConnection
+        {
+            PlatformCode = "HEPSIBURADA",
+            Environment = "PRODUCTION",
+            DisplayName = "Hepsiburada",
+            ExternalStoreId = "62201bf1-2e64-4d18-9aac-fc38d1ea040c",
+            Status = "DRAFT",
+            ApiVersion = "V1.0"
+        };
+
+        var credentials = HepsiburadaAuthenticationHandler.ResolveBasicCredentials(connection, "example-service-key");
+
+        Assert.Equal("62201bf1-2e64-4d18-9aac-fc38d1ea040c", credentials.Username);
+        Assert.Equal("example-service-key", credentials.Password);
+    }
+
+    [Fact]
     public void ClaimMapper_RejectsClaimsWithoutOrderOrLineIdentity()
     {
         using var json = JsonDocument.Parse("""

@@ -338,14 +338,15 @@ public interface IWebhookVerifier
 public sealed record ConnectionView(Guid Id, Guid PublicId, string PlatformCode, string Environment, string DisplayName, string ExternalStoreId, string Status, string ApiVersion, DateTimeOffset? LastTestedAt, DateTimeOffset? LastSuccessAt, string? LastErrorCode, bool HasCredential, bool ExternalWritesEnabled, long Version, bool InvoiceCreationEnabled = true);
 public sealed record CapabilityView(string Code, string SupportLevel, string ApiVersion, string Environment, string StoreScope, string? SourceUrl, DateTimeOffset? VerifiedAt, string? ConstraintsJson, string? EvidenceNote, long Version);
 public sealed record RecordCapabilityEvidenceCommand(string SupportLevel, string SourceUrl, string SourceVersion, string Environment, string StoreScope, string EvidenceNote, string? FixtureChecksum, string? ConstraintsJson, DateTimeOffset VerifiedAt);
-public sealed record CreateConnectionCommand(string DisplayName, string Environment, string ExternalStoreId, string ApiVersion, string? UserAgentIdentity, string? PlatformCode = null, string? ShopifyAccessToken = null, string? HepsiburadaUsername = null, string? HepsiburadaServiceKey = null);
+public sealed record CreateConnectionCommand(string DisplayName, string Environment, string ExternalStoreId, string ApiVersion, string? UserAgentIdentity, string? PlatformCode = null, string? ShopifyAccessToken = null, string? HepsiburadaServiceKey = null);
 public sealed record UpdateConnectionCommand(string DisplayName, string? UserAgentIdentity, string? Environment = null, string? ExternalStoreId = null, bool? ExternalWritesEnabled = null, bool? InvoiceCreationEnabled = null);
 public sealed record CredentialCommand(
     string? ApiKey,
     string? ApiSecret,
     string? Email = null,
     string? Password = null,
-    string? ShopifyAccessToken = null);
+    string? ShopifyAccessToken = null,
+    string? HepsiburadaServiceKey = null);
 public sealed record SyncPolicyView(
     Guid Id,
     string ResourceType,

@@ -40,19 +40,23 @@ public sealed class HepsiburadaAuthenticationHandler(
             return null;
         }
 
-        if (payload is null || string.IsNullOrWhiteSpace(payload.ApiKey) || string.IsNullOrWhiteSpace(payload.ApiSecret)) return null;
+        if (payload is null || string.IsNullOrWhiteSpace(payload.ApiSecret)) return null;
         if (!TryResolveBaseAddresses(connection.Environment, out var omsBaseAddress, out var listingBaseAddress))
         {
             logger.LogWarning("Hepsiburada bağlantısı için geçersiz ortam yapılandırması: {Environment}. ConnectionId: {ConnectionId}", connection.Environment, connectionId);
             return null;
         }
 
-        return new(connection, omsBaseAddress, listingBaseAddress, payload.ApiKey, payload.ApiSecret)
+        var credentials = ResolveBasicCredentials(connection, payload.ApiSecret);
+        return new(connection, omsBaseAddress, listingBaseAddress, credentials.Username, credentials.Password)
         {
             CatalogBaseAddress = ResolveCatalogBaseAddress(connection.Environment),
             StageTestOrderBaseAddress = string.Equals(connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase) ? settings.StageTestOrderBaseAddress : null
         };
     }
+
+    internal static (string Username, string Password) ResolveBasicCredentials(PlatformConnection connection, string serviceKey) =>
+        (connection.ExternalStoreId.Trim(), serviceKey);
 
     public async Task<bool> HasVerifiedWriteEvidenceAsync(PlatformConnection connection, CancellationToken cancellationToken, params string[] capabilityCodes)
     {
