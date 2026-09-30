@@ -5048,6 +5048,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var existingLines = batch is not null
             ? batch.LinesByOrder.GetValueOrDefault(order.Id) ?? []
             : await db.OrderLines.Where(x => x.TenantId == tenantId && x.OrderId == order.Id).ToListAsync(cancellationToken);
+        if (!orderIsFresh && isHepsiburada)
+            telemetryUpdatedCount += HepsiburadaStaleOrderEnrichmentPolicy.Apply(order, existingLines, remote, now);
         var lines = existingLines
             .GroupBy(x => x.ExternalLineId, StringComparer.Ordinal)
             .ToDictionary(x => x.Key, x => x.First(), StringComparer.Ordinal);
