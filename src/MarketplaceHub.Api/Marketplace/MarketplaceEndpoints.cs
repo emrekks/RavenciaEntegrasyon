@@ -26,10 +26,7 @@ public static class MarketplaceEndpoints
                 .SingleOrDefaultAsync(http.RequestAborted);
             if (platform is null) return Results.NotFound();
 
-            var marketplace = platform is "TRENDYOL" or "SHOPIFY";
-            var jobType = marketplace
-                ? MarketplaceJobTypes.ForPlatform(platform, MarketplaceJobTypes.ConnectionTest)
-                : InvoicingJobTypes.ConnectionTest;
+            var (marketplace, jobType) = MarketplaceConnectionTestDispatchPolicy.Resolve(platform);
             var result = marketplace
                 ? await marketplaceProcessor.ProcessAsync(tenant.TenantId, id, jobType, "{}", http.TraceIdentifier, http.RequestAborted)
                 : await invoicingProcessor.ProcessAsync(tenant.TenantId, id, jobType, "{}", http.TraceIdentifier, http.RequestAborted);
