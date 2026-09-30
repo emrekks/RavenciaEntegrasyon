@@ -56,7 +56,7 @@ public sealed class HepsiburadaAuthenticationHandler(
     }
 
     internal static (string Username, string Password) ResolveBasicCredentials(string integratorUsername, string serviceKey) =>
-        (integratorUsername.Trim(), serviceKey);
+        (integratorUsername.Trim(), serviceKey.Trim());
 
     public async Task<bool> HasVerifiedWriteEvidenceAsync(PlatformConnection connection, CancellationToken cancellationToken, params string[] capabilityCodes)
     {

@@ -746,10 +746,22 @@ public sealed class HepsiburadaAdapterTests
     [Fact]
     public void HepsiburadaBasicAuthUsesIntegratorUsernameAndServiceKeyAsPassword()
     {
-        var credentials = HepsiburadaAuthenticationHandler.ResolveBasicCredentials("ravencia_dev", "example-service-key");
+        var credentials = HepsiburadaAuthenticationHandler.ResolveBasicCredentials(" ravencia_dev ", " example-service-key\r\n");
 
         Assert.Equal("ravencia_dev", credentials.Username);
         Assert.Equal("example-service-key", credentials.Password);
+    }
+
+    [Fact]
+    public void HepsiburadaAuthenticationErrorsDistinguishRejectedCredentialsFromForbiddenAccess()
+    {
+        var credentialsRejected = HepsiburadaHttpClient.Error(System.Net.HttpStatusCode.Unauthorized, null, null);
+        var accessForbidden = HepsiburadaHttpClient.Error(System.Net.HttpStatusCode.Forbidden, null, null);
+
+        Assert.Equal("HEPSIBURADA_CREDENTIALS_REJECTED", credentialsRejected.Code);
+        Assert.Equal(401, credentialsRejected.HttpStatus);
+        Assert.Equal("HEPSIBURADA_ACCESS_FORBIDDEN", accessForbidden.Code);
+        Assert.Equal(403, accessForbidden.HttpStatus);
     }
 
     [Fact]
