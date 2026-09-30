@@ -377,7 +377,8 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             or MarketplaceJobTypes.OrderReconciliation
             or MarketplaceJobTypes.ShopifyOrderReconciliation
             or MarketplaceJobTypes.OrderInvoiceReconciliation
-            or MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation;
+            or MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation
+            or MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation;
 
     private static bool IsShopifyReadPolicy(string resourceType) => resourceType is
         "ORDERS"

@@ -1866,7 +1866,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         if (platform == "HEPSIBURADA")
         {
             var ordersSynced = await SyncHepsiburadaOrders(tenantId, connectionId, payloadJson, correlationId, cursorResourceType, allowBaseline, cancellationToken);
-            if (!ordersSynced || cursorResourceType != "ORDERS_RECOVERY") return ordersSynced;
+            if (!ordersSynced || cursorResourceType is not ("ORDERS_HOT" or "ORDERS_RECOVERY")) return ordersSynced;
             try
             {
                 using var payload = JsonDocument.Parse(payloadJson);
@@ -2184,6 +2184,28 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             .Distinct()
             .Take(batchSize)
             .ToListAsync(cancellationToken);
+
+        if (isHepsiburada)
+        {
+            // The paid-order list intentionally contains unpackaged orders,
+            // while hasInvoice is supplied by the order-detail read. Include
+            // those orders in the same read-only reconciliation so the panel
+            // can show an authoritative invoice state before a package exists.
+            var unpackagedOrderIds = await db.Orders.AsNoTracking()
+                .Where(order => order.TenantId == tenantId
+                    && order.ConnectionId == connectionId
+                    && !DashboardMetricPolicy.InvoiceExcludedOrderStatuses.Contains(order.DerivedStatus)
+                    && !db.ShipmentPackages.Any(package => package.TenantId == tenantId
+                        && package.ConnectionId == connectionId
+                        && package.OrderId == order.Id
+                        && package.Status != ShipmentPackageStatus.Cancelled))
+                .OrderBy(order => order.UpdatedAt)
+                .ThenBy(order => order.OrderedAt)
+                .Select(order => order.ExternalOrderId)
+                .Take(batchSize)
+                .ToListAsync(cancellationToken);
+            externalOrderIds = unpackagedOrderIds.Concat(externalOrderIds).Distinct(StringComparer.Ordinal).Take(batchSize).ToList();
+        }
 
         foreach (var externalOrderId in externalOrderIds)
         {
@@ -5011,6 +5033,14 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 (grossAmount, discountAmount, netAmount) = ShopifyOrderCsvSnapshotPolicy.MergeRemoteAmounts(
                     order.CustomerSnapshotJson, remote.GrossAmount, remote.DiscountAmount, remote.NetAmount);
             }
+            else if (isHepsiburada)
+            {
+                // Keep authoritative invoice/cargo observations when an order
+                // list read omits the detail-only fields.
+                customerSnapshot = ShopifyOrderCsvSnapshotPolicy.MergeRemoteSnapshot(customerSnapshot, order.CustomerSnapshotJson);
+                shipmentAddressSnapshot = ShopifyOrderCsvSnapshotPolicy.MergeRemoteSnapshot(shipmentAddressSnapshot, order.ShipmentAddressSnapshotJson);
+                invoiceAddressSnapshot = ShopifyOrderCsvSnapshotPolicy.MergeRemoteSnapshot(invoiceAddressSnapshot, order.InvoiceAddressSnapshotJson);
+            }
             order.OrderNumber = remote.OrderNumber; order.Currency = remote.Currency; order.GrossAmount = grossAmount; order.DiscountAmount = discountAmount; order.NetAmount = netAmount; order.OrderedAt = remote.OrderedAt; order.ShipmentDueAt = remote.ShipmentDueAt; order.LastRemoteModifiedAt = remote.LastModifiedAt; order.CustomerSnapshotJson = customerSnapshot; order.ShipmentAddressSnapshotJson = shipmentAddressSnapshot; order.InvoiceAddressSnapshotJson = invoiceAddressSnapshot; order.UpdatedAt = now; if (db.Entry(order).State != EntityState.Added) { order.Version++; telemetryUpdatedCount++; }
         }
         if (persistFinancialObservations && orderIsFresh)
@@ -5068,7 +5098,10 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 : null;
             var sku = isShopify ? ShopifyOrderCsvSnapshotPolicy.PreserveRemoteSku(remoteLine.Sku, line) ?? line.Sku : remoteLine.Sku;
             var title = isShopify ? ShopifyOrderCsvSnapshotPolicy.PreserveRemoteTitle(remoteLine.Title, line) : remoteLine.Title;
-            var sourceSnapshot = isShopify
+            var sourceSnapshot = isShopify || isHepsiburada
+                // Hepsiburada order details may omit the image field present in
+                // paid-order/package lists. Keep previously observed line data
+                // when a later read does not repeat it.
                 ? ShopifyOrderCsvSnapshotPolicy.MergeRemoteSnapshot(remoteLine.SourceSnapshotJson, line.SourceSnapshotJson)
                 : remoteLine.SourceSnapshotJson;
             line.Sku = sku; line.Barcode = remoteLine.Barcode ?? line.Barcode; line.TitleSnapshot = title; line.SourceSnapshotJson = sourceSnapshot; line.OrderedQuantity = orderedQuantity; line.UnitPrice = importedUnitPrice ?? remoteLine.UnitPrice; line.VatRate = remoteLine.VatRate; line.RawStatus = remoteLine.RawStatus; if (db.Entry(line).State != EntityState.Added) line.Version++; lines[remoteLine.ExternalLineId] = line;
@@ -5099,22 +5132,20 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 // delivery information while keeping its original createdAt.
                 // Treat that as an idempotent status enrichment, not as a
                 // reason to discard the authoritative forward transition.
-                if (package is not null
+                var statusChanged = package is not null
                     && PackageIngestionSafety.ShouldAccept(package.Status, package.StatusOccurredAt, target, remotePackage.OccurredAt)
-                    && package.Status != target)
+                    && package.Status != target;
+                var packageMetadataChanged = package is not null
+                    && ((!string.IsNullOrWhiteSpace(remotePackage.CargoProviderExternalId) && package.CargoProviderExternalId != remotePackage.CargoProviderExternalId)
+                        || (!string.IsNullOrWhiteSpace(remotePackage.CargoTrackingNumber) && package.CargoTrackingNumber != remotePackage.CargoTrackingNumber));
+                if (statusChanged && package is not null)
                 {
                     package.Status = target;
                     package.RawStatus = remotePackage.RawStatus;
                     package.StatusOccurredAt = remotePackage.OccurredAt;
-                    package.OriginExternalPackageId = remotePackage.OriginExternalPackageId;
-                    package.CargoProviderExternalId = remotePackage.CargoProviderExternalId;
-                    package.CargoTrackingNumber = remotePackage.CargoTrackingNumber;
                     package.GrossAmount = remotePackage.GrossAmount;
                     package.DiscountAmount = remotePackage.DiscountAmount;
                     package.NetAmount = remotePackage.NetAmount;
-                    package.UpdatedAt = now;
-                    package.Version++;
-                    telemetryUpdatedCount++;
 
                     foreach (var remoteAllocation in remotePackage.Allocations)
                     {
@@ -5134,6 +5165,15 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                         allocation.DeliveredQuantity = safe.DeliveredQuantity;
                         allocation.ReturnedQuantity = safe.ReturnedQuantity;
                     }
+                }
+                if (package is not null && (statusChanged || packageMetadataChanged))
+                {
+                    package.OriginExternalPackageId = string.IsNullOrWhiteSpace(remotePackage.OriginExternalPackageId) ? package.OriginExternalPackageId : remotePackage.OriginExternalPackageId;
+                    package.CargoProviderExternalId = string.IsNullOrWhiteSpace(remotePackage.CargoProviderExternalId) ? package.CargoProviderExternalId : remotePackage.CargoProviderExternalId;
+                    package.CargoTrackingNumber = string.IsNullOrWhiteSpace(remotePackage.CargoTrackingNumber) ? package.CargoTrackingNumber : remotePackage.CargoTrackingNumber;
+                    package.UpdatedAt = now;
+                    package.Version++;
+                    telemetryUpdatedCount++;
                 }
                 // The initial projection used shipmentPackageStatus before the
                 // authoritative top-level status. When the same package event
@@ -5163,7 +5203,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             if (package is not null && !string.IsNullOrWhiteSpace(remotePackage.CreatedBy)) package.CreatedBy = remotePackage.CreatedBy;
             if (accept && package is not null)
             {
-                package.OriginExternalPackageId = remotePackage.OriginExternalPackageId; package.CargoProviderExternalId = remotePackage.CargoProviderExternalId; package.CargoTrackingNumber = remotePackage.CargoTrackingNumber; package.GrossAmount = remotePackage.GrossAmount; package.DiscountAmount = remotePackage.DiscountAmount; package.NetAmount = remotePackage.NetAmount; package.UpdatedAt = now; db.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, PackageId = package.Id, CanonicalStatus = Wire(target), RawStatus = remotePackage.RawStatus, SourceEventId = eventId, OccurredAt = remotePackage.OccurredAt, RecordedAt = now }); knownEventIds.Add(eventId);
+                package.OriginExternalPackageId = string.IsNullOrWhiteSpace(remotePackage.OriginExternalPackageId) ? package.OriginExternalPackageId : remotePackage.OriginExternalPackageId; package.CargoProviderExternalId = string.IsNullOrWhiteSpace(remotePackage.CargoProviderExternalId) ? package.CargoProviderExternalId : remotePackage.CargoProviderExternalId; package.CargoTrackingNumber = string.IsNullOrWhiteSpace(remotePackage.CargoTrackingNumber) ? package.CargoTrackingNumber : remotePackage.CargoTrackingNumber; package.GrossAmount = remotePackage.GrossAmount; package.DiscountAmount = remotePackage.DiscountAmount; package.NetAmount = remotePackage.NetAmount; package.UpdatedAt = now; db.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, PackageId = package.Id, CanonicalStatus = Wire(target), RawStatus = remotePackage.RawStatus, SourceEventId = eventId, OccurredAt = remotePackage.OccurredAt, RecordedAt = now }); knownEventIds.Add(eventId);
                 foreach (var remoteAllocation in remotePackage.Allocations) if (lines.TryGetValue(remoteAllocation.ExternalLineId, out var line) && safeAllocations.TryGetValue(remoteAllocation.ExternalLineId, out var safe)) { var allocationKey = AllocationKey(package.Id, line.Id, eventId); var allocation = allocationsByKey.GetValueOrDefault(allocationKey); if (allocation is null) { allocation = new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenantId, PackageId = package.Id, OrderLineId = line.Id, SourceEventId = eventId, AllocatedQuantity = safe.ActiveAllocatedQuantity, CancelledQuantity = safe.CancelledQuantity, ShippedQuantity = safe.ShippedQuantity, DeliveredQuantity = safe.DeliveredQuantity, ReturnedQuantity = safe.ReturnedQuantity }; db.PackageLineAllocations.Add(allocation); allocationsByKey[allocationKey] = allocation; telemetryInsertedCount++; } }
             }
         }

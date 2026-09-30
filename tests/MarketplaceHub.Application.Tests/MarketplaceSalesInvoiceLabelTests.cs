@@ -24,6 +24,17 @@ public sealed class MarketplaceSalesInvoiceLabelTests
         Assert.Equal("FATURA_BILINMIYOR", label);
     }
 
+    [Theory]
+    [InlineData("INVOICED", "FATURA_KESILDI")]
+    [InlineData("NOT_INVOICED", "FATURA_BEKLIYOR")]
+    public void HepsiburadaOrderDetailInvoiceEvidenceIsPresented(string marketplaceStatus, string expected)
+    {
+        var label = MarketplaceSalesService.InvoiceLabelForPlatform(null, MarketplaceInvoiceStatus.Unknown,
+            $$"""{"marketplaceInvoiceStatus":"{{marketplaceStatus}}"}""", [], "HEPSIBURADA");
+
+        Assert.Equal(expected, label);
+    }
+
     [Fact]
     public void ReturnWithoutInvoiceEvidenceIsPresentedAsWaiting()
     {

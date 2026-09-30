@@ -469,7 +469,13 @@ public sealed partial class HepsiburadaHttpClient(
             var issues = new List<AdapterPageIssue>();
             foreach (var item in pageResult.Items)
             {
-                try { items.Add(HepsiburadaJsonMapper.OrderPackage(item)); }
+                try
+                {
+                    var remotePackage = HepsiburadaJsonMapper.OrderPackage(item);
+                    var trackingRead = await ReadPackageTrackingInfoAsync(account, remotePackage, cancellationToken);
+                    items.Add(trackingRead.Package);
+                    if (trackingRead.Issue is not null) issues.Add(trackingRead.Issue);
+                }
                 catch (JsonException)
                 {
                     var identity = HepsiburadaJsonMapper.PackageIdentity(item) ?? $"offset:{offset + items.Count}";
@@ -483,6 +489,50 @@ public sealed partial class HepsiburadaHttpClient(
         catch (JsonException)
         {
             return Failure<AdapterPageResult<RemoteOrderPackage>>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_PACKAGE_LIST_CONTRACT_INVALID", "Hepsiburada paket listesi beklenen sayfa sözleşmesiyle eşleşmiyor.", HttpStatusCode.BadGateway);
+        }
+    }
+
+    internal async Task<(RemoteOrderPackage Package, AdapterPageIssue? Issue)> ReadPackageTrackingInfoAsync(
+        HepsiburadaRequestContext account,
+        RemoteOrderPackage remotePackage,
+        CancellationToken cancellationToken)
+    {
+        var response = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Get, PackageTrackingInfo(account.Connection.ExternalStoreId, remotePackage.Package.ExternalPackageId), cancellationToken);
+        if (!response.IsSuccess)
+        {
+            var issue = response.Error?.HttpStatus == (int)HttpStatusCode.NotFound
+                ? null
+                : new AdapterPageIssue("HEPSIBURADA_PACKAGE_TRACKING_INFO_UNAVAILABLE", remotePackage.Package.ExternalPackageId, "Paket kargo takip bilgisi alınamadı; paket listesi bilgisi korundu.");
+            return (remotePackage, issue);
+        }
+
+        using var trackingDocument = response.Value!;
+        try
+        {
+            var tracking = HepsiburadaJsonMapper.PackageTrackingInfo(trackingDocument.RootElement, remotePackage.Package.ExternalPackageId);
+            var trackingStatus = string.Equals(tracking.Status, "InTransit", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(tracking.Status, "Delivered", StringComparison.OrdinalIgnoreCase)
+                ? tracking.Status!
+                : remotePackage.Package.RawStatus;
+            var enrichedPackage = remotePackage.Package with
+            {
+                RawStatus = trackingStatus,
+                CargoProviderExternalId = string.IsNullOrWhiteSpace(tracking.CargoCompany) ? remotePackage.Package.CargoProviderExternalId : tracking.CargoCompany,
+                CargoTrackingNumber = string.IsNullOrWhiteSpace(tracking.TrackingInfoCode) ? remotePackage.Package.CargoTrackingNumber : tracking.TrackingInfoCode
+            };
+            var orderSnapshot = remotePackage.OrderSnapshot is null
+                ? null
+                : remotePackage.OrderSnapshot with
+                {
+                    Packages = remotePackage.OrderSnapshot.Packages
+                        .Select(package => package.ExternalPackageId == enrichedPackage.ExternalPackageId ? enrichedPackage : package)
+                        .ToArray()
+                };
+            return (remotePackage with { Package = enrichedPackage, OrderSnapshot = orderSnapshot }, null);
+        }
+        catch (JsonException)
+        {
+            return (remotePackage, new AdapterPageIssue("HEPSIBURADA_PACKAGE_TRACKING_INFO_INVALID", remotePackage.Package.ExternalPackageId, "Paket kargo yanıtı beklenen packageNumber alanıyla eşleşmedi; paket listesi bilgisi korundu."));
         }
     }
 
@@ -656,6 +706,7 @@ public sealed partial class HepsiburadaHttpClient(
     internal static string Orders(HepsiburadaRequestContext context, string query) => $"orders/merchantid/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}?{query}";
     internal static string OrderDetails(HepsiburadaRequestContext context, string orderNumber) => $"orders/merchantid/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}/ordernumber/{Uri.EscapeDataString(orderNumber)}";
     internal static string Packages(HepsiburadaRequestContext context, string query) => $"packages/merchantid/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}?{query}";
+    internal static string PackageTrackingInfo(string merchantId, string packageNumber) => $"packages/merchantid/{Uri.EscapeDataString(merchantId)}/packagenumber/{Uri.EscapeDataString(packageNumber)}";
     internal static string InvoiceLink(HepsiburadaRequestContext context, string packageNumber) => $"packages/merchantid/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}/packagenumber/{Uri.EscapeDataString(packageNumber)}/invoice";
     internal static string Listings(HepsiburadaRequestContext context, string query) => $"listings/merchantid/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}?{query}";
     internal static string Claims(HepsiburadaRequestContext context, string status, string query) => $"claims/merchantId/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}/status/{Uri.EscapeDataString(status)}?{query}";

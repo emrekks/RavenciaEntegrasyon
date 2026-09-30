@@ -116,7 +116,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 order.ConnectionId, connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol",
                 customer.Name, customer.OrderType, customer.IsMicroExport, dueAt,
                 !terminal && dueAt is not null && dueAt <= now.AddHours(24), InvoiceLabelForPlatform(invoice, package?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown, order.CustomerSnapshotJson, orderPackages.Select(x => x.RawStatus), connection?.PlatformCode),
-                package?.CargoProviderExternalId, package?.CargoTrackingNumber,
+                package?.CargoProviderExternalId ?? JsonText(order.CustomerSnapshotJson, "marketplaceCargoProviderName"), package?.CargoTrackingNumber,
                 orderLines.Select(x => ResolveVariant(x, variants, variantsBySku, variantsByBarcode)).Where(x => x is not null).Select(x => imageUrls.GetValueOrDefault(x!.Id)).FirstOrDefault(x => x is not null),
                 orderLines.Sum(x => OrderLinePresentationPolicy.ActiveQuantity(x.OrderedQuantity, x.CancelledQuantity)), customer.Email, customer.TaxOrIdentityNumber,
                 order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, order.GrossAmount, order.DiscountAmount,
@@ -406,6 +406,27 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var normalizedBarcode = barcode?.Trim();
         if (string.IsNullOrWhiteSpace(normalizedBarcode) || normalizedBarcode.Length > 128)
             return ServiceResult<string>.Fail("PRODUCT_BARCODE_INVALID", "Geçerli bir ürün barkodu gereklidir.", 400);
+
+        // Order rows can use a marketplace merchant SKU when the provider
+        // does not return a barcode. Resolve the same key against the local
+        // catalog first so Hepsiburada images do not depend on a Trendyol
+        // product lookup.
+        var catalogKey = NormalizeCatalogKey(normalizedBarcode, 160);
+        if (catalogKey.Length > 0)
+        {
+            var variantId = await db.ProductVariants.AsNoTracking()
+                .Where(x => x.TenantId == tenantId
+                    && (x.Sku == normalizedBarcode || x.SkuNormalized == catalogKey
+                        || x.Barcode == normalizedBarcode || x.BarcodeNormalized == catalogKey))
+                .OrderBy(x => x.Id)
+                .Select(x => (Guid?)x.Id)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (variantId is { } localVariantId)
+            {
+                var localImage = (await MediaUrls(tenantId, [localVariantId], cancellationToken)).GetValueOrDefault(localVariantId);
+                if (!string.IsNullOrWhiteSpace(localImage)) return ServiceResult<string>.Ok(localImage);
+            }
+        }
 
         var connection = await ActiveTrendyolConnection(tenantId, cancellationToken);
         if (connection is null) return NotFound<string>();
@@ -1562,11 +1583,11 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         if (packageRawStatuses.Any(IsInvoicedRemoteStatus))
             return "FATURA_KESILDI";
 
-        var remote = JsonText(customerJson, "invoiceStatus")?.Trim().ToUpperInvariant();
+        var remote = JsonText(customerJson, "marketplaceInvoiceStatus", "invoiceStatus")?.Trim().ToUpperInvariant();
         if (remote is "INVOICED") return "FATURA_KESILDI";
         if (remote is "RECEIVED") return "FATURA_KONTROLDE";
         if (remote is "REJECTED") return "FATURA_REDDEDILDI";
-        if (remote is "NOTINVOICED") return "FATURA_BEKLIYOR";
+        if (remote is "NOTINVOICED" or "NOT_INVOICED") return "FATURA_BEKLIYOR";
         // Missing marketplace evidence is not the same as an explicit
         // NotInvoiced response. Historical Trendyol payloads often omit the
         // invoice field entirely; presenting those packages as actionable

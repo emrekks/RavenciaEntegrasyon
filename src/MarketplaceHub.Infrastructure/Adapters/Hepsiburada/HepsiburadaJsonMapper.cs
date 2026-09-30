@@ -314,6 +314,25 @@ internal static class HepsiburadaJsonMapper
 
     public static (IReadOnlyList<JsonElement> Items, int? TotalCount) PackagePage(JsonElement root) => ListingPage(root);
 
+    public static (string? Status, string? CargoCompany, string? TrackingInfoCode) PackageTrackingInfo(JsonElement root, string expectedPackageNumber)
+    {
+        var data = Unwrap(root);
+        var items = Find(data, "items", "packages", "content");
+        if (items.ValueKind == JsonValueKind.Undefined && data.ValueKind == JsonValueKind.Array) items = data;
+        var candidates = items.ValueKind == JsonValueKind.Array ? items.EnumerateArray().ToArray() : [data];
+        foreach (var item in candidates)
+        {
+            var packageNumber = Text(item, "packageNumber", "PackageNumber");
+            if (!string.Equals(packageNumber, expectedPackageNumber, StringComparison.Ordinal)) continue;
+            return (
+                Text(item, "status", "Status"),
+                Text(item, "cargoCompany", "CargoCompany", "cargoCompanyName", "CargoCompanyName"),
+                Text(item, "trackingInfoCode", "TrackingInfoCode"));
+        }
+
+        throw new JsonException("Hepsiburada kargo yanıtında istenen packageNumber bulunamadı.");
+    }
+
     public static IReadOnlyList<RemoteCargoCompany> ChangeableCargoCompanies(JsonElement root)
     {
         var data = Unwrap(root);
@@ -615,7 +634,7 @@ internal static class HepsiburadaJsonMapper
             Text(item, "status", "Status", "packageStatus", "PackageStatus") ?? "Open",
             occurredAt.Value,
             Text(item, "cargoCompany", "CargoCompany", "cargoCompanyName", "CargoCompanyName"),
-            Text(item, "trackingInfoCode", "TrackingInfoCode", "barcode", "Barcode"),
+            Text(item, "trackingInfoCode", "TrackingInfoCode"),
             allocations,
             GrossAmount: Money(item, "totalPrice", "TotalPrice", "totalAmount", "TotalAmount") ?? 0m,
             NetAmount: Money(item, "netAmount", "NetAmount", "totalPrice", "TotalPrice") ?? 0m,
@@ -645,6 +664,7 @@ internal static class HepsiburadaJsonMapper
         var customerSnapshot = customer.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null
             ? JsonSerializer.Serialize(new { name = Text(item, "customerName", "CustomerName", "recipientName", "RecipientName"), email = Text(item, "email", "Email"), phoneNumber = Text(item, "phoneNumber", "PhoneNumber") })
             : Snapshot(customer);
+        customerSnapshot = EnrichOrderSnapshot(item, customerSnapshot);
         var status = Text(item, "status", "Status", "orderStatus", "OrderStatus") ?? "Open";
         var currency = Currency(item, "unitPrice", "UnitPrice", "totalPrice", "TotalPrice") ?? "TRY";
         return new(
@@ -686,6 +706,7 @@ internal static class HepsiburadaJsonMapper
         var customerSnapshot = customer.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null
             ? JsonSerializer.Serialize(new { name = Text(item, "recipientName", "RecipientName", "customerName", "CustomerName"), email = Text(item, "email", "Email"), phoneNumber = Text(item, "phoneNumber", "PhoneNumber") })
             : Snapshot(customer);
+        customerSnapshot = EnrichOrderSnapshot(item, customerSnapshot);
         var status = Text(item, "status", "Status", "packageStatus", "PackageStatus") ?? package.RawStatus;
         var currency = Currency(item, "totalPrice", "TotalPrice")
             ?? (itemArray.ValueKind == JsonValueKind.Array ? itemArray.EnumerateArray().Select(line => Currency(line, "price", "Price", "totalPrice", "TotalPrice")).FirstOrDefault(value => value is not null) : null)
@@ -734,6 +755,100 @@ internal static class HepsiburadaJsonMapper
         return Text(source, "currency", "Currency", "currencyCode", "CurrencyCode");
     }
 
+    private static string OrderCustomerSnapshot(JsonElement order, JsonElement customer)
+    {
+        var snapshot = customer.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null ? "{}" : Snapshot(customer);
+        return EnrichOrderSnapshot(order, snapshot);
+    }
+
+    private static string EnrichOrderSnapshot(JsonElement source, string snapshot)
+    {
+        var invoiceStatus = Text(source, "marketplaceInvoiceStatus", "MarketplaceInvoiceStatus", "invoiceStatus", "InvoiceStatus");
+        if (string.IsNullOrWhiteSpace(invoiceStatus) && Boolean(source, "hasInvoice", "HasInvoice") is { } hasInvoice)
+            invoiceStatus = hasInvoice ? "INVOICED" : "NOT_INVOICED";
+
+        var cargo = Text(source, "cargoCompany", "CargoCompany", "cargoCompanyName", "CargoCompanyName");
+        if (string.IsNullOrWhiteSpace(cargo))
+        {
+            var cargoModel = Find(source, "cargoCompanyModel", "CargoCompanyModel");
+            cargo = Text(cargoModel, "name", "Name", "shortName", "ShortName");
+        }
+        return EnrichSnapshot(snapshot, ("marketplaceInvoiceStatus", invoiceStatus), ("marketplaceCargoProviderName", cargo));
+    }
+
+    private static string EnrichSnapshot(string snapshot, params (string Name, string? Value)[] fields)
+    {
+        if (!fields.Any(field => !string.IsNullOrWhiteSpace(field.Value))) return snapshot;
+        try
+        {
+            using var document = JsonDocument.Parse(string.IsNullOrWhiteSpace(snapshot) ? "{}" : snapshot);
+            if (document.RootElement.ValueKind != JsonValueKind.Object) return snapshot;
+            var values = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+            foreach (var property in document.RootElement.EnumerateObject()) values[property.Name] = property.Value.Clone();
+            foreach (var field in fields)
+                if (!string.IsNullOrWhiteSpace(field.Value)) values[field.Name] = field.Value;
+            return JsonSerializer.Serialize(values);
+        }
+        catch (JsonException) { return snapshot; }
+    }
+
+    private static string? ImageUrl(JsonElement source)
+    {
+        if (source.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in source.EnumerateObject())
+            {
+                if (property.Name.Equals("imageUrl", StringComparison.OrdinalIgnoreCase)
+                    || property.Name.Equals("productImageUrl", StringComparison.OrdinalIgnoreCase)
+                    || property.Name.Equals("productImageUrlFormat", StringComparison.OrdinalIgnoreCase)
+                    || property.Name.Equals("emaproductImageUrlFormat", StringComparison.OrdinalIgnoreCase)
+                    || property.Name.Equals("productImage", StringComparison.OrdinalIgnoreCase)
+                    || property.Name.Equals("image", StringComparison.OrdinalIgnoreCase)
+                    || property.Name.Equals("images", StringComparison.OrdinalIgnoreCase)
+                    || property.Name.Equals("imageUrls", StringComparison.OrdinalIgnoreCase)
+                    || property.Name.Equals("productImages", StringComparison.OrdinalIgnoreCase)
+                    || property.Name.Equals("productImageUrls", StringComparison.OrdinalIgnoreCase))
+                {
+                    var value = ImageUrlValue(property.Value);
+                    if (!string.IsNullOrWhiteSpace(value)) return value;
+                }
+                var nested = ImageUrl(property.Value);
+                if (!string.IsNullOrWhiteSpace(nested)) return nested;
+            }
+        }
+        else if (source.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in source.EnumerateArray())
+            {
+                var nested = ImageUrl(item);
+                if (!string.IsNullOrWhiteSpace(nested)) return nested;
+            }
+        }
+        return null;
+    }
+
+    private static string? ImageUrlValue(JsonElement value)
+    {
+        if (value.ValueKind == JsonValueKind.String)
+        {
+            var text = value.GetString()?.Trim();
+            return string.IsNullOrWhiteSpace(text) ? null : text;
+        }
+        if (value.ValueKind == JsonValueKind.Array)
+            foreach (var item in value.EnumerateArray())
+            {
+                var nested = ImageUrlValue(item);
+                if (!string.IsNullOrWhiteSpace(nested)) return nested;
+            }
+        if (value.ValueKind == JsonValueKind.Object)
+        {
+            var url = Text(value, "url", "imageUrl", "src", "href", "value");
+            if (!string.IsNullOrWhiteSpace(url)) return url.Trim();
+            return ImageUrl(value);
+        }
+        return null;
+    }
+
     public static RemoteOrder Order(JsonElement root, string requestedOrderNumber)
     {
         var order = Unwrap(root);
@@ -773,7 +888,7 @@ internal static class HepsiburadaJsonMapper
             Math.Max(gross, net + discount),
             discount,
             net,
-            Snapshot(customer),
+            OrderCustomerSnapshot(order, customer),
             Snapshot(shipmentAddress),
             Snapshot(invoiceAddress),
             lines,
@@ -799,7 +914,8 @@ internal static class HepsiburadaJsonMapper
         }
         var status = Text(line, "status", "Status", "lineStatus", "LineStatus") ?? "Open";
         var cancelled = status.Contains("cancel", StringComparison.OrdinalIgnoreCase) ? quantity : 0m;
-        return new(lineId, sku, Text(line, "barcode", "Barcode"), Text(line, "name", "Name", "productName", "ProductName") ?? sku, quantity, unitPrice, Decimal(line, "vatRate", "VatRate") ?? 0m, status, line.GetRawText(), cancelled);
+        var snapshot = EnrichSnapshot(line.GetRawText(), ("imageUrl", ImageUrl(line)));
+        return new(lineId, sku, Text(line, "barcode", "Barcode", "productBarcode", "ProductBarcode"), Text(line, "name", "Name", "productName", "ProductName") ?? sku, quantity, unitPrice, Decimal(line, "vatRate", "VatRate") ?? 0m, status, snapshot, cancelled);
     }
 
     private static IReadOnlyList<RemotePackage> Packages(JsonElement order, IReadOnlyList<RemoteOrderLine> lines, DateTimeOffset orderDate, bool? orderInvoiceUploaded)
@@ -813,7 +929,7 @@ internal static class HepsiburadaJsonMapper
             var packageItems = Find(package, "items", "Items", "orderItems", "OrderItems", "lineItems", "LineItems");
             if (string.IsNullOrWhiteSpace(packageId) || packageItems.ValueKind != JsonValueKind.Array) continue;
             var status = Text(package, "status", "Status") ?? "UNKNOWN";
-            var tracking = Text(package, "trackingInfoCode", "TrackingInfoCode", "barcode", "Barcode");
+            var tracking = Text(package, "trackingInfoCode", "TrackingInfoCode");
             var invoice = InvoiceObservation(package) ?? (orderInvoiceUploaded is { } hasInvoice
                 ? new RemotePackageInvoiceObservation(hasInvoice ? "INVOICED" : "NOT_INVOICED", null, null, null)
                 : null);

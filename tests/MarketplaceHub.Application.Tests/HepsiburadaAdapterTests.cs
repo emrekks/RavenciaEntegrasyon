@@ -1,8 +1,10 @@
 using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
+using MarketplaceHub.Infrastructure.Imports;
 using MarketplaceHub.Infrastructure.Persistence;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Xunit;
@@ -17,6 +19,7 @@ public sealed class HepsiburadaAdapterTests
         Assert.Equal("packages/merchantid/merchant%2F17/packagenumber/PKG%2F1/changablecargocompanies", HepsiburadaHttpClient.ChangeableCargoCompanies("merchant/17", "PKG/1"));
         Assert.Equal("packages/merchantid/merchant%2F17/packagenumber/PKG%2F1/changecargocompany", HepsiburadaHttpClient.ChangeCargoCompany("merchant/17", "PKG/1"));
         Assert.Equal("packages/merchantid/merchant%2F17/packagenumber/PKG%2F1/unpack", HepsiburadaHttpClient.UnpackPackage("merchant/17", "PKG/1"));
+        Assert.Equal("packages/merchantid/merchant%2F17/packagenumber/PKG%2F1", HepsiburadaHttpClient.PackageTrackingInfo("merchant/17", "PKG/1"));
         Assert.Equal("lineitems/merchantid/merchant%2F17/packageablewith/lineitemid/line%2F1", HepsiburadaHttpClient.PackageableLineItems("merchant/17", "line/1"));
         Assert.Equal("packages/merchantid/merchant%2F17", HepsiburadaHttpClient.CreatePackage("merchant/17"));
         Assert.Equal("packages/merchantid/merchant%2F17/packagenumber/PKG%2F1/labels?format=zpl", HepsiburadaHttpClient.PackageLabel("merchant/17", "PKG/1"));
@@ -456,6 +459,9 @@ public sealed class HepsiburadaAdapterTests
           "unitPrice": { "currency": "TRY", "amount": 45.5 },
           "totalPrice": { "currency": "TRY", "amount": 91.0 },
           "vatRate": 20,
+          "imageUrl": "https://productimages.hepsiburada.net/test/hb-19.jpg",
+          "cargoCompanyModel": { "name": "HepsiJet", "shortName": "HEPSIJET" },
+          "hasInvoice": false,
           "customerName": "Ayşe Test",
           "shippingAddress": { "city": "İstanbul", "town": "Kadıköy" },
           "invoice": { "address": { "city": "İstanbul", "town": "Üsküdar" } }
@@ -475,8 +481,51 @@ public sealed class HepsiburadaAdapterTests
         Assert.Equal(new DateTimeOffset(2026, 10, 1, 12, 0, 0, TimeSpan.Zero), order.ShipmentDueAt);
         using var customer = JsonDocument.Parse(order.CustomerSnapshotJson);
         Assert.Equal("Ayşe Test", customer.RootElement.GetProperty("name").GetString());
+        Assert.Equal("NOT_INVOICED", customer.RootElement.GetProperty("marketplaceInvoiceStatus").GetString());
+        Assert.Equal("HepsiJet", customer.RootElement.GetProperty("marketplaceCargoProviderName").GetString());
+        using var source = JsonDocument.Parse(order.Lines[0].SourceSnapshotJson);
+        Assert.Equal("https://productimages.hepsiburada.net/test/hb-19.jpg", source.RootElement.GetProperty("imageUrl").GetString());
         Assert.Contains("Kadıköy", order.ShipmentAddressSnapshotJson, StringComparison.Ordinal);
         Assert.Contains("Üsküdar", order.InvoiceAddressSnapshotJson, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("\"imageUrl\":\"https://cdn.example.test/direct.jpg\"")]
+    [InlineData("\"productImageUrl\":\"https://cdn.example.test/product.jpg\"")]
+    [InlineData("\"images\":[{\"url\":\"https://cdn.example.test/array.jpg\"}]")]
+    public void PaidOrderListMapperNormalizesImageUrlAliases(string imageField)
+    {
+        using var json = JsonDocument.Parse($$"""
+        {
+          "id": "line-20",
+          "orderNumber": "HB-2026-20",
+          "orderDate": "2026-09-29T09:15:00Z",
+          "merchantSku": "SELLER-20",
+          "name": "Test product",
+          "quantity": 1,
+          "unitPrice": { "currency": "TRY", "amount": 10.0 },
+          {{imageField}}
+        }
+        """);
+
+        var line = Assert.Single(HepsiburadaJsonMapper.PaidOrderLine(json.RootElement).Lines);
+        using var snapshot = JsonDocument.Parse(line.SourceSnapshotJson);
+
+        Assert.StartsWith("https://cdn.example.test/", snapshot.RootElement.GetProperty("imageUrl").GetString());
+    }
+
+    [Fact]
+    public void SparseHepsiburadaRefreshPreservesPreviouslyReadImageAndInvoiceEvidence()
+    {
+        const string firstRead = """{"imageUrl":"https://cdn.example.test/item.jpg","marketplaceInvoiceStatus":"NOT_INVOICED"}""";
+        const string sparseRefresh = """{"name":"Test product","quantity":1}""";
+
+        var merged = ShopifyOrderCsvSnapshotPolicy.MergeRemoteSnapshot(sparseRefresh, firstRead);
+        using var snapshot = JsonDocument.Parse(merged);
+
+        Assert.Equal("https://cdn.example.test/item.jpg", snapshot.RootElement.GetProperty("imageUrl").GetString());
+        Assert.Equal("NOT_INVOICED", snapshot.RootElement.GetProperty("marketplaceInvoiceStatus").GetString());
+        Assert.Equal("Test product", snapshot.RootElement.GetProperty("name").GetString());
     }
 
     [Fact]
@@ -504,13 +553,88 @@ public sealed class HepsiburadaAdapterTests
         Assert.Equal("HB-2026-18", item.ExternalOrderId);
         Assert.Equal("5000031611", item.Package.ExternalPackageId);
         Assert.Equal("HepsiJet", item.Package.CargoProviderExternalId);
-        Assert.Equal("cargo-18", item.Package.CargoTrackingNumber);
+        Assert.Null(item.Package.CargoTrackingNumber);
         Assert.Equal("line-18", item.Package.Allocations.Single().ExternalLineId);
         Assert.Equal(2m, item.Package.Allocations.Single().AllocatedQuantity);
         Assert.NotNull(item.OrderSnapshot);
         Assert.Equal("HB-2026-18", item.OrderSnapshot!.ExternalOrderId);
         Assert.Equal("line-18", Assert.Single(item.OrderSnapshot.Lines).ExternalLineId);
         Assert.Equal("5000031611", Assert.Single(item.OrderSnapshot.Packages).ExternalPackageId);
+    }
+
+    [Fact]
+    public void PackageTrackingInfoMapperUsesTrackingCodeAndMatchesRequestedPackage()
+    {
+        using var json = JsonDocument.Parse("""
+        {
+          "data": [{
+            "packageNumber": "5000031611",
+            "barcode": "cargo-barcode-18",
+            "status": "InTransit",
+            "cargoCompany": "HepsiJet",
+            "trackingInfoCode": "tracking-18"
+          }]
+        }
+        """);
+
+        var tracking = HepsiburadaJsonMapper.PackageTrackingInfo(json.RootElement, "5000031611");
+
+        Assert.Equal("InTransit", tracking.Status);
+        Assert.Equal("HepsiJet", tracking.CargoCompany);
+        Assert.Equal("tracking-18", tracking.TrackingInfoCode);
+        Assert.Throws<JsonException>(() => HepsiburadaJsonMapper.PackageTrackingInfo(json.RootElement, "another-package"));
+    }
+
+    [Fact]
+    public async Task PackageTrackingReadUsesReadOnlyEndpointAndEnrichesOrderSnapshot()
+    {
+        using var packageJson = JsonDocument.Parse("""
+        {
+          "orderNumber": "HB-2026-19",
+          "packageNumber": "5000031612",
+          "status": "Open",
+          "orderDate": "2026-09-28T12:15:00Z",
+          "barcode": "cargo-barcode-19",
+          "lineItems": [{ "lineItemId": "line-19", "merchantSku": "SELLER-19", "name": "Test product", "quantity": 1 }]
+        }
+        """);
+        var mappedPackage = HepsiburadaJsonMapper.OrderPackage(packageJson.RootElement);
+        var handler = new CapturingHttpHandler("""
+        [{
+          "packageNumber": "5000031612",
+          "barcode": "cargo-barcode-19",
+          "status": "InTransit",
+          "cargoCompany": "HepsiJet",
+          "trackingInfoCode": "tracking-19"
+        }]
+        """);
+        var client = CreateReadOnlyHepsiburadaClient(handler);
+        var account = new HepsiburadaRequestContext(
+            new MarketplaceHub.Domain.PlatformConnection
+            {
+                PlatformCode = "HEPSIBURADA",
+                Environment = "STAGE",
+                DisplayName = "fixture",
+                ExternalStoreId = "merchant-19",
+                Status = "ACTIVE",
+                ApiVersion = "V1.0"
+            },
+            new Uri("https://oms.example/"), new Uri("https://listing.example/"), "integrator", "fixture-key")
+        {
+            IntegratorName = "ravencia_tests/1.0"
+        };
+
+        var result = await client.ReadPackageTrackingInfoAsync(account, mappedPackage, CancellationToken.None);
+
+        Assert.Null(result.Issue);
+        Assert.Equal("InTransit", result.Package.Package.RawStatus);
+        Assert.Equal("HepsiJet", result.Package.Package.CargoProviderExternalId);
+        Assert.Equal("tracking-19", result.Package.Package.CargoTrackingNumber);
+        Assert.Equal("tracking-19", Assert.Single(result.Package.OrderSnapshot!.Packages).CargoTrackingNumber);
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal("GET", request.Method);
+        Assert.Equal("https://oms.example/packages/merchantid/merchant-19/packagenumber/5000031612", request.Uri.AbsoluteUri);
+        Assert.Equal("Basic", request.AuthorizationScheme);
     }
 
     [Fact]
@@ -1066,5 +1190,32 @@ public sealed class HepsiburadaAdapterTests
         Assert.Contains(reasons.Value!, reason => reason.Id == "ProductNotDefective");
         Assert.Equal(AdapterErrorClass.NotSupported, packageAction.Error!.Class);
         Assert.Equal(AdapterErrorClass.NotSupported, label.Error!.Class);
+    }
+
+    private static HepsiburadaHttpClient CreateReadOnlyHepsiburadaClient(HttpMessageHandler handler) => new(
+        new CapturingHttpClientFactory(handler),
+        null!,
+        Options.Create(new HepsiburadaOptions { AuthenticationMode = "BASIC" }),
+        TimeProvider.System,
+        new ConfigurationBuilder().Build(),
+        NullLogger<HepsiburadaHttpClient>.Instance);
+
+    private sealed class CapturingHttpClientFactory(HttpMessageHandler handler) : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
+    }
+
+    private sealed class CapturingHttpHandler(string responseBody) : HttpMessageHandler
+    {
+        public List<(string Method, Uri Uri, string? AuthorizationScheme)> Requests { get; } = [];
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Requests.Add((request.Method.Method, request.RequestUri!, request.Headers.Authorization?.Scheme));
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent(responseBody, System.Text.Encoding.UTF8, "application/json")
+            });
+        }
     }
 }
