@@ -8,6 +8,7 @@ public sealed class MarketplaceInvoiceCreationPolicyTests
     [Theory]
     [InlineData("TRENDYOL")]
     [InlineData("SHOPIFY")]
+    [InlineData("HEPSIBURADA")]
     public void MissingSettingKeepsExistingMarketplaceConnectionsEnabled(string platformCode)
     {
         Assert.True(MarketplaceInvoiceCreationPolicy.IsEnabled(platformCode, "{\"ExternalWritesEnabled\":false}"));
@@ -16,6 +17,7 @@ public sealed class MarketplaceInvoiceCreationPolicyTests
     [Theory]
     [InlineData("TRENDYOL")]
     [InlineData("SHOPIFY")]
+    [InlineData("HEPSIBURADA")]
     public void ExplicitFalseDisablesInvoiceCreationForMarketplaceConnection(string platformCode)
     {
         Assert.False(MarketplaceInvoiceCreationPolicy.IsEnabled(platformCode, "{\"ExternalWritesEnabled\":false,\"InvoiceCreationEnabled\":false}"));
