@@ -755,16 +755,16 @@ internal static class HepsiburadaJsonMapper
         return Text(source, "currency", "Currency", "currencyCode", "CurrencyCode");
     }
 
-    private static string OrderCustomerSnapshot(JsonElement order, JsonElement customer)
+    private static string OrderCustomerSnapshot(JsonElement order, JsonElement customer, bool? invoiceUploaded = null)
     {
         var snapshot = customer.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null ? "{}" : Snapshot(customer);
-        return EnrichOrderSnapshot(order, snapshot);
+        return EnrichOrderSnapshot(order, snapshot, invoiceUploaded);
     }
 
-    private static string EnrichOrderSnapshot(JsonElement source, string snapshot)
+    private static string EnrichOrderSnapshot(JsonElement source, string snapshot, bool? invoiceUploaded = null)
     {
         var invoiceStatus = Text(source, "marketplaceInvoiceStatus", "MarketplaceInvoiceStatus", "invoiceStatus", "InvoiceStatus");
-        if (string.IsNullOrWhiteSpace(invoiceStatus) && Boolean(source, "hasInvoice", "HasInvoice") is { } hasInvoice)
+        if (string.IsNullOrWhiteSpace(invoiceStatus) && (Boolean(source, "hasInvoice", "HasInvoice") ?? invoiceUploaded) is { } hasInvoice)
             invoiceStatus = hasInvoice ? "INVOICED" : "NOT_INVOICED";
 
         var cargo = Text(source, "cargoCompany", "CargoCompany", "cargoCompanyName", "CargoCompanyName");
@@ -860,7 +860,8 @@ internal static class HepsiburadaJsonMapper
         if (linesElement.ValueKind == JsonValueKind.Object && TryFind(linesElement, out var nested, "items", "Items", "lineItems", "LineItems")) linesElement = nested;
         if (linesElement.ValueKind != JsonValueKind.Array) throw new JsonException("Hepsiburada sipariş yanıtında satır listesi yok.");
 
-        var lines = linesElement.EnumerateArray().Select(MapLine).ToList();
+        var lineItems = linesElement.EnumerateArray().ToArray();
+        var lines = lineItems.Select(MapLine).ToList();
         var gross = Money(order, "totalPrice", "TotalPrice", "totalAmount", "TotalAmount", "grossAmount", "GrossAmount")
             ?? lines.Sum(line => line.UnitPrice * line.Quantity);
         var discount = Money(order, "discountAmount", "DiscountAmount", "totalDiscount", "TotalDiscount") ?? 0m;
@@ -874,9 +875,11 @@ internal static class HepsiburadaJsonMapper
         var shipmentAddress = Find(order, "deliveryAddress", "DeliveryAddress", "shipmentAddress", "ShipmentAddress");
         var invoiceAddress = Find(order, "invoiceAddress", "InvoiceAddress", "billingAddress", "BillingAddress");
         var modified = Date(order, "lastStatusUpdateDate", "LastStatusUpdateDate", "lastModifiedAt", "LastModifiedAt") ?? orderedAt.Value;
-        var invoiceUploaded = Boolean(order, "hasInvoice", "HasInvoice");
+        var invoiceUploaded = Boolean(order, "hasInvoice", "HasInvoice")
+            ?? lineItems.Select(item => Boolean(item, "hasInvoice", "HasInvoice")).FirstOrDefault(value => value.HasValue);
         var packages = Packages(order, lines, orderedAt.Value, invoiceUploaded);
-        var dueAt = Date(order, "dueDate", "DueDate", "shipmentDueAt", "ShipmentDueAt");
+        var dueAt = Date(order, "dueDate", "DueDate", "shipmentDueAt", "ShipmentDueAt")
+            ?? lineItems.Select(item => Date(item, "dueDate", "DueDate", "shipmentDueAt", "ShipmentDueAt")).FirstOrDefault(value => value.HasValue);
         // The common sales model uses the order number for GetAsync lookups. Hepsiburada's
         // detail endpoint is keyed by orderNumber, so keep that value as the stable key.
         return new(
@@ -888,7 +891,7 @@ internal static class HepsiburadaJsonMapper
             Math.Max(gross, net + discount),
             discount,
             net,
-            OrderCustomerSnapshot(order, customer),
+            OrderCustomerSnapshot(order, customer, invoiceUploaded),
             Snapshot(shipmentAddress),
             Snapshot(invoiceAddress),
             lines,

@@ -441,6 +441,38 @@ public sealed class HepsiburadaAdapterTests
     }
 
     [Fact]
+    public void OrderMapperReadsDueDateAndInvoiceStateFromDetailLineItems()
+    {
+        using var json = JsonDocument.Parse("""
+        {
+          "orderNumber": "HB-DETAIL-21",
+          "orderDate": "2026-09-28T12:15:00Z",
+          "status": "ClaimCreated",
+          "items": [{
+            "id": "line-21",
+            "merchantSku": "merchant-21",
+            "name": "Detail product",
+            "quantity": 1,
+            "price": 120.0,
+            "status": "ClaimCreated",
+            "dueDate": "2026-10-02T12:00:00Z",
+            "hasInvoice": false,
+            "imageUrl": "https://productimages.hepsiburada.net/test/hb-21.jpg"
+          }]
+        }
+        """);
+
+        var order = HepsiburadaJsonMapper.Order(json.RootElement, "HB-DETAIL-21");
+
+        Assert.Equal(new DateTimeOffset(2026, 10, 2, 12, 0, 0, TimeSpan.Zero), order.ShipmentDueAt);
+        Assert.Empty(order.Packages);
+        using var customer = JsonDocument.Parse(order.CustomerSnapshotJson);
+        Assert.Equal("NOT_INVOICED", customer.RootElement.GetProperty("marketplaceInvoiceStatus").GetString());
+        using var line = JsonDocument.Parse(Assert.Single(order.Lines).SourceSnapshotJson);
+        Assert.Equal("https://productimages.hepsiburada.net/test/hb-21.jpg", line.RootElement.GetProperty("imageUrl").GetString());
+    }
+
+    [Fact]
     public void PaidOrderListMapperUsesDocumentedLineFieldsWithoutCreatingAPackage()
     {
         using var json = JsonDocument.Parse("""
