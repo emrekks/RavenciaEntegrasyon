@@ -426,8 +426,8 @@ public sealed partial class HepsiburadaHttpClient(
         {
             var pageResult = HepsiburadaJsonMapper.OrderPage(response.Value!.RootElement);
             // The paid-order list contains the line, customer, address, price,
-            // and due-date fields needed by the panel. Use it directly: the
-            // per-order detail endpoint has a separate daily quota.
+            // and due-date fields needed by the panel. Use it directly; the
+            // detail endpoint is reserved for lifecycle checks on existing orders.
             var mapped = pageResult.Items.Select(HepsiburadaJsonMapper.PaidOrderLine).ToArray();
             var nextOffset = offset + pageResult.Items.Count;
             var hasMore = pageResult.TotalCount is { } total ? nextOffset < total : pageResult.Items.Count == limit;

@@ -46,6 +46,7 @@ public static class MarketplaceJobTypes
     public const string HepsiburadaProductSync = "HEPSIBURADA_PRODUCT_SYNC";
     public const string HepsiburadaOrderSync = "HEPSIBURADA_ORDER_SYNC";
     public const string HepsiburadaOrderRecoverySync = "HEPSIBURADA_ORDER_RECOVERY_SYNC";
+    public const string HepsiburadaOrderStatusSync = "HEPSIBURADA_ORDER_STATUS_SYNC";
     public const string HepsiburadaWebhookIngest = "HEPSIBURADA_WEBHOOK_INGEST";
     public const string HepsiburadaReturnSync = "HEPSIBURADA_RETURN_SYNC";
     public const string HepsiburadaOrderInvoiceReconciliation = "HEPSIBURADA_ORDER_INVOICE_RECONCILIATION";
@@ -70,6 +71,7 @@ public static class MarketplaceJobTypes
             ProductSync => HepsiburadaProductSync,
             OrderSync => HepsiburadaOrderSync,
             OrderRecoverySync => HepsiburadaOrderRecoverySync,
+            OrderStatusSync => HepsiburadaOrderStatusSync,
             WebhookIngest => HepsiburadaWebhookIngest,
             ReturnSync => HepsiburadaReturnSync,
             OrderInvoiceReconciliation => HepsiburadaOrderInvoiceReconciliation,

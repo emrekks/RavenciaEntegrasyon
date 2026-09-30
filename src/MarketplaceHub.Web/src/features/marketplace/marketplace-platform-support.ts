@@ -12,6 +12,7 @@ const marketplacePlatformLabels: Record<typeof orderMarketplacePlatformCodes[num
 const hepsiburadaReadSyncPolicies = new Set([
   'ORDERS',
   'ORDER_RECOVERY',
+  'ORDER_LIFECYCLE',
   'ORDER_INVOICE_RECONCILIATION',
   'RETURNS'
 ])

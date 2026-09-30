@@ -676,6 +676,7 @@ public sealed class HepsiburadaAdapterTests
         Assert.Equal(firstIdentity.ExternalMessageId, reorderedIdentity.ExternalMessageId);
         Assert.NotEqual(firstIdentity.PayloadHash, reorderedIdentity.PayloadHash);
         Assert.Equal(MarketplaceJobTypes.HepsiburadaWebhookIngest, MarketplaceJobTypes.ForPlatform("HEPSIBURADA", MarketplaceJobTypes.WebhookIngest));
+        Assert.Equal(MarketplaceJobTypes.HepsiburadaOrderStatusSync, MarketplaceJobTypes.ForPlatform("HEPSIBURADA", MarketplaceJobTypes.OrderStatusSync));
     }
 
     [Fact]

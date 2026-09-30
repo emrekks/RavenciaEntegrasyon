@@ -36,10 +36,9 @@ describe('Hepsiburada marketplace workspace support', () => {
     expect(isActiveMarketplaceConnection({ platformCode: 'TRENDYOL_EFATURAM', status: 'VERIFIED' })).toBe(false)
   })
 
-  it('exposes only supported read-only Hepsiburada synchronization intervals', () => {
+  it('exposes read-only Hepsiburada order lifecycle synchronization', () => {
     expect(supportsSyncPolicyManagement('HEPSIBURADA')).toBe(true)
-    expect(['ORDERS', 'ORDER_RECOVERY', 'ORDER_INVOICE_RECONCILIATION', 'RETURNS'].every(resource => supportsSyncPolicy('HEPSIBURADA', resource))).toBe(true)
-    expect(supportsSyncPolicy('HEPSIBURADA', 'ORDER_LIFECYCLE')).toBe(false)
+    expect(['ORDERS', 'ORDER_RECOVERY', 'ORDER_LIFECYCLE', 'ORDER_INVOICE_RECONCILIATION', 'RETURNS'].every(resource => supportsSyncPolicy('HEPSIBURADA', resource))).toBe(true)
     expect(supportsSyncPolicy('HEPSIBURADA', 'PRICE_WRITE')).toBe(false)
   })
 
