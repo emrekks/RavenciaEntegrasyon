@@ -3,8 +3,8 @@ namespace MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
 public sealed class HepsiburadaOptions
 {
     public const string SectionName = "Hepsiburada";
-    // The current official docs warn that authentication has changed. Keep outbound
-    // calls disabled until the account's SIT credential pairing is confirmed.
+    // Keep non-production calls closed by default. Production compose explicitly
+    // opts into the marketplace endpoints' documented HTTP Basic authentication.
     public string AuthenticationMode { get; init; } = "UNVERIFIED";
     public Uri StageOmsBaseAddress { get; init; } = new("https://oms-external-sit.hepsiburada.com/");
     public Uri StageTestOrderBaseAddress { get; init; } = new("https://oms-stub-external-sit.hepsiburada.com/");
