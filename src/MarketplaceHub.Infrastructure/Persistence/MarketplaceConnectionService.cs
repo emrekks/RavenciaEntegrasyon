@@ -397,10 +397,11 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA"), cancellationToken); if (connection is null) return NotFound<SyncPolicyView>(); if (!ActiveIntegrationScope.Contains(connection.PlatformCode)) return Deferred<SyncPolicyView>();
         if (command.Enabled && MarketplaceSyncPolicyRules.RequiresExternalWrites(normalized) && !WritesEnabled(connection.SettingsJson))
             return ServiceResult<SyncPolicyView>.Fail("EXTERNAL_WRITES_DISABLED", "Dış yazma kapalıyken bu otomatik akış açılamaz.", 422);
+        var cadence = ScheduledOrderPollingCadencePolicy.ForPlatform(connection.PlatformCode, normalized, command.IntervalSeconds, command.JitterSeconds);
         var policy = await db.ConnectionSyncPolicies.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == id && x.ResourceType == normalized, cancellationToken);
         if (policy is null) { if (expectedVersion is not null) return NotFound<SyncPolicyView>(); policy = new ConnectionSyncPolicy { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = id, ResourceType = normalized, Version = 1 }; db.ConnectionSyncPolicies.Add(policy); }
         else { if (expectedVersion is null) return ServiceResult<SyncPolicyView>.Fail("PRECONDITION_REQUIRED", "Mevcut sync policy için If-Match gereklidir.", 428); if (policy.Version != expectedVersion) return Precondition<SyncPolicyView>(policy.Version); policy.Version++; }
-        policy.IntervalSeconds = command.IntervalSeconds; policy.OverlapSeconds = command.OverlapSeconds; policy.JitterSeconds = command.JitterSeconds; policy.Enabled = command.Enabled; await db.SaveChangesAsync(cancellationToken); return ServiceResult<SyncPolicyView>.Ok(Map(policy));
+        policy.IntervalSeconds = cadence.IntervalSeconds; policy.OverlapSeconds = command.OverlapSeconds; policy.JitterSeconds = cadence.JitterSeconds; policy.Enabled = command.Enabled; await db.SaveChangesAsync(cancellationToken); return ServiceResult<SyncPolicyView>.Ok(Map(policy));
     }
 
     public async Task<ServiceResult<IReadOnlyList<WebhookSubscriptionView>>> WebhooksAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
@@ -501,9 +502,20 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
                 AddBootstrapJob(tenantId, connection.Id, MarketplaceJobTypes.ReferenceSync, $"{prefix}categories", JsonSerializer.Serialize(new { connectionId = connection.Id, resourceType = "CATEGORIES", parentExternalId = (string?)null }), correlationId);
             AddBootstrapJob(tenantId, connection.Id, MarketplaceJobTypes.HepsiburadaProductSync, $"{prefix}products", JsonSerializer.Serialize(new { connectionId = connection.Id, full = true, updateExistingProducts = false }), correlationId);
         }
-        if (connection.PlatformCode == "TRENDYOL")
-            AddBootstrapJob(tenantId, connection.Id, MarketplaceJobTypes.ReturnSync, $"{prefix}returns", JsonSerializer.Serialize(new { connectionId = connection.Id, forceFull = true }), correlationId);
+        var returnBootstrap = CreateReturnActivationBootstrap(connection.PlatformCode, connection.Id);
+        if (returnBootstrap is { } initialReturns)
+            AddBootstrapJob(tenantId, connection.Id, initialReturns.JobType, $"{prefix}returns", initialReturns.PayloadJson, correlationId);
     }
+
+    internal static (string JobType, string PayloadJson)? CreateReturnActivationBootstrap(string platformCode, Guid connectionId)
+    {
+        var normalizedPlatform = platformCode.Trim().ToUpperInvariant();
+        if (normalizedPlatform is not ("TRENDYOL" or "HEPSIBURADA")) return null;
+        return (
+            MarketplaceJobTypes.ForPlatform(normalizedPlatform, MarketplaceJobTypes.ReturnSync),
+            JsonSerializer.Serialize(new { connectionId, forceFull = true }));
+    }
+
     private void AddBootstrapJob(Guid tenantId, Guid connectionId, string type, string dedup, string payload, string correlationId)
     {
         var job = NewJob(tenantId, connectionId, type, dedup, payload, correlationId);

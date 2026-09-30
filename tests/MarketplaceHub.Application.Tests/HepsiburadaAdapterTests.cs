@@ -438,6 +438,48 @@ public sealed class HepsiburadaAdapterTests
     }
 
     [Fact]
+    public void PaidOrderListMapperUsesDocumentedLineFieldsWithoutCreatingAPackage()
+    {
+        using var json = JsonDocument.Parse("""
+        {
+          "id": "line-19",
+          "orderId": "hb-order-19",
+          "orderNumber": "HB-2026-19",
+          "orderDate": "2026-09-29T09:15:00Z",
+          "lastStatusUpdateDate": "2026-09-29T09:16:00Z",
+          "dueDate": "2026-10-01T12:00:00Z",
+          "status": "Open",
+          "sku": "HB-SKU-19",
+          "merchantSku": "SELLER-19",
+          "name": "Test product",
+          "quantity": 2,
+          "unitPrice": { "currency": "TRY", "amount": 45.5 },
+          "totalPrice": { "currency": "TRY", "amount": 91.0 },
+          "vatRate": 20,
+          "customerName": "Ayşe Test",
+          "shippingAddress": { "city": "İstanbul", "town": "Kadıköy" },
+          "invoice": { "address": { "city": "İstanbul", "town": "Üsküdar" } }
+        }
+        """);
+
+        var order = HepsiburadaJsonMapper.PaidOrderLine(json.RootElement);
+
+        Assert.Equal("HB-2026-19", order.ExternalOrderId);
+        Assert.Equal("TRY", order.Currency);
+        Assert.Equal(91m, order.GrossAmount);
+        Assert.Equal(91m, order.NetAmount);
+        Assert.Equal("line-19", Assert.Single(order.Lines).ExternalLineId);
+        Assert.Equal("SELLER-19", order.Lines[0].Sku);
+        Assert.Equal(45.5m, order.Lines[0].UnitPrice);
+        Assert.Empty(order.Packages);
+        Assert.Equal(new DateTimeOffset(2026, 10, 1, 12, 0, 0, TimeSpan.Zero), order.ShipmentDueAt);
+        using var customer = JsonDocument.Parse(order.CustomerSnapshotJson);
+        Assert.Equal("Ayşe Test", customer.RootElement.GetProperty("name").GetString());
+        Assert.Contains("Kadıköy", order.ShipmentAddressSnapshotJson, StringComparison.Ordinal);
+        Assert.Contains("Üsküdar", order.InvoiceAddressSnapshotJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void PackageMapper_RequiresExplicitOrderLinkAndPreservesLineAllocations()
     {
         using var json = JsonDocument.Parse("""
@@ -449,7 +491,7 @@ public sealed class HepsiburadaAdapterTests
             "orderDate": "2026-09-28T12:15:00Z",
             "cargoCompany": "HepsiJet",
             "barcode": "cargo-18",
-            "lineItems": [{ "lineItemId": "line-18", "quantity": 2 }]
+            "lineItems": [{ "lineItemId": "line-18", "merchantSku": "SKU-18", "name": "Test product", "quantity": 2, "price": { "currency": "TRY", "amount": 12.5 } }]
           }],
           "totalCount": 1
         }
@@ -465,6 +507,10 @@ public sealed class HepsiburadaAdapterTests
         Assert.Equal("cargo-18", item.Package.CargoTrackingNumber);
         Assert.Equal("line-18", item.Package.Allocations.Single().ExternalLineId);
         Assert.Equal(2m, item.Package.Allocations.Single().AllocatedQuantity);
+        Assert.NotNull(item.OrderSnapshot);
+        Assert.Equal("HB-2026-18", item.OrderSnapshot!.ExternalOrderId);
+        Assert.Equal("line-18", Assert.Single(item.OrderSnapshot.Lines).ExternalLineId);
+        Assert.Equal("5000031611", Assert.Single(item.OrderSnapshot.Packages).ExternalPackageId);
     }
 
     [Fact]
@@ -841,6 +887,20 @@ public sealed class HepsiburadaAdapterTests
         Assert.False(MarketplaceConnectionService.ShouldBootstrapHepsiburadaCatalogReferences("PRODUCTION", null));
         Assert.False(MarketplaceConnectionService.ShouldBootstrapHepsiburadaCatalogReferences("PRODUCTION", "http://catalog.example/product/"));
         Assert.True(MarketplaceConnectionService.ShouldBootstrapHepsiburadaCatalogReferences("PRODUCTION", "https://catalog.example/product/"));
+    }
+
+    [Fact]
+    public void HepsiburadaActivationQueuesAFullReturnImport()
+    {
+        var connectionId = Guid.NewGuid();
+        var bootstrap = MarketplaceConnectionService.CreateReturnActivationBootstrap("hepsiburada", connectionId);
+
+        Assert.NotNull(bootstrap);
+        Assert.Equal(MarketplaceJobTypes.HepsiburadaReturnSync, bootstrap.Value.JobType);
+        using var payload = JsonDocument.Parse(bootstrap.Value.PayloadJson);
+        Assert.Equal(connectionId, payload.RootElement.GetProperty("connectionId").GetGuid());
+        Assert.True(payload.RootElement.GetProperty("forceFull").GetBoolean());
+        Assert.Null(MarketplaceConnectionService.CreateReturnActivationBootstrap("TRENDYOL_EFATURAM", connectionId));
     }
 
     [Fact]

@@ -1767,12 +1767,12 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var overlap = TimeSpan.FromSeconds(Math.Clamp(overlapSeconds, 0, 86_399));
         var forceBaseline = full || cursor.LastSuccessAt is null || cursor.ConsecutiveFailureCount > 0 || !string.IsNullOrWhiteSpace(cursor.LastError);
         HepsiburadaPackageSyncState? state = null;
-        if (!forceBaseline && !string.IsNullOrWhiteSpace(cursor.OpaqueCursor))
+        if (!full && cursor.ConsecutiveFailureCount == 0 && string.IsNullOrWhiteSpace(cursor.LastError) && !string.IsNullOrWhiteSpace(cursor.OpaqueCursor))
         {
             try
             {
                 var saved = JsonSerializer.Deserialize<HepsiburadaPackageSyncState>(cursor.OpaqueCursor);
-                if (saved is { Version: HepsiburadaPackageSyncStateVersion, WindowIndex: >= 0 }) state = saved;
+                if (saved is { Version: HepsiburadaPackageSyncStateVersion, WindowIndex: >= 0, Offset: >= 0 }) state = saved;
             }
             catch (JsonException) { }
         }
@@ -1784,7 +1784,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             if (watermark > anchor) watermark = anchor;
             var start = forceBaseline ? oldestAvailable : watermark.Subtract(overlap);
             if (start < oldestAvailable) start = oldestAvailable;
-            state = new(HepsiburadaPackageSyncStateVersion, anchor, start, 0);
+            state = new(HepsiburadaPackageSyncStateVersion, anchor, start, 0, 0);
         }
 
         while (true)
@@ -1806,97 +1806,50 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
             var windowStart = windowEnd.Subtract(TimeSpan.FromHours(24));
             if (windowStart < state.StartAt) windowStart = state.StartAt;
-            var offset = 0;
-            var windowPackages = new List<RemoteOrderPackage>();
-            while (true)
-            {
-                TrackRequest();
-                var page = await orderPackages.PollPackagesAsync(
-                    Context(tenantId, connectionId, correlationId, $"hepsiburada-packages:{state.WindowIndex}:{offset}"),
-                    new PackagePollWindow(windowStart, windowEnd),
-                    new(offset.ToString(System.Globalization.CultureInfo.InvariantCulture), 10),
-                    cancellationToken);
-                if (!page.IsSuccess) { TrackResultFailure(page.Error); throw JobProcessingException.FromAdapter(page.Error!); }
-                foreach (var item in page.Value!.Items) { TrackReceived(); windowPackages.Add(item); }
-                foreach (var issue in page.Value.Issues ?? [])
-                    await RecordIssue(tenantId, $"package-contract:{connectionId}:{issue.Identity}:{issue.Code}", issue.Code, issue.Message, cancellationToken);
-                if (!page.Value.HasMore) break;
-                if (!int.TryParse(page.Value.NextCursor, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var nextOffset)
-                    || nextOffset <= offset)
-                    throw new InvalidOperationException("Hepsiburada paket sayfalaması hasMore=true döndürdü ancak ileri offset üretmedi.");
-                offset = nextOffset;
-            }
+            TrackRequest();
+            var page = await orderPackages.PollPackagesAsync(
+                Context(tenantId, connectionId, correlationId, $"hepsiburada-packages:{state.WindowIndex}:{state.Offset}"),
+                new PackagePollWindow(windowStart, windowEnd),
+                new(state.Offset.ToString(System.Globalization.CultureInfo.InvariantCulture), 10),
+                cancellationToken);
+            if (!page.IsSuccess) { TrackResultFailure(page.Error); throw JobProcessingException.FromAdapter(page.Error!); }
+            foreach (var item in page.Value!.Items) TrackReceived();
+            foreach (var issue in page.Value.Issues ?? [])
+                await RecordIssue(tenantId, $"package-contract:{connectionId}:{issue.Identity}:{issue.Code}", issue.Code, issue.Message, cancellationToken);
 
-            foreach (var orderPackagesForOrder in windowPackages
+            foreach (var orderPackagesForOrder in page.Value.Items
                          .GroupBy(x => x.ExternalOrderId, StringComparer.Ordinal)
                          .OrderBy(x => x.Key, StringComparer.Ordinal))
             {
-                TrackRequest();
-                var detail = await orders.GetAsync(
-                    Context(tenantId, connectionId, correlationId, $"hepsiburada-package-order:{orderPackagesForOrder.Key}"),
-                    orderPackagesForOrder.Key,
-                    cancellationToken);
-                if (!detail.IsSuccess)
+                var snapshots = orderPackagesForOrder.Select(x => x.OrderSnapshot).Where(x => x is not null).Select(x => x!).ToArray();
+                var mergedOrder = TrendyolJsonMapper.MergeOrderPackages(snapshots, orderPackagesForOrder.Key);
+                if (mergedOrder is null)
                 {
-                    if (detail.Error?.Class == AdapterErrorClass.NotFound)
-                    {
-                        await RecordIssue(tenantId, $"package-order-not-found:{connectionId}:{orderPackagesForOrder.Key}", "HEPSIBURADA_PACKAGE_ORDER_NOT_FOUND", "Paket yanıtındaki sipariş numarasıyla sipariş detayı bulunamadı; paket yerel siparişe bağlanmadı.", cancellationToken);
-                        continue;
-                    }
-                    TrackResultFailure(detail.Error);
-                    throw JobProcessingException.FromAdapter(detail.Error!);
-                }
-
-                var packagesById = detail.Value!.Packages.ToDictionary(x => x.ExternalPackageId, StringComparer.Ordinal);
-                foreach (var incoming in orderPackagesForOrder.Select(x => x.Package))
-                {
-                    if (packagesById.TryGetValue(incoming.ExternalPackageId, out var existing))
-                    {
-                        packagesById[incoming.ExternalPackageId] = incoming with
-                        {
-                            OriginExternalPackageId = incoming.OriginExternalPackageId ?? existing.OriginExternalPackageId,
-                            CargoProviderExternalId = incoming.CargoProviderExternalId ?? existing.CargoProviderExternalId,
-                            CargoTrackingNumber = incoming.CargoTrackingNumber ?? existing.CargoTrackingNumber,
-                            Allocations = incoming.Allocations.Count > 0 ? incoming.Allocations : existing.Allocations,
-                            GrossAmount = incoming.GrossAmount == 0 ? existing.GrossAmount : incoming.GrossAmount,
-                            DiscountAmount = incoming.DiscountAmount == 0 ? existing.DiscountAmount : incoming.DiscountAmount,
-                            NetAmount = incoming.NetAmount == 0 ? existing.NetAmount : incoming.NetAmount,
-                            Invoice = incoming.Invoice ?? existing.Invoice,
-                            CreatedBy = incoming.CreatedBy ?? existing.CreatedBy
-                        };
-                    }
-                    else packagesById.Add(incoming.ExternalPackageId, incoming);
-                }
-
-                var mergedPackages = packagesById.Values.OrderBy(x => x.ExternalPackageId, StringComparer.Ordinal).ToArray();
-                var coveredLines = mergedPackages.SelectMany(x => x.Allocations).Select(x => x.ExternalLineId).ToHashSet(StringComparer.Ordinal);
-                var uncoveredLines = detail.Value.Lines.Where(x => !coveredLines.Contains(x.ExternalLineId)).Select(x => x.ExternalLineId).ToArray();
-                if (detail.Value.Lines.Count == 0 || uncoveredLines.Length > 0)
-                {
-                    var reason = uncoveredLines.Length == 0 ? "Sipariş detayında kalem bulunmadı." : $"{uncoveredLines.Length} sipariş kalemi için paket allocation bağlantısı yok.";
-                    await RecordIssue(tenantId, $"package-coverage:{connectionId}:{orderPackagesForOrder.Key}:{state.WindowIndex}", "HEPSIBURADA_PACKAGE_LINE_COVERAGE_MISSING", $"{reason} Paket bilgisi sipariş kalemlerine güvenle uygulanmadı.", cancellationToken);
+                    await RecordIssue(tenantId, $"package-order-snapshot:{connectionId}:{orderPackagesForOrder.Key}:{state.WindowIndex}:{state.Offset}", "HEPSIBURADA_PACKAGE_ORDER_SNAPSHOT_MISSING", "Hepsiburada paket yanıtından bağlı sipariş satırları oluşturulamadı; paket yerel siparişe uygulanmadı.", cancellationToken);
                     continue;
                 }
-
-                var packageModifiedAt = orderPackagesForOrder.Max(x => x.Package.OccurredAt);
-                var mergedOrder = detail.Value with
-                {
-                    Packages = mergedPackages,
-                    LastModifiedAt = detail.Value.LastModifiedAt > packageModifiedAt ? detail.Value.LastModifiedAt : packageModifiedAt
-                };
                 TrackReceived();
                 await UpsertOrder(tenantId, connectionId, mergedOrder, cancellationToken);
             }
 
-            state = state with { WindowIndex = state.WindowIndex + 1 };
+            if (page.Value.HasMore)
+            {
+                if (!int.TryParse(page.Value.NextCursor, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var nextOffset)
+                    || nextOffset <= state.Offset)
+                    throw new InvalidOperationException("Hepsiburada paket sayfalaması hasMore=true döndürdü ancak ileri offset üretmedi.");
+                state = state with { Offset = nextOffset };
+            }
+            else state = state with { WindowIndex = state.WindowIndex + 1, Offset = 0 };
             cursor.OpaqueCursor = JsonSerializer.Serialize(state);
             cursor.Version++;
             await db.SaveChangesAsync(cancellationToken);
+            // Persist every offset/window so an interrupted full scan resumes
+            // without repeating the completed pages.
         }
     }
 
-    private const string HepsiburadaPackageSyncStateVersion = "hepsiburada-packages-v1";
-    private sealed record HepsiburadaPackageSyncState(string Version, DateTimeOffset AnchorEnd, DateTimeOffset StartAt, int WindowIndex);
+    private const string HepsiburadaPackageSyncStateVersion = "hepsiburada-packages-v2";
+    private sealed record HepsiburadaPackageSyncState(string Version, DateTimeOffset AnchorEnd, DateTimeOffset StartAt, int WindowIndex, int Offset);
 
     private async Task<bool> SyncOrders(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, string cursorResourceType, bool allowBaseline, CancellationToken cancellationToken)
     {
@@ -2162,10 +2115,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
     private async Task<bool> ReconcileOrders(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
-        var isShopify = await db.PlatformConnections.AsNoTracking()
+        var platformCode = await db.PlatformConnections.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.Id == connectionId)
-            .Select(x => x.PlatformCode == "SHOPIFY")
+            .Select(x => x.PlatformCode)
             .SingleOrDefaultAsync(cancellationToken);
+        var isShopify = platformCode == "SHOPIFY";
         var lookbackDays = ReadBoundedInt(payloadJson, "lookbackDays", 1, 1, 90);
         var batchSize = ReadBoundedInt(payloadJson, "batchSize", 25, 1, 100);
         var end = timeProvider.GetUtcNow();
@@ -4852,10 +4806,12 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     private async Task UpsertOrders(Guid tenantId, Guid connectionId, IReadOnlyList<RemoteOrder> remotes, CancellationToken cancellationToken, bool projectReservations = true)
     {
         if (remotes.Count == 0) return;
-        var isShopify = await db.PlatformConnections.AsNoTracking()
+        var platformCode = await db.PlatformConnections.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.Id == connectionId)
-            .Select(x => x.PlatformCode == "SHOPIFY")
+            .Select(x => x.PlatformCode)
             .SingleOrDefaultAsync(cancellationToken);
+        var isShopify = platformCode == "SHOPIFY";
+        var isHepsiburada = platformCode == "HEPSIBURADA";
         // The stream is package-shaped: one order can occur once per package.
         // Merge the page before materializing the order so split-package line
         // quantities are summed instead of the last package overwriting them.
@@ -4868,6 +4824,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 // sums active package quantities and would erase Shopify
                 // cancellation quantities, so retain the newest snapshot.
                 ? group.OrderByDescending(remote => remote.LastModifiedAt).First()
+                : isHepsiburada
+                    ? MergeHepsiburadaOrderLines(group)
                 : TrendyolJsonMapper.MergeOrderPackages(group, group.Key) ?? group.OrderByDescending(remote => remote.LastModifiedAt).First())
             .ToList();
         if (mergedRemotes.Count == 0) return;
@@ -4947,6 +4905,33 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         await db.SaveChangesAsync(cancellationToken);
     }
 
+    private static RemoteOrder MergeHepsiburadaOrderLines(IEnumerable<RemoteOrder> candidates)
+    {
+        var matches = candidates.ToArray();
+        var latest = matches.OrderByDescending(remote => remote.LastModifiedAt).First();
+        var lines = matches
+            .SelectMany(remote => remote.Lines)
+            .GroupBy(line => line.ExternalLineId, StringComparer.Ordinal)
+            .Select(group => group.OrderByDescending(line => line.RawStatus, StringComparer.Ordinal).First())
+            .ToArray();
+        var packages = matches
+            .SelectMany(remote => remote.Packages)
+            .GroupBy(package => package.ExternalPackageId, StringComparer.Ordinal)
+            .Select(group => group.OrderByDescending(package => package.OccurredAt).First())
+            .ToArray();
+        var gross = lines.Sum(line => line.UnitPrice * line.Quantity);
+        var discount = Math.Min(gross, matches.Sum(remote => remote.DiscountAmount));
+        return latest with
+        {
+            LastModifiedAt = matches.Max(remote => remote.LastModifiedAt),
+            GrossAmount = gross,
+            DiscountAmount = discount,
+            NetAmount = Math.Max(0m, gross - discount),
+            Lines = lines,
+            Packages = packages
+        };
+    }
+
     private async Task UpsertOrder(Guid tenantId, Guid connectionId, RemoteOrder remote, CancellationToken cancellationToken, OrderIngestionBatch? batch = null, bool saveChanges = true, bool projectReservations = true, bool persistFinancialObservations = false)
     {
         var platformCode = await db.PlatformConnections.AsNoTracking()
@@ -4954,8 +4939,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             .Select(x => x.PlatformCode)
             .SingleOrDefaultAsync(cancellationToken);
         var isShopify = platformCode == "SHOPIFY";
+        var isHepsiburada = platformCode == "HEPSIBURADA";
         IReadOnlyDictionary<string, decimal> remoteLineQuantities;
-        if (remote.Lines.Count == 0 || remote.Packages.Count == 0)
+        if (remote.Lines.Count == 0 || remote.Packages.Count == 0 && !isHepsiburada)
         {
             await RecordIssue(tenantId, $"order-contract:{connectionId}:{remote.ExternalOrderId}:{remote.LastModifiedAt.ToUnixTimeMilliseconds()}", "ORDER_CONTRACT_INVALID", "Pazar yeri siparişinde satır veya paket verisi eksikti; eksik sipariş projeksiyonu uygulanmadı.", cancellationToken);
             if (saveChanges) await db.SaveChangesAsync(cancellationToken);
@@ -4977,7 +4963,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 && x.ConnectionId == connectionId
                 && x.ExternalOrderId == remote.ExternalOrderId, cancellationToken);
         var allocatedLineIds = remote.Packages.SelectMany(x => x.Allocations).Select(x => x.ExternalLineId).ToHashSet(StringComparer.Ordinal);
-        if (remoteLineQuantities.Keys.Any(lineId => !allocatedLineIds.Contains(lineId)))
+        if (remote.Packages.Count > 0 && remoteLineQuantities.Keys.Any(lineId => !allocatedLineIds.Contains(lineId)))
         {
             await RecordIssue(tenantId, $"order-coverage:{connectionId}:{remote.ExternalOrderId}:{remote.LastModifiedAt.ToUnixTimeMilliseconds()}", "ORDER_LINE_COVERAGE_INVALID", "Pazar yeri cevabındaki sipariş satırlarının tamamı paket tahsisinde yer almıyordu; eksik veri uygulanmadı.", cancellationToken);
             if (saveChanges) await db.SaveChangesAsync(cancellationToken);
@@ -4988,7 +4974,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         // sibling package; that fragment is validated per package below and
         // merged with the persisted projection instead of being rejected as an
         // incomplete order.
-        if (order is null && !PackageIngestionSafety.TryNormalizeOrder(remoteLineQuantities, remote.Packages, out _))
+        if (order is null && remote.Packages.Count > 0 && !PackageIngestionSafety.TryNormalizeOrder(remoteLineQuantities, remote.Packages, out _))
         {
             var rejectedEventId = remote.Packages.Count > 0
                 ? PackageIngestionSafety.EventId(remote.Packages[0].ExternalPackageId, remote.Packages[0].OccurredAt)
@@ -5087,6 +5073,16 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             line.Sku = sku; line.Barcode = remoteLine.Barcode ?? line.Barcode; line.TitleSnapshot = title; line.SourceSnapshotJson = sourceSnapshot; line.OrderedQuantity = orderedQuantity; line.UnitPrice = importedUnitPrice ?? remoteLine.UnitPrice; line.VatRate = remoteLine.VatRate; line.RawStatus = remoteLine.RawStatus; if (db.Entry(line).State != EntityState.Added) line.Version++; lines[remoteLine.ExternalLineId] = line;
             linesByExternalId[remoteLine.ExternalLineId] = line;
             if (!string.IsNullOrWhiteSpace(remoteLine.SourceSnapshotJson) && remoteLine.SourceSnapshotJson != "{}") linesBySnapshot[remoteLine.SourceSnapshotJson] = line;
+        }
+        if (isHepsiburada)
+        {
+            var knownLineGross = lines.Values.Sum(line => line.UnitPrice * line.OrderedQuantity);
+            if (knownLineGross > 0)
+            {
+                order.GrossAmount = knownLineGross;
+                if (remote.DiscountAmount > 0 || order.DiscountAmount == 0) order.DiscountAmount = Math.Min(knownLineGross, remote.DiscountAmount);
+                order.NetAmount = Math.Max(0m, knownLineGross - order.DiscountAmount);
+            }
         }
         foreach (var remotePackage in remote.Packages)
         {

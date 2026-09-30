@@ -18,6 +18,10 @@ public sealed class ScheduledOrderPollingCadencePolicyTests
     [InlineData("SHOPIFY", "ORDER_RECONCILE_MEDIUM", 3600, 120, 10800, 120)]
     [InlineData("TRENDYOL", "ORDER_RECONCILE_DAILY", 86400, 900, 86400, 900)]
     [InlineData("SHOPIFY", "ORDER_RECONCILE_DAILY", 86400, 900, 259200, 900)]
+    [InlineData("HEPSIBURADA", "ORDER_RECOVERY", 900, 30, 900, 30)]
+    [InlineData("HEPSIBURADA", "ORDER_INVOICE_RECONCILIATION", 900, 30, 900, 30)]
+    [InlineData("HEPSIBURADA", "ORDERS", 60, 5, 60, 5)]
+    [InlineData("HEPSIBURADA", "RETURNS", 180, 10, 180, 10)]
     public void ForPlatform_UsesRequestedOrderCadence(
         string platformCode,
         string resourceType,

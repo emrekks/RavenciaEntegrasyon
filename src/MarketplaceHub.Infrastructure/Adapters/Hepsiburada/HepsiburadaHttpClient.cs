@@ -425,15 +425,10 @@ public sealed partial class HepsiburadaHttpClient(
         try
         {
             var pageResult = HepsiburadaJsonMapper.OrderPage(response.Value!.RootElement);
-            var orderNumbers = pageResult.Items.Select(HepsiburadaJsonMapper.OrderNumber).Where(number => !string.IsNullOrWhiteSpace(number)).Select(number => number!).Distinct(StringComparer.Ordinal).ToArray();
-            var mapped = new List<RemoteOrder>(orderNumbers.Length);
-            foreach (var orderNumber in orderNumbers)
-            {
-                var detail = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Get, OrderDetails(account, orderNumber), cancellationToken);
-                if (!detail.IsSuccess) return AdapterResult<AdapterPageResult<RemoteOrder>>.Failure(detail.Error!, detail.RateLimit ?? response.RateLimit);
-                try { mapped.Add(HepsiburadaJsonMapper.Order(detail.Value!.RootElement, orderNumber)); }
-                catch (JsonException) { return Failure<AdapterPageResult<RemoteOrder>>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_ORDER_CONTRACT_INVALID", "Hepsiburada sipariş detay yanıtı beklenen sözleşmeyle eşleşmiyor.", HttpStatusCode.BadGateway); }
-            }
+            // The paid-order list contains the line, customer, address, price,
+            // and due-date fields needed by the panel. Use it directly: the
+            // per-order detail endpoint has a separate daily quota.
+            var mapped = pageResult.Items.Select(HepsiburadaJsonMapper.PaidOrderLine).ToArray();
             var nextOffset = offset + pageResult.Items.Count;
             var hasMore = pageResult.TotalCount is { } total ? nextOffset < total : pageResult.Items.Count == limit;
             return AdapterResult<AdapterPageResult<RemoteOrder>>.Success(new(mapped, hasMore ? nextOffset.ToString(CultureInfo.InvariantCulture) : null, hasMore, pageResult.TotalCount), response.RateLimit);

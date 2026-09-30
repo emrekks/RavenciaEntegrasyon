@@ -617,11 +617,122 @@ internal static class HepsiburadaJsonMapper
             Text(item, "cargoCompany", "CargoCompany", "cargoCompanyName", "CargoCompanyName"),
             Text(item, "trackingInfoCode", "TrackingInfoCode", "barcode", "Barcode"),
             allocations,
+            GrossAmount: Money(item, "totalPrice", "TotalPrice", "totalAmount", "TotalAmount") ?? 0m,
+            NetAmount: Money(item, "netAmount", "NetAmount", "totalPrice", "TotalPrice") ?? 0m,
             Invoice: InvoiceObservation(item));
-        return new(orderNumber, package);
+        return new(orderNumber, package, PackageOrderSnapshot(item, orderNumber, package));
     }
 
     public static string? OrderNumber(JsonElement item) => Text(item, "orderNumber", "OrderNumber", "orderNo", "OrderNo");
+
+    public static RemoteOrder PaidOrderLine(JsonElement item)
+    {
+        var orderNumber = OrderNumber(item);
+        if (string.IsNullOrWhiteSpace(orderNumber)) throw new JsonException("Hepsiburada ödemesi tamamlanmış sipariş satırında orderNumber yok.");
+        var nestedLines = Find(item, "lineItems", "LineItems", "orderItems", "OrderItems");
+        if (nestedLines.ValueKind == JsonValueKind.Array || Find(item, "items", "Items").ValueKind == JsonValueKind.Array)
+            return Order(item, orderNumber);
+
+        var line = MapLine(item);
+        var orderedAt = Date(item, "orderDate", "OrderDate", "orderedAt", "OrderedAt", "createdAt", "CreatedAt");
+        if (orderedAt is null) throw new JsonException("Hepsiburada ödemesi tamamlanmış sipariş satırında orderDate yok.");
+        var gross = Money(item, "totalPrice", "TotalPrice", "lineTotal", "LineTotal") ?? line.UnitPrice * line.Quantity;
+        var discount = Money(item, "totalMerchantDiscount", "TotalMerchantDiscount", "merchantDiscount", "MerchantDiscount", "discountAmount", "DiscountAmount") ?? 0m;
+        var invoice = Find(item, "invoice", "Invoice");
+        var invoiceAddress = Find(invoice, "address", "Address");
+        if (invoiceAddress.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null) invoiceAddress = Find(item, "invoiceAddress", "InvoiceAddress", "billingAddress", "BillingAddress");
+        var customer = Find(item, "customer", "Customer");
+        var customerSnapshot = customer.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null
+            ? JsonSerializer.Serialize(new { name = Text(item, "customerName", "CustomerName", "recipientName", "RecipientName"), email = Text(item, "email", "Email"), phoneNumber = Text(item, "phoneNumber", "PhoneNumber") })
+            : Snapshot(customer);
+        var status = Text(item, "status", "Status", "orderStatus", "OrderStatus") ?? "Open";
+        var currency = Currency(item, "unitPrice", "UnitPrice", "totalPrice", "TotalPrice") ?? "TRY";
+        return new(
+            orderNumber,
+            orderNumber,
+            orderedAt.Value,
+            Date(item, "lastStatusUpdateDate", "LastStatusUpdateDate", "lastModifiedAt", "LastModifiedAt") ?? orderedAt.Value,
+            currency.Length == 3 ? currency.ToUpperInvariant() : "TRY",
+            Math.Max(gross, gross - discount),
+            discount,
+            Math.Max(0m, gross - discount),
+            customerSnapshot,
+            Snapshot(Find(item, "shippingAddress", "ShippingAddress", "deliveryAddress", "DeliveryAddress")),
+            Snapshot(invoiceAddress.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null ? invoice : invoiceAddress),
+            [line],
+            [],
+            item.GetRawText(),
+            Date(item, "dueDate", "DueDate", "shipmentDueAt", "ShipmentDueAt"),
+            Text(item, "paymentStatus", "PaymentStatus") ?? "Received",
+            status.Contains("cancel", StringComparison.OrdinalIgnoreCase) ? "CANCELLED" : "NOT_CANCELLED");
+    }
+
+    private static RemoteOrder PackageOrderSnapshot(JsonElement item, string orderNumber, RemotePackage package)
+    {
+        var orderedAt = Date(item, "orderDate", "OrderDate", "orderedAt", "OrderedAt", "createdAt", "CreatedAt") ?? package.OccurredAt;
+        var itemArray = Find(item, "lineItems", "LineItems", "items", "Items", "orderItems", "OrderItems");
+        IReadOnlyList<RemoteOrderLine> lines = itemArray.ValueKind == JsonValueKind.Array
+            ? itemArray.EnumerateArray().Select(MapLine).GroupBy(line => line.ExternalLineId, StringComparer.Ordinal).Select(group => group.First()).ToArray()
+            : [];
+        if (lines.Count == 0 && !string.IsNullOrWhiteSpace(Text(item, "lineItemId", "LineItemId", "orderLineId", "OrderLineId")))
+            lines = [MapLine(item)];
+        var shipmentAddress = Find(item, "shippingAddress", "ShippingAddress", "deliveryAddress", "DeliveryAddress");
+        if (shipmentAddress.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
+            shipmentAddress = AddressSnapshot(item, "shippingAddressDetail", "recipientName", "shippingCountryCode", "shippingDistrict", "shippingTown", "shippingCity", "shippingPostalCode", "email", "phoneNumber");
+        var invoice = Find(item, "invoice", "Invoice", "invoiceAddress", "InvoiceAddress", "billingAddress", "BillingAddress");
+        if (invoice.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
+            invoice = AddressSnapshot(item, "billingAddress", "companyName", "taxOffice", "taxNumber", "identityNo", "billingDistrict", "billingTown", "billingCity", "billingPostalCode");
+        var customer = Find(item, "customer", "Customer");
+        var customerSnapshot = customer.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null
+            ? JsonSerializer.Serialize(new { name = Text(item, "recipientName", "RecipientName", "customerName", "CustomerName"), email = Text(item, "email", "Email"), phoneNumber = Text(item, "phoneNumber", "PhoneNumber") })
+            : Snapshot(customer);
+        var status = Text(item, "status", "Status", "packageStatus", "PackageStatus") ?? package.RawStatus;
+        var currency = Currency(item, "totalPrice", "TotalPrice")
+            ?? (itemArray.ValueKind == JsonValueKind.Array ? itemArray.EnumerateArray().Select(line => Currency(line, "price", "Price", "totalPrice", "TotalPrice")).FirstOrDefault(value => value is not null) : null)
+            ?? "TRY";
+        var gross = package.GrossAmount > 0 ? package.GrossAmount : lines.Sum(line => line.UnitPrice * line.Quantity);
+        return new(
+            orderNumber,
+            orderNumber,
+            orderedAt,
+            package.OccurredAt,
+            currency.Length == 3 ? currency.ToUpperInvariant() : "TRY",
+            gross,
+            package.DiscountAmount,
+            package.NetAmount > 0 ? package.NetAmount : Math.Max(0m, gross - package.DiscountAmount),
+            customerSnapshot,
+            Snapshot(shipmentAddress),
+            Snapshot(invoice),
+            lines,
+            [package],
+            item.GetRawText(),
+            Date(item, "dueDate", "DueDate", "shipmentDueAt", "ShipmentDueAt"),
+            Text(item, "paymentStatus", "PaymentStatus") ?? "Received",
+            status.Contains("cancel", StringComparison.OrdinalIgnoreCase) ? "CANCELLED" : "NOT_CANCELLED");
+    }
+
+    private static JsonElement AddressSnapshot(JsonElement source, params string[] names)
+    {
+        var address = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var name in names)
+        {
+            var value = Text(source, name);
+            if (!string.IsNullOrWhiteSpace(value)) address[name] = value;
+        }
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(address));
+        return document.RootElement.Clone();
+    }
+
+    private static string? Currency(JsonElement source, params string[] moneyFields)
+    {
+        foreach (var field in moneyFields)
+        {
+            var money = Find(source, field);
+            var currency = Text(money, "currency", "Currency", "currencyCode", "CurrencyCode");
+            if (!string.IsNullOrWhiteSpace(currency)) return currency;
+        }
+        return Text(source, "currency", "Currency", "currencyCode", "CurrencyCode");
+    }
 
     public static RemoteOrder Order(JsonElement root, string requestedOrderNumber)
     {
@@ -676,7 +787,8 @@ internal static class HepsiburadaJsonMapper
     private static RemoteOrderLine MapLine(JsonElement line)
     {
         var lineId = Text(line, "id", "Id", "lineItemId", "LineItemId", "orderLineId", "OrderLineId");
-        var sku = Text(line, "merchantSku", "MerchantSku", "sku", "Sku", "hbSku", "HBSku");
+        var sku = Text(line, "merchantSku", "MerchantSku", "sellerSku", "SellerSku")
+            ?? Text(line, "sku", "Sku", "hbSku", "HBSku");
         if (string.IsNullOrWhiteSpace(lineId) || string.IsNullOrWhiteSpace(sku)) throw new JsonException("Hepsiburada sipariş satırının kimlik veya SKU alanı eksik.");
         var quantity = Decimal(line, "quantity", "Quantity") ?? 0m;
         var unitPrice = Money(line, "price", "Price", "unitPrice", "UnitPrice") ?? 0m;

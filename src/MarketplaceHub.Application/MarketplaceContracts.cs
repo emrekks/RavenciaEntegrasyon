@@ -214,7 +214,7 @@ public sealed record RemotePackage(string ExternalPackageId, string? OriginExter
 public sealed record RemoteOrderRefund(string ExternalRefundId, DateTimeOffset OccurredAt, decimal Amount, string Currency, string RawJson);
 public sealed record RemoteOrder(string ExternalOrderId, string OrderNumber, DateTimeOffset OrderedAt, DateTimeOffset LastModifiedAt, string Currency, decimal GrossAmount, decimal DiscountAmount, decimal NetAmount, string CustomerSnapshotJson, string ShipmentAddressSnapshotJson, string InvoiceAddressSnapshotJson, IReadOnlyList<RemoteOrderLine> Lines, IReadOnlyList<RemotePackage> Packages, string RawJson, DateTimeOffset? ShipmentDueAt = null, string PaymentStatus = "UNKNOWN", string CancellationStatus = "NOT_CANCELLED", string RefundStatus = "NOT_REFUNDED", decimal RefundedAmount = 0, IReadOnlyList<RemoteOrderRefund>? Refunds = null);
 public sealed record PackagePollWindow(DateTimeOffset? ModifiedAfter, DateTimeOffset? ModifiedBefore);
-public sealed record RemoteOrderPackage(string ExternalOrderId, RemotePackage Package);
+public sealed record RemoteOrderPackage(string ExternalOrderId, RemotePackage Package, RemoteOrder? OrderSnapshot = null);
 
 public sealed record ShopifyOrderCsvImportResult(
     int FileRows,
