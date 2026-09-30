@@ -12,8 +12,9 @@ public sealed class HepsiburadaOptions
     public Uri StageListingBaseAddress { get; init; } = new("https://listing-external-sit.hepsiburada.com/");
     public Uri ProductionListingBaseAddress { get; init; } = new("https://listing-external.hepsiburada.com/");
     public Uri StageCatalogBaseAddress { get; init; } = new("https://mpop-sit.hepsiburada.com/product/");
-    // The official catalog reference currently documents the SIT base URL only.
-    // Configure production explicitly after Hepsiburada confirms the account endpoint.
+    // The catalog API publishes its SIT MPOP host. Its production host follows
+    // Hepsiburada's documented MPOP convention of removing "-sit"; deployments
+    // can override this when an account is assigned another host.
     public Uri? ProductionCatalogBaseAddress { get; init; }
     public TimeSpan Timeout { get; init; } = TimeSpan.FromSeconds(30);
     public int PageSize { get; init; } = 10;

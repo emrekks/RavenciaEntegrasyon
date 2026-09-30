@@ -29,6 +29,7 @@ import { productPublicationTargets } from './product-publication-submit'
 import { activeProductSyncJobs as filterActiveProductSyncJobs } from './product-sync-tracking'
 import { readVariantMediaAssignmentDraft, updateVariantMediaAssignmentDraft, variantMediaAssignmentKey, type VariantMediaAssignmentDrafts } from './variant-media-assignments'
 import { OperationFeedbackToast, type OperationFeedback } from './operation-feedback-toast'
+import { productImportConnection, productImportIdentityLabel, singleProductLookupLabel } from './product-import-platforms'
 import { formatPanelColorValue } from '../marketplace/color-value-format'
 
 type Versioned = { id: string; version: number }
@@ -183,7 +184,8 @@ type ProductImportMode = 'FULL' | 'NEW_ONLY' | 'EXISTING_ONLY' | 'MAPPING_ONLY'
 type ProductImportMethod = 'BULK' | 'SINGLE'
 
 const key = () => crypto.randomUUID()
-const isProductImportConnection = (item: MarketplaceConnection) => ['TRENDYOL', 'SHOPIFY'].includes(item.platformCode.trim().toUpperCase()) && ['ACTIVE', 'VERIFIED'].includes(item.status.trim().toUpperCase())
+const isProductImportConnection = productImportConnection
+const isProductUpdateConnection = (item: MarketplaceConnection) => ['TRENDYOL', 'SHOPIFY'].includes(item.platformCode.trim().toUpperCase()) && ['ACTIVE', 'VERIFIED'].includes(item.status.trim().toUpperCase())
 const isProductPublicationConnection = (item: MarketplaceConnection) => item.platformCode.trim().toUpperCase() === 'TRENDYOL' && ['ACTIVE', 'VERIFIED'].includes(item.status.trim().toUpperCase())
 const productUpdateCapabilities = (platformCode: string) => {
   const code = platformCode.trim().toUpperCase()
@@ -1037,8 +1039,8 @@ export function ProductsPage() {
   const lowStockQuery = useQuery({ queryKey: ['products', 'low-stock-details'], queryFn: () => loadAllPages<Product>('/products?stock=LOW', 200), enabled: lowStockOpen, staleTime: 15_000, refetchOnWindowFocus: true })
   const connectionsQuery = useQuery({ queryKey: ['connections', 'product-price'], queryFn: () => loadAllPages<MarketplaceConnection>('/connections') })
   const productSyncJobsQuery = useQuery({ queryKey: ['jobs', 'product-import'], queryFn: () => hubApi<ProductSyncJob[]>('/jobs', { cache: 'no-store' }), enabled: productImportOpen, refetchInterval: query => productImportOpen && filterActiveProductSyncJobs(query.state.data ?? []).length ? 1500 : false, refetchIntervalInBackground: true, refetchOnWindowFocus: true, staleTime: 0 })
-  const products = query.data?.items ?? []; const connections = (connectionsQuery.data?.items ?? []).filter(isProductImportConnection); const publicationConnections = (connectionsQuery.data?.items ?? []).filter(isProductPublicationConnection); const selectedImportHasShopify = productImportConnectionIds.some(connectionId => connections.some(connection => connection.id === connectionId && connection.platformCode.trim().toUpperCase() === 'SHOPIFY')); const selectedImportIdentityLabel = selectedImportHasShopify ? 'barkod veya stok kodu' : 'model kodu'; const platforms = summaryQuery.data?.platforms ?? []
-  const selectedImportHasTrendyol = productImportConnectionIds.some(connectionId => connections.some(connection => connection.id === connectionId && connection.platformCode.trim().toUpperCase() === 'TRENDYOL'))
+  const products = query.data?.items ?? []; const connections = (connectionsQuery.data?.items ?? []).filter(isProductImportConnection); const publicationConnections = (connectionsQuery.data?.items ?? []).filter(isProductPublicationConnection); const selectedImportPlatforms = productImportConnectionIds.map(connectionId => connections.find(connection => connection.id === connectionId)?.platformCode ?? '').filter(Boolean); const selectedImportHasShopify = selectedImportPlatforms.some(code => code.trim().toUpperCase() === 'SHOPIFY'); const selectedImportHasHepsiburada = selectedImportPlatforms.some(code => code.trim().toUpperCase() === 'HEPSIBURADA'); const selectedImportOnlyHepsiburada = selectedImportPlatforms.length > 0 && selectedImportPlatforms.every(code => code.trim().toUpperCase() === 'HEPSIBURADA'); const selectedImportIdentityLabel = productImportIdentityLabel(selectedImportPlatforms); const singleLookupLabel = singleProductLookupLabel(selectedImportPlatforms[0] ?? ''); const platforms = summaryQuery.data?.platforms ?? []
+  const selectedImportHasTrendyol = selectedImportPlatforms.some(code => code.trim().toUpperCase() === 'TRENDYOL')
   const productImportSupportsPendingApproval = productImportMethod === 'BULK' && selectedImportHasTrendyol && (productImportMode === 'FULL' || productImportMode === 'NEW_ONLY' || productImportMode === 'MAPPING_ONLY')
   const selectedPlatformFilter = productPlatformFilterGroups.flatMap(group => group.options.map(option => ({ ...option, group: group.label }))).find(option => option.value === platform)
   const selectedPlatformLabel = selectedPlatformFilter ? `${selectedPlatformFilter.group} · ${selectedPlatformFilter.label}` : platform || 'Tüm platformlar'
@@ -1118,22 +1120,29 @@ export function ProductsPage() {
   }
   async function importProductsFromPlatforms() {
     if (productImporting) return
-    if (!productImportConnectionIds.length) { showProductToast('Ürün çekmek için en az bir aktif Trendyol veya Shopify bağlantısı seçin.', 'error'); return }
+    if (!productImportConnectionIds.length) { showProductToast('Ürün çekmek için en az bir aktif marketplace bağlantısı seçin.', 'error'); return }
     if (productImportMethod === 'SINGLE' && productImportConnectionIds.length !== 1) { showProductToast('Tekil çekimde yalnızca bir bağlantı seçin.', 'error'); return }
-    if (productImportMethod === 'SINGLE' && !productImportLookup.trim()) { showProductToast(`Tekil çekim için ürün linki veya ${selectedImportIdentityLabel} girin.`, 'error'); return }
+    if (productImportMethod === 'SINGLE' && !productImportLookup.trim()) { showProductToast(`Tekil çekim için ${singleLookupLabel} girin.`, 'error'); return }
     setProductImporting(true)
     try {
       const full = productImportMode === 'FULL'
       const newOnly = productImportMode === 'NEW_ONLY'
       const existingOnly = productImportMode === 'EXISTING_ONLY'
       const mappingOnly = productImportMode === 'MAPPING_ONLY'
-      const updateExistingProducts = productImportMethod === 'BULK' && !mappingOnly && (full || existingOnly) ? productImportUpdateExistingProducts : false
       const includePendingApproval = productImportSupportsPendingApproval && productImportIncludePendingApproval
-      const query = new URLSearchParams({ full: String(productImportMethod === 'BULK' && full), newOnly: String(productImportMethod === 'BULK' && newOnly), existingOnly: String(productImportMethod === 'BULK' && existingOnly), mappingOnly: String(productImportMethod === 'BULK' && mappingOnly), includeArchived: String(productImportIncludeArchived), includeDrafts: String(productImportMethod === 'BULK' && productImportIncludeArchived && selectedImportHasShopify), includePendingApproval: String(includePendingApproval), updateExistingProducts: String(updateExistingProducts) })
-      if (productImportMethod === 'SINGLE') query.set('lookup', productImportLookup.trim())
-      await Promise.all(productImportConnectionIds.map(connectionId => hubApi<AcceptedJob>(`/connections/${connectionId}/product-sync-jobs?${query.toString()}`, { method: 'POST', headers: { 'Idempotency-Key': key() }, body: '{}' })))
+      await Promise.all(productImportConnectionIds.map(connectionId => {
+        const connection = connections.find(item => item.id === connectionId)
+        const platformCode = connection?.platformCode.trim().toUpperCase()
+        const isHepsiburada = platformCode === 'HEPSIBURADA'
+        const updateExistingProducts = productImportMethod === 'BULK' && !mappingOnly && (full || existingOnly) && !isHepsiburada ? productImportUpdateExistingProducts : false
+        const query = new URLSearchParams({ full: String(productImportMethod === 'BULK' && full), newOnly: String(productImportMethod === 'BULK' && newOnly), existingOnly: String(productImportMethod === 'BULK' && existingOnly), mappingOnly: String(productImportMethod === 'BULK' && mappingOnly), includeArchived: String(productImportIncludeArchived), includeDrafts: String(productImportMethod === 'BULK' && productImportIncludeArchived && platformCode === 'SHOPIFY'), includePendingApproval: String(includePendingApproval && platformCode === 'TRENDYOL'), updateExistingProducts: String(updateExistingProducts) })
+        if (productImportMethod === 'SINGLE') query.set('lookup', productImportLookup.trim())
+        return hubApi<AcceptedJob>(`/connections/${connectionId}/product-sync-jobs?${query.toString()}`, { method: 'POST', headers: { 'Idempotency-Key': key() }, body: '{}' })
+      }))
       const modeLabel = productImportMethod === 'SINGLE' ? 'tekil ürün' : full ? 'tam katalog' : productImportMode === 'NEW_ONLY' ? 'ekli olmayan ürün' : productImportMode === 'MAPPING_ONLY' ? 'ürün eşleme' : 'ekli ürün güncelleme'
-      const contentLabel = productImportMethod === 'BULK' && (full || existingOnly) ? updateExistingProducts ? ' · mevcut ürün bilgileri güncellenecek' : ' · mevcut ürün bilgileri korunacak' : ''
+      const contentLabel = productImportMethod === 'BULK' && (full || existingOnly) ? selectedImportHasHepsiburada
+        ? selectedImportOnlyHepsiburada ? ' · Hepsiburada ürün içeriği korunacak' : productImportUpdateExistingProducts ? ' · Hepsiburada içeriği korunacak, desteklenen platform içerikleri güncellenecek' : ' · mevcut ürün içerikleri korunacak'
+        : productImportUpdateExistingProducts ? ' · mevcut ürün bilgileri güncellenecek' : ' · mevcut ürün bilgileri korunacak' : ''
       showProductToast(`${productImportConnectionIds.length} bağlantı için ${modeLabel} çekimi kuyruğa alındı${productImportIncludeArchived ? selectedImportHasShopify ? ' · arşiv ve taslak ürünler dahil' : ' · arşiv ürünleri dahil' : ''}${includePendingApproval ? ' · onay bekleyen ürünler dahil' : ''}${contentLabel}.`, 'info')
       void productSyncJobsQuery.refetch()
       void client.invalidateQueries({ queryKey: ['jobs'] })
@@ -1385,19 +1394,19 @@ export function ProductsPage() {
             </fieldset>
             <div className="product-import-tabs" role="tablist" aria-label="Ürün aktarım türü">
               <button type="button" role="tab" aria-selected={productImportMethod === 'BULK'} className={'product-import-tab' + (productImportMethod === 'BULK' ? ' selected' : '')} title="Seçtiğiniz bağlantıların kataloğunu toplu olarak tarar." onClick={() => setProductImportMethod('BULK')}>Toplu ürün aktarımı</button>
-              <button type="button" role="tab" aria-selected={productImportMethod === 'SINGLE'} className={'product-import-tab' + (productImportMethod === 'SINGLE' ? ' selected' : '')} title={`Bir ürün linki veya ${selectedImportIdentityLabel} ile yalnızca tek ürün aktarır.`} onClick={() => { setProductImportMethod('SINGLE'); setProductImportConnectionIds(ids => ids.slice(0, 1)) }}>Tek ürün aktarımı</button>
+              <button type="button" role="tab" aria-selected={productImportMethod === 'SINGLE'} className={'product-import-tab' + (productImportMethod === 'SINGLE' ? ' selected' : '')} title={`${singleLookupLabel} ile yalnızca tek ürün aktarır.`} onClick={() => { setProductImportMethod('SINGLE'); setProductImportConnectionIds(ids => ids.slice(0, 1)) }}>Tek ürün aktarımı</button>
             </div>
             {productImportMethod === 'SINGLE' ? <fieldset>
               <legend>Tek ürün aktarımı</legend>
-              <label className="product-import-mode product-import-lookup-field selected" title={`Bağlı mağazanın ürün linki veya ${selectedImportIdentityLabel} ile yalnızca istediğiniz ürünü aktarın.`}>
-                <span><strong>Ürün linki veya {selectedImportIdentityLabel}</strong><input className="product-import-lookup-input" value={productImportLookup} onChange={event => setProductImportLookup(event.target.value)} placeholder={selectedImportHasShopify ? 'Shopify: https://magaza.myshopify.com/products/urun veya barkod' : 'Trendyol: ürün linki veya model kodu'} /></span>
+              <label className="product-import-mode product-import-lookup-field selected" title={`${singleLookupLabel} ile yalnızca istediğiniz ürünü aktarın.`}>
+                <span><strong>{singleLookupLabel}</strong><input className="product-import-lookup-input" value={productImportLookup} onChange={event => setProductImportLookup(event.target.value)} placeholder={selectedImportHasShopify ? 'Shopify: ürün linki veya barkod / stok kodu' : selectedImportHasHepsiburada ? 'Hepsiburada: ürün ID’si' : 'Trendyol: ürün linki veya model kodu'} /></span>
               </label>
             </fieldset> : <fieldset>
               <legend>Ürün çekim seçenekleri</legend>
               <div className="product-import-scan-grid">
-                <label className={'product-import-mode' + (productImportMode === 'FULL' ? ' selected' : '')} title="Tüm ürünleri baştan okur ve mevcut eşleşmeleri günceller.">
+                <label className={'product-import-mode' + (productImportMode === 'FULL' ? ' selected' : '')} title={selectedImportHasHepsiburada ? 'Tüm ürünleri baştan okur; yerel ürün içeriğini korur.' : 'Tüm ürünleri baştan okur ve mevcut eşleşmeleri günceller.'}>
                   <input type="radio" name="product-import-mode" value="FULL" checked={productImportMode === 'FULL'} onChange={() => setProductImportMode('FULL')} />
-                  <span><strong>Tam katalog taraması</strong><small>Tüm ürünleri okur ve yerel kayıtları günceller.</small></span>
+                  <span><strong>Tam katalog taraması</strong><small>{selectedImportHasHepsiburada ? 'Hepsiburada kayıtlarını okur; yerel ürün içeriğini değiştirmez.' : 'Tüm ürünleri okur ve yerel kayıtları günceller.'}</small></span>
                 </label>
                 <label className={'product-import-mode' + (productImportMode === 'NEW_ONLY' ? ' selected' : '')} title={`Panelde bulunmayan ${selectedImportIdentityLabel} değerlerini ve mevcut ürünlere eklenen yeni varyantları aktarır.`}>
                   <input type="radio" name="product-import-mode" value="NEW_ONLY" checked={productImportMode === 'NEW_ONLY'} onChange={() => setProductImportMode('NEW_ONLY')} />
@@ -1405,7 +1414,7 @@ export function ProductsPage() {
                 </label>
                 <label className={'product-import-mode' + (productImportMode === 'EXISTING_ONLY' ? ' selected' : '')} title={`Panelde kayıtlı ${selectedImportIdentityLabel} değerlerini günceller; yeni değerleri eklemez.`}>
                   <input type="radio" name="product-import-mode" value="EXISTING_ONLY" checked={productImportMode === 'EXISTING_ONLY'} onChange={() => setProductImportMode('EXISTING_ONLY')} />
-                  <span><strong>Mevcut ürünleri güncelle</strong><small>Kayıtlı ürünlerin bilgilerini yeniler.</small></span>
+                  <span><strong>{selectedImportHasHepsiburada ? 'Mevcut ürünleri eşleştir' : 'Mevcut ürünleri güncelle'}</strong><small>{selectedImportHasHepsiburada ? 'Kayıtlı merchant SKU eşleşmelerini yeniler; yerel ürün içeriğini korur.' : 'Kayıtlı ürünlerin bilgilerini yeniler.'}</small></span>
                 </label>
                 <label className={'product-import-mode' + (productImportMode === 'MAPPING_ONLY' ? ' selected' : '')} title="Yalnızca mevcut panel ürünleriyle platform ürünleri arasında bağlantı kurar; ürün içeriğini, fiyatı ve stoğu değiştirmez.">
                   <input type="radio" name="product-import-mode" value="MAPPING_ONLY" checked={productImportMode === 'MAPPING_ONLY'} onChange={() => setProductImportMode('MAPPING_ONLY')} />
@@ -1415,10 +1424,11 @@ export function ProductsPage() {
             </fieldset>}
             {productImportMethod === 'BULK' && <fieldset>
               <legend>Seçenekler</legend>
-              {(productImportMode === 'FULL' || productImportMode === 'EXISTING_ONLY') && <label className={'product-import-mode product-import-update-existing-option' + (productImportUpdateExistingProducts ? ' selected' : '')} title="Açıkken platformdaki ürün bilgileri mevcut ürünlerin üzerine yazılır; kapalıyken yerel içerik korunur.">
+              {(productImportMode === 'FULL' || productImportMode === 'EXISTING_ONLY') && !selectedImportOnlyHepsiburada && <label className={'product-import-mode product-import-update-existing-option' + (productImportUpdateExistingProducts ? ' selected' : '')} title="Açıkken platformdaki ürün bilgileri mevcut ürünlerin üzerine yazılır; kapalıyken yerel içerik korunur. Hepsiburada bağlantılarında içerik her zaman korunur.">
                 <input type="checkbox" checked={productImportUpdateExistingProducts} onChange={event => setProductImportUpdateExistingProducts(event.target.checked)} />
                 <span><strong>Mevcut ürün bilgilerini güncelle</strong><small>{productImportUpdateExistingProducts ? 'Açık: ad, açıklama, kategori, marka, varyant ve görseller güncellenir.' : 'Kapalı: mevcut ürün içeriği ve görseller korunur; stok/fiyat gözlemleri yine alınır.'}</small></span>
               </label>}
+              {selectedImportHasHepsiburada && productImportMode !== 'MAPPING_ONLY' && <p className="product-import-readonly-note">Hepsiburada ürün bilgileri ve durumları okunur; mevcut Ravencia ürün içeriği değiştirilmez.</p>}
               {productImportMode !== 'MAPPING_ONLY' && <label className={'product-import-mode' + (productImportIncludeArchived ? ' selected' : '')} title={selectedImportHasShopify ? 'Shopify aktif, arşivlenmiş ve taslak ürünleri birlikte kapsar.' : 'Aktif ve arşivlenmiş varyantların birlikte aktarılıp aktarılmayacağını belirler.'}>
                 <input type="checkbox" checked={productImportIncludeArchived} onChange={event => setProductImportIncludeArchived(event.target.checked)} />
                 <span><strong>{selectedImportHasShopify ? 'Arşiv ve taslak ürünlerini dahil et' : 'Arşiv ürünlerini dahil et'}</strong><small>{productImportIncludeArchived ? selectedImportHasShopify ? 'Açık: aktif, arşivlenmiş ve taslak ürünler birlikte getirilir.' : 'Açık: aktif ve arşivlenmiş varyantlar birlikte getirilir.' : selectedImportHasShopify ? 'Kapalı: yalnızca yayınlanmış aktif ürünler alınır.' : 'Kapalı: yalnızca aktif varyantlar panele aktarılır.'}</small></span>
@@ -3391,7 +3401,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       currency: form.currency
     }
   }), [channelPricing, connections.data?.items, form.currency, form.listPrice, form.salePrice])
-  const productUpdateTargets = (connections.data?.items ?? []).filter(isProductImportConnection).map(connection => ({
+  const productUpdateTargets = (connections.data?.items ?? []).filter(isProductUpdateConnection).map(connection => ({
     connection,
     capabilities: productUpdateCapabilities(connection.platformCode)
   }))
