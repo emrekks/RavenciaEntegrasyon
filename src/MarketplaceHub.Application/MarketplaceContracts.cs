@@ -142,6 +142,48 @@ public static class FullOrderSyncConflictPolicy
     };
 }
 
+public enum TargetedOrderSyncConflictResolution
+{
+    ReuseExisting,
+    PromotePending,
+    Reject
+}
+
+public static class TargetedOrderSyncConflictPolicy
+{
+    public static TargetedOrderSyncConflictResolution Resolve(
+        string? requestedJobType,
+        string? requestedExternalOrderId,
+        string? conflictingJobType,
+        string? conflictingExternalOrderId,
+        JobStatus conflictingStatus,
+        bool conflictingJobHasStarted)
+    {
+        if (string.IsNullOrWhiteSpace(requestedExternalOrderId))
+            return TargetedOrderSyncConflictResolution.Reject;
+
+        if (!string.IsNullOrWhiteSpace(conflictingExternalOrderId)
+            && string.Equals(requestedExternalOrderId.Trim(), conflictingExternalOrderId.Trim(), StringComparison.OrdinalIgnoreCase))
+            return TargetedOrderSyncConflictResolution.ReuseExisting;
+
+        if (conflictingStatus == JobStatus.Pending
+            && !conflictingJobHasStarted
+            && IsSameIncrementalOrderSyncType(requestedJobType, conflictingJobType)
+            && string.IsNullOrWhiteSpace(conflictingExternalOrderId))
+            return TargetedOrderSyncConflictResolution.PromotePending;
+
+        return TargetedOrderSyncConflictResolution.Reject;
+    }
+
+    private static bool IsSameIncrementalOrderSyncType(string? requestedJobType, string? conflictingJobType) => requestedJobType switch
+    {
+        MarketplaceJobTypes.OrderSync => conflictingJobType == MarketplaceJobTypes.OrderSync,
+        MarketplaceJobTypes.ShopifyOrderSync => conflictingJobType == MarketplaceJobTypes.ShopifyOrderSync,
+        MarketplaceJobTypes.HepsiburadaOrderSync => conflictingJobType == MarketplaceJobTypes.HepsiburadaOrderSync,
+        _ => false
+    };
+}
+
 public static class MarketplaceSyncPolicyRules
 {
     public static bool RequiresExternalWrites(string? resourceType) => resourceType?.Trim().ToUpperInvariant() is

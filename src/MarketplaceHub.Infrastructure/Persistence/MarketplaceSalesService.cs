@@ -1457,6 +1457,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         // visible SYNC_LOCK_BUSY retry storm.
         var executionGroup = MarketplaceSyncExecutionLock.GroupFor(type);
         var fullScanRequest = IsFullOrderScanRequest(type, payload);
+        var requestedExternalOrderId = TargetedExternalOrderId(payload);
         var conflictingJobs = activeJobs.Where(x => MarketplaceSyncExecutionLock.GroupFor(x.JobType) == executionGroup).ToList();
         var conflicting = fullScanRequest
             ? conflictingJobs.FirstOrDefault(x => FullOrderSyncConflictPolicy.Resolve(
@@ -1467,6 +1468,12 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 conflictingJobTargetsSingleOrder: HasTargetedExternalOrderId(x.PayloadJson),
                 conflictingJobHasStarted: x.AttemptCount > 0 || x.StartedAt is not null) == FullOrderSyncConflictResolution.PromotePending)
                 ?? conflictingJobs.FirstOrDefault()
+            : requestedExternalOrderId is not null
+                ? conflictingJobs.FirstOrDefault(x => string.Equals(
+                    requestedExternalOrderId,
+                    TargetedExternalOrderId(x.PayloadJson),
+                    StringComparison.OrdinalIgnoreCase))
+                    ?? conflictingJobs.FirstOrDefault()
             : conflictingJobs.FirstOrDefault();
         if (conflicting is not null)
         {
@@ -1507,6 +1514,49 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                     return ServiceResult<Guid>.Fail("ORDER_SYNC_ALREADY_RUNNING", "Tam sipariş taraması, bağlantıdaki sipariş işlemi başlarken kuyruğa alınamadı. İşlem tamamlanınca yeniden deneyin.", 409);
                 return ServiceResult<Guid>.Ok(conflicting.Id);
             }
+            if (requestedExternalOrderId is not null)
+            {
+                var targetedResolution = TargetedOrderSyncConflictPolicy.Resolve(
+                    type,
+                    requestedExternalOrderId,
+                    conflicting.JobType,
+                    TargetedExternalOrderId(conflicting.PayloadJson),
+                    conflicting.Status,
+                    conflicting.AttemptCount > 0 || conflicting.StartedAt is not null);
+                if (targetedResolution == TargetedOrderSyncConflictResolution.PromotePending)
+                {
+                    var now = timeProvider.GetUtcNow();
+                    var payloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload)));
+                    var updated = await db.IntegrationJobs
+                        .Where(x => x.TenantId == tenantId && x.Id == conflicting.Id
+                            && x.Status == JobStatus.Pending && x.AttemptCount == 0 && x.StartedAt == null)
+                        .ExecuteUpdateAsync(setters => setters
+                            .SetProperty(x => x.JobType, type)
+                            .SetProperty(x => x.PayloadJson, payload)
+                            .SetProperty(x => x.PayloadVersion, 1)
+                            .SetProperty(x => x.PayloadHash, payloadHash)
+                            .SetProperty(x => x.Priority, x => Math.Min(x.Priority, Priority(type)))
+                            .SetProperty(x => x.AvailableAt, now)
+                            .SetProperty(x => x.CreatedAt, now)
+                            .SetProperty(x => x.CorrelationId, correlationId)
+                            .SetProperty(x => x.ProgressCurrent, 0)
+                            .SetProperty(x => x.ProgressTotal, (int?)null)
+                            .SetProperty(x => x.ProgressPercent, (int?)null)
+                            .SetProperty(x => x.ProgressLabel, (string?)null)
+                            .SetProperty(x => x.ProgressReceived, 0)
+                            .SetProperty(x => x.ProgressProcessed, 0)
+                            .SetProperty(x => x.ProgressSkipped, 0)
+                            .SetProperty(x => x.ProgressFailed, 0)
+                            .SetProperty(x => x.Version, x => x.Version + 1),
+                            cancellationToken);
+                    if (updated == 0)
+                        return ServiceResult<Guid>.Fail("ORDER_SYNC_ALREADY_RUNNING", "Tekil sipariş okuması mevcut işlem başlarken kuyruğa alınamadı. İşlem tamamlanınca yeniden deneyin.", 409);
+                    return ServiceResult<Guid>.Ok(conflicting.Id);
+                }
+                if (targetedResolution == TargetedOrderSyncConflictResolution.Reject)
+                    return ServiceResult<Guid>.Fail("ORDER_SYNC_ALREADY_RUNNING", "Tekil sipariş okuması bağlantıda başka bir sipariş işlemi bulunduğu için kuyruğa alınamadı. İşlem tamamlanınca yeniden deneyin.", 409);
+                return ServiceResult<Guid>.Ok(conflicting.Id);
+            }
             if (conflictResolution == FullOrderSyncConflictResolution.Reject)
                 return ServiceResult<Guid>.Fail("ORDER_SYNC_ALREADY_RUNNING", "Tam sipariş taraması, bağlantıda başka bir sipariş işlemi çalıştığı için kuyruğa alınamadı. İşlem tamamlanınca yeniden deneyin.", 409);
             if (ProductImportConcurrencyPolicy.RejectsModeCollision(type, conflicting.JobType))
@@ -1529,15 +1579,19 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     }
 
     private static bool HasTargetedExternalOrderId(string payload)
+        => TargetedExternalOrderId(payload) is not null;
+
+    private static string? TargetedExternalOrderId(string payload)
     {
         try
         {
             using var document = JsonDocument.Parse(payload);
-            return document.RootElement.TryGetProperty("externalOrderId", out var id)
-                && id.ValueKind == JsonValueKind.String
-                && !string.IsNullOrWhiteSpace(id.GetString());
+            if (!document.RootElement.TryGetProperty("externalOrderId", out var id) || id.ValueKind != JsonValueKind.String)
+                return null;
+            var value = id.GetString()?.Trim();
+            return string.IsNullOrWhiteSpace(value) ? null : value;
         }
-        catch (JsonException) { return false; }
+        catch (JsonException) { return null; }
     }
     private IntegrationJob NewJob(Guid tenantId, Guid connectionId, string type, string dedup, string payload, string correlationId) => new() { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, JobType = type, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))), JobDedupKey = dedup, EffectIdempotencyKey = dedup, Priority = Priority(type), AvailableAt = timeProvider.GetUtcNow(), CorrelationId = correlationId, Version = 1 };
     private static int Priority(string type) => type switch
