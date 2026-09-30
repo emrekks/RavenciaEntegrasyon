@@ -804,10 +804,9 @@ public sealed partial class HepsiburadaHttpClient(
         var client = clients.CreateClient("Hepsiburada");
         using var request = new HttpRequestMessage(method, new Uri(baseAddress, path));
         request.Content = content;
-        var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{context.Username}:{context.Password}"));
-        request.Headers.Authorization = new AuthenticationHeaderValue("Basic", credentials);
+        if (!ApplyAuthentication(request, context))
+            return Failure<JsonDocument>(AdapterErrorClass.Validation, "HEPSIBURADA_INTEGRATOR_NAME_INVALID", "Hepsiburada entegratör adı geçerli bir User-Agent kimliği olmalıdır.", HttpStatusCode.UnprocessableEntity);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        request.Headers.UserAgent.ParseAdd("MarketplaceHub/1.0");
         try
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -841,6 +840,16 @@ public sealed partial class HepsiburadaHttpClient(
             logger.LogWarning(exception, "Hepsiburada API isteği başarısız. ConnectionId: {ConnectionId}", context.Connection.Id);
             return AdapterResult<JsonDocument>.Failure(new(AdapterErrorClass.TransientNetwork, "HEPSIBURADA_NETWORK_ERROR", "Hepsiburada bağlantısı geçici olarak kurulamadı.", null, TimeSpan.FromSeconds(15), null));
         }
+    }
+
+    internal static bool ApplyAuthentication(HttpRequestMessage request, HepsiburadaRequestContext context)
+    {
+        var integratorName = (context.IntegratorName ?? context.Username).Trim();
+        if (integratorName.Length == 0 || !ProductInfoHeaderValue.TryParse(integratorName, out var userAgent) || userAgent.Product is null)
+            return false;
+        request.Headers.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes($"{context.Username}:{context.Password}")));
+        request.Headers.UserAgent.Add(userAgent);
+        return true;
     }
 
     private static (int Offset, int Limit) Page(AdapterPageRequest page, int configuredLimit)

@@ -190,13 +190,13 @@ public sealed partial class HepsiburadaHttpClient
             return AdapterResult<byte[]>.Failure(new(AdapterErrorClass.NotSupported, "HEPSIBURADA_AUTHENTICATION_UNVERIFIED", "Hepsiburada auth biçimi SIT hesabında doğrulanana kadar bağlantı isteği gönderilmedi.", null, null, null));
         var client = clients.CreateClient("Hepsiburada");
         using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(baseAddress, path));
-        request.Headers.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes($"{context.Username}:{context.Password}")));
+        if (!ApplyAuthentication(request, context))
+            return Failure<byte[]>(AdapterErrorClass.Validation, "HEPSIBURADA_INTEGRATOR_NAME_INVALID", "Hepsiburada entegratör adı geçerli bir User-Agent kimliği olmalıdır.", HttpStatusCode.UnprocessableEntity);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/octet-stream"));
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/pdf"));
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("image/png"));
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("image/jpeg"));
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/plain"));
-        request.Headers.UserAgent.ParseAdd("MarketplaceHub/1.0");
         try
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

@@ -50,6 +50,7 @@ public sealed class HepsiburadaAuthenticationHandler(
         var credentials = ResolveBasicCredentials(payload.ApiKey, payload.ApiSecret);
         return new(connection, omsBaseAddress, listingBaseAddress, credentials.Username, credentials.Password)
         {
+            IntegratorName = payload.IntegratorName ?? credentials.Username,
             CatalogBaseAddress = ResolveCatalogBaseAddress(connection.Environment),
             StageTestOrderBaseAddress = string.Equals(connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase) ? settings.StageTestOrderBaseAddress : null
         };
@@ -84,7 +85,7 @@ public sealed class HepsiburadaAuthenticationHandler(
         if (payload is null || string.IsNullOrWhiteSpace(payload.ApiSecret) || string.IsNullOrWhiteSpace(username)) return false;
         if (string.Equals(payload.ApiKey, username, StringComparison.Ordinal)) return true;
 
-        credential.ProtectedPayload = protector.Protect(JsonSerializer.Serialize(payload with { ApiKey = username }));
+        credential.ProtectedPayload = protector.Protect(JsonSerializer.Serialize(payload with { ApiKey = username, IntegratorName = payload.IntegratorName ?? payload.ApiKey.Trim() }));
         credential.Version++;
         try
         {
@@ -94,6 +95,7 @@ public sealed class HepsiburadaAuthenticationHandler(
         }
         catch (DbUpdateConcurrencyException)
         {
+            db.Entry(credential).State = EntityState.Detached;
             logger.LogInformation("Hepsiburada credential eşzamanlı değişti; doğrulanan Basic kullanıcı adı saklanmadı. ConnectionId: {ConnectionId}", connectionId);
             return false;
         }
@@ -137,11 +139,15 @@ public sealed class HepsiburadaAuthenticationHandler(
         return false;
     }
 
-    private sealed record CredentialPayload(string ApiKey, string ApiSecret);
+    private sealed record CredentialPayload(string ApiKey, string ApiSecret)
+    {
+        public string? IntegratorName { get; init; }
+    }
 }
 
 public sealed record HepsiburadaRequestContext(PlatformConnection Connection, Uri OmsBaseAddress, Uri ListingBaseAddress, string Username, string Password)
 {
+    public string? IntegratorName { get; init; }
     public Uri? CatalogBaseAddress { get; init; }
     public Uri? StageTestOrderBaseAddress { get; init; }
 }

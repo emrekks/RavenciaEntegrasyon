@@ -774,6 +774,27 @@ public sealed class HepsiburadaAdapterTests
         Assert.Equal(403, accessForbidden.HttpStatus);
     }
 
+    [Theory]
+    [InlineData("kodanka_dev")]
+    [InlineData("merchant-17")]
+    public void HepsiburadaRequestUsesRegisteredIntegratorUserAgentWithEitherBasicUsername(string basicUsername)
+    {
+        var connection = new MarketplaceHub.Domain.PlatformConnection
+        {
+            PlatformCode = "HEPSIBURADA", Environment = "PRODUCTION", DisplayName = "test",
+            ExternalStoreId = "merchant-17", Status = "DRAFT", ApiVersion = "V1.0"
+        };
+        var context = new HepsiburadaRequestContext(connection, new Uri("https://oms.example/"), new Uri("https://listing.example/"), basicUsername, "example-key")
+        { IntegratorName = "kodanka_dev" };
+        using var request = new HttpRequestMessage(HttpMethod.Get, "https://oms.example/orders");
+
+        Assert.True(HepsiburadaHttpClient.ApplyAuthentication(request, context));
+        Assert.Equal("kodanka_dev", request.Headers.UserAgent.ToString());
+        Assert.Equal("Basic", request.Headers.Authorization!.Scheme);
+        Assert.Equal($"{basicUsername}:example-key", System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(request.Headers.Authorization.Parameter!)));
+        Assert.False(HepsiburadaHttpClient.ApplyAuthentication(new HttpRequestMessage(), context with { IntegratorName = "invalid\r\nX-Header: value" }));
+    }
+
     [Fact]
     public void ClaimMapper_RejectsClaimsWithoutOrderOrLineIdentity()
     {
