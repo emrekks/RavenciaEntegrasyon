@@ -45,6 +45,7 @@ export function marketplacePlatformOptions(...sources: ReadonlyArray<readonly Ma
       const rawCode = item.platformCode.trim()
       if (!rawCode) continue
       const normalizedCode = normalizeMarketplacePlatformCode(rawCode)
+      if (normalizedCode === 'TRENDYOL_EFATURAM') continue
       const value = isOrderMarketplacePlatform(normalizedCode) ? normalizedCode : rawCode
       options.set(value, {
         value,

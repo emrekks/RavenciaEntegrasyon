@@ -16,6 +16,12 @@ describe('Hepsiburada marketplace workspace support', () => {
     expect(options.find(option => option.value === 'HEPSIBURADA')?.label).toBe('Hepsiburada')
   })
 
+  it('does not treat the Trendyol e-invoice provider as an order platform', () => {
+    const options = marketplacePlatformOptions([{ platformCode: 'TRENDYOL_EFATURAM', displayName: 'Stage E-Faturam' }])
+
+    expect(options.some(option => option.value === 'TRENDYOL_EFATURAM')).toBe(false)
+  })
+
   it('uses connection labels and compares normalized platform codes', () => {
     const options = marketplacePlatformOptions([{ platformCode: 'hepsiburada', displayName: 'Ravencia HB' }])
 
