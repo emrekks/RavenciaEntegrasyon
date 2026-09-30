@@ -9,7 +9,7 @@ import { resolveInvoiceTab } from '../../shared/dashboard-operational-links'
 import { PlatformMark } from '../../shared/platform-mark'
 import { PlatformMultiSelect } from '../../shared/platform-multi-select'
 import { isInvoiceCreationAvailable, matchesInvoiceActionFilter } from './invoice-creation-availability'
-import { isOrderMarketplacePlatform } from '../marketplace/marketplace-platform-support'
+import { isMarketplacePlatformSelected, marketplacePlatformOptions } from '../marketplace/marketplace-platform-support'
 
 type Invoice = { id: string; orderNumber: string; invoiceType: string; status: string; currency: string; payableTotal: number; invoiceNumber: string | null; dueAt: string | null; createdAt: string; version: number }
 type InvoiceWorkspaceLine = { sku: string; barcode: string | null; description: string; quantity: number; unitPrice: number; vatRate: number; imageUrl: string | null }
@@ -154,17 +154,17 @@ export function InvoicesPage() {
     await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['orders'] })])
   }, onError: error => setMessage(error instanceof Error ? error.message : 'Fatura oluşturulamadı.', 'error') })
   const items = (query.data ?? []).filter(item => !isCancelledShipment(item)); const normalized = search.trim().toLocaleLowerCase('tr-TR')
-  const platformOptions = Array.from(new Map([
-    ...(connections.data?.items ?? []).filter(connection => isOrderMarketplacePlatform(connection.platformCode)).map(connection => [connection.platformCode, { value: connection.platformCode, label: connection.displayName || connection.platformCode }] as const),
-    ...(query.data ?? []).map(item => [item.platformCode, { value: item.platformCode, label: item.platformDisplayName || item.platformCode }] as const)
-  ]).values()).sort((left, right) => left.label.localeCompare(right.label, 'tr-TR'))
+  const platformOptions = marketplacePlatformOptions(
+    connections.data?.items ?? [],
+    (query.data ?? []).map(item => ({ platformCode: item.platformCode, displayName: item.platformDisplayName }))
+  )
   const cargoOptions = Array.from(new Set(items.map(item => item.cargoProviderName?.trim()).filter((value): value is string => Boolean(value)))).sort((left, right) => left.localeCompare(right, 'tr-TR'))
   const shipmentStatusOptions = Array.from(new Set(items.map(item => item.shipmentStatus.trim()).filter(Boolean))).sort((left, right) => statusLabel(left).localeCompare(statusLabel(right), 'tr-TR'))
   const invoiceStatusOptions = Array.from(new Map(items.map(item => { const value = invoiceWorkspaceStatus(item); return [value.value, invoiceStatusLabel(value.value)] })).entries())
   const dateFromTime = dateFrom ? new Date(`${dateFrom}T00:00:00`).getTime() : Number.NEGATIVE_INFINITY
   const dateToTime = dateTo ? new Date(`${dateTo}T23:59:59.999`).getTime() : Number.POSITIVE_INFINITY
   const hasInvoiceFilters = Boolean(search.trim() || (selectedPlatforms !== null && selectedPlatforms.length !== platformOptions.length) || shipmentStatusFilter !== 'ALL' || cargoFilter !== 'ALL' || invoiceStatusFilter !== 'ALL' || invoiceActionFilter !== 'ALL' || dateFrom || dateTo)
-  const platformItems = items.filter(item => selectedPlatforms === null || selectedPlatforms.includes(item.platformCode))
+  const platformItems = items.filter(item => isMarketplacePlatformSelected(selectedPlatforms, item.platformCode))
   const visible = platformItems.filter(item => {
     const tabMatch = tab === 'UNINVOICED' ? requiresInvoiceAction(item) : tab === 'INVOICED' ? !requiresInvoiceAction(item) : item.isDueSoon
     const shipmentMatch = shipmentStatusFilter === 'ALL' || item.shipmentStatus === shipmentStatusFilter

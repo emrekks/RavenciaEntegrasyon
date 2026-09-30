@@ -1,11 +1,33 @@
 import { describe, expect, it } from 'vitest'
-import { isOrderMarketplacePlatform, supportsSyncPolicy, supportsSyncPolicyManagement, syncPolicyIntervalChoices } from './marketplace-platform-support'
+import { isActiveMarketplaceConnection, isMarketplacePlatformSelected, isOrderMarketplacePlatform, marketplacePlatformOptions, supportsSyncPolicy, supportsSyncPolicyManagement, syncPolicyIntervalChoices } from './marketplace-platform-support'
 
 describe('Hepsiburada marketplace workspace support', () => {
   it('includes Hepsiburada in order platform filters', () => {
     expect(isOrderMarketplacePlatform('HEPSIBURADA')).toBe(true)
+    expect(isOrderMarketplacePlatform(' hepsiburada ')).toBe(true)
     expect(isOrderMarketplacePlatform('TRENDYOL')).toBe(true)
     expect(isOrderMarketplacePlatform('TRENDYOL_EFATURAM')).toBe(false)
+  })
+
+  it('keeps supported platforms available in filters before their data is loaded', () => {
+    const options = marketplacePlatformOptions([])
+
+    expect(options.map(option => option.value)).toEqual(['HEPSIBURADA', 'SHOPIFY', 'TRENDYOL'])
+    expect(options.find(option => option.value === 'HEPSIBURADA')?.label).toBe('Hepsiburada')
+  })
+
+  it('uses connection labels and compares normalized platform codes', () => {
+    const options = marketplacePlatformOptions([{ platformCode: 'hepsiburada', displayName: 'Ravencia HB' }])
+
+    expect(options.find(option => option.value === 'HEPSIBURADA')?.label).toBe('Ravencia HB')
+    expect(isMarketplacePlatformSelected(['HEPSIBURADA'], 'hepsiburada')).toBe(true)
+    expect(isMarketplacePlatformSelected(['SHOPIFY'], 'hepsiburada')).toBe(false)
+  })
+
+  it('offers verified Hepsiburada connections in the order sync source list', () => {
+    expect(isActiveMarketplaceConnection({ platformCode: ' hepsiburada ', status: ' verified ' })).toBe(true)
+    expect(isActiveMarketplaceConnection({ platformCode: 'HEPSIBURADA', status: 'DISCONNECTED' })).toBe(false)
+    expect(isActiveMarketplaceConnection({ platformCode: 'TRENDYOL_EFATURAM', status: 'VERIFIED' })).toBe(false)
   })
 
   it('exposes only supported read-only Hepsiburada synchronization intervals', () => {

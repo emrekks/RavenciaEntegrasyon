@@ -18,7 +18,7 @@ import { formatPanelColorValue, usesCustomPanelColorValue } from './color-value-
 import { attributeValueMappingNeedsSave, normalizeReferenceValueLabel, planDirectReferenceValues, planReferencePanelMappings, updatePanelValueReferenceSelection, valueMappingRowClassName } from './attribute-value-mapping'
 import { activeMappingConnectionsForPlatform, mappingPlatformDefinitions, mappingPlatformLabel, type MappingPlatformCode } from './mapping-platforms'
 import { resolveAttributeMappingRole } from './mapping-attribute-role'
-import { isOrderMarketplacePlatform, supportsSyncPolicy, supportsSyncPolicyManagement, syncPolicyIntervalChoices } from './marketplace-platform-support'
+import { isActiveMarketplaceConnection, isMarketplacePlatformSelected, marketplacePlatformLabel, marketplacePlatformOptions, supportsSyncPolicy, supportsSyncPolicyManagement, syncPolicyIntervalChoices } from './marketplace-platform-support'
 import { activeReturnSyncConnections, enqueueReturnSyncs } from './return-sync'
 type Page<T> = { items: T[]; nextCursor: string | null; hasMore: boolean; totalCount?: number | null }
 type Connection = { id: string; publicId: string; platformCode: string; environment: string; displayName: string; externalStoreId: string; status: string; apiVersion: string; lastTestedAt: string | null; lastSuccessAt: string | null; lastErrorCode: string | null; hasCredential: boolean; externalWritesEnabled: boolean; invoiceCreationEnabled: boolean; version: number }
@@ -547,10 +547,17 @@ function ShippingLabelBatchModal({ items, settings, format, onClose, onPrinted }
 function SingleOrderSyncModal({ activeConnection: activeConnections, onClose, onSuccess }: { activeConnection: Connection[]; onClose: () => void; onSuccess: (connectionCount: number, orderNumber: string) => void }) {
   const [orderNumber, setOrderNumber] = useState('')
   const [selectedConnectionIds, setSelectedConnectionIds] = useState<string[]>(() => activeConnections.map(connection => connection.id))
+  const [connectionsInitialized, setConnectionsInitialized] = useState(() => activeConnections.length > 0)
   const [syncMode, setSyncMode] = useState<'changes' | 'single'>('changes')
   const [fullScan, setFullScan] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
+
+  useEffect(() => {
+    if (connectionsInitialized || !activeConnections.length) return
+    setSelectedConnectionIds(activeConnections.map(connection => connection.id))
+    setConnectionsInitialized(true)
+  }, [activeConnections, connectionsInitialized])
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -595,7 +602,7 @@ function SingleOrderSyncModal({ activeConnection: activeConnections, onClose, on
         <form className="single-order-sync-form" onSubmit={handleSubmit}>
           {!activeConnections.length && (
             <div className="notice single-order-sync-notice" role="alert">
-              ⚠️ Aktif Trendyol veya Shopify bağlantısı bulunamadı. Platformlar sayfasından bağlantınızı etkinleştirin.
+              ⚠️ Aktif Trendyol, Shopify veya Hepsiburada bağlantısı bulunamadı. Platformlar sayfasından bağlantınızı etkinleştirin.
             </div>
           )}
           <fieldset className="sync-source-fieldset">
@@ -603,12 +610,12 @@ function SingleOrderSyncModal({ activeConnection: activeConnections, onClose, on
             <div className="sync-source-list">
               {activeConnections.map(connection => <label key={connection.id} className={selectedConnectionIds.includes(connection.id) ? 'sync-source-option is-selected' : 'sync-source-option'}>
                 <input type="checkbox" checked={selectedConnectionIds.includes(connection.id)} onChange={event => setSelectedConnectionIds(current => event.target.checked ? [...current, connection.id] : current.filter(id => id !== connection.id))} />
-                <span><strong>{connection.displayName}</strong><small>{connection.platformCode === 'TRENDYOL' ? 'Trendyol' : connection.platformCode} · {connection.environment} · Mağaza {connection.externalStoreId}</small></span>
+                <span><strong>{connection.displayName}</strong><small>{marketplacePlatformLabel(connection.platformCode)} · {connection.environment} · Mağaza {connection.externalStoreId}</small></span>
               </label>)}
             </div>
           </fieldset>
           <div className="sync-mode-switch" role="group" aria-label="Senkronizasyon türü">
-            <button type="button" className={syncMode === 'changes' ? 'active' : ''} onClick={() => { setSyncMode('changes'); setErrorMsg('') }} disabled={isSubmitting}><UiIcon name="sync" /> Yeni siparişleri çek</button>
+            <button type="button" className={syncMode === 'changes' ? 'active' : ''} onClick={() => { setSyncMode('changes'); setErrorMsg('') }} disabled={isSubmitting}><UiIcon name="refresh" /> Yeni siparişleri çek</button>
             <button type="button" className={syncMode === 'single' ? 'active' : ''} onClick={() => { setSyncMode('single'); setErrorMsg('') }} disabled={isSubmitting}><UiIcon name="search" /> Tekil sipariş çek</button>
           </div>
           {syncMode === 'single' ? <label className="sync-order-number-field">
@@ -1211,16 +1218,13 @@ export function OrdersPage() {
   const connections = useQuery({ queryKey: ['connections', 'orders-invoice'], queryFn: () => loadAllPages<Connection>('/connections') })
   const providers = connections.data?.items.filter(x => x.platformCode === 'TRENDYOL_EFATURAM' && !x.lastErrorCode && (x.status === 'ACTIVE' || x.status === 'VERIFIED')) ?? []
   const provider = providers.find(x => x.environment === 'PRODUCTION') ?? providers.find(x => x.environment === 'STAGE') ?? null
-  const marketplaceConnections = connections.data?.items.filter(x => isOrderMarketplacePlatform(x.platformCode) && (x.status === 'ACTIVE' || x.status === 'VERIFIED')) ?? []
+  const marketplaceConnections = connections.data?.items.filter(isActiveMarketplaceConnection) ?? []
   const shopifyConnections = connections.data?.items.filter(x => x.platformCode === 'SHOPIFY') ?? []
   const allOrders = ordersQuery.data?.items ?? [];
-  const all = allOrders.filter(item => selectedPlatforms === null || selectedPlatforms.includes(item.platformCode));
+  const all = allOrders.filter(item => isMarketplacePlatformSelected(selectedPlatforms, item.platformCode));
   const ordersLoading = ordersQuery.isPending; const ordersError = ordersQuery.error
   const cargos = Array.from(new Set(all.flatMap(item => [orderDisplayShipment(item)?.cargoProviderName ?? item.cargoProviderName].filter((value): value is string => !!value))))
-  const platformOptions = Array.from(new Map([
-    ...(connections.data?.items ?? []).filter(connection => isOrderMarketplacePlatform(connection.platformCode)).map(connection => [connection.platformCode, { value: connection.platformCode, label: connection.displayName || connection.platformCode }] as const),
-    ...allOrders.map(item => [item.platformCode, { value: item.platformCode, label: item.platformDisplayName || item.platformCode }] as const)
-  ]).values()).sort((left, right) => left.label.localeCompare(right.label, 'tr-TR'))
+  const platformOptions = marketplacePlatformOptions(connections.data?.items ?? [], allOrders.map(item => ({ platformCode: item.platformCode, displayName: item.platformDisplayName })))
   const invoiceStatuses = [['FATURA_BEKLIYOR', 'Fatura bekliyor'], ['FATURA_YUKLENDI', 'Faturası yüklendi'], ['FATURA_ISLENIYOR', 'Fatura işleniyor'], ['FATURA_KONTROLDE', 'Kontrolde'], ['FATURA_KESILDI', 'Fatura kesildi'], ['FATURA_REDDEDILDI', 'Reddedildi'], ['FATURA_IPTAL', 'İptal edildi']] as const
   const isLabelPrinted = (item: Order) => (['a4', 'sticker'] as ShippingLabelFormat[]).some(format => printedLabels.has(printedShippingLabelKey(item.id, format)))
   const applyFilterValue = <K extends keyof OrderFilters>(key: K, value: OrderFilters[K]) => { const next = { ...filterForm, [key]: value }; setFilterForm(next); setFilters(next); setPage(1) }
