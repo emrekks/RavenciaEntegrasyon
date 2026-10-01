@@ -11,9 +11,14 @@ internal static class HepsiburadaOrderLineMatcher
         if (FindExistingLine(remoteLine, existingLines, remoteLines) is not null) return false;
         var identities = IdentityAliases(remoteLine.ExternalLineId, remoteLine.SourceSnapshotJson);
         var products = ProductAliases(remoteLine);
-        // An ambiguous match must be reviewed, not inserted as a duplicate.
-        return !existingLines.Any(line => IdentityAliases(line.ExternalLineId, line.SourceSnapshotJson).Overlaps(identities)
-            || ProductAliases(line).Overlaps(products));
+        if (existingLines.Any(line => IdentityAliases(line.ExternalLineId, line.SourceSnapshotJson).Overlaps(identities)))
+            return false;
+        // The same SKU may occur on different order lines. Add the missing line
+        // only if every local product match is already accounted for by another
+        // uniquely matched remote line; otherwise a claim alias is ambiguous.
+        return existingLines.Where(line => ProductAliases(line).Overlaps(products))
+            .All(line => remoteLines.Any(other => !string.Equals(other.ExternalLineId, remoteLine.ExternalLineId, StringComparison.Ordinal)
+                && ReferenceEquals(FindExistingLine(other, existingLines, remoteLines), line)));
     }
 
     public static OrderLine? FindExistingLine(
