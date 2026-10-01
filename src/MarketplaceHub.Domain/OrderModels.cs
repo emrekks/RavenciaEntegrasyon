@@ -132,6 +132,7 @@ public static class HepsiburadaOrderLifecycleStatusPolicy
         "PACKAGED" or "INVOICED" or "READY_TO_SHIP" or "READYTOSHIP" => ShipmentPackageStatus.ReadyToShip,
         "SHIPPED" or "IN_TRANSIT" or "INTRANSIT" => ShipmentPackageStatus.Shipped,
         "DELIVERED" => ShipmentPackageStatus.Delivered,
+        "CLAIMCREATED" => ShipmentPackageStatus.OnHold,
         "CANCELLED" or "CANCELED" or "CANCELLEDBYMERCHANT" or "CANCELLEDBYCUSTOMER" or "CANCELLEDBYSAP" => ShipmentPackageStatus.Cancelled,
         "RETURNED" => ShipmentPackageStatus.Returned,
         _ => null

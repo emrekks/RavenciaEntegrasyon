@@ -82,18 +82,20 @@ public sealed class MandatorySynchronizationScenariosTests
     [InlineData("Packaged", ShipmentPackageStatus.ReadyToShip)]
     [InlineData("InTransit", ShipmentPackageStatus.Shipped)]
     [InlineData("Delivered", ShipmentPackageStatus.Delivered)]
+    [InlineData("ClaimCreated", ShipmentPackageStatus.OnHold)]
     [InlineData("CancelledByCustomer", ShipmentPackageStatus.Cancelled)]
     public void HepsiburadaOrderLifecycleMapsDocumentedStatuses(string remoteStatus, ShipmentPackageStatus expected) =>
         Assert.Equal(expected, HepsiburadaOrderLifecycleStatusPolicy.FromRemote(remoteStatus));
 
     [Fact]
     public void HepsiburadaOrderLifecycleLeavesUnknownStatusesForPackageEvidence() =>
-        Assert.Null(HepsiburadaOrderLifecycleStatusPolicy.FromRemote("ClaimCreated"));
+        Assert.Null(HepsiburadaOrderLifecycleStatusPolicy.FromRemote("FutureProviderStatus"));
 
     [Fact]
     public void HepsiburadaOrderLifecycleAdvancesButDoesNotRegressPackageLessSnapshots()
     {
         Assert.Equal(ShipmentPackageStatus.Delivered, HepsiburadaOrderLifecycleStatusPolicy.Reconcile("NEW", "Delivered"));
+        Assert.Equal(ShipmentPackageStatus.OnHold, HepsiburadaOrderLifecycleStatusPolicy.Reconcile("NEW", "ClaimCreated"));
         Assert.Null(HepsiburadaOrderLifecycleStatusPolicy.Reconcile("SHIPPED", "Open"));
         Assert.Equal(ShipmentPackageStatus.Cancelled, HepsiburadaOrderLifecycleStatusPolicy.Reconcile("READY_TO_SHIP", "CancelledByMerchant"));
         Assert.Null(HepsiburadaOrderLifecycleStatusPolicy.Reconcile("DELIVERED", "CancelledByMerchant"));
