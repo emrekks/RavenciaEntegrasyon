@@ -661,6 +661,23 @@ public sealed class HepsiburadaAdapterTests
     }
 
     [Fact]
+    public void PackagePageAcceptsPackageSpecificEnvelopeAndExplicitEmptyResponse()
+    {
+        using var packageList = JsonDocument.Parse("""{"data":{"packages":[{"packageNumber":"PKG-1"}],"totalCount":1}}""");
+        using var emptyResponse = JsonDocument.Parse("""{"data":{"totalCount":0}}""");
+        using var incompleteResponse = JsonDocument.Parse("""{"data":{"totalCount":1}}""");
+
+        var packages = HepsiburadaJsonMapper.PackagePage(packageList.RootElement);
+        var empty = HepsiburadaJsonMapper.PackagePage(emptyResponse.RootElement);
+
+        Assert.Equal(1, packages.TotalCount);
+        Assert.Equal("PKG-1", HepsiburadaJsonMapper.PackageIdentity(Assert.Single(packages.Items)));
+        Assert.Equal(0, empty.TotalCount);
+        Assert.Empty(empty.Items);
+        Assert.Throws<JsonException>(() => HepsiburadaJsonMapper.PackagePage(incompleteResponse.RootElement));
+    }
+
+    [Fact]
     public void PackageStatusMapperReadsOfficialShipmentFeedsWithoutInventingLineOrTrackingData()
     {
         using var shippedJson = JsonDocument.Parse("""{"orderNumber":"HB-SHIPPED","packageNumber":"PKG-SHIPPED","Barcode":"barcode-shipped","ShippedDate":"2026-09-30T10:00:00Z"}""");

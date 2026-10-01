@@ -313,7 +313,22 @@ internal static class HepsiburadaJsonMapper
         return value ?? throw new JsonException("Hepsiburada sipariş yanıtında hasInvoice alanı yok veya boolean değil.");
     }
 
-    public static (IReadOnlyList<JsonElement> Items, int? TotalCount) PackagePage(JsonElement root) => ListingPage(root);
+    public static (IReadOnlyList<JsonElement> Items, int? TotalCount) PackagePage(JsonElement root)
+    {
+        var data = Unwrap(root);
+        var items = Find(data, "items", "Items", "packages", "Packages", "packageList", "PackageList", "content", "Content", "results", "Results");
+        if (items.ValueKind == JsonValueKind.Undefined && data.ValueKind == JsonValueKind.Array) items = data;
+
+        var totalCount = Integer(data, "totalCount", "TotalCount", "totalElements", "TotalElements")
+            ?? Integer(root, "totalCount", "TotalCount", "totalElements", "TotalElements");
+        if (items.ValueKind != JsonValueKind.Array)
+        {
+            if (totalCount == 0) return ([], totalCount);
+            throw new JsonException("Hepsiburada paket sayfa yanıtında paket listesi yok.");
+        }
+
+        return (items.EnumerateArray().ToArray(), totalCount);
+    }
 
     public static (string? Status, string? CargoCompany, string? TrackingInfoCode) PackageTrackingInfo(JsonElement root, string expectedPackageNumber)
     {
