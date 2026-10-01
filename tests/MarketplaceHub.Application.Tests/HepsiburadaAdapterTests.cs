@@ -589,6 +589,14 @@ public sealed class HepsiburadaAdapterTests
     }
 
     [Fact]
+    public void OrderLifecycleReconcileUsesKnownClaimLineWhenDetailOmitsStatus()
+    {
+        var status = HepsiburadaOrderLifecycleStatusPolicy.Reconcile("NEW", null, ["ClaimCreated"]);
+
+        Assert.Equal(ShipmentPackageStatus.OnHold, status);
+    }
+
+    [Fact]
     public void OrderLifecycleReconcileDoesNotRegressDeliveredOrderForOldClaimLine()
     {
         var status = HepsiburadaOrderLifecycleStatusPolicy.Reconcile("DELIVERED", "Open", ["ClaimCreated"]);

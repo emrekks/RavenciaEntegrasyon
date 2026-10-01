@@ -144,10 +144,11 @@ public static class HepsiburadaOrderLifecycleStatusPolicy
         IEnumerable<string?>? knownLineStatuses = null)
     {
         var incoming = FromRemote(remoteStatus);
-        if (incoming is null) return null;
-        if (incoming == ShipmentPackageStatus.New
-            && knownLineStatuses?.Any(status => string.Equals(status?.Trim(), "ClaimCreated", StringComparison.OrdinalIgnoreCase)) == true)
+        var hasClaimCreatedLine = knownLineStatuses?.Any(status =>
+            string.Equals(status?.Trim(), "ClaimCreated", StringComparison.OrdinalIgnoreCase)) == true;
+        if (hasClaimCreatedLine && (incoming is null || incoming == ShipmentPackageStatus.New))
             incoming = ShipmentPackageStatus.OnHold;
+        if (incoming is null) return null;
         if (!Enum.TryParse<ShipmentPackageStatus>((currentCanonicalStatus ?? string.Empty).Replace("_", string.Empty, StringComparison.Ordinal), true, out var current))
             return incoming;
         if (incoming == ShipmentPackageStatus.Cancelled)
