@@ -2233,11 +2233,216 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             await ResolveIssue(tenantId, $"order-lifecycle:{connectionId}:{externalOrderId}", cancellationToken);
         }
         if (recoveredOrders.Count > 0) await UpsertOrders(tenantId, connectionId, recoveredOrders, cancellationToken, projectReservations: !isShopify);
+        if (isHepsiburada)
+            await ReconcileHepsiburadaPackageStatuses(tenantId, connectionId, correlationId, cancellationToken);
 
         cursor.LastModifiedWatermark = timeProvider.GetUtcNow();
         cursor.Version++;
         await db.SaveChangesAsync(cancellationToken);
         return true;
+    }
+
+    private async Task ReconcileHepsiburadaPackageStatuses(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
+    {
+        var cursor = await Cursor(tenantId, connectionId, HepsiburadaPackageStatusReconciliationPolicy.CursorResourceType, cancellationToken);
+        var now = timeProvider.GetUtcNow();
+        var hasContinuation = !string.IsNullOrWhiteSpace(cursor.OpaqueCursor);
+        var intervalSeconds = Math.Clamp(
+            configuration.GetValue("MarketplaceSync:HepsiburadaPackageStatusReconciliation:IntervalSeconds", (int)HepsiburadaPackageStatusReconciliationPolicy.DefaultInterval.TotalSeconds),
+            (int)TimeSpan.FromHours(1).TotalSeconds,
+            (int)TimeSpan.FromDays(7).TotalSeconds);
+        if (!HepsiburadaPackageStatusReconciliationPolicy.ShouldRun(cursor.LastSuccessAt, hasContinuation, now, TimeSpan.FromSeconds(intervalSeconds)))
+            return;
+
+        var batchSize = Math.Clamp(
+            configuration.GetValue("MarketplaceSync:HepsiburadaPackageStatusReconciliation:BatchSize", HepsiburadaPackageStatusReconciliationPolicy.DefaultBatchSize),
+            1,
+            HepsiburadaPackageStatusReconciliationPolicy.MaximumBatchSize);
+        var offset = int.TryParse(cursor.OpaqueCursor, NumberStyles.None, CultureInfo.InvariantCulture, out var savedOffset)
+            ? Math.Max(0, savedOffset)
+            : 0;
+        var packageBatch = await (from package in db.ShipmentPackages.AsNoTracking()
+                                  join order in db.Orders.AsNoTracking()
+                                      on new { package.TenantId, package.OrderId } equals new { order.TenantId, OrderId = order.Id }
+                                  where package.TenantId == tenantId
+                                      && package.ConnectionId == connectionId
+                                      && package.ExternalPackageId != ""
+                                      && !package.ExternalPackageId.StartsWith("order:")
+                                  orderby package.Id
+                                  select new
+                                  {
+                                      package.Id,
+                                      package.ExternalPackageId,
+                                      package.Status,
+                                      package.StatusOccurredAt,
+                                      order.ExternalOrderId,
+                                      order.OrderNumber
+                                  })
+            .Skip(offset)
+            .Take(batchSize)
+            .ToListAsync(cancellationToken);
+
+        if (packageBatch.Count == 0)
+        {
+            cursor.OpaqueCursor = null;
+            cursor.LastSuccessAt = now;
+            cursor.LastError = null;
+            cursor.LastErrorAt = null;
+            cursor.ConsecutiveFailureCount = 0;
+            cursor.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        foreach (var orderGroup in packageBatch.GroupBy(package => package.ExternalOrderId, StringComparer.Ordinal))
+        {
+            TrackRequest();
+            var orderResult = await orders.GetAsync(
+                Context(tenantId, connectionId, correlationId, $"hepsiburada-package-reconcile:{orderGroup.Key}"),
+                orderGroup.Key,
+                cancellationToken);
+            if (!orderResult.IsSuccess)
+            {
+                if (orderResult.Error?.Class == AdapterErrorClass.NotFound || orderResult.Error?.HttpStatus == 404)
+                {
+                    await RecordIssue(tenantId,
+                        $"hepsiburada-package-reconcile:{connectionId}:{orderGroup.Key}",
+                        "HEPSIBURADA_PACKAGE_RECONCILIATION_ORDER_NOT_FOUND",
+                        "Paket durumu yenilenirken Hepsiburada sipariş detayı bulunamadı; sonraki taramada yeniden denenecek.",
+                        cancellationToken);
+                    continue;
+                }
+                TrackResultFailure(orderResult.Error);
+                throw JobProcessingException.FromAdapter(orderResult.Error!);
+            }
+
+            TrackReceived();
+            var remoteOrder = orderResult.Value!;
+            var expectedOrderNumber = orderGroup.First().OrderNumber;
+            if (!string.IsNullOrWhiteSpace(remoteOrder.OrderNumber)
+                && !string.Equals(remoteOrder.OrderNumber.Trim(), expectedOrderNumber.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                await RecordIssue(tenantId,
+                    $"hepsiburada-package-reconcile-order-mismatch:{connectionId}:{orderGroup.Key}",
+                    "HEPSIBURADA_PACKAGE_RECONCILIATION_ORDER_MISMATCH",
+                    "Hepsiburada sipariş detayı yerel sipariş numarasıyla eşleşmedi; durum güncellenmedi.",
+                    cancellationToken);
+                continue;
+            }
+            await ResolveIssue(tenantId,
+                $"hepsiburada-package-reconcile-order-mismatch:{connectionId}:{orderGroup.Key}",
+                cancellationToken);
+
+            var observations = new List<RemotePackage>();
+            foreach (var localPackage in orderGroup)
+            {
+                var remotePackage = remoteOrder.Packages.FirstOrDefault(package =>
+                    string.Equals(package.ExternalPackageId, localPackage.ExternalPackageId, StringComparison.Ordinal));
+                var remoteStatus = remotePackage is null
+                    ? ShipmentPackageStatus.ManualReview
+                    : ShipmentPackageStatusPolicy.FromRemote(remotePackage.RawStatus);
+                string? rawStatus = remotePackage?.RawStatus;
+                string? cargoCompany = remotePackage?.CargoProviderExternalId;
+                string? trackingCode = remotePackage?.CargoTrackingNumber;
+                var occurredAt = remotePackage?.OccurredAt ?? now;
+
+                if (remoteStatus == ShipmentPackageStatus.ManualReview)
+                {
+                    TrackRequest();
+                    var tracking = await orderPackages.GetPackageTrackingInfoAsync(
+                        Context(tenantId, connectionId, correlationId, $"hepsiburada-package-reconcile:{localPackage.ExternalPackageId}"),
+                        localPackage.ExternalPackageId,
+                        cancellationToken);
+                    if (!tracking.IsSuccess)
+                    {
+                        if (tracking.Error?.Class == AdapterErrorClass.NotFound || tracking.Error?.HttpStatus == 404)
+                        {
+                            await RecordIssue(tenantId,
+                                $"hepsiburada-package-reconcile:{connectionId}:{localPackage.ExternalPackageId}",
+                                "HEPSIBURADA_PACKAGE_RECONCILIATION_PACKAGE_NOT_FOUND",
+                                "Hepsiburada paket takip detayı bulunamadı; mevcut panel kaydı korundu.",
+                                cancellationToken);
+                            continue;
+                        }
+                        TrackResultFailure(tracking.Error);
+                        throw JobProcessingException.FromAdapter(tracking.Error!);
+                    }
+                    TrackReceived();
+                    if (!string.IsNullOrWhiteSpace(tracking.Value!.OrderNumber)
+                        && !string.Equals(tracking.Value.OrderNumber.Trim(), expectedOrderNumber.Trim(), StringComparison.OrdinalIgnoreCase))
+                    {
+                        await RecordIssue(tenantId,
+                            $"hepsiburada-package-reconcile-owner:{connectionId}:{localPackage.ExternalPackageId}",
+                            "HEPSIBURADA_PACKAGE_RECONCILIATION_ORDER_MISMATCH",
+                            "Hepsiburada paket takip yanıtı yerel sipariş numarasıyla eşleşmedi; durum güncellenmedi.",
+                            cancellationToken);
+                        continue;
+                    }
+
+                    rawStatus = tracking.Value.Status;
+                    cargoCompany = tracking.Value.CargoCompany;
+                    trackingCode = tracking.Value.TrackingInfoCode;
+                    occurredAt = now;
+                    remoteStatus = string.IsNullOrWhiteSpace(rawStatus)
+                        ? ShipmentPackageStatus.ManualReview
+                        : ShipmentPackageStatusPolicy.FromRemote(rawStatus);
+                }
+
+                if (remoteStatus == ShipmentPackageStatus.ManualReview || string.IsNullOrWhiteSpace(rawStatus))
+                {
+                    await RecordIssue(tenantId,
+                        $"hepsiburada-package-reconcile-status:{connectionId}:{localPackage.ExternalPackageId}",
+                        "HEPSIBURADA_PACKAGE_RECONCILIATION_STATUS_UNSUPPORTED",
+                        "Hepsiburada paket yanıtındaki durum tanınmadı; mevcut panel durumu korundu.",
+                        cancellationToken);
+                    continue;
+                }
+
+                await ResolveIssue(tenantId,
+                    $"hepsiburada-package-reconcile:{connectionId}:{localPackage.ExternalPackageId}",
+                    cancellationToken);
+                await ResolveIssue(tenantId,
+                    $"hepsiburada-package-reconcile-owner:{connectionId}:{localPackage.ExternalPackageId}",
+                    cancellationToken);
+                await ResolveIssue(tenantId,
+                    $"hepsiburada-package-reconcile-status:{connectionId}:{localPackage.ExternalPackageId}",
+                    cancellationToken);
+
+                // The package tracking read returns its current state but not
+                // the original delivery-event date. Reuse the existing event
+                // time when the state is already in sync; timestamp a changed
+                // state as observed now instead of inventing a historical date.
+                occurredAt = HepsiburadaPackageStatusReconciliationPolicy.StatusTimestamp(
+                    localPackage.Status,
+                    remoteStatus,
+                    localPackage.StatusOccurredAt,
+                    remotePackage?.OccurredAt,
+                    now);
+
+                observations.Add(new RemotePackage(
+                    localPackage.ExternalPackageId,
+                    remotePackage?.OriginExternalPackageId,
+                    rawStatus,
+                    occurredAt,
+                    cargoCompany,
+                    trackingCode,
+                    [],
+                    remotePackage?.GrossAmount ?? 0,
+                    remotePackage?.DiscountAmount ?? 0,
+                    remotePackage?.NetAmount ?? 0,
+                    remotePackage?.Invoice,
+                    remotePackage?.CreatedBy,
+                    IsStatusObservation: true));
+            }
+
+            await ResolveIssue(tenantId, $"hepsiburada-package-reconcile:{connectionId}:{orderGroup.Key}", cancellationToken);
+            if (observations.Count > 0)
+                await UpsertOrder(tenantId, connectionId, remoteOrder with { Packages = observations }, cancellationToken);
+        }
+
+        cursor.OpaqueCursor = (offset + packageBatch.Count).ToString(CultureInfo.InvariantCulture);
+        cursor.Version++;
+        await db.SaveChangesAsync(cancellationToken);
     }
 
     private async Task<bool> ReconcileOrders(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
