@@ -922,12 +922,9 @@ internal static class HepsiburadaJsonMapper
             ?? Text(Find(order, "totalPrice", "TotalPrice"), "currency", "Currency")
             ?? "TRY";
         var orderStatus = Text(order, "status", "Status", "orderStatus", "OrderStatus");
-        var hasClaimCreatedLine = lines.Any(line => string.Equals(line.RawStatus?.Trim(), "ClaimCreated", StringComparison.OrdinalIgnoreCase));
-        var status = hasClaimCreatedLine
-            && (string.Equals(orderStatus?.Trim(), "Open", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(orderStatus?.Trim(), "Unpacked", StringComparison.OrdinalIgnoreCase))
-                ? "ClaimCreated"
-                : orderStatus ?? ConsistentLineItemStatus(lines);
+        var status = string.Equals(orderStatus?.Trim(), "ClaimCreated", StringComparison.OrdinalIgnoreCase)
+            ? ConsistentLineItemStatus(lines)
+            : orderStatus ?? ConsistentLineItemStatus(lines);
         var paymentStatus = Text(order, "paymentStatus", "PaymentStatus") ?? "Received";
         var customer = Find(order, "customer", "Customer");
         var shipmentAddress = Find(order, "deliveryAddress", "DeliveryAddress", "shipmentAddress", "ShipmentAddress");
@@ -965,7 +962,8 @@ internal static class HepsiburadaJsonMapper
     {
         var statuses = lines
             .Select(line => line.RawStatus?.Trim())
-            .Where(status => !string.IsNullOrWhiteSpace(status))
+            .Where(status => !string.IsNullOrWhiteSpace(status)
+                && !string.Equals(status, "ClaimCreated", StringComparison.OrdinalIgnoreCase))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 

@@ -493,7 +493,20 @@ public sealed partial class HepsiburadaHttpClient(
         if (account is null) return Failure<RemoteOrder>(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIAL_INVALID", "Hepsiburada bağlantı bilgileri bulunamadı.", HttpStatusCode.Unauthorized);
         var result = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Get, OrderDetails(account, externalOrderId), cancellationToken);
         if (!result.IsSuccess) return AdapterResult<RemoteOrder>.Failure(result.Error!, result.RateLimit);
-        try { return AdapterResult<RemoteOrder>.Success(HepsiburadaJsonMapper.Order(result.Value!.RootElement, externalOrderId), result.RateLimit); }
+        try
+        {
+            var order = HepsiburadaJsonMapper.Order(result.Value!.RootElement, externalOrderId);
+            var packages = order.Packages.ToArray();
+            for (var index = 0; index < packages.Length; index++)
+            {
+                var readback = await ReadPackageTrackingInfoAsync(
+                    account,
+                    new RemoteOrderPackage(order.ExternalOrderId, packages[index]),
+                    cancellationToken);
+                packages[index] = readback.Package.Package;
+            }
+            return AdapterResult<RemoteOrder>.Success(order with { Packages = packages }, result.RateLimit);
+        }
         catch (JsonException) { return Failure<RemoteOrder>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_ORDER_CONTRACT_INVALID", "Hepsiburada sipariş detay yanıtı beklenen sözleşmeyle eşleşmiyor.", HttpStatusCode.BadGateway); }
     }
 
@@ -628,6 +641,8 @@ public sealed partial class HepsiburadaHttpClient(
         {
             var tracking = HepsiburadaJsonMapper.PackageTrackingInfo(trackingDocument.RootElement, remotePackage.Package.ExternalPackageId);
             var trackingStatus = string.Equals(tracking.Status, "Delivered", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(tracking.Status, "Undelivered", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(remotePackage.Package.RawStatus, "Delivered", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(tracking.Status, "InTransit", StringComparison.OrdinalIgnoreCase)
                     && !string.Equals(remotePackage.Package.RawStatus, "Undelivered", StringComparison.OrdinalIgnoreCase)
                     && !string.Equals(remotePackage.Package.RawStatus, "Delivered", StringComparison.OrdinalIgnoreCase)

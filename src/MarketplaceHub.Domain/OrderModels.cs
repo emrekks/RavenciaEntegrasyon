@@ -132,11 +132,19 @@ public static class HepsiburadaOrderLifecycleStatusPolicy
         "PACKAGED" or "INVOICED" or "READY_TO_SHIP" or "READYTOSHIP" => ShipmentPackageStatus.ReadyToShip,
         "SHIPPED" or "IN_TRANSIT" or "INTRANSIT" => ShipmentPackageStatus.Shipped,
         "DELIVERED" => ShipmentPackageStatus.Delivered,
-        "CLAIMCREATED" => ShipmentPackageStatus.OnHold,
+        "UNDELIVERED" => ShipmentPackageStatus.OnHold,
         "CANCELLED" or "CANCELED" or "CANCELLEDBYMERCHANT" or "CANCELLEDBYCUSTOMER" or "CANCELLEDBYSAP" => ShipmentPackageStatus.Cancelled,
         "RETURNED" => ShipmentPackageStatus.Returned,
         _ => null
     };
+
+    public static ShipmentPackageStatus AggregatePackages(IEnumerable<ShipmentPackageStatus> statuses)
+    {
+        var values = statuses.ToArray();
+        if (values.Contains(ShipmentPackageStatus.ManualReview)) return ShipmentPackageStatus.ManualReview;
+        if (values.Contains(ShipmentPackageStatus.Undelivered)) return ShipmentPackageStatus.OnHold;
+        return ShipmentPackageStatusPolicy.Aggregate(values);
+    }
 
     public static ShipmentPackageStatus? Reconcile(
         string? currentCanonicalStatus,
@@ -146,11 +154,15 @@ public static class HepsiburadaOrderLifecycleStatusPolicy
         var incoming = FromRemote(remoteStatus);
         var hasClaimCreatedLine = knownLineStatuses?.Any(status =>
             string.Equals(status?.Trim(), "ClaimCreated", StringComparison.OrdinalIgnoreCase)) == true;
-        if (hasClaimCreatedLine && (incoming is null || incoming == ShipmentPackageStatus.New))
-            incoming = ShipmentPackageStatus.OnHold;
         if (incoming is null) return null;
         if (!Enum.TryParse<ShipmentPackageStatus>((currentCanonicalStatus ?? string.Empty).Replace("_", string.Empty, StringComparison.Ordinal), true, out var current))
             return incoming;
+        // Previous versions incorrectly projected a ClaimCreated line (a
+        // return/claim state) as an order hold. When the order itself is still
+        // Open, repair that stale projection; package status remains the source
+        // of truth for delivery and undelivered lifecycle states.
+        if (current == ShipmentPackageStatus.OnHold && incoming == ShipmentPackageStatus.New && hasClaimCreatedLine)
+            return ShipmentPackageStatus.New;
         if (incoming == ShipmentPackageStatus.Cancelled)
             return current is ShipmentPackageStatus.New or ShipmentPackageStatus.Processing or ShipmentPackageStatus.OnHold or ShipmentPackageStatus.ReadyToShip or ShipmentPackageStatus.PartiallyCancelled
                 ? incoming

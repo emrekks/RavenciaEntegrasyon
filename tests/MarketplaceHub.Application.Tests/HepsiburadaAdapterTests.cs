@@ -533,7 +533,7 @@ public sealed class HepsiburadaAdapterTests
         var order = HepsiburadaJsonMapper.Order(json.RootElement, "HB-DETAIL-21");
 
         Assert.Equal(new DateTimeOffset(2026, 10, 2, 12, 0, 0, TimeSpan.Zero), order.ShipmentDueAt);
-        Assert.Equal("ClaimCreated", order.LifecycleStatus);
+        Assert.Null(order.LifecycleStatus);
         Assert.Empty(order.Packages);
         using var customer = JsonDocument.Parse(order.CustomerSnapshotJson);
         Assert.Equal("NOT_INVOICED", customer.RootElement.GetProperty("marketplaceInvoiceStatus").GetString());
@@ -561,7 +561,7 @@ public sealed class HepsiburadaAdapterTests
     }
 
     [Fact]
-    public void OrderMapperLetsClaimCreatedLineOverrideOpenOrderStatus()
+    public void OrderMapperKeepsOrderLifecycleSeparateFromClaimCreatedLineStatus()
     {
         using var json = JsonDocument.Parse("""
         {
@@ -576,24 +576,43 @@ public sealed class HepsiburadaAdapterTests
 
         var order = HepsiburadaJsonMapper.Order(json.RootElement, "HB-DETAIL-24");
 
-        Assert.Equal("ClaimCreated", order.LifecycleStatus);
-        Assert.Equal(ShipmentPackageStatus.OnHold, HepsiburadaOrderLifecycleStatusPolicy.FromRemote(order.LifecycleStatus));
+        Assert.Equal("Open", order.LifecycleStatus);
+        Assert.Equal(ShipmentPackageStatus.New, HepsiburadaOrderLifecycleStatusPolicy.FromRemote(order.LifecycleStatus));
     }
 
     [Fact]
-    public void OrderLifecycleReconcileUsesKnownClaimLineWhenDetailOnlyReportsOpen()
+    public void OrderMapperDoesNotUseClaimCreatedAsLifecycleWhenOrderAndLineStatusesAreClaims()
+    {
+        using var json = JsonDocument.Parse("""
+        {
+          "orderNumber": "HB-DETAIL-26",
+          "orderDate": "2026-09-28T12:15:00Z",
+          "status": "ClaimCreated",
+          "items": [
+            { "id": "line-26-a", "merchantSku": "sku-26-a", "quantity": 1, "price": 20, "status": "ClaimCreated" }
+          ]
+        }
+        """);
+
+        var order = HepsiburadaJsonMapper.Order(json.RootElement, "HB-DETAIL-26");
+
+        Assert.Null(order.LifecycleStatus);
+    }
+
+    [Fact]
+    public void OrderLifecycleDoesNotTurnAClaimLineIntoAnUndeliveredOrder()
     {
         var status = HepsiburadaOrderLifecycleStatusPolicy.Reconcile("NEW", "Open", ["ClaimCreated"]);
 
-        Assert.Equal(ShipmentPackageStatus.OnHold, status);
+        Assert.Equal(ShipmentPackageStatus.New, status);
     }
 
     [Fact]
-    public void OrderLifecycleReconcileUsesKnownClaimLineWhenDetailOmitsStatus()
+    public void OrderLifecycleRepairsOldClaimAsHoldProjectionWhenDetailStillSaysOpen()
     {
-        var status = HepsiburadaOrderLifecycleStatusPolicy.Reconcile("NEW", null, ["ClaimCreated"]);
+        var status = HepsiburadaOrderLifecycleStatusPolicy.Reconcile("ON_HOLD", "Open", ["ClaimCreated"]);
 
-        Assert.Equal(ShipmentPackageStatus.OnHold, status);
+        Assert.Equal(ShipmentPackageStatus.New, status);
     }
 
     [Fact]
@@ -602,6 +621,16 @@ public sealed class HepsiburadaAdapterTests
         var status = HepsiburadaOrderLifecycleStatusPolicy.Reconcile("DELIVERED", "Open", ["ClaimCreated"]);
 
         Assert.Null(status);
+    }
+
+    [Fact]
+    public void HepsiburadaUndeliveredPackagesKeepTheirOwnStatusButPutTheOrderOnHold()
+    {
+        Assert.Equal(ShipmentPackageStatus.Undelivered, ShipmentPackageStatusPolicy.FromRemote("Undelivered"));
+        Assert.Equal(ShipmentPackageStatus.OnHold,
+            HepsiburadaOrderLifecycleStatusPolicy.AggregatePackages([ShipmentPackageStatus.Delivered, ShipmentPackageStatus.Undelivered]));
+        Assert.Equal(ShipmentPackageStatus.Delivered,
+            HepsiburadaOrderLifecycleStatusPolicy.AggregatePackages([ShipmentPackageStatus.Delivered]));
     }
 
     [Fact]
@@ -623,7 +652,7 @@ public sealed class HepsiburadaAdapterTests
     }
 
     [Fact]
-    public void OrderMapperDoesNotInventLifecycleWhenLineItemStatusesConflict()
+    public void OrderMapperIgnoresClaimStatusWhenOtherLinesConfirmOrderDelivery()
     {
         using var json = JsonDocument.Parse("""
         {
@@ -638,7 +667,7 @@ public sealed class HepsiburadaAdapterTests
 
         var order = HepsiburadaJsonMapper.Order(json.RootElement, "HB-DETAIL-23");
 
-        Assert.Null(order.LifecycleStatus);
+        Assert.Equal("Delivered", order.LifecycleStatus);
     }
 
     [Fact]
@@ -904,6 +933,35 @@ public sealed class HepsiburadaAdapterTests
         Assert.Equal("Delivered", result.Package.Package.RawStatus);
         Assert.Equal("tracking-21", result.Package.Package.CargoTrackingNumber);
         Assert.Equal("GET", Assert.Single(handler.Requests).Method);
+    }
+
+    [Fact]
+    public async Task PackageTrackingReadProjectsUndeliveredStatusFromPackageLookup()
+    {
+        using var statusJson = JsonDocument.Parse("""{"orderNumber":"HB-2026-22","packageNumber":"5000031622","DeliveredDate":"2026-09-30T12:15:00Z"}""");
+        var package = HepsiburadaJsonMapper.OrderStatusPackage(statusJson.RootElement, "shipped");
+        var handler = new CapturingHttpHandler("""[{"packageNumber":"5000031622","status":"Undelivered","cargoCompany":"Aras","trackingInfoCode":"tracking-22"}]""");
+        var client = CreateReadOnlyHepsiburadaClient(handler);
+        var account = new HepsiburadaRequestContext(
+            new MarketplaceHub.Domain.PlatformConnection
+            {
+                PlatformCode = "HEPSIBURADA",
+                Environment = "STAGE",
+                DisplayName = "fixture",
+                ExternalStoreId = "merchant-22",
+                Status = "ACTIVE",
+                ApiVersion = "V1.0"
+            },
+            new Uri("https://oms.example/"), new Uri("https://listing.example/"), "integrator", "fixture-key")
+        {
+            IntegratorName = "ravencia_tests/1.0"
+        };
+
+        var result = await client.ReadPackageTrackingInfoAsync(account, package, CancellationToken.None);
+
+        Assert.Equal("Undelivered", result.Package.Package.RawStatus);
+        Assert.Equal("Aras", result.Package.Package.CargoProviderExternalId);
+        Assert.Equal("tracking-22", result.Package.Package.CargoTrackingNumber);
     }
 
     [Fact]
