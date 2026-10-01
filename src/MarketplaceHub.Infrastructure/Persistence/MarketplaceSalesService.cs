@@ -68,7 +68,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var lineSkuKeys = lines.Select(x => NormalizeCatalogKey(x.Sku, 160)).Where(x => x.Length > 0).Distinct().ToArray();
         var marketplaceSkuKeys = lines.Select(x => MarketplaceVariantLinkCoverage.Normalize(x.Sku)).Where(x => x.Length > 0).Distinct().ToArray();
         var lineBarcodes = lines.Select(x => x.Barcode).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToArray();
-        var lineBarcodeKeys = lines.Select(x => NormalizeCatalogKey(x.Barcode, 160)).Where(x => x.Length > 0).Distinct().ToArray();
+        var lineBarcodeKeys = lines.SelectMany(x => CatalogLookupKeys(x.Barcode, 160)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         var lineVariantLinks = marketplaceSkuKeys.Length == 0
             ? []
             : await db.MarketplaceVariantLinks.AsNoTracking()
@@ -82,7 +82,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
              lineBarcodes.Contains(x.Barcode) || lineBarcodeKeys.Contains(x.BarcodeNormalized))).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         var variants = variantRows.ToDictionary(x => x.Id, x => x);
         var variantsBySku = variantRows.GroupBy(x => x.Sku, StringComparer.OrdinalIgnoreCase).ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
-        var variantsByBarcode = variantRows.Where(x => !string.IsNullOrWhiteSpace(x.Barcode)).GroupBy(x => x.Barcode!, StringComparer.OrdinalIgnoreCase).ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
+        var variantsByBarcode = BarcodeVariantLookup(variantRows);
         var variantsByMarketplaceIdentity = lineVariantLinks
             .GroupBy(link => (link.ConnectionId, ExternalId: MarketplaceVariantLinkCoverage.Normalize(link.ExternalId)))
             .ToDictionary(group => group.Key, group => group.First().VariantId);
@@ -315,6 +315,26 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         return normalized[..Math.Min(maximum, normalized.Length)];
     }
 
+    internal static string[] CatalogLookupKeys(string? value, int maximum = 160)
+    {
+        var normalized = NormalizeCatalogKey(value, maximum);
+        if (normalized.Length == 0) return [];
+        var keys = new List<string> { normalized };
+        var withoutMarketplacePadding = normalized.TrimStart('0');
+        if (withoutMarketplacePadding.Length > 0
+            && withoutMarketplacePadding.Length < normalized.Length
+            && withoutMarketplacePadding.Any(char.IsLetter))
+            keys.Add(withoutMarketplacePadding);
+        return keys.ToArray();
+    }
+
+    private static Dictionary<string, ProductVariant> BarcodeVariantLookup(IEnumerable<ProductVariant> variants) => variants
+        .Where(variant => !string.IsNullOrWhiteSpace(variant.Barcode))
+        .SelectMany(variant => CatalogLookupKeys(variant.Barcode).Select(key => (Key: key, Variant: variant)))
+        .GroupBy(candidate => candidate.Key, StringComparer.OrdinalIgnoreCase)
+        .Where(group => group.Select(candidate => candidate.Variant.Id).Distinct().Count() == 1)
+        .ToDictionary(group => group.Key, group => group.First().Variant, StringComparer.OrdinalIgnoreCase);
+
     public async Task<OrderSummaryView> OrderSummaryAsync(Guid tenantId, string? platform, CancellationToken cancellationToken)
     {
         // Marketplace status tabs are package-based. Counting Orders here made
@@ -378,13 +398,13 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var lineSkus = activeOrderLines.Select(x => x.Sku).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToArray();
         var lineSkuKeys = activeOrderLines.Select(x => NormalizeCatalogKey(x.Sku, 160)).Where(x => x.Length > 0).Distinct().ToArray();
         var lineBarcodes = activeOrderLines.Select(x => x.Barcode).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToArray();
-        var lineBarcodeKeys = activeOrderLines.Select(x => NormalizeCatalogKey(x.Barcode, 160)).Where(x => x.Length > 0).Distinct().ToArray();
+        var lineBarcodeKeys = activeOrderLines.SelectMany(x => CatalogLookupKeys(x.Barcode, 160)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         var variantRows = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId &&
             (variantIds.Contains(x.Id) || lineSkus.Contains(x.Sku) || lineSkuKeys.Contains(x.SkuNormalized) ||
              lineBarcodes.Contains(x.Barcode) || lineBarcodeKeys.Contains(x.BarcodeNormalized))).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         var variants = variantRows.ToDictionary(x => x.Id, x => x);
         var variantsBySku = variantRows.GroupBy(x => x.Sku, StringComparer.OrdinalIgnoreCase).ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
-        var variantsByBarcode = variantRows.Where(x => !string.IsNullOrWhiteSpace(x.Barcode)).GroupBy(x => x.Barcode!, StringComparer.OrdinalIgnoreCase).ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
+        var variantsByBarcode = BarcodeVariantLookup(variantRows);
         var imageUrls = await MediaUrls(tenantId, variantRows.Select(x => (Guid?)x.Id), cancellationToken);
         var lines = activeOrderLines.Select(x =>
         {
@@ -443,11 +463,12 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var catalogKey = NormalizeCatalogKey(normalizedBarcode, 160);
         if (catalogKey.Length > 0)
         {
+            var lookupKeys = CatalogLookupKeys(normalizedBarcode, 160);
             var linkedVariantId = connection is null
                 ? null
                 : await db.MarketplaceVariantLinks.AsNoTracking()
                     .Where(x => x.TenantId == tenantId && x.ConnectionId == connection.Id
-                        && x.ExternalId.Trim().ToUpper() == catalogKey)
+                        && lookupKeys.Contains(x.ExternalId.Trim().ToUpper()))
                     .Select(x => (Guid?)x.VariantId)
                     .SingleOrDefaultAsync(cancellationToken);
             if (linkedVariantId is { } mappedVariantId)
@@ -458,8 +479,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
 
             var variantIds = await db.ProductVariants.AsNoTracking()
                 .Where(x => x.TenantId == tenantId
-                    && (x.Sku == normalizedBarcode || x.SkuNormalized == catalogKey
-                        || x.Barcode == normalizedBarcode || x.BarcodeNormalized == catalogKey))
+                    && (x.Sku == normalizedBarcode || lookupKeys.Contains(x.SkuNormalized)
+                        || x.Barcode == normalizedBarcode || x.BarcodeNormalized != null && lookupKeys.Contains(x.BarcodeNormalized)))
                 .OrderBy(x => x.Id)
                 .Select(x => (Guid?)x.Id)
                 .Take(2)
@@ -1659,7 +1680,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     private async Task<IReadOnlyList<string>> CapabilityValues(Guid tenantId, Guid connectionId, string code, string property, CancellationToken cancellationToken) { var capability = await db.PlatformCapabilities.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == code && x.SupportLevel == CapabilitySupportLevel.Supported, cancellationToken); if (capability?.ConstraintsJson is null) return []; try { using var doc = JsonDocument.Parse(capability.ConstraintsJson); return doc.RootElement.TryGetProperty(property, out var values) && values.ValueKind == JsonValueKind.Array ? values.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString()!).ToList() : []; } catch (JsonException) { return []; } }
     private static ProductVariant? ResolveVariant(OrderLine line, IReadOnlyDictionary<Guid, ProductVariant> variants, IReadOnlyDictionary<string, ProductVariant> variantsBySku, IReadOnlyDictionary<string, ProductVariant> variantsByBarcode) =>
         line.VariantId is { } variantId ? variants.GetValueOrDefault(variantId) :
-        variantsBySku.GetValueOrDefault(line.Sku) ?? (!string.IsNullOrWhiteSpace(line.Barcode) ? variantsByBarcode.GetValueOrDefault(line.Barcode) : null);
+        variantsBySku.GetValueOrDefault(line.Sku) ?? CatalogLookupKeys(line.Barcode).Select(key => variantsByBarcode.GetValueOrDefault(key)).FirstOrDefault(variant => variant is not null);
 
     private async Task<Dictionary<Guid, string>> MediaUrls(Guid tenantId, IEnumerable<Guid?> variantIds, CancellationToken cancellationToken)
     {

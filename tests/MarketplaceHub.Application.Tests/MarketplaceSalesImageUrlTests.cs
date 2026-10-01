@@ -30,4 +30,18 @@ public sealed class MarketplaceSalesImageUrlTests
         Assert.Equal("https://productimages.hepsiburada.net/s/777/{size}/image.jpg", MarketplaceSalesService.SourceImageUrl(snapshot));
         Assert.Equal("https://productimages.hepsiburada.net/s/777/500/image.jpg", MarketplaceSalesService.NormalizeImageUrl(MarketplaceSalesService.SourceImageUrl(snapshot)));
     }
+
+    [Fact]
+    public void CatalogLookupKeysRemoveHepsiburadaZeroPaddingForAlphaNumericBarcodes()
+    {
+        Assert.Equal(["0000MZ029YD22", "MZ029YD22"], MarketplaceSalesService.CatalogLookupKeys("0000MZ029YD22"));
+    }
+
+    [Theory]
+    [InlineData("00001234567890")]
+    [InlineData("000000")]
+    public void CatalogLookupKeysKeepNumericBarcodesUnchanged(string barcode)
+    {
+        Assert.Equal([barcode], MarketplaceSalesService.CatalogLookupKeys(barcode));
+    }
 }
