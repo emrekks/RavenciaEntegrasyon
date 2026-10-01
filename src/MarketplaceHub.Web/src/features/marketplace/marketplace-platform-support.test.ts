@@ -30,6 +30,11 @@ describe('Hepsiburada marketplace workspace support', () => {
     expect(isMarketplacePlatformSelected(['SHOPIFY'], 'hepsiburada')).toBe(false)
   })
 
+  it('shows every platform when no checkboxes are selected', () => {
+    expect(isMarketplacePlatformSelected([], 'HEPSIBURADA')).toBe(true)
+    expect(isMarketplacePlatformSelected(null, 'SHOPIFY')).toBe(true)
+  })
+
   it('offers verified Hepsiburada connections in the order sync source list', () => {
     expect(isActiveMarketplaceConnection({ platformCode: ' hepsiburada ', status: ' verified ' })).toBe(true)
     expect(isActiveMarketplaceConnection({ platformCode: 'HEPSIBURADA', status: 'DISCONNECTED' })).toBe(false)

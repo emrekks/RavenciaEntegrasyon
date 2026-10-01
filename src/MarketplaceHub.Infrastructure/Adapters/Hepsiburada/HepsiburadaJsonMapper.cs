@@ -735,7 +735,8 @@ internal static class HepsiburadaJsonMapper
             item.GetRawText(),
             Date(item, "dueDate", "DueDate", "shipmentDueAt", "ShipmentDueAt"),
             Text(item, "paymentStatus", "PaymentStatus") ?? "Received",
-            status.Contains("cancel", StringComparison.OrdinalIgnoreCase) ? "CANCELLED" : "NOT_CANCELLED");
+            status.Contains("cancel", StringComparison.OrdinalIgnoreCase) ? "CANCELLED" : "NOT_CANCELLED",
+            LifecycleStatus: status);
     }
 
     private static RemoteOrder PackageOrderSnapshot(JsonElement item, string orderNumber, RemotePackage package)
@@ -950,7 +951,8 @@ internal static class HepsiburadaJsonMapper
             order.GetRawText(),
             dueAt,
             paymentStatus,
-            status.Contains("cancel", StringComparison.OrdinalIgnoreCase) ? "CANCELLED" : "NOT_CANCELLED");
+            status.Contains("cancel", StringComparison.OrdinalIgnoreCase) ? "CANCELLED" : "NOT_CANCELLED",
+            LifecycleStatus: status);
     }
 
     private static RemoteOrderLine MapLine(JsonElement line)

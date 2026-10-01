@@ -504,6 +504,7 @@ public sealed class HepsiburadaAdapterTests
         Assert.Equal("pkg-1", order.Packages.Single().ExternalPackageId);
         Assert.Equal(order.OrderedAt, order.Packages.Single().OccurredAt);
         Assert.Equal(2m, order.Packages.Single().Allocations.Single().AllocatedQuantity);
+        Assert.Equal("Open", order.LifecycleStatus);
     }
 
     [Fact]
@@ -531,6 +532,7 @@ public sealed class HepsiburadaAdapterTests
         var order = HepsiburadaJsonMapper.Order(json.RootElement, "HB-DETAIL-21");
 
         Assert.Equal(new DateTimeOffset(2026, 10, 2, 12, 0, 0, TimeSpan.Zero), order.ShipmentDueAt);
+        Assert.Equal("ClaimCreated", order.LifecycleStatus);
         Assert.Empty(order.Packages);
         using var customer = JsonDocument.Parse(order.CustomerSnapshotJson);
         Assert.Equal("NOT_INVOICED", customer.RootElement.GetProperty("marketplaceInvoiceStatus").GetString());

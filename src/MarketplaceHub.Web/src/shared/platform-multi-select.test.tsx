@@ -1,46 +1,44 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PlatformMultiSelect } from './platform-multi-select'
 
-;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+describe('PlatformMultiSelect', () => {
+  let container: HTMLDivElement
+  let root: Root
 
-let root: Root | undefined
-let host: HTMLDivElement | undefined
+  beforeEach(() => {
+    ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+    container = document.createElement('div')
+    document.body.append(container)
+    root = createRoot(container)
+  })
 
-afterEach(() => {
-  if (root) act(() => root?.unmount())
-  host?.remove()
-  root = undefined
-  host = undefined
-})
+  afterEach(() => {
+    act(() => root.unmount())
+    container.remove()
+  })
 
-describe('compact platform multi-select', () => {
-  it('opens from the table-header filter and reports a multi-platform selection', () => {
+  it('starts with no boxes checked, shows all platforms, and toggles select all into clear all', () => {
     const onChange = vi.fn()
-    host = document.createElement('div')
-    document.body.append(host)
-    root = createRoot(host)
+    const options = [
+      { value: 'HEPSIBURADA', label: 'Hepsiburada' },
+      { value: 'SHOPIFY', label: 'Shopify' }
+    ]
 
-    act(() => root?.render(<PlatformMultiSelect
-      compact
-      label="Platform filtresi"
-      options={[{ value: 'TRENDYOL', label: 'Trendyol' }, { value: 'SHOPIFY', label: 'Shopify' }]}
-      selectedCodes={null}
-      onChange={onChange}
-    />))
+    act(() => root.render(<PlatformMultiSelect label="Platformlar" options={options} selectedCodes={[]} onChange={onChange} />))
+    expect(container.querySelector('.platform-multi-select-trigger')?.textContent).toContain('Tüm platformlar')
+    act(() => container.querySelector<HTMLButtonElement>('.platform-multi-select-trigger')?.click())
+    expect(Array.from(container.querySelectorAll<HTMLInputElement>('.platform-multi-select-option input')).map(input => input.checked)).toEqual([false, false])
 
-    const trigger = host.querySelector<HTMLButtonElement>('[aria-label="Platform filtresi: Tüm platformlar"]')
-    expect(trigger).not.toBeNull()
-    act(() => trigger?.click())
+    act(() => container.querySelector<HTMLButtonElement>('.platform-multi-select-menu-header button')?.click())
+    expect(onChange).toHaveBeenLastCalledWith(['HEPSIBURADA', 'SHOPIFY'])
 
-    const menu = document.body.querySelector('[role="group"]')
-    expect(menu).not.toBeNull()
-    expect(menu?.parentElement).toBe(document.body)
-    const checkboxes = menu?.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')
-    expect(checkboxes).toHaveLength(2)
-    act(() => checkboxes?.[1]?.click())
+    act(() => root.render(<PlatformMultiSelect label="Platformlar" options={options} selectedCodes={['HEPSIBURADA', 'SHOPIFY']} onChange={onChange} />))
+    expect(container.querySelector('.platform-multi-select-menu-header button')?.textContent).toBe('Tümünü kaldır')
+    expect(Array.from(container.querySelectorAll<HTMLInputElement>('.platform-multi-select-option input')).map(input => input.checked)).toEqual([true, true])
 
-    expect(onChange).toHaveBeenCalledWith(['TRENDYOL'])
+    act(() => container.querySelector<HTMLButtonElement>('.platform-multi-select-menu-header button')?.click())
+    expect(onChange).toHaveBeenLastCalledWith([])
   })
 })

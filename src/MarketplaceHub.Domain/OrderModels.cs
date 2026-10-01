@@ -117,6 +117,38 @@ public static class OpenOrderLifecyclePolicy
 {
     public static bool ShouldPoll(ShipmentPackageStatus status) =>
         status is not ShipmentPackageStatus.Delivered and not ShipmentPackageStatus.Cancelled and not ShipmentPackageStatus.Returned;
+
+    public static bool ShouldPollWithoutPackage(string? platformCode, string? derivedStatus) =>
+        string.Equals(platformCode?.Trim(), "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
+        && string.Equals(derivedStatus?.Trim(), "NEW", StringComparison.OrdinalIgnoreCase);
+}
+
+public static class HepsiburadaOrderLifecycleStatusPolicy
+{
+    public static ShipmentPackageStatus? FromRemote(string? rawStatus) => (rawStatus ?? string.Empty).Trim().ToUpperInvariant() switch
+    {
+        "OPEN" or "UNPACKED" => ShipmentPackageStatus.New,
+        "PROCESSING" => ShipmentPackageStatus.Processing,
+        "PACKAGED" or "INVOICED" or "READY_TO_SHIP" or "READYTOSHIP" => ShipmentPackageStatus.ReadyToShip,
+        "SHIPPED" or "IN_TRANSIT" or "INTRANSIT" => ShipmentPackageStatus.Shipped,
+        "DELIVERED" => ShipmentPackageStatus.Delivered,
+        "CANCELLED" or "CANCELED" or "CANCELLEDBYMERCHANT" or "CANCELLEDBYCUSTOMER" or "CANCELLEDBYSAP" => ShipmentPackageStatus.Cancelled,
+        "RETURNED" => ShipmentPackageStatus.Returned,
+        _ => null
+    };
+
+    public static ShipmentPackageStatus? Reconcile(string? currentCanonicalStatus, string? remoteStatus)
+    {
+        var incoming = FromRemote(remoteStatus);
+        if (incoming is null) return null;
+        if (!Enum.TryParse<ShipmentPackageStatus>((currentCanonicalStatus ?? string.Empty).Replace("_", string.Empty, StringComparison.Ordinal), true, out var current))
+            return incoming;
+        if (incoming == ShipmentPackageStatus.Cancelled)
+            return current is ShipmentPackageStatus.New or ShipmentPackageStatus.Processing or ShipmentPackageStatus.OnHold or ShipmentPackageStatus.ReadyToShip or ShipmentPackageStatus.PartiallyCancelled
+                ? incoming
+                : null;
+        return ShipmentPackageStatusPolicy.Rank(incoming.Value) >= ShipmentPackageStatusPolicy.Rank(current) ? incoming : null;
+    }
 }
 
 public static class ShipmentPackageStatusPolicy

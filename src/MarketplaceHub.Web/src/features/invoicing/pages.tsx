@@ -163,7 +163,7 @@ export function InvoicesPage() {
   const invoiceStatusOptions = Array.from(new Map(items.map(item => { const value = invoiceWorkspaceStatus(item); return [value.value, invoiceStatusLabel(value.value)] })).entries())
   const dateFromTime = dateFrom ? new Date(`${dateFrom}T00:00:00`).getTime() : Number.NEGATIVE_INFINITY
   const dateToTime = dateTo ? new Date(`${dateTo}T23:59:59.999`).getTime() : Number.POSITIVE_INFINITY
-  const hasInvoiceFilters = Boolean(search.trim() || (selectedPlatforms !== null && selectedPlatforms.length !== platformOptions.length) || shipmentStatusFilter !== 'ALL' || cargoFilter !== 'ALL' || invoiceStatusFilter !== 'ALL' || invoiceActionFilter !== 'ALL' || dateFrom || dateTo)
+  const hasInvoiceFilters = Boolean(search.trim() || (selectedPlatforms?.length && selectedPlatforms.length < platformOptions.length) || shipmentStatusFilter !== 'ALL' || cargoFilter !== 'ALL' || invoiceStatusFilter !== 'ALL' || invoiceActionFilter !== 'ALL' || dateFrom || dateTo)
   const platformItems = items.filter(item => isMarketplacePlatformSelected(selectedPlatforms, item.platformCode))
   const visible = platformItems.filter(item => {
     const tabMatch = tab === 'UNINVOICED' ? requiresInvoiceAction(item) : tab === 'INVOICED' ? !requiresInvoiceAction(item) : item.isDueSoon

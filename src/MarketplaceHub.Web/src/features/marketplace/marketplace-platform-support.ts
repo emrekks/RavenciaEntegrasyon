@@ -59,7 +59,7 @@ export function marketplacePlatformOptions(...sources: ReadonlyArray<readonly Ma
 }
 
 export function isMarketplacePlatformSelected(selectedCodes: string[] | null, platformCode: string) {
-  if (selectedCodes === null) return true
+  if (!selectedCodes?.length) return true
   const normalizedCode = normalizeMarketplacePlatformCode(platformCode)
   return selectedCodes.some(selectedCode => normalizeMarketplacePlatformCode(selectedCode) === normalizedCode)
 }

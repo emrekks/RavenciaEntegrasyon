@@ -68,6 +68,37 @@ public sealed class MandatorySynchronizationScenariosTests
         Assert.False(OpenOrderLifecyclePolicy.ShouldPoll(ShipmentPackageStatus.Delivered));
     }
 
+    [Theory]
+    [InlineData("HEPSIBURADA", "NEW", true)]
+    [InlineData("hepsiburada", " new ", true)]
+    [InlineData("TRENDYOL", "NEW", false)]
+    [InlineData("HEPSIBURADA", "SHIPPED", false)]
+    public void HepsiburadaLifecyclePollsOnlyUnpackagedNewOrders(string platformCode, string status, bool expected) =>
+        Assert.Equal(expected, OpenOrderLifecyclePolicy.ShouldPollWithoutPackage(platformCode, status));
+
+    [Theory]
+    [InlineData("Open", ShipmentPackageStatus.New)]
+    [InlineData("Unpacked", ShipmentPackageStatus.New)]
+    [InlineData("Packaged", ShipmentPackageStatus.ReadyToShip)]
+    [InlineData("InTransit", ShipmentPackageStatus.Shipped)]
+    [InlineData("Delivered", ShipmentPackageStatus.Delivered)]
+    [InlineData("CancelledByCustomer", ShipmentPackageStatus.Cancelled)]
+    public void HepsiburadaOrderLifecycleMapsDocumentedStatuses(string remoteStatus, ShipmentPackageStatus expected) =>
+        Assert.Equal(expected, HepsiburadaOrderLifecycleStatusPolicy.FromRemote(remoteStatus));
+
+    [Fact]
+    public void HepsiburadaOrderLifecycleLeavesUnknownStatusesForPackageEvidence() =>
+        Assert.Null(HepsiburadaOrderLifecycleStatusPolicy.FromRemote("ClaimCreated"));
+
+    [Fact]
+    public void HepsiburadaOrderLifecycleAdvancesButDoesNotRegressPackageLessSnapshots()
+    {
+        Assert.Equal(ShipmentPackageStatus.Delivered, HepsiburadaOrderLifecycleStatusPolicy.Reconcile("NEW", "Delivered"));
+        Assert.Null(HepsiburadaOrderLifecycleStatusPolicy.Reconcile("SHIPPED", "Open"));
+        Assert.Equal(ShipmentPackageStatus.Cancelled, HepsiburadaOrderLifecycleStatusPolicy.Reconcile("READY_TO_SHIP", "CancelledByMerchant"));
+        Assert.Null(HepsiburadaOrderLifecycleStatusPolicy.Reconcile("DELIVERED", "CancelledByMerchant"));
+    }
+
     [Fact]
     public void Scenario08_NewReturnAfterFortyFiveDays_UsesThreeMinuteHotReturnCadence()
     {

@@ -2116,16 +2116,63 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             .Select(x => x.PlatformCode)
             .SingleOrDefaultAsync(cancellationToken);
         var isShopify = platformCode == "SHOPIFY";
+        var isHepsiburada = platformCode == "HEPSIBURADA";
         var lifecycleBatchSize = Math.Clamp(configuration.GetValue("MarketplaceSync:OrderLifecycle:BatchSize", 25), 1, 100);
-        var externalOrderIds = await (from package in db.ShipmentPackages.AsNoTracking()
+        var cursor = await Cursor(tenantId, connectionId, "ORDER_LIFECYCLE", cancellationToken);
+        List<string> externalOrderIds;
+        if (isHepsiburada)
+        {
+            var includeUnpackagedNewOrders = OpenOrderLifecyclePolicy.ShouldPollWithoutPackage(platformCode, "NEW");
+            var lifecycleOrders = db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId
+                && order.ConnectionId == connectionId
+                && (db.ShipmentPackages.Any(package => package.TenantId == tenantId
+                        && package.ConnectionId == connectionId
+                        && package.OrderId == order.Id
+                        && package.Status != ShipmentPackageStatus.Delivered
+                        && package.Status != ShipmentPackageStatus.Cancelled
+                        && package.Status != ShipmentPackageStatus.Returned)
+                    || (includeUnpackagedNewOrders
+                        && order.DerivedStatus == "NEW"
+                        && !db.ShipmentPackages.Any(package => package.TenantId == tenantId
+                            && package.ConnectionId == connectionId
+                            && package.OrderId == order.Id))));
+
+            var lifecycleOffset = int.TryParse(cursor.OpaqueCursor, NumberStyles.None, CultureInfo.InvariantCulture, out var savedOffset)
+                ? Math.Max(0, savedOffset)
+                : 0;
+            externalOrderIds = await lifecycleOrders
+                .OrderBy(order => order.ExternalOrderId)
+                .Select(order => order.ExternalOrderId)
+                .Skip(lifecycleOffset)
+                .Take(lifecycleBatchSize)
+                .ToListAsync(cancellationToken);
+            if (externalOrderIds.Count == 0 && lifecycleOffset > 0)
+            {
+                // Wrap to the first page so the lifecycle scan keeps polling
+                // when a status request fails or an order has no new package.
+                lifecycleOffset = 0;
+                externalOrderIds = await lifecycleOrders
+                    .OrderBy(order => order.ExternalOrderId)
+                    .Select(order => order.ExternalOrderId)
+                    .Take(lifecycleBatchSize)
+                    .ToListAsync(cancellationToken);
+            }
+            cursor.OpaqueCursor = externalOrderIds.Count == lifecycleBatchSize
+                ? (lifecycleOffset + externalOrderIds.Count).ToString(CultureInfo.InvariantCulture)
+                : null;
+        }
+        else
+        {
+            externalOrderIds = await (from package in db.ShipmentPackages.AsNoTracking()
                                       join order in db.Orders.AsNoTracking()
                                           on new { package.TenantId, package.OrderId } equals new { order.TenantId, OrderId = order.Id }
                                       where package.TenantId == tenantId && package.ConnectionId == connectionId && package.Status != ShipmentPackageStatus.Delivered && package.Status != ShipmentPackageStatus.Cancelled && package.Status != ShipmentPackageStatus.Returned
                                       group package by order.ExternalOrderId into openOrder
                                       orderby openOrder.Min(x => x.UpdatedAt)
                                       select openOrder.Key)
-            .Take(lifecycleBatchSize)
-            .ToListAsync(cancellationToken);
+                .Take(lifecycleBatchSize)
+                .ToListAsync(cancellationToken);
+        }
 
         var recoveredOrders = new List<RemoteOrder>();
         foreach (var externalOrderId in externalOrderIds)
@@ -2151,7 +2198,6 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
         if (recoveredOrders.Count > 0) await UpsertOrders(tenantId, connectionId, recoveredOrders, cancellationToken, projectReservations: !isShopify);
 
-        var cursor = await Cursor(tenantId, connectionId, "ORDER_LIFECYCLE", cancellationToken);
         cursor.LastModifiedWatermark = timeProvider.GetUtcNow();
         cursor.Version++;
         await db.SaveChangesAsync(cancellationToken);
@@ -5452,7 +5498,10 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             : await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id).Select(x => x.Status).ToListAsync(cancellationToken);
         var acceptedStatuses = persistedStatuses.ToList();
         acceptedStatuses.AddRange(db.ShipmentPackages.Local.Where(x => x.TenantId == tenantId && x.OrderId == order.Id).Select(x => x.Status));
-        order.DerivedStatus = Wire(ShipmentPackageStatusPolicy.Aggregate(acceptedStatuses));
+        var derivedStatus = ShipmentPackageStatusPolicy.Aggregate(acceptedStatuses);
+        if (acceptedStatuses.Count == 0 && isHepsiburada && HepsiburadaOrderLifecycleStatusPolicy.Reconcile(order.DerivedStatus, remote.LifecycleStatus) is { } hepsiburadaStatus)
+            derivedStatus = hepsiburadaStatus;
+        order.DerivedStatus = Wire(derivedStatus);
         if (isShopify)
         {
             var manualStatus = await db.OrderStatusHistory.AsNoTracking()
