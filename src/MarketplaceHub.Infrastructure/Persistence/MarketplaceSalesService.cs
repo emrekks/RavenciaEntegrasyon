@@ -1858,10 +1858,14 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         catch (JsonException) { return null; }
     }
 
-    private static string? NormalizeImageUrl(string? value)
+    internal static string? NormalizeImageUrl(string? value)
     {
         if (string.IsNullOrWhiteSpace(value)) return null;
         var candidate = value.Trim();
+        // Hepsiburada returns productImageUrlFormat with a {size} token.
+        // Keep the stored marketplace snapshot untouched and resolve the token
+        // for the order UI when projecting the image URL.
+        candidate = candidate.Replace("{size}", "500", StringComparison.OrdinalIgnoreCase);
         if (candidate.StartsWith("//", StringComparison.Ordinal)) candidate = "https:" + candidate;
         else if (candidate.StartsWith("/", StringComparison.Ordinal)) candidate = "https://cdn.dsmcdn.com" + candidate;
         return Uri.TryCreate(candidate, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps ? uri.ToString() : null;
