@@ -19,4 +19,15 @@ public sealed class MarketplaceSalesImageUrlTests
     {
         Assert.Null(MarketplaceSalesService.NormalizeImageUrl("http://productimages.hepsiburada.net/s/777/{size}/image.jpg"));
     }
+
+    [Theory]
+    [InlineData("productImageUrlFormat")]
+    [InlineData("emaproductImageUrlFormat")]
+    public void SourceImageUrlReadsHepsiburadaFormattedImageFields(string fieldName)
+    {
+        var snapshot = $$"""{"{{fieldName}}":"https://productimages.hepsiburada.net/s/777/{size}/image.jpg"}""";
+
+        Assert.Equal("https://productimages.hepsiburada.net/s/777/{size}/image.jpg", MarketplaceSalesService.SourceImageUrl(snapshot));
+        Assert.Equal("https://productimages.hepsiburada.net/s/777/500/image.jpg", MarketplaceSalesService.NormalizeImageUrl(MarketplaceSalesService.SourceImageUrl(snapshot)));
+    }
 }

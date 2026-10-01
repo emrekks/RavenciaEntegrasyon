@@ -1848,12 +1848,12 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         return new(image, JsonText(snapshot, "productCode", "modelCode"), options.Count == 0 ? null : string.Join(" | ", options));
     }
 
-    private static string? SourceImageUrl(string json)
+    internal static string? SourceImageUrl(string json)
     {
         try
         {
             using var document = JsonDocument.Parse(string.IsNullOrWhiteSpace(json) ? "{}" : json);
-            return FindImageUrl(document.RootElement) ?? JsonText(json, "productImageUrl", "imageUrl", "productImage", "image");
+            return FindImageUrl(document.RootElement) ?? JsonText(json, "productImageUrl", "productImageUrlFormat", "emaproductImageUrlFormat", "imageUrl", "productImage", "image");
         }
         catch (JsonException) { return null; }
     }
