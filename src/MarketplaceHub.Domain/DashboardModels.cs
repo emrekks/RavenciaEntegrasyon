@@ -10,15 +10,15 @@ public static class DashboardMetricPolicy
     // the active panel. Hidden and deleted connection history is not live data.
     public static readonly string[] OperationalConnectionStatuses = ["ACTIVE", "VERIFIED", "CONNECTED"];
 
-    // A shipment that has already left the warehouse is no longer a late
-    // fulfillment order. Its delivery tracking belongs to the shipment view.
+    // A shipment that has already left the warehouse, or an order on hold for
+    // a marketplace claim, is not an overdue warehouse fulfillment order.
     public static readonly string[] LateOrderStatuses =
-        ["NEW", "PROCESSING", "ON_HOLD", "READY_TO_SHIP", "PARTIALLY_CANCELLED", "MANUAL_REVIEW"];
+        ["NEW", "PROCESSING", "READY_TO_SHIP", "PARTIALLY_CANCELLED", "MANUAL_REVIEW"];
 
     // "Bekleyen" is the warehouse action queue. Shipped and undelivered
-    // packages are still operational, but belong to transport tracking.
+    // packages belong to transport tracking; claim holds are tracked separately.
     public static readonly string[] PendingOrderStatuses =
-        ["NEW", "PROCESSING", "ON_HOLD", "READY_TO_SHIP", "PARTIALLY_CANCELLED", "MANUAL_REVIEW"];
+        ["NEW", "PROCESSING", "READY_TO_SHIP", "PARTIALLY_CANCELLED", "MANUAL_REVIEW"];
 
     public static readonly string[] InvoiceExcludedOrderStatuses = ["CANCELLED", "CANCELED"];
 
@@ -29,10 +29,10 @@ public static class DashboardMetricPolicy
         [ReturnClaimStatus.ActionRequired];
 
     public static bool IsLateOrderStatus(string? status) =>
-        status is "NEW" or "PROCESSING" or "ON_HOLD" or "READY_TO_SHIP" or "PARTIALLY_CANCELLED" or "MANUAL_REVIEW";
+        status is "NEW" or "PROCESSING" or "READY_TO_SHIP" or "PARTIALLY_CANCELLED" or "MANUAL_REVIEW";
 
     public static bool IsPendingOrderStatus(string? status) =>
-        status is "NEW" or "PROCESSING" or "ON_HOLD" or "READY_TO_SHIP" or "PARTIALLY_CANCELLED" or "MANUAL_REVIEW";
+        status is "NEW" or "PROCESSING" or "READY_TO_SHIP" or "PARTIALLY_CANCELLED" or "MANUAL_REVIEW";
 
     public static bool IsPendingReturn(ReturnClaimStatus status) =>
         status is ReturnClaimStatus.ActionRequired;
