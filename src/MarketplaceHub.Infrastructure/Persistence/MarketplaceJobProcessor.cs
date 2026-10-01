@@ -1824,11 +1824,55 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             {
                 var snapshots = orderPackagesForOrder.Select(x => x.OrderSnapshot).Where(x => x is not null).Select(x => x!).ToArray();
                 var mergedOrder = TrendyolJsonMapper.MergeOrderPackages(snapshots, orderPackagesForOrder.Key);
+                if (mergedOrder is null && orderPackagesForOrder.Any(item => item.Package.IsStatusObservation))
+                {
+                    TrackRequest();
+                    var details = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"hepsiburada-status-order:{orderPackagesForOrder.Key}"), orderPackagesForOrder.Key, cancellationToken);
+                    if (!details.IsSuccess)
+                    {
+                        if (details.Error?.HttpStatus == 404)
+                        {
+                            await RecordIssue(tenantId, $"package-status-order:{connectionId}:{orderPackagesForOrder.Key}", "HEPSIBURADA_STATUS_ORDER_DETAIL_NOT_FOUND", "Hepsiburada paket durumunda sipariş var ancak detay servisi siparişi bulamadı; paket durumu bu turda uygulanmadı.", cancellationToken);
+                            continue;
+                        }
+                        TrackResultFailure(details.Error);
+                        throw JobProcessingException.FromAdapter(details.Error!);
+                    }
+                    TrackReceived();
+                    mergedOrder = details.Value;
+                }
                 if (mergedOrder is null)
                 {
                     await RecordIssue(tenantId, $"package-order-snapshot:{connectionId}:{orderPackagesForOrder.Key}:{state.WindowIndex}:{state.Offset}", "HEPSIBURADA_PACKAGE_ORDER_SNAPSHOT_MISSING", "Hepsiburada paket yanıtından bağlı sipariş satırları oluşturulamadı; paket yerel siparişe uygulanmadı.", cancellationToken);
                     continue;
                 }
+
+                var packages = mergedOrder.Packages.ToList();
+                foreach (var observation in orderPackagesForOrder.Where(item => item.Package.IsStatusObservation))
+                {
+                    var packageIndex = packages.FindIndex(package => package.ExternalPackageId == observation.Package.ExternalPackageId);
+                    if (packageIndex < 0)
+                    {
+                        packages.Add(observation.Package);
+                        continue;
+                    }
+
+                    var existingPackage = packages[packageIndex];
+                    packages[packageIndex] = existingPackage with
+                    {
+                        RawStatus = observation.Package.OccurredAt >= existingPackage.OccurredAt ? observation.Package.RawStatus : existingPackage.RawStatus,
+                        OccurredAt = observation.Package.OccurredAt > existingPackage.OccurredAt ? observation.Package.OccurredAt : existingPackage.OccurredAt,
+                        CargoProviderExternalId = observation.Package.CargoProviderExternalId ?? existingPackage.CargoProviderExternalId,
+                        CargoTrackingNumber = observation.Package.CargoTrackingNumber ?? existingPackage.CargoTrackingNumber,
+                        Invoice = observation.Package.Invoice ?? existingPackage.Invoice,
+                        IsStatusObservation = false
+                    };
+                }
+                mergedOrder = mergedOrder with
+                {
+                    LastModifiedAt = packages.Select(package => package.OccurredAt).Append(mergedOrder.LastModifiedAt).Max(),
+                    Packages = packages
+                };
                 TrackReceived();
                 await UpsertOrder(tenantId, connectionId, mergedOrder, cancellationToken);
             }
@@ -5132,8 +5176,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             ?? await db.Orders.SingleOrDefaultAsync(x => x.TenantId == tenantId
                 && x.ConnectionId == connectionId
                 && x.ExternalOrderId == remote.ExternalOrderId, cancellationToken);
-        var allocatedLineIds = remote.Packages.SelectMany(x => x.Allocations).Select(x => x.ExternalLineId).ToHashSet(StringComparer.Ordinal);
-        if (remote.Packages.Count > 0 && remoteLineQuantities.Keys.Any(lineId => !allocatedLineIds.Contains(lineId)))
+        var detailedPackages = remote.Packages.Where(package => !package.IsStatusObservation).ToArray();
+        var allocatedLineIds = detailedPackages.SelectMany(x => x.Allocations).Select(x => x.ExternalLineId).ToHashSet(StringComparer.Ordinal);
+        if (detailedPackages.Length > 0 && remoteLineQuantities.Keys.Any(lineId => !allocatedLineIds.Contains(lineId)))
         {
             await RecordIssue(tenantId, $"order-coverage:{connectionId}:{remote.ExternalOrderId}:{remote.LastModifiedAt.ToUnixTimeMilliseconds()}", "ORDER_LINE_COVERAGE_INVALID", "Pazar yeri cevabındaki sipariş satırlarının tamamı paket tahsisinde yer almıyordu; eksik veri uygulanmadı.", cancellationToken);
             if (saveChanges) await db.SaveChangesAsync(cancellationToken);
@@ -5144,7 +5189,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         // sibling package; that fragment is validated per package below and
         // merged with the persisted projection instead of being rejected as an
         // incomplete order.
-        if (order is null && remote.Packages.Count > 0 && !PackageIngestionSafety.TryNormalizeOrder(remoteLineQuantities, remote.Packages, out _))
+        if (order is null && detailedPackages.Length > 0 && !PackageIngestionSafety.TryNormalizeOrder(remoteLineQuantities, detailedPackages, out _))
         {
             var rejectedEventId = remote.Packages.Count > 0
                 ? PackageIngestionSafety.EventId(remote.Packages[0].ExternalPackageId, remote.Packages[0].OccurredAt)
@@ -5276,11 +5321,39 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 order.NetAmount = Math.Max(0m, knownLineGross - order.DiscountAmount);
             }
         }
+        var externalLineIdsById = lines.Values.ToDictionary(line => line.Id, line => line.ExternalLineId);
         foreach (var remotePackage in remote.Packages)
         {
             var target = ShipmentPackageStatusPolicy.FromRemote(remotePackage.RawStatus); var eventId = PackageIngestionSafety.EventId(remotePackage.ExternalPackageId, remotePackage.OccurredAt); var orderedQuantities = lines.ToDictionary(x => x.Key, x => x.Value.OrderedQuantity, StringComparer.Ordinal);
-            if (!PackageIngestionSafety.TryNormalizeAll(orderedQuantities, remotePackage.Allocations, target, out var safeAllocations)) { await RecordIssue(tenantId, $"package-quantity:{connectionId}:{eventId}", "PACKAGE_QUANTITY_INVARIANT_REJECTED", "Package miktarları sipariş satırı bütünlüğünü sağlamadı; olayın hiçbir parçası uygulanmadı.", cancellationToken); continue; }
             var package = packagesByExternalId.GetValueOrDefault(remotePackage.ExternalPackageId);
+            var packageAllocations = remotePackage.Allocations;
+            if (remotePackage.IsStatusObservation && packageAllocations.Count == 0 && package is not null)
+            {
+                packageAllocations = allocationsByKey.Values
+                    .Where(allocation => allocation.PackageId == package.Id && externalLineIdsById.ContainsKey(allocation.OrderLineId))
+                    .GroupBy(allocation => allocation.OrderLineId)
+                    .Select(group => group.OrderByDescending(allocation => allocation.SourceEventId, StringComparer.Ordinal).First())
+                    .Select(allocation =>
+                    {
+                        var activeQuantity = allocation.AllocatedQuantity;
+                        var shippedQuantity = target is ShipmentPackageStatus.Shipped or ShipmentPackageStatus.Delivered or ShipmentPackageStatus.Undelivered
+                            ? activeQuantity
+                            : allocation.ShippedQuantity;
+                        var deliveredQuantity = target == ShipmentPackageStatus.Delivered ? activeQuantity : allocation.DeliveredQuantity;
+                        return new RemotePackageAllocation(externalLineIdsById[allocation.OrderLineId], activeQuantity, allocation.CancelledQuantity, shippedQuantity, deliveredQuantity, allocation.ReturnedQuantity);
+                    })
+                    .ToArray();
+            }
+            IReadOnlyDictionary<string, NormalizedPackageAllocation> safeAllocations = new Dictionary<string, NormalizedPackageAllocation>(StringComparer.Ordinal);
+            if (packageAllocations.Count > 0 || !remotePackage.IsStatusObservation)
+            {
+                if (!PackageIngestionSafety.TryNormalizeAll(orderedQuantities, packageAllocations, target, out safeAllocations))
+                {
+                    await RecordIssue(tenantId, $"package-quantity:{connectionId}:{eventId}", "PACKAGE_QUANTITY_INVARIANT_REJECTED", "Package miktarları sipariş satırı bütünlüğünü sağlamadı; olayın hiçbir parçası uygulanmadı.", cancellationToken);
+                    continue;
+                }
+            }
+            var packageObservation = remotePackage with { Allocations = packageAllocations };
             if (package is not null) await MergeMarketplaceInvoiceState(package, remotePackage, cancellationToken);
             if (package is not null && package.Status == ShipmentPackageStatus.ManualReview && package.RawStatus == remotePackage.RawStatus && target != ShipmentPackageStatus.ManualReview) { package.Status = target; package.UpdatedAt = now; package.Version++; continue; }
             var eventAlreadyRecorded = knownEventIds.Contains(eventId);
@@ -5305,7 +5378,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     package.DiscountAmount = remotePackage.DiscountAmount;
                     package.NetAmount = remotePackage.NetAmount;
 
-                    foreach (var remoteAllocation in remotePackage.Allocations)
+                    foreach (var remoteAllocation in packageObservation.Allocations)
                     {
                         if (!lines.TryGetValue(remoteAllocation.ExternalLineId, out var line)
                             || !safeAllocations.TryGetValue(remoteAllocation.ExternalLineId, out var safe)) continue;
@@ -5358,11 +5431,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             if (package is null) { package = new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, OrderId = order.Id, ExternalPackageId = remotePackage.ExternalPackageId, CreatedBy = remotePackage.CreatedBy, Status = target, RawStatus = remotePackage.RawStatus, StatusOccurredAt = remotePackage.OccurredAt, CreatedAt = now, Version = 1 }; db.ShipmentPackages.Add(package); packagesByExternalId[remotePackage.ExternalPackageId] = package; telemetryInsertedCount++; await MergeMarketplaceInvoiceState(package, remotePackage, cancellationToken); }
             else if (accept) { package.Status = target; package.RawStatus = remotePackage.RawStatus; package.StatusOccurredAt = remotePackage.OccurredAt; package.Version++; }
             else if (remotePackage.OccurredAt >= package.StatusOccurredAt && package.Status != target) await RecordIssue(tenantId, $"package-transition:{package.Id}:{remotePackage.RawStatus}", "PACKAGE_TRANSITION_REJECTED", "Out-of-order veya izin verilmeyen package geçişi mevcut durumu geriye götürmedi.", cancellationToken);
-            if (package is not null && !string.IsNullOrWhiteSpace(remotePackage.CreatedBy)) package.CreatedBy = remotePackage.CreatedBy;
+            if (package is not null && !remotePackage.IsStatusObservation && !string.IsNullOrWhiteSpace(remotePackage.CreatedBy)) package.CreatedBy = remotePackage.CreatedBy;
             if (accept && package is not null)
             {
                 package.OriginExternalPackageId = string.IsNullOrWhiteSpace(remotePackage.OriginExternalPackageId) ? package.OriginExternalPackageId : remotePackage.OriginExternalPackageId; package.CargoProviderExternalId = string.IsNullOrWhiteSpace(remotePackage.CargoProviderExternalId) ? package.CargoProviderExternalId : remotePackage.CargoProviderExternalId; package.CargoTrackingNumber = string.IsNullOrWhiteSpace(remotePackage.CargoTrackingNumber) ? package.CargoTrackingNumber : remotePackage.CargoTrackingNumber; package.GrossAmount = remotePackage.GrossAmount; package.DiscountAmount = remotePackage.DiscountAmount; package.NetAmount = remotePackage.NetAmount; package.UpdatedAt = now; db.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, PackageId = package.Id, CanonicalStatus = Wire(target), RawStatus = remotePackage.RawStatus, SourceEventId = eventId, OccurredAt = remotePackage.OccurredAt, RecordedAt = now }); knownEventIds.Add(eventId);
-                foreach (var remoteAllocation in remotePackage.Allocations) if (lines.TryGetValue(remoteAllocation.ExternalLineId, out var line) && safeAllocations.TryGetValue(remoteAllocation.ExternalLineId, out var safe)) { var allocationKey = AllocationKey(package.Id, line.Id, eventId); var allocation = allocationsByKey.GetValueOrDefault(allocationKey); if (allocation is null) { allocation = new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenantId, PackageId = package.Id, OrderLineId = line.Id, SourceEventId = eventId, AllocatedQuantity = safe.ActiveAllocatedQuantity, CancelledQuantity = safe.CancelledQuantity, ShippedQuantity = safe.ShippedQuantity, DeliveredQuantity = safe.DeliveredQuantity, ReturnedQuantity = safe.ReturnedQuantity }; db.PackageLineAllocations.Add(allocation); allocationsByKey[allocationKey] = allocation; telemetryInsertedCount++; } }
+                foreach (var remoteAllocation in packageObservation.Allocations) if (lines.TryGetValue(remoteAllocation.ExternalLineId, out var line) && safeAllocations.TryGetValue(remoteAllocation.ExternalLineId, out var safe)) { var allocationKey = AllocationKey(package.Id, line.Id, eventId); var allocation = allocationsByKey.GetValueOrDefault(allocationKey); if (allocation is null) { allocation = new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenantId, PackageId = package.Id, OrderLineId = line.Id, SourceEventId = eventId, AllocatedQuantity = safe.ActiveAllocatedQuantity, CancelledQuantity = safe.CancelledQuantity, ShippedQuantity = safe.ShippedQuantity, DeliveredQuantity = safe.DeliveredQuantity, ReturnedQuantity = safe.ReturnedQuantity }; db.PackageLineAllocations.Add(allocation); allocationsByKey[allocationKey] = allocation; telemetryInsertedCount++; } }
             }
         }
         var projectedLineQuantities = PackageLineProjectionPolicy.Recalculate(packagesByExternalId.Values.ToList(), allocationsByKey.Values.ToList());

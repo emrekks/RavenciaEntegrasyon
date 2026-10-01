@@ -84,6 +84,23 @@ public sealed partial class InvoicingBillingService(
             .ToListAsync(cancellationToken);
         if (packages.Count == 0) return [];
 
+        var statusFeedPackageIds = packages
+            .Where(package => string.Equals(package.CreatedBy, "HEPSIBURADA_STATUS_FEED", StringComparison.Ordinal))
+            .Select(package => package.Id)
+            .ToArray();
+        var allocatedStatusFeedPackageIds = statusFeedPackageIds.Length == 0
+            ? new HashSet<Guid>()
+            : (await db.PackageLineAllocations.AsNoTracking()
+                .Where(allocation => allocation.TenantId == tenantId && statusFeedPackageIds.Contains(allocation.PackageId))
+                .Select(allocation => allocation.PackageId)
+                .Distinct()
+                .ToListAsync(cancellationToken))
+                .ToHashSet();
+        packages = packages
+            .Where(package => InvoiceWorkspacePackagePolicy.ShouldInclude(package.CreatedBy, allocatedStatusFeedPackageIds.Contains(package.Id)))
+            .ToList();
+        if (packages.Count == 0) return [];
+
         var orderIds = packages.Select(x => x.OrderId).Distinct().ToArray();
         var packageIds = packages.Select(x => x.Id).ToArray();
         var orders = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);

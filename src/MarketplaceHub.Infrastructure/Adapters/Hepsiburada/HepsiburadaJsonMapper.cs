@@ -643,6 +643,41 @@ internal static class HepsiburadaJsonMapper
         return new(orderNumber, package, PackageOrderSnapshot(item, orderNumber, package));
     }
 
+    public static RemoteOrderPackage OrderStatusPackage(JsonElement item, string status)
+    {
+        var orderNumber = Text(item, "orderNumber", "OrderNumber", "orderNo", "OrderNo");
+        var packageNumber = Text(item, "packageNumber", "PackageNumber");
+        if (string.IsNullOrWhiteSpace(orderNumber) || string.IsNullOrWhiteSpace(packageNumber))
+            throw new JsonException("Hepsiburada sevkiyat durumunda sipariş veya paket numarası yok.");
+
+        var rawStatus = status.Trim().ToUpperInvariant() switch
+        {
+            "SHIPPED" => "Shipped",
+            "DELIVERED" => "Delivered",
+            "UNDELIVERED" => "Undelivered",
+            _ => throw new JsonException("Hepsiburada sevkiyat durumu desteklenmiyor.")
+        };
+        var occurredAt = Date(item,
+            "ShippedDate", "shippedDate",
+            "DeliveredDate", "deliveredDate",
+            "UndeliveredDate", "undeliveredDate",
+            "lastStatusUpdateDate", "LastStatusUpdateDate");
+        if (occurredAt is null) throw new JsonException("Hepsiburada sevkiyat durumunda olay tarihi yok.");
+
+        var package = new RemotePackage(
+            packageNumber,
+            null,
+            rawStatus,
+            occurredAt.Value,
+            null,
+            Text(item, "trackingInfoCode", "TrackingInfoCode"),
+            [],
+            Invoice: rawStatus == "Delivered" ? InvoiceObservation(item) : null,
+            CreatedBy: "HEPSIBURADA_STATUS_FEED",
+            IsStatusObservation: true);
+        return new(orderNumber, package);
+    }
+
     public static string? OrderNumber(JsonElement item) => Text(item, "orderNumber", "OrderNumber", "orderNo", "OrderNo");
 
     public static RemoteOrder PaidOrderLine(JsonElement item)

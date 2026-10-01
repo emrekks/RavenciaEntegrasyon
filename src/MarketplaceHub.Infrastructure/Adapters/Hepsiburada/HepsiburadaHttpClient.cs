@@ -505,39 +505,108 @@ public sealed partial class HepsiburadaHttpClient(
             return Failure<AdapterPageResult<RemoteOrderPackage>>(AdapterErrorClass.Validation, "HEPSIBURADA_PACKAGE_WINDOW_INVALID", "Hepsiburada paket listelemesi artan ve en fazla 24 saatlik tarih aralığı kabul eder.", HttpStatusCode.BadRequest);
 
         var (offset, limit) = Page(page, settings.PageSize);
-        var query = new List<string> { $"offset={offset.ToString(CultureInfo.InvariantCulture)}", $"limit={limit.ToString(CultureInfo.InvariantCulture)}" };
-        if (window.ModifiedAfter is { } after) query.Add("begindate=" + Uri.EscapeDataString(after.UtcDateTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)));
-        if (window.ModifiedBefore is { } before) query.Add("enddate=" + Uri.EscapeDataString(before.UtcDateTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)));
-        var response = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Get, Packages(account, string.Join('&', query)), cancellationToken);
-        if (!response.IsSuccess) return AdapterResult<AdapterPageResult<RemoteOrderPackage>>.Failure(response.Error!, response.RateLimit);
         try
         {
-            var pageResult = HepsiburadaJsonMapper.PackagePage(response.Value!.RootElement);
-            var items = new List<RemoteOrderPackage>(pageResult.Items.Count);
-            var issues = new List<AdapterPageIssue>();
-            foreach (var item in pageResult.Items)
+            var query = PackageListQuery(offset, limit, window);
+            var response = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Get, Packages(account, query), cancellationToken);
+            if (!response.IsSuccess) return AdapterResult<AdapterPageResult<RemoteOrderPackage>>.Failure(response.Error!, response.RateLimit);
+
+            var sources = new List<(string? Status, IReadOnlyList<JsonElement> Items, int? TotalCount)>();
+            var openPage = HepsiburadaJsonMapper.PackagePage(response.Value!.RootElement);
+            sources.Add((null, openPage.Items, openPage.TotalCount));
+            var rateLimit = response.RateLimit;
+
+            // The generic package list only returns Open packages. Hepsiburada
+            // exposes shipped/delivered/undelivered packages through separate
+            // read-only endpoints, each with a 30-day lookback and max limit 50.
+            foreach (var status in new[] { "shipped", "delivered", "undelivered" })
             {
-                try
+                var statusResponse = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Get, PackagesByStatus(account, status, query), cancellationToken);
+                if (!statusResponse.IsSuccess)
+                    return AdapterResult<AdapterPageResult<RemoteOrderPackage>>.Failure(statusResponse.Error!, statusResponse.RateLimit ?? rateLimit);
+                var statusPage = HepsiburadaJsonMapper.PackagePage(statusResponse.Value!.RootElement);
+                sources.Add((status, statusPage.Items, statusPage.TotalCount));
+                rateLimit = statusResponse.RateLimit ?? rateLimit;
+            }
+
+            var rawItems = new List<RemoteOrderPackage>();
+            var issues = new List<AdapterPageIssue>();
+            foreach (var source in sources)
+            {
+                foreach (var item in source.Items)
                 {
-                    var remotePackage = HepsiburadaJsonMapper.OrderPackage(item);
-                    var trackingRead = await ReadPackageTrackingInfoAsync(account, remotePackage, cancellationToken);
-                    items.Add(trackingRead.Package);
-                    if (trackingRead.Issue is not null) issues.Add(trackingRead.Issue);
-                }
-                catch (JsonException)
-                {
-                    var identity = HepsiburadaJsonMapper.PackageIdentity(item) ?? $"offset:{offset + items.Count}";
-                    issues.Add(new("HEPSIBURADA_PACKAGE_ORDER_LINK_MISSING", identity, "Paket kaydında açık sipariş ve paket kimliği bulunmadı; kayıt siparişe bağlanmadı."));
+                    try
+                    {
+                        rawItems.Add(source.Status is null
+                            ? HepsiburadaJsonMapper.OrderPackage(item)
+                            : HepsiburadaJsonMapper.OrderStatusPackage(item, source.Status));
+                    }
+                    catch (JsonException)
+                    {
+                        var identity = HepsiburadaJsonMapper.PackageIdentity(item) ?? $"offset:{offset + rawItems.Count}";
+                        issues.Add(new("HEPSIBURADA_PACKAGE_ORDER_LINK_MISSING", identity, "Hepsiburada paket/durum kaydında sipariş, paket kimliği veya olay tarihi yok; kayıt siparişe bağlanmadı."));
+                    }
                 }
             }
-            var nextOffset = offset + pageResult.Items.Count;
-            var hasMore = pageResult.TotalCount is { } total ? nextOffset < total : pageResult.Items.Count == limit;
-            return AdapterResult<AdapterPageResult<RemoteOrderPackage>>.Success(new(items, hasMore ? nextOffset.ToString(CultureInfo.InvariantCulture) : null, hasMore, pageResult.TotalCount, issues), response.RateLimit);
+
+            var deduplicated = rawItems
+                .GroupBy(item => (item.ExternalOrderId, item.Package.ExternalPackageId))
+                .Select(MergePackageStatusObservation)
+                .OrderBy(item => item.ExternalOrderId, StringComparer.Ordinal)
+                .ThenBy(item => item.Package.ExternalPackageId, StringComparer.Ordinal)
+                .ToList();
+            var items = new List<RemoteOrderPackage>(deduplicated.Count);
+            foreach (var item in deduplicated)
+            {
+                var trackingRead = await ReadPackageTrackingInfoAsync(account, item, cancellationToken);
+                items.Add(trackingRead.Package);
+                if (trackingRead.Issue is not null) issues.Add(trackingRead.Issue);
+            }
+
+            var nextOffset = offset + limit;
+            var hasMore = sources.Any(source => source.TotalCount is { } total
+                ? nextOffset < total
+                : source.Items.Count == limit);
+            var totalCount = sources.Where(source => source.TotalCount is not null).Select(source => source.TotalCount!.Value).DefaultIfEmpty().Max();
+            return AdapterResult<AdapterPageResult<RemoteOrderPackage>>.Success(new(items, hasMore ? nextOffset.ToString(CultureInfo.InvariantCulture) : null, hasMore, totalCount == 0 ? null : totalCount, issues), rateLimit);
         }
         catch (JsonException)
         {
-            return Failure<AdapterPageResult<RemoteOrderPackage>>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_PACKAGE_LIST_CONTRACT_INVALID", "Hepsiburada paket listesi beklenen sayfa sözleşmesiyle eşleşmiyor.", HttpStatusCode.BadGateway);
+            return Failure<AdapterPageResult<RemoteOrderPackage>>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_PACKAGE_LIST_CONTRACT_INVALID", "Hepsiburada paket veya sevkiyat durumu listesi beklenen sayfa sözleşmesiyle eşleşmiyor.", HttpStatusCode.BadGateway);
         }
+    }
+
+    private static string PackageListQuery(int offset, int limit, PackagePollWindow window)
+    {
+        var query = new List<string>
+        {
+            $"offset={offset.ToString(CultureInfo.InvariantCulture)}",
+            $"limit={limit.ToString(CultureInfo.InvariantCulture)}"
+        };
+        if (window.ModifiedAfter is { } after) query.Add("begindate=" + Uri.EscapeDataString(after.UtcDateTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)));
+        if (window.ModifiedBefore is { } before) query.Add("enddate=" + Uri.EscapeDataString(before.UtcDateTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)));
+        return string.Join('&', query);
+    }
+
+    private static RemoteOrderPackage MergePackageStatusObservation(IGrouping<(string ExternalOrderId, string ExternalPackageId), RemoteOrderPackage> group)
+    {
+        var latest = group.OrderByDescending(item => item.Package.OccurredAt).First();
+        var detailed = group.FirstOrDefault(item => !item.Package.IsStatusObservation || item.Package.Allocations.Count > 0);
+        if (detailed is null) return latest;
+
+        var updatedPackage = detailed.Package with
+        {
+            RawStatus = latest.Package.OccurredAt >= detailed.Package.OccurredAt ? latest.Package.RawStatus : detailed.Package.RawStatus,
+            OccurredAt = latest.Package.OccurredAt > detailed.Package.OccurredAt ? latest.Package.OccurredAt : detailed.Package.OccurredAt,
+            CargoProviderExternalId = latest.Package.CargoProviderExternalId ?? detailed.Package.CargoProviderExternalId,
+            CargoTrackingNumber = latest.Package.CargoTrackingNumber ?? detailed.Package.CargoTrackingNumber,
+            Invoice = latest.Package.Invoice ?? detailed.Package.Invoice,
+            IsStatusObservation = false
+        };
+        var order = detailed.OrderSnapshot is null
+            ? null
+            : detailed.OrderSnapshot with { Packages = detailed.OrderSnapshot.Packages.Select(package => package.ExternalPackageId == updatedPackage.ExternalPackageId ? updatedPackage : package).ToArray() };
+        return detailed with { Package = updatedPackage, OrderSnapshot = order };
     }
 
     internal async Task<(RemoteOrderPackage Package, AdapterPageIssue? Issue)> ReadPackageTrackingInfoAsync(
@@ -558,8 +627,10 @@ public sealed partial class HepsiburadaHttpClient(
         try
         {
             var tracking = HepsiburadaJsonMapper.PackageTrackingInfo(trackingDocument.RootElement, remotePackage.Package.ExternalPackageId);
-            var trackingStatus = string.Equals(tracking.Status, "InTransit", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(tracking.Status, "Delivered", StringComparison.OrdinalIgnoreCase)
+            var trackingStatus = string.Equals(tracking.Status, "Delivered", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(tracking.Status, "InTransit", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(remotePackage.Package.RawStatus, "Undelivered", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(remotePackage.Package.RawStatus, "Delivered", StringComparison.OrdinalIgnoreCase)
                 ? tracking.Status!
                 : remotePackage.Package.RawStatus;
             var enrichedPackage = remotePackage.Package with
@@ -754,6 +825,7 @@ public sealed partial class HepsiburadaHttpClient(
     internal static string Orders(HepsiburadaRequestContext context, string query) => $"orders/merchantid/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}?{query}";
     internal static string OrderDetails(HepsiburadaRequestContext context, string orderNumber) => $"orders/merchantid/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}/ordernumber/{Uri.EscapeDataString(orderNumber)}";
     internal static string Packages(HepsiburadaRequestContext context, string query) => $"packages/merchantid/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}?{query}";
+    internal static string PackagesByStatus(HepsiburadaRequestContext context, string status, string query) => $"packages/merchantid/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}/{Uri.EscapeDataString(status)}?{query}";
     internal static string PackageTrackingInfo(string merchantId, string packageNumber) => $"packages/merchantid/{Uri.EscapeDataString(merchantId)}/packagenumber/{Uri.EscapeDataString(packageNumber)}";
     internal static string InvoiceLink(HepsiburadaRequestContext context, string packageNumber) => $"packages/merchantid/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}/packagenumber/{Uri.EscapeDataString(packageNumber)}/invoice";
     internal static string Listings(HepsiburadaRequestContext context, string query) => $"listings/merchantid/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}?{query}";

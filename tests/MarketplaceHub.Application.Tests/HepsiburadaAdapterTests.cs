@@ -20,6 +20,10 @@ public sealed class HepsiburadaAdapterTests
         Assert.Equal("packages/merchantid/merchant%2F17/packagenumber/PKG%2F1/changecargocompany", HepsiburadaHttpClient.ChangeCargoCompany("merchant/17", "PKG/1"));
         Assert.Equal("packages/merchantid/merchant%2F17/packagenumber/PKG%2F1/unpack", HepsiburadaHttpClient.UnpackPackage("merchant/17", "PKG/1"));
         Assert.Equal("packages/merchantid/merchant%2F17/packagenumber/PKG%2F1", HepsiburadaHttpClient.PackageTrackingInfo("merchant/17", "PKG/1"));
+        var context = new HepsiburadaRequestContext(
+            new MarketplaceHub.Domain.PlatformConnection { PlatformCode = "HEPSIBURADA", Environment = "STAGE", DisplayName = "fixture", ExternalStoreId = "merchant/17", Status = "ACTIVE", ApiVersion = "V1.0" },
+            new Uri("https://oms.example/"), new Uri("https://listing.example/"), "integrator", "key");
+        Assert.Equal("packages/merchantid/merchant%2F17/shipped?offset=10&limit=10", HepsiburadaHttpClient.PackagesByStatus(context, "shipped", "offset=10&limit=10"));
         Assert.Equal("lineitems/merchantid/merchant%2F17/packageablewith/lineitemid/line%2F1", HepsiburadaHttpClient.PackageableLineItems("merchant/17", "line/1"));
         Assert.Equal("packages/merchantid/merchant%2F17", HepsiburadaHttpClient.CreatePackage("merchant/17"));
         Assert.Equal("packages/merchantid/merchant%2F17/packagenumber/PKG%2F1/labels?format=zpl", HepsiburadaHttpClient.PackageLabel("merchant/17", "PKG/1"));
@@ -657,6 +661,28 @@ public sealed class HepsiburadaAdapterTests
     }
 
     [Fact]
+    public void PackageStatusMapperReadsOfficialShipmentFeedsWithoutInventingLineOrTrackingData()
+    {
+        using var shippedJson = JsonDocument.Parse("""{"orderNumber":"HB-SHIPPED","packageNumber":"PKG-SHIPPED","Barcode":"barcode-shipped","ShippedDate":"2026-09-30T10:00:00Z"}""");
+        using var deliveredJson = JsonDocument.Parse("""{"orderNumber":"HB-DELIVERED","packageNumber":"PKG-DELIVERED","Barcode":"barcode-delivered","DeliveredDate":"2026-09-30T11:00:00Z","hasInvoice":true}""");
+        using var undeliveredJson = JsonDocument.Parse("""{"orderNumber":"HB-UNDELIVERED","packageNumber":"PKG-UNDELIVERED","Barcode":"barcode-undelivered","UndeliveredDate":"2026-09-30T12:00:00Z"}""");
+
+        var shipped = HepsiburadaJsonMapper.OrderStatusPackage(shippedJson.RootElement, "shipped");
+        var delivered = HepsiburadaJsonMapper.OrderStatusPackage(deliveredJson.RootElement, "delivered");
+        var undelivered = HepsiburadaJsonMapper.OrderStatusPackage(undeliveredJson.RootElement, "undelivered");
+
+        Assert.Equal("Shipped", shipped.Package.RawStatus);
+        Assert.Equal("Delivered", delivered.Package.RawStatus);
+        Assert.Equal("Undelivered", undelivered.Package.RawStatus);
+        Assert.Empty(shipped.Package.Allocations);
+        Assert.True(shipped.Package.IsStatusObservation);
+        Assert.Equal("HEPSIBURADA_STATUS_FEED", shipped.Package.CreatedBy);
+        Assert.Null(shipped.Package.CargoTrackingNumber);
+        Assert.Equal("INVOICED", delivered.Package.Invoice!.RawStatus);
+        Assert.Null(undelivered.Package.Invoice);
+    }
+
+    [Fact]
     public void PackageTrackingInfoMapperUsesTrackingCodeAndMatchesRequestedPackage()
     {
         using var json = JsonDocument.Parse("""
@@ -729,6 +755,35 @@ public sealed class HepsiburadaAdapterTests
         Assert.Equal("GET", request.Method);
         Assert.Equal("https://oms.example/packages/merchantid/merchant-19/packagenumber/5000031612", request.Uri.AbsoluteUri);
         Assert.Equal("Basic", request.AuthorizationScheme);
+    }
+
+    [Fact]
+    public async Task PackageTrackingReadDoesNotRegressDeliveredShipmentToStaleInTransit()
+    {
+        using var statusJson = JsonDocument.Parse("""{"orderNumber":"HB-2026-21","packageNumber":"5000031621","DeliveredDate":"2026-09-30T12:15:00Z","hasInvoice":true}""");
+        var package = HepsiburadaJsonMapper.OrderStatusPackage(statusJson.RootElement, "delivered");
+        var handler = new CapturingHttpHandler("""[{"packageNumber":"5000031621","status":"InTransit","cargoCompany":"HepsiJet","trackingInfoCode":"tracking-21"}]""");
+        var client = CreateReadOnlyHepsiburadaClient(handler);
+        var account = new HepsiburadaRequestContext(
+            new MarketplaceHub.Domain.PlatformConnection
+            {
+                PlatformCode = "HEPSIBURADA",
+                Environment = "STAGE",
+                DisplayName = "fixture",
+                ExternalStoreId = "merchant-21",
+                Status = "ACTIVE",
+                ApiVersion = "V1.0"
+            },
+            new Uri("https://oms.example/"), new Uri("https://listing.example/"), "integrator", "fixture-key")
+        {
+            IntegratorName = "ravencia_tests/1.0"
+        };
+
+        var result = await client.ReadPackageTrackingInfoAsync(account, package, CancellationToken.None);
+
+        Assert.Equal("Delivered", result.Package.Package.RawStatus);
+        Assert.Equal("tracking-21", result.Package.Package.CargoTrackingNumber);
+        Assert.Equal("GET", Assert.Single(handler.Requests).Method);
     }
 
     [Fact]

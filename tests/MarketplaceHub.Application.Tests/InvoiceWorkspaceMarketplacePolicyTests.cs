@@ -22,4 +22,12 @@ public sealed class InvoiceWorkspaceMarketplacePolicyTests
     {
         Assert.False(InvoiceWorkspaceMarketplacePolicy.Supports(platformCode));
     }
+
+    [Fact]
+    public void StatusFeedPackagesNeedLineAllocationsBeforeEnteringInvoiceWorkspace()
+    {
+        Assert.False(InvoiceWorkspacePackagePolicy.ShouldInclude("HEPSIBURADA_STATUS_FEED", false));
+        Assert.True(InvoiceWorkspacePackagePolicy.ShouldInclude("HEPSIBURADA_STATUS_FEED", true));
+        Assert.True(InvoiceWorkspacePackagePolicy.ShouldInclude("MARKETPLACE_DETAIL", false));
+    }
 }
