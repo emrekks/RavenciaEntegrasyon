@@ -1,6 +1,7 @@
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Xunit;
 
 namespace MarketplaceHub.Application.Tests;
@@ -42,5 +43,24 @@ public sealed class MarketplaceSalesStatusTabTests
         var statuses = MarketplaceSalesService.DerivedStatusesForOrderTab("PENDING");
 
         Assert.Equal(DashboardMetricPolicy.PendingOrderStatuses, statuses);
+    }
+
+    [Fact]
+    public void New_order_filter_includes_unpacked_Hepsiburada_orders_without_package_rows()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql("Host=localhost;Port=5432;Database=metadata-only;Username=metadata-only;Password=metadata-only")
+            .Options;
+        using var db = new AppDbContext(options);
+        var service = new MarketplaceSalesService(db, null!, null!, null!, null!, null!, null!, TimeProvider.System);
+        var tenantId = Guid.NewGuid();
+        IQueryable<Order> query = db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId);
+
+        service.ApplyOrderFilters(ref query, new OrderListQuery(Status: "NEW"), tenantId);
+
+        var sql = query.ToQueryString();
+        Assert.Contains("HEPSIBURADA", sql, StringComparison.Ordinal);
+        Assert.Contains("NOT EXISTS", sql, StringComparison.Ordinal);
+        Assert.Contains("NEW", sql, StringComparison.Ordinal);
     }
 }

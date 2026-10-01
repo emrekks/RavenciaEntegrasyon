@@ -126,7 +126,7 @@ public static class ShipmentPackageStatusPolicy
         "CREATED" => ShipmentPackageStatus.New,
         "OPEN" => ShipmentPackageStatus.ReadyToShip,
         "PICKING" => ShipmentPackageStatus.Processing,
-        "INVOICED" or "READY_TO_SHIP" or "READYTOSHIP" => ShipmentPackageStatus.ReadyToShip,
+        "INVOICED" or "PACKAGED" or "READY_TO_SHIP" or "READYTOSHIP" => ShipmentPackageStatus.ReadyToShip,
         "SHIPPED" or "IN_TRANSIT" or "INTRANSIT" => ShipmentPackageStatus.Shipped,
         "DELIVERED" => ShipmentPackageStatus.Delivered,
         "PARTIALLY_CANCELLED" or "PARTIALLYCANCELLED" => ShipmentPackageStatus.PartiallyCancelled,
