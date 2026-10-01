@@ -229,19 +229,24 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 : derivedStatuses is not null
                 ? query.Where(order => derivedStatuses.Contains(order.DerivedStatus))
                 : packageStatuses is not null
-                ? status == "NEW"
-                    ? query.Where(order => db.ShipmentPackages.Any(package => package.TenantId == order.TenantId
+                ? status switch
+                {
+                    "NEW" => query.Where(order => db.ShipmentPackages.Any(package => package.TenantId == order.TenantId
                             && package.OrderId == order.Id
                             && packageStatuses.Contains(package.Status))
-                        || HepsiburadaUnpackagedNewOrders(tenantId).Any(newOrder => newOrder.Id == order.Id))
-                    : status == "ON_HOLD"
-                        ? query.Where(order => db.ShipmentPackages.Any(package => package.TenantId == order.TenantId
-                                && package.OrderId == order.Id
-                                && packageStatuses.Contains(package.Status))
-                            || HepsiburadaUnpackagedOnHoldOrders(tenantId).Any(holdOrder => holdOrder.Id == order.Id))
-                        : query.Where(order => db.ShipmentPackages.Any(package => package.TenantId == order.TenantId
+                        || HepsiburadaUnpackagedNewOrders(tenantId).Any(newOrder => newOrder.Id == order.Id)),
+                    "ON_HOLD" => query.Where(order => db.ShipmentPackages.Any(package => package.TenantId == order.TenantId
                             && package.OrderId == order.Id
-                            && packageStatuses.Contains(package.Status)))
+                            && packageStatuses.Contains(package.Status))
+                        || HepsiburadaUnpackagedOnHoldOrders(tenantId).Any(holdOrder => holdOrder.Id == order.Id)),
+                    "DELIVERED" => query.Where(order => db.ShipmentPackages.Any(package => package.TenantId == order.TenantId
+                            && package.OrderId == order.Id
+                            && packageStatuses.Contains(package.Status))
+                        || HepsiburadaUnpackagedDeliveredOrders(tenantId).Any(deliveredOrder => deliveredOrder.Id == order.Id)),
+                    _ => query.Where(order => db.ShipmentPackages.Any(package => package.TenantId == order.TenantId
+                        && package.OrderId == order.Id
+                        && packageStatuses.Contains(package.Status)))
+                }
                 : status switch
                 {
                     // originPackageIds is also present for split/cancel packages;
@@ -392,11 +397,15 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var unpackagedOnHoldOrderCount = platformCode is null or "" or "ALL" or "HEPSIBURADA"
             ? await HepsiburadaUnpackagedOnHoldOrders(tenantId).CountAsync(cancellationToken)
             : 0;
+        var unpackagedDeliveredOrderCount = platformCode is null or "" or "ALL" or "HEPSIBURADA"
+            ? await HepsiburadaUnpackagedDeliveredOrders(tenantId).CountAsync(cancellationToken)
+            : 0;
         return summary with
         {
-            All = summary.All + unpackagedNewOrderCount + unpackagedOnHoldOrderCount,
+            All = summary.All + unpackagedNewOrderCount + unpackagedOnHoldOrderCount + unpackagedDeliveredOrderCount,
             New = summary.New + unpackagedNewOrderCount,
             OnHold = summary.OnHold + unpackagedOnHoldOrderCount,
+            Delivered = summary.Delivered + unpackagedDeliveredOrderCount,
             Pending = await pendingOrders.CountAsync(cancellationToken)
         };
     }
@@ -413,6 +422,15 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     internal IQueryable<Order> HepsiburadaUnpackagedOnHoldOrders(Guid tenantId) => db.Orders.AsNoTracking()
         .Where(order => order.TenantId == tenantId
             && order.DerivedStatus == "ON_HOLD"
+            && db.PlatformConnections.Any(connection => connection.TenantId == tenantId
+                && connection.Id == order.ConnectionId
+                && connection.PlatformCode == "HEPSIBURADA"
+                && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
+            && !db.ShipmentPackages.Any(package => package.TenantId == tenantId && package.OrderId == order.Id));
+
+    internal IQueryable<Order> HepsiburadaUnpackagedDeliveredOrders(Guid tenantId) => db.Orders.AsNoTracking()
+        .Where(order => order.TenantId == tenantId
+            && order.DerivedStatus == "DELIVERED"
             && db.PlatformConnections.Any(connection => connection.TenantId == tenantId
                 && connection.Id == order.ConnectionId
                 && connection.PlatformCode == "HEPSIBURADA"

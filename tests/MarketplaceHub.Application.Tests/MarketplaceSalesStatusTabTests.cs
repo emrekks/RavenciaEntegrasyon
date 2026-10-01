@@ -84,7 +84,7 @@ public sealed class MarketplaceSalesStatusTabTests
     }
 
     [Fact]
-    public void Delivered_filter_does_not_include_unpacked_Hepsiburada_hold_orders()
+    public void Delivered_filter_includes_unpacked_Hepsiburada_delivered_orders_but_not_holds()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseNpgsql("Host=localhost;Port=5432;Database=metadata-only;Username=metadata-only;Password=metadata-only")
@@ -98,7 +98,9 @@ public sealed class MarketplaceSalesStatusTabTests
 
         var sql = query.ToQueryString();
         Assert.Contains("shipment_packages", sql, StringComparison.Ordinal);
-        Assert.DoesNotContain("HEPSIBURADA", sql, StringComparison.Ordinal);
+        Assert.Contains("HEPSIBURADA", sql, StringComparison.Ordinal);
+        Assert.Contains("DELIVERED", sql, StringComparison.Ordinal);
+        Assert.Contains("NOT EXISTS", sql, StringComparison.Ordinal);
         Assert.DoesNotContain("ON_HOLD", sql, StringComparison.Ordinal);
     }
 }

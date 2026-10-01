@@ -71,9 +71,12 @@ public sealed class MandatorySynchronizationScenariosTests
     [Theory]
     [InlineData("HEPSIBURADA", "NEW", true)]
     [InlineData("hepsiburada", " new ", true)]
+    [InlineData("HEPSIBURADA", "ON_HOLD", true)]
+    [InlineData("hepsiburada", " on_hold ", true)]
     [InlineData("TRENDYOL", "NEW", false)]
     [InlineData("HEPSIBURADA", "SHIPPED", false)]
-    public void HepsiburadaLifecyclePollsOnlyUnpackagedNewOrders(string platformCode, string status, bool expected) =>
+    [InlineData("HEPSIBURADA", "DELIVERED", false)]
+    public void HepsiburadaLifecyclePollsUnpackagedNewAndOnHoldOrders(string platformCode, string status, bool expected) =>
         Assert.Equal(expected, OpenOrderLifecyclePolicy.ShouldPollWithoutPackage(platformCode, status));
 
     [Theory]
@@ -95,6 +98,7 @@ public sealed class MandatorySynchronizationScenariosTests
     public void HepsiburadaOrderLifecycleAdvancesButDoesNotRegressPackageLessSnapshots()
     {
         Assert.Equal(ShipmentPackageStatus.Delivered, HepsiburadaOrderLifecycleStatusPolicy.Reconcile("NEW", "Delivered"));
+        Assert.Equal(ShipmentPackageStatus.Delivered, HepsiburadaOrderLifecycleStatusPolicy.Reconcile("ON_HOLD", "Delivered", ["ClaimCreated"]));
         Assert.Equal(ShipmentPackageStatus.OnHold, HepsiburadaOrderLifecycleStatusPolicy.Reconcile("NEW", "ClaimCreated"));
         Assert.Null(HepsiburadaOrderLifecycleStatusPolicy.Reconcile("SHIPPED", "Open"));
         Assert.Equal(ShipmentPackageStatus.Cancelled, HepsiburadaOrderLifecycleStatusPolicy.Reconcile("READY_TO_SHIP", "CancelledByMerchant"));

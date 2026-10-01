@@ -2124,6 +2124,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         {
             await ReconcileKnownHepsiburadaClaimOrders(tenantId, connectionId, cancellationToken);
             var includeUnpackagedNewOrders = OpenOrderLifecyclePolicy.ShouldPollWithoutPackage(platformCode, "NEW");
+            var includeUnpackagedOnHoldOrders = OpenOrderLifecyclePolicy.ShouldPollWithoutPackage(platformCode, "ON_HOLD");
             var lifecycleOrders = db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId
                 && order.ConnectionId == connectionId
                 && (db.ShipmentPackages.Any(package => package.TenantId == tenantId
@@ -2132,8 +2133,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                         && package.Status != ShipmentPackageStatus.Delivered
                         && package.Status != ShipmentPackageStatus.Cancelled
                         && package.Status != ShipmentPackageStatus.Returned)
-                    || (includeUnpackagedNewOrders
-                        && order.DerivedStatus == "NEW"
+                    || ((includeUnpackagedNewOrders && order.DerivedStatus == "NEW"
+                            || includeUnpackagedOnHoldOrders && order.DerivedStatus == "ON_HOLD")
                         && !db.ShipmentPackages.Any(package => package.TenantId == tenantId
                             && package.ConnectionId == connectionId
                             && package.OrderId == order.Id))));
