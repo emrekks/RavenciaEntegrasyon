@@ -921,7 +921,8 @@ internal static class HepsiburadaJsonMapper
         var currency = Text(order, "currency", "Currency", "currencyCode", "CurrencyCode")
             ?? Text(Find(order, "totalPrice", "TotalPrice"), "currency", "Currency")
             ?? "TRY";
-        var status = Text(order, "status", "Status", "orderStatus", "OrderStatus") ?? "Open";
+        var status = Text(order, "status", "Status", "orderStatus", "OrderStatus")
+            ?? ConsistentLineItemStatus(lines);
         var paymentStatus = Text(order, "paymentStatus", "PaymentStatus") ?? "Received";
         var customer = Find(order, "customer", "Customer");
         var shipmentAddress = Find(order, "deliveryAddress", "DeliveryAddress", "shipmentAddress", "ShipmentAddress");
@@ -951,8 +952,22 @@ internal static class HepsiburadaJsonMapper
             order.GetRawText(),
             dueAt,
             paymentStatus,
-            status.Contains("cancel", StringComparison.OrdinalIgnoreCase) ? "CANCELLED" : "NOT_CANCELLED",
+            status?.Contains("cancel", StringComparison.OrdinalIgnoreCase) == true ? "CANCELLED" : "NOT_CANCELLED",
             LifecycleStatus: status);
+    }
+
+    private static string? ConsistentLineItemStatus(IReadOnlyList<RemoteOrderLine> lines)
+    {
+        var statuses = lines
+            .Select(line => line.RawStatus?.Trim())
+            .Where(status => !string.IsNullOrWhiteSpace(status))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        // The order detail normally carries an order-level status. Some
+        // responses only expose it on each line item, so use that as a
+        // fallback only when all available line statuses agree.
+        return statuses.Length == 1 ? statuses[0] : null;
     }
 
     private static RemoteOrderLine MapLine(JsonElement line)

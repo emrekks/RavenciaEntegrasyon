@@ -541,6 +541,44 @@ public sealed class HepsiburadaAdapterTests
     }
 
     [Fact]
+    public void OrderMapperUsesConsistentLineItemLifecycleStatusWhenOrderStatusIsAbsent()
+    {
+        using var json = JsonDocument.Parse("""
+        {
+          "orderNumber": "HB-DETAIL-22",
+          "orderDate": "2026-09-28T12:15:00Z",
+          "items": [
+            { "id": "line-22-a", "merchantSku": "sku-22-a", "quantity": 1, "price": 20, "status": "Delivered" },
+            { "id": "line-22-b", "merchantSku": "sku-22-b", "quantity": 1, "price": 30, "status": "Delivered" }
+          ]
+        }
+        """);
+
+        var order = HepsiburadaJsonMapper.Order(json.RootElement, "HB-DETAIL-22");
+
+        Assert.Equal("Delivered", order.LifecycleStatus);
+    }
+
+    [Fact]
+    public void OrderMapperDoesNotInventLifecycleWhenLineItemStatusesConflict()
+    {
+        using var json = JsonDocument.Parse("""
+        {
+          "orderNumber": "HB-DETAIL-23",
+          "orderDate": "2026-09-28T12:15:00Z",
+          "items": [
+            { "id": "line-23-a", "merchantSku": "sku-23-a", "quantity": 1, "price": 20, "status": "Delivered" },
+            { "id": "line-23-b", "merchantSku": "sku-23-b", "quantity": 1, "price": 30, "status": "ClaimCreated" }
+          ]
+        }
+        """);
+
+        var order = HepsiburadaJsonMapper.Order(json.RootElement, "HB-DETAIL-23");
+
+        Assert.Null(order.LifecycleStatus);
+    }
+
+    [Fact]
     public void PaidOrderListMapperUsesDocumentedLineFieldsWithoutCreatingAPackage()
     {
         using var json = JsonDocument.Parse("""
