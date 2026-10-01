@@ -5499,7 +5499,10 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var acceptedStatuses = persistedStatuses.ToList();
         acceptedStatuses.AddRange(db.ShipmentPackages.Local.Where(x => x.TenantId == tenantId && x.OrderId == order.Id).Select(x => x.Status));
         var derivedStatus = ShipmentPackageStatusPolicy.Aggregate(acceptedStatuses);
-        if (acceptedStatuses.Count == 0 && isHepsiburada && HepsiburadaOrderLifecycleStatusPolicy.Reconcile(order.DerivedStatus, remote.LifecycleStatus) is { } hepsiburadaStatus)
+        if (acceptedStatuses.Count == 0 && isHepsiburada && HepsiburadaOrderLifecycleStatusPolicy.Reconcile(
+                order.DerivedStatus,
+                remote.LifecycleStatus,
+                lines.Values.Select(line => line.RawStatus)) is { } hepsiburadaStatus)
             derivedStatus = hepsiburadaStatus;
         order.DerivedStatus = Wire(derivedStatus);
         if (isShopify)

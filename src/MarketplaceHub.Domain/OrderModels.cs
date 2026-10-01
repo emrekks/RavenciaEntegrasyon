@@ -138,10 +138,16 @@ public static class HepsiburadaOrderLifecycleStatusPolicy
         _ => null
     };
 
-    public static ShipmentPackageStatus? Reconcile(string? currentCanonicalStatus, string? remoteStatus)
+    public static ShipmentPackageStatus? Reconcile(
+        string? currentCanonicalStatus,
+        string? remoteStatus,
+        IEnumerable<string?>? knownLineStatuses = null)
     {
         var incoming = FromRemote(remoteStatus);
         if (incoming is null) return null;
+        if (incoming == ShipmentPackageStatus.New
+            && knownLineStatuses?.Any(status => string.Equals(status?.Trim(), "ClaimCreated", StringComparison.OrdinalIgnoreCase)) == true)
+            incoming = ShipmentPackageStatus.OnHold;
         if (!Enum.TryParse<ShipmentPackageStatus>((currentCanonicalStatus ?? string.Empty).Replace("_", string.Empty, StringComparison.Ordinal), true, out var current))
             return incoming;
         if (incoming == ShipmentPackageStatus.Cancelled)
