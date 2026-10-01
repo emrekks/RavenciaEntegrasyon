@@ -225,23 +225,45 @@ public sealed partial class HepsiburadaHttpClient(
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return Failure<AdapterPageResult<RemoteCatalogProduct>>(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIAL_INVALID", "Hepsiburada bağlantı bilgileri bulunamadı.", HttpStatusCode.Unauthorized);
         var (offset, limit) = Page(page, settings.PageSize);
-        var query = new List<string> { $"offset={offset.ToString(CultureInfo.InvariantCulture)}", $"limit={limit.ToString(CultureInfo.InvariantCulture)}" };
-        if (filter.ModifiedAfter is { } modifiedAfter) query.Add("updateStartDate=" + Uri.EscapeDataString(modifiedAfter.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture)));
-        if (!string.IsNullOrWhiteSpace(filter.ProductMainId)) query.Add("productId=" + Uri.EscapeDataString(filter.ProductMainId));
-        var response = await SendAsync(account, account.ListingBaseAddress, HttpMethod.Get, Listings(account, string.Join('&', query)), cancellationToken);
-        if (!response.IsSuccess) return AdapterResult<AdapterPageResult<RemoteCatalogProduct>>.Failure(response.Error!, response.RateLimit);
-        try
+        var lookupQueries = ListingLookupQueries(filter.ProductMainId);
+        var attempts = lookupQueries.Count == 0 ? new string?[] { null } : lookupQueries.Cast<string?>().ToArray();
+        for (var attemptIndex = 0; attemptIndex < attempts.Length; attemptIndex++)
         {
-            var pageResult = HepsiburadaJsonMapper.ListingPage(response.Value!.RootElement);
-            var items = pageResult.Items.Select(HepsiburadaJsonMapper.CatalogProduct).ToArray();
-            var nextOffset = offset + pageResult.Items.Count;
-            var hasMore = pageResult.TotalCount is { } total ? nextOffset < total : pageResult.Items.Count == limit;
-            return AdapterResult<AdapterPageResult<RemoteCatalogProduct>>.Success(new(items, hasMore ? nextOffset.ToString(CultureInfo.InvariantCulture) : null, hasMore, pageResult.TotalCount), response.RateLimit);
+            var query = new List<string> { $"offset={offset.ToString(CultureInfo.InvariantCulture)}", $"limit={limit.ToString(CultureInfo.InvariantCulture)}" };
+            if (filter.ModifiedAfter is { } modifiedAfter) query.Add("updateStartDate=" + Uri.EscapeDataString(modifiedAfter.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture)));
+            if (attempts[attemptIndex] is { } lookupQuery) query.Add(lookupQuery);
+            var response = await SendAsync(account, account.ListingBaseAddress, HttpMethod.Get, Listings(account, string.Join('&', query)), cancellationToken);
+            if (!response.IsSuccess) return AdapterResult<AdapterPageResult<RemoteCatalogProduct>>.Failure(response.Error!, response.RateLimit);
+            try
+            {
+                var pageResult = HepsiburadaJsonMapper.ListingPage(response.Value!.RootElement);
+                var items = pageResult.Items.Select(HepsiburadaJsonMapper.CatalogProduct).ToArray();
+                var nextOffset = offset + pageResult.Items.Count;
+                var hasMore = pageResult.TotalCount is { } total ? nextOffset < total : pageResult.Items.Count == limit;
+                var mapped = new AdapterPageResult<RemoteCatalogProduct>(items, hasMore ? nextOffset.ToString(CultureInfo.InvariantCulture) : null, hasMore, pageResult.TotalCount);
+
+                // Hepsiburada order lines commonly expose an hbSku, while the
+                // product importer stores the generic single-product lookup in
+                // ProductMainId. Try the documented productId filter first, then
+                // the documented hbSkuList filter if that exact ID has no match.
+                if (attemptIndex + 1 < attempts.Length && page.Cursor is null && items.Length == 0) continue;
+                return AdapterResult<AdapterPageResult<RemoteCatalogProduct>>.Success(mapped, response.RateLimit);
+            }
+            catch (JsonException)
+            {
+                return Failure<AdapterPageResult<RemoteCatalogProduct>>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_LISTING_CONTRACT_INVALID", "Hepsiburada listing yanıtı beklenen sayfa sözleşmesiyle eşleşmiyor.", HttpStatusCode.BadGateway);
+            }
         }
-        catch (JsonException)
-        {
-            return Failure<AdapterPageResult<RemoteCatalogProduct>>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_LISTING_CONTRACT_INVALID", "Hepsiburada listing yanıtı beklenen sayfa sözleşmesiyle eşleşmiyor.", HttpStatusCode.BadGateway);
-        }
+
+        return AdapterResult<AdapterPageResult<RemoteCatalogProduct>>.Success(new([], null, false, 0), null);
+    }
+
+    internal static IReadOnlyList<string> ListingLookupQueries(string? productLookup)
+    {
+        var value = productLookup?.Trim();
+        if (string.IsNullOrWhiteSpace(value)) return [];
+        var escaped = Uri.EscapeDataString(value);
+        return [$"productId={escaped}", $"hbSkuList={escaped}"];
     }
 
     public async Task<AdapterResult<RemoteOperationRef>> CreateAsync(AdapterContext context, ProductPublication publication, CancellationToken cancellationToken)

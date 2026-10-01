@@ -105,6 +105,7 @@ internal static class HepsiburadaJsonMapper
         var currency = Text(item, "currency", "Currency") ?? "TRY";
         var options = Options(item);
         var images = Strings(item, "imageUrls", "ImageUrls", "images", "Images", "imageUrl", "ImageUrl");
+        if (images.Count == 0 && ImageUrl(item) is { } imageUrl) images = [imageUrl];
         var variant = new RemoteCatalogVariant(
             simple.ExternalVariantId!,
             simple.Sku ?? simple.ExternalVariantId!,

@@ -239,6 +239,36 @@ public sealed class HepsiburadaAdapterTests
         Assert.Equal(4m, product.Variants.Single().StockQuantity);
     }
 
+    [Theory]
+    [InlineData("productImageUrlFormat", "https://cdn.example.test/product-image.jpg")]
+    [InlineData("emaProductImageUrlFormat", "https://cdn.example.test/ema-image.jpg")]
+    public void ListingMapperReadsHepsiburadaImageUrlAliases(string field, string imageUrl)
+    {
+        using var json = JsonDocument.Parse($$"""
+        {
+          "items": [{
+            "productId": "product-18",
+            "hbSku": "hb-18",
+            "merchantSku": "merchant-18",
+            "productName": "Image test",
+            "{{field}}": "{{imageUrl}}"
+          }]
+        }
+        """);
+
+        var product = HepsiburadaJsonMapper.CatalogProduct(HepsiburadaJsonMapper.ListingPage(json.RootElement).Items.Single());
+
+        Assert.Equal(new[] { imageUrl }, product.ImageUrls);
+        Assert.Equal(new[] { imageUrl }, product.Variants.Single().ImageUrls);
+    }
+
+    [Fact]
+    public void ListingLookupTriesProductIdThenHepsiburadaSku()
+    {
+        Assert.Equal(new[] { "productId=HBCV0000DTYGZD", "hbSkuList=HBCV0000DTYGZD" }, HepsiburadaHttpClient.ListingLookupQueries(" HBCV0000DTYGZD "));
+        Assert.Empty(HepsiburadaHttpClient.ListingLookupQueries("  "));
+    }
+
     [Fact]
     public void ProductImportMapper_TracksIdAndMapsPartialResultsByMerchantSku()
     {
