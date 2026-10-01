@@ -80,7 +80,32 @@ public sealed class MarketplaceSalesStatusTabTests
         var sql = query.ToQueryString();
         Assert.Contains("HEPSIBURADA", sql, StringComparison.Ordinal);
         Assert.Contains("ON_HOLD", sql, StringComparison.Ordinal);
+        Assert.Contains("Undelivered", sql, StringComparison.Ordinal);
         Assert.Contains("NOT EXISTS", sql, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Hepsiburada_undelivered_package_filter_uses_the_hold_tab_instead_of_shipped()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql("Host=localhost;Port=5432;Database=metadata-only;Username=metadata-only;Password=metadata-only")
+            .Options;
+        using var db = new AppDbContext(options);
+        var service = new MarketplaceSalesService(db, null!, null!, null!, null!, null!, null!, TimeProvider.System);
+        var tenantId = Guid.NewGuid();
+        IQueryable<Order> shippedQuery = db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId);
+        IQueryable<Order> holdQuery = db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId);
+
+        service.ApplyOrderFilters(ref shippedQuery, new OrderListQuery(Status: "SHIPPED"), tenantId);
+        service.ApplyOrderFilters(ref holdQuery, new OrderListQuery(Status: "ON_HOLD"), tenantId);
+
+        var shippedSql = shippedQuery.ToQueryString();
+        var holdSql = holdQuery.ToQueryString();
+        Assert.Contains("HEPSIBURADA", shippedSql, StringComparison.Ordinal);
+        Assert.Contains("Undelivered", shippedSql, StringComparison.Ordinal);
+        Assert.Contains("NOT EXISTS", shippedSql, StringComparison.Ordinal);
+        Assert.Contains("HEPSIBURADA", holdSql, StringComparison.Ordinal);
+        Assert.Contains("Undelivered", holdSql, StringComparison.Ordinal);
     }
 
     [Fact]

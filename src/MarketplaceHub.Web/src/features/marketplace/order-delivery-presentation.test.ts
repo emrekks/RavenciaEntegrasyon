@@ -2,8 +2,16 @@ import { describe, expect, it } from 'vitest'
 import { onHoldOrderStatusText, overdueShipmentDays } from './order-delivery-presentation'
 
 describe('onHoldOrderStatusText', () => {
-  it('explains Hepsiburada hold orders as undelivered', () => {
-    expect(onHoldOrderStatusText('HEPSIBURADA')).toBe('Teslim edilemedi')
+  it('identifies an explicit Hepsiburada undelivered package', () => {
+    expect(onHoldOrderStatusText('HEPSIBURADA', ['Undelivered'])).toBe('Teslim edilemedi')
+  })
+
+  it('describes ClaimCreated as a claim, not a failed delivery', () => {
+    expect(onHoldOrderStatusText('HEPSIBURADA', ['ClaimCreated'])).toBe('Talep açıldı')
+  })
+
+  it('keeps an unknown Hepsiburada hold state neutral', () => {
+    expect(onHoldOrderStatusText('HEPSIBURADA')).toBe('Askıda')
   })
 
   it('keeps the standard hold label for other marketplaces', () => {

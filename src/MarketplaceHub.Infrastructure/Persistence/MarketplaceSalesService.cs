@@ -237,12 +237,23 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                         || HepsiburadaUnpackagedNewOrders(tenantId).Any(newOrder => newOrder.Id == order.Id)),
                     "ON_HOLD" => query.Where(order => db.ShipmentPackages.Any(package => package.TenantId == order.TenantId
                             && package.OrderId == order.Id
-                            && packageStatuses.Contains(package.Status))
+                            && (packageStatuses.Contains(package.Status)
+                                || package.Status == ShipmentPackageStatus.Undelivered
+                                    && db.PlatformConnections.Any(connection => connection.TenantId == package.TenantId
+                                        && connection.Id == package.ConnectionId
+                                        && connection.PlatformCode == "HEPSIBURADA")))
                         || HepsiburadaUnpackagedOnHoldOrders(tenantId).Any(holdOrder => holdOrder.Id == order.Id)),
                     "DELIVERED" => query.Where(order => db.ShipmentPackages.Any(package => package.TenantId == order.TenantId
                             && package.OrderId == order.Id
                             && packageStatuses.Contains(package.Status))
                         || HepsiburadaUnpackagedDeliveredOrders(tenantId).Any(deliveredOrder => deliveredOrder.Id == order.Id)),
+                    "SHIPPED" => query.Where(order => db.ShipmentPackages.Any(package => package.TenantId == order.TenantId
+                        && package.OrderId == order.Id
+                        && packageStatuses.Contains(package.Status)
+                        && (package.Status != ShipmentPackageStatus.Undelivered
+                            || !db.PlatformConnections.Any(connection => connection.TenantId == package.TenantId
+                                && connection.Id == package.ConnectionId
+                                && connection.PlatformCode == "HEPSIBURADA")))),
                     _ => query.Where(order => db.ShipmentPackages.Any(package => package.TenantId == order.TenantId
                         && package.OrderId == order.Id
                         && packageStatuses.Contains(package.Status)))
@@ -369,10 +380,18 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 group.Count(),
                 group.Count(x => x.Status == ShipmentPackageStatus.New),
                 group.Count(x => x.Status == ShipmentPackageStatus.Processing || x.Status == ShipmentPackageStatus.ReadyToShip),
-                group.Count(x => x.Status == ShipmentPackageStatus.Shipped || x.Status == ShipmentPackageStatus.Undelivered),
+                group.Count(x => x.Status == ShipmentPackageStatus.Shipped
+                    || x.Status == ShipmentPackageStatus.Undelivered
+                        && !db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId
+                            && connection.Id == x.ConnectionId
+                            && connection.PlatformCode == "HEPSIBURADA")),
                 group.Count(x => x.Status == ShipmentPackageStatus.Delivered),
                 group.Count(x => x.OriginExternalPackageId != null && x.Status != ShipmentPackageStatus.Cancelled && x.CreatedBy != null && resendCreators.Contains(x.CreatedBy)),
-                group.Count(x => x.Status == ShipmentPackageStatus.OnHold),
+                group.Count(x => x.Status == ShipmentPackageStatus.OnHold
+                    || x.Status == ShipmentPackageStatus.Undelivered
+                        && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId
+                            && connection.Id == x.ConnectionId
+                            && connection.PlatformCode == "HEPSIBURADA")),
                 group.Count(x => x.Status == ShipmentPackageStatus.Cancelled
                     && (!db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == x.ConnectionId && connection.PlatformCode == "SHOPIFY")
                         || db.Orders.Any(order => order.TenantId == x.TenantId && order.Id == x.OrderId && order.DerivedStatus == "CANCELLED"))),
