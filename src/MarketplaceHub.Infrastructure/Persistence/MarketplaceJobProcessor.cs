@@ -2122,6 +2122,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         List<string> externalOrderIds;
         if (isHepsiburada)
         {
+            await ReconcileKnownHepsiburadaClaimOrders(tenantId, connectionId, cancellationToken);
             var includeUnpackagedNewOrders = OpenOrderLifecyclePolicy.ShouldPollWithoutPackage(platformCode, "NEW");
             var lifecycleOrders = db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId
                 && order.ConnectionId == connectionId
@@ -2202,6 +2203,40 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         cursor.Version++;
         await db.SaveChangesAsync(cancellationToken);
         return true;
+    }
+
+    private async Task ReconcileKnownHepsiburadaClaimOrders(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
+    {
+        var claimCreatedOrderIds = db.OrderLines.AsNoTracking()
+            .Where(line => line.TenantId == tenantId
+                && line.RawStatus != null
+                && line.RawStatus.ToUpper() == "CLAIMCREATED")
+            .Select(line => line.OrderId)
+            .Distinct();
+        var orders = await db.Orders
+            .Where(order => order.TenantId == tenantId
+                && order.ConnectionId == connectionId
+                && order.DerivedStatus == "NEW"
+                && claimCreatedOrderIds.Contains(order.Id)
+                && !db.ShipmentPackages.Any(package => package.TenantId == tenantId
+                    && package.ConnectionId == connectionId
+                    && package.OrderId == order.Id))
+            .ToListAsync(cancellationToken);
+        if (orders.Count == 0) return;
+
+        var now = timeProvider.GetUtcNow();
+        foreach (var order in orders)
+        {
+            var reconciled = HepsiburadaOrderLifecycleStatusPolicy.Reconcile(order.DerivedStatus, null, ["ClaimCreated"]);
+            if (reconciled is null) continue;
+            var wireStatus = Wire(reconciled.Value);
+            if (string.Equals(order.DerivedStatus, wireStatus, StringComparison.Ordinal)) continue;
+            order.DerivedStatus = wireStatus;
+            order.UpdatedAt = now;
+            order.Version++;
+            telemetryUpdatedCount++;
+        }
+        await db.SaveChangesAsync(cancellationToken);
     }
 
     private async Task<bool> ReconcileOrders(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
