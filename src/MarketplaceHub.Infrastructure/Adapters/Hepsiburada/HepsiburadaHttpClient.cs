@@ -225,7 +225,8 @@ public sealed partial class HepsiburadaHttpClient(
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return Failure<AdapterPageResult<RemoteCatalogProduct>>(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIAL_INVALID", "Hepsiburada bağlantı bilgileri bulunamadı.", HttpStatusCode.Unauthorized);
         var (offset, limit) = Page(page, settings.PageSize);
-        var lookupQueries = ListingLookupQueries(filter.ProductMainId);
+        var productLookup = !string.IsNullOrWhiteSpace(filter.ProductMainId) ? filter.ProductMainId : filter.Barcode;
+        var lookupQueries = ListingLookupQueries(productLookup);
         var attempts = lookupQueries.Count == 0 ? new string?[] { null } : lookupQueries.Cast<string?>().ToArray();
         for (var attemptIndex = 0; attemptIndex < attempts.Length; attemptIndex++)
         {
@@ -242,14 +243,15 @@ public sealed partial class HepsiburadaHttpClient(
             {
                 var pageResult = HepsiburadaJsonMapper.ListingPage(response.Value!.RootElement);
                 var items = pageResult.Items.Select(HepsiburadaJsonMapper.CatalogProduct).ToArray();
+                if (!string.IsNullOrWhiteSpace(productLookup))
+                    items = items.Where(item => ListingProductMatchesLookup(item, productLookup)).ToArray();
                 var nextOffset = offset + pageResult.Items.Count;
                 var hasMore = pageResult.TotalCount is { } total ? nextOffset < total : pageResult.Items.Count == limit;
                 var mapped = new AdapterPageResult<RemoteCatalogProduct>(items, hasMore ? nextOffset.ToString(CultureInfo.InvariantCulture) : null, hasMore, pageResult.TotalCount);
 
-                // Hepsiburada order lines commonly expose an hbSku, while the
-                // product importer stores the generic single-product lookup in
-                // ProductMainId. Try the documented productId filter first, then
-                // the documented hbSkuList filter if that exact ID has no match.
+                // Order lines can expose either hbSku or merchantSku. Try the
+                // documented productId, hbSkuList, and merchantSkuList filters,
+                // returning only a listing that exactly matches the requested key.
                 if (ShouldTryNextListingLookup(attemptIndex, attempts.Length, page.Cursor, items.Length, null)) continue;
                 return AdapterResult<AdapterPageResult<RemoteCatalogProduct>>.Success(mapped, response.RateLimit);
             }
@@ -268,6 +270,17 @@ public sealed partial class HepsiburadaHttpClient(
         if (string.IsNullOrWhiteSpace(value)) return [];
         var escaped = Uri.EscapeDataString(value);
         return [$"productId={escaped}", $"hbSkuList={escaped}", $"merchantSkuList={escaped}"];
+    }
+
+    internal static bool ListingProductMatchesLookup(RemoteCatalogProduct product, string lookup)
+    {
+        var normalized = lookup.Trim();
+        return normalized.Length > 0
+            && (string.Equals(product.ExternalProductId, normalized, StringComparison.OrdinalIgnoreCase)
+                || product.Variants.Any(variant =>
+                    string.Equals(variant.ExternalVariantId, normalized, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(variant.Sku, normalized, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(variant.Barcode, normalized, StringComparison.OrdinalIgnoreCase)));
     }
 
     internal static bool ShouldTryNextListingLookup(int attemptIndex, int attemptCount, string? cursor, int itemCount, AdapterErrorClass? errorClass) =>
@@ -412,7 +425,11 @@ public sealed partial class HepsiburadaHttpClient(
     {
         var page = await ListAsync(context, new(null, Math.Clamp(settings.PageSize, 1, 10)), new(null, Barcode: barcode), cancellationToken);
         if (!page.IsSuccess) return AdapterResult<RemoteProduct?>.Failure(page.Error!, page.RateLimit);
-        var product = page.Value!.Items.FirstOrDefault(item => string.Equals(item.Barcode, barcode, StringComparison.OrdinalIgnoreCase));
+        var lookup = barcode.Trim();
+        var product = page.Value!.Items.FirstOrDefault(item =>
+            string.Equals(item.Barcode, lookup, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(item.Sku, lookup, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(item.ExternalVariantId, lookup, StringComparison.OrdinalIgnoreCase));
         return AdapterResult<RemoteProduct?>.Success(product, page.RateLimit);
     }
     public async Task<AdapterResult<RemoteOperationRef>> PushPriceAndInventoryAsync(AdapterContext context, string payloadJson, CancellationToken cancellationToken)

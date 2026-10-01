@@ -422,34 +422,56 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             customer.Phone, customer.IsEInvoiceAvailable, invoiceDocumentUrl));
     }
 
-    public async Task<ServiceResult<string>> ProductImageAsync(Guid tenantId, string? barcode, string correlationId, CancellationToken cancellationToken)
+    public async Task<ServiceResult<string>> ProductImageAsync(Guid tenantId, string? barcode, string correlationId, CancellationToken cancellationToken, Guid? connectionId = null)
     {
         var normalizedBarcode = barcode?.Trim();
         if (string.IsNullOrWhiteSpace(normalizedBarcode) || normalizedBarcode.Length > 128)
             return ServiceResult<string>.Fail("PRODUCT_BARCODE_INVALID", "Geçerli bir ürün barkodu gereklidir.", 400);
 
+        var connection = connectionId is { } requestedConnectionId
+            ? await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId
+                && x.Id == requestedConnectionId
+                && (x.Status == "ACTIVE" || x.Status == "VERIFIED")
+                && (x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY"), cancellationToken)
+            : null;
+        if (connectionId is not null && connection is null) return NotFound<string>();
+
         // Order rows can use a marketplace merchant SKU when the provider
-        // does not return a barcode. Resolve the same key against the local
-        // catalog first so Hepsiburada images do not depend on a Trendyol
-        // product lookup.
+        // does not return a barcode. Prefer this order's own marketplace link,
+        // then use a unique local SKU/barcode match before asking that same
+        // marketplace for its image.
         var catalogKey = NormalizeCatalogKey(normalizedBarcode, 160);
         if (catalogKey.Length > 0)
         {
-            var variantId = await db.ProductVariants.AsNoTracking()
+            var linkedVariantId = connection is null
+                ? null
+                : await db.MarketplaceVariantLinks.AsNoTracking()
+                    .Where(x => x.TenantId == tenantId && x.ConnectionId == connection.Id
+                        && x.ExternalId.Trim().ToUpper() == catalogKey)
+                    .Select(x => (Guid?)x.VariantId)
+                    .SingleOrDefaultAsync(cancellationToken);
+            if (linkedVariantId is { } mappedVariantId)
+            {
+                var mappedImage = (await MediaUrls(tenantId, [mappedVariantId], cancellationToken)).GetValueOrDefault(mappedVariantId);
+                if (!string.IsNullOrWhiteSpace(mappedImage)) return ServiceResult<string>.Ok(mappedImage);
+            }
+
+            var variantIds = await db.ProductVariants.AsNoTracking()
                 .Where(x => x.TenantId == tenantId
                     && (x.Sku == normalizedBarcode || x.SkuNormalized == catalogKey
                         || x.Barcode == normalizedBarcode || x.BarcodeNormalized == catalogKey))
                 .OrderBy(x => x.Id)
                 .Select(x => (Guid?)x.Id)
-                .FirstOrDefaultAsync(cancellationToken);
-            if (variantId is { } localVariantId)
+                .Take(2)
+                .ToListAsync(cancellationToken);
+            if (variantIds.Count == 1 && variantIds[0] is { } localVariantId)
             {
                 var localImage = (await MediaUrls(tenantId, [localVariantId], cancellationToken)).GetValueOrDefault(localVariantId);
                 if (!string.IsNullOrWhiteSpace(localImage)) return ServiceResult<string>.Ok(localImage);
             }
         }
 
-        var connection = await ActiveTrendyolConnection(tenantId, cancellationToken);
+        connection ??= await ActiveTrendyolConnection(tenantId, cancellationToken);
         if (connection is null) return NotFound<string>();
 
         var result = await productVisuals.FindByBarcodeAsync(

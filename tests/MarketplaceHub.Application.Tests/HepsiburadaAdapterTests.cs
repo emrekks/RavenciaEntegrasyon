@@ -280,6 +280,28 @@ public sealed class HepsiburadaAdapterTests
     }
 
     [Fact]
+    public void ListingLookupAcceptsMerchantSkuAndHepsiburadaSkuForOrderImageReads()
+    {
+        using var json = JsonDocument.Parse("""
+        {
+          "productId": "product-17",
+          "hbSku": "HBCV0000DTYGZD",
+          "merchantSku": "HBCV0000DTYGZD",
+          "barcode": "8690000000170",
+          "productName": "Order image test",
+          "productImageUrlFormat": "https://cdn.example.test/order-image.jpg"
+        }
+        """);
+        var product = HepsiburadaJsonMapper.CatalogProduct(json.RootElement);
+
+        Assert.True(HepsiburadaHttpClient.ListingProductMatchesLookup(product, "HBCV0000DTYGZD"));
+        Assert.True(HepsiburadaHttpClient.ListingProductMatchesLookup(product, "8690000000170"));
+        Assert.True(HepsiburadaHttpClient.ListingProductMatchesLookup(product, "product-17"));
+        Assert.False(HepsiburadaHttpClient.ListingProductMatchesLookup(product, "different-sku"));
+        Assert.Equal("https://cdn.example.test/order-image.jpg", product.ImageUrls.Single());
+    }
+
+    [Fact]
     public void ProductImportMapper_TracksIdAndMapsPartialResultsByMerchantSku()
     {
         using var tracking = JsonDocument.Parse("""{"success":true,"data":{"trackingId":"trace-71"}}""");
