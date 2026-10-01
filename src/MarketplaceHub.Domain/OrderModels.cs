@@ -118,6 +118,22 @@ public static class OpenOrderLifecyclePolicy
     public static bool ShouldPoll(ShipmentPackageStatus status) =>
         status is not ShipmentPackageStatus.Delivered and not ShipmentPackageStatus.Cancelled and not ShipmentPackageStatus.Returned;
 
+    public static bool ShouldShowShipmentDeadlineWarning(
+        string? platformCode,
+        string? derivedStatus,
+        DateTimeOffset? dueAt,
+        DateTimeOffset now)
+    {
+        var platform = platformCode?.Trim().ToUpperInvariant();
+        var status = derivedStatus?.Trim().ToUpperInvariant();
+        var terminal = status is "DELIVERED" or "CANCELLED" or "RETURNED";
+        var undeliveredHepsiburadaOrder = platform == "HEPSIBURADA" && status == "ON_HOLD";
+        return !terminal
+            && !undeliveredHepsiburadaOrder
+            && dueAt is { } deadline
+            && deadline <= now.AddHours(24);
+    }
+
     public static bool ShouldPollWithoutPackage(string? platformCode, string? derivedStatus) =>
         string.Equals(platformCode?.Trim(), "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
         && derivedStatus?.Trim().ToUpperInvariant() is "NEW" or "ON_HOLD";

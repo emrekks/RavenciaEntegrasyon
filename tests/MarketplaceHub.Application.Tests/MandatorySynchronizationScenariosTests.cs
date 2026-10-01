@@ -68,6 +68,40 @@ public sealed class MandatorySynchronizationScenariosTests
         Assert.False(OpenOrderLifecyclePolicy.ShouldPoll(ShipmentPackageStatus.Delivered));
     }
 
+    [Fact]
+    public void HepsiburadaUndeliveredOrderDoesNotShowShipmentDeadlineWarning()
+    {
+        var now = DateTimeOffset.Parse("2026-10-01T12:00:00Z");
+
+        Assert.False(OpenOrderLifecyclePolicy.ShouldShowShipmentDeadlineWarning(
+            "HEPSIBURADA",
+            "ON_HOLD",
+            now.AddDays(-133),
+            now));
+    }
+
+    [Fact]
+    public void ShipmentDeadlineWarningRemainsForActionableOrders()
+    {
+        var now = DateTimeOffset.Parse("2026-10-01T12:00:00Z");
+
+        Assert.True(OpenOrderLifecyclePolicy.ShouldShowShipmentDeadlineWarning(
+            "HEPSIBURADA",
+            "NEW",
+            now.AddHours(12),
+            now));
+        Assert.True(OpenOrderLifecyclePolicy.ShouldShowShipmentDeadlineWarning(
+            "TRENDYOL",
+            "ON_HOLD",
+            now.AddDays(-1),
+            now));
+        Assert.False(OpenOrderLifecyclePolicy.ShouldShowShipmentDeadlineWarning(
+            "HEPSIBURADA",
+            "DELIVERED",
+            now.AddDays(-1),
+            now));
+    }
+
     [Theory]
     [InlineData("HEPSIBURADA", "NEW", true)]
     [InlineData("hepsiburada", " new ", true)]
