@@ -744,7 +744,7 @@ internal static class HepsiburadaJsonMapper
         var orderedAt = Date(item, "orderDate", "OrderDate", "orderedAt", "OrderedAt", "createdAt", "CreatedAt") ?? package.OccurredAt;
         var itemArray = Find(item, "lineItems", "LineItems", "items", "Items", "orderItems", "OrderItems");
         IReadOnlyList<RemoteOrderLine> lines = itemArray.ValueKind == JsonValueKind.Array
-            ? itemArray.EnumerateArray().Select(MapLine).GroupBy(line => line.ExternalLineId, StringComparer.Ordinal).Select(group => group.First()).ToArray()
+            ? itemArray.EnumerateArray().Select(line => MapLine(line)).GroupBy(line => line.ExternalLineId, StringComparer.Ordinal).Select(group => group.First()).ToArray()
             : [];
         if (lines.Count == 0 && !string.IsNullOrWhiteSpace(Text(item, "lineItemId", "LineItemId", "orderLineId", "OrderLineId")))
             lines = [MapLine(item)];
@@ -913,7 +913,7 @@ internal static class HepsiburadaJsonMapper
         if (linesElement.ValueKind != JsonValueKind.Array) throw new JsonException("Hepsiburada sipariş yanıtında satır listesi yok.");
 
         var lineItems = linesElement.EnumerateArray().ToArray();
-        var lines = lineItems.Select(MapLine).ToList();
+        var lines = lineItems.Select(item => MapLine(item, missingStatus: null)).ToList();
         var gross = Money(order, "totalPrice", "TotalPrice", "totalAmount", "TotalAmount", "grossAmount", "GrossAmount")
             ?? lines.Sum(line => line.UnitPrice * line.Quantity);
         var discount = Money(order, "discountAmount", "DiscountAmount", "totalDiscount", "TotalDiscount") ?? 0m;
@@ -921,8 +921,13 @@ internal static class HepsiburadaJsonMapper
         var currency = Text(order, "currency", "Currency", "currencyCode", "CurrencyCode")
             ?? Text(Find(order, "totalPrice", "TotalPrice"), "currency", "Currency")
             ?? "TRY";
-        var status = Text(order, "status", "Status", "orderStatus", "OrderStatus")
-            ?? ConsistentLineItemStatus(lines);
+        var orderStatus = Text(order, "status", "Status", "orderStatus", "OrderStatus");
+        var hasClaimCreatedLine = lines.Any(line => string.Equals(line.RawStatus?.Trim(), "ClaimCreated", StringComparison.OrdinalIgnoreCase));
+        var status = hasClaimCreatedLine
+            && (string.Equals(orderStatus?.Trim(), "Open", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(orderStatus?.Trim(), "Unpacked", StringComparison.OrdinalIgnoreCase))
+                ? "ClaimCreated"
+                : orderStatus ?? ConsistentLineItemStatus(lines);
         var paymentStatus = Text(order, "paymentStatus", "PaymentStatus") ?? "Received";
         var customer = Find(order, "customer", "Customer");
         var shipmentAddress = Find(order, "deliveryAddress", "DeliveryAddress", "shipmentAddress", "ShipmentAddress");
@@ -970,7 +975,7 @@ internal static class HepsiburadaJsonMapper
         return statuses.Length == 1 ? statuses[0] : null;
     }
 
-    private static RemoteOrderLine MapLine(JsonElement line)
+    private static RemoteOrderLine MapLine(JsonElement line, string? missingStatus = "Open")
     {
         var lineId = Text(line, "id", "Id", "lineItemId", "LineItemId", "orderLineId", "OrderLineId");
         var sku = Text(line, "merchantSku", "MerchantSku", "sellerSku", "SellerSku")
@@ -983,7 +988,7 @@ internal static class HepsiburadaJsonMapper
             var total = Money(line, "totalPrice", "TotalPrice", "lineTotal", "LineTotal");
             if (total is not null && quantity > 0) unitPrice = total.Value / quantity;
         }
-        var status = Text(line, "status", "Status", "lineStatus", "LineStatus") ?? "Open";
+        var status = Text(line, "status", "Status", "lineStatus", "LineStatus") ?? missingStatus ?? string.Empty;
         var cancelled = status.Contains("cancel", StringComparison.OrdinalIgnoreCase) ? quantity : 0m;
         var snapshot = EnrichSnapshot(line.GetRawText(), ("imageUrl", ImageUrl(line)));
         return new(lineId, sku, Text(line, "barcode", "Barcode", "productBarcode", "ProductBarcode"), Text(line, "name", "Name", "productName", "ProductName") ?? sku, quantity, unitPrice, Decimal(line, "vatRate", "VatRate") ?? 0m, status, snapshot, cancelled);

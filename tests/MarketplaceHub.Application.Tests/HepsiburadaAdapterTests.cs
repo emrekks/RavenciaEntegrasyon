@@ -1,5 +1,6 @@
 using System.Text.Json;
 using MarketplaceHub.Application;
+using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
 using MarketplaceHub.Infrastructure.Imports;
 using MarketplaceHub.Infrastructure.Persistence;
@@ -557,6 +558,44 @@ public sealed class HepsiburadaAdapterTests
         var order = HepsiburadaJsonMapper.Order(json.RootElement, "HB-DETAIL-22");
 
         Assert.Equal("Delivered", order.LifecycleStatus);
+    }
+
+    [Fact]
+    public void OrderMapperLetsClaimCreatedLineOverrideOpenOrderStatus()
+    {
+        using var json = JsonDocument.Parse("""
+        {
+          "orderNumber": "HB-DETAIL-24",
+          "orderDate": "2026-09-28T12:15:00Z",
+          "status": "Open",
+          "items": [
+            { "id": "line-24-a", "merchantSku": "sku-24-a", "quantity": 1, "price": 20, "status": "ClaimCreated" }
+          ]
+        }
+        """);
+
+        var order = HepsiburadaJsonMapper.Order(json.RootElement, "HB-DETAIL-24");
+
+        Assert.Equal("ClaimCreated", order.LifecycleStatus);
+        Assert.Equal(ShipmentPackageStatus.OnHold, HepsiburadaOrderLifecycleStatusPolicy.FromRemote(order.LifecycleStatus));
+    }
+
+    [Fact]
+    public void OrderMapperDoesNotAssumeOpenWhenDetailStatusesAreMissing()
+    {
+        using var json = JsonDocument.Parse("""
+        {
+          "orderNumber": "HB-DETAIL-25",
+          "orderDate": "2026-09-28T12:15:00Z",
+          "items": [
+            { "id": "line-25-a", "merchantSku": "sku-25-a", "quantity": 1, "price": 20 }
+          ]
+        }
+        """);
+
+        var order = HepsiburadaJsonMapper.Order(json.RootElement, "HB-DETAIL-25");
+
+        Assert.Null(order.LifecycleStatus);
     }
 
     [Fact]
