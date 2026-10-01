@@ -14,6 +14,30 @@ public static class HepsiburadaPackageStatusReconciliationPolicy
         || lastCompletedAt is null
         || now - lastCompletedAt.Value >= interval;
 
+    public static bool ShouldAcceptStatusObservation(
+        ShipmentPackageStatus currentStatus,
+        DateTimeOffset currentStatusTimestamp,
+        ShipmentPackageStatus remoteStatus,
+        DateTimeOffset remoteStatusTimestamp,
+        bool isAuthoritativeObservation)
+    {
+        if (remoteStatusTimestamp < currentStatusTimestamp) return false;
+
+        // Hepsiburada's current package tracking/status endpoints are the
+        // source of truth for its delivery bucket. A newer authoritative
+        // Undelivered observation can correct an earlier Delivered projection.
+        if (isAuthoritativeObservation
+            && currentStatus == ShipmentPackageStatus.Delivered
+            && remoteStatus == ShipmentPackageStatus.Undelivered)
+            return true;
+
+        return PackageIngestionSafety.ShouldAccept(
+            currentStatus,
+            currentStatusTimestamp,
+            remoteStatus,
+            remoteStatusTimestamp);
+    }
+
     public static DateTimeOffset StatusTimestamp(
         ShipmentPackageStatus currentStatus,
         ShipmentPackageStatus remoteStatus,

@@ -5651,7 +5651,14 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 // Treat that as an idempotent status enrichment, not as a
                 // reason to discard the authoritative forward transition.
                 var statusChanged = package is not null
-                    && PackageIngestionSafety.ShouldAccept(package.Status, package.StatusOccurredAt, target, remotePackage.OccurredAt)
+                    && (isHepsiburada
+                        ? HepsiburadaPackageStatusReconciliationPolicy.ShouldAcceptStatusObservation(
+                            package.Status,
+                            package.StatusOccurredAt,
+                            target,
+                            remotePackage.OccurredAt,
+                            remotePackage.IsStatusObservation)
+                        : PackageIngestionSafety.ShouldAccept(package.Status, package.StatusOccurredAt, target, remotePackage.OccurredAt))
                     && package.Status != target;
                 var packageMetadataChanged = package is not null
                     && ((!string.IsNullOrWhiteSpace(remotePackage.CargoProviderExternalId) && package.CargoProviderExternalId != remotePackage.CargoProviderExternalId)
@@ -5714,7 +5721,14 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 if (package is not null && package.Status == ShipmentPackageStatus.ManualReview && package.RawStatus == remotePackage.RawStatus && target != ShipmentPackageStatus.ManualReview) { package.Status = target; package.UpdatedAt = now; package.Version++; }
                 continue;
             }
-            var accept = package is null || PackageIngestionSafety.ShouldAccept(package.Status, package.StatusOccurredAt, target, remotePackage.OccurredAt);
+            var accept = package is null || (isHepsiburada
+                ? HepsiburadaPackageStatusReconciliationPolicy.ShouldAcceptStatusObservation(
+                    package.Status,
+                    package.StatusOccurredAt,
+                    target,
+                    remotePackage.OccurredAt,
+                    remotePackage.IsStatusObservation)
+                : PackageIngestionSafety.ShouldAccept(package.Status, package.StatusOccurredAt, target, remotePackage.OccurredAt));
             if (package is null) { package = new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, OrderId = order.Id, ExternalPackageId = remotePackage.ExternalPackageId, CreatedBy = remotePackage.CreatedBy, Status = target, RawStatus = remotePackage.RawStatus, StatusOccurredAt = remotePackage.OccurredAt, CreatedAt = now, Version = 1 }; db.ShipmentPackages.Add(package); packagesByExternalId[remotePackage.ExternalPackageId] = package; telemetryInsertedCount++; await MergeMarketplaceInvoiceState(package, remotePackage, cancellationToken); }
             else if (accept) { package.Status = target; package.RawStatus = remotePackage.RawStatus; package.StatusOccurredAt = remotePackage.OccurredAt; package.Version++; }
             else if (remotePackage.OccurredAt >= package.StatusOccurredAt && package.Status != target) await RecordIssue(tenantId, $"package-transition:{package.Id}:{remotePackage.RawStatus}", "PACKAGE_TRANSITION_REJECTED", "Out-of-order veya izin verilmeyen package geçişi mevcut durumu geriye götürmedi.", cancellationToken);

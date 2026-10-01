@@ -33,6 +33,20 @@ public sealed class PackageIngestionSafetyTests
     }
 
     [Fact]
+    public void UndeliveredStatusClearsPreviouslyDeliveredQuantity()
+    {
+        var accepted = PackageIngestionSafety.TryNormalizeAll(
+            new Dictionary<string, decimal> { ["line-1"] = 1m },
+            [new("line-1", 1m, 0m, 1m, 1m, 0m)],
+            ShipmentPackageStatus.Undelivered,
+            out var normalized);
+
+        Assert.True(accepted);
+        Assert.Equal(1m, normalized["line-1"].ShippedQuantity);
+        Assert.Equal(0m, normalized["line-1"].DeliveredQuantity);
+    }
+
+    [Fact]
     public void APackageFragmentCanBeValidatedBeforeSiblingPackagesAreLoaded()
     {
         var accepted = PackageIngestionSafety.TryNormalizeAll(

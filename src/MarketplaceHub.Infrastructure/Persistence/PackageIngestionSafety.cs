@@ -108,7 +108,7 @@ public static class PackageIngestionSafety
             : remote.ShippedQuantity;
         var delivered = packageStatus is ShipmentPackageStatus.Delivered or ShipmentPackageStatus.ReturnInTransit or ShipmentPackageStatus.Returned
             ? active
-            : remote.DeliveredQuantity;
+            : packageStatus == ShipmentPackageStatus.Undelivered ? 0 : remote.DeliveredQuantity;
         var returned = packageStatus == ShipmentPackageStatus.Returned ? active : remote.ReturnedQuantity;
 
         normalized = new(active, cancelled, shipped, delivered, returned);
