@@ -2170,41 +2170,81 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var isShopify = platformCode == "SHOPIFY";
         var isHepsiburada = platformCode == "HEPSIBURADA";
         var batchSize = ReadBoundedInt(payloadJson, "batchSize", 50, 1, 250);
-        var externalOrderIds = await (from package in db.ShipmentPackages.AsNoTracking()
-                                      join order in db.Orders.AsNoTracking()
-                                          on new { package.TenantId, package.OrderId } equals new { order.TenantId, OrderId = order.Id }
-                                      where package.TenantId == tenantId
-                                          && package.ConnectionId == connectionId
-                                          && package.Status != ShipmentPackageStatus.Cancelled
-                                          && !DashboardMetricPolicy.InvoiceExcludedOrderStatuses.Contains(order.DerivedStatus)
-                                          && package.MarketplaceInvoiceStatus != MarketplaceInvoiceStatus.Invoiced
-                                      orderby package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Received ? 0 : 1,
-                                          package.MarketplaceInvoiceObservedAt, package.UpdatedAt
-                                      select order.ExternalOrderId)
-            .Distinct()
-            .Take(batchSize)
-            .ToListAsync(cancellationToken);
+        var externalOrderIds = isHepsiburada
+            ? new List<string>()
+            : await (from package in db.ShipmentPackages.AsNoTracking()
+                     join order in db.Orders.AsNoTracking()
+                         on new { package.TenantId, package.OrderId } equals new { order.TenantId, OrderId = order.Id }
+                     where package.TenantId == tenantId
+                         && package.ConnectionId == connectionId
+                         && package.Status != ShipmentPackageStatus.Cancelled
+                         && !DashboardMetricPolicy.InvoiceExcludedOrderStatuses.Contains(order.DerivedStatus)
+                         && package.MarketplaceInvoiceStatus != MarketplaceInvoiceStatus.Invoiced
+                     orderby package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Received ? 0 : 1,
+                         package.MarketplaceInvoiceObservedAt, package.UpdatedAt
+                     select order.ExternalOrderId)
+                .Distinct()
+                .Take(batchSize)
+                .ToListAsync(cancellationToken);
 
+        SyncCursor? invoiceCursor = null;
+        Guid? lastReconciledOrderId = null;
         if (isHepsiburada)
         {
-            // The paid-order list intentionally contains unpackaged orders,
-            // while hasInvoice is supplied by the order-detail read. Include
-            // those orders in the same read-only reconciliation so the panel
-            // can show an authoritative invoice state before a package exists.
-            var unpackagedOrderIds = await db.Orders.AsNoTracking()
+            // Order detail is the only documented source for hasInvoice. Rotate
+            // across every eligible order so an unchanged first page cannot
+            // starve older unpackaged claims and orders forever.
+            invoiceCursor = await Cursor(tenantId, connectionId, "ORDER_INVOICE_RECONCILIATION", cancellationToken);
+            var afterOrder = HepsiburadaInvoiceReconciliationBatchPolicy.ReadCursor(invoiceCursor.OpaqueCursor);
+            var eligibleOrders = db.Orders.AsNoTracking()
                 .Where(order => order.TenantId == tenantId
                     && order.ConnectionId == connectionId
                     && !DashboardMetricPolicy.InvoiceExcludedOrderStatuses.Contains(order.DerivedStatus)
-                    && !db.ShipmentPackages.Any(package => package.TenantId == tenantId
-                        && package.ConnectionId == connectionId
-                        && package.OrderId == order.Id
-                        && package.Status != ShipmentPackageStatus.Cancelled))
+                    && (!db.ShipmentPackages.Any(package => package.TenantId == tenantId
+                            && package.ConnectionId == connectionId
+                            && package.OrderId == order.Id
+                            && package.Status != ShipmentPackageStatus.Cancelled)
+                        || db.ShipmentPackages.Any(package => package.TenantId == tenantId
+                            && package.ConnectionId == connectionId
+                            && package.OrderId == order.Id
+                            && package.Status != ShipmentPackageStatus.Cancelled
+                            && package.MarketplaceInvoiceStatus != MarketplaceInvoiceStatus.Invoiced)));
+
+            var afterCursorQuery = eligibleOrders;
+            if (afterOrder is { } cursorOrder)
+                afterCursorQuery = afterCursorQuery.Where(order => order.UpdatedAt > cursorOrder.UpdatedAt
+                    || order.UpdatedAt == cursorOrder.UpdatedAt && order.OrderedAt > cursorOrder.OrderedAt
+                    || order.UpdatedAt == cursorOrder.UpdatedAt && order.OrderedAt == cursorOrder.OrderedAt
+                        && order.Id.CompareTo(cursorOrder.OrderId) > 0);
+            var afterCursor = await afterCursorQuery
                 .OrderBy(order => order.UpdatedAt)
                 .ThenBy(order => order.OrderedAt)
-                .Select(order => order.ExternalOrderId)
+                .ThenBy(order => order.Id)
+                .Select(order => new HepsiburadaInvoiceOrderCandidate(order.Id, order.ExternalOrderId, order.UpdatedAt, order.OrderedAt))
                 .Take(batchSize)
                 .ToListAsync(cancellationToken);
-            externalOrderIds = unpackagedOrderIds.Concat(externalOrderIds).Distinct(StringComparer.Ordinal).Take(batchSize).ToList();
+
+            IReadOnlyCollection<HepsiburadaInvoiceOrderCandidate> wrapped = [];
+            if (afterOrder is { } wrapOrder && afterCursor.Count < batchSize)
+            {
+                wrapped = await eligibleOrders
+                    .Where(order => order.UpdatedAt < wrapOrder.UpdatedAt
+                        || order.UpdatedAt == wrapOrder.UpdatedAt && order.OrderedAt < wrapOrder.OrderedAt
+                        || order.UpdatedAt == wrapOrder.UpdatedAt && order.OrderedAt == wrapOrder.OrderedAt
+                            && order.Id.CompareTo(wrapOrder.OrderId) <= 0)
+                    .OrderBy(order => order.UpdatedAt)
+                    .ThenBy(order => order.OrderedAt)
+                    .ThenBy(order => order.Id)
+                    .Select(order => new HepsiburadaInvoiceOrderCandidate(order.Id, order.ExternalOrderId, order.UpdatedAt, order.OrderedAt))
+                    .Take(batchSize - afterCursor.Count)
+                    .ToListAsync(cancellationToken);
+            }
+
+            var selected = HepsiburadaInvoiceReconciliationBatchPolicy.Select(afterCursor, wrapped, batchSize);
+            externalOrderIds = selected.Select(candidate => candidate.ExternalOrderId).ToList();
+            lastReconciledOrderId = selected.LastOrDefault()?.OrderId;
+            var lastCandidate = selected.LastOrDefault();
+            if (lastCandidate is not null) invoiceCursor.OpaqueCursor = HepsiburadaInvoiceReconciliationBatchPolicy.WriteCursor(lastCandidate);
         }
 
         foreach (var externalOrderId in externalOrderIds)
@@ -2225,6 +2265,12 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 await MergeHepsiburadaOrderInvoiceState(tenantId, connectionId, result.Value!, cancellationToken);
             await UpsertOrder(tenantId, connectionId, result.Value!, cancellationToken, projectReservations: !isShopify, persistFinancialObservations: isShopify);
             await ResolveIssue(tenantId, $"order-invoice-reconciliation:{connectionId}:{externalOrderId}", cancellationToken);
+        }
+
+        if (invoiceCursor is not null && lastReconciledOrderId is not null)
+        {
+            invoiceCursor.Version++;
+            await db.SaveChangesAsync(cancellationToken);
         }
 
         return true;
