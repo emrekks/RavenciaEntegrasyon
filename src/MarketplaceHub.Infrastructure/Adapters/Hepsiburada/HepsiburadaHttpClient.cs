@@ -233,7 +233,11 @@ public sealed partial class HepsiburadaHttpClient(
             if (filter.ModifiedAfter is { } modifiedAfter) query.Add("updateStartDate=" + Uri.EscapeDataString(modifiedAfter.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture)));
             if (attempts[attemptIndex] is { } lookupQuery) query.Add(lookupQuery);
             var response = await SendAsync(account, account.ListingBaseAddress, HttpMethod.Get, Listings(account, string.Join('&', query)), cancellationToken);
-            if (!response.IsSuccess) return AdapterResult<AdapterPageResult<RemoteCatalogProduct>>.Failure(response.Error!, response.RateLimit);
+            if (!response.IsSuccess)
+            {
+                if (ShouldTryNextListingLookup(attemptIndex, attempts.Length, page.Cursor, 0, response.Error?.Class)) continue;
+                return AdapterResult<AdapterPageResult<RemoteCatalogProduct>>.Failure(response.Error!, response.RateLimit);
+            }
             try
             {
                 var pageResult = HepsiburadaJsonMapper.ListingPage(response.Value!.RootElement);
@@ -246,7 +250,7 @@ public sealed partial class HepsiburadaHttpClient(
                 // product importer stores the generic single-product lookup in
                 // ProductMainId. Try the documented productId filter first, then
                 // the documented hbSkuList filter if that exact ID has no match.
-                if (attemptIndex + 1 < attempts.Length && page.Cursor is null && items.Length == 0) continue;
+                if (ShouldTryNextListingLookup(attemptIndex, attempts.Length, page.Cursor, items.Length, null)) continue;
                 return AdapterResult<AdapterPageResult<RemoteCatalogProduct>>.Success(mapped, response.RateLimit);
             }
             catch (JsonException)
@@ -265,6 +269,11 @@ public sealed partial class HepsiburadaHttpClient(
         var escaped = Uri.EscapeDataString(value);
         return [$"productId={escaped}", $"hbSkuList={escaped}"];
     }
+
+    internal static bool ShouldTryNextListingLookup(int attemptIndex, int attemptCount, string? cursor, int itemCount, AdapterErrorClass? errorClass) =>
+        attemptIndex + 1 < attemptCount
+        && cursor is null
+        && (errorClass == AdapterErrorClass.NotFound || errorClass is null && itemCount == 0);
 
     public async Task<AdapterResult<RemoteOperationRef>> CreateAsync(AdapterContext context, ProductPublication publication, CancellationToken cancellationToken)
     {

@@ -270,6 +270,16 @@ public sealed class HepsiburadaAdapterTests
     }
 
     [Fact]
+    public void ListingLookupFallsBackOnMissingProductIdOrEmptyFirstPageOnly()
+    {
+        Assert.True(HepsiburadaHttpClient.ShouldTryNextListingLookup(0, 2, null, 0, AdapterErrorClass.NotFound));
+        Assert.True(HepsiburadaHttpClient.ShouldTryNextListingLookup(0, 2, null, 0, null));
+        Assert.False(HepsiburadaHttpClient.ShouldTryNextListingLookup(0, 2, null, 0, AdapterErrorClass.Authentication));
+        Assert.False(HepsiburadaHttpClient.ShouldTryNextListingLookup(0, 2, "20", 0, AdapterErrorClass.NotFound));
+        Assert.False(HepsiburadaHttpClient.ShouldTryNextListingLookup(1, 2, null, 0, AdapterErrorClass.NotFound));
+    }
+
+    [Fact]
     public void ProductImportMapper_TracksIdAndMapsPartialResultsByMerchantSku()
     {
         using var tracking = JsonDocument.Parse("""{"success":true,"data":{"trackingId":"trace-71"}}""");
