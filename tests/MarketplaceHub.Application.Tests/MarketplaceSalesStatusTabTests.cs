@@ -63,4 +63,42 @@ public sealed class MarketplaceSalesStatusTabTests
         Assert.Contains("NOT EXISTS", sql, StringComparison.Ordinal);
         Assert.Contains("NEW", sql, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void On_hold_filter_includes_unpacked_Hepsiburada_hold_orders_without_package_rows()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql("Host=localhost;Port=5432;Database=metadata-only;Username=metadata-only;Password=metadata-only")
+            .Options;
+        using var db = new AppDbContext(options);
+        var service = new MarketplaceSalesService(db, null!, null!, null!, null!, null!, null!, TimeProvider.System);
+        var tenantId = Guid.NewGuid();
+        IQueryable<Order> query = db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId);
+
+        service.ApplyOrderFilters(ref query, new OrderListQuery(Status: "ON_HOLD"), tenantId);
+
+        var sql = query.ToQueryString();
+        Assert.Contains("HEPSIBURADA", sql, StringComparison.Ordinal);
+        Assert.Contains("ON_HOLD", sql, StringComparison.Ordinal);
+        Assert.Contains("NOT EXISTS", sql, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Delivered_filter_does_not_include_unpacked_Hepsiburada_hold_orders()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql("Host=localhost;Port=5432;Database=metadata-only;Username=metadata-only;Password=metadata-only")
+            .Options;
+        using var db = new AppDbContext(options);
+        var service = new MarketplaceSalesService(db, null!, null!, null!, null!, null!, null!, TimeProvider.System);
+        var tenantId = Guid.NewGuid();
+        IQueryable<Order> query = db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId);
+
+        service.ApplyOrderFilters(ref query, new OrderListQuery(Status: "DELIVERED"), tenantId);
+
+        var sql = query.ToQueryString();
+        Assert.Contains("shipment_packages", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("HEPSIBURADA", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("ON_HOLD", sql, StringComparison.Ordinal);
+    }
 }

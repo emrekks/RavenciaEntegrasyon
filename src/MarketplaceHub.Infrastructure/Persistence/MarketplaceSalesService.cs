@@ -234,9 +234,14 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                             && package.OrderId == order.Id
                             && packageStatuses.Contains(package.Status))
                         || HepsiburadaUnpackagedNewOrders(tenantId).Any(newOrder => newOrder.Id == order.Id))
-                    : query.Where(order => db.ShipmentPackages.Any(package => package.TenantId == order.TenantId
-                        && package.OrderId == order.Id
-                        && packageStatuses.Contains(package.Status)))
+                    : status == "ON_HOLD"
+                        ? query.Where(order => db.ShipmentPackages.Any(package => package.TenantId == order.TenantId
+                                && package.OrderId == order.Id
+                                && packageStatuses.Contains(package.Status))
+                            || HepsiburadaUnpackagedOnHoldOrders(tenantId).Any(holdOrder => holdOrder.Id == order.Id))
+                        : query.Where(order => db.ShipmentPackages.Any(package => package.TenantId == order.TenantId
+                            && package.OrderId == order.Id
+                            && packageStatuses.Contains(package.Status)))
                 : status switch
                 {
                     // originPackageIds is also present for split/cancel packages;
@@ -384,10 +389,14 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var unpackagedNewOrderCount = platformCode is null or "" or "ALL" or "HEPSIBURADA"
             ? await HepsiburadaUnpackagedNewOrders(tenantId).CountAsync(cancellationToken)
             : 0;
+        var unpackagedOnHoldOrderCount = platformCode is null or "" or "ALL" or "HEPSIBURADA"
+            ? await HepsiburadaUnpackagedOnHoldOrders(tenantId).CountAsync(cancellationToken)
+            : 0;
         return summary with
         {
-            All = summary.All + unpackagedNewOrderCount,
+            All = summary.All + unpackagedNewOrderCount + unpackagedOnHoldOrderCount,
             New = summary.New + unpackagedNewOrderCount,
+            OnHold = summary.OnHold + unpackagedOnHoldOrderCount,
             Pending = await pendingOrders.CountAsync(cancellationToken)
         };
     }
@@ -395,6 +404,15 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     private IQueryable<Order> HepsiburadaUnpackagedNewOrders(Guid tenantId) => db.Orders.AsNoTracking()
         .Where(order => order.TenantId == tenantId
             && order.DerivedStatus == "NEW"
+            && db.PlatformConnections.Any(connection => connection.TenantId == tenantId
+                && connection.Id == order.ConnectionId
+                && connection.PlatformCode == "HEPSIBURADA"
+                && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
+            && !db.ShipmentPackages.Any(package => package.TenantId == tenantId && package.OrderId == order.Id));
+
+    internal IQueryable<Order> HepsiburadaUnpackagedOnHoldOrders(Guid tenantId) => db.Orders.AsNoTracking()
+        .Where(order => order.TenantId == tenantId
+            && order.DerivedStatus == "ON_HOLD"
             && db.PlatformConnections.Any(connection => connection.TenantId == tenantId
                 && connection.Id == order.ConnectionId
                 && connection.PlatformCode == "HEPSIBURADA"
