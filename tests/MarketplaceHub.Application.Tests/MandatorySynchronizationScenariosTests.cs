@@ -95,10 +95,13 @@ public sealed class MandatorySynchronizationScenariosTests
         Assert.Null(HepsiburadaOrderLifecycleStatusPolicy.FromRemote("FutureProviderStatus"));
 
     [Fact]
-    public void HepsiburadaOrderLifecycleAdvancesButDoesNotRegressPackageLessSnapshots()
+    public void HepsiburadaOrderLifecycleAdvancesPackageDerivedStatusesWithoutRegressing()
     {
         Assert.Equal(ShipmentPackageStatus.Delivered, HepsiburadaOrderLifecycleStatusPolicy.Reconcile("NEW", "Delivered"));
-        Assert.Equal(ShipmentPackageStatus.Delivered, HepsiburadaOrderLifecycleStatusPolicy.Reconcile("ON_HOLD", "Delivered", ["ClaimCreated"]));
+        var existingPackageAggregate = ShipmentPackageStatusPolicy.Aggregate([ShipmentPackageStatus.OnHold]);
+        Assert.Equal(
+            ShipmentPackageStatus.Delivered,
+            HepsiburadaOrderLifecycleStatusPolicy.Reconcile(existingPackageAggregate.ToString().ToUpperInvariant(), "Delivered", ["ClaimCreated"]));
         Assert.Equal(ShipmentPackageStatus.OnHold, HepsiburadaOrderLifecycleStatusPolicy.Reconcile("NEW", "ClaimCreated"));
         Assert.Null(HepsiburadaOrderLifecycleStatusPolicy.Reconcile("SHIPPED", "Open"));
         Assert.Equal(ShipmentPackageStatus.Cancelled, HepsiburadaOrderLifecycleStatusPolicy.Reconcile("READY_TO_SHIP", "CancelledByMerchant"));
