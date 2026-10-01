@@ -5182,9 +5182,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         if (orderIsFresh) foreach (var remoteLine in remote.Lines)
         {
             var line = linesByExternalId.GetValueOrDefault(remoteLine.ExternalLineId);
+            if (line is null && isHepsiburada)
+                line = HepsiburadaOrderLineMatcher.FindExistingLine(remoteLine, existingLines, remote.Lines);
             if (line is null && !string.IsNullOrWhiteSpace(remoteLine.SourceSnapshotJson) && remoteLine.SourceSnapshotJson != "{}") line = linesBySnapshot.GetValueOrDefault(remoteLine.SourceSnapshotJson);
             if (line is null) { line = new OrderLine { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, ExternalLineId = remoteLine.ExternalLineId, Sku = remoteLine.Sku, TitleSnapshot = remoteLine.Title, RawStatus = remoteLine.RawStatus, Version = 1 }; db.OrderLines.Add(line); existingLines.Add(line); telemetryInsertedCount++; }
-            else line.ExternalLineId = remoteLine.ExternalLineId;
+
             if (line.VariantId is null)
             {
                 var barcodeKey = VariantLookupKey(remoteLine.Barcode, true);
@@ -5207,6 +5209,13 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 // when a later read does not repeat it.
                 ? ShopifyOrderCsvSnapshotPolicy.MergeRemoteSnapshot(remoteLine.SourceSnapshotJson, line.SourceSnapshotJson)
                 : remoteLine.SourceSnapshotJson;
+            var previousExternalLineId = line.ExternalLineId;
+            if (!string.Equals(previousExternalLineId, remoteLine.ExternalLineId, StringComparison.Ordinal))
+            {
+                lines.Remove(previousExternalLineId);
+                linesByExternalId.Remove(previousExternalLineId);
+            }
+            line.ExternalLineId = remoteLine.ExternalLineId;
             line.Sku = sku; line.Barcode = remoteLine.Barcode ?? line.Barcode; line.TitleSnapshot = title; line.SourceSnapshotJson = sourceSnapshot; line.OrderedQuantity = orderedQuantity; line.UnitPrice = importedUnitPrice ?? remoteLine.UnitPrice; line.VatRate = remoteLine.VatRate; line.RawStatus = remoteLine.RawStatus; if (db.Entry(line).State != EntityState.Added) line.Version++; lines[remoteLine.ExternalLineId] = line;
             linesByExternalId[remoteLine.ExternalLineId] = line;
             if (!string.IsNullOrWhiteSpace(remoteLine.SourceSnapshotJson) && remoteLine.SourceSnapshotJson != "{}") linesBySnapshot[remoteLine.SourceSnapshotJson] = line;

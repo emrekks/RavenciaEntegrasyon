@@ -50,15 +50,17 @@ internal static class HepsiburadaStaleOrderEnrichmentPolicy
             orderChanged = true;
         }
 
-        var remoteLines = remote.Lines
-            .Where(x => !string.IsNullOrWhiteSpace(x.ExternalLineId))
-            .GroupBy(x => x.ExternalLineId, StringComparer.Ordinal)
-            .ToDictionary(x => x.Key, x => x.First(), StringComparer.Ordinal);
-
-        foreach (var line in lines)
+        foreach (var remoteLine in remote.Lines)
         {
-            if (!remoteLines.TryGetValue(line.ExternalLineId, out var remoteLine)) continue;
+            var line = HepsiburadaOrderLineMatcher.FindExistingLine(remoteLine, lines, remote.Lines);
+            if (line is null) continue;
             var changed = false;
+
+            if (!string.Equals(line.ExternalLineId, remoteLine.ExternalLineId, StringComparison.Ordinal))
+            {
+                line.ExternalLineId = remoteLine.ExternalLineId;
+                changed = true;
+            }
 
             if (string.IsNullOrWhiteSpace(line.Barcode) && !string.IsNullOrWhiteSpace(remoteLine.Barcode))
             {
