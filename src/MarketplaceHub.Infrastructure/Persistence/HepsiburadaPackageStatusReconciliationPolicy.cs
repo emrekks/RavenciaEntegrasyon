@@ -1,4 +1,5 @@
 using MarketplaceHub.Domain;
+using MarketplaceHub.Application;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
@@ -49,5 +50,21 @@ public static class HepsiburadaPackageStatusReconciliationPolicy
         return remoteStatusTimestamp is { } sourceTimestamp && sourceTimestamp > currentStatusTimestamp
             ? sourceTimestamp
             : observedAt;
+    }
+
+    public static bool TryHydrateStatusObservationLines(
+        RemoteOrder remoteOrder,
+        IReadOnlyList<RemoteOrderLine> persistedLines,
+        out RemoteOrder hydratedOrder)
+    {
+        hydratedOrder = remoteOrder;
+        if (remoteOrder.Lines.Count != 0
+            || remoteOrder.Packages.Count == 0
+            || remoteOrder.Packages.Any(package => !package.IsStatusObservation)
+            || persistedLines.Count == 0)
+            return false;
+
+        hydratedOrder = remoteOrder with { Lines = persistedLines.ToArray() };
+        return true;
     }
 }

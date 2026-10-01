@@ -1666,7 +1666,9 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                     conflicting.JobType,
                     TargetedExternalOrderId(conflicting.PayloadJson),
                     conflicting.Status,
-                    conflicting.AttemptCount > 0 || conflicting.StartedAt is not null);
+                    conflicting.AttemptCount > 0 || conflicting.StartedAt is not null,
+                    PayloadString(payload, "packageNumber"),
+                    PayloadString(conflicting.PayloadJson, "packageNumber"));
                 if (targetedResolution == TargetedOrderSyncConflictResolution.PromotePending)
                 {
                     var now = timeProvider.GetUtcNow();
@@ -1726,11 +1728,14 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         => TargetedExternalOrderId(payload) is not null;
 
     private static string? TargetedExternalOrderId(string payload)
+        => PayloadString(payload, "externalOrderId");
+
+    private static string? PayloadString(string payload, string propertyName)
     {
         try
         {
             using var document = JsonDocument.Parse(payload);
-            if (!document.RootElement.TryGetProperty("externalOrderId", out var id) || id.ValueKind != JsonValueKind.String)
+            if (!document.RootElement.TryGetProperty(propertyName, out var id) || id.ValueKind != JsonValueKind.String)
                 return null;
             var value = id.GetString()?.Trim();
             return string.IsNullOrWhiteSpace(value) ? null : value;

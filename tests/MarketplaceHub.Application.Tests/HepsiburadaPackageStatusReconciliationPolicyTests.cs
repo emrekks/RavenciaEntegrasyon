@@ -1,4 +1,5 @@
 using MarketplaceHub.Domain;
+using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Persistence;
 using Xunit;
 
@@ -100,4 +101,46 @@ public sealed class HepsiburadaPackageStatusReconciliationPolicyTests
             snapshotAt,
             isAuthoritativeObservation: false));
     }
+
+    [Fact]
+    public void StatusOnlyRefresh_UsesPersistedOrderLinesWhenRemoteDetailsOmitThem()
+    {
+        var persistedLine = new RemoteOrderLine("line-1", "sku-1", "barcode-1", "Item", 1, 100, 20, "Open");
+        var statusObservation = new RemotePackage(
+            "package-1", null, "Undelivered", DateTimeOffset.UtcNow, null, null, [], IsStatusObservation: true);
+        var remoteOrder = RemoteOrderWith([], [statusObservation]);
+
+        var applied = HepsiburadaPackageStatusReconciliationPolicy.TryHydrateStatusObservationLines(
+            remoteOrder,
+            [persistedLine],
+            out var hydratedOrder);
+
+        Assert.True(applied);
+        Assert.Equal([persistedLine], hydratedOrder.Lines);
+        Assert.Equal([statusObservation], hydratedOrder.Packages);
+    }
+
+    [Fact]
+    public void StatusOnlyRefresh_DoesNotHydrateFromAnIncompleteOrDetailedSnapshot()
+    {
+        var persistedLine = new RemoteOrderLine("line-1", "sku-1", null, "Item", 1, 100, 20, "Open");
+        var observation = new RemotePackage("package-1", null, "Undelivered", DateTimeOffset.UtcNow, null, null, [], IsStatusObservation: true);
+        var detailedPackage = observation with { IsStatusObservation = false };
+
+        Assert.False(HepsiburadaPackageStatusReconciliationPolicy.TryHydrateStatusObservationLines(
+            RemoteOrderWith([], [observation]),
+            [],
+            out _));
+        Assert.False(HepsiburadaPackageStatusReconciliationPolicy.TryHydrateStatusObservationLines(
+            RemoteOrderWith([], [detailedPackage]),
+            [persistedLine],
+            out _));
+        Assert.False(HepsiburadaPackageStatusReconciliationPolicy.TryHydrateStatusObservationLines(
+            RemoteOrderWith([], []),
+            [persistedLine],
+            out _));
+    }
+
+    private static RemoteOrder RemoteOrderWith(IReadOnlyList<RemoteOrderLine> lines, IReadOnlyList<RemotePackage> packages) =>
+        new("order-1", "order-1", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "TRY", 100, 0, 100, "{}", "{}", "{}", lines, packages, "{}");
 }

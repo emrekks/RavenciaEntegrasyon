@@ -56,10 +56,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var syncLock = await MarketplaceSyncExecutionLock.TryAcquireAsync(db, connectionId.Value, jobType, cancellationToken);
         if (syncLock is null)
         {
-            // The active job owns the same provider lane. This is expected
-            // coalescing, not a failed sync: retrying the duplicate only turns
-            // a normal overlap into a visible SYNC_LOCK_BUSY error storm.
-            return JobExecutionResult.Success();
+            // Scheduled duplicates may coalesce, but another job cannot satisfy
+            // a request for a specific order/package. Preserve that work for retry.
+            return MarketplaceSyncExecutionLock.ContentionResult(jobType, payloadJson);
         }
         await using (syncLock)
         {
@@ -1694,10 +1693,17 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     IsStatusObservation: true);
                 remoteOrder = remoteOrder with
                 {
-                    Packages = remoteOrder.Packages.Where(package => !string.Equals(package.ExternalPackageId, packageNumber, StringComparison.Ordinal)).Append(observation).ToArray()
+                    Packages = [observation]
                 };
             }
-            await UpsertOrder(tenantId, connectionId, remoteOrder, cancellationToken);
+            if (!await UpsertOrder(tenantId, connectionId, remoteOrder, cancellationToken))
+                throw JobProcessingException.FromAdapter(new AdapterError(
+                    AdapterErrorClass.ContractViolation,
+                    "HEPSIBURADA_ORDER_SYNC_NOT_APPLIED",
+                    "Hepsiburada sipariş verisi alındı ancak panel bütünlük denetimi güncellemeyi uygulamadı; işlem hata olarak kaydedildi.",
+                    502,
+                    null,
+                    null));
             return true;
         }
 
@@ -5433,7 +5439,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         };
     }
 
-    private async Task UpsertOrder(Guid tenantId, Guid connectionId, RemoteOrder remote, CancellationToken cancellationToken, OrderIngestionBatch? batch = null, bool saveChanges = true, bool projectReservations = true, bool persistFinancialObservations = false)
+    private async Task<bool> UpsertOrder(Guid tenantId, Guid connectionId, RemoteOrder remote, CancellationToken cancellationToken, OrderIngestionBatch? batch = null, bool saveChanges = true, bool projectReservations = true, bool persistFinancialObservations = false)
     {
         var platformCode = await db.PlatformConnections.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.Id == connectionId)
@@ -5441,12 +5447,39 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             .SingleOrDefaultAsync(cancellationToken);
         var isShopify = platformCode == "SHOPIFY";
         var isHepsiburada = platformCode == "HEPSIBURADA";
+        var now = timeProvider.GetUtcNow();
+        var order = batch?.OrdersByExternalId.GetValueOrDefault(remote.ExternalOrderId)
+            ?? await db.Orders.SingleOrDefaultAsync(x => x.TenantId == tenantId
+                && x.ConnectionId == connectionId
+                && x.ExternalOrderId == remote.ExternalOrderId, cancellationToken);
+
+        if (isHepsiburada && batch is null && order is not null && remote.Lines.Count == 0)
+        {
+            var persistedLines = await db.OrderLines.AsNoTracking()
+                .Where(line => line.TenantId == tenantId && line.OrderId == order.Id)
+                .OrderBy(line => line.ExternalLineId)
+                .Select(line => new RemoteOrderLine(
+                    line.ExternalLineId,
+                    line.Sku,
+                    line.Barcode,
+                    line.TitleSnapshot,
+                    line.OrderedQuantity,
+                    line.UnitPrice,
+                    line.VatRate,
+                    line.RawStatus,
+                    line.SourceSnapshotJson ?? "{}",
+                    line.CancelledQuantity))
+                .ToListAsync(cancellationToken);
+            if (HepsiburadaPackageStatusReconciliationPolicy.TryHydrateStatusObservationLines(remote, persistedLines, out var hydratedOrder))
+                remote = hydratedOrder;
+        }
+
         IReadOnlyDictionary<string, decimal> remoteLineQuantities;
         if (remote.Lines.Count == 0 || remote.Packages.Count == 0 && !isHepsiburada)
         {
             await RecordIssue(tenantId, $"order-contract:{connectionId}:{remote.ExternalOrderId}:{remote.LastModifiedAt.ToUnixTimeMilliseconds()}", "ORDER_CONTRACT_INVALID", "Pazar yeri siparişinde satır veya paket verisi eksikti; eksik sipariş projeksiyonu uygulanmadı.", cancellationToken);
             if (saveChanges) await db.SaveChangesAsync(cancellationToken);
-            return;
+            return false;
         }
         else
         {
@@ -5455,21 +5488,16 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             {
                 await RecordIssue(tenantId, $"order-lines:{connectionId}:{remote.ExternalOrderId}:{remote.LastModifiedAt.ToUnixTimeMilliseconds()}", "ORDER_LINE_QUANTITY_INVARIANT_REJECTED", "Sipariş satır kimliği veya miktarı geçersizdi; olayın hiçbir parçası uygulanmadı.", cancellationToken);
                 if (saveChanges) await db.SaveChangesAsync(cancellationToken);
-                return;
+                return false;
             }
         }
-        var now = timeProvider.GetUtcNow();
-        var order = batch?.OrdersByExternalId.GetValueOrDefault(remote.ExternalOrderId)
-            ?? await db.Orders.SingleOrDefaultAsync(x => x.TenantId == tenantId
-                && x.ConnectionId == connectionId
-                && x.ExternalOrderId == remote.ExternalOrderId, cancellationToken);
         var detailedPackages = remote.Packages.Where(package => !package.IsStatusObservation).ToArray();
         var allocatedLineIds = detailedPackages.SelectMany(x => x.Allocations).Select(x => x.ExternalLineId).ToHashSet(StringComparer.Ordinal);
         if (detailedPackages.Length > 0 && remoteLineQuantities.Keys.Any(lineId => !allocatedLineIds.Contains(lineId)))
         {
             await RecordIssue(tenantId, $"order-coverage:{connectionId}:{remote.ExternalOrderId}:{remote.LastModifiedAt.ToUnixTimeMilliseconds()}", "ORDER_LINE_COVERAGE_INVALID", "Pazar yeri cevabındaki sipariş satırlarının tamamı paket tahsisinde yer almıyordu; eksik veri uygulanmadı.", cancellationToken);
             if (saveChanges) await db.SaveChangesAsync(cancellationToken);
-            return;
+            return false;
         }
         // A new order must arrive as a complete package aggregate. Once the
         // order already exists, a later stream page may contain only one
@@ -5483,7 +5511,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 : remote.ExternalOrderId;
             await RecordIssue(tenantId, $"package-quantity:{connectionId}:{rejectedEventId}", "PACKAGE_QUANTITY_INVARIANT_REJECTED", "Paket miktarları sipariş satırı bütünlüğünü sağlamadı; olayın hiçbir parçası uygulanmadı.", cancellationToken);
             if (saveChanges) await db.SaveChangesAsync(cancellationToken);
-            return;
+            return false;
         }
         if (order is not null)
         {
@@ -5779,6 +5807,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         else if (projectReservations && batch is not null)
             batch.ReservationSources.AddRange(lines.Values.Select(line => (line, remote.LastModifiedAt)));
         if (saveChanges) await db.SaveChangesAsync(cancellationToken);
+        return true;
     }
 
     private async Task UpsertShopifyFinancialObservations(Guid tenantId, Guid orderId, RemoteOrder remote, CancellationToken cancellationToken)

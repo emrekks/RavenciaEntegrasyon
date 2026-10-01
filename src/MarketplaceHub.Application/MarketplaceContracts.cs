@@ -157,14 +157,26 @@ public static class TargetedOrderSyncConflictPolicy
         string? conflictingJobType,
         string? conflictingExternalOrderId,
         JobStatus conflictingStatus,
-        bool conflictingJobHasStarted)
+        bool conflictingJobHasStarted,
+        string? requestedPackageNumber = null,
+        string? conflictingPackageNumber = null)
     {
         if (string.IsNullOrWhiteSpace(requestedExternalOrderId))
             return TargetedOrderSyncConflictResolution.Reject;
 
         if (!string.IsNullOrWhiteSpace(conflictingExternalOrderId)
             && string.Equals(requestedExternalOrderId.Trim(), conflictingExternalOrderId.Trim(), StringComparison.OrdinalIgnoreCase))
+        {
+            // An order-only read cannot satisfy an explicit package refresh.
+            // Do not discard the requested package when reusing an active job.
+            if (!string.IsNullOrWhiteSpace(requestedPackageNumber)
+                && !string.Equals(requestedPackageNumber.Trim(), conflictingPackageNumber?.Trim(), StringComparison.Ordinal))
+                return conflictingStatus == JobStatus.Pending && !conflictingJobHasStarted
+                    && IsSameIncrementalOrderSyncType(requestedJobType, conflictingJobType)
+                        ? TargetedOrderSyncConflictResolution.PromotePending
+                        : TargetedOrderSyncConflictResolution.Reject;
             return TargetedOrderSyncConflictResolution.ReuseExisting;
+        }
 
         if (conflictingStatus == JobStatus.Pending
             && !conflictingJobHasStarted

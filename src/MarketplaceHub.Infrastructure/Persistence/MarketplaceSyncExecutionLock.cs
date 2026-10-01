@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
+using MarketplaceHub.Application;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
@@ -82,6 +84,24 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
         if (type.Contains("PRODUCT", StringComparison.Ordinal) || type.Contains("CATALOG", StringComparison.Ordinal)) return "products";
         if (type.Contains("REFERENCE", StringComparison.Ordinal) || type.Contains("CATEGORY", StringComparison.Ordinal) || type.Contains("BRAND", StringComparison.Ordinal)) return "references";
         return "connection";
+    }
+
+    internal static JobExecutionResult ContentionResult(string jobType, string payloadJson)
+    {
+        if (jobType is MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync)
+        {
+            try
+            {
+                using var payload = JsonDocument.Parse(payloadJson);
+                if (payload.RootElement.ValueKind == JsonValueKind.Object
+                    && payload.RootElement.TryGetProperty("externalOrderId", out var id)
+                    && id.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(id.GetString()))
+                    return JobExecutionResult.Retry("TARGETED_ORDER_SYNC_BUSY",
+                        "Tekil sipariş yenilemesi mevcut sipariş işleminin tamamlanmasını bekliyor.", TimeSpan.FromSeconds(30));
+            }
+            catch (JsonException) { }
+        }
+        return JobExecutionResult.Success();
     }
 
     private static long LockKey(Guid connectionId, string group)

@@ -6,6 +6,41 @@ namespace MarketplaceHub.Application.Tests;
 
 public sealed class TargetedOrderSyncConflictPolicyTests
 {
+    [Theory]
+    [InlineData(null)]
+    [InlineData("different-package")]
+    public void PackageRefreshPromotesPendingSameOrderReadWithoutMatchingPackage(string? existingPackage)
+    {
+        var result = TargetedOrderSyncConflictPolicy.Resolve(
+            MarketplaceJobTypes.HepsiburadaOrderSync, "4736002251",
+            MarketplaceJobTypes.HepsiburadaOrderSync, "4736002251",
+            JobStatus.Pending, false, "5467917398", existingPackage);
+        Assert.Equal(TargetedOrderSyncConflictResolution.PromotePending, result);
+    }
+
+    [Theory]
+    [InlineData(JobStatus.Leased, true)]
+    [InlineData(JobStatus.RetryScheduled, true)]
+    [InlineData(JobStatus.Pending, true)]
+    public void PackageRefreshDoesNotReuseStartedOrderOnlyRead(JobStatus status, bool started)
+    {
+        var result = TargetedOrderSyncConflictPolicy.Resolve(
+            MarketplaceJobTypes.HepsiburadaOrderSync, "4736002251",
+            MarketplaceJobTypes.HepsiburadaOrderSync, "4736002251",
+            status, started, "5467917398", null);
+        Assert.Equal(TargetedOrderSyncConflictResolution.Reject, result);
+    }
+
+    [Fact]
+    public void PackageRefreshReusesMatchingOrderAndPackage()
+    {
+        var result = TargetedOrderSyncConflictPolicy.Resolve(
+            MarketplaceJobTypes.HepsiburadaOrderSync, "4736002251",
+            MarketplaceJobTypes.HepsiburadaOrderSync, "4736002251",
+            JobStatus.Leased, true, "5467917398", " 5467917398 ");
+        Assert.Equal(TargetedOrderSyncConflictResolution.ReuseExisting, result);
+    }
+
     [Fact]
     public void TargetedHepsiburadaReadPromotesAnUnstartedPendingIncrementalRead()
     {
