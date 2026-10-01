@@ -6,6 +6,16 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 internal static class HepsiburadaOrderLineMatcher
 {
+    public static bool CanAddMissingLine(RemoteOrderLine remoteLine, IReadOnlyCollection<OrderLine> existingLines, IReadOnlyCollection<RemoteOrderLine> remoteLines)
+    {
+        if (FindExistingLine(remoteLine, existingLines, remoteLines) is not null) return false;
+        var identities = IdentityAliases(remoteLine.ExternalLineId, remoteLine.SourceSnapshotJson);
+        var products = ProductAliases(remoteLine);
+        // An ambiguous match must be reviewed, not inserted as a duplicate.
+        return !existingLines.Any(line => IdentityAliases(line.ExternalLineId, line.SourceSnapshotJson).Overlaps(identities)
+            || ProductAliases(line).Overlaps(products));
+    }
+
     public static OrderLine? FindExistingLine(
         RemoteOrderLine remoteLine,
         IReadOnlyCollection<OrderLine> existingLines,

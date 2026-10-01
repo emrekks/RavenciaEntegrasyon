@@ -5585,8 +5585,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             batch.PackagesByOrder[order.Id] = packagesByExternalId;
             batch.EventIdsByOrder[order.Id] = knownEventIds;
         }
-        if (orderIsFresh) foreach (var remoteLine in remote.Lines)
+        foreach (var remoteLine in remote.Lines)
         {
+            if (!orderIsFresh && (!isHepsiburada
+                || !HepsiburadaOrderLineMatcher.CanAddMissingLine(remoteLine, existingLines, remote.Lines)))
+                continue;
             var line = linesByExternalId.GetValueOrDefault(remoteLine.ExternalLineId);
             if (line is null && isHepsiburada)
                 line = HepsiburadaOrderLineMatcher.FindExistingLine(remoteLine, existingLines, remote.Lines);
