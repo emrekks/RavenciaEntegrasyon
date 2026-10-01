@@ -492,6 +492,43 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task JobLease_HotLaneSelectsOldestSamePriorityHepsiburadaLifecycleBeforeTrendyolOrders()
+    {
+        var tenant = NewTenant("lease-fifo-same-priority");
+        var hepsiburadaLifecycle = NewJob(tenant.Id);
+        hepsiburadaLifecycle.JobType = MarketplaceJobTypes.HepsiburadaOrderStatusSync;
+        hepsiburadaLifecycle.Priority = 0;
+        var trendyolOrders = NewJob(tenant.Id);
+        trendyolOrders.JobType = MarketplaceJobTypes.OrderSync;
+        trendyolOrders.Priority = 0;
+        trendyolOrders.CreatedAt = hepsiburadaLifecycle.CreatedAt.AddSeconds(1);
+        trendyolOrders.AvailableAt = hepsiburadaLifecycle.AvailableAt.AddSeconds(1);
+
+        await using (var setup = fixture.CreateContext())
+        {
+            setup.Tenants.Add(tenant);
+            setup.IntegrationJobs.AddRange(hepsiburadaLifecycle, trendyolOrders);
+            await setup.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var leaseService = new JobLeaseService(db, fixture.TokenHasher, fixture.TimeProvider);
+            var lease = await leaseService.TryLeaseAsync(TimeSpan.FromMinutes(2), 2, null, CancellationToken.None);
+
+            Assert.Equal(hepsiburadaLifecycle.Id, lease?.Id);
+        }
+        finally
+        {
+            var jobIds = new[] { hepsiburadaLifecycle.Id, trendyolOrders.Id };
+            await using var cleanup = fixture.CreateContext();
+            await cleanup.IntegrationJobs.Where(x => jobIds.Contains(x.Id)).ExecuteDeleteAsync();
+            await cleanup.Tenants.Where(x => x.Id == tenant.Id).ExecuteDeleteAsync();
+        }
+    }
+
+    [PostgreSqlFact]
     public async Task ApiIdempotencyKey_IsScopedToTenant_ButDuplicateWithinTenantIsRejected()
     {
         var firstTenant = NewTenant("idempotency-a");
