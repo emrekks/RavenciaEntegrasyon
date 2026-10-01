@@ -265,7 +265,7 @@ public sealed class HepsiburadaAdapterTests
     [Fact]
     public void ListingLookupTriesProductIdThenHepsiburadaSku()
     {
-        Assert.Equal(new[] { "productId=HBCV0000DTYGZD", "hbSkuList=HBCV0000DTYGZD" }, HepsiburadaHttpClient.ListingLookupQueries(" HBCV0000DTYGZD "));
+        Assert.Equal(new[] { "productId=HBCV0000DTYGZD", "hbSkuList=HBCV0000DTYGZD", "merchantSkuList=HBCV0000DTYGZD" }, HepsiburadaHttpClient.ListingLookupQueries(" HBCV0000DTYGZD "));
         Assert.Empty(HepsiburadaHttpClient.ListingLookupQueries("  "));
     }
 

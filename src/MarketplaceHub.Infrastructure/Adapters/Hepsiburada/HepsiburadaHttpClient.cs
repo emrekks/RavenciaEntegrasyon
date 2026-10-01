@@ -267,7 +267,7 @@ public sealed partial class HepsiburadaHttpClient(
         var value = productLookup?.Trim();
         if (string.IsNullOrWhiteSpace(value)) return [];
         var escaped = Uri.EscapeDataString(value);
-        return [$"productId={escaped}", $"hbSkuList={escaped}"];
+        return [$"productId={escaped}", $"hbSkuList={escaped}", $"merchantSkuList={escaped}"];
     }
 
     internal static bool ShouldTryNextListingLookup(int attemptIndex, int attemptCount, string? cursor, int itemCount, AdapterErrorClass? errorClass) =>
