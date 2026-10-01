@@ -1,5 +1,9 @@
 const shipmentDeadlineExemptStatuses = new Set(['ON_HOLD'])
 
+export function onHoldOrderStatusText(platformCode: string) {
+  return platformCode.trim().toUpperCase() === 'HEPSIBURADA' ? 'Teslim edilemedi' : 'Askıda'
+}
+
 export function overdueShipmentDays(status: string, dueAtValue: string | null, now = Date.now()) {
   if (shipmentDeadlineExemptStatuses.has(status.toUpperCase()) || !dueAtValue) return 0
 

@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { overdueShipmentDays } from './order-delivery-presentation'
+import { onHoldOrderStatusText, overdueShipmentDays } from './order-delivery-presentation'
+
+describe('onHoldOrderStatusText', () => {
+  it('explains Hepsiburada hold orders as undelivered', () => {
+    expect(onHoldOrderStatusText('HEPSIBURADA')).toBe('Teslim edilemedi')
+  })
+
+  it('keeps the standard hold label for other marketplaces', () => {
+    expect(onHoldOrderStatusText('TRENDYOL')).toBe('Askıda')
+  })
+})
 
 describe('overdueShipmentDays', () => {
   const now = Date.parse('2026-10-01T12:00:00Z')
