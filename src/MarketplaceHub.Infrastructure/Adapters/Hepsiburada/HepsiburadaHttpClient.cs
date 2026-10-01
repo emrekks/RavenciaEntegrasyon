@@ -589,6 +589,41 @@ public sealed partial class HepsiburadaHttpClient(
         }
     }
 
+    public async Task<AdapterResult<PackageTrackingStatusSnapshot>> GetPackageTrackingInfoAsync(AdapterContext context, string packageNumber, CancellationToken cancellationToken)
+    {
+        var normalizedPackageNumber = packageNumber.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedPackageNumber))
+            return Failure<PackageTrackingStatusSnapshot>(AdapterErrorClass.Validation, "HEPSIBURADA_PACKAGE_NUMBER_REQUIRED", "Hepsiburada paket numarası gerekli.", HttpStatusCode.BadRequest);
+
+        var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
+        if (account is null)
+            return Failure<PackageTrackingStatusSnapshot>(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIAL_INVALID", "Hepsiburada bağlantı bilgileri bulunamadı.", HttpStatusCode.Unauthorized);
+
+        return await GetPackageTrackingInfoAsync(account, normalizedPackageNumber, cancellationToken);
+    }
+
+    internal async Task<AdapterResult<PackageTrackingStatusSnapshot>> GetPackageTrackingInfoAsync(HepsiburadaRequestContext account, string packageNumber, CancellationToken cancellationToken)
+    {
+        var normalizedPackageNumber = packageNumber.Trim();
+        var response = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Get,
+            PackageTrackingInfo(account.Connection.ExternalStoreId, normalizedPackageNumber), cancellationToken);
+        if (!response.IsSuccess)
+            return AdapterResult<PackageTrackingStatusSnapshot>.Failure(response.Error!, response.RateLimit);
+
+        try
+        {
+            var tracking = HepsiburadaJsonMapper.PackageTrackingInfo(response.Value!.RootElement, normalizedPackageNumber);
+            return AdapterResult<PackageTrackingStatusSnapshot>.Success(
+                new(normalizedPackageNumber, tracking.Status, tracking.CargoCompany, tracking.TrackingInfoCode, tracking.OrderNumber), response.RateLimit);
+        }
+        catch (JsonException)
+        {
+            return Failure<PackageTrackingStatusSnapshot>(AdapterErrorClass.ContractViolation,
+                "HEPSIBURADA_PACKAGE_TRACKING_INFO_INVALID",
+                "Hepsiburada kargo yanıtı istenen paket numarası ve durum bilgileriyle eşleşmedi.", HttpStatusCode.BadGateway);
+        }
+    }
+
     private static string PackageListQuery(int offset, int limit, PackagePollWindow window)
     {
         var query = new List<string>

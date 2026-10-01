@@ -330,7 +330,7 @@ internal static class HepsiburadaJsonMapper
         return (items.EnumerateArray().ToArray(), totalCount);
     }
 
-    public static (string? Status, string? CargoCompany, string? TrackingInfoCode) PackageTrackingInfo(JsonElement root, string expectedPackageNumber)
+    public static (string? Status, string? CargoCompany, string? TrackingInfoCode, string? OrderNumber) PackageTrackingInfo(JsonElement root, string expectedPackageNumber)
     {
         var data = Unwrap(root);
         var items = Find(data, "items", "packages", "content");
@@ -343,7 +343,8 @@ internal static class HepsiburadaJsonMapper
             return (
                 Text(item, "status", "Status"),
                 Text(item, "cargoCompany", "CargoCompany", "cargoCompanyName", "CargoCompanyName"),
-                Text(item, "trackingInfoCode", "TrackingInfoCode"));
+                Text(item, "trackingInfoCode", "TrackingInfoCode"),
+                Text(item, "orderNumber", "OrderNumber", "orderNo", "OrderNo"));
         }
 
         throw new JsonException("Hepsiburada kargo yanıtında istenen packageNumber bulunamadı.");

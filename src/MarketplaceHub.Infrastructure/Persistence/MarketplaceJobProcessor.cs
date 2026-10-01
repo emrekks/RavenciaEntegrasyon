@@ -1647,11 +1647,13 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     private async Task<bool> SyncHepsiburadaOrders(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, string cursorResourceType, bool allowBaseline, CancellationToken cancellationToken)
     {
         string? externalOrderId = null;
+        string? packageNumber = null;
         var full = false;
         try
         {
             using var payload = JsonDocument.Parse(payloadJson);
             if (payload.RootElement.TryGetProperty("externalOrderId", out var id) && id.ValueKind == JsonValueKind.String) externalOrderId = id.GetString();
+            if (payload.RootElement.TryGetProperty("packageNumber", out var package) && package.ValueKind == JsonValueKind.String) packageNumber = package.GetString()?.Trim();
             if (payload.RootElement.TryGetProperty("full", out var fullValue) && fullValue.ValueKind is JsonValueKind.True or JsonValueKind.False) full = fullValue.GetBoolean();
         }
         catch (JsonException) { return false; }
@@ -1662,7 +1664,40 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             var single = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"hepsiburada-order-get:{externalOrderId}"), externalOrderId.Trim(), cancellationToken);
             if (!single.IsSuccess) { TrackResultFailure(single.Error); throw JobProcessingException.FromAdapter(single.Error!); }
             TrackReceived();
-            await UpsertOrder(tenantId, connectionId, single.Value!, cancellationToken);
+            var remoteOrder = single.Value!;
+            if (!string.IsNullOrWhiteSpace(packageNumber))
+            {
+                TrackRequest();
+                var tracking = await orderPackages.GetPackageTrackingInfoAsync(
+                    Context(tenantId, connectionId, correlationId, $"hepsiburada-package-status:{packageNumber}"), packageNumber, cancellationToken);
+                if (!tracking.IsSuccess) { TrackResultFailure(tracking.Error); throw JobProcessingException.FromAdapter(tracking.Error!); }
+                TrackReceived();
+                if (!string.IsNullOrWhiteSpace(tracking.Value!.OrderNumber)
+                    && !string.Equals(tracking.Value.OrderNumber.Trim(), remoteOrder.OrderNumber, StringComparison.OrdinalIgnoreCase))
+                    throw JobProcessingException.FromAdapter(new AdapterError(AdapterErrorClass.Validation, "HEPSIBURADA_PACKAGE_ORDER_MISMATCH", "Paket numarası girilen Hepsiburada siparişine ait değil; durum güncellenmedi.", 422, null, null));
+                if (string.IsNullOrWhiteSpace(tracking.Value.Status)
+                    || HepsiburadaOrderLifecycleStatusPolicy.FromRemote(tracking.Value.Status) is null)
+                    throw JobProcessingException.FromAdapter(new AdapterError(AdapterErrorClass.ContractViolation, "HEPSIBURADA_PACKAGE_STATUS_UNSUPPORTED", "Hepsiburada paket durum yanıtı tanınmadı; sipariş durumu değiştirilmedi.", 502, null, null));
+
+                // The direct package endpoint is a point-in-time GET and does
+                // not return the original delivery timestamp. Record the
+                // observation time while keeping the remote lifecycle status
+                // and package identity authoritative.
+                var observation = new RemotePackage(
+                    packageNumber,
+                    null,
+                    tracking.Value.Status,
+                    timeProvider.GetUtcNow(),
+                    tracking.Value.CargoCompany,
+                    tracking.Value.TrackingInfoCode,
+                    [],
+                    IsStatusObservation: true);
+                remoteOrder = remoteOrder with
+                {
+                    Packages = remoteOrder.Packages.Where(package => !string.Equals(package.ExternalPackageId, packageNumber, StringComparison.Ordinal)).Append(observation).ToArray()
+                };
+            }
+            await UpsertOrder(tenantId, connectionId, remoteOrder, cancellationToken);
             return true;
         }
 

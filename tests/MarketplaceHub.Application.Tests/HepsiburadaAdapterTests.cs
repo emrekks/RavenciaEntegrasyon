@@ -841,7 +841,8 @@ public sealed class HepsiburadaAdapterTests
             "barcode": "cargo-barcode-18",
             "status": "InTransit",
             "cargoCompany": "HepsiJet",
-            "trackingInfoCode": "tracking-18"
+            "trackingInfoCode": "tracking-18",
+            "orderNumber": "HB-2026-18"
           }]
         }
         """);
@@ -851,7 +852,42 @@ public sealed class HepsiburadaAdapterTests
         Assert.Equal("InTransit", tracking.Status);
         Assert.Equal("HepsiJet", tracking.CargoCompany);
         Assert.Equal("tracking-18", tracking.TrackingInfoCode);
+        Assert.Equal("HB-2026-18", tracking.OrderNumber);
         Assert.Throws<JsonException>(() => HepsiburadaJsonMapper.PackageTrackingInfo(json.RootElement, "another-package"));
+    }
+
+    [Fact]
+    public async Task DirectPackageTrackingStatusLookupUsesReadOnlyEndpoint()
+    {
+        var handler = new CapturingHttpHandler("""[{"packageNumber":"5000031618","status":"Delivered","cargoCompany":"Aras","trackingInfoCode":"tracking-18","orderNumber":"HB-2026-18"}]""");
+        var client = CreateReadOnlyHepsiburadaClient(handler);
+        var account = new HepsiburadaRequestContext(
+            new MarketplaceHub.Domain.PlatformConnection
+            {
+                PlatformCode = "HEPSIBURADA",
+                Environment = "PRODUCTION",
+                DisplayName = "fixture",
+                ExternalStoreId = "merchant-18",
+                Status = "ACTIVE",
+                ApiVersion = "V1.0"
+            },
+            new Uri("https://oms.example/"), new Uri("https://listing.example/"), "integrator", "fixture-key")
+        {
+            IntegratorName = "ravencia_tests/1.0"
+        };
+
+        var result = await client.GetPackageTrackingInfoAsync(account, "5000031618", CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("5000031618", result.Value!.PackageNumber);
+        Assert.Equal("Delivered", result.Value.Status);
+        Assert.Equal("Aras", result.Value.CargoCompany);
+        Assert.Equal("tracking-18", result.Value.TrackingInfoCode);
+        Assert.Equal("HB-2026-18", result.Value.OrderNumber);
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal("GET", request.Method);
+        Assert.Equal("https://oms.example/packages/merchantid/merchant-18/packagenumber/5000031618", request.Uri.AbsoluteUri);
+        Assert.Equal("Basic", request.AuthorizationScheme);
     }
 
     [Fact]

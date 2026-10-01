@@ -752,14 +752,18 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         return ServiceResult<CreateOrderPackageResult>.Ok(result.Value!);
     }
 
-    public async Task<ServiceResult<Guid>> EnqueueOrderSyncAsync(Guid tenantId, Guid connectionId, string? externalOrderId, bool full, string correlationId, CancellationToken cancellationToken)
+    public async Task<ServiceResult<Guid>> EnqueueOrderSyncAsync(Guid tenantId, Guid connectionId, string? externalOrderId, bool full, string correlationId, CancellationToken cancellationToken, string? packageNumber = null)
     {
         var platform = await db.PlatformConnections.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.Id == connectionId)
             .Select(x => x.PlatformCode)
             .SingleOrDefaultAsync(cancellationToken);
+        var normalizedPackageNumber = packageNumber?.Trim();
+        if (!string.IsNullOrWhiteSpace(normalizedPackageNumber)
+            && (platform != "HEPSIBURADA" || string.IsNullOrWhiteSpace(externalOrderId) || normalizedPackageNumber.Length > 100 || normalizedPackageNumber.Any(char.IsControl)))
+            return ServiceResult<Guid>.Fail("HEPSIBURADA_PACKAGE_TRACKING_REFRESH_INVALID", "Paket numarasıyla durum yenileme yalnızca tek bir Hepsiburada siparişi için kullanılabilir.", 422);
         var type = MarketplaceJobTypes.ForPlatform(platform, full ? MarketplaceJobTypes.OrderRecoverySync : MarketplaceJobTypes.OrderSync);
-        return await EnqueueRead(tenantId, connectionId, MarketplaceCapabilities.OrderRead, type, JsonSerializer.Serialize(new { connectionId, externalOrderId, full }), correlationId, cancellationToken);
+        return await EnqueueRead(tenantId, connectionId, MarketplaceCapabilities.OrderRead, type, JsonSerializer.Serialize(new { connectionId, externalOrderId, full, packageNumber = normalizedPackageNumber }), correlationId, cancellationToken);
     }
 
     public async Task<ServiceResult<Guid>> EnqueueProductSyncAsync(Guid tenantId, Guid connectionId, bool full, bool newOnly, bool existingOnly, bool mappingOnly, bool includeArchived, bool includeDrafts, bool includePendingApproval, bool updateExistingProducts, string? productLookup, string correlationId, CancellationToken cancellationToken)

@@ -548,6 +548,7 @@ function ShippingLabelBatchModal({ items, settings, format, onClose, onPrinted }
 
 function SingleOrderSyncModal({ activeConnection: activeConnections, onClose, onSuccess }: { activeConnection: Connection[]; onClose: () => void; onSuccess: (connectionCount: number, orderNumber: string) => void }) {
   const [orderNumber, setOrderNumber] = useState('')
+  const [packageNumber, setPackageNumber] = useState('')
   const [selectedConnectionIds, setSelectedConnectionIds] = useState<string[]>(() => activeConnections.map(connection => connection.id))
   const [connectionsInitialized, setConnectionsInitialized] = useState(() => activeConnections.length > 0)
   const [syncMode, setSyncMode] = useState<'changes' | 'single'>('changes')
@@ -573,13 +574,17 @@ function SingleOrderSyncModal({ activeConnection: activeConnections, onClose, on
       setErrorMsg('En az bir aktif bağlantı seçin.')
       return
     }
+    const packageTrackingRefresh = syncMode === 'single'
+      && selectedConnections.length === 1
+      && selectedConnections[0].platformCode === 'HEPSIBURADA'
+      && Boolean(packageNumber.trim())
     setIsSubmitting(true)
     setErrorMsg('')
     try {
       await Promise.all(selectedConnections.map(connection => hubApi(`/connections/${connection.id}/order-sync-jobs`, {
         method: 'POST',
         headers: { 'Idempotency-Key': idempotency() },
-        body: JSON.stringify({ externalOrderId: syncMode === 'single' ? trimmed : null, full: syncMode === 'changes' && fullScan })
+        body: JSON.stringify({ externalOrderId: syncMode === 'single' ? trimmed : null, full: syncMode === 'changes' && fullScan, packageNumber: packageTrackingRefresh ? packageNumber.trim() : null })
       })))
       onSuccess(selectedConnections.length, trimmed)
       onClose()
@@ -620,10 +625,17 @@ function SingleOrderSyncModal({ activeConnection: activeConnections, onClose, on
             <button type="button" className={syncMode === 'changes' ? 'active' : ''} onClick={() => { setSyncMode('changes'); setErrorMsg('') }} disabled={isSubmitting}><UiIcon name="refresh" /> Yeni siparişleri çek</button>
             <button type="button" className={syncMode === 'single' ? 'active' : ''} onClick={() => { setSyncMode('single'); setErrorMsg('') }} disabled={isSubmitting}><UiIcon name="search" /> Tekil sipariş çek</button>
           </div>
-          {syncMode === 'single' ? <label className="sync-order-number-field">
-            <span>Pazar yeri sipariş numarası</span>
-            <input type="text" value={orderNumber} onChange={e => setOrderNumber(e.target.value)} placeholder="Örn. 1014529381 veya Shopify sipariş adı" disabled={isSubmitting} autoFocus />
-          </label> : <label className="sync-mode-option"><input type="checkbox" checked={fullScan} onChange={event => setFullScan(event.target.checked)} /><span><strong>Erişilebilir tüm siparişleri tara</strong><small>Kapalıyken yalnız yeni değişiklikler ve güncellemeler alınır.</small></span></label>}
+          {syncMode === 'single' ? <>
+            <label className="sync-order-number-field">
+              <span>Pazar yeri sipariş numarası</span>
+              <input type="text" value={orderNumber} onChange={e => setOrderNumber(e.target.value)} placeholder="Örn. 1014529381 veya Shopify sipariş adı" disabled={isSubmitting} autoFocus />
+            </label>
+            {selectedConnectionIds.length === 1 && activeConnections.find(connection => connection.id === selectedConnectionIds[0])?.platformCode === 'HEPSIBURADA' && <label className="sync-order-number-field">
+              <span>Hepsiburada paket numarası (isteğe bağlı)</span>
+              <input type="text" value={packageNumber} onChange={e => setPackageNumber(e.target.value)} placeholder="Örn. 5435694424" disabled={isSubmitting} />
+              <small>Eski teslimat durumunu Hepsiburada’dan salt okunur olarak yeniler; mağazada değişiklik yapmaz.</small>
+            </label>}
+          </> : <label className="sync-mode-option"><input type="checkbox" checked={fullScan} onChange={event => setFullScan(event.target.checked)} /><span><strong>Erişilebilir tüm siparişleri tara</strong><small>Kapalıyken yalnız yeni değişiklikler ve güncellemeler alınır.</small></span></label>}
           {errorMsg && <p className="error single-order-sync-error" role="alert">{errorMsg}</p>}
           <footer className="single-order-sync-footer">
             <button type="button" className="secondary" onClick={onClose} disabled={isSubmitting}>İptal</button>
