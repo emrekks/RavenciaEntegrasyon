@@ -66,16 +66,35 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var variantIds = lines.Where(x => x.VariantId is not null).Select(x => x.VariantId!.Value).Distinct().ToArray();
         var lineSkus = lines.Select(x => x.Sku).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToArray();
         var lineSkuKeys = lines.Select(x => NormalizeCatalogKey(x.Sku, 160)).Where(x => x.Length > 0).Distinct().ToArray();
+        var marketplaceSkuKeys = lines.Select(x => MarketplaceVariantLinkCoverage.Normalize(x.Sku)).Where(x => x.Length > 0).Distinct().ToArray();
         var lineBarcodes = lines.Select(x => x.Barcode).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToArray();
         var lineBarcodeKeys = lines.Select(x => NormalizeCatalogKey(x.Barcode, 160)).Where(x => x.Length > 0).Distinct().ToArray();
+        var lineVariantLinks = marketplaceSkuKeys.Length == 0
+            ? []
+            : await db.MarketplaceVariantLinks.AsNoTracking()
+                .Where(x => x.TenantId == tenantId
+                    && connectionIds.Contains(x.ConnectionId)
+                    && marketplaceSkuKeys.Contains(x.ExternalId.Trim().ToUpper()))
+                .ToListAsync(cancellationToken);
+        var linkedVariantIds = lineVariantLinks.Select(link => link.VariantId).Distinct().ToArray();
         var variantRows = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId &&
-            (variantIds.Contains(x.Id) || lineSkus.Contains(x.Sku) || lineSkuKeys.Contains(x.SkuNormalized) ||
+            (variantIds.Contains(x.Id) || linkedVariantIds.Contains(x.Id) || lineSkus.Contains(x.Sku) || lineSkuKeys.Contains(x.SkuNormalized) ||
              lineBarcodes.Contains(x.Barcode) || lineBarcodeKeys.Contains(x.BarcodeNormalized))).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         var variants = variantRows.ToDictionary(x => x.Id, x => x);
         var variantsBySku = variantRows.GroupBy(x => x.Sku, StringComparer.OrdinalIgnoreCase).ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
         var variantsByBarcode = variantRows.Where(x => !string.IsNullOrWhiteSpace(x.Barcode)).GroupBy(x => x.Barcode!, StringComparer.OrdinalIgnoreCase).ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
+        var variantsByMarketplaceIdentity = lineVariantLinks
+            .GroupBy(link => (link.ConnectionId, ExternalId: MarketplaceVariantLinkCoverage.Normalize(link.ExternalId)))
+            .ToDictionary(group => group.Key, group => group.First().VariantId);
         var imageUrls = await MediaUrls(tenantId, variantRows.Select(x => (Guid?)x.Id), cancellationToken);
         var now = timeProvider.GetUtcNow();
+        ProductVariant? ResolveOrderVariant(Order order, OrderLine line)
+        {
+            var variant = ResolveVariant(line, variants, variantsBySku, variantsByBarcode);
+            if (variant is not null) return variant;
+            var key = (order.ConnectionId, ExternalId: MarketplaceVariantLinkCoverage.Normalize(line.Sku));
+            return variantsByMarketplaceIdentity.TryGetValue(key, out var variantId) ? variants.GetValueOrDefault(variantId) : null;
+        }
         var rows = orders.Select(order =>
         {
             var orderLines = (linesByOrder.GetValueOrDefault(order.Id) ?? [])
@@ -105,9 +124,11 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             var terminal = order.DerivedStatus is "DELIVERED" or "CANCELLED" or "RETURNED";
             var lineViews = orderLines.Select(x =>
             {
-                var variant = ResolveVariant(x, variants, variantsBySku, variantsByBarcode);
+                var variant = ResolveOrderVariant(order, x);
                 var source = SourceLine(x.SourceSnapshotJson);
-                return new OrderLineView(x.Id, x.Sku, x.Barcode, x.TitleSnapshot, x.OrderedQuantity, x.CancelledQuantity, x.ShippedQuantity, x.DeliveredQuantity, x.ReturnedQuantity, x.UnitPrice, x.VatRate, x.RawStatus, x.VariantId, variant?.ModelCode ?? source.ModelCode, variant?.OptionSignature ?? source.OptionSignature, source.ImageUrl ?? (variant is null ? null : imageUrls.GetValueOrDefault(variant.Id)));
+                var imageUrl = string.IsNullOrWhiteSpace(source.ImageUrl) ? null : source.ImageUrl;
+                var barcode = string.IsNullOrWhiteSpace(x.Barcode) ? variant?.Barcode : x.Barcode;
+                return new OrderLineView(x.Id, x.Sku, barcode, x.TitleSnapshot, x.OrderedQuantity, x.CancelledQuantity, x.ShippedQuantity, x.DeliveredQuantity, x.ReturnedQuantity, x.UnitPrice, x.VatRate, x.RawStatus, x.VariantId ?? variant?.Id, variant?.ModelCode ?? source.ModelCode, variant?.OptionSignature ?? source.OptionSignature, imageUrl ?? (variant is null ? null : imageUrls.GetValueOrDefault(variant.Id)));
             }).ToList();
             var packageViews = orderPackages.Select(x => Map(x, order.OrderNumber)).ToList();
             return new OrderListView(
@@ -117,7 +138,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 customer.Name, customer.OrderType, customer.IsMicroExport, dueAt,
                 !terminal && dueAt is not null && dueAt <= now.AddHours(24), InvoiceLabelForPlatform(invoice, package?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown, order.CustomerSnapshotJson, orderPackages.Select(x => x.RawStatus), connection?.PlatformCode),
                 package?.CargoProviderExternalId ?? JsonText(order.CustomerSnapshotJson, "marketplaceCargoProviderName"), package?.CargoTrackingNumber,
-                orderLines.Select(x => ResolveVariant(x, variants, variantsBySku, variantsByBarcode)).Where(x => x is not null).Select(x => imageUrls.GetValueOrDefault(x!.Id)).FirstOrDefault(x => x is not null),
+                orderLines.Select(x => ResolveOrderVariant(order, x)).Where(x => x is not null).Select(x => imageUrls.GetValueOrDefault(x!.Id)).FirstOrDefault(x => x is not null),
                 orderLines.Sum(x => OrderLinePresentationPolicy.ActiveQuantity(x.OrderedQuantity, x.CancelledQuantity)), customer.Email, customer.TaxOrIdentityNumber,
                 order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, order.GrossAmount, order.DiscountAmount,
                 lineViews, packageViews, invoice?.Id, invoiceDocumentUrl);

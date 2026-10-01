@@ -2632,7 +2632,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     var categoryContext = categoryReferences is null
                         ? null
                         : await EnsureCategoryAttributeContext(tenantId, connectionId, categoryReferences, snapshot, categoryItems, importedAttributeLibrary, categoryContexts, correlationId, cancellationToken);
-                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, brandReferences?.Id, inventoryPolicy, cancellationToken, saveChanges: false, onlyNewVariants: newOnly && productAlreadyLinked, observeOnly: isShopify || isHepsiburada, preferBarcode: isShopify, onlyExistingVariants: existingOnly && isShopify, updateExistingProducts: updateExistingProducts);
+                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, brandReferences?.Id, inventoryPolicy, cancellationToken, saveChanges: false, onlyNewVariants: newOnly && productAlreadyLinked, observeOnly: isShopify || isHepsiburada, preferBarcode: isShopify, onlyExistingVariants: existingOnly && isShopify, updateExistingProducts: updateExistingProducts, isHepsiburada: isHepsiburada);
                     existingProductExternalIds?.Add(snapshot.ExternalProductId);
                     if (existingVariantExternalIds is not null)
                         foreach (var variant in snapshot.Variants)
@@ -3640,7 +3640,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         return true;
     }
 
-    private async Task<bool> UpsertCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CategoryAttributeContext? categoryContext, Guid? brandReferenceSnapshotId, ConnectionInventoryPolicy? inventoryPolicy, CancellationToken cancellationToken, bool saveChanges = true, bool onlyNewVariants = false, bool observeOnly = false, bool preferBarcode = false, bool onlyExistingVariants = false, bool updateExistingProducts = true)
+    private async Task<bool> UpsertCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CategoryAttributeContext? categoryContext, Guid? brandReferenceSnapshotId, ConnectionInventoryPolicy? inventoryPolicy, CancellationToken cancellationToken, bool saveChanges = true, bool onlyNewVariants = false, bool observeOnly = false, bool preferBarcode = false, bool onlyExistingVariants = false, bool updateExistingProducts = true, bool isHepsiburada = false)
     {
         var now = timeProvider.GetUtcNow();
         var externalProductId = Short(snapshot.ExternalProductId, 256);
@@ -3758,6 +3758,25 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             telemetryInsertedCount++;
         }
 
+        var expectedVariantExternalIds = snapshot.Variants
+            .Select(variant => Short(variant.ExternalVariantId, 256))
+            .Where(externalId => !string.IsNullOrWhiteSpace(externalId))
+            .Select(MarketplaceVariantLinkCoverage.Normalize)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var linkedVariantExternalIds = expectedVariantExternalIds.Length == 0
+            ? []
+            : await (from variantLink in db.MarketplaceVariantLinks.AsNoTracking()
+                     join variant in db.ProductVariants.AsNoTracking()
+                         on new { variantLink.TenantId, variantLink.VariantId }
+                         equals new { variant.TenantId, VariantId = variant.Id }
+                     where variantLink.TenantId == tenantId
+                         && variantLink.ConnectionId == connectionId
+                         && variant.ProductId == product!.Id
+                         && expectedVariantExternalIds.Contains(variantLink.ExternalId.Trim().ToUpper())
+                     select variantLink.ExternalId.Trim().ToUpper()).ToListAsync(cancellationToken);
+        var hasCompleteVariantLinks = MarketplaceVariantLinkCoverage.IsComplete(expectedVariantExternalIds, linkedVariantExternalIds);
+
         // A catalog scan can revisit hundreds of products whose last imported
         // payload and local projection are already in sync. In that case the
         // inventory/media reconciliation below only repeats database reads;
@@ -3770,13 +3789,14 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             && link is not null
             && string.Equals(link.LastImportedPayloadHash, remoteHash, StringComparison.OrdinalIgnoreCase)
             && link.LastImportedProductVersion == product!.Version
-            && string.Equals(link.SyncStatus, "SYNCED", StringComparison.OrdinalIgnoreCase))
+            && string.Equals(link.SyncStatus, "SYNCED", StringComparison.OrdinalIgnoreCase)
+            && hasCompleteVariantLinks)
         {
             telemetrySkippedCount++;
             return observeOnly;
         }
 
-        if (!onlyNewVariants && !isNewProduct && link is not null && string.Equals(link.LastImportedPayloadHash, remoteHash, StringComparison.OrdinalIgnoreCase) && await CatalogSnapshotAlreadyApplied(tenantId, product.Id, snapshot, cancellationToken))
+        if (!onlyNewVariants && !isNewProduct && link is not null && hasCompleteVariantLinks && string.Equals(link.LastImportedPayloadHash, remoteHash, StringComparison.OrdinalIgnoreCase) && await CatalogSnapshotAlreadyApplied(tenantId, product.Id, snapshot, cancellationToken))
         {
             // A previous import may have stored the remote observation while
             // leaving the untouched local projection at zero. Reconcile that
@@ -3808,6 +3828,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         else if (preserveLocal)
         {
             telemetrySkippedCount++;
+            if (isHepsiburada)
+                await RepairHepsiburadaVariantLinks(tenantId, connectionId, product, snapshot, cancellationToken);
         }
 
         var brand = observeOnly ? null : await UpsertCatalogBrand(tenantId, snapshot.BrandName, cancellationToken);
@@ -3892,6 +3914,85 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             : observeOnly
                 ? !isNewProduct
                 : !preserveLocal;
+    }
+
+    private async Task RepairHepsiburadaVariantLinks(Guid tenantId, Guid connectionId, Product product, RemoteCatalogProduct snapshot, CancellationToken cancellationToken)
+    {
+        var localVariants = await db.ProductVariants
+            .Where(variant => variant.TenantId == tenantId && variant.ProductId == product.Id)
+            .ToListAsync(cancellationToken);
+        var localVariantIds = localVariants.Select(variant => variant.Id).ToArray();
+        var externalIds = snapshot.Variants
+            .Select(variant => MarketplaceVariantLinkCoverage.Normalize(Short(variant.ExternalVariantId, 256)))
+            .Where(externalId => externalId.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (localVariantIds.Length > 0 || externalIds.Length > 0)
+        {
+            var existingLinks = await db.MarketplaceVariantLinks
+                .Where(link => link.TenantId == tenantId
+                    && link.ConnectionId == connectionId
+                    && (localVariantIds.Contains(link.VariantId)
+                        || externalIds.Contains(link.ExternalId.Trim().ToUpper())))
+                .ToListAsync(cancellationToken);
+            var linkedExternalIds = existingLinks
+                .Select(link => MarketplaceVariantLinkCoverage.Normalize(link.ExternalId))
+                .ToHashSet(StringComparer.Ordinal);
+            var linkedVariantIds = existingLinks.Select(link => link.VariantId).ToHashSet();
+
+            foreach (var remote in snapshot.Variants)
+            {
+                var externalId = Short(remote.ExternalVariantId, 256);
+                var externalKey = MarketplaceVariantLinkCoverage.Normalize(externalId);
+                if (externalKey.Length == 0 || linkedExternalIds.Contains(externalKey)) continue;
+
+                var skuKey = NormalizeCatalogKey(remote.Sku, 160);
+                var externalSkuKey = NormalizeCatalogKey(externalId, 160);
+                var barcodeKey = NormalizeCatalogKey(remote.Barcode, 160);
+                var candidates = localVariants
+                    .Where(variant =>
+                        skuKey.Length > 0 && string.Equals(variant.SkuNormalized, skuKey, StringComparison.Ordinal)
+                        || externalSkuKey.Length > 0 && string.Equals(variant.SkuNormalized, externalSkuKey, StringComparison.Ordinal)
+                        || barcodeKey.Length > 0 && string.Equals(variant.BarcodeNormalized, barcodeKey, StringComparison.Ordinal))
+                    .Select(variant => variant.Id)
+                    .Distinct()
+                    .ToArray();
+                if (candidates.Length != 1 || linkedVariantIds.Contains(candidates[0])) continue;
+
+                var link = new MarketplaceVariantLink
+                {
+                    Id = Guid.CreateVersion7(),
+                    TenantId = tenantId,
+                    ConnectionId = connectionId,
+                    VariantId = candidates[0],
+                    ExternalId = externalId,
+                    Version = 1
+                };
+                db.MarketplaceVariantLinks.Add(link);
+                existingLinks.Add(link);
+                linkedExternalIds.Add(externalKey);
+                linkedVariantIds.Add(link.VariantId);
+                telemetryInsertedCount++;
+            }
+        }
+
+        var hasUsableMedia = await (from media in db.ProductMedia.AsNoTracking()
+                                    join asset in db.FileAssets.AsNoTracking()
+                                        on new { media.TenantId, FileAssetId = media.FileAssetId }
+                                        equals new { asset.TenantId, FileAssetId = asset.Id }
+                                    where media.TenantId == tenantId
+                                        && media.ProductId == product.Id
+                                        && media.Status == "ACTIVE"
+                                        && asset.Status == "ACTIVE"
+                                        && (asset.Classification == "PRODUCT_MEDIA_URL" || asset.Classification == "PRODUCT_MEDIA")
+                                    select media.Id).AnyAsync(cancellationToken);
+        if (!hasUsableMedia)
+        {
+            var imageUrls = CatalogImageIdentity.DistinctUrls(
+                snapshot.ImageUrls.Concat(snapshot.Variants.SelectMany(variant => variant.ImageUrls ?? [])));
+            if (imageUrls.Count > 0)
+                await UpsertCatalogMedia(tenantId, product, null, imageUrls, product.Title, cancellationToken);
+        }
     }
 
     private async Task SyncCatalogInventoryForPreservedProduct(
