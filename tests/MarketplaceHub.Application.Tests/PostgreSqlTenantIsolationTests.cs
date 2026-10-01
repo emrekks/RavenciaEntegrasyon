@@ -529,6 +529,50 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task JobLease_HepsiburadaStatusLaneSkipsOtherMarketplaceJobs()
+    {
+        var tenant = NewTenant("lease-hepsiburada-status-lane");
+        var unrelatedJob = NewJob(tenant.Id);
+        unrelatedJob.JobType = MarketplaceJobTypes.OrderStatusSync;
+        unrelatedJob.Priority = 0;
+        var hepsiburadaLifecycle = NewJob(tenant.Id);
+        hepsiburadaLifecycle.JobType = MarketplaceJobTypes.HepsiburadaOrderStatusSync;
+        hepsiburadaLifecycle.Priority = 0;
+        hepsiburadaLifecycle.CreatedAt = unrelatedJob.CreatedAt.AddSeconds(1);
+        hepsiburadaLifecycle.AvailableAt = unrelatedJob.AvailableAt.AddSeconds(1);
+
+        await using (var setup = fixture.CreateContext())
+        {
+            setup.Tenants.Add(tenant);
+            setup.IntegrationJobs.AddRange(unrelatedJob, hepsiburadaLifecycle);
+            await setup.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var leaseService = new JobLeaseService(db, fixture.TokenHasher, fixture.TimeProvider);
+            var lease = await leaseService.TryLeaseAsync(
+                TimeSpan.FromMinutes(2),
+                2,
+                null,
+                CancellationToken.None,
+                MarketplaceJobTypes.HepsiburadaOrderStatusSync);
+
+            Assert.Equal(hepsiburadaLifecycle.Id, lease?.Id);
+            await using var verification = fixture.CreateContext();
+            Assert.Equal(JobStatus.Pending, (await verification.IntegrationJobs.SingleAsync(x => x.Id == unrelatedJob.Id)).Status);
+        }
+        finally
+        {
+            var jobIds = new[] { unrelatedJob.Id, hepsiburadaLifecycle.Id };
+            await using var cleanup = fixture.CreateContext();
+            await cleanup.IntegrationJobs.Where(x => jobIds.Contains(x.Id)).ExecuteDeleteAsync();
+            await cleanup.Tenants.Where(x => x.Id == tenant.Id).ExecuteDeleteAsync();
+        }
+    }
+
+    [PostgreSqlFact]
     public async Task ApiIdempotencyKey_IsScopedToTenant_ButDuplicateWithinTenantIsRejected()
     {
         var firstTenant = NewTenant("idempotency-a");
