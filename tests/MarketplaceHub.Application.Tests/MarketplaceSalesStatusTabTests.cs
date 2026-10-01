@@ -1,3 +1,4 @@
+using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Persistence;
 using Xunit;
@@ -6,6 +7,15 @@ namespace MarketplaceHub.Application.Tests;
 
 public sealed class MarketplaceSalesStatusTabTests
 {
+    [Theory]
+    [InlineData(MarketplaceJobTypes.HepsiburadaOrderRecoverySync, 2)]
+    [InlineData(MarketplaceJobTypes.OrderRecoverySync, 6)]
+    [InlineData(MarketplaceJobTypes.ShopifyOrderRecoverySync, 6)]
+    public void Hepsiburada_manual_full_sync_uses_the_hot_queue(string jobType, int expectedPriority)
+    {
+        Assert.Equal(expectedPriority, MarketplaceSalesService.Priority(jobType));
+    }
+
     [Theory]
     [InlineData("CANCELLED", ShipmentPackageStatus.Cancelled)]
     [InlineData("SHIPPED", ShipmentPackageStatus.Shipped)]
