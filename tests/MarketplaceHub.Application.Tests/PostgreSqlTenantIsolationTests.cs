@@ -451,6 +451,8 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     public async Task JobLease_AllPriorityLanes_HandleNullOptionalFilters()
     {
         var tenant = NewTenant("lease-priority-lanes");
+        var initialSyncJob = NewJob(tenant.Id);
+        initialSyncJob.Priority = -1;
         var unboundedJob = NewJob(tenant.Id);
         unboundedJob.Priority = 0;
         var hotJob = NewJob(tenant.Id);
@@ -463,7 +465,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         await using (var setup = fixture.CreateContext())
         {
             setup.Tenants.Add(tenant);
-            setup.IntegrationJobs.AddRange(unboundedJob, hotJob, backgroundJob, boundedJob);
+            setup.IntegrationJobs.AddRange(initialSyncJob, unboundedJob, hotJob, backgroundJob, boundedJob);
             await setup.SaveChangesAsync();
         }
 
@@ -472,11 +474,13 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             await using var db = fixture.CreateContext();
             var leaseService = new JobLeaseService(db, fixture.TokenHasher, fixture.TimeProvider);
 
+            var initialSyncLease = await leaseService.TryLeaseAsync(TimeSpan.FromMinutes(2), -1, -1, CancellationToken.None);
             var unboundedLease = await leaseService.TryLeaseAsync(TimeSpan.FromMinutes(2), null, null, CancellationToken.None);
             var backgroundLease = await leaseService.TryLeaseAsync(TimeSpan.FromMinutes(2), null, 3, CancellationToken.None);
             var hotLease = await leaseService.TryLeaseAsync(TimeSpan.FromMinutes(2), 2, null, CancellationToken.None);
             var boundedLease = await leaseService.TryLeaseAsync(TimeSpan.FromMinutes(2), 6, 4, CancellationToken.None);
 
+            Assert.Equal(initialSyncJob.Id, initialSyncLease?.Id);
             Assert.Equal(unboundedJob.Id, unboundedLease?.Id);
             Assert.Equal(backgroundJob.Id, backgroundLease?.Id);
             Assert.Equal(hotJob.Id, hotLease?.Id);
@@ -485,7 +489,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         finally
         {
             await using var cleanup = fixture.CreateContext();
-            var jobIds = new[] { unboundedJob.Id, hotJob.Id, backgroundJob.Id, boundedJob.Id };
+            var jobIds = new[] { initialSyncJob.Id, unboundedJob.Id, hotJob.Id, backgroundJob.Id, boundedJob.Id };
             await cleanup.IntegrationJobs.Where(x => jobIds.Contains(x.Id)).ExecuteDeleteAsync();
             await cleanup.Tenants.Where(x => x.Id == tenant.Id).ExecuteDeleteAsync();
         }

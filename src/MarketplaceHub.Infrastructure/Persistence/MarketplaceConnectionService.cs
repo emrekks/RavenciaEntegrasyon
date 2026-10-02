@@ -15,7 +15,7 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cursors, IDataProtectionProvider dataProtection, TokenHasher tokenHasher, TimeProvider timeProvider, IConfiguration configuration) : IMarketplaceConnectionService
 {
-    internal const int InitialDataSyncPriority = 0;
+    internal const int InitialDataSyncPriority = -1;
     private static readonly string[] TrendyolCapabilityCodes =
     [
         MarketplaceCapabilities.ConnectionTest, MarketplaceCapabilities.ReferenceRead, MarketplaceCapabilities.ProductRead, MarketplaceCapabilities.ProductWrite,
