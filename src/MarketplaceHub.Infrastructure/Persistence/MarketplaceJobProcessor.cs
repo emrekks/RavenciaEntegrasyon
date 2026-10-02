@@ -1822,7 +1822,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         if (state is null)
         {
             var anchor = now;
-            var oldestAvailable = anchor.AddDays(-30);
+            var oldestAvailable = OpenOrderLifecyclePolicy.HepsiburadaPackageStatusHistoryCutoff(anchor);
             var watermark = cursor.LastModifiedWatermark ?? cursor.LastSuccessAt ?? anchor.AddHours(-24);
             if (watermark > anchor) watermark = anchor;
             var start = forceBaseline ? oldestAvailable : watermark.Subtract(overlap);

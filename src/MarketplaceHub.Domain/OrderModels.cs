@@ -115,7 +115,9 @@ public static class ShipmentPackageStateMachine
 
 public static class OpenOrderLifecyclePolicy
 {
-    public static DateTimeOffset HepsiburadaUnpackagedOrderVerificationCutoff(DateTimeOffset now) => now.AddMonths(-1);
+    public static DateTimeOffset HepsiburadaPackageStatusHistoryCutoff(DateTimeOffset now) => now.AddMonths(-1);
+
+    public static DateTimeOffset HepsiburadaUnpackagedOrderVerificationCutoff(DateTimeOffset now) => HepsiburadaPackageStatusHistoryCutoff(now);
 
     public static bool IsHepsiburadaOrderUnverifiedWithoutPackage(
         string? platformCode,
