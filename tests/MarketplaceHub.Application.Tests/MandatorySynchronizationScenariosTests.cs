@@ -115,6 +115,8 @@ public sealed class MandatorySynchronizationScenariosTests
             "HEPSIBURADA", 1, ["ClaimCreated"]));
         Assert.False(OpenOrderLifecyclePolicy.IsHepsiburadaClaimOnlyWithoutPackage(
             "HEPSIBURADA", 0, ["ClaimCreated", "Open"]));
+        Assert.False(OpenOrderLifecyclePolicy.IsHepsiburadaClaimOnlyWithoutPackage(
+            "HEPSIBURADA", 0, ["ClaimCreated"], lifecycleStatus: "Delivered"));
     }
 
     [Theory]
@@ -122,7 +124,9 @@ public sealed class MandatorySynchronizationScenariosTests
     [InlineData("hepsiburada", " new ", true)]
     [InlineData("HEPSIBURADA", "ON_HOLD", true)]
     [InlineData("hepsiburada", " on_hold ", true)]
+    [InlineData("HEPSIBURADA", "UNVERIFIED", true)]
     [InlineData("TRENDYOL", "NEW", false)]
+    [InlineData("TRENDYOL", "UNVERIFIED", false)]
     [InlineData("HEPSIBURADA", "SHIPPED", false)]
     [InlineData("HEPSIBURADA", "DELIVERED", false)]
     public void HepsiburadaLifecyclePollsUnpackagedNewAndOnHoldOrders(string platformCode, string status, bool expected) =>

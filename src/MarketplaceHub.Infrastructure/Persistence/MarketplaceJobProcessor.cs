@@ -2166,6 +2166,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         {
             var includeUnpackagedNewOrders = OpenOrderLifecyclePolicy.ShouldPollWithoutPackage(platformCode, "NEW");
             var includeUnpackagedOnHoldOrders = OpenOrderLifecyclePolicy.ShouldPollWithoutPackage(platformCode, "ON_HOLD");
+            var includeUnpackagedUnverifiedOrders = OpenOrderLifecyclePolicy.ShouldPollWithoutPackage(platformCode, "UNVERIFIED");
             var lifecycleOrders = db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId
                 && order.ConnectionId == connectionId
                 && (db.ShipmentPackages.Any(package => package.TenantId == tenantId
@@ -2175,7 +2176,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                         && package.Status != ShipmentPackageStatus.Cancelled
                         && package.Status != ShipmentPackageStatus.Returned)
                     || ((includeUnpackagedNewOrders && order.DerivedStatus == "NEW"
-                            || includeUnpackagedOnHoldOrders && order.DerivedStatus == "ON_HOLD")
+                            || includeUnpackagedOnHoldOrders && order.DerivedStatus == "ON_HOLD"
+                            || includeUnpackagedUnverifiedOrders && order.DerivedStatus == "UNVERIFIED")
                         && !db.ShipmentPackages.Any(package => package.TenantId == tenantId
                             && package.ConnectionId == connectionId
                             && package.OrderId == order.Id))));
@@ -5796,6 +5798,14 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 lines.Values.Select(line => line.RawStatus)) is { } hepsiburadaStatus)
             derivedStatus = hepsiburadaStatus;
         order.DerivedStatus = Wire(derivedStatus);
+        if (orderIsFresh
+            && order.DerivedStatus.Trim().ToUpperInvariant() is not ("DELIVERED" or "CANCELLED" or "RETURNED")
+            && OpenOrderLifecyclePolicy.IsHepsiburadaClaimOnlyWithoutPackage(
+                platformCode,
+                acceptedStatuses.Count,
+                lines.Values.Select(line => line.RawStatus),
+                remote.LifecycleStatus))
+            order.DerivedStatus = "UNVERIFIED";
         if (isShopify)
         {
             var manualStatus = await db.OrderStatusHistory.AsNoTracking()

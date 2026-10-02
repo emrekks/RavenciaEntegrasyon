@@ -1,6 +1,7 @@
 export const orderStatusTabs = [
   ['ALL', 'Tümü'],
   ['NEW', 'Yeni'],
+  ['UNVERIFIED', 'Doğrulanmadı'],
   ['PROCESSING', 'İşleme alınanlar'],
   ['SHIPPED', 'Kargoda'],
   ['DELIVERED', 'Teslim edildi'],

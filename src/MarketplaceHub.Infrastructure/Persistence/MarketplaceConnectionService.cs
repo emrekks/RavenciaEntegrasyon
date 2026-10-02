@@ -320,7 +320,9 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "TRENDYOL_EFATURAM" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA"), cancellationToken);
         if (connection is null) return NotFound<IReadOnlyList<CapabilityView>>();
         await EnsureCapabilityRowsAsync(connection, cancellationToken);
-        var rows = await db.PlatformCapabilities.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == id).OrderBy(x => x.Code).Select(x => new CapabilityView(x.Code, x.SupportLevel.ToString().ToUpperInvariant(), x.ApiVersion, x.Environment, x.StoreScope, x.SourceUrl, x.VerifiedAt, x.ConstraintsJson, x.EvidenceNote, x.Version)).ToListAsync(cancellationToken);
+        var capabilities = await db.PlatformCapabilities.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == id).OrderBy(x => x.Code).ToListAsync(cancellationToken);
+        var rows = capabilities.Select(x => new CapabilityView(x.Code, x.SupportLevel.ToString().ToUpperInvariant(), x.ApiVersion, x.Environment, x.StoreScope, x.SourceUrl, x.VerifiedAt, x.ConstraintsJson, x.EvidenceNote, x.Version,
+            CapabilityEvidencePolicy.IsVerifiedWriteCapability(x, connection, x.Code))).ToList();
         return ServiceResult<IReadOnlyList<CapabilityView>>.Ok(rows);
     }
 
@@ -361,7 +363,8 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         capability.EvidenceNote = command.EvidenceNote.Trim(); capability.FixtureChecksum = checksum; capability.ConstraintsJson = command.ConstraintsJson; capability.VerifiedAt = command.VerifiedAt; capability.Version++;
         db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = actorUserId, Action = "CAPABILITY_EVIDENCE_RECORDED", TargetType = "PlatformCapability", TargetId = capability.Id.ToString("D"), Reason = $"{normalizedCode}:{support}", CorrelationId = correlationId, CreatedAt = now });
         await db.SaveChangesAsync(cancellationToken);
-        return ServiceResult<CapabilityView>.Ok(new(capability.Code, capability.SupportLevel.ToString().ToUpperInvariant(), capability.ApiVersion, capability.Environment, capability.StoreScope, capability.SourceUrl, capability.VerifiedAt, capability.ConstraintsJson, capability.EvidenceNote, capability.Version));
+        return ServiceResult<CapabilityView>.Ok(new(capability.Code, capability.SupportLevel.ToString().ToUpperInvariant(), capability.ApiVersion, capability.Environment, capability.StoreScope, capability.SourceUrl, capability.VerifiedAt, capability.ConstraintsJson, capability.EvidenceNote, capability.Version,
+            CapabilityEvidencePolicy.IsVerifiedWriteCapability(capability, connection, capability.Code)));
     }
 
     public async Task<ServiceResult<IReadOnlyList<SyncPolicyView>>> SyncPoliciesAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
@@ -410,7 +413,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
                 _ => null
             };
             if (requiredCapability is not null && !await HasVerifiedWriteEvidenceAsync(connection, cancellationToken, requiredCapability))
-                return ServiceResult<SyncPolicyView>.Fail("EXTERNAL_WRITE_EVIDENCE_REQUIRED", "Hepsiburada dış yazma akışı için aynı mağaza ve ortamda doğrulanmış yetenek kanıtı gerekir.", 422);
+                return ServiceResult<SyncPolicyView>.Fail("EXTERNAL_WRITE_EVIDENCE_REQUIRED", $"{requiredCapability} akışı açılamadı: aynı mağaza, ortam ve API sürümü için resmî kaynakla doğrulanmış yetenek ve Stage/SIT test kanıtı gerekir.", 422);
         }
         var cadence = ScheduledOrderPollingCadencePolicy.ForPlatform(connection.PlatformCode, normalized, command.IntervalSeconds, command.JitterSeconds);
         var policy = await db.ConnectionSyncPolicies.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == id && x.ResourceType == normalized, cancellationToken);

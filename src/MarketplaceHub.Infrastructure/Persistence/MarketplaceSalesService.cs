@@ -121,10 +121,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 ?? InvoiceDocumentUrl(order.CustomerSnapshotJson);
             var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
             var dueAt = order.ShipmentDueAt ?? OperationalDueAt(order.CustomerSnapshotJson);
-            var claimOnlyWithoutPackage = OpenOrderLifecyclePolicy.IsHepsiburadaClaimOnlyWithoutPackage(
-                connection?.PlatformCode,
-                orderPackages.Count,
-                orderLines.Select(line => line.RawStatus));
+            var claimOnlyWithoutPackage = string.Equals(order.DerivedStatus, "UNVERIFIED", StringComparison.OrdinalIgnoreCase);
             var lineViews = orderLines.Select(x =>
             {
                 var variant = ResolveOrderVariant(order, x);
@@ -229,6 +226,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 ? query.Where(order => order.DerivedStatus == "CANCELLED"
                     || (!db.PlatformConnections.Any(connection => connection.TenantId == order.TenantId && connection.Id == order.ConnectionId && connection.PlatformCode == "SHOPIFY")
                         && db.ShipmentPackages.Any(package => package.TenantId == order.TenantId && package.OrderId == order.Id && package.Status == ShipmentPackageStatus.Cancelled)))
+                : status == "UNVERIFIED"
+                ? query.Where(order => HepsiburadaUnverifiedOrders(tenantId).Any(unverifiedOrder => unverifiedOrder.Id == order.Id))
                 : derivedStatuses is not null
                 ? query.Where(order => derivedStatuses.Contains(order.DerivedStatus))
                 : packageStatuses is not null
@@ -422,13 +421,17 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var unpackagedDeliveredOrderCount = platformCode is null or "" or "ALL" or "HEPSIBURADA"
             ? await HepsiburadaUnpackagedDeliveredOrders(tenantId).CountAsync(cancellationToken)
             : 0;
+        var unverifiedOrderCount = platformCode is null or "" or "ALL" or "HEPSIBURADA"
+            ? await HepsiburadaUnverifiedOrders(tenantId).CountAsync(cancellationToken)
+            : 0;
         return summary with
         {
-            All = summary.All + unpackagedNewOrderCount + unpackagedOnHoldOrderCount + unpackagedDeliveredOrderCount,
+            All = summary.All + unpackagedNewOrderCount + unpackagedOnHoldOrderCount + unpackagedDeliveredOrderCount + unverifiedOrderCount,
             New = summary.New + unpackagedNewOrderCount,
             OnHold = summary.OnHold + unpackagedOnHoldOrderCount,
             Delivered = summary.Delivered + unpackagedDeliveredOrderCount,
-            Pending = await pendingOrders.CountAsync(cancellationToken)
+            Pending = await pendingOrders.CountAsync(cancellationToken),
+            Unverified = unverifiedOrderCount
         };
     }
 
@@ -453,6 +456,15 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     internal IQueryable<Order> HepsiburadaUnpackagedDeliveredOrders(Guid tenantId) => db.Orders.AsNoTracking()
         .Where(order => order.TenantId == tenantId
             && order.DerivedStatus == "DELIVERED"
+            && db.PlatformConnections.Any(connection => connection.TenantId == tenantId
+                && connection.Id == order.ConnectionId
+                && connection.PlatformCode == "HEPSIBURADA"
+                && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
+            && !db.ShipmentPackages.Any(package => package.TenantId == tenantId && package.OrderId == order.Id));
+
+    internal IQueryable<Order> HepsiburadaUnverifiedOrders(Guid tenantId) => db.Orders.AsNoTracking()
+        .Where(order => order.TenantId == tenantId
+            && order.DerivedStatus == "UNVERIFIED"
             && db.PlatformConnections.Any(connection => connection.TenantId == tenantId
                 && connection.Id == order.ConnectionId
                 && connection.PlatformCode == "HEPSIBURADA"
@@ -1114,38 +1126,89 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var returnLines = await db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId && claimIds.Contains(x.ClaimId)).ToListAsync(cancellationToken);
         var orderLineIds = returnLines.Select(x => x.OrderLineId).Distinct().ToArray();
         var orderLines = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && orderLineIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
+        var returnLineSkus = orderLines.Values.Select(x => x.Sku).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var returnLineSkuKeys = orderLines.Values.SelectMany(x => CatalogLookupKeys(x.Sku, 160)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var returnLineBarcodes = orderLines.Values.Select(x => x.Barcode).Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x!).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var returnLineBarcodeKeys = orderLines.Values.SelectMany(x => CatalogLookupKeys(x.Barcode, 160)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var returnVariantLinks = returnLineSkuKeys.Length == 0
+            ? []
+            : await db.MarketplaceVariantLinks.AsNoTracking()
+                .Where(x => x.TenantId == tenantId
+                    && connectionIds.Contains(x.ConnectionId)
+                    && returnLineSkuKeys.Contains(x.ExternalId.Trim().ToUpper()))
+                .ToListAsync(cancellationToken);
+        var linkedReturnVariantIds = returnVariantLinks.Select(x => x.VariantId).Distinct().ToArray();
+        var returnVariantIds = orderLines.Values.Where(x => x.VariantId.HasValue).Select(x => x.VariantId!.Value).Distinct().ToArray();
+        var returnVariants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId
+                && (returnVariantIds.Contains(x.Id)
+                    || linkedReturnVariantIds.Contains(x.Id)
+                    || returnLineSkus.Contains(x.Sku)
+                    || returnLineSkuKeys.Contains(x.SkuNormalized)
+                    || returnLineBarcodes.Contains(x.Barcode)
+                    || returnLineBarcodeKeys.Contains(x.BarcodeNormalized)))
+            .OrderBy(x => x.Id)
+            .ToListAsync(cancellationToken);
+        var returnVariantsById = returnVariants.ToDictionary(x => x.Id);
+        var returnVariantsBySku = returnVariants.GroupBy(x => x.Sku, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
+        var returnVariantsByNormalizedSku = returnVariants.GroupBy(x => x.SkuNormalized, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
+        var returnVariantsByBarcode = BarcodeVariantLookup(returnVariants);
+        var returnVariantsByMarketplaceIdentity = returnVariantLinks
+            .GroupBy(link => (link.ConnectionId, ExternalId: MarketplaceVariantLinkCoverage.Normalize(link.ExternalId)))
+            .ToDictionary(group => group.Key, group => group.First().VariantId);
+        var returnImageUrls = await MediaUrls(tenantId, returnVariants.Select(x => (Guid?)x.Id), cancellationToken);
+        ProductVariant? ResolveReturnVariant(OrderLine line)
+        {
+            if (line.VariantId is { } variantId && returnVariantsById.TryGetValue(variantId, out var direct)) return direct;
+            if (returnVariantsBySku.TryGetValue(line.Sku, out var bySku)) return bySku;
+            foreach (var key in CatalogLookupKeys(line.Sku, 160))
+                if (returnVariantsByNormalizedSku.TryGetValue(key, out var byNormalizedSku)) return byNormalizedSku;
+            foreach (var key in CatalogLookupKeys(line.Barcode, 160))
+                if (returnVariantsByBarcode.TryGetValue(key, out var byBarcode)) return byBarcode;
+            var connectionId = orders.GetValueOrDefault(line.OrderId)?.ConnectionId;
+            var identity = (connectionId ?? Guid.Empty, ExternalId: MarketplaceVariantLinkCoverage.Normalize(line.Sku));
+            return returnVariantsByMarketplaceIdentity.TryGetValue(identity, out var linkedId)
+                ? returnVariantsById.GetValueOrDefault(linkedId)
+                : null;
+        }
         var packages = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId)).OrderByDescending(x => x.StatusOccurredAt).ToListAsync(cancellationToken);
         var invoices = await db.Invoices.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId) && x.OriginalInvoiceId == null
             && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))).OrderByDescending(x => x.CreatedAt).ToListAsync(cancellationToken);
-        var imageUrls = await MediaUrls(tenantId, orderLines.Values.Select(x => x.VariantId), cancellationToken);
         var rows = claims.Select(claim =>
         {
             var order = orders.GetValueOrDefault(claim.OrderId);
             var connection = order is null ? connections.GetValueOrDefault(claim.ConnectionId) : connections.GetValueOrDefault(order.ConnectionId);
             var claimLines = returnLines.Where(x => x.ClaimId == claim.Id).ToList();
             var package = packages.FirstOrDefault(x => x.OrderId == claim.OrderId);
+            var outboundPackage = packages.FirstOrDefault(x => x.OrderId == claim.OrderId && !string.IsNullOrWhiteSpace(x.CargoTrackingNumber)) ?? package;
             var invoice = invoices.FirstOrDefault(x => x.OrderId == claim.OrderId);
             var firstLine = claimLines.Select(x => orderLines.GetValueOrDefault(x.OrderLineId)).FirstOrDefault(x => x is not null);
-            var image = firstLine?.VariantId is { } variantId ? imageUrls.GetValueOrDefault(variantId) : null;
+            var firstVariant = firstLine is null ? null : ResolveReturnVariant(firstLine);
+            var image = firstVariant is null ? null : returnImageUrls.GetValueOrDefault(firstVariant.Id);
             var lineViews = claimLines.Select(returnLine =>
             {
                 var line = orderLines.GetValueOrDefault(returnLine.OrderLineId);
                 if (line is null) return null;
                 var source = SourceLine(line.SourceSnapshotJson);
-                return new OrderLineView(line.Id, line.Sku, line.Barcode, line.TitleSnapshot, returnLine.Quantity, line.CancelledQuantity, line.ShippedQuantity, line.DeliveredQuantity, line.ReturnedQuantity, line.UnitPrice, line.VatRate, line.RawStatus, line.VariantId, source.ModelCode, source.OptionSignature, source.ImageUrl ?? (line.VariantId is { } id ? imageUrls.GetValueOrDefault(id) : null));
+                var variant = ResolveReturnVariant(line);
+                return new OrderLineView(line.Id, line.Sku, line.Barcode ?? variant?.Barcode, line.TitleSnapshot, returnLine.Quantity, line.CancelledQuantity, line.ShippedQuantity, line.DeliveredQuantity, line.ReturnedQuantity, line.UnitPrice, line.VatRate, line.RawStatus, line.VariantId ?? variant?.Id, ReturnLineModelCode(variant, source.ModelCode), variant?.OptionSignature ?? source.OptionSignature, source.ImageUrl ?? (variant is null ? null : returnImageUrls.GetValueOrDefault(variant.Id)));
             }).Where(line => line is not null).Select(line => line!).ToList();
             return new ReturnListView(claim.Id, claim.ExternalClaimId, order?.OrderNumber ?? "—", Wire(claim.Status), claim.RawStatus, claim.ReasonText, claim.ActionDueAt, claim.Version,
                 order is null ? "—" : Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson).Name,
-                order?.OrderedAt, order?.NetAmount ?? 0, order?.Currency ?? "TRY", claim.CargoProviderName, claim.CargoTrackingNumber, image, claimLines.Count, firstLine?.Barcode,
+                order?.OrderedAt, order?.NetAmount ?? 0, order?.Currency ?? "TRY", claim.CargoProviderName, claim.CargoTrackingNumber, image, claimLines.Count, firstLine?.Barcode ?? firstVariant?.Barcode,
                 lineViews, package?.ExternalPackageId, order is null ? "FATURA_BEKLIYOR" : ReturnInvoiceLabel(invoice, package?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown, order.CustomerSnapshotJson, package is null ? [] : [package.RawStatus]), order?.GrossAmount ?? 0, order?.DiscountAmount ?? 0,
                 order is not null && Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson).IsMicroExport,
-                connection?.Id, connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol");
+                connection?.Id, connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol", outboundPackage?.CargoProviderExternalId, outboundPackage?.CargoTrackingNumber);
         }).ToList();
         var hasMore = rows.Count > limit;
         var pageRows = rows.Take(limit).ToList();
         var next = !latest && hasMore && pageRows.Count > 0 ? cursors.Encode(pageRows[^1].Id) : null;
         return new(pageRows, next, hasMore, totalCount);
     }
+
+    internal static string? ReturnLineModelCode(ProductVariant? variant, string? sourceModelCode) =>
+        string.IsNullOrWhiteSpace(variant?.ModelCode) ? sourceModelCode : variant.ModelCode;
 
     private void ApplyReturnFilters(ref IQueryable<ReturnClaim> query, ReturnListQuery options)
     {

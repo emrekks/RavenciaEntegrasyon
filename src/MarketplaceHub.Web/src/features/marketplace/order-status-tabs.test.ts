@@ -6,6 +6,7 @@ describe('order status tabs', () => {
     const values: string[] = orderStatusTabs.map(([value]) => value)
     expect(values).not.toContain('PENDING')
     expect(values).toContain('NEW')
+    expect(values).toContain('UNVERIFIED')
   })
 
   it('redirects legacy pending links to New', () => {

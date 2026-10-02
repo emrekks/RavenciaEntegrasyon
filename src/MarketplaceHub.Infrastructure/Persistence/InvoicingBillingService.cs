@@ -169,7 +169,7 @@ public sealed partial class InvoicingBillingService(
             var dueAt = deliveredAt?.AddDays(7);
             var dueSoon = invoiceStatus == "FATURA_BEKLIYOR" && deliveredAt is not null && now >= deliveredAt.Value.AddDays(5);
             var image = orderLines.Select(line => ResolveVariantId(line) is { } variantId ? mediaByVariant.GetValueOrDefault(variantId) ?? mediaByProduct.GetValueOrDefault(variantProductIds.GetValueOrDefault(variantId)) : null).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
-            var customerName = InvoiceWorkspaceCustomerName(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson);
+            var customerName = InvoiceWorkspaceCustomerName(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
             var workspaceLines = orderLines.Select(line => new InvoiceWorkspaceLineView(line.Sku, line.Barcode, line.TitleSnapshot, OrderLinePresentationPolicy.ActiveQuantity(line.OrderedQuantity, line.CancelledQuantity), line.UnitPrice, line.VatRate, ResolveVariantId(line) is { } variantId ? mediaByVariant.GetValueOrDefault(variantId) ?? mediaByProduct.GetValueOrDefault(variantProductIds.GetValueOrDefault(variantId)) : null)).ToList();
             var deliveryState = invoice is null
                 ? null
@@ -185,7 +185,7 @@ public sealed partial class InvoicingBillingService(
         ? relativePath
         : $"/api/v1/files/product-media/{assetId:D}/content";
 
-    private static string InvoiceWorkspaceCustomerName(string customerJson, string invoiceAddressJson)
+    internal static string InvoiceWorkspaceCustomerName(string customerJson, string invoiceAddressJson, string shipmentAddressJson = "{}")
     {
         static string? Find(JsonElement element, params string[] names)
         {
@@ -203,17 +203,32 @@ public sealed partial class InvoicingBillingService(
             else if (element.ValueKind == JsonValueKind.Array) foreach (var item in element.EnumerateArray()) { var nested = Find(item, names); if (!string.IsNullOrWhiteSpace(nested)) return nested; }
             return null;
         }
-        try
+        static JsonDocument ParseOrEmpty(string json)
         {
-            using var customer = JsonDocument.Parse(string.IsNullOrWhiteSpace(customerJson) ? "{}" : customerJson);
-            var first = Find(customer.RootElement, "customerFirstName", "firstName");
-            var last = Find(customer.RootElement, "customerLastName", "lastName");
-            var full = string.Join(' ', new[] { first, last }.Where(x => !string.IsNullOrWhiteSpace(x)));
-            if (!string.IsNullOrWhiteSpace(full)) return full;
-            using var address = JsonDocument.Parse(string.IsNullOrWhiteSpace(invoiceAddressJson) ? "{}" : invoiceAddressJson);
-            return Find(address.RootElement, "fullName", "name", "company", "companyName") ?? "—";
+            try { return JsonDocument.Parse(string.IsNullOrWhiteSpace(json) ? "{}" : json); }
+            catch (JsonException) { return JsonDocument.Parse("{}"); }
         }
-        catch (JsonException) { return "—"; }
+        static string? AddressName(JsonElement address)
+        {
+            var first = Find(address, "recipientFirstName", "customerFirstName", "firstName");
+            var last = Find(address, "recipientLastName", "customerLastName", "lastName");
+            var full = string.Join(' ', new[] { first, last }.Where(x => !string.IsNullOrWhiteSpace(x)));
+            return !string.IsNullOrWhiteSpace(full)
+                ? full
+                : Find(address, "fullName", "recipientName", "customerName", "buyerName", "name", "company", "companyName");
+        }
+        using var customer = ParseOrEmpty(customerJson);
+        var first = Find(customer.RootElement, "customerFirstName", "firstName");
+        var last = Find(customer.RootElement, "customerLastName", "lastName");
+        var full = string.Join(' ', new[] { first, last }.Where(x => !string.IsNullOrWhiteSpace(x)));
+        if (!string.IsNullOrWhiteSpace(full)) return full;
+        var customerName = Find(customer.RootElement, "fullName", "name", "customerName", "recipientName", "buyerName");
+        if (!string.IsNullOrWhiteSpace(customerName)) return customerName;
+        using var invoiceAddress = ParseOrEmpty(invoiceAddressJson);
+        var invoiceName = AddressName(invoiceAddress.RootElement);
+        if (!string.IsNullOrWhiteSpace(invoiceName)) return invoiceName;
+        using var shipmentAddress = ParseOrEmpty(shipmentAddressJson);
+        return AddressName(shipmentAddress.RootElement) ?? "—";
     }
 
     public async Task<ServiceResult<InvoiceDetailView>> CreateDraftAsync(Guid tenantId, CreateInvoiceCommand command, string idempotencyKey, CancellationToken cancellationToken)

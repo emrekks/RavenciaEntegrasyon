@@ -38,6 +38,21 @@ public sealed class MarketplaceSalesStatusTabTests
     }
 
     [Fact]
+    public void Return_line_model_code_prefers_the_matched_variant_and_falls_back_to_source_snapshot()
+    {
+        var variant = new ProductVariant
+        {
+            Sku = "SKU-1",
+            SkuNormalized = "SKU-1",
+            OptionSignature = "Beden=XL",
+            ModelCode = "MODEL-1"
+        };
+
+        Assert.Equal("MODEL-1", MarketplaceSalesService.ReturnLineModelCode(variant, "OLD-MODEL"));
+        Assert.Equal("OLD-MODEL", MarketplaceSalesService.ReturnLineModelCode(null, "OLD-MODEL"));
+    }
+
+    [Fact]
     public void Pending_order_tab_matches_the_dashboard_pending_statuses()
     {
         var statuses = MarketplaceSalesService.DerivedStatusesForOrderTab("PENDING");
@@ -62,6 +77,25 @@ public sealed class MarketplaceSalesStatusTabTests
         Assert.Contains("HEPSIBURADA", sql, StringComparison.Ordinal);
         Assert.Contains("NOT EXISTS", sql, StringComparison.Ordinal);
         Assert.Contains("NEW", sql, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Unverified_order_filter_keeps_claim_only_Hepsiburada_rows_out_of_new()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql("Host=localhost;Port=5432;Database=metadata-only;Username=metadata-only;Password=metadata-only")
+            .Options;
+        using var db = new AppDbContext(options);
+        var service = new MarketplaceSalesService(db, null!, null!, null!, null!, null!, null!, TimeProvider.System);
+        var tenantId = Guid.NewGuid();
+        IQueryable<Order> query = db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId);
+
+        service.ApplyOrderFilters(ref query, new OrderListQuery(Status: "UNVERIFIED"), tenantId);
+
+        var sql = query.ToQueryString();
+        Assert.Contains("UNVERIFIED", sql, StringComparison.Ordinal);
+        Assert.Contains("HEPSIBURADA", sql, StringComparison.Ordinal);
+        Assert.Contains("NOT EXISTS", sql, StringComparison.Ordinal);
     }
 
     [Fact]

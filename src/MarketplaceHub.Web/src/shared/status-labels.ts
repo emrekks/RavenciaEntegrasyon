@@ -75,6 +75,7 @@ const statusLabels: Record<string, string> = {
   MARKETPLACE_FAILED: 'Pazaryeri aktarımı başarısız',
   UNAPPROVED: 'Onaylanmadı',
   UNDELIVERED: 'Teslim edilemedi',
+  UNVERIFIED: 'Durumu doğrulanmadı',
   UNKNOWN: 'Bilinmiyor',
   UNKNOWN_RESULT: 'Bilinmeyen sonuç',
   VERIFIED: 'Doğrulandı',
@@ -137,7 +138,7 @@ export function statusLabel(value: string | null | undefined) {
 export function statusTone(value: string) {
   const normalized = normalizedStatus(value)
   if (['ACTIVE', 'APPROVED', 'ACCEPTED', 'COMPLETED', 'CONNECTED', 'CREATED', 'DELIVERED', 'HEALTHY', 'READY', 'SUCCESS', 'SUCCEEDED', 'SUPPORTED', 'VERIFIED'].includes(normalized)) return 'good' as const
-  if (['AWAITINGPREAPPROVAL', 'AWAITING_PRE_APPROVAL', 'BLOCKED', 'CANCELLATION_PENDING', 'DEAD', 'DEGRADED', 'DELAYED', 'FAILED', 'MANUAL_REVIEW', 'UNKNOWN', 'UNKNOWN_RESULT', 'UNAPPROVED'].includes(normalized)) return 'warn' as const
+  if (['AWAITINGPREAPPROVAL', 'AWAITING_PRE_APPROVAL', 'BLOCKED', 'CANCELLATION_PENDING', 'DEAD', 'DEGRADED', 'DELAYED', 'FAILED', 'MANUAL_REVIEW', 'UNKNOWN', 'UNKNOWN_RESULT', 'UNAPPROVED', 'UNVERIFIED'].includes(normalized)) return 'warn' as const
   return 'neutral' as const
 }
 
