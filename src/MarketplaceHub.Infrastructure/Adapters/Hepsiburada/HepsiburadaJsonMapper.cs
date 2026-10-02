@@ -32,40 +32,40 @@ internal static class HepsiburadaJsonMapper
             switch (resourceType)
             {
                 case "CATEGORIES":
-                {
-                    var id = Text(item, "categoryId", "id", "categoryID");
-                    var name = Text(item, "name");
-                    if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(name)) throw new JsonException("Hepsiburada kategori kimliği veya adı eksik.");
-                    var path = Text(item, "paths", "path") ?? name;
-                    var status = Text(item, "status");
-                    var available = Boolean(item, "available");
-                    var active = (string.Equals(status, "ACTIVE", StringComparison.OrdinalIgnoreCase)
-                        || string.Equals(status, "AKTIF", StringComparison.OrdinalIgnoreCase)
-                        || string.Equals(status, "AKTİF", StringComparison.OrdinalIgnoreCase)) && available == true;
-                    // This endpoint is filtered to leaf=true, so parent category rows are
-                    // intentionally absent. Preserve the full display path and keep the
-                    // snapshot flat so parent references never point outside the snapshot.
-                    items.Add(new(resourceType, id, null, name, path, PathDepth(path), Boolean(item, "leaf") == true, active, item.GetRawText()));
-                    break;
-                }
+                    {
+                        var id = Text(item, "categoryId", "id", "categoryID");
+                        var name = Text(item, "name");
+                        if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(name)) throw new JsonException("Hepsiburada kategori kimliği veya adı eksik.");
+                        var path = Text(item, "paths", "path") ?? name;
+                        var status = Text(item, "status");
+                        var available = Boolean(item, "available");
+                        var active = (string.Equals(status, "ACTIVE", StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(status, "AKTIF", StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(status, "AKTİF", StringComparison.OrdinalIgnoreCase)) && available == true;
+                        // This endpoint is filtered to leaf=true, so parent category rows are
+                        // intentionally absent. Preserve the full display path and keep the
+                        // snapshot flat so parent references never point outside the snapshot.
+                        items.Add(new(resourceType, id, null, name, path, PathDepth(path), Boolean(item, "leaf") == true, active, item.GetRawText()));
+                        break;
+                    }
                 case "CATEGORY_ATTRIBUTES":
-                {
-                    var id = Text(item, "id", "attributeId");
-                    var name = Text(item, "name");
-                    if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(name)) throw new JsonException("Hepsiburada kategori özelliği kimliği veya adı eksik.");
-                    var type = Text(item, "type");
-                    items.Add(new(resourceType, id, parentExternalId, name, name, 0, true, true, item.GetRawText(),
-                        Boolean(item, "mandatory"), string.Equals(type, "string", StringComparison.OrdinalIgnoreCase), Boolean(item, "multiValue")));
-                    break;
-                }
+                    {
+                        var id = Text(item, "id", "attributeId");
+                        var name = Text(item, "name");
+                        if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(name)) throw new JsonException("Hepsiburada kategori özelliği kimliği veya adı eksik.");
+                        var type = Text(item, "type");
+                        items.Add(new(resourceType, id, parentExternalId, name, name, 0, true, true, item.GetRawText(),
+                            Boolean(item, "mandatory"), string.Equals(type, "string", StringComparison.OrdinalIgnoreCase), Boolean(item, "multiValue")));
+                        break;
+                    }
                 case "ATTRIBUTE_VALUES":
-                {
-                    var id = Text(item, "id", "valueId", "attributeValueId");
-                    var name = Text(item, "value", "name");
-                    if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(name)) throw new JsonException("Hepsiburada enum değer kimliği veya adı eksik.");
-                    items.Add(new(resourceType, id, parentExternalId, name, name, 0, true, true, item.GetRawText()));
-                    break;
-                }
+                    {
+                        var id = Text(item, "id", "valueId", "attributeValueId");
+                        var name = Text(item, "value", "name");
+                        if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(name)) throw new JsonException("Hepsiburada enum değer kimliği veya adı eksik.");
+                        items.Add(new(resourceType, id, parentExternalId, name, name, 0, true, true, item.GetRawText()));
+                        break;
+                    }
                 default:
                     throw new JsonException("Hepsiburada referans türü desteklenmiyor.");
             }
