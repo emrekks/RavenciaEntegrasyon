@@ -518,6 +518,21 @@ public sealed class HepsiburadaAdapterTests
     }
 
     [Fact]
+    public void ReferenceSync_DeduplicatesRepeatedEnumOptionsButRejectsConflictingRows()
+    {
+        var option = new RemoteReferenceItem("ATTRIBUTE_VALUES", "Kadın", "12087195/cinsiyet", "Kadın", "Kadın", 0, true, true, "{\"value\":\"Kadın\"}");
+        var duplicate = option with { RawJson = "{\"value\":\"Kadın\",\"source\":\"duplicate\"}" };
+        var success = MarketplaceJobProcessor.TryDeduplicateRepeatedEnumValues([option, duplicate], out var unique);
+        Assert.True(success);
+        Assert.Same(option, Assert.Single(unique));
+
+        var conflicting = option with { Name = "Kadın (farklı)" };
+        var rejected = MarketplaceJobProcessor.TryDeduplicateRepeatedEnumValues([option, conflicting], out var none);
+        Assert.False(rejected);
+        Assert.Empty(none);
+    }
+
+    [Fact]
     public void ReferenceMapper_RecognizesHepsiburadaReferenceApiErrors()
     {
         using var errorJson = JsonDocument.Parse("""

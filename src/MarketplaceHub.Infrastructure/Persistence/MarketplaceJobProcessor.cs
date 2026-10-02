@@ -1408,6 +1408,12 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         if (items.Count == 0 && resourceType is "CATEGORIES" or "BRANDS") throw new JobProcessingException(JobExecutionResult.Blocked("REFERENCE_EMPTY_RESPONSE", $"Marketplace {resourceType} salt-okunur çağrısı boş koleksiyon döndürdü; mevcut snapshot korunuyor."));
         if (items.Any(x => !string.Equals(x.ResourceType, resourceType, StringComparison.Ordinal) || string.IsNullOrWhiteSpace(x.ExternalId) || string.IsNullOrWhiteSpace(x.Name))) throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_CONTRACT_INVALID", "Referans yanıtı zorunlu kimlik, ad veya kapsam sözleşmesini sağlamıyor."));
         var ordered = items.OrderBy(x => x.ExternalId, StringComparer.Ordinal).ToList();
+        if (resourceType == "ATTRIBUTE_VALUES")
+        {
+            if (!TryDeduplicateRepeatedEnumValues(ordered, out var uniqueValues))
+                throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_IDENTIFIERS_DUPLICATE", "Hepsiburada değer yanıtı aynı uzak kimliği farklı seçenek bilgileriyle döndürdü; snapshot korunuyor."));
+            ordered = uniqueValues.ToList();
+        }
         if (ordered.Select(x => x.ExternalId).Distinct(StringComparer.Ordinal).Count() != ordered.Count) throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_IDENTIFIERS_DUPLICATE", "Referans yanıtı yinelenen uzak kimlik içeriyor."));
         var identifiers = ordered.Select(x => x.ExternalId).ToHashSet(StringComparer.Ordinal);
         var scopeIsValid = resourceType == "CATEGORIES"
@@ -1443,6 +1449,31 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        return true;
+    }
+
+    internal static bool TryDeduplicateRepeatedEnumValues(IReadOnlyCollection<RemoteReferenceItem> items, out IReadOnlyList<RemoteReferenceItem> uniqueItems)
+    {
+        var byId = new Dictionary<string, RemoteReferenceItem>(StringComparer.Ordinal);
+        foreach (var item in items)
+        {
+            if (!byId.TryGetValue(item.ExternalId, out var existing))
+            {
+                byId.Add(item.ExternalId, item);
+                continue;
+            }
+            if (!string.Equals(existing.ParentExternalId, item.ParentExternalId, StringComparison.Ordinal)
+                || !string.Equals(existing.Name, item.Name, StringComparison.Ordinal)
+                || !string.Equals(existing.Path, item.Path, StringComparison.Ordinal)
+                || existing.Depth != item.Depth || existing.IsLeaf != item.IsLeaf || existing.IsActive != item.IsActive
+                || existing.IsRequired != item.IsRequired || existing.AllowsCustomValue != item.AllowsCustomValue
+                || existing.AllowsMultipleValues != item.AllowsMultipleValues)
+            {
+                uniqueItems = [];
+                return false;
+            }
+        }
+        uniqueItems = byId.Values.OrderBy(x => x.ExternalId, StringComparer.Ordinal).ToArray();
         return true;
     }
 
