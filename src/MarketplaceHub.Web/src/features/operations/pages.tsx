@@ -79,6 +79,10 @@ type JobPresentation = { title: string; icon: JobTypeIconName; description: stri
 
 function jobPresentation(jobType: string): JobPresentation {
   const type = jobType.toUpperCase()
+  if (type.includes('REFERENCE_SYNC')) {
+    const platform = type.startsWith('HEPSIBURADA_') ? 'Hepsiburada' : 'Trendyol'
+    return { title: `${platform} kategori ve eşleştirme verisi`, icon: 'product', description: `${platform} kategori, özellik ve eşleştirme referansları salt okunur olarak yenilenir; platforma ürün veya başka veri gönderilmez.` }
+  }
   if (type === 'STOCK_PROJECTION_DISPATCH') return { title: 'Stok Gönderim Hazırlığı', icon: 'price', description: 'Yerel stok değişikliği gönderim kuyruğuna aktarılır. Dış yazma kapalıysa pazaryerine değişiklik gönderilmez; başarılı durumu yalnızca bu hazırlık adımının işlendiğini gösterir.' }
   if (type === 'TRENDYOL_STOCK_RECONCILIATION') return { title: 'Stok Uzlaştırma', icon: 'price', description: 'Yerel stok projection kayıtları kontrol edilir. Bu tarama tek başına pazaryerine stok gönderildiği anlamına gelmez.' }
   if (type === 'TRENDYOL_PRICE_INVENTORY_SYNC') return { title: 'Fiyat ve Stok Gönderimi', icon: 'price', description: 'Fiyat veya stok bilgisi Trendyol’a gönderilir. Dış yazma kapalıysa yeni gönderim engellenir.' }
@@ -101,6 +105,7 @@ function jobPresentation(jobType: string): JobPresentation {
 function jobSource(jobType: string) {
   const type = jobType.toUpperCase()
   if (type.includes('EFATURAM')) return 'e-Faturam API'
+  if (type.startsWith('HEPSIBURADA_')) return 'Hepsiburada API'
   if (type.startsWith('TRENDYOL_')) return 'Trendyol API'
   if (type.includes('INVOICE')) return 'e-Faturam API'
   return 'Ravencia Worker'
@@ -117,7 +122,7 @@ function fallbackJobChange(job: JobSummary): JobChange {
   if (type === 'TRENDYOL_ORDER_INVOICE_RECONCILIATION') return { label: 'Tarama türü', value: 'Paket fatura taraması', detail: 'Teslim edilmiş ve açık paketlerin pazaryeri fatura durumu kontrol edilir.' }
   if (type === 'TRENDYOL_ORDER_RECOVERY_SYNC') return { label: 'Tarama türü', value: 'Tam sipariş taraması', detail: 'Erişilebilen sipariş pencereleri taranarak eksik yerel kayıtlar tamamlanır.' }
   if (type === 'TRENDYOL_ORDER_SYNC') return { label: 'Yapılan değişiklik', value: 'Sipariş senkronizasyonu', detail: 'Sipariş bilgileri pazaryerinden eşitlendi.' }
-  if (type.includes('REFERENCE_SYNC')) return { label: 'Yapılan değişiklik', value: 'Referans verisi senkronizasyonu', detail: 'Kategori, marka veya özellik verileri güncellendi.' }
+  if (type.includes('REFERENCE_SYNC')) return { label: 'Yapılan işlem', value: type.startsWith('HEPSIBURADA_') ? 'Hepsiburada kategori ve eşleştirme verisi' : 'Trendyol kategori ve eşleştirme verisi', detail: 'Kategori, özellik ve eşleştirme referansları salt okunur yenilendi; dış platforma veri gönderilmedi.' }
   if (type.includes('PRODUCT') || type.includes('CATALOG')) return { label: 'Yapılan değişiklik', value: 'Ürün senkronizasyonu', detail: 'Ürün bilgileri pazaryerine gönderildi.' }
   if (type.includes('INVOICE')) return { label: 'Yapılan değişiklik', value: 'Fatura işlemi', detail: 'Fatura isteği pazaryerine gönderildi.' }
   return { label: 'Yapılan değişiklik', value: jobPresentation(job.jobType).title, detail: 'İşlem isteği sisteme kaydedildi.' }

@@ -14,7 +14,12 @@ const hepsiburadaReadSyncPolicies = new Set([
   'ORDER_RECOVERY',
   'ORDER_LIFECYCLE',
   'ORDER_INVOICE_RECONCILIATION',
-  'RETURNS'
+  'RETURNS',
+  'REFERENCE_DATA',
+  'PRICE_WRITE',
+  'STOCK_WRITE',
+  'SHIPMENT_WRITE',
+  'RETURN_WRITE'
 ])
 
 export function isOrderMarketplacePlatform(platformCode: string) {

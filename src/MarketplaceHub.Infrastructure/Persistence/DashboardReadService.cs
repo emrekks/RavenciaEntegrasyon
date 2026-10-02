@@ -14,7 +14,7 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
         ("inventory", "Stok", "stock", [MarketplaceJobTypes.PriceInventorySync, MarketplaceJobTypes.StockProjectionDispatch, MarketplaceJobTypes.StockReconciliation], true),
         ("products", "Ürünler", "products", [MarketplaceJobTypes.ProductSync, MarketplaceJobTypes.ShopifyProductSync, MarketplaceJobTypes.HepsiburadaProductSync, MarketplaceJobTypes.ProductCreate, MarketplaceJobTypes.ProductUpdate, MarketplaceJobTypes.ProductArchive, MarketplaceJobTypes.ProductApprovalReconcile], false),
         ("invoices", "Faturalar", "invoices", [InvoicingJobTypes.InvoiceSubmit, InvoicingJobTypes.InvoiceReconcile, InvoicingJobTypes.InvoiceDocumentFetch, InvoicingJobTypes.MarketplaceDelivery, InvoicingJobTypes.InvoiceCancellation, InvoicingJobTypes.InvoiceDueScan], false),
-        ("connections", "Bağlantılar", "connections", [MarketplaceJobTypes.ConnectionTest, MarketplaceJobTypes.ShopifyConnectionTest, MarketplaceJobTypes.HepsiburadaConnectionTest, InvoicingJobTypes.ConnectionTest, MarketplaceJobTypes.CapabilityProbe, InvoicingJobTypes.StageCapabilityProbe], false)
+        ("connections", "Bağlantılar", "connections", [MarketplaceJobTypes.ConnectionTest, MarketplaceJobTypes.ShopifyConnectionTest, MarketplaceJobTypes.HepsiburadaConnectionTest, InvoicingJobTypes.ConnectionTest, MarketplaceJobTypes.CapabilityProbe, InvoicingJobTypes.StageCapabilityProbe, MarketplaceJobTypes.ReferenceSync, MarketplaceJobTypes.HepsiburadaReferenceSync], false)
     ];
 
     public async Task<DashboardBootstrapView> BootstrapAsync(Guid tenantId, CancellationToken cancellationToken)

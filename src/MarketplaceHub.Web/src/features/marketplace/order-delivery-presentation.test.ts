@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { onHoldOrderStatusText, overdueShipmentDays } from './order-delivery-presentation'
+import { isHepsiburadaClaimOnlyWithoutPackage, onHoldOrderStatusText, overdueShipmentDays } from './order-delivery-presentation'
 
 describe('onHoldOrderStatusText', () => {
   it('identifies an explicit Hepsiburada undelivered package', () => {
@@ -28,5 +28,18 @@ describe('overdueShipmentDays', () => {
 
   it('continues to calculate overdue days for an order awaiting shipment', () => {
     expect(overdueShipmentDays('NEW', '2026-09-29T12:00:00Z', now)).toBe(2)
+  })
+})
+
+describe('isHepsiburadaClaimOnlyWithoutPackage', () => {
+  it('recognizes claim-only rows with no locally known shipment package', () => {
+    expect(isHepsiburadaClaimOnlyWithoutPackage('HEPSIBURADA', ['ClaimCreated'], 0)).toBe(true)
+    expect(isHepsiburadaClaimOnlyWithoutPackage('hepsiburada', [' claim_created '], 0)).toBe(true)
+  })
+
+  it('does not hide shipment deadlines when a package or an active order line exists', () => {
+    expect(isHepsiburadaClaimOnlyWithoutPackage('HEPSIBURADA', ['ClaimCreated'], 1)).toBe(false)
+    expect(isHepsiburadaClaimOnlyWithoutPackage('HEPSIBURADA', ['ClaimCreated', 'Open'], 0)).toBe(false)
+    expect(isHepsiburadaClaimOnlyWithoutPackage('TRENDYOL', ['ClaimCreated'], 0)).toBe(false)
   })
 })

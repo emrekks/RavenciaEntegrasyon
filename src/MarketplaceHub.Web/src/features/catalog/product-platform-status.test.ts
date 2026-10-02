@@ -26,6 +26,11 @@ describe('product platform list status', () => {
       .toBe('Trendyol bağlantısı var; yayın durumu ayrıca doğrulanmalı')
   })
 
+  it('shows Hepsiburada import processing states as in progress', () => {
+    expect(productPlatformDisplayState(['IMPORT_SUBMITTED'], false)).toBe('processing')
+    expect(productPlatformDisplayState(['IMPORT_IN_PROGRESS'], false)).toBe('processing')
+  })
+
   it('shows a confirmed live listing as active', () => {
     const state = productPlatformDisplayState(['LIVE'], false)
 

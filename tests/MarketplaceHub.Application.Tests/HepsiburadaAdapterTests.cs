@@ -1367,14 +1367,17 @@ public sealed class HepsiburadaAdapterTests
     }
 
     [Fact]
-    public void HepsiburadaReferenceReadIsRegisteredAndCatalogBootstrapRequiresAConfiguredProductionUrl()
+    public void HepsiburadaReferenceReadIsRegisteredAndCatalogBootstrapUsesTheDocumentedProductionHostByDefault()
     {
         Assert.Contains(MarketplaceCapabilities.ReferenceRead, MarketplaceConnectionService.HepsiburadaCapabilityCodes);
         Assert.Contains(InvoicingCapabilities.InvoiceDeliver, MarketplaceConnectionService.HepsiburadaCapabilityCodes);
         Assert.True(MarketplaceConnectionService.ShouldBootstrapHepsiburadaCatalogReferences("STAGE", null));
-        Assert.False(MarketplaceConnectionService.ShouldBootstrapHepsiburadaCatalogReferences("PRODUCTION", null));
+        Assert.True(MarketplaceConnectionService.ShouldBootstrapHepsiburadaCatalogReferences("PRODUCTION", null));
         Assert.False(MarketplaceConnectionService.ShouldBootstrapHepsiburadaCatalogReferences("PRODUCTION", "http://catalog.example/product/"));
         Assert.True(MarketplaceConnectionService.ShouldBootstrapHepsiburadaCatalogReferences("PRODUCTION", "https://catalog.example/product/"));
+        Assert.Equal("https://mpop.hepsiburada.com/product/", new HepsiburadaOptions().ProductionCatalogBaseAddress?.AbsoluteUri);
+        Assert.Equal(MarketplaceJobTypes.HepsiburadaReferenceSync, MarketplaceJobTypes.ForPlatform("HEPSIBURADA", MarketplaceJobTypes.ReferenceSync));
+        Assert.True(MarketplaceJobTypes.IsMarketplaceProcessorJob(MarketplaceJobTypes.HepsiburadaReferenceSync));
     }
 
     [Fact]

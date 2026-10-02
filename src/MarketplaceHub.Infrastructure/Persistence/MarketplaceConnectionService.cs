@@ -85,7 +85,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             ExternalStoreId = externalStoreId!,
             ApiVersion = platform == "TRENDYOL" ? "V2" : platform == "SHOPIFY" ? "2026-07" : platform == "HEPSIBURADA" ? "V1.0" : "1.0.0",
             Status = "DRAFT",
-            SettingsJson = platform == "TRENDYOL" ? JsonSerializer.Serialize(new ConnectionSettings(command.UserAgentIdentity!.Trim(), false, true)) : platform == "SHOPIFY" ? JsonSerializer.Serialize(new ShopifyConnectionSettings(false, true)) : platform == "HEPSIBURADA" ? "{}" : JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings(false)),
+            SettingsJson = platform == "TRENDYOL" ? JsonSerializer.Serialize(new ConnectionSettings(command.UserAgentIdentity!.Trim(), false, true)) : platform == "SHOPIFY" ? JsonSerializer.Serialize(new ShopifyConnectionSettings(false, true)) : platform == "HEPSIBURADA" ? JsonSerializer.Serialize(new HepsiburadaConnectionSettings(false)) : JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings(false)),
             Version = 1
         };
         db.PlatformConnections.Add(connection);
@@ -165,16 +165,18 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         if (connection.PlatformCode == "SHOPIFY" && command.ExternalStoreId is not null && requestedStoreId is null) return Invalid<ConnectionView>("externalStoreId", "Shopify mağaza adı kısa ad veya myshopify.com adresi olarak girilmelidir.");
         var invoiceCreationEnabled = MarketplaceInvoiceCreationPolicy.IsEnabled(connection.PlatformCode, connection.SettingsJson);
         var currentSettings = connection.PlatformCode == "TRENDYOL" ? ReadSettings(connection) : null;
+        var hepsiburadaSettings = connection.PlatformCode == "HEPSIBURADA" ? ReadHepsiburadaSettings(connection) : null;
+        var currentExternalWrites = currentSettings?.ExternalWritesEnabled ?? hepsiburadaSettings?.ExternalWritesEnabled ?? false;
         var requestedUserAgent = string.IsNullOrWhiteSpace(command.UserAgentIdentity) ? null : command.UserAgentIdentity.Trim();
-        var requestedExternalWrites = currentSettings is not null
-            && configuration.GetValue<bool>("FeatureFlags:ExternalWrites")
-            && (command.ExternalWritesEnabled ?? currentSettings.ExternalWritesEnabled);
-        if (connection.PlatformCode == "TRENDYOL" && requestedExternalWrites && currentSettings?.ExternalWritesEnabled != true)
+        var externalWritesRequested = (command.ExternalWritesEnabled ?? currentExternalWrites)
+            && (currentSettings is not null || hepsiburadaSettings is not null);
+        if (command.ExternalWritesEnabled == true && !configuration.GetValue<bool>("FeatureFlags:ExternalWrites"))
+            return ServiceResult<ConnectionView>.Fail("EXTERNAL_WRITES_DISABLED", "Global dış yazma anahtarı kapalı olduğu için dış yazma açılamaz.", 422);
+        var requestedExternalWrites = externalWritesRequested && configuration.GetValue<bool>("FeatureFlags:ExternalWrites");
+        if ((connection.PlatformCode is "TRENDYOL" or "HEPSIBURADA") && requestedExternalWrites && !currentExternalWrites)
         {
-            if (!configuration.GetValue<bool>("FeatureFlags:ExternalWrites"))
-                return ServiceResult<ConnectionView>.Fail("EXTERNAL_WRITES_DISABLED", "Global dış yazma anahtarı kapalı olduğu için dış yazma açılamaz.", 422);
             if (!await HasCredential(tenantId, id, cancellationToken))
-                return ServiceResult<ConnectionView>.Fail("CREDENTIAL_REQUIRED", "Dış yazmayı açmadan önce aktif Trendyol credential kaydedilmelidir.", 422);
+                return ServiceResult<ConnectionView>.Fail("CREDENTIAL_REQUIRED", "Dış yazmayı açmadan önce aktif pazar yeri kimlik bilgisi kaydedilmelidir.", 422);
             var connectionTest = await db.PlatformCapabilities.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == id && x.Code == MarketplaceCapabilities.ConnectionTest && x.Environment == connection.Environment && x.StoreScope == connection.ExternalStoreId, cancellationToken);
             if (connection.LastSuccessAt is null || connectionTest?.SupportLevel != CapabilitySupportLevel.Supported)
                 return ServiceResult<ConnectionView>.Fail("CONNECTION_TEST_REQUIRED", "Dış yazmayı açmadan önce başarılı bağlantı testi ve destek kanıtı gerekir.", 422);
@@ -193,7 +195,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         else if (connection.PlatformCode == "TRENDYOL_EFATURAM")
             connection.SettingsJson = JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings(ReadEfaturamSettings(connection).ExternalWritesEnabled));
         else if (connection.PlatformCode == "HEPSIBURADA")
-            connection.SettingsJson = "{}";
+            connection.SettingsJson = JsonSerializer.Serialize(new HepsiburadaConnectionSettings(requestedExternalWrites));
         else
             connection.SettingsJson = JsonSerializer.Serialize(new ShopifyConnectionSettings(false, command.InvoiceCreationEnabled ?? invoiceCreationEnabled));
 
@@ -219,7 +221,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             }
         }
 
-        if (connection.PlatformCode == "TRENDYOL" && currentSettings?.ExternalWritesEnabled == true && !requestedExternalWrites)
+        if ((connection.PlatformCode is "TRENDYOL" or "HEPSIBURADA") && currentExternalWrites && !requestedExternalWrites)
             await DisableExternalWriteAutomationAsync(tenantId, id, cancellationToken);
 
         connection.Version++;
@@ -264,7 +266,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         else if (connection.PlatformCode == "SHOPIFY")
             connection.SettingsJson = JsonSerializer.Serialize(new ShopifyConnectionSettings(false, MarketplaceInvoiceCreationPolicy.IsEnabled(connection.PlatformCode, connection.SettingsJson)));
         else if (connection.PlatformCode == "HEPSIBURADA")
-            connection.SettingsJson = "{}";
+            connection.SettingsJson = JsonSerializer.Serialize(new HepsiburadaConnectionSettings(ReadHepsiburadaSettings(connection).ExternalWritesEnabled));
         connection.LastTestedAt = null; connection.LastSuccessAt = null; connection.LastErrorCode = null; connection.Status = "DRAFT"; connection.Version++;
         foreach (var capability in await db.PlatformCapabilities.Where(x => x.TenantId == tenantId && x.ConnectionId == id).ToListAsync(cancellationToken)) { capability.SupportLevel = CapabilitySupportLevel.Unknown; capability.VerifiedAt = null; capability.EvidenceNote = "Credential rotasyonu sonrası yeniden doğrulama gerekiyor."; capability.Version++; }
         await db.SaveChangesAsync(cancellationToken); return ServiceResult<ConnectionView>.Ok(Map(connection, true));
@@ -303,7 +305,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         else if (connection.PlatformCode == "SHOPIFY")
             connection.SettingsJson = JsonSerializer.Serialize(new ShopifyConnectionSettings(false, MarketplaceInvoiceCreationPolicy.IsEnabled(connection.PlatformCode, connection.SettingsJson)));
         else if (connection.PlatformCode == "HEPSIBURADA")
-            connection.SettingsJson = "{}";
+            connection.SettingsJson = JsonSerializer.Serialize(new HepsiburadaConnectionSettings(ReadHepsiburadaSettings(connection).ExternalWritesEnabled));
         connection.Version++;
         if (queueActivationBootstrap)
         {
@@ -390,13 +392,26 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
 
     public async Task<ServiceResult<SyncPolicyView>> UpsertSyncPolicyAsync(Guid tenantId, Guid id, string resourceType, long? expectedVersion, UpdateSyncPolicyCommand command, CancellationToken cancellationToken)
     {
-        var normalized = resourceType.Trim().ToUpperInvariant(); if (normalized == "PRODUCTS") return ServiceResult<SyncPolicyView>.Fail("PRODUCT_SYNC_MANUAL_ONLY", "Ürün aktarımı yalnızca panelden manuel başlatılabilir.", 422); if (!ResourceTypes.Contains(normalized)) return Invalid<SyncPolicyView>("resourceType", "Trendyol için desteklenen sync resource türü değil.");
+        var normalized = resourceType.Trim().ToUpperInvariant(); if (normalized == "PRODUCTS") return ServiceResult<SyncPolicyView>.Fail("PRODUCT_SYNC_MANUAL_ONLY", "Ürün aktarımı yalnızca panelden manuel başlatılabilir.", 422); if (!ResourceTypes.Contains(normalized)) return Invalid<SyncPolicyView>("resourceType", "Bu bağlantı için desteklenen sync resource türü değil.");
         var minimumInterval = MarketplaceExternalWritePolicies.IsPolicy(normalized) ? 0 : 30;
         var maximumInterval = MarketplaceExternalWritePolicies.IsPolicy(normalized) ? 86_400 : ScheduledOrderPollingCadencePolicy.MaximumIntervalSeconds;
         if (command.IntervalSeconds < minimumInterval || command.IntervalSeconds > maximumInterval || command.OverlapSeconds is < 0 or > 1_209_599 || command.JitterSeconds is < 0 or > 3_600) return Invalid<SyncPolicyView>("interval", MarketplaceExternalWritePolicies.IsPolicy(normalized) ? "Dış yazma sıklığı anında veya 30 saniye-24 saat arasında olmalıdır." : "Sync aralığı 30 saniye-72 saat, overlap 0-14 gün ve jitter 0-1 saat arasında olmalıdır.");
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA"), cancellationToken); if (connection is null) return NotFound<SyncPolicyView>(); if (!ActiveIntegrationScope.Contains(connection.PlatformCode)) return Deferred<SyncPolicyView>();
         if (command.Enabled && MarketplaceSyncPolicyRules.RequiresExternalWrites(normalized) && !WritesEnabled(connection.SettingsJson))
             return ServiceResult<SyncPolicyView>.Fail("EXTERNAL_WRITES_DISABLED", "Dış yazma kapalıyken bu otomatik akış açılamaz.", 422);
+        if (command.Enabled && connection.PlatformCode == "HEPSIBURADA")
+        {
+            var requiredCapability = normalized switch
+            {
+                MarketplaceExternalWritePolicies.Price => MarketplaceCapabilities.PriceWrite,
+                MarketplaceExternalWritePolicies.Stock => MarketplaceCapabilities.InventoryWrite,
+                MarketplaceExternalWritePolicies.Shipment => MarketplaceCapabilities.ShipmentWrite,
+                MarketplaceExternalWritePolicies.Return => MarketplaceCapabilities.ReturnWrite,
+                _ => null
+            };
+            if (requiredCapability is not null && !await HasVerifiedWriteEvidenceAsync(connection, cancellationToken, requiredCapability))
+                return ServiceResult<SyncPolicyView>.Fail("EXTERNAL_WRITE_EVIDENCE_REQUIRED", "Hepsiburada dış yazma akışı için aynı mağaza ve ortamda doğrulanmış yetenek kanıtı gerekir.", 422);
+        }
         var cadence = ScheduledOrderPollingCadencePolicy.ForPlatform(connection.PlatformCode, normalized, command.IntervalSeconds, command.JitterSeconds);
         var policy = await db.ConnectionSyncPolicies.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == id && x.ResourceType == normalized, cancellationToken);
         if (policy is null) { if (expectedVersion is not null) return NotFound<SyncPolicyView>(); policy = new ConnectionSyncPolicy { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = id, ResourceType = normalized, Version = 1 }; db.ConnectionSyncPolicies.Add(policy); }
@@ -444,13 +459,26 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         }));
         await db.SaveChangesAsync(cancellationToken);
     }
+    private async Task<bool> HasVerifiedWriteEvidenceAsync(PlatformConnection connection, CancellationToken cancellationToken, params string[] capabilityCodes)
+    {
+        var capabilities = await db.PlatformCapabilities.AsNoTracking()
+            .Where(x => x.TenantId == connection.TenantId && x.ConnectionId == connection.Id && capabilityCodes.Contains(x.Code))
+            .ToListAsync(cancellationToken);
+        return capabilityCodes.All(code => CapabilityEvidencePolicy.IsVerifiedWriteCapability(capabilities.SingleOrDefault(x => x.Code == code), connection, code));
+    }
+
     private Task<bool> HasCredential(Guid tenantId, Guid id, CancellationToken cancellationToken) => db.PlatformCredentials.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == id && x.RevokedAt == null, cancellationToken);
     private async Task DisableExternalWriteAutomationAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
     {
+        var platformCode = await db.PlatformConnections.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.Id == connectionId)
+            .Select(x => x.PlatformCode)
+            .SingleOrDefaultAsync(cancellationToken);
         var policies = await db.ConnectionSyncPolicies
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Enabled)
             .ToListAsync(cancellationToken);
-        foreach (var policy in policies.Where(x => x.ResourceType is "STOCK_RECONCILE_SHORT" or "STOCK_RECONCILE_MEDIUM" or "STOCK_RECONCILE_DAILY"))
+        foreach (var policy in policies.Where(x => x.ResourceType is "STOCK_RECONCILE_SHORT" or "STOCK_RECONCILE_MEDIUM" or "STOCK_RECONCILE_DAILY"
+            || MarketplaceExternalWritePolicies.IsPolicy(x.ResourceType)))
         {
             policy.Enabled = false;
             policy.Version++;
@@ -460,7 +488,8 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId
                 && (x.JobType == MarketplaceJobTypes.StockReconciliation
                     || x.JobType == MarketplaceJobTypes.PriceInventorySync
-                    || x.JobType == MarketplaceJobTypes.StockProjectionDispatch)
+                    || x.JobType == MarketplaceJobTypes.StockProjectionDispatch
+                    || platformCode == "HEPSIBURADA" && (x.JobType == MarketplaceJobTypes.ProductCreate || x.JobType == MarketplaceJobTypes.ProductUpdate))
                 && (x.Status == JobStatus.Pending || x.Status == JobStatus.RetryScheduled))
             .ToListAsync(cancellationToken);
         var now = timeProvider.GetUtcNow();
@@ -499,7 +528,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         if (connection.PlatformCode == "HEPSIBURADA")
         {
             if (ShouldBootstrapHepsiburadaCatalogReferences(connection.Environment, configuration[$"{HepsiburadaOptions.SectionName}:ProductionCatalogBaseAddress"]))
-                AddBootstrapJob(tenantId, connection.Id, MarketplaceJobTypes.ReferenceSync, $"{prefix}categories", JsonSerializer.Serialize(new { connectionId = connection.Id, resourceType = "CATEGORIES", parentExternalId = (string?)null }), correlationId);
+                AddBootstrapJob(tenantId, connection.Id, MarketplaceJobTypes.HepsiburadaReferenceSync, $"{prefix}categories", JsonSerializer.Serialize(new { connectionId = connection.Id, resourceType = "CATEGORIES", parentExternalId = (string?)null }), correlationId);
             AddBootstrapJob(tenantId, connection.Id, MarketplaceJobTypes.HepsiburadaProductSync, $"{prefix}products", JsonSerializer.Serialize(new { connectionId = connection.Id, full = true, updateExistingProducts = false }), correlationId);
         }
         var returnBootstrap = CreateReturnActivationBootstrap(connection.PlatformCode, connection.Id);
@@ -525,8 +554,11 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
     internal static bool ShouldBootstrapHepsiburadaCatalogReferences(string environment, string? productionCatalogBaseAddress)
     {
         if (string.Equals(environment, "STAGE", StringComparison.OrdinalIgnoreCase)) return true;
+        var resolvedBaseAddress = string.IsNullOrWhiteSpace(productionCatalogBaseAddress)
+            ? "https://mpop.hepsiburada.com/product/"
+            : productionCatalogBaseAddress;
         return string.Equals(environment, "PRODUCTION", StringComparison.OrdinalIgnoreCase)
-            && Uri.TryCreate(productionCatalogBaseAddress, UriKind.Absolute, out var address)
+            && Uri.TryCreate(resolvedBaseAddress, UriKind.Absolute, out var address)
             && address.Scheme == Uri.UriSchemeHttps;
     }
     private async Task<HashSet<Guid>> ActiveCredentialConnectionIds(Guid tenantId, IEnumerable<Guid> connectionIds, CancellationToken cancellationToken) => (await db.PlatformCredentials.AsNoTracking().Where(x => x.TenantId == tenantId && connectionIds.Contains(x.ConnectionId) && x.RevokedAt == null).Select(x => x.ConnectionId).ToListAsync(cancellationToken)).ToHashSet();
@@ -536,13 +568,16 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
     {
         var externalWritesEnabled = configuration.GetValue<bool>("FeatureFlags:ExternalWrites") && (x.PlatformCode == "TRENDYOL"
             ? ReadSettings(x).ExternalWritesEnabled
-            : x.PlatformCode == "TRENDYOL_EFATURAM" && ReadEfaturamSettings(x).ExternalWritesEnabled);
+            : x.PlatformCode == "HEPSIBURADA"
+                ? ReadHepsiburadaSettings(x).ExternalWritesEnabled
+                : x.PlatformCode == "TRENDYOL_EFATURAM" && ReadEfaturamSettings(x).ExternalWritesEnabled);
         var invoiceCreationEnabled = x.PlatformCode != "HEPSIBURADA" && MarketplaceInvoiceCreationPolicy.IsEnabled(x.PlatformCode, x.SettingsJson);
         return new(x.Id, x.PublicId, x.PlatformCode, x.Environment, x.DisplayName, x.ExternalStoreId, x.Status, x.ApiVersion, x.LastTestedAt, x.LastSuccessAt, x.LastErrorCode, hasCredential, externalWritesEnabled, x.Version, invoiceCreationEnabled);
     }
     private static SyncPolicyView Map(ConnectionSyncPolicy x) => new(x.Id, x.ResourceType, x.IntervalSeconds, x.OverlapSeconds, x.JitterSeconds, x.Enabled, x.Version, RequiresExternalWrites: MarketplaceSyncPolicyRules.RequiresExternalWrites(x.ResourceType));
     private static WebhookSubscriptionView Map(WebhookSubscription x) => new(x.Id, x.AuthenticationType, x.Status, x.ExternalSubscriptionId, x.VerifiedAt, x.LastReceivedAt, x.Version);
     private static ConnectionSettings ReadSettings(PlatformConnection value) { try { return JsonSerializer.Deserialize<ConnectionSettings>(value.SettingsJson) ?? new("", false); } catch (JsonException) { return new("", false); } }
+    private static HepsiburadaConnectionSettings ReadHepsiburadaSettings(PlatformConnection value) { try { return JsonSerializer.Deserialize<HepsiburadaConnectionSettings>(value.SettingsJson) ?? new(false); } catch (JsonException) { return new(false); } }
     private static TrendyolEFaturamConnectionSettings ReadEfaturamSettings(PlatformConnection value) { try { return JsonSerializer.Deserialize<TrendyolEFaturamConnectionSettings>(value.SettingsJson) ?? new(false); } catch (JsonException) { return new(false); } }
     private bool WritesEnabled(string settingsJson)
     {
@@ -579,5 +614,6 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
     private sealed record ShopifyCredentialPayload(string AccessToken);
     private sealed record ConnectionSettings(string UserAgentIdentity, bool ExternalWritesEnabled, bool InvoiceCreationEnabled = true);
     private sealed record ShopifyConnectionSettings(bool ExternalWritesEnabled, bool InvoiceCreationEnabled = true);
+    private sealed record HepsiburadaConnectionSettings(bool ExternalWritesEnabled);
     private sealed record WebhookVerifierPayload(string? Username, string? Password, string? ApiKey, string? ClientSecret);
 }

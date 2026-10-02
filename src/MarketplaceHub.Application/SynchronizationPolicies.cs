@@ -53,6 +53,21 @@ public static class SynchronizationWindowPolicy
     }
 }
 
+public static class HepsiburadaOrderHistoryPolicy
+{
+    public const int DefaultInitialLookbackMonths = 3;
+
+    public static DateTimeOffset InitialWindowStart(DateTimeOffset anchor) =>
+        anchor.AddMonths(-DefaultInitialLookbackMonths);
+
+    public static DateTimeOffset ClampWindowStart(DateTimeOffset anchor, DateTimeOffset candidate)
+    {
+        var oldest = InitialWindowStart(anchor);
+        if (candidate > anchor) return anchor;
+        return candidate < oldest ? oldest : candidate;
+    }
+}
+
 public enum MarketplaceSyncHealth { Healthy, Delayed, Degraded, Offline }
 
 public static class MarketplaceSyncHealthPolicy

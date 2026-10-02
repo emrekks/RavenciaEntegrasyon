@@ -1403,7 +1403,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     }
 
     private static bool IsPlatformUpdateInProgress(string? status) => status?.Trim().ToUpperInvariant() is
-        "QUEUED" or "UPDATE_QUEUED" or "BATCH_SUBMITTED" or "BATCH_IN_PROGRESS" or "UPDATE_SUBMITTED" or "UPDATE_IN_PROGRESS" or
+        "QUEUED" or "UPDATE_QUEUED" or "BATCH_SUBMITTED" or "BATCH_IN_PROGRESS" or "IMPORT_SUBMITTED" or "IMPORT_IN_PROGRESS" or "UPDATE_SUBMITTED" or "UPDATE_IN_PROGRESS" or
         "APPROVAL_PENDING" or "APPROVAL_PARTIAL_PENDING" or "ARCHIVE_QUEUED" or "ARCHIVE_BATCH_SUBMITTED" or "ARCHIVE_RECONCILING" or
         "UNARCHIVE_QUEUED";
 
@@ -1496,7 +1496,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                 .GroupBy(item => item.OptionLabel, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(option => option.Key, option => option.Last().ValueLabel, StringComparer.OrdinalIgnoreCase));
         var connections = await db.PlatformConnections.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && (x.Status == "ACTIVE" || x.Status == "VERIFIED") && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY"))
+            .Where(x => x.TenantId == tenantId && (x.Status == "ACTIVE" || x.Status == "VERIFIED") && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA"))
             .ToDictionaryAsync(x => x.Id, x => new { x.DisplayName, x.PlatformCode }, cancellationToken);
         var media = await (from item in db.ProductMedia.AsNoTracking()
                            join asset in db.FileAssets.AsNoTracking() on new { item.TenantId, item.FileAssetId } equals new { asset.TenantId, FileAssetId = asset.Id }
@@ -1860,12 +1860,12 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         };
     }
 
-    private static bool TryProductPlatformFilter(string value, out string platformCode, out string platformState)
+    internal static bool TryProductPlatformFilter(string value, out string platformCode, out string platformState)
     {
         var parts = value.Split(':', 2, StringSplitOptions.TrimEntries);
         platformCode = parts.Length == 2 ? parts[0].ToUpperInvariant() : string.Empty;
         platformState = parts.Length == 2 ? parts[1].ToUpperInvariant() : string.Empty;
-        return platformCode is "TRENDYOL" or "SHOPIFY"
+        return platformCode is "TRENDYOL" or "SHOPIFY" or "HEPSIBURADA"
             && platformState is "ACTIVE" or "PARTIAL" or "PASSIVE";
     }
 

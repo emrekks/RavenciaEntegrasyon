@@ -14,6 +14,7 @@ public static class MarketplaceJobTypes
     public const string ActivationBootstrapPrefix = "activation-bootstrap:";
     public const string ConnectionTest = "TRENDYOL_CONNECTION_TEST";
     public const string ReferenceSync = "TRENDYOL_REFERENCE_SYNC";
+    public const string HepsiburadaReferenceSync = "HEPSIBURADA_REFERENCE_SYNC";
     public const string OrderSync = "TRENDYOL_ORDER_SYNC";
     public const string OrderRecoverySync = "TRENDYOL_ORDER_RECOVERY_SYNC";
     public const string OrderStatusSync = "TRENDYOL_ORDER_STATUS_SYNC";
@@ -55,7 +56,7 @@ public static class MarketplaceJobTypes
 
     public static bool IsMarketplaceProcessorJob(string? jobType) => jobType is
         ConnectionTest or ShopifyConnectionTest or HepsiburadaConnectionTest
-        or ReferenceSync
+        or ReferenceSync or HepsiburadaReferenceSync
         or ProductSync or ShopifyProductSync or HepsiburadaProductSync
         or ProductCreate or ProductApprovalReconcile or ProductUpdate or ProductArchive
         or PriceInventorySync or StockProjectionDispatch
@@ -86,6 +87,7 @@ public static class MarketplaceJobTypes
         "HEPSIBURADA" => jobType switch
         {
             ConnectionTest => HepsiburadaConnectionTest,
+            ReferenceSync => HepsiburadaReferenceSync,
             ProductSync => HepsiburadaProductSync,
             OrderSync => HepsiburadaOrderSync,
             OrderRecoverySync => HepsiburadaOrderRecoverySync,

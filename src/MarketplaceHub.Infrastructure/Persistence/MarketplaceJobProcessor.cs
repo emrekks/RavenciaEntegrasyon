@@ -91,7 +91,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 var succeeded = jobType switch
                 {
                     MarketplaceJobTypes.ConnectionTest or MarketplaceJobTypes.ShopifyConnectionTest or MarketplaceJobTypes.HepsiburadaConnectionTest => await TestConnection(tenantId, connectionId.Value, correlationId, cancellationToken),
-                    MarketplaceJobTypes.ReferenceSync => await SyncReferences(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
+                    MarketplaceJobTypes.ReferenceSync or MarketplaceJobTypes.HepsiburadaReferenceSync => await SyncReferences(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                     MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync => await SyncOrders(tenantId, connectionId.Value, payloadJson, correlationId, "ORDERS_HOT", allowBaseline: false, cancellationToken),
                     MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync or MarketplaceJobTypes.HepsiburadaOrderRecoverySync => await SyncOrders(tenantId, connectionId.Value, payloadJson, correlationId, "ORDERS_RECOVERY", allowBaseline: true, cancellationToken),
                     MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.ShopifyOrderStatusSync or MarketplaceJobTypes.HepsiburadaOrderStatusSync => await SyncOpenOrders(tenantId, connectionId.Value, correlationId, cancellationToken),
@@ -130,7 +130,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     private static string? TelemetryResource(string jobType) => jobType switch
     {
         MarketplaceJobTypes.ConnectionTest or MarketplaceJobTypes.ShopifyConnectionTest or MarketplaceJobTypes.HepsiburadaConnectionTest => "CONNECTION_TEST",
-        MarketplaceJobTypes.ReferenceSync => "REFERENCE_DATA",
+        MarketplaceJobTypes.ReferenceSync or MarketplaceJobTypes.HepsiburadaReferenceSync => "REFERENCE_DATA",
         MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync => "ORDERS_HOT",
         MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync or MarketplaceJobTypes.HepsiburadaOrderRecoverySync => "ORDERS_RECOVERY",
         MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.ShopifyOrderStatusSync or MarketplaceJobTypes.HepsiburadaOrderStatusSync => "ORDER_LIFECYCLE",
@@ -157,7 +157,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     };
 
     private static bool IsBootstrapManagedJob(string jobType) => jobType is
-        MarketplaceJobTypes.ReferenceSync
+        MarketplaceJobTypes.ReferenceSync or MarketplaceJobTypes.HepsiburadaReferenceSync
         or MarketplaceJobTypes.OrderSync
         or MarketplaceJobTypes.ShopifyOrderSync
         or MarketplaceJobTypes.HepsiburadaOrderSync
@@ -1730,11 +1730,12 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         if (state is null)
         {
             var anchor = now;
-            var oldestAvailable = anchor.AddMonths(-3);
+            var oldestAvailable = HepsiburadaOrderHistoryPolicy.InitialWindowStart(anchor);
             var watermark = cursor.LastModifiedWatermark ?? cursor.LastSuccessAt ?? anchor.AddHours(-24);
             if (watermark > anchor) watermark = anchor;
-            var start = forceBaseline ? oldestAvailable : watermark.Subtract(overlap);
-            if (start < oldestAvailable) start = oldestAvailable;
+            var start = forceBaseline
+                ? oldestAvailable
+                : HepsiburadaOrderHistoryPolicy.ClampWindowStart(anchor, watermark.Subtract(overlap));
             state = new(HepsiburadaOrderSyncStateVersion, anchor, start, 0, 0);
         }
 

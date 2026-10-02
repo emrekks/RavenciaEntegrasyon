@@ -30,6 +30,7 @@ import { activeProductSyncJobs as filterActiveProductSyncJobs } from './product-
 import { readVariantMediaAssignmentDraft, updateVariantMediaAssignmentDraft, variantMediaAssignmentKey, type VariantMediaAssignmentDrafts } from './variant-media-assignments'
 import { OperationFeedbackToast, type OperationFeedback } from './operation-feedback-toast'
 import { productImportConnection, productImportIdentityLabel, singleProductLookupLabel } from './product-import-platforms'
+import { productPlatformFilterGroups } from './product-platform-filter'
 import { formatPanelColorValue } from '../marketplace/color-value-format'
 
 type Versioned = { id: string; version: number }
@@ -167,10 +168,6 @@ function compareVariantItemsAlphabetically(left: { variant: { optionSignature?: 
 
 type ProductListFilters = { search: string; status: string; platform: string; stock: string }
 type ProductSummary = { totalCount: number; activeCount: number; outOfStockCount: number; lowStockCount: number; platforms: string[] }
-const productPlatformFilterGroups = [
-  { label: 'Trendyol', options: [{ value: 'TRENDYOL:ACTIVE', label: 'Aktif' }, { value: 'TRENDYOL:PARTIAL', label: 'Kısmi' }, { value: 'TRENDYOL:PASSIVE', label: 'Pasif' }] },
-  { label: 'Shopify', options: [{ value: 'SHOPIFY:ACTIVE', label: 'Aktif' }, { value: 'SHOPIFY:PARTIAL', label: 'Kısmi' }, { value: 'SHOPIFY:PASSIVE', label: 'Pasif' }] }
-]
 type ImportSession = Versioned & { sourceType: string; status: string; totalRows: number; validRows: number; errorRows: number; reviewRows: number; sourceAssetId: string | null }
 type Candidate = Versioned & { matchRule: string; safeSummary: string; productId: string | null; variantId: string | null }
 type MarketplaceConnection = { id: string; platformCode: string; displayName: string; externalStoreId: string; status: string }
@@ -931,7 +928,7 @@ function ProductColorRows({ group, selected, onSelect, onQuickEdit, onImageClick
   const platformStatusAggregates = new Map<string, { platform: string; platformCode: string; statuses: string[]; matchedVariantCount: number; variantCount: number; isChecking: boolean }>()
   for (const item of platformStatuses) {
     const platform = item.platform?.trim() || 'Platform'
-    const platformCode = item.platformCode?.trim().toUpperCase() || (platform.toUpperCase().includes('SHOPIFY') ? 'SHOPIFY' : platform.toUpperCase().includes('TRENDYOL') ? 'TRENDYOL' : 'UNKNOWN')
+    const platformCode = item.platformCode?.trim().toUpperCase() || (platform.toUpperCase().includes('SHOPIFY') ? 'SHOPIFY' : platform.toUpperCase().includes('HEPSIBURADA') ? 'HEPSIBURADA' : platform.toUpperCase().includes('TRENDYOL') ? 'TRENDYOL' : 'UNKNOWN')
     const key = `${platformCode}:${platform}`
     const current = platformStatusAggregates.get(key)
     if (current) {
@@ -1338,7 +1335,7 @@ export function ProductsPage() {
           <div className="product-platform-filter-menu-header"><div><strong>Platform durumu</strong><small>Ürün eşleşmelerini platforma göre filtrele</small></div>{platform && <button type="button" className="product-platform-filter-clear" onClick={() => { setPlatform(''); setPlatformFilterOpen(false) }}>Temizle</button>}</div>
           <button type="button" role="menuitemradio" aria-checked={!platform} className={`product-platform-filter-all${!platform ? ' active' : ''}`} onClick={() => { setPlatform(''); setPlatformFilterOpen(false) }}><span className="product-platform-filter-all-icon"><UiIcon name="grid" /></span><span><strong>Tüm platformlar</strong><small>Platform ayrımı olmadan göster</small></span>{!platform && <UiIcon name="check" />}</button>
           {productPlatformFilterGroups.map(group => { const groupOpen = expandedPlatformGroup === group.label; const selectedGroupOption = group.options.find(option => option.value === platform); return (<section className="product-platform-filter-group" key={group.label} aria-labelledby={`product-platform-filter-${group.label.toLowerCase()}`}>
-            <button type="button" className={`product-platform-filter-group-toggle${groupOpen ? ' is-open' : ''}`} aria-expanded={groupOpen} aria-controls={`product-platform-filter-options-${group.label.toLowerCase()}`} onClick={() => setExpandedPlatformGroup(value => value === group.label ? null : group.label)}><span className={`product-platform-filter-logo ${group.label.toLowerCase() === 'shopify' ? 'shopify' : 'trendyol'}`}>{group.label.slice(0, 1)}</span><span className="product-platform-filter-group-toggle-copy"><strong id={`product-platform-filter-${group.label.toLowerCase()}`}>{group.label}</strong><small>{selectedGroupOption ? `${selectedGroupOption.label} · seçili` : 'Durum seçin'}</small></span><UiIcon name="chevronDown" /></button>
+            <button type="button" className={`product-platform-filter-group-toggle${groupOpen ? ' is-open' : ''}`} aria-expanded={groupOpen} aria-controls={`product-platform-filter-options-${group.label.toLowerCase()}`} onClick={() => setExpandedPlatformGroup(value => value === group.label ? null : group.label)}><span className={`product-platform-filter-logo ${group.label.toLowerCase() === 'shopify' ? 'shopify' : group.label.toLowerCase() === 'hepsiburada' ? 'hepsiburada' : 'trendyol'}`}>{group.label.slice(0, 1)}</span><span className="product-platform-filter-group-toggle-copy"><strong id={`product-platform-filter-${group.label.toLowerCase()}`}>{group.label}</strong><small>{selectedGroupOption ? `${selectedGroupOption.label} · seçili` : 'Durum seçin'}</small></span><UiIcon name="chevronDown" /></button>
             {groupOpen && <div id={`product-platform-filter-options-${group.label.toLowerCase()}`} className="product-platform-filter-options">{group.options.map(option => <button type="button" role="menuitemradio" aria-checked={platform === option.value} className={`product-platform-filter-option state-${option.value.split(':')[1].toLowerCase()}${platform === option.value ? ' active' : ''}`} key={option.value} onClick={() => { setPlatform(option.value); setPlatformFilterOpen(false) }}><span className="product-platform-filter-state-dot" /><span><strong>{option.label}</strong><small>{option.label === 'Aktif' ? 'Tüm varyantlar eşleşti' : option.label === 'Kısmi' ? 'Bazı varyantlar eşleşti' : 'Eşleşme bulunamadı'}</small></span>{platform === option.value && <UiIcon name="check" />}</button>)}</div>}
           </section>)})}
           {platforms.filter(item => !productPlatformFilterGroups.some(group => group.label.localeCompare(item, 'tr-TR', { sensitivity: 'base' }) === 0)).length > 0 && <section className="product-platform-filter-group product-platform-filter-other"><div className="product-platform-filter-group-heading"><span className="product-platform-filter-logo other">+</span><strong>Diğer platformlar</strong></div>{platforms.filter(item => !productPlatformFilterGroups.some(group => group.label.localeCompare(item, 'tr-TR', { sensitivity: 'base' }) === 0)).map(item => <button type="button" role="menuitemradio" aria-checked={platform === item} className={`product-platform-filter-option${platform === item ? ' active' : ''}`} key={item} onClick={() => { setPlatform(item); setPlatformFilterOpen(false) }}><span className="product-platform-filter-state-dot" /><span><strong>{item}</strong><small>Platform eşleşmelerini göster</small></span>{platform === item && <UiIcon name="check" />}</button>)}</section>}

@@ -24,7 +24,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                                where policy.Enabled && policy.ResourceType != "PRODUCTS" && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")
                                    && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "SHOPIFY" || connection.PlatformCode == "HEPSIBURADA")
                                select new { Policy = policy, Connection = connection }).ToListAsync(cancellationToken))
-            .Where(row => row.Connection.PlatformCode == "TRENDYOL" || row.Connection.PlatformCode == "SHOPIFY" && IsShopifyReadPolicy(row.Policy.ResourceType) || row.Connection.PlatformCode == "HEPSIBURADA" && IsHepsiburadaReadPolicy(row.Policy.ResourceType))
+            .Where(row => row.Connection.PlatformCode == "TRENDYOL" || row.Connection.PlatformCode == "SHOPIFY" && IsShopifyReadPolicy(row.Policy.ResourceType) || row.Connection.PlatformCode == "HEPSIBURADA" && SupportsHepsiburadaScheduledPolicy(row.Policy.ResourceType))
             // Keep the hot order stream ahead of lifecycle and reconciliation
             // scans. The query has no guaranteed row order, so an incidental
             // database order could otherwise enqueue a long lifecycle scan
@@ -90,9 +90,13 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             var latest = await db.IntegrationJobs.AsNoTracking()
                 .Where(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id && x.JobType == definition.Value.JobType && x.JobDedupKey.StartsWith(definition.Value.DedupPrefix))
                 .OrderByDescending(x => x.CreatedAt).Select(x => (DateTimeOffset?)x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
+            var jitterSeconds = StableJitterSeconds(row.Connection.Id, row.Policy.ResourceType, row.Policy.JitterSeconds);
+            if (row.Policy.ResourceType == "REFERENCE_DATA"
+                && await db.ReferenceSnapshots.AsNoTracking().AnyAsync(x => x.TenantId == row.Policy.TenantId
+                    && x.ConnectionId == row.Connection.Id && x.ResourceType == "CATEGORIES" && x.ScopeExternalId == ""
+                    && x.IsCurrent && x.FetchedAt > now.AddSeconds(-(interval + jitterSeconds)), cancellationToken)) continue;
             var hasOrderSnapshots = definition.Value.JobType is not (MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync)
                 || await db.Orders.AsNoTracking().AnyAsync(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id, cancellationToken);
-            var jitterSeconds = StableJitterSeconds(row.Connection.Id, row.Policy.ResourceType, row.Policy.JitterSeconds);
             if (hasOrderSnapshots && latest is not null && latest.Value.AddSeconds(interval + jitterSeconds) > now) continue;
 
             var bucket = now.ToUnixTimeSeconds() / interval;
@@ -168,7 +172,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
     private async Task DisableExternalWriteAutomationAsync(CancellationToken cancellationToken)
     {
         var connections = await db.PlatformConnections
-            .Where(x => x.PlatformCode == "TRENDYOL")
+            .Where(x => x.PlatformCode == "TRENDYOL" || x.PlatformCode == "HEPSIBURADA")
             .ToListAsync(cancellationToken);
         var blockedConnectionIds = connections
             .Where(x => !WritesEnabled(x.SettingsJson))
@@ -185,10 +189,15 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         }
 
         var connectionIds = blockedConnectionIds.Select(x => x.ConnectionId).ToArray();
+        var blockedHepsiburadaIds = connections
+            .Where(x => x.PlatformCode == "HEPSIBURADA" && !WritesEnabled(x.SettingsJson))
+            .Select(x => x.Id)
+            .ToArray();
         var policies = await db.ConnectionSyncPolicies
             .Where(x => connectionIds.Contains(x.ConnectionId) && x.Enabled)
             .ToListAsync(cancellationToken);
-        foreach (var policy in policies.Where(x => x.ResourceType is "STOCK_RECONCILE_SHORT" or "STOCK_RECONCILE_MEDIUM" or "STOCK_RECONCILE_DAILY"))
+        foreach (var policy in policies.Where(x => x.ResourceType is "STOCK_RECONCILE_SHORT" or "STOCK_RECONCILE_MEDIUM" or "STOCK_RECONCILE_DAILY"
+            || MarketplaceExternalWritePolicies.IsPolicy(x.ResourceType)))
         {
             policy.Enabled = false;
             policy.Version++;
@@ -198,7 +207,8 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             .Where(x => connectionIds.Contains(x.ConnectionId!.Value)
                 && (x.JobType == MarketplaceJobTypes.StockReconciliation
                     || x.JobType == MarketplaceJobTypes.PriceInventorySync
-                    || x.JobType == MarketplaceJobTypes.StockProjectionDispatch)
+                    || x.JobType == MarketplaceJobTypes.StockProjectionDispatch
+                    || blockedHepsiburadaIds.Contains(x.ConnectionId!.Value) && (x.JobType == MarketplaceJobTypes.ProductCreate || x.JobType == MarketplaceJobTypes.ProductUpdate))
                 && (x.Status == JobStatus.Pending || x.Status == JobStatus.RetryScheduled))
             .ToListAsync(cancellationToken);
         var now = timeProvider.GetUtcNow();
@@ -209,7 +219,8 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             job.Version++;
         }
 
-        if (connectionSettingsChanged || policies.Any(x => x.ResourceType is "STOCK_RECONCILE_SHORT" or "STOCK_RECONCILE_MEDIUM" or "STOCK_RECONCILE_DAILY") || jobs.Count > 0)
+        if (connectionSettingsChanged || policies.Any(x => x.ResourceType is "STOCK_RECONCILE_SHORT" or "STOCK_RECONCILE_MEDIUM" or "STOCK_RECONCILE_DAILY"
+            || MarketplaceExternalWritePolicies.IsPolicy(x.ResourceType)) || jobs.Count > 0)
             await db.SaveChangesAsync(cancellationToken);
     }
 
@@ -223,7 +234,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
 
         var connectionIds = operationalConnections.Select(x => x.ConnectionId).ToArray();
         var existing = await db.ConnectionSyncPolicies
-            .Where(x => connectionIds.Contains(x.ConnectionId) && (x.ResourceType == "ORDERS" || x.ResourceType == "ORDER_RECOVERY" || x.ResourceType == "ORDER_LIFECYCLE" || x.ResourceType == "ORDER_RECONCILE_SHORT" || x.ResourceType == "ORDER_RECONCILE_MEDIUM" || x.ResourceType == "ORDER_RECONCILE_DAILY" || x.ResourceType == "ORDER_INVOICE_RECONCILIATION" || x.ResourceType == "RETURNS" || x.ResourceType == "RETURN_LIFECYCLE" || x.ResourceType == "RETURN_RECONCILE_SHORT" || x.ResourceType == "RETURN_RECONCILE_MEDIUM" || x.ResourceType == "RETURN_RECONCILE_DAILY" || x.ResourceType == "STOCK_RECONCILE_SHORT" || x.ResourceType == "STOCK_RECONCILE_MEDIUM" || x.ResourceType == "STOCK_RECONCILE_DAILY" || x.ResourceType == MarketplaceExternalWritePolicies.Price || x.ResourceType == MarketplaceExternalWritePolicies.Stock || x.ResourceType == MarketplaceExternalWritePolicies.Shipment || x.ResourceType == MarketplaceExternalWritePolicies.Return))
+            .Where(x => connectionIds.Contains(x.ConnectionId) && (x.ResourceType == "ORDERS" || x.ResourceType == "ORDER_RECOVERY" || x.ResourceType == "ORDER_LIFECYCLE" || x.ResourceType == "ORDER_RECONCILE_SHORT" || x.ResourceType == "ORDER_RECONCILE_MEDIUM" || x.ResourceType == "ORDER_RECONCILE_DAILY" || x.ResourceType == "ORDER_INVOICE_RECONCILIATION" || x.ResourceType == "RETURNS" || x.ResourceType == "RETURN_LIFECYCLE" || x.ResourceType == "RETURN_RECONCILE_SHORT" || x.ResourceType == "RETURN_RECONCILE_MEDIUM" || x.ResourceType == "RETURN_RECONCILE_DAILY" || x.ResourceType == "REFERENCE_DATA" || x.ResourceType == "STOCK_RECONCILE_SHORT" || x.ResourceType == "STOCK_RECONCILE_MEDIUM" || x.ResourceType == "STOCK_RECONCILE_DAILY" || x.ResourceType == MarketplaceExternalWritePolicies.Price || x.ResourceType == MarketplaceExternalWritePolicies.Stock || x.ResourceType == MarketplaceExternalWritePolicies.Shipment || x.ResourceType == MarketplaceExternalWritePolicies.Return))
             .ToListAsync(cancellationToken);
         var obsoleteProductPolicies = await (from policy in db.ConnectionSyncPolicies
                                              join connection in db.PlatformConnections
@@ -244,7 +255,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                 .Where(defaults => connection.PlatformCode switch
                 {
                     "SHOPIFY" => IsShopifyReadPolicy(defaults.ResourceType),
-                    "HEPSIBURADA" => IsHepsiburadaReadPolicy(defaults.ResourceType),
+                    "HEPSIBURADA" => SupportsHepsiburadaScheduledPolicy(defaults.ResourceType),
                     _ => true
                 })
                 .Select(defaults =>
@@ -283,7 +294,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                     IntervalSeconds = defaults.IntervalSeconds,
                     OverlapSeconds = defaults.OverlapSeconds,
                     JitterSeconds = defaults.JitterSeconds,
-                    Enabled = true,
+                    Enabled = DefaultPolicyEnabled(connection.PlatformCode, defaults.ResourceType),
                     Version = 1
                 });
             }
@@ -306,6 +317,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         new("RETURN_RECONCILE_SHORT", configuration.GetValue("MarketplaceSync:ReturnReconciliation:ShortIntervalSeconds", 900), 0, configuration.GetValue("MarketplaceSync:ReturnReconciliation:ShortJitterSeconds", 30)),
         new("RETURN_RECONCILE_MEDIUM", configuration.GetValue("MarketplaceSync:ReturnReconciliation:MediumIntervalSeconds", 3600), 0, configuration.GetValue("MarketplaceSync:ReturnReconciliation:MediumJitterSeconds", 120)),
         new("RETURN_RECONCILE_DAILY", configuration.GetValue("MarketplaceSync:ReturnReconciliation:DailyIntervalSeconds", 86_400), 0, configuration.GetValue("MarketplaceSync:ReturnReconciliation:DailyJitterSeconds", 900)),
+        new("REFERENCE_DATA", configuration.GetValue("MarketplaceSync:ReferenceData:IntervalSeconds", 86_400), 0, configuration.GetValue("MarketplaceSync:ReferenceData:JitterSeconds", 60)),
         new("STOCK_RECONCILE_SHORT", configuration.GetValue("MarketplaceSync:StockReconciliation:ShortIntervalSeconds", 900), 0, configuration.GetValue("MarketplaceSync:StockReconciliation:ShortJitterSeconds", 30)),
         new("STOCK_RECONCILE_MEDIUM", configuration.GetValue("MarketplaceSync:StockReconciliation:MediumIntervalSeconds", 3600), 0, configuration.GetValue("MarketplaceSync:StockReconciliation:MediumJitterSeconds", 120)),
         new("STOCK_RECONCILE_DAILY", configuration.GetValue("MarketplaceSync:StockReconciliation:DailyIntervalSeconds", 86_400), 0, configuration.GetValue("MarketplaceSync:StockReconciliation:DailyJitterSeconds", 900)),
@@ -339,6 +351,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             "ORDER_RECONCILE_DAILY" => (current.IntervalSeconds == 86_400 || current.IntervalSeconds == 259_200) && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 900),
             "RETURN_RECONCILE_DAILY" or "STOCK_RECONCILE_DAILY" => current.IntervalSeconds == 86_400 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 900),
             "ORDER_INVOICE_RECONCILIATION" => current.IntervalSeconds == 900 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 30),
+            "REFERENCE_DATA" => current.IntervalSeconds == 86_400 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 60),
             _ => false
         };
     }
@@ -364,6 +377,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         "RETURN_RECONCILE_SHORT" => 60,
         "RETURN_RECONCILE_MEDIUM" => 61,
         "RETURN_RECONCILE_DAILY" => 62,
+        "REFERENCE_DATA" => 65,
         "STOCK_RECONCILE_SHORT" => 70,
         "STOCK_RECONCILE_MEDIUM" => 71,
         "STOCK_RECONCILE_DAILY" => 72,
@@ -388,7 +402,11 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         or "ORDER_RECONCILE_MEDIUM"
         or "ORDER_RECONCILE_DAILY";
 
-    private static bool IsHepsiburadaReadPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "ORDER_LIFECYCLE" or "ORDER_INVOICE_RECONCILIATION" or "RETURNS";
+    internal static bool SupportsHepsiburadaScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "ORDER_LIFECYCLE" or "ORDER_INVOICE_RECONCILIATION" or "RETURNS" or "REFERENCE_DATA"
+        || MarketplaceExternalWritePolicies.IsPolicy(resourceType);
+
+    internal static bool DefaultPolicyEnabled(string platformCode, string resourceType) =>
+        !(platformCode == "HEPSIBURADA" && MarketplaceExternalWritePolicies.IsPolicy(resourceType));
 
     private (string JobType, string DedupPrefix, string PayloadJson)? Definition(string resourceType, Guid connectionId, string platformCode) => resourceType switch
     {
@@ -407,7 +425,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         "STOCK_RECONCILE_SHORT" => (MarketplaceJobTypes.StockReconciliation, $"scheduled:stock-reconcile-short:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, lookbackHours = ConfigInt("MarketplaceSync:StockReconciliation:ShortLookbackHours", 1, 1, 24 * 7) })),
         "STOCK_RECONCILE_MEDIUM" => (MarketplaceJobTypes.StockReconciliation, $"scheduled:stock-reconcile-medium:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, lookbackHours = ConfigInt("MarketplaceSync:StockReconciliation:MediumLookbackHours", 6, 1, 24 * 30) })),
         "STOCK_RECONCILE_DAILY" => (MarketplaceJobTypes.StockReconciliation, $"scheduled:stock-reconcile-daily:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, lookbackHours = ConfigInt("MarketplaceSync:StockReconciliation:DailyLookbackHours", 720, 1, 24 * 90) })),
-        "REFERENCE_DATA" => (MarketplaceJobTypes.ReferenceSync, $"scheduled:reference:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, resourceType = "CATEGORIES", parentExternalId = (string?)null })),
+        "REFERENCE_DATA" => (MarketplaceJobTypes.ForPlatform(platformCode, MarketplaceJobTypes.ReferenceSync), $"scheduled:reference:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, resourceType = "CATEGORIES", parentExternalId = (string?)null })),
         _ => null
     };
 
@@ -475,7 +493,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync => 6,
         MarketplaceJobTypes.OrderReconciliation or MarketplaceJobTypes.ShopifyOrderReconciliation or MarketplaceJobTypes.ReturnReconciliation or MarketplaceJobTypes.StockReconciliation => 4,
         MarketplaceJobTypes.ReturnSync or MarketplaceJobTypes.ReturnStatusSync => 2,
-        MarketplaceJobTypes.ProductSync or MarketplaceJobTypes.ShopifyProductSync or MarketplaceJobTypes.ReferenceSync => 5,
+        MarketplaceJobTypes.ProductSync or MarketplaceJobTypes.ShopifyProductSync or MarketplaceJobTypes.ReferenceSync or MarketplaceJobTypes.HepsiburadaReferenceSync => 5,
         _ => 3
     };
 

@@ -9,6 +9,16 @@ export function onHoldOrderStatusText(platformCode: string, rawStatuses: readonl
   return 'Askıda'
 }
 
+export function isHepsiburadaClaimOnlyWithoutPackage(
+  platformCode: string,
+  lineRawStatuses: readonly string[] = [],
+  packageCount = 0,
+) {
+  if (platformCode.trim().toUpperCase() !== 'HEPSIBURADA' || packageCount > 0 || lineRawStatuses.length === 0) return false
+
+  return lineRawStatuses.every(status => status.trim().toUpperCase().replace(/[\s_-]/g, '') === 'CLAIMCREATED')
+}
+
 export function overdueShipmentDays(status: string, dueAtValue: string | null, now = Date.now()) {
   if (shipmentDeadlineExemptStatuses.has(status.toUpperCase()) || !dueAtValue) return 0
 

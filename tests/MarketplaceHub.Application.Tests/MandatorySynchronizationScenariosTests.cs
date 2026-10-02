@@ -102,6 +102,21 @@ public sealed class MandatorySynchronizationScenariosTests
             now));
     }
 
+    [Fact]
+    public void HepsiburadaClaimOnlyOrderWithoutPackageIsNotPresentedAsShipmentOverdue()
+    {
+        var now = DateTimeOffset.Parse("2026-10-01T12:00:00Z");
+
+        Assert.True(OpenOrderLifecyclePolicy.IsHepsiburadaClaimOnlyWithoutPackage(
+            "HEPSIBURADA", 0, ["ClaimCreated", " claimcreated "]));
+        Assert.False(OpenOrderLifecyclePolicy.ShouldShowShipmentDeadlineWarning(
+            "HEPSIBURADA", "NEW", now.AddDays(-133), now, claimOnlyWithoutPackage: true));
+        Assert.False(OpenOrderLifecyclePolicy.IsHepsiburadaClaimOnlyWithoutPackage(
+            "HEPSIBURADA", 1, ["ClaimCreated"]));
+        Assert.False(OpenOrderLifecyclePolicy.IsHepsiburadaClaimOnlyWithoutPackage(
+            "HEPSIBURADA", 0, ["ClaimCreated", "Open"]));
+    }
+
     [Theory]
     [InlineData("HEPSIBURADA", "NEW", true)]
     [InlineData("hepsiburada", " new ", true)]

@@ -43,8 +43,8 @@ describe('Hepsiburada marketplace workspace support', () => {
 
   it('exposes read-only Hepsiburada order lifecycle synchronization', () => {
     expect(supportsSyncPolicyManagement('HEPSIBURADA')).toBe(true)
-    expect(['ORDERS', 'ORDER_RECOVERY', 'ORDER_LIFECYCLE', 'ORDER_INVOICE_RECONCILIATION', 'RETURNS'].every(resource => supportsSyncPolicy('HEPSIBURADA', resource))).toBe(true)
-    expect(supportsSyncPolicy('HEPSIBURADA', 'PRICE_WRITE')).toBe(false)
+    expect(['ORDERS', 'ORDER_RECOVERY', 'ORDER_LIFECYCLE', 'ORDER_INVOICE_RECONCILIATION', 'RETURNS', 'REFERENCE_DATA', 'PRICE_WRITE', 'STOCK_WRITE', 'SHIPMENT_WRITE', 'RETURN_WRITE'].every(resource => supportsSyncPolicy('HEPSIBURADA', resource))).toBe(true)
+    expect(supportsSyncPolicy('HEPSIBURADA', 'PRODUCTS')).toBe(false)
   })
 
   it('does not offer immediate runs for read-only sync policies', () => {

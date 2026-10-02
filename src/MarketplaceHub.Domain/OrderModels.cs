@@ -122,7 +122,8 @@ public static class OpenOrderLifecyclePolicy
         string? platformCode,
         string? derivedStatus,
         DateTimeOffset? dueAt,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        bool claimOnlyWithoutPackage = false)
     {
         var platform = platformCode?.Trim().ToUpperInvariant();
         var status = derivedStatus?.Trim().ToUpperInvariant();
@@ -130,8 +131,22 @@ public static class OpenOrderLifecyclePolicy
         var undeliveredHepsiburadaOrder = platform == "HEPSIBURADA" && status == "ON_HOLD";
         return !terminal
             && !undeliveredHepsiburadaOrder
+            && !claimOnlyWithoutPackage
             && dueAt is { } deadline
             && deadline <= now.AddHours(24);
+    }
+
+    public static bool IsHepsiburadaClaimOnlyWithoutPackage(
+        string? platformCode,
+        int packageCount,
+        IEnumerable<string?> lineStatuses)
+    {
+        if (!string.Equals(platformCode?.Trim(), "HEPSIBURADA", StringComparison.OrdinalIgnoreCase) || packageCount != 0)
+            return false;
+
+        var statuses = lineStatuses.ToArray();
+        return statuses.Length > 0 && statuses.All(status =>
+            string.Equals(status?.Trim(), "ClaimCreated", StringComparison.OrdinalIgnoreCase));
     }
 
     public static bool ShouldPollWithoutPackage(string? platformCode, string? derivedStatus) =>
