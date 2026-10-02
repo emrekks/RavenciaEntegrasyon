@@ -374,7 +374,13 @@ public sealed record CommonLabelJobPayload(Guid JobId, Guid PackageId, string Ph
 public sealed record CapabilityProbeJobPayload(Guid JobId, Guid PackageId, Guid ActorUserId, string CapabilityCode, int BoxQuantity, decimal VolumetricHeight, DateTimeOffset StartedAt, DateTimeOffset DeadlineAt);
 public sealed record StageTestOrderJobPayload(Guid JobId, Guid ActorUserId, string Barcode, DateTimeOffset StartedAt);
 public sealed record StageTestOrderResult(string OrderNumber);
-public sealed record ReturnPollWindow(DateTimeOffset? ModifiedAfter, DateTimeOffset? ModifiedBefore, string? StoreFrontCode = null, string? Status = null);
+public sealed record ReturnPollWindow(
+    DateTimeOffset? ModifiedAfter,
+    DateTimeOffset? ModifiedBefore,
+    string? StoreFrontCode = null,
+    string? Status = null,
+    DateTimeOffset? StatusModifiedAfter = null,
+    DateTimeOffset? StatusModifiedBefore = null);
 public sealed record RemoteReturnLine(string ExternalLineId, string ExternalOrderLineId, decimal Quantity, IReadOnlyList<string>? AlternateExternalOrderLineIds = null);
 public sealed record RemoteReturnClaim(string ExternalClaimId, string ExternalOrderId, string RawStatus, string? ReasonCode, string? ReasonText, DateTimeOffset? ActionDueAt, DateTimeOffset LastModifiedAt, IReadOnlyList<RemoteReturnLine> Lines, string RawJson, string? CargoProviderName = null, string? CargoTrackingNumber = null, string? CargoTrackingLink = null);
 public sealed record ReturnEvidenceFile(string FileName, string MimeType, byte[] Content);
@@ -670,7 +676,8 @@ public sealed record ReturnLineView(
     decimal UnitPrice,
     string? ImageUrl,
     bool HasInventoryMapping,
-    string? OptionSignature = null);
+    string? OptionSignature = null,
+    string? ModelCode = null);
 public sealed record ReturnListView(
     Guid Id,
     string ExternalClaimId,

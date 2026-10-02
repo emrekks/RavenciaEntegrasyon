@@ -1308,21 +1308,56 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var orderLineIds = sourceLines.Select(x => x.OrderLineId).ToArray();
         var orderLines = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && orderLineIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
         var dispositions = await db.ReturnStockDispositions.AsNoTracking().Where(x => x.TenantId == tenantId && x.ClaimId == id).GroupBy(x => x.ReturnLineId).Select(x => new { ReturnLineId = x.Key, Quantity = x.Sum(y => y.Quantity) }).ToDictionaryAsync(x => x.ReturnLineId, x => x.Quantity, cancellationToken);
-        var variantIds = orderLines.Values.Where(x => x.VariantId is not null).Select(x => x.VariantId!.Value).Distinct().ToArray();
+        var lineSkuKeys = orderLines.Values.SelectMany(x => CatalogLookupKeys(x.Sku, 160)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var lineBarcodeKeys = orderLines.Values.SelectMany(x => CatalogLookupKeys(x.Barcode, 160)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var variantLinks = lineSkuKeys.Length == 0
+            ? []
+            : await db.MarketplaceVariantLinks.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ConnectionId == claim.ConnectionId && lineSkuKeys.Contains(x.ExternalId.Trim().ToUpper()))
+                .ToListAsync(cancellationToken);
+        var candidateVariantIds = orderLines.Values.Where(x => x.VariantId.HasValue).Select(x => x.VariantId!.Value)
+            .Concat(variantLinks.Select(x => x.VariantId)).Distinct().ToArray();
+        var variants = await db.ProductVariants.AsNoTracking()
+            .Where(x => x.TenantId == tenantId
+                && (candidateVariantIds.Contains(x.Id)
+                    || lineSkuKeys.Contains(x.SkuNormalized)
+                    || x.BarcodeNormalized != null && lineBarcodeKeys.Contains(x.BarcodeNormalized)))
+            .ToListAsync(cancellationToken);
+        var variantsById = variants.ToDictionary(x => x.Id);
+        var variantsBySku = variants.GroupBy(x => x.SkuNormalized, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
+        var variantsByBarcode = BarcodeVariantLookup(variants);
+        var variantsByExternalSku = variantLinks
+            .GroupBy(x => MarketplaceVariantLinkCoverage.Normalize(x.ExternalId), StringComparer.Ordinal)
+            .ToDictionary(x => x.Key, x => x.First().VariantId, StringComparer.Ordinal);
+        ProductVariant? ResolveReturnDetailVariant(OrderLine line)
+        {
+            if (line.VariantId is { } directId && variantsById.TryGetValue(directId, out var direct)) return direct;
+            foreach (var key in CatalogLookupKeys(line.Sku, 160))
+                if (variantsBySku.TryGetValue(key, out var bySku)) return bySku;
+            foreach (var key in CatalogLookupKeys(line.Barcode, 160))
+                if (variantsByBarcode.TryGetValue(key, out var byBarcode)) return byBarcode;
+            var normalizedSku = MarketplaceVariantLinkCoverage.Normalize(line.Sku);
+            return variantsByExternalSku.TryGetValue(normalizedSku, out var linkedId) ? variantsById.GetValueOrDefault(linkedId) : null;
+        }
+        var resolvedVariants = orderLines.Values.Select(ResolveReturnDetailVariant).Where(x => x is not null).Select(x => x!).ToArray();
+        var variantIds = resolvedVariants.Select(x => x.Id).Distinct().ToArray();
         var inventoryVariants = await db.InventoryItems.AsNoTracking().Where(x => x.TenantId == tenantId && variantIds.Contains(x.VariantId) && x.LocationCode == "MAIN").Select(x => x.VariantId).ToListAsync(cancellationToken);
         var imageUrls = await MediaUrls(tenantId, variantIds.Select(x => (Guid?)x), cancellationToken);
         var lines = sourceLines.Select(line =>
         {
             var source = orderLines.GetValueOrDefault(line.OrderLineId);
             var sourceSnapshot = source is null ? null : SourceLine(source.SourceSnapshotJson);
+            var variant = source is null ? null : ResolveReturnDetailVariant(source);
             var disposed = dispositions.GetValueOrDefault(line.Id);
-            var imageUrl = sourceSnapshot?.ImageUrl ?? (source?.VariantId is { } variantId ? imageUrls.GetValueOrDefault(variantId) : null);
+            var imageUrl = sourceSnapshot?.ImageUrl ?? (variant is null ? null : imageUrls.GetValueOrDefault(variant.Id));
             if (imageUrl is null && !string.IsNullOrWhiteSpace(source?.Barcode))
                 imageUrl = $"/api/v1/orders/product-image?barcode={Uri.EscapeDataString(source.Barcode)}";
             return new ReturnLineView(line.Id, line.ExternalLineId, line.OrderLineId, source?.Sku ?? "—", source?.Barcode, source?.TitleSnapshot ?? "—", line.Quantity, disposed, Math.Max(0, line.Quantity - disposed), source?.UnitPrice ?? 0,
                 imageUrl,
-                source?.VariantId is { } mappedVariantId && inventoryVariants.Contains(mappedVariantId),
-                sourceSnapshot?.OptionSignature);
+                variant is not null && inventoryVariants.Contains(variant.Id),
+                variant?.OptionSignature ?? sourceSnapshot?.OptionSignature,
+                variant?.ModelCode ?? sourceSnapshot?.ModelCode);
         }).ToList();
         var package = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id).OrderByDescending(x => x.StatusOccurredAt).FirstOrDefaultAsync(cancellationToken);
         var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);

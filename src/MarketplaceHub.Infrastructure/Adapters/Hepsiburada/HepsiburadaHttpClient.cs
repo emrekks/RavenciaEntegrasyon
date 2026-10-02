@@ -733,12 +733,20 @@ public sealed partial class HepsiburadaHttpClient(
         if (!TryClaimStatus(window.Status, out var status))
             return Failure<AdapterPageResult<RemoteReturnClaim>>(AdapterErrorClass.Validation, "HEPSIBURADA_CLAIM_STATUS_INVALID", "Talep listelemesi için belgelenmiş bir Hepsiburada talep durumu zorunludur.", HttpStatusCode.BadRequest);
         if ((window.ModifiedAfter is null) != (window.ModifiedBefore is null)
-            || window.ModifiedAfter is { } start && window.ModifiedBefore is { } end && end < start)
+            || window.ModifiedAfter is { } start && window.ModifiedBefore is { } end && end < start
+            || (window.StatusModifiedAfter is null) != (window.StatusModifiedBefore is null)
+            || window.StatusModifiedAfter is { } statusStart && window.StatusModifiedBefore is { } statusEnd && statusEnd < statusStart)
             return Failure<AdapterPageResult<RemoteReturnClaim>>(AdapterErrorClass.Validation, "HEPSIBURADA_CLAIM_WINDOW_INVALID", "Talep tarih filtresi başlangıç ve bitiş tarihlerini birlikte ve artan sırada gerektirir.", HttpStatusCode.BadRequest);
 
         var offset = int.TryParse(page.Cursor, NumberStyles.None, CultureInfo.InvariantCulture, out var parsedOffset) ? Math.Max(0, parsedOffset) : 0;
         var limit = Math.Clamp(page.Limit, 1, 100);
-        var response = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Get, Claims(account, status, ClaimQuery(offset, limit, window.ModifiedAfter, window.ModifiedBefore)), cancellationToken);
+        var response = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Get, Claims(account, status, ClaimQuery(
+            offset,
+            limit,
+            window.ModifiedAfter,
+            window.ModifiedBefore,
+            window.StatusModifiedAfter,
+            window.StatusModifiedBefore)), cancellationToken);
         if (!response.IsSuccess) return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Failure(response.Error!, response.RateLimit);
         try
         {
@@ -883,7 +891,13 @@ public sealed partial class HepsiburadaHttpClient(
     internal static string AcceptClaim(HepsiburadaRequestContext context, string claimNumber) => $"claims/number/{Uri.EscapeDataString(claimNumber)}/accept";
     internal static string ConfirmClaimPreApproval(HepsiburadaRequestContext context, string claimNumber) => $"claims/number/{Uri.EscapeDataString(claimNumber)}/preapprovalconfirm";
     internal static string RejectClaim(HepsiburadaRequestContext context, string claimNumber) => $"claims/number/{Uri.EscapeDataString(claimNumber)}/reject";
-    internal static string ClaimQuery(int offset, int limit, DateTimeOffset? beginDate, DateTimeOffset? endDate)
+    internal static string ClaimQuery(
+        int offset,
+        int limit,
+        DateTimeOffset? beginDate,
+        DateTimeOffset? endDate,
+        DateTimeOffset? statusBeginDate = null,
+        DateTimeOffset? statusEndDate = null)
     {
         var query = new List<string>
         {
@@ -894,6 +908,10 @@ public sealed partial class HepsiburadaHttpClient(
             query.Add("beginDate=" + Uri.EscapeDataString(begin.UtcDateTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)));
         if (endDate is { } end)
             query.Add("endDate=" + Uri.EscapeDataString(end.UtcDateTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)));
+        if (statusBeginDate is { } statusBegin)
+            query.Add("statusBeginDate=" + Uri.EscapeDataString(statusBegin.UtcDateTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)));
+        if (statusEndDate is { } statusFinish)
+            query.Add("statusEndDate=" + Uri.EscapeDataString(statusFinish.UtcDateTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)));
         return string.Join('&', query);
     }
     internal static string Categories(int page, int limit) => $"api/categories/get-all-categories?leaf=true&status=ACTIVE&available=true&version=1&page={page.ToString(CultureInfo.InvariantCulture)}&size={limit.ToString(CultureInfo.InvariantCulture)}";

@@ -561,6 +561,29 @@ public sealed class HepsiburadaAdapterTests
     }
 
     [Fact]
+    public void OrderMapperPreservesTopLevelCustomerNameWhenCustomerObjectIsPresent()
+    {
+        using var json = JsonDocument.Parse("""
+        {
+          "orderNumber": "HB-DETAIL-CUSTOMER",
+          "orderDate": "2026-09-28T12:15:00Z",
+          "customerName": "Aylin Örnek",
+          "customer": { "customerId": "customer-17" },
+          "invoice": { "address": { "companyName": "Aylin Örnek", "billingCity": "İstanbul", "taxNumber": "1234567890" } },
+          "items": [{ "id": "line-customer", "merchantSku": "sku-customer", "quantity": 1, "price": 20 }]
+        }
+        """);
+
+        var order = HepsiburadaJsonMapper.Order(json.RootElement, "HB-DETAIL-CUSTOMER");
+        using var customer = JsonDocument.Parse(order.CustomerSnapshotJson);
+        using var invoiceAddress = JsonDocument.Parse(order.InvoiceAddressSnapshotJson);
+
+        Assert.Equal("Aylin Örnek", customer.RootElement.GetProperty("name").GetString());
+        Assert.Equal("customer-17", customer.RootElement.GetProperty("customerId").GetString());
+        Assert.Equal("İstanbul", invoiceAddress.RootElement.GetProperty("billingCity").GetString());
+    }
+
+    [Fact]
     public void OrderMapperKeepsOrderLifecycleSeparateFromClaimCreatedLineStatus()
     {
         using var json = JsonDocument.Parse("""
@@ -1064,7 +1087,9 @@ public sealed class HepsiburadaAdapterTests
               "lineItemId": "line-17",
               "AwaitingActionExpireDate": "2026-10-01T12:15:00Z",
               "MerchantSku": "merchant-17",
-              "finalizedWith": "Refund"
+              "finalizedWith": "Refund",
+              "cargoCompany": "Aras Kargo",
+              "cargoTrackingNumber": "return-tracking-17"
             }],
             "totalCount": 1
           }
@@ -1081,6 +1106,28 @@ public sealed class HepsiburadaAdapterTests
         Assert.Equal("line-17", claim.Lines.Single().ExternalOrderLineId);
         Assert.Equal(2m, claim.Lines.Single().Quantity);
         Assert.Equal(DateTimeOffset.Parse("2026-10-01T12:15:00Z"), claim.ActionDueAt);
+        Assert.Equal("Aras Kargo", claim.CargoProviderName);
+        Assert.Equal("return-tracking-17", claim.CargoTrackingNumber);
+    }
+
+    [Fact]
+    public void ClaimMapperUsesHepsiburadaStatusChangeDateForIncrementalReconciliation()
+    {
+        using var json = JsonDocument.Parse("""
+        {
+          "number": "HB-CLAIM-STATUS-DATE",
+          "status": "AwaitingPreApproval",
+          "claimDate": "2026-09-28T12:15:00Z",
+          "markedAwaitingPreApprovalDate": "2026-09-29T08:30:00Z",
+          "orderNumber": "HB-ORDER-STATUS-DATE",
+          "lineItemId": "line-status-date",
+          "quantity": 1
+        }
+        """);
+
+        var claim = HepsiburadaJsonMapper.ReturnClaim(json.RootElement);
+
+        Assert.Equal(DateTimeOffset.Parse("2026-09-29T08:30:00Z"), claim.LastModifiedAt);
     }
 
     [Fact]
@@ -1361,6 +1408,7 @@ public sealed class HepsiburadaAdapterTests
         Assert.Equal("claims/merchantId/merchant%2F17/status/awaitingpreapproval?offset=0&limit=10", HepsiburadaHttpClient.Claims(context, "awaitingpreapproval", "offset=0&limit=10"));
         Assert.Equal("claims/number/claim%2F17/preapprovalconfirm", HepsiburadaHttpClient.ConfirmClaimPreApproval(context, "claim/17"));
         Assert.Equal("offset=20&limit=100&beginDate=2026-09-28%2012%3A15&endDate=2026-09-29%2012%3A15", HepsiburadaHttpClient.ClaimQuery(20, 101, DateTimeOffset.Parse("2026-09-28T12:15:00Z"), DateTimeOffset.Parse("2026-09-29T12:15:00Z")));
+        Assert.Equal("offset=0&limit=100&statusBeginDate=2026-09-28%2012%3A15&statusEndDate=2026-09-29%2012%3A15", HepsiburadaHttpClient.ClaimQuery(0, 100, null, null, DateTimeOffset.Parse("2026-09-28T12:15:00Z"), DateTimeOffset.Parse("2026-09-29T12:15:00Z")));
         Assert.Equal("api/categories/get-all-categories?leaf=true&status=ACTIVE&available=true&version=1&page=3&size=1000", HepsiburadaHttpClient.Categories(3, 1000));
         Assert.Equal("api/categories/category%2F11/attributes?version=2", HepsiburadaHttpClient.CategoryAttributes("category/11"));
         Assert.Equal("api/categories/11/attribute/color/values?version=5&page=2&size=1000", HepsiburadaHttpClient.AttributeValues("11", "color", 2, 1000));

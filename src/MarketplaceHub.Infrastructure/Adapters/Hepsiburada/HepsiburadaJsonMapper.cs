@@ -445,9 +445,12 @@ internal static class HepsiburadaJsonMapper
             "REJECTED" => Date(item, "rejectedDate", "RejectedDate", "rejecttedDate", "RejecttedDate"),
             "REFUNDED" => Date(item, "refundDate", "RefundDate"),
             "CANCELLED" => Date(item, "cancelDate", "CancelDate", "cancelledDate", "CancelledDate"),
+            "INDISPUTE" => Date(item, "inDisputeDate", "InDisputeDate", "disputeDate", "DisputeDate", "disputedDate", "DisputedDate"),
+            "AWAITINGPREAPPROVAL" => Date(item, "markedAwaitingPreApprovalDate", "MarkedAwaitingPreApprovalDate", "awaitingPreApprovalDate", "AwaitingPreApprovalDate"),
+            "AWAITINGACTION" => Date(item, "markedAwaitingActionDate", "MarkedAwaitingActionDate", "awaitingActionDate", "AwaitingActionDate"),
             _ => null
         };
-        var modifiedAt = Date(item, "lastModifiedAt", "LastModifiedAt", "updatedAt", "UpdatedAt") ?? statusDate ?? claimDate.Value;
+        var modifiedAt = Date(item, "lastModifiedAt", "LastModifiedAt", "lastModifiedDate", "LastModifiedDate", "lastStatusUpdateDate", "LastStatusUpdateDate", "updatedAt", "UpdatedAt", "statusDate", "StatusDate") ?? statusDate ?? claimDate.Value;
         var explanation = Text(item, "explanation", "Explanation");
         var rejection = Text(item, "merchantRejectionStatement", "MerchantRejectionStatement");
         var reasonText = string.IsNullOrWhiteSpace(rejection) ? explanation
@@ -457,6 +460,15 @@ internal static class HepsiburadaJsonMapper
         var reasonCode = string.Equals(claimType, "MissingInvoice", StringComparison.OrdinalIgnoreCase)
             ? claimType
             : Text(item, "reason", "Reason") ?? claimType;
+        var cargoCompany = First(
+            Text(delivery, "cargoCompany", "CargoCompany", "cargoProviderName", "CargoProviderName"),
+            Text(item, "cargoCompany", "CargoCompany", "cargoProviderName", "CargoProviderName"));
+        var trackingNumber = First(
+            Text(delivery, "trackingNumber", "TrackingNumber", "trackingInfoCode", "TrackingInfoCode", "deliveryBarcode", "DeliveryBarcode", "barcode", "Barcode", "code", "Code"),
+            Text(item, "cargoTrackingNumber", "CargoTrackingNumber", "trackingInfoCode", "TrackingInfoCode", "trackingNumber", "TrackingNumber", "deliveryBarcode", "DeliveryBarcode"));
+        var trackingLink = First(
+            Text(delivery, "trackingUrl", "TrackingUrl", "trackingInfoUrl", "TrackingInfoUrl"),
+            Text(item, "trackingUrl", "TrackingUrl", "trackingInfoUrl", "TrackingInfoUrl"));
         return new(
             claimId,
             orderNumber,
@@ -467,9 +479,9 @@ internal static class HepsiburadaJsonMapper
             modifiedAt,
             remoteLines,
             item.GetRawText(),
-            Text(delivery, "cargoCompany", "CargoCompany", "cargoProviderName", "CargoProviderName"),
-            Text(delivery, "trackingNumber", "TrackingNumber", "barcode", "Barcode", "code", "Code"),
-            Text(delivery, "trackingUrl", "TrackingUrl", "trackingInfoUrl", "TrackingInfoUrl"));
+            cargoCompany,
+            trackingNumber,
+            trackingLink);
     }
 
     public static RemoteOrder? OrderFromReturnClaim(string json)
@@ -531,11 +543,7 @@ internal static class HepsiburadaJsonMapper
         var currency = Text(root, "currency", "Currency", "currencyCode", "CurrencyCode")
             ?? Text(Find(root, "price", "Price", "totalPrice", "TotalPrice"), "currency", "Currency", "currencyCode", "CurrencyCode")
             ?? "TRY";
-        var customer = new Dictionary<string, string?>
-        {
-            ["customerId"] = Text(root, "customerId", "CustomerId"),
-            ["customerName"] = Text(root, "customerName", "CustomerName")
-        };
+        var customer = OrderCustomerSnapshot(root, Find(root, "customer", "Customer"));
 
         // A claim can arrive after the platform's order-history window. Keep
         // the reconstruction limited to claim lines and do not invent a
@@ -549,7 +557,7 @@ internal static class HepsiburadaJsonMapper
             gross,
             0,
             gross,
-            JsonSerializer.Serialize(customer),
+            customer,
             "{}",
             "{}",
             remoteLines,
@@ -755,11 +763,7 @@ internal static class HepsiburadaJsonMapper
         var invoice = Find(item, "invoice", "Invoice", "invoiceAddress", "InvoiceAddress", "billingAddress", "BillingAddress");
         if (invoice.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
             invoice = AddressSnapshot(item, "billingAddress", "companyName", "taxOffice", "taxNumber", "identityNo", "billingDistrict", "billingTown", "billingCity", "billingPostalCode");
-        var customer = Find(item, "customer", "Customer");
-        var customerSnapshot = customer.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null
-            ? JsonSerializer.Serialize(new { name = Text(item, "recipientName", "RecipientName", "customerName", "CustomerName"), email = Text(item, "email", "Email"), phoneNumber = Text(item, "phoneNumber", "PhoneNumber") })
-            : Snapshot(customer);
-        customerSnapshot = EnrichOrderSnapshot(item, customerSnapshot);
+        var customerSnapshot = OrderCustomerSnapshot(item, Find(item, "customer", "Customer"));
         var status = Text(item, "status", "Status", "packageStatus", "PackageStatus") ?? package.RawStatus;
         var currency = Currency(item, "totalPrice", "TotalPrice")
             ?? (itemArray.ValueKind == JsonValueKind.Array ? itemArray.EnumerateArray().Select(line => Currency(line, "price", "Price", "totalPrice", "TotalPrice")).FirstOrDefault(value => value is not null) : null)
@@ -811,6 +815,17 @@ internal static class HepsiburadaJsonMapper
     private static string OrderCustomerSnapshot(JsonElement order, JsonElement customer, bool? invoiceUploaded = null)
     {
         var snapshot = customer.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null ? "{}" : Snapshot(customer);
+        var name = First(
+            Text(customer, "fullName", "customerName", "recipientName", "buyerName", "name"),
+            Text(order, "customerName", "recipientName", "buyerName", "name"));
+        var email = First(Text(customer, "customerEmail", "email"), Text(order, "customerEmail", "email"));
+        var phone = First(Text(customer, "customerPhone", "customerPhoneNumber", "phone", "phoneNumber"), Text(order, "customerPhone", "customerPhoneNumber", "phone", "phoneNumber"));
+        var customerId = First(Text(customer, "customerId", "id"), Text(order, "customerId"));
+        snapshot = EnrichSnapshot(snapshot,
+            ("name", name),
+            ("email", email),
+            ("phoneNumber", phone),
+            ("customerId", customerId));
         return EnrichOrderSnapshot(order, snapshot, invoiceUploaded);
     }
 
@@ -930,6 +945,13 @@ internal static class HepsiburadaJsonMapper
         var customer = Find(order, "customer", "Customer");
         var shipmentAddress = Find(order, "deliveryAddress", "DeliveryAddress", "shipmentAddress", "ShipmentAddress");
         var invoiceAddress = Find(order, "invoiceAddress", "InvoiceAddress", "billingAddress", "BillingAddress");
+        if (invoiceAddress.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
+        {
+            var invoice = Find(order, "invoice", "Invoice");
+            invoiceAddress = Find(invoice, "address", "Address");
+            if (invoiceAddress.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
+                invoiceAddress = invoice;
+        }
         var modified = Date(order, "lastStatusUpdateDate", "LastStatusUpdateDate", "lastModifiedAt", "LastModifiedAt") ?? orderedAt.Value;
         var invoiceUploaded = Boolean(order, "hasInvoice", "HasInvoice")
             ?? lineItems.Select(item => Boolean(item, "hasInvoice", "HasInvoice")).FirstOrDefault(value => value.HasValue);

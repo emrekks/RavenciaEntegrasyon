@@ -6223,9 +6223,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     // the previous all-time cursor makes the next read start at three months.
     private const string ReturnSyncStateVersion = "returns-v10";
     private sealed record ReturnSyncState(string Version, int StoreFrontIndex, int Page, bool Full = true, DateTimeOffset? StartAt = null, DateTimeOffset? EndAt = null);
-    private const string HepsiburadaReturnSyncStateVersion = "hepsiburada-returns-v1";
+    private const string HepsiburadaReturnSyncStateVersion = "hepsiburada-returns-v2";
     private static readonly string[] HepsiburadaClaimStatuses = ["NewRequest", "AwaitingAction", "InDispute", "Accepted", "Rejected", "Refunded", "Cancelled", "AwaitingPreApproval"];
-    private sealed record HepsiburadaReturnSyncState(string Version, int StatusIndex, int Offset);
+    private sealed record HepsiburadaReturnSyncState(string Version, int StatusIndex, int Offset, bool Full, DateTimeOffset? StatusChangedAfter, DateTimeOffset AnchorEnd);
 
     private async Task<bool> SyncReturns(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
@@ -6234,7 +6234,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             .Select(x => x.PlatformCode)
             .SingleOrDefaultAsync(cancellationToken);
         if (string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase))
-            return await SyncHepsiburadaReturns(tenantId, connectionId, correlationId, cancellationToken);
+            return await SyncHepsiburadaReturns(tenantId, connectionId, payloadJson, correlationId, cancellationToken);
 
         var cursor = await Cursor(tenantId, connectionId, "RETURNS", cancellationToken);
         var configuredOverlapSeconds = await db.ConnectionSyncPolicies.AsNoTracking()
@@ -6305,10 +6305,33 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         return true;
     }
 
-    private async Task<bool> SyncHepsiburadaReturns(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
+    private async Task<bool> SyncHepsiburadaReturns(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
         var cursor = await Cursor(tenantId, connectionId, "RETURNS", cancellationToken);
-        var state = ReadHepsiburadaReturnSyncState(cursor.OpaqueCursor);
+        var forceFull = ReadBoolean(payloadJson, "forceFull");
+        var state = forceFull ? null : ReadHepsiburadaReturnSyncState(cursor.OpaqueCursor);
+        if (state is null)
+        {
+            var now = timeProvider.GetUtcNow();
+            var configuredOverlapSeconds = await db.ConnectionSyncPolicies.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "RETURNS")
+                .Select(x => (int?)x.OverlapSeconds)
+                .SingleOrDefaultAsync(cancellationToken) ?? 900;
+            var overlap = TimeSpan.FromSeconds(Math.Clamp(configuredOverlapSeconds, 60, 86_400));
+            var retryAfterFailure = cursor.ConsecutiveFailureCount > 0 || !string.IsNullOrWhiteSpace(cursor.LastError);
+            var full = forceFull || cursor.LastSuccessAt is null || retryAfterFailure;
+            var lastSuccessfulChange = cursor.LastModifiedWatermark ?? cursor.LastSuccessAt ?? now.AddHours(-24);
+            state = new(
+                HepsiburadaReturnSyncStateVersion,
+                0,
+                0,
+                full,
+                full ? null : lastSuccessfulChange.Subtract(overlap),
+                now);
+            cursor.OpaqueCursor = JsonSerializer.Serialize(state);
+            cursor.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+        }
         var productSnapshots = new Dictionary<string, string?>(StringComparer.Ordinal);
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -6316,7 +6339,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             TrackRequest();
             var result = await returns.PollAsync(
                 Context(tenantId, connectionId, correlationId, $"hepsiburada-return-sync:{status}:{state.Offset}"),
-                new ReturnPollWindow(null, null, Status: status),
+                state.Full
+                    ? new ReturnPollWindow(null, null, Status: status)
+                    : new ReturnPollWindow(null, null, Status: status, StatusModifiedAfter: state.StatusChangedAfter, StatusModifiedBefore: state.AnchorEnd),
                 new(state.Offset.ToString(CultureInfo.InvariantCulture), 100),
                 cancellationToken);
             if (!result.IsSuccess)
@@ -6347,12 +6372,16 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             }
             else if (state.StatusIndex + 1 < HepsiburadaClaimStatuses.Length)
             {
-                state = new(HepsiburadaReturnSyncStateVersion, state.StatusIndex + 1, 0);
+                state = state with { StatusIndex = state.StatusIndex + 1, Offset = 0 };
             }
             else
             {
                 cursor.OpaqueCursor = null;
-                cursor.LastModifiedWatermark = timeProvider.GetUtcNow();
+                cursor.LastModifiedWatermark = state.AnchorEnd;
+                cursor.LastSuccessAt = timeProvider.GetUtcNow();
+                cursor.LastError = null;
+                cursor.LastErrorAt = null;
+                cursor.ConsecutiveFailureCount = 0;
                 cursor.Version++;
                 await db.SaveChangesAsync(cancellationToken);
                 break;
@@ -6365,7 +6394,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         return true;
     }
 
-    private static HepsiburadaReturnSyncState ReadHepsiburadaReturnSyncState(string? opaqueCursor)
+    private static HepsiburadaReturnSyncState? ReadHepsiburadaReturnSyncState(string? opaqueCursor)
     {
         if (!string.IsNullOrWhiteSpace(opaqueCursor))
         {
@@ -6373,12 +6402,14 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             {
                 var state = JsonSerializer.Deserialize<HepsiburadaReturnSyncState>(opaqueCursor);
                 if (state is { Version: HepsiburadaReturnSyncStateVersion, StatusIndex: >= 0, Offset: >= 0 }
-                    && state.StatusIndex < HepsiburadaClaimStatuses.Length)
+                    && state.StatusIndex < HepsiburadaClaimStatuses.Length
+                    && state.AnchorEnd != default
+                    && (state.Full || state.StatusChangedAfter is not null))
                     return state;
             }
             catch (JsonException) { }
         }
-        return new(HepsiburadaReturnSyncStateVersion, 0, 0);
+        return null;
     }
 
     private async Task<bool> SyncOpenReturns(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
