@@ -78,7 +78,18 @@ internal static class HepsiburadaJsonMapper
                     {
                         var id = Text(item, "id", "valueId", "attributeValueId");
                         var name = Text(item, "value", "name", "attributeValue", "attributeValueName");
-                        if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(name)) throw new JsonException("Hepsiburada enum değer kimliği veya adı eksik.");
+                        if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(name))
+                        {
+                            var missing = string.Join(" ve ", new[]
+                            {
+                                string.IsNullOrWhiteSpace(id) ? "id" : null,
+                                string.IsNullOrWhiteSpace(name) ? "value" : null
+                            }.Where(value => value is not null));
+                            var shape = string.Join(", ", item.ValueKind == JsonValueKind.Object
+                                ? item.EnumerateObject().Take(12).Select(property => $"{SafeReferenceFieldName(property.Name)}:{ReferenceValueKind(property.Value.ValueKind)}")
+                                : new[] { $"item:{ReferenceValueKind(item.ValueKind)}" });
+                            throw new JsonException($"Hepsiburada enum değerinde {missing} alanı eksik (alan türleri: {shape}).");
+                        }
                         items.Add(new(resourceType, id, parentExternalId, name, name, 0, true, true, item.GetRawText()));
                         break;
                     }
@@ -1102,6 +1113,19 @@ internal static class HepsiburadaJsonMapper
             if (TryFind(root, out var child, name) && child.ValueKind is JsonValueKind.Object or JsonValueKind.Array) return child;
         return root;
     }
+
+    private static string SafeReferenceFieldName(string name) => new(name.Take(32).Select(character => char.IsAsciiLetterOrDigit(character) || character == '_' ? character : '_').ToArray());
+
+    private static string ReferenceValueKind(JsonValueKind kind) => kind switch
+    {
+        JsonValueKind.Object => "object",
+        JsonValueKind.Array => "array",
+        JsonValueKind.String => "string",
+        JsonValueKind.Number => "number",
+        JsonValueKind.True or JsonValueKind.False => "boolean",
+        JsonValueKind.Null => "null",
+        _ => "undefined"
+    };
 
     private static string Snapshot(JsonElement value) => value.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null ? "{}" : value.GetRawText();
     private static string? First(params string?[] values) => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));

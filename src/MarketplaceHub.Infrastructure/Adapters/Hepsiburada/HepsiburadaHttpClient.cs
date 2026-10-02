@@ -179,7 +179,7 @@ public sealed partial class HepsiburadaHttpClient(
             var message = exception.Message switch
             {
                 "Hepsiburada referans yanıtında veri listesi yok." => "Hepsiburada başarılı yanıtında kategori, özellik veya değer listesi bulunamadı.",
-                "Hepsiburada enum değer kimliği veya adı eksik." => "Hepsiburada değer listesinde bir seçeneğin id veya value alanı eksik.",
+                _ when exception.Message.StartsWith("Hepsiburada enum değerinde ", StringComparison.Ordinal) => $"Hepsiburada değer listesindeki bir seçeneğin alanları beklenen biçimde değil. {exception.Message[("Hepsiburada enum değerinde ".Length)..]}",
                 _ => "Hepsiburada referans yanıtı beklenen veri sözleşmesiyle eşleşmiyor."
             };
             return Failure<AdapterPageResult<RemoteReferenceItem>>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_REFERENCE_CONTRACT_INVALID", message, HttpStatusCode.BadGateway);

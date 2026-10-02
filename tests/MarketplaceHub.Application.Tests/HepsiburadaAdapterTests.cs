@@ -541,6 +541,23 @@ public sealed class HepsiburadaAdapterTests
     }
 
     [Fact]
+    public void ReferenceMapper_ReportsOnlyFieldNamesAndKindsForMalformedValues()
+    {
+        using var json = JsonDocument.Parse("""
+        {
+          "success": true,
+          "data": { "values": [ { "id": "private-id", "label": "Kadın" } ] }
+        }
+        """);
+
+        var error = Assert.Throws<JsonException>(() => HepsiburadaJsonMapper.References("ATTRIBUTE_VALUES", json.RootElement, "11/gender", 0, 1000));
+
+        Assert.Contains("label:string", error.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("private-id", error.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("Kadın", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void OrderMapper_UsesOrderNumberAndDoesNotInventPackageTimestamp()
     {
         using var json = JsonDocument.Parse("""
