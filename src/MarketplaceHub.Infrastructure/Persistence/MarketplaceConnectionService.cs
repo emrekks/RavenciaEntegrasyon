@@ -15,6 +15,7 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cursors, IDataProtectionProvider dataProtection, TokenHasher tokenHasher, TimeProvider timeProvider, IConfiguration configuration) : IMarketplaceConnectionService
 {
+    internal const int InitialDataSyncPriority = 0;
     private static readonly string[] TrendyolCapabilityCodes =
     [
         MarketplaceCapabilities.ConnectionTest, MarketplaceCapabilities.ReferenceRead, MarketplaceCapabilities.ProductRead, MarketplaceCapabilities.ProductWrite,
@@ -607,7 +608,11 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
     private void AddBootstrapJob(Guid tenantId, Guid connectionId, string type, string dedup, string payload, string correlationId)
     {
         var job = NewJob(tenantId, connectionId, type, dedup, payload, correlationId);
-        job.Priority = 1;
+        // Keep activation/manual bootstrap jobs in the hot lane. Incremental
+        // priority-0 work is continuously produced, so priority 1 can starve.
+        // These queued plans are read-only imports; giving them the hot priority
+        // lets older snapshots drain before newer incremental work.
+        job.Priority = InitialDataSyncPriority;
         db.IntegrationJobs.Add(job);
     }
     internal static bool ShouldBootstrapHepsiburadaCatalogReferences(string environment, string? productionCatalogBaseAddress)

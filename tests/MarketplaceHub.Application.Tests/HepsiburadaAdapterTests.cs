@@ -1549,6 +1549,8 @@ public sealed class HepsiburadaAdapterTests
     {
         var connectionId = Guid.NewGuid();
 
+        Assert.Equal(0, MarketplaceConnectionService.InitialDataSyncPriority);
+
         var trendyol = MarketplaceConnectionService.CreateInitialDataSyncPlan("TRENDYOL", connectionId, includeHepsiburadaCatalog: true);
         Assert.Equal(
             [MarketplaceJobTypes.ReferenceSync, MarketplaceJobTypes.ReferenceSync, MarketplaceJobTypes.OrderRecoverySync, MarketplaceJobTypes.ReturnSync],
