@@ -1,7 +1,6 @@
 export const orderStatusTabs = [
   ['ALL', 'Tümü'],
   ['NEW', 'Yeni'],
-  ['UNVERIFIED', 'Doğrulanmadı'],
   ['PROCESSING', 'İşleme alınanlar'],
   ['SHIPPED', 'Kargoda'],
   ['DELIVERED', 'Teslim edildi'],
@@ -12,5 +11,8 @@ export const orderStatusTabs = [
 ] as const
 
 export function resolveOrderStatusTab(status: string | null | undefined) {
-  return status?.trim().toUpperCase() === 'PENDING' ? 'NEW' : status || 'ALL'
+  const normalizedStatus = status?.trim().toUpperCase()
+  if (normalizedStatus === 'PENDING') return 'NEW'
+  if (normalizedStatus === 'UNVERIFIED') return 'ALL'
+  return status || 'ALL'
 }
