@@ -28,7 +28,7 @@ internal static class HepsiburadaProductMatchEndpoints
     {
         if (Tenant(http) is not { } tenant) return Problem(401, "AUTHENTICATION_REQUIRED", "Aktif tenant oturumu gereklidir.");
         if (page is < 0 or > 100_000) return Problem(400, "PAGE_INVALID", "page 0 ile 100000 arasında olmalıdır.");
-        if (limit is not null and ( < 1 or > 100)) return Problem(400, "LIMIT_INVALID", "limit 1 ile 100 arasında olmalıdır.");
+        if (limit is not null and (< 1 or > 100)) return Problem(400, "LIMIT_INVALID", "limit 1 ile 100 arasında olmalıdır.");
         var connection = await GetHepsiburadaConnectionAsync(db, tenant.TenantId, connectionId, http.RequestAborted);
         if (connection is null) return Problem(404, "HEPSIBURADA_CONNECTION_NOT_FOUND", "Etkin veya doğrulanmış Hepsiburada bağlantısı bulunamadı.");
 

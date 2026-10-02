@@ -97,11 +97,11 @@ internal static class HepsiburadaOrderLineMatcher
     {
         var index = new Dictionary<string, List<T>>(StringComparer.OrdinalIgnoreCase);
         foreach (var row in rows)
-        foreach (var alias in aliases(row))
-        {
-            if (!index.TryGetValue(alias, out var matches)) index[alias] = matches = [];
-            matches.Add(row);
-        }
+            foreach (var alias in aliases(row))
+            {
+                if (!index.TryGetValue(alias, out var matches)) index[alias] = matches = [];
+                matches.Add(row);
+            }
 
         return index;
     }

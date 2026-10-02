@@ -4686,7 +4686,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             }
             else if (!string.Equals(existingVariantLink.ExternalId, externalVariantId, StringComparison.Ordinal))
             {
-            await RecordIssue(tenantId, $"product-sync-variant-link-conflict:{connectionId}:{externalVariantId}", "PRODUCT_VARIANT_LINK_CONFLICT", "Aynı yerel varyantın başka bir pazar yeri varyant bağlantısı zaten var; ikinci bağlantı güvenli biçimde atlandı.", cancellationToken);
+                await RecordIssue(tenantId, $"product-sync-variant-link-conflict:{connectionId}:{externalVariantId}", "PRODUCT_VARIANT_LINK_CONFLICT", "Aynı yerel varyantın başka bir pazar yeri varyant bağlantısı zaten var; ikinci bağlantı güvenli biçimde atlandı.", cancellationToken);
                 return null;
             }
         }

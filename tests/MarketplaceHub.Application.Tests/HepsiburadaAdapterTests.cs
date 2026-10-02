@@ -147,8 +147,15 @@ public sealed class HepsiburadaAdapterTests
     {
         var context = new HepsiburadaRequestContext(new MarketplaceHub.Domain.PlatformConnection
         {
-            Id = Guid.NewGuid(), TenantId = Guid.NewGuid(), PublicId = Guid.NewGuid(), PlatformCode = "HEPSIBURADA",
-            Environment = "STAGE", DisplayName = "SIT", ExternalStoreId = "merchant/17", Status = "ACTIVE", ApiVersion = "v1"
+            Id = Guid.NewGuid(),
+            TenantId = Guid.NewGuid(),
+            PublicId = Guid.NewGuid(),
+            PlatformCode = "HEPSIBURADA",
+            Environment = "STAGE",
+            DisplayName = "SIT",
+            ExternalStoreId = "merchant/17",
+            Status = "ACTIVE",
+            ApiVersion = "v1"
         }, new Uri("https://oms.example/"), new Uri("https://listing.example/"), "user", "secret");
         const string payload = """{"merchantId":"merchant/17","items":[{"hepsiburadaSku":"HB-1","merchantSku":"SKU-ONE","price":118.97,"availableStock":9}]}""";
 
@@ -187,8 +194,15 @@ public sealed class HepsiburadaAdapterTests
     {
         var context = new HepsiburadaRequestContext(new MarketplaceHub.Domain.PlatformConnection
         {
-            Id = Guid.NewGuid(), TenantId = Guid.NewGuid(), PublicId = Guid.NewGuid(), PlatformCode = "HEPSIBURADA",
-            Environment = "STAGE", DisplayName = "SIT", ExternalStoreId = "merchant/17", Status = "ACTIVE", ApiVersion = "v1"
+            Id = Guid.NewGuid(),
+            TenantId = Guid.NewGuid(),
+            PublicId = Guid.NewGuid(),
+            PlatformCode = "HEPSIBURADA",
+            Environment = "STAGE",
+            DisplayName = "SIT",
+            ExternalStoreId = "merchant/17",
+            Status = "ACTIVE",
+            ApiVersion = "v1"
         }, new Uri("https://oms.example/"), new Uri("https://listing.example/"), "user", "secret");
         using var payload = JsonDocument.Parse(HepsiburadaHttpClient.TestOrderPayload("merchant/17", "1234567890", "HB-1", DateTimeOffset.Parse("2026-09-30T12:00:00Z")));
 
@@ -1362,8 +1376,12 @@ public sealed class HepsiburadaAdapterTests
     {
         var connection = new MarketplaceHub.Domain.PlatformConnection
         {
-            PlatformCode = "HEPSIBURADA", Environment = "PRODUCTION", DisplayName = "test",
-            ExternalStoreId = "merchant-17", Status = "DRAFT", ApiVersion = "V1.0"
+            PlatformCode = "HEPSIBURADA",
+            Environment = "PRODUCTION",
+            DisplayName = "test",
+            ExternalStoreId = "merchant-17",
+            Status = "DRAFT",
+            ApiVersion = "V1.0"
         };
         var context = new HepsiburadaRequestContext(connection, new Uri("https://oms.example/"), new Uri("https://listing.example/"), basicUsername, "example-key")
         { IntegratorName = "kodanka_dev" };

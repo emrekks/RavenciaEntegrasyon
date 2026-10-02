@@ -1,5 +1,5 @@
-using MarketplaceHub.Domain;
 using MarketplaceHub.Application;
+using MarketplaceHub.Domain;
 using Xunit;
 
 namespace MarketplaceHub.Application.Tests;

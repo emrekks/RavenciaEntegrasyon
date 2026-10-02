@@ -1,5 +1,5 @@
-using MarketplaceHub.Domain;
 using MarketplaceHub.Application;
+using MarketplaceHub.Domain;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 

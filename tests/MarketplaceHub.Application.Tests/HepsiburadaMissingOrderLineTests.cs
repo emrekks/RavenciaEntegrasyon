@@ -21,8 +21,14 @@ public sealed class HepsiburadaMissingOrderLineTests
     public void ClaimLineWithOriginalIdentityIsNotInsertedAgain()
     {
         var remote = Remote("line-1", "SELLER-SKU");
-        var existing = new OrderLine { ExternalLineId = "claim-1", Sku = "HB-SKU", TitleSnapshot = "First", RawStatus = "ClaimCreated",
-            SourceSnapshotJson = "{\"lineItemId\":\"line-1\"}" };
+        var existing = new OrderLine
+        {
+            ExternalLineId = "claim-1",
+            Sku = "HB-SKU",
+            TitleSnapshot = "First",
+            RawStatus = "ClaimCreated",
+            SourceSnapshotJson = "{\"lineItemId\":\"line-1\"}"
+        };
         Assert.False(HepsiburadaOrderLineMatcher.CanAddMissingLine(remote, [existing], [remote]));
     }
 
@@ -40,8 +46,14 @@ public sealed class HepsiburadaMissingOrderLineTests
     {
         var first = Remote("line-1", "SKU-1");
         var second = Remote("line-2", "SKU-1");
-        var existing = new OrderLine { ExternalLineId = "claim-1", Sku = "SKU-1", TitleSnapshot = "First", RawStatus = "ClaimCreated",
-            SourceSnapshotJson = "{\"lineItemId\":\"line-1\"}" };
+        var existing = new OrderLine
+        {
+            ExternalLineId = "claim-1",
+            Sku = "SKU-1",
+            TitleSnapshot = "First",
+            RawStatus = "ClaimCreated",
+            SourceSnapshotJson = "{\"lineItemId\":\"line-1\"}"
+        };
         Assert.True(HepsiburadaOrderLineMatcher.CanAddMissingLine(second, [existing], [first, second]));
     }
 
