@@ -1209,6 +1209,39 @@ public sealed class HepsiburadaAdapterTests
     }
 
     [Fact]
+    public void ClaimMapper_PrefersClaimOrderLineIdWhenNestedLineHasDifferentId()
+    {
+        using var json = JsonDocument.Parse("""
+        {
+          "number": "HB-CLAIM-LINE-ID",
+          "status": "AwaitingAction",
+          "claimType": "Return",
+          "claimDate": "2026-09-28T12:15:00Z",
+          "orderNumber": "4146480888",
+          "lineItemId": "6ab9ff5b-0b73-8d07-cc9a-d15f06060606",
+          "quantity": 1,
+          "line": {
+            "id": "claim-line-identity",
+            "merchantSku": "MZ040RCY15",
+            "productName": "Ravencia test product",
+            "quantity": 1
+          }
+        }
+        """);
+
+        var claim = HepsiburadaJsonMapper.ReturnClaim(json.RootElement);
+        var line = Assert.Single(claim.Lines);
+
+        Assert.Equal("6ab9ff5b-0b73-8d07-cc9a-d15f06060606", line.ExternalLineId);
+        Assert.Equal("6ab9ff5b-0b73-8d07-cc9a-d15f06060606", line.ExternalOrderLineId);
+        Assert.Contains("claim-line-identity", line.AlternateExternalOrderLineIds!);
+
+        var order = HepsiburadaJsonMapper.OrderFromReturnClaim(claim.RawJson);
+        Assert.NotNull(order);
+        Assert.Equal(line.ExternalOrderLineId, Assert.Single(order.Lines).ExternalLineId);
+    }
+
+    [Fact]
     public void ClaimMapperUsesHepsiburadaStatusChangeDateForIncrementalReconciliation()
     {
         using var json = JsonDocument.Parse("""

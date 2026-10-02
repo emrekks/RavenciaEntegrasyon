@@ -471,11 +471,46 @@ internal static class HepsiburadaJsonMapper
         var remoteLines = new List<RemoteReturnLine>(lineElements.Count);
         foreach (var line in lineElements)
         {
-            var lineId = Text(line, "lineItemId", "LineItemId", "id", "Id");
+            var nestedLine = Find(line, "line", "Line");
+            var orderLine = nestedLine.ValueKind == JsonValueKind.Object ? nestedLine : line;
+            // Claims can expose the order's canonical lineItemId at the claim
+            // level while the nested line object carries its own id. Prefer
+            // the documented order-line identity and keep the nested id as an
+            // alternate for accounts whose order payload uses that alias.
+            var lineId = First(
+                Text(orderLine, "lineItemId", "LineItemId"),
+                Text(line, "lineItemId", "LineItemId"),
+                Text(item, "lineItemId", "LineItemId"),
+                Text(orderLine, "orderLineId", "OrderLineId"),
+                Text(line, "orderLineId", "OrderLineId"),
+                Text(item, "orderLineId", "OrderLineId"),
+                Text(orderLine, "orderItemId", "OrderItemId"),
+                Text(line, "orderItemId", "OrderItemId"),
+                Text(item, "orderItemId", "OrderItemId"),
+                Text(orderLine, "id", "Id"),
+                Text(line, "id", "Id"));
             var quantity = Decimal(line, "quantity", "Quantity") ?? Decimal(item, "quantity", "Quantity");
             if (string.IsNullOrWhiteSpace(lineId) || quantity is null or <= 0)
                 throw new JsonException("Hepsiburada talep kaleminde lineItemId veya geçerli miktar yok.");
-            remoteLines.Add(new(lineId, lineId, quantity.Value));
+            var alternateLineIds = new[]
+            {
+                Text(orderLine, "lineItemId", "LineItemId"),
+                Text(line, "lineItemId", "LineItemId"),
+                Text(item, "lineItemId", "LineItemId"),
+                Text(orderLine, "orderLineId", "OrderLineId"),
+                Text(line, "orderLineId", "OrderLineId"),
+                Text(item, "orderLineId", "OrderLineId"),
+                Text(orderLine, "orderItemId", "OrderItemId"),
+                Text(line, "orderItemId", "OrderItemId"),
+                Text(item, "orderItemId", "OrderItemId"),
+                Text(orderLine, "id", "Id"),
+                Text(line, "id", "Id")
+            }
+                .Where(candidate => !string.IsNullOrWhiteSpace(candidate) && !string.Equals(candidate, lineId, StringComparison.Ordinal))
+                .OfType<string>()
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            remoteLines.Add(new(lineId, lineId, quantity.Value, alternateLineIds));
         }
 
         var delivery = Find(item, "delivery", "Delivery");
@@ -550,7 +585,18 @@ internal static class HepsiburadaJsonMapper
         {
             var nestedLine = Find(entry, "line", "Line");
             var line = nestedLine.ValueKind == JsonValueKind.Object ? nestedLine : entry;
-            var lineId = First(Text(line, "lineItemId", "LineItemId", "id", "Id"), Text(root, "lineItemId", "LineItemId"));
+            var lineId = First(
+                Text(line, "lineItemId", "LineItemId"),
+                Text(entry, "lineItemId", "LineItemId"),
+                Text(root, "lineItemId", "LineItemId"),
+                Text(line, "orderLineId", "OrderLineId"),
+                Text(entry, "orderLineId", "OrderLineId"),
+                Text(root, "orderLineId", "OrderLineId"),
+                Text(line, "orderItemId", "OrderItemId"),
+                Text(entry, "orderItemId", "OrderItemId"),
+                Text(root, "orderItemId", "OrderItemId"),
+                Text(line, "id", "Id"),
+                Text(entry, "id", "Id"));
             var quantity = Decimal(entry, "quantity", "Quantity") ?? Decimal(line, "quantity", "Quantity") ?? Decimal(root, "quantity", "Quantity");
             if (string.IsNullOrWhiteSpace(lineId) || quantity is null or <= 0) continue;
 
