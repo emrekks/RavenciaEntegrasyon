@@ -29,7 +29,7 @@ public sealed class MarketplaceSalesStatusTabTests
     [InlineData(MarketplaceJobTypes.HepsiburadaOrderRecoverySync, 2)]
     [InlineData(MarketplaceJobTypes.OrderRecoverySync, 6)]
     [InlineData(MarketplaceJobTypes.ShopifyOrderRecoverySync, 6)]
-    public void Hepsiburada_manual_full_sync_uses_the_hot_queue(string jobType, int expectedPriority)
+    public void Hepsiburada_manual_full_sync_keeps_its_bounded_priority(string jobType, int expectedPriority)
     {
         Assert.Equal(expectedPriority, MarketplaceSalesService.Priority(jobType));
     }
