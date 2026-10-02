@@ -1545,6 +1545,32 @@ public sealed class HepsiburadaAdapterTests
     }
 
     [Fact]
+    public void ManualInitialDataSyncUsesEachPlatformsReadOnlyActivationPlan()
+    {
+        var connectionId = Guid.NewGuid();
+
+        var trendyol = MarketplaceConnectionService.CreateInitialDataSyncPlan("TRENDYOL", connectionId, includeHepsiburadaCatalog: true);
+        Assert.Equal(
+            [MarketplaceJobTypes.ReferenceSync, MarketplaceJobTypes.ReferenceSync, MarketplaceJobTypes.OrderRecoverySync, MarketplaceJobTypes.ReturnSync],
+            trendyol.Select(item => item.JobType));
+
+        var shopify = MarketplaceConnectionService.CreateInitialDataSyncPlan("SHOPIFY", connectionId, includeHepsiburadaCatalog: true);
+        Assert.Equal([MarketplaceJobTypes.ShopifyOrderRecoverySync], shopify.Select(item => item.JobType));
+
+        var hepsiburada = MarketplaceConnectionService.CreateInitialDataSyncPlan("HEPSIBURADA", connectionId, includeHepsiburadaCatalog: true);
+        Assert.Equal(
+            [MarketplaceJobTypes.HepsiburadaOrderRecoverySync, MarketplaceJobTypes.HepsiburadaReferenceSync, MarketplaceJobTypes.HepsiburadaProductSync, MarketplaceJobTypes.HepsiburadaReturnSync],
+            hepsiburada.Select(item => item.JobType));
+        using var productPayload = JsonDocument.Parse(hepsiburada.Single(item => item.KeySuffix == "products").PayloadJson);
+        Assert.True(productPayload.RootElement.GetProperty("full").GetBoolean());
+        Assert.False(productPayload.RootElement.GetProperty("updateExistingProducts").GetBoolean());
+
+        var catalogDisabled = MarketplaceConnectionService.CreateInitialDataSyncPlan("HEPSIBURADA", connectionId, includeHepsiburadaCatalog: false);
+        Assert.DoesNotContain(catalogDisabled, item => item.JobType == MarketplaceJobTypes.HepsiburadaReferenceSync);
+        Assert.Empty(MarketplaceConnectionService.CreateInitialDataSyncPlan("TRENDYOL_EFATURAM", connectionId, includeHepsiburadaCatalog: true));
+    }
+
+    [Fact]
     public void RateLimitHeadersRetainLimitRemainingResetAndRetryAfter()
     {
         var adapter = new HepsiburadaHttpClient(

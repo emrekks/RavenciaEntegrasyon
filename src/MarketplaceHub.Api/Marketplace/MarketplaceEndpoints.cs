@@ -33,6 +33,12 @@ public static class MarketplaceEndpoints
             return Results.Ok(result);
         });
         api.MapPut("/connections/{id:guid}/active", async (Guid id, ActiveCommand command, HttpContext http, IMarketplaceConnectionService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.SetActiveAsync(tenant.TenantId, id, version, command.Active, http.RequestAborted), x => x.Version) : failure! : MissingContext(http));
+        api.MapPost("/connections/{id:guid}/initial-data-sync-jobs", async (Guid id, HttpContext http, IMarketplaceConnectionService service) =>
+        {
+            if (Tenant(http) is not { } tenant || RequireIdempotency(http) is not null) return MissingContext(http);
+            if (!TryIfMatch(http, out var version, out var failure)) return failure!;
+            return Accepted(await service.EnqueueInitialDataSyncAsync(tenant.TenantId, id, http.Request.Headers["Idempotency-Key"].ToString(), version, http.TraceIdentifier, http.RequestAborted));
+        });
         api.MapPost("/connections/{id:guid}/deep-delete", async (Guid id, DeleteConnectionCommand command, HttpContext http, IOperationalDataMaintenanceService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? Result(await service.DeleteConnectionAsync(tenant.TenantId, tenant.UserId, id, version, command, http.TraceIdentifier, http.RequestAborted), Results.Ok) : failure! : MissingContext(http));
         api.MapPost("/connections/{id:guid}/data-reset", async (Guid id, ResetOperationalDataCommand command, HttpContext http, IOperationalDataMaintenanceService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? Result(await service.ResetConnectionDataAsync(tenant.TenantId, tenant.UserId, id, version, command, http.TraceIdentifier, http.RequestAborted), Results.Ok) : failure! : MissingContext(http));
         api.MapPut("/connections/{id:guid}/data-visibility", async (Guid id, DataVisibilityCommand command, HttpContext http, IOperationalDataMaintenanceService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? Result(await service.SetDataVisibilityAsync(tenant.TenantId, tenant.UserId, id, version, command.Hidden, http.TraceIdentifier, http.RequestAborted), Results.Ok) : failure! : MissingContext(http));

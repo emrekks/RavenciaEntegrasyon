@@ -282,6 +282,46 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         var payload = JsonSerializer.Serialize(new { connectionId = id }); var job = NewJob(tenantId, id, jobType, dedup, payload, correlationId); db.IntegrationJobs.Add(job); await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(job.Id);
     }
 
+    public async Task<ServiceResult<Guid>> EnqueueInitialDataSyncAsync(Guid tenantId, Guid id, string idempotencyKey, long expectedVersion, string correlationId, CancellationToken cancellationToken)
+    {
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id
+            && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA"), cancellationToken);
+        if (connection is null) return NotFound<Guid>();
+        if (!ActiveIntegrationScope.Contains(connection.PlatformCode)) return Deferred<Guid>();
+        if (connection.Version != expectedVersion) return Precondition<Guid>(connection.Version);
+        if (connection.Status is not ("ACTIVE" or "VERIFIED")) return ServiceResult<Guid>.Fail("CONNECTION_INACTIVE", "İlk veri çekimi için bağlantıyı etkinleştirip bağlantı testini tamamlayın.", 422);
+        if (!await HasCredential(tenantId, id, cancellationToken)) return ServiceResult<Guid>.Fail("CREDENTIAL_REQUIRED", "İlk veri çekimi için şifreli bağlantı bilgileri gerekir.", 422);
+
+        var baseDedupPrefix = $"manual-initial-sync:{id:N}:";
+        var runPrefix = $"{baseDedupPrefix}{idempotencyKey}:";
+        var replay = await db.IntegrationJobs.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == id && x.JobDedupKey.StartsWith(runPrefix))
+            .OrderBy(x => x.CreatedAt)
+            .Select(x => (Guid?)x.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (replay is { } existingJobId) return ServiceResult<Guid>.Ok(existingJobId);
+
+        var inProgress = await db.IntegrationJobs.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == id && x.JobDedupKey.StartsWith(baseDedupPrefix)
+                && (x.Status == JobStatus.Pending || x.Status == JobStatus.Leased || x.Status == JobStatus.RetryScheduled))
+            .OrderBy(x => x.CreatedAt)
+            .Select(x => (Guid?)x.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (inProgress is { } activeJobId) return ServiceResult<Guid>.Ok(activeJobId);
+
+        var includeHepsiburadaCatalog = connection.PlatformCode != "HEPSIBURADA"
+            || ShouldBootstrapHepsiburadaCatalogReferences(connection.Environment, configuration[$"{HepsiburadaOptions.SectionName}:ProductionCatalogBaseAddress"]);
+        var plan = CreateInitialDataSyncPlan(connection.PlatformCode, id, includeHepsiburadaCatalog);
+        if (plan.Count == 0) return ServiceResult<Guid>.Fail("INITIAL_SYNC_UNSUPPORTED", "Bu platform için ilk veri çekimi tanımlı değil.", 422);
+
+        var runCorrelationId = $"{correlationId}:manual-initial-sync:{id:N}:{idempotencyKey}";
+        foreach (var item in plan)
+            AddBootstrapJob(tenantId, id, item.JobType, $"{runPrefix}{item.KeySuffix}", item.PayloadJson, runCorrelationId);
+        await db.SaveChangesAsync(cancellationToken);
+        var firstJob = db.IntegrationJobs.Local.First(x => x.TenantId == tenantId && x.ConnectionId == id && x.JobDedupKey.StartsWith(runPrefix));
+        return ServiceResult<Guid>.Ok(firstJob.Id);
+    }
+
     public async Task<ServiceResult<ConnectionView>> SetActiveAsync(Guid tenantId, Guid id, long expectedVersion, bool active, CancellationToken cancellationToken)
     {
         var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "TRENDYOL_EFATURAM" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA"), cancellationToken); if (connection is null) return NotFound<ConnectionView>(); if (!ActiveIntegrationScope.Contains(connection.PlatformCode) && active) return Deferred<ConnectionView>(); if (connection.Version != expectedVersion) return Precondition<ConnectionView>(connection.Version);
@@ -521,22 +561,38 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
     {
         var prefix = $"{MarketplaceJobTypes.ActivationBootstrapPrefix}{connection.Id:N}:{connection.Version}:";
         var correlationId = $"{MarketplaceJobTypes.ActivationBootstrapPrefix}{connection.Id:N}:{connection.Version}";
-        if (connection.PlatformCode == "TRENDYOL")
+        var includeHepsiburadaCatalog = connection.PlatformCode != "HEPSIBURADA"
+            || ShouldBootstrapHepsiburadaCatalogReferences(connection.Environment, configuration[$"{HepsiburadaOptions.SectionName}:ProductionCatalogBaseAddress"]);
+        foreach (var item in CreateInitialDataSyncPlan(connection.PlatformCode, connection.Id, includeHepsiburadaCatalog))
+            AddBootstrapJob(tenantId, connection.Id, item.JobType, $"{prefix}{item.KeySuffix}", item.PayloadJson, correlationId);
+    }
+
+    internal sealed record InitialDataSyncJobPlanItem(string JobType, string KeySuffix, string PayloadJson);
+
+    internal static IReadOnlyList<InitialDataSyncJobPlanItem> CreateInitialDataSyncPlan(string platformCode, Guid connectionId, bool includeHepsiburadaCatalog)
+    {
+        var platform = platformCode.Trim().ToUpperInvariant();
+        var jobs = new List<InitialDataSyncJobPlanItem>();
+        if (platform == "TRENDYOL")
         {
-            AddBootstrapJob(tenantId, connection.Id, MarketplaceJobTypes.ReferenceSync, $"{prefix}categories", JsonSerializer.Serialize(new { connectionId = connection.Id, resourceType = "CATEGORIES", parentExternalId = (string?)null }), correlationId);
-            AddBootstrapJob(tenantId, connection.Id, MarketplaceJobTypes.ReferenceSync, $"{prefix}brands", JsonSerializer.Serialize(new { connectionId = connection.Id, resourceType = "BRANDS", parentExternalId = (string?)null }), correlationId);
+            jobs.Add(new(MarketplaceJobTypes.ReferenceSync, "categories", JsonSerializer.Serialize(new { connectionId, resourceType = "CATEGORIES", parentExternalId = (string?)null })));
+            jobs.Add(new(MarketplaceJobTypes.ReferenceSync, "brands", JsonSerializer.Serialize(new { connectionId, resourceType = "BRANDS", parentExternalId = (string?)null })));
         }
-        var orderType = MarketplaceJobTypes.ForPlatform(connection.PlatformCode, MarketplaceJobTypes.OrderRecoverySync);
-        AddBootstrapJob(tenantId, connection.Id, orderType, $"{prefix}orders", JsonSerializer.Serialize(new { connectionId = connection.Id, externalOrderId = (string?)null, full = true }), correlationId);
-        if (connection.PlatformCode == "HEPSIBURADA")
+
+        if (platform is not ("TRENDYOL" or "SHOPIFY" or "HEPSIBURADA")) return jobs;
+        var orderType = MarketplaceJobTypes.ForPlatform(platform, MarketplaceJobTypes.OrderRecoverySync);
+        jobs.Add(new(orderType, "orders", JsonSerializer.Serialize(new { connectionId, externalOrderId = (string?)null, full = true })));
+
+        if (platform == "HEPSIBURADA")
         {
-            if (ShouldBootstrapHepsiburadaCatalogReferences(connection.Environment, configuration[$"{HepsiburadaOptions.SectionName}:ProductionCatalogBaseAddress"]))
-                AddBootstrapJob(tenantId, connection.Id, MarketplaceJobTypes.HepsiburadaReferenceSync, $"{prefix}categories", JsonSerializer.Serialize(new { connectionId = connection.Id, resourceType = "CATEGORIES", parentExternalId = (string?)null }), correlationId);
-            AddBootstrapJob(tenantId, connection.Id, MarketplaceJobTypes.HepsiburadaProductSync, $"{prefix}products", JsonSerializer.Serialize(new { connectionId = connection.Id, full = true, updateExistingProducts = false }), correlationId);
+            if (includeHepsiburadaCatalog)
+                jobs.Add(new(MarketplaceJobTypes.HepsiburadaReferenceSync, "categories", JsonSerializer.Serialize(new { connectionId, resourceType = "CATEGORIES", parentExternalId = (string?)null })));
+            jobs.Add(new(MarketplaceJobTypes.HepsiburadaProductSync, "products", JsonSerializer.Serialize(new { connectionId, full = true, updateExistingProducts = false })));
         }
-        var returnBootstrap = CreateReturnActivationBootstrap(connection.PlatformCode, connection.Id);
-        if (returnBootstrap is { } initialReturns)
-            AddBootstrapJob(tenantId, connection.Id, initialReturns.JobType, $"{prefix}returns", initialReturns.PayloadJson, correlationId);
+
+        if (CreateReturnActivationBootstrap(platform, connectionId) is { } initialReturns)
+            jobs.Add(new(initialReturns.JobType, "returns", initialReturns.PayloadJson));
+        return jobs;
     }
 
     internal static (string JobType, string PayloadJson)? CreateReturnActivationBootstrap(string platformCode, Guid connectionId)
