@@ -173,7 +173,7 @@ public static class OpenOrderLifecyclePolicy
 
     public static bool ShouldPollWithoutPackage(string? platformCode, string? derivedStatus) =>
         string.Equals(platformCode?.Trim(), "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
-        && derivedStatus?.Trim().ToUpperInvariant() is "NEW" or "ON_HOLD" or "UNVERIFIED";
+        && derivedStatus?.Trim().ToUpperInvariant() is "NEW" or "ON_HOLD";
 }
 
 public static class HepsiburadaOrderLifecycleStatusPolicy

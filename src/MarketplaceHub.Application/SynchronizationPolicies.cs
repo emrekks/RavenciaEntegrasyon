@@ -55,10 +55,23 @@ public static class SynchronizationWindowPolicy
 
 public static class HepsiburadaOrderHistoryPolicy
 {
-    public const int DefaultInitialLookbackMonths = 3;
+    public const int DefaultInitialLookbackMonths = 1;
 
     public static DateTimeOffset InitialWindowStart(DateTimeOffset anchor) =>
         anchor.AddMonths(-DefaultInitialLookbackMonths);
+
+    public static bool ShouldImportPaidOrder(string? lifecycleStatus, DateTimeOffset orderedAt, DateTimeOffset anchor)
+    {
+        // The paid-order feed returns Open/Unpacked rows. Old Open rows no
+        // longer have package-status evidence in the one-month status feeds,
+        // so they must not be added as apparently unverified orders. Unpacked
+        // remains actionable even when the original order is older. Unknown
+        // or absent lifecycle values are not safe to import as new orders.
+        if (string.Equals(lifecycleStatus?.Trim(), "UNPACKED", StringComparison.OrdinalIgnoreCase))
+            return true;
+        return string.Equals(lifecycleStatus?.Trim(), "OPEN", StringComparison.OrdinalIgnoreCase)
+            && orderedAt >= InitialWindowStart(anchor);
+    }
 
     public static DateTimeOffset ClampWindowStart(DateTimeOffset anchor, DateTimeOffset candidate)
     {

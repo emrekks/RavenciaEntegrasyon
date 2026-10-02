@@ -98,7 +98,7 @@ public sealed class MarketplaceSalesStatusTabTests
     }
 
     [Fact]
-    public void Unverified_order_filter_includes_stale_unpacked_Hepsiburada_rows()
+    public void Unverified_order_filter_is_empty_for_Hepsiburada_rows()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseNpgsql("Host=localhost;Port=5432;Database=metadata-only;Username=metadata-only;Password=metadata-only")
@@ -109,6 +109,23 @@ public sealed class MarketplaceSalesStatusTabTests
         IQueryable<Order> query = db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId);
 
         service.ApplyOrderFilters(ref query, new OrderListQuery(Status: "UNVERIFIED"), tenantId);
+
+        var sql = query.ToQueryString();
+        Assert.Contains("FALSE", sql, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Order_list_hides_unverified_old_unpacked_Hepsiburada_rows_without_deleting_them()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql("Host=localhost;Port=5432;Database=metadata-only;Username=metadata-only;Password=metadata-only")
+            .Options;
+        using var db = new AppDbContext(options);
+        var service = new MarketplaceSalesService(db, null!, null!, null!, null!, null!, null!, TimeProvider.System);
+        var tenantId = Guid.NewGuid();
+        IQueryable<Order> query = db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId);
+
+        query = service.ExcludeUnverifiedHepsiburadaOrders(query, tenantId);
 
         var sql = query.ToQueryString();
         Assert.Contains("UNVERIFIED", sql, StringComparison.Ordinal);

@@ -1797,7 +1797,10 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 cancellationToken);
             if (!page.IsSuccess) { TrackResultFailure(page.Error); throw JobProcessingException.FromAdapter(page.Error!); }
             foreach (var _ in page.Value!.Items) TrackReceived();
-            await UpsertOrders(tenantId, connectionId, page.Value.Items, cancellationToken);
+            var importableOrders = page.Value.Items
+                .Where(order => HepsiburadaOrderHistoryPolicy.ShouldImportPaidOrder(order.LifecycleStatus, order.OrderedAt, state.AnchorEnd))
+                .ToArray();
+            await UpsertOrders(tenantId, connectionId, importableOrders, cancellationToken);
 
             if (page.Value.HasMore)
             {
@@ -1816,7 +1819,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
     }
 
-    private const string HepsiburadaOrderSyncStateVersion = "hepsiburada-orders-v1";
+    private const string HepsiburadaOrderSyncStateVersion = "hepsiburada-orders-v2";
     private sealed record HepsiburadaOrderSyncState(string Version, DateTimeOffset AnchorEnd, DateTimeOffset StartAt, int WindowIndex, int Offset);
 
     private async Task<bool> SyncHepsiburadaPackages(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
@@ -2197,7 +2200,6 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         {
             var includeUnpackagedNewOrders = OpenOrderLifecyclePolicy.ShouldPollWithoutPackage(platformCode, "NEW");
             var includeUnpackagedOnHoldOrders = OpenOrderLifecyclePolicy.ShouldPollWithoutPackage(platformCode, "ON_HOLD");
-            var includeUnpackagedUnverifiedOrders = OpenOrderLifecyclePolicy.ShouldPollWithoutPackage(platformCode, "UNVERIFIED");
             var lifecycleOrders = db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId
                 && order.ConnectionId == connectionId
                 && (db.ShipmentPackages.Any(package => package.TenantId == tenantId
@@ -2207,8 +2209,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                         && package.Status != ShipmentPackageStatus.Cancelled
                         && package.Status != ShipmentPackageStatus.Returned)
                     || ((includeUnpackagedNewOrders && order.DerivedStatus == "NEW"
-                            || includeUnpackagedOnHoldOrders && order.DerivedStatus == "ON_HOLD"
-                            || includeUnpackagedUnverifiedOrders && order.DerivedStatus == "UNVERIFIED")
+                            || includeUnpackagedOnHoldOrders && order.DerivedStatus == "ON_HOLD")
                         && !db.ShipmentPackages.Any(package => package.TenantId == tenantId
                             && package.ConnectionId == connectionId
                             && package.OrderId == order.Id))));
