@@ -26,6 +26,14 @@ describe('product platform list status', () => {
       .toBe('Trendyol bağlantısı var; yayın durumu ayrıca doğrulanmalı')
   })
 
+  it('shows Hepsiburada imports as linked after the matched variant data refreshes', () => {
+    const state = productPlatformDisplayState(['IMPORT_ACCEPTED'], false, 2)
+
+    expect(state).toBe('linked')
+    expect(productPlatformDisplayLabel('Hepsiburada', ['IMPORT_ACCEPTED'], 2, 2, state))
+      .toBe('Hepsiburada bağlantısı var (2/2 varyant); yayın durumu ayrıca doğrulanmalı')
+  })
+
   it('shows Hepsiburada import processing states as in progress', () => {
     expect(productPlatformDisplayState(['IMPORT_SUBMITTED'], false)).toBe('processing')
     expect(productPlatformDisplayState(['IMPORT_IN_PROGRESS'], false)).toBe('processing')

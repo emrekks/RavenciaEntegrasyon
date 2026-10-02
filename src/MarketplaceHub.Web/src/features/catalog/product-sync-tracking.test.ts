@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { activeProductSyncJobs, isActiveProductSyncJob } from './product-sync-tracking'
+import { activeProductSyncJobs, isActiveProductSyncJob, productSyncJobsFinished } from './product-sync-tracking'
 
 describe('product sync tracking', () => {
   it('tracks pending, leased, and retry-scheduled catalog imports', () => {
@@ -22,5 +22,16 @@ describe('product sync tracking', () => {
     ]
 
     expect(activeProductSyncJobs(jobs).map(job => job.id)).toEqual(['active'])
+  })
+
+  it('waits for every queued product import to become terminal before refreshing', () => {
+    const jobs = [
+      { id: 'one', jobType: 'HEPSIBURADA_PRODUCT_SYNC', status: 'SUCCEEDED' },
+      { id: 'two', jobType: 'TRENDYOL_PRODUCT_SYNC', status: 'LEASED' }
+    ]
+
+    expect(productSyncJobsFinished(['one', 'two'], jobs)).toBe(false)
+    expect(productSyncJobsFinished(['one'], jobs)).toBe(true)
+    expect(productSyncJobsFinished(['missing'], jobs)).toBe(false)
   })
 })

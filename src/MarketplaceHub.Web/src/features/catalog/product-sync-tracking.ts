@@ -18,3 +18,9 @@ export function isActiveProductSyncJob(job: ProductSyncJobStatus) {
 export function activeProductSyncJobs<T extends ProductSyncJobStatus>(jobs: T[]) {
   return jobs.filter(isActiveProductSyncJob)
 }
+
+export function productSyncJobsFinished(jobIds: string[], jobs: ProductSyncJobStatus[]) {
+  if (!jobIds.length) return false
+  const terminalById = new Map(jobs.filter(job => job.id).map(job => [job.id!, terminalProductSyncStatuses.has(job.status.trim().toUpperCase())]))
+  return jobIds.every(jobId => terminalById.get(jobId) === true)
+}

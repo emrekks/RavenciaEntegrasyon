@@ -26,10 +26,11 @@ import { isPublicationLive, isPublicationSelectionDisabled, isPublicationStatusJ
 import { productPlatformDisplayLabel, productPlatformDisplayState } from './product-platform-status'
 import { quickPlatformUpdateTargets } from './platform-update-targets'
 import { productPublicationTargets } from './product-publication-submit'
-import { activeProductSyncJobs as filterActiveProductSyncJobs } from './product-sync-tracking'
+import { activeProductSyncJobs as filterActiveProductSyncJobs, productSyncJobsFinished } from './product-sync-tracking'
 import { readVariantMediaAssignmentDraft, updateVariantMediaAssignmentDraft, variantMediaAssignmentKey, type VariantMediaAssignmentDrafts } from './variant-media-assignments'
 import { OperationFeedbackToast, type OperationFeedback } from './operation-feedback-toast'
 import { productImportConnection, productImportIdentityLabel, singleProductLookupLabel } from './product-import-platforms'
+import { productImportOptionVisibility as getProductImportOptionVisibility, type ProductImportMethod, type ProductImportMode } from './product-import-options'
 import { productPlatformFilterGroups } from './product-platform-filter'
 import { formatPanelColorValue } from '../marketplace/color-value-format'
 
@@ -177,8 +178,6 @@ type AcceptedJob = { jobId: string }
 type PublicationStatus = { productId: string; connectionId: string; profileId: string | null; desiredStatus: string | null; actualStatus: string | null; lastRejectionCode: string | null; lastJobId: string | null; lastJobStatus: string | null; lines: Array<{ variantId: string; sku: string; barcode: string | null; desiredStatus: string; actualStatus: string; rejectionCode: string | null }> }
 type PublicationJobDetail = { job: { id: string; status: string; progressCurrent: number; progressTotal: number | null; progressPercent: number | null; progressLabel: string | null; lastErrorCode: string | null; lastErrorSummary: string | null } }
 type ProductSyncJob = { id: string; connectionId: string | null; jobType: string; status: string; progressCurrent: number; progressTotal: number | null; progressPercent: number | null; progressLabel: string | null; progressReceived: number; progressProcessed: number; progressSkipped: number; progressFailed: number; createdAt: string; completedAt: string | null }
-type ProductImportMode = 'FULL' | 'NEW_ONLY' | 'EXISTING_ONLY' | 'MAPPING_ONLY'
-type ProductImportMethod = 'BULK' | 'SINGLE'
 
 const key = () => crypto.randomUUID()
 const isProductImportConnection = productImportConnection
@@ -1014,6 +1013,7 @@ function ProductDeleteConfirmModal({ request, deleting, onClose, onConfirm }: { 
 }
 
 export function ProductsPage() {
+  const [trackedProductImportJobIds, setTrackedProductImportJobIds] = useState<string[]>([])
   const client = useQueryClient(); const navigate = useNavigate(); const [search, setSearch] = useState(''); const [searchFilter, setSearchFilter] = useState(''); const [status, setStatus] = useState(''); const [platform, setPlatform] = useState(''); const [stock, setStock] = useState(''); const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]); const [selectedProductCache, setSelectedProductCache] = useState<Record<string, Product>>({}); const [allProductsSelected, setAllProductsSelected] = useState(false); const [selectingAllProducts, setSelectingAllProducts] = useState(false); const [quickEdit, setQuickEdit] = useState<{ productIds: string[]; mode: QuickEditMode } | null>(null); const [productToast, setProductToast] = useState<{ message: string; kind: 'success' | 'error' | 'info' } | null>(null); const [bulkOpen, setBulkOpen] = useState(false); const [platformFilterOpen, setPlatformFilterOpen] = useState(false); const [deleteRequest, setDeleteRequest] = useState<ProductDeleteRequest | null>(null); const [deletingProducts, setDeletingProducts] = useState(false); const [productImportOpen, setProductImportOpen] = useState(false); const [productImportMethod, setProductImportMethod] = useState<ProductImportMethod>('BULK'); const [productImportConnectionIds, setProductImportConnectionIds] = useState<string[]>([]); const [productImportMode, setProductImportMode] = useState<ProductImportMode>('FULL'); const [productImportLookup, setProductImportLookup] = useState(''); const [productImportIncludeArchived, setProductImportIncludeArchived] = useState(true); const [productImportUpdateExistingProducts, setProductImportUpdateExistingProducts] = useState(true); const [productImporting, setProductImporting] = useState(false); const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null); const [lowStockOpen, setLowStockOpen] = useState(false); const [pageSize, setPageSize] = useState(20); const [pageNumber, setPageNumber] = useState(1); const [pageCursors, setPageCursors] = useState<Record<string, Record<number, string | null>>>({})
   const [pageJumping, setPageJumping] = useState(false)
   const [productImportIncludePendingApproval, setProductImportIncludePendingApproval] = useState(false)
@@ -1039,6 +1039,7 @@ export function ProductsPage() {
   const products = query.data?.items ?? []; const connections = (connectionsQuery.data?.items ?? []).filter(isProductImportConnection); const publicationConnections = (connectionsQuery.data?.items ?? []).filter(isProductPublicationConnection); const selectedImportPlatforms = productImportConnectionIds.map(connectionId => connections.find(connection => connection.id === connectionId)?.platformCode ?? '').filter(Boolean); const selectedImportHasShopify = selectedImportPlatforms.some(code => code.trim().toUpperCase() === 'SHOPIFY'); const selectedImportHasHepsiburada = selectedImportPlatforms.some(code => code.trim().toUpperCase() === 'HEPSIBURADA'); const selectedImportOnlyHepsiburada = selectedImportPlatforms.length > 0 && selectedImportPlatforms.every(code => code.trim().toUpperCase() === 'HEPSIBURADA'); const selectedImportIdentityLabel = productImportIdentityLabel(selectedImportPlatforms); const singleLookupLabel = singleProductLookupLabel(selectedImportPlatforms[0] ?? ''); const platforms = summaryQuery.data?.platforms ?? []
   const selectedImportHasTrendyol = selectedImportPlatforms.some(code => code.trim().toUpperCase() === 'TRENDYOL')
   const productImportSupportsPendingApproval = productImportMethod === 'BULK' && selectedImportHasTrendyol && (productImportMode === 'FULL' || productImportMode === 'NEW_ONLY' || productImportMode === 'MAPPING_ONLY')
+  const productImportOptions = getProductImportOptionVisibility({ method: productImportMethod, mode: productImportMode, onlyHepsiburada: selectedImportOnlyHepsiburada, hasHepsiburada: selectedImportHasHepsiburada, supportsPendingApproval: productImportSupportsPendingApproval })
   const selectedPlatformFilter = productPlatformFilterGroups.flatMap(group => group.options.map(option => ({ ...option, group: group.label }))).find(option => option.value === platform)
   const selectedPlatformLabel = selectedPlatformFilter ? `${selectedPlatformFilter.group} · ${selectedPlatformFilter.label}` : platform || 'Tüm platformlar'
   const totalCount = query.data?.totalCount ?? products.length; const totalPages = Math.max(1, Math.ceil(totalCount / pageSize)); const currentPage = Math.min(pageNumber, totalPages); const pageProducts = currentPage === pageNumber ? products : []; const pageProductGroups = useMemo(() => productRowsAsCards(pageProducts), [pageProducts])
@@ -1057,6 +1058,11 @@ export function ProductsPage() {
     }, 1500)
     return () => window.clearInterval(timer)
   }, [activeProductSyncJobs.length, client, pageCursor, pageNumber, pageSize, productFilters, productImportOpen])
+  useEffect(() => {
+    if (!productImportOpen || !productSyncJobsFinished(trackedProductImportJobIds, productSyncJobsQuery.data ?? [])) return
+    void client.invalidateQueries({ queryKey: ['products'] })
+    setTrackedProductImportJobIds([])
+  }, [client, productImportOpen, productSyncJobsQuery.data, trackedProductImportJobIds])
   useEffect(() => { const timer = window.setTimeout(() => setSearchFilter(search.trim()), 250); return () => window.clearTimeout(timer) }, [search])
   useEffect(() => { setPageNumber(1); setPageCursors({}); setSelectedProductIds([]); setSelectedProductCache({}); setAllProductsSelected(false); setBulkOpen(false) }, [productFilterKey, pageSize])
   useEffect(() => { if (platformFilterOpen) setExpandedPlatformGroup(selectedPlatformFilter?.group ?? null) }, [platformFilterOpen, selectedPlatformFilter?.group])
@@ -1127,7 +1133,7 @@ export function ProductsPage() {
       const existingOnly = productImportMode === 'EXISTING_ONLY'
       const mappingOnly = productImportMode === 'MAPPING_ONLY'
       const includePendingApproval = productImportSupportsPendingApproval && productImportIncludePendingApproval
-      await Promise.all(productImportConnectionIds.map(connectionId => {
+      const queuedProductSyncJobs = await Promise.all(productImportConnectionIds.map(connectionId => {
         const connection = connections.find(item => item.id === connectionId)
         const platformCode = connection?.platformCode.trim().toUpperCase()
         const isHepsiburada = platformCode === 'HEPSIBURADA'
@@ -1136,6 +1142,7 @@ export function ProductsPage() {
         if (productImportMethod === 'SINGLE') query.set('lookup', productImportLookup.trim())
         return hubApi<AcceptedJob>(`/connections/${connectionId}/product-sync-jobs?${query.toString()}`, { method: 'POST', headers: { 'Idempotency-Key': key() }, body: '{}' })
       }))
+      setTrackedProductImportJobIds(queuedProductSyncJobs.map(job => job.jobId))
       const modeLabel = productImportMethod === 'SINGLE' ? 'tekil ürün' : full ? 'tam katalog' : productImportMode === 'NEW_ONLY' ? 'ekli olmayan ürün' : productImportMode === 'MAPPING_ONLY' ? 'ürün eşleme' : 'ekli ürün güncelleme'
       const contentLabel = productImportMethod === 'BULK' && (full || existingOnly) ? selectedImportHasHepsiburada
         ? selectedImportOnlyHepsiburada ? ' · Hepsiburada ürün içeriği korunacak' : productImportUpdateExistingProducts ? ' · Hepsiburada içeriği korunacak, desteklenen platform içerikleri güncellenecek' : ' · mevcut ürün içerikleri korunacak'
@@ -1419,21 +1426,23 @@ export function ProductsPage() {
                 </label>
               </div>
             </fieldset>}
-            {productImportMethod === 'BULK' && <fieldset>
+            {productImportOptions.showOptionsSection && <fieldset>
               <legend>Seçenekler</legend>
-              {(productImportMode === 'FULL' || productImportMode === 'EXISTING_ONLY') && !selectedImportOnlyHepsiburada && <label className={'product-import-mode product-import-update-existing-option' + (productImportUpdateExistingProducts ? ' selected' : '')} title="Açıkken platformdaki ürün bilgileri mevcut ürünlerin üzerine yazılır; kapalıyken yerel içerik korunur. Hepsiburada bağlantılarında içerik her zaman korunur.">
+              <div className="product-import-options-grid">
+              {productImportOptions.showUpdateExisting && <label className={'product-import-mode product-import-update-existing-option' + (productImportUpdateExistingProducts ? ' selected' : '')} title="Açıkken platformdaki ürün bilgileri mevcut ürünlerin üzerine yazılır; kapalıyken yerel içerik korunur. Hepsiburada bağlantılarında içerik her zaman korunur.">
                 <input type="checkbox" checked={productImportUpdateExistingProducts} onChange={event => setProductImportUpdateExistingProducts(event.target.checked)} />
                 <span><strong>Mevcut ürün bilgilerini güncelle</strong><small>{productImportUpdateExistingProducts ? 'Açık: ad, açıklama, kategori, marka, varyant ve görseller güncellenir.' : 'Kapalı: mevcut ürün içeriği ve görseller korunur; stok/fiyat gözlemleri yine alınır.'}</small></span>
               </label>}
-              {selectedImportHasHepsiburada && productImportMode !== 'MAPPING_ONLY' && <p className="product-import-readonly-note">Hepsiburada ürün bilgileri ve durumları okunur; mevcut Ravencia ürün içeriği değiştirilmez.</p>}
-              {productImportMode !== 'MAPPING_ONLY' && <label className={'product-import-mode' + (productImportIncludeArchived ? ' selected' : '')} title={selectedImportHasShopify ? 'Shopify aktif, arşivlenmiş ve taslak ürünleri birlikte kapsar.' : 'Aktif ve arşivlenmiş varyantların birlikte aktarılıp aktarılmayacağını belirler.'}>
+              {productImportOptions.showHepsiburadaReadOnlyNote && <div className="product-import-options-note"><span><strong>Hepsiburada içerik koruması</strong><small>Ürün bilgileri ve durumları okunur; mevcut Ravencia ürün içeriği değiştirilmez.</small></span></div>}
+              {productImportOptions.showArchived && <label className={'product-import-mode' + (productImportIncludeArchived ? ' selected' : '')} title={selectedImportHasShopify ? 'Shopify aktif, arşivlenmiş ve taslak ürünleri birlikte kapsar.' : 'Aktif ve arşivlenmiş varyantların birlikte aktarılıp aktarılmayacağını belirler.'}>
                 <input type="checkbox" checked={productImportIncludeArchived} onChange={event => setProductImportIncludeArchived(event.target.checked)} />
                 <span><strong>{selectedImportHasShopify ? 'Arşiv ve taslak ürünlerini dahil et' : 'Arşiv ürünlerini dahil et'}</strong><small>{productImportIncludeArchived ? selectedImportHasShopify ? 'Açık: aktif, arşivlenmiş ve taslak ürünler birlikte getirilir.' : 'Açık: aktif ve arşivlenmiş varyantlar birlikte getirilir.' : selectedImportHasShopify ? 'Kapalı: yalnızca yayınlanmış aktif ürünler alınır.' : 'Kapalı: yalnızca aktif varyantlar panele aktarılır.'}</small></span>
               </label>}
-              {productImportSupportsPendingApproval && <label className={'product-import-mode' + (productImportIncludePendingApproval ? ' selected' : '')} title="Trendyol onay sürecinde bekleyen ürünleri de aktarım kapsamına alır.">
+              {productImportOptions.showPendingApproval && <label className={'product-import-mode' + (productImportIncludePendingApproval ? ' selected' : '')} title="Trendyol onay sürecinde bekleyen ürünleri de aktarım kapsamına alır.">
                 <input type="checkbox" checked={productImportIncludePendingApproval} onChange={event => setProductImportIncludePendingApproval(event.target.checked)} />
                 <span><strong>Onay bekleyen ürünleri dahil et</strong><small>{productImportIncludePendingApproval ? 'Açık: Trendyol onay sürecinde bekleyen ürünler de eklenir veya eşlenir.' : 'Kapalı: yalnızca onaylı Trendyol ürünleri işlenir.'}</small></span>
               </label>}
+              </div>
             </fieldset>}
             {activeProductSyncJobs.length > 0 && <section className="product-import-progress" aria-live="polite">
               <div className="product-import-progress-heading"><strong>Devam eden aktarmalar</strong><small>{activeProductSyncJobs.length} işlem</small></div>
