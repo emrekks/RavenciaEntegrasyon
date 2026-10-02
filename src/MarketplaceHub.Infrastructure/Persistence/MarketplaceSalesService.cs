@@ -121,7 +121,13 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 ?? InvoiceDocumentUrl(order.CustomerSnapshotJson);
             var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
             var dueAt = order.ShipmentDueAt ?? OperationalDueAt(order.CustomerSnapshotJson);
-            var claimOnlyWithoutPackage = string.Equals(order.DerivedStatus, "UNVERIFIED", StringComparison.OrdinalIgnoreCase);
+            var unverifiedWithoutPackage = OpenOrderLifecyclePolicy.IsHepsiburadaOrderUnverifiedWithoutPackage(
+                connection?.PlatformCode,
+                order.DerivedStatus,
+                orderPackages.Count,
+                order.OrderedAt,
+                now);
+            var displayStatus = unverifiedWithoutPackage ? "UNVERIFIED" : order.DerivedStatus;
             var lineViews = orderLines.Select(x =>
             {
                 var variant = ResolveOrderVariant(order, x);
@@ -132,11 +138,11 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             }).ToList();
             var packageViews = orderPackages.Select(x => Map(x, order.OrderNumber)).ToList();
             return new OrderListView(
-                order.Id, order.OrderNumber, order.DerivedStatus, order.Currency, order.NetAmount, order.OrderedAt,
+                order.Id, order.OrderNumber, displayStatus, order.Currency, order.NetAmount, order.OrderedAt,
                 orderLines.Count, orderPackages.Count, order.Version,
                 order.ConnectionId, connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol",
                 customer.Name, customer.OrderType, customer.IsMicroExport, dueAt,
-                OpenOrderLifecyclePolicy.ShouldShowShipmentDeadlineWarning(connection?.PlatformCode, order.DerivedStatus, dueAt, now, claimOnlyWithoutPackage), InvoiceLabelForPlatform(invoice, package?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown, order.CustomerSnapshotJson, orderPackages.Select(x => x.RawStatus), connection?.PlatformCode),
+                OpenOrderLifecyclePolicy.ShouldShowShipmentDeadlineWarning(connection?.PlatformCode, displayStatus, dueAt, now, unverifiedWithoutPackage), InvoiceLabelForPlatform(invoice, package?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown, order.CustomerSnapshotJson, orderPackages.Select(x => x.RawStatus), connection?.PlatformCode),
                 package?.CargoProviderExternalId ?? JsonText(order.CustomerSnapshotJson, "marketplaceCargoProviderName"), package?.CargoTrackingNumber,
                 orderLines.Select(x => ResolveOrderVariant(order, x)).Where(x => x is not null).Select(x => imageUrls.GetValueOrDefault(x!.Id)).FirstOrDefault(x => x is not null),
                 orderLines.Sum(x => OrderLinePresentationPolicy.ActiveQuantity(x.OrderedQuantity, x.CancelledQuantity)), customer.Email, customer.TaxOrIdentityNumber,
@@ -435,14 +441,19 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         };
     }
 
-    private IQueryable<Order> HepsiburadaUnpackagedNewOrders(Guid tenantId) => db.Orders.AsNoTracking()
-        .Where(order => order.TenantId == tenantId
-            && order.DerivedStatus == "NEW"
-            && db.PlatformConnections.Any(connection => connection.TenantId == tenantId
-                && connection.Id == order.ConnectionId
-                && connection.PlatformCode == "HEPSIBURADA"
-                && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
-            && !db.ShipmentPackages.Any(package => package.TenantId == tenantId && package.OrderId == order.Id));
+    private IQueryable<Order> HepsiburadaUnpackagedNewOrders(Guid tenantId)
+    {
+        var verificationCutoff = OpenOrderLifecyclePolicy.HepsiburadaUnpackagedOrderVerificationCutoff(timeProvider.GetUtcNow());
+        return db.Orders.AsNoTracking()
+            .Where(order => order.TenantId == tenantId
+                && order.DerivedStatus == "NEW"
+                && order.OrderedAt >= verificationCutoff
+                && db.PlatformConnections.Any(connection => connection.TenantId == tenantId
+                    && connection.Id == order.ConnectionId
+                    && connection.PlatformCode == "HEPSIBURADA"
+                    && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
+                && !db.ShipmentPackages.Any(package => package.TenantId == tenantId && package.OrderId == order.Id));
+    }
 
     internal IQueryable<Order> HepsiburadaUnpackagedOnHoldOrders(Guid tenantId) => db.Orders.AsNoTracking()
         .Where(order => order.TenantId == tenantId
@@ -462,14 +473,19 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
             && !db.ShipmentPackages.Any(package => package.TenantId == tenantId && package.OrderId == order.Id));
 
-    internal IQueryable<Order> HepsiburadaUnverifiedOrders(Guid tenantId) => db.Orders.AsNoTracking()
-        .Where(order => order.TenantId == tenantId
-            && order.DerivedStatus == "UNVERIFIED"
-            && db.PlatformConnections.Any(connection => connection.TenantId == tenantId
-                && connection.Id == order.ConnectionId
-                && connection.PlatformCode == "HEPSIBURADA"
-                && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
-            && !db.ShipmentPackages.Any(package => package.TenantId == tenantId && package.OrderId == order.Id));
+    internal IQueryable<Order> HepsiburadaUnverifiedOrders(Guid tenantId)
+    {
+        var verificationCutoff = OpenOrderLifecyclePolicy.HepsiburadaUnpackagedOrderVerificationCutoff(timeProvider.GetUtcNow());
+        return db.Orders.AsNoTracking()
+            .Where(order => order.TenantId == tenantId
+                && (order.DerivedStatus == "UNVERIFIED"
+                    || order.DerivedStatus == "NEW" && order.OrderedAt < verificationCutoff)
+                && db.PlatformConnections.Any(connection => connection.TenantId == tenantId
+                    && connection.Id == order.ConnectionId
+                    && connection.PlatformCode == "HEPSIBURADA"
+                    && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
+                && !db.ShipmentPackages.Any(package => package.TenantId == tenantId && package.OrderId == order.Id));
+    }
 
     public async Task<ServiceResult<OrderDetailView>> OrderAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
     {

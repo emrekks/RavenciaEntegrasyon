@@ -8,6 +8,23 @@ namespace MarketplaceHub.Application.Tests;
 
 public sealed class MarketplaceSalesStatusTabTests
 {
+    [Fact]
+    public void Hepsiburada_unpacked_new_order_older_than_one_month_is_unverified_not_delivered()
+    {
+        var now = new DateTimeOffset(2026, 10, 2, 0, 0, 0, TimeSpan.Zero);
+
+        Assert.True(OpenOrderLifecyclePolicy.IsHepsiburadaOrderUnverifiedWithoutPackage(
+            "HEPSIBURADA", "NEW", 0, now.AddMonths(-1).AddSeconds(-1), now));
+        Assert.False(OpenOrderLifecyclePolicy.IsHepsiburadaOrderUnverifiedWithoutPackage(
+            "HEPSIBURADA", "NEW", 0, now.AddMonths(-1).AddSeconds(1), now));
+        Assert.False(OpenOrderLifecyclePolicy.IsHepsiburadaOrderUnverifiedWithoutPackage(
+            "HEPSIBURADA", "NEW", 1, now.AddMonths(-2), now));
+        Assert.False(OpenOrderLifecyclePolicy.IsHepsiburadaOrderUnverifiedWithoutPackage(
+            "TRENDYOL", "NEW", 0, now.AddMonths(-2), now));
+        Assert.False(OpenOrderLifecyclePolicy.IsHepsiburadaOrderUnverifiedWithoutPackage(
+            "HEPSIBURADA", "DELIVERED", 0, now.AddMonths(-2), now));
+    }
+
     [Theory]
     [InlineData(MarketplaceJobTypes.HepsiburadaOrderRecoverySync, 2)]
     [InlineData(MarketplaceJobTypes.OrderRecoverySync, 6)]
@@ -77,10 +94,11 @@ public sealed class MarketplaceSalesStatusTabTests
         Assert.Contains("HEPSIBURADA", sql, StringComparison.Ordinal);
         Assert.Contains("NOT EXISTS", sql, StringComparison.Ordinal);
         Assert.Contains("NEW", sql, StringComparison.Ordinal);
+        Assert.Contains("OrderedAt", sql, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void Unverified_order_filter_keeps_claim_only_Hepsiburada_rows_out_of_new()
+    public void Unverified_order_filter_includes_stale_unpacked_Hepsiburada_rows()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseNpgsql("Host=localhost;Port=5432;Database=metadata-only;Username=metadata-only;Password=metadata-only")
@@ -94,8 +112,10 @@ public sealed class MarketplaceSalesStatusTabTests
 
         var sql = query.ToQueryString();
         Assert.Contains("UNVERIFIED", sql, StringComparison.Ordinal);
+        Assert.Contains("NEW", sql, StringComparison.Ordinal);
         Assert.Contains("HEPSIBURADA", sql, StringComparison.Ordinal);
         Assert.Contains("NOT EXISTS", sql, StringComparison.Ordinal);
+        Assert.Contains("OrderedAt", sql, StringComparison.Ordinal);
     }
 
     [Fact]

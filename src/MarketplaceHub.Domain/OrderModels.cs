@@ -115,6 +115,23 @@ public static class ShipmentPackageStateMachine
 
 public static class OpenOrderLifecyclePolicy
 {
+    public static DateTimeOffset HepsiburadaUnpackagedOrderVerificationCutoff(DateTimeOffset now) => now.AddMonths(-1);
+
+    public static bool IsHepsiburadaOrderUnverifiedWithoutPackage(
+        string? platformCode,
+        string? derivedStatus,
+        int packageCount,
+        DateTimeOffset orderedAt,
+        DateTimeOffset now)
+    {
+        if (!string.Equals(platformCode?.Trim(), "HEPSIBURADA", StringComparison.OrdinalIgnoreCase) || packageCount != 0)
+            return false;
+
+        var status = derivedStatus?.Trim().ToUpperInvariant();
+        return status == "UNVERIFIED"
+            || status == "NEW" && orderedAt < HepsiburadaUnpackagedOrderVerificationCutoff(now);
+    }
+
     public static bool ShouldPoll(ShipmentPackageStatus status) =>
         status is not ShipmentPackageStatus.Delivered and not ShipmentPackageStatus.Cancelled and not ShipmentPackageStatus.Returned;
 
