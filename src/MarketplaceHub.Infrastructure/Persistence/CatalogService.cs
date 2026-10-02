@@ -355,7 +355,9 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         ApplyProductFilters(ref query, tenantId, status, search, platform);
         var countKey = $"catalog:product-family-count:v3:{tenantId:N}:{status?.Trim()}:{search?.Trim()}:{platform?.Trim()}:{stock?.Trim()}";
         var cachedCount = hasPlatformStatusFilter ? null : countCache.Get(countKey);
-        if (!cursors.TryDecodeProduct(after, out var afterCreatedAt, out var afterId))
+        var afterCreatedAt = default(DateTimeOffset);
+        var afterId = Guid.Empty;
+        if (!string.IsNullOrWhiteSpace(after) && !cursors.TryDecodeProduct(after, out afterCreatedAt, out afterId))
             throw new ArgumentException("Cursor geçersiz veya süresi dolmuş.", nameof(after));
         // A platform refresh updates the card content, but must not reshuffle the
         // catalog. Keep the list in its original insertion order instead of the

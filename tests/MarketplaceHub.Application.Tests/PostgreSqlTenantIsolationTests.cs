@@ -226,7 +226,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     [PostgreSqlFact]
     public async Task ReceiveAsync_HepsiburadaClaimPackageQueuesPlatformSpecificIngestJob()
     {
-        var tenant = NewTenant("hepsiburada-claim-package-webhook");
+        var tenant = NewTenant("hb-claim-package");
         var connection = new PlatformConnection
         {
             Id = Guid.CreateVersion7(),
