@@ -32,7 +32,9 @@ public static class CapabilityEvidencePolicy
             || source.Scheme != Uri.UriSchemeHttps
             || !source.Host.Equals(OfficialDocumentationHost(connection.PlatformCode), StringComparison.OrdinalIgnoreCase)) return false;
 
-        if (!RequiresStageFixtureChecksum(capabilityCode)) return true;
+        if (!RequiresStageFixtureChecksum(capabilityCode)
+            || string.Equals(connection.PlatformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
+                && capabilityCode.Trim().ToUpperInvariant() is MarketplaceCapabilities.PriceWrite or MarketplaceCapabilities.InventoryWrite or MarketplaceCapabilities.ShipmentWrite or MarketplaceCapabilities.ReturnWrite) return true;
         var checksum = capability.FixtureChecksum;
         return checksum is { Length: 64 } && checksum.All(Uri.IsHexDigit);
     }
