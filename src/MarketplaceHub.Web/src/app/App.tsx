@@ -47,7 +47,7 @@ function Shell({ me }: { me: Me }) {
   const appearanceSettings = useAppearanceSettings()
   const location = useLocation()
   const navigationSummary = useQuery({ queryKey: ['dashboard-bootstrap'], queryFn: () => hubApi<DashboardBootstrap>('/dashboard/bootstrap'), staleTime: 30_000, refetchOnWindowFocus: true })
-  const orderSummary = useQuery({ queryKey: ['orders', 'summary', []], queryFn: () => hubApi<OrderNavigationSummary>('/orders/summary'), staleTime: 30_000, refetchOnWindowFocus: true })
+  const orderSummary = useQuery({ queryKey: ['orders', 'summary', []], queryFn: () => hubApi<OrderNavigationSummary>('/orders/summary'), staleTime: 30_000, refetchOnMount: 'always', refetchOnWindowFocus: true, refetchInterval: 15_000, refetchIntervalInBackground: true })
   const invoiceWorkspaceSummary = useQuery({ queryKey: ['invoice-workspace'], queryFn: () => hubApi<Array<{ isDueSoon: boolean }>>('/invoice-workspace'), staleTime: 30_000, refetchOnWindowFocus: true })
   const [sidebarPinned, setSidebarPinned] = useState(() => localStorage.getItem('ravencia.sidebarPinned') !== 'false')
   const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false)

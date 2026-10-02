@@ -18,6 +18,22 @@ describe('product import options', () => {
     })
   })
 
+  it('hides the options heading when mapping has no selected connection or platform-specific options', () => {
+    expect(productImportOptionVisibility({
+      method: 'BULK',
+      mode: 'MAPPING_ONLY',
+      onlyHepsiburada: false,
+      hasHepsiburada: false,
+      supportsPendingApproval: false
+    })).toMatchObject({
+      showUpdateExisting: false,
+      showHepsiburadaReadOnlyNote: false,
+      showArchived: false,
+      showPendingApproval: false,
+      showOptionsSection: false
+    })
+  })
+
   it('keeps Hepsiburada read-only guidance and archive selection in the shared options layout', () => {
     expect(productImportOptionVisibility({
       method: 'BULK',

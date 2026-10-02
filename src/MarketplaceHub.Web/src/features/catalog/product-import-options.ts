@@ -22,11 +22,13 @@ export function productImportOptionVisibility(options: {
   const showArchived = isBulk && options.mode !== 'MAPPING_ONLY'
   const showPendingApproval = isBulk && options.supportsPendingApproval
 
+  const hasVisibleOptions = showHepsiburadaReadOnlyNote || showArchived || showPendingApproval
+
   return {
     showUpdateExisting,
     showHepsiburadaReadOnlyNote,
     showArchived,
     showPendingApproval,
-    showOptionsSection: showUpdateExisting || showHepsiburadaReadOnlyNote || showArchived || showPendingApproval
+    showOptionsSection: hasVisibleOptions
   }
 }
