@@ -154,14 +154,35 @@ public sealed partial class HepsiburadaHttpClient(
 
         var response = await SendAsync(account, account.CatalogBaseAddress, HttpMethod.Get, endpoint, cancellationToken);
         if (!response.IsSuccess) return AdapterResult<AdapterPageResult<RemoteReferenceItem>>.Failure(response.Error!, response.RateLimit);
+        if (HepsiburadaJsonMapper.ReferenceApiErrorCode(response.Value!.RootElement) is { } apiErrorCode)
+        {
+            var (code, message) = apiErrorCode switch
+            {
+                1001 => ("HEPSIBURADA_REFERENCE_CATEGORY_NOT_LEAF", "Hepsiburada bu kategori için özellik değerlerini vermedi; kategori uç kategori değil."),
+                1002 => ("HEPSIBURADA_REFERENCE_CATEGORY_INACTIVE", "Hepsiburada bu kategori için özellik değerlerini vermedi; kategori aktif değil."),
+                1003 => ("HEPSIBURADA_REFERENCE_CATEGORY_UNAVAILABLE", "Hepsiburada bu kategori için özellik değerlerini vermedi; kategori uç ve aktif değil."),
+                1004 or 1006 => ("HEPSIBURADA_REFERENCE_CATEGORY_NOT_FOUND", "Hepsiburada kategori kimliğini bulamadı."),
+                1005 => ("HEPSIBURADA_REFERENCE_CATEGORY_RELATION_MISSING", "Hepsiburada kategori için özellik ilişkisini bulamadı."),
+                2001 => ("HEPSIBURADA_REFERENCE_ATTRIBUTE_NOT_ENUM", "Hepsiburada bu özelliğin enum türünde olmadığını bildirdi; bu özellik için değer listesi bulunmuyor."),
+                2002 => ("HEPSIBURADA_REFERENCE_ATTRIBUTE_NOT_FOUND", "Hepsiburada bu kategori özelliği kimliğini bulamadı."),
+                _ => ($"HEPSIBURADA_REFERENCE_API_REJECTED_{apiErrorCode}", $"Hepsiburada referans isteğini {apiErrorCode} koduyla reddetti.")
+            };
+            return AdapterResult<AdapterPageResult<RemoteReferenceItem>>.Failure(new(AdapterErrorClass.Validation, code, message, null, null, null), response.RateLimit);
+        }
         try
         {
             var result = HepsiburadaJsonMapper.References(type, response.Value!.RootElement, resource.ParentExternalId, pageNumber, limit);
             return AdapterResult<AdapterPageResult<RemoteReferenceItem>>.Success(result, response.RateLimit);
         }
-        catch (JsonException)
+        catch (JsonException exception)
         {
-            return Failure<AdapterPageResult<RemoteReferenceItem>>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_REFERENCE_CONTRACT_INVALID", "Hepsiburada referans yanıtı beklenen veri sözleşmesiyle eşleşmiyor.", HttpStatusCode.BadGateway);
+            var message = exception.Message switch
+            {
+                "Hepsiburada referans yanıtında veri listesi yok." => "Hepsiburada başarılı yanıtında kategori, özellik veya değer listesi bulunamadı.",
+                "Hepsiburada enum değer kimliği veya adı eksik." => "Hepsiburada değer listesinde bir seçeneğin id veya value alanı eksik.",
+                _ => "Hepsiburada referans yanıtı beklenen veri sözleşmesiyle eşleşmiyor."
+            };
+            return Failure<AdapterPageResult<RemoteReferenceItem>>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_REFERENCE_CONTRACT_INVALID", message, HttpStatusCode.BadGateway);
         }
     }
 

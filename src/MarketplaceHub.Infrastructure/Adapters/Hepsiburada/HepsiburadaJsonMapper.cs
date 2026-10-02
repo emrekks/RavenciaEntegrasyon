@@ -19,15 +19,31 @@ internal static class HepsiburadaJsonMapper
     public static AdapterPageResult<RemoteReferenceItem> References(string resourceType, JsonElement root, string? parentExternalId, int page, int limit)
     {
         var data = Unwrap(root);
-        var itemArray = Find(data, "items", "categories", "attributes", "categoryAttributes", "values", "content", "data");
+        var itemArray = Find(data, "items", "categories", "attributes", "categoryAttributes", "attributeValues", "attributeValueList", "enumValues", "options", "values", "content", "data", "results", "result", "records", "rows");
         if (itemArray.ValueKind == JsonValueKind.Undefined && data.ValueKind == JsonValueKind.Array) itemArray = data;
-        if (itemArray.ValueKind != JsonValueKind.Array) throw new JsonException("Hepsiburada referans yanıtında veri listesi yok.");
+        var isSingleValue = resourceType == "ATTRIBUTE_VALUES"
+            && data.ValueKind == JsonValueKind.Object
+            && Text(data, "id", "valueId", "attributeValueId") is not null
+            && Text(data, "value", "name", "attributeValue", "attributeValueName") is not null;
+        if (itemArray.ValueKind == JsonValueKind.Undefined && data.ValueKind == JsonValueKind.Object)
+        {
+            var candidateArrays = data.EnumerateObject()
+                .Where(property => property.Value.ValueKind == JsonValueKind.Array
+                    && !string.Equals(property.Name, "errors", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(property.Name, "validationErrors", StringComparison.OrdinalIgnoreCase))
+                .Select(property => property.Value)
+                .Take(2)
+                .ToArray();
+            if (candidateArrays.Length == 1) itemArray = candidateArrays[0];
+        }
+        if (itemArray.ValueKind != JsonValueKind.Array && !isSingleValue) throw new JsonException("Hepsiburada referans yanıtında veri listesi yok.");
 
         var totalCount = Integer(root, "totalElements", "totalCount", "TotalElements", "TotalCount")
             ?? Integer(data, "totalElements", "totalCount", "TotalElements", "TotalCount");
         var totalPages = Integer(root, "totalPages", "TotalPages") ?? Integer(data, "totalPages", "TotalPages");
         var items = new List<RemoteReferenceItem>();
-        foreach (var item in itemArray.EnumerateArray())
+        JsonElement[] sourceItems = isSingleValue && itemArray.ValueKind != JsonValueKind.Array ? new[] { data } : itemArray.EnumerateArray().ToArray();
+        foreach (var item in sourceItems)
         {
             switch (resourceType)
             {
@@ -61,7 +77,7 @@ internal static class HepsiburadaJsonMapper
                 case "ATTRIBUTE_VALUES":
                     {
                         var id = Text(item, "id", "valueId", "attributeValueId");
-                        var name = Text(item, "value", "name");
+                        var name = Text(item, "value", "name", "attributeValue", "attributeValueName");
                         if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(name)) throw new JsonException("Hepsiburada enum değer kimliği veya adı eksik.");
                         items.Add(new(resourceType, id, parentExternalId, name, name, 0, true, true, item.GetRawText()));
                         break;
@@ -78,6 +94,19 @@ internal static class HepsiburadaJsonMapper
                 : items.Count >= limit;
         var nextCursor = hasMore ? checked(page + 1).ToString(CultureInfo.InvariantCulture) : null;
         return new(items, nextCursor, hasMore, totalCount);
+    }
+
+    public static int? ReferenceApiErrorCode(JsonElement root)
+    {
+        var success = Boolean(root, "success", "isSuccess");
+        var code = Integer(root, "code", "errorCode");
+        if (success == false) return code is > 0 ? code : -1;
+        if (code is > 0) return code;
+        var data = Unwrap(root);
+        success = Boolean(data, "success", "isSuccess");
+        code = Integer(data, "code", "errorCode");
+        if (success == false) return code is > 0 ? code : -1;
+        return code is > 0 ? code : null;
     }
 
     public static RemoteProduct Product(JsonElement item)

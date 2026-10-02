@@ -490,6 +490,57 @@ public sealed class HepsiburadaAdapterTests
     }
 
     [Fact]
+    public void ReferenceMapper_MapsDocumentedEnumValuesFromNamedAndSingleItemData()
+    {
+        using var listJson = JsonDocument.Parse("""
+        {
+          "success": true,
+          "code": 0,
+          "totalElements": 1,
+          "totalPages": 1,
+          "data": { "enumValues": [ { "id": 23, "value": "Kadın" } ] }
+        }
+        """);
+        using var singleJson = JsonDocument.Parse("""
+        {
+          "success": true,
+          "data": { "id": "male", "value": "Erkek" }
+        }
+        """);
+
+        var listPage = HepsiburadaJsonMapper.References("ATTRIBUTE_VALUES", listJson.RootElement, "12087195/cinsiyet", 0, 1000);
+        var singlePage = HepsiburadaJsonMapper.References("ATTRIBUTE_VALUES", singleJson.RootElement, "12087195/cinsiyet", 0, 1000);
+
+        Assert.Equal("23", Assert.Single(listPage.Items).ExternalId);
+        Assert.Equal("Kadın", listPage.Items[0].Name);
+        Assert.Equal("male", Assert.Single(singlePage.Items).ExternalId);
+        Assert.Equal("Erkek", singlePage.Items[0].Name);
+    }
+
+    [Fact]
+    public void ReferenceMapper_RecognizesHepsiburadaReferenceApiErrors()
+    {
+        using var errorJson = JsonDocument.Parse("""
+        {
+          "success": false,
+          "code": 2001,
+          "message": "Property is not enum",
+          "data": null
+        }
+        """);
+        using var successJson = JsonDocument.Parse("""
+        {
+          "success": true,
+          "code": 0,
+          "data": []
+        }
+        """);
+
+        Assert.Equal(2001, HepsiburadaJsonMapper.ReferenceApiErrorCode(errorJson.RootElement));
+        Assert.Null(HepsiburadaJsonMapper.ReferenceApiErrorCode(successJson.RootElement));
+    }
+
+    [Fact]
     public void OrderMapper_UsesOrderNumberAndDoesNotInventPackageTimestamp()
     {
         using var json = JsonDocument.Parse("""
