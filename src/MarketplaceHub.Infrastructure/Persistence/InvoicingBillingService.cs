@@ -96,8 +96,14 @@ public sealed partial class InvoicingBillingService(
                 .Distinct()
                 .ToListAsync(cancellationToken))
                 .ToHashSet();
+        var packageCountsByOrder = packages
+            .GroupBy(package => package.OrderId)
+            .ToDictionary(group => group.Key, group => group.Count());
         packages = packages
-            .Where(package => InvoiceWorkspacePackagePolicy.ShouldInclude(package.CreatedBy, allocatedStatusFeedPackageIds.Contains(package.Id)))
+            .Where(package => InvoiceWorkspacePackagePolicy.ShouldInclude(
+                package.CreatedBy,
+                allocatedStatusFeedPackageIds.Contains(package.Id),
+                packageCountsByOrder.GetValueOrDefault(package.OrderId)))
             .ToList();
         if (packages.Count == 0) return [];
 

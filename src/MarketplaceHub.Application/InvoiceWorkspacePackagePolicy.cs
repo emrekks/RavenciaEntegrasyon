@@ -2,7 +2,8 @@ namespace MarketplaceHub.Application;
 
 public static class InvoiceWorkspacePackagePolicy
 {
-    public static bool ShouldInclude(string? createdBy, bool hasLineAllocations) =>
+    public static bool ShouldInclude(string? createdBy, bool hasLineAllocations, int packagesForOrder) =>
         !string.Equals(createdBy, "HEPSIBURADA_STATUS_FEED", StringComparison.Ordinal)
-        || hasLineAllocations;
+        || hasLineAllocations
+        || packagesForOrder == 1;
 }

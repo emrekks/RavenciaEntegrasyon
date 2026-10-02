@@ -24,10 +24,11 @@ public sealed class InvoiceWorkspaceMarketplacePolicyTests
     }
 
     [Fact]
-    public void StatusFeedPackagesNeedLineAllocationsBeforeEnteringInvoiceWorkspace()
+    public void StatusFeedPackagesAreSafeToShowWhenAllocationIsKnown()
     {
-        Assert.False(InvoiceWorkspacePackagePolicy.ShouldInclude("HEPSIBURADA_STATUS_FEED", false));
-        Assert.True(InvoiceWorkspacePackagePolicy.ShouldInclude("HEPSIBURADA_STATUS_FEED", true));
-        Assert.True(InvoiceWorkspacePackagePolicy.ShouldInclude("MARKETPLACE_DETAIL", false));
+        Assert.False(InvoiceWorkspacePackagePolicy.ShouldInclude("HEPSIBURADA_STATUS_FEED", false, 2));
+        Assert.True(InvoiceWorkspacePackagePolicy.ShouldInclude("HEPSIBURADA_STATUS_FEED", false, 1));
+        Assert.True(InvoiceWorkspacePackagePolicy.ShouldInclude("HEPSIBURADA_STATUS_FEED", true, 2));
+        Assert.True(InvoiceWorkspacePackagePolicy.ShouldInclude("MARKETPLACE_DETAIL", false, 2));
     }
 }
