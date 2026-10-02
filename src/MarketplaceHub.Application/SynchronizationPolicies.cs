@@ -62,16 +62,19 @@ public static class HepsiburadaOrderHistoryPolicy
 
     public static bool ShouldImportPaidOrder(string? lifecycleStatus, DateTimeOffset orderedAt, DateTimeOffset anchor)
     {
-        // The paid-order feed returns Open/Unpacked rows. Old Open rows no
-        // longer have package-status evidence in the one-month status feeds,
-        // so they must not be added as apparently unverified orders. Unpacked
-        // remains actionable even when the original order is older. Unknown
-        // or absent lifecycle values are not safe to import as new orders.
-        if (string.Equals(lifecycleStatus?.Trim(), "UNPACKED", StringComparison.OrdinalIgnoreCase))
-            return true;
-        return string.Equals(lifecycleStatus?.Trim(), "OPEN", StringComparison.OrdinalIgnoreCase)
-            && orderedAt >= InitialWindowStart(anchor);
+        // The paid-order feed returns Open/Unpacked rows. The package status
+        // feeds cover only the last month, so an older package-less order
+        // cannot be verified even when its line has just become Unpacked.
+        var status = lifecycleStatus?.Trim();
+        return orderedAt >= InitialWindowStart(anchor)
+            && (string.Equals(status, "OPEN", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(status, "UNPACKED", StringComparison.OrdinalIgnoreCase));
     }
+
+    public static bool ShouldImportPaidOrder(RemoteOrder order, DateTimeOffset anchor) =>
+        ShouldImportPaidOrder(order.LifecycleStatus, order.OrderedAt, anchor)
+        && (order.Packages.Count > 0 || order.Lines.Count > 0 &&
+            !order.Lines.All(line => string.Equals(line.RawStatus?.Trim(), "ClaimCreated", StringComparison.OrdinalIgnoreCase)));
 
     public static DateTimeOffset ClampWindowStart(DateTimeOffset anchor, DateTimeOffset candidate)
     {

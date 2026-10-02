@@ -115,7 +115,7 @@ public sealed class MarketplaceSalesStatusTabTests
     }
 
     [Fact]
-    public void Order_list_hides_unverified_old_unpacked_Hepsiburada_rows_without_deleting_them()
+    public void Order_list_hides_old_unpacked_Hepsiburada_rows_in_every_status_without_deleting_them()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseNpgsql("Host=localhost;Port=5432;Database=metadata-only;Username=metadata-only;Password=metadata-only")
@@ -125,11 +125,10 @@ public sealed class MarketplaceSalesStatusTabTests
         var tenantId = Guid.NewGuid();
         IQueryable<Order> query = db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId);
 
-        query = service.ExcludeUnverifiedHepsiburadaOrders(query, tenantId);
+        query = service.ExcludeStaleUnpackagedHepsiburadaOrders(query, tenantId);
 
         var sql = query.ToQueryString();
         Assert.Contains("UNVERIFIED", sql, StringComparison.Ordinal);
-        Assert.Contains("NEW", sql, StringComparison.Ordinal);
         Assert.Contains("HEPSIBURADA", sql, StringComparison.Ordinal);
         Assert.Contains("NOT EXISTS", sql, StringComparison.Ordinal);
         Assert.Contains("OrderedAt", sql, StringComparison.Ordinal);
