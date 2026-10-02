@@ -498,7 +498,7 @@ public sealed class HepsiburadaAdapterTests
           "code": 0,
           "totalElements": 1,
           "totalPages": 1,
-          "data": { "enumValues": [ { "id": 23, "value": "Kadın" } ] }
+          "data": { "enumValues": [ { "value": "Kadın" } ] }
         }
         """);
         using var singleJson = JsonDocument.Parse("""
@@ -511,7 +511,7 @@ public sealed class HepsiburadaAdapterTests
         var listPage = HepsiburadaJsonMapper.References("ATTRIBUTE_VALUES", listJson.RootElement, "12087195/cinsiyet", 0, 1000);
         var singlePage = HepsiburadaJsonMapper.References("ATTRIBUTE_VALUES", singleJson.RootElement, "12087195/cinsiyet", 0, 1000);
 
-        Assert.Equal("23", Assert.Single(listPage.Items).ExternalId);
+        Assert.Equal("Kadın", Assert.Single(listPage.Items).ExternalId);
         Assert.Equal("Kadın", listPage.Items[0].Name);
         Assert.Equal("male", Assert.Single(singlePage.Items).ExternalId);
         Assert.Equal("Erkek", singlePage.Items[0].Name);
@@ -552,6 +552,7 @@ public sealed class HepsiburadaAdapterTests
 
         var error = Assert.Throws<JsonException>(() => HepsiburadaJsonMapper.References("ATTRIBUTE_VALUES", json.RootElement, "11/gender", 0, 1000));
 
+        Assert.Contains("id:string", error.Message, StringComparison.Ordinal);
         Assert.Contains("label:string", error.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("private-id", error.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("Kadın", error.Message, StringComparison.Ordinal);

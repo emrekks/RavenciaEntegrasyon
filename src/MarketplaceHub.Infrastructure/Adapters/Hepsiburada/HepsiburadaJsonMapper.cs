@@ -76,20 +76,20 @@ internal static class HepsiburadaJsonMapper
                     }
                 case "ATTRIBUTE_VALUES":
                     {
-                        var id = Text(item, "id", "valueId", "attributeValueId");
                         var name = Text(item, "value", "name", "attributeValue", "attributeValueName");
-                        if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(name))
+                        if (string.IsNullOrWhiteSpace(name))
                         {
-                            var missing = string.Join(" ve ", new[]
-                            {
-                                string.IsNullOrWhiteSpace(id) ? "id" : null,
-                                string.IsNullOrWhiteSpace(name) ? "value" : null
-                            }.Where(value => value is not null));
+                            var missing = "value";
                             var shape = string.Join(", ", item.ValueKind == JsonValueKind.Object
                                 ? item.EnumerateObject().Take(12).Select(property => $"{SafeReferenceFieldName(property.Name)}:{ReferenceValueKind(property.Value.ValueKind)}")
                                 : new[] { $"item:{ReferenceValueKind(item.ValueKind)}" });
                             throw new JsonException($"Hepsiburada enum değerinde {missing} alanı eksik (alan türleri: {shape}).");
                         }
+                        // Production returns enum options as { value: string } without an id.
+                        // The catalog guide says to use value; retain an explicit remote id when
+                        // provided, otherwise use the submitted value as the stable scoped key.
+                        var remoteId = Text(item, "id", "valueId", "attributeValueId");
+                        var id = string.IsNullOrWhiteSpace(remoteId) ? name : remoteId;
                         items.Add(new(resourceType, id, parentExternalId, name, name, 0, true, true, item.GetRawText()));
                         break;
                     }
