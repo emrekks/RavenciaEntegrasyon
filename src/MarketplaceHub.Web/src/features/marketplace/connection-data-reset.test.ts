@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { connectionDataResetOptions } from './connection-data-reset'
+import { connectionDataResetGroups, connectionDataResetOptions } from './connection-data-reset'
 
 describe('connection data reset options', () => {
   it('offers marketplace data only for the selected connection type', () => {
@@ -16,5 +16,15 @@ describe('connection data reset options', () => {
 
   it('limits an e-invoice connection to its invoice data', () => {
     expect(connectionDataResetOptions('TRENDYOL_EFATURAM').map(option => option.scope)).toEqual(['INVOICES'])
+  })
+
+  it('groups Hepsiburada reset choices into order-finance and catalog details', () => {
+    expect(connectionDataResetGroups('HEPSIBURADA').map(group => ({
+      label: group.label,
+      scopes: group.options.map(option => option.scope)
+    }))).toEqual([
+      { label: 'Sipariş ve finans', scopes: ['ORDERS', 'RETURNS', 'INVOICES'] },
+      { label: 'Ürün kataloğu', scopes: ['PRODUCTS', 'CATEGORIES', 'CATEGORY_ATTRIBUTES'] }
+    ])
   })
 })

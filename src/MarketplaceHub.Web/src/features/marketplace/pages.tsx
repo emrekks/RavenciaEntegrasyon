@@ -20,7 +20,7 @@ import { attributeValueMappingNeedsSave, normalizeReferenceValueLabel, planDirec
 import { activeMappingConnectionsForPlatform, mappingPlatformDefinitions, mappingPlatformLabel, type MappingPlatformCode } from './mapping-platforms'
 import { resolveAttributeMappingRole } from './mapping-attribute-role'
 import { isActiveMarketplaceConnection, isMarketplacePlatformSelected, marketplacePlatformLabel, marketplacePlatformOptions, supportsSyncPolicy, supportsSyncPolicyManagement, syncPolicyIntervalChoices } from './marketplace-platform-support'
-import { connectionDataResetOptions, type ConnectionDataResetScope } from './connection-data-reset'
+import { connectionDataResetGroups, connectionDataResetOptions, type ConnectionDataResetScope } from './connection-data-reset'
 import { activeReturnSyncConnections, enqueueReturnSyncs } from './return-sync'
 import { productImageFallbackUrls as createProductImageFallbackUrls } from './product-image-lookups'
 type Page<T> = { items: T[]; nextCursor: string | null; hasMore: boolean; totalCount?: number | null }
@@ -844,17 +844,17 @@ function ReferenceActionDialog({ id, title, description, confirmLabel, confirmDi
 }
 
 function ConnectionDataResetDialog({ item, scopes, confirmation, busy, onToggleScope, onChangeConfirmation, onClose, onConfirm }: { item: Connection; scopes: ConnectionDataResetScope[]; confirmation: string; busy: boolean; onToggleScope: (scope: ConnectionDataResetScope, checked: boolean) => void; onChangeConfirmation: (value: string) => void; onClose: () => void; onConfirm: () => void }) {
-  const options = connectionDataResetOptions(item.platformCode)
+  const groups = connectionDataResetGroups(item.platformCode)
   return <div className="workspace-modal-backdrop reference-action-backdrop" role="presentation" onMouseDown={() => { if (!busy) onClose() }}>
     <section className="workspace-modal reference-action-modal connection-data-reset-modal" role="alertdialog" aria-modal="true" aria-labelledby={`reset-data-${item.id}-title`} onMouseDown={event => event.stopPropagation()}>
       <header><div><p className="eyebrow">BAĞLANTI VERİLERİ</p><h2 id={`reset-data-${item.id}-title`}>Verileri sıfırla</h2></div><button type="button" className="modal-close" onClick={onClose} aria-label="Pencereyi kapat" disabled={busy}><UiIcon name="close" /></button></header>
       <div className="reference-action-body">
         <p><strong>{item.displayName}</strong> bağlantısında temizlenecek veri türlerini seçin. İşlem yalnız bu bağlantının yerel kayıtlarını etkiler; pazaryerine yazma yapmaz.</p>
         <fieldset className="connection-data-reset-options">
-          <legend>Sıfırlanacak veriler</legend>
-          {options.map(option => <label key={option.scope} className="connection-data-reset-option"><input type="checkbox" checked={scopes.includes(option.scope)} onChange={event => onToggleScope(option.scope, event.target.checked)} disabled={busy} /><span><strong>{option.label}</strong><small>{option.description}</small></span></label>)}
+          <legend>Sıfırlanacak verileri seçin</legend>
+          {groups.map(group => <section className="connection-data-reset-group" key={group.label}><div className="connection-data-reset-group-heading"><strong>{group.label}</strong><small>{group.description}</small></div>{group.options.map(option => <label key={option.scope} className="connection-data-reset-option"><input type="checkbox" checked={scopes.includes(option.scope)} onChange={event => onToggleScope(option.scope, event.target.checked)} disabled={busy} /><span><strong>{option.label}</strong><small>{option.description}</small></span></label>)}</section>)}
         </fieldset>
-        <p className="connection-data-reset-sync-note">Otomatik eşitleme açıksa sıfırlanan kayıtlar sonraki eşitlemede yeniden çekilebilir. Devam etmek için bağlantı adını aşağıya yazın.</p>
+        <p className="connection-data-reset-sync-note">İşlem yalnız seçili bağlantının yerel kayıtlarını siler; pazaryerine yazma yapmaz. Otomatik eşitleme açıksa kayıtlar sonraki eşitlemede yeniden çekilebilir. Devam etmek için bağlantı adını aşağıya yazın.</p>
         <label className="reference-action-confirmation">Onay için <b>{item.displayName}</b> yazın<input value={confirmation} onChange={event => onChangeConfirmation(event.target.value)} disabled={busy} autoComplete="off" /></label>
       </div>
       <footer><button type="button" className="secondary" onClick={onClose} disabled={busy}>Vazgeç</button><button type="button" className="destructive" onClick={onConfirm} disabled={!scopes.length || confirmation !== item.displayName || busy}>{busy ? 'Sıfırlanıyor…' : 'Seçilen verileri sıfırla'}</button></footer>
