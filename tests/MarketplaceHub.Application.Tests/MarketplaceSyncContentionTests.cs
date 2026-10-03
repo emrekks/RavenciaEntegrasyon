@@ -40,6 +40,6 @@ public sealed class MarketplaceSyncContentionTests
         Assert.Equal(JobCompletionKind.Retry, result.Kind);
         Assert.False(result.Succeeded);
         Assert.Equal("ORDER_INVOICE_RECONCILIATION_BUSY", result.ErrorCode);
-        Assert.Equal(TimeSpan.FromSeconds(30), result.RetryAfter);
+        Assert.Equal(TimeSpan.FromMinutes(3), result.RetryAfter);
     }
 }

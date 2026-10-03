@@ -92,7 +92,7 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
             or MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation
             or MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation)
             return JobExecutionResult.Retry("ORDER_INVOICE_RECONCILIATION_BUSY",
-                "Fatura durumu kontrolü, sipariş okuma işlemi tamamlanınca yeniden denenecek.", TimeSpan.FromSeconds(30));
+                "Fatura durumu kontrolü, sipariş okuma işlemi tamamlanınca yeniden denenecek.", TimeSpan.FromMinutes(3));
 
         if (jobType is MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync)
         {
