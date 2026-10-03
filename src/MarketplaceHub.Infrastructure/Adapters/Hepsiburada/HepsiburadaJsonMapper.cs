@@ -52,7 +52,7 @@ internal static class HepsiburadaJsonMapper
                         var id = Text(item, "categoryId", "id", "categoryID");
                         var name = Text(item, "name");
                         if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(name)) throw new JsonException("Hepsiburada kategori kimliği veya adı eksik.");
-                        var path = CategoryPath(item) ?? name;
+                        var path = CategoryPath(item, name) ?? name;
                         var status = Text(item, "status");
                         var available = Boolean(item, "available");
                         var active = (string.Equals(status, "ACTIVE", StringComparison.OrdinalIgnoreCase)
@@ -1218,9 +1218,31 @@ internal static class HepsiburadaJsonMapper
         var delimiter = path.Contains('>') ? '>' : path.Contains('/') ? '/' : path.Contains('|') ? '|' : '\0';
         return delimiter == '\0' ? 0 : Math.Max(0, path.Split(delimiter, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Length - 1);
     }
-    private static string? CategoryPath(JsonElement item)
+    private static string? CategoryPath(JsonElement item, string categoryName)
     {
-        var value = Find(item, "paths", "path", "categoryPath", "fullPath", "breadcrumb");
+        var value = Find(item, "paths", "path", "categoryPath", "fullPath", "breadcrumb", "breadcrumbs", "hierarchy", "categoryHierarchy");
+        var path = CategoryPathValue(value);
+        if (!string.IsNullOrWhiteSpace(path)) return AppendCategoryName(path, categoryName);
+
+        var parentPath = Text(item, "parentCategoryPath", "parentPath");
+        if (!string.IsNullOrWhiteSpace(parentPath)) return AppendCategoryName(parentPath, categoryName);
+
+        var parent = Find(item, "parentCategory", "parent");
+        if (parent.ValueKind == JsonValueKind.Object)
+        {
+            var parentName = Text(parent, "name", "categoryName", "label", "title");
+            if (!string.IsNullOrWhiteSpace(parentName))
+            {
+                var ancestorPath = CategoryPath(parent, parentName) ?? parentName;
+                return AppendCategoryName(ancestorPath, categoryName);
+            }
+        }
+
+        var directParentName = Text(item, "parentCategoryName", "parentName");
+        return string.IsNullOrWhiteSpace(directParentName) ? null : AppendCategoryName(directParentName, categoryName);
+    }
+    private static string? CategoryPathValue(JsonElement value)
+    {
         if (value.ValueKind == JsonValueKind.String) return NormalizeCategoryPath(value.GetString());
         if (value.ValueKind == JsonValueKind.Array)
         {
@@ -1237,20 +1259,18 @@ internal static class HepsiburadaJsonMapper
         {
             var path = Text(value, "path", "fullPath", "breadcrumb");
             if (!string.IsNullOrWhiteSpace(path)) return NormalizeCategoryPath(path);
-            var segments = Find(value, "paths", "items", "segments");
-            if (segments.ValueKind == JsonValueKind.Array)
-            {
-                var names = segments.EnumerateArray()
-                    .Select(segment => segment.ValueKind == JsonValueKind.Object
-                        ? Text(segment, "name", "categoryName", "label", "title")
-                        : segment.ValueKind == JsonValueKind.String ? segment.GetString() : null)
-                    .Where(segment => !string.IsNullOrWhiteSpace(segment))
-                    .Select(segment => segment!.Trim())
-                    .ToArray();
-                return names.Length > 0 ? string.Join(" > ", names) : null;
-            }
+            var segments = Find(value, "paths", "items", "segments", "breadcrumbs", "hierarchy", "categories");
+            return CategoryPathValue(segments);
         }
         return null;
+    }
+    private static string AppendCategoryName(string path, string categoryName)
+    {
+        var normalized = NormalizeCategoryPath(path) ?? "";
+        var lastSegment = normalized.Split(" > ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).LastOrDefault();
+        return string.Equals(lastSegment, categoryName.Trim(), StringComparison.OrdinalIgnoreCase)
+            ? normalized
+            : string.IsNullOrWhiteSpace(normalized) ? categoryName.Trim() : $"{normalized} > {categoryName.Trim()}";
     }
     private static string? NormalizeCategoryPath(string? path) => string.IsNullOrWhiteSpace(path)
         ? null

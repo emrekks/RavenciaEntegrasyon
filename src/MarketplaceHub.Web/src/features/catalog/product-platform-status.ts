@@ -75,7 +75,7 @@ export function productPlatformDisplayLabel(
   if (state === 'active') return `${platform} üzerinde tüm varyantlar yayında${coverage}`
   if (state === 'partial') return `${platform} üzerinde ürün kısmen yayında${coverage}`
   if (normalized.includes('ARCHIVED')) return `${platform} ilanı arşivlenmiş${coverage}`
-  if (state === 'linked') return `${platform} bağlantısı var${linkedCoverage}; yayın durumu ayrıca doğrulanmalı`
+  if (state === 'linked') return `${platform} bağlantısı var${linkedCoverage}`
 
   if (matchedVariantCount > 0) {
     const publicationNote = normalized.includes('UNKNOWN')

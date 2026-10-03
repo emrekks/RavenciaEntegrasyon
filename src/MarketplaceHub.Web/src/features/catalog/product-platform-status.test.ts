@@ -7,7 +7,7 @@ describe('product platform list status', () => {
 
     expect(state).toBe('linked')
     expect(productPlatformDisplayLabel('Ravencia Canlı', ['LINKED'], 35, 35, state))
-      .toBe('Ravencia Canlı bağlantısı var (35/35 varyant); yayın durumu ayrıca doğrulanmalı')
+      .toBe('Ravencia Canlı bağlantısı var (35/35 varyant)')
   })
 
   it('shows partial marketplace matching as linked with its coverage', () => {
@@ -15,7 +15,7 @@ describe('product platform list status', () => {
 
     expect(state).toBe('linked')
     expect(productPlatformDisplayLabel('Trendyol', ['PARTIAL_LINKED'], 2, 4, state))
-      .toBe('Trendyol bağlantısı var (2/4 varyant); yayın durumu ayrıca doğrulanmalı')
+      .toBe('Trendyol bağlantısı var (2/4 varyant)')
   })
 
   it('recognizes explicit mapping status when counts are unavailable', () => {
@@ -23,7 +23,7 @@ describe('product platform list status', () => {
 
     expect(state).toBe('linked')
     expect(productPlatformDisplayLabel('Trendyol', ['MAPPED'], 0, 0, state))
-      .toBe('Trendyol bağlantısı var; yayın durumu ayrıca doğrulanmalı')
+      .toBe('Trendyol bağlantısı var')
   })
 
   it('shows Hepsiburada imports as linked after the matched variant data refreshes', () => {
@@ -31,7 +31,7 @@ describe('product platform list status', () => {
 
     expect(state).toBe('linked')
     expect(productPlatformDisplayLabel('Hepsiburada', ['IMPORT_ACCEPTED'], 2, 2, state))
-      .toBe('Hepsiburada bağlantısı var (2/2 varyant); yayın durumu ayrıca doğrulanmalı')
+      .toBe('Hepsiburada bağlantısı var (2/2 varyant)')
   })
 
   it('shows Hepsiburada import processing states as in progress', () => {

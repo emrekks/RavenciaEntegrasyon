@@ -485,6 +485,24 @@ public sealed class HepsiburadaAdapterTests
     }
 
     [Fact]
+    public void ReferenceMapper_BuildsCategoryPathFromNestedParentsAndAppendsMissingLeaf()
+    {
+        using var categories = JsonDocument.Parse("""
+        {
+          "data": [
+            { "categoryId": 303, "name": "Bluz", "parentCategory": { "categoryId": 20, "name": "Giyim", "parentCategory": { "categoryId": 10, "name": "Kadın" } }, "leaf": true, "status": "ACTIVE", "available": true },
+            { "categoryId": 404, "name": "Bluz", "paths": "Kadın > Büyük Beden", "leaf": true, "status": "ACTIVE", "available": true }
+          ]
+        }
+        """);
+
+        var page = HepsiburadaJsonMapper.References("CATEGORIES", categories.RootElement, null, 0, 1000);
+
+        Assert.Equal("Kadın > Giyim > Bluz", page.Items[0].Path);
+        Assert.Equal("Kadın > Büyük Beden > Bluz", page.Items[1].Path);
+    }
+
+    [Fact]
     public void ProductPublication_SelectsAnExactAliasAndRejectsAmbiguousOutboundValues()
     {
         Assert.Equal("Erkek", HepsiburadaProductPublicationComposer.SelectOutboundEnumValue("Erkek", ["Kadın", "Erkek"]));
