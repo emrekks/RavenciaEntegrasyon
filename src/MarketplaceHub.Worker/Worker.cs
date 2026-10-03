@@ -9,6 +9,8 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
 {
     private static readonly string[] HepsiburadaOrderJobTypes =
         [MarketplaceJobTypes.HepsiburadaOrderSync, MarketplaceJobTypes.HepsiburadaOrderRecoverySync];
+    private static readonly string[] ReturnReadJobTypes =
+        [MarketplaceJobTypes.ReturnSync, MarketplaceJobTypes.HepsiburadaReturnSync, MarketplaceJobTypes.ReturnStatusSync];
     private readonly string healthFile = configuration["Worker:HealthFile"] ?? "/tmp/marketplacehub-worker-heartbeat";
     private readonly TimeSpan schedulerScanInterval = TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("Worker:SchedulerScanSeconds", 5), 1, 30));
     private readonly int hotPriorityCeiling = Math.Clamp(configuration.GetValue("Worker:HotPriorityCeiling", 2), 0, 5);
@@ -38,6 +40,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         var loops = new List<Task>
         {
             RunLeaseLaneAsync("hot", hotPriorityCeiling, 0, stoppingToken, reapExpiredLeases: true, excludedJobTypes: HepsiburadaOrderJobTypes),
+            RunLeaseLaneAsync("returns-read", null, null, stoppingToken, includedJobTypes: ReturnReadJobTypes),
             RunLeaseLaneAsync("hepsiburada-status", hotPriorityCeiling, 0, stoppingToken, MarketplaceJobTypes.HepsiburadaOrderStatusSync),
             RunLeaseLaneAsync("hepsiburada-orders", hotPriorityCeiling, 0, stoppingToken, includedJobTypes: HepsiburadaOrderJobTypes),
             RunLeaseLaneAsync("initial-data-sync", -1, -1, stoppingToken),
