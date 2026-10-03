@@ -28,4 +28,18 @@ public sealed class MarketplaceSyncContentionTests
     {
         Assert.True(MarketplaceSyncExecutionLock.ContentionResult(MarketplaceJobTypes.HepsiburadaOrderSync, payload).Succeeded);
     }
+
+    [Theory]
+    [InlineData(MarketplaceJobTypes.OrderInvoiceReconciliation)]
+    [InlineData(MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation)]
+    [InlineData(MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation)]
+    public void InvoiceReconciliationRetriesInsteadOfDroppingWorkWhenOrderLaneIsBusy(string jobType)
+    {
+        var result = MarketplaceSyncExecutionLock.ContentionResult(jobType, "{}");
+
+        Assert.Equal(JobCompletionKind.Retry, result.Kind);
+        Assert.False(result.Succeeded);
+        Assert.Equal("ORDER_INVOICE_RECONCILIATION_BUSY", result.ErrorCode);
+        Assert.Equal(TimeSpan.FromSeconds(30), result.RetryAfter);
+    }
 }

@@ -88,6 +88,12 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
 
     internal static JobExecutionResult ContentionResult(string jobType, string payloadJson)
     {
+        if (jobType is MarketplaceJobTypes.OrderInvoiceReconciliation
+            or MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation
+            or MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation)
+            return JobExecutionResult.Retry("ORDER_INVOICE_RECONCILIATION_BUSY",
+                "Fatura durumu kontrolü, sipariş okuma işlemi tamamlanınca yeniden denenecek.", TimeSpan.FromSeconds(30));
+
         if (jobType is MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync)
         {
             try
