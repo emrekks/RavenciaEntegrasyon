@@ -8,6 +8,46 @@ namespace MarketplaceHub.Application.Tests;
 public sealed class TrendyolCatalogMapperTests
 {
     [Fact]
+    public void ShipmentPackageLookup_MapsCargoForTheRequestedPackageOnly()
+    {
+        const string json = """
+        {
+          "content": [
+            {
+              "shipmentPackageId": 4052072376,
+              "orderNumber": "11476852228",
+              "status": "Delivered",
+              "lastModifiedDate": 1786454029672,
+              "cargoTrackingNumber": 62755229958101,
+              "cargoProviderName": "hepsiJET",
+              "lines": []
+            },
+            {
+              "shipmentPackageId": 4052072377,
+              "orderNumber": "11476852229",
+              "status": "Delivered",
+              "lastModifiedDate": 1786454029672,
+              "cargoTrackingNumber": 7340037147068871,
+              "cargoProviderName": "PTT",
+              "lines": []
+            }
+          ],
+          "page": 0,
+          "totalPages": 1
+        }
+        """;
+
+        var package = TrendyolJsonMapper.ShipmentPackage(json, "4052072376");
+
+        Assert.NotNull(package);
+        Assert.Equal("11476852228", package.ExternalOrderId);
+        Assert.Equal("4052072376", package.Package.ExternalPackageId);
+        Assert.Equal("hepsiJET", package.Package.CargoProviderExternalId);
+        Assert.Equal("62755229958101", package.Package.CargoTrackingNumber);
+        Assert.Null(TrendyolJsonMapper.ShipmentPackage(json, "not-a-package"));
+    }
+
+    [Fact]
     public void PendingApprovalProductResponse_MapsFlatVariantAsPendingCatalogRow()
     {
         const string json = """

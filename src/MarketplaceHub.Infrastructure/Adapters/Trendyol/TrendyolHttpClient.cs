@@ -315,6 +315,29 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
         return AdapterResult<RemoteOrder>.Failure(new(AdapterErrorClass.NotFound, "REMOTE_ORDER_NOT_FOUND", "Platform siparişi bulunamadı.", 404, null, null));
     }
 
+    public async Task<AdapterResult<RemoteOrderPackage>> GetShipmentPackageAsync(AdapterContext context, string externalPackageId, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(externalPackageId)) return AdapterResult<RemoteOrderPackage>.Failure(TrendyolErrorMapper.Contract());
+        var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
+        if (authorized is null) return AdapterResult<RemoteOrderPackage>.Failure(TrendyolErrorMapper.Configuration());
+
+        var endpoint = TrendyolEndpoints.Orders(authorized.Connection.ExternalStoreId)
+            + $"?shipmentPackageIds={Uri.EscapeDataString(externalPackageId.Trim())}&size=200";
+        var response = await SendAsync(authorized, HttpMethod.Get, endpoint, null, cancellationToken);
+        if (!response.IsSuccess) return AdapterResult<RemoteOrderPackage>.Failure(response.Error!, response.RateLimit);
+        try
+        {
+            var package = TrendyolJsonMapper.ShipmentPackage(response.Value!, externalPackageId.Trim());
+            return package is null
+                ? AdapterResult<RemoteOrderPackage>.Failure(new(AdapterErrorClass.NotFound, "REMOTE_PACKAGE_NOT_FOUND", "Trendyol paket bilgisi bulunamadı.", 404, null, null), response.RateLimit)
+                : AdapterResult<RemoteOrderPackage>.Success(package, response.RateLimit);
+        }
+        catch (JsonException)
+        {
+            return AdapterResult<RemoteOrderPackage>.Failure(TrendyolErrorMapper.Contract(), response.RateLimit);
+        }
+    }
+
     public async Task<AdapterResult<PackageActionResult>> ExecutePackageActionAsync(AdapterContext context, PackageActionCommand command, CancellationToken cancellationToken)
     {
         var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken); if (authorized is null) return AdapterResult<PackageActionResult>.Failure(TrendyolErrorMapper.Configuration()); if (!CanWrite(authorized, context)) return AdapterResult<PackageActionResult>.Failure(TrendyolErrorMapper.WriteClosed());

@@ -2193,6 +2193,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             .SingleOrDefaultAsync(cancellationToken);
         var isShopify = platformCode == "SHOPIFY";
         var isHepsiburada = platformCode == "HEPSIBURADA";
+        if (string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase))
+            await ReconcileTrendyolCargoInfo(tenantId, connectionId, correlationId, cancellationToken);
         var lifecycleBatchSize = Math.Clamp(configuration.GetValue("MarketplaceSync:OrderLifecycle:BatchSize", 25), 1, 100);
         var cursor = await Cursor(tenantId, connectionId, "ORDER_LIFECYCLE", cancellationToken);
         List<string> externalOrderIds;
@@ -2278,8 +2280,6 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         if (recoveredOrders.Count > 0) await UpsertOrders(tenantId, connectionId, recoveredOrders, cancellationToken, projectReservations: !isShopify);
         if (isHepsiburada)
             await ReconcileHepsiburadaPackageStatuses(tenantId, connectionId, correlationId, cancellationToken);
-        else if (string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase))
-            await ReconcileTrendyolCargoInfo(tenantId, connectionId, correlationId, cancellationToken);
 
         cursor.LastModifiedWatermark = timeProvider.GetUtcNow();
         cursor.Version++;
@@ -2311,10 +2311,10 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 && package.ExternalPackageId != ""
                 && (package.CargoProviderExternalId == null || package.CargoProviderExternalId == ""
                     || package.CargoTrackingNumber == null || package.CargoTrackingNumber == "")
-            select new { order.ExternalOrderId, order.OrderNumber };
+            select new { package.Id, package.ExternalPackageId, order.OrderNumber };
         var distinctCandidates = candidates.Distinct();
         var candidateCount = await distinctCandidates.CountAsync(cancellationToken);
-        var selectedCandidates = new List<(string ExternalOrderId, string OrderNumber)>();
+        var selectedCandidates = new List<(Guid PackageId, string ExternalPackageId, string OrderNumber)>();
         var nextOffset = 0;
         if (candidateCount > 0)
         {
@@ -2323,31 +2323,31 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 : 0;
             var takeCount = Math.Min(batchSize, candidateCount);
             var afterCount = Math.Min(takeCount, candidateCount - offset);
-            var orderedCandidates = distinctCandidates.OrderBy(candidate => candidate.ExternalOrderId);
+            var orderedCandidates = distinctCandidates.OrderBy(candidate => candidate.ExternalPackageId);
             var afterCandidates = await orderedCandidates
                 .Skip(offset)
                 .Take(afterCount)
-                .Select(candidate => new { candidate.ExternalOrderId, candidate.OrderNumber })
+                .Select(candidate => new { candidate.Id, candidate.ExternalPackageId, candidate.OrderNumber })
                 .ToListAsync(cancellationToken);
-            selectedCandidates.AddRange(afterCandidates.Select(candidate => (candidate.ExternalOrderId, candidate.OrderNumber)));
+            selectedCandidates.AddRange(afterCandidates.Select(candidate => (candidate.Id, candidate.ExternalPackageId, candidate.OrderNumber)));
             if (selectedCandidates.Count < takeCount)
             {
                 var wrappedCandidates = await orderedCandidates
                     .Take(takeCount - selectedCandidates.Count)
-                    .Select(candidate => new { candidate.ExternalOrderId, candidate.OrderNumber })
+                    .Select(candidate => new { candidate.Id, candidate.ExternalPackageId, candidate.OrderNumber })
                     .ToListAsync(cancellationToken);
-                selectedCandidates.AddRange(wrappedCandidates.Select(candidate => (candidate.ExternalOrderId, candidate.OrderNumber)));
+                selectedCandidates.AddRange(wrappedCandidates.Select(candidate => (candidate.Id, candidate.ExternalPackageId, candidate.OrderNumber)));
             }
             nextOffset = (offset + selectedCandidates.Count) % candidateCount;
         }
 
-        var refreshedOrders = new List<RemoteOrder>(selectedCandidates.Count);
+        var refreshedPackageCount = 0;
         foreach (var candidate in selectedCandidates)
         {
             TrackRequest();
-            var result = await orders.GetAsync(
-                Context(tenantId, connectionId, correlationId, $"trendyol-cargo-info:{candidate.ExternalOrderId}"),
-                candidate.ExternalOrderId,
+            var result = await orders.GetShipmentPackageAsync(
+                Context(tenantId, connectionId, correlationId, $"trendyol-cargo-info:{candidate.ExternalPackageId}"),
+                candidate.ExternalPackageId,
                 cancellationToken);
             if (!result.IsSuccess)
             {
@@ -2355,7 +2355,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 TrackResultFailure(result.Error);
                 await RecordIssue(
                     tenantId,
-                    $"trendyol-cargo-info:{connectionId}:{candidate.ExternalOrderId}",
+                    $"trendyol-cargo-info:{connectionId}:{candidate.ExternalPackageId}",
                     result.Error!.Code,
                     $"Trendyol kargo bilgileri yenilenemedi; sonraki uzlaştırmada tekrar denenecek. {result.Error.SafeMessage}",
                     cancellationToken);
@@ -2363,25 +2363,53 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             }
 
             TrackReceived();
-            var remoteOrder = result.Value!;
-            if (!string.IsNullOrWhiteSpace(remoteOrder.OrderNumber)
-                && !string.Equals(remoteOrder.OrderNumber.Trim(), candidate.OrderNumber.Trim(), StringComparison.OrdinalIgnoreCase))
+            var remotePackage = result.Value!;
+            if (!string.Equals(remotePackage.ExternalOrderId.Trim(), candidate.OrderNumber.Trim(), StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(remotePackage.Package.ExternalPackageId.Trim(), candidate.ExternalPackageId.Trim(), StringComparison.Ordinal))
             {
                 await RecordIssue(
                     tenantId,
-                    $"trendyol-cargo-info-owner:{connectionId}:{candidate.ExternalOrderId}",
+                    $"trendyol-cargo-info-owner:{connectionId}:{candidate.ExternalPackageId}",
                     "TRENDYOL_CARGO_INFO_ORDER_MISMATCH",
                     "Trendyol kargo yanıtı yerel sipariş numarasıyla eşleşmedi; paket bilgileri güncellenmedi.",
                     cancellationToken);
                 continue;
             }
-            await ResolveIssue(tenantId, $"trendyol-cargo-info:{connectionId}:{candidate.ExternalOrderId}", cancellationToken);
-            await ResolveIssue(tenantId, $"trendyol-cargo-info-owner:{connectionId}:{candidate.ExternalOrderId}", cancellationToken);
-            refreshedOrders.Add(remoteOrder);
+            await ResolveIssue(tenantId, $"trendyol-cargo-info:{connectionId}:{candidate.ExternalPackageId}", cancellationToken);
+            await ResolveIssue(tenantId, $"trendyol-cargo-info-owner:{connectionId}:{candidate.ExternalPackageId}", cancellationToken);
+            if (string.IsNullOrWhiteSpace(remotePackage.Package.CargoProviderExternalId)
+                && string.IsNullOrWhiteSpace(remotePackage.Package.CargoTrackingNumber))
+                continue;
+
+            var localPackage = await db.ShipmentPackages.SingleAsync(
+                package => package.TenantId == tenantId && package.ConnectionId == connectionId && package.Id == candidate.PackageId,
+                cancellationToken);
+            var changed = false;
+            if (!string.IsNullOrWhiteSpace(remotePackage.Package.CargoProviderExternalId))
+            {
+                var provider = remotePackage.Package.CargoProviderExternalId.Trim();
+                if (!string.Equals(localPackage.CargoProviderExternalId, provider, StringComparison.Ordinal))
+                {
+                    localPackage.CargoProviderExternalId = provider;
+                    changed = true;
+                }
+            }
+            if (!string.IsNullOrWhiteSpace(remotePackage.Package.CargoTrackingNumber))
+            {
+                var trackingNumber = remotePackage.Package.CargoTrackingNumber.Trim();
+                if (!string.Equals(localPackage.CargoTrackingNumber, trackingNumber, StringComparison.Ordinal))
+                {
+                    localPackage.CargoTrackingNumber = trackingNumber;
+                    changed = true;
+                }
+            }
+            if (!changed) continue;
+            localPackage.UpdatedAt = now;
+            localPackage.Version++;
+            refreshedPackageCount++;
         }
 
-        if (refreshedOrders.Count > 0)
-            await UpsertOrders(tenantId, connectionId, refreshedOrders, cancellationToken, projectReservations: true);
+        if (refreshedPackageCount > 0) await db.SaveChangesAsync(cancellationToken);
         cursor.LastAttemptAt = now;
         cursor.LastSuccessAt = now;
         cursor.OpaqueCursor = candidateCount > 0 ? nextOffset.ToString(CultureInfo.InvariantCulture) : null;

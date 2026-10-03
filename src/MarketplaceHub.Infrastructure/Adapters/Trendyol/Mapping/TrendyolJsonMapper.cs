@@ -144,6 +144,17 @@ public static class TrendyolJsonMapper
         };
     }
 
+    public static RemoteOrderPackage? ShipmentPackage(string json, string externalPackageId)
+    {
+        if (string.IsNullOrWhiteSpace(externalPackageId)) return null;
+        var order = Orders(json).Items.FirstOrDefault(candidate =>
+            candidate.Packages.Any(package => string.Equals(package.ExternalPackageId, externalPackageId, StringComparison.Ordinal)));
+        if (order is null) return null;
+        var package = order.Packages.FirstOrDefault(candidate =>
+            string.Equals(candidate.ExternalPackageId, externalPackageId, StringComparison.Ordinal));
+        return package is null ? null : new(order.ExternalOrderId, package);
+    }
+
     public static AdapterPageResult<RemoteProduct> Products(string json)
     {
         using var document = JsonDocument.Parse(json); var root = document.RootElement; var rows = new List<RemoteProduct>();
