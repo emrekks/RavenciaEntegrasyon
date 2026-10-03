@@ -708,7 +708,8 @@ public sealed record ReturnListView(
     string PlatformCode = "TRENDYOL",
     string PlatformDisplayName = "Trendyol",
     string? OrderCargoProviderName = null,
-    string? OrderCargoTrackingNumber = null);
+    string? OrderCargoTrackingNumber = null,
+    string? ReasonCode = null);
 public sealed record ReturnListQuery(
     string? Status = null,
     string? Customer = null,
