@@ -29,6 +29,9 @@ public sealed class ShopifyHttpClient(
     private const string OrderReducedCustomerFields = " customer { id displayName firstName lastName } shippingAddress { firstName lastName name company address1 address2 city province provinceCode zip country } billingAddress { firstName lastName name company address1 address2 city province provinceCode zip country }";
     private const string OrderAddressOnlyFields = " shippingAddress { firstName lastName name } billingAddress { firstName lastName name }";
     private const string OrderFinancialFields = " currentTotalPriceSet { shopMoney { amount currencyCode } } totalDiscountsSet { shopMoney { amount currencyCode } } lineItems(first:250) { nodes { id name sku quantity currentQuantity originalUnitPriceSet { shopMoney { amount currencyCode } } variant { sku barcode } } } fulfillments(first:50) { id status displayStatus deliveredAt createdAt trackingInfo { number company url } events(first:50) { nodes { status happenedAt } } fulfillmentLineItems(first:250) { nodes { id quantity lineItem { id } } } } refunds(first:100) { id createdAt totalRefundedSet { shopMoney { amount currencyCode } } }";
+    private const string TaxonomyCategoryFields = "nodes { id name fullName parentId level isLeaf isArchived } pageInfo { hasNextPage endCursor }";
+    private const string TaxonomyRootsQuery = "query($first:Int!, $after:String) { taxonomy { categories(first:$first, after:$after) { " + TaxonomyCategoryFields + " } } }";
+    private const string TaxonomyDescendantsQuery = "query($first:Int!, $after:String, $rootId:ID!) { taxonomy { categories(first:$first, after:$after, descendantsOf:$rootId) { " + TaxonomyCategoryFields + " } } }";
 
     private static string OrderFields(string customerFields) => $"{OrderIdentityFields}{customerFields}{OrderFinancialFields}";
     private static string OrderPageQuery(string fields) => "query($first:Int!, $after:String, $query:String) { orders(first:$first, after:$after, query:$query, sortKey:UPDATED_AT, reverse:false) { edges { cursor node { " + fields + " } } pageInfo { hasNextPage endCursor } } }";
@@ -92,17 +95,99 @@ public sealed class ShopifyHttpClient(
         var now = timeProvider.GetUtcNow();
         var products = await ListCatalogAsync(context, new(null, 1), new(null), cancellationToken);
         var orders = await PollAsync(context, new OrderPollWindow(null, now, null), new(null, 1), cancellationToken);
+        var categories = await ReadAsync(context, new("CATEGORIES", null), new(null, 1), cancellationToken);
         var evidence = new List<CapabilityEvidence>
         {
             Supported(MarketplaceCapabilities.ConnectionTest, identity, "https://shopify.dev/docs/api/admin-graphql", "Shopify mağaza, uygulama tokenı, ürün/sipariş ve müşteri okuma izinleri, para birimi ve depo bilgileri doğrulandı.", now, "read_products,read_inventory,read_orders,read_customers,read_locations")
         };
         evidence.Add(Probe(MarketplaceCapabilities.ProductRead, identity, "https://shopify.dev/docs/api/admin-graphql/latest/objects/Product", products, "GraphQL ürün ve varyant okuması", now, "read_products,read_inventory"));
         evidence.Add(Probe(MarketplaceCapabilities.OrderRead, identity, "https://shopify.dev/docs/api/admin-graphql/latest/objects/Order", orders, "GraphQL sipariş, müşteri ve teslimat durumu okuması", now, "read_orders,read_customers"));
-        return AdapterResult<IReadOnlyList<CapabilityEvidence>>.Success(evidence, products.RateLimit ?? orders.RateLimit);
+        evidence.Add(Probe(MarketplaceCapabilities.ReferenceRead, identity, "https://shopify.dev/docs/api/admin-graphql/latest/queries/taxonomy", categories, "GraphQL ürün taksonomisi kategori okuması", now, "read_products"));
+        return AdapterResult<IReadOnlyList<CapabilityEvidence>>.Success(evidence, products.RateLimit ?? orders.RateLimit ?? categories.RateLimit);
     }
 
-    public Task<AdapterResult<AdapterPageResult<RemoteReferenceItem>>> ReadAsync(AdapterContext context, ReferenceResource resource, AdapterPageRequest page, CancellationToken cancellationToken) =>
-        Task.FromResult(Fail<AdapterPageResult<RemoteReferenceItem>>(AdapterErrorClass.NotSupported, "SHOPIFY_REFERENCE_NOT_SUPPORTED", "Shopify referans verisi bu ilk sürümde ürün aktarımı için kullanılmıyor.", HttpStatusCode.NotImplemented));
+    public async Task<AdapterResult<AdapterPageResult<RemoteReferenceItem>>> ReadAsync(AdapterContext context, ReferenceResource resource, AdapterPageRequest page, CancellationToken cancellationToken)
+    {
+        if (!string.Equals(resource.ResourceType, "CATEGORIES", StringComparison.Ordinal) || resource.ParentExternalId is not null)
+            return Fail<AdapterPageResult<RemoteReferenceItem>>(AdapterErrorClass.NotSupported, "SHOPIFY_REFERENCE_NOT_SUPPORTED", "Shopify bağlantısında yalnızca ürün taksonomisi kategorileri okunabilir.", HttpStatusCode.NotImplemented);
+
+        var shop = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
+        if (shop is null) return Fail<AdapterPageResult<RemoteReferenceItem>>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized);
+
+        ShopifyTaxonomyPageCursor state;
+        RateLimitMetadata? rateLimit = null;
+        if (string.IsNullOrWhiteSpace(page.Cursor))
+        {
+            var rootResult = await ReadTaxonomyRootsAsync(shop, cancellationToken);
+            if (!rootResult.IsSuccess) return AdapterResult<AdapterPageResult<RemoteReferenceItem>>.Failure(rootResult.Error!, rootResult.RateLimit);
+            rateLimit = rootResult.RateLimit;
+            state = new(rootResult.Value!.ToArray(), 0, 0, null);
+        }
+        else if (!TryDecodeTaxonomyCursor(page.Cursor, out state))
+        {
+            return Fail<AdapterPageResult<RemoteReferenceItem>>(AdapterErrorClass.Validation, "SHOPIFY_REFERENCE_CURSOR_INVALID", "Shopify kategori eşitleme imleci geçersiz.", HttpStatusCode.UnprocessableEntity);
+        }
+
+        if (state.RootEmissionIndex < 0 || state.RootEmissionIndex > state.Roots.Length
+            || state.DescendantRootIndex < 0 || state.DescendantRootIndex > state.Roots.Length)
+            return Fail<AdapterPageResult<RemoteReferenceItem>>(AdapterErrorClass.Validation, "SHOPIFY_REFERENCE_CURSOR_INVALID", "Shopify kategori eşitleme imleci geçersiz.", HttpStatusCode.UnprocessableEntity);
+
+        var limit = Math.Clamp(page.Limit, 1, 1_000);
+        var items = new List<RemoteReferenceItem>(limit);
+        var rootEmissionIndex = state.RootEmissionIndex;
+        var descendantRootIndex = state.DescendantRootIndex;
+        var descendantsAfter = state.DescendantsAfter;
+
+        while (items.Count < limit && rootEmissionIndex < state.Roots.Length)
+            items.Add(state.Roots[rootEmissionIndex++].Reference);
+
+        while (items.Count < limit && descendantRootIndex < state.Roots.Length)
+        {
+            var root = state.Roots[descendantRootIndex];
+            var first = Math.Min(250, limit - items.Count);
+            var result = await QueryAsync(shop, TaxonomyDescendantsQuery, new { first, after = descendantsAfter, rootId = root.GraphQlId }, cancellationToken);
+            if (!result.IsSuccess) return AdapterResult<AdapterPageResult<RemoteReferenceItem>>.Failure(result.Error!, result.RateLimit);
+            rateLimit = result.RateLimit;
+
+            try
+            {
+                var categoryConnection = result.Value!.RootElement.GetProperty("taxonomy").GetProperty("categories");
+                foreach (var category in MapTaxonomyCategories(categoryConnection.GetProperty("nodes")))
+                {
+                    // Shopify normally returns descendants only. Ignore the
+                    // root if an API version includes it in that connection.
+                    if (string.Equals(category.ExternalId, root.Reference.ExternalId, StringComparison.Ordinal)) continue;
+                    items.Add(category);
+                }
+
+                var info = categoryConnection.GetProperty("pageInfo");
+                var hasMore = info.GetProperty("hasNextPage").GetBoolean();
+                var next = hasMore ? info.GetProperty("endCursor").GetString() : null;
+                if (hasMore && (string.IsNullOrWhiteSpace(next) || string.Equals(next, descendantsAfter, StringComparison.Ordinal)))
+                    return Fail<AdapterPageResult<RemoteReferenceItem>>(AdapterErrorClass.ContractViolation, "SHOPIFY_REFERENCE_CURSOR_INVALID", "Shopify kategori yanıtı geçersiz bir sayfalama imleci içeriyor.", HttpStatusCode.BadGateway);
+
+                if (hasMore)
+                {
+                    descendantsAfter = next;
+                }
+                else
+                {
+                    descendantRootIndex++;
+                    descendantsAfter = null;
+                }
+            }
+            catch (Exception exception) when (exception is KeyNotFoundException or InvalidOperationException or JsonException)
+            {
+                return Fail<AdapterPageResult<RemoteReferenceItem>>(AdapterErrorClass.ContractViolation, "SHOPIFY_REFERENCE_CONTRACT_INVALID", "Shopify kategori yanıtı beklenen alanları içermiyor.", HttpStatusCode.BadGateway);
+            }
+        }
+
+        var hasNext = rootEmissionIndex < state.Roots.Length || descendantRootIndex < state.Roots.Length;
+        var nextCursor = hasNext
+            ? EncodeTaxonomyCursor(new(state.Roots, rootEmissionIndex, descendantRootIndex, descendantsAfter))
+            : null;
+        return AdapterResult<AdapterPageResult<RemoteReferenceItem>>.Success(new(items, nextCursor, hasNext), rateLimit);
+    }
 
     public async Task<AdapterResult<AdapterPageResult<RemoteProduct>>> ListAsync(AdapterContext context, AdapterPageRequest page, ProductReadFilter filter, CancellationToken cancellationToken)
     {
@@ -511,6 +596,101 @@ public sealed class ShopifyHttpClient(
     private static string? TextValue(JsonElement element, string property) => element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
     private static string? JoinName(string? firstName, string? lastName) => string.Join(" ", new[] { firstName, lastName }.Where(value => !string.IsNullOrWhiteSpace(value))).Trim() is { Length: > 0 } name ? name : null;
     private static decimal? DecimalOrNull(JsonElement element, string property) => element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out var number) ? number : null;
+
+    private async Task<AdapterResult<IReadOnlyList<ShopifyTaxonomyRoot>>> ReadTaxonomyRootsAsync(ShopifyRequestContext shop, CancellationToken cancellationToken)
+    {
+        var roots = new List<ShopifyTaxonomyRoot>();
+        var visitedCursors = new HashSet<string>(StringComparer.Ordinal);
+        string? cursor = null;
+        RateLimitMetadata? rateLimit = null;
+        do
+        {
+            var result = await QueryAsync(shop, TaxonomyRootsQuery, new { first = 250, after = cursor }, cancellationToken);
+            if (!result.IsSuccess) return AdapterResult<IReadOnlyList<ShopifyTaxonomyRoot>>.Failure(result.Error!, result.RateLimit);
+            rateLimit = result.RateLimit;
+            try
+            {
+                var connection = result.Value!.RootElement.GetProperty("taxonomy").GetProperty("categories");
+                foreach (var category in connection.GetProperty("nodes").EnumerateArray())
+                {
+                    var graphQlId = category.GetProperty("id").GetString();
+                    var mapped = MapTaxonomyCategory(category);
+                    if (string.IsNullOrWhiteSpace(graphQlId) || roots.Any(root => string.Equals(root.Reference.ExternalId, mapped.ExternalId, StringComparison.Ordinal)))
+                        return Fail<IReadOnlyList<ShopifyTaxonomyRoot>>(AdapterErrorClass.ContractViolation, "SHOPIFY_REFERENCE_IDENTIFIERS_INVALID", "Shopify kategori yanıtı boş veya yinelenen kimlik içeriyor.", HttpStatusCode.BadGateway);
+                    roots.Add(new(graphQlId, mapped));
+                }
+
+                var info = connection.GetProperty("pageInfo");
+                var hasMore = info.GetProperty("hasNextPage").GetBoolean();
+                var next = hasMore ? info.GetProperty("endCursor").GetString() : null;
+                if (hasMore && (string.IsNullOrWhiteSpace(next) || !visitedCursors.Add(next)))
+                    return Fail<IReadOnlyList<ShopifyTaxonomyRoot>>(AdapterErrorClass.ContractViolation, "SHOPIFY_REFERENCE_CURSOR_INVALID", "Shopify kategori yanıtı geçersiz bir sayfalama imleci içeriyor.", HttpStatusCode.BadGateway);
+                cursor = next;
+                if (roots.Count > 500_000)
+                    return Fail<IReadOnlyList<ShopifyTaxonomyRoot>>(AdapterErrorClass.ContractViolation, "SHOPIFY_REFERENCE_RESULT_LIMIT_EXCEEDED", "Shopify kategori yanıtı güvenli işleme sınırını aştı.", HttpStatusCode.BadGateway);
+                if (!hasMore) break;
+            }
+            catch (Exception exception) when (exception is KeyNotFoundException or InvalidOperationException or JsonException)
+            {
+                return Fail<IReadOnlyList<ShopifyTaxonomyRoot>>(AdapterErrorClass.ContractViolation, "SHOPIFY_REFERENCE_CONTRACT_INVALID", "Shopify kategori yanıtı beklenen alanları içermiyor.", HttpStatusCode.BadGateway);
+            }
+        } while (!cancellationToken.IsCancellationRequested);
+
+        cancellationToken.ThrowIfCancellationRequested();
+        if (roots.Count == 0)
+            return Fail<IReadOnlyList<ShopifyTaxonomyRoot>>(AdapterErrorClass.ContractViolation, "SHOPIFY_REFERENCE_EMPTY_RESPONSE", "Shopify ürün taksonomisi kategori listesi boş döndü.", HttpStatusCode.BadGateway);
+        return AdapterResult<IReadOnlyList<ShopifyTaxonomyRoot>>.Success(roots, rateLimit);
+    }
+
+    internal static IReadOnlyList<RemoteReferenceItem> MapTaxonomyCategories(JsonElement categories) =>
+        categories.EnumerateArray().Select(MapTaxonomyCategory).ToArray();
+
+    internal static RemoteReferenceItem MapTaxonomyCategory(JsonElement category)
+    {
+        var externalId = ShortId(category.GetProperty("id").GetString());
+        var name = category.GetProperty("name").GetString();
+        if (string.IsNullOrWhiteSpace(externalId) || string.IsNullOrWhiteSpace(name))
+            throw new JsonException("Shopify category id/name is missing.");
+        var parentExternalId = category.TryGetProperty("parentId", out var parent) && parent.ValueKind == JsonValueKind.String
+            ? ShortId(parent.GetString())
+            : null;
+        var fullName = category.TryGetProperty("fullName", out var fullNameElement) && fullNameElement.ValueKind == JsonValueKind.String
+            ? fullNameElement.GetString()
+            : null;
+        var depth = category.TryGetProperty("level", out var level) && level.TryGetInt32(out var categoryLevel)
+            ? categoryLevel
+            : Math.Max(0, (fullName ?? name).Split(" > ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Length - 1);
+        var isLeaf = category.TryGetProperty("isLeaf", out var leaf) && leaf.ValueKind == JsonValueKind.True;
+        var isArchived = category.TryGetProperty("isArchived", out var archived) && archived.ValueKind == JsonValueKind.True;
+        return new("CATEGORIES", externalId, parentExternalId, name, string.IsNullOrWhiteSpace(fullName) ? name : fullName, depth, isLeaf, !isArchived, category.GetRawText());
+    }
+
+    private static string EncodeTaxonomyCursor(ShopifyTaxonomyPageCursor cursor) =>
+        Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(cursor));
+
+    private static bool TryDecodeTaxonomyCursor(string cursor, out ShopifyTaxonomyPageCursor state)
+    {
+        try
+        {
+            var decoded = JsonSerializer.Deserialize<ShopifyTaxonomyPageCursor>(Convert.FromBase64String(cursor));
+            if (decoded is null || decoded.Roots is null)
+            {
+                state = new([], 0, 0, null);
+                return false;
+            }
+            state = decoded;
+            return true;
+        }
+        catch (Exception exception) when (exception is FormatException or JsonException or ArgumentException)
+        {
+            state = new([], 0, 0, null);
+            return false;
+        }
+    }
+
+    private sealed record ShopifyTaxonomyRoot(string GraphQlId, RemoteReferenceItem Reference);
+    private sealed record ShopifyTaxonomyPageCursor(ShopifyTaxonomyRoot[] Roots, int RootEmissionIndex, int DescendantRootIndex, string? DescendantsAfter);
+
     private static bool TryBuildProductQuery(ShopifyRequestContext context, ProductReadFilter filter, out string? query, out string? error)
     {
         var parts = new List<string>();

@@ -183,7 +183,7 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
                 string optionValue;
                 if (localValue is not null)
                 {
-                    var valueMapping = await ResolveMappedValueAsync(tenantId, connectionId, categoryMapping.ExternalId, optionMapping.ExternalId, localValue.Id, cancellationToken);
+                    var valueMapping = await ResolveMappedValueAsync(tenantId, connectionId, categoryMapping.ExternalId, optionMapping.ExternalId, localValue.Id, localValue.Value, cancellationToken);
                     if (!valueMapping.Succeeded) return ServiceResult<ProductPublicationDraft>.Fail(valueMapping.Error!.Code, valueMapping.Error.Message, valueMapping.Error.Status, valueMapping.Error.FieldErrors);
                     optionValue = valueMapping.Value!;
                 }
@@ -216,7 +216,8 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
         if (assignment.ValueId is Guid valueId)
         {
             if (!localValues.Any(value => value.AttributeId == assignment.AttributeId && value.Id == valueId)) return ServiceResult<string>.Fail("ATTRIBUTE_VALUE_INVALID", $"'{remote.Name}' için seçilen yerel değer bulunamadı.", 422);
-            return await ResolveMappedValueAsync(tenantId, connectionId, categoryId, attributeId, valueId, cancellationToken);
+            var localValue = localValues.First(value => value.AttributeId == assignment.AttributeId && value.Id == valueId);
+            return await ResolveMappedValueAsync(tenantId, connectionId, categoryId, attributeId, valueId, localValue.Value, cancellationToken);
         }
         var custom = assignment.TextValue?.Trim()
             ?? assignment.NumberValue?.ToString(CultureInfo.InvariantCulture)
@@ -225,16 +226,39 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
         return ServiceResult<string>.Ok(custom);
     }
 
-    private async Task<ServiceResult<string>> ResolveMappedValueAsync(Guid tenantId, Guid connectionId, string categoryId, string attributeId, Guid localValueId, CancellationToken cancellationToken)
+    private async Task<ServiceResult<string>> ResolveMappedValueAsync(Guid tenantId, Guid connectionId, string categoryId, string attributeId, Guid localValueId, string localValue, CancellationToken cancellationToken)
     {
         var scope = $"{categoryId}/{attributeId}";
-        var mapping = await db.AttributeValueMappings.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == localValueId && x.ScopeExternalId == scope && x.Status == "VERIFIED", cancellationToken);
-        if (mapping is null || !await db.ReferenceSnapshots.AsNoTracking().AnyAsync(snapshot => snapshot.TenantId == tenantId && snapshot.ConnectionId == connectionId && snapshot.Id == mapping.SnapshotId && snapshot.ResourceType == "ATTRIBUTE_VALUES" && snapshot.ScopeExternalId == scope && snapshot.IsCurrent, cancellationToken))
+        var snapshotId = await db.ReferenceSnapshots.AsNoTracking()
+            .Where(snapshot => snapshot.TenantId == tenantId && snapshot.ConnectionId == connectionId && snapshot.ResourceType == "ATTRIBUTE_VALUES" && snapshot.ScopeExternalId == scope && snapshot.IsCurrent)
+            .OrderByDescending(snapshot => snapshot.FetchedAt)
+            .Select(snapshot => (Guid?)snapshot.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (snapshotId is null)
             return ServiceResult<string>.Fail("ATTRIBUTE_VALUE_MAPPING_REQUIRED", "Özellik değeri güncel Hepsiburada enum snapshot'ında eşlenmemiş.", 422);
-        var remoteValue = await db.ReferenceItems.AsNoTracking().SingleOrDefaultAsync(item => item.TenantId == tenantId && item.SnapshotId == mapping.SnapshotId && item.ResourceType == "ATTRIBUTE_VALUES" && item.ExternalId == mapping.ExternalId && item.IsActive, cancellationToken);
-        return remoteValue is null
-            ? ServiceResult<string>.Fail("ATTRIBUTE_VALUE_MAPPING_REQUIRED", "Hepsiburada enum değer eşlemesi snapshot içinde bulunamadı.", 422)
-            : ServiceResult<string>.Ok(remoteValue.Name);
+        var mappings = await db.AttributeValueMappings.AsNoTracking()
+            .Where(mapping => mapping.TenantId == tenantId && mapping.ConnectionId == connectionId && mapping.LocalId == localValueId && mapping.ScopeExternalId == scope && mapping.SnapshotId == snapshotId && mapping.Status == "VERIFIED")
+            .ToListAsync(cancellationToken);
+        if (mappings.Count == 0)
+            return ServiceResult<string>.Fail("ATTRIBUTE_VALUE_MAPPING_REQUIRED", "Özellik değeri güncel Hepsiburada enum snapshot'ında eşlenmemiş.", 422);
+        var externalIds = mappings.Select(mapping => mapping.ExternalId).ToArray();
+        var remoteValues = await db.ReferenceItems.AsNoTracking()
+            .Where(item => item.TenantId == tenantId && item.SnapshotId == snapshotId && item.ResourceType == "ATTRIBUTE_VALUES" && item.IsActive && externalIds.Contains(item.ExternalId))
+            .ToListAsync(cancellationToken);
+        if (remoteValues.Count == 0)
+            return ServiceResult<string>.Fail("ATTRIBUTE_VALUE_MAPPING_REQUIRED", "Hepsiburada enum değer eşlemesi güncel snapshot içinde bulunamadı.", 422);
+        var selectedValueName = SelectOutboundEnumValue(localValue, remoteValues.Select(item => item.Name).ToArray());
+        return selectedValueName is null
+            ? ServiceResult<string>.Fail("ATTRIBUTE_VALUE_MAPPING_AMBIGUOUS", "Bu panel değeri birden fazla Hepsiburada seçeneğine eşlenmiş. Ürün gönderimi için eşlemeyi tek bir karşılığa indirin.", 422)
+            : ServiceResult<string>.Ok(selectedValueName);
+    }
+
+    internal static string? SelectOutboundEnumValue(string localValue, IReadOnlyList<string> candidates)
+    {
+        if (candidates.Count == 0) return null;
+        var exactMatches = candidates.Where(candidate => Normalize(candidate) == Normalize(localValue)).ToArray();
+        if (exactMatches.Length == 1) return exactMatches[0];
+        return exactMatches.Length == 0 && candidates.Count == 1 ? candidates[0] : null;
     }
 
     internal static string? NormalizeMerchantSku(string sku)

@@ -134,7 +134,7 @@ internal static class CatalogModelConfiguration
         });
         builder.Entity<CatalogMapping>().UseTpcMappingStrategy();
         ConfigureMapping<CategoryMapping>(builder, "category_mappings"); ConfigureMapping<BrandMapping>(builder, "brand_mappings");
-        ConfigureAttributeMapping(builder); ConfigureMapping<AttributeValueMapping>(builder, "attribute_value_mappings");
+        ConfigureAttributeMapping(builder); ConfigureAttributeValueMapping(builder);
         builder.Entity<MarketplaceProductLink>(entity =>
         {
             entity.ToTable("marketplace_product_links", "catalog"); entity.HasKey(x => x.Id); entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ExternalId }).IsUnique(); entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ProductId }).IsUnique(); entity.Property(x => x.LastImportedPayloadHash).HasMaxLength(128); entity.Property(x => x.SyncStatus).HasMaxLength(32).HasDefaultValue("SYNCED"); entity.Property(x => x.DirtyFieldsJson).HasColumnType("jsonb"); entity.Property(x => x.LastError).HasMaxLength(1024); entity.Property(x => x.Version).IsConcurrencyToken();
@@ -275,6 +275,15 @@ internal static class CatalogModelConfiguration
         {
             entity.ToTable("attribute_mappings", "catalog"); entity.Property(x => x.ScopeExternalId).HasMaxLength(512); entity.Property(x => x.ExternalId).HasMaxLength(256); entity.Property(x => x.Status).HasMaxLength(24); entity.Property(x => x.Version).IsConcurrencyToken();
             entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.LocalId, x.ScopeExternalId, x.ExternalId }).IsUnique().HasDatabaseName("UX_attribute_mappings_local_remote_scope");
+        });
+    }
+
+    private static void ConfigureAttributeValueMapping(ModelBuilder builder)
+    {
+        builder.Entity<AttributeValueMapping>(entity =>
+        {
+            entity.ToTable("attribute_value_mappings", "catalog"); entity.Property(x => x.ScopeExternalId).HasMaxLength(512); entity.Property(x => x.ExternalId).HasMaxLength(256); entity.Property(x => x.Status).HasMaxLength(24); entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ScopeExternalId, x.ExternalId }).IsUnique().HasDatabaseName("UX_attribute_value_mappings_remote_scope");
         });
     }
 

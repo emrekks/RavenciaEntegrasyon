@@ -60,7 +60,7 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         var query = Query(mappingType).AsNoTracking().Where(x => x.TenantId == tenantId && x.LocalId == localId && x.ConnectionId == connectionId && x.ScopeExternalId == scope);
         if (!string.IsNullOrWhiteSpace(externalId)) query = query.Where(x => x.ExternalId == externalId.Trim());
         var mappings = await query.OrderBy(x => x.ExternalId).Take(2).ToListAsync(cancellationToken);
-        if (mappings.Count > 1) return ServiceResult<CatalogMappingView?>.Fail("MAPPING_EXTERNAL_ID_REQUIRED", "Bu panel özelliğinin birden fazla Trendyol alanı var; externalId belirtilmelidir.", 409);
+        if (mappings.Count > 1) return ServiceResult<CatalogMappingView?>.Fail("MAPPING_EXTERNAL_ID_REQUIRED", "Bu panel değerinin birden fazla pazar yeri değeri var; externalId belirtilmelidir.", 409);
         var mapping = mappings.SingleOrDefault();
         return ServiceResult<CatalogMappingView?>.Ok(mapping is null ? null : Map(mapping));
     }
@@ -81,7 +81,11 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         var scope = snapshot.ScopeExternalId;
         var externalId = command.ExternalId.Trim();
         var mapping = await Query(mappingType).SingleOrDefaultAsync(x => x.TenantId == tenantId && x.LocalId == localId && x.ConnectionId == command.ConnectionId && x.ScopeExternalId == scope && x.ExternalId == externalId, cancellationToken);
-        if (mapping is null && expectedVersion is not null)
+        if (mapping is null && mappingType == "attribute-values")
+        {
+            mapping = await Query(mappingType).SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == command.ConnectionId && x.ScopeExternalId == scope && x.ExternalId == externalId, cancellationToken);
+        }
+        else if (mapping is null && expectedVersion is not null)
         {
             var legacyMapping = await Query(mappingType).SingleOrDefaultAsync(x => x.TenantId == tenantId && x.LocalId == localId && x.ConnectionId == command.ConnectionId && x.ScopeExternalId == scope, cancellationToken);
             if (legacyMapping is not null && legacyMapping.Version == expectedVersion) mapping = legacyMapping;
@@ -97,6 +101,7 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
             if (expectedVersion is null) return ServiceResult<CatalogMappingView>.Fail("PRECONDITION_REQUIRED", "If-Match gereklidir.", 428);
             if (mapping.Version != expectedVersion) return ServiceResult<CatalogMappingView>.Fail("CONCURRENCY_CONFLICT", $"Kayıt sürümü değişti; güncel sürüm v{mapping.Version}.", 412);
             mapping.Version++;
+            if (mappingType == "attribute-values") mapping.LocalId = localId;
         }
         mapping.SnapshotId = command.SnapshotId; mapping.ExternalId = externalId; mapping.Status = command.Status.Trim(); mapping.VerifiedAt = timeProvider.GetUtcNow();
         if (mappingType == "attributes")
@@ -156,7 +161,7 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         var query = Query(mappingType).Where(x => x.TenantId == tenantId && x.LocalId == localId && x.ConnectionId == connectionId && x.ScopeExternalId == scope);
         if (!string.IsNullOrWhiteSpace(externalId)) query = query.Where(x => x.ExternalId == externalId.Trim());
         var candidates = await query.OrderBy(x => x.ExternalId).Take(2).ToListAsync(cancellationToken);
-        if (candidates.Count > 1) return ServiceResult<bool>.Fail("MAPPING_EXTERNAL_ID_REQUIRED", "Bu panel özelliğinin birden fazla Trendyol alanı var; externalId belirtilmelidir.", 409);
+        if (candidates.Count > 1) return ServiceResult<bool>.Fail("MAPPING_EXTERNAL_ID_REQUIRED", "Bu panel değerinin birden fazla pazar yeri değeri var; externalId belirtilmelidir.", 409);
         var mapping = candidates.SingleOrDefault();
         if (mapping is null) return NotFound<bool>();
         if (mapping.Version != expectedVersion) return ServiceResult<bool>.Fail("CONCURRENCY_CONFLICT", $"Kayıt sürümü değişti; güncel sürüm v{mapping.Version}.", 412);

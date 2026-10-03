@@ -48,10 +48,12 @@ export function classifyPublicationAttributeIssues(input: {
   remoteAttributes: PublicationAttributeReference[]
   attributeSnapshotId: string
   attributeMappings: PublicationMappingReference[]
+  platformName?: string
   valueReferencesByAttribute: Record<string, PublicationValueReferenceSet>
 }): PublicationAttributeIssues {
   const requiredIssues: PublicationAttributeIssue[] = []
   const optionalWarnings: PublicationAttributeIssue[] = []
+  const platformName = input.platformName?.trim() || 'Trendyol'
   const addIssue = (required: boolean, issue: PublicationAttributeIssue) => {
     const target = required ? requiredIssues : optionalWarnings
     if (!target.some(item => item.attribute === issue.attribute && item.detail === issue.detail)) target.push(issue)
@@ -65,7 +67,7 @@ export function classifyPublicationAttributeIssues(input: {
   for (const remote of remoteById.values()) {
     if (!remote.isRequired) continue
     if (!mappedExternalIds.has(remote.externalId)) {
-      addIssue(true, { attribute: remote.name, detail: 'Zorunlu Trendyol özelliği için güncel ve doğrulanmış eşleme yok.' })
+      addIssue(true, { attribute: remote.name, detail: `Zorunlu ${platformName} özelliği için güncel ve doğrulanmış eşleme yok.` })
       continue
     }
 
@@ -76,7 +78,7 @@ export function classifyPublicationAttributeIssues(input: {
       mappedLocalIds.has(selected.attributeId) && (selected.values.length > 0 || selected.hasCustomValue)
     )
     if (!hasSelectedValue) {
-      addIssue(true, { attribute: remote.name, detail: 'Zorunlu Trendyol özelliği için ürün veya varyant değeri seçilmemiş ya da girilmemiş.' })
+      addIssue(true, { attribute: remote.name, detail: `Zorunlu ${platformName} özelliği için ürün veya varyant değeri seçilmemiş ya da girilmemiş.` })
     }
   }
 
@@ -93,12 +95,12 @@ export function classifyPublicationAttributeIssues(input: {
     const remote = mapping ? remoteById.get(mapping.externalId) : undefined
     const required = selected.isRequired || remote?.isRequired === true
     if (!mapping || !remote) {
-      addIssue(required, { attribute: selected.name, detail: 'Seçili değer için güncel Trendyol özellik eşlemesi yok.' })
+      addIssue(required, { attribute: selected.name, detail: `Seçili değer için güncel ${platformName} özellik eşlemesi yok.` })
       continue
     }
 
     if (selected.hasCustomValue && remote.allowsCustomValue !== true) {
-      addIssue(required, { attribute: selected.name, detail: 'Trendyol bu özellik için serbest değeri kabul etmiyor.' })
+      addIssue(required, { attribute: selected.name, detail: `${platformName} bu özellik için serbest değeri kabul etmiyor.` })
     }
 
     if (isCustomPanelColorName(remote.name)) continue
@@ -109,7 +111,7 @@ export function classifyPublicationAttributeIssues(input: {
       )
       const activeReference = valueMapping && references.items.some(item => item.externalId === valueMapping.externalId && item.isActive)
       if (!activeReference) {
-        addIssue(required, { attribute: selected.name, detail: `“${value.label || 'Seçili değer'}” için güncel Trendyol değer eşlemesi yok.` })
+        addIssue(required, { attribute: selected.name, detail: `“${value.label || 'Seçili değer'}” için güncel ${platformName} değer eşlemesi yok.` })
       }
     }
   }

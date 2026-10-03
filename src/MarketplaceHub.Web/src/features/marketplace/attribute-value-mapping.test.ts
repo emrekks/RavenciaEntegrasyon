@@ -8,10 +8,10 @@ describe('attribute value reference mappings', () => {
   })
 
   it('re-saves an unchanged mapping when the reference snapshot changes', () => {
-    expect(attributeValueMappingNeedsSave({ externalId: 'winter', snapshotId: 'old' }, 'winter', 'new')).toBe(true)
-    expect(attributeValueMappingNeedsSave({ externalId: 'winter', snapshotId: 'new' }, 'winter', 'new')).toBe(false)
-    expect(attributeValueMappingNeedsSave(undefined, 'winter', 'new')).toBe(true)
-    expect(attributeValueMappingNeedsSave({ externalId: 'winter', snapshotId: 'new' }, '', 'new')).toBe(false)
+    expect(attributeValueMappingNeedsSave({ localId: 'panel-winter', externalId: 'winter', snapshotId: 'old' }, 'panel-winter', 'winter', 'new')).toBe(true)
+    expect(attributeValueMappingNeedsSave({ localId: 'panel-winter', externalId: 'winter', snapshotId: 'new' }, 'panel-winter', 'winter', 'new')).toBe(false)
+    expect(attributeValueMappingNeedsSave(undefined, 'panel-winter', 'winter', 'new')).toBe(true)
+    expect(attributeValueMappingNeedsSave({ localId: 'panel-winter', externalId: 'winter', snapshotId: 'new' }, 'panel-winter', '', 'new')).toBe(false)
   })
 
   it('maps exact-name panel values to unique Trendyol values while skipping ambiguous reference labels', () => {
@@ -54,23 +54,32 @@ describe('attribute value reference mappings', () => {
     expect(valueMappingRowClassName(true, true)).toBe('value-mapping-row is-required')
   })
 
-  it('stores Trendyol-first selections as panel-to-Trendyol mappings', () => {
+  it('stores marketplace values as keys for their selected panel values', () => {
     expect(planReferencePanelMappings({ dress: 'panel-dress', shirt: 'panel-shirt' })).toEqual([
       { localId: 'panel-dress', externalId: 'dress' },
       { localId: 'panel-shirt', externalId: 'shirt' }
     ])
   })
 
-  it('keeps a panel value assigned to at most one Trendyol value and supports clearing a selection', () => {
+  it('allows Hepsiburada selections to reuse the same panel value and supports clearing a selection', () => {
     expect(updatePanelValueReferenceSelection(
-      { dress: 'panel-dress', shirt: 'panel-shirt' },
+      { dress: 'panel-dress' },
       'shirt',
-      'panel-dress'
-    )).toEqual({ shirt: 'panel-dress' })
+      'panel-dress',
+      true
+    )).toEqual({ dress: 'panel-dress', shirt: 'panel-dress' })
     expect(updatePanelValueReferenceSelection(
-      { dress: 'panel-dress', shirt: 'panel-shirt' },
+      { dress: 'panel-dress', shirt: 'panel-dress' },
       'shirt',
       ''
     )).toEqual({ dress: 'panel-dress' })
+  })
+
+  it('keeps selections exclusive on platforms that do not allow reuse', () => {
+    expect(updatePanelValueReferenceSelection(
+      { dress: 'panel-dress' },
+      'shirt',
+      'panel-dress'
+    )).toEqual({ shirt: 'panel-dress' })
   })
 })

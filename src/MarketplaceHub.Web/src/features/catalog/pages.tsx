@@ -26,6 +26,7 @@ import { isPublicationLive, isPublicationSelectionDisabled, isPublicationStatusJ
 import { productPlatformDisplayLabel, productPlatformDisplayState } from './product-platform-status'
 import { quickPlatformUpdateTargets } from './platform-update-targets'
 import { productPublicationTargets } from './product-publication-submit'
+import { productPublicationChannelMode } from './product-publication-channels'
 import { activeProductSyncJobs as filterActiveProductSyncJobs, productSyncJobsFinished } from './product-sync-tracking'
 import { readVariantMediaAssignmentDraft, updateVariantMediaAssignmentDraft, variantMediaAssignmentKey, type VariantMediaAssignmentDrafts } from './variant-media-assignments'
 import { OperationFeedbackToast, type OperationFeedback } from './operation-feedback-toast'
@@ -181,11 +182,14 @@ type ProductSyncJob = { id: string; connectionId: string | null; jobType: string
 
 const key = () => crypto.randomUUID()
 const isProductImportConnection = productImportConnection
-const isProductUpdateConnection = (item: MarketplaceConnection) => ['TRENDYOL', 'SHOPIFY'].includes(item.platformCode.trim().toUpperCase()) && ['ACTIVE', 'VERIFIED'].includes(item.status.trim().toUpperCase())
-const isProductPublicationConnection = (item: MarketplaceConnection) => item.platformCode.trim().toUpperCase() === 'TRENDYOL' && ['ACTIVE', 'VERIFIED'].includes(item.status.trim().toUpperCase())
+const isProductUpdateConnection = (item: MarketplaceConnection) => ['TRENDYOL', 'HEPSIBURADA', 'SHOPIFY'].includes(item.platformCode.trim().toUpperCase()) && ['ACTIVE', 'VERIFIED'].includes(item.status.trim().toUpperCase())
+const productPublicationMode = (item: MarketplaceConnection) => productPublicationChannelMode(item.platformCode, item.status)
+const isProductPublicationConnection = (item: MarketplaceConnection) => productPublicationMode(item) === 'PUBLISH'
+const isProductPublicationChannel = (item: MarketplaceConnection) => productPublicationMode(item) !== null
 const productUpdateCapabilities = (platformCode: string) => {
   const code = platformCode.trim().toUpperCase()
   if (code === 'TRENDYOL') return { writable: true, content: true, categoryAttributes: true, detail: 'Ürün bilgileri, fiyat ve stok güncellenebilir.' }
+  if (code === 'HEPSIBURADA') return { writable: true, content: true, categoryAttributes: true, detail: 'Ürün bilgileri, fiyat ve stok Hepsiburada yazma kurallarıyla güncellenebilir.' }
   if (code === 'SHOPIFY') return { writable: false, content: false, categoryAttributes: false, detail: 'Shopify dış yazmaları şu anda desteklenmiyor; bağlantı salt okunur.' }
   return { writable: false, content: false, categoryAttributes: false, detail: 'Bu platform için ürün güncelleme desteği bulunmuyor.' }
 }
@@ -1497,7 +1501,7 @@ const variantBulkEditLabels: Record<VariantBulkEditField, string> = { stock: 'St
 type ProductAttributePayload = ProductAttributeAssignment
 function marketplacePlatformName(platform: VariantPlatformStatus) {
   const code = platform.platformCode.trim().toLocaleUpperCase('tr-TR')
-  return code === 'SHOPIFY' ? 'Shopify' : code === 'TRENDYOL' ? 'Trendyol' : platform.platform
+  return code === 'SHOPIFY' ? 'Shopify' : code === 'HEPSIBURADA' ? 'Hepsiburada' : code === 'TRENDYOL' ? 'Trendyol' : platform.platform
 }
 function marketplacePriceLabel(value: number | null | undefined, currency: string | null | undefined) {
   return value == null ? 'Tanımlı değil' : `${value.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency ?? ''}`.trim()
@@ -1567,7 +1571,7 @@ function BulkVariantPlatformPricingModal({ row, rows, platforms, savedDrafts, pr
   const renderMatrixHeader = (platform: VariantPlatformStatus, label: string) => {
     const key = platformKey(platform)
     const field = label === 'Liste fiyatı' ? 'listPrice' : 'salePrice'
-    return <div className="variant-platform-pricing-matrix-cell variant-platform-pricing-matrix-head" key={`${key}:${label}`}><strong>{marketplacePlatformName(platform).toLocaleUpperCase('tr-TR')}</strong><span className="variant-platform-pricing-matrix-head-label">{label.toLocaleUpperCase('tr-TR')}<button type="button" className="variant-platform-pricing-bulk-trigger" aria-label={`${marketplacePlatformName(platform)} ${label} için filtreye uyan varyantlarda toplu düzenleme aç`} title={`${marketplacePlatformName(platform)} ${label.toLocaleLowerCase('tr-TR')} toplu değiştir`} aria-haspopup="dialog" aria-expanded={matrixBulkEdit?.platform === platform && matrixBulkEdit.field === field} onClick={() => openMatrixBulkEdit(platform, field, label)} disabled={saving || !platform.connectionId}><UiIcon name="edit" size={13} /></button></span></div>
+    return <div className="variant-platform-pricing-matrix-cell variant-platform-pricing-matrix-head" key={`${key}:${label}`}><strong>{marketplacePlatformName(platform).toLocaleUpperCase('tr-TR')}</strong><span className="variant-platform-pricing-matrix-head-label"><span>{label.toLocaleUpperCase('tr-TR')}</span><button type="button" className="variant-platform-pricing-bulk-trigger" aria-label={`${marketplacePlatformName(platform)} ${label} için filtreye uyan varyantlarda toplu düzenleme aç`} title={`${marketplacePlatformName(platform)} ${label.toLocaleLowerCase('tr-TR')} toplu değiştir`} aria-haspopup="dialog" aria-expanded={matrixBulkEdit?.platform === platform && matrixBulkEdit.field === field} onClick={() => openMatrixBulkEdit(platform, field, label)} disabled={saving || !platform.connectionId}><UiIcon name="edit" size={13} /></button></span></div>
   }
   return <>
     <div className="workspace-modal-backdrop variant-platform-pricing-backdrop" role="presentation" onMouseDown={() => !saving && onClose()}>
@@ -1578,7 +1582,7 @@ function BulkVariantPlatformPricingModal({ row, rows, platforms, savedDrafts, pr
             <div className="variant-platform-pricing-bulk-heading"><strong>Platform fiyatlarını toplu düzenle</strong><span>{matchingRows.length} / {rows.length} varyant eşleşti · Panel ana fiyatı değişmez</span></div>
             {filterGroups.length > 0 && <div className="variant-platform-pricing-filter-grid" aria-label="Platform fiyatı renk ve beden filtreleri">{filterGroups.map(group => <VariantFilterDropdown key={group.id} group={group} selectedValueIds={filterSelections[group.id] ?? []} onToggle={valueId => setFilterSelections(current => ({ ...current, [group.id]: (current[group.id] ?? []).includes(valueId) ? current[group.id].filter(id => id !== valueId) : [...(current[group.id] ?? []), valueId] }))} onClear={() => setFilterSelections(current => ({ ...current, [group.id]: [] }))} />)}</div>}
             <div className="variant-platform-pricing-matrix-scroll">
-              <div className="variant-platform-pricing-matrix-grid" style={{ gridTemplateColumns: `220px repeat(${platforms.length * 2}, 112px)` }}>
+              <div className="variant-platform-pricing-matrix-grid" style={{ gridTemplateColumns: `220px repeat(${platforms.length * 2}, 128px)` }}>
                 <div className="variant-platform-pricing-matrix-cell variant-platform-pricing-matrix-corner"><strong>Varyant</strong><small>Model / barkod</small></div>
                 {platforms.flatMap(platform => [renderMatrixHeader(platform, 'Liste fiyatı'), renderMatrixHeader(platform, 'Satış fiyatı')])}
                 {sortedRows.flatMap(item => [
@@ -1938,7 +1942,7 @@ function CategoryAttributeMappingPanel({
 }
 
 function PublishPlatformCard({ card, selected, productId, categoryId, productChecks, selectedAttributes, onSelect, onDeselect }: {
-  card: { code: string; name: string; initial: string; tone: string; connection: MarketplaceConnection }
+  card: { code: string; name: string; initial: string; tone: string; connection: MarketplaceConnection; mode: 'PUBLISH' | 'READ_ONLY' }
   selected: boolean
   productId?: string
   categoryId: string
@@ -1952,7 +1956,7 @@ function PublishPlatformCard({ card, selected, productId, categoryId, productChe
   const publication = useQuery({
     queryKey: statusKey,
     queryFn: () => hubApi<PublicationStatus>(`/products/${productId}/publication-status/${card.connection.id}`, { cache: 'no-store' }),
-    enabled: !!productId,
+    enabled: !!productId && card.mode === 'PUBLISH',
     refetchInterval: query => isPublicationStatusJobRunning(query.state.data?.lastJobStatus) ? 3000 : false,
     refetchIntervalInBackground: true,
     refetchOnWindowFocus: true,
@@ -1970,26 +1974,28 @@ function PublishPlatformCard({ card, selected, productId, categoryId, productChe
     },
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: statusKey })
-      appendNotification('Trendyol ilan durumu güncelleniyor. İlan bulunamazsa panel kaydı sıfırlanır.', 'success')
+      appendNotification(`${card.name} yayın durumu güncelleniyor.`, 'success')
     },
     onError: reason => appendNotification(reason instanceof Error ? reason.message : 'Yayın durumu güncellenemedi.', 'error')
   })
 
-  const publicationLabel = publication.isPending
+  const publicationLabel = card.mode === 'READ_ONLY'
+    ? 'Ürün yayını desteklenmiyor'
+    : publication.isPending
     ? 'Yayın durumu yükleniyor…'
     : publication.isError
       ? 'Yayın durumu alınamadı'
       : publicationStatusLabel(publication.data?.actualStatus, publication.data?.lastJobStatus)
   const publicationTone = publicationStatusTone(publication.data?.actualStatus, publication.data?.lastJobStatus)
   const alreadyPublished = isPublicationLive(publication.data?.actualStatus)
-  const publicationCheckPending = Boolean(productId && publication.isPending)
-  const publicationCheckUnavailable = Boolean(productId && publication.isError && !publication.data)
+  const publicationCheckPending = Boolean(card.mode === 'PUBLISH' && productId && publication.isPending)
+  const publicationCheckUnavailable = Boolean(card.mode === 'PUBLISH' && productId && publication.isError && !publication.data)
   useEffect(() => {
     if (alreadyPublished && selected) onDeselect()
   }, [alreadyPublished, onDeselect, selected])
   const publicationNote = publicationStatusNote(publication.data?.lastRejectionCode)
-  const missingChecks = missingPublicationChecks(productChecks)
-  const mappingReadinessEnabled = (!productId || !publication.isPending)
+  const missingChecks = card.mode === 'PUBLISH' ? missingPublicationChecks(productChecks) : []
+  const mappingReadinessEnabled = card.mode === 'PUBLISH' && (!productId || !publication.isPending)
     && shouldCheckPublicationAttributes(categoryId, publication.data?.actualStatus, publication.data?.lastJobStatus)
   const mappingReadiness = useQuery({
     queryKey: ['publication-attribute-readiness', card.connection.id, categoryId, selectedAttributes],
@@ -1997,13 +2003,13 @@ function PublishPlatformCard({ card, selected, productId, categoryId, productChe
       const connectionId = encodeURIComponent(card.connection.id)
       const categoryMapping = await hubApi<{ externalId: string; snapshotId: string; status: string } | null>(`/mappings/categories/${categoryId}?connectionId=${connectionId}`)
       if (!categoryMapping || categoryMapping.status !== 'VERIFIED') {
-        return { requiredIssues: [{ attribute: 'Kategori eşlemesi', detail: 'Yayın öncesi güncel Trendyol kategori eşlemesi gerekir.' }], optionalWarnings: [] }
+        return { requiredIssues: [{ attribute: 'Kategori eşlemesi', detail: `Yayın öncesi güncel ${card.name} kategori eşlemesi gerekir.` }], optionalWarnings: [] }
       }
 
       const categoryReferences = await hubApi<{ snapshotId: string; items: Array<{ externalId: string; name: string; isActive: boolean; isLeaf: boolean }> }>(`/reference-data/categories?connectionId=${connectionId}`)
       const mappedCategory = categoryReferences.items.find(item => item.externalId === categoryMapping.externalId && item.isActive && item.isLeaf)
       if (categoryMapping.snapshotId !== categoryReferences.snapshotId || !mappedCategory) {
-        return { requiredIssues: [{ attribute: 'Kategori eşlemesi', detail: 'Trendyol kategori eşlemesi güncel değil; kategori eşlemesini yenileyin.' }], optionalWarnings: [] }
+        return { requiredIssues: [{ attribute: 'Kategori eşlemesi', detail: `${card.name} kategori eşlemesi güncel değil; kategori eşlemesini yenileyin.` }], optionalWarnings: [] }
       }
 
       const categoryScope = categoryMapping.externalId
@@ -2032,6 +2038,7 @@ function PublishPlatformCard({ card, selected, productId, categoryId, productChe
         remoteAttributes: attributeReferences.items,
         attributeSnapshotId: attributeReferences.snapshotId,
         attributeMappings,
+        platformName: card.name,
         valueReferencesByAttribute
       })
       return result
@@ -2047,7 +2054,7 @@ function PublishPlatformCard({ card, selected, productId, categoryId, productChe
   const blockedIssues = [
     ...missingChecks.map(check => ({ attribute: check.title, detail: check.detail })),
     ...requiredMappingIssues,
-    ...(mappingCheckFailed ? [{ attribute: 'Trendyol özellik kontrolü', detail: 'Güncel eşlemeler doğrulanamadı. Bağlantı ve kategori eşlemelerini kontrol edin.' }] : [])
+    ...(mappingCheckFailed ? [{ attribute: `${card.name} özellik kontrolü`, detail: `Güncel ${card.name} eşlemeleri doğrulanamadı. Bağlantı ve kategori eşlemelerini kontrol edin.` }] : [])
   ]
   const selectionBlocked = blockedIssues.length > 0 || mappingCheckPending
   const issueListId = `publish-issues-${card.connection.id}`
@@ -2056,10 +2063,10 @@ function PublishPlatformCard({ card, selected, productId, categoryId, productChe
     mappingCheckPending ? `${issueListId}-pending` : '',
     optionalMappingWarnings.length ? `${issueListId}-optional` : ''
   ].filter(Boolean).join(' ') || undefined
-  return <article className={`publish-platform-card ${selected ? 'selected' : ''}`}>
-    <button type="button" className="publish-platform-card-head" onClick={onSelect} aria-pressed={selected} aria-describedby={issueDescriptionIds} title={alreadyPublished ? 'Ürün bu platformda zaten yayında.' : undefined} disabled={isPublicationSelectionDisabled(publication.data?.actualStatus, selected, publicationCheckPending, publicationCheckUnavailable, selectionBlocked)}>
+  return <article className={`publish-platform-card${selected ? ' selected' : ''}${card.mode === 'READ_ONLY' ? ' is-read-only' : ''}`}>
+    <button type="button" className="publish-platform-card-head" onClick={onSelect} aria-pressed={selected} aria-describedby={issueDescriptionIds} title={card.mode === 'READ_ONLY' ? 'Shopify bağlantısı salt okunur; ürün yayınlama bu bağlantıda desteklenmiyor.' : alreadyPublished ? 'Ürün bu platformda zaten yayında.' : undefined} disabled={card.mode === 'READ_ONLY' || isPublicationSelectionDisabled(publication.data?.actualStatus, selected, publicationCheckPending, publicationCheckUnavailable, selectionBlocked)}>
       <span className={`publish-platform-mark ${card.tone}`}><img className={`publish-platform-logo ${platformLogoClass(card.connection.platformCode)}`} src={platformLogoSource(card.connection.platformCode) ?? '/platforms/trendyol.png'} alt="" aria-hidden="true" /></span>
-      <span><strong>{card.name}</strong><small>{alreadyPublished ? 'Zaten yayında · yeniden seçilemez' : publicationCheckPending ? 'Yayın durumu kontrol ediliyor…' : publicationCheckUnavailable ? 'Yayın durumu doğrulanamadı' : selected ? 'Yayın için seçildi' : mappingCheckPending ? 'Zorunlu alanlar kontrol ediliyor…' : selectionBlocked ? 'Zorunlu eksikler giderilmeden seçilemez' : 'Yayın için seçilmedi'}</small></span>
+      <span><strong>{card.name}</strong><small>{card.mode === 'READ_ONLY' ? 'Salt okunur · ürün yayını desteklenmiyor' : alreadyPublished ? 'Zaten yayında · yeniden seçilemez' : publicationCheckPending ? 'Yayın durumu kontrol ediliyor…' : publicationCheckUnavailable ? 'Yayın durumu doğrulanamadı' : selected ? 'Yayın için seçildi' : mappingCheckPending ? 'Zorunlu alanlar kontrol ediliyor…' : selectionBlocked ? 'Zorunlu eksikler giderilmeden seçilemez' : 'Yayın için seçilmedi'}</small></span>
       <i className={`publish-platform-toggle ${selected ? 'on' : ''}`} aria-hidden="true"><b /></i>
     </button>
     <dl className="publish-platform-facts">
@@ -2068,6 +2075,7 @@ function PublishPlatformCard({ card, selected, productId, categoryId, productChe
       <div><dt>Bağlantı</dt><dd><span className="publish-platform-status active"><i aria-hidden="true" />Aktif bağlantı</span></dd></div>
       {productId && <div className="publish-platform-fact-publication" aria-live="polite"><dt>Yayın durumu</dt><dd><span className={`publish-platform-status status-${publicationTone}`}><i aria-hidden="true" />{publicationLabel}</span>{publication.data?.profileId && publication.data.actualStatus && publication.data.actualStatus !== 'UNKNOWN' && <button type="button" className="publish-tracking-action" aria-label={`${card.name} yayın durumunu güncelle`} title="Platformdaki mevcut durumu yeniden sorgula" disabled={refreshPublication.isPending || isPublicationStatusJobRunning(publication.data.lastJobStatus)} onClick={() => refreshPublication.mutate()}><UiIcon name="refresh" /></button>}</dd>{publicationNote && <small>{publicationNote}</small>}</div>}
     </dl>
+    {card.mode === 'READ_ONLY' && <div className="publish-platform-warning" role="note"><UiIcon name="alert" /><div><strong>Shopify bağlantısı salt okunur</strong><p>Bu bağlantının uygulama izinleri ürün oluşturma veya güncelleme kapsamıyor. Dış yazma desteği etkinleştirilmeden yayın kuyruğuna alınamaz.</p></div></div>}
     {productId && publication.data?.lastJobId && <PublicationJobProgress jobId={publication.data.lastJobId} productId={productId} connectionId={card.connection.id} />}
     {blockedIssues.length > 0 && <div id={`${issueListId}-required`} className="publish-platform-missing" role="alert" aria-label={`${card.name} zorunlu yayın eksikleri`}>
       <UiIcon name="alert" />
@@ -3386,13 +3394,14 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     } finally { setSubmitting(false) }
   }
 
-  const publishConnections = (connections.data?.items ?? []).filter(isProductPublicationConnection)
-  const platformCards = publishConnections.map(connection => ({
+  const publicationChannels = (connections.data?.items ?? []).filter(isProductPublicationChannel)
+  const platformCards = publicationChannels.map(connection => ({
     code: connection.platformCode.trim().toLocaleLowerCase('tr-TR'),
     name: connection.displayName,
     initial: connection.displayName.trim().charAt(0).toLocaleUpperCase('tr-TR') || 'R',
     tone: connection.platformCode.trim().toLocaleLowerCase('tr-TR'),
-    connection
+    connection,
+    mode: productPublicationMode(connection)!
   }))
   const variantPricingPlatforms = useMemo<VariantPlatformStatus[]>(() => (connections.data?.items ?? []).filter(isProductPublicationConnection).map(connection => {
     const pricing = channelPricing[connection.id]

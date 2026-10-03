@@ -30,7 +30,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
     ];
     private static readonly string[] ShopifyCapabilityCodes =
     [
-        MarketplaceCapabilities.ConnectionTest, MarketplaceCapabilities.ProductRead,
+        MarketplaceCapabilities.ConnectionTest, MarketplaceCapabilities.ReferenceRead, MarketplaceCapabilities.ProductRead,
         MarketplaceCapabilities.OrderRead
     ];
     internal static readonly string[] HepsiburadaCapabilityCodes =

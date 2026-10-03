@@ -2507,7 +2507,7 @@ function CategoryAttributeCard({ platformCode, platformLabel, connectionId, cate
   const required = remoteAttribute.isRequired === true
   const colorField = isPanelColorAttributeName(remoteAttribute.name) || isWebColorAttributeName(remoteAttribute.name)
   const customPanelColorValues = platformCode === 'TRENDYOL' && usesCustomPanelColorValue(remoteAttribute.name)
-  return <section className={`attribute-mapping-card ${required ? 'required' : ''} ${required && !mapped && !colorField ? 'unmapped' : ''}`}><div className="attribute-mapping-card-head"><img className={`mapping-platform-logo ${platformLogoClass(platformCode)}`} src={platformLogoSource(platformCode)!} alt="" aria-hidden="true" /><div><strong>{remoteAttribute.name}</strong><small>{required ? 'Zorunlu alan' : ''}</small></div></div><div className="mapping-fields compact"><label>Entegrasyon ürün özelliği<select value={localId} onChange={event => setLocalId(event.target.value)}><option value="">Özellik seçin</option>{panelOptions.length > 0 && <optgroup label="Panel seçenekleri">{panelOptions.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</optgroup>}{panelAttributes.length > 0 && <optgroup label="Panel özellikleri">{panelAttributes.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</optgroup>}</select></label>{mapped ? <button type="button" className="secondary" onClick={() => void remove()}>Eşlemeyi kaldır</button> : <button type="button" onClick={() => void save()} disabled={!localId}>Kaydet</button>}</div>{selectedAttribute && mapped && selectedAttribute.values.length > 0 && <><button type="button" className="value-mapping-toggle" onClick={() => setShowValues(value => !value)}>{showValues ? 'Değer eşlemeleri açık' : customPanelColorValues ? `Gönderilecek renkleri gör (${selectedAttribute.values.length})` : `Değer eşlemelerini aç (${selectedAttribute.values.length})`}</button><MappingValueModal open={showValues} title={customPanelColorValues ? `${platformLabel}’a gönderilecek panel renkleri` : `${remoteAttribute.name} değer eşlemeleri`} description={customPanelColorValues ? 'Normal Renk alanı sabit değer listesi kullanmaz; panel renkleri baş harfleri büyük biçimde gönderilir.' : `Panel değerlerini mevcut ${platformLabel} seçeneklerine eşleyin. Yeni değer ${platformLabel}’a gönderilmez.`} onClose={() => setShowValues(false)}><AttributeValueMappingEditor connectionId={connectionId} categoryScope={categoryScope} attribute={selectedAttribute} externalAttributeId={remoteAttribute.externalId} platformLabel={platformLabel} customPanelColorValues={customPanelColorValues} marketplaceAllowsFreeText={remoteAttribute.allowsCustomValue === true} autoSyncMissingValues={platformCode === 'HEPSIBURADA' && remoteAttribute.allowsCustomValue === false} required={required} /></MappingValueModal></>}</section>
+  return <section className={`attribute-mapping-card ${required ? 'required' : ''} ${required && !mapped && !colorField ? 'unmapped' : ''}`}><div className="attribute-mapping-card-head"><img className={`mapping-platform-logo ${platformLogoClass(platformCode)}`} src={platformLogoSource(platformCode)!} alt="" aria-hidden="true" /><div><strong>{remoteAttribute.name}</strong><small>{required ? 'Zorunlu alan' : ''}</small></div></div><div className="mapping-fields compact"><label>Entegrasyon ürün özelliği<select value={localId} onChange={event => setLocalId(event.target.value)}><option value="">Özellik seçin</option>{panelOptions.length > 0 && <optgroup label="Panel seçenekleri">{panelOptions.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</optgroup>}{panelAttributes.length > 0 && <optgroup label="Panel özellikleri">{panelAttributes.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</optgroup>}</select></label>{mapped ? <button type="button" className="secondary" onClick={() => void remove()}>Eşlemeyi kaldır</button> : <button type="button" onClick={() => void save()} disabled={!localId}>Kaydet</button>}</div>{selectedAttribute && mapped && selectedAttribute.values.length > 0 && <><button type="button" className="value-mapping-toggle" onClick={() => setShowValues(value => !value)}>{showValues ? 'Değer eşlemeleri açık' : customPanelColorValues ? `Gönderilecek renkleri gör (${selectedAttribute.values.length})` : `Değer eşlemelerini aç (${selectedAttribute.values.length})`}</button><MappingValueModal open={showValues} title={customPanelColorValues ? `${platformLabel}’a gönderilecek panel renkleri` : `${remoteAttribute.name} değer eşlemeleri`} description={customPanelColorValues ? 'Normal Renk alanı sabit değer listesi kullanmaz; panel renkleri baş harfleri büyük biçimde gönderilir.' : `Panel değerlerini mevcut ${platformLabel} seçeneklerine eşleyin. Yeni değer ${platformLabel}’a gönderilmez.`} onClose={() => setShowValues(false)}><AttributeValueMappingEditor connectionId={connectionId} categoryScope={categoryScope} attribute={selectedAttribute} externalAttributeId={remoteAttribute.externalId} platformLabel={platformLabel} customPanelColorValues={customPanelColorValues} marketplaceAllowsFreeText={remoteAttribute.allowsCustomValue === true} autoSyncMissingValues={platformCode === 'HEPSIBURADA' && remoteAttribute.allowsCustomValue === false} allowReusablePanelValues={platformCode === 'HEPSIBURADA'} required={required} /></MappingValueModal></>}</section>
 }
 
 export function AttributeMappingPage() {
@@ -2610,7 +2610,7 @@ export function AttributeMappingPage() {
         <label>{selectedPlatformLabel} kategori özelliği<select aria-label={`${selectedPlatformLabel} kategori özelliği`} value={externalId} onChange={event => setExternalId(event.target.value)} disabled={!localId || mapping.isLoading}><option value="">Özellik seçin</option>{remoteAttributes.map(item => <option value={item.externalId} key={item.externalId}>{item.name}{item.isRequired ? ' · zorunlu' : ''}{item.allowsCustomValue ? ' · serbest değer' : ''}</option>)}</select></label>
       </div>
       <div className="mapping-action"><span>{remoteAttributes.length.toLocaleString('tr-TR')} özellik · kategori {categoryScope}{mapping.data ? ` · mevcut eşleme v${mapping.data.version}` : ''}</span><button type="button" disabled={!localId || !externalId || save.isPending || mapping.isLoading || categoryRequirements.isLoading} onClick={() => save.mutate()}>{save.isPending ? 'Kaydediliyor…' : mapping.data ? 'Eşlemeyi güncelle' : 'Eşlemeyi doğrula ve kaydet'}</button></div>
-      {mapping.data && localId && <AttributeValueMappingEditor connectionId={connectionId} categoryScope={categoryScope} attribute={activeAttributes.find(item => item.id === localId)!} externalAttributeId={mapping.data.externalId} platformLabel={selectedPlatformLabel} customPanelColorValues={selectedPlatformCode === 'TRENDYOL' && usesCustomPanelColorValue(remoteAttributes.find(item => item.externalId === mapping.data!.externalId)?.name ?? '')} marketplaceAllowsFreeText={remoteAttributes.find(item => item.externalId === mapping.data!.externalId)?.allowsCustomValue === true} autoSyncMissingValues={selectedPlatformCode === 'HEPSIBURADA' && remoteAttributes.find(item => item.externalId === mapping.data!.externalId)?.allowsCustomValue === false} required={remoteAttributes.find(item => item.externalId === mapping.data!.externalId)?.isRequired === true} />}
+      {mapping.data && localId && <AttributeValueMappingEditor connectionId={connectionId} categoryScope={categoryScope} attribute={activeAttributes.find(item => item.id === localId)!} externalAttributeId={mapping.data.externalId} platformLabel={selectedPlatformLabel} customPanelColorValues={selectedPlatformCode === 'TRENDYOL' && usesCustomPanelColorValue(remoteAttributes.find(item => item.externalId === mapping.data!.externalId)?.name ?? '')} marketplaceAllowsFreeText={remoteAttributes.find(item => item.externalId === mapping.data!.externalId)?.allowsCustomValue === true} autoSyncMissingValues={selectedPlatformCode === 'HEPSIBURADA' && remoteAttributes.find(item => item.externalId === mapping.data!.externalId)?.allowsCustomValue === false} allowReusablePanelValues={selectedPlatformCode === 'HEPSIBURADA'} required={remoteAttributes.find(item => item.externalId === mapping.data!.externalId)?.isRequired === true} />}
     </article>}
   </section>
 }
@@ -2674,7 +2674,7 @@ function WebColorValueMappingEditor({ connectionId, categoryScope, attribute, ex
 
 const autoQueuedHepsiburadaValueSyncs = new Set<string>()
 
-function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, externalAttributeId, platformLabel = 'Trendyol', customPanelColorValues = false, marketplaceAllowsFreeText = false, autoSyncMissingValues = false, required = false }: { connectionId: string; categoryScope: string; attribute: LocalAttribute; externalAttributeId: string; platformLabel?: string; customPanelColorValues?: boolean; marketplaceAllowsFreeText?: boolean; autoSyncMissingValues?: boolean; required?: boolean }) {
+function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, externalAttributeId, platformLabel = 'Trendyol', customPanelColorValues = false, marketplaceAllowsFreeText = false, autoSyncMissingValues = false, allowReusablePanelValues = false, required = false }: { connectionId: string; categoryScope: string; attribute: LocalAttribute; externalAttributeId: string; platformLabel?: string; customPanelColorValues?: boolean; marketplaceAllowsFreeText?: boolean; autoSyncMissingValues?: boolean; allowReusablePanelValues?: boolean; required?: boolean }) {
   const client = useQueryClient(); const [notice, setNotice] = useState(''); const [selections, setSelections] = useState<Record<string, string>>({}); const [selectionsReady, setSelectionsReady] = useState(false); const [initializedValueScope, setInitializedValueScope] = useState(''); const [saving, setSaving] = useState(false); const [autoMapping, setAutoMapping] = useState(false); const [quickValueOpen, setQuickValueOpen] = useState(false); const [quickValueDraft, setQuickValueDraft] = useState(''); const [quickValueSaving, setQuickValueSaving] = useState(false); const [editingQuickValue, setEditingQuickValue] = useState<{ id: string; value: string } | null>(null); const [syncJobId, setSyncJobId] = useState<string | null>(null); const handledSyncJobs = useRef(new Set<string>()); const valueScope = `${categoryScope}/${externalAttributeId}`
   const referenceKey = ['reference-attribute-values', connectionId, valueScope] as const
   const references = useQuery({ queryKey: referenceKey, queryFn: () => hubApi<ReferenceData>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(externalAttributeId)}/values?connectionId=${encodeURIComponent(connectionId)}`), retry: false, enabled: !customPanelColorValues && !marketplaceAllowsFreeText })
@@ -2719,16 +2719,14 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
   }, [notice])
   const localValues = (attribute.values?.filter(item => item.isActive) ?? []).slice().sort((left, right) => left.value.localeCompare(right.value, 'tr-TR', { sensitivity: 'base', numeric: true }))
   const allRemoteValues = references.data?.items ?? []
-  const mappingByLocal = new Map((mappings.data ?? []).map(item => [item.localId, item]))
+  const mappingByExternal = new Map((mappings.data ?? []).map(item => [item.externalId, item]))
   const mappedExternalIds = new Set((mappings.data ?? []).map(item => item.externalId))
   const remoteValues = allRemoteValues.filter(item => item.isActive || mappedExternalIds.has(item.externalId)).slice().sort((left, right) => left.name.localeCompare(right.name, 'tr-TR', { sensitivity: 'base', numeric: true }))
   const activeRemoteValues = allRemoteValues.filter(item => item.isActive)
   const directPlan = planDirectReferenceValues(localValues, activeRemoteValues)
-  const currentSelectionsByLocal = new Map(planReferencePanelMappings(selections).map(item => [item.localId, item.externalId]))
-  const unsavedLocalIds = new Set(localValues.filter(item => (currentSelectionsByLocal.get(item.id) ?? '') !== (mappingByLocal.get(item.id)?.externalId ?? '')).map(item => item.id))
-  const unsavedExternalIds = new Set(planReferencePanelMappings(selections).filter(item => unsavedLocalIds.has(item.localId)).map(item => item.externalId))
-  const availableDirectMappings = directPlan.mappings.filter(item => !unsavedLocalIds.has(item.localId) && !unsavedExternalIds.has(item.externalId))
-  const directMappingWorkCount = availableDirectMappings.filter(item => attributeValueMappingNeedsSave(mappingByLocal.get(item.localId), item.externalId, references.data?.snapshotId ?? '')).length
+  const unsavedExternalIds = new Set(remoteValues.filter(item => (selections[item.externalId] ?? '') !== (mappingByExternal.get(item.externalId)?.localId ?? '')).map(item => item.externalId))
+  const availableDirectMappings = directPlan.mappings.filter(item => !unsavedExternalIds.has(item.externalId) && (!mappingByExternal.has(item.externalId) || mappingByExternal.get(item.externalId)?.localId === item.localId))
+  const directMappingWorkCount = availableDirectMappings.filter(item => attributeValueMappingNeedsSave(mappingByExternal.get(item.externalId), item.localId, item.externalId, references.data?.snapshotId ?? '')).length
   function updateAttributeCache(updated: LocalAttribute) {
     for (const queryKey of [['attributes', 'mapping-builder'], ['attributes', 'mapping']] as const) {
       client.setQueryData<Page<LocalAttribute>>(queryKey, current => current ? { ...current, items: current.items.map(item => item.id === updated.id ? updated : item) } : current)
@@ -2759,17 +2757,17 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
     setSaving(true); setNotice('')
     try {
       var changed = 0
-      const externalByLocal = new Map(planReferencePanelMappings(selections).map(item => [item.localId, item.externalId]))
-      for (const localValue of localValues) {
-        const externalId = externalByLocal.get(localValue.id) ?? ''
-        const existing = mappingByLocal.get(localValue.id)
-        if (!externalId && existing) {
-          await hubApi<boolean>(`/mappings/attribute-values/${localValue.id}?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(valueScope)}`, { method: 'DELETE', headers: { 'If-Match': `"v${existing.version}"` } })
+      const panelValueByExternal = new Map(planReferencePanelMappings(selections).map(item => [item.externalId, item.localId]))
+      for (const remoteValue of remoteValues) {
+        const localId = panelValueByExternal.get(remoteValue.externalId) ?? ''
+        const existing = mappingByExternal.get(remoteValue.externalId)
+        if (!localId && existing) {
+          await hubApi<boolean>(`/mappings/attribute-values/${existing.localId}?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(valueScope)}&externalId=${encodeURIComponent(remoteValue.externalId)}`, { method: 'DELETE', headers: { 'If-Match': `"v${existing.version}"` } })
           changed++
           continue
         }
-        if (!attributeValueMappingNeedsSave(existing, externalId, references.data.snapshotId)) continue
-        await hubApi<CatalogMapping>(`/mappings/attribute-values/${localValue.id}`, { method: 'PUT', headers: existing ? { 'If-Match': `"v${existing.version}"` } : {}, body: JSON.stringify({ connectionId, snapshotId: references.data.snapshotId, scopeExternalId: valueScope, externalId, status: 'VERIFIED' }) })
+        if (!attributeValueMappingNeedsSave(existing, localId, remoteValue.externalId, references.data.snapshotId)) continue
+        await hubApi<CatalogMapping>(`/mappings/attribute-values/${localId}`, { method: 'PUT', headers: existing ? { 'If-Match': `"v${existing.version}"` } : {}, body: JSON.stringify({ connectionId, snapshotId: references.data.snapshotId, scopeExternalId: valueScope, externalId: remoteValue.externalId, status: 'VERIFIED' }) })
         changed++
       }
       await client.invalidateQueries({ queryKey: ['attribute-value-mappings', connectionId, valueScope] })
@@ -2839,7 +2837,7 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
     } finally { setQuickValueSaving(false) }
   }
   async function mapDirectMatchingValues() {
-    if (!references.data || !selectionsReady || (!directMappingWorkCount && !unsavedLocalIds.size) || autoMapping || syncBusy) return
+    if (!references.data || !selectionsReady || (!directMappingWorkCount && !unsavedExternalIds.size) || autoMapping || syncBusy) return
     if (!directMappingWorkCount) {
       setNotice('Yeni birebir eşleşme bulunamadı. Kaydedilmemiş panel seçimleriniz korundu; kalıcı olması için “Tüm eşlemeleri kaydet” seçin.')
       return
@@ -2849,8 +2847,8 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
     let mappedCount = 0
     try {
       for (const planned of availableDirectMappings) {
-        const existing = mappingByLocal.get(planned.localId)
-        if (!attributeValueMappingNeedsSave(existing, planned.externalId, references.data.snapshotId)) continue
+        const existing = mappingByExternal.get(planned.externalId)
+        if (!attributeValueMappingNeedsSave(existing, planned.localId, planned.externalId, references.data.snapshotId)) continue
         await hubApi<CatalogMapping>(`/mappings/attribute-values/${planned.localId}`, {
           method: 'PUT',
           headers: existing ? { 'If-Match': `"v${existing.version}"` } : {},
@@ -2858,7 +2856,7 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
         })
         mappedCount++
       }
-      setSelections(current => availableDirectMappings.reduce((next, planned) => updatePanelValueReferenceSelection(next, planned.externalId, planned.localId), current))
+      setSelections(current => availableDirectMappings.reduce((next, planned) => updatePanelValueReferenceSelection(next, planned.externalId, planned.localId, allowReusablePanelValues), current))
       await client.invalidateQueries({ queryKey: ['attribute-value-mappings', connectionId, valueScope] })
       const summary = `${mappedCount} panel değeri mevcut ${platformLabel} karşılığıyla eşlendi.`
       setNotice(directPlan.ambiguousCount ? `${summary} Adı birden fazla eşleşen ${directPlan.ambiguousCount} seçenek otomatik eşlenmedi.` : summary)
@@ -2872,19 +2870,17 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
   if (references.isError) return <div className="unknown"><strong>Güncel özellik değerleri snapshot’ı yok</strong><p>Seçili kategori ve özellik için pazar yerinin salt-okunur değer listesini eşitleyin.</p>{notice && <p role="status">{notice}</p>}{syncJob.isError && <p role="alert">Eşitleme işi durumu okunamadı; işlem takibinden iş kaydını kontrol edin.</p>}<div className="value-mapping-heading-actions"><button type="button" className="secondary" disabled={quickValueSaving} onClick={() => setQuickValueOpen(true)}>Hızlı değer oluştur</button><button type="button" disabled={syncBusy} onClick={() => sync.mutate()}>{syncBusy ? 'Eşitleniyor…' : `${platformLabel} değerlerini eşitle`}</button></div>{quickValueModal}</div>
   if (references.isLoading || mappings.isLoading) return <Busy text="Özellik değerleri ve mevcut eşlemeler yükleniyor…" />
   if (mappings.isError) return <ErrorBox error={mappings.error} />
-  const panelValueOptions = localValues.map(item => ({ value: item.id, label: item.value }))
   return <div className="mapping-step nested value-mapping-editor">
     <div className="value-mapping-heading">
-      <div><h3>Değer eşleştirmeleri</h3><p>{platformLabel} değerlerini karşılık gelen panel değerleriyle eşleyin.</p></div>
+      <div><h3>Değer eşleştirmeleri</h3><p>{platformLabel} değerlerini karşılık gelen panel değerleriyle eşleyin.{allowReusablePanelValues ? ' Aynı panel değeri birden fazla Hepsiburada seçeneği için kullanılabilir.' : ''}</p></div>
       <div className="value-mapping-heading-actions">
         <button type="button" className="secondary" disabled={quickValueSaving || autoMapping || saving} onClick={() => setQuickValueOpen(true)}>Hızlı değer oluştur</button>
-        <button type="button" className="secondary" title={`Aynı adlı panel ve ${platformLabel} değerlerini eşler.${directPlan.ambiguousCount ? ` Belirsiz ${directPlan.ambiguousCount} eşleşme atlanır.` : ''}`} disabled={!selectionsReady || autoMapping || saving || syncBusy || quickValueSaving || (directMappingWorkCount === 0 && unsavedLocalIds.size === 0)} onClick={() => void mapDirectMatchingValues()}>{autoMapping ? 'Eşleştiriliyor…' : 'Birebir eşleşenleri eşle'}</button>
+        <button type="button" className="secondary" title={`Aynı adlı panel ve ${platformLabel} değerlerini eşler.${directPlan.ambiguousCount ? ` Belirsiz ${directPlan.ambiguousCount} eşleşme atlanır.` : ''}`} disabled={!selectionsReady || autoMapping || saving || syncBusy || quickValueSaving || (directMappingWorkCount === 0 && unsavedExternalIds.size === 0)} onClick={() => void mapDirectMatchingValues()}>{autoMapping ? 'Eşleştiriliyor…' : 'Birebir eşleşenleri eşle'}</button>
         <button type="button" className="secondary value-mapping-refresh-button" title="Seçili pazar yerinin güncel referans değer listesini yenile" disabled={syncBusy || autoMapping || saving} onClick={() => sync.mutate()}>{syncBusy ? 'Yenileniyor…' : `${platformLabel} listesini yenile`}</button>
         <button type="button" disabled={!selectionsReady || saving || syncBusy || autoMapping || quickValueSaving} onClick={() => void saveAll()}>{saving ? 'Kaydediliyor…' : 'Tüm eşlemeleri kaydet'}</button>
       </div>
     </div>
     {notice && <p role="status" className="notice">{notice}</p>}
-    {!localValues.length && <div className="unknown"><strong>Bu özellikte henüz panel değeri yok</strong><p>Önce panel değerleri ekleyin; ardından sağdaki listeden seçerek {platformLabel} değerlerine eşleyin.</p></div>}
     <div className="value-mapping-rows">
       {!remoteValues.length && <div className="unknown"><strong>Bu özellik için seçilebilir değer bulunamadı</strong><p>{platformLabel} referans listesi başarıyla okundu ancak kategori özelliği sabit seçenek döndürmedi.</p></div>}
       {remoteValues.map(remoteValue => {
@@ -2892,12 +2888,13 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
         return <label key={remoteValue.externalId} className={valueMappingRowClassName(Boolean(selectedPanelId), required)}>
           <span>{remoteValue.name}</span>
           <b className="value-mapping-row-link" aria-hidden="true" title="Eşleştir"><UiIcon name="link" /></b>
-          <select aria-label={`${remoteValue.name} panel değeri`} value={selectedPanelId} disabled={!panelValueOptions.length} onChange={event => setSelections(current => updatePanelValueReferenceSelection(current, remoteValue.externalId, event.target.value))}>
+          <select aria-label={`${remoteValue.name} panel değeri`} value={selectedPanelId} disabled={!localValues.length} onChange={event => setSelections(current => updatePanelValueReferenceSelection(current, remoteValue.externalId, event.target.value, allowReusablePanelValues))}>
             <option value="">Panel değeri seçin</option>
-            {panelValueOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+            {localValues.map(option => <option key={option.id} value={option.id}>{option.value}</option>)}
           </select>
         </label>
       })}
+      {!!localValues.length && !remoteValues.length && <div className="unknown"><strong>Bu özellik için seçilebilir değer bulunamadı</strong><p>{platformLabel} referans listesi başarıyla okundu ancak kategori özelliği sabit seçenek döndürmedi.</p></div>}
     </div>
     {quickValueModal}
   </div>

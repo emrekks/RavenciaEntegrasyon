@@ -52,7 +52,7 @@ internal static class HepsiburadaJsonMapper
                         var id = Text(item, "categoryId", "id", "categoryID");
                         var name = Text(item, "name");
                         if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(name)) throw new JsonException("Hepsiburada kategori kimliği veya adı eksik.");
-                        var path = Text(item, "paths", "path") ?? name;
+                        var path = CategoryPath(item) ?? name;
                         var status = Text(item, "status");
                         var available = Boolean(item, "available");
                         var active = (string.Equals(status, "ACTIVE", StringComparison.OrdinalIgnoreCase)
@@ -1196,6 +1196,43 @@ internal static class HepsiburadaJsonMapper
         var delimiter = path.Contains('>') ? '>' : path.Contains('/') ? '/' : path.Contains('|') ? '|' : '\0';
         return delimiter == '\0' ? 0 : Math.Max(0, path.Split(delimiter, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Length - 1);
     }
+    private static string? CategoryPath(JsonElement item)
+    {
+        var value = Find(item, "paths", "path", "categoryPath", "fullPath", "breadcrumb");
+        if (value.ValueKind == JsonValueKind.String) return NormalizeCategoryPath(value.GetString());
+        if (value.ValueKind == JsonValueKind.Array)
+        {
+            var segments = value.EnumerateArray()
+                .Select(segment => segment.ValueKind == JsonValueKind.Object
+                    ? Text(segment, "name", "categoryName", "label", "title")
+                    : segment.ValueKind == JsonValueKind.String ? segment.GetString() : null)
+                .Where(segment => !string.IsNullOrWhiteSpace(segment))
+                .Select(segment => segment!.Trim())
+                .ToArray();
+            return segments.Length > 0 ? string.Join(" > ", segments) : null;
+        }
+        if (value.ValueKind == JsonValueKind.Object)
+        {
+            var path = Text(value, "path", "fullPath", "breadcrumb");
+            if (!string.IsNullOrWhiteSpace(path)) return NormalizeCategoryPath(path);
+            var segments = Find(value, "paths", "items", "segments");
+            if (segments.ValueKind == JsonValueKind.Array)
+            {
+                var names = segments.EnumerateArray()
+                    .Select(segment => segment.ValueKind == JsonValueKind.Object
+                        ? Text(segment, "name", "categoryName", "label", "title")
+                        : segment.ValueKind == JsonValueKind.String ? segment.GetString() : null)
+                    .Where(segment => !string.IsNullOrWhiteSpace(segment))
+                    .Select(segment => segment!.Trim())
+                    .ToArray();
+                return names.Length > 0 ? string.Join(" > ", names) : null;
+            }
+        }
+        return null;
+    }
+    private static string? NormalizeCategoryPath(string? path) => string.IsNullOrWhiteSpace(path)
+        ? null
+        : string.Join(" > ", path.Split(['>', '/', '|'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
     private static string? Text(JsonElement element, params string[] names)
     {
         var value = Find(element, names);

@@ -51,15 +51,18 @@ export type ReferencePanelSelections = Record<string, string>
 export function updatePanelValueReferenceSelection(
   selections: ReferencePanelSelections,
   externalId: string,
-  localId: string
+  localId: string,
+  allowReuse = false
 ): ReferencePanelSelections {
   const next = { ...selections }
   if (!localId) {
     delete next[externalId]
     return next
   }
-  for (const [selectedExternalId, selectedLocalId] of Object.entries(next)) {
-    if (selectedExternalId !== externalId && selectedLocalId === localId) delete next[selectedExternalId]
+  if (!allowReuse) {
+    for (const [selectedExternalId, selectedLocalId] of Object.entries(next)) {
+      if (selectedExternalId !== externalId && selectedLocalId === localId) delete next[selectedExternalId]
+    }
   }
   next[externalId] = localId
   return next
@@ -70,9 +73,10 @@ export function planReferencePanelMappings(selections: ReferencePanelSelections)
 }
 
 export function attributeValueMappingNeedsSave(
-  existing: { externalId: string; snapshotId: string } | undefined,
+  existing: { localId: string; externalId: string; snapshotId: string } | undefined,
+  localId: string,
   externalId: string,
   snapshotId: string
 ) {
-  return Boolean(externalId) && (!existing || existing.externalId !== externalId || existing.snapshotId !== snapshotId)
+  return Boolean(localId && externalId) && (!existing || existing.localId !== localId || existing.externalId !== externalId || existing.snapshotId !== snapshotId)
 }

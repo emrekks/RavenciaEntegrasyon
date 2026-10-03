@@ -13,6 +13,7 @@ export const cargoCarriers: CargoCarrier[] = [
   { label: 'CEVA Tedarik', code: 'CEVATEDARIK', aliases: ['Ceva Tedarik Marketplace'], iconUrl: 'https://cdn.dsmcdn.com/seller-center/oms/nexus/cargo-provider/30.png' },
   { label: 'CEVA Kargo', code: 'CEVAMP', aliases: ['CEVA', 'CEVA Logistics', 'CEVA Marketplace'], iconUrl: 'https://cdn.dsmcdn.com/seller-center/oms/nexus/cargo-provider/20.png' },
   { label: 'Trendyol Express', code: 'TEXMP', aliases: ['Trendyol Express Marketplace'], iconUrl: 'https://cdn.dsmcdn.com/seller-center/oms/nexus/cargo-provider/17.png' },
+  { label: 'hepsiJET', code: 'HEPSIJET', aliases: ['HEPSIJETMP', 'HEPSIJET KARGO', 'HEPSIJET MARKETPLACE'], iconUrl: 'https://www.hepsijet.com/images/hepsijet.svg' },
   { label: 'UPS', code: 'UPSMP' }
 ]
 

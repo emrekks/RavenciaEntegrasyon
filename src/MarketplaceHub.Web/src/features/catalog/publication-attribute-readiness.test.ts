@@ -62,6 +62,16 @@ describe('publication attribute readiness', () => {
     expect(result.requiredIssues).toEqual([{ attribute: 'Beden', detail: 'Zorunlu Trendyol özelliği için güncel ve doğrulanmış eşleme yok.' }])
   })
 
+  it('uses the selected marketplace name in Hepsiburada publication checks', () => {
+    const result = classifyPublicationAttributeIssues({
+      ...baseInput,
+      platformName: 'Hepsiburada',
+      remoteAttributes: [{ externalId: 'remote-size', name: 'Beden', isActive: true, isRequired: true }]
+    })
+
+    expect(result.requiredIssues).toEqual([{ attribute: 'Beden', detail: 'Zorunlu Hepsiburada özelliği için güncel ve doğrulanmış eşleme yok.' }])
+  })
+
   it('flags a required Trendyol attribute that is mapped but has no product or variant value', () => {
     const result = classifyPublicationAttributeIssues({
       ...baseInput,

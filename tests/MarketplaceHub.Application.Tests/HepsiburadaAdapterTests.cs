@@ -466,6 +466,34 @@ public sealed class HepsiburadaAdapterTests
     }
 
     [Fact]
+    public void ReferenceMapper_BuildsCategoryPathFromPathSegments()
+    {
+        using var categories = JsonDocument.Parse("""
+        {
+          "data": [
+            { "categoryId": 101, "name": "Bluz", "paths": ["Kadın", "Giyim", "Bluz"], "leaf": true, "status": "ACTIVE", "available": true },
+            { "categoryId": 202, "name": "Bluz", "paths": [{ "name": "Kadın" }, { "name": "Büyük Beden" }, { "name": "Bluz" }], "leaf": true, "status": "ACTIVE", "available": true }
+          ]
+        }
+        """);
+
+        var page = HepsiburadaJsonMapper.References("CATEGORIES", categories.RootElement, null, 0, 1000);
+
+        Assert.Equal("Kadın > Giyim > Bluz", page.Items[0].Path);
+        Assert.Equal("Kadın > Büyük Beden > Bluz", page.Items[1].Path);
+        Assert.NotEqual(page.Items[0].Path, page.Items[1].Path);
+    }
+
+    [Fact]
+    public void ProductPublication_SelectsAnExactAliasAndRejectsAmbiguousOutboundValues()
+    {
+        Assert.Equal("Erkek", HepsiburadaProductPublicationComposer.SelectOutboundEnumValue("Erkek", ["Kadın", "Erkek"]));
+        Assert.Equal("Kadın", HepsiburadaProductPublicationComposer.SelectOutboundEnumValue("Kadın / Kız", ["Kadın"]));
+        Assert.Null(HepsiburadaProductPublicationComposer.SelectOutboundEnumValue("Kadın / Kız", ["Kadın", "Kız Çocuk"]));
+        Assert.Null(HepsiburadaProductPublicationComposer.SelectOutboundEnumValue("Erkek", ["Erkek", "Erkek"]));
+    }
+
+    [Fact]
     public void ReferenceMapper_UsesEnumValueIdentityAndPaginatesByPageNumber()
     {
         using var json = JsonDocument.Parse("""

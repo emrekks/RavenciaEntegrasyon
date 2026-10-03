@@ -3559,8 +3559,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             var valueScope = $"{remoteCategory.ExternalId}/{remoteAttribute.ExternalId}";
             var valueSnapshot = await db.ReferenceSnapshots.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "ATTRIBUTE_VALUES" && x.ScopeExternalId == valueScope && x.IsCurrent).OrderByDescending(x => x.FetchedAt).FirstOrDefaultAsync(cancellationToken);
             if (valueSnapshot is null) continue;
-            var valueMapping = db.AttributeValueMappings.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == value.Id && x.ScopeExternalId == valueScope)
-                ?? await db.AttributeValueMappings.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == value.Id && x.ScopeExternalId == valueScope, cancellationToken);
+            var valueMapping = db.AttributeValueMappings.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == value.Id && x.ScopeExternalId == valueScope && x.ExternalId == remoteValue.ExternalId)
+                ?? await db.AttributeValueMappings.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == value.Id && x.ScopeExternalId == valueScope && x.ExternalId == remoteValue.ExternalId, cancellationToken);
             valueMapping ??= db.AttributeValueMappings.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == valueScope && x.ExternalId == remoteValue.ExternalId)
                 ?? await db.AttributeValueMappings.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == valueScope && x.ExternalId == remoteValue.ExternalId, cancellationToken);
             if (valueMapping is null)
