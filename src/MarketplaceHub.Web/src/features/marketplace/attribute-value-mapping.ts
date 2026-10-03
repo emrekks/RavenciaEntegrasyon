@@ -42,6 +42,25 @@ export function planDirectReferenceValues(
   return { mappings, ambiguousCount }
 }
 
+export function planMissingReferencePanelValues(
+  localValues: readonly { id: string; value: string }[],
+  remoteValues: readonly { externalId: string; name: string }[],
+  selections: ReferencePanelSelections
+) {
+  const localIds = new Set(localValues.map(value => value.id))
+  const localNames = new Set(localValues.map(value => normalizeReferenceValueLabel(value.value)))
+  const plannedNames = new Set<string>()
+  const values: string[] = []
+  for (const remote of remoteValues) {
+    const normalized = normalizeReferenceValueLabel(remote.name)
+    const selectedLocalId = selections[remote.externalId]
+    if ((selectedLocalId && localIds.has(selectedLocalId)) || !normalized || localNames.has(normalized) || plannedNames.has(normalized)) continue
+    plannedNames.add(normalized)
+    values.push(remote.name.trim())
+  }
+  return values
+}
+
 export function valueMappingRowClassName(hasSelection: boolean, isRequired: boolean) {
   return `value-mapping-row${hasSelection ? '' : ' is-empty'} ${isRequired ? 'is-required' : 'is-optional'}`
 }

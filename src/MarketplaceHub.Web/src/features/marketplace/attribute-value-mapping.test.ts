@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { attributeValueMappingNeedsSave, hasDirectReferenceValue, planDirectReferenceValues, planReferencePanelMappings, updatePanelValueReferenceSelection, valueMappingRowClassName } from './attribute-value-mapping'
+import { attributeValueMappingNeedsSave, hasDirectReferenceValue, planDirectReferenceValues, planMissingReferencePanelValues, planReferencePanelMappings, updatePanelValueReferenceSelection, valueMappingRowClassName } from './attribute-value-mapping'
 
 describe('attribute value reference mappings', () => {
   it('matches labels despite whitespace around season separators', () => {
@@ -39,6 +39,27 @@ describe('attribute value reference mappings', () => {
       mappings: [{ localId: 'winter', externalId: 'winter' }],
       ambiguousCount: 0
     })
+  })
+
+  it('plans same-name panel values only for empty mappings and skips existing or duplicate labels', () => {
+    expect(planMissingReferencePanelValues(
+      [{ id: 'winter', value: 'Kış' }],
+      [
+        { externalId: 'winter', name: 'Kış' },
+        { externalId: 'summer', name: 'Yaz' },
+        { externalId: 'summer-duplicate', name: ' Yaz ' },
+        { externalId: 'autumn', name: 'Sonbahar' }
+      ],
+      { winter: 'winter' }
+    )).toEqual(['Yaz', 'Sonbahar'])
+  })
+
+  it('does not plan blank remote names as panel values', () => {
+    expect(planMissingReferencePanelValues(
+      [],
+      [{ externalId: 'blank', name: '   ' }],
+      {}
+    )).toEqual([])
   })
 
   it('skips a reference label when multiple local values normalize to the same name', () => {

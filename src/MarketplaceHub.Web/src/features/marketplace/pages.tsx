@@ -16,7 +16,7 @@ import { orderStatusTabs, resolveOrderStatusTab } from './order-status-tabs'
 import { onHoldOrderStatusText, overdueShipmentDays } from './order-delivery-presentation'
 import { code128Bars, loadPrintedShippingLabels, markShippingLabelPrinted, printedShippingLabelKey, shippingLabelFields, useShippingLabelSettings, type ShippingLabelBlock, type ShippingLabelField, type ShippingLabelFormat, type ShippingLabelSettings } from '../shipping'
 import { formatPanelColorValue, usesCustomPanelColorValue } from './color-value-format'
-import { attributeValueMappingNeedsSave, normalizeReferenceValueLabel, planDirectReferenceValues, planReferencePanelMappings, updatePanelValueReferenceSelection, valueMappingRowClassName } from './attribute-value-mapping'
+import { attributeValueMappingNeedsSave, normalizeReferenceValueLabel, planDirectReferenceValues, planMissingReferencePanelValues, planReferencePanelMappings, updatePanelValueReferenceSelection, valueMappingRowClassName } from './attribute-value-mapping'
 import { isReferenceSyncJobTerminal, shouldAutoSyncHepsiburadaValues } from './reference-value-sync'
 import { activeMappingConnectionsForPlatform, mappingPlatformDefinitions, mappingPlatformLabel, type MappingPlatformCode } from './mapping-platforms'
 import { resolveAttributeMappingRole } from './mapping-attribute-role'
@@ -2799,6 +2799,7 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
   const remoteValues = allRemoteValues.filter(item => item.isActive || mappedExternalIds.has(item.externalId)).slice().sort((left, right) => left.name.localeCompare(right.name, 'tr-TR', { sensitivity: 'base', numeric: true }))
   const activeRemoteValues = allRemoteValues.filter(item => item.isActive)
   const directPlan = planDirectReferenceValues(localValues, activeRemoteValues)
+  const missingPanelValues = planMissingReferencePanelValues(localValues, activeRemoteValues, selections)
   const unsavedExternalIds = new Set(remoteValues.filter(item => (selections[item.externalId] ?? '') !== (mappingByExternal.get(item.externalId)?.localId ?? '')).map(item => item.externalId))
   const availableDirectMappings = directPlan.mappings.filter(item => !unsavedExternalIds.has(item.externalId) && (!mappingByExternal.has(item.externalId) || mappingByExternal.get(item.externalId)?.localId === item.localId))
   const directMappingWorkCount = availableDirectMappings.filter(item => attributeValueMappingNeedsSave(mappingByExternal.get(item.externalId), item.localId, item.externalId, references.data?.snapshotId ?? '')).length
@@ -2878,6 +2879,23 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
       setNotice(reason instanceof Error ? reason.message : 'Değer eklenemedi.')
     } finally { setQuickValueSaving(false) }
   }
+  async function createMissingPanelValues() {
+    if (!references.data || !selectionsReady || !missingPanelValues.length || quickValueSaving) return
+    setQuickValueSaving(true)
+    setNotice('')
+    try {
+      const updated = await hubApi<LocalAttribute>(`/catalog/attributes/${attribute.id}/values`, {
+        method: 'POST',
+        headers: { 'Idempotency-Key': idempotency() },
+        body: JSON.stringify(missingPanelValues.map((value, index) => ({ value, sortOrder: localValues.length + index })))
+      })
+      updateAttributeCache(updated)
+      await client.invalidateQueries({ queryKey: ['attributes'] })
+      setNotice(`${missingPanelValues.length} panel değeri oluşturuldu. Şimdi “Birebir eşleşenleri eşle” düğmesini kullanabilirsiniz.`)
+    } catch (reason) {
+      setNotice(reason instanceof Error ? reason.message : 'Eksik panel değerleri oluşturulamadı.')
+    } finally { setQuickValueSaving(false) }
+  }
   async function updateQuickValue(valueId: string, nextValue: string, sortOrder: number) {
     const value = nextValue.trim()
     if (!value) {
@@ -2950,6 +2968,7 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
       <div><h3>Değer eşleştirmeleri</h3><p>{platformLabel} değerlerini karşılık gelen panel değerleriyle eşleyin.{allowReusablePanelValues ? ' Aynı panel değeri birden fazla Hepsiburada seçeneği için kullanılabilir.' : ''}</p></div>
       <div className="value-mapping-heading-actions">
         <button type="button" className="secondary" disabled={quickValueSaving || autoMapping || saving} onClick={() => setQuickValueOpen(true)}>Hızlı değer oluştur</button>
+        <button type="button" className="secondary" title="Eşlemesi boş pazar yeri değerlerinin adlarıyla panel değerleri oluşturur. Aynı adlı tekrarları tek değer olarak ekler." disabled={!selectionsReady || !missingPanelValues.length || quickValueSaving || autoMapping || saving || syncBusy} onClick={() => void createMissingPanelValues()}>{quickValueSaving ? 'Ekleniyor…' : `Boş değerleri oluştur (${missingPanelValues.length})`}</button>
         <button type="button" className="secondary" title={`Aynı adlı panel ve ${platformLabel} değerlerini eşler.${directPlan.ambiguousCount ? ` Belirsiz ${directPlan.ambiguousCount} eşleşme atlanır.` : ''}`} disabled={!selectionsReady || autoMapping || saving || syncBusy || quickValueSaving || (directMappingWorkCount === 0 && unsavedExternalIds.size === 0)} onClick={() => void mapDirectMatchingValues()}>{autoMapping ? 'Eşleştiriliyor…' : 'Birebir eşleşenleri eşle'}</button>
         <button type="button" className="secondary value-mapping-refresh-button" title="Seçili pazar yerinin güncel referans değer listesini yenile" disabled={syncBusy || autoMapping || saving} onClick={() => sync.mutate()}>{syncBusy ? 'Yenileniyor…' : `${platformLabel} listesini yenile`}</button>
         <button type="button" disabled={!selectionsReady || saving || syncBusy || autoMapping || quickValueSaving} onClick={() => void saveAll()}>{saving ? 'Kaydediliyor…' : 'Tüm eşlemeleri kaydet'}</button>
