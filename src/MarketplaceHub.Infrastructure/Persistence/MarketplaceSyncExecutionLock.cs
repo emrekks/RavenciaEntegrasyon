@@ -78,6 +78,10 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
         // changes for the same connection, while their read-back can safely
         // merge with the order projection when the sync lane is active.
         if (type.Contains("SHIPMENT_ACTION", StringComparison.Ordinal)) return "shipment-actions";
+        // Trendyol invoice reconciliation only reads package data and merges
+        // invoice fields. Keeping it out of the full order-read lane prevents
+        // a long order scan from starving invoice status refreshes.
+        if (type == MarketplaceJobTypes.OrderInvoiceReconciliation) return "order-invoices";
         if (type.Contains("ORDER", StringComparison.Ordinal) || type.Contains("SHIPMENT", StringComparison.Ordinal)) return "orders";
         if (type.Contains("RETURN", StringComparison.Ordinal) || type.Contains("CLAIM", StringComparison.Ordinal)) return "returns";
         if (type.Contains("STOCK", StringComparison.Ordinal) || type.Contains("INVENTORY", StringComparison.Ordinal) || type.Contains("PRICE", StringComparison.Ordinal)) return "stock";

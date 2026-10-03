@@ -6,6 +6,15 @@ namespace MarketplaceHub.Application.Tests;
 
 public sealed class MarketplaceSyncContentionTests
 {
+    [Fact]
+    public void TrendyolInvoiceReadUsesItsOwnLaneWhileOtherOrderReadsStaySerialized()
+    {
+        Assert.Equal("order-invoices", MarketplaceSyncExecutionLock.GroupFor(MarketplaceJobTypes.OrderInvoiceReconciliation));
+        Assert.Equal("orders", MarketplaceSyncExecutionLock.GroupFor(MarketplaceJobTypes.OrderSync));
+        Assert.Equal("orders", MarketplaceSyncExecutionLock.GroupFor(MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation));
+        Assert.Equal("orders", MarketplaceSyncExecutionLock.GroupFor(MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation));
+    }
+
     [Theory]
     [InlineData(MarketplaceJobTypes.HepsiburadaOrderSync)]
     [InlineData(MarketplaceJobTypes.OrderSync)]

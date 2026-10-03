@@ -2684,6 +2684,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             .SingleOrDefaultAsync(cancellationToken);
         var isShopify = platformCode == "SHOPIFY";
         var isHepsiburada = platformCode == "HEPSIBURADA";
+        var isTrendyol = platformCode == "TRENDYOL";
         var batchSize = ReadBoundedInt(payloadJson, "batchSize", 50, 1, 250);
         var externalOrderIds = new List<string>();
         SyncCursor? invoiceCursor = null;
@@ -2791,6 +2792,16 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
         foreach (var externalOrderId in externalOrderIds)
         {
+            if (isTrendyol)
+            {
+                // A targeted package read contains the Trendyol invoice
+                // observation we need. Avoid a full order upsert here so this
+                // invoice-only job can safely run beside the regular order
+                // projection and does not contend for its advisory lock.
+                await ReconcileTrendyolPackageInvoices(tenantId, connectionId, externalOrderId, correlationId, cancellationToken);
+                continue;
+            }
+
             TrackRequest();
             var result = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"order-invoice-reconciliation:{externalOrderId}"), externalOrderId, cancellationToken);
             if (!result.IsSuccess)
@@ -2801,7 +2812,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     await RecordIssue(tenantId, $"order-invoice-reconciliation:{connectionId}:{externalOrderId}", result.Error!.Code,
                         $"Siparişin pazaryeri fatura durumu yenilenemedi; sonraki otomatik taramada tekrar denenecek. {result.Error.SafeMessage}", cancellationToken);
                 }
-                if (!string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase)) continue;
+                continue;
             }
             else
             {
@@ -2812,8 +2823,6 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 await ResolveIssue(tenantId, $"order-invoice-reconciliation:{connectionId}:{externalOrderId}", cancellationToken);
             }
 
-            if (string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase))
-                await ReconcileTrendyolPackageInvoices(tenantId, connectionId, externalOrderId, correlationId, cancellationToken);
         }
 
         if (invoiceCursor is not null && lastReconciledOrderId is not null)
@@ -2821,7 +2830,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             invoiceCursor.Version++;
             await db.SaveChangesAsync(cancellationToken);
         }
-        else if (string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase))
+        else if (isTrendyol)
         {
             await db.SaveChangesAsync(cancellationToken);
         }
