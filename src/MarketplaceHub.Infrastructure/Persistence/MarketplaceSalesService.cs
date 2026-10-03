@@ -2032,8 +2032,10 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
 
     internal static string ReturnInvoiceLabel(Invoice? invoice, MarketplaceInvoiceStatus marketplaceStatus, string customerJson, IEnumerable<string?> packageRawStatuses)
     {
-        var label = InvoiceLabel(invoice, marketplaceStatus, customerJson, packageRawStatuses);
-        return label == "FATURA_BILINMIYOR" ? "FATURA_BEKLIYOR" : label;
+        // An absent marketplace observation does not prove that the package is
+        // waiting for an invoice. Keep unknown separate so the return list does
+        // not report a false pending state when Trendyol has not exposed it.
+        return InvoiceLabel(invoice, marketplaceStatus, customerJson, packageRawStatuses);
     }
 
     internal static string InvoiceLabelForPlatform(Invoice? invoice, MarketplaceInvoiceStatus marketplaceStatus, string customerJson, IEnumerable<string?> packageRawStatuses, string? platformCode)

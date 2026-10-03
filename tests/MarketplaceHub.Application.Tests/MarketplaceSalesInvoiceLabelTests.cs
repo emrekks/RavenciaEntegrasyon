@@ -36,11 +36,11 @@ public sealed class MarketplaceSalesInvoiceLabelTests
     }
 
     [Fact]
-    public void ReturnWithoutInvoiceEvidenceIsPresentedAsWaiting()
+    public void ReturnWithoutInvoiceEvidenceIsPresentedAsUnknown()
     {
         var label = MarketplaceSalesService.ReturnInvoiceLabel(null, MarketplaceInvoiceStatus.Unknown, "{}", ["Delivered"]);
 
-        Assert.Equal("FATURA_BEKLIYOR", label);
+        Assert.Equal("FATURA_BILINMIYOR", label);
     }
 
     [Fact]
