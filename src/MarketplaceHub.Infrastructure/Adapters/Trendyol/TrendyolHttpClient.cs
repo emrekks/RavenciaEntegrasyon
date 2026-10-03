@@ -337,13 +337,15 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
             return AdapterResult<RemoteOrderPackage>.Failure(TrendyolErrorMapper.Contract(), v2Response.RateLimit);
         }
 
-        if (!string.IsNullOrWhiteSpace(v2Package?.Package.CargoProviderExternalId)
-            || !string.IsNullOrWhiteSpace(v2Package?.Package.CargoTrackingNumber))
+        if ((!string.IsNullOrWhiteSpace(v2Package?.Package.CargoProviderExternalId)
+                || !string.IsNullOrWhiteSpace(v2Package?.Package.CargoTrackingNumber))
+            && HasInvoiceObservation(v2Package))
         {
-            logger.LogInformation("Trendyol package cargo read returned provider={ProviderPresent}, tracking={TrackingPresent} from Order V2.",
-                !string.IsNullOrWhiteSpace(v2Package.Package.CargoProviderExternalId),
-                !string.IsNullOrWhiteSpace(v2Package.Package.CargoTrackingNumber));
-            return AdapterResult<RemoteOrderPackage>.Success(v2Package, v2Response.RateLimit);
+            logger.LogInformation("Trendyol package read returned provider={ProviderPresent}, tracking={TrackingPresent}, invoice={InvoicePresent} from Order V2.",
+                !string.IsNullOrWhiteSpace(v2Package!.Package.CargoProviderExternalId),
+                !string.IsNullOrWhiteSpace(v2Package!.Package.CargoTrackingNumber),
+                HasInvoiceObservation(v2Package));
+            return AdapterResult<RemoteOrderPackage>.Success(v2Package!, v2Response.RateLimit);
         }
 
         // The Order V2 endpoint limits historical order visibility. While the
@@ -363,13 +365,16 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
             return AdapterResult<RemoteOrderPackage>.Failure(TrendyolErrorMapper.Contract(), legacyResponse.RateLimit);
         }
 
-        if (!string.IsNullOrWhiteSpace(legacyPackage?.Package.CargoProviderExternalId)
-            || !string.IsNullOrWhiteSpace(legacyPackage?.Package.CargoTrackingNumber))
+        var directPackage = TrendyolJsonMapper.PreferShipmentPackageWithCargo(v2Package, legacyPackage);
+        if ((!string.IsNullOrWhiteSpace(directPackage?.Package.CargoProviderExternalId)
+                || !string.IsNullOrWhiteSpace(directPackage?.Package.CargoTrackingNumber))
+            && HasInvoiceObservation(directPackage))
         {
-            logger.LogInformation("Trendyol package cargo read returned provider={ProviderPresent}, tracking={TrackingPresent} from legacy GET.",
-                !string.IsNullOrWhiteSpace(legacyPackage.Package.CargoProviderExternalId),
-                !string.IsNullOrWhiteSpace(legacyPackage.Package.CargoTrackingNumber));
-            return AdapterResult<RemoteOrderPackage>.Success(legacyPackage, legacyResponse.RateLimit ?? v2Response.RateLimit);
+            logger.LogInformation("Trendyol package read returned provider={ProviderPresent}, tracking={TrackingPresent}, invoice={InvoicePresent} from targeted reads.",
+                !string.IsNullOrWhiteSpace(directPackage!.Package.CargoProviderExternalId),
+                !string.IsNullOrWhiteSpace(directPackage!.Package.CargoTrackingNumber),
+                HasInvoiceObservation(directPackage));
+            return AdapterResult<RemoteOrderPackage>.Success(directPackage!, legacyResponse.RateLimit ?? v2Response.RateLimit);
         }
 
         AdapterError? streamError = null;
@@ -411,14 +416,15 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
                     try
                     {
                         var streamedPackage = TrendyolJsonMapper.ShipmentPackage(streamResponse.Value!, externalPackageId.Trim());
-                        if (streamedPackage is not null
-                            && (!string.IsNullOrWhiteSpace(streamedPackage.Package.CargoProviderExternalId)
-                                || !string.IsNullOrWhiteSpace(streamedPackage.Package.CargoTrackingNumber)))
+                        var selectedDirectPackage = TrendyolJsonMapper.PreferShipmentPackageWithCargo(v2Package, legacyPackage);
+                        var mergedStreamPackage = TrendyolJsonMapper.PreferShipmentPackageWithCargo(streamedPackage, selectedDirectPackage);
+                        if (HasPackageReadbackValue(streamedPackage) && HasPackageReadbackValue(mergedStreamPackage))
                         {
-                            logger.LogInformation("Trendyol package cargo read returned provider={ProviderPresent}, tracking={TrackingPresent} from historical stream.",
-                                !string.IsNullOrWhiteSpace(streamedPackage.Package.CargoProviderExternalId),
-                                !string.IsNullOrWhiteSpace(streamedPackage.Package.CargoTrackingNumber));
-                            return AdapterResult<RemoteOrderPackage>.Success(streamedPackage,
+                            logger.LogInformation("Trendyol package read returned provider={ProviderPresent}, tracking={TrackingPresent}, invoice={InvoicePresent} from historical stream.",
+                                !string.IsNullOrWhiteSpace(mergedStreamPackage!.Package.CargoProviderExternalId),
+                                !string.IsNullOrWhiteSpace(mergedStreamPackage!.Package.CargoTrackingNumber),
+                                HasInvoiceObservation(mergedStreamPackage));
+                            return AdapterResult<RemoteOrderPackage>.Success(mergedStreamPackage!,
                                 streamResponse.RateLimit ?? legacyResponse.RateLimit ?? v2Response.RateLimit);
                         }
 
@@ -438,13 +444,13 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
         }
 
         var selectedPackage = TrendyolJsonMapper.PreferShipmentPackageWithCargo(v2Package, legacyPackage);
-        if (!string.IsNullOrWhiteSpace(selectedPackage?.Package.CargoProviderExternalId)
-            || !string.IsNullOrWhiteSpace(selectedPackage?.Package.CargoTrackingNumber))
+        if (HasPackageReadbackValue(selectedPackage))
         {
             var source = ReferenceEquals(selectedPackage, legacyPackage) ? "legacy GET" : "Order V2";
-            logger.LogInformation("Trendyol package cargo read returned provider={ProviderPresent}, tracking={TrackingPresent} from {Source}.",
+            logger.LogInformation("Trendyol package read returned provider={ProviderPresent}, tracking={TrackingPresent}, invoice={InvoicePresent} from {Source}.",
                 !string.IsNullOrWhiteSpace(selectedPackage!.Package.CargoProviderExternalId),
-                !string.IsNullOrWhiteSpace(selectedPackage.Package.CargoTrackingNumber),
+                !string.IsNullOrWhiteSpace(selectedPackage!.Package.CargoTrackingNumber),
+                HasInvoiceObservation(selectedPackage),
                 source);
             return AdapterResult<RemoteOrderPackage>.Success(selectedPackage!, legacyResponse.RateLimit ?? v2Response.RateLimit);
         }
@@ -464,6 +470,16 @@ public sealed class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthe
             ? AdapterResult<RemoteOrderPackage>.Failure(new(AdapterErrorClass.NotFound, "REMOTE_PACKAGE_NOT_FOUND", "Trendyol paket bilgisi bulunamadı.", 404, null, error.RemoteRequestId), legacyResponse.RateLimit ?? v2Response.RateLimit)
             : AdapterResult<RemoteOrderPackage>.Failure(error, legacyResponse.RateLimit ?? v2Response.RateLimit);
     }
+
+    private static bool HasInvoiceObservation(RemoteOrderPackage? package) => package?.Package.Invoice is { } invoice
+        && (!string.IsNullOrWhiteSpace(invoice.RawStatus)
+            || !string.IsNullOrWhiteSpace(invoice.InvoiceNumber)
+            || !string.IsNullOrWhiteSpace(invoice.InvoiceUrl));
+
+    private static bool HasPackageReadbackValue(RemoteOrderPackage? package) =>
+        !string.IsNullOrWhiteSpace(package?.Package.CargoProviderExternalId)
+        || !string.IsNullOrWhiteSpace(package?.Package.CargoTrackingNumber)
+        || HasInvoiceObservation(package);
 
     public async Task<AdapterResult<PackageActionResult>> ExecutePackageActionAsync(AdapterContext context, PackageActionCommand command, CancellationToken cancellationToken)
     {

@@ -16,10 +16,12 @@ public sealed class TrendyolCatalogMapperTests
             {
               "shipmentPackageId": 4052072376,
               "orderNumber": "11476852228",
+              "customerFirstName": "Leyla",
               "status": "Delivered",
               "lastModifiedDate": 1786454029672,
               "cargoTrackingNumber": 62755229958101,
               "cargoProviderName": "hepsiJET",
+              "shipmentAddress": { "firstName": "Leyla", "city": "Istanbul" },
               "lines": []
             },
             {
@@ -44,6 +46,9 @@ public sealed class TrendyolCatalogMapperTests
         Assert.Equal("4052072376", package.Package.ExternalPackageId);
         Assert.Equal("hepsiJET", package.Package.CargoProviderExternalId);
         Assert.Equal("62755229958101", package.Package.CargoTrackingNumber);
+        Assert.NotNull(package.OrderSnapshot);
+        Assert.Contains("Leyla", package.OrderSnapshot.CustomerSnapshotJson);
+        Assert.Contains("Istanbul", package.OrderSnapshot.ShipmentAddressSnapshotJson);
         Assert.Null(TrendyolJsonMapper.ShipmentPackage(json, "not-a-package"));
     }
 
@@ -60,6 +65,47 @@ public sealed class TrendyolCatalogMapperTests
 
         Assert.Same(legacy, TrendyolJsonMapper.PreferShipmentPackageWithCargo(orderV2, legacy));
         Assert.Same(orderV2WithCargo, TrendyolJsonMapper.PreferShipmentPackageWithCargo(orderV2WithCargo, legacy));
+    }
+
+    [Fact]
+    public void ShipmentPackageSelection_MergesInvoiceObservationFromTheOtherRead()
+    {
+        static RemoteOrderPackage Package(string? provider, string? trackingNumber, RemotePackageInvoiceObservation? invoice) => new(
+            "order-1",
+            new RemotePackage("package-1", null, "Delivered", DateTimeOffset.UnixEpoch, provider, trackingNumber, [], Invoice: invoice));
+
+        var v2 = Package(null, null, new("Invoiced", "INV-42", null, DateTimeOffset.UnixEpoch.AddHours(2)));
+        var legacy = Package("hepsiJET", "62755229958101", new("NotInvoiced", null, null, DateTimeOffset.UnixEpoch.AddHours(1)));
+
+        var merged = TrendyolJsonMapper.PreferShipmentPackageWithCargo(v2, legacy);
+
+        Assert.NotNull(merged);
+        Assert.Equal("hepsiJET", merged.Package.CargoProviderExternalId);
+        Assert.Equal("62755229958101", merged.Package.CargoTrackingNumber);
+        Assert.Equal("Invoiced", merged.Package.Invoice?.RawStatus);
+        Assert.Equal("INV-42", merged.Package.Invoice?.InvoiceNumber);
+    }
+
+    [Fact]
+    public void ReturnClaimProjection_IsMarkedAsNonAuthoritativeUntilOrderReadback()
+    {
+        const string payload = """
+        {
+          "orderNumber": "11376153333",
+          "claimId": "claim-1",
+          "orderDate": 1782998302000,
+          "claimDate": 1783069920000,
+          "orderOutboundPackageId": "3968176322"
+        }
+        """;
+
+        var projection = TrendyolJsonMapper.OrderFromReturnClaim(payload);
+
+        Assert.NotNull(projection);
+        Assert.Equal(DateTimeOffset.UnixEpoch, projection.LastModifiedAt);
+        Assert.True(TrendyolJsonMapper.IsReturnClaimReadModelSnapshot(projection.CustomerSnapshotJson));
+        Assert.True(TrendyolJsonMapper.IsReturnClaimReadModelSnapshot("""{"claimId":"claim-1","claimDate":"2026-07-03T09:12:00Z","orderOutboundPackageId":"3968176322"}"""));
+        Assert.False(TrendyolJsonMapper.IsReturnClaimReadModelSnapshot("""{"customerFirstName":"Ada","customerLastName":"Yılmaz"}"""));
     }
 
     [Fact]

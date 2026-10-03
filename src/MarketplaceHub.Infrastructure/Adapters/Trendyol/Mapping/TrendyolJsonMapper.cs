@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using MarketplaceHub.Application;
 
 namespace MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping;
@@ -152,15 +153,79 @@ public static class TrendyolJsonMapper
         if (order is null) return null;
         var package = order.Packages.FirstOrDefault(candidate =>
             string.Equals(candidate.ExternalPackageId, externalPackageId, StringComparison.Ordinal));
-        return package is null ? null : new(order.ExternalOrderId, package);
+        return package is null ? null : new(order.ExternalOrderId, package, order);
     }
 
-    public static RemoteOrderPackage? PreferShipmentPackageWithCargo(RemoteOrderPackage? orderV2, RemoteOrderPackage? legacy) =>
-        HasCargo(orderV2) ? orderV2 : HasCargo(legacy) ? legacy : legacy ?? orderV2;
+    public static RemoteOrderPackage? PreferShipmentPackageWithCargo(RemoteOrderPackage? orderV2, RemoteOrderPackage? legacy)
+    {
+        var preferred = HasCargo(orderV2) ? orderV2 : HasCargo(legacy) ? legacy : legacy ?? orderV2;
+        var secondary = ReferenceEquals(preferred, orderV2) ? legacy : orderV2;
+        if (preferred is null || secondary is null) return preferred;
+
+        var cargoProvider = string.IsNullOrWhiteSpace(preferred.Package.CargoProviderExternalId)
+            ? secondary.Package.CargoProviderExternalId
+            : preferred.Package.CargoProviderExternalId;
+        var cargoTrackingNumber = string.IsNullOrWhiteSpace(preferred.Package.CargoTrackingNumber)
+            ? secondary.Package.CargoTrackingNumber
+            : preferred.Package.CargoTrackingNumber;
+        var invoice = PreferInvoiceObservation(preferred.Package.Invoice, secondary.Package.Invoice);
+        var orderSnapshot = PreferOrderSnapshot(preferred.OrderSnapshot, secondary.OrderSnapshot);
+        if (cargoProvider == preferred.Package.CargoProviderExternalId
+            && cargoTrackingNumber == preferred.Package.CargoTrackingNumber
+            && invoice == preferred.Package.Invoice
+            && orderSnapshot == preferred.OrderSnapshot) return preferred;
+
+        return preferred with
+        {
+            Package = preferred.Package with
+            {
+                CargoProviderExternalId = cargoProvider,
+                CargoTrackingNumber = cargoTrackingNumber,
+                Invoice = invoice
+            },
+            OrderSnapshot = orderSnapshot
+        };
+    }
 
     private static bool HasCargo(RemoteOrderPackage? package) =>
         !string.IsNullOrWhiteSpace(package?.Package.CargoProviderExternalId)
         || !string.IsNullOrWhiteSpace(package?.Package.CargoTrackingNumber);
+
+    private static RemotePackageInvoiceObservation? PreferInvoiceObservation(
+        RemotePackageInvoiceObservation? first,
+        RemotePackageInvoiceObservation? second)
+    {
+        if (first is null) return second;
+        if (second is null) return first;
+        var firstHasObservation = HasInvoiceObservation(first);
+        var secondHasObservation = HasInvoiceObservation(second);
+        var preferSecond = !firstHasObservation && secondHasObservation
+            || firstHasObservation && secondHasObservation
+                && second.SourceUpdatedAt is { } secondUpdatedAt
+                && (first.SourceUpdatedAt is null || secondUpdatedAt > first.SourceUpdatedAt.Value);
+        var preferred = preferSecond ? second : first;
+        var other = ReferenceEquals(preferred, first) ? second : first;
+        return preferred with
+        {
+            RawStatus = FirstText(preferred.RawStatus, other.RawStatus),
+            InvoiceNumber = FirstText(preferred.InvoiceNumber, other.InvoiceNumber),
+            InvoiceUrl = FirstText(preferred.InvoiceUrl, other.InvoiceUrl),
+            SourceUpdatedAt = preferred.SourceUpdatedAt ?? other.SourceUpdatedAt
+        };
+    }
+
+    private static string? FirstText(string? preferred, string? other) =>
+        string.IsNullOrWhiteSpace(preferred) ? other : preferred;
+
+    private static bool HasInvoiceObservation(RemotePackageInvoiceObservation? invoice) => invoice is not null
+        && (!string.IsNullOrWhiteSpace(invoice.RawStatus)
+            || !string.IsNullOrWhiteSpace(invoice.InvoiceNumber)
+            || !string.IsNullOrWhiteSpace(invoice.InvoiceUrl));
+
+    private static RemoteOrder? PreferOrderSnapshot(RemoteOrder? first, RemoteOrder? second) =>
+        first is null ? second
+            : second is null || first.LastModifiedAt >= second.LastModifiedAt ? first
+            : second;
 
     public static AdapterPageResult<RemoteProduct> Products(string json)
     {
@@ -564,7 +629,12 @@ public static class TrendyolJsonMapper
         if (string.IsNullOrWhiteSpace(orderNumber)) return null;
 
         var ordered = Instant(claim, "orderDate") ?? Instant(claim, "claimDate") ?? DateTimeOffset.UnixEpoch;
-        var modified = Instant(claim, "lastModifiedDate") ?? Instant(claim, "claimDate") ?? ordered;
+        var packageOccurredAt = Instant(claim, "lastModifiedDate") ?? Instant(claim, "claimDate") ?? ordered;
+        // This is a partial order projection reconstructed from a return claim.
+        // Its claim timestamp can be newer than the original order timestamp,
+        // but it must not prevent a later authoritative order/package read from
+        // replacing the incomplete customer, address, and invoice snapshots.
+        var modified = DateTimeOffset.UnixEpoch;
         var lines = new List<RemoteOrderLine>();
         foreach (var entry in ClaimLineEntries(claim))
         {
@@ -577,11 +647,43 @@ public static class TrendyolJsonMapper
         var packageId = Text(claim, "orderOutboundPackageId", "orderShipmentPackageId");
         if (string.IsNullOrWhiteSpace(packageId)) packageId = $"return-claim:{Text(claim, "claimId", "id")}";
         var allocations = lines.Select(x => new RemotePackageAllocation(x.ExternalLineId, x.Quantity, 0, x.Quantity, x.Quantity, 0)).ToList();
-        var package = new RemotePackage(packageId, null, "Delivered", modified,
+        var package = new RemotePackage(packageId, null, "Delivered", packageOccurredAt,
             NullText(claim, "cargoProviderName", "cargoProviderCode", "cargoProvider"),
             NullText(claim, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber"), allocations, gross, 0, gross, CreatedBy: NormalizeCreatedBy(NullText(claim, "createdBy")));
         return new(orderNumber, orderNumber, ordered, modified, NullText(claim, "currencyCode") ?? "TRY", gross, 0, gross,
-            CustomerSnapshot(claim), ObjectSnapshot(claim, "shipmentAddress"), ObjectSnapshot(claim, "invoiceAddress"), lines, [package], claim.GetRawText());
+            ReturnClaimCustomerSnapshot(claim), ObjectSnapshot(claim, "shipmentAddress"), ObjectSnapshot(claim, "invoiceAddress"), lines, [package], claim.GetRawText());
+    }
+
+    public static bool IsReturnClaimReadModelSnapshot(string? customerSnapshotJson)
+    {
+        if (string.IsNullOrWhiteSpace(customerSnapshotJson)) return false;
+        try
+        {
+            using var document = JsonDocument.Parse(customerSnapshotJson);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) return false;
+            if (root.TryGetProperty("_ravenciaReadModelSource", out var source)
+                && string.Equals(source.GetString(), "RETURN_CLAIM", StringComparison.Ordinal)) return true;
+
+            // Older reconstructed rows were stored before the explicit marker
+            // existed. These claim-only identity fields let reconciliation
+            // repair them without treating a claim timestamp as order truth.
+            return root.TryGetProperty("claimId", out _)
+                && root.TryGetProperty("claimDate", out _)
+                && (root.TryGetProperty("orderOutboundPackageId", out _)
+                    || root.TryGetProperty("orderShipmentPackageId", out _));
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static string ReturnClaimCustomerSnapshot(JsonElement claim)
+    {
+        var snapshot = JsonNode.Parse(CustomerSnapshot(claim)) as JsonObject ?? new JsonObject();
+        snapshot["_ravenciaReadModelSource"] = "RETURN_CLAIM";
+        return snapshot.ToJsonString();
     }
 
     private static void AddReturnOrderLine(List<RemoteOrderLine> lines, string externalLineId, JsonElement orderLine, decimal quantity)

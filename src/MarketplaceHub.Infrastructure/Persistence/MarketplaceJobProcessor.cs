@@ -2768,18 +2768,25 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             var result = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"order-invoice-reconciliation:{externalOrderId}"), externalOrderId, cancellationToken);
             if (!result.IsSuccess)
             {
-                if (result.Error?.Class == AdapterErrorClass.NotFound) continue;
-                TrackResultFailure(result.Error);
-                await RecordIssue(tenantId, $"order-invoice-reconciliation:{connectionId}:{externalOrderId}", result.Error!.Code,
-                    $"Siparişin pazaryeri fatura durumu yenilenemedi; sonraki otomatik taramada tekrar denenecek. {result.Error.SafeMessage}", cancellationToken);
-                continue;
+                if (result.Error?.Class != AdapterErrorClass.NotFound)
+                {
+                    TrackResultFailure(result.Error);
+                    await RecordIssue(tenantId, $"order-invoice-reconciliation:{connectionId}:{externalOrderId}", result.Error!.Code,
+                        $"Siparişin pazaryeri fatura durumu yenilenemedi; sonraki otomatik taramada tekrar denenecek. {result.Error.SafeMessage}", cancellationToken);
+                }
+                if (!string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase)) continue;
+            }
+            else
+            {
+                TrackReceived();
+                if (isHepsiburada)
+                    await MergeHepsiburadaOrderInvoiceState(tenantId, connectionId, result.Value!, cancellationToken);
+                await UpsertOrder(tenantId, connectionId, result.Value!, cancellationToken, projectReservations: !isShopify, persistFinancialObservations: isShopify);
+                await ResolveIssue(tenantId, $"order-invoice-reconciliation:{connectionId}:{externalOrderId}", cancellationToken);
             }
 
-            TrackReceived();
-            if (isHepsiburada)
-                await MergeHepsiburadaOrderInvoiceState(tenantId, connectionId, result.Value!, cancellationToken);
-            await UpsertOrder(tenantId, connectionId, result.Value!, cancellationToken, projectReservations: !isShopify, persistFinancialObservations: isShopify);
-            await ResolveIssue(tenantId, $"order-invoice-reconciliation:{connectionId}:{externalOrderId}", cancellationToken);
+            if (string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase))
+                await ReconcileTrendyolPackageInvoices(tenantId, connectionId, externalOrderId, correlationId, cancellationToken);
         }
 
         if (invoiceCursor is not null && lastReconciledOrderId is not null)
@@ -2787,8 +2794,71 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             invoiceCursor.Version++;
             await db.SaveChangesAsync(cancellationToken);
         }
+        else if (string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase))
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
 
         return true;
+    }
+
+    private async Task ReconcileTrendyolPackageInvoices(Guid tenantId, Guid connectionId, string externalOrderId, string correlationId, CancellationToken cancellationToken)
+    {
+        var candidates = await (from package in db.ShipmentPackages.AsNoTracking()
+                                join order in db.Orders.AsNoTracking()
+                                    on new { package.TenantId, package.OrderId } equals new { order.TenantId, OrderId = order.Id }
+                                where package.TenantId == tenantId
+                                    && package.ConnectionId == connectionId
+                                    && package.Status != ShipmentPackageStatus.Cancelled
+                                    && package.MarketplaceInvoiceStatus != MarketplaceInvoiceStatus.Invoiced
+                                    && order.ExternalOrderId == externalOrderId
+                                select new { package.Id, package.ExternalPackageId, package.StatusOccurredAt })
+            .ToListAsync(cancellationToken);
+
+        foreach (var candidate in candidates)
+        {
+            TrackRequest();
+            var readback = await orders.GetShipmentPackageAsync(
+                Context(tenantId, connectionId, correlationId, $"trendyol-invoice-package-read:{candidate.ExternalPackageId}"),
+                candidate.ExternalPackageId,
+                candidate.StatusOccurredAt,
+                cancellationToken);
+            if (!readback.IsSuccess)
+            {
+                if (readback.Error?.Class != AdapterErrorClass.NotFound) TrackResultFailure(readback.Error);
+                continue;
+            }
+
+            TrackReceived();
+            var package = await db.ShipmentPackages.SingleOrDefaultAsync(
+                x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Id == candidate.Id,
+                cancellationToken);
+            if (package is null) continue;
+
+            await MergeMarketplaceInvoiceState(package, readback.Value!.Package, cancellationToken);
+            var orderSnapshot = readback.Value.OrderSnapshot;
+            if (orderSnapshot is not null)
+            {
+                var order = await db.Orders.SingleOrDefaultAsync(
+                    x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Id == package.OrderId,
+                    cancellationToken);
+                if (order is not null && TrendyolJsonMapper.IsReturnClaimReadModelSnapshot(order.CustomerSnapshotJson))
+                {
+                    order.CustomerSnapshotJson = orderSnapshot.CustomerSnapshotJson;
+                    if (!string.IsNullOrWhiteSpace(orderSnapshot.ShipmentAddressSnapshotJson)
+                        && orderSnapshot.ShipmentAddressSnapshotJson != "{}")
+                        order.ShipmentAddressSnapshotJson = orderSnapshot.ShipmentAddressSnapshotJson;
+                    if (!string.IsNullOrWhiteSpace(orderSnapshot.InvoiceAddressSnapshotJson)
+                        && orderSnapshot.InvoiceAddressSnapshotJson != "{}")
+                        order.InvoiceAddressSnapshotJson = orderSnapshot.InvoiceAddressSnapshotJson;
+                    if (orderSnapshot.LastModifiedAt > order.LastRemoteModifiedAt)
+                        order.LastRemoteModifiedAt = orderSnapshot.LastModifiedAt;
+                    order.UpdatedAt = timeProvider.GetUtcNow();
+                    order.Version++;
+                    telemetryUpdatedCount++;
+                }
+            }
+        }
     }
 
     private async Task MergeHepsiburadaOrderInvoiceState(Guid tenantId, Guid connectionId, RemoteOrder remote, CancellationToken cancellationToken)
@@ -5699,7 +5769,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             foreach (var candidate in repairCandidates) { var canonical = ShipmentPackageStatusPolicy.FromRemote(candidate.RawStatus); if (canonical != ShipmentPackageStatus.ManualReview) { candidate.Status = canonical; candidate.UpdatedAt = now; candidate.Version++; } }
         }
         // Do not short-circuit empty-line replays: the same remote package can need a safe local canonical projection repair after a previously unknown raw status becomes recognized.
-        var orderIsFresh = order is null || remote.LastModifiedAt >= order.LastRemoteModifiedAt;
+        var orderIsFresh = order is null
+            || remote.LastModifiedAt >= order.LastRemoteModifiedAt
+            || TrendyolJsonMapper.IsReturnClaimReadModelSnapshot(order.CustomerSnapshotJson);
         if (!orderIsFresh) telemetrySkippedCount++;
         if (order is null) { order = new Order { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ExternalOrderId = remote.ExternalOrderId, OrderNumber = remote.OrderNumber, Currency = remote.Currency, CustomerSnapshotJson = remote.CustomerSnapshotJson, ShipmentAddressSnapshotJson = remote.ShipmentAddressSnapshotJson, InvoiceAddressSnapshotJson = remote.InvoiceAddressSnapshotJson, DerivedStatus = "NEW", ShipmentDueAt = remote.ShipmentDueAt, CreatedAt = now, Version = 1 }; db.Orders.Add(order); batch?.OrdersByExternalId.TryAdd(remote.ExternalOrderId, order); telemetryInsertedCount++; }
         if (orderIsFresh)
