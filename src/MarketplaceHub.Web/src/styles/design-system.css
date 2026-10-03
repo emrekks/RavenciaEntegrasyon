@@ -451,7 +451,7 @@
   .brand.wordmark { display: grid; min-width: 0; gap: 1px; }
   .brand.wordmark strong { font-size: var(--rv-font-size-md); }
   .sidebar-pin-toggle { display: inline-grid; width: 30px; height: 30px; margin-left: auto; place-items: center; padding: 0; color: var(--rv-color-muted); background: transparent; border: 1px solid transparent; border-radius: var(--rv-radius-sm); }
-  .sidebar-pin-toggle:hover, .sidebar-pin-toggle.is-pinned { color: var(--rv-color-ink); background: var(--rv-color-surface-soft); border-color: var(--rv-color-border-strong); }
+  .sidebar-pin-toggle:hover, .sidebar-pin-toggle.is-pinned { color: var(--rv-color-ink); background: transparent; border-color: transparent; }
   .sidebar-pin-toggle svg { width: 18px; height: 18px; }
   .app-shell.stitch-shell > aside .brand.wordmark { min-width: 0; overflow: hidden; }
   .app-shell.stitch-shell > aside .nav-label { min-width: 0; max-width: 190px; overflow: hidden; opacity: 1; text-overflow: ellipsis; white-space: nowrap; transition: max-width 180ms ease, opacity 120ms ease; }
@@ -2340,6 +2340,7 @@
   .integration-view-tabs > button { min-height: 34px; padding-inline: var(--rv-space-3); }
   .integration-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); align-items: stretch; }
   .integration-card.reference-integration-card { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-height: 100%; padding: 0; overflow: hidden; }
+  .integration-card.reference-integration-card.reference-integration-card-menu-open { position: relative; z-index: var(--rv-z-dropdown); overflow: visible; }
   .reference-integration-accent { height: 3px; background: linear-gradient(90deg, var(--rv-color-primary), var(--rv-color-accent)); }
   .reference-integration-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--rv-space-4); padding: var(--rv-space-5); border-bottom: 1px solid var(--rv-color-border); }
   .reference-integration-brand { display: flex; min-width: 0; align-items: center; gap: var(--rv-space-3); }
@@ -2357,6 +2358,7 @@
   .reference-menu-trigger:hover, .mapping-icon-button:hover:not(:disabled) { color: var(--rv-color-ink); background: var(--rv-color-surface-soft); border-color: var(--rv-color-border-strong); }
   .reference-menu-trigger .ui-icon { width: 18px; height: 18px; }
   .reference-menu-popover { position: absolute; top: calc(100% + 8px); right: 0; z-index: var(--rv-z-dropdown); display: grid; width: min(280px, calc(100vw - 32px)); min-width: 0; max-width: calc(100vw - 32px); max-height: min(420px, calc(100dvh - 96px)); gap: 2px; padding: var(--rv-space-1); overflow: auto; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); box-shadow: var(--rv-shadow-lg); }
+  .reference-menu-popover.opens-up { top: auto; bottom: calc(100% + 8px); }
   .reference-menu-popover a, .reference-menu-popover button { display: flex; width: 100%; min-height: 36px; align-items: center; padding: 0 var(--rv-space-2); color: var(--rv-color-ink); background: transparent; border: 0; border-radius: var(--rv-radius-sm); text-align: left; text-decoration: none; }
   .reference-menu-popover a:hover, .reference-menu-popover button:hover:not(:disabled) { color: var(--rv-color-ink); background: var(--rv-color-surface-soft); }
   .reference-integration-body { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--rv-space-3); padding: var(--rv-space-5); align-content: start; }

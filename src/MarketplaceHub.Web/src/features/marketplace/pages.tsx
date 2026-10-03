@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type FormEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type CSSProperties, type FormEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -875,6 +875,9 @@ function ReferenceConnectionCard({ item, onSaved, onFeedback }: { item: Connecti
   const [resetConfirmation, setResetConfirmation] = useState('')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const referenceMenuRef = useRef<HTMLDivElement>(null)
+  const referenceMenuPopoverRef = useRef<HTMLDivElement>(null)
+  const [menuPlacement, setMenuPlacement] = useState<'down' | 'up'>('down')
+  const [menuMaxHeight, setMenuMaxHeight] = useState<number | null>(null)
   const [deleteConfirmation, setDeleteConfirmation] = useState('')
   const connected = item.status === 'ACTIVE' || item.status === 'VERIFIED'
   const hidden = item.status === 'HIDDEN'
@@ -900,6 +903,34 @@ function ReferenceConnectionCard({ item, onSaved, onFeedback }: { item: Connecti
       document.removeEventListener('keydown', closeOnEscape)
     }
   }, [menuOpen])
+  useLayoutEffect(() => {
+    if (!menuOpen) {
+      setMenuMaxHeight(null)
+      return
+    }
+    const updatePlacement = () => {
+      const trigger = referenceMenuRef.current?.querySelector<HTMLButtonElement>('.reference-menu-trigger')
+      const popover = referenceMenuPopoverRef.current
+      if (!trigger || !popover) return
+      const triggerRect = trigger.getBoundingClientRect()
+      const popoverHeight = popover.scrollHeight
+      const gap = 8
+      const viewportPadding = 12
+      const below = Math.max(0, window.innerHeight - triggerRect.bottom - gap - viewportPadding)
+      const above = Math.max(0, triggerRect.top - gap - viewportPadding)
+      const next = below >= popoverHeight ? 'down' : above >= popoverHeight ? 'up' : below >= above ? 'down' : 'up'
+      const available = next === 'up' ? above : below
+      setMenuPlacement(current => current === next ? current : next)
+      setMenuMaxHeight(Math.min(420, available))
+    }
+    updatePlacement()
+    window.addEventListener('resize', updatePlacement)
+    window.addEventListener('scroll', updatePlacement, true)
+    return () => {
+      window.removeEventListener('resize', updatePlacement)
+      window.removeEventListener('scroll', updatePlacement, true)
+    }
+  }, [menuOpen])
   const test = useMutation({ mutationFn: () => hubApi<{ succeeded?: boolean; errorCode?: string; errorSummary?: string }>(`/connections/${item.id}/test-jobs`, { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, body: '{}' }), onSuccess: async result => { onFeedback({ kind: result.succeeded ? 'success' : 'error', message: result.succeeded ? 'Bağlantı testi başarılı; yetenek kontrolleri yenilendi. Dış yazma yapılmadı.' : `Bağlantı testi başarısız${result.errorCode ? `: ${result.errorCode}` : '.'}${result.errorSummary ? ` — ${result.errorSummary}` : ''}` }); await Promise.all([client.invalidateQueries({ queryKey: ['capabilities', item.id] }), client.invalidateQueries({ queryKey: ['sync-policies', item.id] })]); onSaved() }, onError: reason => onFeedback({ kind: 'error', message: reason instanceof Error ? reason.message : 'Bağlantı testi başlatılamadı.' }) })
   const initialDataSync = useMutation({ mutationFn: () => hubApi<{ jobId: string }>(`/connections/${item.id}/initial-data-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': idempotency(), 'If-Match': `"v${item.version}"` }, body: '{}' }), onSuccess: async () => { onFeedback({ kind: 'success', message: `${item.displayName} için ilk veri çekimi kuyruğa alındı; platformun ilk bağlantı kuralları uygulanacak.` }); await Promise.all([client.invalidateQueries({ queryKey: ['jobs'] }), client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['returns'] }), client.invalidateQueries({ queryKey: ['products'] }), client.invalidateQueries({ queryKey: ['dashboard-bootstrap'] })]) }, onError: reason => onFeedback({ kind: 'error', message: reason instanceof Error ? reason.message : 'İlk veri çekimi başlatılamadı.' }) })
   const disconnect = useMutation({ mutationFn: () => hubApi<Connection>(`/connections/${item.id}/active`, { method: 'PUT', headers: { 'Idempotency-Key': idempotency(), 'If-Match': `"v${item.version}"` }, body: JSON.stringify({ active: false }) }), onSuccess: () => { setDisconnectOpen(false); onFeedback({ kind: 'success', message: 'Bağlantı pasife alındı.' }); onSaved() }, onError: reason => onFeedback({ kind: 'error', message: reason instanceof Error ? reason.message : 'Bağlantı pasife alınamadı.' }) })
@@ -915,11 +946,11 @@ function ReferenceConnectionCard({ item, onSaved, onFeedback }: { item: Connecti
     { key: 'reset', label: 'Verileri sıfırla', disabled: resetData.isPending, run: () => { setMenuOpen(false); setResetScopes([]); setResetConfirmation(''); setResetOpen(true) } },
   ].sort((left, right) => left.label.localeCompare(right.label, 'tr-TR'))
   const privateDataHidden = hidden || !connected
-  return <article className={`integration-card reference-integration-card ${hidden ? 'reference-integration-card-hidden' : connected ? 'reference-integration-card-active' : 'reference-integration-card-error'}`} onClickCapture={event => { const target = event.target; if (target instanceof Element && target.closest('.reference-menu-popover a')) { event.preventDefault(); setMenuOpen(false); setSettingsOpen(true) } }}>
+  return <article className={`integration-card reference-integration-card ${hidden ? 'reference-integration-card-hidden' : connected ? 'reference-integration-card-active' : 'reference-integration-card-error'}${menuOpen ? ' reference-integration-card-menu-open' : ''}`} onClickCapture={event => { const target = event.target; if (target instanceof Element && target.closest('.reference-menu-popover a')) { event.preventDefault(); setMenuOpen(false); setSettingsOpen(true) } }}>
     <div className="reference-integration-accent" aria-hidden="true" />
     <header className="reference-integration-header">
       <div className="reference-integration-brand"><img className={`reference-provider-logo ${platformLogoClass(item.platformCode)}`} src={platformLogoSource(item.platformCode) ?? '/platforms/trendyol.png'} alt="" aria-hidden="true" /><div><h2>{item.displayName}</h2><span className={`reference-connection-state ${hidden ? 'hidden' : connected ? 'connected' : 'inactive'}`}><i />{hidden ? 'Veriler gizli' : connected ? 'Bağlı & Aktif' : 'Bağlantı Pasif'}</span></div></div>
-      <div className="reference-integration-menu" ref={referenceMenuRef}><button type="button" className="reference-menu-trigger" aria-label="Entegrasyon seçenekleri" aria-expanded={menuOpen} onClick={() => setMenuOpen(value => !value)}><UiIcon name="moreVertical" /></button>{menuOpen && <div className="reference-menu-popover" role="menu">{menuActions.map(action => <button type="button" key={action.key} role="menuitem" disabled={action.disabled} onClick={action.run}>{action.displayLabel ?? action.label}</button>)}</div>}</div>
+      <div className="reference-integration-menu" ref={referenceMenuRef}><button type="button" className="reference-menu-trigger" aria-label="Entegrasyon seçenekleri" aria-expanded={menuOpen} onClick={() => setMenuOpen(value => !value)}><UiIcon name="moreVertical" /></button>{menuOpen && <div ref={referenceMenuPopoverRef} className={`reference-menu-popover opens-${menuPlacement}`} style={menuMaxHeight === null ? undefined : { maxHeight: `${menuMaxHeight}px` }} role="menu">{menuActions.map(action => <button type="button" key={action.key} role="menuitem" disabled={action.disabled} onClick={action.run}>{action.displayLabel ?? action.label}</button>)}</div>}</div>
     </header>
       {privateDataHidden ? <div className="reference-integration-private-state" role="status"><strong>Bağlantı pasif</strong><span>Bağlantı bilgileri güvenlik için gizlendi.</span></div> : <div className="reference-integration-body"><div className="reference-data-point"><span>{efaturam ? 'VKN / TCKN' : shopify ? 'Shopify mağazası' : item.platformCode === 'HEPSIBURADA' ? 'Hepsiburada mağaza ID' : 'Mağaza Kimliği (Seller ID)'}</span><strong>{item.externalStoreId || 'Tanımlanmadı'}</strong></div><div className="reference-data-point"><span>Credential</span><strong>{credentialLabel(item)}</strong></div><div className="reference-data-point"><span>Ortam</span><strong>{shopify ? `Canlı · ${item.environment || 'PRODUCTION'}` : item.environment === 'PRODUCTION' ? 'Canlı' : 'Stage'}</strong></div><div className="reference-data-point"><span>Dış yazma</span><strong>{item.externalWritesEnabled ? 'Açık' : 'Salt-okunur'}</strong></div></div>}
     <footer className="reference-integration-footer"><span>{shopify ? 'E-Ticaret' : efaturam ? 'E-Fatura' : 'Pazaryeri'}</span><button type="button" className="reference-action primary-action" onClick={() => setSettingsOpen(true)} disabled={disconnect.isPending || activate.isPending || test.isPending}><UiIcon name="settings" /> Yönet</button></footer>
