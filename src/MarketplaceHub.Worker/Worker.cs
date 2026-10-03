@@ -204,7 +204,10 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         catch (OperationCanceledException exception)
         {
             logger.LogWarning(exception, "Job {JobId} execution timed out or was cancelled outside shutdown", job.Id);
-            result = JobExecutionResult.Retry("JOB_EXECUTION_CANCELLED", "İşlem geçici olarak iptal edildi ve yeniden denenecek.");
+            result = JobExecutionResult.Retry(
+                "JOB_EXECUTION_CANCELLED",
+                "İşlem geçici olarak iptal edildi ve yeniden denenecek.",
+                RetryDelayAfterOrderReadTimeout(job.JobType));
         }
         catch (Exception exception)
         {
@@ -233,6 +236,8 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
     }
 
     internal static bool IsOrderReadSyncJob(string jobType) => Array.IndexOf(OrderReadSyncJobTypes, jobType) >= 0;
+    internal static TimeSpan? RetryDelayAfterOrderReadTimeout(string jobType) =>
+        IsOrderReadSyncJob(jobType) ? TimeSpan.FromMinutes(3) : null;
     internal static bool IsOrderInvoiceReconciliationJob(string jobType) => jobType is
         MarketplaceJobTypes.OrderInvoiceReconciliation
         or MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation

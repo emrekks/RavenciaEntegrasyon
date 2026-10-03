@@ -35,6 +35,21 @@ public sealed class OrderReadSyncTimeoutTests
     }
 
     [Theory]
+    [InlineData(MarketplaceJobTypes.OrderStatusSync)]
+    [InlineData(MarketplaceJobTypes.OrderSync)]
+    [InlineData(MarketplaceJobTypes.OrderInvoiceReconciliation)]
+    public void TimedOutOrderReadJobs_LeaveTimeForTheNextRead(string jobType)
+    {
+        Assert.Equal(TimeSpan.FromMinutes(3), MarketplaceHub.Worker.Worker.RetryDelayAfterOrderReadTimeout(jobType));
+    }
+
+    [Fact]
+    public void TimedOutWriteJobs_DoNotReceiveOrderReadBackoff()
+    {
+        Assert.Null(MarketplaceHub.Worker.Worker.RetryDelayAfterOrderReadTimeout(MarketplaceJobTypes.StageTestOrder));
+    }
+
+    [Theory]
     [InlineData(MarketplaceJobTypes.StageTestOrder)]
     [InlineData(MarketplaceJobTypes.ShipmentAction)]
     [InlineData(MarketplaceJobTypes.ReturnAction)]
