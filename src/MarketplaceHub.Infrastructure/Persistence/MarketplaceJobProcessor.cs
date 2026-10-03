@@ -2292,8 +2292,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var now = timeProvider.GetUtcNow();
         var cursor = await Cursor(tenantId, connectionId, "ORDER_CARGO_INFO", cancellationToken);
         var intervalSeconds = Math.Clamp(
-            configuration.GetValue("MarketplaceSync:TrendyolCargoInfo:IntervalSeconds", (int)TimeSpan.FromHours(6).TotalSeconds),
-            (int)TimeSpan.FromHours(1).TotalSeconds,
+            configuration.GetValue("MarketplaceSync:TrendyolCargoInfo:IntervalSeconds", (int)TimeSpan.FromMinutes(5).TotalSeconds),
+            (int)TimeSpan.FromMinutes(1).TotalSeconds,
             (int)TimeSpan.FromDays(1).TotalSeconds);
         var interval = TimeSpan.FromSeconds(intervalSeconds);
         if (!OpenOrderLifecyclePolicy.ShouldRunTrendyolCargoInfoReconciliation(cursor.LastAttemptAt, now, interval)) return;
@@ -2311,10 +2311,10 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 && package.ExternalPackageId != ""
                 && (package.CargoProviderExternalId == null || package.CargoProviderExternalId == ""
                     || package.CargoTrackingNumber == null || package.CargoTrackingNumber == "")
-            select new { package.Id, package.ExternalPackageId, order.OrderNumber };
+            select new { package.Id, package.ExternalPackageId, order.OrderNumber, package.StatusOccurredAt };
         var distinctCandidates = candidates.Distinct();
         var candidateCount = await distinctCandidates.CountAsync(cancellationToken);
-        var selectedCandidates = new List<(Guid PackageId, string ExternalPackageId, string OrderNumber)>();
+        var selectedCandidates = new List<(Guid PackageId, string ExternalPackageId, string OrderNumber, DateTimeOffset PackageStatusOccurredAt)>();
         var nextOffset = 0;
         if (candidateCount > 0)
         {
@@ -2327,16 +2327,16 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             var afterCandidates = await orderedCandidates
                 .Skip(offset)
                 .Take(afterCount)
-                .Select(candidate => new { candidate.Id, candidate.ExternalPackageId, candidate.OrderNumber })
+                .Select(candidate => new { candidate.Id, candidate.ExternalPackageId, candidate.OrderNumber, candidate.StatusOccurredAt })
                 .ToListAsync(cancellationToken);
-            selectedCandidates.AddRange(afterCandidates.Select(candidate => (candidate.Id, candidate.ExternalPackageId, candidate.OrderNumber)));
+            selectedCandidates.AddRange(afterCandidates.Select(candidate => (candidate.Id, candidate.ExternalPackageId, candidate.OrderNumber, candidate.StatusOccurredAt)));
             if (selectedCandidates.Count < takeCount)
             {
                 var wrappedCandidates = await orderedCandidates
                     .Take(takeCount - selectedCandidates.Count)
-                    .Select(candidate => new { candidate.Id, candidate.ExternalPackageId, candidate.OrderNumber })
+                    .Select(candidate => new { candidate.Id, candidate.ExternalPackageId, candidate.OrderNumber, candidate.StatusOccurredAt })
                     .ToListAsync(cancellationToken);
-                selectedCandidates.AddRange(wrappedCandidates.Select(candidate => (candidate.Id, candidate.ExternalPackageId, candidate.OrderNumber)));
+                selectedCandidates.AddRange(wrappedCandidates.Select(candidate => (candidate.Id, candidate.ExternalPackageId, candidate.OrderNumber, candidate.StatusOccurredAt)));
             }
             nextOffset = (offset + selectedCandidates.Count) % candidateCount;
         }
@@ -2348,6 +2348,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             var result = await orders.GetShipmentPackageAsync(
                 Context(tenantId, connectionId, correlationId, $"trendyol-cargo-info:{candidate.ExternalPackageId}"),
                 candidate.ExternalPackageId,
+                candidate.PackageStatusOccurredAt,
                 cancellationToken);
             if (!result.IsSuccess)
             {

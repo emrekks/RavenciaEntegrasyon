@@ -155,6 +155,13 @@ public static class TrendyolJsonMapper
         return package is null ? null : new(order.ExternalOrderId, package);
     }
 
+    public static RemoteOrderPackage? PreferShipmentPackageWithCargo(RemoteOrderPackage? orderV2, RemoteOrderPackage? legacy) =>
+        HasCargo(orderV2) ? orderV2 : HasCargo(legacy) ? legacy : legacy ?? orderV2;
+
+    private static bool HasCargo(RemoteOrderPackage? package) =>
+        !string.IsNullOrWhiteSpace(package?.Package.CargoProviderExternalId)
+        || !string.IsNullOrWhiteSpace(package?.Package.CargoTrackingNumber);
+
     public static AdapterPageResult<RemoteProduct> Products(string json)
     {
         using var document = JsonDocument.Parse(json); var root = document.RootElement; var rows = new List<RemoteProduct>();

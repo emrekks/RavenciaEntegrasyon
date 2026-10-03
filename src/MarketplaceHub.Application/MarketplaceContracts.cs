@@ -436,6 +436,8 @@ public interface IOrderPort
     Task<AdapterResult<RemoteOrder>> GetAsync(AdapterContext context, string externalOrderId, CancellationToken cancellationToken);
     Task<AdapterResult<RemoteOrderPackage>> GetShipmentPackageAsync(AdapterContext context, string externalPackageId, CancellationToken cancellationToken) =>
         Task.FromResult(AdapterResult<RemoteOrderPackage>.Failure(new(AdapterErrorClass.NotSupported, "ORDER_PACKAGE_READ_UNSUPPORTED", "Bu pazaryerinde paket ayrıntısı okuması desteklenmiyor.", null, null, null)));
+    Task<AdapterResult<RemoteOrderPackage>> GetShipmentPackageAsync(AdapterContext context, string externalPackageId, DateTimeOffset? packageStatusOccurredAt, CancellationToken cancellationToken) =>
+        GetShipmentPackageAsync(context, externalPackageId, cancellationToken);
     Task<AdapterResult<PackageActionResult>> ExecutePackageActionAsync(AdapterContext context, PackageActionCommand command, CancellationToken cancellationToken);
     Task<AdapterResult<IReadOnlyList<RemoteCargoCompany>>> GetChangeableCargoCompaniesAsync(AdapterContext context, string externalPackageId, CancellationToken cancellationToken);
     Task<AdapterResult<IReadOnlyList<RemotePackageableLine>>> GetPackageableLineItemsAsync(AdapterContext context, string externalLineItemId, CancellationToken cancellationToken);

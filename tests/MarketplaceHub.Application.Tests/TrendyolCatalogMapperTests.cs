@@ -48,6 +48,21 @@ public sealed class TrendyolCatalogMapperTests
     }
 
     [Fact]
+    public void ShipmentPackageSelection_PrefersCargoFromLegacyReadWhenV2OmitsIt()
+    {
+        static RemoteOrderPackage Package(string? provider, string? trackingNumber) => new(
+            "order-1",
+            new RemotePackage("package-1", null, "Delivered", DateTimeOffset.UnixEpoch, provider, trackingNumber, []));
+
+        var orderV2 = Package(null, null);
+        var legacy = Package("hepsiJET", "62755229958101");
+        var orderV2WithCargo = Package("PTT", "7340037147068871");
+
+        Assert.Same(legacy, TrendyolJsonMapper.PreferShipmentPackageWithCargo(orderV2, legacy));
+        Assert.Same(orderV2WithCargo, TrendyolJsonMapper.PreferShipmentPackageWithCargo(orderV2WithCargo, legacy));
+    }
+
+    [Fact]
     public void PendingApprovalProductResponse_MapsFlatVariantAsPendingCatalogRow()
     {
         const string json = """
