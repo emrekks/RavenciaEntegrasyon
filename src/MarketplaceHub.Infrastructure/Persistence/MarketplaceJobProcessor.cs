@@ -6671,7 +6671,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var now = timeProvider.GetUtcNow(); var target = CanonicalReturn(remote.RawStatus, remote.CargoTrackingLink); var claim = await db.ReturnClaims.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalClaimId == remote.ExternalClaimId, cancellationToken);
         var remoteCargoProvider = string.IsNullOrWhiteSpace(remote.CargoProviderName) ? null : remote.CargoProviderName.Trim();
         var remoteCargoTracking = string.IsNullOrWhiteSpace(remote.CargoTrackingNumber) ? null : remote.CargoTrackingNumber.Trim();
-        if (claim is null) { claim = new ReturnClaim { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, OrderId = order.Id, ExternalClaimId = remote.ExternalClaimId, Status = target, RawStatus = remote.RawStatus, CargoProviderName = remoteCargoProvider, CargoTrackingNumber = remoteCargoTracking, LastRemoteModifiedAt = remote.LastModifiedAt, CreatedAt = now, UpdatedAt = now, Version = 1 }; db.ReturnClaims.Add(claim); telemetryInsertedCount++; }
+        if (claim is null) { claim = NewReturnClaim(tenantId, connectionId, order.Id, remote, target, now); db.ReturnClaims.Add(claim); telemetryInsertedCount++; }
         else
         {
             var claimChanged = false;
@@ -6731,6 +6731,26 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
         await db.SaveChangesAsync(cancellationToken);
     }
+
+    internal static ReturnClaim NewReturnClaim(Guid tenantId, Guid connectionId, Guid orderId, RemoteReturnClaim remote, ReturnClaimStatus status, DateTimeOffset now) => new()
+    {
+        Id = Guid.CreateVersion7(),
+        TenantId = tenantId,
+        ConnectionId = connectionId,
+        OrderId = orderId,
+        ExternalClaimId = remote.ExternalClaimId,
+        Status = status,
+        RawStatus = remote.RawStatus,
+        CargoProviderName = string.IsNullOrWhiteSpace(remote.CargoProviderName) ? null : remote.CargoProviderName.Trim(),
+        CargoTrackingNumber = string.IsNullOrWhiteSpace(remote.CargoTrackingNumber) ? null : remote.CargoTrackingNumber.Trim(),
+        ReasonCode = remote.ReasonCode,
+        ReasonText = remote.ReasonText,
+        ActionDueAt = remote.ActionDueAt,
+        LastRemoteModifiedAt = remote.LastModifiedAt,
+        CreatedAt = now,
+        UpdatedAt = now,
+        Version = 1
+    };
 
     private async Task<bool> ShipmentAction(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
