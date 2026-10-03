@@ -485,13 +485,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
 
     internal IQueryable<Order> ExcludeStaleUnpackagedHepsiburadaOrders(IQueryable<Order> query, Guid tenantId)
     {
-        var verificationCutoff = OpenOrderLifecyclePolicy.HepsiburadaUnpackagedOrderVerificationCutoff(timeProvider.GetUtcNow());
-        return query.Where(order =>
-            !db.PlatformConnections.Any(connection => connection.TenantId == tenantId
-                && connection.Id == order.ConnectionId
-                && connection.PlatformCode == "HEPSIBURADA")
-            || !((order.DerivedStatus == "UNVERIFIED" || order.OrderedAt < verificationCutoff)
-                && !db.ShipmentPackages.Any(package => package.TenantId == tenantId && package.OrderId == order.Id)));
+        return query.ExcludeStaleUnpackaged(db, tenantId, timeProvider.GetUtcNow());
     }
 
     public async Task<ServiceResult<OrderDetailView>> OrderAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)

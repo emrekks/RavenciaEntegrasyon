@@ -48,11 +48,7 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
         var connectionNames = await db.PlatformConnections.AsNoTracking()
             .Where(x => x.TenantId == tenantId && DashboardMetricPolicy.OperationalConnectionStatuses.Contains(x.Status))
             .ToDictionaryAsync(x => x.Id, x => x.DisplayName, cancellationToken);
-        var operationalOrderRows = await db.Orders.AsNoTracking()
-            .Where(x => x.TenantId == tenantId
-                && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && DashboardMetricPolicy.OperationalConnectionStatuses.Contains(connection.Status))
-                && (DashboardMetricPolicy.PendingOrderStatuses.Contains(x.DerivedStatus)
-                    || (DashboardMetricPolicy.LateOrderStatuses.Contains(x.DerivedStatus) && x.ShipmentDueAt != null && x.ShipmentDueAt < now)))
+        var operationalOrderRows = await OperationalOrderMetricsQuery(db, tenantId, now)
             .Select(x => new { x.ConnectionId, x.DerivedStatus, x.ShipmentDueAt })
             .ToListAsync(cancellationToken);
         var newAndProcessingOrders = operationalOrderRows.Count(x => x.DerivedStatus is "NEW" or "PROCESSING");
@@ -80,6 +76,24 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
             platforms,
             snapshot.UpdatedAt,
             snapshot.Version);
+    }
+
+    internal static IQueryable<Order> OperationalOrderMetricsQuery(AppDbContext db, Guid tenantId, DateTimeOffset now)
+    {
+        var query = db.Orders.AsNoTracking()
+            .Where(x => x.TenantId == tenantId
+                && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && DashboardMetricPolicy.OperationalConnectionStatuses.Contains(connection.Status))
+                && (DashboardMetricPolicy.PendingOrderStatuses.Contains(x.DerivedStatus)
+                    || (DashboardMetricPolicy.LateOrderStatuses.Contains(x.DerivedStatus) && x.ShipmentDueAt != null && x.ShipmentDueAt < now)));
+        return query.ExcludeStaleUnpackaged(db, tenantId, now);
+    }
+
+    internal static IQueryable<Order> PendingOrderMetricsQuery(AppDbContext db, Guid tenantId, DateTimeOffset now)
+    {
+        var query = db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId
+            && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && DashboardMetricPolicy.OperationalConnectionStatuses.Contains(connection.Status))
+            && DashboardMetricPolicy.PendingOrderStatuses.Contains(x.DerivedStatus));
+        return query.ExcludeStaleUnpackaged(db, tenantId, now);
     }
 
     public async Task<IReadOnlyList<DashboardRevenuePointView>> RevenueSeriesAsync(Guid tenantId, DateTimeOffset from, DateTimeOffset to, string? platform, CancellationToken cancellationToken)
@@ -178,9 +192,7 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
             .FirstOrDefaultAsync(cancellationToken);
         var todayStart = UtcOffset(DateTime.SpecifyKind(localNow.Date, DateTimeKind.Unspecified), timezone);
         var monthStart = UtcOffset(new DateTime(localNow.Year, localNow.Month, 1), timezone);
-        var pendingOrdersQuery = db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId
-            && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && DashboardMetricPolicy.OperationalConnectionStatuses.Contains(connection.Status))
-            && DashboardMetricPolicy.PendingOrderStatuses.Contains(x.DerivedStatus));
+        var pendingOrdersQuery = PendingOrderMetricsQuery(db, tenantId, now);
         var revenueOrders = db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId
             && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && DashboardMetricPolicy.OperationalConnectionStatuses.Contains(connection.Status))
             && !new[] { "CANCELLED", "CANCELED", "RETURNED" }.Contains(x.DerivedStatus) && (x.NetAmount > 0 || x.GrossAmount > 0));
