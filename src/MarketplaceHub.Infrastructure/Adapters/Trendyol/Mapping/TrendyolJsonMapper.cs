@@ -59,7 +59,7 @@ public static class TrendyolJsonMapper
                     NullText(package, "invoiceNumber", "invoiceNo", "invoiceSerialNumber"),
                     NullText(package, "invoiceLink", "invoiceUrl", "invoiceDocumentUrl"),
                     FlexibleInstant(package, "invoiceUpdatedAt") ?? modified);
-                var remotePackage = new RemotePackage(externalPackageId, FirstArrayText(package, "originPackageIds"), rawStatusPackage, modified, NullText(package, "cargoProviderName", "cargoProviderCode", "cargoProviderId", "cargoProvider"), NullText(package, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber"), allocations, gross, discount, net, invoice, NormalizeCreatedBy(NullText(package, "createdBy")));
+                var remotePackage = new RemotePackage(externalPackageId, FirstArrayText(package, "originPackageIds"), rawStatusPackage, modified, OrderCargoProvider(package), ScalarText(package, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber", "trackingInfoCode"), allocations, gross, discount, net, invoice, NormalizeCreatedBy(NullText(package, "createdBy")));
                 var dueAt = FlexibleInstant(package, "agreedDeliveryDate", "estimatedDeliveryEndDate", "lastDeliveryDate", "deliveryDate", "estimatedDeliveryStartDate", "packageLastModifiedDate", "packageDeliveryDate", "packageEstimatedDeliveryDate", "dueDate", "shipmentDueDate", "deliveryDueAt");
                 rows.Add(new(orderNumber, orderNumber, ordered, modified, Text(package, "currencyCode"), gross, discount, net,
                     CustomerSnapshot(package),
@@ -739,6 +739,13 @@ public static class TrendyolJsonMapper
         var nestedProvider = NestedText(claim, "cargoProvider", "name", "code", "label");
         if (!string.IsNullOrWhiteSpace(nestedProvider)) return nestedProvider;
         return ReturnCargoField(claim, "cargoProviderName", "cargoProviderCode", "cargoProvider");
+    }
+    private static string? OrderCargoProvider(JsonElement package)
+    {
+        var nestedProvider = NestedText(package, "cargoProvider", "name", "shortName", "code", "label");
+        return !string.IsNullOrWhiteSpace(nestedProvider)
+            ? nestedProvider
+            : ScalarText(package, "cargoProviderName", "cargoProviderCode", "cargoProviderId", "cargoProvider");
     }
     private static string? ReturnCargoField(JsonElement claim, params string[] names)
     {

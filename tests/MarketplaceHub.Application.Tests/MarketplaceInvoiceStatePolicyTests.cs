@@ -75,6 +75,19 @@ public sealed class MarketplaceInvoiceStatePolicyTests
     }
 
     [Fact]
+    public void MapperReadsNestedCarrierAndNumericTrackingFieldsForShipmentPackages()
+    {
+        const string json = """
+            {"content":[{"shipmentPackageId":3330111111,"orderNumber":"10654411111","status":"Delivered","lastModifiedDate":1760000000000,"cargoProvider":{"name":"HepsiJet","shortName":"HEPSIJET"},"cargoTrackingNumber":62755229958101,"lines":[{"lineId":4765111111,"stockCode":"SKU-1","productName":"Test","quantity":1,"lineUnitPrice":498.90,"vatRate":20,"barcode":"8683772071724"}]}]}
+            """;
+
+        var package = Assert.Single(Assert.Single(TrendyolJsonMapper.Orders(json).Items).Packages);
+
+        Assert.Equal("HepsiJet", package.CargoProviderExternalId);
+        Assert.Equal("62755229958101", package.CargoTrackingNumber);
+    }
+
+    [Fact]
     public void InvoiceNumberOrLinkAloneDoesNotProveMarketplaceInvoice()
     {
         Assert.Equal(MarketplaceInvoiceStatus.Unknown,

@@ -115,9 +115,16 @@ public static class ShipmentPackageStateMachine
 
 public static class OpenOrderLifecyclePolicy
 {
+    public const int TrendyolCargoInfoLookbackDays = 90;
+
     public static DateTimeOffset HepsiburadaPackageStatusHistoryCutoff(DateTimeOffset now) => now.AddMonths(-1);
 
     public static DateTimeOffset HepsiburadaUnpackagedOrderVerificationCutoff(DateTimeOffset now) => HepsiburadaPackageStatusHistoryCutoff(now);
+
+    public static DateTimeOffset TrendyolCargoInfoLookbackCutoff(DateTimeOffset now) => now.AddDays(-TrendyolCargoInfoLookbackDays);
+
+    public static bool ShouldRunTrendyolCargoInfoReconciliation(DateTimeOffset? lastAttemptAt, DateTimeOffset now, TimeSpan interval) =>
+        lastAttemptAt is null || lastAttemptAt.Value <= now - interval;
 
     public static bool IsHepsiburadaOrderUnverifiedWithoutPackage(
         string? platformCode,

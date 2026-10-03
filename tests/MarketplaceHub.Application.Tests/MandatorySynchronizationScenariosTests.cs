@@ -69,6 +69,18 @@ public sealed class MandatorySynchronizationScenariosTests
     }
 
     [Fact]
+    public void TrendyolCargoInfoReconciliationIsThrottledAndUsesAThreeMonthLookback()
+    {
+        var now = DateTimeOffset.Parse("2026-10-03T12:00:00Z");
+        var interval = TimeSpan.FromHours(6);
+
+        Assert.True(OpenOrderLifecyclePolicy.ShouldRunTrendyolCargoInfoReconciliation(null, now, interval));
+        Assert.False(OpenOrderLifecyclePolicy.ShouldRunTrendyolCargoInfoReconciliation(now.AddHours(-5), now, interval));
+        Assert.True(OpenOrderLifecyclePolicy.ShouldRunTrendyolCargoInfoReconciliation(now.AddHours(-6), now, interval));
+        Assert.Equal(now.AddDays(-90), OpenOrderLifecyclePolicy.TrendyolCargoInfoLookbackCutoff(now));
+    }
+
+    [Fact]
     public void HepsiburadaUndeliveredOrderDoesNotShowShipmentDeadlineWarning()
     {
         var now = DateTimeOffset.Parse("2026-10-01T12:00:00Z");
