@@ -70,6 +70,31 @@ public sealed class MarketplaceSalesStatusTabTests
     }
 
     [Fact]
+    public void Trendyol_waiting_in_action_without_saved_deadline_shows_the_48_hour_deadline()
+    {
+        var lastModifiedAt = new DateTimeOffset(2026, 10, 3, 9, 30, 0, TimeSpan.Zero);
+
+        Assert.Equal(lastModifiedAt.AddHours(48), MarketplaceSalesService.ReturnActionDueAt(
+            "TRENDYOL", "WaitingInAction", null, lastModifiedAt));
+        Assert.Equal(lastModifiedAt.AddHours(48), MarketplaceSalesService.ReturnActionDueAt(
+            "TRENDYOL", "WAITING_IN_ACTION", null, lastModifiedAt));
+    }
+
+    [Fact]
+    public void Explicit_return_deadline_wins_and_other_platforms_do_not_get_a_trendyol_fallback()
+    {
+        var lastModifiedAt = new DateTimeOffset(2026, 10, 3, 9, 30, 0, TimeSpan.Zero);
+        var explicitDueAt = lastModifiedAt.AddHours(24);
+
+        Assert.Equal(explicitDueAt, MarketplaceSalesService.ReturnActionDueAt(
+            "TRENDYOL", "WaitingInAction", explicitDueAt, lastModifiedAt));
+        Assert.Null(MarketplaceSalesService.ReturnActionDueAt(
+            "HEPSIBURADA", "WaitingInAction", null, lastModifiedAt));
+        Assert.Null(MarketplaceSalesService.ReturnActionDueAt(
+            "TRENDYOL", "Accepted", null, lastModifiedAt));
+    }
+
+    [Fact]
     public void Pending_order_tab_matches_the_dashboard_pending_statuses()
     {
         var statuses = MarketplaceSalesService.DerivedStatusesForOrderTab("PENDING");

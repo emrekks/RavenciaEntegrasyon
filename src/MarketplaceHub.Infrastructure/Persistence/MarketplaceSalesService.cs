@@ -1196,6 +1196,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         {
             var order = orders.GetValueOrDefault(claim.OrderId);
             var connection = order is null ? connections.GetValueOrDefault(claim.ConnectionId) : connections.GetValueOrDefault(order.ConnectionId);
+            var claimConnection = connections.GetValueOrDefault(claim.ConnectionId);
+            var platformCode = claimConnection?.PlatformCode ?? connection?.PlatformCode ?? "TRENDYOL";
             var claimLines = returnLines.Where(x => x.ClaimId == claim.Id).ToList();
             var package = packages.FirstOrDefault(x => x.OrderId == claim.OrderId);
             var outboundPackage = packages.FirstOrDefault(x => x.OrderId == claim.OrderId && !string.IsNullOrWhiteSpace(x.CargoTrackingNumber)) ?? package;
@@ -1211,12 +1213,12 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 var variant = ResolveReturnVariant(line);
                 return new OrderLineView(line.Id, line.Sku, line.Barcode ?? variant?.Barcode, line.TitleSnapshot, returnLine.Quantity, line.CancelledQuantity, line.ShippedQuantity, line.DeliveredQuantity, line.ReturnedQuantity, line.UnitPrice, line.VatRate, line.RawStatus, line.VariantId ?? variant?.Id, ReturnLineModelCode(variant, source.ModelCode), variant?.OptionSignature ?? source.OptionSignature, source.ImageUrl ?? (variant is null ? null : returnImageUrls.GetValueOrDefault(variant.Id)));
             }).Where(line => line is not null).Select(line => line!).ToList();
-            return new ReturnListView(claim.Id, claim.ExternalClaimId, order?.OrderNumber ?? "—", Wire(claim.Status), claim.RawStatus, claim.ReasonText, claim.ActionDueAt, claim.Version,
+            return new ReturnListView(claim.Id, claim.ExternalClaimId, order?.OrderNumber ?? "—", Wire(claim.Status), claim.RawStatus, claim.ReasonText, ReturnActionDueAt(platformCode, claim.RawStatus, claim.ActionDueAt, claim.LastRemoteModifiedAt), claim.Version,
                 order is null ? "—" : Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson).Name,
                 order?.OrderedAt, order?.NetAmount ?? 0, order?.Currency ?? "TRY", claim.CargoProviderName, claim.CargoTrackingNumber, image, claimLines.Count, firstLine?.Barcode ?? firstVariant?.Barcode,
                 lineViews, package?.ExternalPackageId, order is null ? "FATURA_BEKLIYOR" : ReturnInvoiceLabel(invoice, package?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown, order.CustomerSnapshotJson, package is null ? [] : [package.RawStatus]), order?.GrossAmount ?? 0, order?.DiscountAmount ?? 0,
                 order is not null && Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson).IsMicroExport,
-                connection?.Id, connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol", outboundPackage?.CargoProviderExternalId, outboundPackage?.CargoTrackingNumber, claim.ReasonCode);
+                claimConnection?.Id ?? connection?.Id, platformCode, claimConnection?.DisplayName ?? connection?.DisplayName ?? "Trendyol", outboundPackage?.CargoProviderExternalId, outboundPackage?.CargoTrackingNumber, claim.ReasonCode);
         }).ToList();
         var hasMore = rows.Count > limit;
         var pageRows = rows.Take(limit).ToList();
@@ -1226,6 +1228,15 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
 
     internal static string? ReturnLineModelCode(ProductVariant? variant, string? sourceModelCode) =>
         string.IsNullOrWhiteSpace(variant?.ModelCode) ? sourceModelCode : variant.ModelCode;
+
+    internal static DateTimeOffset? ReturnActionDueAt(string? platformCode, string? rawStatus, DateTimeOffset? actionDueAt, DateTimeOffset lastRemoteModifiedAt)
+    {
+        if (actionDueAt is not null) return actionDueAt;
+        var isTrendyolWaitingInAction = string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase)
+            && (string.Equals(rawStatus?.Trim(), "WaitingInAction", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(rawStatus?.Trim(), "WAITING_IN_ACTION", StringComparison.OrdinalIgnoreCase));
+        return isTrendyolWaitingInAction ? lastRemoteModifiedAt.AddHours(48) : null;
+    }
 
     private void ApplyReturnFilters(ref IQueryable<ReturnClaim> query, ReturnListQuery options)
     {
@@ -1362,7 +1373,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         }).ToList();
         var package = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id).OrderByDescending(x => x.StatusOccurredAt).FirstOrDefaultAsync(cancellationToken);
         var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
-        return ServiceResult<ReturnDetailView>.Ok(new(claim.Id, claim.ExternalClaimId, order.OrderNumber, Wire(claim.Status), claim.RawStatus, claim.ReasonCode, claim.ReasonText, claim.ActionDueAt, actions, claim.Version,
+        return ServiceResult<ReturnDetailView>.Ok(new(claim.Id, claim.ExternalClaimId, order.OrderNumber, Wire(claim.Status), claim.RawStatus, claim.ReasonCode, claim.ReasonText, ReturnActionDueAt(platformCode, claim.RawStatus, claim.ActionDueAt, claim.LastRemoteModifiedAt), actions, claim.Version,
             customer.Name, order.OrderedAt, order.NetAmount, order.Currency, claim.CargoProviderName, claim.CargoTrackingNumber, lines, claim.Status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed, approvedAt, externalWritesEnabled, decisionPending, platformCode));
     }
 
