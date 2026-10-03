@@ -26,6 +26,15 @@ public sealed class OrderReadSyncTimeoutTests
     }
 
     [Theory]
+    [InlineData(MarketplaceJobTypes.OrderInvoiceReconciliation)]
+    [InlineData(MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation)]
+    [InlineData(MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation)]
+    public void InvoiceReadJobs_UseTheirLongerBoundedExecution(string jobType)
+    {
+        Assert.True(MarketplaceHub.Worker.Worker.IsOrderInvoiceReconciliationJob(jobType));
+    }
+
+    [Theory]
     [InlineData(MarketplaceJobTypes.StageTestOrder)]
     [InlineData(MarketplaceJobTypes.ShipmentAction)]
     [InlineData(MarketplaceJobTypes.ReturnAction)]

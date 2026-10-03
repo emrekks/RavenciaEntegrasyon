@@ -179,6 +179,11 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             var configuredMinutes = configuration.GetValue<double?>("Worker:ProductSyncTimeoutMinutes") ?? 60;
             execution.CancelAfter(TimeSpan.FromMinutes(Math.Clamp(configuredMinutes, 1, 180)));
         }
+        else if (IsOrderInvoiceReconciliationJob(job.JobType))
+        {
+            var configuredMinutes = configuration.GetValue<double?>("Worker:OrderInvoiceReconciliationTimeoutMinutes") ?? 45;
+            execution.CancelAfter(TimeSpan.FromMinutes(Math.Clamp(configuredMinutes, 1, 120)));
+        }
         else if (IsOrderReadSyncJob(job.JobType))
         {
             var configuredMinutes = configuration.GetValue<double?>("Worker:OrderReadSyncTimeoutMinutes")
@@ -228,6 +233,10 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
     }
 
     internal static bool IsOrderReadSyncJob(string jobType) => Array.IndexOf(OrderReadSyncJobTypes, jobType) >= 0;
+    internal static bool IsOrderInvoiceReconciliationJob(string jobType) => jobType is
+        MarketplaceJobTypes.OrderInvoiceReconciliation
+        or MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation
+        or MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation;
 
     private async Task<bool> MaintainLeaseAsync(LeasedJob job, CancellationTokenSource execution, CancellationToken cancellationToken)
     {

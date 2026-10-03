@@ -2685,23 +2685,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var isShopify = platformCode == "SHOPIFY";
         var isHepsiburada = platformCode == "HEPSIBURADA";
         var batchSize = ReadBoundedInt(payloadJson, "batchSize", 50, 1, 250);
-        var externalOrderIds = isHepsiburada
-            ? new List<string>()
-            : await (from package in db.ShipmentPackages.AsNoTracking()
-                     join order in db.Orders.AsNoTracking()
-                         on new { package.TenantId, package.OrderId } equals new { order.TenantId, OrderId = order.Id }
-                     where package.TenantId == tenantId
-                         && package.ConnectionId == connectionId
-                         && package.Status != ShipmentPackageStatus.Cancelled
-                         && !DashboardMetricPolicy.InvoiceExcludedOrderStatuses.Contains(order.DerivedStatus)
-                         && package.MarketplaceInvoiceStatus != MarketplaceInvoiceStatus.Invoiced
-                     orderby package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Received ? 0 : 1,
-                         package.MarketplaceInvoiceObservedAt, package.UpdatedAt
-                     select order.ExternalOrderId)
-                .Distinct()
-                .Take(batchSize)
-                .ToListAsync(cancellationToken);
-
+        var externalOrderIds = new List<string>();
         SyncCursor? invoiceCursor = null;
         Guid? lastReconciledOrderId = null;
         if (isHepsiburada)
@@ -2760,6 +2744,49 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             lastReconciledOrderId = selected.LastOrDefault()?.OrderId;
             var lastCandidate = selected.LastOrDefault();
             if (lastCandidate is not null) invoiceCursor.OpaqueCursor = HepsiburadaInvoiceReconciliationBatchPolicy.WriteCursor(lastCandidate);
+        }
+        else
+        {
+            // Unknown Trendyol/Shopify invoice payloads cannot be advanced by
+            // MarketplaceInvoiceObservedAt. Rotate on stable order IDs so one
+            // unchanged first page cannot starve the rest of the catalog.
+            invoiceCursor = await Cursor(tenantId, connectionId, "ORDER_INVOICE_RECONCILIATION", cancellationToken);
+            var afterOrderId = OrderInvoiceReconciliationBatchPolicy.ReadCursor(invoiceCursor.OpaqueCursor);
+            var eligibleOrders = db.Orders.AsNoTracking()
+                .Where(order => order.TenantId == tenantId
+                    && order.ConnectionId == connectionId
+                    && !DashboardMetricPolicy.InvoiceExcludedOrderStatuses.Contains(order.DerivedStatus)
+                    && db.ShipmentPackages.Any(package => package.TenantId == tenantId
+                        && package.ConnectionId == connectionId
+                        && package.OrderId == order.Id
+                        && package.Status != ShipmentPackageStatus.Cancelled
+                        && package.MarketplaceInvoiceStatus != MarketplaceInvoiceStatus.Invoiced));
+
+            var afterCursorQuery = eligibleOrders;
+            if (afterOrderId is { } cursorOrderId)
+                afterCursorQuery = afterCursorQuery.Where(order => order.Id.CompareTo(cursorOrderId) > 0);
+            var afterCursor = await afterCursorQuery
+                .OrderBy(order => order.Id)
+                .Select(order => new OrderInvoiceReconciliationCandidate(order.Id, order.ExternalOrderId))
+                .Take(batchSize)
+                .ToListAsync(cancellationToken);
+
+            IReadOnlyCollection<OrderInvoiceReconciliationCandidate> wrapped = [];
+            if (afterOrderId is { } wrapOrderId && afterCursor.Count < batchSize)
+            {
+                wrapped = await eligibleOrders
+                    .Where(order => order.Id.CompareTo(wrapOrderId) <= 0)
+                    .OrderBy(order => order.Id)
+                    .Select(order => new OrderInvoiceReconciliationCandidate(order.Id, order.ExternalOrderId))
+                    .Take(batchSize - afterCursor.Count)
+                    .ToListAsync(cancellationToken);
+            }
+
+            var selected = OrderInvoiceReconciliationBatchPolicy.Select(afterCursor, wrapped, batchSize);
+            externalOrderIds = selected.Select(candidate => candidate.ExternalOrderId).ToList();
+            lastReconciledOrderId = selected.LastOrDefault()?.OrderId;
+            if (lastReconciledOrderId is { } lastOrderId)
+                invoiceCursor.OpaqueCursor = OrderInvoiceReconciliationBatchPolicy.WriteCursor(lastOrderId);
         }
 
         foreach (var externalOrderId in externalOrderIds)
