@@ -10,6 +10,22 @@ public sealed class AllowReusableAttributeValueMappings : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
     {
+        migrationBuilder.Sql(
+            """
+            WITH ranked_mappings AS (
+                SELECT "Id",
+                       ROW_NUMBER() OVER (
+                           PARTITION BY "TenantId", "ConnectionId", "ScopeExternalId", "ExternalId"
+                           ORDER BY "VerifiedAt" DESC NULLS LAST, "Version" DESC, "Id"
+                       ) AS duplicate_rank
+                FROM catalog.attribute_value_mappings
+            )
+            DELETE FROM catalog.attribute_value_mappings AS mapping
+            USING ranked_mappings
+            WHERE mapping."Id" = ranked_mappings."Id"
+              AND ranked_mappings.duplicate_rank > 1;
+            """);
+
         migrationBuilder.DropIndex(
             name: "IX_attribute_value_mappings_TenantId_ConnectionId_LocalId_Scop~",
             schema: "catalog",
