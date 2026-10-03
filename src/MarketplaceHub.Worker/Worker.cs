@@ -9,6 +9,15 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
 {
     private static readonly string[] HepsiburadaOrderJobTypes =
         [MarketplaceJobTypes.HepsiburadaOrderSync, MarketplaceJobTypes.HepsiburadaOrderRecoverySync];
+    private static readonly string[] OrderReadSyncJobTypes =
+    [
+        MarketplaceJobTypes.OrderSync, MarketplaceJobTypes.OrderRecoverySync, MarketplaceJobTypes.OrderStatusSync,
+        MarketplaceJobTypes.OrderReconciliation, MarketplaceJobTypes.OrderInvoiceReconciliation,
+        MarketplaceJobTypes.ShopifyOrderSync, MarketplaceJobTypes.ShopifyOrderRecoverySync, MarketplaceJobTypes.ShopifyOrderStatusSync,
+        MarketplaceJobTypes.ShopifyOrderReconciliation, MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation,
+        MarketplaceJobTypes.HepsiburadaOrderSync, MarketplaceJobTypes.HepsiburadaOrderRecoverySync,
+        MarketplaceJobTypes.HepsiburadaOrderStatusSync, MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation
+    ];
     private static readonly string[] ReturnReadJobTypes =
         [MarketplaceJobTypes.ReturnSync, MarketplaceJobTypes.HepsiburadaReturnSync, MarketplaceJobTypes.ReturnStatusSync];
     private readonly string healthFile = configuration["Worker:HealthFile"] ?? "/tmp/marketplacehub-worker-heartbeat";
@@ -170,9 +179,11 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             var configuredMinutes = configuration.GetValue<double?>("Worker:ProductSyncTimeoutMinutes") ?? 60;
             execution.CancelAfter(TimeSpan.FromMinutes(Math.Clamp(configuredMinutes, 1, 180)));
         }
-        else if (job.JobType is MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.ShopifyOrderStatusSync or MarketplaceJobTypes.HepsiburadaOrderStatusSync)
+        else if (IsOrderReadSyncJob(job.JobType))
         {
-            var configuredMinutes = configuration.GetValue<double?>("Worker:OrderStatusSyncTimeoutMinutes") ?? 10;
+            var configuredMinutes = configuration.GetValue<double?>("Worker:OrderReadSyncTimeoutMinutes")
+                ?? configuration.GetValue<double?>("Worker:OrderStatusSyncTimeoutMinutes")
+                ?? 10;
             execution.CancelAfter(TimeSpan.FromMinutes(Math.Clamp(configuredMinutes, 1, 60)));
         }
         using var heartbeatStop = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
@@ -215,6 +226,8 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         else
             logger.LogInformation("Job {JobId} ({JobType}) completed with {CompletionKind}; error {ErrorCode}", job.Id, job.JobType, result.Kind, result.ErrorCode ?? "none");
     }
+
+    internal static bool IsOrderReadSyncJob(string jobType) => Array.IndexOf(OrderReadSyncJobTypes, jobType) >= 0;
 
     private async Task<bool> MaintainLeaseAsync(LeasedJob job, CancellationTokenSource execution, CancellationToken cancellationToken)
     {

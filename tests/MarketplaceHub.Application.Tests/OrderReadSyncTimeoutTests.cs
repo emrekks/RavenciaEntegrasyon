@@ -1,0 +1,36 @@
+using MarketplaceHub.Application;
+using Xunit;
+
+namespace MarketplaceHub.Application.Tests;
+
+public sealed class OrderReadSyncTimeoutTests
+{
+    [Theory]
+    [InlineData(MarketplaceJobTypes.OrderSync)]
+    [InlineData(MarketplaceJobTypes.OrderRecoverySync)]
+    [InlineData(MarketplaceJobTypes.OrderStatusSync)]
+    [InlineData(MarketplaceJobTypes.OrderReconciliation)]
+    [InlineData(MarketplaceJobTypes.OrderInvoiceReconciliation)]
+    [InlineData(MarketplaceJobTypes.ShopifyOrderSync)]
+    [InlineData(MarketplaceJobTypes.ShopifyOrderRecoverySync)]
+    [InlineData(MarketplaceJobTypes.ShopifyOrderStatusSync)]
+    [InlineData(MarketplaceJobTypes.ShopifyOrderReconciliation)]
+    [InlineData(MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation)]
+    [InlineData(MarketplaceJobTypes.HepsiburadaOrderSync)]
+    [InlineData(MarketplaceJobTypes.HepsiburadaOrderRecoverySync)]
+    [InlineData(MarketplaceJobTypes.HepsiburadaOrderStatusSync)]
+    [InlineData(MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation)]
+    public void OrderReadJobs_UseBoundedExecution(string jobType)
+    {
+        Assert.True(MarketplaceHub.Worker.Worker.IsOrderReadSyncJob(jobType));
+    }
+
+    [Theory]
+    [InlineData(MarketplaceJobTypes.StageTestOrder)]
+    [InlineData(MarketplaceJobTypes.ShipmentAction)]
+    [InlineData(MarketplaceJobTypes.ReturnAction)]
+    public void MarketplaceWriteJobs_AreNotOrderReadTimeoutJobs(string jobType)
+    {
+        Assert.False(MarketplaceHub.Worker.Worker.IsOrderReadSyncJob(jobType));
+    }
+}
