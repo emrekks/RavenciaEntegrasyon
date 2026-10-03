@@ -1196,6 +1196,30 @@ public sealed class HepsiburadaAdapterTests
     }
 
     [Fact]
+    public void ClaimMapper_SelectsCustomerReturnDeliveryFromDeliveryList()
+    {
+        using var json = JsonDocument.Parse("""
+        {
+          "number": "HB-CLAIM-DELIVERY-LIST",
+          "status": "AwaitingAction",
+          "claimType": "Return",
+          "claimDate": "2026-09-28T12:15:00Z",
+          "orderNumber": "HB-2026-DELIVERY-LIST",
+          "quantity": 1,
+          "line": { "lineItemId": "line-delivery-list" },
+          "delivery": [
+            { "code": "outbound-must-not-be-used", "direction": "MerchantToCustomer" },
+            { "code": "customer-return-17", "direction": "CustomerToMerchant" }
+          ]
+        }
+        """);
+
+        var claim = HepsiburadaJsonMapper.ReturnClaim(json.RootElement);
+
+        Assert.Equal("customer-return-17", claim.CargoTrackingNumber);
+    }
+
+    [Fact]
     public void ClaimMapper_MapsTheFlatFieldsDocumentedByHepsiburada()
     {
         using var json = JsonDocument.Parse("""

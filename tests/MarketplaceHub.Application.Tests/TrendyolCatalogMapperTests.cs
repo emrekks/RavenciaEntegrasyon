@@ -82,6 +82,51 @@ public sealed class TrendyolCatalogMapperTests
     }
 
     [Fact]
+    public void WaitingInActionReturn_UsesDocumentedFortyEightHourAutoAcceptanceWindow()
+    {
+        const string json = """
+        {
+          "content": [{
+            "claimId": "claim-waiting-action-1",
+            "orderNumber": "11587375142",
+            "claimItemStatus": { "name": "WaitingInAction" },
+            "lastModifiedDate": 1789890000000,
+            "items": []
+          }],
+          "page": 0,
+          "totalPages": 1
+        }
+        """;
+
+        var claim = Assert.Single(TrendyolJsonMapper.Returns(json).Items);
+
+        Assert.Equal(claim.LastModifiedAt.AddHours(48), claim.ActionDueAt);
+    }
+
+    [Fact]
+    public void WaitingInActionReturn_PrefersProviderAutoAcceptanceDate()
+    {
+        const string json = """
+        {
+          "content": [{
+            "claimId": "claim-waiting-action-due-1",
+            "orderNumber": "11587375142",
+            "claimItemStatus": { "name": "WaitingInAction" },
+            "lastModifiedDate": 1789890000000,
+            "autoApproveDate": 1789980000000,
+            "items": []
+          }],
+          "page": 0,
+          "totalPages": 1
+        }
+        """;
+
+        var claim = Assert.Single(TrendyolJsonMapper.Returns(json).Items);
+
+        Assert.Equal(DateTimeOffset.FromUnixTimeMilliseconds(1789980000000), claim.ActionDueAt);
+    }
+
+    [Fact]
     public void ReturnClaim_ReadsRejectedReturnPackageCargo()
     {
         const string json = """

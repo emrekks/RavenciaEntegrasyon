@@ -501,7 +501,11 @@ public static class TrendyolJsonMapper
         {
             var claimId = Text(claim, "claimId", "id"); var orderNumber = Text(claim, "orderNumber"); if (claimId.Length == 0 || orderNumber.Length == 0) continue;
             var lines = ReturnLines(claim);
-            var status = ClaimStatus(claim); rows.Add(new(claimId, orderNumber, status, ClaimReasonCode(claim), ClaimReasonText(claim), FlexibleInstant(claim, "autoApproveDate", "actionDueDate", "dueDate"), Instant(claim, "lastModifiedDate") ?? DateTimeOffset.UnixEpoch, lines, claim.GetRawText(), ReturnCargoProvider(claim), ReturnCargoField(claim, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber"), ReturnCargoField(claim, "cargoTrackingLink", "trackingLink")));
+            var status = ClaimStatus(claim);
+            var lastModifiedAt = Instant(claim, "lastModifiedDate");
+            var actionDueAt = FlexibleInstant(claim, "autoApproveDate", "actionDueDate", "dueDate")
+                ?? (IsWaitingInAction(status) && lastModifiedAt is { } waitingInActionAt ? waitingInActionAt.AddHours(48) : null);
+            rows.Add(new(claimId, orderNumber, status, ClaimReasonCode(claim), ClaimReasonText(claim), actionDueAt, lastModifiedAt ?? DateTimeOffset.UnixEpoch, lines, claim.GetRawText(), ReturnCargoProvider(claim), ReturnCargoField(claim, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber"), ReturnCargoField(claim, "cargoTrackingLink", "trackingLink")));
         }
         var page = Long(root, "page"); var totalPages = Long(root, "totalPages"); var hasMore = totalPages > 0 && page + 1 < totalPages;
         return new(rows, hasMore ? (page + 1).ToString(CultureInfo.InvariantCulture) : null, hasMore);
@@ -698,6 +702,8 @@ public static class TrendyolJsonMapper
         }
     }
     private static string ClaimStatus(JsonElement claim) { if (claim.TryGetProperty("claimItemStatus", out var value)) return value.ValueKind == JsonValueKind.Object ? Text(value, "name") : value.ToString(); foreach (var item in ClaimItems(claim)) if (item.TryGetProperty("claimItemStatus", out var status)) return status.ValueKind == JsonValueKind.Object ? Text(status, "name") : status.ToString(); return ""; }
+    private static bool IsWaitingInAction(string status) => string.Equals(status, "WaitingInAction", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(status, "WAITING_IN_ACTION", StringComparison.OrdinalIgnoreCase);
     private static string? ClaimReasonCode(JsonElement claim) => NestedReason(claim, "code");
     private static string? ClaimReasonText(JsonElement claim) => NestedReason(claim, "name");
     private static string? NestedReason(JsonElement claim, string field) { foreach (var item in ClaimItems(claim)) if (item.TryGetProperty("customerClaimItemReason", out var reason)) return NullText(reason, field); return null; }

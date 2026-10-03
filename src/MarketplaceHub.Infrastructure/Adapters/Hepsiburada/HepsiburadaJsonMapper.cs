@@ -513,7 +513,7 @@ internal static class HepsiburadaJsonMapper
             remoteLines.Add(new(lineId, lineId, quantity.Value, alternateLineIds));
         }
 
-        var delivery = Find(item, "delivery", "Delivery");
+        var delivery = ReturnDelivery(Find(item, "delivery", "Delivery"));
         var statusDate = status.ToUpperInvariant() switch
         {
             "ACCEPTED" => Date(item, "acceptedDate", "AcceptedDate"),
@@ -539,6 +539,7 @@ internal static class HepsiburadaJsonMapper
             Text(delivery, "cargoCompany", "CargoCompany", "cargoProviderName", "CargoProviderName"),
             Text(item, "cargoCompany", "CargoCompany", "cargoProviderName", "CargoProviderName"));
         var trackingNumber = First(
+            delivery.ValueKind == JsonValueKind.String ? delivery.GetString() : null,
             Text(delivery, "trackingNumber", "TrackingNumber", "trackingInfoCode", "TrackingInfoCode", "deliveryBarcode", "DeliveryBarcode", "barcode", "Barcode", "code", "Code"),
             Text(item, "cargoTrackingNumber", "CargoTrackingNumber", "trackingInfoCode", "TrackingInfoCode", "trackingNumber", "TrackingNumber", "deliveryBarcode", "DeliveryBarcode"));
         var trackingLink = First(
@@ -557,6 +558,27 @@ internal static class HepsiburadaJsonMapper
             cargoCompany,
             trackingNumber,
             trackingLink);
+    }
+
+    private static JsonElement ReturnDelivery(JsonElement delivery)
+    {
+        if (delivery.ValueKind == JsonValueKind.Object)
+            return string.Equals(Text(delivery, "direction"), "MerchantToCustomer", StringComparison.OrdinalIgnoreCase)
+                ? default
+                : delivery;
+
+        if (delivery.ValueKind != JsonValueKind.Array) return delivery;
+
+        JsonElement fallback = default;
+        foreach (var candidate in delivery.EnumerateArray())
+        {
+            if (candidate.ValueKind != JsonValueKind.Object) continue;
+            var direction = Text(candidate, "direction");
+            if (string.Equals(direction, "CustomerToMerchant", StringComparison.OrdinalIgnoreCase)) return candidate;
+            if (!string.Equals(direction, "MerchantToCustomer", StringComparison.OrdinalIgnoreCase) && fallback.ValueKind == JsonValueKind.Undefined)
+                fallback = candidate;
+        }
+        return fallback;
     }
 
     public static RemoteOrder? OrderFromReturnClaim(string json)
