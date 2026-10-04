@@ -1830,6 +1830,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                             .SetProperty(x => x.ProgressProcessed, 0)
                             .SetProperty(x => x.ProgressSkipped, 0)
                             .SetProperty(x => x.ProgressFailed, 0)
+                            .SetProperty(x => x.MaxAttempts, x => Math.Max(x.MaxAttempts, 30))
                             .SetProperty(x => x.Version, x => x.Version + 1),
                             cancellationToken);
                     if (updated == 0)
@@ -1845,6 +1846,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                         recurringRead ? $"{dedup}:{timeProvider.GetUtcNow().ToUnixTimeMilliseconds()}" : dedup,
                         payload,
                         correlationId);
+                    EnsureTargetedOrderReadRetryBudget(queuedJob, type, payload);
                     db.IntegrationJobs.Add(queuedJob);
                     await db.SaveChangesAsync(cancellationToken);
                     return ServiceResult<Guid>.Ok(queuedJob.Id);
@@ -1861,7 +1863,15 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         }
 
         var job = NewJob(tenantId, connectionId, type, recurringRead ? $"{dedup}:{timeProvider.GetUtcNow().ToUnixTimeMilliseconds()}" : dedup, payload, correlationId);
+        EnsureTargetedOrderReadRetryBudget(job, type, payload);
         db.IntegrationJobs.Add(job); await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(job.Id);
+    }
+
+    private static void EnsureTargetedOrderReadRetryBudget(IntegrationJob job, string jobType, string payload)
+    {
+        if ((jobType is MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync)
+            && TargetedExternalOrderId(payload) is not null)
+            job.MaxAttempts = Math.Max(job.MaxAttempts, 30);
     }
     private static bool IsFullOrderScanRequest(string jobType, string payload)
     {
