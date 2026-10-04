@@ -2794,10 +2794,10 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         {
             if (isTrendyol)
             {
-                // A targeted package read contains the Trendyol invoice
-                // observation we need. Avoid a full order upsert here so this
-                // invoice-only job can safely run beside the regular order
-                // projection and does not contend for its advisory lock.
+                // Historical return claims can create a deliberately partial
+                // order projection. Hydrate those rows from the full read-only
+                // order contract before reconciling package invoice data.
+                await HydrateTrendyolReturnClaimOrder(tenantId, connectionId, externalOrderId, correlationId, cancellationToken);
                 await ReconcileTrendyolPackageInvoices(tenantId, connectionId, externalOrderId, correlationId, cancellationToken);
                 continue;
             }
@@ -2836,6 +2836,48 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
 
         return true;
+    }
+
+    private async Task HydrateTrendyolReturnClaimOrder(Guid tenantId, Guid connectionId, string externalOrderId, string correlationId, CancellationToken cancellationToken)
+    {
+        var customerSnapshot = await db.Orders.AsNoTracking()
+            .Where(order => order.TenantId == tenantId
+                && order.ConnectionId == connectionId
+                && order.ExternalOrderId == externalOrderId)
+            .Select(order => order.CustomerSnapshotJson)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (!TrendyolJsonMapper.IsReturnClaimReadModelSnapshot(customerSnapshot)) return;
+
+        // The invoice job runs in its own lane. Take the ordinary order lane
+        // only for this repair so its full aggregate cannot race an order sync.
+        await using var orderSyncLock = await MarketplaceSyncExecutionLock.TryAcquireAsync(
+            db, connectionId, MarketplaceJobTypes.OrderSync, cancellationToken);
+        if (orderSyncLock is null)
+            throw new JobProcessingException(JobExecutionResult.Retry(
+                "RETURN_ORDER_HYDRATION_BUSY",
+                "Sipariş okuması sürüyor; iade siparişinin ürünleri tamamlanmak üzere yeniden denenecek.",
+                TimeSpan.FromSeconds(30)));
+
+        TrackRequest();
+        var result = await orders.GetAsync(
+            Context(tenantId, connectionId, correlationId, $"trendyol-return-order-hydration:{externalOrderId}"),
+            externalOrderId,
+            cancellationToken);
+        if (!result.IsSuccess)
+        {
+            TrackResultFailure(result.Error);
+            await RecordIssue(
+                tenantId,
+                $"trendyol-return-order-hydration:{connectionId}:{externalOrderId}",
+                result.Error!.Code,
+                $"İade kaydından oluşturulan kısmi sipariş Trendyol'dan tamamlanamadı; otomatik taramada tekrar denenecek. {result.Error.SafeMessage}",
+                cancellationToken);
+            return;
+        }
+
+        TrackReceived();
+        if (await UpsertOrder(tenantId, connectionId, result.Value!, cancellationToken))
+            await ResolveIssue(tenantId, $"trendyol-return-order-hydration:{connectionId}:{externalOrderId}", cancellationToken);
     }
 
     private async Task ReconcileTrendyolPackageInvoices(Guid tenantId, Guid connectionId, string externalOrderId, string correlationId, CancellationToken cancellationToken)
