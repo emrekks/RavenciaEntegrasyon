@@ -56,6 +56,49 @@ public sealed class TargetedOrderSyncConflictPolicyTests
     }
 
     [Fact]
+    public void TargetedTrendyolReadPrefersPromotingPendingOrderScanOverLeasedLifecycleScan()
+    {
+        var conflicts = new (string JobType, string? ExternalOrderId, JobStatus Status, bool HasStarted, string? PackageNumber)[]
+        {
+            (MarketplaceJobTypes.OrderStatusSync, null, JobStatus.Leased, true, null),
+            (MarketplaceJobTypes.OrderSync, null, JobStatus.Pending, false, null)
+        };
+
+        var preferredIndex = TargetedOrderSyncConflictPolicy.PreferredConflictIndex(
+            conflicts,
+            MarketplaceJobTypes.OrderSync,
+            "11376153333");
+
+        Assert.Equal(1, preferredIndex);
+        Assert.Equal(
+            TargetedOrderSyncConflictResolution.PromotePending,
+            TargetedOrderSyncConflictPolicy.Resolve(
+                MarketplaceJobTypes.OrderSync,
+                "11376153333",
+                conflicts[preferredIndex!.Value].JobType,
+                conflicts[preferredIndex.Value].ExternalOrderId,
+                conflicts[preferredIndex.Value].Status,
+                conflicts[preferredIndex.Value].HasStarted));
+    }
+
+    [Fact]
+    public void TargetedReadReusesSameOrderBeforePromotingAnotherPendingRead()
+    {
+        var conflicts = new (string JobType, string? ExternalOrderId, JobStatus Status, bool HasStarted, string? PackageNumber)[]
+        {
+            (MarketplaceJobTypes.OrderSync, "11376153333", JobStatus.Leased, true, null),
+            (MarketplaceJobTypes.OrderSync, null, JobStatus.Pending, false, null)
+        };
+
+        var preferredIndex = TargetedOrderSyncConflictPolicy.PreferredConflictIndex(
+            conflicts,
+            MarketplaceJobTypes.OrderSync,
+            "11376153333");
+
+        Assert.Equal(0, preferredIndex);
+    }
+
+    [Fact]
     public void TargetedReadReusesAnExistingReadForTheSameOrder()
     {
         var resolution = TargetedOrderSyncConflictPolicy.Resolve(

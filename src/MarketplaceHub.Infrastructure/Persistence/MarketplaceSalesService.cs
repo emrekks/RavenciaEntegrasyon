@@ -1743,12 +1743,19 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 conflictingJobHasStarted: x.AttemptCount > 0 || x.StartedAt is not null) == FullOrderSyncConflictResolution.PromotePending)
                 ?? conflictingJobs.FirstOrDefault()
             : requestedExternalOrderId is not null
-                ? conflictingJobs.FirstOrDefault(x => string.Equals(
+                ? TargetedOrderSyncConflictPolicy.PreferredConflictIndex(
+                    conflictingJobs.Select(x => (
+                        x.JobType,
+                        TargetedExternalOrderId(x.PayloadJson),
+                        x.Status,
+                        x.AttemptCount > 0 || x.StartedAt is not null,
+                        PayloadString(x.PayloadJson, "packageNumber"))).ToList(),
+                    type,
                     requestedExternalOrderId,
-                    TargetedExternalOrderId(x.PayloadJson),
-                    StringComparison.OrdinalIgnoreCase))
-                    ?? conflictingJobs.FirstOrDefault()
-            : conflictingJobs.FirstOrDefault();
+                    PayloadString(payload, "packageNumber")) is { } preferredIndex
+                    ? conflictingJobs[preferredIndex]
+                    : null
+                : conflictingJobs.FirstOrDefault();
         if (conflicting is not null)
         {
             var conflictResolution = FullOrderSyncConflictPolicy.Resolve(

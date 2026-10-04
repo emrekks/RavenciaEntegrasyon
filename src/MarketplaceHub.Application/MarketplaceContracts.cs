@@ -153,6 +153,35 @@ public enum TargetedOrderSyncConflictResolution
 
 public static class TargetedOrderSyncConflictPolicy
 {
+    public static int? PreferredConflictIndex(
+        IReadOnlyList<(string JobType, string? ExternalOrderId, JobStatus Status, bool HasStarted, string? PackageNumber)> conflicts,
+        string? requestedJobType,
+        string? requestedExternalOrderId,
+        string? requestedPackageNumber = null)
+    {
+        if (conflicts.Count == 0) return null;
+
+        var resolutions = conflicts.Select(conflict => Resolve(
+            requestedJobType,
+            requestedExternalOrderId,
+            conflict.JobType,
+            conflict.ExternalOrderId,
+            conflict.Status,
+            conflict.HasStarted,
+            requestedPackageNumber,
+            conflict.PackageNumber)).ToArray();
+
+        for (var index = 0; index < resolutions.Length; index++)
+            if (resolutions[index] == TargetedOrderSyncConflictResolution.ReuseExisting)
+                return index;
+
+        for (var index = 0; index < resolutions.Length; index++)
+            if (resolutions[index] == TargetedOrderSyncConflictResolution.PromotePending)
+                return index;
+
+        return 0;
+    }
+
     public static TargetedOrderSyncConflictResolution Resolve(
         string? requestedJobType,
         string? requestedExternalOrderId,
