@@ -148,6 +148,7 @@ public enum TargetedOrderSyncConflictResolution
 {
     ReuseExisting,
     PromotePending,
+    QueueBehindActiveWork,
     Reject
 }
 
@@ -177,6 +178,10 @@ public static class TargetedOrderSyncConflictPolicy
 
         for (var index = 0; index < resolutions.Length; index++)
             if (resolutions[index] == TargetedOrderSyncConflictResolution.PromotePending)
+                return index;
+
+        for (var index = 0; index < resolutions.Length; index++)
+            if (resolutions[index] == TargetedOrderSyncConflictResolution.QueueBehindActiveWork)
                 return index;
 
         return 0;
@@ -215,8 +220,21 @@ public static class TargetedOrderSyncConflictPolicy
             && string.IsNullOrWhiteSpace(conflictingExternalOrderId))
             return TargetedOrderSyncConflictResolution.PromotePending;
 
+        if (string.IsNullOrWhiteSpace(conflictingExternalOrderId)
+            && conflictingStatus is JobStatus.Leased or JobStatus.RetryScheduled
+            && IsOrderSyncLaneJob(requestedJobType, conflictingJobType))
+            return TargetedOrderSyncConflictResolution.QueueBehindActiveWork;
+
         return TargetedOrderSyncConflictResolution.Reject;
     }
+
+    private static bool IsOrderSyncLaneJob(string? requestedJobType, string? conflictingJobType) => requestedJobType switch
+    {
+        MarketplaceJobTypes.OrderSync => conflictingJobType is MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.OrderReconciliation,
+        MarketplaceJobTypes.ShopifyOrderSync => conflictingJobType is MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.ShopifyOrderRecoverySync or MarketplaceJobTypes.ShopifyOrderStatusSync or MarketplaceJobTypes.ShopifyOrderReconciliation,
+        MarketplaceJobTypes.HepsiburadaOrderSync => conflictingJobType is MarketplaceJobTypes.HepsiburadaOrderSync or MarketplaceJobTypes.HepsiburadaOrderRecoverySync or MarketplaceJobTypes.HepsiburadaOrderStatusSync,
+        _ => false
+    };
 
     private static bool IsSameIncrementalOrderSyncType(string? requestedJobType, string? conflictingJobType) => requestedJobType switch
     {

@@ -1836,6 +1836,19 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                         return ServiceResult<Guid>.Fail("ORDER_SYNC_ALREADY_RUNNING", "Tekil sipariş okuması mevcut işlem başlarken kuyruğa alınamadı. İşlem tamamlanınca yeniden deneyin.", 409);
                     return ServiceResult<Guid>.Ok(conflicting.Id);
                 }
+                if (targetedResolution == TargetedOrderSyncConflictResolution.QueueBehindActiveWork)
+                {
+                    var queuedJob = NewJob(
+                        tenantId,
+                        connectionId,
+                        type,
+                        recurringRead ? $"{dedup}:{timeProvider.GetUtcNow().ToUnixTimeMilliseconds()}" : dedup,
+                        payload,
+                        correlationId);
+                    db.IntegrationJobs.Add(queuedJob);
+                    await db.SaveChangesAsync(cancellationToken);
+                    return ServiceResult<Guid>.Ok(queuedJob.Id);
+                }
                 if (targetedResolution == TargetedOrderSyncConflictResolution.Reject)
                     return ServiceResult<Guid>.Fail("ORDER_SYNC_ALREADY_RUNNING", "Tekil sipariş okuması bağlantıda başka bir sipariş işlemi bulunduğu için kuyruğa alınamadı. İşlem tamamlanınca yeniden deneyin.", 409);
                 return ServiceResult<Guid>.Ok(conflicting.Id);

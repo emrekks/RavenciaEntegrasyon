@@ -81,6 +81,22 @@ public sealed class TargetedOrderSyncConflictPolicyTests
                 conflicts[preferredIndex.Value].HasStarted));
     }
 
+    [Theory]
+    [InlineData(MarketplaceJobTypes.OrderStatusSync)]
+    [InlineData(MarketplaceJobTypes.OrderReconciliation)]
+    public void TargetedTrendyolReadQueuesBehindActiveOrderLaneJob(string blockerType)
+    {
+        var resolution = TargetedOrderSyncConflictPolicy.Resolve(
+            MarketplaceJobTypes.OrderSync,
+            "11376153333",
+            blockerType,
+            conflictingExternalOrderId: null,
+            conflictingStatus: JobStatus.Leased,
+            conflictingJobHasStarted: true);
+
+        Assert.Equal(TargetedOrderSyncConflictResolution.QueueBehindActiveWork, resolution);
+    }
+
     [Fact]
     public void TargetedReadReusesSameOrderBeforePromotingAnotherPendingRead()
     {
