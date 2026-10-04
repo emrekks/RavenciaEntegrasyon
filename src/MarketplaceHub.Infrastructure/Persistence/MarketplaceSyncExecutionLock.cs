@@ -50,7 +50,10 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
             // Reuse EF Core's configured connection instead of rebuilding a new
             // NpgsqlConnection from ConnectionString. Npgsql intentionally omits
             // the password when exposing a connection string in some states.
-            await connection.OpenAsync(cancellationToken);
+            // A processor may acquire a second lane lock while its outer job
+            // already holds this same connection open. Opening it twice throws
+            // before PostgreSQL can evaluate the second advisory lock.
+            if (closeConnectionOnDispose) await connection.OpenAsync(cancellationToken);
             await using var command = connection.CreateCommand();
             command.CommandText = "SELECT pg_try_advisory_lock(@key)";
             command.Parameters.AddWithValue("key", key);
