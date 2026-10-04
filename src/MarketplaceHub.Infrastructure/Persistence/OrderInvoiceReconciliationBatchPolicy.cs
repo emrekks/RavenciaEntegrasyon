@@ -1,4 +1,5 @@
 using System.Text.Json;
+using MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
@@ -6,6 +7,21 @@ internal sealed record OrderInvoiceReconciliationCandidate(Guid OrderId, string 
 
 internal static class OrderInvoiceReconciliationBatchPolicy
 {
+    public static IReadOnlyList<OrderInvoiceReconciliationCandidate> SelectReturnClaimHydration(
+        IReadOnlyCollection<(OrderInvoiceReconciliationCandidate Candidate, string? CustomerSnapshotJson)> candidates,
+        IReadOnlySet<Guid> permanentlyUnreachableOrderIds,
+        int batchSize)
+    {
+        if (batchSize <= 0) return [];
+        return candidates
+            .Where(candidate => !permanentlyUnreachableOrderIds.Contains(candidate.Candidate.OrderId)
+                && TrendyolJsonMapper.IsReturnClaimReadModelSnapshot(candidate.CustomerSnapshotJson))
+            .OrderBy(candidate => candidate.Candidate.OrderId)
+            .Take(batchSize)
+            .Select(candidate => candidate.Candidate)
+            .ToArray();
+    }
+
     public static IReadOnlyList<OrderInvoiceReconciliationCandidate> Select(
         IReadOnlyCollection<OrderInvoiceReconciliationCandidate> afterCursor,
         IReadOnlyCollection<OrderInvoiceReconciliationCandidate> wrapped,

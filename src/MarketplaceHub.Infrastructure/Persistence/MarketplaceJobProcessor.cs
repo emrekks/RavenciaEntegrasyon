@@ -2689,6 +2689,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var externalOrderIds = new List<string>();
         SyncCursor? invoiceCursor = null;
         Guid? lastReconciledOrderId = null;
+        var advanceInvoiceCursor = true;
         if (isHepsiburada)
         {
             // Order detail is the only documented source for hasInvoice. Rotate
@@ -2763,6 +2764,38 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                         && package.Status != ShipmentPackageStatus.Cancelled
                         && package.MarketplaceInvoiceStatus != MarketplaceInvoiceStatus.Invoiced));
 
+            IReadOnlyList<OrderInvoiceReconciliationCandidate> returnClaimHydrationCandidates = [];
+            if (isTrendyol)
+            {
+                var eligibleSnapshots = await eligibleOrders
+                    .Select(order => new
+                    {
+                        order.Id,
+                        order.ExternalOrderId,
+                        order.CustomerSnapshotJson
+                    })
+                    .ToListAsync(cancellationToken);
+                var permanentlyUnreachableKeys = await db.OperationalIssues.AsNoTracking()
+                    .Where(issue => issue.TenantId == tenantId
+                        && issue.Status == IssueStatus.Open
+                        && (issue.Code == "REMOTE_ORDER_NOT_FOUND" || issue.Code == "RETURN_ORDER_HYDRATION_INVALID")
+                        && issue.DedupeKey.StartsWith($"trendyol-return-order-hydration:{connectionId}:"))
+                    .Select(issue => issue.DedupeKey)
+                    .ToListAsync(cancellationToken);
+                var permanentlyUnreachableOrderIds = eligibleSnapshots
+                    .Where(order => permanentlyUnreachableKeys.Contains($"trendyol-return-order-hydration:{connectionId}:{order.ExternalOrderId}"))
+                    .Select(order => order.Id)
+                    .ToHashSet();
+                returnClaimHydrationCandidates = OrderInvoiceReconciliationBatchPolicy.SelectReturnClaimHydration(
+                    eligibleSnapshots
+                        .Select(order => (
+                            new OrderInvoiceReconciliationCandidate(order.Id, order.ExternalOrderId),
+                            (string?)order.CustomerSnapshotJson))
+                        .ToArray(),
+                    permanentlyUnreachableOrderIds,
+                    batchSize);
+            }
+
             var afterCursorQuery = eligibleOrders;
             if (afterOrderId is { } cursorOrderId)
                 afterCursorQuery = afterCursorQuery.Where(order => order.Id.CompareTo(cursorOrderId) > 0);
@@ -2783,10 +2816,13 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     .ToListAsync(cancellationToken);
             }
 
-            var selected = OrderInvoiceReconciliationBatchPolicy.Select(afterCursor, wrapped, batchSize);
+            var selected = returnClaimHydrationCandidates.Count > 0
+                ? returnClaimHydrationCandidates
+                : OrderInvoiceReconciliationBatchPolicy.Select(afterCursor, wrapped, batchSize);
+            if (returnClaimHydrationCandidates.Count > 0) advanceInvoiceCursor = false;
             externalOrderIds = selected.Select(candidate => candidate.ExternalOrderId).ToList();
             lastReconciledOrderId = selected.LastOrDefault()?.OrderId;
-            if (lastReconciledOrderId is { } lastOrderId)
+            if (advanceInvoiceCursor && lastReconciledOrderId is { } lastOrderId)
                 invoiceCursor.OpaqueCursor = OrderInvoiceReconciliationBatchPolicy.WriteCursor(lastOrderId);
         }
 
@@ -2878,6 +2914,13 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         TrackReceived();
         if (await UpsertOrder(tenantId, connectionId, result.Value!, cancellationToken))
             await ResolveIssue(tenantId, $"trendyol-return-order-hydration:{connectionId}:{externalOrderId}", cancellationToken);
+        else
+            await RecordIssue(
+                tenantId,
+                $"trendyol-return-order-hydration:{connectionId}:{externalOrderId}",
+                "RETURN_ORDER_HYDRATION_INVALID",
+                "Trendyol sipariş yanıtı eksik satır veya paket verisi içerdiği için kısmi iade siparişi güncellenmedi.",
+                cancellationToken);
     }
 
     private async Task ReconcileTrendyolPackageInvoices(Guid tenantId, Guid connectionId, string externalOrderId, string correlationId, CancellationToken cancellationToken)

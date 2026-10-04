@@ -39,6 +39,27 @@ public sealed class OrderInvoiceReconciliationBatchPolicyTests
         Assert.Equal([second, third], selected);
     }
 
+    [Fact]
+    public void SelectReturnClaimHydrationPrioritizesOldPartialOrdersAndSkipsNotFoundOrders()
+    {
+        var partial = Candidate(1);
+        var regular = Candidate(2);
+        var unreachable = Candidate(3);
+        var candidates = new (OrderInvoiceReconciliationCandidate Candidate, string? CustomerSnapshotJson)[]
+        {
+            (regular, """{"customerFirstName":"Ada"}"""),
+            (unreachable, """{"claimId":"claim-3","claimDate":"2026-07-03T09:12:00Z","orderShipmentPackageId":"pkg-3"}"""),
+            (partial, """{"claimId":"claim-1","claimDate":"2026-07-03T09:12:00Z","orderOutboundPackageId":"pkg-1"}""")
+        };
+
+        var selected = OrderInvoiceReconciliationBatchPolicy.SelectReturnClaimHydration(
+            candidates,
+            new HashSet<Guid> { unreachable.OrderId },
+            10);
+
+        Assert.Equal([partial], selected);
+    }
+
     private static OrderInvoiceReconciliationCandidate Candidate(int id) =>
         new(Guid.Parse($"0199a5a1-1c00-7000-8000-{id:D12}"), $"ORDER-{id}");
 }
