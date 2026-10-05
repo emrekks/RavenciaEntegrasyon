@@ -8,7 +8,7 @@ import { appendNotification } from '../../shared/notifications'
 import { resolveInvoiceTab } from '../../shared/dashboard-operational-links'
 import { PlatformMark } from '../../shared/platform-mark'
 import { PlatformMultiSelect } from '../../shared/platform-multi-select'
-import { isInvoiceCreationAvailable, matchesInvoiceActionFilter } from './invoice-creation-availability'
+import { invoiceSubmissionAction, isInvoiceCreationAvailable, isValidatedInvoiceReadyToSubmit, matchesInvoiceActionFilter } from './invoice-creation-availability'
 import { isMarketplacePlatformSelected, marketplacePlatformOptions } from '../marketplace/marketplace-platform-support'
 
 type Invoice = { id: string; orderNumber: string; invoiceType: string; status: string; currency: string; payableTotal: number; invoiceNumber: string | null; dueAt: string | null; createdAt: string; version: number }
@@ -38,10 +38,17 @@ async function submitInvoice(item: InvoiceWorkspace, provider: Connection | unde
   let invoice: InvoiceDetail
   if (item.invoiceId) {
     invoice = await hubApi<InvoiceDetail>(`/invoices/${item.invoiceId}`)
-    if (!invoice.allowedActions.includes('SUBMIT')) throw new Error('Bu fatura tekrar gönderilebilir durumda değil.')
+    const action = invoiceSubmissionAction(invoice.status, invoice.allowedActions)
+    if (action === 'VALIDATE') {
+      invoice = await hubApi<InvoiceDetail>(`/invoices/${invoice.id}/validate`, { method: 'POST', headers: { 'If-Match': `"v${invoice.version}"` } })
+      if (!isValidatedInvoiceReadyToSubmit(invoice.status, invoice.allowedActions)) throw new Error(invoiceFailureToast(invoice))
+    } else if (action !== 'SUBMIT') {
+      throw new Error(invoiceFailureToast(invoice))
+    }
   } else {
     const draft = await hubApi<InvoiceDetail>('/invoices', { method: 'POST', headers: { 'Idempotency-Key': `invoice:${item.orderId}:${item.packageId}` }, body: JSON.stringify({ orderId: item.orderId, packageId: item.packageId, providerConnectionId: provider.id, originalInvoiceId: null }) })
     invoice = await hubApi<InvoiceDetail>(`/invoices/${draft.id}/validate`, { method: 'POST', headers: { 'If-Match': `"v${draft.version}"` } })
+    if (!isValidatedInvoiceReadyToSubmit(invoice.status, invoice.allowedActions)) throw new Error(invoiceFailureToast(invoice))
   }
   await hubApi(`/invoices/${invoice.id}/submit-jobs`, { method: 'POST', headers: { 'Idempotency-Key': item.invoiceId ? `invoice-submit-retry:${invoice.id}:${idempotency()}` : `invoice-submit:${invoice.id}`, 'If-Match': `"v${invoice.version}"` }, body: JSON.stringify({ password: '', confirmed: false }) })
   return invoice.id
@@ -64,6 +71,7 @@ function invoiceFailureReason(code: string | null) {
     EFATURAM_AUTHENTICATION_FAILED: 'E-Faturam kimlik doğrulamasını kabul etmedi.',
     EFATURAM_ACCESS_TOKEN_REJECTED: 'E-Faturam erişim anahtarını reddetti.',
     EFATURAM_INVOICE_CREATE_PRIVILEGE_MISSING: 'Bu hesapta fatura oluşturma yetkisi bulunmuyor.',
+    EFATURAM_CARRIER_CATALOG_MISS: 'Kargo firmasının fatura bilgisi sağlayıcıya tanımlı değil.',
     REMOTE_INVOICE_REJECTED: 'Pazaryeri faturayı reddetti.'
   }
   return labels[code ?? ''] ?? (code ? `Fatura oluşturulamadı: ${code}` : 'Fatura oluşturulamadı. Detayları açın.')
@@ -81,6 +89,7 @@ function invoiceFailureGuidance(code: string | null) {
     EFATURAM_AUTHENTICATION_FAILED: 'Entegrasyonlar ekranından E-Faturam kimlik bilgilerini yenileyip bağlantıyı test edin.',
     EFATURAM_ACCESS_TOKEN_REJECTED: 'E-Faturam bağlantısını yeniden yetkilendirin, ardından faturayı tekrar deneyin.',
     EFATURAM_INVOICE_CREATE_PRIVILEGE_MISSING: 'E-Faturam hesabında fatura oluşturma yetkisini açtırın.',
+    EFATURAM_CARRIER_CATALOG_MISS: 'Faturayı tekrar deneyin; kargo taşıyıcı bilgisi doğrulamaya eklendi.',
     REMOTE_INVOICE_REJECTED: 'Provider veya pazaryeri ret nedenini kontrol edip gerekli bilgileri düzelttikten sonra tekrar deneyin.'
   }
   return labels[code ?? ''] ?? 'Fatura detaylarını açıp son hata kodunu ve provider denemelerini kontrol edin.'
@@ -152,7 +161,10 @@ export function InvoicesPage() {
     if (item.platformCode === 'SHOPIFY') setMessage(`Shopify #${item.orderNumber} için fatura takip kaydı hazır. Gerçek faturayı “Manuel fatura yükle” seçeneğinden panele ekleyin.`, 'success')
     else setMessage('Fatura başarıyla oluşturuldu.', 'success')
     await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['orders'] })])
-  }, onError: error => setMessage(error instanceof Error ? error.message : 'Fatura oluşturulamadı.', 'error') })
+  }, onError: async error => {
+    setMessage(error instanceof Error ? error.message : 'Fatura oluşturulamadı.', 'error')
+    await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['orders'] })])
+  } })
   const items = (query.data ?? []).filter(item => !isCancelledShipment(item)); const normalized = search.trim().toLocaleLowerCase('tr-TR')
   const platformOptions = marketplacePlatformOptions(
     connections.data?.items ?? [],

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isInvoiceCreationAvailable, matchesInvoiceActionFilter } from './invoice-creation-availability'
+import { invoiceSubmissionAction, isInvoiceCreationAvailable, isValidatedInvoiceReadyToSubmit, matchesInvoiceActionFilter } from './invoice-creation-availability'
 
 describe('invoice creation availability', () => {
   it('marks Trendyol rows unavailable when invoice creation or the provider credential is locked', () => {
@@ -20,5 +20,12 @@ describe('invoice creation availability', () => {
     const failed = { platformCode: 'TRENDYOL', invoiceId: 'invoice-1', invoiceStatus: 'MARKETPLACE_FAILED', canCreateInvoice: false, invoiceCreationEnabled: true }
     expect(isInvoiceCreationAvailable(failed, true)).toBe(true)
     expect(isInvoiceCreationAvailable({ ...failed, invoiceStatus: 'COMPLETED' }, true)).toBe(false)
+  })
+
+  it('revalidates a failed invoice and never queues it while validation still fails', () => {
+    expect(invoiceSubmissionAction('VALIDATION_FAILED', ['VALIDATE'])).toBe('VALIDATE')
+    expect(invoiceSubmissionAction('REJECTED', ['SUBMIT'])).toBe('SUBMIT')
+    expect(isValidatedInvoiceReadyToSubmit('VALIDATION_FAILED', ['VALIDATE'])).toBe(false)
+    expect(isValidatedInvoiceReadyToSubmit('READY', ['SUBMIT'])).toBe(true)
   })
 })
