@@ -303,6 +303,15 @@ describe('QuestionsPage workspace flows', () => {
     expect(apiState.calls.some(call => call.path.startsWith('/products?'))).toBe(false)
   })
 
+  it('uses a circular marketplace logo instead of a dotted platform badge', async () => {
+    apiState.detail = { ...createQuestion(), storeName: 'Trendyol' }
+    await renderPage()
+
+    expect(container.querySelector('.rv-question-platform-icon[aria-label="Trendyol"] img')?.getAttribute('src')).toBe('/platforms/trendyol.png')
+    expect(container.querySelector('.rv-question-meta .rv-badge')).toBeNull()
+    expect(container.querySelector('.rv-question-meta')?.textContent).not.toContain('TrendyolTrendyol')
+  })
+
   it('renders the platform rejection when answer submission fails and refreshes the active question kind', async () => {
     await renderPage()
     act(() => button('Yenile').click())

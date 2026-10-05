@@ -553,8 +553,10 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
 
     public async Task<ServiceResult<string>> ProductImageAsync(Guid tenantId, string? barcode, string correlationId, CancellationToken cancellationToken, Guid? connectionId = null, string? productName = null)
     {
-        var normalizedBarcode = barcode?.Trim();
-        if (string.IsNullOrWhiteSpace(normalizedBarcode) || normalizedBarcode.Length > 128)
+        var normalizedBarcode = barcode?.Trim() ?? "";
+        var normalizedProductName = productName?.Trim();
+        if ((string.IsNullOrWhiteSpace(normalizedBarcode) || normalizedBarcode.Length > 128)
+            && (string.IsNullOrWhiteSpace(normalizedProductName) || normalizedProductName.Length > 320))
             return ServiceResult<string>.Fail("PRODUCT_BARCODE_INVALID", "Geçerli bir ürün barkodu gereklidir.", 400);
 
         var connection = connectionId is { } requestedConnectionId
@@ -564,6 +566,26 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 && (x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY"), cancellationToken)
             : null;
         if (connectionId is not null && connection is null) return NotFound<string>();
+
+        // Questions sometimes have only a product title and no usable image,
+        // SKU, or barcode. Reuse a unique local catalog title match in that case.
+        if (!string.IsNullOrWhiteSpace(normalizedProductName) && normalizedProductName.Length <= 320)
+        {
+            var matchingProductIds = await db.Products.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.Title.ToUpper() == normalizedProductName.ToUpper())
+                .Select(x => x.Id).Take(2).ToListAsync(cancellationToken);
+            if (matchingProductIds.Count == 1)
+            {
+                var titleVariantIds = await db.ProductVariants.AsNoTracking()
+                    .Where(x => x.TenantId == tenantId && x.ProductId == matchingProductIds[0])
+                    .OrderBy(x => x.SortOrder).Select(x => (Guid?)x.Id).Take(100).ToListAsync(cancellationToken);
+                var titleImages = await MediaUrls(tenantId, titleVariantIds, cancellationToken);
+                var titleImage = titleVariantIds.Where(id => id is not null)
+                    .Select(id => titleImages.GetValueOrDefault(id!.Value))
+                    .FirstOrDefault(url => !string.IsNullOrWhiteSpace(url));
+                if (!string.IsNullOrWhiteSpace(titleImage)) return ServiceResult<string>.Ok(titleImage);
+            }
+        }
 
         // Order rows can use a marketplace merchant SKU when the provider
         // does not return a barcode. Prefer this order's own marketplace link,
@@ -650,7 +672,6 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 if (!string.IsNullOrWhiteSpace(snapshotImage)) return ServiceResult<string>.Ok(snapshotImage);
             }
 
-            var normalizedProductName = productName?.Trim();
             if (!string.IsNullOrWhiteSpace(normalizedProductName) && normalizedProductName.Length <= 320)
             {
                 var titleSnapshots = await (
@@ -670,6 +691,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             }
         }
 
+        if (string.IsNullOrWhiteSpace(normalizedBarcode)) return NotFound<string>();
         connection ??= await ActiveTrendyolConnection(tenantId, cancellationToken);
         if (connection is null) return NotFound<string>();
 
@@ -2192,7 +2214,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var options = new List<string>();
         if (!string.IsNullOrWhiteSpace(color)) options.Add($"Renk: {color}");
         if (!string.IsNullOrWhiteSpace(size)) options.Add($"Beden: {size}");
-        return new(image, JsonText(snapshot, "productCode", "modelCode"), options.Count == 0 ? null : string.Join(" | ", options));
+        return new(image, JsonText(snapshot, "modelCode"), options.Count == 0 ? null : string.Join(" | ", options));
     }
 
     internal static string? SourceImageUrl(string json)

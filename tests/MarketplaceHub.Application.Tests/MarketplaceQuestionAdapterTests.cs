@@ -56,7 +56,7 @@ public sealed class MarketplaceQuestionAdapterTests
     public void HepsiburadaMapsOrderQuestionConversationsAndExactExpiry()
     {
         const string json = """
-        {"totalPages":1,"totalElements":1,"issues":[{"issueNumber":"HB-77","status":1,"createdAt":"2026-10-02T10:00:00Z","lastModifiedAt":"2026-10-03T10:00:00Z","expireDate":"2026-10-04T10:00:00Z","customerName":"Ayşe","orderNumber":"ORDER-9","source":2,"product":{"name":"Elbise","stockCode":"SKU-9"},"lastContent":"Son mesaj","conversations":[{"from":"Customer","content":"Sipariş ne zaman kargoya verilir?","createdAt":"2026-10-02T10:00:00Z"},{"from":"Seller","content":"Yarın kargoya vereceğiz.","createdAt":"2026-10-03T10:00:00Z"}]}]}
+        {"totalPages":1,"totalElements":1,"issues":[{"issueNumber":"HB-77","status":1,"createdAt":"2026-10-02T10:00:00Z","lastModifiedAt":"2026-10-03T10:00:00Z","expireDate":"2026-10-04T10:00:00Z","customerName":"Ayşe","orderNumber":"ORDER-9","source":2,"product":{"name":"Elbise","stockCode":"SKU-9","productCode":"1579897570"},"lastContent":"Son mesaj","conversations":[{"from":"Customer","content":"Sipariş ne zaman kargoya verilir?","createdAt":"2026-10-02T10:00:00Z"},{"from":"Seller","content":"Yarın kargoya vereceğiz.","createdAt":"2026-10-03T10:00:00Z"}]}]}
         """;
 
         using var document = JsonDocument.Parse(json);
@@ -67,7 +67,7 @@ public sealed class MarketplaceQuestionAdapterTests
         Assert.Equal("WAITING_FOR_ANSWER", question.Status);
         Assert.Equal("Sipariş ne zaman kargoya verilir?", question.Text);
         Assert.Equal("ORDER-9", question.OrderNumber);
-        Assert.Equal("SKU-9", question.ProductModelCode);
+        Assert.Null(question.ProductModelCode);
         Assert.Equal(DateTimeOffset.Parse("2026-10-04T10:00:00Z"), question.ExpiresAt);
         Assert.Equal("Seller", question.Conversations[1].Author);
     }
@@ -75,12 +75,12 @@ public sealed class MarketplaceQuestionAdapterTests
     [Fact]
     public void HepsiburadaQuestionMapsNestedProductImageAliases()
     {
-        using var document = JsonDocument.Parse("""{"issues":[{"issueNumber":"HB-IMAGE","status":2,"createdAt":"2026-10-02T10:00:00Z","product":{"name":"Elbise","stockCode":"MODEL-9","images":[{"url":"https://productimages.hepsiburada.net/item.jpg"}]}}]}""");
+        using var document = JsonDocument.Parse("""{"issues":[{"issueNumber":"HB-IMAGE","status":2,"createdAt":"2026-10-02T10:00:00Z","product":{"name":"Elbise","stockCode":"SKU-9","productCode":"1579897570","images":[{"url":"https://productimages.hepsiburada.net/item.jpg"}]}}]}""");
 
         var question = Assert.Single(HepsiburadaQuestionMapper.Page(document, new("PRODUCT", null, null, null, 1, 25)).Items);
 
         Assert.Equal("https://productimages.hepsiburada.net/item.jpg", question.ProductImageUrl);
-        Assert.Equal("MODEL-9", question.ProductModelCode);
+        Assert.Null(question.ProductModelCode);
     }
 
     [Fact]

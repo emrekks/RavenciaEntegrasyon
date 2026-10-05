@@ -10,15 +10,13 @@ const invoiceFixtures = [
   { id: 'inv-3', orderId: 'order-3', packageId: 'trendyol-package-3', orderNumber: 'TY-1003', customerName: 'Zeynep Demir', orderedAt: '2026-10-04T12:00:00Z', shipmentStatus: 'DELIVERED', deliveredAt: '2026-10-04T13:00:00Z', invoiceDueAt: null, isDueSoon: true, currency: 'TRY', amount: 499, productCount: 1, primaryImageUrl: null, cargoProviderName: 'Aras', cargoTrackingNumber: 'TRK-3', invoiceId: null, invoiceStatus: 'FATURA_BEKLIYOR', invoiceNumber: null, canCreateInvoice: true, shipmentAddressJson: null, invoiceAddressJson: null, lines: [], invoiceErrorCode: null, invoiceDeliveryStatus: null, invoiceDeliveryReference: null, invoiceDocumentAvailable: false, platformCode: 'TRENDYOL', platformDisplayName: 'Trendyol', invoiceCreationEnabled: true },
 ]
 
-const apiState = vi.hoisted(() => ({ uploads: [] as Array<{ path: string; fileName: string | null }> }))
+const apiState = vi.hoisted(() => ({ uploads: [] as Array<{ path: string; fileName: string | null }>, statusUpdates: [] as Array<{ path: string; status: string }> }))
 
 vi.mock('../../shared/api', () => ({
   hubApi: vi.fn(async (path: string, init?: RequestInit) => {
     if (path === '/invoice-workspace') return invoiceFixtures
-    if (path === '/invoices/invoice-1/documents/manual' || path === '/invoices/invoice-2/documents/manual') {
-      const body = init?.body as FormData
-      const file = body?.get('file')
-      apiState.uploads.push({ path, fileName: file instanceof File ? file.name : null })
+    if (path === '/invoices/invoice-1/shopify-status' || path === '/invoices/invoice-2/shopify-status') {
+      apiState.statusUpdates.push({ path, status: JSON.parse(String(init?.body)).status as string })
       return undefined
     }
     throw new Error(`Test API fixture does not handle ${init?.method ?? 'GET'} ${path}`)
@@ -38,12 +36,6 @@ function button(label: string) {
   if (!found) throw new Error(`Could not find button containing “${label}”`)
   return found
 }
-
-function chooseFile(input: HTMLInputElement, file: File) {
-  Object.defineProperty(input, 'files', { configurable: true, value: [file] })
-  act(() => input.dispatchEvent(new Event('change', { bubbles: true })))
-}
-
 async function settle() { await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) }) }
 
 beforeEach(async () => {
@@ -59,36 +51,30 @@ beforeEach(async () => {
 
 afterEach(() => { act(() => root?.unmount()); client?.clear(); container.remove() })
 
-describe('InvoicesPage Shopify bulk manual upload', () => {
-  it('selects Shopify orders only, requires a separate file per order, and uploads only to the panel', async () => {
-    expect(container.querySelector('[aria-label="Shopify #SH-1001 faturasını seç"]')).not.toBeNull()
-    expect(container.querySelector('[aria-label="Shopify #SH-1002 faturasını seç"]')).not.toBeNull()
-    expect(container.querySelector('[aria-label="Shopify #TY-1003 faturasını seç"]')).toBeNull()
+describe('InvoicesPage Shopify bulk invoice status', () => {
+  it('selects Shopify orders and changes invoice status without uploading files', async () => {
+    expect(container.querySelector('[aria-label="Shopify #SH-1001 siparişini seç"]')).not.toBeNull()
+    expect(container.querySelector('[aria-label="Shopify #SH-1002 siparişini seç"]')).not.toBeNull()
+    expect(container.querySelector('[aria-label="Shopify #TY-1003 siparişini seç"]')).toBeNull()
 
-    const selectAll = container.querySelector<HTMLInputElement>('[aria-label="Bu sayfadaki Shopify faturalarını seç"]')!
+    const selectAll = container.querySelector<HTMLInputElement>('[aria-label="Bu sayfadaki Shopify siparişlerini seç"]')!
     act(() => selectAll.click())
     await settle()
     expect(container.querySelector('.invoice-reference-bulk-toolbar')?.textContent).toContain('2 Shopify siparişi seçildi')
-    act(() => button('Seçilenlere manuel fatura yükle').click())
+    act(() => button('Seçilenlerin fatura durumunu değiştir').click())
     await settle()
-    expect(container.querySelector('[role="dialog"]')?.textContent).toContain('Shopify')
-    const submit = button('Seçilen 2 dosyayı yükle')
-    expect(submit.disabled).toBe(true)
-
-    const files = container.querySelectorAll<HTMLInputElement>('.invoice-bulk-file input[type="file"]')
-    expect(files).toHaveLength(2)
-    chooseFile(files[0], new File(['first'], 'shopify-1001.pdf', { type: 'application/pdf' }))
-    expect(button('Seçilen 2 dosyayı yükle').disabled).toBe(true)
-    chooseFile(files[1], new File(['second'], 'shopify-1002.pdf', { type: 'application/pdf' }))
-    expect(button('Seçilen 2 dosyayı yükle').disabled).toBe(false)
-    act(() => button('Seçilen 2 dosyayı yükle').click())
+    expect(container.querySelector('[role="dialog"]')?.textContent).toContain('Fatura dosyası yüklenmez')
+    const status = container.querySelector<HTMLSelectElement>('[aria-label="Yeni fatura durumu"]')!
+    act(() => { status.value = 'UPLOADED'; status.dispatchEvent(new Event('change', { bubbles: true })) })
+    act(() => button('2 siparişin durumunu güncelle').click())
     await settle()
 
-    expect(apiState.uploads).toEqual([
-      { path: '/invoices/invoice-1/documents/manual', fileName: 'shopify-1001.pdf' },
-      { path: '/invoices/invoice-2/documents/manual', fileName: 'shopify-1002.pdf' },
+    expect(apiState.statusUpdates).toEqual([
+      { path: '/invoices/invoice-1/shopify-status', status: 'UPLOADED' },
+      { path: '/invoices/invoice-2/shopify-status', status: 'UPLOADED' },
     ])
+    expect(apiState.uploads).toEqual([])
     expect(container.querySelector('[role="dialog"]')).toBeNull()
-    expect(container.textContent).toContain('2 Shopify fatura dosyası güvenli panele yüklendi')
+    expect(container.textContent).toContain('2/2 siparişin fatura durumu')
   })
 })

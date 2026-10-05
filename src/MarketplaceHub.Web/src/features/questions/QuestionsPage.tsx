@@ -44,9 +44,14 @@ function formatDate(value?: string | null) {
 }
 
 function displayPlatform(code: string) { return code === 'HEPSIBURADA' ? 'Hepsiburada' : 'Trendyol' }
+function QuestionPlatformIcon({ code }: { code: string }) {
+  const trendyol = code === 'TRENDYOL'
+  const logo = platformLogoSource(code)
+  return <span className={`rv-question-platform-icon ${trendyol ? 'is-trendyol' : 'is-hepsiburada'}`} title={displayPlatform(code)} aria-label={displayPlatform(code)}>{logo ? <img src={logo} alt="" /> : <span>{trendyol ? 'TY' : 'HB'}</span>}</span>
+}
 
 function QuestionProductImage({ src, connectionId, sku, barcode, modelCode, productName }: { src?: string | null; connectionId: string; sku?: string | null; barcode?: string | null; modelCode?: string | null; productName: string }) {
-  const sources = [...new Set([src, ...productImageFallbackUrls([barcode, sku, modelCode], connectionId, productName)].filter((value): value is string => Boolean(value)))]
+  const sources = [...new Set([src, ...productImageFallbackUrls([barcode, sku, modelCode], connectionId, productName), ...(productName.trim() ? productImageFallbackUrls([], connectionId, productName) : [])].filter((value): value is string => Boolean(value)))]
   const sourceKey = sources.join('\u0000')
   const [sourceIndex, setSourceIndex] = useState(0)
   useEffect(() => setSourceIndex(0), [sourceKey])
@@ -151,7 +156,7 @@ export function QuestionsPage() {
             <section className="rv-question-content" aria-label="Soru ve konuşmalar">
               <div className="rv-question-thread-message is-customer is-question"><header><strong>{row.customerName || 'Müşteri sorusu'}</strong><time dateTime={row.createdAt}>{formatDate(row.createdAt)}</time></header><p>{row.questionText}</p></div>
               {previousMessages.length > 0 && <div className="rv-question-conversation" aria-label="Konuşma geçmişi">{previousMessages.map((message, index) => { const sellerMessage = message.author.toLowerCase().includes('merchant') || message.author.toLowerCase().includes('seller'); return <article className={`rv-question-thread-message ${sellerMessage ? 'is-seller' : 'is-customer'}`} key={`${message.createdAt}-${index}`}><header><strong>{sellerMessage ? 'Satıcı cevabı' : message.author || 'Müşteri'}</strong><time dateTime={message.createdAt}>{formatDate(message.createdAt)}</time></header><p>{message.text}</p>{message.rejectionReason && <small className="rv-question-rejection">Ret nedeni: {message.rejectionReason}</small>}</article> })}</div>}
-              <div className="rv-question-meta"><Badge tone="info">{displayPlatform(row.platformCode)}</Badge><span>{row.storeName}</span>{tab === 'ORDER' && row.externalOrderNumber && <Link to={`/orders?search=${encodeURIComponent(row.externalOrderNumber)}`}>Sipariş #{row.externalOrderNumber}</Link>}</div>
+              <div className="rv-question-meta"><QuestionPlatformIcon code={row.platformCode} />{row.storeName && row.storeName.toLocaleLowerCase('tr-TR') !== displayPlatform(row.platformCode).toLocaleLowerCase('tr-TR') && <span>{row.storeName}</span>}{tab === 'ORDER' && row.externalOrderNumber && <Link to={`/orders?search=${encodeURIComponent(row.externalOrderNumber)}`}>Sipariş #{row.externalOrderNumber}</Link>}</div>
             </section>
             {replyingId === row.id && <section className="rv-question-inline-compose" aria-label={`#${row.externalQuestionId} için cevap`}>
             {templates.data?.length ? <div className="rv-question-bubbles" aria-label="Hazır cevaplar">{templates.data.map(item => <button type="button" key={item.id} title={item.text} onClick={() => setAnswerText(item.text)}>{item.title}</button>)}</div> : null}

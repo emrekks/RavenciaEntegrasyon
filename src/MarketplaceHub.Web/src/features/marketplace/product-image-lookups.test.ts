@@ -22,4 +22,13 @@ describe('productImageFallbackUrls', () => {
     expect(params.get('connectionId')).toBe('hb-store')
     expect(params.get('productName')).toBe('Ravencia Kadın Triko')
   })
+
+  it('can request an image by exact product title when a question has no SKU or barcode', () => {
+    const [url] = productImageFallbackUrls([], 'hb-store', 'Elbise')
+    const params = new URL(url, 'https://panel.ravencia.test').searchParams
+
+    expect(params.get('barcode')).toBeNull()
+    expect(params.get('connectionId')).toBe('hb-store')
+    expect(params.get('productName')).toBe('Elbise')
+  })
 })
