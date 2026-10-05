@@ -82,6 +82,7 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         state.HistoryStartedAt ??= timeProvider.GetUtcNow().AddYears(-1);
         var initial = !state.HistoryImported;
         var now = timeProvider.GetUtcNow(); var added = 0; var updated = 0;
+        string? failedRequestContext = null;
         state.ProgressStatus = initial ? "INITIAL" : "UPDATING"; state.LastRunStartedAt = now; state.Version++;
         await db.SaveChangesAsync(cancellationToken);
         try
@@ -139,6 +140,11 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
 
             async Task<MarketplaceQuestionPage> FetchAndSavePageAsync(QuestionPollRequest request, string pageKey, bool countForHistory)
             {
+                var requestRange = request.StartDate is { } start && request.EndDate is { } end
+                    ? $"; aralık {start.ToUnixTimeMilliseconds()}–{end.ToUnixTimeMilliseconds()}"
+                    : string.Empty;
+                var requestPhase = pageKey == "live" ? "canlı" : $"geçmiş {pageKey}";
+                failedRequestContext = $"{requestPhase}; {request.Kind}/{request.Status}; sayfa {request.Page}{requestRange}";
                 var context = new AdapterContext(tenantId, connectionId, $"question-sync-{Guid.NewGuid():N}", $"question-sync:{connectionId:N}:{pageKey}", now.AddMinutes(2), Operation: IntegrationOperation.Automatic);
                 var response = await port.ListQuestionsAsync(context, request, cancellationToken);
                 if (!response.IsSuccess) throw new QuestionSyncException(response.Error!);
@@ -155,9 +161,11 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         }
         catch (QuestionSyncException exception)
         {
-            state.LastError = exception.Error.Code; state.ProgressStatus = "FAILED"; state.Version++;
+            var httpStatus = exception.Error.HttpStatus is { } status ? $"HTTP {status}; " : string.Empty;
+            state.LastError = $"{exception.Error.Code} ({httpStatus}{failedRequestContext ?? "istek ayrıntısı yok"})";
+            state.ProgressStatus = "FAILED"; state.Version++;
             await db.SaveChangesAsync(cancellationToken);
-            logger.LogWarning("Soru eşitleme başarısız. TenantId: {TenantId}, ConnectionId: {ConnectionId}, Code: {Code}", tenantId, connectionId, exception.Error.Code);
+            logger.LogWarning("Soru eşitleme başarısız. TenantId: {TenantId}, ConnectionId: {ConnectionId}, Code: {Code}, HttpStatus: {HttpStatus}, Request: {Request}, RemoteRequestId: {RemoteRequestId}", tenantId, connectionId, exception.Error.Code, exception.Error.HttpStatus, failedRequestContext, exception.Error.RemoteRequestId);
             return new(added, updated, now, exception.Error.SafeMessage);
         }
     }
