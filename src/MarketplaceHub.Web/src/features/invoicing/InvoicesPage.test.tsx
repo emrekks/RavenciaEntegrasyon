@@ -41,6 +41,7 @@ async function settle() { await act(async () => { await new Promise(resolve => s
 beforeEach(async () => {
   ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
   apiState.uploads = []
+  apiState.statusUpdates = []
   container = document.createElement('div')
   document.body.append(container)
   client = new QueryClient({ defaultOptions: { queries: { retry: false, refetchInterval: false }, mutations: { retry: false } } })
@@ -52,15 +53,24 @@ beforeEach(async () => {
 afterEach(() => { act(() => root?.unmount()); client?.clear(); container.remove() })
 
 describe('InvoicesPage Shopify bulk invoice status', () => {
-  it('selects Shopify orders and changes invoice status without uploading files', async () => {
+  it('renders a selection checkbox for every platform order and selects the whole page', async () => {
     expect(container.querySelector('[aria-label="Shopify #SH-1001 siparişini seç"]')).not.toBeNull()
     expect(container.querySelector('[aria-label="Shopify #SH-1002 siparişini seç"]')).not.toBeNull()
-    expect(container.querySelector('[aria-label="Shopify #TY-1003 siparişini seç"]')).toBeNull()
+    expect(container.querySelector('[aria-label="Trendyol #TY-1003 siparişini seç"]')).not.toBeNull()
 
-    const selectAll = container.querySelector<HTMLInputElement>('[aria-label="Bu sayfadaki Shopify siparişlerini seç"]')!
+    const selectAll = container.querySelector<HTMLInputElement>('[aria-label="Bu sayfadaki tüm siparişleri seç"]')!
     act(() => selectAll.click())
     await settle()
+    for (const item of invoiceFixtures) {
+      expect(container.querySelector<HTMLInputElement>(`[aria-label$="#${item.orderNumber} siparişini seç"]`)?.checked).toBe(true)
+    }
     expect(container.querySelector('.invoice-reference-bulk-toolbar')?.textContent).toContain('2 Shopify siparişi seçildi')
+  })
+
+  it('changes selected Shopify invoice statuses without uploading files', async () => {
+    const selectAll = container.querySelector<HTMLInputElement>('[aria-label="Bu sayfadaki tüm siparişleri seç"]')!
+    act(() => selectAll.click())
+    await settle()
     act(() => button('Seçilenlerin fatura durumunu değiştir').click())
     await settle()
     expect(container.querySelector('[role="dialog"]')?.textContent).toContain('Fatura dosyası yüklenmez')
