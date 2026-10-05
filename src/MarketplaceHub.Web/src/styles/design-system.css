@@ -9944,10 +9944,21 @@ small,
   display: none;
 }
 
-/* Keep product and unit-price separators on the same subgrid row boundary. */
-.order-reference-row .order-reference-products > article:not(:last-child),
-.order-reference-row .order-reference-prices > strong:not(:last-child) {
-  border-bottom: 1px solid var(--rv-color-border-strong);
+/* Orders use one shared product/price divider per line, matching returns. */
+.order-reference-grid > .order-row-divider {
+  grid-column: 4 / 6;
+  align-self: end;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-top: 1px solid var(--rv-color-border-strong);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.order-reference-row .order-reference-products > article,
+.order-reference-row .order-reference-prices > strong {
+  border-bottom: 0;
 }
 
 .order-reference-row .order-reference-prices {
