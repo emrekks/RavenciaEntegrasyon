@@ -4422,6 +4422,10 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
 
+                    b.Property<string>("ManualInvoiceStatus")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
                     b.Property<DateTimeOffset?>("MarketplaceInvoiceObservedAt")
                         .HasColumnType("timestamp with time zone");
 

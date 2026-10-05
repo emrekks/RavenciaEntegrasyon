@@ -357,6 +357,7 @@ public sealed class ShipmentPackage
     public required string RawStatus { get; set; }
     public DateTimeOffset StatusOccurredAt { get; set; }
     public MarketplaceInvoiceStatus MarketplaceInvoiceStatus { get; set; }
+    public string? ManualInvoiceStatus { get; set; }
     public string? MarketplaceInvoiceRawStatus { get; set; }
     public string? MarketplaceInvoiceNumber { get; set; }
     public string? MarketplaceInvoiceUrl { get; set; }

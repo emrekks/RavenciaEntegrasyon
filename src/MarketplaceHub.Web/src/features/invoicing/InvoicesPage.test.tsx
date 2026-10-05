@@ -10,14 +10,15 @@ const invoiceFixtures = [
   { id: 'inv-3', orderId: 'order-3', packageId: 'trendyol-package-3', orderNumber: 'TY-1003', customerName: 'Zeynep Demir', orderedAt: '2026-10-04T12:00:00Z', shipmentStatus: 'DELIVERED', deliveredAt: '2026-10-04T13:00:00Z', invoiceDueAt: null, isDueSoon: true, currency: 'TRY', amount: 499, productCount: 1, primaryImageUrl: null, cargoProviderName: 'Aras', cargoTrackingNumber: 'TRK-3', invoiceId: null, invoiceStatus: 'FATURA_BEKLIYOR', invoiceNumber: null, canCreateInvoice: true, shipmentAddressJson: null, invoiceAddressJson: null, lines: [], invoiceErrorCode: null, invoiceDeliveryStatus: null, invoiceDeliveryReference: null, invoiceDocumentAvailable: false, platformCode: 'TRENDYOL', platformDisplayName: 'Trendyol', invoiceCreationEnabled: true },
 ]
 
-const apiState = vi.hoisted(() => ({ uploads: [] as Array<{ path: string; fileName: string | null }>, statusUpdates: [] as Array<{ path: string; status: string }> }))
+const apiState = vi.hoisted(() => ({ uploads: [] as Array<{ path: string; fileName: string | null }>, statusUpdates: [] as Array<{ path: string; status: string; packageIds: string[] }> }))
 
 vi.mock('../../shared/api', () => ({
   hubApi: vi.fn(async (path: string, init?: RequestInit) => {
     if (path === '/invoice-workspace') return invoiceFixtures
-    if (path === '/invoices/invoice-1/shopify-status' || path === '/invoices/invoice-2/shopify-status') {
-      apiState.statusUpdates.push({ path, status: JSON.parse(String(init?.body)).status as string })
-      return undefined
+    if (path === '/invoice-workspace/manual-status') {
+      const body = JSON.parse(String(init?.body)) as { status: string; packageIds: string[] }
+      apiState.statusUpdates.push({ path, status: body.status, packageIds: body.packageIds })
+      return { updatedCount: body.packageIds.length }
     }
     throw new Error(`Test API fixture does not handle ${init?.method ?? 'GET'} ${path}`)
   }),
@@ -53,7 +54,7 @@ beforeEach(async () => {
 afterEach(() => { act(() => root?.unmount()); client?.clear(); container.remove() })
 
 describe('InvoicesPage Shopify bulk invoice status', () => {
-  it('renders a selection checkbox for every platform order and selects the whole page', async () => {
+  it('renders selection controls for every platform order and selects the whole page', async () => {
     expect(container.querySelector('[aria-label="Shopify #SH-1001 siparişini seç"]')).not.toBeNull()
     expect(container.querySelector('[aria-label="Shopify #SH-1002 siparişini seç"]')).not.toBeNull()
     expect(container.querySelector('[aria-label="Trendyol #TY-1003 siparişini seç"]')).not.toBeNull()
@@ -64,10 +65,10 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     for (const item of invoiceFixtures) {
       expect(container.querySelector<HTMLInputElement>(`[aria-label$="#${item.orderNumber} siparişini seç"]`)?.checked).toBe(true)
     }
-    expect(container.querySelector('.invoice-reference-bulk-toolbar')?.textContent).toContain('2 Shopify siparişi seçildi')
+    expect(container.querySelector('.invoice-reference-bulk-toolbar')?.textContent).toContain('3 sipariş seçildi')
   })
 
-  it('changes selected Shopify invoice statuses without uploading files', async () => {
+  it('changes selected cross-platform invoice statuses without uploading files', async () => {
     const selectAll = container.querySelector<HTMLInputElement>('[aria-label="Bu sayfadaki tüm siparişleri seç"]')!
     act(() => selectAll.click())
     await settle()
@@ -76,15 +77,12 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     expect(container.querySelector('[role="dialog"]')?.textContent).toContain('Fatura dosyası yüklenmez')
     const status = container.querySelector<HTMLSelectElement>('[aria-label="Yeni fatura durumu"]')!
     act(() => { status.value = 'UPLOADED'; status.dispatchEvent(new Event('change', { bubbles: true })) })
-    act(() => button('2 siparişin durumunu güncelle').click())
+    act(() => button('3 siparişin durumunu güncelle').click())
     await settle()
 
-    expect(apiState.statusUpdates).toEqual([
-      { path: '/invoices/invoice-1/shopify-status', status: 'UPLOADED' },
-      { path: '/invoices/invoice-2/shopify-status', status: 'UPLOADED' },
-    ])
+    expect(apiState.statusUpdates).toEqual([{ path: '/invoice-workspace/manual-status', status: 'UPLOADED', packageIds: ['shopify-package-1', 'shopify-package-2', 'trendyol-package-3'] }])
     expect(apiState.uploads).toEqual([])
     expect(container.querySelector('[role="dialog"]')).toBeNull()
-    expect(container.textContent).toContain('2/2 siparişin fatura durumu')
+    expect(container.textContent).toContain('3 siparişin fatura durumu')
   })
 })

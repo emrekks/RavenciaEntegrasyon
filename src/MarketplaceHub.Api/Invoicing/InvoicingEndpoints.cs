@@ -19,6 +19,7 @@ public static class InvoicingEndpoints
 
         api.MapGet("/invoices", async (HttpContext http, IInvoicingBillingService service, int? limit, string? after, string? status) => Tenant(http) is { } tenant ? Results.Ok(await service.ListAsync(tenant.TenantId, PageSize(limit), after, status, http.RequestAborted)) : Unauthorized(http));
         api.MapGet("/invoice-workspace", async (HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant ? Results.Ok(await service.WorkspaceAsync(tenant.TenantId, http.RequestAborted)) : Unauthorized(http));
+        api.MapPut("/invoice-workspace/manual-status", UpdateInvoiceWorkspaceManualStatusAsync);
         api.MapPost("/invoices", async (CreateInvoiceCommand command, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Created(await service.CreateDraftAsync(tenant.TenantId, command, http.Request.Headers["Idempotency-Key"].ToString(), http.RequestAborted), "/api/v1/invoices") : MissingContext(http));
         api.MapGet("/invoices/{id:guid}", async (Guid id, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant ? WithEtag(http, await service.GetAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http));
         api.MapPost("/invoices/{id:guid}/validate", async (Guid id, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant ? TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.ValidateAsync(tenant.TenantId, id, version, http.RequestAborted), x => x.Version) : failure! : Unauthorized(http));
@@ -135,7 +136,31 @@ public static class InvoicingEndpoints
         return Results.Ok(new { id = invoice.Id, status = status == "UPLOADED" ? "FATURA_YUKLENDI" : "FATURA_BEKLIYOR", version = invoice.Version });
     }
 
+    private static async Task<IResult> UpdateInvoiceWorkspaceManualStatusAsync(InvoiceWorkspaceManualStatusCommand command, HttpContext http, AppDbContext db, TimeProvider timeProvider)
+    {
+        if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        if (RequireIdempotency(http) is { } idempotencyFailure) return idempotencyFailure;
+        var status = command.Status?.Trim().ToUpperInvariant();
+        if (status is not ("PENDING" or "UPLOADED")) return Problem(http, new("INVOICE_WORKSPACE_STATUS_INVALID", "Manuel fatura durumu PENDING veya UPLOADED olmalıdır.", 422));
+        if (command.PackageIds is null || command.PackageIds.Count is < 1 or > 200) return Problem(http, new("INVOICE_WORKSPACE_PACKAGES_INVALID", "1 ile 200 arasında sipariş paketi seçilmelidir.", 422));
+        var packageIds = command.PackageIds.Distinct().ToArray();
+        if (packageIds.Length != command.PackageIds.Count) return Problem(http, new("INVOICE_WORKSPACE_PACKAGES_DUPLICATED", "Sipariş paket kimlikleri benzersiz olmalıdır.", 422));
+        var packages = await db.ShipmentPackages.Where(x => x.TenantId == tenant.TenantId && packageIds.Contains(x.Id)).ToListAsync(http.RequestAborted);
+        if (packages.Count != packageIds.Length) return Problem(http, new("RESOURCE_NOT_FOUND", "Seçilen fatura siparişlerinin bir kısmı bulunamadı.", 404));
+        var now = timeProvider.GetUtcNow();
+        foreach (var package in packages)
+        {
+            package.ManualInvoiceStatus = status;
+            package.UpdatedAt = now;
+            package.Version++;
+            db.AuditLogs.Add(new AuditLog { TenantId = tenant.TenantId, ActorUserId = tenant.UserId, Action = "INVOICE_WORKSPACE_STATUS_MANUAL", TargetType = "ShipmentPackage", TargetId = package.Id.ToString("D"), Reason = status, CorrelationId = http.TraceIdentifier, CreatedAt = now });
+        }
+        await db.SaveChangesAsync(http.RequestAborted);
+        return Results.Ok(new { status, updatedCount = packages.Count });
+    }
+
     private sealed record ShopifyInvoiceStatusCommand(string Status);
+    private sealed record InvoiceWorkspaceManualStatusCommand(IReadOnlyList<Guid> PackageIds, string Status);
 
     private static string? DetectInvoiceMimeType(byte[] bytes) => bytes.Length >= 5 && bytes[..5].SequenceEqual("%PDF-"u8.ToArray()) ? "application/pdf"
         : bytes.Length >= 3 && bytes[..3].SequenceEqual(new byte[] { 0xFF, 0xD8, 0xFF }) ? "image/jpeg"

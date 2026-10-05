@@ -174,7 +174,12 @@ public sealed partial class InvoicingBillingService(
                 .Where(line => OrderLinePresentationPolicy.HasActiveQuantity(line.OrderedQuantity, line.CancelledQuantity))
                 .ToList();
             var invoice = invoices.FirstOrDefault(x => x.PackageId == package.Id) ?? invoices.FirstOrDefault(x => x.PackageId == null && x.OrderId == order.Id);
-            var invoiceStatus = MarketplaceSalesService.InvoiceLabelForPlatform(invoice, package.MarketplaceInvoiceStatus, order.CustomerSnapshotJson, [package.RawStatus], connection?.PlatformCode);
+            var invoiceStatus = package.ManualInvoiceStatus?.Trim().ToUpperInvariant() switch
+            {
+                "UPLOADED" => "FATURA_YUKLENDI",
+                "PENDING" => "FATURA_BEKLIYOR",
+                _ => MarketplaceSalesService.InvoiceLabelForPlatform(invoice, package.MarketplaceInvoiceStatus, order.CustomerSnapshotJson, [package.RawStatus], connection?.PlatformCode)
+            };
             if (!DashboardMetricPolicy.IsInvoiceEligiblePackage(package.Status)
                 || !DashboardMetricPolicy.IsInvoiceEligibleOrder(order.DerivedStatus)) return null;
             var deliveredAt = package.Status == ShipmentPackageStatus.Delivered ? package.StatusOccurredAt : (DateTimeOffset?)null;
