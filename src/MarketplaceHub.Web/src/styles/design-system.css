@@ -11635,46 +11635,46 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .rv-questions-sync-item strong { font-size: 12px; }
 .rv-questions-sync-item > span:not(.rv-question-platform-mark), .rv-questions-sync-item small { font-size: 11px; line-height: 1.35; }
 
-/* Put the question first in a clear reading column and keep its quick reply
-   directly below it while the product and deadline remain easy to scan. */
-.rv-question-card { grid-template-columns: minmax(210px, .78fr) minmax(0, 1.8fr); align-items: start; gap: 12px 18px; }
-.rv-question-product { grid-column: 1; grid-row: 1 / span 3; }
-.rv-question-product img, .rv-question-product-placeholder { flex-basis: 64px; width: 64px; height: 78px; }
-.rv-question-product img { display: block; object-fit: cover; }
-.rv-question-content, .rv-question-actions, .rv-question-inline-compose { grid-column: 2; }
-.rv-question-content { gap: 9px; }
-.rv-question-content p { font-size: 14px; line-height: 1.55; }
+/* Keep each question compact at the top, then show the full conversation and
+   answer controls in the same card. */
+.rv-question-card { grid-template-columns: minmax(0, 1fr); align-items: stretch; gap: 11px; padding: 14px; }
+.rv-question-card-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-width: 0; }
+.rv-question-product { align-items: center; flex: 1 1 auto; }
+.rv-question-product img, .rv-question-product-placeholder { flex-basis: 62px; width: 62px; height: 74px; }
+.rv-question-product img { display: block; object-fit: cover; border: 1px solid var(--rv-color-border); }
+.rv-question-product > div { gap: 4px; }
+.rv-question-content, .rv-question-inline-compose { grid-column: 1; }
+.rv-question-content { gap: 9px; padding: 11px 12px; border: 1px solid var(--rv-color-border); border-radius: 10px; background: var(--rv-color-surface-soft); }
 .rv-question-meta { gap: 6px 9px; }
 .rv-question-meta time { font-variant-numeric: tabular-nums; }
-.rv-question-actions { display: flex; align-items: center; justify-items: unset; flex-wrap: wrap; gap: 8px; }
+.rv-question-actions { display: flex; align-items: center; justify-items: unset; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
 .rv-question-actions > .rv-badge { flex: 0 0 auto; }
 .rv-question-actions .rv-question-deadline, .rv-question-actions .rv-question-age { margin-right: auto; }
+.rv-question-conversation { max-height: none; overflow: visible; gap: 7px; padding: 0; }
+.rv-question-thread-message { max-width: min(92%, 850px); min-width: 0; padding: 9px 11px; border: 1px solid var(--rv-color-border); border-radius: 10px; background: var(--rv-color-surface-raised); }
+.rv-question-thread-message.is-customer { justify-self: start; }
+.rv-question-thread-message.is-seller { justify-self: end; border-color: color-mix(in srgb, var(--rv-color-primary) 44%, var(--rv-color-border)); background: color-mix(in srgb, var(--rv-color-primary) 10%, var(--rv-color-surface-raised)); }
+.rv-question-thread-message.is-question { max-width: none; }
+.rv-question-thread-message header { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; color: var(--rv-color-subtle); font-size: 11px; }
+.rv-question-thread-message header strong { color: var(--rv-color-ink); }
+.rv-question-thread-message p { margin: 5px 0 0; color: var(--rv-color-ink); white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
+.rv-question-thread-message .rv-question-rejection { display: block; margin-top: 6px; color: var(--rv-color-danger); }
 .rv-question-inline-compose { display: grid; gap: 9px; min-width: 0; padding: 10px; border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); background: var(--rv-color-surface); }
 .rv-question-inline-compose textarea { width: 100%; min-height: 78px; box-sizing: border-box; padding: 9px 11px; border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); background: var(--rv-color-surface-raised); color: var(--rv-color-ink); font: inherit; resize: vertical; }
 .rv-question-detail-product .rv-question-product-placeholder { width: 56px; height: 68px; flex: 0 0 56px; }
 .rv-question-detail-product .rv-question-product-placeholder > .ui-icon { width: 22px; height: 22px; }
 @media (max-width: 1080px) {
   .rv-questions-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .rv-question-card { grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); }
-  .rv-question-actions { grid-column: 1 / -1; grid-template-columns: repeat(3, minmax(0, auto)); align-items: center; }
+  .rv-question-card-header { align-items: flex-start; }
 }
 @media (max-width: 700px) {
   .rv-questions-filter-grid, .rv-question-templates { grid-template-columns: minmax(0, 1fr); }
-  .rv-question-card { grid-template-columns: minmax(0, 1fr); }
-  .rv-question-actions { grid-column: auto; grid-template-columns: minmax(0, 1fr); }
+  .rv-question-card-header { flex-direction: column; align-items: stretch; }
+  .rv-question-actions { justify-content: flex-start; }
   .rv-questions-results > header { align-items: flex-start; flex-direction: column; }
-  .rv-question-detail-product { align-items: flex-start; flex-wrap: wrap; }
-  .rv-question-detail-product > div { flex-basis: calc(100% - 75px); }
-  .rv-question-message { max-width: 100%; }
+  .rv-question-thread-message { max-width: 100%; }
   .rv-question-template-card { grid-template-columns: minmax(0, 1fr); }
   .rv-question-template-card > div:last-child { justify-content: flex-start; }
-}
-
-@media (max-width: 700px) {
-  .rv-question-card { grid-template-columns: minmax(0, 1fr); }
-  .rv-question-product, .rv-question-content, .rv-question-actions, .rv-question-inline-compose { grid-column: 1; grid-row: auto; }
-  .rv-question-actions { justify-content: flex-start; }
-  .rv-question-actions .rv-question-deadline, .rv-question-actions .rv-question-age { margin-right: 0; }
 }
 
 /* Keep customer questions aligned with the shared Ravencia UI tokens and
