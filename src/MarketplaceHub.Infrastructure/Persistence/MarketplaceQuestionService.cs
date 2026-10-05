@@ -246,7 +246,7 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         await (from connection in db.PlatformConnections.AsNoTracking()
                join state in db.MarketplaceQuestionSyncStates.AsNoTracking() on new { connection.TenantId, ConnectionId = connection.Id } equals new { state.TenantId, ConnectionId = state.ConnectionId } into states
                from state in states.DefaultIfEmpty()
-               where connection.TenantId == tenantId && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "HEPSIBURADA")
+               where connection.TenantId == tenantId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED") && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "HEPSIBURADA")
                select new MarketplaceQuestionSyncStateView(connection.Id, connection.PlatformCode, connection.DisplayName, state != null && state.HistoryImported, state == null ? null : state.HistoryStartedAt,
                    state == null ? "QUEUED" : state.ProgressStatus, state == null ? 0 : state.ImportedCount, state == null ? null : state.LastRunStartedAt,
                    state == null ? null : state.LastSuccessAt, state == null ? null : state.LastError)).ToListAsync(cancellationToken);
