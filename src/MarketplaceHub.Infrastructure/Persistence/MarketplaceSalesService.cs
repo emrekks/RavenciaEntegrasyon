@@ -551,7 +551,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             customer.Phone, customer.IsEInvoiceAvailable, invoiceDocumentUrl));
     }
 
-    public async Task<ServiceResult<string>> ProductImageAsync(Guid tenantId, string? barcode, string correlationId, CancellationToken cancellationToken, Guid? connectionId = null)
+    public async Task<ServiceResult<string>> ProductImageAsync(Guid tenantId, string? barcode, string correlationId, CancellationToken cancellationToken, Guid? connectionId = null, string? productName = null)
     {
         var normalizedBarcode = barcode?.Trim();
         if (string.IsNullOrWhiteSpace(normalizedBarcode) || normalizedBarcode.Length > 128)
@@ -625,6 +625,48 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                     .Select(id => modelImages.GetValueOrDefault(id!.Value))
                     .FirstOrDefault(url => !string.IsNullOrWhiteSpace(url));
                 if (!string.IsNullOrWhiteSpace(modelImage)) return ServiceResult<string>.Ok(modelImage);
+            }
+        }
+
+        // Older Hepsiburada question records may contain marketplace SKUs that
+        // are no longer present in the current catalog or listing endpoint.
+        // Reuse image URLs captured on this same store's historical order lines,
+        // first by exact SKU/barcode, then by the exact product title supplied
+        // by the question. Both paths remain tenant and connection scoped.
+        if (connection?.PlatformCode == "HEPSIBURADA")
+        {
+            var skuSnapshots = await (
+                from line in db.OrderLines.AsNoTracking()
+                join order in db.Orders.AsNoTracking()
+                    on new { line.TenantId, line.OrderId } equals new { order.TenantId, OrderId = order.Id }
+                where line.TenantId == tenantId && order.ConnectionId == connection.Id
+                    && (line.Sku == normalizedBarcode || line.Barcode == normalizedBarcode)
+                orderby order.OrderedAt descending
+                select line.SourceSnapshotJson
+            ).Take(10).ToListAsync(cancellationToken);
+            foreach (var snapshot in skuSnapshots)
+            {
+                var snapshotImage = NormalizeImageUrl(SourceImageUrl(snapshot ?? "{}"));
+                if (!string.IsNullOrWhiteSpace(snapshotImage)) return ServiceResult<string>.Ok(snapshotImage);
+            }
+
+            var normalizedProductName = productName?.Trim();
+            if (!string.IsNullOrWhiteSpace(normalizedProductName) && normalizedProductName.Length <= 320)
+            {
+                var titleSnapshots = await (
+                    from line in db.OrderLines.AsNoTracking()
+                    join order in db.Orders.AsNoTracking()
+                        on new { line.TenantId, line.OrderId } equals new { order.TenantId, OrderId = order.Id }
+                    where line.TenantId == tenantId && order.ConnectionId == connection.Id
+                        && line.TitleSnapshot == normalizedProductName
+                    orderby order.OrderedAt descending
+                    select line.SourceSnapshotJson
+                ).Take(20).ToListAsync(cancellationToken);
+                foreach (var snapshot in titleSnapshots)
+                {
+                    var snapshotImage = NormalizeImageUrl(SourceImageUrl(snapshot ?? "{}"));
+                    if (!string.IsNullOrWhiteSpace(snapshotImage)) return ServiceResult<string>.Ok(snapshotImage);
+                }
             }
         }
 

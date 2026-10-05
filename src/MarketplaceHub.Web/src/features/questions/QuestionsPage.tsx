@@ -46,7 +46,7 @@ function formatDate(value?: string | null) {
 function displayPlatform(code: string) { return code === 'HEPSIBURADA' ? 'Hepsiburada' : 'Trendyol' }
 
 function QuestionProductImage({ src, connectionId, sku, barcode, modelCode, productName }: { src?: string | null; connectionId: string; sku?: string | null; barcode?: string | null; modelCode?: string | null; productName: string }) {
-  const sources = [...new Set([src, ...productImageFallbackUrls([barcode, sku, modelCode], connectionId)].filter((value): value is string => Boolean(value)))]
+  const sources = [...new Set([src, ...productImageFallbackUrls([barcode, sku, modelCode], connectionId, productName)].filter((value): value is string => Boolean(value)))]
   const sourceKey = sources.join('\u0000')
   const [sourceIndex, setSourceIndex] = useState(0)
   useEffect(() => setSourceIndex(0), [sourceKey])

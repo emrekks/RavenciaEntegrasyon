@@ -13,4 +13,13 @@ describe('productImageFallbackUrls', () => {
   it('drops empty keys and duplicate lookups', () => {
     expect(productImageFallbackUrls([null, '', 'A-1', ' A-1 '])).toHaveLength(1)
   })
+
+  it('includes the exact product name so the server can recover old marketplace image snapshots', () => {
+    const [url] = productImageFallbackUrls(['HBCV000073363P'], 'hb-store', '  Ravencia Kadın Triko  ')
+    const params = new URL(url, 'https://panel.ravencia.test').searchParams
+
+    expect(params.get('barcode')).toBe('HBCV000073363P')
+    expect(params.get('connectionId')).toBe('hb-store')
+    expect(params.get('productName')).toBe('Ravencia Kadın Triko')
+  })
 })

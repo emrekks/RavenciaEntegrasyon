@@ -65,7 +65,7 @@ public static class MarketplaceEndpoints
                 : Unauthorized(http));
         api.MapGet("/orders/summary", async (HttpContext http, IMarketplaceSalesService service, string? platform) => Tenant(http) is { } tenant ? Results.Ok(await service.OrderSummaryAsync(tenant.TenantId, platform, http.RequestAborted)) : Unauthorized(http));
         api.MapPost("/orders/shopify-csv-import", ImportShopifyOrdersAsync).DisableAntiforgery();
-        api.MapGet("/orders/product-image", async (HttpContext http, IMarketplaceSalesService service, string? barcode, Guid? connectionId) => Tenant(http) is { } tenant ? Result(await service.ProductImageAsync(tenant.TenantId, barcode, http.TraceIdentifier, http.RequestAborted, connectionId), value => Results.Redirect(value)) : Unauthorized(http));
+        api.MapGet("/orders/product-image", async (HttpContext http, IMarketplaceSalesService service, string? barcode, Guid? connectionId, string? productName) => Tenant(http) is { } tenant ? Result(await service.ProductImageAsync(tenant.TenantId, barcode, http.TraceIdentifier, http.RequestAborted, connectionId, productName), value => Results.Redirect(value)) : Unauthorized(http));
         api.MapGet("/orders/{id:guid}", async (Guid id, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant ? WithEtag(http, await service.OrderAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http));
         api.MapPut("/orders/{id:guid}/shopify-status", UpdateShopifyOrderStatusAsync);
         api.MapPost("/orders/{id:guid}/instant-process", async (Guid id, HttpContext http, AppDbContext db, IMarketplaceSalesService service, IMarketplaceJobProcessor marketplaceProcessor) =>
