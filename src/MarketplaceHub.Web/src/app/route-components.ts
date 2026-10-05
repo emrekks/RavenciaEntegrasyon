@@ -10,7 +10,6 @@ export const ProductDetailPage = lazy(() => import('../features/catalog').then(m
 export const ProductsPage = lazy(() => import('../features/catalog').then(module => ({ default: module.ProductsPage })))
 
 export const AttributeMappingPage = lazy(() => import('../features/marketplace').then(module => ({ default: module.AttributeMappingPage })))
-export const HepsiburadaProductMatchesPage = lazy(() => import('../features/marketplace').then(module => ({ default: module.HepsiburadaProductMatchesPage })))
 export const IntegrationDetailPage = lazy(() => import('../features/marketplace').then(module => ({ default: module.IntegrationDetailPage })))
 export const IntegrationsPage = lazy(() => import('../features/marketplace').then(module => ({ default: module.IntegrationsPage })))
 export const MappingPage = lazy(() => import('../features/marketplace').then(module => ({ default: module.MappingPage })))

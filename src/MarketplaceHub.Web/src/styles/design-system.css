@@ -11444,39 +11444,6 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
   }
 }
 
-.hepsiburada-product-matches-page { display: grid; gap: var(--rv-space-4); }
-.hepsiburada-product-matches-page > .page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--rv-space-4); }
-.hepsiburada-product-matches-page > .page-header > div { min-width: 0; }
-.hepsiburada-match-controls { display: grid; grid-template-columns: minmax(220px, 0.8fr) minmax(260px, 1.2fr); align-items: end; gap: var(--rv-space-4); }
-.hepsiburada-match-controls > label { display: grid; gap: var(--rv-space-2); color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); font-weight: 750; }
-.hepsiburada-match-controls > label :is(select, input) { width: 100%; min-width: 0; }
-.hepsiburada-match-help { grid-column: 1 / -1; margin: 0; color: var(--rv-color-warning, #f3b95f); font-size: var(--rv-font-size-sm); }
-.hepsiburada-match-summary { display: flex; justify-content: space-between; gap: var(--rv-space-3); color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); font-weight: 750; }
-.hepsiburada-match-empty { display: grid; gap: var(--rv-space-2); }
-.hepsiburada-match-empty h2, .hepsiburada-match-empty p { margin: 0; }
-.hepsiburada-match-list { display: grid; gap: var(--rv-space-3); }
-.hepsiburada-match-card { display: grid; gap: var(--rv-space-3); min-width: 0; padding: var(--rv-space-4); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); }
-.hepsiburada-match-select { display: flex; align-items: center; gap: var(--rv-space-2); width: max-content; color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); font-weight: 750; cursor: pointer; }
-.hepsiburada-match-select input { width: 18px; height: 18px; accent-color: var(--rv-color-primary); }
-.hepsiburada-match-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--rv-space-3); }
-.hepsiburada-match-side { display: grid; align-content: start; gap: var(--rv-space-2); min-width: 0; padding: var(--rv-space-4); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
-.hepsiburada-match-side h2 { margin: 0; font-size: var(--rv-font-size-base); }
-.hepsiburada-match-side > img { width: 84px; height: 84px; object-fit: contain; background: #fff; border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-sm); }
-.hepsiburada-match-side > strong { overflow-wrap: anywhere; }
-.hepsiburada-match-side dl { display: grid; grid-template-columns: minmax(90px, auto) minmax(0, 1fr); gap: 5px var(--rv-space-3); margin: 0; font-size: var(--rv-font-size-sm); }
-.hepsiburada-match-side dt { color: var(--rv-color-muted); }
-.hepsiburada-match-side dd { min-width: 0; margin: 0; overflow-wrap: anywhere; font-weight: 700; }
-.hepsiburada-match-status { display: inline-flex; padding: 2px 8px; color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border-radius: 999px; font-size: 12px; }
-.hepsiburada-match-exact-label, .hepsiburada-match-suggestion-label, .hepsiburada-match-no-local { margin: 0; color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); }
-.hepsiburada-match-exact-label { color: var(--rv-color-success, #5bc99b); font-weight: 750; }
-.hepsiburada-match-suggestion-label { color: var(--rv-color-warning, #f3b95f); font-weight: 750; }
-.hepsiburada-match-candidate { display: grid; gap: 3px; padding: var(--rv-space-3); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-sm); overflow-wrap: anywhere; }
-.hepsiburada-match-candidate > span, .hepsiburada-match-candidate > small { color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); }
-.hepsiburada-match-candidate.is-suggestion { border-style: dashed; }
-.hepsiburada-match-footer { display: flex; align-items: center; justify-content: space-between; gap: var(--rv-space-3); flex-wrap: wrap; padding: var(--rv-space-4); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); }
-.hepsiburada-match-footer > div { display: flex; align-items: center; gap: var(--rv-space-2); flex-wrap: wrap; }
-.hepsiburada-match-footer .danger { color: var(--rv-color-danger, #f07979); }
-
 /* Keep status pills sized to their labels inside invoice detail cards. */
 .app-shell.stitch-shell main .invoice-detail-summary > div > .badge,
 .app-shell.stitch-shell main .invoice-detail-summary-facts > div > .badge,
@@ -11535,12 +11502,6 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .return-detail-modal .return-detail-product-facts { gap: var(--rv-space-2); }
 
 @media (max-width: 760px) {
-  .hepsiburada-product-matches-page > .page-header { display: grid; }
-  .hepsiburada-match-controls, .hepsiburada-match-pair { grid-template-columns: minmax(0, 1fr); }
-  .hepsiburada-match-help { grid-column: auto; }
-  .hepsiburada-match-footer { align-items: stretch; }
-  .hepsiburada-match-footer > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .hepsiburada-match-footer > div > button { width: 100%; }
   .invoice-upload-context { grid-template-columns: minmax(0, 1fr); }
 }
 
