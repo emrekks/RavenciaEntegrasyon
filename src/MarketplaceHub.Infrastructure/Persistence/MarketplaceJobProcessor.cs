@@ -2011,10 +2011,61 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         {
             TrackRequest();
             var single = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"order-get:{externalOrderId}"), externalOrderId.Trim(), cancellationToken);
-            if (!single.IsSuccess) { TrackResultFailure(single.Error); throw JobProcessingException.FromAdapter(single.Error!); }
-            TrackReceived();
-            await UpsertOrder(tenantId, connectionId, single.Value!, cancellationToken);
-            return true;
+            if (single.IsSuccess)
+            {
+                TrackReceived();
+                await UpsertOrder(tenantId, connectionId, single.Value!, cancellationToken);
+                return true;
+            }
+
+            if (single.Error?.Class != AdapterErrorClass.NotFound && single.Error?.HttpStatus != 404)
+            {
+                TrackResultFailure(single.Error);
+                throw JobProcessingException.FromAdapter(single.Error!);
+            }
+
+            // Trendyol's order-number lookup stops exposing older orders, while
+            // their package endpoint can still return the complete order snapshot.
+            // Use package IDs already linked to this order as a read-only fallback.
+            var knownPackages = await (from package in db.ShipmentPackages.AsNoTracking()
+                                       join order in db.Orders.AsNoTracking()
+                                           on new { package.TenantId, package.OrderId } equals new { order.TenantId, OrderId = order.Id }
+                                       where package.TenantId == tenantId
+                                           && package.ConnectionId == connectionId
+                                           && order.ExternalOrderId == externalOrderId
+                                       select new { package.ExternalPackageId, package.StatusOccurredAt })
+                .ToListAsync(cancellationToken);
+            var packageSnapshots = new List<RemoteOrder>();
+            foreach (var knownPackage in knownPackages)
+            {
+                TrackRequest();
+                var packageRead = await orders.GetShipmentPackageAsync(
+                    Context(tenantId, connectionId, correlationId, $"targeted-order-package-read:{knownPackage.ExternalPackageId}"),
+                    knownPackage.ExternalPackageId,
+                    knownPackage.StatusOccurredAt,
+                    cancellationToken);
+                if (!packageRead.IsSuccess)
+                {
+                    if (packageRead.Error?.Class == AdapterErrorClass.NotFound || packageRead.Error?.HttpStatus == 404)
+                        continue;
+                    TrackResultFailure(packageRead.Error);
+                    throw JobProcessingException.FromAdapter(packageRead.Error!);
+                }
+
+                TrackReceived();
+                if (packageRead.Value?.OrderSnapshot is { Lines.Count: > 0 } orderSnapshot)
+                    packageSnapshots.Add(orderSnapshot);
+            }
+
+            var recoveredOrder = TrendyolJsonMapper.MergeOrderPackages(packageSnapshots, externalOrderId);
+            if (recoveredOrder is not null && recoveredOrder.Lines.Count > 0 && recoveredOrder.Packages.Count > 0)
+            {
+                await UpsertOrder(tenantId, connectionId, recoveredOrder, cancellationToken);
+                return true;
+            }
+
+            TrackResultFailure(single.Error);
+            throw JobProcessingException.FromAdapter(single.Error!);
         }
 
         var cursor = await Cursor(tenantId, connectionId, cursorResourceType, cancellationToken);

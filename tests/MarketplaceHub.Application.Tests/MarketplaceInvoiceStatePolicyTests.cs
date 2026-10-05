@@ -164,6 +164,25 @@ public sealed class MarketplaceInvoiceStatePolicyTests
     }
 
     [Fact]
+    public void PackageRead_ProvidesAllOrderLinesForHistoricalOrderFallback()
+    {
+        const string json = """
+            {"content":[{"id":"3968176322","orderNumber":"11376153333","status":"Delivered","lastModifiedDate":1783441320000,"packageTotalPrice":1355.20,"packageTotalDiscount":83.70,"lines":[
+              {"lineId":"line-1","stockCode":"RYP00204","productName":"First item","quantity":1,"lineItemPrice":539.90,"vatRate":10},
+              {"lineId":"line-2","stockCode":"MZ043DDC05","productName":"Second item","quantity":1,"lineItemPrice":899.00,"vatRate":10}
+            ]}]}
+            """;
+
+        var package = TrendyolJsonMapper.ShipmentPackage(json, "3968176322");
+
+        Assert.NotNull(package?.OrderSnapshot);
+        Assert.Equal(2, package.OrderSnapshot!.Lines.Count);
+        Assert.Single(package.OrderSnapshot.Packages);
+        Assert.Equal(1_355.20m, package.OrderSnapshot.NetAmount);
+        Assert.Equal(2, TrendyolJsonMapper.MergeOrderPackages([package.OrderSnapshot], "11376153333")!.Lines.Count);
+    }
+
+    [Fact]
     public void InvoiceIssueDate_DoesNotBlockLaterMarketplaceStatusTransition()
     {
         const string receivedJson = """
