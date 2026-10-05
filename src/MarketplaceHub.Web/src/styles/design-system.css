@@ -9575,10 +9575,10 @@ small,
   left: var(--rv-space-5);
   z-index: 2;
   box-sizing: border-box;
-  max-height: calc(100% - 110px);
+  max-height: none;
   margin-top: 0;
   padding: 10px 12px;
-  overflow-y: auto;
+  overflow: visible;
   background: color-mix(in srgb, var(--rv-color-surface) 96%, transparent);
   border: 1px solid var(--rv-color-border-strong);
   border-radius: var(--rv-radius-sm);
@@ -9591,19 +9591,11 @@ small,
   visibility: hidden;
 }
 
-.app-shell.stitch-shell main .dashboard-summary-card-with-platforms .dashboard-summary-platform-list::-webkit-scrollbar {
-  width: 6px;
-}
-
-.app-shell.stitch-shell main .dashboard-summary-card-with-platforms .dashboard-summary-platform-list::-webkit-scrollbar-thumb {
-  background: var(--rv-color-border-strong);
-  border-radius: 999px;
-}
-
 .app-shell.stitch-shell main .dashboard-summary-card-with-platforms:hover,
 .app-shell.stitch-shell main .dashboard-summary-card-with-platforms:focus-visible,
 .app-shell.stitch-shell main .dashboard-summary-card-with-platforms:focus-within {
   z-index: 10;
+  overflow: visible;
 }
 
 .app-shell.stitch-shell main .dashboard-summary-card-with-platforms:hover .dashboard-summary-platform-list,
@@ -11633,6 +11625,34 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .rv-question-template-card strong { color: var(--rv-color-ink); }
 .rv-question-template-card p { margin: 5px 0; color: var(--rv-color-muted); white-space: pre-wrap; overflow-wrap: anywhere; }
 .rv-question-template-card small { color: var(--rv-color-subtle); }
+
+/* Marketplace status summaries stay short; logos and compact metadata carry
+   the platform identity without adding another large dashboard panel. */
+.rv-questions-sync { grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 8px; padding: 8px; }
+.rv-question-platform-logo { grid-column: 1; grid-row: 1 / span 3; width: 28px; height: 28px; align-self: center; object-fit: contain; }
+.rv-questions-sync-item { grid-template-columns: 30px minmax(0, 1fr); align-items: center; column-gap: 8px; row-gap: 2px; padding: 8px 10px; }
+.rv-questions-sync-item strong, .rv-questions-sync-item > span:not(.rv-question-platform-mark), .rv-questions-sync-item small { grid-column: 2; }
+.rv-questions-sync-item strong { font-size: 12px; }
+.rv-questions-sync-item > span:not(.rv-question-platform-mark), .rv-questions-sync-item small { font-size: 11px; line-height: 1.35; }
+
+/* Put the question first in a clear reading column and keep its quick reply
+   directly below it while the product and deadline remain easy to scan. */
+.rv-question-card { grid-template-columns: minmax(210px, .78fr) minmax(0, 1.8fr); align-items: start; gap: 12px 18px; }
+.rv-question-product { grid-column: 1; grid-row: 1 / span 3; }
+.rv-question-product img, .rv-question-product-placeholder { flex-basis: 64px; width: 64px; height: 78px; }
+.rv-question-product img { display: block; object-fit: cover; }
+.rv-question-content, .rv-question-actions, .rv-question-inline-compose { grid-column: 2; }
+.rv-question-content { gap: 9px; }
+.rv-question-content p { font-size: 14px; line-height: 1.55; }
+.rv-question-meta { gap: 6px 9px; }
+.rv-question-meta time { font-variant-numeric: tabular-nums; }
+.rv-question-actions { display: flex; align-items: center; justify-items: unset; flex-wrap: wrap; gap: 8px; }
+.rv-question-actions > .rv-badge { flex: 0 0 auto; }
+.rv-question-actions .rv-question-deadline, .rv-question-actions .rv-question-age { margin-right: auto; }
+.rv-question-inline-compose { display: grid; gap: 9px; min-width: 0; padding: 10px; border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); background: var(--rv-color-surface); }
+.rv-question-inline-compose textarea { width: 100%; min-height: 78px; box-sizing: border-box; padding: 9px 11px; border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); background: var(--rv-color-surface-raised); color: var(--rv-color-ink); font: inherit; resize: vertical; }
+.rv-question-detail-product .rv-question-product-placeholder { width: 56px; height: 68px; flex: 0 0 56px; }
+.rv-question-detail-product .rv-question-product-placeholder > .ui-icon { width: 22px; height: 22px; }
 @media (max-width: 1080px) {
   .rv-questions-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .rv-question-card { grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); }
@@ -11650,6 +11670,13 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
   .rv-question-template-card > div:last-child { justify-content: flex-start; }
 }
 
+@media (max-width: 700px) {
+  .rv-question-card { grid-template-columns: minmax(0, 1fr); }
+  .rv-question-product, .rv-question-content, .rv-question-actions, .rv-question-inline-compose { grid-column: 1; grid-row: auto; }
+  .rv-question-actions { justify-content: flex-start; }
+  .rv-question-actions .rv-question-deadline, .rv-question-actions .rv-question-age { margin-right: 0; }
+}
+
 /* Keep customer questions aligned with the shared Ravencia UI tokens and
    retain compact, readable controls inside the fixed sidebar workspace. */
 .app-shell.stitch-shell main .rv-questions-page .rv-questions-sync,
@@ -11660,6 +11687,47 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .app-shell.stitch-shell main .rv-questions-page .rv-questions-filter-grid input,
 .app-shell.stitch-shell main .rv-questions-page .rv-questions-filter-grid select { min-height: 42px; padding-inline: 11px; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border-color: var(--rv-color-border-strong); }
 .app-shell.stitch-shell main .rv-questions-page .rv-questions-results .rv-empty-state { background: var(--rv-color-surface-raised); border-color: var(--rv-color-border-strong); }
+
+/* Shopify invoice batches use the same table cells and modal language as the
+   single-file workflow; each selected order keeps its own document input. */
+.invoice-reference-platform-heading { position: relative; gap: 4px; padding-right: var(--rv-space-2); }
+.invoice-reference-platform-heading > strong { flex: 1 1 auto; }
+.invoice-reference-platform-heading > .platform-multi-select-field.is-compact { flex: 0 0 30px; }
+.invoice-reference-select-all { position: static; display: grid; width: 18px; height: 18px; flex: 0 0 18px; place-items: center; transform: none; }
+.invoice-reference-select-all input, .invoice-reference-select { width: 16px; height: 16px; margin: 0; accent-color: var(--rv-color-primary); cursor: pointer; }
+.invoice-reference-select-all input:disabled { cursor: default; opacity: .45; }
+.invoice-reference-order { position: relative; }
+.invoice-reference-order > .invoice-reference-select { position: absolute; top: 10px; right: 10px; z-index: 1; }
+.invoice-reference-bulk-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 12px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--rv-color-primary) 48%, var(--rv-color-border)); border-radius: var(--rv-radius-md); background: color-mix(in srgb, var(--rv-color-primary) 8%, var(--rv-color-surface-raised)); }
+.invoice-reference-bulk-toolbar > span { margin-right: auto; color: var(--rv-color-ink); font-size: 13px; font-weight: 750; }
+.invoice-reference-bulk-toolbar button { display: inline-flex; min-height: 36px; align-items: center; justify-content: center; gap: 7px; padding: 6px 10px; border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-sm); background: var(--rv-color-surface-raised); color: var(--rv-color-ink); cursor: pointer; font: inherit; font-size: 12px; }
+.invoice-reference-bulk-toolbar button:first-of-type { border-color: var(--rv-color-primary); background: var(--rv-color-primary); color: #fff; }
+.invoice-bulk-upload-modal { width: min(760px, calc(100vw - 32px)); max-height: min(860px, calc(100vh - 32px)); overflow: auto; }
+.invoice-bulk-upload-list { display: grid; gap: 8px; max-height: min(52vh, 520px); overflow-y: auto; padding: 2px; }
+.invoice-bulk-upload-row { display: grid; grid-template-columns: minmax(160px, .7fr) minmax(230px, 1fr); align-items: center; gap: 12px; padding: 10px; border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); background: var(--rv-color-surface-raised); }
+.invoice-bulk-upload-row > div { display: grid; min-width: 0; gap: 4px; }
+.invoice-bulk-upload-row > div > strong { overflow-wrap: anywhere; }
+.invoice-bulk-upload-row > div > small { color: var(--rv-color-muted); }
+.invoice-bulk-file { position: relative; display: grid; min-width: 0; gap: 3px; padding: 9px 10px 9px 36px; border: 1px dashed var(--rv-color-border-strong); border-radius: var(--rv-radius-sm); background: var(--rv-color-surface); cursor: pointer; }
+.invoice-bulk-file > input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.invoice-bulk-file > .ui-icon { position: absolute; top: 50%; left: 10px; color: var(--rv-color-primary); transform: translateY(-50%); }
+.invoice-bulk-file > span { overflow: hidden; color: var(--rv-color-ink); font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.invoice-bulk-file > small { color: var(--rv-color-muted); font-size: 11px; }
+.invoice-bulk-uploaded { justify-self: end; padding: 5px 8px; border-radius: var(--rv-radius-sm); background: var(--rv-color-accent-soft); color: var(--rv-color-accent); font-size: 12px; font-weight: 750; }
+.invoice-bulk-upload-error { grid-column: 1 / -1; margin: 0; color: var(--rv-color-danger); font-size: 12px; }
+.invoice-bulk-upload-note { margin: 10px 0 0; color: var(--rv-color-muted); font-size: 12px; line-height: 1.45; }
+.invoice-bulk-upload-modal > footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+
+@media (max-width: 600px) {
+  .invoice-bulk-upload-row { grid-template-columns: minmax(0, 1fr); }
+  .invoice-reference-bulk-toolbar > span { flex: 1 1 100%; }
+  .invoice-bulk-upload-modal > footer { flex-direction: column-reverse; }
+  .invoice-bulk-upload-modal > footer > button { width: 100%; }
+}
+
+/* The dashboard's platform detail is a small popover. Let it expand to all
+   platform rows instead of introducing a second, nested vertical scrollbar. */
+.app-shell.stitch-shell main .dashboard-summary-card-with-platforms .dashboard-summary-platform-list { max-height: none; overflow: visible; }
 
 @media (max-width: 1200px) {
   .rv-questions-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

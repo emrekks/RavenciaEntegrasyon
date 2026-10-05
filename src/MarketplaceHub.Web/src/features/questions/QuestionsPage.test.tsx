@@ -19,6 +19,7 @@ vi.mock('../../shared/api', () => ({
       { connectionId: 'ty-store', platformCode: 'TRENDYOL', storeName: 'Trendyol Mağazası', historyImported: true, importedCount: 25, progressStatus: 'COMPLETED', lastSuccessAt: '2026-10-05T10:00:00Z' },
       { connectionId: 'hb-store', platformCode: 'HEPSIBURADA', storeName: 'Hepsiburada Mağazası', historyImported: false, importedCount: 3, progressStatus: 'INITIAL', lastSuccessAt: null },
     ]
+    if (path.startsWith('/products?')) return { items: [{ title: 'Kadın triko bluz', primaryImageUrl: '/api/v1/files/product-media/asset-1/content', familyMediaUrls: [], variants: [{ sku: 'BLUZ-01', barcode: '86900001', modelCode: 'MZ001' }] }], nextCursor: null, hasMore: false }
     if (path === '/questions/sync') return { jobs: ['sync-1'], queuedConnections: 2 }
     if (path === '/question-templates') {
       if (method === 'GET') return apiState.templates
@@ -62,7 +63,7 @@ import { QuestionsPage } from './QuestionsPage'
 
 const createQuestion = () => ({
   id: 'q-product', connectionId: 'ty-store', platformCode: 'TRENDYOL', storeName: 'Trendyol Mağazası', externalQuestionId: 'ext-1', kind: 'PRODUCT', status: 'WAITING_FOR_ANSWER',
-  questionText: 'Ürün boyu kaç santimetredir?', productName: 'Kadın triko bluz', productImageUrl: null, productSku: 'BLUZ-01', productBarcode: '86900001', productModelCode: 'MZ001', customerName: 'Ayşe', externalOrderNumber: null,
+  questionText: 'Ürün boyu kaç santimetredir?', productName: 'Kadın triko bluz', productImageUrl: 'https://images.example/expired-product.jpg', productSku: 'BLUZ-01', productBarcode: '86900001', productModelCode: 'MZ001', customerName: 'Ayşe', externalOrderNumber: null,
   conversations: [{ author: 'customer', text: 'Ürün boyu kaç santimetredir?', createdAt: '2026-10-05T09:00:00Z' }, { author: 'merchant', text: 'Ölçüleri kontrol ediyorum.', createdAt: '2026-10-05T09:30:00Z', rejectionReason: 'Yanıt eksik bilgi içeriyor.' }],
   createdAt: '2026-10-05T09:00:00Z', expiresAt: '2026-10-06T09:00:00Z', lastRemoteModifiedAt: '2026-10-05T09:30:00Z', lastSyncedAt: '2026-10-05T10:00:00Z', version: 2,
 })
@@ -134,6 +135,11 @@ describe('QuestionsPage workspace flows', () => {
     expect(lastQuestionRequest().get('status')).toBe('WAITING')
     expect(container.querySelector('[data-platform="trendyol"]')).not.toBeNull()
     expect(container.querySelector('[data-platform="hepsiburada"]')).not.toBeNull()
+    expect(container.querySelector('.rv-questions-sync-item img')?.getAttribute('src')).toBe('/platforms/trendyol.png')
+    expect(container.querySelector('[data-platform="hepsiburada"] .rv-question-platform-logo')?.getAttribute('src')).toBe('/platforms/hepsiburada.png')
+    expect(container.querySelector('.rv-questions-notice')).toBeNull()
+    expect(button('Yenile').querySelector('.ui-icon-refresh')).not.toBeNull()
+    expect(container.querySelector('.rv-question-meta time')?.textContent).toMatch(/^\d{2}\.\d{2}\.2026 · \d{2}:\d{2}$/)
 
     for (const [label, expected] of [['Cevap bekleyenler', 'WAITING'], ['Cevaplananlar', 'ANSWERED'], ['Süresi dolanlar', 'EXPIRED'], ['Diğer durumlar', 'OTHER'], ['Tümü', 'ALL']]) {
       act(() => button(label).click())
@@ -175,7 +181,7 @@ describe('QuestionsPage workspace flows', () => {
     expect(Array.from(orderStore.options).map(option => option.textContent)).toContain('Hepsiburada Mağazası')
     expect(Array.from(orderStore.options).map(option => option.textContent)).not.toContain('Trendyol Mağazası')
     expect(container.querySelector('.rv-question-meta a')?.getAttribute('href')).toContain('HB-12345')
-    act(() => button('Geçmiş ve cevap').click())
+    act(() => button('Geçmiş').click())
     await settle()
     expect(container.querySelector('[role="dialog"]')?.textContent).toContain('Hepsiburada')
     input(container.querySelector<HTMLTextAreaElement>('.rv-question-compose textarea')!, 'x')
@@ -223,7 +229,7 @@ describe('QuestionsPage workspace flows', () => {
 
   it('shows conversation history and rejection reasons, inserts a reply bubble, and submits the edited answer', async () => {
     await renderPage()
-    act(() => button('Geçmiş ve cevap').click())
+    act(() => button('Geçmiş').click())
     await settle()
     expect(container.querySelector('[role="dialog"]')?.textContent).toContain('Ölçüleri kontrol ediyorum.')
     expect(container.querySelector('[role="dialog"]')?.textContent).toContain('Ret nedeni: Yanıt eksik bilgi içeriyor.')
@@ -247,13 +253,50 @@ describe('QuestionsPage workspace flows', () => {
     expect(container.querySelector('.rv-question-compose')).toBeNull()
   })
 
+  it('opens the quick reply directly below its question and sends it with that row version', async () => {
+    await renderPage()
+    expect(container.querySelector('.rv-question-card .rv-question-content')?.textContent).toContain('Ürün boyu kaç santimetredir?')
+    act(() => Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(item => item.textContent?.trim() === 'Cevapla')?.click())
+    await settle()
+    expect(container.querySelector('.rv-question-inline-compose')).not.toBeNull()
+    const editor = container.querySelector<HTMLTextAreaElement>('.rv-question-inline-compose textarea')!
+    input(editor, 'Ürün uzunluğu 65 cm olarak ölçülmüştür.')
+    act(() => button('Gönder').click())
+    await settle()
+    const answerRequest = apiState.calls.find(call => call.path === '/questions/q-product/answer')
+    expect(answerRequest?.method).toBe('POST')
+    expect(JSON.parse(answerRequest?.body ?? '{}')).toEqual({ text: 'Ürün uzunluğu 65 cm olarak ölçülmüştür.', version: 2 })
+    expect(container.querySelector('.rv-question-inline-compose')).toBeNull()
+  })
+
+  it('shows the question date for answered questions instead of an expired reply deadline', async () => {
+    apiState.detail = { ...createQuestion(), expiresAt: '2026-10-04T09:00:00Z' }
+    await renderPage()
+    act(() => button('Cevaplananlar').click())
+    await settle()
+
+    expect(container.querySelector('.rv-question-deadline')).toBeNull()
+    expect(container.querySelector('.rv-question-age')?.textContent).toContain('Soru tarihi:')
+    expect(container.textContent).not.toContain('Süre doldu kaldı')
+  })
+
+  it('replaces a failed marketplace photo with the matching catalog image', async () => {
+    await renderPage()
+    const image = container.querySelector<HTMLImageElement>('.rv-question-product img')!
+    expect(image.getAttribute('src')).toBe('https://images.example/expired-product.jpg')
+    act(() => image.dispatchEvent(new Event('error')))
+    await settle()
+    expect(container.querySelector<HTMLImageElement>('.rv-question-product img')?.getAttribute('src')).toBe('/api/v1/files/product-media/asset-1/content')
+    expect(apiState.calls.some(call => call.path === '/products?status=ACTIVE&limit=10&search=BLUZ-01')).toBe(true)
+  })
+
   it('renders the platform rejection when answer submission fails and refreshes the active question kind', async () => {
     await renderPage()
     act(() => button('Yenile').click())
     await settle()
     expect(apiState.calls.some(call => call.path === '/questions/sync' && call.method === 'POST' && JSON.parse(call.body ?? '{}').kind === 'PRODUCT')).toBe(true)
 
-    act(() => button('Geçmiş ve cevap').click())
+    act(() => button('Geçmiş').click())
     await settle()
     apiState.answerFailure = true
     input(container.querySelector<HTMLTextAreaElement>('.rv-question-compose textarea')!, 'Ürün uzunluğu 65 cm. Ayrıntılar sayfada yazıyor.')

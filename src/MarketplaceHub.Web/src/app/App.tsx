@@ -11,6 +11,7 @@ import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFont
 import { appendNotification, clearNotificationHistory, markAllNotificationsRead, markNotificationRead, readNotificationHistory, subscribeNotificationHistory, type AppNotification } from '../shared/notifications'
 import { dashboardOperationalLinks } from '../shared/dashboard-operational-links'
 import { orderNavigationCount, type OrderNavigationSummary } from '../shared/order-navigation-count'
+import { questionWaitingSummaryPath } from './questionNavigationSummary'
 
 type VisualTheme = 'light' | 'dark'
 const visualThemeChangeEvent = 'ravencia:visual-theme-change'
@@ -49,6 +50,7 @@ function Shell({ me }: { me: Me }) {
   const navigationSummary = useQuery({ queryKey: ['dashboard-bootstrap'], queryFn: () => hubApi<DashboardBootstrap>('/dashboard/bootstrap'), staleTime: 30_000, refetchOnWindowFocus: true })
   const orderSummary = useQuery({ queryKey: ['orders', 'summary', []], queryFn: () => hubApi<OrderNavigationSummary>('/orders/summary'), staleTime: 30_000, refetchOnMount: 'always', refetchOnWindowFocus: true, refetchInterval: 15_000, refetchIntervalInBackground: true })
   const invoiceWorkspaceSummary = useQuery({ queryKey: ['invoice-workspace'], queryFn: () => hubApi<Array<{ isDueSoon: boolean }>>('/invoice-workspace'), staleTime: 30_000, refetchOnWindowFocus: true })
+  const questionWaitingSummary = useQuery({ queryKey: ['questions', 'navigation-waiting'], queryFn: () => hubApi<{ totalCount: number }>(questionWaitingSummaryPath), staleTime: 30_000, refetchInterval: 60_000, refetchOnWindowFocus: true })
   const [sidebarPinned, setSidebarPinned] = useState(() => localStorage.getItem('ravencia.sidebarPinned') !== 'false')
   const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -146,7 +148,7 @@ function Shell({ me }: { me: Me }) {
     return <NavLink to={to} end={end} aria-label={accessibleLabel}>{icon(iconName)}<span className="nav-label">{label}</span>{hasCount && <span className="nav-count" aria-hidden="true">{visibleCount}</span>}</NavLink>
   }
   const navigationGroups: Array<{ label: string; items: ReactNode[] }> = [
-    { label: 'Ana menü', items: [item('/dashboard', 'dashboard', 'Genel bakış', true), item('/products', 'products', 'Ürünler'), item('/orders', 'orders', 'Siparişler', false, orderNavigationCount(orderSummary.data), true), item('/returns', 'returns', 'İadeler', false, navigationCounts?.pendingReturns ?? 0, true), item('/invoices', 'invoice', 'Faturalar', false, invoiceDueSoonCount, true), item('/questions', 'products', 'Ürün soruları'), item('/integrations', 'connect', 'Entegrasyonlar'), item('/jobs', 'jobs', 'İşlem takibi'), item('/mappings/categories', 'layers', 'Eşleştirmeler'), item('/mappings/product-matches', 'products', 'Ürün eşleşmeleri')] },
+    { label: 'Ana menü', items: [item('/dashboard', 'dashboard', 'Genel bakış', true), item('/products', 'products', 'Ürünler'), item('/orders', 'orders', 'Siparişler', false, orderNavigationCount(orderSummary.data), true), item('/returns', 'returns', 'İadeler', false, navigationCounts?.pendingReturns ?? 0, true), item('/invoices', 'invoice', 'Faturalar', false, invoiceDueSoonCount, true), item('/questions', 'products', 'Ürün soruları', false, questionWaitingSummary.data?.totalCount ?? 0, true), item('/integrations', 'connect', 'Entegrasyonlar'), item('/jobs', 'jobs', 'İşlem takibi'), item('/mappings/categories', 'layers', 'Eşleştirmeler'), item('/mappings/product-matches', 'products', 'Ürün eşleşmeleri')] },
   ]
   const navigation = <>{navigationGroups.map(group => <div className="nav-group" key={group.label}>{group.items}</div>)}</>
   const quickSearchItems: Array<{ to: string; label: string; description: string; icon: UiIconName }> = [
