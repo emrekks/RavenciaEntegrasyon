@@ -968,7 +968,7 @@ internal static class HepsiburadaJsonMapper
         catch (JsonException) { return snapshot; }
     }
 
-    private static string? ImageUrl(JsonElement source)
+    internal static string? ImageUrl(JsonElement source)
     {
         if (source.ValueKind == JsonValueKind.Object)
         {

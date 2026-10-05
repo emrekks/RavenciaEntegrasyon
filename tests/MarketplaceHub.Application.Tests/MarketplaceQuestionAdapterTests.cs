@@ -73,6 +73,17 @@ public sealed class MarketplaceQuestionAdapterTests
     }
 
     [Fact]
+    public void HepsiburadaQuestionMapsNestedProductImageAliases()
+    {
+        using var document = JsonDocument.Parse("""{"issues":[{"issueNumber":"HB-IMAGE","status":2,"createdAt":"2026-10-02T10:00:00Z","product":{"name":"Elbise","stockCode":"MODEL-9","images":[{"url":"https://productimages.hepsiburada.net/item.jpg"}]}}]}""");
+
+        var question = Assert.Single(HepsiburadaQuestionMapper.Page(document, new("PRODUCT", null, null, null, 1, 25)).Items);
+
+        Assert.Equal("https://productimages.hepsiburada.net/item.jpg", question.ProductImageUrl);
+        Assert.Equal("MODEL-9", question.ProductModelCode);
+    }
+
+    [Fact]
     public void HepsiburadaDetailMapsNestedIssueAndExpiredStatus()
     {
         using var document = JsonDocument.Parse("""{"data":{"issue":{"number":"HB-88","status":"AutoClosed","createdAt":"2026-10-01T12:00:00Z","expireDate":1790942400000,"lastContent":"Soru metni"}}}""");

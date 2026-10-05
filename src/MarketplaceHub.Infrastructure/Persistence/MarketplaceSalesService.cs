@@ -599,6 +599,33 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 var localImage = (await MediaUrls(tenantId, [localVariantId], cancellationToken)).GetValueOrDefault(localVariantId);
                 if (!string.IsNullOrWhiteSpace(localImage)) return ServiceResult<string>.Ok(localImage);
             }
+
+            // Question feeds often provide the marketplace SKU plus the catalog
+            // model code, while our local catalog stores images on the model's
+            // variants. Resolve the shared product image when a SKU lookup has
+            // no exact variant match.
+            var modelProductIds = await db.ProductVariants.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ModelCode != null
+                    && x.ModelCode.Trim().ToUpper() == catalogKey.ToUpper())
+                .Select(x => x.ProductId)
+                .Distinct()
+                .Take(2)
+                .ToListAsync(cancellationToken);
+            if (modelProductIds.Count == 1)
+            {
+                var modelVariantIds = await db.ProductVariants.AsNoTracking()
+                    .Where(x => x.TenantId == tenantId && x.ProductId == modelProductIds[0])
+                    .OrderBy(x => x.SortOrder)
+                    .Select(x => (Guid?)x.Id)
+                    .Take(100)
+                    .ToListAsync(cancellationToken);
+                var modelImages = await MediaUrls(tenantId, modelVariantIds, cancellationToken);
+                var modelImage = modelVariantIds
+                    .Where(id => id is not null)
+                    .Select(id => modelImages.GetValueOrDefault(id!.Value))
+                    .FirstOrDefault(url => !string.IsNullOrWhiteSpace(url));
+                if (!string.IsNullOrWhiteSpace(modelImage)) return ServiceResult<string>.Ok(modelImage);
+            }
         }
 
         connection ??= await ActiveTrendyolConnection(tenantId, cancellationToken);
