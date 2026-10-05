@@ -56,10 +56,10 @@ public sealed partial class TrendyolHttpClient : IQuestionPort
 internal static class TrendyolQuestionRequestContract
 {
     public static string ListPath(string sellerId, QuestionPollRequest query, DateTimeOffset start, DateTimeOffset end) =>
-        $"integration/qna/sellers/{Uri.EscapeDataString(sellerId)}/questions/filter?supplierId={Uri.EscapeDataString(sellerId)}&startDate={start.ToUnixTimeMilliseconds()}&endDate={end.ToUnixTimeMilliseconds()}&status={Uri.EscapeDataString(query.Status ?? "WAITING_FOR_ANSWER")}&page={Math.Max(0, query.Page)}&size={Math.Clamp(query.Size, 1, 50)}&orderByField=LastModifiedDate&orderByDirection=DESC";
+        $"qna/sellers/{Uri.EscapeDataString(sellerId)}/questions/filter?supplierId={Uri.EscapeDataString(sellerId)}&startDate={start.ToUnixTimeMilliseconds()}&endDate={end.ToUnixTimeMilliseconds()}&status={Uri.EscapeDataString(query.Status ?? "WAITING_FOR_ANSWER")}&page={Math.Max(0, query.Page)}&size={Math.Clamp(query.Size, 1, 50)}&orderByField=LastModifiedDate&orderByDirection=DESC";
 
-    public static string DetailPath(string sellerId, string questionId) => $"integration/qna/sellers/{Uri.EscapeDataString(sellerId)}/questions/{Uri.EscapeDataString(questionId)}?supplierId={Uri.EscapeDataString(sellerId)}";
-    public static string AnswerPath(string sellerId, string questionId) => $"integration/qna/sellers/{Uri.EscapeDataString(sellerId)}/questions/{Uri.EscapeDataString(questionId)}/answers";
+    public static string DetailPath(string sellerId, string questionId) => $"qna/sellers/{Uri.EscapeDataString(sellerId)}/questions/{Uri.EscapeDataString(questionId)}?supplierId={Uri.EscapeDataString(sellerId)}";
+    public static string AnswerPath(string sellerId, string questionId) => $"qna/sellers/{Uri.EscapeDataString(sellerId)}/questions/{Uri.EscapeDataString(questionId)}/answers";
     public static bool ValidAnswer(string? answer) => answer?.Trim().Length is >= 10 and <= 2000;
 }
 

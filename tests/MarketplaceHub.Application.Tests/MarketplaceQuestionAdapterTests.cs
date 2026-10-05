@@ -95,7 +95,10 @@ public sealed class MarketplaceQuestionAdapterTests
         Assert.Contains("supplierId=seller%2F17", path);
         Assert.Contains("page=0&size=50", path);
         Assert.Contains("orderByField=LastModifiedDate", path);
-        Assert.Contains("/questions/42/answers", TrendyolQuestionRequestContract.AnswerPath("seller/17", "42"));
+        var requestUri = new Uri(new Uri("https://apigw.trendyol.com/integration/"), path);
+        Assert.Equal("/integration/qna/sellers/seller%2F17/questions/filter", requestUri.AbsolutePath);
+        Assert.Equal("/integration/qna/sellers/seller%2F17/questions/42", new Uri(new Uri("https://apigw.trendyol.com/integration/"), TrendyolQuestionRequestContract.DetailPath("seller/17", "42")).AbsolutePath);
+        Assert.Equal("/integration/qna/sellers/seller%2F17/questions/42/answers", new Uri(new Uri("https://apigw.trendyol.com/integration/"), TrendyolQuestionRequestContract.AnswerPath("seller/17", "42")).AbsolutePath);
         Assert.False(TrendyolQuestionRequestContract.ValidAnswer("too short"));
         Assert.True(TrendyolQuestionRequestContract.ValidAnswer(new string('x', 10)));
         Assert.True(TrendyolQuestionRequestContract.ValidAnswer(new string('x', 2000)));
