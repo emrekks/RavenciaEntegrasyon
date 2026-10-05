@@ -11,6 +11,8 @@ public sealed class HepsiburadaOptions
     public Uri ProductionOmsBaseAddress { get; init; } = new("https://oms-external.hepsiburada.com/");
     public Uri StageListingBaseAddress { get; init; } = new("https://listing-external-sit.hepsiburada.com/");
     public Uri ProductionListingBaseAddress { get; init; } = new("https://listing-external.hepsiburada.com/");
+    public Uri StageAskSellerBaseAddress { get; init; } = new("https://api-asktoseller-merchant-sit.hepsiburada.com/");
+    public Uri ProductionAskSellerBaseAddress { get; init; } = new("https://api-asktoseller-merchant.hepsiburada.com/");
     public Uri StageCatalogBaseAddress { get; init; } = new("https://mpop-sit.hepsiburada.com/product/");
     // Hepsiburada's catalog guide says production endpoints are the SIT endpoint
     // with "-sit" removed. Deployments can override this for assigned hosts.

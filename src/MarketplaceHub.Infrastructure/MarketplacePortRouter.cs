@@ -12,7 +12,7 @@ public sealed class MarketplacePortRouter(
     TrendyolHttpClient trendyol,
     ShopifyHttpClient shopify,
     HepsiburadaHttpClient hepsiburada)
-    : IConnectionPort, IReferenceDataPort, IProductPort, IHepsiburadaProductMatchPort, IProductVisualLookupPort, IInventoryPricePort, IOrderPort, IOrderPackageReadPort, IReturnPort, IInvoiceMarketplacePort
+    : IConnectionPort, IReferenceDataPort, IProductPort, IHepsiburadaProductMatchPort, IProductVisualLookupPort, IInventoryPricePort, IOrderPort, IOrderPackageReadPort, IReturnPort, IInvoiceMarketplacePort, IQuestionPort
 {
     private async Task<T> Resolve<T>(AdapterContext context) where T : class
     {
@@ -66,6 +66,9 @@ public sealed class MarketplacePortRouter(
     async Task<AdapterResult<RemoteReturnClaim>> IReturnPort.GetAsync(AdapterContext context, string externalReturnId, CancellationToken cancellationToken) => await (await Resolve<IReturnPort>(context)).GetAsync(context, externalReturnId, cancellationToken);
     public async Task<AdapterResult<IReadOnlyList<ReturnIssueReason>>> IssueReasonsAsync(AdapterContext context, CancellationToken cancellationToken) => await (await Resolve<IReturnPort>(context)).IssueReasonsAsync(context, cancellationToken);
     public async Task<AdapterResult<ReturnActionResult>> ExecuteAsync(AdapterContext context, ReturnActionCommand command, CancellationToken cancellationToken) => await (await Resolve<IReturnPort>(context)).ExecuteAsync(context, command, cancellationToken);
+    public async Task<AdapterResult<MarketplaceQuestionPage>> ListQuestionsAsync(AdapterContext context, QuestionPollRequest request, CancellationToken cancellationToken) => await (await Resolve<IQuestionPort>(context)).ListQuestionsAsync(context, request, cancellationToken);
+    public async Task<AdapterResult<RemoteMarketplaceQuestion>> GetQuestionAsync(AdapterContext context, string questionId, string kind, CancellationToken cancellationToken) => await (await Resolve<IQuestionPort>(context)).GetQuestionAsync(context, questionId, kind, cancellationToken);
+    public async Task<AdapterResult<RemoteQuestionAnswerResult>> AnswerQuestionAsync(AdapterContext context, string questionId, string kind, string answer, CancellationToken cancellationToken) => await (await Resolve<IQuestionPort>(context)).AnswerQuestionAsync(context, questionId, kind, answer, cancellationToken);
     public async Task<AdapterResult<InvoiceDeliveryResult>> DeliverAsync(AdapterContext context, InvoiceDeliveryCommand command, CancellationToken cancellationToken) => await (await Resolve<IInvoiceMarketplacePort>(context)).DeliverAsync(context, command, cancellationToken);
     public async Task<AdapterResult<InvoiceDeliveryStatus>> QueryDeliveryAsync(AdapterContext context, ExternalInvoiceDeliveryReference reference, CancellationToken cancellationToken) => await (await Resolve<IInvoiceMarketplacePort>(context)).QueryDeliveryAsync(context, reference, cancellationToken);
 }

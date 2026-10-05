@@ -53,6 +53,7 @@ public static class MarketplaceJobTypes
     public const string HepsiburadaWebhookIngest = "HEPSIBURADA_WEBHOOK_INGEST";
     public const string HepsiburadaReturnSync = "HEPSIBURADA_RETURN_SYNC";
     public const string HepsiburadaOrderInvoiceReconciliation = "HEPSIBURADA_ORDER_INVOICE_RECONCILIATION";
+    public const string QuestionSync = "MARKETPLACE_QUESTION_SYNC";
 
     public static bool IsMarketplaceProcessorJob(string? jobType) => jobType is
         ConnectionTest or ShopifyConnectionTest or HepsiburadaConnectionTest
@@ -68,7 +69,8 @@ public static class MarketplaceJobTypes
         or ShipmentAction or CommonLabel or CapabilityProbe or StageTestOrder
         or ReturnSync or HepsiburadaReturnSync or ReturnStatusSync or ReturnReconciliation or ReturnAction
         or StockReconciliation
-        or WebhookIngest or ShopifyWebhookIngest or HepsiburadaWebhookIngest;
+        or WebhookIngest or ShopifyWebhookIngest or HepsiburadaWebhookIngest
+        or QuestionSync;
 
     public static string ForPlatform(string? platformCode, string jobType) => platformCode?.Trim().ToUpperInvariant() switch
     {
@@ -290,6 +292,8 @@ public static class MarketplaceCapabilities
     public const string LabelWrite = "LABEL_WRITE";
     public const string ReturnRead = "RETURN_READ";
     public const string ReturnWrite = "RETURN_WRITE";
+    public const string QuestionRead = "QUESTION_READ";
+    public const string QuestionWrite = "QUESTION_WRITE";
 }
 
 public enum AdapterErrorClass
@@ -506,6 +510,44 @@ public interface IReturnPort
     Task<AdapterResult<RemoteReturnClaim>> GetAsync(AdapterContext context, string externalReturnId, CancellationToken cancellationToken);
     Task<AdapterResult<IReadOnlyList<ReturnIssueReason>>> IssueReasonsAsync(AdapterContext context, CancellationToken cancellationToken);
     Task<AdapterResult<ReturnActionResult>> ExecuteAsync(AdapterContext context, ReturnActionCommand command, CancellationToken cancellationToken);
+}
+
+public sealed record QuestionPollRequest(string Kind, string? Status, DateTimeOffset? StartDate, DateTimeOffset? EndDate, int Page, int Size);
+public sealed record RemoteQuestionConversation(string Author, string Text, DateTimeOffset CreatedAt, string? RejectionReason = null);
+public sealed record RemoteMarketplaceQuestion(
+    string Id, string Kind, string Status, string Text, string? ProductName, string? ProductImageUrl,
+    string? ProductSku, string? ProductBarcode, string? ProductModelCode, string? CustomerName,
+    string? OrderNumber, DateTimeOffset CreatedAt, DateTimeOffset? ExpiresAt,
+    DateTimeOffset LastModifiedAt, IReadOnlyList<RemoteQuestionConversation> Conversations);
+public sealed record MarketplaceQuestionPage(IReadOnlyList<RemoteMarketplaceQuestion> Items, int Page, int TotalPages, long TotalElements);
+public sealed record RemoteQuestionAnswerResult(bool Accepted, bool IsVerified, string? AnswerId);
+public interface IQuestionPort
+{
+    Task<AdapterResult<MarketplaceQuestionPage>> ListQuestionsAsync(AdapterContext context, QuestionPollRequest request, CancellationToken cancellationToken);
+    Task<AdapterResult<RemoteMarketplaceQuestion>> GetQuestionAsync(AdapterContext context, string questionId, string kind, CancellationToken cancellationToken);
+    Task<AdapterResult<RemoteQuestionAnswerResult>> AnswerQuestionAsync(AdapterContext context, string questionId, string kind, string answer, CancellationToken cancellationToken);
+}
+
+public sealed record MarketplaceQuestionView(Guid Id, Guid ConnectionId, string PlatformCode, string StoreName, string ExternalQuestionId, string Kind, string Status, string QuestionText, string? ProductName, string? ProductImageUrl, string? ProductSku, string? ProductBarcode, string? ProductModelCode, string? CustomerName, string? ExternalOrderNumber, IReadOnlyList<RemoteQuestionConversation> Conversations, DateTimeOffset CreatedAt, DateTimeOffset? ExpiresAt, DateTimeOffset LastRemoteModifiedAt, DateTimeOffset LastSyncedAt, long Version);
+public sealed record MarketplaceQuestionTemplateView(Guid Id, string Title, string Text, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, long Version);
+public sealed record SaveQuestionTemplateCommand(string Title, string Text);
+public sealed record AnswerQuestionCommand(string Text, long Version);
+public sealed record QuestionSyncView(int Added, int Updated, DateTimeOffset SyncedAt, string? Error = null);
+public sealed record MarketplaceQuestionSyncStateView(Guid ConnectionId, string PlatformCode, string StoreName, bool HistoryImported, DateTimeOffset? HistoryStartedAt, string ProgressStatus, int ImportedCount, DateTimeOffset? LastRunStartedAt, DateTimeOffset? LastSuccessAt, string? LastError);
+public sealed record QuestionListQuery(string Kind, string? Status, string? PlatformCode, Guid? ConnectionId, DateTimeOffset? DateFrom, DateTimeOffset? DateTo, string? Search, int Page = 1, int Limit = 50);
+public sealed record MarketplaceQuestionListPage(IReadOnlyList<MarketplaceQuestionView> Items, int Page, int Limit, int TotalCount);
+
+public interface IMarketplaceQuestionService
+{
+    Task<MarketplaceQuestionListPage> ListAsync(Guid tenantId, QuestionListQuery query, CancellationToken cancellationToken);
+    Task<MarketplaceQuestionView?> GetAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
+    Task<QuestionSyncView> SyncAsync(Guid tenantId, string? kind, CancellationToken cancellationToken);
+    Task<QuestionSyncView> SyncConnectionAsync(Guid tenantId, Guid connectionId, string? kind, CancellationToken cancellationToken);
+    Task<IReadOnlyList<MarketplaceQuestionSyncStateView>> SyncStatesAsync(Guid tenantId, CancellationToken cancellationToken);
+    Task<ServiceResult<MarketplaceQuestionView>> AnswerAsync(Guid tenantId, Guid userId, Guid id, long expectedVersion, string answer, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<MarketplaceQuestionTemplateView>> TemplatesAsync(Guid tenantId, CancellationToken cancellationToken);
+    Task<ServiceResult<MarketplaceQuestionTemplateView>> SaveTemplateAsync(Guid tenantId, Guid? id, long? expectedVersion, SaveQuestionTemplateCommand command, CancellationToken cancellationToken);
+    Task<ServiceResult<bool>> DeleteTemplateAsync(Guid tenantId, Guid id, long expectedVersion, CancellationToken cancellationToken);
 }
 
 public interface IWebhookVerifier
@@ -819,6 +861,7 @@ public interface IMarketplaceSalesService
     Task<ServiceResult<ReturnDetailView>> ReturnAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
     Task<ServiceResult<IReadOnlyList<ReturnIssueReason>>> ReturnIssueReasonsAsync(Guid tenantId, Guid id, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueReturnSyncAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken);
+    Task<ServiceResult<Guid>> EnqueueQuestionSyncAsync(Guid tenantId, Guid connectionId, string? kind, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<ReturnDetailView>> MarkReturnReceivedAsync(Guid tenantId, Guid userId, Guid claimId, long expectedVersion, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<ReturnDetailView>> ProcessReturnActionInstantAsync(Guid tenantId, Guid userId, Guid claimId, long expectedVersion, ReturnDecisionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<ReturnDetailView>> ApplyDispositionAsync(Guid tenantId, Guid userId, Guid claimId, ReturnDispositionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken);

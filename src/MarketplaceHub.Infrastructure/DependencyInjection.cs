@@ -92,12 +92,14 @@ public static class DependencyInjection
         services.AddScoped<IOrderPort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
         services.AddScoped<IOrderPackageReadPort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
         services.AddScoped<IReturnPort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
+        services.AddScoped<IQuestionPort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
         services.AddScoped<TrendyolWebhookVerifier>();
         services.AddScoped<HepsiburadaWebhookVerifier>();
         services.AddScoped<IWebhookVerifier, MarketplaceWebhookVerifier>();
         services.AddScoped<IMarketplaceConnectionService, MarketplaceConnectionService>();
         services.AddScoped<IOperationalDataMaintenanceService, OperationalDataMaintenanceService>();
         services.AddScoped<IMarketplaceSalesService, MarketplaceSalesService>();
+        services.AddScoped<IMarketplaceQuestionService, MarketplaceQuestionService>();
         services.AddScoped<IMarketplaceWebhookService, MarketplaceWebhookService>();
         services.AddScoped<IMarketplaceJobProcessor, MarketplaceJobProcessor>();
         services.AddScoped<IMarketplaceReconciliationService, MarketplaceReconciliationService>();

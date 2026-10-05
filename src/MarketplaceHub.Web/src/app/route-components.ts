@@ -23,3 +23,4 @@ export const ShipmentsPage = lazy(() => import('../features/marketplace').then(m
 export const InvoiceDetailPage = lazy(() => import('../features/invoicing').then(module => ({ default: module.InvoiceDetailPage })))
 export const InvoicesPage = lazy(() => import('../features/invoicing').then(module => ({ default: module.InvoicesPage })))
 export const JobsPage = lazy(() => import('../features/operations').then(module => ({ default: module.JobsPage })))
+export const QuestionsPage = lazy(() => import('../features/questions').then(module => ({ default: module.QuestionsPage })))

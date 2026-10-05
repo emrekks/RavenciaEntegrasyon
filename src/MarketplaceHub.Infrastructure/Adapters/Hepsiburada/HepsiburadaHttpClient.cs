@@ -54,6 +54,7 @@ public sealed partial class HepsiburadaHttpClient(
     private const string ListingUpdateGuide = "https://developers.hepsiburada.com/tr/companies/hepsiburada?category=baslangic&guide=urun-guncelleme-onemli-bilgiler&product=urun-guncelleme-entegrasyonu&version=v1.0&view=guide";
     private const string CategoryEndpointGuide = "https://developers.hepsiburada.com/tr/companies/hepsiburada?category=katalog-urun-entegrasyonu&product=katalog-urun-entegrasyonu&version=v1.0&op=getAllCategoriesByParameters&view=endpoint";
     private const string ClaimAcceptEndpointGuide = "https://developers.hepsiburada.com/tr/companies/hepsiburada?category=hepsiburada-talep-entegrasyonu&op=Post__claims_number_claimNumber_accept&product=talep-listeleme&version=v1.0&view=endpoint";
+    private const string AskSellerGuide = "https://developers.hepsiburada.com/tr/companies/hepsiburada?product=saticiya-sor-entegrasyonu&version=v1.0&op=Soru+Cevaplama&view=endpoint";
 
     public async Task<AdapterResult<ConnectionIdentity>> TestAsync(AdapterContext context, CancellationToken cancellationToken)
     {
@@ -118,7 +119,9 @@ public sealed partial class HepsiburadaHttpClient(
             new(MarketplaceCapabilities.ShipmentWrite, "SUPPORTED", identity.ApiVersion, identity.Environment, identity.ExternalStoreId, OrderGuide, "v1.0", null, null, "Başarılı bağlantı kontrolü bu mağaza, ortam ve API sürümünü doğruladı; kargo/paket işlemleri Hepsiburada'nın resmî sipariş entegrasyonu dokümanına göre kaydedildi. Yazma çağrısı bağlantı kontrolünde çalıştırılmaz.", null, now),
             new(MarketplaceCapabilities.ReturnWrite, "SUPPORTED", identity.ApiVersion, identity.Environment, identity.ExternalStoreId, ClaimAcceptEndpointGuide, "v1.0", null, null, "Başarılı bağlantı kontrolü bu mağaza, ortam ve API sürümünü doğruladı; iade kararları Hepsiburada'nın resmî talep endpoint dokümanına göre kaydedildi. Yazma çağrısı bağlantı kontrolünde çalıştırılmaz.", null, now),
             new(MarketplaceCapabilities.ReferenceRead, references.IsSuccess ? "SUPPORTED" : "UNKNOWN", identity.ApiVersion, identity.Environment, identity.ExternalStoreId, CategoryEndpointGuide, "v1.0", null, null, references.IsSuccess ? "Etkin ve ürün açılabilir kategori listesi salt okunur olarak yanıt verdi." : "Kategori referans okuma probe'u tamamlanamadı; yetenek UNKNOWN bırakıldı.", null, now),
-            new(MarketplaceCapabilities.ReturnRead, returnsResult.IsSuccess ? "SUPPORTED" : "UNKNOWN", identity.ApiVersion, identity.Environment, identity.ExternalStoreId, "https://developers.hepsiburada.com/tr/companies/hepsiburada?guide=talep-onemli-bilgiler-2&product=talep-entegrasyonu&view=guide", "v1.0", null, null, returnsResult.IsSuccess ? "Aksiyon bekleyen talep listeleme endpoint'i salt okunur olarak yanıt verdi." : "Talep okuma probe'u tamamlanamadı; yetenek UNKNOWN bırakıldı.", null, now)
+            new(MarketplaceCapabilities.ReturnRead, returnsResult.IsSuccess ? "SUPPORTED" : "UNKNOWN", identity.ApiVersion, identity.Environment, identity.ExternalStoreId, "https://developers.hepsiburada.com/tr/companies/hepsiburada?guide=talep-onemli-bilgiler-2&product=talep-entegrasyonu&view=guide", "v1.0", null, null, returnsResult.IsSuccess ? "Aksiyon bekleyen talep listeleme endpoint'i salt okunur olarak yanıt verdi." : "Talep okuma probe'u tamamlanamadı; yetenek UNKNOWN bırakıldı.", null, now),
+            new(MarketplaceCapabilities.QuestionRead, "SUPPORTED", identity.ApiVersion, identity.Environment, identity.ExternalStoreId, AskSellerGuide, "v1.0", null, null, "Ürün ve sipariş soruları, son kullanma tarihi ve konuşma geçmişi resmî Satıcıya Sor endpoint dokümanına göre desteklenir.", null, now),
+            new(MarketplaceCapabilities.QuestionWrite, "SUPPORTED", identity.ApiVersion, identity.Environment, identity.ExternalStoreId, AskSellerGuide, "v1.0", null, null, "Multipart Answer alanıyla cevap gönderimi resmî Satıcıya Sor endpoint dokümanına göre kaydedildi; bağlantı kontrolünde dış yazma çağrısı çalıştırılmaz.", null, now)
         ];
         return AdapterResult<IReadOnlyList<CapabilityEvidence>>.Success(evidence, connection.RateLimit ?? orders.RateLimit ?? products.RateLimit ?? returnsResult.RateLimit ?? references.RateLimit);
     }
@@ -1058,7 +1061,7 @@ public sealed partial class HepsiburadaHttpClient(
     private async Task<AdapterResult<JsonDocument>> SendAsync(HepsiburadaRequestContext context, Uri baseAddress, HttpMethod method, string path, CancellationToken cancellationToken) =>
         await SendAsync(context, baseAddress, method, path, null, cancellationToken);
 
-    private async Task<AdapterResult<JsonDocument>> SendAsync(HepsiburadaRequestContext context, Uri baseAddress, HttpMethod method, string path, HttpContent? content, CancellationToken cancellationToken)
+    private async Task<AdapterResult<JsonDocument>> SendAsync(HepsiburadaRequestContext context, Uri baseAddress, HttpMethod method, string path, HttpContent? content, CancellationToken cancellationToken, Action<HttpRequestMessage>? configure = null)
     {
         if (!string.Equals(settings.AuthenticationMode, "BASIC", StringComparison.OrdinalIgnoreCase))
             return AdapterResult<JsonDocument>.Failure(new(AdapterErrorClass.NotSupported, "HEPSIBURADA_AUTHENTICATION_UNVERIFIED", "Hepsiburada auth biçimi SIT hesabında doğrulanana kadar bağlantı isteği gönderilmedi.", null, null, null));
@@ -1068,6 +1071,7 @@ public sealed partial class HepsiburadaHttpClient(
         if (!ApplyAuthentication(request, context))
             return Failure<JsonDocument>(AdapterErrorClass.Validation, "HEPSIBURADA_INTEGRATOR_NAME_INVALID", "Hepsiburada entegratör adı geçerli bir User-Agent kimliği olmalıdır.", HttpStatusCode.UnprocessableEntity);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        configure?.Invoke(request);
         try
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

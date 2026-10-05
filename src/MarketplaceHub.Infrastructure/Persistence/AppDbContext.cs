@@ -92,6 +92,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<ReturnDecision> ReturnDecisions => Set<ReturnDecision>();
     public DbSet<ReturnEvidence> ReturnEvidence => Set<ReturnEvidence>();
     public DbSet<ReturnStockDisposition> ReturnStockDispositions => Set<ReturnStockDisposition>();
+    public DbSet<MarketplaceQuestion> MarketplaceQuestions => Set<MarketplaceQuestion>();
+    public DbSet<MarketplaceQuestionTemplate> MarketplaceQuestionTemplates => Set<MarketplaceQuestionTemplate>();
+    public DbSet<MarketplaceQuestionSyncState> MarketplaceQuestionSyncStates => Set<MarketplaceQuestionSyncState>();
     public DbSet<LegalEntityProfile> LegalEntityProfiles => Set<LegalEntityProfile>();
     public DbSet<InvoicePolicy> InvoicePolicies => Set<InvoicePolicy>();
     public DbSet<Invoice> Invoices => Set<Invoice>();
@@ -118,6 +121,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         builder.ConfigureCatalogModels();
         builder.ConfigureMarketplaceModels();
         builder.ConfigureInvoicingModels();
+        builder.ConfigureQuestionModels();
     }
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess) { ApplyIntegrationJobMetadata(); AppendDataChangeOutboxEvents(); GuardAppendOnlyAudit(); return base.SaveChanges(acceptAllChangesOnSuccess); }

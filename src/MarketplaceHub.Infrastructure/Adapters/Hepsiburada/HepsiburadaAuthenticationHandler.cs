@@ -52,6 +52,7 @@ public sealed class HepsiburadaAuthenticationHandler(
         {
             IntegratorName = payload.IntegratorName ?? credentials.Username,
             CatalogBaseAddress = ResolveCatalogBaseAddress(connection.Environment),
+            QuestionBaseAddress = string.Equals(connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase) ? settings.StageAskSellerBaseAddress : settings.ProductionAskSellerBaseAddress,
             StageTestOrderBaseAddress = string.Equals(connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase) ? settings.StageTestOrderBaseAddress : null
         };
     }
@@ -149,5 +150,6 @@ public sealed record HepsiburadaRequestContext(PlatformConnection Connection, Ur
 {
     public string? IntegratorName { get; init; }
     public Uri? CatalogBaseAddress { get; init; }
+    public Uri? QuestionBaseAddress { get; init; }
     public Uri? StageTestOrderBaseAddress { get; init; }
 }

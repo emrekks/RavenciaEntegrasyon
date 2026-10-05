@@ -99,6 +99,7 @@ app.MapCatalogEndpoints();
 app.MapDashboardEndpoints();
 app.MapJobEndpoints();
 app.MapMarketplaceEndpoints();
+app.MapQuestionEndpoints();
 app.MapInvoicingEndpoints();
 app.MapSettingsEndpoints();
 app.MapHub<OperationsHub>("/hubs/operations");

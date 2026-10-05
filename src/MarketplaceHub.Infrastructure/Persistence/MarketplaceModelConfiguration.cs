@@ -163,3 +163,32 @@ internal static class MarketplaceModelConfiguration
         });
     }
 }
+
+internal static class QuestionModelConfiguration
+{
+    public static void ConfigureQuestionModels(this ModelBuilder builder)
+    {
+        builder.Entity<MarketplaceQuestion>(entity =>
+        {
+            entity.ToTable("marketplace_questions", "sales"); entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id }).HasName("AK_questions_tenant_id");
+            entity.Property(x => x.ExternalQuestionId).HasMaxLength(256); entity.Property(x => x.Kind).HasMaxLength(16); entity.Property(x => x.Status).HasMaxLength(48);
+            entity.Property(x => x.QuestionText).HasMaxLength(4096); entity.Property(x => x.ProductName).HasMaxLength(1024); entity.Property(x => x.ProductImageUrl).HasMaxLength(2048);
+            entity.Property(x => x.ProductSku).HasMaxLength(256); entity.Property(x => x.ProductBarcode).HasMaxLength(256); entity.Property(x => x.ProductModelCode).HasMaxLength(256);
+            entity.Property(x => x.CustomerName).HasMaxLength(256); entity.Property(x => x.ExternalOrderNumber).HasMaxLength(256); entity.Property(x => x.HistoryJson).HasColumnType("jsonb"); entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.Property(x => x.PendingAnswerText).HasMaxLength(2000); entity.Property(x => x.AnswerSubmissionStatus).HasMaxLength(32); entity.Property(x => x.AnswerSubmissionKey).HasMaxLength(256);
+            entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ExternalQuestionId }).IsUnique().HasDatabaseName("IX_questions_tenant_connection_external"); entity.HasIndex(x => new { x.TenantId, x.Kind, x.Status, x.CreatedAt }).HasDatabaseName("IX_questions_tenant_kind_status_created"); entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.AnswerSubmissionKey }).IsUnique().HasFilter("\"AnswerSubmissionKey\" IS NOT NULL").HasDatabaseName("IX_questions_tenant_connection_submission");
+            entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict).HasConstraintName("FK_questions_connection");
+        });
+        builder.Entity<MarketplaceQuestionTemplate>(entity =>
+        {
+            entity.ToTable("marketplace_question_templates", "sales"); entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id }).HasName("AK_question_templates_tenant_id");
+            entity.Property(x => x.Title).HasMaxLength(120); entity.Property(x => x.Text).HasMaxLength(2000); entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.HasIndex(x => new { x.TenantId, x.Title }).IsUnique().HasDatabaseName("IX_question_templates_tenant_title");
+        });
+        builder.Entity<MarketplaceQuestionSyncState>(entity =>
+        {
+            entity.ToTable("marketplace_question_sync_states", "integration"); entity.HasKey(x => new { x.TenantId, x.ConnectionId }); entity.Property(x => x.LastError).HasMaxLength(512); entity.Property(x => x.ProgressStatus).HasMaxLength(24); entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade).HasConstraintName("FK_question_sync_states_connection");
+        });
+    }
+}

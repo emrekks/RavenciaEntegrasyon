@@ -15,7 +15,7 @@ using Npgsql;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort connections, IReferenceDataPort references, IProductPort products, IInventoryPricePort inventoryPrice, IOrderPort orders, IOrderPackageReadPort orderPackages, IReturnPort returns, IPrivateFileStorage files, IConfiguration configuration, TimeProvider timeProvider) : IMarketplaceJobProcessor
+public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort connections, IReferenceDataPort references, IProductPort products, IInventoryPricePort inventoryPrice, IOrderPort orders, IOrderPackageReadPort orderPackages, IReturnPort returns, IMarketplaceQuestionService questions, IPrivateFileStorage files, IConfiguration configuration, TimeProvider timeProvider) : IMarketplaceJobProcessor
 {
     // The payload deadline is the authoritative approval bound. The worker currently
     // applies exponential backoff, but this ceiling also keeps retry accounting from
@@ -102,6 +102,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     MarketplaceJobTypes.ReturnStatusSync => await SyncOpenReturns(tenantId, connectionId.Value, correlationId, cancellationToken),
                     MarketplaceJobTypes.ReturnReconciliation => await ReconcileReturns(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                     MarketplaceJobTypes.StockReconciliation => await ReconcileStock(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
+                    MarketplaceJobTypes.QuestionSync => await SyncQuestions(tenantId, connectionId.Value, payloadJson, cancellationToken),
                     MarketplaceJobTypes.WebhookIngest or MarketplaceJobTypes.ShopifyWebhookIngest or MarketplaceJobTypes.HepsiburadaWebhookIngest => await IngestWebhook(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                     MarketplaceJobTypes.ShipmentAction => await ShipmentAction(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                     MarketplaceJobTypes.ReturnAction => await ReturnAction(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
@@ -147,6 +148,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         MarketplaceJobTypes.PriceInventorySync => "PRICE_INVENTORY",
         MarketplaceJobTypes.StockProjectionDispatch => "STOCK_PROJECTION",
         MarketplaceJobTypes.StockReconciliation => "STOCK_RECONCILIATION",
+        MarketplaceJobTypes.QuestionSync => "QUESTIONS",
         MarketplaceJobTypes.WebhookIngest or MarketplaceJobTypes.ShopifyWebhookIngest or MarketplaceJobTypes.HepsiburadaWebhookIngest => "WEBHOOK_INGEST",
         MarketplaceJobTypes.ShipmentAction => "SHIPMENT_ACTION",
         MarketplaceJobTypes.ReturnAction => "RETURN_ACTION",
@@ -5717,6 +5719,21 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 await UpsertOrders(tenantId, connectionId, page.Items, cancellationToken);
         }
         var inbox = await db.InboxMessages.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Source == source && x.ExternalMessageId == externalMessageId, cancellationToken); if (inbox is not null) inbox.ProcessedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); return true;
+    }
+
+    private async Task<bool> SyncQuestions(Guid tenantId, Guid connectionId, string payloadJson, CancellationToken cancellationToken)
+    {
+        string? kind;
+        try { using var payload = JsonDocument.Parse(payloadJson); kind = payload.RootElement.TryGetProperty("kind", out var value) ? value.GetString() : null; }
+        catch (JsonException) { return false; }
+        var result = await questions.SyncConnectionAsync(tenantId, connectionId, kind, cancellationToken);
+        telemetryRequestCount++;
+        telemetryReceivedCount += result.Added + result.Updated;
+        telemetryInsertedCount += result.Added;
+        telemetryUpdatedCount += result.Updated;
+        if (result.Error is not null) { telemetryFailedCount++; return false; }
+        telemetryChangedCount += result.Added + result.Updated;
+        return true;
     }
 
     private sealed class OrderIngestionBatch
