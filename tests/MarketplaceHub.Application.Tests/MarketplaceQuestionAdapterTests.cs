@@ -103,6 +103,16 @@ public sealed class MarketplaceQuestionAdapterTests
     }
 
     [Fact]
+    public void TrendyolQuestionRequestsIncludeRequiredStoreFrontCode()
+    {
+        var context = new TrendyolRequestContext(null!, new Uri("https://apigw.trendyol.com/integration/"), "api-key", "api-secret", "123456 - SelfIntegration", false);
+
+        using var request = TrendyolAuthenticationHandler.Create(context, HttpMethod.Get, "qna/sellers/123456/questions/filter");
+
+        Assert.Equal("TR", Assert.Single(request.Headers.GetValues("storeFrontCode")));
+    }
+
+    [Fact]
     public async Task HepsiburadaRequestUsesOrderSourceAndMultipartAnswerField()
     {
         var path = HepsiburadaQuestionRequestContract.ListPath(new("ORDER", "WAITING_FOR_ANSWER", null, null, 0, 100));
