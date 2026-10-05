@@ -1428,7 +1428,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var sourceVersion = await db.PlatformCapabilities.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == MarketplaceCapabilities.ReferenceRead).Select(x => x.SourceVersion).SingleOrDefaultAsync(cancellationToken)
             ?? await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.ApiVersion).SingleAsync(cancellationToken);
 
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        // Reference refresh can be invoked while the caller already owns a transaction.
+        // In that case, participate in it instead of trying to begin a nested transaction.
+        await using var transaction = db.Database.CurrentTransaction is null
+            ? await db.Database.BeginTransactionAsync(cancellationToken)
+            : null;
         var scope = parentExternalId ?? "";
         var snapshots = await db.ReferenceSnapshots.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == resourceType && x.ScopeExternalId == scope).ToListAsync(cancellationToken);
         var snapshot = snapshots.SingleOrDefault(x => x.ContentHash == contentHash);
@@ -1450,7 +1454,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             snapshot.SourceVersion = sourceVersion;
         }
         await db.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
         return true;
     }
 
@@ -1557,7 +1561,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             cancellationToken.ThrowIfCancellationRequested();
             if (itemCount == 0) throw new JobProcessingException(JobExecutionResult.Blocked("REFERENCE_EMPTY_RESPONSE", "Trendyol BRANDS salt-okunur çağrısı boş koleksiyon döndürdü; mevcut snapshot korunuyor."));
             var contentHash = await HashReferenceItemsAsync(tenantId, staging.Id, cancellationToken);
-            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+            // Reference refresh can be invoked while the caller already owns a transaction.
+            // In that case, participate in it instead of trying to begin a nested transaction.
+            await using var transaction = db.Database.CurrentTransaction is null
+                ? await db.Database.BeginTransactionAsync(cancellationToken)
+                : null;
             var snapshots = await db.ReferenceSnapshots.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "BRANDS" && x.ScopeExternalId == "").ToListAsync(cancellationToken);
             var existing = snapshots.SingleOrDefault(x => x.Id != staging.Id && x.ContentHash == contentHash);
             var current = existing ?? snapshots.Single(x => x.Id == staging.Id);
@@ -1569,7 +1577,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             current.IsCurrent = true;
             if (existing is not null) db.ReferenceSnapshots.Remove(snapshots.Single(x => x.Id == staging.Id));
             await db.SaveChangesAsync(cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
+            if (transaction is not null) await transaction.CommitAsync(cancellationToken);
             return true;
         }
         catch
@@ -4241,7 +4249,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 continue;
             }
 
-            var mapped = categoryContext.Attributes.Values.Single(x => x.Definition.Id == attributeId);
+            // One panel attribute can intentionally serve multiple marketplace fields
+            // (for example, the product color and its Web Color presentation field).
+            var mapped = categoryContext.Attributes.Values.First(x => x.Definition.Id == attributeId);
             if (global is null)
             {
                 global = new ProductAttributeAssignment

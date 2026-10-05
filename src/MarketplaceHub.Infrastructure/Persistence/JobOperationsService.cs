@@ -111,7 +111,26 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             if (relatedOrder is not null && relatedOrders.All(order => order.OrderId != relatedOrder.OrderId)) relatedOrders.Add(relatedOrder);
         }
         var scan = await ScanAsync(job, cancellationToken);
-        return new JobDetailView(Summary(job, failureTimes, relatedJobs.Count), attempts, currentOrder, Change(job), relatedOrders, scan);
+        var failureReasons = await ProductImportFailureReasonsAsync(job, cancellationToken);
+        return new JobDetailView(Summary(job, failureTimes, relatedJobs.Count), attempts, currentOrder, Change(job), relatedOrders, scan, failureReasons);
+    }
+
+    private async Task<IReadOnlyList<JobFailureReasonView>> ProductImportFailureReasonsAsync(IntegrationJob job, CancellationToken cancellationToken)
+    {
+        var type = job.JobType.ToUpperInvariant();
+        if (job.ConnectionId is not { } connectionId || !type.Contains("PRODUCT_SYNC", StringComparison.Ordinal)) return [];
+
+        var prefix = $"product-sync-import:{connectionId}:";
+        var attemptStartedAt = job.StartedAt ?? job.CreatedAt;
+        var issues = await db.OperationalIssues.AsNoTracking()
+            .Where(issue => issue.TenantId == job.TenantId
+                && issue.Code == "PRODUCT_IMPORT_FAILED"
+                && issue.DedupeKey.StartsWith(prefix)
+                && issue.LastSeenAt >= attemptStartedAt)
+            .OrderByDescending(issue => issue.LastSeenAt)
+            .ToListAsync(cancellationToken);
+
+        return ProductImportFailureReasonPolicy.Build(issues);
     }
 
     private async Task<JobScanView> ScanAsync(IntegrationJob job, CancellationToken cancellationToken)

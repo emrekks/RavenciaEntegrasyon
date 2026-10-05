@@ -104,13 +104,22 @@ public sealed record JobScanView(
     string? PreviousScheduledAt = null,
     string? ActualIntervalLabel = null);
 
+public sealed record JobFailureReasonView(
+    string Key,
+    string Title,
+    string Description,
+    string TechnicalDetail,
+    int AffectedRecords,
+    IReadOnlyList<string> SampleProductIds);
+
 public sealed record JobDetailView(
     JobSummaryView Job,
     IReadOnlyList<JobAttemptDetailView> Attempts,
     JobOrderContextView? Order = null,
     JobChangeView? Change = null,
     IReadOnlyList<JobOrderContextView>? RelatedOrders = null,
-    JobScanView? Scan = null);
+    JobScanView? Scan = null,
+    IReadOnlyList<JobFailureReasonView>? FailureReasons = null);
 
 public interface IJobOperationsService
 {

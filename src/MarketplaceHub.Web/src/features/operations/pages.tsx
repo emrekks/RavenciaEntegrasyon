@@ -37,7 +37,8 @@ type JobSummary = {
 type JobOrderContext = { orderId: string; orderNumber: string; externalOrderId: string; status: string; currency: string; netAmount: number; orderedAt: string; externalPackageId: string | null; cargoProvider: string | null; cargoTrackingNumber: string | null; customerName: string | null; lineCount: number }
 type JobChange = { label: string; value: string; detail: string | null }
 type JobScan = { mode: string; label: string; detail: string; window: string | null; plannedIntervalSeconds: number | null; plannedIntervalLabel: string | null; previousScheduledAt: string | null; actualIntervalLabel: string | null }
-type JobDetail = { job: JobSummary; attempts: Array<{ attemptNumber: number; startedAt: string; completedAt: string | null; succeeded: boolean; errorCode: string | null; errorSummary: string | null }>; order: JobOrderContext | null; change: JobChange | null; relatedOrders: JobOrderContext[]; scan: JobScan | null }
+type JobFailureReason = { key: string; title: string; description: string; technicalDetail: string; affectedRecords: number; sampleProductIds: string[] }
+type JobDetail = { job: JobSummary; attempts: Array<{ attemptNumber: number; startedAt: string; completedAt: string | null; succeeded: boolean; errorCode: string | null; errorSummary: string | null }>; order: JobOrderContext | null; change: JobChange | null; relatedOrders: JobOrderContext[]; scan: JobScan | null; failureReasons: JobFailureReason[] | null }
 
 const statuses: Array<{ value: '' | JobStatus; label: string }> = [
   { value: '', label: 'Tüm durumlar' },
@@ -270,6 +271,24 @@ function JobProgressSummary({ job }: { job: JobSummary }) {
   </section>
 }
 
+function JobFailureReasons({ job, reasons }: { job: JobSummary; reasons: JobFailureReason[] | null }) {
+  if (!isProductSyncJob(job) || (job.progressFailed === 0 && !reasons?.length)) return null
+  const explained = reasons?.reduce((total, reason) => total + reason.affectedRecords, 0) ?? 0
+  const unclassified = Math.max(0, job.progressFailed - explained)
+  return <section className="jobs-reference-failure-reasons" aria-labelledby="job-failure-reasons-title">
+    <div className="jobs-reference-section-heading"><div><span className="jobs-reference-section-kicker">Hata incelemesi</span><h3 id="job-failure-reasons-title">Ürünler neden aktarılamadı?</h3></div><span>{formatJobCount(job.progressFailed)} başarısız ürün</span></div>
+    {reasons?.length ? <>
+      <div className="jobs-reference-failure-reason-list">{reasons.map(reason => <article key={reason.key}>
+        <div className="jobs-reference-failure-reason-heading"><strong>{reason.title}</strong><b>{formatJobCount(reason.affectedRecords)} ürün</b></div>
+        <p>{reason.description}</p>
+        {reason.sampleProductIds.length > 0 && <small>Örnek pazaryeri ürün no: {reason.sampleProductIds.join(', ')}</small>}
+        <details><summary>Teknik ayrıntı</summary><code>{reason.technicalDetail}</code></details>
+      </article>)}</div>
+      {unclassified > 0 && <p className="jobs-reference-failure-unclassified">{formatJobCount(unclassified)} ürün için ayrıntılı hata kaydı henüz bulunamadı. Hata sayısı, içe aktarılamayan ürün grupları ilerledikçe artar.</p>}
+    </> : <p className="jobs-reference-failure-unclassified">Hata sayısı, ürünlerin model grupları veritabanına kaydedilirken yükseliyor. Bu işlem için ayrıntılı neden kaydı bulunamadı; sonraki denemelerde nedenler burada gösterilecek.</p>}
+  </section>
+}
+
 type JobCategory = 'ALL' | 'ORDERS' | 'PRICE_INVENTORY' | 'CATALOG' | 'INVOICES' | 'RETURNS' | 'SYSTEM'
 
 const categoryTabs: Array<{ key: JobCategory; label: string; match: (type: string) => boolean }> = [
@@ -304,6 +323,7 @@ function JobDetailDrawer({ selected, detail, selectedIsRunning, elevated, retrya
         {selectedIsRunning && action.isPending && <p className="jobs-reference-cancel-note">Çalışan işlem durduruluyor. Dış API çağrısı tamamlanana kadar durum birkaç saniye daha “Çalışıyor” görünebilir.</p>}
         <section className="jobs-reference-change-summary" aria-labelledby="job-change-title"><div><span className="jobs-reference-section-kicker">İşlem özeti</span><h3 id="job-change-title">{change.value}</h3></div><div><strong>{change.label}</strong><p>{change.detail ?? 'İşlem ayrıntısı mevcut.'}</p></div></section>
         <JobProgressSummary job={job} />
+        <JobFailureReasons job={job} reasons={detail.data.failureReasons ?? null} />
         {detail.data.scan && <JobScanSummary scan={detail.data.scan} />}
         {job.batchCount > 1 ? <section className="jobs-reference-batch-context" aria-labelledby="job-batch-title"><div className="jobs-reference-batch-heading"><div><span className="jobs-reference-section-kicker">Toplu işlem</span><h3 id="job-batch-title">{job.batchCount} job · {detail.data.relatedOrders.length} sipariş</h3></div><span className="jobs-reference-batch-note">Sonuçlar sipariş bazında</span></div><div className="jobs-reference-batch-list">{detail.data.relatedOrders.map(order => <article key={order.orderId}><div><strong>Sipariş #{order.orderNumber}</strong><small>{order.customerName ?? 'Müşteri bilgisi yok'} · {order.lineCount} ürün satırı</small></div><span>{order.cargoProvider ?? 'Kargo bilgisi yok'}</span><b>{statusLabel(order.status)}</b></article>)}{detail.data.relatedOrders.length === 0 && <p>Sipariş bağlantısı bulunamadı.</p>}</div></section> : detail.data.order && <section className="jobs-reference-order-context" aria-labelledby="job-order-context-title"><div><span className="jobs-reference-section-kicker">İlgili sipariş</span><h3 id="job-order-context-title">Sipariş #{detail.data.order.orderNumber}</h3><p>{detail.data.order.customerName ?? 'Müşteri bilgisi yok'} · {detail.data.order.lineCount} ürün satırı</p></div><div className="jobs-reference-order-facts"><p><small>Dış sipariş ID</small><strong>{detail.data.order.externalOrderId}</strong></p><p><small>Sipariş durumu</small><strong>{statusLabel(detail.data.order.status)}</strong></p><p><small>Sipariş tarihi</small><strong>{formatOptionalJobTime(detail.data.order.orderedAt)}</strong></p><p><small>Sipariş tutarı</small><strong>{detail.data.order.netAmount.toLocaleString('tr-TR', { style: 'currency', currency: detail.data.order.currency })}</strong></p>{detail.data.order.externalPackageId && <p><small>Paket no</small><strong>{detail.data.order.externalPackageId}</strong></p>}{detail.data.order.cargoTrackingNumber && <p><small>Kargo takip no</small><strong>{detail.data.order.cargoTrackingNumber}</strong></p>}</div></section>}
         <section className="jobs-reference-facts-section" aria-labelledby="job-facts-title"><div className="jobs-reference-section-heading"><div><span className="jobs-reference-section-kicker">Kayıt ayrıntıları</span><h3 id="job-facts-title">Teknik bilgiler</h3></div><span>İşlemin kimliği ve yürütme zamanları</span></div><div className="job-detail-facts"><p><small>Pazaryeri</small><strong>{job.marketplace}</strong></p><p><small>İşlem</small><strong>{job.jobType}</strong></p><p><small>Dış kimlik</small><strong>{job.externalId ?? '—'}</strong></p><p><small>Retry sayısı</small><strong>{job.attemptCount} / {job.maxAttempts}</strong></p><p><small>Oluşturulma</small><strong>{formatOptionalJobTime(job.createdAt)}</strong></p><p><small>Çalışma başlangıcı</small><strong>{formatOptionalJobTime(job.startedAt)}</strong></p><p><small>Tamamlanma</small><strong>{formatOptionalJobTime(job.completedAt)}</strong></p><p><small>Çalışma süresi</small><strong>{jobDuration(job.startedAt, job.completedAt)}</strong></p><p><small>İlk hata</small><strong>{formatOptionalJobTime(job.firstFailedAt)}</strong></p><p><small>Son hata</small><strong>{formatOptionalJobTime(job.lastFailedAt)}</strong></p><p><small>Sonraki deneme</small><strong>{formatOptionalJobTime(job.nextRetryAt)}</strong></p><p><small>Correlation ID</small><strong>{job.correlationId}</strong></p></div></section>
