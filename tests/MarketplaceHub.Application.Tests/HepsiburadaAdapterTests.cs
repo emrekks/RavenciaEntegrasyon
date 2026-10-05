@@ -1658,17 +1658,27 @@ public sealed class HepsiburadaAdapterTests
         Assert.Equal(
             [MarketplaceJobTypes.ReferenceSync, MarketplaceJobTypes.ReferenceSync, MarketplaceJobTypes.OrderRecoverySync, MarketplaceJobTypes.ReturnSync],
             trendyol.Select(item => item.JobType));
+        using (var trendyolOrders = JsonDocument.Parse(trendyol.Single(item => item.KeySuffix == "orders").PayloadJson))
+            Assert.True(trendyolOrders.RootElement.GetProperty("full").GetBoolean());
+        using (var trendyolReturns = JsonDocument.Parse(trendyol.Single(item => item.KeySuffix == "returns").PayloadJson))
+            Assert.True(trendyolReturns.RootElement.GetProperty("forceFull").GetBoolean());
 
         var shopify = MarketplaceConnectionService.CreateInitialDataSyncPlan("SHOPIFY", connectionId, includeHepsiburadaCatalog: true);
         Assert.Equal([MarketplaceJobTypes.ShopifyOrderRecoverySync], shopify.Select(item => item.JobType));
+        using (var shopifyOrders = JsonDocument.Parse(shopify.Single(item => item.KeySuffix == "orders").PayloadJson))
+            Assert.True(shopifyOrders.RootElement.GetProperty("full").GetBoolean());
 
         var hepsiburada = MarketplaceConnectionService.CreateInitialDataSyncPlan("HEPSIBURADA", connectionId, includeHepsiburadaCatalog: true);
         Assert.Equal(
             [MarketplaceJobTypes.HepsiburadaOrderRecoverySync, MarketplaceJobTypes.HepsiburadaReferenceSync, MarketplaceJobTypes.HepsiburadaProductSync, MarketplaceJobTypes.HepsiburadaReturnSync],
             hepsiburada.Select(item => item.JobType));
+        using (var hepsiburadaOrders = JsonDocument.Parse(hepsiburada.Single(item => item.KeySuffix == "orders").PayloadJson))
+            Assert.True(hepsiburadaOrders.RootElement.GetProperty("full").GetBoolean());
         using var productPayload = JsonDocument.Parse(hepsiburada.Single(item => item.KeySuffix == "products").PayloadJson);
         Assert.True(productPayload.RootElement.GetProperty("full").GetBoolean());
         Assert.False(productPayload.RootElement.GetProperty("updateExistingProducts").GetBoolean());
+        using (var hepsiburadaReturns = JsonDocument.Parse(hepsiburada.Single(item => item.KeySuffix == "returns").PayloadJson))
+            Assert.True(hepsiburadaReturns.RootElement.GetProperty("forceFull").GetBoolean());
 
         var catalogDisabled = MarketplaceConnectionService.CreateInitialDataSyncPlan("HEPSIBURADA", connectionId, includeHepsiburadaCatalog: false);
         Assert.DoesNotContain(catalogDisabled, item => item.JobType == MarketplaceJobTypes.HepsiburadaReferenceSync);
