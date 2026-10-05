@@ -43,6 +43,16 @@ public sealed class ReturnLifecyclePolicyTests
         Assert.Equal(expected, OpenReturnLifecyclePolicy.ShouldPoll(status));
     }
 
+    [Theory]
+    [InlineData(ReturnClaimStatus.Requested, true)]
+    [InlineData(ReturnClaimStatus.Approved, true)]
+    [InlineData(ReturnClaimStatus.Rejected, true)]
+    [InlineData(ReturnClaimStatus.Cancelled, false)]
+    public void ReturnClaimStoragePolicy_DoesNotPersistCancelledClaims(ReturnClaimStatus status, bool expected)
+    {
+        Assert.Equal(expected, ReturnClaimStoragePolicy.ShouldPersist(status));
+    }
+
     [Fact]
     public void HepsiburadaAwaitingPreApproval_ExposesOnlyDocumentedActionsAndHidesThemWhilePending()
     {

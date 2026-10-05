@@ -39,6 +39,11 @@ public static class OpenReturnLifecyclePolicy
         status is not ReturnClaimStatus.Completed and not ReturnClaimStatus.Cancelled;
 }
 
+public static class ReturnClaimStoragePolicy
+{
+    public static bool ShouldPersist(ReturnClaimStatus status) => status != ReturnClaimStatus.Cancelled;
+}
+
 public sealed class ReturnClaim
 {
     public Guid Id { get; set; }
