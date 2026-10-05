@@ -11175,8 +11175,22 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .app-shell.stitch-shell main .invoice-reference-platform-heading > strong { margin-right: auto; }
 .app-shell.stitch-shell main .invoice-reference-order:has(> .invoice-reference-select) { padding-left: 34px; }
 .app-shell.stitch-shell main .invoice-reference-order > .invoice-reference-select { right: auto; left: 10px; }
-.app-shell.stitch-shell main .return-reference-platform-heading { justify-content: flex-start; gap: 8px; }
-.app-shell.stitch-shell main .return-reference-platform-heading > strong { margin-right: auto; }
+.app-shell.stitch-shell main .return-reference-platform-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px;
+  align-items: center;
+  gap: 8px;
+}
+.app-shell.stitch-shell main .return-reference-platform-heading > strong {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.app-shell.stitch-shell main .return-reference-platform-heading > .platform-multi-select-field {
+  width: 30px;
+  min-width: 30px;
+  justify-self: end;
+}
 .app-shell.stitch-shell main .quick-edit-step + .quick-edit-step { margin-top: 12px; }
 .app-shell.stitch-shell main .invoice-detail-shopify-actions > button {
   min-height: 44px;
