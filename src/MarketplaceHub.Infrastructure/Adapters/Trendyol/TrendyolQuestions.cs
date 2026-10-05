@@ -16,7 +16,7 @@ public sealed partial class TrendyolHttpClient : IQuestionPort
         if (authorized is null) return AdapterResult<MarketplaceQuestionPage>.Failure(TrendyolErrorMapper.Configuration());
         var start = query.StartDate ?? timeProvider.GetUtcNow().AddDays(-7);
         var end = query.EndDate ?? timeProvider.GetUtcNow();
-        var response = await SendAsync(authorized, HttpMethod.Get, TrendyolQuestionRequestContract.ListPath(authorized.Connection.ExternalStoreId, query, start, end), null, cancellationToken);
+        var response = await SendAsync(authorized, HttpMethod.Get, TrendyolQuestionRequestContract.ListPath(authorized.Connection.ExternalStoreId, query, start, end), null, cancellationToken, includeStoreFrontCode: false, storeFrontCode: null);
         if (!response.IsSuccess) return AdapterResult<MarketplaceQuestionPage>.Failure(response.Error!, response.RateLimit);
         try { return AdapterResult<MarketplaceQuestionPage>.Success(TrendyolQuestionMapper.Page(response.Value!, "PRODUCT"), response.RateLimit); }
         catch (JsonException) { return AdapterResult<MarketplaceQuestionPage>.Failure(TrendyolErrorMapper.Contract(), response.RateLimit); }
@@ -26,7 +26,7 @@ public sealed partial class TrendyolHttpClient : IQuestionPort
     {
         var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (authorized is null) return AdapterResult<RemoteMarketplaceQuestion>.Failure(TrendyolErrorMapper.Configuration());
-        var response = await SendAsync(authorized, HttpMethod.Get, TrendyolQuestionRequestContract.DetailPath(authorized.Connection.ExternalStoreId, questionId), null, cancellationToken);
+        var response = await SendAsync(authorized, HttpMethod.Get, TrendyolQuestionRequestContract.DetailPath(authorized.Connection.ExternalStoreId, questionId), null, cancellationToken, includeStoreFrontCode: false, storeFrontCode: null);
         if (!response.IsSuccess) return AdapterResult<RemoteMarketplaceQuestion>.Failure(response.Error!, response.RateLimit);
         try
         {
@@ -45,7 +45,7 @@ public sealed partial class TrendyolHttpClient : IQuestionPort
             return AdapterResult<RemoteQuestionAnswerResult>.Failure(new(AdapterErrorClass.Validation, "EXTERNAL_WRITES_DISABLED", "Bu bağlantıda veya ortamda pazaryerine cevap gönderme kapalı.", 403, null, null));
         if (!TrendyolQuestionRequestContract.ValidAnswer(answer)) return AdapterResult<RemoteQuestionAnswerResult>.Failure(new(AdapterErrorClass.Validation, "QUESTION_ANSWER_LENGTH", "Trendyol cevabı 10–2000 karakter arasında olmalıdır.", 422, null, null));
         var content = JsonContent.Create(new { text = answer.Trim() });
-        var response = await SendAsync(authorized, HttpMethod.Post, TrendyolQuestionRequestContract.AnswerPath(authorized.Connection.ExternalStoreId, questionId), content, cancellationToken);
+        var response = await SendAsync(authorized, HttpMethod.Post, TrendyolQuestionRequestContract.AnswerPath(authorized.Connection.ExternalStoreId, questionId), content, cancellationToken, includeStoreFrontCode: false, storeFrontCode: null);
         if (!response.IsSuccess) return AdapterResult<RemoteQuestionAnswerResult>.Failure(response.Error!, response.RateLimit);
         string? answerId = null;
         try { using var json = JsonDocument.Parse(response.Value!); answerId = TrendyolQuestionMapper.Text(json.RootElement, "answerId"); } catch (JsonException) { }
