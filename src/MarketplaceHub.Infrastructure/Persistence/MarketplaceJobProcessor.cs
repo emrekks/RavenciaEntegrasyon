@@ -3035,15 +3035,18 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
     private async Task MergeHepsiburadaOrderInvoiceState(Guid tenantId, Guid connectionId, RemoteOrder remote, CancellationToken cancellationToken)
     {
-        bool hasInvoice;
+        string? orderInvoiceStatus;
+        IReadOnlyDictionary<string, string> packageInvoiceStatuses;
         try
         {
             using var snapshot = JsonDocument.Parse(remote.RawJson);
-            hasInvoice = HepsiburadaJsonMapper.InvoiceUploaded(snapshot.RootElement);
+            orderInvoiceStatus = HepsiburadaJsonMapper.InvoiceStatus(snapshot.RootElement);
+            packageInvoiceStatuses = HepsiburadaJsonMapper.PackageInvoiceStatuses(snapshot.RootElement);
         }
         catch (JsonException)
         {
-            return;
+            orderInvoiceStatus = null;
+            packageInvoiceStatuses = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         }
 
         var order = await db.Orders.AsNoTracking()
@@ -3053,9 +3056,12 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var packages = await db.ShipmentPackages
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.OrderId == order.Id && x.Status != ShipmentPackageStatus.Cancelled)
             .ToListAsync(cancellationToken);
-        var rawStatus = hasInvoice ? "INVOICED" : "NOT_INVOICED";
+        var updatedAnyPackage = false;
         foreach (var package in packages)
         {
+            var rawStatus = packageInvoiceStatuses.GetValueOrDefault(package.ExternalPackageId) ?? orderInvoiceStatus;
+            if (rawStatus is null) continue;
+
             var observation = new RemotePackageInvoiceObservation(rawStatus, null, null, null);
             var remotePackage = new RemotePackage(
                 package.ExternalPackageId,
@@ -3067,7 +3073,16 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 [],
                 Invoice: observation);
             await MergeMarketplaceInvoiceState(package, remotePackage, cancellationToken);
+            updatedAnyPackage = true;
         }
+
+        if (!updatedAnyPackage)
+            await RecordIssue(
+                tenantId,
+                $"order-invoice-reconciliation:{connectionId}:invoice-status-contract",
+                "HEPSIBURADA_INVOICE_STATUS_UNAVAILABLE",
+                "Hepsiburada sipariş detay yanıtında sipariş, kalem veya paket düzeyinde fatura durumu bulunamadı; yerel fatura durumu korundu ve sonraki taramada tekrar denenecek.",
+                cancellationToken);
     }
 
     private async Task<bool> SyncProducts(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, Guid? jobId, CancellationToken cancellationToken)

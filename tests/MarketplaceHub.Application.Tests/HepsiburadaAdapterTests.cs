@@ -1825,6 +1825,32 @@ public sealed class HepsiburadaAdapterTests
     }
 
     [Fact]
+    public void InvoiceStatusMapper_ReadsInvoiceFlagFromLineItemsWhenOrderLevelFieldIsAbsent()
+    {
+        using var json = JsonDocument.Parse("""
+            {"lineItems":[{"id":"line-1","hasInvoice":true},{"id":"line-2","hasInvoice":true}]}
+            """);
+
+        Assert.True(HepsiburadaJsonMapper.InvoiceUploaded(json.RootElement));
+    }
+
+    [Fact]
+    public void InvoiceStatusMapperReadsPerPackageInvoiceStatusAndPreservesMixedPackageStates()
+    {
+        using var json = JsonDocument.Parse("""
+            {"packages":[
+              {"packageNumber":"pkg-1","invoiceStatus":"INVOICED"},
+              {"packageNumber":"pkg-2","hasInvoice":false}
+            ]}
+            """);
+
+        Assert.Null(HepsiburadaJsonMapper.InvoiceStatus(json.RootElement));
+        Assert.Equal("INVOICED", HepsiburadaJsonMapper.PackageInvoiceStatuses(json.RootElement)["pkg-1"]);
+        Assert.Equal("NOT_INVOICED", HepsiburadaJsonMapper.PackageInvoiceStatuses(json.RootElement)["pkg-2"]);
+        Assert.Throws<JsonException>(() => HepsiburadaJsonMapper.InvoiceUploaded(json.RootElement));
+    }
+
+    [Fact]
     public async Task HepsiburadaReturnWriteRemainsAuthGatedAndReasonsAreAvailable()
     {
         var adapter = new HepsiburadaHttpClient(

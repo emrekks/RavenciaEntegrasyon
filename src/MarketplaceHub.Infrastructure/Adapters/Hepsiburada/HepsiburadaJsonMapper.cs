@@ -349,8 +349,77 @@ internal static class HepsiburadaJsonMapper
 
     public static bool InvoiceUploaded(JsonElement root)
     {
-        var value = Boolean(Unwrap(root), "hasInvoice", "HasInvoice");
-        return value ?? throw new JsonException("Hepsiburada sipariş yanıtında hasInvoice alanı yok veya boolean değil.");
+        var status = InvoiceStatus(root);
+        return NormalizeInvoiceStatus(status) switch
+        {
+            "INVOICED" => true,
+            "NOT_INVOICED" => false,
+            _ => throw new JsonException("Hepsiburada sipariş yanıtında sipariş, kalem veya paket düzeyinde geçerli fatura durumu yok.")
+        };
+    }
+
+    public static string? InvoiceStatus(JsonElement root)
+    {
+        var order = Unwrap(root);
+        var orderStatus = InvoiceStatusValue(order);
+        if (orderStatus is not null) return orderStatus;
+
+        var lines = Find(order, "lineItems", "LineItems", "items", "Items", "orderItems", "OrderItems");
+        if (lines.ValueKind == JsonValueKind.Object && TryFind(lines, out var nested, "items", "Items", "lineItems", "LineItems")) lines = nested;
+        var lineStatus = UniformInvoiceStatus(lines);
+        if (lineStatus is not null) return lineStatus;
+
+        return UniformInvoiceStatus(Find(order, "packages", "Packages", "shipments", "Shipments"));
+    }
+
+    public static IReadOnlyDictionary<string, string> PackageInvoiceStatuses(JsonElement root)
+    {
+        var order = Unwrap(root);
+        var packages = Find(order, "packages", "Packages", "shipments", "Shipments");
+        if (packages.ValueKind != JsonValueKind.Array) return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        var statuses = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var package in packages.EnumerateArray())
+        {
+            var packageNumber = Text(package, "packageNumber", "PackageNumber", "packageId", "PackageId", "id", "Id");
+            var invoiceStatus = InvoiceStatusValue(package);
+            if (!string.IsNullOrWhiteSpace(packageNumber) && invoiceStatus is not null)
+                statuses[packageNumber.Trim()] = invoiceStatus;
+        }
+        return statuses;
+    }
+
+    private static string? UniformInvoiceStatus(JsonElement elements)
+    {
+        if (elements.ValueKind != JsonValueKind.Array) return null;
+        var statuses = elements.EnumerateArray()
+            .Select(InvoiceStatusValue)
+            .Where(status => status is not null)
+            .Select(status => NormalizeInvoiceStatus(status) ?? status!.Trim().ToUpperInvariant())
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        return statuses.Length == 1 ? statuses[0] : null;
+    }
+
+    private static string? InvoiceStatusValue(JsonElement source)
+    {
+        var status = Text(source, "marketplaceInvoiceStatus", "MarketplaceInvoiceStatus", "invoiceStatus", "InvoiceStatus");
+        if (!string.IsNullOrWhiteSpace(status)) return NormalizeInvoiceStatus(status);
+        var uploaded = Boolean(source, "hasInvoice", "HasInvoice");
+        return uploaded is { } hasInvoice ? hasInvoice ? "INVOICED" : "NOT_INVOICED" : null;
+    }
+
+    private static string? NormalizeInvoiceStatus(string? status)
+    {
+        var normalized = status?.Trim().ToUpperInvariant().Replace('-', '_').Replace(' ', '_');
+        return normalized switch
+        {
+            "INVOICED" or "INVOICE" or "COMPLETED" or "UPLOADED" => "INVOICED",
+            "NOTINVOICED" or "NOT_INVOICED" or "WAITING" or "WAITING_FOR_INVOICE" => "NOT_INVOICED",
+            "RECEIVED" or "PROCESSING" or "PENDING" => "RECEIVED",
+            "REJECTED" or "FAILED" => "REJECTED",
+            _ => null
+        };
     }
 
     public static (IReadOnlyList<JsonElement> Items, int? TotalCount) PackagePage(JsonElement root)
