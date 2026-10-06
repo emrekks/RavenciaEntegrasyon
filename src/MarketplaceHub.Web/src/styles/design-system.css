@@ -1028,10 +1028,11 @@
   .product-import-progress-heading, .product-import-progress-top, .product-import-progress-bottom { display: flex; align-items: center; justify-content: space-between; gap: var(--rv-space-3); }
   .product-import-progress-track { height: 8px; overflow: hidden; background: var(--rv-color-surface-soft); border-radius: 999px; }
   .product-import-progress-track > i { display: block; height: 100%; background: linear-gradient(90deg, var(--rv-color-primary), var(--rv-color-accent)); border-radius: inherit; }
-  .product-import-progress-track.indeterminate > i { width: 35%; animation: rv-product-progress 1.2s ease-in-out infinite alternate; }
+  .product-import-progress-track.indeterminate > i { width: 35%; animation: rv-product-progress 1.6s linear infinite; will-change: transform; }
   .product-import-progress-counters { display: flex; flex-wrap: wrap; gap: var(--rv-space-2) var(--rv-space-3); color: var(--rv-color-muted); }
   .product-import-modal > footer > button { min-width: 132px; }
-  @keyframes rv-product-progress { from { transform: translateX(-20%); } to { transform: translateX(205%); } }
+  @keyframes rv-product-progress { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
+  @media (prefers-reduced-motion: reduce) { .product-import-progress-track.indeterminate > i { animation: none; transform: translateX(0); } }
   .order-search { min-width: 0; }
   .order-search input { min-width: 0; }
   /* Orders and returns share the same record geometry. Each record is its own card. */
