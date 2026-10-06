@@ -10517,6 +10517,7 @@ small,
   text-overflow: clip;
   text-align: center;
 }
+.app-shell.stitch-shell main .order-reference-row.micro-export .order-reference-invoice.invoice-pending .invoice-status-label.rv-badge-info { color: var(--rv-color-info); background: var(--rv-color-primary-soft); }
 .app-shell.stitch-shell main .invoice-status-label {
   color: var(--rv-color-ink);
   font-weight: 750;

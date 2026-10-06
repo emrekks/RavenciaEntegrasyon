@@ -688,6 +688,7 @@ function OrderReferenceRow({ item, selected, onSelect, openMenu, onMenuChange, o
   const lines = item.lines ?? []
   const shipment = orderDisplayShipment(item)
   const invoiceNeedsAction = isInvoicePending(item)
+  const microExportInvoicePending = item.isMicroExport && item.invoiceStatus.trim().toLocaleUpperCase('tr-TR') === 'FATURA_BEKLIYOR'
   const invoiceCreationEnabled = item.invoiceCreationEnabled ?? false
   const invoiceCreationTooltip = invoiceCreationDisabledHelp
   const labelBlockedByInvoice = isMicroExportLabelBlocked(item)
@@ -759,7 +760,7 @@ function OrderReferenceRow({ item, selected, onSelect, openMenu, onMenuChange, o
         {hasDiscount && <><div className="order-invoice-metric"><small>Satış Tutarı:</small><strong>{money(saleTotal)}</strong></div><div className="order-invoice-metric"><span className="order-invoice-label"><small>Satıcı İndirim Tutarı:</small></span><strong>{money(item.discountAmount)}</strong></div></>}
         <div className="order-invoice-payable"><small>Faturalanacak Tutar:</small><strong>{money(invoiceableTotal)}</strong></div>
         {isCancelledOrder ? <InvoiceStatusBadge status={item.invoiceStatus} label={invoiceLabel} /> : <div className="order-invoice-actions">
-          {(invoiceNeedsAction || !invoiceDocumentAvailable) && <InvoiceStatusBadge status={item.invoiceStatus} label={invoiceLabel} />}
+          {(invoiceNeedsAction || !invoiceDocumentAvailable) && <InvoiceStatusBadge status={item.invoiceStatus} tone={microExportInvoicePending ? 'info' : undefined} label={invoiceLabel} />}
           {!invoiceNeedsAction && (item.invoiceId ? <a className="invoice-document-link" href={`/api/v1/invoices/${item.invoiceId}/documents/latest/content`} download>Faturayı Gör</a> : item.invoiceDocumentUrl ? <a className="invoice-document-link" href={item.invoiceDocumentUrl} download>Faturayı Gör</a> : null)}
           <div className="row-menu" title={invoiceLabel}>
             <button type="button" className="row-menu-trigger" onClick={event => toggleMenu('invoice', event)} aria-expanded={openMenu === 'invoice'}><span>Fatura işlemleri</span><UiIcon name="chevronDown" /></button>
