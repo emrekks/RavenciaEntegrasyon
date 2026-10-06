@@ -11642,6 +11642,7 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .rv-question-platform-logo { grid-column: 1; grid-row: 1 / span 3; width: 28px; height: 28px; align-self: center; object-fit: contain; }
 .rv-questions-sync-item { grid-template-columns: 30px minmax(0, 1fr); align-items: center; column-gap: 8px; row-gap: 2px; padding: 8px 10px; }
 .rv-questions-sync-item strong, .rv-questions-sync-item > span:not(.rv-question-platform-mark), .rv-questions-sync-item small { grid-column: 2; }
+.rv-questions-sync-item > .rv-questions-sync-trigger { grid-column: 2; white-space: nowrap; }
 .rv-questions-sync-item strong { font-size: 12px; }
 .rv-questions-sync-item > span:not(.rv-question-platform-mark), .rv-questions-sync-item small { font-size: 11px; line-height: 1.35; }
 
