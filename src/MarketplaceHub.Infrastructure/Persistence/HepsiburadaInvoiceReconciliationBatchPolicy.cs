@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-internal sealed record HepsiburadaInvoiceOrderCandidate(Guid OrderId, string ExternalOrderId, DateTimeOffset UpdatedAt, DateTimeOffset OrderedAt);
+internal sealed record HepsiburadaInvoiceOrderCandidate(Guid OrderId, string ExternalOrderId);
 
 internal static class HepsiburadaInvoiceReconciliationBatchPolicy
 {

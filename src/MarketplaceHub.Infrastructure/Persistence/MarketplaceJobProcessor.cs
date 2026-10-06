@@ -2754,10 +2754,10 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         if (isHepsiburada)
         {
             // Order detail is the only documented source for hasInvoice. Rotate
-            // across every eligible order so an unchanged first page cannot
-            // starve older unpackaged claims and orders forever.
+            // by immutable order ID: UpdatedAt changes during every upsert and
+            // would move reconciled orders ahead of the cursor indefinitely.
             invoiceCursor = await Cursor(tenantId, connectionId, "ORDER_INVOICE_RECONCILIATION", cancellationToken);
-            var afterOrder = HepsiburadaInvoiceReconciliationBatchPolicy.ReadCursor(invoiceCursor.OpaqueCursor);
+            var afterOrderId = HepsiburadaInvoiceReconciliationBatchPolicy.ReadCursor(invoiceCursor.OpaqueCursor)?.OrderId;
             var eligibleOrders = db.Orders.AsNoTracking()
                 .Where(order => order.TenantId == tenantId
                     && order.ConnectionId == connectionId
@@ -2773,31 +2773,21 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                             && package.MarketplaceInvoiceStatus != MarketplaceInvoiceStatus.Invoiced)));
 
             var afterCursorQuery = eligibleOrders;
-            if (afterOrder is { } cursorOrder)
-                afterCursorQuery = afterCursorQuery.Where(order => order.UpdatedAt > cursorOrder.UpdatedAt
-                    || order.UpdatedAt == cursorOrder.UpdatedAt && order.OrderedAt > cursorOrder.OrderedAt
-                    || order.UpdatedAt == cursorOrder.UpdatedAt && order.OrderedAt == cursorOrder.OrderedAt
-                        && order.Id.CompareTo(cursorOrder.OrderId) > 0);
+            if (afterOrderId is { } cursorOrderId)
+                afterCursorQuery = afterCursorQuery.Where(order => order.Id.CompareTo(cursorOrderId) > 0);
             var afterCursor = await afterCursorQuery
-                .OrderBy(order => order.UpdatedAt)
-                .ThenBy(order => order.OrderedAt)
-                .ThenBy(order => order.Id)
-                .Select(order => new HepsiburadaInvoiceOrderCandidate(order.Id, order.ExternalOrderId, order.UpdatedAt, order.OrderedAt))
+                .OrderBy(order => order.Id)
+                .Select(order => new HepsiburadaInvoiceOrderCandidate(order.Id, order.ExternalOrderId))
                 .Take(batchSize)
                 .ToListAsync(cancellationToken);
 
             IReadOnlyCollection<HepsiburadaInvoiceOrderCandidate> wrapped = [];
-            if (afterOrder is { } wrapOrder && afterCursor.Count < batchSize)
+            if (afterOrderId is { } wrapOrderId && afterCursor.Count < batchSize)
             {
                 wrapped = await eligibleOrders
-                    .Where(order => order.UpdatedAt < wrapOrder.UpdatedAt
-                        || order.UpdatedAt == wrapOrder.UpdatedAt && order.OrderedAt < wrapOrder.OrderedAt
-                        || order.UpdatedAt == wrapOrder.UpdatedAt && order.OrderedAt == wrapOrder.OrderedAt
-                            && order.Id.CompareTo(wrapOrder.OrderId) <= 0)
-                    .OrderBy(order => order.UpdatedAt)
-                    .ThenBy(order => order.OrderedAt)
-                    .ThenBy(order => order.Id)
-                    .Select(order => new HepsiburadaInvoiceOrderCandidate(order.Id, order.ExternalOrderId, order.UpdatedAt, order.OrderedAt))
+                    .Where(order => order.Id.CompareTo(wrapOrderId) <= 0)
+                    .OrderBy(order => order.Id)
+                    .Select(order => new HepsiburadaInvoiceOrderCandidate(order.Id, order.ExternalOrderId))
                     .Take(batchSize - afterCursor.Count)
                     .ToListAsync(cancellationToken);
             }
