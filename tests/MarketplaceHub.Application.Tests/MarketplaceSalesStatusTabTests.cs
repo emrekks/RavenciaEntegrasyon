@@ -95,6 +95,15 @@ public sealed class MarketplaceSalesStatusTabTests
     }
 
     [Fact]
+    public void Rejected_trendyol_return_without_provider_deadline_uses_seven_day_window()
+    {
+        var lastModifiedAt = new DateTimeOffset(2026, 10, 2, 10, 8, 0, TimeSpan.Zero);
+
+        Assert.Equal(lastModifiedAt.AddDays(7), MarketplaceSalesService.ReturnActionDueAt(
+            "TRENDYOL", "Rejected", null, lastModifiedAt));
+    }
+
+    [Fact]
     public void Pending_order_tab_matches_the_dashboard_pending_statuses()
     {
         var statuses = MarketplaceSalesService.DerivedStatusesForOrderTab("PENDING");

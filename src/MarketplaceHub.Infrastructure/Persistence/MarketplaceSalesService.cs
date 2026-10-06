@@ -1326,7 +1326,11 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var isTrendyolWaitingInAction = string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase)
             && (string.Equals(rawStatus?.Trim(), "WaitingInAction", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(rawStatus?.Trim(), "WAITING_IN_ACTION", StringComparison.OrdinalIgnoreCase));
-        return isTrendyolWaitingInAction ? lastRemoteModifiedAt.AddHours(48) : null;
+        if (isTrendyolWaitingInAction) return lastRemoteModifiedAt.AddHours(48);
+        var isTrendyolRejected = string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase)
+            && (string.Equals(rawStatus?.Trim(), "Rejected", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(rawStatus?.Trim(), "REJECTED", StringComparison.OrdinalIgnoreCase));
+        return isTrendyolRejected ? lastRemoteModifiedAt.AddDays(7) : null;
     }
 
     private void ApplyReturnFilters(ref IQueryable<ReturnClaim> query, ReturnListQuery options)
