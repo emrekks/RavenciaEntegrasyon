@@ -273,7 +273,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                 if (current is not null)
                 {
                     // Upgrade only exact application defaults. Explicit user choices remain untouched.
-                    if (IsKnownDefault(current)
+                    if (IsKnownDefault(current, connection.PlatformCode)
                         && (current.IntervalSeconds != defaults.IntervalSeconds
                             || current.OverlapSeconds != defaults.OverlapSeconds
                             || current.JitterSeconds != defaults.JitterSeconds))
@@ -328,7 +328,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         new(MarketplaceExternalWritePolicies.Return, 0, 0, 0)
     ];
 
-    private static bool IsKnownDefault(ConnectionSyncPolicy current)
+    internal static bool IsKnownDefault(ConnectionSyncPolicy current, string platformCode)
     {
         if (current.IntervalSeconds == 300 && (current.OverlapSeconds == 60 || current.OverlapSeconds == 120) && current.JitterSeconds == 15) return true;
         return current.ResourceType switch
@@ -351,7 +351,10 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             "RETURN_RECONCILE_MEDIUM" or "STOCK_RECONCILE_MEDIUM" => current.IntervalSeconds == 3600 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 120),
             "ORDER_RECONCILE_DAILY" => (current.IntervalSeconds == 86_400 || current.IntervalSeconds == 259_200) && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 900),
             "RETURN_RECONCILE_DAILY" or "STOCK_RECONCILE_DAILY" => current.IntervalSeconds == 86_400 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 900),
-            "ORDER_INVOICE_RECONCILIATION" => current.IntervalSeconds == 900 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 30),
+            "ORDER_INVOICE_RECONCILIATION" => current.OverlapSeconds == 0 && (platformCode == "HEPSIBURADA"
+                ? current.IntervalSeconds == 900 && (current.JitterSeconds == 0 || current.JitterSeconds == 30)
+                    || current.IntervalSeconds == 300 && (current.JitterSeconds == 0 || current.JitterSeconds == 10)
+                : current.IntervalSeconds == 900 && (current.JitterSeconds == 0 || current.JitterSeconds == 30)),
             "REFERENCE_DATA" => current.IntervalSeconds == 86_400 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 60),
             _ => false
         };
@@ -417,7 +420,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         "ORDER_RECONCILE_SHORT" => (MarketplaceJobTypes.ForPlatform(platformCode, MarketplaceJobTypes.OrderReconciliation), $"scheduled:order-reconcile-short:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, lookbackDays = ConfigInt("MarketplaceSync:OrderReconciliation:ShortLookbackDays", 1, 1, 14), batchSize = ConfigInt("MarketplaceSync:OrderReconciliation:ShortBatchSize", 25, 1, 100) })),
         "ORDER_RECONCILE_MEDIUM" => (MarketplaceJobTypes.ForPlatform(platformCode, MarketplaceJobTypes.OrderReconciliation), $"scheduled:order-reconcile-medium:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, lookbackDays = ConfigInt("MarketplaceSync:OrderReconciliation:MediumLookbackDays", 3, 1, 30), batchSize = ConfigInt("MarketplaceSync:OrderReconciliation:MediumBatchSize", 50, 1, 100) })),
         "ORDER_RECONCILE_DAILY" => (MarketplaceJobTypes.ForPlatform(platformCode, MarketplaceJobTypes.OrderReconciliation), $"scheduled:order-reconcile-daily:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, lookbackDays = ConfigInt("MarketplaceSync:OrderReconciliation:DailyLookbackDays", 90, 1, 90), batchSize = ConfigInt("MarketplaceSync:OrderReconciliation:DailyBatchSize", 50, 1, 100) })),
-        "ORDER_INVOICE_RECONCILIATION" => (MarketplaceJobTypes.ForPlatform(platformCode, MarketplaceJobTypes.OrderInvoiceReconciliation), $"scheduled:order-invoice-reconciliation:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, batchSize = ConfigInt("MarketplaceSync:OrderInvoiceReconciliation:BatchSize", 20, 1, 250) })),
+        "ORDER_INVOICE_RECONCILIATION" => (MarketplaceJobTypes.ForPlatform(platformCode, MarketplaceJobTypes.OrderInvoiceReconciliation), $"scheduled:order-invoice-reconciliation:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, batchSize = InvoiceReconciliationBatchSize(platformCode, configuration) })),
         "RETURNS" => (MarketplaceJobTypes.ForPlatform(platformCode, MarketplaceJobTypes.ReturnSync), $"scheduled:returns:{connectionId:N}", JsonSerializer.Serialize(new { connectionId })),
         "RETURN_LIFECYCLE" => (MarketplaceJobTypes.ReturnStatusSync, $"scheduled:return-lifecycle:{connectionId:N}", JsonSerializer.Serialize(new { connectionId })),
         "RETURN_RECONCILE_SHORT" => (MarketplaceJobTypes.ReturnReconciliation, $"scheduled:return-reconcile-short:{connectionId:N}", JsonSerializer.Serialize(new { connectionId, lookbackDays = ConfigInt("MarketplaceSync:ReturnReconciliation:ShortLookbackDays", 1, 1, 14) })),
@@ -432,6 +435,11 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
     };
 
     private int ConfigInt(string key, int fallback, int minimum, int maximum) => Math.Clamp(configuration.GetValue(key, fallback), minimum, maximum);
+
+    internal static int InvoiceReconciliationBatchSize(string platformCode, IConfiguration configuration) =>
+        string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
+            ? Math.Clamp(configuration.GetValue("MarketplaceSync:OrderInvoiceReconciliation:HepsiburadaBatchSize", 100), 1, 250)
+            : Math.Clamp(configuration.GetValue("MarketplaceSync:OrderInvoiceReconciliation:BatchSize", 20), 1, 250);
 
     private bool WritesEnabled(string settingsJson)
     {
