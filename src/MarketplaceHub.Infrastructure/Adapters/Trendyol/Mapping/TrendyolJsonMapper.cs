@@ -588,7 +588,7 @@ public static class TrendyolJsonMapper
             var lastModifiedAt = Instant(claim, "lastModifiedDate");
             var claimDate = FlexibleInstant(claim, "claimDate", "createdDate", "requestDate");
             var actionDueAt = FlexibleInstant(claim, "autoApproveDate", "actionDueDate", "dueDate")
-                ?? (IsWaitingInAction(status) && lastModifiedAt is { } waitingInActionAt ? waitingInActionAt.AddHours(48) : null)
+                ?? (IsWaitingInAction(status) && lastModifiedAt is { } waitingInActionAt ? (DateTimeOffset?)waitingInActionAt.AddHours(48) : null)
                 ?? (claimDate is { } requestedAt ? (DateTimeOffset?)requestedAt.AddDays(7) : null);
             rows.Add(new(claimId, orderNumber, status, ClaimReasonCode(claim), ClaimReasonText(claim), actionDueAt, lastModifiedAt ?? DateTimeOffset.UnixEpoch, lines, claim.GetRawText(), ReturnCargoProvider(claim), ReturnCargoField(claim, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber"), ReturnCargoField(claim, "cargoTrackingLink", "trackingLink")));
         }
