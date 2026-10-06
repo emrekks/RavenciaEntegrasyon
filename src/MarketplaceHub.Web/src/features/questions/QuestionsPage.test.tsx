@@ -140,10 +140,8 @@ describe('QuestionsPage workspace flows', () => {
     expect(container.querySelector('[data-platform="hepsiburada"] .rv-question-platform-logo')?.getAttribute('src')).toBe('/platforms/hepsiburada.png')
     expect(container.querySelector('.rv-questions-notice')).toBeNull()
     expect(button('Yenile').querySelector('.ui-icon-refresh')).not.toBeNull()
-    const trendSync = button('Trendyol verilerini çek')
-    act(() => trendSync.click())
-    await settle()
-    expect(JSON.parse(apiState.calls.filter(call => call.path === '/questions/sync').at(-1)?.body ?? '{}')).toEqual({ kind: 'ALL', platformCode: 'TRENDYOL' })
+    expect(container.querySelector('.rv-questions-sync-trigger')).toBeNull()
+    expect(apiState.calls.some(call => call.path === '/questions/sync' && JSON.parse(call.body ?? '{}').kind === 'ALL')).toBe(true)
     expect(container.querySelector('.rv-question-thread-message.is-question time')?.textContent).toMatch(/^\d{2}\.\d{2}\.2026 · \d{2}:\d{2}$/)
 
     for (const [label, expected] of [['Cevap bekleyenler', 'WAITING'], ['Cevaplananlar', 'ANSWERED'], ['Süresi dolanlar', 'EXPIRED'], ['Diğer durumlar', 'OTHER'], ['Tümü', 'ALL']]) {
