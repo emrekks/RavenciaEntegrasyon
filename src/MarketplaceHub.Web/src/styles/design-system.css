@@ -4329,6 +4329,23 @@ button,
   z-index: var(--rv-z-dropdown);
 }
 
+@media (max-width: 1200px) {
+  .app-shell.stitch-shell main .order-reference-table {
+    overflow-x: auto;
+    overflow-y: visible;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+  }
+
+  .app-shell.stitch-shell main .order-reference-actions .order-label-action {
+    box-sizing: border-box;
+    min-width: 0;
+    padding-inline: 6px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+
 .app-shell.stitch-shell main .order-reference-invoice .row-menu {
   width: 100%;
   min-width: 0;
