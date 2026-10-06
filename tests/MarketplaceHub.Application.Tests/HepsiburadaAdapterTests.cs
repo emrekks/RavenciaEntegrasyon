@@ -1851,6 +1851,19 @@ public sealed class HepsiburadaAdapterTests
     }
 
     [Fact]
+    public void MissingInvoiceMapperReadsOrderPackageAndCurrentStatus()
+    {
+        using var json = JsonDocument.Parse("""
+            {"data":{"items":[{"orderNumber":"HB-100","packageNumber":"PKG-9","status":"Delivered"}],"totalCount":1}}
+            """);
+
+        var result = HepsiburadaJsonMapper.MissingInvoicePackages(json.RootElement);
+
+        Assert.Equal(1, result.TotalCount);
+        Assert.Equal(new RemoteMissingInvoicePackage("HB-100", "PKG-9", "Delivered"), Assert.Single(result.Items));
+    }
+
+    [Fact]
     public async Task HepsiburadaReturnWriteRemainsAuthGatedAndReasonsAreAvailable()
     {
         var adapter = new HepsiburadaHttpClient(

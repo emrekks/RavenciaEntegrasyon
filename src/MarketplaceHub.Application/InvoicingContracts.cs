@@ -33,6 +33,7 @@ public sealed record InvoiceDeliveryCommand(string ExternalPackageId, string Del
 public sealed record InvoiceDeliveryResult(string ExternalReference, string RawStatus);
 public sealed record ExternalInvoiceDeliveryReference(string ExternalReference, string? OrderNumber = null);
 public sealed record InvoiceDeliveryStatus(string ExternalReference, string RawStatus, bool IsTerminal);
+public sealed record RemoteMissingInvoicePackage(string OrderNumber, string PackageNumber, string? OrderStatus);
 
 public enum InvoiceDeliveryFailureDisposition
 {
@@ -69,6 +70,11 @@ public interface IInvoiceMarketplacePort
 {
     Task<AdapterResult<InvoiceDeliveryResult>> DeliverAsync(AdapterContext context, InvoiceDeliveryCommand command, CancellationToken cancellationToken);
     Task<AdapterResult<InvoiceDeliveryStatus>> QueryDeliveryAsync(AdapterContext context, ExternalInvoiceDeliveryReference reference, CancellationToken cancellationToken);
+}
+
+public interface IHepsiburadaInvoiceStatusPort
+{
+    Task<AdapterResult<AdapterPageResult<RemoteMissingInvoicePackage>>> ListMissingInvoicePackagesAsync(AdapterContext context, AdapterPageRequest page, CancellationToken cancellationToken);
 }
 
 public sealed record InvoicePolicyView(Guid Id, Guid ProviderConnectionId, string TriggerState, string PackageScope, string DueRule, string RoundingRule, string AdjustmentRule, bool AutoSubmit, long Version);

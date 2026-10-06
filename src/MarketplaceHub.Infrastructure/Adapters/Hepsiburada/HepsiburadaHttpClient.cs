@@ -19,7 +19,7 @@ public sealed partial class HepsiburadaHttpClient(
     TimeProvider timeProvider,
     IConfiguration configuration,
     ILogger<HepsiburadaHttpClient> logger)
-    : IConnectionPort, IReferenceDataPort, IProductPort, IHepsiburadaProductMatchPort, IProductVisualLookupPort, IInventoryPricePort, IOrderPort, IOrderPackageReadPort, IReturnPort, IInvoiceMarketplacePort
+    : IConnectionPort, IReferenceDataPort, IProductPort, IHepsiburadaProductMatchPort, IProductVisualLookupPort, IInventoryPricePort, IOrderPort, IOrderPackageReadPort, IReturnPort, IInvoiceMarketplacePort, IHepsiburadaInvoiceStatusPort
 {
     private readonly HepsiburadaOptions settings = options.Value;
     private bool GlobalWritesEnabled => configuration.GetValue<bool>("FeatureFlags:ExternalWrites");
@@ -619,6 +619,35 @@ public sealed partial class HepsiburadaHttpClient(
         }
     }
 
+    public async Task<AdapterResult<AdapterPageResult<RemoteMissingInvoicePackage>>> ListMissingInvoicePackagesAsync(AdapterContext context, AdapterPageRequest page, CancellationToken cancellationToken)
+    {
+        if (!string.Equals(settings.AuthenticationMode, "BASIC", StringComparison.OrdinalIgnoreCase))
+            return await Unsupported<AdapterPageResult<RemoteMissingInvoicePackage>>("Hepsiburada eksik fatura listesi için BASIC kimlik doğrulaması gerekir.");
+        var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
+        if (account is null) return Failure<AdapterPageResult<RemoteMissingInvoicePackage>>(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIAL_INVALID", "Hepsiburada bağlantı bilgileri bulunamadı.", HttpStatusCode.Unauthorized);
+        if (!IntegrationRuntimePolicy.AllowsManualRead(account.Connection))
+            return await Unsupported<AdapterPageResult<RemoteMissingInvoicePackage>>("Hepsiburada eksik fatura listesi yalnız etkin veya doğrulanmış bağlantıdan okunabilir.");
+
+        var (offset, limit) = Page(page, settings.PageSize);
+        var query = $"limit={limit.ToString(CultureInfo.InvariantCulture)}&offset={offset.ToString(CultureInfo.InvariantCulture)}";
+        var response = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Get, MissingInvoicePackages(account, query), cancellationToken);
+        if (!response.IsSuccess) return AdapterResult<AdapterPageResult<RemoteMissingInvoicePackage>>.Failure(response.Error!, response.RateLimit);
+
+        try
+        {
+            var (items, totalCount) = HepsiburadaJsonMapper.MissingInvoicePackages(response.Value!.RootElement);
+            var nextOffset = offset + limit;
+            var hasMore = totalCount is { } total ? nextOffset < total : items.Count >= limit;
+            return AdapterResult<AdapterPageResult<RemoteMissingInvoicePackage>>.Success(
+                new(items, hasMore ? nextOffset.ToString(CultureInfo.InvariantCulture) : null, hasMore, totalCount),
+                response.RateLimit);
+        }
+        catch (JsonException)
+        {
+            return Failure<AdapterPageResult<RemoteMissingInvoicePackage>>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_MISSING_INVOICE_CONTRACT_INVALID", "Hepsiburada eksik fatura listesi beklenen sipariş/paket sayfa sözleşmesiyle eşleşmiyor.", HttpStatusCode.BadGateway);
+        }
+    }
+
     public async Task<AdapterResult<PackageTrackingStatusSnapshot>> GetPackageTrackingInfoAsync(AdapterContext context, string packageNumber, CancellationToken cancellationToken)
     {
         var normalizedPackageNumber = packageNumber.Trim();
@@ -915,6 +944,7 @@ public sealed partial class HepsiburadaHttpClient(
     internal static string Packages(HepsiburadaRequestContext context, string query) => $"packages/merchantid/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}?{query}";
     internal static string PackagesByStatus(HepsiburadaRequestContext context, string status, string query) => $"packages/merchantid/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}/{Uri.EscapeDataString(status)}?{query}";
     internal static string PackageTrackingInfo(string merchantId, string packageNumber) => $"packages/merchantid/{Uri.EscapeDataString(merchantId)}/packagenumber/{Uri.EscapeDataString(packageNumber)}";
+    internal static string MissingInvoicePackages(HepsiburadaRequestContext context, string query) => $"packages/merchantid/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}/missing-invoice?{query}";
     internal static string InvoiceLink(HepsiburadaRequestContext context, string packageNumber) => $"packages/merchantid/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}/packagenumber/{Uri.EscapeDataString(packageNumber)}/invoice";
     internal static string Listings(HepsiburadaRequestContext context, string query) => $"listings/merchantid/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}?{query}";
     internal static string Claims(HepsiburadaRequestContext context, string status, string query) => $"claims/merchantId/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}/status/{Uri.EscapeDataString(status)}?{query}";

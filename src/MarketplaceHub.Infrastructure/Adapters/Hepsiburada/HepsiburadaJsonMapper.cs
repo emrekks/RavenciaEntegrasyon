@@ -439,6 +439,22 @@ internal static class HepsiburadaJsonMapper
         return (items.EnumerateArray().ToArray(), totalCount);
     }
 
+    public static (IReadOnlyList<RemoteMissingInvoicePackage> Items, int? TotalCount) MissingInvoicePackages(JsonElement root)
+    {
+        var (items, totalCount) = PackagePage(root);
+        var result = new List<RemoteMissingInvoicePackage>(items.Count);
+        foreach (var item in items)
+        {
+            var orderNumber = Text(item, "orderNumber", "OrderNumber", "orderNo", "OrderNo");
+            var packageNumber = Text(item, "packageNumber", "PackageNumber", "packageId", "PackageId");
+            if (string.IsNullOrWhiteSpace(orderNumber) || string.IsNullOrWhiteSpace(packageNumber))
+                throw new JsonException("Hepsiburada eksik fatura kaydında sipariş veya paket numarası yok.");
+            result.Add(new(orderNumber.Trim(), packageNumber.Trim(), Text(item, "status", "Status", "orderStatus", "OrderStatus")));
+        }
+
+        return (result, totalCount);
+    }
+
     public static (string? Status, string? CargoCompany, string? TrackingInfoCode, string? OrderNumber) PackageTrackingInfo(JsonElement root, string expectedPackageNumber)
     {
         var data = Unwrap(root);

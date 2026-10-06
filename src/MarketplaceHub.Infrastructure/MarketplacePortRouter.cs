@@ -12,7 +12,7 @@ public sealed class MarketplacePortRouter(
     TrendyolHttpClient trendyol,
     ShopifyHttpClient shopify,
     HepsiburadaHttpClient hepsiburada)
-    : IConnectionPort, IReferenceDataPort, IProductPort, IHepsiburadaProductMatchPort, IProductVisualLookupPort, IInventoryPricePort, IOrderPort, IOrderPackageReadPort, IReturnPort, IInvoiceMarketplacePort, IQuestionPort
+    : IConnectionPort, IReferenceDataPort, IProductPort, IHepsiburadaProductMatchPort, IProductVisualLookupPort, IInventoryPricePort, IOrderPort, IOrderPackageReadPort, IReturnPort, IInvoiceMarketplacePort, IHepsiburadaInvoiceStatusPort, IQuestionPort
 {
     private async Task<T> Resolve<T>(AdapterContext context) where T : class
     {
@@ -71,4 +71,5 @@ public sealed class MarketplacePortRouter(
     public async Task<AdapterResult<RemoteQuestionAnswerResult>> AnswerQuestionAsync(AdapterContext context, string questionId, string kind, string answer, CancellationToken cancellationToken) => await (await Resolve<IQuestionPort>(context)).AnswerQuestionAsync(context, questionId, kind, answer, cancellationToken);
     public async Task<AdapterResult<InvoiceDeliveryResult>> DeliverAsync(AdapterContext context, InvoiceDeliveryCommand command, CancellationToken cancellationToken) => await (await Resolve<IInvoiceMarketplacePort>(context)).DeliverAsync(context, command, cancellationToken);
     public async Task<AdapterResult<InvoiceDeliveryStatus>> QueryDeliveryAsync(AdapterContext context, ExternalInvoiceDeliveryReference reference, CancellationToken cancellationToken) => await (await Resolve<IInvoiceMarketplacePort>(context)).QueryDeliveryAsync(context, reference, cancellationToken);
+    public async Task<AdapterResult<AdapterPageResult<RemoteMissingInvoicePackage>>> ListMissingInvoicePackagesAsync(AdapterContext context, AdapterPageRequest page, CancellationToken cancellationToken) => await (await Resolve<IHepsiburadaInvoiceStatusPort>(context)).ListMissingInvoicePackagesAsync(context, page, cancellationToken);
 }

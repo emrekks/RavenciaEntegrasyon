@@ -6,6 +6,21 @@ namespace MarketplaceHub.Application.Tests;
 public sealed class HepsiburadaInvoiceReconciliationBatchPolicyTests
 {
     [Fact]
+    public void MissingInvoiceFeedOnlyInfersUploadedForRecentOrdersWhenTheWholeFeedWasRead()
+    {
+        var now = DateTimeOffset.Parse("2026-10-06T12:00:00Z");
+        var missing = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            HepsiburadaMissingInvoiceStatusPolicy.Key("HB-1", "PKG-1")
+        };
+
+        Assert.Equal("NOT_INVOICED", HepsiburadaMissingInvoiceStatusPolicy.Resolve("HB-1", "PKG-1", now.AddDays(-100), now, missing, true));
+        Assert.Equal("INVOICED", HepsiburadaMissingInvoiceStatusPolicy.Resolve("HB-2", "PKG-2", now.AddDays(-29), now, missing, true));
+        Assert.Null(HepsiburadaMissingInvoiceStatusPolicy.Resolve("HB-3", "PKG-3", now.AddDays(-31), now, missing, true));
+        Assert.Null(HepsiburadaMissingInvoiceStatusPolicy.Resolve("HB-2", "PKG-2", now.AddDays(-1), now, missing, false));
+    }
+
+    [Fact]
     public void SelectContinuesAfterCursorAndWrapsOnlyToFillTheBatch()
     {
         var first = new HepsiburadaInvoiceOrderCandidate(Guid.Parse("00000000-0000-0000-0000-000000000001"), "HB-1");

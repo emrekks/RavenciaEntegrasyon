@@ -93,6 +93,7 @@ public static class DependencyInjection
         services.AddScoped<IOrderPackageReadPort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
         services.AddScoped<IReturnPort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
         services.AddScoped<IQuestionPort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
+        services.AddScoped<IHepsiburadaInvoiceStatusPort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
         services.AddScoped<TrendyolWebhookVerifier>();
         services.AddScoped<HepsiburadaWebhookVerifier>();
         services.AddScoped<IWebhookVerifier, MarketplaceWebhookVerifier>();

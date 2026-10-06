@@ -15,7 +15,7 @@ using Npgsql;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort connections, IReferenceDataPort references, IProductPort products, IInventoryPricePort inventoryPrice, IOrderPort orders, IOrderPackageReadPort orderPackages, IReturnPort returns, IMarketplaceQuestionService questions, IPrivateFileStorage files, IConfiguration configuration, TimeProvider timeProvider) : IMarketplaceJobProcessor
+public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort connections, IReferenceDataPort references, IProductPort products, IInventoryPricePort inventoryPrice, IOrderPort orders, IHepsiburadaInvoiceStatusPort hepsiburadaInvoiceStatus, IOrderPackageReadPort orderPackages, IReturnPort returns, IMarketplaceQuestionService questions, IPrivateFileStorage files, IConfiguration configuration, TimeProvider timeProvider) : IMarketplaceJobProcessor
 {
     // The payload deadline is the authoritative approval bound. The worker currently
     // applies exponential backoff, but this ceiling also keeps retry accounting from
@@ -2748,6 +2748,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var isTrendyol = platformCode == "TRENDYOL";
         var batchSize = ReadBoundedInt(payloadJson, "batchSize", 50, 1, 250);
         var externalOrderIds = new List<string>();
+        var hepsiburadaInvoiceStatusUnavailable = new HashSet<string>(StringComparer.Ordinal);
         SyncCursor? invoiceCursor = null;
         Guid? lastReconciledOrderId = null;
         var advanceInvoiceCursor = true;
@@ -2904,12 +2905,20 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             else
             {
                 TrackReceived();
-                if (isHepsiburada)
-                    await MergeHepsiburadaOrderInvoiceState(tenantId, connectionId, result.Value!, cancellationToken);
+                if (isHepsiburada && !await MergeHepsiburadaOrderInvoiceState(tenantId, connectionId, result.Value!, cancellationToken))
+                    hepsiburadaInvoiceStatusUnavailable.Add(externalOrderId);
                 await UpsertOrder(tenantId, connectionId, result.Value!, cancellationToken, projectReservations: !isShopify, persistFinancialObservations: isShopify);
                 await ResolveIssue(tenantId, $"order-invoice-reconciliation:{connectionId}:{externalOrderId}", cancellationToken);
             }
 
+        }
+
+        if (isHepsiburada)
+        {
+            if (hepsiburadaInvoiceStatusUnavailable.Count > 0)
+                await ReconcileHepsiburadaMissingInvoiceStatuses(tenantId, connectionId, correlationId, hepsiburadaInvoiceStatusUnavailable, cancellationToken);
+            else
+                await ResolveIssue(tenantId, $"order-invoice-reconciliation:{connectionId}:invoice-status-contract", cancellationToken);
         }
 
         if (invoiceCursor is not null && lastReconciledOrderId is not null)
@@ -3033,7 +3042,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
     }
 
-    private async Task MergeHepsiburadaOrderInvoiceState(Guid tenantId, Guid connectionId, RemoteOrder remote, CancellationToken cancellationToken)
+    private async Task<bool> MergeHepsiburadaOrderInvoiceState(Guid tenantId, Guid connectionId, RemoteOrder remote, CancellationToken cancellationToken)
     {
         string? orderInvoiceStatus;
         IReadOnlyDictionary<string, string> packageInvoiceStatuses;
@@ -3051,16 +3060,20 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
         var order = await db.Orders.AsNoTracking()
             .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalOrderId == remote.ExternalOrderId, cancellationToken);
-        if (order is null) return;
+        if (order is null) return false;
 
         var packages = await db.ShipmentPackages
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.OrderId == order.Id && x.Status != ShipmentPackageStatus.Cancelled)
             .ToListAsync(cancellationToken);
-        var updatedAnyPackage = false;
+        var allPackagesObserved = packages.Count > 0;
         foreach (var package in packages)
         {
             var rawStatus = packageInvoiceStatuses.GetValueOrDefault(package.ExternalPackageId) ?? orderInvoiceStatus;
-            if (rawStatus is null) continue;
+            if (rawStatus is null)
+            {
+                allPackagesObserved = false;
+                continue;
+            }
 
             var observation = new RemotePackageInvoiceObservation(rawStatus, null, null, null);
             var remotePackage = new RemotePackage(
@@ -3073,16 +3086,124 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 [],
                 Invoice: observation);
             await MergeMarketplaceInvoiceState(package, remotePackage, cancellationToken);
-            updatedAnyPackage = true;
         }
 
-        if (!updatedAnyPackage)
-            await RecordIssue(
-                tenantId,
-                $"order-invoice-reconciliation:{connectionId}:invoice-status-contract",
-                "HEPSIBURADA_INVOICE_STATUS_UNAVAILABLE",
-                "Hepsiburada sipariş detay yanıtında sipariş, kalem veya paket düzeyinde fatura durumu bulunamadı; yerel fatura durumu korundu ve sonraki taramada tekrar denenecek.",
+        return allPackagesObserved;
+    }
+
+    private async Task ReconcileHepsiburadaMissingInvoiceStatuses(
+        Guid tenantId,
+        Guid connectionId,
+        string correlationId,
+        IReadOnlyCollection<string> externalOrderIds,
+        CancellationToken cancellationToken)
+    {
+        const int pageSize = 10;
+        const int maxPages = 100;
+        const string issueKeySuffix = "invoice-status-contract";
+        var issueKey = $"order-invoice-reconciliation:{connectionId}:{issueKeySuffix}";
+        var missingInvoicePackageKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var cursor = "0";
+        var completeFeed = false;
+
+        for (var pageIndex = 0; pageIndex < maxPages; pageIndex++)
+        {
+            TrackRequest();
+            var result = await hepsiburadaInvoiceStatus.ListMissingInvoicePackagesAsync(
+                Context(tenantId, connectionId, correlationId, $"hepsiburada-missing-invoices:{cursor}"),
+                new AdapterPageRequest(cursor, pageSize),
                 cancellationToken);
+            if (!result.IsSuccess)
+            {
+                TrackResultFailure(result.Error);
+                await RecordIssue(tenantId, issueKey, "HEPSIBURADA_MISSING_INVOICE_FEED_FAILED",
+                    "Hepsiburada faturasız sipariş listesi okunamadı; eksik alanlı siparişlerin durumu değiştirilmedi.", cancellationToken);
+                return;
+            }
+
+            TrackReceived();
+            var page = result.Value!;
+            foreach (var item in page.Items)
+                missingInvoicePackageKeys.Add(HepsiburadaMissingInvoiceStatusPolicy.Key(item.OrderNumber, item.PackageNumber));
+
+            if (!page.HasMore)
+            {
+                completeFeed = true;
+                break;
+            }
+
+            if (string.IsNullOrWhiteSpace(page.NextCursor) || string.Equals(cursor, page.NextCursor, StringComparison.Ordinal))
+            {
+                await RecordIssue(tenantId, issueKey, "HEPSIBURADA_MISSING_INVOICE_FEED_INCOMPLETE",
+                    "Hepsiburada faturasız sipariş listesinin sayfaları tamamlanamadı; eksik alanlı siparişlerin durumu değiştirilmedi.", cancellationToken);
+                return;
+            }
+            cursor = page.NextCursor;
+        }
+
+        if (!completeFeed)
+        {
+            await RecordIssue(tenantId, issueKey, "HEPSIBURADA_MISSING_INVOICE_FEED_INCOMPLETE",
+                "Hepsiburada faturasız sipariş listesi güvenli sayfa sınırına kadar tamamlanmadı; eksik alanlı siparişlerin durumu değiştirilmedi.", cancellationToken);
+            return;
+        }
+
+        var ordersToReconcile = await db.Orders
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && externalOrderIds.Contains(x.ExternalOrderId))
+            .Select(x => new { x.Id, x.ExternalOrderId, x.OrderedAt })
+            .ToListAsync(cancellationToken);
+        if (ordersToReconcile.Count == 0)
+        {
+            await RecordIssue(tenantId, issueKey, "HEPSIBURADA_INVOICE_STATUS_UNAVAILABLE",
+                "Hepsiburada sipariş detayında fatura durumu yok ve eşleşen yerel sipariş bulunamadı.", cancellationToken);
+            return;
+        }
+
+        var orderById = ordersToReconcile.ToDictionary(x => x.Id);
+        var orderIds = orderById.Keys.ToArray();
+        var packages = await db.ShipmentPackages
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && orderIds.Contains(x.OrderId) && x.Status != ShipmentPackageStatus.Cancelled)
+            .ToListAsync(cancellationToken);
+        var now = timeProvider.GetUtcNow();
+        var unresolved = false;
+        foreach (var package in packages)
+        {
+            if (!orderById.TryGetValue(package.OrderId, out var order))
+            {
+                unresolved = true;
+                continue;
+            }
+
+            var status = HepsiburadaMissingInvoiceStatusPolicy.Resolve(
+                order.ExternalOrderId,
+                package.ExternalPackageId,
+                order.OrderedAt,
+                now,
+                missingInvoicePackageKeys,
+                completeFeed);
+            if (status is null)
+            {
+                unresolved = true;
+                continue;
+            }
+
+            var remotePackage = new RemotePackage(
+                package.ExternalPackageId,
+                null,
+                package.RawStatus,
+                package.StatusOccurredAt,
+                package.CargoProviderExternalId,
+                package.CargoTrackingNumber,
+                [],
+                Invoice: new RemotePackageInvoiceObservation(status, null, null, null));
+            await MergeMarketplaceInvoiceState(package, remotePackage, cancellationToken);
+        }
+
+        if (unresolved)
+            await RecordIssue(tenantId, issueKey, "HEPSIBURADA_INVOICE_STATUS_UNAVAILABLE",
+                "Sipariş detayı fatura durumu sağlamadı; faturasız liste yalnızca son 1 ayı kapsadığı için bu dönemin dışındaki kayıtların durumu korunuyor.", cancellationToken);
+        else
+            await ResolveIssue(tenantId, issueKey, cancellationToken);
     }
 
     private async Task<bool> SyncProducts(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, Guid? jobId, CancellationToken cancellationToken)
@@ -7289,6 +7410,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             return;
         }
 
+        issue.Status = IssueStatus.Open;
         issue.LastSeenAt = now;
         issue.OccurrenceCount++;
     }
