@@ -448,7 +448,17 @@ internal static class HepsiburadaJsonMapper
             var orderNumber = Text(item, "orderNumber", "OrderNumber", "orderNo", "OrderNo");
             var packageNumber = Text(item, "packageNumber", "PackageNumber", "packageId", "PackageId");
             if (string.IsNullOrWhiteSpace(orderNumber) || string.IsNullOrWhiteSpace(packageNumber))
-                throw new JsonException("Hepsiburada eksik fatura kaydında sipariş veya paket numarası yok.");
+            {
+                var missing = string.Join(" ve ", new[]
+                {
+                    string.IsNullOrWhiteSpace(orderNumber) ? "sipariş numarası" : null,
+                    string.IsNullOrWhiteSpace(packageNumber) ? "paket numarası" : null
+                }.Where(value => value is not null));
+                var fields = item.ValueKind == JsonValueKind.Object
+                    ? string.Join(", ", item.EnumerateObject().Select(property => new string(property.Name.Where(character => char.IsLetterOrDigit(character) || character is '_' or '-').Take(40).ToArray())).Take(30))
+                    : item.ValueKind.ToString();
+                throw new JsonException($"Hepsiburada eksik fatura kaydında {missing} yok. Yanıt alanları: {fields}.");
+            }
             result.Add(new(orderNumber.Trim(), packageNumber.Trim(), Text(item, "status", "Status", "orderStatus", "OrderStatus")));
         }
 
