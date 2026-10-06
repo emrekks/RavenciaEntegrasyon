@@ -19,11 +19,11 @@ export function useOperationsRealtime(enabled: boolean) {
       const resources = [...pendingResources]
       pendingResources.clear()
       const queryKeysByResource: Record<string, string[][]> = {
-        orders: [['orders'], ['dashboard-bootstrap'], ['dashboard-revenue-series']],
+        orders: [['orders'], ['invoice-workspace'], ['dashboard-bootstrap'], ['dashboard-revenue-series']],
         returns: [['returns'], ['dashboard-bootstrap']],
         products: [['products'], ['dashboard-bootstrap']],
         inventory: [['inventory'], ['dashboard-bootstrap']],
-        invoices: [['invoices'], ['dashboard-bootstrap']],
+        invoices: [['invoices'], ['invoice-workspace'], ['dashboard-bootstrap']],
         connections: [['connections'], ['dashboard-bootstrap']],
         jobs: [['jobs']]
       }

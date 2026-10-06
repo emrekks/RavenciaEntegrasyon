@@ -210,7 +210,7 @@ export function InvoicesPage() {
     const timeout = window.setTimeout(() => setMessageState(''), messageKind === 'info' ? 7000 : 5500)
     return () => window.clearTimeout(timeout)
   }, [message, messageKind])
-  const query = useQuery({ queryKey: ['invoice-workspace'], queryFn: () => hubApi<InvoiceWorkspace[]>('/invoice-workspace') })
+  const query = useQuery({ queryKey: ['invoice-workspace'], queryFn: () => hubApi<InvoiceWorkspace[]>('/invoice-workspace'), refetchInterval: 30_000 })
   const connections = useQuery({ queryKey: ['connections', 'billing-workspace'], queryFn: () => loadAllPages<Connection>('/connections') })
   const provider = connections.data?.items.find(x => x.platformCode === 'TRENDYOL_EFATURAM' && (x.status === 'ACTIVE' || x.status === 'VERIFIED'))
   const create = useMutation({ mutationFn: async (item: InvoiceWorkspace) => {
