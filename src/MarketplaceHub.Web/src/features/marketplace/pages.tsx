@@ -1093,12 +1093,12 @@ function IntegrationDetailWorkspace({ id, inline = false }: { id: string; inline
    const externalWritePlatform = item.platformCode === 'SHOPIFY' ? 'Shopify' : item.platformCode === 'HEPSIBURADA' ? 'Hepsiburada' : 'Trendyol'
    const externalWriteGroups: Array<{ key: string; label: string; resourceTypes: string[]; description: string; capabilityCodes?: string[] }> = item.platformCode === 'HEPSIBURADA'
      ? [
-         { key: 'automatic-external-writes', label: 'Otomatik dış yazmalar', resourceTypes: ['PRICE_WRITE', 'STOCK_WRITE'], description: 'Panelde yapılan fiyat ve stok değişikliklerini Hepsiburada’ya otomatik olarak gönderir.', capabilityCodes: ['PRICE_WRITE', 'INVENTORY_WRITE'] },
-         { key: 'manual-external-writes', label: 'Manuel dış yazmalar', resourceTypes: ['SHIPMENT_WRITE', 'RETURN_WRITE'], description: 'Kargo, etiket, paket ve iade kararlarını panelden Hepsiburada’ya gönderir.', capabilityCodes: ['SHIPMENT_WRITE', 'RETURN_WRITE'] }
+         { key: 'automatic-external-writes', label: 'Otomatik dış yazmalar', resourceTypes: ['PRICE_WRITE', 'STOCK_WRITE'], description: 'Açıkken paneldeki fiyat ve stok değişikliklerini Hepsiburada’ya otomatik gönderir. Kapalıyken bu güncellemeler Hepsiburada’ya aktarılmaz.', capabilityCodes: ['PRICE_WRITE', 'INVENTORY_WRITE'] },
+         { key: 'manual-external-writes', label: 'Manuel dış yazmalar', resourceTypes: ['SHIPMENT_WRITE', 'RETURN_WRITE'], description: 'Açıkken panelden başlattığınız kargo, etiket, paket ve iade işlemlerini Hepsiburada’ya gönderir. Kapalıyken bu işlemler dış platforma aktarılmaz.', capabilityCodes: ['SHIPMENT_WRITE', 'RETURN_WRITE'] }
        ]
      : [
-         { key: 'automatic-external-writes', label: 'Otomatik dış yazmalar', resourceTypes: ['PRICE_WRITE', 'STOCK_WRITE'], description: `Fiyat ve stok değişikliklerini ${externalWritePlatform}’a otomatik olarak gönderir.` },
-         { key: 'manual-external-writes', label: 'Manuel dış yazmalar', resourceTypes: ['SHIPMENT_WRITE', 'RETURN_WRITE'], description: `Kargo, etiket ve iade kararlarını panelden ${externalWritePlatform}’a gönderir.` }
+         { key: 'automatic-external-writes', label: 'Otomatik dış yazmalar', resourceTypes: ['PRICE_WRITE', 'STOCK_WRITE'], description: `Açıkken paneldeki fiyat ve stok değişikliklerini ${externalWritePlatform}’a otomatik gönderir. Kapalıyken bu güncellemeler ${externalWritePlatform}’a aktarılmaz.` },
+         { key: 'manual-external-writes', label: 'Manuel dış yazmalar', resourceTypes: ['SHIPMENT_WRITE', 'RETURN_WRITE'], description: `Açıkken panelden başlattığınız kargo, etiket ve iade kararlarını ${externalWritePlatform}’a gönderir. Kapalıyken bu işlemler dış platforma aktarılmaz.` }
        ]
   const syncPolicyCategories: Array<{ key: string; label: string; resourceTypes: string[]; kind?: 'external-write-parent'; description?: string }> = [
     { key: 'orders', label: 'Sipariş Akışları', resourceTypes: ['ORDERS', 'ORDER_RECOVERY', 'ORDER_LIFECYCLE'] },
