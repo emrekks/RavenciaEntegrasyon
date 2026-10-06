@@ -43,7 +43,13 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         }
         var totalCount = await rows.CountAsync(cancellationToken);
         var page = Math.Max(1, query.Page); var limit = Math.Clamp(query.Limit, 1, 100);
-        var items = await rows.OrderBy(row => row.Question.Status == "WAITING_FOR_ANSWER" || row.Question.Status == "ANSWER_SUBMITTED" ? 0 : 1).ThenBy(row => row.Question.ExpiresAt).ThenByDescending(row => row.Question.CreatedAt)
+        var orderedRows = query.Sort.Trim().ToUpperInvariant() switch
+        {
+            "OLDEST" => rows.OrderBy(row => row.Question.CreatedAt).ThenBy(row => row.Question.Id),
+            "UPDATED" => rows.OrderByDescending(row => row.Question.LastRemoteModifiedAt).ThenByDescending(row => row.Question.CreatedAt),
+            _ => rows.OrderByDescending(row => row.Question.CreatedAt).ThenByDescending(row => row.Question.Id)
+        };
+        var items = await orderedRows
             .Skip((page - 1) * limit).Take(limit).Select(row => Map(row.Question, row.Connection.PlatformCode, row.Connection.DisplayName)).ToListAsync(cancellationToken);
         return new(items, page, limit, totalCount);
     }

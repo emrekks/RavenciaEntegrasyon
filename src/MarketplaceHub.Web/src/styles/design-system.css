@@ -5260,6 +5260,8 @@ button,
   --tag-color: var(--rv-color-primary);
   display: inline-flex;
   min-height: 30px;
+  max-width: min(280px, 32vw);
+  min-width: 0;
   align-items: center;
   gap: 7px;
   padding: 0 10px;
@@ -5270,6 +5272,8 @@ button,
   box-shadow: 0 10px 26px rgb(0 0 0 / 10%);
   backdrop-filter: blur(12px);
   font-size: 10px;
+  white-space: normal;
+  overflow-wrap: anywhere;
   opacity: .78;
   animation: auth-orbit-tag-drift 7s ease-in-out infinite;
 }
@@ -5286,7 +5290,7 @@ button,
 }
 
 .auth-orbit-tag b { color: var(--rv-color-ink); font-weight: 500; }
-.auth-orbit-tag small { color: var(--rv-color-subtle); font-size: 8px; }
+.auth-orbit-tag small { min-width: 0; color: var(--rv-color-subtle); font-size: 8px; overflow-wrap: anywhere; }
 .auth-orbit-tag-trendyol { --tag-color: #f27a24; top: 28%; left: 1%; }
 .auth-orbit-tag-hepsiburada { --tag-color: #f59b3d; top: 32%; right: 0; animation-delay: -1.6s; }
 .auth-orbit-tag-shopify { --tag-color: #95bf47; bottom: 27%; left: 3%; animation-delay: -3.2s; }
@@ -5551,7 +5555,7 @@ button,
   .auth-notification-marquee { animation: none; }
   .auth-signal-pulse { display: none; }
   .auth-route-packet { display: none; }
-  .auth-notification-viewport { overflow-x: auto; mask-image: none; }
+  .auth-notification-viewport { overflow: hidden; mask-image: none; }
   .auth-notification-events[aria-hidden="true"] { display: none; }
 }
 
@@ -11736,4 +11740,81 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 @media (max-width: 1200px) {
   .rv-questions-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .rv-questions-search { grid-column: 1 / -1; }
+}
+
+/* Keep ambient auth labels from widening the page when the text changes. */
+.auth-orbit-tag { box-sizing: border-box; max-width: min(180px, calc(100vw - 40px)); overflow: hidden; white-space: nowrap; }
+.auth-orbit-tag b { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* The activity rail moves inside a clipped viewport and never exposes a
+   horizontal scrollbar, including when reduced motion is enabled. */
+.auth-notification-viewport { overflow-x: hidden; }
+@media (prefers-reduced-motion: reduce) {
+  .auth-notification-viewport { overflow-x: hidden; }
+}
+
+/* Align invoice selection controls to the center of each row and keep an even
+   gap before the order text in both the heading and data rows. */
+.app-shell.stitch-shell main .invoice-reference-platform-heading { align-items: center; gap: 12px; padding-right: 12px; }
+.app-shell.stitch-shell main .invoice-reference-platform-heading > strong { text-align: center; overflow-wrap: anywhere; }
+.app-shell.stitch-shell main .invoice-reference-order:has(> .invoice-reference-select) { padding-left: 42px; }
+.app-shell.stitch-shell main .invoice-reference-order > .invoice-reference-select { top: 50%; left: 12px; transform: translateY(-50%); }
+.app-shell.stitch-shell main .invoice-reference-head > .order-column-filter { justify-items: stretch; }
+.app-shell.stitch-shell main .invoice-reference-head > .order-column-filter .order-column-filter-trigger { justify-self: end; margin-right: 2px; }
+.invoice-reference-product-summary { position: relative; width: fit-content; max-width: 100%; cursor: help; outline-offset: 3px; }
+.invoice-reference-product-summary > small { display: block; }
+.invoice-reference-product-tooltip { position: absolute; top: calc(100% + 8px); left: 0; z-index: 40; display: none; width: min(340px, calc(100vw - 48px)); max-height: min(360px, 55vh); overflow: auto; padding: 10px; border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); background: var(--rv-color-surface); box-shadow: var(--rv-shadow-lg); text-transform: none; letter-spacing: normal; }
+.invoice-reference-product-summary:hover .invoice-reference-product-tooltip,
+.invoice-reference-product-summary:focus .invoice-reference-product-tooltip,
+.invoice-reference-product-summary:focus-within .invoice-reference-product-tooltip { display: grid; gap: 8px; }
+.invoice-reference-product-tooltip article { display: grid; grid-template-columns: 40px minmax(0, 1fr); align-items: center; gap: 9px; min-width: 0; }
+.invoice-reference-product-tooltip img, .invoice-reference-product-image-placeholder { display: grid; width: 40px; height: 60px; place-items: center; overflow: hidden; object-fit: cover; border-radius: var(--rv-radius-sm); background: var(--rv-color-surface-soft); }
+.invoice-reference-product-tooltip article > span:last-child { display: grid; min-width: 0; gap: 3px; }
+.invoice-reference-product-tooltip strong { overflow-wrap: anywhere; color: var(--rv-color-ink); font-size: 12px; }
+.invoice-reference-product-tooltip small, .invoice-reference-product-tooltip p { margin: 0; color: var(--rv-color-muted); font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
+
+/* Return search uses one query field plus the date range and actions. */
+.return-reference-filters { grid-template-columns: minmax(240px, 1.5fr) repeat(2, minmax(150px, .8fr)) auto; }
+@media (max-width: 900px) {
+  .return-reference-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .return-reference-filters > :first-child { grid-column: 1 / -1; }
+}
+@media (max-width: 600px) {
+  .return-reference-filters { grid-template-columns: minmax(0, 1fr); }
+  .return-reference-filters > :first-child, .return-reference-filters .return-filter-actions { grid-column: auto; }
+  .return-reference-filters .return-filter-actions { justify-self: stretch; }
+}
+
+/* Question controls follow the requested scan order: text, platform/store,
+   dates, and sort. Product media keeps a portrait 2:3 frame. */
+.rv-questions-filter-grid { grid-template-columns: minmax(220px, 1.35fr) minmax(140px, .8fr) minmax(150px, .95fr) repeat(2, minmax(140px, .8fr)) minmax(140px, .8fr); }
+.rv-question-product img, .rv-question-product-placeholder { height: auto; aspect-ratio: 2 / 3; }
+.rv-question-template-list > header > span { border-radius: 6px; }
+.rv-questions-platform-note { margin: 0; padding: 10px 13px; border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); background: var(--rv-color-surface); color: var(--rv-color-muted); font-size: 12px; line-height: 1.5; }
+@media (max-width: 1200px) { .rv-questions-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .rv-questions-search { grid-column: 1 / -1; } }
+@media (max-width: 700px) { .rv-questions-filter-grid { grid-template-columns: minmax(0, 1fr); } .rv-questions-search { grid-column: auto; } }
+
+/* Make publication blockers easier to read and leave space above the alert. */
+.publish-platform-missing { margin-top: 14px; padding: 14px 16px; align-items: flex-start; gap: 12px; line-height: 1.5; }
+.publish-platform-missing > div { min-width: 0; }
+.publish-platform-missing li { margin-top: 5px; overflow-wrap: anywhere; }
+.publish-platform-missing-help { margin: 9px 0 0; color: var(--rv-color-muted); font-size: 11px; line-height: 1.45; }
+
+.marketplace-pricing-open { display: flex; width: 100%; min-width: 0; align-items: center; justify-content: space-between; gap: 14px; padding: 13px 14px; border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); background: var(--rv-color-surface-raised); color: var(--rv-color-ink); cursor: pointer; text-align: left; }
+.marketplace-pricing-open > span:first-child { display: grid; min-width: 0; gap: 4px; }
+.marketplace-pricing-open > span:last-child { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 8px; color: var(--rv-color-primary); font-size: 12px; font-weight: 750; }
+.marketplace-pricing-open strong { font-size: 13px; }
+.marketplace-pricing-open small { color: var(--rv-color-muted); font-size: 11px; }
+.marketplace-pricing-open:hover { border-color: var(--rv-color-primary); background: var(--rv-color-primary-soft); }
+.shopify-write-controls { display: grid; gap: 14px; }
+.shopify-write-toggle-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.shopify-write-controls .integration-write-toggle.is-disabled { opacity: .68; cursor: not-allowed; }
+.shopify-write-requirements { margin: 0; color: var(--rv-color-muted); font-size: 12px; line-height: 1.5; }
+@media (max-width: 700px) { .shopify-write-toggle-list { grid-template-columns: minmax(0, 1fr); } }
+.marketplace-pricing-modal { width: min(650px, calc(100vw - 32px)); max-height: min(860px, calc(100vh - 32px)); }
+.marketplace-pricing-modal-body { min-height: 0; overflow-y: auto; padding: 16px; }
+.marketplace-pricing-modal-body .marketplace-pricing-bar-list { display: grid; gap: 10px; }
+.marketplace-pricing-modal > footer { display: flex; justify-content: flex-end; padding: 12px 16px; border-top: 1px solid var(--rv-color-border); }
+@media (max-width: 600px) {
+  .marketplace-pricing-open { align-items: flex-start; flex-direction: column; }
 }

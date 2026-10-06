@@ -2054,7 +2054,7 @@ function PublishPlatformCard({ card, selected, productId, categoryId, productChe
   const blockedIssues = [
     ...missingChecks.map(check => ({ attribute: check.title, detail: check.detail })),
     ...requiredMappingIssues,
-    ...(mappingCheckFailed ? [{ attribute: `${card.name} özellik kontrolü`, detail: `Güncel ${card.name} eşlemeleri doğrulanamadı. Bağlantı ve kategori eşlemelerini kontrol edin.` }] : [])
+    ...(mappingCheckFailed ? [{ attribute: `${card.name} özellik kontrolü`, detail: `Güncel ${card.name} özellik listesi alınamadığı için zorunlu alan kontrolü tamamlanamadı ve bu kanal seçime kapatıldı. Önce Entegrasyonlar bölümünde bağlantı testini çalıştırın; bağlantı başarılıysa kategori özellik eşlemelerini yenileyip tekrar deneyin.` }] : [])
   ]
   const selectionBlocked = blockedIssues.length > 0 || mappingCheckPending
   const issueListId = `publish-issues-${card.connection.id}`
@@ -2081,6 +2081,7 @@ function PublishPlatformCard({ card, selected, productId, categoryId, productChe
       <UiIcon name="alert" />
       <div><strong>{blockedIssues.length === 1 ? 'Yayın için zorunlu eksik' : `Yayın için ${blockedIssues.length} zorunlu eksik`}</strong>
         <ul>{blockedIssues.map((issue, index) => <li key={`${issue.attribute}-${index}`}><b>{issue.attribute}:</b> {issue.detail}</li>)}</ul>
+        <p className="publish-platform-missing-help">Çözüm: Ürün bilgisi eksikse ilgili ürün alanını doldurun; kategori veya özellik eşlemesiyle ilgiliyse Eşleştirmeler bölümünde kategori ve zorunlu özellik bağlantılarını güncelleyip bu sayfayı yenileyin.</p>
       </div>
     </div>}
     {mappingCheckPending && <div id={`${issueListId}-pending`} className="publish-platform-warning" role="status" aria-label={`${card.name} yayın gereksinimleri kontrol ediliyor`}><UiIcon name="alert" /><div><strong>Yayın gereksinimleri kontrol ediliyor</strong><p>Güncel zorunlu özellik eşlemeleri doğrulanıyor.</p></div></div>}
@@ -3394,6 +3395,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     } finally { setSubmitting(false) }
   }
 
+  const [marketplacePricingOpen, setMarketplacePricingOpen] = useState(false)
   const publicationChannels = (connections.data?.items ?? []).filter(isProductPublicationChannel)
   const platformCards = publicationChannels.map(connection => ({
     code: connection.platformCode.trim().toLocaleLowerCase('tr-TR'),
@@ -3624,20 +3626,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
             <label>{showVariantStockTotal ? 'Varyantların toplam stoğu' : 'Stok'}<input value={showVariantStockTotal ? String(variantStockTotal) : form.initialStock} onChange={event => updateField('initialStock', event.target.value)} type="number" min="0" step="1" readOnly={showVariantStockTotal} /></label>
             <label>Güvenlik stoğu<input value={form.safetyStock} onChange={event => updateField('safetyStock', event.target.value)} type="number" min="0" step="1" /></label>
           </div>
-          {platformCards.length > 0 && <section className="marketplace-pricing-bars" aria-label="Pazaryerlerine özel fiyatlandırma">
-            <div className="marketplace-pricing-bars-head"><div><strong>Pazaryerlerine özel fiyatlandırma</strong><small>Her kanal için ayrı liste ve satış fiyatı tanımlayın.</small></div><span>{selectedChannelIds.length} kanal seçili</span></div>
-            <div className="marketplace-pricing-bar-list">
-              {platformCards.map(card => {
-                const pricing = channelPriceDraft(card.connection.id); const selected = selectedChannelIds.includes(card.connection.id)
-                return <fieldset className={`marketplace-pricing-bar${selected ? ' selected' : ''}`} key={card.connection.id} aria-label={`${card.name} pazaryeri fiyatlandırması`}>
-                  <div className="marketplace-pricing-bar-heading"><span className={`publish-platform-mark ${card.tone}`}><img className={`publish-platform-logo ${platformLogoClass(card.connection.platformCode)}`} src={platformLogoSource(card.connection.platformCode) ?? '/platforms/trendyol.png'} alt="" aria-hidden="true" /></span><span><strong>{card.name}</strong><small>{selected ? 'Yayınlanacak kanal' : 'Yayın için seçilmedi'}</small></span></div>
-                  <label>Liste fiyatı<input value={pricing.listPrice} onChange={event => updateChannelPrice(card.connection.id, 'listPrice', event.target.value)} type="number" min="0" step="0.01" /></label>
-                  <label>Satış fiyatı<input value={pricing.salePrice} onChange={event => updateChannelPrice(card.connection.id, 'salePrice', event.target.value)} type="number" min="0" step="0.01" /></label>
-                  <button type="button" className={`secondary marketplace-pricing-toggle${selected ? ' selected' : ''}`} onClick={() => updateChannel(card.connection.id)}>{selected ? 'Kanaldan çıkar' : 'Yayın için seç'}</button>
-                </fieldset>
-              })}
-            </div>
-          </section>}
+          {platformCards.length > 0 && <button type="button" className="marketplace-pricing-open" aria-haspopup="dialog" aria-expanded={marketplacePricingOpen} onClick={() => setMarketplacePricingOpen(true)}><span><strong>Pazaryerlerine özel fiyatlandırma</strong><small>Trendyol, Shopify ve Hepsiburada kanal fiyatlarını düzenleyin.</small></span><span>{selectedChannelIds.length} kanal seçili <UiIcon name="arrowRight" size={16} /></span></button>}
+          {marketplacePricingOpen && <div className="workspace-modal-backdrop marketplace-pricing-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setMarketplacePricingOpen(false) }}><section className="workspace-modal marketplace-pricing-modal" role="dialog" aria-modal="true" aria-labelledby="marketplace-pricing-title" onMouseDown={event => event.stopPropagation()}><header><div><p className="eyebrow">KANAL FİYATLARI</p><h2 id="marketplace-pricing-title">Pazaryerlerine özel fiyatlandırma</h2><p>Her kanal için ayrı liste ve satış fiyatı tanımlayın.</p></div><button type="button" className="modal-close" onClick={() => setMarketplacePricingOpen(false)} aria-label="Fiyatlandırma penceresini kapat"><UiIcon name="close" /></button></header><div className="marketplace-pricing-modal-body"><div className="marketplace-pricing-bar-list">{platformCards.map(card => { const pricing = channelPriceDraft(card.connection.id); const selected = selectedChannelIds.includes(card.connection.id); return <fieldset className={`marketplace-pricing-bar${selected ? ' selected' : ''}`} key={card.connection.id} aria-label={`${card.name} pazaryeri fiyatlandırması`}><div className="marketplace-pricing-bar-heading"><span className={`publish-platform-mark ${card.tone}`}><img className={`publish-platform-logo ${platformLogoClass(card.connection.platformCode)}`} src={platformLogoSource(card.connection.platformCode) ?? '/platforms/trendyol.png'} alt="" aria-hidden="true" /></span><span><strong>{card.name}</strong><small>{selected ? 'Yayınlanacak kanal' : 'Yayın için seçilmedi'}</small></span></div><label>Liste fiyatı<input value={pricing.listPrice} onChange={event => updateChannelPrice(card.connection.id, 'listPrice', event.target.value)} type="number" min="0" step="0.01" /></label><label>Satış fiyatı<input value={pricing.salePrice} onChange={event => updateChannelPrice(card.connection.id, 'salePrice', event.target.value)} type="number" min="0" step="0.01" /></label><button type="button" className={`secondary marketplace-pricing-toggle${selected ? ' selected' : ''}`} onClick={() => updateChannel(card.connection.id)}>{selected ? 'Kanaldan çıkar' : 'Yayın için seç'}</button></fieldset>})}</div></div><footer><button type="button" className="secondary" onClick={() => setMarketplacePricingOpen(false)}>Tamam</button></footer></section></div>}
         </section>
       </div>
     </div>

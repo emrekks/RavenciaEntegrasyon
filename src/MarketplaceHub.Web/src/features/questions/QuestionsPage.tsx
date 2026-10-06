@@ -78,6 +78,7 @@ export function QuestionsPage() {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [search, setSearch] = useState('')
+  const [sort, setSort] = useState('NEWEST')
   const [page, setPage] = useState(1)
   const [replyingId, setReplyingId] = useState<string | null>(null)
   const [now, setNow] = useState(Date.now())
@@ -95,8 +96,9 @@ export function QuestionsPage() {
   if (dateFrom) filters.set('dateFrom', new Date(`${dateFrom}T00:00:00`).toISOString())
   if (dateTo) filters.set('dateTo', new Date(`${dateTo}T23:59:59`).toISOString())
   if (search.trim()) filters.set('search', search.trim())
+  filters.set('sort', sort)
   filters.set('page', String(page)); filters.set('limit', '50')
-  const questions = useQuery({ queryKey: ['questions', kind, status, platform, connectionId, dateFrom, dateTo, search, page], queryFn: () => hubApi<QuestionListPage>(`/questions?${filters.toString()}`), refetchInterval: 30_000, staleTime: 10_000 })
+  const questions = useQuery({ queryKey: ['questions', kind, status, platform, connectionId, dateFrom, dateTo, search, sort, page], queryFn: () => hubApi<QuestionListPage>(`/questions?${filters.toString()}`), refetchInterval: 30_000, staleTime: 10_000 })
   const templates = useQuery({ queryKey: ['question-templates'], queryFn: () => hubApi<Template[]>('/question-templates'), staleTime: 30_000 })
   const syncStates = useQuery({ queryKey: ['questions', 'sync-state'], queryFn: () => hubApi<SyncState[]>('/questions/sync-state'), refetchInterval: 15_000 })
 
@@ -118,7 +120,7 @@ export function QuestionsPage() {
   })
 
   useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 30_000); return () => window.clearInterval(timer) }, [])
-  useEffect(() => { setPage(1) }, [tab, status, platform, connectionId, dateFrom, dateTo, search])
+  useEffect(() => { setPage(1) }, [tab, status, platform, connectionId, dateFrom, dateTo, search, sort])
   useEffect(() => {
     if (tab === 'TEMPLATES' || requestedSync.current || !connections.isSuccess) return
     requestedSync.current = true
@@ -138,8 +140,9 @@ export function QuestionsPage() {
     {tab !== 'TEMPLATES' ? <>
       <section className="rv-filter-bar rv-questions-filters" aria-label="Soru filtreleri">
         <Tabs className="rv-questions-status-tabs" ariaLabel="Soru durum filtresi" value={status} onChange={value => setStatus(value as QuestionStatus)} items={statusFilters.map(item => ({ value: item.value, label: item.label }))} />
-        <div className="rv-filter-fields rv-questions-filter-grid">{tab === 'ORDER' ? <div className="rv-question-platform-fixed"><small>Platform</small><Badge tone="info">Hepsiburada</Badge></div> : <label>Platform<select value={platform} onChange={event => { setPlatform(event.target.value); setConnectionId('ALL') }}><option value="ALL">Tüm platformlar</option><option value="TRENDYOL">Trendyol</option><option value="HEPSIBURADA">Hepsiburada</option></select></label>}<label>Mağaza<select value={connectionId} onChange={event => setConnectionId(event.target.value)}><option value="ALL">Tüm mağazalar</option>{connectionNames.filter(item => tab === 'ORDER' || platform === 'ALL' || item.platformCode === platform).filter(item => tab !== 'ORDER' || item.platformCode === 'HEPSIBURADA').map(item => <option value={item.id} key={item.id}>{item.displayName}</option>)}</select></label><label>Başlangıç<input type="date" value={dateFrom} onChange={event => setDateFrom(event.target.value)} /></label><label>Bitiş<input type="date" value={dateTo} onChange={event => setDateTo(event.target.value)} /></label><label className="rv-questions-search">Metin ara<input value={search} onChange={event => setSearch(event.target.value)} placeholder="Soru, ürün, SKU veya sipariş no" /></label></div>
+        <div className="rv-filter-fields rv-questions-filter-grid"><label className="rv-questions-search">Metin ara<input value={search} onChange={event => setSearch(event.target.value)} placeholder="Soru, ürün, SKU veya sipariş no" /></label>{tab === 'ORDER' ? <div className="rv-question-platform-fixed"><small>Platform</small><Badge tone="info">Hepsiburada</Badge></div> : <label>Platform<select value={platform} onChange={event => { setPlatform(event.target.value); setConnectionId('ALL') }}><option value="ALL">Tüm platformlar</option><option value="TRENDYOL">Trendyol</option><option value="HEPSIBURADA">Hepsiburada</option></select></label>}<label>Mağaza<select value={connectionId} onChange={event => setConnectionId(event.target.value)}><option value="ALL">Tüm mağazalar</option>{connectionNames.filter(item => tab === 'ORDER' || platform === 'ALL' || item.platformCode === platform).filter(item => tab !== 'ORDER' || item.platformCode === 'HEPSIBURADA').map(item => <option value={item.id} key={item.id}>{item.displayName}</option>)}</select></label><label>Başlangıç<input type="date" value={dateFrom} onChange={event => setDateFrom(event.target.value)} /></label><label>Bitiş<input type="date" value={dateTo} onChange={event => setDateTo(event.target.value)} /></label><label>Sıralama<select value={sort} onChange={event => setSort(event.target.value)}><option value="NEWEST">En yeni</option><option value="OLDEST">En eski</option><option value="UPDATED">Son güncellenen</option></select></label></div>
       </section>
+      {tab === 'ORDER' && <p className="rv-questions-platform-note">Trendyol’un resmi Soru-Cevap API’si ürün sorularını listeliyor; sipariş soruları bu kaynaktan alınamıyor. Bu bölüm Hepsiburada sipariş sorularını gösterir.</p>}
       {notice && <div className="rv-questions-notice" role="status"><span>{notice}</span><button type="button" aria-label="Bildirimi kapat" onClick={() => setNotice('')}>×</button></div>}
       <section className="rv-questions-results"><header><div><h2>{tab === 'ORDER' ? 'Hepsiburada sipariş soruları' : 'Ürün soruları'}</h2><p>{questions.isLoading ? 'Sorular yükleniyor…' : `${(questions.data?.totalCount ?? 0).toLocaleString('tr-TR')} soru`}</p></div><span>Her 30 saniyede bir yenilenir</span></header>
         {questions.isLoading ? <LoadingState>Sorular yükleniyor…</LoadingState> : questions.isError ? <EmptyState>Sorular alınamadı. Biraz sonra yeniden deneyin.</EmptyState> : rows.length === 0 ? <EmptyState>Bu filtrelerde soru bulunamadı. Geçmiş aktarımı tamamlandıkça erişilebilen sorular listelenir.</EmptyState> : <div className="rv-questions-list">{rows.map(row => {

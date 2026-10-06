@@ -9,10 +9,10 @@ public static class QuestionEndpoints
     public static IEndpointRouteBuilder MapQuestionEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var api = endpoints.MapGroup("/api/v1");
-        api.MapGet("/questions", async (HttpContext http, IMarketplaceQuestionService service, string? kind, string? status, string? platform, Guid? connectionId, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, string? search, int? page, int? limit) =>
+        api.MapGet("/questions", async (HttpContext http, IMarketplaceQuestionService service, string? kind, string? status, string? platform, Guid? connectionId, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, string? search, int? page, int? limit, string? sort) =>
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
-            return tenant is null ? Results.Unauthorized() : Results.Ok(await service.ListAsync(tenant.TenantId, new(kind ?? "ALL", status, platform, connectionId, dateFrom, dateTo, search, page ?? 1, limit ?? 50), http.RequestAborted));
+            return tenant is null ? Results.Unauthorized() : Results.Ok(await service.ListAsync(tenant.TenantId, new(kind ?? "ALL", status, platform, connectionId, dateFrom, dateTo, search, page ?? 1, limit ?? 50, sort ?? "NEWEST"), http.RequestAborted));
         });
         api.MapGet("/questions/{id:guid}", async (Guid id, HttpContext http, IMarketplaceQuestionService service) =>
         {

@@ -650,12 +650,11 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             }
         }
 
-        // Older Hepsiburada question records may contain marketplace SKUs that
-        // are no longer present in the current catalog or listing endpoint.
-        // Reuse image URLs captured on this same store's historical order lines,
-        // first by exact SKU/barcode, then by the exact product title supplied
-        // by the question. Both paths remain tenant and connection scoped.
-        if (connection?.PlatformCode == "HEPSIBURADA")
+        // Older marketplace question records may contain SKUs that are no
+        // longer present in the current catalog. Reuse image URLs captured on
+        // this same store's historical order lines, first by exact SKU/barcode,
+        // then by the exact product title supplied by the question.
+        if (connection is not null)
         {
             var skuSnapshots = await (
                 from line in db.OrderLines.AsNoTracking()
@@ -1348,6 +1347,17 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 _ => query.Where(_ => false)
             };
         }
+
+        var search = options.Search?.Trim();
+        if (!string.IsNullOrWhiteSpace(search))
+            query = query.Where(claim => claim.ExternalClaimId.Contains(search)
+                || (claim.ReasonCode != null && claim.ReasonCode.Contains(search))
+                || (claim.ReasonText != null && claim.ReasonText.Contains(search))
+                || db.Orders.Any(order => order.TenantId == claim.TenantId && order.Id == claim.OrderId
+                    && (order.OrderNumber.Contains(search) || order.CustomerSnapshotJson.Contains(search)))
+                || db.ReturnLines.Any(returnLine => returnLine.TenantId == claim.TenantId && returnLine.ClaimId == claim.Id
+                    && db.OrderLines.Any(line => line.TenantId == returnLine.TenantId && line.Id == returnLine.OrderLineId
+                        && ((line.Barcode != null && line.Barcode.Contains(search)) || line.Sku.Contains(search)))));
 
         var customer = options.Customer?.Trim();
         if (!string.IsNullOrWhiteSpace(customer))
