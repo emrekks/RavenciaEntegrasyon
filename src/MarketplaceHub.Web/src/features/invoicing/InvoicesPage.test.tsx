@@ -68,21 +68,21 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     expect(container.querySelector('.invoice-reference-bulk-toolbar')?.textContent).toContain('3 sipariş seçildi')
   })
 
-  it('changes selected cross-platform invoice statuses without uploading files', async () => {
+  it('changes only Shopify invoice statuses when mixed platforms are selected', async () => {
     const selectAll = container.querySelector<HTMLInputElement>('[aria-label="Bu sayfadaki tüm siparişleri seç"]')!
     act(() => selectAll.click())
     await settle()
-    act(() => button('Seçilenlerin fatura durumunu değiştir').click())
+    act(() => button('Shopify faturalarını güncelle').click())
     await settle()
     expect(container.querySelector('[role="dialog"]')?.textContent).toContain('Fatura dosyası yüklenmez')
     const status = container.querySelector<HTMLSelectElement>('[aria-label="Yeni fatura durumu"]')!
     act(() => { status.value = 'UPLOADED'; status.dispatchEvent(new Event('change', { bubbles: true })) })
-    act(() => button('3 siparişin durumunu güncelle').click())
+    act(() => button('2 Shopify siparişini güncelle').click())
     await settle()
 
-    expect(apiState.statusUpdates).toEqual([{ path: '/invoice-workspace/manual-status', status: 'UPLOADED', packageIds: ['shopify-package-1', 'shopify-package-2', 'trendyol-package-3'] }])
+    expect(apiState.statusUpdates).toEqual([{ path: '/invoice-workspace/manual-status', status: 'UPLOADED', packageIds: ['shopify-package-1', 'shopify-package-2'] }])
     expect(apiState.uploads).toEqual([])
     expect(container.querySelector('[role="dialog"]')).toBeNull()
-    expect(container.textContent).toContain('3 siparişin fatura durumu')
+    expect(container.textContent).toContain('2 siparişin fatura durumu')
   })
 })

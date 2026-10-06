@@ -25,10 +25,14 @@ public static class QuestionEndpoints
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
             if (tenant is null) return Results.Unauthorized();
             if (!HasIdempotencyKey(http)) return Results.BadRequest(new { code = "IDEMPOTENCY_KEY_REQUIRED", title = "X-Idempotency-Key başlığı zorunludur." });
+            if (!string.IsNullOrWhiteSpace(request.PlatformCode) && request.PlatformCode is not ("TRENDYOL" or "HEPSIBURADA"))
+                return Results.BadRequest(new { code = "QUESTION_SYNC_PLATFORM_INVALID", title = "Soru aktarımı için desteklenen platformu seçin." });
             var db = http.RequestServices.GetRequiredService<AppDbContext>();
             var sales = http.RequestServices.GetRequiredService<IMarketplaceSalesService>();
             var connections = await db.PlatformConnections.AsNoTracking().Where(row => row.TenantId == tenant.TenantId
-                && (row.PlatformCode == "TRENDYOL" || row.PlatformCode == "HEPSIBURADA") && (row.Status == "ACTIVE" || row.Status == "VERIFIED"))
+                && (row.PlatformCode == "TRENDYOL" || row.PlatformCode == "HEPSIBURADA")
+                && (request.PlatformCode == null || row.PlatformCode == request.PlatformCode)
+                && (row.Status == "ACTIVE" || row.Status == "VERIFIED"))
                 .Select(row => row.Id).ToListAsync(http.RequestAborted);
             var jobs = new List<Guid>();
             foreach (var connectionId in connections)
@@ -98,5 +102,5 @@ public static class QuestionEndpoints
             && long.TryParse(value[2..^1], out version)
             && version > 0;
     }
-    public sealed record QuestionSyncRequest(string? Kind);
+    public sealed record QuestionSyncRequest(string? Kind, string? PlatformCode = null);
 }

@@ -140,6 +140,10 @@ describe('QuestionsPage workspace flows', () => {
     expect(container.querySelector('[data-platform="hepsiburada"] .rv-question-platform-logo')?.getAttribute('src')).toBe('/platforms/hepsiburada.png')
     expect(container.querySelector('.rv-questions-notice')).toBeNull()
     expect(button('Yenile').querySelector('.ui-icon-refresh')).not.toBeNull()
+    const trendSync = button('Trendyol verilerini çek')
+    act(() => trendSync.click())
+    await settle()
+    expect(JSON.parse(apiState.calls.filter(call => call.path === '/questions/sync').at(-1)?.body ?? '{}')).toEqual({ kind: 'ALL', platformCode: 'TRENDYOL' })
     expect(container.querySelector('.rv-question-thread-message.is-question time')?.textContent).toMatch(/^\d{2}\.\d{2}\.2026 · \d{2}:\d{2}$/)
 
     for (const [label, expected] of [['Cevap bekleyenler', 'WAITING'], ['Cevaplananlar', 'ANSWERED'], ['Süresi dolanlar', 'EXPIRED'], ['Diğer durumlar', 'OTHER'], ['Tümü', 'ALL']]) {
@@ -150,17 +154,10 @@ describe('QuestionsPage workspace flows', () => {
     }
 
     const selects = container.querySelectorAll<HTMLSelectElement>('.rv-questions-filter-grid select')
-    select(selects[0], 'TRENDYOL')
-    await settle()
-    expect(lastQuestionRequest().get('platform')).toBe('TRENDYOL')
-    expect(Array.from(selects[1].options).map(option => option.textContent)).toContain('Trendyol Mağazası')
-    select(selects[0], 'HEPSIBURADA')
-    await settle()
-    expect(lastQuestionRequest().get('platform')).toBe('HEPSIBURADA')
-    expect(Array.from(selects[1].options).map(option => option.textContent)).toContain('Hepsiburada Mağazası')
-    select(selects[0], 'ALL')
-    await settle()
-    select(selects[1], 'ty-store')
+    expect(container.querySelector('.rv-question-platform-fixed')).toBeNull()
+    expect(Array.from(selects[0].options).map(option => option.textContent)).toContain('Trendyol Mağazası')
+    expect(Array.from(selects[0].options).map(option => option.textContent)).toContain('Hepsiburada Mağazası')
+    select(selects[0], 'ty-store')
     const dates = container.querySelectorAll<HTMLInputElement>('.rv-questions-filter-grid input[type="date"]')
     input(dates[0], '2026-10-01')
     input(dates[1], '2026-10-05')
@@ -177,7 +174,7 @@ describe('QuestionsPage workspace flows', () => {
     params = lastQuestionRequest()
     expect(params.get('kind')).toBe('ORDER')
     expect(params.get('platform')).toBe('HEPSIBURADA')
-    expect(container.querySelector('.rv-question-platform-fixed')?.textContent).toContain('Hepsiburada')
+    expect(container.querySelector('.rv-question-platform-fixed')).toBeNull()
     const orderStore = container.querySelectorAll<HTMLSelectElement>('.rv-questions-filter-grid select')[0]
     expect(Array.from(orderStore.options).map(option => option.textContent)).toContain('Hepsiburada Mağazası')
     expect(Array.from(orderStore.options).map(option => option.textContent)).not.toContain('Trendyol Mağazası')

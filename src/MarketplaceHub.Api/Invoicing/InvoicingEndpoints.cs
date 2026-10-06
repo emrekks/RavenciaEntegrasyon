@@ -145,8 +145,13 @@ public static class InvoicingEndpoints
         if (command.PackageIds is null || command.PackageIds.Count is < 1 or > 200) return Problem(http, new("INVOICE_WORKSPACE_PACKAGES_INVALID", "1 ile 200 arasında sipariş paketi seçilmelidir.", 422));
         var packageIds = command.PackageIds.Distinct().ToArray();
         if (packageIds.Length != command.PackageIds.Count) return Problem(http, new("INVOICE_WORKSPACE_PACKAGES_DUPLICATED", "Sipariş paket kimlikleri benzersiz olmalıdır.", 422));
+        var packagePlatforms = await (from package in db.ShipmentPackages.AsNoTracking()
+                                      join connection in db.PlatformConnections.AsNoTracking() on new { package.TenantId, package.ConnectionId } equals new { connection.TenantId, ConnectionId = connection.Id }
+                                      where package.TenantId == tenant.TenantId && packageIds.Contains(package.Id)
+                                      select new { package.Id, connection.PlatformCode }).ToListAsync(http.RequestAborted);
+        if (packagePlatforms.Count != packageIds.Length) return Problem(http, new("RESOURCE_NOT_FOUND", "Seçilen fatura siparişlerinin bir kısmı bulunamadı.", 404));
+        if (packagePlatforms.Any(x => x.PlatformCode != "SHOPIFY")) return Problem(http, new("SHOPIFY_INVOICE_ONLY", "Manuel toplu fatura durumu yalnızca Shopify siparişlerinde kullanılabilir. Diğer platformlardaki siparişler güncellenmedi.", 422));
         var packages = await db.ShipmentPackages.Where(x => x.TenantId == tenant.TenantId && packageIds.Contains(x.Id)).ToListAsync(http.RequestAborted);
-        if (packages.Count != packageIds.Length) return Problem(http, new("RESOURCE_NOT_FOUND", "Seçilen fatura siparişlerinin bir kısmı bulunamadı.", 404));
         var now = timeProvider.GetUtcNow();
         foreach (var package in packages)
         {
