@@ -3116,8 +3116,10 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             if (!result.IsSuccess)
             {
                 TrackResultFailure(result.Error);
-                await RecordIssue(tenantId, issueKey, "HEPSIBURADA_MISSING_INVOICE_FEED_FAILED",
-                    "Hepsiburada faturasız sipariş listesi okunamadı; eksik alanlı siparişlerin durumu değiştirilmedi.", cancellationToken);
+                var error = result.Error!;
+                var status = error.HttpStatus is { } httpStatus ? $" (HTTP {(int)httpStatus})" : string.Empty;
+                await RecordIssue(tenantId, issueKey, error.Code,
+                    $"Hepsiburada faturasız sipariş listesi okunamadı{status}: {error.SafeMessage} Eksik alanlı siparişlerin durumu değiştirilmedi.", cancellationToken);
                 return;
             }
 
@@ -7411,6 +7413,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
 
         issue.Status = IssueStatus.Open;
+        issue.Code = code;
+        issue.Summary = summary;
         issue.LastSeenAt = now;
         issue.OccurrenceCount++;
     }

@@ -642,9 +642,9 @@ public sealed partial class HepsiburadaHttpClient(
                 new(items, hasMore ? nextOffset.ToString(CultureInfo.InvariantCulture) : null, hasMore, totalCount),
                 response.RateLimit);
         }
-        catch (JsonException)
+        catch (JsonException exception)
         {
-            return Failure<AdapterPageResult<RemoteMissingInvoicePackage>>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_MISSING_INVOICE_CONTRACT_INVALID", "Hepsiburada eksik fatura listesi beklenen sipariş/paket sayfa sözleşmesiyle eşleşmiyor.", HttpStatusCode.BadGateway);
+            return Failure<AdapterPageResult<RemoteMissingInvoicePackage>>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_MISSING_INVOICE_CONTRACT_INVALID", $"Hepsiburada eksik fatura listesi beklenen sipariş/paket sayfa sözleşmesiyle eşleşmiyor: {exception.Message}", HttpStatusCode.BadGateway);
         }
     }
 
