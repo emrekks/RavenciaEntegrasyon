@@ -1228,6 +1228,13 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             : await query.OrderBy(x => x.Id).Take(limit + 1).ToListAsync(cancellationToken);
         var orderIds = claims.Select(x => x.OrderId).Distinct().ToArray();
         var claimIds = claims.Select(x => x.Id).ToArray();
+        var approvedAtByClaim = claimIds.Length == 0
+            ? new Dictionary<Guid, DateTimeOffset?>()
+            : await db.ReturnDecisions.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && claimIds.Contains(x.ClaimId) && x.Action == "APPROVE" && x.Status == "SUCCEEDED")
+                .GroupBy(x => x.ClaimId)
+                .Select(group => new { ClaimId = group.Key, ApprovedAt = group.Max(decision => decision.CompletedAt) })
+                .ToDictionaryAsync(x => x.ClaimId, x => x.ApprovedAt, cancellationToken);
         var orders = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
         var connectionIds = claims.Select(x => x.ConnectionId).Concat(orders.Values.Select(x => x.ConnectionId)).Distinct().ToArray();
         var connections = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && connectionIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
@@ -1293,6 +1300,9 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             var package = packages.FirstOrDefault(x => x.OrderId == claim.OrderId);
             var outboundPackage = packages.FirstOrDefault(x => x.OrderId == claim.OrderId && !string.IsNullOrWhiteSpace(x.CargoTrackingNumber)) ?? package;
             var invoice = invoices.FirstOrDefault(x => x.OrderId == claim.OrderId);
+            DateTimeOffset? approvedAt = claim.Status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed
+                ? approvedAtByClaim.GetValueOrDefault(claim.Id) ?? claim.LastRemoteModifiedAt
+                : null;
             var firstLine = claimLines.Select(x => orderLines.GetValueOrDefault(x.OrderLineId)).FirstOrDefault(x => x is not null);
             var firstVariant = firstLine is null ? null : ResolveReturnVariant(firstLine);
             var image = firstVariant is null ? null : returnImageUrls.GetValueOrDefault(firstVariant.Id);
@@ -1309,7 +1319,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 order?.OrderedAt, order?.NetAmount ?? 0, order?.Currency ?? "TRY", claim.CargoProviderName, claim.CargoTrackingNumber, image, claimLines.Count, firstLine?.Barcode ?? firstVariant?.Barcode,
                 lineViews, package?.ExternalPackageId, order is null ? "FATURA_BEKLIYOR" : ReturnInvoiceLabel(invoice, package?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown, order.CustomerSnapshotJson, package is null ? [] : [package.RawStatus]), order?.GrossAmount ?? 0, order?.DiscountAmount ?? 0,
                 order is not null && Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson).IsMicroExport,
-                claimConnection?.Id ?? connection?.Id, platformCode, claimConnection?.DisplayName ?? connection?.DisplayName ?? "Trendyol", outboundPackage?.CargoProviderExternalId, outboundPackage?.CargoTrackingNumber, claim.ReasonCode);
+                claimConnection?.Id ?? connection?.Id, platformCode, claimConnection?.DisplayName ?? connection?.DisplayName ?? "Trendyol", outboundPackage?.CargoProviderExternalId, outboundPackage?.CargoTrackingNumber, claim.ReasonCode, approvedAt);
         }).ToList();
         var hasMore = rows.Count > limit;
         var pageRows = rows.Take(limit).ToList();
@@ -1421,7 +1431,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 .Select(x => x.CompletedAt)
                 .FirstOrDefaultAsync(cancellationToken)
             : null;
-        approvedAt ??= claim.Status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed ? claim.UpdatedAt : null;
+        approvedAt ??= claim.Status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed ? claim.LastRemoteModifiedAt : null;
         var sourceLines = await db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.ClaimId == id).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         var orderLineIds = sourceLines.Select(x => x.OrderLineId).ToArray();
         var orderLines = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && orderLineIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
