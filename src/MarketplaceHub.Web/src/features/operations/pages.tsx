@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, type Me } from '../../shared/api'
 import { Pagination, Tabs, Toast, UiIcon, type UiIconName } from '../../shared/components'
 import { statusLabel } from '../../shared/status-labels'
+import { marketplaceQuestionSyncChange, marketplaceQuestionSyncPresentation } from './marketplace-question-sync'
 
 type JobStatus = 'PENDING' | 'LEASED' | 'RETRY_SCHEDULED' | 'BLOCKED' | 'MANUAL_REVIEW' | 'SUCCEEDED' | 'DEAD' | 'CANCELLED'
 type JobSummary = {
@@ -80,6 +81,7 @@ type JobPresentation = { title: string; icon: JobTypeIconName; description: stri
 
 function jobPresentation(jobType: string): JobPresentation {
   const type = jobType.toUpperCase()
+  if (type === 'MARKETPLACE_QUESTION_SYNC') return marketplaceQuestionSyncPresentation
   if (type.includes('REFERENCE_SYNC')) {
     const platform = type.startsWith('HEPSIBURADA_') ? 'Hepsiburada' : 'Trendyol'
     return { title: `${platform} kategori ve eşleştirme verisi`, icon: 'product', description: `${platform} kategori, özellik ve eşleştirme referansları salt okunur olarak yenilenir; platforma ürün veya başka veri gönderilmez.` }
@@ -114,6 +116,7 @@ function jobSource(jobType: string) {
 
 function fallbackJobChange(job: JobSummary): JobChange {
   const type = job.jobType.toUpperCase()
+  if (type === 'MARKETPLACE_QUESTION_SYNC') return marketplaceQuestionSyncChange
   if (type === 'STOCK_PROJECTION_DISPATCH') return { label: 'İşlem türü', value: 'Stok gönderim hazırlığı', detail: 'Bu adım dış API’ye yazmaz. Dış yazma açıksa ayrı bir fiyat-stok gönderim işi oluşturur.' }
   if (type === 'TRENDYOL_STOCK_RECONCILIATION') return { label: 'İşlem türü', value: 'Stok uzlaştırma taraması', detail: 'Bu kayıt tek başına pazaryerine stok gönderildiği anlamına gelmez.' }
   if (type === 'TRENDYOL_PRICE_INVENTORY_SYNC') return { label: 'İşlem türü', value: 'Fiyat ve stok gönderimi', detail: 'Dış yazma kapalıysa Trendyol’a yeni gönderim yapılmaz.' }

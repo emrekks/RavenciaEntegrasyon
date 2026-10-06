@@ -938,6 +938,7 @@
   .product-catalog-head { min-height: 46px; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); font-size: var(--rv-font-size-xs); font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
   .product-catalog-head > * { min-width: 0; padding-inline: var(--rv-space-3); }
   .product-select-all { grid-column: 1 / span 3; display: flex; align-items: center; gap: var(--rv-space-2); }
+  .product-select-all > input { box-sizing: border-box; width: 17px; height: 17px; min-height: 17px; flex: 0 0 17px; margin-left: 1.5px; }
   .product-catalog-head > span:nth-child(2) { grid-column: 4; }
   .product-catalog-head > span:nth-child(3) { grid-column: 5; }
   .product-catalog-head > span:nth-child(4) { grid-column: 6; }
@@ -2959,6 +2960,7 @@
   .preferred-product-catalog { width: 100%; min-width: 0; }
   .product-catalog-table { min-width: 0; }
   .product-catalog-head, .product-catalog-row { grid-template-columns: 34px 76px minmax(170px, 2fr) minmax(110px, .8fr) minmax(70px, .55fr) minmax(62px, .45fr) minmax(82px, .65fr) minmax(124px, .75fr) minmax(136px, .85fr); }
+  .product-catalog-head > .product-select-all > input { margin-left: -3.5px; }
   .product-list-thumb, .product-list-placeholder { width: 68px; height: 102px; min-height: 102px; }
   .product-list-actions { gap: var(--rv-space-1); }
   .product-list-actions a, .product-list-actions button { width: 34px; height: 34px; min-height: 34px; }
@@ -11485,6 +11487,8 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
     padding-inline: 4px;
   }
 
+  .product-catalog-head > .product-select-all > input { margin-left: 4.5px; }
+
   .app-shell.stitch-shell main .product-catalog-row > .product-list-thumb,
   .app-shell.stitch-shell main .product-catalog-row > .product-list-placeholder {
     padding-inline: 0;
@@ -11732,8 +11736,14 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .invoice-reference-platform-heading > strong { flex: 1 1 auto; }
 .invoice-reference-platform-heading > .platform-multi-select-field.is-compact { flex: 0 0 30px; }
 .invoice-reference-select-all { position: static; display: grid; width: 18px; height: 18px; flex: 0 0 18px; place-items: center; transform: none; }
-.invoice-reference-select-all input, .invoice-reference-select { width: 16px; height: 16px; margin: 0; accent-color: var(--rv-color-primary); cursor: pointer; }
-.invoice-reference-select-all input:disabled { cursor: default; opacity: .45; }
+.app-shell.stitch-shell main .invoice-reference-select-all input, .app-shell.stitch-shell main .invoice-reference-select { appearance: none; -webkit-appearance: none; box-sizing: border-box; display: grid; width: 16px; height: 16px; min-height: 16px; flex: 0 0 16px; place-items: center; margin: 0; padding: 0; color: #fff; border: 1px solid var(--rv-color-border-strong); border-radius: 4px; background: var(--rv-color-surface-raised); cursor: pointer; }
+.app-shell.stitch-shell main .invoice-reference-select-all input::after, .app-shell.stitch-shell main .invoice-reference-select::after { width: 7px; height: 4px; content: ""; border-bottom: 2px solid currentColor; border-left: 2px solid currentColor; opacity: 0; transform: translateY(-1px) rotate(-45deg); }
+.app-shell.stitch-shell main .invoice-reference-select-all input:checked, .app-shell.stitch-shell main .invoice-reference-select:checked { border-color: var(--rv-color-primary); background: var(--rv-color-primary); }
+.app-shell.stitch-shell main .invoice-reference-select-all input:checked::after, .app-shell.stitch-shell main .invoice-reference-select:checked::after { opacity: 1; }
+.app-shell.stitch-shell main .invoice-reference-select-all input:indeterminate, .app-shell.stitch-shell main .invoice-reference-select:indeterminate { border-color: var(--rv-color-primary); background: var(--rv-color-primary); }
+.app-shell.stitch-shell main .invoice-reference-select-all input:indeterminate::after, .app-shell.stitch-shell main .invoice-reference-select:indeterminate::after { width: 8px; height: 0; border: 0; border-top: 2px solid currentColor; opacity: 1; transform: none; }
+.app-shell.stitch-shell main .invoice-reference-select-all input:focus-visible, .app-shell.stitch-shell main .invoice-reference-select:focus-visible { outline: 2px solid color-mix(in srgb, var(--rv-color-primary) 55%, transparent); outline-offset: 2px; }
+.app-shell.stitch-shell main .invoice-reference-select-all input:disabled { cursor: default; opacity: .45; }
 .invoice-reference-order { position: relative; }
 .invoice-reference-order > .invoice-reference-select { position: absolute; top: 10px; right: 10px; z-index: 1; }
 .invoice-reference-bulk-toolbar { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; margin: 0 0 12px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--rv-color-primary) 48%, var(--rv-color-border)); border-radius: var(--rv-radius-md); background: color-mix(in srgb, var(--rv-color-primary) 8%, var(--rv-color-surface-raised)); }

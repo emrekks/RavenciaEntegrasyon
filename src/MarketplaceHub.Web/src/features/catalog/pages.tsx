@@ -18,6 +18,7 @@ import { applyGeneratedVariantCodes, buildSequentialVariantCodes, buildVariantGe
 import { filterVariantsByOptions, selectVariantDraftsByKeys, type VariantOptionFilterSelections } from './variant-filtering'
 import { formatColorOptionValue, matchingVariantOptionValues, mergeVariantOptionEntries, mergeVariantOptionValues, normalizeVariantOptionValue } from './variant-option-matching'
 import { classifyPublicationAttributeIssues, type PublicationAttributeSelection, type PublicationMappingReference, type PublicationValueReferenceSet } from './publication-attribute-readiness'
+import { PublicationReadinessSourceError, publicationReadinessFailureDetail, readPublicationReadinessSource } from './publication-readiness-error'
 import { productMediaUrlIssue } from './product-media-url'
 import { barcodeClipboardIssue, parseBarcodeClipboardValues } from './product-barcode-paste'
 import { productCopyIdentifierConflicts } from './product-copy-identifiers'
@@ -2001,12 +2002,12 @@ function PublishPlatformCard({ card, selected, productId, categoryId, productChe
     queryKey: ['publication-attribute-readiness', card.connection.id, categoryId, selectedAttributes],
     queryFn: async () => {
       const connectionId = encodeURIComponent(card.connection.id)
-      const categoryMapping = await hubApi<{ externalId: string; snapshotId: string; status: string } | null>(`/mappings/categories/${categoryId}?connectionId=${connectionId}`)
+      const categoryMapping = await readPublicationReadinessSource('Kategori eşlemesi', () => hubApi<{ externalId: string; snapshotId: string; status: string } | null>(`/mappings/categories/${categoryId}?connectionId=${connectionId}`))
       if (!categoryMapping || categoryMapping.status !== 'VERIFIED') {
         return { requiredIssues: [{ attribute: 'Kategori eşlemesi', detail: `Yayın öncesi güncel ${card.name} kategori eşlemesi gerekir.` }], optionalWarnings: [] }
       }
 
-      const categoryReferences = await hubApi<{ snapshotId: string; items: Array<{ externalId: string; name: string; isActive: boolean; isLeaf: boolean }> }>(`/reference-data/categories?connectionId=${connectionId}`)
+      const categoryReferences = await readPublicationReadinessSource(`${card.name} kategori listesi`, () => hubApi<{ snapshotId: string; items: Array<{ externalId: string; name: string; isActive: boolean; isLeaf: boolean }> }>(`/reference-data/categories?connectionId=${connectionId}`))
       const mappedCategory = categoryReferences.items.find(item => item.externalId === categoryMapping.externalId && item.isActive && item.isLeaf)
       if (categoryMapping.snapshotId !== categoryReferences.snapshotId || !mappedCategory) {
         return { requiredIssues: [{ attribute: 'Kategori eşlemesi', detail: `${card.name} kategori eşlemesi güncel değil; kategori eşlemesini yenileyin.` }], optionalWarnings: [] }
@@ -2014,20 +2015,22 @@ function PublishPlatformCard({ card, selected, productId, categoryId, productChe
 
       const categoryScope = categoryMapping.externalId
       const [attributeReferences, attributeMappings] = await Promise.all([
-        hubApi<{ snapshotId: string; items: Array<{ externalId: string; name: string; isActive: boolean; isRequired?: boolean | null; allowsCustomValue?: boolean | null }> }>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes?connectionId=${connectionId}`),
-        hubApi<PublicationMappingReference[]>(`/mappings/attributes?connectionId=${connectionId}&scopeExternalId=${encodeURIComponent(categoryScope)}`)
+        readPublicationReadinessSource(`${card.name} kategori özellik listesi`, () => hubApi<{ snapshotId: string; items: Array<{ externalId: string; name: string; isActive: boolean; isRequired?: boolean | null; allowsCustomValue?: boolean | null }> }>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes?connectionId=${connectionId}`)),
+        readPublicationReadinessSource('Yerel kategori özellik eşlemeleri', () => hubApi<PublicationMappingReference[]>(`/mappings/attributes?connectionId=${connectionId}&scopeExternalId=${encodeURIComponent(categoryScope)}`))
       ])
       const selectedIds = new Set(selectedAttributes.map(item => item.attributeId))
       const currentMappings = attributeMappings.filter(mapping => mapping.status === 'VERIFIED' && mapping.snapshotId === attributeReferences.snapshotId)
       const selectedExternalIds = [...new Set(currentMappings.filter(mapping => selectedIds.has(mapping.localId)).map(mapping => mapping.externalId))]
       const valueEntries = await Promise.all(selectedExternalIds.map(async externalAttributeId => {
         const valueScope = `${categoryScope}/${externalAttributeId}`
-        const mappings = await hubApi<PublicationMappingReference[]>(`/mappings/attribute-values?connectionId=${connectionId}&scopeExternalId=${encodeURIComponent(valueScope)}`)
+        const selectedAttribute = selectedAttributes.find(item => item.attributeId === currentMappings.find(mapping => mapping.externalId === externalAttributeId)?.localId)
+        const attributeLabel = selectedAttribute?.name ?? externalAttributeId
+        const mappings = await readPublicationReadinessSource(`“${attributeLabel}” yerel değer eşlemeleri`, () => hubApi<PublicationMappingReference[]>(`/mappings/attribute-values?connectionId=${connectionId}&scopeExternalId=${encodeURIComponent(valueScope)}`))
         let references: { snapshotId: string; items: Array<{ externalId: string; isActive: boolean }> }
         try {
-          references = await hubApi(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(externalAttributeId)}/values?connectionId=${connectionId}`)
+          references = await readPublicationReadinessSource(`${card.name} “${attributeLabel}” özellik değer listesi`, () => hubApi<{ snapshotId: string; items: Array<{ externalId: string; isActive: boolean }> }>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(externalAttributeId)}/values?connectionId=${connectionId}`))
         } catch (reason) {
-          if (!(reason instanceof ApiRequestError) || reason.code !== 'REFERENCE_SNAPSHOT_UNAVAILABLE') throw reason
+          if (!(reason instanceof ApiRequestError && reason.code === 'REFERENCE_SNAPSHOT_UNAVAILABLE') && !(reason instanceof PublicationReadinessSourceError && reason.apiCode === 'REFERENCE_SNAPSHOT_UNAVAILABLE')) throw reason
           references = { snapshotId: '', items: [] }
         }
         return [externalAttributeId, { snapshotId: references.snapshotId, items: references.items, mappings }] as const
@@ -2054,7 +2057,7 @@ function PublishPlatformCard({ card, selected, productId, categoryId, productChe
   const blockedIssues = [
     ...missingChecks.map(check => ({ attribute: check.title, detail: check.detail })),
     ...requiredMappingIssues,
-    ...(mappingCheckFailed ? [{ attribute: `${card.name} özellik kontrolü`, detail: `Güncel ${card.name} özellik listesi alınamadığı için zorunlu alan kontrolü tamamlanamadı ve bu kanal seçime kapatıldı. Önce Entegrasyonlar bölümünde bağlantı testini çalıştırın; bağlantı başarılıysa kategori özellik eşlemelerini yenileyip tekrar deneyin.` }] : [])
+    ...(mappingCheckFailed ? [{ attribute: `${card.name} özellik kontrolü`, detail: publicationReadinessFailureDetail(card.name, mappingReadiness.error) }] : [])
   ]
   const selectionBlocked = blockedIssues.length > 0 || mappingCheckPending
   const issueListId = `publish-issues-${card.connection.id}`
@@ -2081,7 +2084,7 @@ function PublishPlatformCard({ card, selected, productId, categoryId, productChe
       <UiIcon name="alert" />
       <div><strong>{blockedIssues.length === 1 ? 'Yayın için zorunlu eksik' : `Yayın için ${blockedIssues.length} zorunlu eksik`}</strong>
         <ul>{blockedIssues.map((issue, index) => <li key={`${issue.attribute}-${index}`}><b>{issue.attribute}:</b> {issue.detail}</li>)}</ul>
-        <p className="publish-platform-missing-help">Çözüm: Ürün bilgisi eksikse ilgili ürün alanını doldurun; kategori veya özellik eşlemesiyle ilgiliyse Eşleştirmeler bölümünde kategori ve zorunlu özellik bağlantılarını güncelleyip bu sayfayı yenileyin.</p>
+        <p className="publish-platform-missing-help">{mappingCheckFailed ? 'Yukarıdaki kaynak ve HTTP hata kodu, başarısız olan kontrol isteğini gösterir. Kategori veya özellik eşlemesi hatalarında Eşleştirmeler bölümünü; bağlantı yanıtı hatalarında Entegrasyonlar bölümünü kontrol edin.' : 'Çözüm: Ürün bilgisi eksikse ilgili ürün alanını doldurun; kategori veya özellik eşlemesiyle ilgiliyse Eşleştirmeler bölümünde kategori ve zorunlu özellik bağlantılarını güncelleyip bu sayfayı yenileyin.'}</p>
       </div>
     </div>}
     {mappingCheckPending && <div id={`${issueListId}-pending`} className="publish-platform-warning" role="status" aria-label={`${card.name} yayın gereksinimleri kontrol ediliyor`}><UiIcon name="alert" /><div><strong>Yayın gereksinimleri kontrol ediliyor</strong><p>Güncel zorunlu özellik eşlemeleri doğrulanıyor.</p></div></div>}
