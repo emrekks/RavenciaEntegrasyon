@@ -445,13 +445,13 @@ internal static class HepsiburadaJsonMapper
         var result = new List<RemoteMissingInvoicePackage>(items.Count);
         foreach (var item in items)
         {
-            var orderNumber = Text(item, "orderNumber", "OrderNumber", "orderNo", "OrderNo");
-            var packageNumber = Text(item, "packageNumber", "PackageNumber", "packageId", "PackageId");
-            if (string.IsNullOrWhiteSpace(orderNumber) || string.IsNullOrWhiteSpace(packageNumber))
+            var orderNumbers = TextValues(item, "orderNumber", "orderNo", "orderId", "orderNumbers");
+            var packageNumber = Text(item, "packageNumber", "packageNo", "packageId");
+            if (orderNumbers.Count == 0 || string.IsNullOrWhiteSpace(packageNumber))
             {
                 var missing = string.Join(" ve ", new[]
                 {
-                    string.IsNullOrWhiteSpace(orderNumber) ? "sipariş numarası" : null,
+                    orderNumbers.Count == 0 ? "sipariş numarası" : null,
                     string.IsNullOrWhiteSpace(packageNumber) ? "paket numarası" : null
                 }.Where(value => value is not null));
                 var fields = item.ValueKind == JsonValueKind.Object
@@ -459,7 +459,8 @@ internal static class HepsiburadaJsonMapper
                     : item.ValueKind.ToString();
                 throw new JsonException($"Hepsiburada eksik fatura kaydında {missing} yok. Yanıt alanları: {fields}.");
             }
-            result.Add(new(orderNumber.Trim(), packageNumber.Trim(), Text(item, "status", "Status", "orderStatus", "OrderStatus")));
+            foreach (var orderNumber in orderNumbers)
+                result.Add(new(orderNumber, packageNumber.Trim(), Text(item, "status", "orderStatus")));
         }
 
         return (result, totalCount);
@@ -1376,6 +1377,23 @@ internal static class HepsiburadaJsonMapper
         if (value.ValueKind == JsonValueKind.String) return value.GetString();
         if (value.ValueKind is JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False) return value.ToString();
         return null;
+    }
+    private static IReadOnlyList<string> TextValues(JsonElement element, params string[] names)
+    {
+        var value = Find(element, names);
+        if (value.ValueKind == JsonValueKind.Array)
+            return value.EnumerateArray()
+                .Select(item => item.ValueKind is JsonValueKind.String or JsonValueKind.Number ? item.ToString().Trim() : null)
+                .Where(item => !string.IsNullOrWhiteSpace(item))
+                .Select(item => item!)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+        if (value.ValueKind is JsonValueKind.String or JsonValueKind.Number)
+            return (value.ToString().Contains(',') ? value.ToString().Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) : [value.ToString().Trim()])
+                .Where(item => !string.IsNullOrWhiteSpace(item))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+        return [];
     }
     private static decimal? Decimal(JsonElement element, params string[] names)
     {
