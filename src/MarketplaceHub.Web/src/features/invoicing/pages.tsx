@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, loadAllPages } from '../../shared/api'
@@ -20,6 +21,49 @@ type InvoiceNoticeKind = 'success' | 'error' | 'info'
 const invoiceCreationDisabledHelp = 'Fatura oluşturmak için Entegrasyonlar > bu bağlantı ayarlarından “Fatura oluşturma” seçeneğini açın.'
 
 function idempotency() { return crypto.randomUUID() }
+
+function InvoiceProductSummary({ item }: { item: InvoiceWorkspace }) {
+  const triggerRef = useRef<HTMLDivElement>(null)
+  const tooltipRef = useRef<HTMLDivElement>(null)
+  const [open, setOpen] = useState(false)
+  const [position, setPosition] = useState({ left: 16, top: 16 })
+  const tooltipId = `invoice-products-${item.packageId}`
+
+  useLayoutEffect(() => {
+    if (!open) return
+    const updatePosition = () => {
+      const trigger = triggerRef.current?.getBoundingClientRect()
+      const tooltip = tooltipRef.current?.getBoundingClientRect()
+      if (!trigger) return
+      const width = tooltip?.width ?? Math.min(340, window.innerWidth - 32)
+      const height = tooltip?.height ?? 120
+      const below = trigger.bottom + 8
+      const top = window.innerHeight - below >= height + 12 || trigger.top <= height + 20
+        ? below
+        : Math.max(12, trigger.top - height - 8)
+      const left = Math.min(Math.max(16, trigger.left), Math.max(16, window.innerWidth - width - 16))
+      setPosition({ left, top })
+    }
+    const frame = window.requestAnimationFrame(updatePosition)
+    window.addEventListener('resize', updatePosition)
+    window.addEventListener('scroll', updatePosition, true)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', updatePosition, true)
+    }
+  }, [open, item.lines])
+
+  return <>
+    <div ref={triggerRef} className="invoice-reference-product-summary" tabIndex={0} aria-describedby={tooltipId} onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)} onFocus={() => setOpen(true)} onBlur={() => setOpen(false)}>
+      <small>{item.productCount} adet · {item.lines?.length ?? 1} çeşit</small>
+    </div>
+    {open && createPortal(<div ref={tooltipRef} className="invoice-reference-product-tooltip invoice-reference-product-tooltip-portal" id={tooltipId} role="tooltip" style={{ left: position.left, top: position.top }}>
+      {item.lines?.length ? item.lines.map((line, index) => <article key={`${line.sku}-${index}`}>{line.imageUrl || (index === 0 ? item.primaryImageUrl : null) ? <img src={line.imageUrl || (index === 0 ? item.primaryImageUrl ?? undefined : undefined)} alt="" /> : <span className="invoice-reference-product-image-placeholder"><UiIcon name="image" size={18} /></span>}<span><strong>{line.description || line.sku || 'Ürün'}</strong><small>{line.quantity} adet · Birim {line.unitPrice.toLocaleString('tr-TR', { style: 'currency', currency: item.currency })}</small><small>SKU: {line.sku || '—'} · Barkod: {line.barcode || '—'}</small></span></article>) : <p>Sipariş ürün ayrıntısı bu kayıtta bulunmuyor.</p>}
+    </div>, document.body)}
+  </>
+}
+
 async function waitForInvoiceCompletion(invoiceId: string) {
   const successfulStatuses = new Set(['ACCEPTED', 'COMPLETED'])
   const failedStatuses = new Set(['REJECTED', 'VALIDATION_FAILED', 'MANUAL_REVIEW', 'MARKETPLACE_FAILED', 'CANCELLED', 'CANCELLED_LOCAL'])
@@ -271,7 +315,7 @@ export function InvoicesPage() {
         </div>
         {pageItems.map(item => <article className={`invoice-reference-row ${item.isDueSoon ? 'due-soon' : ''}`} key={item.packageId} role="row">
           <div className="invoice-reference-order"><input className="invoice-reference-select" type="checkbox" aria-label={`${item.platformDisplayName} #${item.orderNumber} siparişini seç`} checked={selectedPackages.has(item.packageId)} onChange={() => setSelectedPackages(current => { const next = new Set(current); if (next.has(item.packageId)) next.delete(item.packageId); else next.add(item.packageId); return next })} /><div className="order-reference-platform"><PlatformMark code={item.platformCode} name={item.platformDisplayName} /></div><div><strong>#{item.orderNumber}</strong><small>{new Date(item.orderedAt).toLocaleString('tr-TR')}</small>{item.invoiceNumber?.trim() && <small>{item.invoiceNumber}</small>}</div></div>
-          <div className="invoice-reference-buyer"><strong>{item.customerName}</strong><div className="invoice-reference-product-summary" tabIndex={0} aria-describedby={`invoice-products-${item.packageId}`}><small>{item.productCount} adet · {item.lines?.length ?? 1} çeşit</small><div className="invoice-reference-product-tooltip" id={`invoice-products-${item.packageId}`} role="tooltip">{item.lines?.length ? item.lines.map((line, index) => <article key={`${line.sku}-${index}`}>{line.imageUrl || (index === 0 ? item.primaryImageUrl : null) ? <img src={line.imageUrl || (index === 0 ? item.primaryImageUrl ?? undefined : undefined)} alt="" /> : <span className="invoice-reference-product-image-placeholder"><UiIcon name="image" size={18} /></span>}<span><strong>{line.description || line.sku || 'Ürün'}</strong><small>{line.quantity} adet · Birim {line.unitPrice.toLocaleString('tr-TR', { style: 'currency', currency: item.currency })}</small><small>SKU: {line.sku || '—'} · Barkod: {line.barcode || '—'}</small></span></article>) : <p>Sipariş ürün ayrıntısı bu kayıtta bulunmuyor.</p>}</div></div></div>
+          <div className="invoice-reference-buyer"><strong>{item.customerName}</strong><InvoiceProductSummary item={item} /></div>
           <div className="invoice-reference-products"><div className="cargo-provider-display invoice-cargo-provider"><CargoProviderIcon value={item.cargoProviderName ?? 'Kargo bilgisi yok'} fallbackText /></div><small>{item.cargoTrackingNumber ?? 'Takip numarası yok'}</small></div>
           <div className="invoice-reference-shipment"><Badge value={item.shipmentStatus} /><small>{item.deliveredAt ? `Teslim: ${new Date(item.deliveredAt).toLocaleDateString('tr-TR')}` : 'Henüz teslim edilmedi'}</small></div>
           <div className="invoice-reference-status">{(() => { const invoiceState = invoiceWorkspaceStatus(item); return <InvoiceStatusBadge status={invoiceState.value} tone={invoiceState.tone} /> })()}{item.invoiceDueAt && <small className={item.isDueSoon ? 'deadline critical' : ''}>Son tarih: {new Date(item.invoiceDueAt).toLocaleDateString('tr-TR')}</small>}</div>

@@ -11774,12 +11774,10 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .app-shell.stitch-shell main .invoice-reference-order > .invoice-reference-select { top: 50%; left: 12px; transform: translateY(-50%); }
 .app-shell.stitch-shell main .invoice-reference-head > .order-column-filter { justify-items: stretch; }
 .app-shell.stitch-shell main .invoice-reference-head > .order-column-filter .order-column-filter-trigger { justify-self: end; margin-right: 2px; }
-.invoice-reference-product-summary { position: relative; width: fit-content; max-width: 100%; cursor: help; outline-offset: 3px; }
+.invoice-reference-product-summary { position: relative; width: fit-content; max-width: 100%; cursor: default; outline-offset: 3px; }
 .invoice-reference-product-summary > small { display: block; }
-.invoice-reference-product-tooltip { position: absolute; top: calc(100% + 8px); left: 0; z-index: 40; display: none; width: min(340px, calc(100vw - 48px)); max-height: min(360px, 55vh); overflow: auto; padding: 10px; border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); background: var(--rv-color-surface); box-shadow: var(--rv-shadow-lg); text-transform: none; letter-spacing: normal; }
-.invoice-reference-product-summary:hover .invoice-reference-product-tooltip,
-.invoice-reference-product-summary:focus .invoice-reference-product-tooltip,
-.invoice-reference-product-summary:focus-within .invoice-reference-product-tooltip { display: grid; gap: 8px; }
+.invoice-reference-product-tooltip { display: grid; gap: 8px; width: min(340px, calc(100vw - 32px)); max-height: min(360px, 55vh); overflow: auto; padding: 10px; border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); background: var(--rv-color-surface); box-shadow: var(--rv-shadow-lg); text-transform: none; letter-spacing: normal; }
+.invoice-reference-product-tooltip-portal { position: fixed; z-index: 10000; pointer-events: none; }
 .invoice-reference-product-tooltip article { display: grid; grid-template-columns: 40px minmax(0, 1fr); align-items: center; gap: 9px; min-width: 0; }
 .invoice-reference-product-tooltip img, .invoice-reference-product-image-placeholder { display: grid; width: 40px; height: 60px; place-items: center; overflow: hidden; object-fit: cover; border-radius: var(--rv-radius-sm); background: var(--rv-color-surface-soft); }
 .invoice-reference-product-tooltip article > span:last-child { display: grid; min-width: 0; gap: 3px; }
