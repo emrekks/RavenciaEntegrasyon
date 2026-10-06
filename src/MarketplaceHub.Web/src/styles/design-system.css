@@ -11483,6 +11483,11 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
     padding-inline: 4px;
   }
 
+  .app-shell.stitch-shell main .product-catalog-row > .product-list-thumb,
+  .app-shell.stitch-shell main .product-catalog-row > .product-list-placeholder {
+    padding-inline: 0;
+  }
+
   .product-list-thumb,
   .product-list-placeholder {
     width: 60px;
