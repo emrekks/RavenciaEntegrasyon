@@ -228,6 +228,29 @@ public sealed class TrendyolCatalogMapperTests
     }
 
     [Fact]
+    public void ReturnClaim_UsesSevenDayClaimDateDeadlineWhenPlatformOmitsAutoApproveDate()
+    {
+        const string json = """
+        {
+          "content": [{
+            "claimId": "claim-rejected-with-deadline-1",
+            "orderNumber": "11587375142",
+            "claimItemStatus": { "name": "Rejected" },
+            "claimDate": 1789980000000,
+            "lastModifiedDate": 1790152800000,
+            "items": []
+          }],
+          "page": 0,
+          "totalPages": 1
+        }
+        """;
+
+        var claim = Assert.Single(TrendyolJsonMapper.Returns(json).Items);
+
+        Assert.Equal(DateTimeOffset.FromUnixTimeMilliseconds(1789980000000).AddDays(7), claim.ActionDueAt);
+    }
+
+    [Fact]
     public void ReturnClaim_ReadsRejectedReturnPackageCargo()
     {
         const string json = """
