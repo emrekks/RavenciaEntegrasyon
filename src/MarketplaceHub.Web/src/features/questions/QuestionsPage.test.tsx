@@ -172,6 +172,7 @@ describe('QuestionsPage workspace flows', () => {
     params = lastQuestionRequest()
     expect(params.get('kind')).toBe('ORDER')
     expect(params.get('platform')).toBe('HEPSIBURADA')
+    expect(container.querySelector('.rv-questions-platform-note')).toBeNull()
     expect(container.querySelector('.rv-question-platform-fixed')).toBeNull()
     const orderStore = container.querySelectorAll<HTMLSelectElement>('.rv-questions-filter-grid select')[0]
     expect(Array.from(orderStore.options).map(option => option.textContent)).toContain('Hepsiburada Mağazası')
