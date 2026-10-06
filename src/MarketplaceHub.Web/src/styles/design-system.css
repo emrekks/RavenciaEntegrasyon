@@ -573,7 +573,7 @@
   .shipping-label-block-content > span small, .shipping-label-meta > span small, .shipping-label-footer > span small, .shipping-label-custom-content > span small { color: #64748b; font-size: .72em; font-weight: 600; }
   .shipping-label-block-content > span b, .shipping-label-meta > span b, .shipping-label-footer > span b, .shipping-label-custom-content > span b { font-weight: 800; }
   .shipping-label-address-box > span { display: block; min-width: 0; overflow-wrap: anywhere; }
-  .shipping-label-address-box > span:first-of-type { font-weight: 800; }
+  .shipping-label-address-box > span:first-of-type { font-weight: 400; }
   .shipping-label-barcode { display: grid; min-width: 0; align-content: start; gap: 1.5mm; }
   .shipping-label-barcode-bars { display: flex; width: 100%; min-width: 0; height: 10mm; min-height: 16px; align-items: stretch; background: #fff; }
   .shipping-label-barcode-bars > i { display: block; flex: 1 1 0; min-width: 0; background: #fff; }
@@ -11557,6 +11557,7 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
   line-height: 1.3;
   overflow-wrap: anywhere;
 }
+.return-reference-filters > .return-reference-filters-title { grid-column: 1 / -1; margin: 0; color: var(--rv-color-ink); font-size: var(--rv-font-size-md); font-weight: 700; line-height: 1.25; }
 .return-deadline-countdown.is-active .ui-icon { width: 14px; height: 14px; flex: 0 0 14px; margin-top: 1px; color: #f04455; }
 .app-shell.stitch-shell main .return-reference-meta .return-order-number.is-deadline-critical > strong {
   color: #f04455;
@@ -11815,9 +11816,9 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .return-reference-filters.has-approved-sort { grid-template-columns: minmax(160px, 1.1fr) repeat(2, minmax(130px, .8fr)) minmax(205px, .95fr) auto; }
 @media (max-width: 900px) {
   .return-reference-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .return-reference-filters > :first-child { grid-column: 1 / -1; }
+  .return-reference-filters > input[aria-label="İadelerde ara"] { grid-column: 1 / -1; }
   .return-reference-filters.has-approved-sort { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .return-reference-filters.has-approved-sort > :first-child { grid-column: 1 / -1; }
+  .return-reference-filters.has-approved-sort > input[aria-label="İadelerde ara"] { grid-column: 1 / -1; }
   .return-reference-filters.has-approved-sort .return-approved-sort { min-width: 0; }
   .return-reference-filters.has-approved-sort .return-filter-actions { grid-column: auto; justify-self: end; }
 }

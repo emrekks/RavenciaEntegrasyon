@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatMarketplaceBarcode, sortApprovedReturns } from './return-reference-presentation'
+import { formatMarketplaceBarcode, shouldShowReturnCountdown, sortApprovedReturns } from './return-reference-presentation'
 
 describe('return reference presentation', () => {
   it('removes Hepsiburada zero prefixes from alphanumeric codes but preserves numeric barcodes', () => {
@@ -19,5 +19,13 @@ describe('return reference presentation', () => {
     expect(sortApprovedReturns(returns, 'ORDERED_ASC').map(item => item.id)).toEqual(['c', 'b', 'a'])
     expect(sortApprovedReturns(returns, 'APPROVED_DESC').map(item => item.id)).toEqual(['a', 'b', 'c'])
     expect(sortApprovedReturns(returns, 'APPROVED_ASC').map(item => item.id)).toEqual(['b', 'a', 'c'])
+  })
+
+  it('shows an active countdown only for action-required returns with a future deadline', () => {
+    const now = Date.parse('2026-10-06T10:00:00Z')
+    expect(shouldShowReturnCountdown(true, '2026-10-07T10:00:00Z', now)).toBe(true)
+    expect(shouldShowReturnCountdown(false, '2026-10-07T10:00:00Z', now)).toBe(false)
+    expect(shouldShowReturnCountdown(true, '2026-10-05T10:00:00Z', now)).toBe(false)
+    expect(shouldShowReturnCountdown(true, 'invalid', now)).toBe(false)
   })
 })

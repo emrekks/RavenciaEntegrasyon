@@ -1,5 +1,11 @@
 export type ApprovedReturnSort = 'ORDERED_DESC' | 'ORDERED_ASC' | 'APPROVED_DESC' | 'APPROVED_ASC'
 
+export function shouldShowReturnCountdown(actionRequired: boolean, value: string | null, now = Date.now()): boolean {
+  if (!actionRequired || !value) return false
+  const dueAt = new Date(value).getTime()
+  return Number.isFinite(dueAt) && dueAt >= Date.UTC(2000, 0, 1) && dueAt > now
+}
+
 type ReturnSortDates = { id: string; orderedAt: string | null; approvedAt?: string | null }
 
 function timestamp(value: string | null | undefined): number | null {
