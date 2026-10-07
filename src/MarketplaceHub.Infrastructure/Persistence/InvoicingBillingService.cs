@@ -19,7 +19,7 @@ public sealed partial class InvoicingBillingService(
     IConfiguration configuration,
     TimeProvider timeProvider) : IInvoicingBillingService
 {
-    private const int WorkspaceCandidateScanBatchSize = 2_000;
+    private const int WorkspaceCandidateScanBatchSize = 10_000;
     private static readonly CultureInfo WorkspaceSearchCulture = CultureInfo.GetCultureInfo("tr-TR");
     private readonly IDataProtector _taxProtector = dataProtection.CreateProtector("MarketplaceHub.InvoiceTaxIdentity.v1");
     private readonly IDataProtector _partyProtector = dataProtection.CreateProtector("MarketplaceHub.InvoicePartySnapshot.v1");
@@ -251,7 +251,7 @@ public sealed partial class InvoicingBillingService(
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var search = request.Search?.Trim();
         if (search?.Length > 200) search = search[..200];
-        var searchKey = search?.ToLower(WorkspaceSearchCulture);
+        var searchKey = string.IsNullOrWhiteSpace(search) ? null : search.ToLower(WorkspaceSearchCulture);
 
         var hasOperationalMarketplace = await db.PlatformConnections.AsNoTracking()
             .AnyAsync(connection => connection.TenantId == tenantId
@@ -278,7 +278,7 @@ public sealed partial class InvoicingBillingService(
 
         while (true)
         {
-            var candidates = await ReadWorkspaceCandidateBatchAsync(tenantId, cursor, now, includeCustomerName: true, cancellationToken);
+            var candidates = await ReadWorkspaceCandidateBatchAsync(tenantId, cursor, now, includeCustomerName: searchKey is not null, cancellationToken);
             if (candidates.Count == 0) break;
 
             foreach (var candidate in candidates)
@@ -388,9 +388,9 @@ public sealed partial class InvoicingBillingService(
                     source.order.OrderedAt,
                     source.order.Currency,
                     source.order.NetAmount,
-                    source.order.CustomerSnapshotJson,
-                    source.order.ShipmentAddressSnapshotJson,
-                    source.order.InvoiceAddressSnapshotJson,
+                    includeCustomerName ? source.order.CustomerSnapshotJson : "{}",
+                    includeCustomerName ? source.order.ShipmentAddressSnapshotJson : "{}",
+                    includeCustomerName ? source.order.InvoiceAddressSnapshotJson : "{}",
                     source.order.DerivedStatus),
                 new WorkspaceConnectionProjection(
                     source.connection.Id,
@@ -486,6 +486,10 @@ public sealed partial class InvoicingBillingService(
         var lines = await db.OrderLines.AsNoTracking()
             .Where(line => line.TenantId == tenantId && orderIds.Contains(line.OrderId))
             .ToListAsync(cancellationToken);
+        var orderSnapshots = await db.Orders.AsNoTracking()
+            .Where(order => order.TenantId == tenantId && orderIds.Contains(order.Id))
+            .Select(order => new { order.Id, order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson })
+            .ToDictionaryAsync(order => order.Id, cancellationToken);
         var variantIds = lines.Where(line => line.VariantId != null).Select(line => line.VariantId!.Value).Distinct().ToArray();
         var lineSkus = lines.Select(line => line.Sku).Where(sku => !string.IsNullOrWhiteSpace(sku)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         var lineBarcodes = lines.Select(line => line.Barcode).Where(barcode => !string.IsNullOrWhiteSpace(barcode)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
@@ -555,6 +559,10 @@ public sealed partial class InvoicingBillingService(
 
         return candidates.Select(candidate =>
         {
+            var orderSnapshotsForItem = orderSnapshots.GetValueOrDefault(candidate.Order.Id);
+            var customerName = orderSnapshotsForItem is null
+                ? candidate.CustomerName
+                : InvoiceWorkspaceCustomerName(orderSnapshotsForItem.CustomerSnapshotJson, orderSnapshotsForItem.InvoiceAddressSnapshotJson, orderSnapshotsForItem.ShipmentAddressSnapshotJson);
             var orderLines = (linesByOrder.GetValueOrDefault(candidate.Order.Id) ?? [])
                 .Where(line => OrderLinePresentationPolicy.HasActiveQuantity(line.OrderedQuantity, line.CancelledQuantity))
                 .ToList();
@@ -579,7 +587,7 @@ public sealed partial class InvoicingBillingService(
                 candidate.Order.Id,
                 candidate.Package.Id,
                 candidate.Order.OrderNumber,
-                candidate.CustomerName,
+                customerName,
                 candidate.Order.OrderedAt,
                 candidate.Package.Status.ToString().ToUpperInvariant(),
                 candidate.DeliveredAt,
@@ -595,8 +603,8 @@ public sealed partial class InvoicingBillingService(
                 candidate.InvoiceStatus,
                 ResolveInvoiceNumber(candidate.Invoice?.InvoiceNumber, candidate.Package.MarketplaceInvoiceNumber),
                 candidate.CanCreateInvoice,
-                candidate.Order.ShipmentAddressSnapshotJson,
-                candidate.Order.InvoiceAddressSnapshotJson,
+                orderSnapshotsForItem?.ShipmentAddressSnapshotJson ?? candidate.Order.ShipmentAddressSnapshotJson,
+                orderSnapshotsForItem?.InvoiceAddressSnapshotJson ?? candidate.Order.InvoiceAddressSnapshotJson,
                 workspaceLines,
                 candidate.Invoice?.LastErrorCode,
                 deliveryState?.Status ?? deliveryAttempt?.Status,

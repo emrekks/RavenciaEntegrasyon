@@ -1363,6 +1363,8 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                     From: fixture.Now.AddDays(-2),
                     To: fixture.Now,
                     ProviderHasCredential: true), CancellationToken.None);
+            var customerSearchPage = await service.WorkspacePageAsync(tenant.Id,
+                new InvoiceWorkspacePageQuery(PageNumber: 1, PageSize: 20, Tab: "DUE_SOON", Search: "test"), CancellationToken.None);
 
             Assert.Equal(21, firstPage.TotalCount);
             Assert.Equal(21, firstPage.DueSoonCount);
@@ -1371,6 +1373,9 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             Assert.True(firstPage.HasPendingMarketplaceInvoices);
             Assert.Equal(2, firstPage.TotalPages);
             Assert.Equal(20, firstPage.Items.Count);
+            Assert.Equal("Test", firstPage.Items[0].CustomerName);
+            Assert.Equal("{}", firstPage.Items[0].ShipmentAddressJson);
+            Assert.Equal("{}", firstPage.Items[0].InvoiceAddressJson);
             Assert.Single(secondPage.Items);
             Assert.Equal(2, clampedPage.PageNumber);
             Assert.Equal(secondPage.Items.Single().PackageId, Assert.Single(clampedPage.Items).PackageId);
@@ -1379,6 +1384,8 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             Assert.Empty(firstPage.Items[0].Lines!);
             Assert.Equal(1, searchedPage.TotalCount);
             Assert.Equal(seededRows[20].package.Id, Assert.Single(searchedPage.Items).PackageId);
+            Assert.Equal(21, customerSearchPage.TotalCount);
+            Assert.Equal("Test", customerSearchPage.Items[0].CustomerName);
         }
         finally
         {
