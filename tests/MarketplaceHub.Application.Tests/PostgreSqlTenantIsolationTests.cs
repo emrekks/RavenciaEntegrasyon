@@ -1342,7 +1342,24 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 await seedDb.SaveChangesAsync();
             }
 
-            await using var db = fixture.CreateContext();
+            var testConnectionString = Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION")
+                ?? throw new InvalidOperationException("PostgreSQL load test requires the isolated test connection.");
+            var options = new DbContextOptionsBuilder<AppDbContext>()
+                .UseNpgsql(testConnectionString)
+                .LogTo(message =>
+                {
+                    const string marker = "Executed DbCommand (";
+                    var markerStart = message.IndexOf(marker, StringComparison.Ordinal);
+                    if (markerStart < 0) return;
+                    var durationStart = markerStart + marker.Length;
+                    var durationEnd = message.IndexOf("ms)", durationStart, StringComparison.Ordinal);
+                    if (durationEnd <= durationStart || !int.TryParse(message.AsSpan(durationStart, durationEnd - durationStart), out var durationMs) || durationMs < 100) return;
+                    var commandStart = message.IndexOf("] ", durationEnd, StringComparison.Ordinal);
+                    var command = commandStart < 0 ? "" : message[(commandStart + 2)..].Replace('\r', ' ').Replace('\n', ' ');
+                    output.WriteLine($"Fatura tarama SQL'i {durationMs} ms: {command[..Math.Min(command.Length, 220)]}");
+                }, Microsoft.Extensions.Logging.LogLevel.Information)
+                .Options;
+            await using var db = new AppDbContext(options);
             var dataProtection = new EphemeralDataProtectionProvider();
             var service = new InvoicingBillingService(
                 db,
