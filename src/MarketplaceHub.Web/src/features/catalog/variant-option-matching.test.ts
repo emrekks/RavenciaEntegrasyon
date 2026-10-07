@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatColorOptionValue, matchingVariantOptionValues, mergeVariantOptionEntries, mergeVariantOptionValues, normalizeVariantOptionValue } from './variant-option-matching'
+import { displayVariantOptionEntries, formatColorOptionValue, matchingVariantOptionValues, mergeVariantOptionEntries, mergeVariantOptionValues, normalizeVariantOptionValue } from './variant-option-matching'
 
 describe('variant option matching', () => {
   it('treats Turkish dotted and ASCII-uppercase I spellings as the same option value', () => {
@@ -11,6 +11,39 @@ describe('variant option matching', () => {
     expect(formatColorOptionValue('BORDO')).toBe('Bordo')
     expect(formatColorOptionValue('  AÇIK   MAVİ ')).toBe('Açık Mavi')
     expect(formatColorOptionValue('KIRMIZI-BEYAZ')).toBe('Kırmızı-Beyaz')
+  })
+
+  it('shows only bed and real color dimensions in the product variant table', () => {
+    expect(displayVariantOptionEntries([
+      { name: 'Beden', value: 'M' },
+      { name: 'Renk', value: 'Siyah' },
+      { name: 'Astar Durumu', value: 'Astarsız' },
+      { name: 'Desen', value: 'Çiçekli' },
+      { name: 'Menşei', value: 'TR' },
+    ])).toEqual([
+      { name: 'Beden', value: 'M' },
+      { name: 'Renk', value: 'Siyah' },
+    ])
+  })
+
+  it('prefers the real Renk axis and skips Web Color and duplicate color axes', () => {
+    expect(displayVariantOptionEntries([
+      { name: 'Web Color', value: 'Lacivert' },
+      { name: 'Color', value: 'Blue' },
+      { name: 'Renk', value: 'İndigo' },
+      { name: 'Size', value: 'XL' },
+      { name: 'Beden', value: '2XL' },
+    ])).toEqual([
+      { name: 'Beden', value: '2XL' },
+      { name: 'Renk', value: 'İndigo' },
+    ])
+  })
+
+  it('returns no display dimensions when a signature contains only category features', () => {
+    expect(displayVariantOptionEntries([
+      { name: 'Astar Durumu', value: 'Astarsız' },
+      { name: 'Desen', value: 'Çiçekli' },
+    ])).toEqual([])
   })
 
   it('matches imported uppercase Turkish variant values to catalog values when inferring selections', () => {

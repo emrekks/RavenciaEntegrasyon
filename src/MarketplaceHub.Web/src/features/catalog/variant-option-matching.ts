@@ -2,7 +2,27 @@ export type VariantOptionEntry = { name: string; value: string }
 export type VariantOptionValue = { id: string; value: string }
 
 function normalizeOptionName(name: string) {
-  return name.replace(/[\s_-]+/g, '').toLocaleUpperCase('tr-TR')
+  return name.replace(/[\s_-]+/g, '').toUpperCase()
+}
+
+function isRealColorOptionName(name: string) {
+  return ['RENK', 'RENKLER', 'COLOR', 'COLORS', 'COLOUR', 'COLOURS'].includes(normalizeOptionName(name))
+}
+
+function isSizeOptionName(name: string) {
+  return ['BEDEN', 'BEDENLER', 'SIZE', 'SIZES', 'BOYUT', 'BOYUTLAR', 'NUMARA', 'NUMARALAR', 'SHOESIZE', 'AYAKKABINUMARASI'].includes(normalizeOptionName(name))
+}
+
+export function displayVariantOptionEntries(entries: VariantOptionEntry[]) {
+  const size = entries.find(option => normalizeOptionName(option.name) === 'BEDEN' && option.value.trim())
+    ?? entries.find(option => isSizeOptionName(option.name) && option.value.trim())
+  const color = entries.find(option => normalizeOptionName(option.name) === 'RENK' && option.value.trim())
+    ?? entries.find(option => isRealColorOptionName(option.name) && option.value.trim())
+
+  return [
+    ...(size ? [{ name: 'Beden', value: size.value.trim() }] : []),
+    ...(color ? [{ name: 'Renk', value: color.value.trim() }] : [])
+  ]
 }
 
 export function mergeVariantOptionEntries(options: VariantOptionEntry[], signatureFallbackOptions: VariantOptionEntry[]) {

@@ -16,7 +16,7 @@ import { isStoredProductMediaUrl, mediaImageKey, mediaRefsEqual, mediaRefsSameSe
 import { applyVariantBulkEditValue, updateVariantGroupSelection, variantBulkEditIssue, variantGroupSelectionState, type VariantBulkEditField } from './variant-bulk-edit'
 import { applyGeneratedVariantCodes, buildSequentialVariantCodes, buildVariantGenerationDefaults, resolveVariantSyncAttributeIds } from './variant-generation'
 import { filterVariantsByOptions, selectVariantDraftsByKeys, type VariantOptionFilterSelections } from './variant-filtering'
-import { formatColorOptionValue, matchingVariantOptionValues, mergeVariantOptionEntries, mergeVariantOptionValues, normalizeVariantOptionValue } from './variant-option-matching'
+import { displayVariantOptionEntries, formatColorOptionValue, matchingVariantOptionValues, mergeVariantOptionEntries, mergeVariantOptionValues, normalizeVariantOptionValue } from './variant-option-matching'
 import { classifyPublicationAttributeIssues, type PublicationAttributeSelection, type PublicationMappingReference, type PublicationValueReferenceSet } from './publication-attribute-readiness'
 import { PublicationReadinessSourceError, publicationReadinessFailureDetail, readPublicationReadinessSource } from './publication-readiness-error'
 import { productMediaUrlIssue } from './product-media-url'
@@ -350,8 +350,10 @@ function parseVariantOptionSignature(signature: string): ParsedVariantOption[] {
 }
 
 function displayVariantOptionSignature(signature: string) {
-  const options = parseVariantOptionSignature(signature)
-  if (!options.length) return signature
+  const parsedOptions = parseVariantOptionSignature(signature)
+  if (!parsedOptions.length) return signature
+  const options = displayVariantOptionEntries(parsedOptions)
+  if (!options.length) return '—'
   return options.map(({ name, value }) => `${formatCatalogOptionLabel(name)}: ${isSizeOptionName(name) ? value.toLocaleUpperCase('tr-TR') : formatCatalogOptionLabel(value)}`).join(' · ')
 }
 
