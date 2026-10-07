@@ -2,6 +2,8 @@
 
 Tarih: 6 Ekim 2026. Canlı gözlem aralığı: yaklaşık 22:15–22:20, Europe/Istanbul.
 
+**Son durum — 7 Ekim 2026:** B01–B18 kapsamındaki kod düzeltmeleri tamamlandı; `c7f88672`, `98272aab` ve `1ebd7499` commit'leri `origin/main`'e gönderildi ve `1ebd7499` üretime alındı. Son GitHub Actions CI çalışması (`37602730610`) başarılı. Üretim fast-deploy doğrulaması izole PostgreSQL üzerinde 773/773 testle geçti; yedek arşivlerinin checksum'ları doğrulandı, migration ve servis yenilemesi tamamlandı. Son deploy betiği çalışmasında korumalı `production.env` doğru okundu. Canlı API, worker, Caddy ve PostgreSQL sağlıklı; `/health/ready` HTTP 200 döndürüyor. Deploy tamamlandığı anda yerel HEAD, `origin/main` ve sunucu HEAD `1ebd7499` ile eşitti. Ürün varyantlarında gerçek `Renk` değeri artık `Web Color` ve eski imza değerlerine öncelikli; `Indigo` örneği için hedefli regresyon testi var. Pazaryerlerine yazma, cevap gönderme, ürün yayınlama, iade kararı veya fatura oluşturma testi yapılmadı. Bu nedenle uygulama/deploy tamamlandı; planın performans, gerçek sağlayıcı, görsel regresyon ve geri yükleme kanıtları aşağıdaki son bölümde açık doğrulama olarak tutuluyor. Önceki “yerel taslak” durum notları, dağıtım öncesi tarihsel kayıt olarak okunmalıdır.
+
 Durum güncellemesi: 7 Ekim 2026. Fatura özet ve sayfa sorguları, listeye gereken sınırlı fatura alanlarını projekte edecek şekilde daraltıldı; sayfa adayları artık 2.000 kayıtlık anahtar-imleçli partilerle taranıyor ve ayrıntı verileri yalnız seçilen sayfa için yükleniyor. 20 kayıtlık sayfada 21. adaydan taşan sayfa sınırı hatası düzeltildi. Son olarak iş akışı sağlık durumu beklenen çalışma aralığı ve jitter sonrasına göre hesaplanacak şekilde düzeltildi. Önceki tam backend suite izole UTF-8 PostgreSQL kümesinde 765/765 geçti; cursor telemetrisi değişikliğinden sonraki veritabanısız koşuda 742 test geçti, 31 PostgreSQL testi atlandı. Arayüz suite'i 209/209, TypeScript kontrolü, üretim derlemesi ve paket bütçesi de geçti. Üretim Compose'ındaki dış yazma bayrağı artık deployment env dosyasından `MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED=false` ile acil durdurulabiliyor; varsayılan mevcut davranışı korumak için `true`. İki dağıtım betiği değeri doğruluyor ve aynı değeri Compose'a iletiyor. Docker/Compose çalıştırması olmadığı için birleştirilmiş Compose doğrulaması açık. DOMPurify minimum sürümü `^3.4.16` yapıldı; güvenlik testleri 2/2 geçti ve kurulu `source-map-js` 1.2.2. Güncel npm audit kayıt servisine erişemedi; NuGet audit de açık. Önceki koddaki yerel 100.000 aday denemesi 992 ms sürdü; o denemedeki sayfa toplamı hatası son sayfa taşma düzeltmesiyle kapatıldı. Bu tek sentetik örnek production p95/indeks kanıtı değildir; güncel 100.000 aday tekrarı, `EXPLAIN ANALYZE` ve staging ölçümü açık.
 
 Tarayıcı doğrulaması: 7 Ekim'de canlı `/orders` ekranında Hepsiburada, Trendyol ve Shopify satırlarından birer seçim ayrı ayrı denendi. Her platformda seçim sayacı ve o platforma uygun toplu işlem araçları göründü; seçim temizlendi ve hiçbir sipariş işlemi gönderilmedi. Önceki “yalnız Shopify seçilebiliyor” şikâyeti bu oturumda tekrarlanamadı. Bu, mevcut canlı arayüzün gözlemidir; yerel taslakların dağıtıldığını kanıtlamaz ve sipariş seçimi için otomatik `OrdersPage` etkileşim testi bulunmadı.
@@ -397,3 +399,30 @@ Bu bölüm ilk teşhis raporundaki üretim kanıtını değiştirmez. Aşağıda
 | `npm audit --audit-level=low` | Bu tekrar çalıştırmada başarısız: npm advisory endpoint erişim hatası | Temiz audit sonucu olarak kabul edilmemeli; bağlantı geldiğinde yeniden çalıştırılmalı. `source-map-js@1.2.2` yalnızca `jsdom` ve `vite` geliştirme ağaçlarında |
 
 Bu doğrulama seti artık fatura kilit ilerlemesi, fatura hata görünürlüğü, soru cevabı uzlaştırması, Trendyol soru sayfa cursor'ının çalışma aralarında sürmesi, tenant idempotency, iade cursor adaleti ve PostgreSQL kalıcılığı testlerini kapsıyor. İade cursor süreç yeniden başlatma, snapshot eşleme tutarlılığı ve gerçek sağlayıcı yanıtları için ayrı test/çalışma kanıtı hâlâ gerekli. Geçici PostgreSQL kümesi test sonunda durdurulup silindi; kurulu PostgreSQL servisine dokunulmadı. Üretim verisi değişmedi ve deploy yapılmadı. Kullanıcının dış yazma yapılmaması şartı gereği bu taslaklar commit/push/deploy adımlarına geçirilmedi; üretim Compose ayarında dış yazmalar etkin olduğundan canlı worker dağıtımı dış etki oluşturabilir.
+
+## 12. Son uygulama ve canlıya alma doğrulaması
+
+Bu bölüm 7 Ekim 2026'daki son uygulama durumunu kaydeder ve yukarıdaki dağıtım öncesi “yerel taslak” notlarının yerine geçer.
+
+| Kontrol | Sonuç |
+|---|---|
+| GitHub CI | `37602730610` başarılı; build/test, format, web test/build ve npm/NuGet güvenlik kontrolleri geçti |
+| Tam backend doğrulaması | Üretim fast-deploy kapısındaki izole PostgreSQL koşusu: 773 geçti, 0 atlandı, 0 başarısız |
+| Dağıtım güvenlik betikleri | Güncel `fast-deploy.sh` ikinci çalıştırmada korumalı env dosyasını hatasız okudu; izin hatası/fallback yok |
+| Yedek | `20261007T095508Z` üretim veritabanı dökümü ve özel volume arşivi oluşturuldu; iki SHA-256 checksum da doğrulandı |
+| Migration ve servisler | Migration tamamlandı; API, worker, Caddy ve PostgreSQL `running/healthy` |
+| Canlı readiness | `https://panel.ravencia.com/health/ready`: HTTP 200, `Healthy` |
+| Uygulama revizyonu | `1ebd7499` üretimde çalışıyor; rapor güncellemesi kodu değiştirmez |
+| Dış sistem etkisi | Pazaryerlerine yazma veya fatura/iade/yanıt işlemi yapılmadı; mevcut üretim `FeatureFlags__ExternalWrites=true` ayarı değişmedi |
+
+**Açık kalanlar kodun deploy edilmesini engelleyen maddeler değildir; tamamlanma kanıtı için ortam/sağlayıcı erişimi gerektirir:**
+
+- **B10:** 100.000 gerçekçi fatura adayı üzerinde güncel tekrar, `EXPLAIN ANALYZE`, indeks değerlendirmesi ve staging p95 ölçümü.
+- **B11:** Birden çok API örneğiyle yayın/çökme arası tekrar senaryosu ve temizlik hacmi gözlemi.
+- **B12:** Gerçek worker ilerlemesi, bağlantı kuyruğu alarmının kullanıcıya görünmesi ve tarayıcıdan uçtan uca teyit.
+- **B13:** Şifreli off-host yedek aktarımı, izole geri yükleme tatbikatı ve deploy image SHA'sının CI kaydıyla bağlanması. Bu çalışmada yedek üretildi ve checksum doğrulandı; geri yükleme yapılmadı.
+- **B16:** Gerçek tarayıcıda farklı viewport'larda görsel regresyon; özellikle eski yorumlardaki sıkışma ve etiket yerleşimleri. Canlı DOM kontrolleri yapıldı, piksel/viewport regresyonu yapılmadı.
+- **B17:** Bildirilen belirli Hepsiburada iade kaydının canlı sağlayıcıdan salt-okunur read-back ile doğrulanması. Kod yolu ve PostgreSQL regresyon testi doğrulandı; aynı kayıt özelinde dış teyit alınmadı.
+- **B18:** Trendyol tarih penceresi politikasının sağlayıcı sandbox'ında veya salt-okunur gerçek bağlantıda teyidi. Adaptör sözleşme testleri geçti; sağlayıcıya canlı istek gönderilmedi.
+
+Önceki raporda açık yazılan npm/NuGet audit ve tam backend/PostgreSQL testi bu son CI/deploy koşularıyla kapatıldı. Kaynak kodun dağıtım ve test aşaması tamamlandı; yukarıdaki yedi kanıt işi kapatılana kadar raporun operasyonel doğrulama durumu **kısmen açık** kalır.
