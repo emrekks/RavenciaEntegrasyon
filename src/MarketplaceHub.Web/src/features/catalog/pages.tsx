@@ -3489,7 +3489,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     }
     return groups
   }, [attributeSelections, optionRequirements, productToEdit.data?.options, variantRows])
-  const variantFilterGroups = useMemo(() => bulkMediaGroups.filter(group => variantRows.some(row => rowOptionValue(row, group).trim())), [bulkMediaGroups, variantRows])
+  const variantFilterGroups = useMemo(() => bulkMediaGroups.filter(group => (isColorOptionName(group.name) || isSizeOptionName(group.name)) && variantRows.some(row => rowOptionValue(row, group).trim())), [bulkMediaGroups, variantRows])
   const variantBulkEditFilterGroups = variantFilterGroups.filter(group => isColorOptionName(group.name) || isSizeOptionName(group.name))
   const variantBulkEditMatchingRows = filterVariantsByOptions(variantRows, variantBulkEditFilterGroups, variantBulkEditFilterSelections, rowMatchesVariantMediaValue)
   const hasVariantBulkEditFilters = Object.values(variantBulkEditFilterSelections).some(valueIds => valueIds.length > 0)

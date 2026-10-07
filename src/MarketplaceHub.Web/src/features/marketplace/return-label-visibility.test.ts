@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { canPrintReturnLabel } from './return-label-visibility'
 
 describe('return label visibility', () => {
-  it('shows the print action only for rejected returns', () => {
+  it('keeps the return label action available for rejected returns', () => {
     expect(canPrintReturnLabel('REJECTED')).toBe(true)
     expect(canPrintReturnLabel(' rejected ')).toBe(true)
     expect(canPrintReturnLabel('REQUESTED')).toBe(false)

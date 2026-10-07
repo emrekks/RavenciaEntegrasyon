@@ -77,6 +77,7 @@ public sealed class ReturnClaim
     public required string RawStatus { get; set; }
     public string? CargoProviderName { get; set; }
     public string? CargoTrackingNumber { get; set; }
+    public string? CargoTrackingLink { get; set; }
     public string? ReasonCode { get; set; }
     public string? ReasonText { get; set; }
     public DateTimeOffset? ActionDueAt { get; set; }

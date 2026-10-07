@@ -3122,10 +3122,20 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 cancellationToken);
             if (!readback.IsSuccess)
             {
-                if (readback.Error?.Class != AdapterErrorClass.NotFound) TrackResultFailure(readback.Error);
+                var issueKey = $"trendyol-invoice-package-read:{connectionId}:{candidate.Id}";
+                if (readback.Error?.Class == AdapterErrorClass.NotFound || readback.Error?.HttpStatus == 404)
+                {
+                    // Trendyol removes older package records from the package
+                    // endpoint. Keep our last known invoice state, but do not
+                    // surface an unavailable historical package as a live
+                    // refresh failure in the invoice workspace.
+                    await ResolveIssue(tenantId, issueKey, cancellationToken);
+                    continue;
+                }
+                TrackResultFailure(readback.Error);
                 await RecordIssue(
                     tenantId,
-                    $"trendyol-invoice-package-read:{connectionId}:{candidate.Id}",
+                    issueKey,
                     readback.Error!.Code,
                     $"Paket fatura durumu Trendyol'dan doğrulanamadı; sonraki otomatik taramada tekrar denenecek. {readback.Error.SafeMessage}",
                     cancellationToken);
@@ -7163,7 +7173,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             var result = await returns.PollAsync(
                 Context(tenantId, connectionId, correlationId, $"hepsiburada-return-sync:{status}:{state.Offset}"),
                 state.Full
-                    ? new ReturnPollWindow(null, null, Status: status)
+                    ? new ReturnPollWindow(null, null, Status: status, StatusModifiedAfter: HepsiburadaReturnHistoryPolicy.InitialStatusChangeStart(state.AnchorEnd), StatusModifiedBefore: state.AnchorEnd)
                     : new ReturnPollWindow(null, null, Status: status, StatusModifiedAfter: state.StatusChangedAfter, StatusModifiedBefore: state.AnchorEnd),
                 new(state.Offset.ToString(CultureInfo.InvariantCulture), 100),
                 cancellationToken);
@@ -7523,6 +7533,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             // of the claim timestamp, but never replace known values with null.
             if (remoteCargoProvider is not null && !string.Equals(claim.CargoProviderName, remoteCargoProvider, StringComparison.Ordinal)) { claim.CargoProviderName = remoteCargoProvider; claimChanged = true; }
             if (remoteCargoTracking is not null && !string.Equals(claim.CargoTrackingNumber, remoteCargoTracking, StringComparison.Ordinal)) { claim.CargoTrackingNumber = remoteCargoTracking; claimChanged = true; }
+            var remoteCargoTrackingLink = SafeReturnTrackingLink(remote.CargoTrackingLink);
+            if (remoteCargoTrackingLink is not null && !string.Equals(claim.CargoTrackingLink, remoteCargoTrackingLink, StringComparison.Ordinal)) { claim.CargoTrackingLink = remoteCargoTrackingLink; claimChanged = true; }
             if (claimChanged) { claim.UpdatedAt = now; claim.Version++; telemetryUpdatedCount++; }
         }
         var remoteLines = remote.Lines.Count > 0 ? remote.Lines : TrendyolJsonMapper.ReturnLines(remote.RawJson);
@@ -7581,6 +7593,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         RawStatus = remote.RawStatus,
         CargoProviderName = string.IsNullOrWhiteSpace(remote.CargoProviderName) ? null : remote.CargoProviderName.Trim(),
         CargoTrackingNumber = string.IsNullOrWhiteSpace(remote.CargoTrackingNumber) ? null : remote.CargoTrackingNumber.Trim(),
+        CargoTrackingLink = SafeReturnTrackingLink(remote.CargoTrackingLink),
         ReasonCode = remote.ReasonCode,
         ReasonText = remote.ReasonText,
         ActionDueAt = remote.ActionDueAt,
@@ -7589,6 +7602,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         UpdatedAt = now,
         Version = 1
     };
+
+    private static string? SafeReturnTrackingLink(string? value) =>
+        Uri.TryCreate(value?.Trim(), UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps
+            ? uri.ToString()
+            : null;
 
     private async Task<bool> ShipmentAction(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {

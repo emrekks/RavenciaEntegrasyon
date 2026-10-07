@@ -472,10 +472,7 @@ function dashboardQuantity(value: number) {
 }
 
 function dashboardAxisMoney(amount: number, currency = 'TRY') {
-  const value = Math.abs(Math.round(amount)); const sign = amount < 0 ? '-' : ''; const prefix = currency === 'TRY' ? '₺' : `${currency || 'TRY'} `
-  if (value >= 1_000_000) return `${sign}${prefix}${(value / 1_000_000).toLocaleString('tr-TR', { maximumFractionDigits: 2 })}m`
-  if (value >= 10_000) return `${sign}${prefix}${(value / 1_000).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}k`
-  return `${sign}${prefix}${value.toLocaleString('tr-TR')}`
+  return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: currency || 'TRY', maximumFractionDigits: 0 }).format(amount)
 }
 
 function dashboardNiceAxisStep(maxValue: number, targetSteps = 4) {

@@ -1,6 +1,7 @@
 export type SessionState = 'PASSWORD_CHANGE_REQUIRED' | 'MFA_CHALLENGE' | 'ACTIVE' | 'REVOKED'
 export type Me = { id: string; email: string; displayName: string; role: string | null; state: SessionState; tenantId: string | null }
 export type TenantOption = { id: string; displayName: string }
+import { readSuccessJson } from './read-success-json'
 
 let csrfToken: string | null = null
 async function csrf(forceRefresh = false) {
@@ -41,7 +42,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiRequestError(message, response.status, problem.code, problem.fieldErrors, problem.tenants)
   }
   if (response.status === 204) return undefined as T
-  return response.json() as Promise<T>
+  return readSuccessJson<T>(response)
 }
 
 export type ApiProblem = { type?: string; title?: string; code?: string; fieldErrors?: Record<string, string[]>; tenants?: TenantOption[] }
@@ -61,7 +62,7 @@ export async function hubApi<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiRequestError(problem.title ?? problem.code ?? `İşlem tamamlanamadı (${response.status}).`, response.status, problem.code, problem.fieldErrors, problem.tenants)
   }
   if (response.status === 204) return undefined as T
-  return response.json() as Promise<T>
+  return readSuccessJson<T>(response)
 }
 
 export type CursorPage<T> = { items: T[]; nextCursor: string | null; hasMore: boolean; totalCount?: number | null }

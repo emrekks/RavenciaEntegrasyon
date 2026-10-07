@@ -812,7 +812,8 @@ public sealed record ReturnListView(
     string? OrderCargoProviderName = null,
     string? OrderCargoTrackingNumber = null,
     string? ReasonCode = null,
-    DateTimeOffset? ApprovedAt = null);
+    DateTimeOffset? ApprovedAt = null,
+    string? CargoTrackingLink = null);
 public sealed record ReturnListQuery(
     string? Status = null,
     string? Customer = null,
@@ -845,7 +846,8 @@ public sealed record ReturnDetailView(
     DateTimeOffset? ApprovedAt = null,
     bool ExternalWritesEnabled = false,
     bool DecisionPending = false,
-    string? PlatformCode = null);
+    string? PlatformCode = null,
+    string? CargoTrackingLink = null);
 public sealed record ReturnDecisionCommand(string Action, string? ReasonCode, string? Explanation, IReadOnlyList<Guid>? EvidenceAssetIds, IReadOnlyList<Guid>? ReturnLineIds = null, string? FinalizedWith = null);
 public sealed record ReturnDispositionCommand(Guid ReturnLineId, string Disposition, decimal Quantity, string Reason);
 

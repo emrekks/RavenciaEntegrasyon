@@ -98,6 +98,13 @@ public static class HepsiburadaOrderHistoryPolicy
 
 public enum MarketplaceSyncHealth { Healthy, Delayed, Degraded, Offline }
 
+public static class HepsiburadaReturnHistoryPolicy
+{
+    public static readonly TimeSpan InitialLookback = TimeSpan.FromDays(30);
+
+    public static DateTimeOffset InitialStatusChangeStart(DateTimeOffset anchor) => anchor - InitialLookback;
+}
+
 public static class MarketplaceSyncHealthPolicy
 {
     public static MarketplaceSyncHealth Classify(
