@@ -2134,7 +2134,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     [PostgreSqlFact]
     public async Task TrendyolShipmentPackageReadback_UsesV2AndStreamWithoutLegacyOrdersEndpoint()
     {
-        var tenant = NewTenant("trendyol-package-readback-contract");
+        var tenant = NewTenant("trendyol-package-readback");
         var anchor = DateTimeOffset.Parse("2026-10-02T00:00:00Z");
         var occurredAt = anchor.AddDays(-1);
         var connection = new PlatformConnection
