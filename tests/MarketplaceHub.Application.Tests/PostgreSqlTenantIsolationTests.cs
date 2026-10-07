@@ -1308,11 +1308,11 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
-    public async Task InvoiceWorkspacePage_ProcessesTenThousandCandidatesAndReturnsOnlyOnePage()
+    public async Task InvoiceWorkspacePage_ProcessesOneHundredThousandCandidatesAndReturnsOnlyOnePage()
     {
-        const int candidateCount = 10_000;
+        const int candidateCount = 100_000;
         const int batchSize = 500;
-        var tenant = NewTenant("invoice-workspace-load-10k");
+        var tenant = NewTenant("invoice-workspace-load-100k");
         var connection = NewQuestionConnection(tenant);
 
         await using (var seedDb = fixture.CreateContext())
@@ -1356,12 +1356,12 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 new InvoiceWorkspacePageQuery(PageNumber: 1, PageSize: 20, Tab: "DUE_SOON"), CancellationToken.None);
             timer.Stop();
 
-            output.WriteLine($"10,000 aday için fatura sayfası: {timer.ElapsedMilliseconds} ms; dönen satır: {page.Items.Count}.");
+            output.WriteLine($"100,000 aday için fatura sayfası: {timer.ElapsedMilliseconds} ms; dönen satır: {page.Items.Count}.");
             Assert.Equal(candidateCount, page.TotalCount);
             Assert.Equal(candidateCount, page.DueSoonCount);
             Assert.Equal(candidateCount, page.UninvoicedCount);
             Assert.Equal(20, page.Items.Count);
-            Assert.Equal(500, page.TotalPages);
+            Assert.Equal(5_000, page.TotalPages);
         }
         finally
         {
