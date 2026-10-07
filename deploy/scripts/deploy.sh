@@ -56,6 +56,8 @@ run_verified_backup() {
   printf '%s\n' "$backup_output"
   backup_set="$(printf '%s\n' "$backup_output" | sed -nE 's#^Backup set created at /backup/([0-9]{8}T[0-9]{6}Z);.*$#\1#p' | tail -n 1)"
   [[ "$backup_set" =~ ^[0-9]{8}T[0-9]{6}Z$ ]] || { echo "Backup job did not return a valid backup-set name." >&2; return 1; }
+  # The quoted script runs in the backup container, where its variables expand.
+  # shellcheck disable=SC2016
   "${compose[@]}" --profile operations run --rm --entrypoint /bin/sh backup -ceu '
     backup_set="$1"
     cd "/backup/$backup_set"
