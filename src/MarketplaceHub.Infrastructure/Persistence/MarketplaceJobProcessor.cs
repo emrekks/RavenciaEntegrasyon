@@ -3313,6 +3313,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var newOnly = ReadBoolean(payloadJson, "newOnly");
         var existingOnly = ReadBoolean(payloadJson, "existingOnly");
         var mappingOnly = ReadBoolean(payloadJson, "mappingOnly");
+        var optionsOnly = ReadBoolean(payloadJson, "optionsOnly");
         var includeArchived = ReadBoolean(payloadJson, "includeArchived");
         var includePendingApproval = !isShopify && !isHepsiburada && ReadBoolean(payloadJson, "includePendingApproval");
         var updateExistingProducts = ReadBooleanOrDefault(payloadJson, "updateExistingProducts", true);
@@ -3328,6 +3329,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var singleLookup = !string.IsNullOrWhiteSpace(productLookup);
         var scanLabel = singleLookup
             ? "Tekil ürün çekimi"
+            : optionsOnly
+            ? "Varyant seçenekleri yenileniyor"
             : mappingOnly
             ? "Ürün eşleme"
             : fullScan
@@ -3342,7 +3345,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var lifecycleLabel = isShopify
             ? includeArchived ? " · Arşiv ve taslak ürünler dahil" : " · Arşiv ve taslak ürünler hariç"
             : archiveLabel + draftLabel + (includePendingApproval ? " · Onay bekleyen ürünler dahil" : " · Onay bekleyen ürünler hariç");
-        var contentLabel = !newOnly && !mappingOnly
+        var contentLabel = optionsOnly
+            ? " · yalnızca varyant seçenekleri değişecek"
+            : !newOnly && !mappingOnly
             ? updateExistingProducts ? " · Mevcut ürün bilgileri güncellenecek" : " · Mevcut ürün bilgileri korunacak"
             : "";
         var importJobId = jobId ?? Guid.CreateVersion7();
@@ -3572,7 +3577,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         // catalog rows are being materialized. These calls intentionally happen
         // after remote product paging so a cold reference cache cannot hide
         // product-read progress.
-        brandReferences = isShopify || isHepsiburada ? null : await EnsureReferenceSnapshot(tenantId, connectionId, "BRANDS", null, correlationId, cancellationToken);
+        brandReferences = isShopify || isHepsiburada || optionsOnly ? null : await EnsureReferenceSnapshot(tenantId, connectionId, "BRANDS", null, correlationId, cancellationToken);
         if (jobId is { } categoryReferenceJob)
             await UpdateProductSyncProgressAsync(
                 tenantId,
@@ -3582,7 +3587,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 totalProducts is { } completeTotal && completeTotal > 0 ? 99 : null,
                 ProductImportProgressLabel(pageNumber, totalProducts, "sayfalar okundu; referanslar hazırlanıyor · kategoriler", receivedProducts, mappingOnly),
                 cancellationToken);
-        categoryReferences = isShopify ? null : await EnsureReferenceSnapshot(tenantId, connectionId, "CATEGORIES", null, correlationId, cancellationToken);
+        categoryReferences = isShopify || optionsOnly ? null : await EnsureReferenceSnapshot(tenantId, connectionId, "CATEGORIES", null, correlationId, cancellationToken);
         categoryItems = categoryReferences is null
             ? []
             : await db.ReferenceItems.AsNoTracking().Where(x => x.TenantId == tenantId && x.SnapshotId == categoryReferences.Id && x.ResourceType == "CATEGORIES" && x.IsActive).ToListAsync(cancellationToken);
@@ -3643,6 +3648,18 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                         continue;
                     }
                     var productAlreadyLinked = existingProductExternalIds?.Contains(snapshot.ExternalProductId) == true;
+                    if (optionsOnly)
+                    {
+                        if (!productAlreadyLinked)
+                        {
+                            telemetryImportSkippedCount++;
+                            continue;
+                        }
+                        var optionsUpdated = await UpdateCatalogOptionsOnly(tenantId, connectionId, snapshot, cancellationToken);
+                        if (optionsUpdated) telemetryImportProcessedCount++;
+                        else telemetryImportSkippedCount++;
+                        continue;
+                    }
                     var hasNewVariant = existingVariantExternalIds is not null
                         && snapshot.Variants.Any(variant => !existingVariantExternalIds.Contains(Short(variant.ExternalVariantId, 256)));
                     var matchesExistingIdentity = existingIdentityCodes is not null
@@ -4665,6 +4682,83 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             link.LastImportedAt = now;
             link.SyncStatus = "MAPPED";
             link.Version++;
+        }
+
+        return true;
+    }
+
+    private async Task<bool> UpdateCatalogOptionsOnly(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CancellationToken cancellationToken)
+    {
+        var externalProductId = Short(snapshot.ExternalProductId, 256);
+        var link = await db.MarketplaceProductLinks.SingleOrDefaultAsync(
+            x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == externalProductId,
+            cancellationToken);
+        if (link is null) return false;
+
+        var product = await db.Products.SingleOrDefaultAsync(
+            x => x.TenantId == tenantId && x.Id == link.ProductId,
+            cancellationToken);
+        if (product is null) return false;
+
+        var updates = new List<(ProductVariant Variant, IReadOnlyDictionary<string, string> Options, string Signature)>();
+        var seenVariants = new HashSet<Guid>();
+        foreach (var remote in snapshot.Variants)
+        {
+            var options = remote.Options
+                .Where(pair => !IsWebColorOptionKey(pair.Key) && !string.IsNullOrWhiteSpace(pair.Value))
+                .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
+            if (options.Count == 0) continue;
+
+            var externalVariantId = Short(remote.ExternalVariantId, 256);
+            var variantLink = await db.MarketplaceVariantLinks.SingleOrDefaultAsync(
+                x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == externalVariantId,
+                cancellationToken);
+            ProductVariant? variant = null;
+            if (variantLink is not null)
+            {
+                variant = await db.ProductVariants.SingleOrDefaultAsync(
+                    x => x.TenantId == tenantId && x.ProductId == product.Id && x.Id == variantLink.VariantId,
+                    cancellationToken);
+            }
+            else
+            {
+                var sku = Short(string.IsNullOrWhiteSpace(remote.Sku) ? remote.Barcode ?? remote.ExternalVariantId : remote.Sku, 160);
+                var skuNormalized = NormalizeCatalogKey(sku, 160);
+                var barcodeNormalized = NormalizeCatalogKey(remote.Barcode, 160);
+                var candidates = await db.ProductVariants
+                    .Where(x => x.TenantId == tenantId && x.ProductId == product.Id
+                        && ((skuNormalized != "" && x.SkuNormalized == skuNormalized)
+                            || (barcodeNormalized != "" && x.BarcodeNormalized == barcodeNormalized)))
+                    .Take(2)
+                    .ToListAsync(cancellationToken);
+                if (candidates.Count == 1) variant = candidates[0];
+            }
+
+            if (variant is null || !seenVariants.Add(variant.Id)) return false;
+            updates.Add((variant, options, OptionSignature(options)));
+        }
+
+        // Avoid partially rewriting a product when even one remotely described
+        // variant cannot be matched safely to an existing local variant, or a
+        // legacy Web Color cleanup would leave a local-only variant uncovered.
+        var optionVariants = snapshot.Variants.Count(remote => remote.Options.Any(pair => !IsWebColorOptionKey(pair.Key) && !string.IsNullOrWhiteSpace(pair.Value)));
+        var localVariantCount = await db.ProductVariants.CountAsync(
+            x => x.TenantId == tenantId && x.ProductId == product.Id,
+            cancellationToken);
+        if (updates.Count == 0 || updates.Count != optionVariants || updates.Count != localVariantCount) return false;
+
+        await NormalizeLegacyWebColorOptions(tenantId, product.Id, cancellationToken);
+        var now = timeProvider.GetUtcNow();
+        foreach (var (variant, options, signature) in updates)
+        {
+            if (!string.Equals(variant.OptionSignature, signature, StringComparison.Ordinal))
+            {
+                variant.OptionSignature = signature;
+                variant.UpdatedAt = now;
+                variant.Version++;
+                telemetryUpdatedCount++;
+            }
+            await UpsertCatalogOptions(tenantId, connectionId, product.Id, variant.Id, options, null, cancellationToken);
         }
 
         return true;

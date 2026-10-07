@@ -1,3 +1,4 @@
+using System.Data.Common;
 using System.Net;
 using System.Security.Claims;
 using System.Security.Cryptography;
@@ -16,6 +17,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -28,6 +30,146 @@ namespace MarketplaceHub.Application.Tests;
 
 public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixture fixture, ITestOutputHelper output) : IClassFixture<PostgreSqlTenantIsolationFixture>
 {
+    [PostgreSqlFact]
+    public async Task TrendyolOptionRepair_UpdatesOnlyMappedVariantOptionsWithoutWritingRemotely()
+    {
+        var tenant = NewTenant("trendyol-options-only");
+        var connection = NewQuestionConnection(tenant);
+        var productId = Guid.CreateVersion7();
+        var variantId = Guid.CreateVersion7();
+        var colorOptionId = Guid.CreateVersion7();
+        var legacyWebColorOptionId = Guid.CreateVersion7();
+        var oldColorValueId = Guid.CreateVersion7();
+        var legacyWebColorValueId = Guid.CreateVersion7();
+        var variant = new ProductVariant
+        {
+            Id = variantId,
+            TenantId = tenant.Id,
+            ProductId = productId,
+            SortOrder = 0,
+            Sku = "MZ005S26",
+            SkuNormalized = "MZ005S26",
+            ModelCode = "MZ005S26",
+            OptionSignature = "Renk: Lacivert | Beden: XL",
+            CreatedAt = fixture.Now.AddDays(-1),
+            UpdatedAt = fixture.Now.AddDays(-1),
+            Version = 4
+        };
+        var remoteProduct = new RemoteCatalogProduct(
+            "remote-product-1", "MZ005", "Remote title", "Remote description", null, null, null, null,
+            ["https://example.invalid/remote.jpg"],
+            [new RemoteCatalogVariant(
+                "remote-variant-1", "MZ005S26", "869000000526", "MZ005S26",
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["Renk"] = "İndigo",
+                    ["Web Color"] = "Lacivert",
+                    ["Beden"] = "XL"
+                },
+                Archived: false,
+                SalePrice: 499m,
+                ListPrice: 799m,
+                VatRate: 10m,
+                StockQuantity: 17m,
+                Currency: "TRY",
+                RawJson: "{}")],
+            "{}");
+        var productPort = new ReadOnlyCatalogProductTestPort(remoteProduct);
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.Products.Add(new Product
+            {
+                Id = productId,
+                TenantId = tenant.Id,
+                Title = "Locally managed title",
+                Description = "Locally managed description",
+                Status = ProductStatus.Active,
+                CreatedAt = fixture.Now.AddDays(-2),
+                UpdatedAt = fixture.Now.AddDays(-1),
+                Version = 7
+            });
+            seedDb.ProductVariants.Add(variant);
+            seedDb.MarketplaceProductLinks.Add(new MarketplaceProductLink
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenant.Id,
+                ConnectionId = connection.Id,
+                ProductId = productId,
+                ExternalId = "remote-product-1",
+                LastImportedProductVersion = 7,
+                SyncStatus = "SYNCED",
+                Version = 2
+            });
+            seedDb.MarketplaceVariantLinks.Add(new MarketplaceVariantLink
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenant.Id,
+                ConnectionId = connection.Id,
+                VariantId = variantId,
+                ExternalId = "remote-variant-1",
+                Version = 1
+            });
+            seedDb.ProductOptions.AddRange(
+                new ProductOption { Id = colorOptionId, TenantId = tenant.Id, ProductId = productId, Label = "Renk", NormalizedKey = "RENK", SortOrder = 0 },
+                new ProductOption { Id = legacyWebColorOptionId, TenantId = tenant.Id, ProductId = productId, Label = "Web Color", NormalizedKey = "WEB-COLOR", SortOrder = 1 });
+            seedDb.ProductOptionValues.AddRange(
+                new ProductOptionValue { Id = oldColorValueId, TenantId = tenant.Id, OptionId = colorOptionId, Label = "Lacivert", NormalizedKey = "LACIVERT", SortOrder = 0 },
+                new ProductOptionValue { Id = legacyWebColorValueId, TenantId = tenant.Id, OptionId = legacyWebColorOptionId, Label = "Lacivert", NormalizedKey = "LACIVERT", SortOrder = 0 });
+            seedDb.VariantOptionValues.AddRange(
+                new VariantOptionValue { Id = Guid.CreateVersion7(), TenantId = tenant.Id, VariantId = variantId, OptionId = colorOptionId, OptionValueId = oldColorValueId },
+                new VariantOptionValue { Id = Guid.CreateVersion7(), TenantId = tenant.Id, VariantId = variantId, OptionId = legacyWebColorOptionId, OptionValueId = legacyWebColorValueId });
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using (var processorDb = fixture.CreateContext())
+            {
+                var processor = new MarketplaceJobProcessor(
+                    processorDb, null!, null!, productPort, null!, null!, null!, null!, null!, null!, null!,
+                    new ConfigurationBuilder().Build(), fixture.TimeProvider);
+                var result = await processor.ProcessAsync(
+                    tenant.Id,
+                    connection.Id,
+                    MarketplaceJobTypes.ProductSync,
+                    "{\"full\":true,\"existingOnly\":true,\"optionsOnly\":true,\"includeArchived\":true,\"includePendingApproval\":true,\"updateExistingProducts\":false}",
+                    "trendyol-options-only",
+                    CancellationToken.None);
+
+                Assert.True(result.Succeeded, result.ErrorSummary);
+            }
+
+            await using var verificationDb = fixture.CreateContext();
+            var persistedProduct = await verificationDb.Products.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id && row.Id == productId);
+            var persistedVariant = await verificationDb.ProductVariants.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id && row.Id == variantId);
+            Assert.Equal("Locally managed title", persistedProduct.Title);
+            Assert.Equal("Locally managed description", persistedProduct.Description);
+            Assert.Equal(7, persistedProduct.Version);
+            Assert.Equal("MZ005S26", persistedVariant.Sku);
+            Assert.Equal("Renk: İndigo | Beden: XL", persistedVariant.OptionSignature);
+            Assert.Equal(5, persistedVariant.Version);
+            Assert.Equal(0, await verificationDb.InventoryItems.CountAsync(row => row.TenantId == tenant.Id && row.VariantId == variantId));
+            Assert.Equal(0, await verificationDb.ChannelOffers.CountAsync(row => row.TenantId == tenant.Id && row.VariantId == variantId));
+            Assert.Equal(0, await verificationDb.ProductMedia.CountAsync(row => row.TenantId == tenant.Id && row.ProductId == productId));
+            Assert.False(await verificationDb.ProductOptions.AnyAsync(row => row.TenantId == tenant.Id && row.ProductId == productId && row.NormalizedKey == "WEB-COLOR"));
+            var assignedColor = await (from assignment in verificationDb.VariantOptionValues.AsNoTracking()
+                                       join option in verificationDb.ProductOptions.AsNoTracking() on new { assignment.TenantId, assignment.OptionId } equals new { option.TenantId, OptionId = option.Id }
+                                       join value in verificationDb.ProductOptionValues.AsNoTracking() on new { assignment.TenantId, assignment.OptionValueId } equals new { value.TenantId, OptionValueId = value.Id }
+                                       where assignment.TenantId == tenant.Id && assignment.VariantId == variantId && option.NormalizedKey == "RENK"
+                                       select value.Label).SingleAsync();
+            Assert.Equal("İndigo", assignedColor);
+            Assert.Equal(1, productPort.ReadCalls);
+            Assert.Equal(0, productPort.WriteAttempts);
+        }
+        finally
+        {
+            await DeleteCatalogOptionRepairTestTenantAsync(tenant.Id);
+        }
+    }
+
     [PostgreSqlFact]
     public async Task OperationsRealtimeDispatchLease_IsExclusiveAcrossDatabaseConnections()
     {
@@ -1394,10 +1536,60 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
-    public async Task InvoiceWorkspacePage_ProcessesOneHundredThousandCandidatesAndReturnsOnlyOnePage()
+    public async Task InvoiceWorkspacePage_UsesCustomerInvoiceSnapshotWhenPackageStatusIsUnknown()
+    {
+        var tenant = NewTenant("invoice-unknown");
+        var connection = NewQuestionConnection(tenant);
+        var orderId = Guid.CreateVersion7();
+        var order = NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, "unknown-invoice-status-order", isReturnClaim: false, fixture.Now);
+        order.CustomerSnapshotJson = "{\"customerFirstName\":\"Test\",\"invoiceStatus\":\"Invoiced\"}";
+        var package = NewInvoiceTestPackage(tenant.Id, connection.Id, orderId, Guid.CreateVersion7(), "unknown-invoice-status-package", fixture.Now);
+        package.CreatedBy = "MARKETPLACE_DETAIL";
+        package.StatusOccurredAt = fixture.Now.AddDays(-6);
+        package.MarketplaceInvoiceStatus = MarketplaceInvoiceStatus.Unknown;
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.Orders.Add(order);
+            seedDb.ShipmentPackages.Add(package);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var dataProtection = new EphemeralDataProtectionProvider();
+            var service = new InvoicingBillingService(
+                db,
+                new CursorCodec(dataProtection, fixture.TimeProvider),
+                dataProtection,
+                null!,
+                new ConfigurationBuilder().Build(),
+                fixture.TimeProvider);
+
+            var page = await service.WorkspacePageAsync(tenant.Id,
+                new InvoiceWorkspacePageQuery(PageNumber: 1, PageSize: 20, Tab: "INVOICED"),
+                CancellationToken.None);
+
+            Assert.Equal(1, page.TotalCount);
+            Assert.Equal(package.Id, Assert.Single(page.Items).PackageId);
+            Assert.Equal("FATURA_KESILDI", page.Items.Single().InvoiceStatus);
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task InvoiceWorkspacePage_ProcessesOneHundredThousandCandidatesWithUnknownStatusSnapshotsAndReturnsOnlyOnePage()
     {
         const int candidateCount = 100_000;
         const int batchSize = 500;
+        const int unknownStatusPeriod = 96;
+        const int unknownStatusesPerPeriod = 11;
         var tenant = NewTenant("invoice-workspace-load-100k");
         var connection = NewQuestionConnection(tenant);
 
@@ -1418,9 +1610,16 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                     var orderId = Guid.CreateVersion7();
                     var order = NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, $"load-order-{index:D5}", isReturnClaim: false, fixture.Now);
                     var package = NewInvoiceTestPackage(tenant.Id, connection.Id, orderId, Guid.CreateVersion7(), $"load-package-{index:D5}", fixture.Now);
+                    var hasUnknownInvoiceStatus = index % unknownStatusPeriod < unknownStatusesPerPeriod;
                     package.CreatedBy = "MARKETPLACE_DETAIL";
                     package.StatusOccurredAt = fixture.Now.AddDays(-6);
-                    package.MarketplaceInvoiceStatus = MarketplaceInvoiceStatus.NotInvoiced;
+                    package.MarketplaceInvoiceStatus = hasUnknownInvoiceStatus
+                        ? MarketplaceInvoiceStatus.Unknown
+                        : MarketplaceInvoiceStatus.NotInvoiced;
+                    if (hasUnknownInvoiceStatus)
+                    {
+                        order.CustomerSnapshotJson = $"{{\"customerId\":\"synthetic-customer\",\"name\":\"Synthetic Customer\",\"marketplaceInvoiceStatus\":\"NOT_INVOICED\",\"phone\":\"0000000000\",\"city\":\"Synthetic City\",\"metadata\":\"{new string('x', 110)}\"}}";
+                    }
                     return (order, package);
                 }).ToArray();
                 seedDb.Orders.AddRange(batch.Select(row => row.order));
@@ -1430,8 +1629,10 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
 
             var testConnectionString = Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION")
                 ?? throw new InvalidOperationException("PostgreSQL load test requires the isolated test connection.");
+            var queryPlanInterceptor = new ExplainFirstInvoiceWorkspaceScanInterceptor(output);
             var options = new DbContextOptionsBuilder<AppDbContext>()
                 .UseNpgsql(testConnectionString)
+                .AddInterceptors(queryPlanInterceptor)
                 .LogTo(message =>
                 {
                     const string marker = "Executed DbCommand (";
@@ -1476,6 +1677,10 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             Array.Sort(sampleDurations);
             var p95Sample = sampleDurations[(int)Math.Ceiling(sampleDurations.Length * 0.95) - 1];
             output.WriteLine($"100.000 fatura adayı: {sampleDurations.Length} istek, örnek ms=[{string.Join(",", sampleDurations)}], nearest-rank p95={p95Sample} ms; dönen satır: {page!.Items.Count}.");
+
+            queryPlanInterceptor.CaptureNext = true;
+            var diagnosticPage = await service.WorkspacePageAsync(tenant.Id, request, CancellationToken.None);
+            Assert.Equal(candidateCount, diagnosticPage.TotalCount);
 
             await db.Database.OpenConnectionAsync();
             try
@@ -2407,6 +2612,27 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         await db.Tenants.Where(row => row.Id == tenantId).ExecuteDeleteAsync();
     }
 
+    private async Task DeleteCatalogOptionRepairTestTenantAsync(Guid tenantId)
+    {
+        await using var db = fixture.CreateContext();
+        await db.ProductImportStagingRecords.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.ProductImportSessions.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.VariantOptionValues.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.ProductOptionValues.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.ProductOptions.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.MarketplaceVariantLinks.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.MarketplaceProductLinks.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.ProductMedia.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.ChannelOffers.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.InventoryItems.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.ProductVariants.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.Products.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.SyncCursors.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.IntegrationOutboxEvents.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.PlatformConnections.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.Tenants.Where(row => row.Id == tenantId).ExecuteDeleteAsync();
+    }
+
     private async Task DeleteReturnLifecycleTestTenantAsync(Guid tenantId)
     {
         await using var db = fixture.CreateContext();
@@ -2500,6 +2726,51 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 throw new InvalidOperationException($"Unexpected reference read: {resource.ResourceType}/{resource.ParentExternalId}.");
             var items = queue.Dequeue();
             return Task.FromResult(AdapterResult<AdapterPageResult<RemoteReferenceItem>>.Success(new(items, null, false, items.Count)));
+        }
+    }
+
+    private sealed class ReadOnlyCatalogProductTestPort(RemoteCatalogProduct snapshot) : IProductPort
+    {
+        public int ReadCalls { get; private set; }
+        public int WriteAttempts { get; private set; }
+
+        public Task<AdapterResult<AdapterPageResult<RemoteCatalogProduct>>> ListCatalogAsync(AdapterContext context, AdapterPageRequest page, ProductReadFilter filter, CancellationToken cancellationToken)
+        {
+            ReadCalls++;
+            return Task.FromResult(AdapterResult<AdapterPageResult<RemoteCatalogProduct>>.Success(new([snapshot], null, false, 1)));
+        }
+
+        public Task<AdapterResult<AdapterPageResult<RemoteProduct>>> ListAsync(AdapterContext context, AdapterPageRequest page, ProductReadFilter filter, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<AdapterResult<RemoteOperationRef>> CreateAsync(AdapterContext context, ProductPublication publication, CancellationToken cancellationToken) =>
+            RejectWrite<RemoteOperationRef>();
+
+        public Task<AdapterResult<RemoteOperationRef>> UpdateUnapprovedAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) =>
+            RejectWrite<RemoteOperationRef>();
+
+        public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedContentAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) =>
+            RejectWrite<RemoteOperationRef>();
+
+        public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedVariantsAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) =>
+            RejectWrite<RemoteOperationRef>();
+
+        public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedDeliveryAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) =>
+            RejectWrite<RemoteOperationRef>();
+
+        public Task<AdapterResult<RemoteOperationStatus>> GetOperationAsync(AdapterContext context, string externalOperationId, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<AdapterResult<RemotePublicationStatus>> GetPublicationStatusAsync(AdapterContext context, string barcode, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<AdapterResult<RemoteOperationRef>> ArchiveAsync(AdapterContext context, string payloadJson, CancellationToken cancellationToken) =>
+            RejectWrite<RemoteOperationRef>();
+
+        private Task<AdapterResult<T>> RejectWrite<T>()
+        {
+            WriteAttempts++;
+            throw new InvalidOperationException("The option-only import test must never write to the marketplace.");
         }
     }
 
@@ -2883,6 +3154,44 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         public Task<DashboardBootstrapView> BootstrapAsync(Guid tenantId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<IReadOnlyList<DashboardRevenuePointView>> RevenueSeriesAsync(Guid tenantId, DateTimeOffset from, DateTimeOffset to, string? platform, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task RebuildTenantAsync(Guid tenantId, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    private sealed class ExplainFirstInvoiceWorkspaceScanInterceptor(ITestOutputHelper output) : DbCommandInterceptor
+    {
+        private int captureNext;
+
+        public bool CaptureNext
+        {
+            get => Volatile.Read(ref captureNext) == 1;
+            set => Volatile.Write(ref captureNext, value ? 1 : 0);
+        }
+
+        public override async ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
+            DbCommand command,
+            CommandEventData eventData,
+            InterceptionResult<DbDataReader> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (command.CommandText.StartsWith("SELECT", StringComparison.OrdinalIgnoreCase)
+                && command.CommandText.Contains("shipment_packages", StringComparison.OrdinalIgnoreCase)
+                && command.CommandText.Contains("orders", StringComparison.OrdinalIgnoreCase)
+                && Interlocked.CompareExchange(ref captureNext, 0, 1) == 1)
+            {
+                await using var explainCommand = command.Connection!.CreateCommand();
+                explainCommand.Transaction = command.Transaction;
+                explainCommand.CommandTimeout = command.CommandTimeout;
+                explainCommand.CommandText = $"EXPLAIN (ANALYZE, BUFFERS, VERBOSE) {command.CommandText}";
+                foreach (DbParameter parameter in command.Parameters)
+                    explainCommand.Parameters.Add(((ICloneable)parameter).Clone());
+
+                var planLines = new List<string>();
+                await using var planReader = await explainCommand.ExecuteReaderAsync(cancellationToken);
+                while (await planReader.ReadAsync(cancellationToken)) planLines.Add(planReader.GetString(0));
+                output.WriteLine($"Fatura çalışma alanı servis aday sorgusu EXPLAIN: {Environment.NewLine}{string.Join(Environment.NewLine, planLines)}");
+            }
+
+            return result;
+        }
     }
 
     private sealed class RecordingOperationsHubContext(Action<object?[], CancellationToken> onSend) : IHubContext<OperationsHub>

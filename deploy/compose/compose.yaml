@@ -169,6 +169,7 @@ services:
     networks: [validation]
     environment:
       MARKETPLACEHUB_TEST_CONNECTION: "Host=validation-postgres;Port=5432;Database=marketplacehub_test;Username=marketplacehub;Password=validation-only"
+      FeatureFlags__ExternalWrites: "false"
     depends_on:
       validation-postgres: { condition: service_healthy }
 

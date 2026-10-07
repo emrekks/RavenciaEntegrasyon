@@ -1,5 +1,11 @@
-export type ProductImportMode = 'FULL' | 'NEW_ONLY' | 'EXISTING_ONLY' | 'MAPPING_ONLY'
+export type ProductImportMode = 'FULL' | 'NEW_ONLY' | 'EXISTING_ONLY' | 'MAPPING_ONLY' | 'OPTIONS_ONLY'
 export type ProductImportMethod = 'BULK' | 'SINGLE'
+
+export function supportsProductOptionsOnly(method: ProductImportMethod, platforms: readonly string[]): boolean {
+  return method === 'BULK'
+    && platforms.length > 0
+    && platforms.every(platform => platform.trim().toUpperCase() === 'TRENDYOL')
+}
 
 export type ProductImportOptionVisibility = {
   showUpdateExisting: boolean
@@ -17,6 +23,15 @@ export function productImportOptionVisibility(options: {
   supportsPendingApproval: boolean
 }): ProductImportOptionVisibility {
   const isBulk = options.method === 'BULK'
+  if (options.mode === 'OPTIONS_ONLY') {
+    return {
+      showUpdateExisting: false,
+      showHepsiburadaReadOnlyNote: false,
+      showArchived: false,
+      showPendingApproval: false,
+      showOptionsSection: false
+    }
+  }
   const showUpdateExisting = isBulk && (options.mode === 'FULL' || options.mode === 'EXISTING_ONLY') && !options.onlyHepsiburada
   const showHepsiburadaReadOnlyNote = isBulk && options.hasHepsiburada && options.mode !== 'MAPPING_ONLY'
   const showArchived = isBulk && options.mode !== 'MAPPING_ONLY'

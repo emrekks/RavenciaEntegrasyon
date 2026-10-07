@@ -3,7 +3,7 @@ name: Validate
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, "codex/**"]
   workflow_dispatch:
 
 permissions:
@@ -62,6 +62,7 @@ jobs:
       - name: Test backend
         env:
           MARKETPLACEHUB_TEST_CONNECTION: "Host=localhost;Port=5432;Database=marketplacehub_test;Username=marketplacehub;Password=development-only"
+          FeatureFlags__ExternalWrites: "false"
         run: dotnet test MarketplaceHub.sln --no-build --configuration Release
 
       - name: Verify EF model has no pending migration
