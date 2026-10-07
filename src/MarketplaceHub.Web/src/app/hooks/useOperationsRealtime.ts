@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr'
+import { RecentOperationEventIds } from '../operations-event-deduplication'
 
 export function useOperationsRealtime(enabled: boolean) {
   const client = useQueryClient()
@@ -11,7 +12,7 @@ export function useOperationsRealtime(enabled: boolean) {
       .withAutomaticReconnect([0, 1000, 3000, 10_000])
       .configureLogging(LogLevel.Warning)
       .build()
-    const seenEvents = new Set<string>()
+    const seenEvents = new RecentOperationEventIds()
     const pendingResources = new Set<string>()
     let flushTimer: number | null = null
     const flush = () => {
@@ -32,10 +33,7 @@ export function useOperationsRealtime(enabled: boolean) {
       }
     }
     connection.on('operationsChanged', ({ resources, events }: { resources?: string[]; events?: { eventId?: string }[] }) => {
-      for (const event of events ?? []) {
-        if (!event.eventId || seenEvents.has(event.eventId)) continue
-        seenEvents.add(event.eventId)
-      }
+      if (!seenEvents.shouldProcess((events ?? []).map(event => event.eventId))) return
       for (const resource of resources ?? []) pendingResources.add(resource)
       if (flushTimer === null) flushTimer = window.setTimeout(flush, 250)
     })
