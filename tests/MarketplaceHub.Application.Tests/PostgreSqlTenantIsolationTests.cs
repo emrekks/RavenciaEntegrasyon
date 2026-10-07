@@ -14,6 +14,7 @@ using MarketplaceHub.Infrastructure.Persistence;
 using MarketplaceHub.Infrastructure.Security;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
@@ -95,6 +96,84 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             var deletedSecondBatch = await OperationsRealtimeOutboxRetention.DeleteExpiredPublishedBatchAsync(db, now, CancellationToken.None);
             Assert.Equal(2, deletedSecondBatch);
             Assert.Equal(2, await db.IntegrationOutboxEvents.CountAsync(row => row.TenantId == tenant.Id));
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task OperationsRealtimeBroadcaster_RedeliversStableEventId_WhenStoppedAfterSendBeforePublishMark()
+    {
+        var tenant = NewTenant("outbox-send-before-mark");
+        var now = fixture.Now;
+        var outboxEvent = NewOutboxEvent(tenant.Id, now, publishedAt: null);
+        await using (var db = fixture.CreateContext())
+        {
+            db.Tenants.Add(tenant);
+            db.IntegrationOutboxEvents.Add(outboxEvent);
+            await db.SaveChangesAsync();
+        }
+
+        var deliveredIds = new System.Collections.Concurrent.ConcurrentQueue<Guid>();
+        using var firstStop = new CancellationTokenSource();
+        var firstHub = new RecordingOperationsHubContext((arguments, _) =>
+        {
+            deliveredIds.Enqueue(ReadFirstOutboxEventId(arguments));
+            firstStop.Cancel();
+        });
+
+        try
+        {
+            await using (var firstServices = CreateOutboxDispatcherServices())
+            {
+                var firstDispatcher = CreateOutboxDispatcher(firstServices, firstHub);
+                await firstDispatcher.StartAsync(firstStop.Token);
+                await WaitForCountAsync(deliveredIds, 1);
+                await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                    firstDispatcher.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(10)));
+            }
+
+            await using (var db = fixture.CreateContext())
+            {
+                var afterInterruptedAck = await db.IntegrationOutboxEvents.AsNoTracking()
+                    .SingleAsync(row => row.Id == outboxEvent.Id);
+                Assert.Null(afterInterruptedAck.PublishedAt);
+            }
+
+            using var secondStop = new CancellationTokenSource();
+            var secondHub = new RecordingOperationsHubContext((arguments, _) =>
+                deliveredIds.Enqueue(ReadFirstOutboxEventId(arguments)));
+            await using (var secondServices = CreateOutboxDispatcherServices())
+            {
+                var secondDispatcher = CreateOutboxDispatcher(secondServices, secondHub);
+                await secondDispatcher.StartAsync(secondStop.Token);
+                await WaitForCountAsync(deliveredIds, 2);
+
+                var publishDeadline = DateTimeOffset.UtcNow.AddSeconds(10);
+                while (DateTimeOffset.UtcNow < publishDeadline)
+                {
+                    await using var db = fixture.CreateContext();
+                    var publishedAt = await db.IntegrationOutboxEvents.AsNoTracking()
+                        .Where(row => row.Id == outboxEvent.Id)
+                        .Select(row => row.PublishedAt)
+                        .SingleAsync();
+                    if (publishedAt.HasValue) break;
+                    await Task.Delay(20);
+                }
+
+                await secondStop.CancelAsync();
+                await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                    secondDispatcher.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(10)));
+            }
+
+            Assert.Equal([outboxEvent.Id, outboxEvent.Id], deliveredIds.ToArray());
+            await using var finalDb = fixture.CreateContext();
+            var afterRetry = await finalDb.IntegrationOutboxEvents.AsNoTracking()
+                .SingleAsync(row => row.Id == outboxEvent.Id);
+            Assert.NotNull(afterRetry.PublishedAt);
+            Assert.Equal(1, afterRetry.DispatchAttempts);
         }
         finally
         {
@@ -2753,6 +2832,29 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         return Convert.ToHexString(SHA256.HashData(combined));
     }
 
+    private ServiceProvider CreateOutboxDispatcherServices() => new ServiceCollection()
+        .AddScoped(_ => fixture.CreateContext())
+        .AddScoped<IDashboardReadService>(_ => new NoopDashboardReadService())
+        .BuildServiceProvider();
+
+    private OperationsRealtimeBroadcaster CreateOutboxDispatcher(IServiceProvider services, IHubContext<OperationsHub> hub) =>
+        new(services.GetRequiredService<IServiceScopeFactory>(), hub, fixture.TimeProvider, NullLogger<OperationsRealtimeBroadcaster>.Instance);
+
+    private static Guid ReadFirstOutboxEventId(object?[] arguments)
+    {
+        Assert.Single(arguments);
+        var events = JsonSerializer.SerializeToElement(arguments[0]).GetProperty("events");
+        return events[0].GetProperty("eventId").GetGuid();
+    }
+
+    private static async Task WaitForCountAsync(System.Collections.Concurrent.ConcurrentQueue<Guid> values, int expectedCount)
+    {
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(10);
+        while (DateTimeOffset.UtcNow < deadline && values.Count < expectedCount)
+            await Task.Delay(20);
+        Assert.Equal(expectedCount, values.Count);
+    }
+
     private sealed class FixedWebhookVerifier(VerifiedWebhookEnvelope envelope) : IWebhookVerifier
     {
         public ValueTask<AdapterResult<VerifiedWebhookEnvelope>> VerifyAsync(
@@ -2767,6 +2869,47 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     private sealed class FixedTenantContextAccessor(Guid tenantId) : ITenantContextAccessor
     {
         public TenantContext? Current { get; } = new(Guid.Empty, tenantId, "ADMIN");
+    }
+
+    private sealed class NoopDashboardReadService : IDashboardReadService
+    {
+        public Task<DashboardBootstrapView> BootstrapAsync(Guid tenantId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<IReadOnlyList<DashboardRevenuePointView>> RevenueSeriesAsync(Guid tenantId, DateTimeOffset from, DateTimeOffset to, string? platform, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task RebuildTenantAsync(Guid tenantId, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    private sealed class RecordingOperationsHubContext(Action<object?[], CancellationToken> onSend) : IHubContext<OperationsHub>
+    {
+        public IHubClients Clients { get; } = new RecordingHubClients(new RecordingClientProxy(onSend));
+        public IGroupManager Groups { get; } = new NoopHubGroupManager();
+    }
+
+    private sealed class RecordingHubClients(IClientProxy proxy) : IHubClients
+    {
+        public IClientProxy All => proxy;
+        public IClientProxy AllExcept(IReadOnlyList<string> excludedConnectionIds) => proxy;
+        public IClientProxy Client(string connectionId) => proxy;
+        public IClientProxy Clients(IReadOnlyList<string> connectionIds) => proxy;
+        public IClientProxy Group(string groupName) => proxy;
+        public IClientProxy GroupExcept(string groupName, IReadOnlyList<string> excludedConnectionIds) => proxy;
+        public IClientProxy Groups(IReadOnlyList<string> groupNames) => proxy;
+        public IClientProxy User(string userId) => proxy;
+        public IClientProxy Users(IReadOnlyList<string> userIds) => proxy;
+    }
+
+    private sealed class RecordingClientProxy(Action<object?[], CancellationToken> onSend) : IClientProxy
+    {
+        public Task SendCoreAsync(string method, object?[] args, CancellationToken cancellationToken)
+        {
+            onSend(args, cancellationToken);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class NoopHubGroupManager : IGroupManager
+    {
+        public Task AddToGroupAsync(string connectionId, string groupName, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task RemoveFromGroupAsync(string connectionId, string groupName, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 }
 
