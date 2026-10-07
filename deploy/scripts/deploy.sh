@@ -27,13 +27,13 @@ done
 
 read_env() {
   local key="$1"
-  awk -F= -v wanted="$key" '$1 == wanted { sub(/^[^=]*=/, ""); print; found=1; exit } END { if (!found) exit 1 }' "$environment_file"
+  sudo -n awk -F= -v wanted="$key" '$1 == wanted { sub(/^[^=]*=/, ""); print; found=1; exit } END { if (!found) exit 1 }' "$environment_file"
 }
 
 app_image="$(read_env MARKETPLACEHUB_APP_IMAGE)"
 edge_image="$(read_env MARKETPLACEHUB_EDGE_IMAGE)"
 site_address="$(read_env MARKETPLACEHUB_SITE_ADDRESS)"
-external_writes_enabled="$(read_env MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED || printf '%s' true)"
+external_writes_enabled="$(sudo -n awk -F= '$1 == "MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED" { sub(/^[^=]*=/, ""); print; found=1; exit } END { if (!found) print "true" }' "$environment_file")"
 [[ "$app_image" =~ ^[A-Za-z0-9._:/-]+@sha256:[0-9a-f]{64}$ ]] || { echo "Application image is not immutable." >&2; exit 1; }
 [[ "$edge_image" =~ ^[A-Za-z0-9._:/-]+@sha256:[0-9a-f]{64}$ ]] || { echo "Edge image is not immutable." >&2; exit 1; }
 [[ "$site_address" =~ ^https://[A-Za-z0-9.-]+(:[0-9]+)?$ ]] || { echo "Production site address is invalid." >&2; exit 1; }
