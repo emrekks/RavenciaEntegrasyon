@@ -143,33 +143,12 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
                 continue;
             }
 
-            var previousCursor = entry.Property(x => x.OpaqueCursor).OriginalValue;
-            var cursorAdvanced = !string.IsNullOrWhiteSpace(entry.Entity.OpaqueCursor)
-                && !string.Equals(previousCursor, entry.Entity.OpaqueCursor, StringComparison.Ordinal);
-            var previousWatermark = entry.Property(x => x.LastModifiedWatermark).OriginalValue;
-            var watermarkAdvanced = entry.Entity.LastModifiedWatermark is { } currentWatermark
-                && (previousWatermark is null || currentWatermark > previousWatermark.Value);
-            var previousSuccessAt = entry.Property(x => x.LastSuccessAt).OriginalValue;
-            var successfulRunAdvanced = entry.Entity.LastSuccessAt is { } currentSuccessAt
-                && (previousSuccessAt is null || currentSuccessAt > previousSuccessAt.Value);
-
-            if (cursorAdvanced || watermarkAdvanced)
-            {
-                entry.Entity.LastCursorAdvancedAt = now;
-                entry.Entity.CursorStagnantSince = null;
-            }
-            else if (successfulRunAdvanced
-                && (!string.IsNullOrWhiteSpace(entry.Entity.OpaqueCursor) || entry.Entity.LastModifiedWatermark is not null))
-            {
-                if (entry.Entity.LastReceivedCount > 0)
-                {
-                    entry.Entity.CursorStagnantSince ??= now;
-                }
-                else
-                {
-                    entry.Entity.CursorStagnantSince = null;
-                }
-            }
+            SyncCursorProgressTracker.TrackModification(
+                entry.Entity,
+                entry.Property(x => x.OpaqueCursor).OriginalValue,
+                entry.Property(x => x.LastModifiedWatermark).OriginalValue,
+                entry.Property(x => x.LastSuccessAt).OriginalValue,
+                now);
         }
     }
 
