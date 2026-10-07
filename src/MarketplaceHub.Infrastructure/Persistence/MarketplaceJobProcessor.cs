@@ -3656,7 +3656,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                             continue;
                         }
                         var optionsUpdated = await UpdateCatalogOptionsOnly(tenantId, connectionId, snapshot, cancellationToken);
-                        if (optionsUpdated) telemetryImportProcessedCount++;
+                        if (optionsUpdated)
+                        {
+                            telemetryImportProcessedCount++;
+                            await ResolveIssue(tenantId, $"product-sync-import:{connectionId}:{Short(snapshot.ExternalProductId, 256)}", cancellationToken);
+                        }
                         else telemetryImportSkippedCount++;
                         continue;
                     }
@@ -5879,7 +5883,30 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
     private static string ProductTitle(string? title, string externalId) => Short(string.IsNullOrWhiteSpace(title) ? $"Pazar yeri ürünü {externalId}" : title.Trim(), 320);
     private static string CleanCatalogOptionValue(string? value) => string.IsNullOrWhiteSpace(value) ? "" : value.Trim().Trim('"', '“', '”').Trim();
-    private static string OptionSignature(IReadOnlyDictionary<string, string> options) => string.Join(" | ", options.Select(x => $"{Short(x.Key, 80)}: {Short(CleanCatalogOptionValue(x.Value), 120)}"));
+    private static string OptionSignature(IReadOnlyDictionary<string, string> options)
+    {
+        const int maximumLength = 512;
+        var signature = new StringBuilder(maximumLength);
+        var orderedOptions = options
+            .OrderBy(pair => IsRealColorOptionKey(pair.Key) ? 0 : IsSizeOptionKey(pair.Key) ? 1 : IsWebColorOptionKey(pair.Key) ? 3 : 2)
+            .ThenBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var pair in orderedOptions)
+        {
+            var key = Short(pair.Key, 80);
+            var value = Short(CleanCatalogOptionValue(pair.Value), 120);
+            if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(value)) continue;
+
+            var part = $"{key}: {value}";
+            var separatorLength = signature.Length == 0 ? 0 : 3;
+            if (signature.Length + separatorLength + part.Length > maximumLength) break;
+
+            if (separatorLength > 0) signature.Append(" | ");
+            signature.Append(part);
+        }
+
+        return signature.ToString();
+    }
     private TimeSpan ProductUpdatePollDelay(DateTimeOffset submittedAt)
     {
         var now = timeProvider.GetUtcNow();

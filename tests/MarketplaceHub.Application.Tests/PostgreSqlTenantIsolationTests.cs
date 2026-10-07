@@ -41,6 +41,18 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         var legacyWebColorOptionId = Guid.CreateVersion7();
         var oldColorValueId = Guid.CreateVersion7();
         var legacyWebColorValueId = Guid.CreateVersion7();
+        var importFailureIssue = new OperationalIssue
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            DedupeKey = $"product-sync-import:{connection.Id}:remote-product-1",
+            Code = "PRODUCT_IMPORT_FAILED",
+            Summary = "The previous option signature exceeded the database limit.",
+            Status = IssueStatus.Open,
+            FirstSeenAt = fixture.Now.AddMinutes(-10),
+            LastSeenAt = fixture.Now.AddMinutes(-10),
+            OccurrenceCount = 1
+        };
         var variant = new ProductVariant
         {
             Id = variantId,
@@ -55,17 +67,21 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             UpdatedAt = fixture.Now.AddDays(-1),
             Version = 4
         };
+        var remoteOptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Renk"] = "İndigo",
+            ["Web Color"] = "Lacivert",
+            ["Beden"] = "XL"
+        };
+        for (var index = 1; index <= 5; index++)
+            remoteOptions[$"Additional option {index}"] = new string((char)('A' + index), 120);
+
         var remoteProduct = new RemoteCatalogProduct(
             "remote-product-1", "MZ005", "Remote title", "Remote description", null, null, null, null,
             ["https://example.invalid/remote.jpg"],
             [new RemoteCatalogVariant(
                 "remote-variant-1", "MZ005S26", "869000000526", "MZ005S26",
-                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-                {
-                    ["Renk"] = "İndigo",
-                    ["Web Color"] = "Lacivert",
-                    ["Beden"] = "XL"
-                },
+                remoteOptions,
                 Archived: false,
                 SalePrice: 499m,
                 ListPrice: 799m,
@@ -118,6 +134,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             seedDb.ProductOptionValues.AddRange(
                 new ProductOptionValue { Id = oldColorValueId, TenantId = tenant.Id, OptionId = colorOptionId, Label = "Lacivert", NormalizedKey = "LACIVERT", SortOrder = 0 },
                 new ProductOptionValue { Id = legacyWebColorValueId, TenantId = tenant.Id, OptionId = legacyWebColorOptionId, Label = "Lacivert", NormalizedKey = "LACIVERT", SortOrder = 0 });
+            seedDb.OperationalIssues.Add(importFailureIssue);
             seedDb.VariantOptionValues.AddRange(
                 new VariantOptionValue { Id = Guid.CreateVersion7(), TenantId = tenant.Id, VariantId = variantId, OptionId = colorOptionId, OptionValueId = oldColorValueId },
                 new VariantOptionValue { Id = Guid.CreateVersion7(), TenantId = tenant.Id, VariantId = variantId, OptionId = legacyWebColorOptionId, OptionValueId = legacyWebColorValueId });
@@ -149,12 +166,15 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             Assert.Equal("Locally managed description", persistedProduct.Description);
             Assert.Equal(7, persistedProduct.Version);
             Assert.Equal("MZ005S26", persistedVariant.Sku);
-            Assert.Equal("Renk: İndigo | Beden: XL", persistedVariant.OptionSignature);
+            Assert.StartsWith("Renk: İndigo | Beden: XL", persistedVariant.OptionSignature, StringComparison.Ordinal);
+            Assert.True(persistedVariant.OptionSignature.Length <= 512);
             Assert.Equal(5, persistedVariant.Version);
             Assert.Equal(0, await verificationDb.InventoryItems.CountAsync(row => row.TenantId == tenant.Id && row.VariantId == variantId));
             Assert.Equal(0, await verificationDb.ChannelOffers.CountAsync(row => row.TenantId == tenant.Id && row.VariantId == variantId));
             Assert.Equal(0, await verificationDb.ProductMedia.CountAsync(row => row.TenantId == tenant.Id && row.ProductId == productId));
             Assert.False(await verificationDb.ProductOptions.AnyAsync(row => row.TenantId == tenant.Id && row.ProductId == productId && row.NormalizedKey == "WEB-COLOR"));
+            Assert.Equal(5, await verificationDb.ProductOptions.CountAsync(row => row.TenantId == tenant.Id && row.ProductId == productId && row.Label.StartsWith("Additional option ")));
+            Assert.Equal(IssueStatus.Resolved, (await verificationDb.OperationalIssues.AsNoTracking().SingleAsync(row => row.Id == importFailureIssue.Id)).Status);
             var assignedColor = await (from assignment in verificationDb.VariantOptionValues.AsNoTracking()
                                        join option in verificationDb.ProductOptions.AsNoTracking() on new { assignment.TenantId, assignment.OptionId } equals new { option.TenantId, OptionId = option.Id }
                                        join value in verificationDb.ProductOptionValues.AsNoTracking() on new { assignment.TenantId, assignment.OptionValueId } equals new { value.TenantId, OptionValueId = value.Id }
@@ -2620,6 +2640,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         await db.VariantOptionValues.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.ProductOptionValues.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.ProductOptions.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.OperationalIssues.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.MarketplaceVariantLinks.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.MarketplaceProductLinks.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.ProductMedia.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
