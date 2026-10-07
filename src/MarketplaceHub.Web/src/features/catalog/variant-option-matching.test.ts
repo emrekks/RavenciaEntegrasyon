@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { displayVariantOptionEntries, formatColorOptionValue, matchingVariantOptionValues, mergeVariantOptionEntries, mergeVariantOptionValues, normalizeVariantOptionValue, parseVariantOptionSignature } from './variant-option-matching'
+import { displayVariantOptionEntries, displayVariantOptionEntriesFromSignature, formatColorOptionValue, matchingVariantOptionValues, mergeVariantOptionEntries, mergeVariantOptionValues, normalizeVariantOptionValue, parseVariantOptionSignature } from './variant-option-matching'
 
 describe('variant option matching', () => {
   it('treats Turkish dotted and ASCII-uppercase I spellings as the same option value', () => {
@@ -30,6 +30,23 @@ describe('variant option matching', () => {
     expect(displayVariantOptionEntries(parseVariantOptionSignature('Beden: M · Renk: Siyah · Astar Durumu: Astarsız'))).toEqual([
       { name: 'Beden', value: 'M' },
       { name: 'Renk', value: 'Siyah' },
+    ])
+  })
+
+  it('parses bullet-separated option signatures before hiding category features', () => {
+    expect(displayVariantOptionEntriesFromSignature('Beden: M • Renk: Siyah • Astar Durumu: Astarsız • Desen: Çiçekli')).toEqual([
+      { name: 'Beden', value: 'M' },
+      { name: 'Renk', value: 'Siyah' },
+    ])
+  })
+
+  it('uses saved variant options when a signature is stale, while keeping only size and color', () => {
+    expect(displayVariantOptionEntriesFromSignature(
+      'Beden: M • Renk: Lacivert • Astar Durumu: Astarsız',
+      { Beden: 'XL', Renk: 'İndigo', 'Astar Durumu': 'Astarsız' }
+    )).toEqual([
+      { name: 'Beden', value: 'XL' },
+      { name: 'Renk', value: 'İndigo' },
     ])
   })
 
