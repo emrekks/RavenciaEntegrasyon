@@ -661,4 +661,32 @@ public sealed class TrendyolCatalogMapperTests
         Assert.Equal(new[] { "https://cdn.example.test/flower.jpg" }, flower.ImageUrls);
         Assert.Equal(new[] { "https://cdn.example.test/rabbit.jpg", "https://cdn.example.test/flower.jpg" }, product.ImageUrls);
     }
+
+    [Fact]
+    public void CatalogProductResponse_PrefersVariantColorOverDuplicateCategoryColor()
+    {
+        const string json = """
+        {
+          "content": [{
+            "contentId": 800008,
+            "productMainId": "MZ005",
+            "title": "Kadın İndigo Şerit Desen Bluz",
+            "attributes": [
+              { "attributeId": 47, "attributeName": "Renk", "attributeValue": "İndigo" },
+              { "attributeId": 348, "attributeName": "Renk", "attributeValueId": 7003, "attributeValue": "Lacivert" }
+            ],
+            "variants": [{
+              "variantId": 8000081,
+              "stockCode": "MZ005S26",
+              "attributes": [{ "attributeName": "Beden", "attributeValue": "XL" }]
+            }]
+          }]
+        }
+        """;
+
+        var variant = Assert.Single(Assert.Single(TrendyolJsonMapper.CatalogProducts(json).Items).Variants);
+
+        Assert.Equal("İndigo", variant.Options["Renk"]);
+        Assert.Equal("XL", variant.Options["Beden"]);
+    }
 }

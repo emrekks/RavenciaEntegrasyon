@@ -13,7 +13,7 @@ import { toggleProductAttributeValue } from './attribute-selection'
 import { buildVariantAttributeAssignments, type VariantAttributeAssignment } from './variant-attribute-assignments'
 import { filterAttributeOptionValues } from './attribute-value-search'
 import { isStoredProductMediaUrl, mediaImageKey, mediaRefsEqual, mediaRefsSameSet, mediaUrlsInPreferredOrder, modelCodeForExistingVariant, publicProductMediaUrls, reorderItems, reorderMediaUrls, uniqueMediaUrls } from './product-media-editor'
-import { applyVariantBulkEditValue, variantBulkEditIssue, type VariantBulkEditField } from './variant-bulk-edit'
+import { applyVariantBulkEditValue, updateVariantGroupSelection, variantBulkEditIssue, variantGroupSelectionState, type VariantBulkEditField } from './variant-bulk-edit'
 import { applyGeneratedVariantCodes, buildSequentialVariantCodes, buildVariantGenerationDefaults, resolveVariantSyncAttributeIds } from './variant-generation'
 import { filterVariantsByOptions, selectVariantDraftsByKeys, type VariantOptionFilterSelections } from './variant-filtering'
 import { formatColorOptionValue, matchingVariantOptionValues, mergeVariantOptionEntries, mergeVariantOptionValues, normalizeVariantOptionValue } from './variant-option-matching'
@@ -655,8 +655,15 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
                 const items = groups[color]
                 const isOpen = openColorGroups.includes(color)
                 const selectedCount = items.filter(item => selectedSet.has(item.variant.id)).length
+                const groupSelection = variantGroupSelectionState(items.map(item => item.variant.id), selectedSet)
+                const groupLabel = colorLabels[color] || formatCatalogOptionLabel(color)
                 return <section className={`quick-edit-color${isOpen ? ' is-open' : ''}`} key={color}>
-                  <button type="button" className="quick-edit-color-toggle" aria-expanded={isOpen} onClick={() => toggleColorGroup(color)}><span><strong>{colorLabels[color] || formatCatalogOptionLabel(color)}</strong><small>{selectedCount ? `${selectedCount}/${items.length} seçili` : 'Renk varyantlarını göster'}</small></span><b>{items.length}</b><UiIcon name="chevronDown" /></button>
+                  <div className="quick-edit-color-heading">
+                    <label className="quick-edit-color-select">
+                      <input type="checkbox" checked={groupSelection.checked} ref={input => { if (input) input.indeterminate = groupSelection.indeterminate }} aria-label={`${groupLabel} rengindeki tüm varyantları seç`} onChange={event => setSelectionDraft(current => updateVariantGroupSelection(current, items.map(item => item.variant.id), event.currentTarget.checked))} />
+                    </label>
+                    <button type="button" className="quick-edit-color-toggle" aria-expanded={isOpen} onClick={() => toggleColorGroup(color)}><span><strong>{groupLabel}</strong><small>{selectedCount ? `${selectedCount}/${items.length} seçili` : 'Renk varyantlarını göster'}</small></span><b>{items.length}</b><UiIcon name="chevronDown" /></button>
+                  </div>
                   {isOpen && <div className="quick-edit-color-variants" role="region" aria-label={`${colorLabels[color] || formatCatalogOptionLabel(color)} varyantları`}>{renderVariantList(items)}</div>}
                 </section>
               })}

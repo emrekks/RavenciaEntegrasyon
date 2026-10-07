@@ -5,9 +5,11 @@ set -Eeuo pipefail
 # container, test/build the web app, verify a backup, then migrate and deploy.
 
 verify=true
+disable_external_writes=false
 while (($#)); do
   case "$1" in
     --verify) verify=true; shift ;;
+    --disable-external-writes) disable_external_writes=true; shift ;;
     *) echo "Unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -27,6 +29,7 @@ read_env() {
   sudo -n awk -F= -v wanted="$key" '$1 == wanted { sub(/^[^=]*=/, ""); print; found=1; exit } END { if (!found) exit 1 }' "$environment_file"
 }
 external_writes_enabled="$(sudo -n awk -F= '$1 == "MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED" { sub(/^[^=]*=/, ""); print; found=1; exit } END { if (!found) print "true" }' "$environment_file")"
+if [[ "$disable_external_writes" == true ]]; then external_writes_enabled=false; fi
 [[ "$external_writes_enabled" == true || "$external_writes_enabled" == false ]] || { echo "MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED must be true or false." >&2; exit 1; }
 
 cd "$repository_root"

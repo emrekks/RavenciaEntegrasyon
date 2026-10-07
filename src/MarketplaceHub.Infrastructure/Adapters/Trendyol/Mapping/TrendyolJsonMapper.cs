@@ -463,7 +463,7 @@ public static class TrendyolJsonMapper
         // Catalog responses have used both the approved-products names and the
         // catalog names for the same fields. Keep the source order: it is the
         // marketplace's variant order and is later used for the gallery.
-        var entries = new List<(string Key, string Value)>();
+        var entries = new List<(string Key, string Value, bool HasValueId)>();
         foreach (var propertyName in new[] { "attributes", "variantAttributes", "options", "optionValues" })
         {
             if (!value.TryGetProperty(propertyName, out var attributes) || attributes.ValueKind != JsonValueKind.Array) continue;
@@ -475,13 +475,26 @@ public static class TrendyolJsonMapper
                 var optionValue = attribute.ValueKind == JsonValueKind.Object
                     ? NullText(attribute, "attributeValue", "attribute_value", "optionValue", "value", "text")
                     : null;
-                if (!string.IsNullOrWhiteSpace(key) && !string.IsNullOrWhiteSpace(optionValue)) entries.Add((key.Trim(), optionValue.Trim()));
+                var hasValueId = attribute.ValueKind == JsonValueKind.Object
+                    && !string.IsNullOrWhiteSpace(NullText(attribute, "attributeValueId", "attribute_value_id", "optionValueId"));
+                if (!string.IsNullOrWhiteSpace(key) && !string.IsNullOrWhiteSpace(optionValue)) entries.Add((key.Trim(), optionValue.Trim(), hasValueId));
             }
         }
 
         return entries
             .GroupBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(x => x.Key, x => x.Last().Value, StringComparer.OrdinalIgnoreCase);
+            .ToDictionary(
+                group => group.Key,
+                group => IsVariantColorOptionKey(group.Key) && group.Any(entry => entry.HasValueId)
+                    ? group.FirstOrDefault(entry => !entry.HasValueId).Value ?? group.Last().Value
+                    : group.Last().Value,
+                StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static bool IsVariantColorOptionKey(string value)
+    {
+        var normalized = value.Replace(" ", "", StringComparison.Ordinal).Trim().ToUpperInvariant();
+        return normalized is "RENK" or "COLOR" or "COLOUR";
     }
 
     private static IReadOnlyDictionary<string, string> MergeOptions(IReadOnlyDictionary<string, string> parent, IReadOnlyDictionary<string, string> variant)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyVariantBulkEditValue, variantBulkEditIssue, type VariantBulkEditRow } from './variant-bulk-edit'
+import { applyVariantBulkEditValue, updateVariantGroupSelection, variantBulkEditIssue, variantGroupSelectionState, type VariantBulkEditRow } from './variant-bulk-edit'
 
 const rows: VariantBulkEditRow[] = [
   { key: 'small', stock: 1, salePrice: 80, costPrice: 20, listPrice: 100 },
@@ -24,5 +24,18 @@ describe('variant bulk numeric editing', () => {
     expect(variantBulkEditIssue('listPrice', 85, rows)).toMatch(/satış fiyatının altında olamaz/)
     expect(variantBulkEditIssue('salePrice', 95, rows)).toBeNull()
     expect(variantBulkEditIssue('listPrice', 100, rows)).toBeNull()
+  })
+})
+
+describe('quick edit color group selection', () => {
+  it('selects or clears every variant in a color group without changing other selections', () => {
+    expect(updateVariantGroupSelection(['other', 'small'], ['small', 'large'], true)).toEqual(['other', 'small', 'large'])
+    expect(updateVariantGroupSelection(['other', 'small', 'large'], ['small', 'large'], false)).toEqual(['other'])
+  })
+
+  it('reports unchecked, partially selected, and fully selected groups', () => {
+    expect(variantGroupSelectionState(['small', 'large'], new Set())).toEqual({ checked: false, indeterminate: false })
+    expect(variantGroupSelectionState(['small', 'large'], new Set(['small']))).toEqual({ checked: false, indeterminate: true })
+    expect(variantGroupSelectionState(['small', 'large'], new Set(['small', 'large']))).toEqual({ checked: true, indeterminate: false })
   })
 })

@@ -5621,7 +5621,10 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 .OrderBy(candidate => candidate.IsWebColorSource ? 1 : 0)
                 .ThenBy(candidate => candidate.Order)
                 .First();
-            panelOptions[selected.PanelLabel] = selected.Mapped is null
+            // Product option names must reflect the actual slicer color. The
+            // mapped category color can be a broader display value (for
+            // example, Renk=İndigo alongside the category value Renk=Lacivert).
+            panelOptions[selected.PanelLabel] = IsRealColorOptionKey(selected.PanelLabel) || selected.Mapped is null
                 ? CleanCatalogOptionValue(selected.RemoteValue)
                 : await PanelOptionValueAsync(tenantId, connectionId, categoryContext, selected.Mapped, selected.RemoteValue, cancellationToken);
         }
@@ -5718,7 +5721,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             LocalCategoryAttribute? mapped = null;
             if (categoryContext is not null && (!TryGetMappedAttribute(categoryContext.Attributes, pair.Key, out mapped) || (mapped.Role != "OPTION" && !IsVariantOptionName(pair.Key)))) continue;
             var panelLabel = mapped?.Definition.Name ?? pair.Key;
-            var panelValue = mapped is null ? pair.Value : await PanelOptionValueAsync(tenantId, connectionId, categoryContext!, mapped, pair.Value, cancellationToken);
+            var panelValue = mapped is null || IsRealColorOptionKey(pair.Key) || IsRealColorOptionKey(mapped.Definition.Name)
+                ? CleanCatalogOptionValue(pair.Value)
+                : await PanelOptionValueAsync(tenantId, connectionId, categoryContext!, mapped, pair.Value, cancellationToken);
             optionKey = NormalizeCatalogKey(panelLabel, 160);
             if (categoryContext is not null && !processedPanelOptions.Add(optionKey)) continue;
             valueKey = NormalizeCatalogKey(panelValue, 160);
