@@ -432,7 +432,7 @@ Bu bölüm 7 Ekim 2026'daki son uygulama durumunu kaydeder ve yukarıdaki dağı
 
 | Kontrol | Sonuç |
 |---|---|
-| Kaynak revizyonu | `ba80b9ffb39d` (`perf: index invoice workspace keyset scan`), `origin/main` ve sunucu çalışma ağacı aynı commit'te |
+| Kaynak revizyonu | İndeks/migration commit'i `ba80b9ffb39d`; güncel `origin/main` ve sunucu çalışma ağacı `204e56db9694` |
 | Migration | `20261007104323_AddInvoiceWorkspaceKeysetIndex`; `CREATE INDEX CONCURRENTLY` ile `sales.shipment_packages(TenantId, StatusOccurredAt, Id)` eklendi |
 | Doğrulama | İzole, dış bağlantısız PostgreSQL üzerinde son tam suite 773/773 geçti. 100.000 aday testi 5/5 istekte 20 satır ve doğru sayfa toplamlarını döndürdü; örnekler 2.327, 2.531, 2.578, 2.626 ve 6.210 ms (median 2.578 ms, nearest-rank p95 6.210 ms). |
 | Sorgu planı | `EXPLAIN (ANALYZE, BUFFERS)` 2.000 kayıtlık anahtar-imleç okumasında yeni indekste `Index Only Scan Backward` kullandı; 18 shared buffer hit, 0 heap fetch ve 0,493 ms execution time ölçüldü. Bu test, servis sorgusunun joins/filtreleri dâhil toplam gecikme ölçümü değildir. |
