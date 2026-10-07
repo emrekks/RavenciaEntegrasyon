@@ -19,7 +19,7 @@ public sealed partial class InvoicingBillingService(
     IConfiguration configuration,
     TimeProvider timeProvider) : IInvoicingBillingService
 {
-    private const int WorkspaceCandidateScanBatchSize = 10_000;
+    private const int WorkspaceCandidateScanBatchSize = 100_000;
     private static readonly CultureInfo WorkspaceSearchCulture = CultureInfo.GetCultureInfo("tr-TR");
     private readonly IDataProtector _taxProtector = dataProtection.CreateProtector("MarketplaceHub.InvoiceTaxIdentity.v1");
     private readonly IDataProtector _partyProtector = dataProtection.CreateProtector("MarketplaceHub.InvoicePartySnapshot.v1");

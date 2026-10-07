@@ -575,3 +575,23 @@ CI ve fast-deploy içindeki 778/778 PostgreSQL suite'i güncel `Unknown` durumlu
 | Kalan B13 | Yedeğin onaylı, şifreli off-host hedefe aktarılması ve CI imaj digest'inin kaynak commit'e bağlanması henüz kanıtlanmadı |
 
 Yedek kümesi yalnız sunucunun yerel yedek alanında oluşturuldu ve checksum'ları kontrol edildi; off-host kopya yapılmadı. Bu adıma geçmek için onaylanmış hedef deposu ve erişim yöntemi gerekir. Tam proje planı bu nedenle **tamamlandı** sayılmaz; önceki bölümlerdeki B10, B11, B12, B16 ve B18 kanıtları da açık kalır.
+
+## 24. 7 Ekim B10 karışık fixture performans tekrarları
+
+100.000 adaylı PostgreSQL testi, yalnız geçici `validation` veritabanında ve `internal: true` Docker ağı içinde çalıştırıldı. Test sürecinde `FeatureFlags__ExternalWrites=false` idi; hiçbir pazaryeri/provider yazma çağrısı yapılmadı. Her adayın toplam sayısı, `DUE_SOON`/faturasız sayıları, 20 satırlı sayfası ve 5.000 sayfa sonucu doğrulandı. Test sonunda fixture tenant'ı temizlendi; geçici veritabanı, ağ, imajlar ve sunucu worktree'si kaldırıldı.
+
+| Tarama grubu | Beş istek (ms) | nearest-rank p95 | Gözlenen konteyner belleği |
+|---:|---|---:|---:|
+| 10.000 (mevcut başlangıç) | 1.189, 1.264, 1.603, 2.018, 2.146 | 2.146 ms | Ölçülmedi |
+| 50.000 (geçici deney) | 1.106, 1.202, 1.309, 1.498, 2.375 | 2.375 ms | 688,2 MiB / 768 MiB |
+| 100.000 (geçici deney) | 883, 1.053, 1.127, 1.402, 1.700 | 1.700 ms | 665,9 MiB / 768 MiB |
+
+10.000 grubunda 100.000 satır on ayrı sorgu grubuyla taranıyor; 100.000 grubu bunu tek sorguya indirdi. 10.000 satırlı servis sorgusunun `EXPLAIN ANALYZE` çalışma süresi 36,7 ms idi. 100.000 satırlı planda indeksten geriye doğru tarama ve sipariş birincil anahtarına 100.000 lookup görüldü; ölçülen plan 533,8 ms, bunun JIT kısmı 332,3 ms idi. Bu, doğruluk sınırlarının geçildiğini ancak sürenin yalnız basit indeks sıralamasından gelmediğini gösteriyor.
+
+50.000 deneyi 10.000 tabanından daha yavaş, 100.000 deneyi ise p95 bakımından yaklaşık %21 daha hızlıydı. Bu nedenle kod adayı 100.000 tarama grubudur; değişiklik bu rapor yazılırken CI ve canlı dağıtım bekliyor. 768 MiB test konteynerinde gözlenen kullanım sınıra yakın olduğu için eşzamanlı istek etkisi ayrıca değerlendirilmelidir. 1 saniye p95 hedefi karşılanmadı; B10 açık kalır ve performans tamamlandı sayılmaz.
+
+## 25. Sipariş satırında varyant olmayan özellikleri gizleme
+
+7 Ekim tarihli `/orders` ekran görüntüsünde `Renk` ve `Beden` satırlarının ardından Astar Durumu, Baskı/Nakış, Cep, Desen, Kumaş Tipi, Menşei ve benzeri tüm kategori özellikleri varyant satırı gibi gösteriliyordu. Kaynakta sipariş ve iade satırlarının `optionSignature` alanındaki her `Etiket: Değer` çiftinin listelendiği doğrulandı. Yeni sunum filtresi yalnızca renk ve beden boyutlarını gösteriyor; `Web Color` ayrı bir renk boyutu sayılmıyor. İade durumu alanlarını bulmak için kullanılan tam imza ayrıştırması korunuyor.
+
+Yeni yardımcı için 3/3 birim testi, tam web paketi için 58/58 dosyada 227/227 test geçti. İlk sandboxlı tam-suite çalıştırmasında 9 dosya geçici `AppData` yoluna erişemedi; aynı paket sandbox dışı yerel çalıştırmada başarılı oldu. `npm run typecheck`, `npm run build`, `npm run check:bundle` ve `git diff --check` başarılı. Bu arayüz değişikliği bu kayıt yazılırken yerel değişikliktir; CI ve üretim dağıtımı bekliyor.
