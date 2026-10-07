@@ -124,8 +124,54 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         builder.ConfigureQuestionModels();
     }
 
-    public override int SaveChanges(bool acceptAllChangesOnSuccess) { ApplyIntegrationJobMetadata(); AppendDataChangeOutboxEvents(); GuardAppendOnlyAudit(); return base.SaveChanges(acceptAllChangesOnSuccess); }
-    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default) { ApplyIntegrationJobMetadata(); AppendDataChangeOutboxEvents(); GuardAppendOnlyAudit(); return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken); }
+    public override int SaveChanges(bool acceptAllChangesOnSuccess) { TrackSyncCursorProgress(); ApplyIntegrationJobMetadata(); AppendDataChangeOutboxEvents(); GuardAppendOnlyAudit(); return base.SaveChanges(acceptAllChangesOnSuccess); }
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default) { TrackSyncCursorProgress(); ApplyIntegrationJobMetadata(); AppendDataChangeOutboxEvents(); GuardAppendOnlyAudit(); return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken); }
+
+    private void TrackSyncCursorProgress()
+    {
+        var now = DateTimeOffset.UtcNow;
+        foreach (var entry in ChangeTracker.Entries<SyncCursor>().Where(x => x.State is EntityState.Added or EntityState.Modified))
+        {
+            if (entry.State == EntityState.Added)
+            {
+                if (entry.Entity.LastCursorAdvancedAt is null
+                    && (!string.IsNullOrWhiteSpace(entry.Entity.OpaqueCursor) || entry.Entity.LastModifiedWatermark is not null))
+                {
+                    entry.Entity.LastCursorAdvancedAt = now;
+                }
+
+                continue;
+            }
+
+            var previousCursor = entry.Property(x => x.OpaqueCursor).OriginalValue;
+            var cursorAdvanced = !string.IsNullOrWhiteSpace(entry.Entity.OpaqueCursor)
+                && !string.Equals(previousCursor, entry.Entity.OpaqueCursor, StringComparison.Ordinal);
+            var previousWatermark = entry.Property(x => x.LastModifiedWatermark).OriginalValue;
+            var watermarkAdvanced = entry.Entity.LastModifiedWatermark is { } currentWatermark
+                && (previousWatermark is null || currentWatermark > previousWatermark.Value);
+            var previousSuccessAt = entry.Property(x => x.LastSuccessAt).OriginalValue;
+            var successfulRunAdvanced = entry.Entity.LastSuccessAt is { } currentSuccessAt
+                && (previousSuccessAt is null || currentSuccessAt > previousSuccessAt.Value);
+
+            if (cursorAdvanced || watermarkAdvanced)
+            {
+                entry.Entity.LastCursorAdvancedAt = now;
+                entry.Entity.CursorStagnantSince = null;
+            }
+            else if (successfulRunAdvanced
+                && (!string.IsNullOrWhiteSpace(entry.Entity.OpaqueCursor) || entry.Entity.LastModifiedWatermark is not null))
+            {
+                if (entry.Entity.LastReceivedCount > 0)
+                {
+                    entry.Entity.CursorStagnantSince ??= now;
+                }
+                else
+                {
+                    entry.Entity.CursorStagnantSince = null;
+                }
+            }
+        }
+    }
 
     private void ApplyIntegrationJobMetadata()
     {

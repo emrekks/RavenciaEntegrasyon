@@ -2301,7 +2301,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       const options = Object.fromEntries(variantOptionEntries(variant).map(option => [option.name, option.value]))
       const persistedAttributes = variant.attributes ?? []
       const attributeValueIds = Object.fromEntries(persistedAttributes.flatMap(attribute => attribute.valueId ? [[attribute.attributeId, attribute.valueId] as const] : []))
-      return { key: variant.id, optionSignature: variant.optionSignature && variant.optionSignature !== '-' ? variant.optionSignature : optionSignatureFromOptions(options) || 'Tek Ürün', options, attributeValueIds, persistedAttributes, sku: variant.sku, barcode: variant.barcode ?? '', stock: variant.onHand, salePrice: variant.defaultSalePrice ?? product.defaultSalePrice ?? variant.salePrice ?? 0, listPrice: variant.defaultListPrice ?? product.defaultListPrice ?? variant.listPrice ?? variant.salePrice ?? 0, costPrice: variant.costPrice ?? 0, mediaRefs: mediaRefsByVariantId.get(variant.id) ?? [], ...(editProductId ? { platformStatuses: variant.platformStatuses ?? [] } : {}) }
+      return { key: variant.id, optionSignature: optionSignatureFromOptions(options) || (variant.optionSignature && variant.optionSignature !== '-' ? variant.optionSignature : 'Tek Ürün'), options, attributeValueIds, persistedAttributes, sku: variant.sku, barcode: variant.barcode ?? '', stock: variant.onHand, salePrice: variant.defaultSalePrice ?? product.defaultSalePrice ?? variant.salePrice ?? 0, listPrice: variant.defaultListPrice ?? product.defaultListPrice ?? variant.listPrice ?? variant.salePrice ?? 0, costPrice: variant.costPrice ?? 0, mediaRefs: mediaRefsByVariantId.get(variant.id) ?? [], ...(editProductId ? { platformStatuses: variant.platformStatuses ?? [] } : {}) }
     }))
     const selected: Record<string, string[]> = {}; const typed: Record<string, string> = {}
     for (const attribute of product.attributes ?? []) { if (attribute.valueId) selected[attribute.attributeId] = [...(selected[attribute.attributeId] ?? []), attribute.valueId]; else if (attribute.textValue != null) typed[attribute.attributeId] = attribute.textValue; else if (attribute.numberValue != null) typed[attribute.attributeId] = String(attribute.numberValue); else if (attribute.booleanValue != null) typed[attribute.attributeId] = attribute.booleanValue ? 'evet' : 'hayır' }
@@ -2344,7 +2344,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
         const value = matchingVariantOptionValues(requirement.attribute.values, option ? [option.value] : [])[0]
         return value ? [[requirement.attributeId, value.id]] : []
       }))
-      return { ...row, optionSignature: source.optionSignature && source.optionSignature !== '-' ? source.optionSignature : optionSignatureFromOptions(options) || row.optionSignature, options, attributeValueIds }
+      return { ...row, optionSignature: optionSignatureFromOptions(options) || (source.optionSignature && source.optionSignature !== '-' ? source.optionSignature : row.optionSignature), options, attributeValueIds }
     }))
   }, [allRequirements, duplicateProductId, editProductId, optionRequirements, requirements.isLoading, seedProduct])
 

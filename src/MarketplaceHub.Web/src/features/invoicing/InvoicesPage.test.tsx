@@ -10,11 +10,14 @@ const invoiceFixtures = [
   { id: 'inv-3', orderId: 'order-3', packageId: 'trendyol-package-3', orderNumber: 'TY-1003', customerName: 'Zeynep Demir', orderedAt: '2026-10-04T12:00:00Z', shipmentStatus: 'DELIVERED', deliveredAt: '2026-10-04T13:00:00Z', invoiceDueAt: null, isDueSoon: true, currency: 'TRY', amount: 499, productCount: 1, primaryImageUrl: null, cargoProviderName: 'Aras', cargoTrackingNumber: 'TRK-3', invoiceId: null, invoiceStatus: 'FATURA_BEKLIYOR', invoiceNumber: null, canCreateInvoice: true, shipmentAddressJson: null, invoiceAddressJson: null, lines: [], invoiceErrorCode: null, invoiceDeliveryStatus: null, invoiceDeliveryReference: null, invoiceDocumentAvailable: false, platformCode: 'TRENDYOL', platformDisplayName: 'Trendyol', invoiceCreationEnabled: true },
 ]
 
-const apiState = vi.hoisted(() => ({ uploads: [] as Array<{ path: string; fileName: string | null }>, statusUpdates: [] as Array<{ path: string; status: string; packageIds: string[] }> }))
+const apiState = vi.hoisted(() => ({ uploads: [] as Array<{ path: string; fileName: string | null }>, statusUpdates: [] as Array<{ path: string; status: string; packageIds: string[] }>, pageRequests: [] as string[] }))
 
 vi.mock('../../shared/api', () => ({
   hubApi: vi.fn(async (path: string, init?: RequestInit) => {
-    if (path === '/invoice-workspace') return invoiceFixtures
+    if (path.startsWith('/invoice-workspace/page?')) {
+      apiState.pageRequests.push(path)
+      return { items: invoiceFixtures, totalCount: invoiceFixtures.length, pageNumber: 1, pageSize: 20, totalPages: 1, uninvoicedCount: 3, invoicedCount: 0, dueSoonCount: 3, totalPackageCount: 3, hasPendingMarketplaceInvoices: true, shipmentStatuses: ['DELIVERED'], cargoProviders: ['Aras', 'Yurtiçi'], invoiceStatuses: ['FATURA_BEKLIYOR'] }
+    }
     if (path === '/invoice-workspace/manual-status') {
       const body = JSON.parse(String(init?.body)) as { status: string; packageIds: string[] }
       apiState.statusUpdates.push({ path, status: body.status, packageIds: body.packageIds })
@@ -43,6 +46,7 @@ beforeEach(async () => {
   ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
   apiState.uploads = []
   apiState.statusUpdates = []
+  apiState.pageRequests = []
   container = document.createElement('div')
   document.body.append(container)
   client = new QueryClient({ defaultOptions: { queries: { retry: false, refetchInterval: false }, mutations: { retry: false } } })
@@ -55,6 +59,8 @@ afterEach(() => { act(() => root?.unmount()); client?.clear(); container.remove(
 
 describe('InvoicesPage Shopify bulk invoice status', () => {
   it('renders selection controls for every platform order and selects the whole page', async () => {
+    expect(apiState.pageRequests[0]).toContain('/invoice-workspace/page?')
+    expect(apiState.pageRequests[0]).toContain('tab=DUE_SOON')
     expect(container.querySelector('[aria-label="Shopify #SH-1001 siparişini seç"]')).not.toBeNull()
     expect(container.querySelector('[aria-label="Shopify #SH-1002 siparişini seç"]')).not.toBeNull()
     expect(container.querySelector('[aria-label="Trendyol #TY-1003 siparişini seç"]')).not.toBeNull()

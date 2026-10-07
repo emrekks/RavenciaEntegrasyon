@@ -110,8 +110,38 @@ public sealed record InvoiceWorkspaceItemView(
     bool InvoiceDocumentAvailable = false,
     string PlatformCode = "TRENDYOL",
     string PlatformDisplayName = "Trendyol",
-    bool InvoiceCreationEnabled = true);
+    bool InvoiceCreationEnabled = true,
+    string? MarketplaceInvoiceReadErrorCode = null,
+    string? MarketplaceInvoiceReadErrorSummary = null);
 public sealed record InvoiceWorkspaceLineView(string Sku, string? Barcode, string Description, decimal Quantity, decimal UnitPrice, decimal VatRate, string? ImageUrl);
+public sealed record InvoiceWorkspaceSummaryView(int DueSoonCount);
+public sealed record InvoiceWorkspacePageQuery(
+    int PageNumber = 1,
+    int PageSize = 20,
+    string Tab = "UNINVOICED",
+    string? Search = null,
+    IReadOnlyList<string>? PlatformCodes = null,
+    string? ShipmentStatus = null,
+    string? CargoProviderName = null,
+    string? InvoiceStatus = null,
+    string? InvoiceAction = null,
+    DateTimeOffset? From = null,
+    DateTimeOffset? To = null,
+    bool ProviderHasCredential = false);
+public sealed record InvoiceWorkspacePageView(
+    IReadOnlyList<InvoiceWorkspaceItemView> Items,
+    int TotalCount,
+    int PageNumber,
+    int PageSize,
+    int TotalPages,
+    int UninvoicedCount,
+    int InvoicedCount,
+    int DueSoonCount,
+    int TotalPackageCount,
+    bool HasPendingMarketplaceInvoices,
+    IReadOnlyList<string> ShipmentStatuses,
+    IReadOnlyList<string> CargoProviders,
+    IReadOnlyList<string> InvoiceStatuses);
 public sealed record InvoiceLineView(Guid Id, int LineSequence, string Description, string? Sku, string Unit, decimal Quantity, decimal UnitPrice, decimal DiscountAmount, decimal VatRate, decimal VatAmount, decimal LineTotal);
 public sealed record InvoiceDocumentView(Guid Id, string DocumentType, string Sha256, DateTimeOffset CreatedAt);
 public sealed record InvoiceAttemptView(int AttemptNumber, string Outcome, string? ErrorCode, DateTimeOffset StartedAt, DateTimeOffset? CompletedAt);
@@ -124,6 +154,8 @@ public interface IInvoicingBillingService
     Task<ServiceResult<InvoicePolicyView>> UpsertPolicyAsync(Guid tenantId, Guid connectionId, long? expectedVersion, UpsertInvoicePolicyCommand command, CancellationToken cancellationToken);
     Task<PageResult<InvoiceListView>> ListAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken);
     Task<IReadOnlyList<InvoiceWorkspaceItemView>> WorkspaceAsync(Guid tenantId, CancellationToken cancellationToken);
+    Task<InvoiceWorkspacePageView> WorkspacePageAsync(Guid tenantId, InvoiceWorkspacePageQuery query, CancellationToken cancellationToken);
+    Task<InvoiceWorkspaceSummaryView> WorkspaceSummaryAsync(Guid tenantId, CancellationToken cancellationToken);
     Task<ServiceResult<InvoiceDetailView>> CreateDraftAsync(Guid tenantId, CreateInvoiceCommand command, string idempotencyKey, CancellationToken cancellationToken);
     Task<ServiceResult<InvoiceDetailView>> GetAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
     Task<ServiceResult<InvoiceDetailView>> ValidateAsync(Guid tenantId, Guid id, long expectedVersion, CancellationToken cancellationToken);

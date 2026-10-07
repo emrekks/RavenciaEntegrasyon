@@ -1,3 +1,4 @@
+using MarketplaceHub.Api.Catalog;
 using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -24,7 +25,7 @@ public static class QuestionEndpoints
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
             if (tenant is null) return Results.Unauthorized();
-            if (!HasIdempotencyKey(http)) return Results.BadRequest(new { code = "IDEMPOTENCY_KEY_REQUIRED", title = "X-Idempotency-Key başlığı zorunludur." });
+            if (!HasIdempotencyKey(http)) return Results.BadRequest(new { code = "IDEMPOTENCY_KEY_REQUIRED", title = "Idempotency-Key başlığı zorunludur." });
             if (!string.IsNullOrWhiteSpace(request.PlatformCode) && request.PlatformCode is not ("TRENDYOL" or "HEPSIBURADA"))
                 return Results.BadRequest(new { code = "QUESTION_SYNC_PLATFORM_INVALID", title = "Soru aktarımı için desteklenen platformu seçin." });
             var db = http.RequestServices.GetRequiredService<AppDbContext>();
@@ -52,8 +53,8 @@ public static class QuestionEndpoints
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
             if (tenant is null) return Results.Unauthorized();
-            var key = http.Request.Headers["X-Idempotency-Key"].ToString();
-            if (!HasIdempotencyKey(http)) return Results.BadRequest(new { code = "IDEMPOTENCY_KEY_REQUIRED", title = "X-Idempotency-Key başlığı zorunludur." });
+            if (!ApiIdempotencyHeaderPolicy.TryGetKey(http.Request.Headers, out var key, out var conflictingKeys))
+                return Results.BadRequest(new { code = conflictingKeys ? "IDEMPOTENCY_KEY_CONFLICT" : "IDEMPOTENCY_KEY_REQUIRED", title = conflictingKeys ? "Idempotency-Key ile X-Idempotency-Key aynı değeri taşımalıdır." : "Idempotency-Key başlığı zorunludur." });
             var result = await service.AnswerAsync(tenant.TenantId, tenant.UserId, id, command.Version, command.Text ?? "", key, http.TraceIdentifier, http.RequestAborted);
             if (!result.Succeeded) return Results.Json(new { code = result.Error!.Code, title = result.Error.Message, status = result.Error.Status }, statusCode: result.Error.Status, contentType: "application/problem+json");
             http.Response.Headers.ETag = $"\"v{result.Value!.Version}\"";
@@ -92,7 +93,7 @@ public static class QuestionEndpoints
         return endpoints;
     }
 
-    private static bool HasIdempotencyKey(HttpContext http) => http.Request.Headers.TryGetValue("X-Idempotency-Key", out var key) && Guid.TryParse(key.ToString(), out _);
+    private static bool HasIdempotencyKey(HttpContext http) => ApiIdempotencyHeaderPolicy.TryGetKey(http.Request.Headers, out var key, out _) && Guid.TryParse(key, out _);
     private static bool TryVersion(string? value, out long version)
     {
         version = 0;

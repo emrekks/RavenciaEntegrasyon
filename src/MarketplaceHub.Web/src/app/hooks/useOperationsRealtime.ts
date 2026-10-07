@@ -19,12 +19,12 @@ export function useOperationsRealtime(enabled: boolean) {
       const resources = [...pendingResources]
       pendingResources.clear()
       const queryKeysByResource: Record<string, string[][]> = {
-        orders: [['orders'], ['invoice-workspace'], ['dashboard-bootstrap'], ['dashboard-revenue-series']],
+        orders: [['orders'], ['invoice-workspace'], ['invoice-workspace-page'], ['invoice-workspace-summary'], ['dashboard-bootstrap'], ['dashboard-revenue-series']],
         returns: [['returns'], ['dashboard-bootstrap']],
         products: [['products'], ['dashboard-bootstrap']],
         inventory: [['inventory'], ['dashboard-bootstrap']],
-        invoices: [['invoices'], ['invoice-workspace'], ['dashboard-bootstrap']],
-        connections: [['connections'], ['dashboard-bootstrap']],
+        invoices: [['invoices'], ['invoice-workspace'], ['invoice-workspace-page'], ['invoice-workspace-summary'], ['dashboard-bootstrap']],
+        connections: [['connections'], ['invoice-workspace-page'], ['invoice-workspace-summary'], ['dashboard-bootstrap']],
         jobs: [['jobs']]
       }
       for (const resource of resources) {
@@ -40,7 +40,7 @@ export function useOperationsRealtime(enabled: boolean) {
       if (flushTimer === null) flushTimer = window.setTimeout(flush, 250)
     })
     connection.onreconnected(() => {
-      for (const queryKey of [['orders'], ['returns'], ['products'], ['inventory'], ['invoices'], ['connections'], ['jobs'], ['dashboard-bootstrap'], ['dashboard-revenue-series']]) void client.invalidateQueries({ queryKey })
+      for (const queryKey of [['orders'], ['returns'], ['products'], ['inventory'], ['invoices'], ['invoice-workspace-page'], ['invoice-workspace-summary'], ['connections'], ['jobs'], ['dashboard-bootstrap'], ['dashboard-revenue-series']]) void client.invalidateQueries({ queryKey })
     })
     let stopped = false
     let retryTimer: number | null = null

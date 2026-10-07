@@ -227,9 +227,7 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
             query.Add("status=" + Uri.EscapeDataString(window.PackageItemStatuses!));
             query.Add("orderByField=PackageLastModifiedDate");
             query.Add("orderByDirection=DESC");
-            var historyStart = window.PackageItemStatuses is "Delivered" or "Awaiting"
-                ? orderCursor.AnchorEnd.AddMonths(-6)
-                : orderCursor.AnchorEnd - OrderWindowSpan;
+            var historyStart = TrendyolOrderHistoryPolicy.LegacyEndpointInitialStart(orderCursor.AnchorEnd);
             var endDate = orderCursor.AnchorEnd - TimeSpan.FromTicks(orderCursor.WindowIndex * (OrderWindowSpan.Ticks + TimeSpan.TicksPerMillisecond));
             var startDate = endDate - OrderWindowSpan;
             if (startDate < historyStart) startDate = historyStart;
@@ -258,9 +256,7 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
                 ? orderCursor with { Page = orderCursor.Page + 1 }
                 : orderCursor with { WindowIndex = orderCursor.WindowIndex + 1, Page = 0 };
             var nextEnd = next.AnchorEnd - TimeSpan.FromTicks(next.WindowIndex * (OrderWindowSpan.Ticks + TimeSpan.TicksPerMillisecond));
-            var historyStart = window.PackageItemStatuses is "Delivered" or "Awaiting"
-                ? next.AnchorEnd.AddMonths(-6)
-                : next.AnchorEnd - OrderWindowSpan;
+            var historyStart = TrendyolOrderHistoryPolicy.LegacyEndpointInitialStart(next.AnchorEnd);
             var hasMore = mapped.HasMore || nextEnd >= historyStart;
             return AdapterResult<AdapterPageResult<RemoteOrder>>.Success(
                 new(mapped.Items, hasMore ? OrderWindowCursorValue(next) : null, hasMore, null, mapped.Issues), response.RateLimit);

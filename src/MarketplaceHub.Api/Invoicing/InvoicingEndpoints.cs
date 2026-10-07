@@ -18,7 +18,25 @@ public static class InvoicingEndpoints
         api.MapPut("/billing/invoice-policies/{connectionId:guid}", UpsertPolicy);
 
         api.MapGet("/invoices", async (HttpContext http, IInvoicingBillingService service, int? limit, string? after, string? status) => Tenant(http) is { } tenant ? Results.Ok(await service.ListAsync(tenant.TenantId, PageSize(limit), after, status, http.RequestAborted)) : Unauthorized(http));
-        api.MapGet("/invoice-workspace", async (HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant ? Results.Ok(await service.WorkspaceAsync(tenant.TenantId, http.RequestAborted)) : Unauthorized(http));
+        api.MapGet("/invoice-workspace/summary", async (HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant ? Results.Ok(await service.WorkspaceSummaryAsync(tenant.TenantId, http.RequestAborted)) : Unauthorized(http));
+        api.MapGet("/invoice-workspace/page", async (HttpContext http, IInvoicingBillingService service, int? pageNumber, int? pageSize, string? tab, string? search, string? platformCodes, string? shipmentStatus, string? cargoProviderName, string? invoiceStatus, string? invoiceAction, DateTimeOffset? from, DateTimeOffset? to, bool? providerHasCredential) =>
+        {
+            if (Tenant(http) is not { } tenant) return Unauthorized(http);
+            var filter = new InvoiceWorkspacePageQuery(
+                pageNumber ?? 1,
+                pageSize ?? 20,
+                tab ?? "UNINVOICED",
+                search,
+                platformCodes?.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries),
+                shipmentStatus,
+                cargoProviderName,
+                invoiceStatus,
+                invoiceAction,
+                from,
+                to,
+                providerHasCredential ?? false);
+            return Results.Ok(await service.WorkspacePageAsync(tenant.TenantId, filter, http.RequestAborted));
+        });
         api.MapPut("/invoice-workspace/manual-status", UpdateInvoiceWorkspaceManualStatusAsync);
         api.MapPost("/invoices", async (CreateInvoiceCommand command, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Created(await service.CreateDraftAsync(tenant.TenantId, command, http.Request.Headers["Idempotency-Key"].ToString(), http.RequestAborted), "/api/v1/invoices") : MissingContext(http));
         api.MapGet("/invoices/{id:guid}", async (Guid id, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant ? WithEtag(http, await service.GetAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http));

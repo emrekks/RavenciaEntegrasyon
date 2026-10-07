@@ -58,6 +58,8 @@ public sealed class SyncCursor
     public required string ResourceType { get; set; }
     public string? OpaqueCursor { get; set; }
     public DateTimeOffset? LastModifiedWatermark { get; set; }
+    public DateTimeOffset? LastCursorAdvancedAt { get; set; }
+    public DateTimeOffset? CursorStagnantSince { get; set; }
     public DateTimeOffset? LastAttemptAt { get; set; }
     public DateTimeOffset? LastSuccessAt { get; set; }
     public string? LastError { get; set; }

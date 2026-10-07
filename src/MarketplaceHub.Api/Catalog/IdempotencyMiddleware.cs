@@ -16,12 +16,24 @@ public sealed class IdempotencyMiddleware(RequestDelegate next)
     public async Task InvokeAsync(HttpContext context, AppDbContext db, ITenantContextAccessor tenants, TimeProvider timeProvider)
     {
         var isMutation = HttpMethods.IsPost(context.Request.Method) || HttpMethods.IsPut(context.Request.Method) || HttpMethods.IsPatch(context.Request.Method) || HttpMethods.IsDelete(context.Request.Method);
-        if (!isMutation || !context.Request.Path.StartsWithSegments("/api/v1") || context.Request.Path.StartsWithSegments("/api/v1/auth") || tenants.Current is not { } tenant || !context.Request.Headers.TryGetValue("Idempotency-Key", out var header) || string.IsNullOrWhiteSpace(header))
+        var isApiMutation = isMutation && context.Request.Path.StartsWithSegments("/api/v1") && !context.Request.Path.StartsWithSegments("/api/v1/auth");
+        if (!isApiMutation || tenants.Current is not { } tenant)
         {
             await next(context); return;
         }
 
-        var key = header.ToString();
+        var hasIdempotencyKey = ApiIdempotencyHeaderPolicy.TryGetKey(context.Request.Headers, out var key, out var conflictingKeys);
+        if (conflictingKeys)
+        {
+            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            await context.Response.WriteAsJsonAsync(new { code = "IDEMPOTENCY_KEY_CONFLICT", title = "Idempotency-Key ile X-Idempotency-Key aynı değeri taşımalıdır." }, context.RequestAborted);
+            return;
+        }
+        if (!hasIdempotencyKey)
+        {
+            await next(context); return;
+        }
+
         if (key.Length > 256) { await next(context); return; }
         context.Request.EnableBuffering(bufferThreshold: 64 * 1024, bufferLimit: MaximumRequestBytes);
         await using var requestBytes = new MemoryStream();

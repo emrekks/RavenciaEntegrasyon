@@ -1454,8 +1454,111 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             snapshot.SourceVersion = sourceVersion;
         }
         await db.SaveChangesAsync(cancellationToken);
+        await RevalidateMappingsForCurrentSnapshotAsync(tenantId, connectionId, resourceType, scope, snapshot, now, cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
         if (transaction is not null) await transaction.CommitAsync(cancellationToken);
         return true;
+    }
+
+    private async Task RevalidateMappingsForCurrentSnapshotAsync(
+        Guid tenantId,
+        Guid connectionId,
+        string resourceType,
+        string scope,
+        ReferenceSnapshot currentSnapshot,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        switch (resourceType)
+        {
+            case "CATEGORIES":
+                await RevalidateSnapshotMappingsAsync(
+                    db.CategoryMappings,
+                    tenantId, connectionId, resourceType, scope, currentSnapshot, now,
+                    (localIds, token) => db.Categories.AsNoTracking()
+                        .Where(x => x.TenantId == tenantId && localIds.Contains(x.Id) && x.IsActive && x.IsLeaf)
+                        .Select(x => x.Id).ToHashSetAsync(token),
+                    cancellationToken);
+                break;
+            case "BRANDS":
+                await RevalidateSnapshotMappingsAsync(
+                    db.BrandMappings,
+                    tenantId, connectionId, resourceType, scope, currentSnapshot, now,
+                    (localIds, token) => db.Brands.AsNoTracking()
+                        .Where(x => x.TenantId == tenantId && localIds.Contains(x.Id) && x.IsActive)
+                        .Select(x => x.Id).ToHashSetAsync(token),
+                    cancellationToken);
+                break;
+            case "CATEGORY_ATTRIBUTES":
+                await RevalidateSnapshotMappingsAsync(
+                    db.AttributeMappings,
+                    tenantId, connectionId, resourceType, scope, currentSnapshot, now,
+                    (localIds, token) => db.AttributeDefinitions.AsNoTracking()
+                        .Where(x => x.TenantId == tenantId && localIds.Contains(x.Id) && x.IsActive)
+                        .Select(x => x.Id).ToHashSetAsync(token),
+                    cancellationToken);
+                break;
+            case "ATTRIBUTE_VALUES":
+                await RevalidateSnapshotMappingsAsync(
+                    db.AttributeValueMappings,
+                    tenantId, connectionId, resourceType, scope, currentSnapshot, now,
+                    (localIds, token) => db.AttributeValues.AsNoTracking()
+                        .Where(x => x.TenantId == tenantId && localIds.Contains(x.Id) && x.IsActive)
+                        .Select(x => x.Id).ToHashSetAsync(token),
+                    cancellationToken);
+                break;
+        }
+    }
+
+    private async Task RevalidateSnapshotMappingsAsync<TMapping>(
+        IQueryable<TMapping> mappingQuery,
+        Guid tenantId,
+        Guid connectionId,
+        string resourceType,
+        string scope,
+        ReferenceSnapshot currentSnapshot,
+        DateTimeOffset now,
+        Func<Guid[], CancellationToken, Task<HashSet<Guid>>> loadActiveLocalIds,
+        CancellationToken cancellationToken)
+        where TMapping : CatalogMapping
+    {
+        var mappings = await mappingQuery
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == scope
+                && x.Status == "VERIFIED" && x.SnapshotId != currentSnapshot.Id)
+            .ToListAsync(cancellationToken);
+        if (mappings.Count == 0) return;
+
+        var oldSnapshotIds = mappings.Select(x => x.SnapshotId).Distinct().ToArray();
+        var externalIds = mappings.Select(x => x.ExternalId).Distinct().ToArray();
+        var validOldSnapshotIds = await db.ReferenceSnapshots.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == resourceType
+                && x.ScopeExternalId == scope && oldSnapshotIds.Contains(x.Id))
+            .Select(x => x.Id)
+            .ToHashSetAsync(cancellationToken);
+        var activeLocalIds = await loadActiveLocalIds(mappings.Select(x => x.LocalId).Distinct().ToArray(), cancellationToken);
+        var previousItems = await db.ReferenceItems.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ResourceType == resourceType
+                && validOldSnapshotIds.Contains(x.SnapshotId) && externalIds.Contains(x.ExternalId))
+            .ToListAsync(cancellationToken);
+        var previousByMapping = previousItems.ToDictionary(x => (x.SnapshotId, x.ExternalId));
+        var currentItems = await db.ReferenceItems.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.SnapshotId == currentSnapshot.Id
+                && x.ResourceType == resourceType && externalIds.Contains(x.ExternalId))
+            .ToDictionaryAsync(x => x.ExternalId, cancellationToken);
+
+        foreach (var mapping in mappings)
+        {
+            if (!activeLocalIds.Contains(mapping.LocalId)
+                || !validOldSnapshotIds.Contains(mapping.SnapshotId)
+                || !previousByMapping.TryGetValue((mapping.SnapshotId, mapping.ExternalId), out var previous)
+                || !currentItems.TryGetValue(mapping.ExternalId, out var current)
+                || !ReferenceMappingRevalidationPolicy.CanRevalidate(resourceType, previous, current))
+                continue;
+
+            mapping.SnapshotId = currentSnapshot.Id;
+            mapping.VerifiedAt = now;
+            mapping.Version++;
+        }
     }
 
     internal static bool TryDeduplicateRepeatedEnumValues(IReadOnlyCollection<RemoteReferenceItem> items, out IReadOnlyList<RemoteReferenceItem> uniqueItems)
@@ -1576,6 +1679,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             current.ItemCount = itemCount;
             current.IsCurrent = true;
             if (existing is not null) db.ReferenceSnapshots.Remove(snapshots.Single(x => x.Id == staging.Id));
+            await db.SaveChangesAsync(cancellationToken);
+            await RevalidateMappingsForCurrentSnapshotAsync(tenantId, connectionId, "BRANDS", "", current, now, cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
             if (transaction is not null) await transaction.CommitAsync(cancellationToken);
             return true;
@@ -2751,7 +2856,6 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var hepsiburadaInvoiceStatusUnavailable = new HashSet<string>(StringComparer.Ordinal);
         SyncCursor? invoiceCursor = null;
         Guid? lastReconciledOrderId = null;
-        var advanceInvoiceCursor = true;
         if (isHepsiburada)
         {
             // Order detail is the only documented source for hasInvoice. Rotate
@@ -2816,38 +2920,6 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                         && package.Status != ShipmentPackageStatus.Cancelled
                         && package.MarketplaceInvoiceStatus != MarketplaceInvoiceStatus.Invoiced));
 
-            IReadOnlyList<OrderInvoiceReconciliationCandidate> returnClaimHydrationCandidates = [];
-            if (isTrendyol)
-            {
-                var eligibleSnapshots = await eligibleOrders
-                    .Select(order => new
-                    {
-                        order.Id,
-                        order.ExternalOrderId,
-                        order.CustomerSnapshotJson
-                    })
-                    .ToListAsync(cancellationToken);
-                var permanentlyUnreachableKeys = await db.OperationalIssues.AsNoTracking()
-                    .Where(issue => issue.TenantId == tenantId
-                        && issue.Status == IssueStatus.Open
-                        && (issue.Code == "REMOTE_ORDER_NOT_FOUND" || issue.Code == "RETURN_ORDER_HYDRATION_INVALID")
-                        && issue.DedupeKey.StartsWith($"trendyol-return-order-hydration:{connectionId}:"))
-                    .Select(issue => issue.DedupeKey)
-                    .ToListAsync(cancellationToken);
-                var permanentlyUnreachableOrderIds = eligibleSnapshots
-                    .Where(order => permanentlyUnreachableKeys.Contains($"trendyol-return-order-hydration:{connectionId}:{order.ExternalOrderId}"))
-                    .Select(order => order.Id)
-                    .ToHashSet();
-                returnClaimHydrationCandidates = OrderInvoiceReconciliationBatchPolicy.SelectReturnClaimHydration(
-                    eligibleSnapshots
-                        .Select(order => (
-                            new OrderInvoiceReconciliationCandidate(order.Id, order.ExternalOrderId),
-                            (string?)order.CustomerSnapshotJson))
-                        .ToArray(),
-                    permanentlyUnreachableOrderIds,
-                    batchSize);
-            }
-
             var afterCursorQuery = eligibleOrders;
             if (afterOrderId is { } cursorOrderId)
                 afterCursorQuery = afterCursorQuery.Where(order => order.Id.CompareTo(cursorOrderId) > 0);
@@ -2868,13 +2940,10 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     .ToListAsync(cancellationToken);
             }
 
-            var selected = returnClaimHydrationCandidates.Count > 0
-                ? returnClaimHydrationCandidates
-                : OrderInvoiceReconciliationBatchPolicy.Select(afterCursor, wrapped, batchSize);
-            if (returnClaimHydrationCandidates.Count > 0) advanceInvoiceCursor = false;
+            var selected = OrderInvoiceReconciliationBatchPolicy.Select(afterCursor, wrapped, batchSize);
             externalOrderIds = selected.Select(candidate => candidate.ExternalOrderId).ToList();
             lastReconciledOrderId = selected.LastOrDefault()?.OrderId;
-            if (advanceInvoiceCursor && lastReconciledOrderId is { } lastOrderId)
+            if (lastReconciledOrderId is { } lastOrderId)
                 invoiceCursor.OpaqueCursor = OrderInvoiceReconciliationBatchPolicy.WriteCursor(lastOrderId);
         }
 
@@ -2885,7 +2954,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 // Historical return claims can create a deliberately partial
                 // order projection. Hydrate those rows from the full read-only
                 // order contract before reconciling package invoice data.
-                await HydrateTrendyolReturnClaimOrder(tenantId, connectionId, externalOrderId, correlationId, cancellationToken);
+                if (!await HydrateTrendyolReturnClaimOrder(tenantId, connectionId, externalOrderId, correlationId, cancellationToken))
+                    continue;
                 await ReconcileTrendyolPackageInvoices(tenantId, connectionId, externalOrderId, correlationId, cancellationToken);
                 continue;
             }
@@ -2894,12 +2964,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             var result = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"order-invoice-reconciliation:{externalOrderId}"), externalOrderId, cancellationToken);
             if (!result.IsSuccess)
             {
-                if (result.Error?.Class != AdapterErrorClass.NotFound)
-                {
-                    TrackResultFailure(result.Error);
-                    await RecordIssue(tenantId, $"order-invoice-reconciliation:{connectionId}:{externalOrderId}", result.Error!.Code,
-                        $"Siparişin pazaryeri fatura durumu yenilenemedi; sonraki otomatik taramada tekrar denenecek. {result.Error.SafeMessage}", cancellationToken);
-                }
+                if (result.Error?.Class != AdapterErrorClass.NotFound) TrackResultFailure(result.Error);
+                await RecordIssue(tenantId, $"order-invoice-reconciliation:{connectionId}:{externalOrderId}", result.Error!.Code,
+                    $"Siparişin pazaryeri fatura durumu yenilenemedi; sonraki otomatik taramada tekrar denenecek. {result.Error.SafeMessage}", cancellationToken);
                 continue;
             }
             else
@@ -2934,7 +3001,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         return true;
     }
 
-    private async Task HydrateTrendyolReturnClaimOrder(Guid tenantId, Guid connectionId, string externalOrderId, string correlationId, CancellationToken cancellationToken)
+    private async Task<bool> HydrateTrendyolReturnClaimOrder(Guid tenantId, Guid connectionId, string externalOrderId, string correlationId, CancellationToken cancellationToken)
     {
         var customerSnapshot = await db.Orders.AsNoTracking()
             .Where(order => order.TenantId == tenantId
@@ -2942,17 +3009,29 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 && order.ExternalOrderId == externalOrderId)
             .Select(order => order.CustomerSnapshotJson)
             .SingleOrDefaultAsync(cancellationToken);
-        if (!TrendyolJsonMapper.IsReturnClaimReadModelSnapshot(customerSnapshot)) return;
+        var issueKey = $"trendyol-return-order-hydration:{connectionId}:{externalOrderId}";
+        if (!TrendyolJsonMapper.IsReturnClaimReadModelSnapshot(customerSnapshot))
+        {
+            await ResolveIssue(tenantId, issueKey, cancellationToken);
+            return true;
+        }
+        var permanentlyUnreachable = await db.OperationalIssues.AsNoTracking()
+            .AnyAsync(issue => issue.TenantId == tenantId
+                && issue.Status == IssueStatus.Open
+                && (issue.Code == "REMOTE_ORDER_NOT_FOUND" || issue.Code == "RETURN_ORDER_HYDRATION_INVALID")
+                && issue.DedupeKey == issueKey, cancellationToken);
+        if (permanentlyUnreachable) return true;
 
-        // The invoice job runs in its own lane. Take the ordinary order lane
-        // only for this repair so its full aggregate cannot race an order sync.
+        // Hydration is opportunistic. A busy order lane must defer only this
+        // candidate; the invoice cursor still advances and will wrap around.
         await using var orderSyncLock = await MarketplaceSyncExecutionLock.TryAcquireAsync(
             db, connectionId, MarketplaceJobTypes.OrderSync, cancellationToken);
         if (orderSyncLock is null)
-            throw new JobProcessingException(JobExecutionResult.Retry(
-                "RETURN_ORDER_HYDRATION_BUSY",
-                "Sipariş okuması sürüyor; iade siparişinin ürünleri tamamlanmak üzere yeniden denenecek.",
-                TimeSpan.FromSeconds(30)));
+        {
+            telemetrySkippedCount++;
+            await RecordIssue(tenantId, issueKey, "RETURN_ORDER_HYDRATION_BUSY", "Sipariş eşitlemesi sürdüğü için bu kayıt atlandı; fatura taraması ilerledi ve sonraki döngüde yeniden denenecek.", cancellationToken);
+            return false;
+        }
 
         TrackRequest();
         var result = await orders.GetAsync(
@@ -2964,23 +3043,24 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             TrackResultFailure(result.Error);
             await RecordIssue(
                 tenantId,
-                $"trendyol-return-order-hydration:{connectionId}:{externalOrderId}",
+                issueKey,
                 result.Error!.Code,
                 $"İade kaydından oluşturulan kısmi sipariş Trendyol'dan tamamlanamadı; otomatik taramada tekrar denenecek. {result.Error.SafeMessage}",
                 cancellationToken);
-            return;
+            return true;
         }
 
         TrackReceived();
         if (await UpsertOrder(tenantId, connectionId, result.Value!, cancellationToken))
-            await ResolveIssue(tenantId, $"trendyol-return-order-hydration:{connectionId}:{externalOrderId}", cancellationToken);
+            await ResolveIssue(tenantId, issueKey, cancellationToken);
         else
             await RecordIssue(
                 tenantId,
-                $"trendyol-return-order-hydration:{connectionId}:{externalOrderId}",
+                issueKey,
                 "RETURN_ORDER_HYDRATION_INVALID",
                 "Trendyol sipariş yanıtı eksik satır veya paket verisi içerdiği için kısmi iade siparişi güncellenmedi.",
                 cancellationToken);
+        return true;
     }
 
     private async Task ReconcileTrendyolPackageInvoices(Guid tenantId, Guid connectionId, string externalOrderId, string correlationId, CancellationToken cancellationToken)
@@ -3007,6 +3087,12 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             if (!readback.IsSuccess)
             {
                 if (readback.Error?.Class != AdapterErrorClass.NotFound) TrackResultFailure(readback.Error);
+                await RecordIssue(
+                    tenantId,
+                    $"trendyol-invoice-package-read:{connectionId}:{candidate.Id}",
+                    readback.Error!.Code,
+                    $"Paket fatura durumu Trendyol'dan doğrulanamadı; sonraki otomatik taramada tekrar denenecek. {readback.Error.SafeMessage}",
+                    cancellationToken);
                 continue;
             }
 
@@ -3017,6 +3103,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             if (package is null) continue;
 
             await MergeMarketplaceInvoiceState(package, readback.Value!.Package, cancellationToken);
+            await ResolveIssue(tenantId, $"trendyol-invoice-package-read:{connectionId}:{candidate.Id}", cancellationToken);
             var orderSnapshot = readback.Value.OrderSnapshot;
             if (orderSnapshot is not null)
             {
@@ -5763,7 +5850,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
         var baseline = allowBaseline && (forceBaseline || (cursor.LastSuccessAt is null && cursor.LastModifiedWatermark is null && string.IsNullOrWhiteSpace(cursor.OpaqueCursor)));
         var anchor = now;
-        var oldestAvailable = anchor.AddMonths(-3);
+        var oldestAvailable = TrendyolOrderHistoryPolicy.StreamInitialStart(anchor);
         var watermark = cursor.LastModifiedWatermark ?? cursor.LastSuccessAt ?? anchor.Subtract(OrderStreamWindowSpan);
         if (watermark > anchor) watermark = anchor;
         var start = baseline ? oldestAvailable : watermark.Subtract(overlap);
@@ -6988,23 +7075,24 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
     private async Task<bool> SyncOpenReturns(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
     {
-        var batchSize = Math.Clamp(configuration.GetValue("MarketplaceSync:ReturnLifecycle:BatchSize", 25), 1, 100);
-        var openClaims = await db.ReturnClaims.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId
-                && x.Status != ReturnClaimStatus.Completed && x.Status != ReturnClaimStatus.Cancelled)
-            // Repair incomplete return-cargo projections before re-reading
-            // claims that already have both return-cargo fields populated.
-            .OrderBy(x => x.CargoProviderName == null || x.CargoTrackingNumber == null ? 0 : 1)
-            .ThenBy(x => x.UpdatedAt)
-            .ThenBy(x => x.Id)
-            .Select(x => x.ExternalClaimId)
-            .Take(batchSize)
-            .ToListAsync(cancellationToken);
-        if (openClaims.Count == 0) return true;
+        var batchSize = configuration.GetValue("MarketplaceSync:ReturnLifecycle:BatchSize", 25);
+        var (incompleteCargoBudget, completeCargoBudget) = ReturnLifecycleBatchPolicy.SplitBatch(batchSize);
+        var incompleteCargoCursor = await Cursor(tenantId, connectionId, "RETURN_LIFECYCLE_CARGO_MISSING", cancellationToken);
+        var completeCargoCursor = await Cursor(tenantId, connectionId, "RETURN_LIFECYCLE_CARGO_COMPLETE", cancellationToken);
+        var incompleteCargoClaims = await ReadReturnLifecycleBatchAsync(tenantId, connectionId, incompleteCargoCursor, missingCargo: true, incompleteCargoBudget, cancellationToken);
+        var completeCargoClaims = await ReadReturnLifecycleBatchAsync(tenantId, connectionId, completeCargoCursor, missingCargo: false, completeCargoBudget, cancellationToken);
+        var openClaims = incompleteCargoClaims.Select(claim => (claim.Id, claim.ExternalClaimId, Cursor: incompleteCargoCursor))
+            .Concat(completeCargoClaims.Select(claim => (claim.Id, claim.ExternalClaimId, Cursor: completeCargoCursor)))
+            .ToArray();
+        if (openClaims.Length == 0) return true;
 
         var productSnapshots = new Dictionary<string, string?>(StringComparer.Ordinal);
-        foreach (var externalClaimId in openClaims)
+        foreach (var (claimId, externalClaimId, cursor) in openClaims)
         {
+            cursor.OpaqueCursor = claimId.ToString("D");
+            cursor.LastAttemptAt = timeProvider.GetUtcNow();
+            cursor.Version++;
+            await db.SaveChangesAsync(cancellationToken);
             TrackRequest();
             var result = await returns.GetAsync(
                 Context(tenantId, connectionId, correlationId, $"return-lifecycle:{externalClaimId}"),
@@ -7027,7 +7115,42 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             await ResolveIssue(tenantId, $"return-lifecycle:{connectionId}:{externalClaimId}", cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
         }
+        incompleteCargoCursor.LastSuccessAt = timeProvider.GetUtcNow();
+        completeCargoCursor.LastSuccessAt = incompleteCargoCursor.LastSuccessAt;
+        await db.SaveChangesAsync(cancellationToken);
         return true;
+    }
+
+    private async Task<IReadOnlyList<(Guid Id, string ExternalClaimId)>> ReadReturnLifecycleBatchAsync(
+        Guid tenantId,
+        Guid connectionId,
+        SyncCursor cursor,
+        bool missingCargo,
+        int batchSize,
+        CancellationToken cancellationToken)
+    {
+        var claims = db.ReturnClaims.AsNoTracking()
+            .Where(claim => claim.TenantId == tenantId && claim.ConnectionId == connectionId
+                && claim.Status != ReturnClaimStatus.Completed && claim.Status != ReturnClaimStatus.Cancelled);
+        claims = missingCargo
+            ? claims.Where(claim => claim.CargoProviderName == null || claim.CargoProviderName == "" || claim.CargoTrackingNumber == null || claim.CargoTrackingNumber == "")
+            : claims.Where(claim => claim.CargoProviderName != null && claim.CargoProviderName != "" && claim.CargoTrackingNumber != null && claim.CargoTrackingNumber != "");
+
+        var hasCursor = Guid.TryParse(cursor.OpaqueCursor, out var cursorId);
+        var afterCursor = claims;
+        if (hasCursor) afterCursor = afterCursor.Where(claim => claim.Id.CompareTo(cursorId) > 0);
+        var page = await afterCursor.OrderBy(claim => claim.Id)
+            .Select(claim => new ValueTuple<Guid, string>(claim.Id, claim.ExternalClaimId))
+            .Take(batchSize)
+            .ToListAsync(cancellationToken);
+
+        if (!hasCursor || page.Count >= batchSize) return page.Select(item => (item.Item1, item.Item2)).ToArray();
+        var wrapped = await claims.Where(claim => claim.Id.CompareTo(cursorId) <= 0)
+            .OrderBy(claim => claim.Id)
+            .Select(claim => new ValueTuple<Guid, string>(claim.Id, claim.ExternalClaimId))
+            .Take(batchSize - page.Count)
+            .ToListAsync(cancellationToken);
+        return page.Concat(wrapped).Select(item => (item.Item1, item.Item2)).ToArray();
     }
 
     private async Task<bool> ReconcileReturns(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
@@ -7171,7 +7294,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
     private async Task UpsertReturn(Guid tenantId, Guid connectionId, string correlationId, RemoteReturnClaim remote, Dictionary<string, string?> productSnapshots, CancellationToken cancellationToken)
     {
-        var target = CanonicalReturn(remote.RawStatus, remote.CargoTrackingLink);
+        var target = MarketplaceReturnStatus.Canonicalize(remote.RawStatus, remote.CargoTrackingLink);
         if (!ReturnClaimStoragePolicy.ShouldPersist(target))
         {
             await RemoveCancelledReturnClaim(tenantId, connectionId, remote.ExternalClaimId, cancellationToken);
@@ -7421,6 +7544,5 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     private async Task ResolveIssue(Guid tenantId, string key, CancellationToken cancellationToken) { var issue = await db.OperationalIssues.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.DedupeKey == key, cancellationToken); if (issue is not null) issue.Status = IssueStatus.Resolved; }
     private AdapterContext Context(Guid tenantId, Guid connectionId, string correlationId, string idempotency) => new(tenantId, connectionId, correlationId, idempotency, timeProvider.GetUtcNow().AddMinutes(2));
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
-    private static ReturnClaimStatus CanonicalReturn(string raw, string? cargoTrackingLink = null) => raw.ToUpperInvariant() switch { "CREATED" when !string.IsNullOrWhiteSpace(cargoTrackingLink) => ReturnClaimStatus.InTransit, "CREATED" or "NEWREQUEST" => ReturnClaimStatus.Requested, "AWAITINGPREAPPROVAL" or "WAITINGINACTION" or "AWAITINGACTION" or "INANALYSIS" or "WAITINGFRAUDCHECK" => ReturnClaimStatus.ActionRequired, "WAITINGFORSHIPMENT" => ReturnClaimStatus.AwaitingShipment, "WAITINGINCARGO" => ReturnClaimStatus.InTransit, "INTRANSIT" or "RETURNINTRANSIT" or "SHIPPED" => ReturnClaimStatus.InTransit, "ACCEPTED" => ReturnClaimStatus.Approved, "REJECTED" => ReturnClaimStatus.Rejected, "UNRESOLVED" or "INDISPUTE" => ReturnClaimStatus.Disputed, "COMPLETED" or "REFUNDED" => ReturnClaimStatus.Completed, "CANCELLED" or "CANCELED" => ReturnClaimStatus.Cancelled, _ => ReturnClaimStatus.ActionRequired };
     private static string Wire<T>(T value) where T : Enum => string.Concat(value.ToString().Select((ch, index) => char.IsUpper(ch) && index > 0 ? "_" + ch : ch.ToString())).ToUpperInvariant();
 }

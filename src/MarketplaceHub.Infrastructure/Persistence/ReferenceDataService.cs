@@ -41,14 +41,13 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
             .ToListAsync(cancellationToken);
         var mappedAttributes = await db.AttributeMappings.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == "VERIFIED" && categoryExternalIds.Contains(x.ScopeExternalId))
-            .Select(x => new { x.ScopeExternalId, x.ExternalId })
+            .Select(x => new { x.ScopeExternalId, x.SnapshotId, x.ExternalId })
             .ToListAsync(cancellationToken);
-        var mappedByScope = mappedAttributes
-            .GroupBy(x => x.ScopeExternalId)
-            .ToDictionary(group => group.Key, group => group.Select(item => item.ExternalId).ToHashSet(StringComparer.Ordinal));
-        var missingByScope = requiredAttributes
-            .GroupBy(item => attributeSnapshots.Single(snapshot => snapshot.Id == item.SnapshotId).ScopeExternalId)
-            .ToDictionary(group => group.Key, group => group.Count(item => !mappedByScope.TryGetValue(group.Key, out var mapped) || !mapped.Contains(item.ExternalId)));
+        var requirements = requiredAttributes.Select(item => new RequiredAttributeMappingReference(item.SnapshotId, item.ExternalId)).ToArray();
+        var verifiedMappings = mappedAttributes.Select(item => new RequiredAttributeMappingReference(item.SnapshotId, item.ExternalId)).ToArray();
+        var missingByScope = attributeSnapshots.ToDictionary(
+            snapshot => snapshot.ScopeExternalId,
+            snapshot => RequiredAttributeMappingPolicy.CountMissing(snapshot.Id, requirements, verifiedMappings));
         var checkedScopes = attributeSnapshots.Select(x => x.ScopeExternalId).ToHashSet(StringComparer.Ordinal);
         return ServiceResult<IReadOnlyList<CatalogMappingView>>.Ok(entities.Select(item => Map(item, checkedScopes.Contains(item.ExternalId) ? missingByScope.GetValueOrDefault(item.ExternalId) : null)).ToList());
     }

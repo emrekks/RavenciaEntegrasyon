@@ -33,9 +33,11 @@ read_env() {
 app_image="$(read_env MARKETPLACEHUB_APP_IMAGE)"
 edge_image="$(read_env MARKETPLACEHUB_EDGE_IMAGE)"
 site_address="$(read_env MARKETPLACEHUB_SITE_ADDRESS)"
+external_writes_enabled="$(read_env MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED || printf '%s' true)"
 [[ "$app_image" =~ ^[A-Za-z0-9._:/-]+@sha256:[0-9a-f]{64}$ ]] || { echo "Application image is not immutable." >&2; exit 1; }
 [[ "$edge_image" =~ ^[A-Za-z0-9._:/-]+@sha256:[0-9a-f]{64}$ ]] || { echo "Edge image is not immutable." >&2; exit 1; }
 [[ "$site_address" =~ ^https://[A-Za-z0-9.-]+(:[0-9]+)?$ ]] || { echo "Production site address is invalid." >&2; exit 1; }
+[[ "$external_writes_enabled" == true || "$external_writes_enabled" == false ]] || { echo "MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED must be true or false." >&2; exit 1; }
 
 credential_key="$(<"$secrets_root/credential_key.txt")"
 decoded_bytes="$(printf '%s' "$credential_key" | base64 --decode | wc -c)"
@@ -46,7 +48,25 @@ for required_part in Host=postgres Database=marketplacehub Username=marketplaceh
 done
 unset credential_key connection
 
-compose=(sudo docker compose --env-file "$environment_file" -f "$base_compose" -f "$production_compose")
+compose=(sudo env "MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED=$external_writes_enabled" docker compose --env-file "$environment_file" -f "$base_compose" -f "$production_compose")
+
+run_verified_backup() {
+  local backup_output backup_set
+  backup_output="$("${compose[@]}" --profile operations run --rm backup)"
+  printf '%s\n' "$backup_output"
+  backup_set="$(printf '%s\n' "$backup_output" | sed -nE 's#^Backup set created at /backup/([0-9]{8}T[0-9]{6}Z);.*$#\1#p' | tail -n 1)"
+  [[ "$backup_set" =~ ^[0-9]{8}T[0-9]{6}Z$ ]] || { echo "Backup job did not return a valid backup-set name." >&2; return 1; }
+  "${compose[@]}" --profile operations run --rm --entrypoint /bin/sh backup -ceu '
+    backup_set="$1"
+    cd "/backup/$backup_set"
+    test -s manifest.json
+    test -s database.dump
+    test -s private-volumes.tar.gz
+    sha256sum -c SHA256SUMS
+    pg_restore --list database.dump >/dev/null
+  ' sh "$backup_set"
+}
+
 compose_version="$(sudo docker compose version --short)"
 [[ "$compose_version" == "2.40.2" ]] || { echo "Exact Docker Compose 2.40.2 is required; detected $compose_version." >&2; exit 1; }
 "${compose[@]}" config --quiet
@@ -54,6 +74,7 @@ echo "Production configuration passed fail-closed validation."
 [[ "$validate_only" == true ]] && exit 0
 
 "${compose[@]}" pull postgres migrate api worker caddy
+run_verified_backup
 "${compose[@]}" up -d postgres migrate api worker caddy
 if [[ "$bootstrap" == true ]]; then
   bootstrap_stack=("${compose[@]}" -f "$bootstrap_compose")

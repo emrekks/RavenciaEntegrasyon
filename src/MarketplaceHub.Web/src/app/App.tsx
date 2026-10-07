@@ -49,7 +49,7 @@ function Shell({ me }: { me: Me }) {
   const location = useLocation()
   const navigationSummary = useQuery({ queryKey: ['dashboard-bootstrap'], queryFn: () => hubApi<DashboardBootstrap>('/dashboard/bootstrap'), staleTime: 30_000, refetchOnWindowFocus: true })
   const orderSummary = useQuery({ queryKey: ['orders', 'summary', []], queryFn: () => hubApi<OrderNavigationSummary>('/orders/summary'), staleTime: 30_000, refetchOnMount: 'always', refetchOnWindowFocus: true, refetchInterval: 15_000, refetchIntervalInBackground: true })
-  const invoiceWorkspaceSummary = useQuery({ queryKey: ['invoice-workspace'], queryFn: () => hubApi<Array<{ isDueSoon: boolean }>>('/invoice-workspace'), staleTime: 30_000, refetchOnWindowFocus: true })
+  const invoiceWorkspaceSummary = useQuery({ queryKey: ['invoice-workspace-summary'], queryFn: () => hubApi<{ dueSoonCount: number }>('/invoice-workspace/summary'), staleTime: 30_000, refetchOnWindowFocus: true })
   const questionWaitingSummary = useQuery({ queryKey: ['questions', 'navigation-waiting'], queryFn: () => hubApi<{ totalCount: number }>(questionWaitingSummaryPath), staleTime: 30_000, refetchInterval: 60_000, refetchOnWindowFocus: true })
   const [sidebarPinned, setSidebarPinned] = useState(() => localStorage.getItem('ravencia.sidebarPinned') !== 'false')
   const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false)
@@ -139,7 +139,7 @@ function Shell({ me }: { me: Me }) {
   function handleSidebarMouseLeave() { if (!sidebarPinned) setSidebarHoverExpanded(false) }
   const icon = (name: UiIconName) => <span className="nav-icon-slot" aria-hidden="true"><UiIcon className="nav-icon" name={name} size={22} /></span>
   const navigationCounts = navigationSummary.data?.metrics
-  const invoiceDueSoonCount = invoiceWorkspaceSummary.data ? invoiceWorkspaceSummary.data.filter(item => item.isDueSoon).length : navigationCounts?.dueSoonInvoices ?? 0
+  const invoiceDueSoonCount = invoiceWorkspaceSummary.data?.dueSoonCount ?? navigationCounts?.dueSoonInvoices ?? 0
   const item = (to: string, iconName: UiIconName, label: string, end = false, count?: number, showZeroCount = false) => {
     const hasCount = typeof count === 'number' && (count > 0 || showZeroCount)
     const accessibleCount = typeof count === 'number' && count > 999 ? '999 üzeri' : count?.toLocaleString('tr-TR')
@@ -612,8 +612,8 @@ function Dashboard() {
   const [chartViewport, setChartViewport] = useState<DashboardChartViewport | null>(null)
   const dashboardRefreshOptions = { refetchInterval: 60_000, refetchIntervalInBackground: true, refetchOnWindowFocus: true, staleTime: 30_000 } as const
   const bootstrap = useQuery({ queryKey: ['dashboard-bootstrap'], queryFn: () => hubApi<DashboardBootstrap>('/dashboard/bootstrap'), ...dashboardRefreshOptions })
+  const invoiceWorkspaceSummary = useQuery({ queryKey: ['invoice-workspace-summary'], queryFn: () => hubApi<{ dueSoonCount: number }>('/invoice-workspace/summary'), ...dashboardRefreshOptions })
   const productSummary = useQuery({ queryKey: ['products', 'summary'], queryFn: () => hubApi<DashboardProductSummary>('/products/summary'), ...dashboardRefreshOptions })
-  const invoiceWorkspaceSummary = useQuery({ queryKey: ['invoice-workspace'], queryFn: () => hubApi<Array<{ isDueSoon: boolean }>>('/invoice-workspace'), ...dashboardRefreshOptions })
   const now = new Date()
   const revenuePlatformOptions = Array.from(new Set((bootstrap.data?.platforms ?? []).map(platform => platform.name)))
   const reportDates = dashboardRangeDates(reportRange, reportFrom, reportTo, now)
@@ -637,6 +637,7 @@ function Dashboard() {
   const previousReportSeries = dashboardRevenueSeries(previousReportRevenueQuery.data ?? [])
   const previousChartSeries = dashboardRevenueSeries(previousChartRevenueQuery.data ?? [])
   const chartSeries = dashboardRevenueSeries(chartRevenueQuery.data ?? [], previousChartSeries[previousChartSeries.length - 1])
+  const invoiceDueSoonCount = invoiceWorkspaceSummary.data?.dueSoonCount ?? 0
   const reportCurrency = reportSeries.find(item => item.amount > 0)?.currency || reportSeries[0]?.currency || 'TRY'
   const chartCurrency = chartSeries.find(item => item.amount > 0)?.currency || chartSeries[0]?.currency || 'TRY'
   const reportTotal = reportSeries.reduce((sum, item) => sum + item.amount, 0)
@@ -686,7 +687,6 @@ function Dashboard() {
   })
   const productCount = productSummary.data?.activeCount ?? 0
   const dashboardMetrics = bootstrap.data?.metrics
-  const invoiceDueSoonCount = invoiceWorkspaceSummary.data?.filter(item => item.isDueSoon).length ?? 0
   const recentJobCount = dashboardMetrics?.recentJobCount ?? 0
   const recentRateLimitRate = recentJobCount > 0 ? ((dashboardMetrics?.recentRateLimitJobCount ?? 0) / recentJobCount) * 100 : null
   const channelRows = (channelRevenueQuery.data ?? []).map(channel => {

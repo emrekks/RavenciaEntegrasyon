@@ -53,6 +53,29 @@ public sealed class ReturnLifecyclePolicyTests
         Assert.Equal(expected, ReturnClaimStoragePolicy.ShouldPersist(status));
     }
 
+    [Theory]
+    [InlineData("NewRequest", ReturnClaimStatus.Requested)]
+    [InlineData("AwaitingAction", ReturnClaimStatus.ActionRequired)]
+    [InlineData("InDispute", ReturnClaimStatus.Disputed)]
+    [InlineData("Accepted", ReturnClaimStatus.Approved)]
+    [InlineData("Rejected", ReturnClaimStatus.Rejected)]
+    [InlineData("Refunded", ReturnClaimStatus.Completed)]
+    [InlineData("Cancelled", ReturnClaimStatus.Cancelled)]
+    [InlineData("Waiting_For_Shipment", ReturnClaimStatus.AwaitingShipment)]
+    [InlineData("Waiting-In-Cargo", ReturnClaimStatus.InTransit)]
+    [InlineData("unknown-provider-status", ReturnClaimStatus.ActionRequired)]
+    public void MarketplaceReturnStatus_MapsProviderStatusesConsistently(string rawStatus, ReturnClaimStatus expected)
+    {
+        Assert.Equal(expected, MarketplaceReturnStatus.Canonicalize(rawStatus));
+    }
+
+    [Fact]
+    public void MarketplaceReturnStatus_UsesCargoEvidenceForCreatedClaims()
+    {
+        Assert.Equal(ReturnClaimStatus.Requested, MarketplaceReturnStatus.Canonicalize("Created"));
+        Assert.Equal(ReturnClaimStatus.InTransit, MarketplaceReturnStatus.Canonicalize("Created", "https://carrier.example/track"));
+    }
+
     [Fact]
     public void HepsiburadaAwaitingPreApproval_ExposesOnlyDocumentedActionsAndHidesThemWhilePending()
     {

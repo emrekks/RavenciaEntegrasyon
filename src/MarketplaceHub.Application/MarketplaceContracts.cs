@@ -592,7 +592,15 @@ public sealed record SyncPolicyView(
     int LastRateLimitCount = 0,
     string RecoveryGapStatus = "UNKNOWN",
     double? RecoveryGapDays = null,
-    bool RequiresExternalWrites = false);
+    bool RequiresExternalWrites = false,
+    long? LastDurationMs = null,
+    int ConnectionBacklogCount = 0,
+    DateTimeOffset? ConnectionOldestBacklogAt = null,
+    int ConnectionManualReviewCount = 0,
+    int ConnectionDeadJobCount24h = 0,
+    DateTimeOffset? LastCursorAdvancedAt = null,
+    DateTimeOffset? CursorStagnantSince = null,
+    string CursorProgressStatus = "UNKNOWN");
 public sealed record UpdateSyncPolicyCommand(int IntervalSeconds, int OverlapSeconds, int JitterSeconds, bool Enabled);
 public sealed record WebhookSubscriptionView(Guid Id, string AuthenticationType, string Status, string? ExternalSubscriptionId, DateTimeOffset? VerifiedAt, DateTimeOffset? LastReceivedAt, long Version);
 public sealed record CreateWebhookSubscriptionCommand(string AuthenticationType, string? Username, string? Password, string? ApiKey);

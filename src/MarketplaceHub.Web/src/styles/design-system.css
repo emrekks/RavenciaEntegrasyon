@@ -1381,6 +1381,7 @@
   .invoice-reference-shipment, .invoice-reference-status { justify-items: center; text-align: center; grid-template-rows: minmax(28px, auto) auto; }
   .invoice-reference-shipment > .badge, .invoice-reference-status > .badge, .invoice-reference-status > .invoice-status, .invoice-reference-status > .invoice-status-label { display: inline-flex; min-height: 28px; box-sizing: border-box; align-items: center; justify-self: center; }
   .invoice-reference-shipment > small, .invoice-reference-status > small { text-align: center; }
+  .invoice-reference-status > .invoice-marketplace-read-error { color: var(--rv-color-danger); line-height: 1.35; }
   .invoice-reference-status .invoice-status { font-size: var(--rv-font-size-sm); font-weight: 800; }
   .invoice-status.pending { color: var(--rv-color-warning); }
   .invoice-status.complete { color: var(--rv-color-accent); }
@@ -9244,6 +9245,24 @@ small,
   overflow-wrap: anywhere;
 }
 
+.app-shell.stitch-shell main .sync-policy-health {
+  display: grid;
+  gap: 3px;
+  margin-top: var(--rv-space-2);
+  font-size: var(--rv-font-size-xs);
+}
+
+.app-shell.stitch-shell main .sync-policy-health > b {
+  color: var(--rv-color-muted);
+}
+
+.app-shell.stitch-shell main .sync-policy-health-healthy > b { color: var(--rv-color-accent); }
+.app-shell.stitch-shell main .sync-policy-health-delayed > b,
+.app-shell.stitch-shell main .sync-policy-health-degraded > b { color: var(--rv-color-warning); }
+.app-shell.stitch-shell main .sync-policy-health-offline > b { color: var(--rv-color-danger); }
+.app-shell.stitch-shell main .sync-policy-health > small { color: var(--rv-color-muted); }
+.app-shell.stitch-shell main .sync-policy-health > .sync-policy-health-error { color: var(--rv-color-danger); }
+
 .app-shell.stitch-shell main .sync-policy-card-summary {
   display: grid;
   min-width: 0;
@@ -9467,6 +9486,49 @@ small,
 .app-shell.stitch-shell main .sync-policy-modal-state small,
 .app-shell.stitch-shell main .sync-policy-modal-toggle small {
   color: var(--rv-color-muted);
+}
+
+.app-shell.stitch-shell main .sync-policy-modal-telemetry {
+  display: grid;
+  gap: var(--rv-space-3);
+  padding: var(--rv-space-4);
+  background: var(--rv-color-surface-soft);
+  border: 1px solid var(--rv-color-border);
+  border-radius: var(--rv-radius-md);
+}
+
+.app-shell.stitch-shell main .sync-policy-modal-telemetry h3 {
+  margin: 0;
+  font-size: var(--rv-font-size-sm);
+}
+
+.app-shell.stitch-shell main .sync-policy-modal-telemetry dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--rv-space-3);
+  margin: 0;
+}
+
+.app-shell.stitch-shell main .sync-policy-modal-telemetry dl > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.app-shell.stitch-shell main .sync-policy-modal-telemetry dt {
+  color: var(--rv-color-muted);
+  font-size: var(--rv-font-size-xs);
+}
+
+.app-shell.stitch-shell main .sync-policy-modal-telemetry dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--rv-font-size-xs);
+  font-weight: 700;
+}
+
+.app-shell.stitch-shell main .sync-policy-modal-backlog {
+  border-color: color-mix(in srgb, var(--rv-color-warning) 40%, var(--rv-color-border));
 }
 
 .app-shell.stitch-shell main .sync-policy-modal-fields {
@@ -11884,6 +11946,13 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
   min-height: 0;
   aspect-ratio: 2 / 3;
   overflow: visible;
+}
+.app-shell.stitch-shell main .return-order-products .quantity-bubble {
+  top: 4px;
+  right: 4px;
+  z-index: 2;
+  box-sizing: border-box;
+  pointer-events: none;
 }
 .app-shell.stitch-shell main .return-order-products .product-image-button,
 .app-shell.stitch-shell main .return-order-products .reference-product-placeholder {

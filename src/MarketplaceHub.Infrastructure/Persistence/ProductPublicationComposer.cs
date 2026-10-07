@@ -63,9 +63,13 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
             .GroupBy(x => x.LocalId)
             .ToDictionary(group => group.Key, group => (IReadOnlyList<AttributeMapping>)group.OrderBy(x => x.ExternalId).ToList());
         var requiredExternalIds = new HashSet<string>(remoteAttributes.Where(x => x.IsRequired == true).Select(x => x.ExternalId), StringComparer.Ordinal);
-        foreach (var remote in remoteAttributes.Where(x => x.IsRequired == true))
+        var missingRequiredExternalIds = RequiredAttributeMappingPolicy.FindMissingExternalIds(
+            attributeSnapshot.Id,
+            requiredExternalIds.Select(externalId => new RequiredAttributeMappingReference(attributeSnapshot.Id, externalId)),
+            attributeMappings.Select(x => new RequiredAttributeMappingReference(x.SnapshotId, x.ExternalId)));
+        foreach (var remote in remoteAttributes.Where(x => missingRequiredExternalIds.Contains(x.ExternalId)))
         {
-            if (!mappingByExternalId.ContainsKey(remote.ExternalId)) return Fail("REQUIRED_ATTRIBUTE_MAPPING_REQUIRED", $"Zorunlu Trendyol özelliği '{remote.Name}' eşlenmemiş.");
+            return Fail("REQUIRED_ATTRIBUTE_MAPPING_REQUIRED", $"Zorunlu Trendyol özelliği '{remote.Name}' eşlenmemiş.");
         }
 
         var assignments = await db.ProductAttributeAssignments.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId).OrderBy(x => x.SortOrder).ThenBy(x => x.Id).ToListAsync(cancellationToken);

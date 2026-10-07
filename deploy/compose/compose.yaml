@@ -143,6 +143,35 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
 
+  validation-postgres:
+    image: postgres:18.4@sha256:3a82e1f56c8f0f5616a11103ac3d47e632c3938698946a7ad26da0df1334744a
+    profiles: ["validation"]
+    restart: "no"
+    networks: [validation]
+    environment:
+      POSTGRES_DB: marketplacehub_test
+      POSTGRES_USER: marketplacehub
+      POSTGRES_PASSWORD: validation-only
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U marketplacehub -d marketplacehub_test"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  validation-tests:
+    profiles: ["validation"]
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      target: validation
+    image: marketplacehub-validation:local
+    restart: "no"
+    networks: [validation]
+    environment:
+      MARKETPLACEHUB_TEST_CONNECTION: "Host=validation-postgres;Port=5432;Database=marketplacehub_test;Username=marketplacehub;Password=validation-only"
+    depends_on:
+      validation-postgres: { condition: service_healthy }
+
 networks:
   edge: {}
   egress: {}
@@ -151,6 +180,8 @@ networks:
     ipam:
       config:
         - subnet: 172.30.10.0/24
+  validation:
+    internal: true
 volumes:
   pg_data: {}
   app_files: {}

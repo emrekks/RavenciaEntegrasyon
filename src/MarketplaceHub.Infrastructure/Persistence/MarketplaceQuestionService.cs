@@ -96,12 +96,44 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
             var kinds = connection.PlatformCode == "TRENDYOL" ? new[] { "PRODUCT" } : new[] { "PRODUCT", "ORDER" };
             var statuses = connection.PlatformCode == "TRENDYOL" ? TrendyolStatuses : HepsiburadaStatuses;
             var liveStart = connection.PlatformCode == "TRENDYOL" ? now.AddDays(-14) : now.AddDays(-7);
-            foreach (var questionKind in kinds)
-            foreach (var status in statuses)
+            var pageBase = connection.PlatformCode == "TRENDYOL" ? 0 : 1;
+            var pageSize = connection.PlatformCode == "TRENDYOL" ? 50 : 25;
+            updated += await ReconcilePendingAnswerSubmissionsAsync(tenantId, connectionId, now, cancellationToken);
+            if (initial)
             {
-                var livePage = connection.PlatformCode == "TRENDYOL" ? 0 : 1;
-                var liveRequest = new QuestionPollRequest(questionKind, status, liveStart, now, livePage, connection.PlatformCode == "TRENDYOL" ? 50 : 25);
-                await FetchAndSavePageAsync(liveRequest, "live", countForHistory: false);
+                foreach (var questionKind in kinds)
+                    foreach (var status in statuses)
+                    {
+                        var liveRequest = new QuestionPollRequest(questionKind, status, liveStart, now, pageBase, pageSize);
+                        await FetchAndSavePageAsync(liveRequest, "live:initial", countForHistory: false);
+                    }
+            }
+            else
+            {
+                // Reuse the durable sync-state cursor after the one-time history
+                // import. Live polling is bounded per lease and resumes at the
+                // next page/status/kind on the next scheduled job.
+                if (state.HistoryStatusIndex >= statuses.Length)
+                {
+                    state.HistoryStatusIndex = 0;
+                    state.HistoryKindIndex = 0;
+                    state.HistoryPageIndex = pageBase;
+                }
+                MarketplaceQuestionLiveCursor? cursor = new(
+                    Math.Clamp(state.HistoryStatusIndex, 0, statuses.Length - 1),
+                    Math.Clamp(state.HistoryKindIndex, 0, kinds.Length - 1),
+                    Math.Max(pageBase, state.HistoryPageIndex));
+                for (var batch = 0; batch < 6 && cursor is not null; batch++)
+                {
+                    var request = new QuestionPollRequest(kinds[cursor.KindIndex], statuses[cursor.StatusIndex], liveStart, now, cursor.PageIndex, pageSize);
+                    var result = await FetchAndSavePageAsync(request, $"live:{cursor.StatusIndex}:{cursor.KindIndex}:{cursor.PageIndex}", countForHistory: false);
+                    cursor = MarketplaceQuestionLiveCursorPolicy.Advance(cursor, result, pageSize, pageBase, statuses.Length, kinds.Length);
+                    state.HistoryStatusIndex = cursor?.StatusIndex ?? statuses.Length;
+                    state.HistoryKindIndex = cursor?.KindIndex ?? 0;
+                    state.HistoryPageIndex = cursor?.PageIndex ?? pageBase;
+                    state.Version++;
+                    await db.SaveChangesAsync(cancellationToken);
+                }
             }
 
             // Long history imports run in bounded pages so a large merchant history never monopolizes one worker lease.
@@ -181,14 +213,33 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         var question = await db.MarketplaceQuestions.SingleOrDefaultAsync(row => row.TenantId == tenantId && row.Id == id, cancellationToken);
         if (question is null) return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_NOT_FOUND", "Soru bulunamadı.", 404);
         if (question.Version != expectedVersion) return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_STALE", "Soru yenilendi. Güncel kaydı açıp tekrar deneyin.", 412);
-        if (question.Status != "WAITING_FOR_ANSWER" && question.Status != "ANSWER_SUBMITTED") return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_CLOSED", "Bu soru artık cevap beklemiyor.", 409);
-        if (question.AnswerSubmissionStatus is "SUBMITTING" or "UNKNOWN" or "SUBMITTED") return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_ANSWER_IN_PROGRESS", "Önceki cevap gönderiminin sonucu doğrulanıyor. Tekrar gönderim yapılmadı.", 409);
-        var answerLimit = (await db.PlatformConnections.AsNoTracking().Where(row => row.TenantId == tenantId && row.Id == question.ConnectionId).Select(row => row.PlatformCode).SingleAsync(cancellationToken)) == "TRENDYOL" ? (10, 2000) : (1, 2000);
-        if (answer.Trim().Length < answerLimit.Item1 || answer.Trim().Length > answerLimit.Item2) return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_ANSWER_LENGTH", $"Cevap {answerLimit.Item1}–{answerLimit.Item2} karakter arasında olmalıdır.", 422);
+        var reconcilingPriorSubmission = question.AnswerSubmissionStatus is "SUBMITTING" or "UNKNOWN" or "SUBMITTED";
+        if (!reconcilingPriorSubmission && question.Status != "WAITING_FOR_ANSWER" && question.Status != "ANSWER_SUBMITTED") return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_CLOSED", "Bu soru artık cevap beklemiyor.", 409);
         var connection = await db.PlatformConnections.AsNoTracking().SingleAsync(row => row.TenantId == tenantId && row.Id == question.ConnectionId, cancellationToken);
+        if (!reconcilingPriorSubmission)
+        {
+            var answerLimit = connection.PlatformCode == "TRENDYOL" ? (10, 2000) : (1, 2000);
+            if (answer.Trim().Length < answerLimit.Item1 || answer.Trim().Length > answerLimit.Item2)
+                return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_ANSWER_LENGTH", $"Cevap {answerLimit.Item1}–{answerLimit.Item2} karakter arasında olmalıdır.", 422);
+        }
         var context = new AdapterContext(tenantId, question.ConnectionId, correlationId, idempotencyKey, timeProvider.GetUtcNow().AddMinutes(2), Operation: IntegrationOperation.Manual);
         var current = await port.GetQuestionAsync(context, question.ExternalQuestionId, question.Kind, cancellationToken);
         if (!current.IsSuccess) return ServiceResult<MarketplaceQuestionView>.Fail(current.Error!.Code, current.Error.SafeMessage, current.Error.HttpStatus ?? 502);
+        if (reconcilingPriorSubmission)
+        {
+            await UpsertAsync(tenantId, question.ConnectionId, current.Value!, timeProvider.GetUtcNow(), cancellationToken);
+            ReconcileAnswerSubmission(question, current.Value!);
+            if (question.Version == expectedVersion) question.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+
+            var reconciled = question.AnswerSubmissionStatus is "SUBMITTED" or "CONFIRMED";
+            return ServiceResult<MarketplaceQuestionView>.Fail(
+                reconciled ? "QUESTION_ANSWER_RECONCILED" : "QUESTION_ANSWER_RESULT_UNKNOWN",
+                reconciled
+                    ? "Önceki cevap pazaryerinde bulundu; yeni cevap gönderilmedi."
+                    : "Önceki cevap isteğinin sonucu hâlâ belirsiz. Yinelenen cevap oluşmaması için yeni gönderim yapılmadı.",
+                409);
+        }
         if (!current.Value!.Status.Equals("WAITING_FOR_ANSWER", StringComparison.OrdinalIgnoreCase))
         {
             await UpsertAsync(tenantId, question.ConnectionId, current.Value, timeProvider.GetUtcNow(), cancellationToken); await db.SaveChangesAsync(cancellationToken);
@@ -197,7 +248,20 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         question.AnswerSubmissionKey = idempotencyKey; question.PendingAnswerText = answer.Trim(); question.AnswerSubmissionStatus = "SUBMITTING"; question.Version++;
         try { await db.SaveChangesAsync(cancellationToken); }
         catch (DbUpdateConcurrencyException) { return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_STALE", "Bu soru başka bir işlem tarafından güncellendi.", 409); }
-        var sent = await port.AnswerQuestionAsync(context, question.ExternalQuestionId, question.Kind, answer, cancellationToken);
+        AdapterResult<RemoteQuestionAnswerResult> sent;
+        try
+        {
+            sent = await port.AnswerQuestionAsync(context, question.ExternalQuestionId, question.Kind, answer, cancellationToken);
+        }
+        catch (Exception exception) when (exception is OperationCanceledException or HttpRequestException or TimeoutException)
+        {
+            question.AnswerSubmissionStatus = "UNKNOWN";
+            question.Status = "ANSWER_SUBMITTED";
+            question.Version++;
+            await db.SaveChangesAsync(CancellationToken.None);
+            logger.LogWarning(exception, "Soru cevabının uzak sonucu kesinleşmedi. TenantId: {TenantId}, ConnectionId: {ConnectionId}, QuestionId: {QuestionId}", tenantId, question.ConnectionId, question.Id);
+            return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_ANSWER_RESULT_UNKNOWN", "Cevap isteği kesildi; yinelenen cevap oluşmaması için durum doğrulanana kadar yeniden gönderim kapatıldı.", 409);
+        }
         if (!sent.IsSuccess)
         {
             var uncertain = sent.Error!.Class is AdapterErrorClass.TransientNetwork or AdapterErrorClass.Remote5xx;
@@ -214,6 +278,96 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         question.Version++;
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<MarketplaceQuestionView>.Ok(Map(question, connection.PlatformCode, connection.DisplayName));
+    }
+
+    private async Task<int> ReconcilePendingAnswerSubmissionsAsync(Guid tenantId, Guid connectionId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        const int batchSize = 10;
+        const string resourceType = "QUESTION_ANSWER_RECONCILIATION";
+        var cursor = await db.SyncCursors.SingleOrDefaultAsync(row => row.TenantId == tenantId && row.ConnectionId == connectionId && row.ResourceType == resourceType, cancellationToken);
+        if (cursor is null)
+        {
+            cursor = new SyncCursor { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ResourceType = resourceType, Version = 1 };
+            db.SyncCursors.Add(cursor);
+        }
+        if (cursor.LastErrorAt is { } lastErrorAt && lastErrorAt > now.AddMinutes(-5)) return 0;
+        cursor.LastRequestCount = 0;
+        cursor.LastReceivedCount = 0;
+        cursor.LastUpdatedCount = 0;
+        cursor.LastFailedCount = 0;
+        cursor.Version++;
+        await db.SaveChangesAsync(cancellationToken);
+
+        var candidatesQuery = db.MarketplaceQuestions
+            .Where(row => row.TenantId == tenantId && row.ConnectionId == connectionId
+                && row.LastSyncedAt <= now.AddMinutes(-5)
+                && (row.AnswerSubmissionStatus == "SUBMITTING" || row.AnswerSubmissionStatus == "UNKNOWN"));
+        var hasCursor = Guid.TryParse(cursor.OpaqueCursor, out var cursorId);
+        var afterCursor = candidatesQuery;
+        if (hasCursor) afterCursor = afterCursor.Where(row => row.Id.CompareTo(cursorId) > 0);
+        var candidates = await afterCursor.OrderBy(row => row.Id).Take(batchSize).ToListAsync(cancellationToken);
+        if (hasCursor && candidates.Count < batchSize)
+        {
+            var wrapped = await candidatesQuery.Where(row => row.Id.CompareTo(cursorId) <= 0)
+                .OrderBy(row => row.Id)
+                .Take(batchSize - candidates.Count)
+                .ToListAsync(cancellationToken);
+            candidates.AddRange(wrapped);
+        }
+
+        var updated = 0;
+        foreach (var question in candidates)
+        {
+            cursor.OpaqueCursor = question.Id.ToString("D");
+            cursor.LastAttemptAt = now;
+            cursor.LastRequestCount++;
+            cursor.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+
+            var context = new AdapterContext(tenantId, connectionId, $"question-answer-reconcile-{Guid.NewGuid():N}",
+                $"question-answer-reconcile:{connectionId:N}:{question.Id:N}", now.AddMinutes(2), Operation: IntegrationOperation.Automatic);
+            var result = await port.GetQuestionAsync(context, question.ExternalQuestionId, question.Kind, cancellationToken);
+            if (!result.IsSuccess)
+            {
+                cursor.LastError = result.Error!.Code;
+                cursor.LastErrorAt = now;
+                cursor.ConsecutiveFailureCount++;
+                cursor.LastFailedCount++;
+                cursor.Version++;
+                await db.SaveChangesAsync(cancellationToken);
+                logger.LogWarning("Belirsiz soru cevabının uzak durumu okunamadı. TenantId: {TenantId}, ConnectionId: {ConnectionId}, QuestionId: {QuestionId}, Code: {Code}", tenantId, connectionId, question.Id, result.Error.Code);
+                break;
+            }
+
+            if (!string.Equals(result.Value!.Id, question.ExternalQuestionId, StringComparison.Ordinal))
+            {
+                cursor.LastError = "QUESTION_DETAIL_ID_MISMATCH";
+                cursor.LastErrorAt = now;
+                cursor.ConsecutiveFailureCount++;
+                cursor.LastFailedCount++;
+                cursor.Version++;
+                await db.SaveChangesAsync(cancellationToken);
+                logger.LogWarning("Soru detay yanıtındaki kimlik yerel kayıtla eşleşmedi. TenantId: {TenantId}, ConnectionId: {ConnectionId}, QuestionId: {QuestionId}", tenantId, connectionId, question.Id);
+                break;
+            }
+
+            var previousVersion = question.Version;
+            await UpsertAsync(tenantId, connectionId, result.Value, now, cancellationToken);
+            if (question.AnswerSubmissionStatus == "SUBMITTING") question.AnswerSubmissionStatus = "UNKNOWN";
+            question.LastSyncedAt = now;
+            if (question.Version == previousVersion) question.Version++;
+            cursor.LastSuccessAt = now;
+            cursor.LastReceivedCount++;
+            cursor.LastUpdatedCount++;
+            cursor.LastError = null;
+            cursor.LastErrorAt = null;
+            cursor.ConsecutiveFailureCount = 0;
+            cursor.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+            updated++;
+        }
+
+        return updated;
     }
 
     public async Task<IReadOnlyList<MarketplaceQuestionTemplateView>> TemplatesAsync(Guid tenantId, CancellationToken cancellationToken) => await db.MarketplaceQuestionTemplates.AsNoTracking().Where(row => row.TenantId == tenantId).OrderBy(row => row.Title).Select(row => new MarketplaceQuestionTemplateView(row.Id, row.Title, row.Text, row.CreatedAt, row.UpdatedAt, row.Version)).ToListAsync(cancellationToken);
@@ -265,15 +419,39 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         if (remote.LastModifiedAt >= row.LastRemoteModifiedAt)
         {
             row.Kind = remote.Kind; row.Status = remote.Status;
-            if ((row.AnswerSubmissionStatus is "SUBMITTED" or "UNKNOWN" or "SUBMITTING") && remote.Status == "WAITING_FOR_ANSWER") row.Status = "ANSWER_SUBMITTED";
             if (remote.Text.Length > 0) row.QuestionText = remote.Text;
             row.ProductName = remote.ProductName; row.ProductImageUrl = remote.ProductImageUrl; row.ProductSku = remote.ProductSku; row.ProductBarcode = remote.ProductBarcode; row.ProductModelCode = remote.ProductModelCode; row.CustomerName = remote.CustomerName; row.ExternalOrderNumber = remote.OrderNumber;
             row.HistoryJson = MergeHistory(row.HistoryJson, remote.Conversations); row.ExpiresAt = remote.ExpiresAt; row.LastRemoteModifiedAt = remote.LastModifiedAt;
-            if (remote.Status == "ANSWERED") { row.AnswerSubmissionStatus = "CONFIRMED"; row.PendingAnswerText = null; }
+            ReconcileAnswerSubmission(row, remote);
             row.LastSyncedAt = now; row.Version++;
         }
         if (isNew) db.MarketplaceQuestions.Add(row);
         return isNew;
+    }
+
+    private static void ReconcileAnswerSubmission(MarketplaceQuestion row, RemoteMarketplaceQuestion remote)
+    {
+        var resolution = MarketplaceQuestionAnswerReconciliationPolicy.Evaluate(remote, row.PendingAnswerText);
+        if (resolution == QuestionAnswerSubmissionReconciliation.Confirmed)
+        {
+            row.AnswerSubmissionStatus = "CONFIRMED";
+            row.PendingAnswerText = null;
+            row.Status = "ANSWERED";
+            return;
+        }
+
+        if (resolution == QuestionAnswerSubmissionReconciliation.Submitted
+            && row.AnswerSubmissionStatus is "SUBMITTING" or "UNKNOWN" or "SUBMITTED")
+        {
+            row.AnswerSubmissionStatus = "SUBMITTED";
+            row.PendingAnswerText = null;
+            row.Status = "ANSWER_SUBMITTED";
+            return;
+        }
+
+        if (remote.Status.Equals("WAITING_FOR_ANSWER", StringComparison.OrdinalIgnoreCase)
+            && row.AnswerSubmissionStatus is "SUBMITTING" or "UNKNOWN" or "SUBMITTED")
+            row.Status = "ANSWER_SUBMITTED";
     }
 
     private static string? MergeHistory(string? existingJson, IReadOnlyList<RemoteQuestionConversation> incoming)

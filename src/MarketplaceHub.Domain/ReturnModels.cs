@@ -13,6 +13,28 @@ public enum ReturnClaimStatus
     Cancelled
 }
 
+public static class MarketplaceReturnStatus
+{
+    public static ReturnClaimStatus Canonicalize(string? rawStatus, string? cargoTrackingLink = null)
+    {
+        var normalized = string.Concat((rawStatus ?? string.Empty).Where(char.IsLetterOrDigit)).ToUpperInvariant();
+        return normalized switch
+        {
+            "CREATED" when !string.IsNullOrWhiteSpace(cargoTrackingLink) => ReturnClaimStatus.InTransit,
+            "CREATED" or "NEWREQUEST" => ReturnClaimStatus.Requested,
+            "AWAITINGPREAPPROVAL" or "WAITINGINACTION" or "AWAITINGACTION" or "INANALYSIS" or "WAITINGFRAUDCHECK" or "WAITINGFORSELLERACTION" => ReturnClaimStatus.ActionRequired,
+            "WAITINGFORSHIPMENT" => ReturnClaimStatus.AwaitingShipment,
+            "WAITINGINCARGO" or "INTRANSIT" or "RETURNINTRANSIT" or "SHIPPED" => ReturnClaimStatus.InTransit,
+            "ACCEPTED" or "APPROVED" => ReturnClaimStatus.Approved,
+            "REJECTED" => ReturnClaimStatus.Rejected,
+            "UNRESOLVED" or "INDISPUTE" or "DISPUTED" => ReturnClaimStatus.Disputed,
+            "COMPLETED" or "REFUNDED" => ReturnClaimStatus.Completed,
+            "CANCELLED" or "CANCELED" => ReturnClaimStatus.Cancelled,
+            _ => ReturnClaimStatus.ActionRequired
+        };
+    }
+}
+
 public enum ReturnStockDispositionKind { Pass, Quarantine, Damaged, NotReceived }
 
 public static class ReturnClaimStateMachine

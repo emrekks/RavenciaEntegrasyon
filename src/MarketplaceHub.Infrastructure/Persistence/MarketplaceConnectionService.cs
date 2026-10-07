@@ -416,20 +416,53 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         var policies = await db.ConnectionSyncPolicies.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == id && x.ResourceType != "PRODUCTS" && x.ResourceType != "PRODUCT_WRITE" && x.ResourceType != "PRICE_STOCK_WRITE").OrderBy(x => x.ResourceType).ToListAsync(cancellationToken);
         var cursors = await db.SyncCursors.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == id).ToListAsync(cancellationToken);
         var now = timeProvider.GetUtcNow();
+        var openJobStatuses = new[] { JobStatus.Pending, JobStatus.Leased, JobStatus.RetryScheduled, JobStatus.Blocked };
+        var connectionBacklog = await db.IntegrationJobs.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == id && openJobStatuses.Contains(x.Status))
+            .GroupBy(job => new { job.TenantId, job.ConnectionId })
+            .Select(group => new
+            {
+                Count = group.Count(),
+                OldestCreatedAt = group.Min(job => job.CreatedAt)
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+        var manualReviewCount = await db.IntegrationJobs.AsNoTracking()
+            .CountAsync(x => x.TenantId == tenantId && x.ConnectionId == id && x.Status == JobStatus.ManualReview, cancellationToken);
+        var deadJobCutoff = now.AddHours(-24);
+        var deadJobCount24h = await db.IntegrationJobs.AsNoTracking()
+            .CountAsync(x => x.TenantId == tenantId && x.ConnectionId == id && x.Status == JobStatus.Dead && x.CompletedAt >= deadJobCutoff, cancellationToken);
         var delayedAfter = TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("MarketplaceSync:Health:DelayedAfterSeconds", 120), 30, 86_400));
         var degradedAfter = TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("MarketplaceSync:Health:DegradedAfterSeconds", 300), (int)delayedAfter.TotalSeconds + 1, 172_800));
         var offlineAfter = TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("MarketplaceSync:Health:OfflineAfterSeconds", 900), (int)degradedAfter.TotalSeconds + 1, 604_800));
+        var cursorStalledAfter = TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("MarketplaceSync:Health:CursorStalledAfterSeconds", 900), 60, 604_800));
         var recoveryGapWarning = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("MarketplaceSync:Health:RecoveryGapWarningDays", 70), 1, 90));
         var recoveryGapCritical = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("MarketplaceSync:Health:RecoveryGapCriticalDays", 80), (int)recoveryGapWarning.TotalDays + 1, 120));
         var rows = policies.Select(x =>
         {
             var cursor = cursors.FirstOrDefault(candidate => candidate.ResourceType == x.ResourceType)
                 ?? (x.ResourceType == "ORDERS" ? cursors.FirstOrDefault(candidate => candidate.ResourceType == "ORDERS_HOT") : null);
-            var health = MarketplaceSyncHealthPolicy.Classify(cursor?.LastSuccessAt, now, delayedAfter, degradedAfter, offlineAfter).ToString().ToUpperInvariant();
+            var expectedCadence = TimeSpan.FromSeconds(Math.Max(0, x.IntervalSeconds) + Math.Max(0, x.JitterSeconds));
+            var health = MarketplaceSyncHealthPolicy.Classify(
+                cursor?.LastSuccessAt,
+                now,
+                delayedAfter,
+                degradedAfter,
+                offlineAfter,
+                cursor?.ConsecutiveFailureCount ?? 0,
+                cursor?.LastFailedCount ?? 0,
+                expectedCadence).ToString().ToUpperInvariant();
+            var cursorProgress = MarketplaceCursorProgressPolicy.Classify(
+                cursor?.LastSuccessAt,
+                cursor?.LastCursorAdvancedAt,
+                cursor?.CursorStagnantSince,
+                cursor?.LastReceivedCount ?? 0,
+                now,
+                expectedCadence,
+                cursorStalledAfter).ToString().ToUpperInvariant();
             var gap = MarketplaceSyncHealthPolicy.RecoveryGap(cursor?.LastModifiedWatermark, now, recoveryGapWarning, recoveryGapCritical);
             var requiresExternalWrites = MarketplaceSyncPolicyRules.RequiresExternalWrites(x.ResourceType);
             var effectiveEnabled = x.Enabled && (!requiresExternalWrites || externalWritesEnabled);
-            return new SyncPolicyView(x.Id, x.ResourceType, x.IntervalSeconds, x.OverlapSeconds, x.JitterSeconds, effectiveEnabled, x.Version, cursor?.LastSuccessAt, cursor?.LastModifiedWatermark, health, cursor?.LastAttemptAt, cursor?.ConsecutiveFailureCount ?? 0, cursor?.LastRequestCount ?? 0, cursor?.LastReceivedCount ?? 0, cursor?.LastChangedCount ?? 0, cursor?.LastInsertedCount ?? 0, cursor?.LastUpdatedCount ?? 0, cursor?.LastSkippedCount ?? 0, cursor?.LastFailedCount ?? 0, cursor?.LastRetryCount ?? 0, cursor?.LastRateLimitCount ?? 0, gap.Status, gap.Days, requiresExternalWrites);
+            return new SyncPolicyView(x.Id, x.ResourceType, x.IntervalSeconds, x.OverlapSeconds, x.JitterSeconds, effectiveEnabled, x.Version, cursor?.LastSuccessAt, cursor?.LastModifiedWatermark, health, cursor?.LastAttemptAt, cursor?.ConsecutiveFailureCount ?? 0, cursor?.LastRequestCount ?? 0, cursor?.LastReceivedCount ?? 0, cursor?.LastChangedCount ?? 0, cursor?.LastInsertedCount ?? 0, cursor?.LastUpdatedCount ?? 0, cursor?.LastSkippedCount ?? 0, cursor?.LastFailedCount ?? 0, cursor?.LastRetryCount ?? 0, cursor?.LastRateLimitCount ?? 0, gap.Status, gap.Days, requiresExternalWrites, cursor?.LastDurationMs, connectionBacklog?.Count ?? 0, connectionBacklog?.OldestCreatedAt, manualReviewCount, deadJobCount24h, cursor?.LastCursorAdvancedAt, cursor?.CursorStagnantSince, cursorProgress);
         }).ToList();
         return ServiceResult<IReadOnlyList<SyncPolicyView>>.Ok(rows);
     }

@@ -40,24 +40,15 @@ public sealed class OrderInvoiceReconciliationBatchPolicyTests
     }
 
     [Fact]
-    public void SelectReturnClaimHydrationPrioritizesOldPartialOrdersAndSkipsNotFoundOrders()
+    public void SelectKeepsPartialAndRegularOrdersInCursorOrder()
     {
         var partial = Candidate(1);
         var regular = Candidate(2);
-        var unreachable = Candidate(3);
-        var candidates = new (OrderInvoiceReconciliationCandidate Candidate, string? CustomerSnapshotJson)[]
-        {
-            (regular, """{"customerFirstName":"Ada"}"""),
-            (unreachable, """{"claimId":"claim-3","claimDate":"2026-07-03T09:12:00Z","orderShipmentPackageId":"pkg-3"}"""),
-            (partial, """{"claimId":"claim-1","claimDate":"2026-07-03T09:12:00Z","orderOutboundPackageId":"pkg-1"}""")
-        };
+        var next = Candidate(3);
 
-        var selected = OrderInvoiceReconciliationBatchPolicy.SelectReturnClaimHydration(
-            candidates,
-            new HashSet<Guid> { unreachable.OrderId },
-            10);
+        var selected = OrderInvoiceReconciliationBatchPolicy.Select([partial, regular], [next], 3);
 
-        Assert.Equal([partial], selected);
+        Assert.Equal([partial, regular, next], selected);
     }
 
     private static OrderInvoiceReconciliationCandidate Candidate(int id) =>

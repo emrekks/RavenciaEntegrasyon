@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# Fast owner-managed deploy: pull main, reuse Docker layer caches, and replace
-# only the application stack. It intentionally does not run tests or a backup.
-# Use deploy.sh for the immutable release / backup workflow when requested.
+# Owner-managed deploy: validate the pulled revision in an isolated PostgreSQL
+# container, test/build the web app, verify a backup, then migrate and deploy.
 
-verify=false
+verify=true
 while (($#)); do
   case "$1" in
     --verify) verify=true; shift ;;
@@ -23,6 +22,13 @@ for required in postgres_password.txt app_db_connection.txt credential_key.txt d
   [[ -s "$repository_root/deploy/secrets/$required" ]] || { echo "Required deployment file is missing: deploy/secrets/$required" >&2; exit 1; }
 done
 
+read_env() {
+  local key="$1"
+  awk -F= -v wanted="$key" '$1 == wanted { sub(/^[^=]*=/, ""); print; found=1; exit } END { if (!found) exit 1 }' "$environment_file"
+}
+external_writes_enabled="$(read_env MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED || printf '%s' true)"
+[[ "$external_writes_enabled" == true || "$external_writes_enabled" == false ]] || { echo "MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED must be true or false." >&2; exit 1; }
+
 cd "$repository_root"
 git pull --ff-only origin main
 revision="$(git rev-parse --short=12 HEAD)"
@@ -32,7 +38,38 @@ edge_image="marketplacehub-edge:manual-$revision"
 sudo -n docker build --pull=false -t "$app_image" -f Dockerfile .
 sudo -n docker build --pull=false -t "$edge_image" -f deploy/caddy/Dockerfile.production .
 
-compose=(sudo -n env "MARKETPLACEHUB_APP_IMAGE=$app_image" "MARKETPLACEHUB_EDGE_IMAGE=$edge_image" docker compose --env-file "$environment_file" -f "$base_compose" -f "$production_compose")
+compose=(sudo -n env "MARKETPLACEHUB_APP_IMAGE=$app_image" "MARKETPLACEHUB_EDGE_IMAGE=$edge_image" "MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED=$external_writes_enabled" docker compose --env-file "$environment_file" -f "$base_compose" -f "$production_compose")
+
+validation_compose=(sudo -n env "MARKETPLACEHUB_APP_IMAGE=$app_image" "MARKETPLACEHUB_EDGE_IMAGE=$edge_image" "MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED=$external_writes_enabled" docker compose --profile validation --env-file "$environment_file" -f "$base_compose" -f "$production_compose")
+validation_cleanup_needed=true
+cleanup_validation() {
+  if [[ "$validation_cleanup_needed" == true ]]; then
+    "${validation_compose[@]}" rm --stop --force validation-postgres >/dev/null 2>&1 || true
+  fi
+}
+trap cleanup_validation EXIT
+"${validation_compose[@]}" run --build --rm validation-tests
+"${validation_compose[@]}" rm --stop --force validation-postgres >/dev/null
+validation_cleanup_needed=false
+trap - EXIT
+
+run_verified_backup() {
+  local backup_output backup_set
+  backup_output="$("${compose[@]}" --profile operations run --rm backup)"
+  printf '%s\n' "$backup_output"
+  backup_set="$(printf '%s\n' "$backup_output" | sed -nE 's#^Backup set created at /backup/([0-9]{8}T[0-9]{6}Z);.*$#\1#p' | tail -n 1)"
+  [[ "$backup_set" =~ ^[0-9]{8}T[0-9]{6}Z$ ]] || { echo "Backup job did not return a valid backup-set name." >&2; return 1; }
+  "${compose[@]}" --profile operations run --rm --entrypoint /bin/sh backup -ceu '
+    backup_set="$1"
+    cd "/backup/$backup_set"
+    test -s manifest.json
+    test -s database.dump
+    test -s private-volumes.tar.gz
+    sha256sum -c SHA256SUMS
+    pg_restore --list database.dump >/dev/null
+  ' sh "$backup_set"
+}
+run_verified_backup
 
 # Keep the currently serving API/worker/edge alive until the new database
 # migration has completed successfully. Compose's depends_on condition also

@@ -56,8 +56,12 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
             if (propertyName is null || ReservedAttributeKeys.Contains(propertyName))
                 return Fail("ATTRIBUTE_IMPORT_KEY_INVALID", "Hepsiburada kategori özelliğinin aktarım alanı anahtarı geçersiz veya standart alanla çakışıyor.");
         }
-        foreach (var required in remoteAttributes.Where(x => x.IsRequired == true))
-            if (!attributeMappings.Any(mapping => mapping.ExternalId == required.ExternalId)) return Fail("REQUIRED_ATTRIBUTE_MAPPING_REQUIRED", $"Zorunlu Hepsiburada özelliği '{required.Name}' eşlenmemiş.");
+        var missingRequiredExternalIds = RequiredAttributeMappingPolicy.FindMissingExternalIds(
+            categorySnapshot.Id,
+            remoteAttributes.Where(x => x.IsRequired == true).Select(x => new RequiredAttributeMappingReference(categorySnapshot.Id, x.ExternalId)),
+            attributeMappings.Select(x => new RequiredAttributeMappingReference(x.SnapshotId, x.ExternalId)));
+        foreach (var required in remoteAttributes.Where(x => missingRequiredExternalIds.Contains(x.ExternalId)))
+            return Fail("REQUIRED_ATTRIBUTE_MAPPING_REQUIRED", $"Zorunlu Hepsiburada özelliği '{required.Name}' eşlenmemiş.");
 
         var brand = product.BrandId is Guid brandId
             ? await db.Brands.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == brandId && x.IsActive, cancellationToken)

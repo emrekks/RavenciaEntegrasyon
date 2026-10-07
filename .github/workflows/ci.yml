@@ -75,9 +75,9 @@ jobs:
         working-directory: src/MarketplaceHub.Web
         run: npm run typecheck
 
-      - name: Test frontend HTML sanitization
+      - name: Test frontend
         working-directory: src/MarketplaceHub.Web
-        run: npm run test:security
+        run: npm test
 
       - name: Build frontend
         working-directory: src/MarketplaceHub.Web

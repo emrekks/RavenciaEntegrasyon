@@ -35,11 +35,18 @@ describe('variant option matching', () => {
     )).toEqual([{ name: 'Renk', value: 'HAKI' }, { name: 'Beden', value: 'XL' }])
   })
 
-  it('lets signature values override the same option in the fallback options map', () => {
+  it('keeps persisted color values over stale signature values and Web Color', () => {
     expect(mergeVariantOptionEntries(
-      [{ name: 'Renk', value: 'Yeşil' }],
-      [{ name: 'Renk', value: 'Haki' }]
-    )).toEqual([{ name: 'Renk', value: 'Haki' }])
+      [{ name: 'Renk', value: 'Indigo' }, { name: 'Beden', value: 'L' }],
+      [{ name: 'Renk', value: 'Lacivert' }, { name: 'Web Color', value: 'Lacivert' }]
+    )).toEqual([{ name: 'Renk', value: 'Indigo' }, { name: 'Beden', value: 'L' }])
+  })
+
+  it('keeps Web Color only when no real color option is available', () => {
+    expect(mergeVariantOptionEntries(
+      [],
+      [{ name: 'Web Color', value: 'Indigo' }, { name: 'Beden', value: 'L' }]
+    )).toEqual([{ name: 'Web Color', value: 'Indigo' }, { name: 'Beden', value: 'L' }])
   })
 
   it('merges category colors with variant-row colors while keeping one entry for normalized duplicates', () => {

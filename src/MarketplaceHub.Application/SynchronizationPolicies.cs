@@ -53,6 +53,18 @@ public static class SynchronizationWindowPolicy
     }
 }
 
+public static class TrendyolOrderHistoryPolicy
+{
+    public const int StreamInitialLookbackMonths = 3;
+    public const int LegacyEndpointMaxHistoryDays = 30;
+
+    public static DateTimeOffset StreamInitialStart(DateTimeOffset anchor) =>
+        anchor.AddMonths(-StreamInitialLookbackMonths);
+
+    public static DateTimeOffset LegacyEndpointInitialStart(DateTimeOffset anchor) =>
+        anchor.AddDays(-LegacyEndpointMaxHistoryDays);
+}
+
 public static class HepsiburadaOrderHistoryPolicy
 {
     public const int DefaultInitialLookbackMonths = 1;
@@ -93,15 +105,25 @@ public static class MarketplaceSyncHealthPolicy
         DateTimeOffset now,
         TimeSpan delayedAfter,
         TimeSpan degradedAfter,
-        TimeSpan offlineAfter)
+        TimeSpan offlineAfter,
+        int consecutiveFailureCount = 0,
+        int lastFailedCount = 0,
+        TimeSpan? expectedCadence = null)
     {
         if (delayedAfter <= TimeSpan.Zero || degradedAfter <= delayedAfter || offlineAfter <= degradedAfter)
             throw new ArgumentException("Sync health thresholds must be strictly increasing.");
+        if (consecutiveFailureCount < 0 || lastFailedCount < 0)
+            throw new ArgumentOutOfRangeException(nameof(consecutiveFailureCount), "Sync failure counts cannot be negative.");
+        if (expectedCadence < TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(expectedCadence), "Expected sync cadence cannot be negative.");
         if (lastSuccessAt is null) return MarketplaceSyncHealth.Offline;
         var age = now - lastSuccessAt.Value;
-        if (age < delayedAfter) return MarketplaceSyncHealth.Healthy;
-        if (age < degradedAfter) return MarketplaceSyncHealth.Delayed;
-        return age < offlineAfter ? MarketplaceSyncHealth.Degraded : MarketplaceSyncHealth.Offline;
+        var cadence = expectedCadence ?? TimeSpan.Zero;
+        if (age >= cadence + offlineAfter) return MarketplaceSyncHealth.Offline;
+        if (consecutiveFailureCount > 0 || lastFailedCount > 0) return MarketplaceSyncHealth.Degraded;
+        if (age < cadence + delayedAfter) return MarketplaceSyncHealth.Healthy;
+        if (age < cadence + degradedAfter) return MarketplaceSyncHealth.Delayed;
+        return MarketplaceSyncHealth.Degraded;
     }
 
     public static (string Status, double? Days) RecoveryGap(
@@ -118,6 +140,38 @@ public static class MarketplaceSyncHealthPolicy
         if (age > criticalAfter) return ("CRITICAL", days);
         if (age > warningAfter) return ("WARNING", days);
         return ("OK", days);
+    }
+}
+
+public enum MarketplaceCursorProgressStatus { Unknown, NoData, Current, Stalled }
+
+public static class MarketplaceCursorProgressPolicy
+{
+    public static MarketplaceCursorProgressStatus Classify(
+        DateTimeOffset? lastSuccessAt,
+        DateTimeOffset? lastCursorAdvancedAt,
+        DateTimeOffset? cursorStagnantSince,
+        int lastReceivedCount,
+        DateTimeOffset now,
+        TimeSpan expectedCadence,
+        TimeSpan minimumStallAfter)
+    {
+        if (lastReceivedCount < 0) throw new ArgumentOutOfRangeException(nameof(lastReceivedCount));
+        if (expectedCadence < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(expectedCadence));
+        if (minimumStallAfter <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(minimumStallAfter));
+        if (lastSuccessAt is null) return MarketplaceCursorProgressStatus.Unknown;
+        if (lastReceivedCount == 0) return MarketplaceCursorProgressStatus.NoData;
+        if (cursorStagnantSince is null)
+            return lastCursorAdvancedAt is null ? MarketplaceCursorProgressStatus.Unknown : MarketplaceCursorProgressStatus.Current;
+
+        var threeCyclesTicks = expectedCadence.Ticks > TimeSpan.MaxValue.Ticks / 3
+            ? TimeSpan.MaxValue.Ticks
+            : expectedCadence.Ticks * 3;
+        var threeCycles = TimeSpan.FromTicks(threeCyclesTicks);
+        var staleAfter = threeCycles > minimumStallAfter ? threeCycles : minimumStallAfter;
+        return now - cursorStagnantSince.Value > staleAfter
+            ? MarketplaceCursorProgressStatus.Stalled
+            : MarketplaceCursorProgressStatus.Current;
     }
 }
 

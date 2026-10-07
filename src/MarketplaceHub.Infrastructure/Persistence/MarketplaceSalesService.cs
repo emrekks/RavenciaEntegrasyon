@@ -1670,7 +1670,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var readback = await returns.GetAsync(new AdapterContext(tenantId, claim.ConnectionId, correlationId, $"{normalizedKey}:readback", timeProvider.GetUtcNow().AddSeconds(30)), claim.ExternalClaimId, cancellationToken);
         if (readback.IsSuccess && readback.Value is not null)
         {
-            var remoteStatus = CanonicalReturn(readback.Value.RawStatus, readback.Value.CargoTrackingLink);
+            var remoteStatus = MarketplaceReturnStatus.Canonicalize(readback.Value.RawStatus, readback.Value.CargoTrackingLink);
             if (!ReturnClaimStoragePolicy.ShouldPersist(remoteStatus))
             {
                 await CancelledReturnClaimCleanup.RemoveAsync(db, tenantId, claimId, cancellationToken);
@@ -2117,21 +2117,24 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     internal static string InvoiceLabel(Invoice? invoice, string customerJson) =>
         InvoiceLabel(invoice, customerJson, []);
 
-    internal static string InvoiceLabel(Invoice? invoice, string customerJson, IEnumerable<string?> packageRawStatuses)
+    internal static string InvoiceLabel(Invoice? invoice, string customerJson, IEnumerable<string?> packageRawStatuses) =>
+        InvoiceLabel(invoice?.Status, invoice?.InvoiceNumber, customerJson, packageRawStatuses);
+
+    internal static string InvoiceLabel(InvoiceStatus? invoiceStatus, string? invoiceNumber, string customerJson, IEnumerable<string?> packageRawStatuses)
     {
         // The local fiscal invoice and the marketplace delivery are separate
         // facts. A fiscal invoice number does not prove that Trendyol accepted
         // the document, so Submitted/Accepted/MarketplacePending stay visible
         // as an in-progress marketplace delivery.
-        if (invoice is not null)
+        if (invoiceStatus is { } status)
         {
-            if (invoice.Status is InvoiceStatus.Rejected or InvoiceStatus.ValidationFailed or InvoiceStatus.ManualReview or InvoiceStatus.MarketplaceFailed) return "FATURA_REDDEDILDI";
-            if (invoice.Status is InvoiceStatus.Cancelled or InvoiceStatus.CancelledLocal) return "FATURA_IPTAL";
-            if (invoice.Status == InvoiceStatus.Completed)
+            if (status is InvoiceStatus.Rejected or InvoiceStatus.ValidationFailed or InvoiceStatus.ManualReview or InvoiceStatus.MarketplaceFailed) return "FATURA_REDDEDILDI";
+            if (status is InvoiceStatus.Cancelled or InvoiceStatus.CancelledLocal) return "FATURA_IPTAL";
+            if (status == InvoiceStatus.Completed)
                 return "FATURA_KESILDI";
-            if (invoice.Status is InvoiceStatus.Submitted or InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending)
+            if (status is InvoiceStatus.Submitted or InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending)
                 return "FATURA_KONTROLDE";
-            if (!string.IsNullOrWhiteSpace(invoice.InvoiceNumber) && invoice.Status is not (InvoiceStatus.Draft or InvoiceStatus.Validating or InvoiceStatus.Ready))
+            if (!string.IsNullOrWhiteSpace(invoiceNumber) && status is not (InvoiceStatus.Draft or InvoiceStatus.Validating or InvoiceStatus.Ready))
                 return "FATURA_KONTROLDE";
             return "FATURA_ISLENIYOR";
         }
@@ -2155,13 +2158,16 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         return "FATURA_BILINMIYOR";
     }
 
-    internal static string InvoiceLabel(Invoice? invoice, MarketplaceInvoiceStatus marketplaceStatus, string customerJson, IEnumerable<string?> packageRawStatuses)
+    internal static string InvoiceLabel(Invoice? invoice, MarketplaceInvoiceStatus marketplaceStatus, string customerJson, IEnumerable<string?> packageRawStatuses) =>
+        InvoiceLabel(invoice?.Status, invoice?.InvoiceNumber, marketplaceStatus, customerJson, packageRawStatuses);
+
+    internal static string InvoiceLabel(InvoiceStatus? invoiceStatus, string? invoiceNumber, MarketplaceInvoiceStatus marketplaceStatus, string customerJson, IEnumerable<string?> packageRawStatuses)
     {
-        if (invoice is not null)
+        if (invoiceStatus is { } status)
         {
-            if (invoice.Status is InvoiceStatus.Rejected or InvoiceStatus.ValidationFailed or InvoiceStatus.ManualReview or InvoiceStatus.MarketplaceFailed)
+            if (status is InvoiceStatus.Rejected or InvoiceStatus.ValidationFailed or InvoiceStatus.ManualReview or InvoiceStatus.MarketplaceFailed)
                 return "FATURA_REDDEDILDI";
-            if (invoice.Status is InvoiceStatus.Cancelled or InvoiceStatus.CancelledLocal)
+            if (status is InvoiceStatus.Cancelled or InvoiceStatus.CancelledLocal)
                 return "FATURA_IPTAL";
             // The marketplace observation is authoritative for the delivery
             // leg. A local invoice number only proves that our fiscal provider
@@ -2170,9 +2176,9 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             if (marketplaceStatus == MarketplaceInvoiceStatus.Rejected) return "FATURA_REDDEDILDI";
             if (marketplaceStatus == MarketplaceInvoiceStatus.Received) return "FATURA_KONTROLDE";
             if ((marketplaceStatus is MarketplaceInvoiceStatus.Unknown or MarketplaceInvoiceStatus.NotInvoiced)
-                && (invoice.Status is InvoiceStatus.Submitted or InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending or InvoiceStatus.Completed))
+                && (status is InvoiceStatus.Submitted or InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending or InvoiceStatus.Completed))
                 return "FATURA_KONTROLDE";
-            return InvoiceLabel(invoice, customerJson, packageRawStatuses);
+            return InvoiceLabel(invoiceStatus, invoiceNumber, customerJson, packageRawStatuses);
         }
         return marketplaceStatus switch
         {
@@ -2180,7 +2186,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             MarketplaceInvoiceStatus.Received => "FATURA_KONTROLDE",
             MarketplaceInvoiceStatus.Rejected => "FATURA_REDDEDILDI",
             MarketplaceInvoiceStatus.NotInvoiced => "FATURA_BEKLIYOR",
-            _ => InvoiceLabel(null, customerJson, packageRawStatuses)
+            _ => InvoiceLabel(invoiceStatus, invoiceNumber, customerJson, packageRawStatuses)
         };
     }
 
@@ -2193,12 +2199,15 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     }
 
     internal static string InvoiceLabelForPlatform(Invoice? invoice, MarketplaceInvoiceStatus marketplaceStatus, string customerJson, IEnumerable<string?> packageRawStatuses, string? platformCode)
+        => InvoiceLabelForPlatform(invoice?.Status, invoice?.InvoiceNumber, marketplaceStatus, customerJson, packageRawStatuses, platformCode);
+
+    internal static string InvoiceLabelForPlatform(InvoiceStatus? invoiceStatus, string? invoiceNumber, MarketplaceInvoiceStatus marketplaceStatus, string customerJson, IEnumerable<string?> packageRawStatuses, string? platformCode)
     {
-        var label = InvoiceLabel(invoice, marketplaceStatus, customerJson, packageRawStatuses);
+        var label = InvoiceLabel(invoiceStatus, invoiceNumber, marketplaceStatus, customerJson, packageRawStatuses);
         if (string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase))
         {
-            if (invoice?.Status == InvoiceStatus.Draft) return "FATURA_BEKLIYOR";
-            if (invoice?.Status == InvoiceStatus.Completed) return "FATURA_YUKLENDI";
+            if (invoiceStatus == InvoiceStatus.Draft) return "FATURA_BEKLIYOR";
+            if (invoiceStatus == InvoiceStatus.Completed) return "FATURA_YUKLENDI";
             if (label == "FATURA_BILINMIYOR") return "FATURA_BEKLIYOR";
         }
         return label;
@@ -2388,7 +2397,6 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     private PageResult<T> Page<T>(List<T> rows, int limit, Func<T, Guid> id) { var hasMore = rows.Count > limit; var items = rows.Take(limit).ToList(); return new(items, hasMore ? cursors.Encode(id(items[^1])) : null, hasMore); }
     private static ShipmentView Map(ShipmentPackage x, string orderNumber) => new(x.Id, x.OrderId, orderNumber, x.ExternalPackageId, Wire(x.Status), x.RawStatus, x.CargoTrackingNumber, x.StatusOccurredAt, x.Version, x.CargoProviderExternalId, ShipmentPackageClassification.IsResend(x.CreatedBy, x.OriginExternalPackageId));
     private static string Wire<T>(T value) where T : Enum => string.Concat(value.ToString().Select((ch, index) => char.IsUpper(ch) && index > 0 ? "_" + ch : ch.ToString())).ToUpperInvariant();
-    private static ReturnClaimStatus CanonicalReturn(string raw, string? cargoTrackingLink = null) => raw.ToUpperInvariant() switch { "CREATED" when !string.IsNullOrWhiteSpace(cargoTrackingLink) => ReturnClaimStatus.InTransit, "CREATED" => ReturnClaimStatus.Requested, "AWAITINGPREAPPROVAL" => ReturnClaimStatus.ActionRequired, "WAITINGFORSHIPMENT" => ReturnClaimStatus.AwaitingShipment, "WAITINGINCARGO" => ReturnClaimStatus.InTransit, "INTRANSIT" or "RETURNINTRANSIT" or "SHIPPED" => ReturnClaimStatus.InTransit, "WAITINGINACTION" or "AWAITINGACTION" or "INANALYSIS" or "WAITINGFRAUDCHECK" => ReturnClaimStatus.ActionRequired, "ACCEPTED" => ReturnClaimStatus.Approved, "REJECTED" => ReturnClaimStatus.Rejected, "UNRESOLVED" => ReturnClaimStatus.Disputed, "COMPLETED" => ReturnClaimStatus.Completed, "CANCELLED" or "CANCELED" => ReturnClaimStatus.Cancelled, _ => ReturnClaimStatus.ActionRequired };
     private static bool IsAmbiguous(AdapterError error) => error.Class is AdapterErrorClass.TransientNetwork or AdapterErrorClass.Remote5xx or AdapterErrorClass.ContractViolation or AdapterErrorClass.InternalBug;
     private static ServiceResult<T> Invalid<T>(string field, string message) => ServiceResult<T>.Fail("VALIDATION_FAILED", message, 422, new Dictionary<string, string[]> { [field] = [message] });
     private static ServiceResult<T> NotFound<T>() => ServiceResult<T>.Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", 404);

@@ -5,15 +5,27 @@ function normalizeOptionName(name: string) {
   return name.replace(/[\s_-]+/g, '').toLocaleUpperCase('tr-TR')
 }
 
-export function mergeVariantOptionEntries(options: VariantOptionEntry[], signatureOptions: VariantOptionEntry[]) {
+export function mergeVariantOptionEntries(options: VariantOptionEntry[], signatureFallbackOptions: VariantOptionEntry[]) {
   const merged = new Map<string, VariantOptionEntry>()
-  for (const option of [...options, ...signatureOptions]) {
+  for (const option of options) {
     const name = option.name.trim()
     const value = option.value.trim()
     if (!name || !value) continue
     merged.set(normalizeOptionName(name), { name, value })
   }
-  return [...merged.values()]
+  for (const option of signatureFallbackOptions) {
+    const name = option.name.trim()
+    const value = option.value.trim()
+    if (!name || !value) continue
+    const key = normalizeOptionName(name)
+    if (!merged.has(key)) merged.set(key, { name, value })
+  }
+
+  const entries = [...merged.values()]
+  const hasRealColorOption = entries.some(option => ['RENK', 'COLOR', 'COLOUR'].includes(normalizeOptionName(option.name)))
+  return hasRealColorOption
+    ? entries.filter(option => !['WEBCOLOR', 'WEBCOLOUR', 'WEBRENK'].includes(normalizeOptionName(option.name)))
+    : entries
 }
 
 export function normalizeVariantOptionValue(value: string) {

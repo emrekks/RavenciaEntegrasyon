@@ -19,6 +19,10 @@ COPY src/ src/
 RUN dotnet publish src/MarketplaceHub.Api/MarketplaceHub.Api.csproj -c Release --no-restore -o /out/api \
  && dotnet publish src/MarketplaceHub.Worker/MarketplaceHub.Worker.csproj -c Release --no-restore -o /out/worker
 
+FROM build AS validation
+COPY tests/ tests/
+ENTRYPOINT ["dotnet", "test", "MarketplaceHub.sln", "--no-restore", "--configuration", "Release"]
+
 FROM mcr.microsoft.com/dotnet/aspnet:10.0.10@sha256:1fa23fc4872d95fd71c2833ebe65d7e84a43b2d51a31d119516852f13d9505a7
 WORKDIR /app
 RUN mkdir -p /var/lib/marketplacehub/files /var/lib/marketplacehub/dp-keys \

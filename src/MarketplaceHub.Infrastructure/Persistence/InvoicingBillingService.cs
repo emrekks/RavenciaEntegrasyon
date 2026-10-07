@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -18,6 +19,8 @@ public sealed partial class InvoicingBillingService(
     IConfiguration configuration,
     TimeProvider timeProvider) : IInvoicingBillingService
 {
+    private const int WorkspaceCandidateScanBatchSize = 2_000;
+    private static readonly CultureInfo WorkspaceSearchCulture = CultureInfo.GetCultureInfo("tr-TR");
     private readonly IDataProtector _taxProtector = dataProtection.CreateProtector("MarketplaceHub.InvoiceTaxIdentity.v1");
     private readonly IDataProtector _partyProtector = dataProtection.CreateProtector("MarketplaceHub.InvoicePartySnapshot.v1");
 
@@ -139,6 +142,13 @@ public sealed partial class InvoicingBillingService(
             .Where(x => x.TenantId == tenantId && invoiceIds.Contains(x.InvoiceId))
             .Select(x => new { x.InvoiceId, x.Status, x.ExternalReference, x.AttemptNumber })
             .ToListAsync(cancellationToken);
+        var invoiceReadIssues = await db.OperationalIssues.AsNoTracking()
+            .Where(issue => issue.TenantId == tenantId
+                && issue.Status == IssueStatus.Open
+                && (issue.DedupeKey.StartsWith("trendyol-invoice-package-read:")
+                    || issue.DedupeKey.StartsWith("order-invoice-reconciliation:")))
+            .Select(issue => new { issue.DedupeKey, issue.Code, issue.Summary })
+            .ToDictionaryAsync(issue => issue.DedupeKey, cancellationToken);
 
         var variantIds = lines.Where(x => x.VariantId != null).Select(x => x.VariantId!.Value).Distinct().ToArray();
         var lineSkus = lines.Select(x => x.Sku).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
@@ -194,9 +204,456 @@ public sealed partial class InvoicingBillingService(
             var deliveryAttempt = invoice is null
                 ? null
                 : deliveryAttempts.Where(x => x.InvoiceId == invoice.Id).OrderByDescending(x => x.AttemptNumber).FirstOrDefault();
-            return new InvoiceWorkspaceItemView(order.Id, package.Id, order.OrderNumber, customerName, order.OrderedAt, package.Status.ToString().ToUpperInvariant(), deliveredAt, dueAt, dueSoon, order.Currency, package.NetAmount > 0 ? package.NetAmount : order.NetAmount, orderLines.Count, image, package.CargoProviderExternalId, package.CargoTrackingNumber, invoice?.Id, invoiceStatus, ResolveInvoiceNumber(invoice?.InvoiceNumber, package.MarketplaceInvoiceNumber), invoiceStatus == "FATURA_BEKLIYOR", order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, workspaceLines, invoice?.LastErrorCode, deliveryState?.Status ?? deliveryAttempt?.Status, deliveryState?.ExternalReference ?? deliveryAttempt?.ExternalReference, invoice is not null && invoiceDocumentIds.Contains(invoice.Id), connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol", connection is not null && MarketplaceInvoiceCreationPolicy.IsEnabled(connection.PlatformCode, connection.SettingsJson));
+            var invoiceReadIssue = invoiceReadIssues.GetValueOrDefault($"trendyol-invoice-package-read:{package.ConnectionId}:{package.Id}")
+                ?? invoiceReadIssues.GetValueOrDefault($"order-invoice-reconciliation:{order.ConnectionId}:{order.ExternalOrderId}");
+            return new InvoiceWorkspaceItemView(order.Id, package.Id, order.OrderNumber, customerName, order.OrderedAt, package.Status.ToString().ToUpperInvariant(), deliveredAt, dueAt, dueSoon, order.Currency, package.NetAmount > 0 ? package.NetAmount : order.NetAmount, orderLines.Count, image, package.CargoProviderExternalId, package.CargoTrackingNumber, invoice?.Id, invoiceStatus, ResolveInvoiceNumber(invoice?.InvoiceNumber, package.MarketplaceInvoiceNumber), invoiceStatus == "FATURA_BEKLIYOR", order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, workspaceLines, invoice?.LastErrorCode, deliveryState?.Status ?? deliveryAttempt?.Status, deliveryState?.ExternalReference ?? deliveryAttempt?.ExternalReference, invoice is not null && invoiceDocumentIds.Contains(invoice.Id), connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol", connection is not null && MarketplaceInvoiceCreationPolicy.IsEnabled(connection.PlatformCode, connection.SettingsJson), invoiceReadIssue?.Code, invoiceReadIssue?.Summary);
         }).Where(x => x is not null).Select(x => x!).ToList();
     }
+
+    public async Task<InvoiceWorkspaceSummaryView> WorkspaceSummaryAsync(Guid tenantId, CancellationToken cancellationToken)
+    {
+        var hasOperationalMarketplace = await db.PlatformConnections.AsNoTracking()
+            .AnyAsync(connection => connection.TenantId == tenantId
+                && InvoiceWorkspaceMarketplacePolicy.PlatformCodes.Contains(connection.PlatformCode)
+                && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"), cancellationToken);
+        if (!hasOperationalMarketplace) return new(0);
+
+        var now = timeProvider.GetUtcNow();
+        var dueSoonCount = 0;
+        WorkspaceScanCursor? cursor = null;
+        while (true)
+        {
+            var candidates = await ReadWorkspaceCandidateBatchAsync(tenantId, cursor, now, includeCustomerName: false, cancellationToken);
+            if (candidates.Count == 0) break;
+            foreach (var candidate in candidates)
+            {
+                if (candidate.Package.Status == ShipmentPackageStatus.Delivered
+                    && now >= candidate.Package.StatusOccurredAt.AddDays(DashboardMetricPolicy.InvoiceReminderStartDays)
+                    && candidate.InvoiceStatus == "FATURA_BEKLIYOR") dueSoonCount++;
+            }
+            var last = candidates[^1];
+            cursor = new(last.Package.StatusOccurredAt, last.Package.Id);
+        }
+
+        return new(dueSoonCount);
+    }
+
+    public async Task<InvoiceWorkspacePageView> WorkspacePageAsync(Guid tenantId, InvoiceWorkspacePageQuery request, CancellationToken cancellationToken)
+    {
+        var pageSize = request.PageSize is 20 or 50 or 100 or 200 ? request.PageSize : 20;
+        var requestedPage = Math.Max(1, request.PageNumber);
+        var normalizedTab = request.Tab.Trim().ToUpperInvariant() is "INVOICED" or "DUE_SOON"
+            ? request.Tab.Trim().ToUpperInvariant()
+            : "UNINVOICED";
+        var selectedPlatforms = (request.PlatformCodes ?? [])
+            .Where(code => !string.IsNullOrWhiteSpace(code))
+            .Select(code => code.Trim())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var search = request.Search?.Trim();
+        if (search?.Length > 200) search = search[..200];
+        var searchKey = search?.ToLower(WorkspaceSearchCulture);
+
+        var hasOperationalMarketplace = await db.PlatformConnections.AsNoTracking()
+            .AnyAsync(connection => connection.TenantId == tenantId
+                && InvoiceWorkspaceMarketplacePolicy.PlatformCodes.Contains(connection.PlatformCode)
+                && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"), cancellationToken);
+        if (!hasOperationalMarketplace) return EmptyWorkspacePage(requestedPage, pageSize);
+
+        var now = timeProvider.GetUtcNow();
+        var from = request.From;
+        var to = request.To;
+        var selectedTotal = 0;
+        var selectedUninvoiced = 0;
+        var selectedInvoiced = 0;
+        var selectedDueSoon = 0;
+        var hasPendingMarketplaceInvoices = false;
+        var filteredCount = 0;
+        var pageCandidates = new List<WorkspaceCandidate>(pageSize);
+        var lastPageCandidates = new Queue<WorkspaceCandidate>(pageSize);
+        var shipmentStatuses = new HashSet<string>(StringComparer.Ordinal);
+        var cargoProviders = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var invoiceStatuses = new HashSet<string>(StringComparer.Ordinal);
+        var offset = (requestedPage - 1) * pageSize;
+        WorkspaceScanCursor? cursor = null;
+
+        while (true)
+        {
+            var candidates = await ReadWorkspaceCandidateBatchAsync(tenantId, cursor, now, includeCustomerName: true, cancellationToken);
+            if (candidates.Count == 0) break;
+
+            foreach (var candidate in candidates)
+            {
+                var platformSelected = selectedPlatforms.Count == 0 || selectedPlatforms.Contains(candidate.Connection.PlatformCode);
+                if (platformSelected)
+                {
+                    selectedTotal++;
+                    if (candidate.CanCreateInvoice || candidate.InvoiceStatus == "FATURA_REDDEDILDI") selectedUninvoiced++;
+                    else selectedInvoiced++;
+                    if (candidate.IsDueSoon) selectedDueSoon++;
+                    if (!string.Equals(candidate.Connection.PlatformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase)
+                        && (candidate.CanCreateInvoice || candidate.InvoiceStatus == "FATURA_REDDEDILDI"))
+                        hasPendingMarketplaceInvoices = true;
+                }
+
+                shipmentStatuses.Add(candidate.Package.Status.ToString().ToUpperInvariant());
+                if (!string.IsNullOrWhiteSpace(candidate.Package.CargoProviderExternalId))
+                    cargoProviders.Add(candidate.Package.CargoProviderExternalId.Trim());
+                invoiceStatuses.Add(WorkspaceInvoiceDisplayStatus(candidate));
+
+                if (!MatchesWorkspacePageRequest(candidate, normalizedTab, request, searchKey, from, to)) continue;
+                var resultIndex = filteredCount++;
+                if (resultIndex >= offset && pageCandidates.Count < pageSize) pageCandidates.Add(candidate);
+                lastPageCandidates.Enqueue(candidate);
+                if (lastPageCandidates.Count > pageSize) lastPageCandidates.Dequeue();
+            }
+
+            var last = candidates[^1];
+            cursor = new(last.Package.StatusOccurredAt, last.Package.Id);
+        }
+
+        var totalPages = Math.Max(1, (int)Math.Ceiling(filteredCount / (double)pageSize));
+        var pageNumber = Math.Min(requestedPage, totalPages);
+        if (pageNumber != requestedPage)
+        {
+            var lastPageSize = filteredCount % pageSize;
+            if (lastPageSize == 0 && filteredCount > 0) lastPageSize = pageSize;
+            pageCandidates = lastPageCandidates.TakeLast(lastPageSize).ToList();
+        }
+        var items = await MaterializeWorkspacePageAsync(tenantId, pageCandidates, cancellationToken);
+        return new(items, filteredCount, pageNumber, pageSize, totalPages, selectedUninvoiced, selectedInvoiced, selectedDueSoon, selectedTotal, hasPendingMarketplaceInvoices,
+            shipmentStatuses.Order(StringComparer.Ordinal).ToArray(), cargoProviders.Order(StringComparer.OrdinalIgnoreCase).ToArray(), invoiceStatuses.Order(StringComparer.Ordinal).ToArray());
+    }
+
+    private async Task<IReadOnlyList<WorkspaceCandidate>> ReadWorkspaceCandidateBatchAsync(
+        Guid tenantId,
+        WorkspaceScanCursor? cursor,
+        DateTimeOffset now,
+        bool includeCustomerName,
+        CancellationToken cancellationToken)
+    {
+        var sourceQuery =
+            from package in db.ShipmentPackages.AsNoTracking()
+            join order in db.Orders.AsNoTracking()
+                on new { package.TenantId, package.OrderId } equals new { order.TenantId, OrderId = order.Id }
+            join connection in db.PlatformConnections.AsNoTracking()
+                on new { package.TenantId, package.ConnectionId } equals new { connection.TenantId, ConnectionId = connection.Id }
+            where package.TenantId == tenantId
+                && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")
+                && package.Status != ShipmentPackageStatus.Cancelled
+                && !DashboardMetricPolicy.InvoiceExcludedOrderStatuses.Contains((order.DerivedStatus ?? string.Empty).Trim().ToUpper())
+                && !(connection.PlatformCode.ToUpper() == "SHOPIFY"
+                    && package.ExternalPackageId.StartsWith("order:")
+                    && package.ExternalPackageId.EndsWith(":remainder"))
+                && (package.CreatedBy != "HEPSIBURADA_STATUS_FEED"
+                    || db.PackageLineAllocations.Any(allocation => allocation.TenantId == tenantId && allocation.PackageId == package.Id)
+                    || !db.ShipmentPackages.Any(otherPackage => otherPackage.TenantId == tenantId
+                        && otherPackage.OrderId == package.OrderId
+                        && otherPackage.Id != package.Id
+                        && db.PlatformConnections.Any(otherConnection => otherConnection.TenantId == tenantId
+                            && otherConnection.Id == otherPackage.ConnectionId
+                            && (otherConnection.Status == "ACTIVE" || otherConnection.Status == "VERIFIED"))))
+            select new { package, order, connection };
+
+        if (cursor is not null)
+        {
+            sourceQuery = sourceQuery.Where(source => source.package.StatusOccurredAt < cursor.StatusOccurredAt
+                || (source.package.StatusOccurredAt == cursor.StatusOccurredAt && source.package.Id.CompareTo(cursor.PackageId) < 0));
+        }
+
+        var sourceRows = await sourceQuery
+            .OrderByDescending(source => source.package.StatusOccurredAt)
+            .ThenByDescending(source => source.package.Id)
+            .Take(WorkspaceCandidateScanBatchSize)
+            .Select(source => new WorkspaceCandidateSource(
+                new WorkspacePackageProjection(
+                    source.package.Id,
+                    source.package.OrderId,
+                    source.package.ConnectionId,
+                    source.package.ExternalPackageId,
+                    source.package.CreatedBy,
+                    source.package.CargoProviderExternalId,
+                    source.package.CargoTrackingNumber,
+                    source.package.NetAmount,
+                    source.package.Status,
+                    source.package.RawStatus,
+                    source.package.StatusOccurredAt,
+                    source.package.MarketplaceInvoiceStatus,
+                    source.package.MarketplaceInvoiceNumber,
+                    source.package.ManualInvoiceStatus),
+                new WorkspaceOrderProjection(
+                    source.order.Id,
+                    source.order.ConnectionId,
+                    source.order.ExternalOrderId,
+                    source.order.OrderNumber,
+                    source.order.OrderedAt,
+                    source.order.Currency,
+                    source.order.NetAmount,
+                    source.order.CustomerSnapshotJson,
+                    source.order.ShipmentAddressSnapshotJson,
+                    source.order.InvoiceAddressSnapshotJson,
+                    source.order.DerivedStatus),
+                new WorkspaceConnectionProjection(
+                    source.connection.Id,
+                    source.connection.PlatformCode,
+                    source.connection.DisplayName,
+                    source.connection.SettingsJson)))
+            .ToListAsync(cancellationToken);
+        if (sourceRows.Count == 0) return [];
+
+        var packageIds = sourceRows.Select(source => source.Package.Id).ToArray();
+        var orderIds = sourceRows.Select(source => source.Order.Id).Distinct().ToArray();
+        var invoices = await db.Invoices.AsNoTracking()
+            .Where(invoice => invoice.TenantId == tenantId && invoice.OriginalInvoiceId == null
+                && ((invoice.PackageId != null && packageIds.Contains(invoice.PackageId.Value))
+                    || (invoice.PackageId == null && orderIds.Contains(invoice.OrderId)))
+                && db.PlatformConnections.Any(connection => connection.TenantId == tenantId
+                    && connection.Id == invoice.ProviderConnectionId
+                    && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")))
+            .OrderByDescending(invoice => invoice.CreatedAt)
+            .Select(invoice => new WorkspaceInvoiceProjection(invoice.Id, invoice.OrderId, invoice.PackageId, invoice.Status, invoice.InvoiceNumber, invoice.LastErrorCode, invoice.CreatedAt))
+            .ToListAsync(cancellationToken);
+        var invoicesByPackage = invoices.Where(invoice => invoice.PackageId.HasValue)
+            .GroupBy(invoice => invoice.PackageId!.Value)
+            .ToDictionary(group => group.Key, group => group.First());
+        var invoicesByOrder = invoices.Where(invoice => !invoice.PackageId.HasValue)
+            .GroupBy(invoice => invoice.OrderId)
+            .ToDictionary(group => group.Key, group => group.First());
+
+        return sourceRows.Select(source =>
+        {
+            var package = source.Package;
+            var order = source.Order;
+            var connection = source.Connection;
+            var invoice = invoicesByPackage.GetValueOrDefault(package.Id) ?? invoicesByOrder.GetValueOrDefault(order.Id);
+            var invoiceStatus = package.ManualInvoiceStatus?.Trim().ToUpperInvariant() switch
+            {
+                "UPLOADED" => "FATURA_YUKLENDI",
+                "PENDING" => "FATURA_BEKLIYOR",
+                _ => MarketplaceSalesService.InvoiceLabelForPlatform(invoice?.Status, invoice?.InvoiceNumber, package.MarketplaceInvoiceStatus, order.CustomerSnapshotJson, [package.RawStatus], connection.PlatformCode)
+            };
+            var deliveredAt = package.Status == ShipmentPackageStatus.Delivered ? package.StatusOccurredAt : (DateTimeOffset?)null;
+            var dueSoon = invoiceStatus == "FATURA_BEKLIYOR" && deliveredAt is not null
+                && now >= deliveredAt.Value.AddDays(DashboardMetricPolicy.InvoiceReminderStartDays);
+            return new WorkspaceCandidate(
+                package,
+                order,
+                connection,
+                invoice,
+                invoiceStatus,
+                string.Equals(invoiceStatus, "FATURA_BEKLIYOR", StringComparison.Ordinal),
+                dueSoon,
+                deliveredAt,
+                deliveredAt?.AddDays(DashboardMetricPolicy.InvoiceDueDays),
+                package.NetAmount > 0 ? package.NetAmount : order.NetAmount,
+                includeCustomerName ? InvoiceWorkspaceCustomerName(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson) : string.Empty,
+                MarketplaceInvoiceCreationPolicy.IsEnabled(connection.PlatformCode, connection.SettingsJson));
+        }).ToList();
+    }
+
+    private static bool MatchesWorkspacePageRequest(
+        WorkspaceCandidate candidate,
+        string normalizedTab,
+        InvoiceWorkspacePageQuery request,
+        string? searchKey,
+        DateTimeOffset? from,
+        DateTimeOffset? to)
+    {
+        var tabMatch = normalizedTab switch
+        {
+            "INVOICED" => !(candidate.CanCreateInvoice || candidate.InvoiceStatus == "FATURA_REDDEDILDI"),
+            "DUE_SOON" => candidate.IsDueSoon,
+            _ => candidate.CanCreateInvoice || candidate.InvoiceStatus == "FATURA_REDDEDILDI"
+        };
+        var shipmentMatch = string.IsNullOrWhiteSpace(request.ShipmentStatus) || request.ShipmentStatus == "ALL"
+            || string.Equals(candidate.Package.Status.ToString(), request.ShipmentStatus, StringComparison.OrdinalIgnoreCase);
+        var cargoMatch = string.IsNullOrWhiteSpace(request.CargoProviderName) || request.CargoProviderName == "ALL"
+            || string.Equals(candidate.Package.CargoProviderExternalId?.Trim(), request.CargoProviderName.Trim(), StringComparison.OrdinalIgnoreCase);
+        var invoiceMatch = string.IsNullOrWhiteSpace(request.InvoiceStatus) || request.InvoiceStatus == "ALL"
+            || string.Equals(WorkspaceInvoiceDisplayStatus(candidate), request.InvoiceStatus, StringComparison.OrdinalIgnoreCase);
+        var actionMatch = WorkspaceMatchesInvoiceAction(candidate, request.InvoiceAction, request.ProviderHasCredential);
+        var dateMatch = (!from.HasValue || candidate.Order.OrderedAt >= from.Value)
+            && (!to.HasValue || candidate.Order.OrderedAt <= to.Value);
+        var searchMatch = searchKey is null || new[] { candidate.Order.OrderNumber, candidate.CustomerName, candidate.InvoiceNumber, candidate.Package.CargoTrackingNumber }
+            .Any(value => value?.ToLower(WorkspaceSearchCulture).Contains(searchKey, StringComparison.Ordinal) == true);
+        return tabMatch && shipmentMatch && cargoMatch && invoiceMatch && actionMatch && dateMatch && searchMatch;
+    }
+
+    private async Task<IReadOnlyList<InvoiceWorkspaceItemView>> MaterializeWorkspacePageAsync(Guid tenantId, IReadOnlyList<WorkspaceCandidate> candidates, CancellationToken cancellationToken)
+    {
+        if (candidates.Count == 0) return [];
+        var orderIds = candidates.Select(candidate => candidate.Order.Id).Distinct().ToArray();
+        var packageIds = candidates.Select(candidate => candidate.Package.Id).ToArray();
+        var lines = await db.OrderLines.AsNoTracking()
+            .Where(line => line.TenantId == tenantId && orderIds.Contains(line.OrderId))
+            .ToListAsync(cancellationToken);
+        var variantIds = lines.Where(line => line.VariantId != null).Select(line => line.VariantId!.Value).Distinct().ToArray();
+        var lineSkus = lines.Select(line => line.Sku).Where(sku => !string.IsNullOrWhiteSpace(sku)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var lineBarcodes = lines.Select(line => line.Barcode).Where(barcode => !string.IsNullOrWhiteSpace(barcode)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var variantRows = await db.ProductVariants.AsNoTracking()
+            .Where(variant => variant.TenantId == tenantId
+                && (variantIds.Contains(variant.Id) || lineSkus.Contains(variant.Sku) || (variant.Barcode != null && lineBarcodes.Contains(variant.Barcode))))
+            .Select(variant => new { variant.Id, variant.ProductId, variant.Sku, variant.Barcode })
+            .ToListAsync(cancellationToken);
+        var variantProductIds = variantRows.ToDictionary(variant => variant.Id, variant => variant.ProductId);
+        var variantBySku = variantRows.Where(variant => !string.IsNullOrWhiteSpace(variant.Sku))
+            .GroupBy(variant => variant.Sku, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First().Id, StringComparer.OrdinalIgnoreCase);
+        var variantByBarcode = variantRows.Where(variant => !string.IsNullOrWhiteSpace(variant.Barcode))
+            .GroupBy(variant => variant.Barcode!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First().Id, StringComparer.OrdinalIgnoreCase);
+        Guid? ResolveVariantId(OrderLine line) => line.VariantId
+            ?? (line.Barcode is not null && variantByBarcode.TryGetValue(line.Barcode, out var barcodeVariantId)
+                ? barcodeVariantId
+                : variantBySku.GetValueOrDefault(line.Sku));
+        var resolvedVariantIds = lines.Select(ResolveVariantId).Where(id => id.HasValue).Select(id => id!.Value).Distinct().ToArray();
+        foreach (var variant in variantRows) variantProductIds.TryAdd(variant.Id, variant.ProductId);
+        var productIds = variantProductIds.Values.Distinct().ToArray();
+        var mediaRows = await (from media in db.ProductMedia.AsNoTracking()
+                               join asset in db.FileAssets.AsNoTracking() on new { media.TenantId, media.FileAssetId } equals new { asset.TenantId, FileAssetId = asset.Id }
+                               where media.TenantId == tenantId
+                                   && ((media.VariantId != null && resolvedVariantIds.Contains(media.VariantId.Value)) || (media.VariantId == null && productIds.Contains(media.ProductId)))
+                                   && media.Status == "ACTIVE" && asset.Status == "ACTIVE"
+                                   && (asset.Classification == "PRODUCT_MEDIA_URL" || asset.Classification == "PRODUCT_MEDIA")
+                               orderby media.SortOrder
+                               select new { media.VariantId, media.ProductId, asset.Id, asset.Classification, asset.RelativePath })
+            .ToListAsync(cancellationToken);
+        var mediaByVariant = mediaRows.Where(media => media.VariantId.HasValue).GroupBy(media => media.VariantId!.Value)
+            .ToDictionary(group => group.Key, group => MediaUrl(group.First().Id, group.First().Classification, group.First().RelativePath));
+        var mediaByProduct = mediaRows.Where(media => media.VariantId == null).GroupBy(media => media.ProductId)
+            .ToDictionary(group => group.Key, group => MediaUrl(group.First().Id, group.First().Classification, group.First().RelativePath));
+        var linesByOrder = lines.GroupBy(line => line.OrderId).ToDictionary(group => group.Key, group => group.ToList());
+
+        var invoiceIds = candidates.Where(candidate => candidate.Invoice is not null).Select(candidate => candidate.Invoice!.Id).Distinct().ToArray();
+        var invoiceDocumentIds = invoiceIds.Length == 0
+            ? new HashSet<Guid>()
+            : (await db.InvoiceDocuments.AsNoTracking().Where(document => document.TenantId == tenantId && invoiceIds.Contains(document.InvoiceId))
+                .Select(document => document.InvoiceId).Distinct().ToListAsync(cancellationToken)).ToHashSet();
+        var deliveryStates = invoiceIds.Length == 0
+            ? []
+            : await db.MarketplaceDeliveryStates.AsNoTracking()
+                .Where(state => state.TenantId == tenantId && invoiceIds.Contains(state.InvoiceId))
+                .Select(state => new { state.InvoiceId, state.Status, state.ExternalReference, state.UpdatedAt })
+                .ToListAsync(cancellationToken);
+        var deliveryAttempts = invoiceIds.Length == 0
+            ? []
+            : await db.MarketplaceDeliveries.AsNoTracking()
+                .Where(attempt => attempt.TenantId == tenantId && invoiceIds.Contains(attempt.InvoiceId))
+                .Select(attempt => new { attempt.InvoiceId, attempt.Status, attempt.ExternalReference, attempt.AttemptNumber })
+                .ToListAsync(cancellationToken);
+        var invoiceReadIssueKeys = candidates.SelectMany(candidate => new[]
+        {
+            $"trendyol-invoice-package-read:{candidate.Package.ConnectionId}:{candidate.Package.Id}",
+            $"order-invoice-reconciliation:{candidate.Order.ConnectionId}:{candidate.Order.ExternalOrderId}"
+        }).Distinct().ToArray();
+        var invoiceReadIssues = invoiceReadIssueKeys.Length == 0
+            ? new Dictionary<string, (string Code, string Summary)>(StringComparer.Ordinal)
+            : (await db.OperationalIssues.AsNoTracking()
+                .Where(issue => issue.TenantId == tenantId && issue.Status == IssueStatus.Open && invoiceReadIssueKeys.Contains(issue.DedupeKey))
+                .Select(issue => new { issue.DedupeKey, issue.Code, issue.Summary })
+                .ToListAsync(cancellationToken))
+                .ToDictionary(issue => issue.DedupeKey, issue => (issue.Code, issue.Summary), StringComparer.Ordinal);
+
+        return candidates.Select(candidate =>
+        {
+            var orderLines = (linesByOrder.GetValueOrDefault(candidate.Order.Id) ?? [])
+                .Where(line => OrderLinePresentationPolicy.HasActiveQuantity(line.OrderedQuantity, line.CancelledQuantity))
+                .ToList();
+            var workspaceLines = orderLines.Select(line => new InvoiceWorkspaceLineView(
+                line.Sku,
+                line.Barcode,
+                line.TitleSnapshot,
+                OrderLinePresentationPolicy.ActiveQuantity(line.OrderedQuantity, line.CancelledQuantity),
+                line.UnitPrice,
+                line.VatRate,
+                ResolveVariantId(line) is { } variantId
+                    ? mediaByVariant.GetValueOrDefault(variantId) ?? mediaByProduct.GetValueOrDefault(variantProductIds.GetValueOrDefault(variantId))
+                    : null)).ToList();
+            var primaryImage = workspaceLines.Select(line => line.ImageUrl).FirstOrDefault(url => !string.IsNullOrWhiteSpace(url));
+            var deliveryState = candidate.Invoice is null ? null : deliveryStates
+                .Where(state => state.InvoiceId == candidate.Invoice.Id).OrderByDescending(state => state.UpdatedAt).FirstOrDefault();
+            var deliveryAttempt = candidate.Invoice is null ? null : deliveryAttempts
+                .Where(attempt => attempt.InvoiceId == candidate.Invoice.Id).OrderByDescending(attempt => attempt.AttemptNumber).FirstOrDefault();
+            var issue = invoiceReadIssues.GetValueOrDefault($"trendyol-invoice-package-read:{candidate.Package.ConnectionId}:{candidate.Package.Id}");
+            if (issue == default) invoiceReadIssues.TryGetValue($"order-invoice-reconciliation:{candidate.Order.ConnectionId}:{candidate.Order.ExternalOrderId}", out issue);
+            return new InvoiceWorkspaceItemView(
+                candidate.Order.Id,
+                candidate.Package.Id,
+                candidate.Order.OrderNumber,
+                candidate.CustomerName,
+                candidate.Order.OrderedAt,
+                candidate.Package.Status.ToString().ToUpperInvariant(),
+                candidate.DeliveredAt,
+                candidate.InvoiceDueAt,
+                candidate.IsDueSoon,
+                candidate.Order.Currency,
+                candidate.Amount,
+                orderLines.Count,
+                primaryImage,
+                candidate.Package.CargoProviderExternalId,
+                candidate.Package.CargoTrackingNumber,
+                candidate.Invoice?.Id,
+                candidate.InvoiceStatus,
+                ResolveInvoiceNumber(candidate.Invoice?.InvoiceNumber, candidate.Package.MarketplaceInvoiceNumber),
+                candidate.CanCreateInvoice,
+                candidate.Order.ShipmentAddressSnapshotJson,
+                candidate.Order.InvoiceAddressSnapshotJson,
+                workspaceLines,
+                candidate.Invoice?.LastErrorCode,
+                deliveryState?.Status ?? deliveryAttempt?.Status,
+                deliveryState?.ExternalReference ?? deliveryAttempt?.ExternalReference,
+                candidate.Invoice is not null && invoiceDocumentIds.Contains(candidate.Invoice.Id),
+                candidate.Connection.PlatformCode,
+                candidate.Connection.DisplayName,
+                candidate.InvoiceCreationEnabled,
+                issue == default ? null : issue.Code,
+                issue == default ? null : issue.Summary);
+        }).ToList();
+    }
+
+    private static InvoiceWorkspacePageView EmptyWorkspacePage(int pageNumber, int pageSize) =>
+        new([], 0, pageNumber, pageSize, 1, 0, 0, 0, 0, false, [], [], []);
+
+    private static string WorkspaceInvoiceDisplayStatus(WorkspaceCandidate candidate)
+    {
+        if (candidate.Invoice is null || candidate.CanCreateInvoice || candidate.InvoiceStatus == "FATURA_BEKLIYOR") return "FATURA_BEKLIYOR";
+        if (candidate.InvoiceStatus is "FATURA_REDDEDILDI" or "REJECTED" or "VALIDATION_FAILED" or "MANUAL_REVIEW" or "MARKETPLACE_FAILED") return candidate.InvoiceStatus;
+        if (candidate.InvoiceStatus is "FATURA_YUKLENDI" or "FATURA_KESILDI" or "COMPLETED") return candidate.InvoiceStatus;
+        return string.IsNullOrWhiteSpace(candidate.InvoiceStatus) ? "FATURA_BILINMIYOR" : candidate.InvoiceStatus;
+    }
+
+    private static bool WorkspaceMatchesInvoiceAction(WorkspaceCandidate candidate, string? filter, bool providerHasCredential)
+    {
+        if (string.IsNullOrWhiteSpace(filter) || filter.Equals("ALL", StringComparison.OrdinalIgnoreCase)) return true;
+        var retryable = candidate.InvoiceStatus is "FATURA_REDDEDILDI" or "REJECTED" or "VALIDATION_FAILED" or "MANUAL_REVIEW" or "MARKETPLACE_FAILED";
+        var available = candidate.InvoiceCreationEnabled
+            && (candidate.Connection.PlatformCode == "SHOPIFY"
+                ? candidate.CanCreateInvoice
+                : providerHasCredential && (candidate.Invoice is null ? candidate.CanCreateInvoice : retryable));
+        return filter.Equals("CREATABLE", StringComparison.OrdinalIgnoreCase) ? available
+            : filter.Equals("NOT_CREATABLE", StringComparison.OrdinalIgnoreCase) && !available;
+    }
+
+    private sealed record WorkspacePackageProjection(
+        Guid Id, Guid OrderId, Guid ConnectionId, string ExternalPackageId, string? CreatedBy,
+        string? CargoProviderExternalId, string? CargoTrackingNumber, decimal NetAmount,
+        ShipmentPackageStatus Status, string RawStatus, DateTimeOffset StatusOccurredAt,
+        MarketplaceInvoiceStatus MarketplaceInvoiceStatus, string? MarketplaceInvoiceNumber, string? ManualInvoiceStatus);
+    private sealed record WorkspaceOrderProjection(
+        Guid Id, Guid ConnectionId, string ExternalOrderId, string OrderNumber, DateTimeOffset OrderedAt,
+        string Currency, decimal NetAmount, string CustomerSnapshotJson, string ShipmentAddressSnapshotJson,
+        string InvoiceAddressSnapshotJson, string DerivedStatus);
+    private sealed record WorkspaceConnectionProjection(Guid Id, string PlatformCode, string DisplayName, string SettingsJson);
+    private sealed record WorkspaceInvoiceProjection(Guid Id, Guid OrderId, Guid? PackageId, InvoiceStatus Status, string? InvoiceNumber, string? LastErrorCode, DateTimeOffset CreatedAt);
+    private sealed record WorkspaceCandidateSource(WorkspacePackageProjection Package, WorkspaceOrderProjection Order, WorkspaceConnectionProjection Connection);
+    private sealed record WorkspaceScanCursor(DateTimeOffset StatusOccurredAt, Guid PackageId);
+    private sealed record WorkspaceCandidate(
+        WorkspacePackageProjection Package, WorkspaceOrderProjection Order, WorkspaceConnectionProjection Connection,
+        WorkspaceInvoiceProjection? Invoice, string InvoiceStatus, bool CanCreateInvoice, bool IsDueSoon, DateTimeOffset? DeliveredAt,
+        DateTimeOffset? InvoiceDueAt, decimal Amount, string CustomerName, bool InvoiceCreationEnabled)
+    {
+        public string? InvoiceNumber => ResolveInvoiceNumber(Invoice?.InvoiceNumber, Package.MarketplaceInvoiceNumber);
+    }
+    private sealed record WorkspacePageCounts(int Uninvoiced, int Invoiced, int DueSoon, int Total);
 
     private static string MediaUrl(Guid assetId, string classification, string relativePath) => classification == "PRODUCT_MEDIA_URL"
         ? relativePath

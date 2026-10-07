@@ -8,7 +8,7 @@ services:
       Marketplace__PublicBaseUrl: ${MARKETPLACEHUB_SITE_ADDRESS:?set production https address}
       Hepsiburada__AuthenticationMode: BASIC
       Hepsiburada__ProductionCatalogBaseAddress: ${HEPSIBURADA_PRODUCTION_CATALOG_BASE_ADDRESS:-https://mpop.hepsiburada.com/product/}
-      FeatureFlags__ExternalWrites: "true"
+      FeatureFlags__ExternalWrites: "${MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED:-true}"
       Marketplace__PersistOrderSnapshots: "true"
       DataProtection__CertificatePath: /run/secrets/dp_certificate
       DataProtection__CertificatePassword_FILE: /run/secrets/dp_certificate_password
