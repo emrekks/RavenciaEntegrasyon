@@ -38,12 +38,19 @@ revision="$(git rev-parse --short=12 HEAD)"
 app_image="marketplacehub-app:manual-$revision"
 edge_image="marketplacehub-edge:manual-$revision"
 
+compose=(sudo -n env "MARKETPLACEHUB_APP_IMAGE=$app_image" "MARKETPLACEHUB_EDGE_IMAGE=$edge_image" "MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED=$external_writes_enabled" docker compose --env-file "$environment_file" -f "$base_compose" -f "$production_compose")
+validation_compose=(sudo -n env "MARKETPLACEHUB_APP_IMAGE=$app_image" "MARKETPLACEHUB_EDGE_IMAGE=$edge_image" "MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED=$external_writes_enabled" docker compose --profile validation --env-file "$environment_file" -f "$base_compose" -f "$production_compose")
+
+# Resolve every production and one-shot profile before building or changing
+# containers. This catches missing variables, secret files, and invalid merged
+# Compose configuration before the migration/deployment boundary.
+"${compose[@]}" config --quiet
+"${validation_compose[@]}" config --quiet
+"${compose[@]}" --profile operations config --quiet
+
 sudo -n docker build --pull=false -t "$app_image" -f Dockerfile .
 sudo -n docker build --pull=false -t "$edge_image" -f deploy/caddy/Dockerfile.production .
 
-compose=(sudo -n env "MARKETPLACEHUB_APP_IMAGE=$app_image" "MARKETPLACEHUB_EDGE_IMAGE=$edge_image" "MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED=$external_writes_enabled" docker compose --env-file "$environment_file" -f "$base_compose" -f "$production_compose")
-
-validation_compose=(sudo -n env "MARKETPLACEHUB_APP_IMAGE=$app_image" "MARKETPLACEHUB_EDGE_IMAGE=$edge_image" "MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED=$external_writes_enabled" docker compose --profile validation --env-file "$environment_file" -f "$base_compose" -f "$production_compose")
 validation_cleanup_needed=true
 cleanup_validation() {
   if [[ "$validation_cleanup_needed" == true ]]; then

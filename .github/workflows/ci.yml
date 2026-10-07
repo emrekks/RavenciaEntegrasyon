@@ -53,6 +53,35 @@ jobs:
           bash -n deploy/backup/*.sh deploy/scripts/*.sh
           shellcheck deploy/backup/*.sh deploy/scripts/*.sh
 
+      - name: Validate merged Compose manifests
+        env:
+          MARKETPLACEHUB_APP_IMAGE: marketplacehub-app:ci-validation
+          MARKETPLACEHUB_EDGE_IMAGE: marketplacehub-edge:ci-validation
+          MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED: "false"
+          MARKETPLACEHUB_ALLOWED_HOSTS: panel.example.invalid
+          MARKETPLACEHUB_SITE_ADDRESS: https://panel.example.invalid
+        run: |
+          set -Eeuo pipefail
+          mkdir -p deploy/secrets
+          placeholder_files=()
+          cleanup_compose_placeholders() {
+            if ((${#placeholder_files[@]})); then
+              rm -f -- "${placeholder_files[@]}"
+            fi
+            rmdir deploy/secrets 2>/dev/null || true
+          }
+          trap cleanup_compose_placeholders EXIT
+          for name in postgres_password.txt app_db_connection.txt credential_key.txt dp_certificate.pfx dp_certificate_password.txt; do
+            path="deploy/secrets/$name"
+            [[ ! -e "$path" ]] || { echo "Refusing to replace an existing secret file in CI validation." >&2; exit 1; }
+            : > "$path"
+            placeholder_files+=("$path")
+          done
+          compose=(docker compose -f deploy/compose/compose.yaml -f deploy/compose/compose.production.yaml)
+          "${compose[@]}" config --quiet
+          "${compose[@]}" --profile validation config --quiet
+          "${compose[@]}" --profile operations config --quiet
+
       - name: Verify .NET format
         run: dotnet format MarketplaceHub.sln --verify-no-changes --no-restore --verbosity diagnostic
 
