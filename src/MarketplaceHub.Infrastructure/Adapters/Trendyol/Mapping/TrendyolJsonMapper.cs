@@ -156,10 +156,10 @@ public static class TrendyolJsonMapper
         return package is null ? null : new(order.ExternalOrderId, package, order);
     }
 
-    public static RemoteOrderPackage? PreferShipmentPackageWithCargo(RemoteOrderPackage? orderV2, RemoteOrderPackage? legacy)
+    public static RemoteOrderPackage? PreferShipmentPackageWithCargo(RemoteOrderPackage? preferredRead, RemoteOrderPackage? fallbackRead)
     {
-        var preferred = HasCargo(orderV2) ? orderV2 : HasCargo(legacy) ? legacy : legacy ?? orderV2;
-        var secondary = ReferenceEquals(preferred, orderV2) ? legacy : orderV2;
+        var preferred = HasCargo(preferredRead) ? preferredRead : HasCargo(fallbackRead) ? fallbackRead : fallbackRead ?? preferredRead;
+        var secondary = ReferenceEquals(preferred, preferredRead) ? fallbackRead : preferredRead;
         if (preferred is null || secondary is null) return preferred;
 
         var cargoProvider = string.IsNullOrWhiteSpace(preferred.Package.CargoProviderExternalId)

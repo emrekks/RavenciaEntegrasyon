@@ -2131,6 +2131,99 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         }
     }
 
+    [PostgreSqlFact]
+    public async Task TrendyolShipmentPackageReadback_UsesV2AndStreamWithoutLegacyOrdersEndpoint()
+    {
+        var tenant = NewTenant("trendyol-package-readback-contract");
+        var anchor = DateTimeOffset.Parse("2026-10-02T00:00:00Z");
+        var occurredAt = anchor.AddDays(-1);
+        var connection = new PlatformConnection
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            PublicId = Guid.CreateVersion7(),
+            PlatformCode = "TRENDYOL",
+            Environment = "STAGE",
+            DisplayName = "Trendyol package readback contract test",
+            ExternalStoreId = "seller-contract-test",
+            Status = "ACTIVE",
+            ApiVersion = "V2",
+            SettingsJson = JsonSerializer.Serialize(new { UserAgentIdentity = "ravencia-contract-test", ExternalWritesEnabled = false })
+        };
+        var dataProtection = new EphemeralDataProtectionProvider();
+        var protector = dataProtection.CreateProtector("MarketplaceHub.PlatformCredential.v1");
+        var credential = new PlatformCredential
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            ConnectionId = connection.Id,
+            CredentialType = "TRENDYOL_API_KEY",
+            ProtectedPayload = protector.Protect(JsonSerializer.Serialize(new { ApiKey = "test-key", ApiSecret = "test-secret" })),
+            MaskedHint = "test",
+            CreatedAt = anchor,
+            Version = 1
+        };
+        var requests = new RecordingHttpMessageHandler(request =>
+        {
+            var content = request.RequestUri!.AbsolutePath.EndsWith("/v2/orders", StringComparison.Ordinal)
+                ? """
+                  {"content":[{"shipmentPackageId":4052072376,"orderNumber":"11476852228","status":"Delivered","lastModifiedDate":1790899200000,"lines":[]}],"page":0,"totalPages":1}
+                  """
+                : """
+                  {"content":[{"shipmentPackageId":4052072376,"orderNumber":"11476852228","status":"Delivered","lastModifiedDate":1790899200000,"cargoTrackingNumber":62755229958101,"cargoProviderName":"hepsiJET","invoiceStatus":"Invoiced","invoiceNumber":"INV-42","invoiceUrl":"https://example.invalid/invoice/42","lines":[]}],"nextCursor":null,"hasMore":false}
+                  """;
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(content, Encoding.UTF8, "application/json")
+            };
+        });
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.PlatformCredentials.Add(credential);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var authentication = new TrendyolAuthenticationHandler(
+                db,
+                dataProtection,
+                Options.Create(new TrendyolOptions()),
+                NullLogger<TrendyolAuthenticationHandler>.Instance);
+            var client = new TrendyolHttpClient(
+                new RecordingHttpClientFactory(requests),
+                authentication,
+                new ConfigurationBuilder().Build(),
+                Options.Create(new TrendyolOptions()),
+                new FixedTimeProvider(anchor),
+                NullLogger<TrendyolHttpClient>.Instance);
+            var context = new AdapterContext(tenant.Id, connection.Id, "trendyol-package-readback-contract", "contract-test", anchor.AddMinutes(1));
+
+            var result = await client.GetShipmentPackageAsync(context, "4052072376", occurredAt, CancellationToken.None);
+
+            Assert.True(result.IsSuccess, result.Error?.SafeMessage);
+            Assert.Equal("hepsiJET", result.Value!.Package.CargoProviderExternalId);
+            Assert.Equal("62755229958101", result.Value.Package.CargoTrackingNumber);
+            Assert.Equal("Invoiced", result.Value.Package.Invoice?.RawStatus);
+            Assert.Equal("INV-42", result.Value.Package.Invoice?.InvoiceNumber);
+            Assert.Equal(2, requests.Requests.Count);
+            Assert.Equal("/integration/order/sellers/seller-contract-test/v2/orders", requests.Requests[0].AbsolutePath);
+            Assert.Equal("4052072376", QueryValue(requests.Requests[0], "shipmentPackageIds"));
+            Assert.Equal("/integration/order/sellers/seller-contract-test/orders/stream", requests.Requests[1].AbsolutePath);
+            Assert.DoesNotContain(requests.Requests, uri => uri.AbsolutePath == "/integration/order/sellers/seller-contract-test/orders");
+        }
+        finally
+        {
+            await using var cleanupDb = fixture.CreateContext();
+            await cleanupDb.PlatformCredentials.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
     private static Order NewInvoiceTestOrder(Guid tenantId, Guid connectionId, Guid id, string externalId, bool isReturnClaim, DateTimeOffset now) => new()
     {
         Id = id,

@@ -53,18 +53,18 @@ public sealed class TrendyolCatalogMapperTests
     }
 
     [Fact]
-    public void ShipmentPackageSelection_PrefersCargoFromLegacyReadWhenV2OmitsIt()
+    public void ShipmentPackageSelection_PrefersCargoFromFallbackReadWhenPreferredReadOmitsIt()
     {
         static RemoteOrderPackage Package(string? provider, string? trackingNumber) => new(
             "order-1",
             new RemotePackage("package-1", null, "Delivered", DateTimeOffset.UnixEpoch, provider, trackingNumber, []));
 
         var orderV2 = Package(null, null);
-        var legacy = Package("hepsiJET", "62755229958101");
+        var fallback = Package("hepsiJET", "62755229958101");
         var orderV2WithCargo = Package("PTT", "7340037147068871");
 
-        Assert.Same(legacy, TrendyolJsonMapper.PreferShipmentPackageWithCargo(orderV2, legacy));
-        Assert.Same(orderV2WithCargo, TrendyolJsonMapper.PreferShipmentPackageWithCargo(orderV2WithCargo, legacy));
+        Assert.Same(fallback, TrendyolJsonMapper.PreferShipmentPackageWithCargo(orderV2, fallback));
+        Assert.Same(orderV2WithCargo, TrendyolJsonMapper.PreferShipmentPackageWithCargo(orderV2WithCargo, fallback));
     }
 
     [Fact]
@@ -75,9 +75,9 @@ public sealed class TrendyolCatalogMapperTests
             new RemotePackage("package-1", null, "Delivered", DateTimeOffset.UnixEpoch, provider, trackingNumber, [], Invoice: invoice));
 
         var v2 = Package(null, null, new("Invoiced", "INV-42", null, DateTimeOffset.UnixEpoch.AddHours(2)));
-        var legacy = Package("hepsiJET", "62755229958101", new("NotInvoiced", null, null, DateTimeOffset.UnixEpoch.AddHours(1)));
+        var fallback = Package("hepsiJET", "62755229958101", new("NotInvoiced", null, null, DateTimeOffset.UnixEpoch.AddHours(1)));
 
-        var merged = TrendyolJsonMapper.PreferShipmentPackageWithCargo(v2, legacy);
+        var merged = TrendyolJsonMapper.PreferShipmentPackageWithCargo(v2, fallback);
 
         Assert.NotNull(merged);
         Assert.Equal("hepsiJET", merged.Package.CargoProviderExternalId);

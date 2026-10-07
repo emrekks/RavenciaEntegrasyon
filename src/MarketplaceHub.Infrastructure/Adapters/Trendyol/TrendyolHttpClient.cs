@@ -346,24 +346,7 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
             return AdapterResult<RemoteOrderPackage>.Success(v2Package!, v2Response.RateLimit);
         }
 
-        // The Order V2 endpoint limits historical order visibility. While the
-        // legacy documented GET remains available, retry this targeted read
-        // there so older package IDs can still expose the cargo fields visible
-        // in the seller panel. This is a read-only GET.
-        var legacyResponse = await SendAsync(authorized, HttpMethod.Get,
-            TrendyolEndpoints.LegacyOrders(authorized.Connection.ExternalStoreId) + query, null, cancellationToken);
-        RemoteOrderPackage? legacyPackage = null;
-        try
-        {
-            if (legacyResponse.IsSuccess)
-                legacyPackage = TrendyolJsonMapper.ShipmentPackage(legacyResponse.Value!, externalPackageId.Trim());
-        }
-        catch (JsonException)
-        {
-            return AdapterResult<RemoteOrderPackage>.Failure(TrendyolErrorMapper.Contract(), legacyResponse.RateLimit);
-        }
-
-        var directPackage = TrendyolJsonMapper.PreferShipmentPackageWithCargo(v2Package, legacyPackage);
+        var directPackage = v2Package;
         if ((!string.IsNullOrWhiteSpace(directPackage?.Package.CargoProviderExternalId)
                 || !string.IsNullOrWhiteSpace(directPackage?.Package.CargoTrackingNumber))
             && HasInvoiceObservation(directPackage))
@@ -372,7 +355,7 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
                 !string.IsNullOrWhiteSpace(directPackage!.Package.CargoProviderExternalId),
                 !string.IsNullOrWhiteSpace(directPackage!.Package.CargoTrackingNumber),
                 HasInvoiceObservation(directPackage));
-            return AdapterResult<RemoteOrderPackage>.Success(directPackage!, legacyResponse.RateLimit ?? v2Response.RateLimit);
+            return AdapterResult<RemoteOrderPackage>.Success(directPackage!, v2Response.RateLimit);
         }
 
         AdapterError? streamError = null;
@@ -414,7 +397,7 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
                     try
                     {
                         var streamedPackage = TrendyolJsonMapper.ShipmentPackage(streamResponse.Value!, externalPackageId.Trim());
-                        var selectedDirectPackage = TrendyolJsonMapper.PreferShipmentPackageWithCargo(v2Package, legacyPackage);
+                        var selectedDirectPackage = v2Package;
                         var mergedStreamPackage = TrendyolJsonMapper.PreferShipmentPackageWithCargo(streamedPackage, selectedDirectPackage);
                         if (HasPackageReadbackValue(streamedPackage) && HasPackageReadbackValue(mergedStreamPackage))
                         {
@@ -423,7 +406,7 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
                                 !string.IsNullOrWhiteSpace(mergedStreamPackage!.Package.CargoTrackingNumber),
                                 HasInvoiceObservation(mergedStreamPackage));
                             return AdapterResult<RemoteOrderPackage>.Success(mergedStreamPackage!,
-                                streamResponse.RateLimit ?? legacyResponse.RateLimit ?? v2Response.RateLimit);
+                                streamResponse.RateLimit ?? v2Response.RateLimit);
                         }
 
                         var mapped = TrendyolJsonMapper.Orders(streamResponse.Value!);
@@ -441,32 +424,29 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
             }
         }
 
-        var selectedPackage = TrendyolJsonMapper.PreferShipmentPackageWithCargo(v2Package, legacyPackage);
+        var selectedPackage = v2Package;
         if (HasPackageReadbackValue(selectedPackage))
         {
-            var source = ReferenceEquals(selectedPackage, legacyPackage) ? "legacy GET" : "Order V2";
             logger.LogInformation("Trendyol package read returned provider={ProviderPresent}, tracking={TrackingPresent}, invoice={InvoicePresent} from {Source}.",
                 !string.IsNullOrWhiteSpace(selectedPackage!.Package.CargoProviderExternalId),
                 !string.IsNullOrWhiteSpace(selectedPackage!.Package.CargoTrackingNumber),
                 HasInvoiceObservation(selectedPackage),
-                source);
-            return AdapterResult<RemoteOrderPackage>.Success(selectedPackage!, legacyResponse.RateLimit ?? v2Response.RateLimit);
+                "Order V2");
+            return AdapterResult<RemoteOrderPackage>.Success(selectedPackage!, v2Response.RateLimit);
         }
 
-        logger.LogInformation("Trendyol package cargo read returned no cargo fields from V2 or legacy GET; package match V2={V2PackageFound}, legacy={LegacyPackageFound}.",
-            v2Package is not null, legacyPackage is not null);
-        if (legacyResponse.IsSuccess && selectedPackage is not null)
-            return AdapterResult<RemoteOrderPackage>.Success(selectedPackage, legacyResponse.RateLimit ?? v2Response.RateLimit);
+        logger.LogInformation("Trendyol package cargo read returned no cargo fields from V2 or historical stream; package match V2={V2PackageFound}.",
+            v2Package is not null);
         if (v2Response.IsSuccess && selectedPackage is not null)
             return AdapterResult<RemoteOrderPackage>.Success(selectedPackage, v2Response.RateLimit);
         if (streamError is not null)
-            return AdapterResult<RemoteOrderPackage>.Failure(streamError, legacyResponse.RateLimit ?? v2Response.RateLimit);
+            return AdapterResult<RemoteOrderPackage>.Failure(streamError, v2Response.RateLimit);
 
-        var error = legacyResponse.Error ?? v2Response.Error
+        var error = v2Response.Error
             ?? new AdapterError(AdapterErrorClass.NotFound, "REMOTE_PACKAGE_NOT_FOUND", "Trendyol paket bilgisi bulunamadı.", 404, null, null);
         return error.Class == AdapterErrorClass.NotFound || error.HttpStatus == 404
-            ? AdapterResult<RemoteOrderPackage>.Failure(new(AdapterErrorClass.NotFound, "REMOTE_PACKAGE_NOT_FOUND", "Trendyol paket bilgisi bulunamadı.", 404, null, error.RemoteRequestId), legacyResponse.RateLimit ?? v2Response.RateLimit)
-            : AdapterResult<RemoteOrderPackage>.Failure(error, legacyResponse.RateLimit ?? v2Response.RateLimit);
+            ? AdapterResult<RemoteOrderPackage>.Failure(new(AdapterErrorClass.NotFound, "REMOTE_PACKAGE_NOT_FOUND", "Trendyol paket bilgisi bulunamadı.", 404, null, error.RemoteRequestId), v2Response.RateLimit)
+            : AdapterResult<RemoteOrderPackage>.Failure(error, v2Response.RateLimit);
     }
 
     private static bool HasInvoiceObservation(RemoteOrderPackage? package) => package?.Package.Invoice is { } invoice
