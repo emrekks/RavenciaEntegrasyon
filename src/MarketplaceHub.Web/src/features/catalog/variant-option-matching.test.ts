@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { displayVariantOptionEntries, displayVariantOptionEntriesFromSignature, formatColorOptionValue, matchingVariantOptionValues, mergeVariantOptionEntries, mergeVariantOptionValues, normalizeVariantOptionValue, parseVariantOptionSignature } from './variant-option-matching'
+import { displayVariantOptionEntries, displayVariantOptionEntriesFromSignature, formatColorOptionValue, joinVariantOptionLabels, matchingVariantOptionValues, mergeVariantOptionEntries, mergeVariantOptionValues, normalizeVariantOptionValue, parseVariantOptionSignature } from './variant-option-matching'
 
 describe('variant option matching', () => {
+  it('joins displayed variant option labels with a hyphen separator', () => {
+    expect(joinVariantOptionLabels(['Beden: M', 'Renk: Siyah'])).toBe('Beden: M - Renk: Siyah')
+  })
+
   it('treats Turkish dotted and ASCII-uppercase I spellings as the same option value', () => {
     expect(normalizeVariantOptionValue('HAKI')).toBe(normalizeVariantOptionValue('Haki'))
     expect(normalizeVariantOptionValue('  Haki   ')).toBe(normalizeVariantOptionValue('Haki'))

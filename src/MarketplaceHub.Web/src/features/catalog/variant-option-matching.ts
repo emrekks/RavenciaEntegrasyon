@@ -1,6 +1,10 @@
 export type VariantOptionEntry = { name: string; value: string }
 export type VariantOptionValue = { id: string; value: string }
 
+export function joinVariantOptionLabels(labels: string[]) {
+  return labels.join(' - ')
+}
+
 export function parseVariantOptionSignature(signature: string): VariantOptionEntry[] {
   return signature.split(/\s*(?:\||·|•)\s*|_(?=[^_:=]+\s*[:=])/).flatMap(part => {
     const separatorIndex = part.search(/\s*[:=]/)
