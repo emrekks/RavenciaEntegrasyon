@@ -417,7 +417,7 @@ Bu bölüm 7 Ekim 2026'daki son uygulama durumunu kaydeder ve yukarıdaki dağı
 
 **Açık kalanlar kodun deploy edilmesini engelleyen maddeler değildir; tamamlanma kanıtı için ortam/sağlayıcı erişimi gerektirir:**
 
-- **B10:** 100.000 faturasız fatura-adayı fixture'ında tekrar, anahtar-imleç sorgusu için `EXPLAIN (ANALYZE, BUFFERS)` ve örnek p95 kanıtı tamamlandı; canlıya ek indeks uygulandı. Gerçek faturalar içeren staging yükündeki p95 ayrıca ölçülmeli.
+- **B10:** 100.000 faturasız fatura-adayı fixture'ında beş tekrar ve anahtar-imleç erişim yolu için `EXPLAIN (ANALYZE, BUFFERS)` tamamlandı; canlıya ek indeks uygulandı. Ölçülen nearest-rank p95 6.210 ms (örnek aralığı 2.327–6.210 ms). Gerçek faturalar içeren staging yükündeki p95 ve hedef gecikme ayrıca kararlaştırılmalı.
 - **B11:** Birden çok API örneğiyle yayın/çökme arası tekrar senaryosu ve temizlik hacmi gözlemi.
 - **B12:** Cursor/durgunluk alarmının gerçekten bloke edilmiş worker akışında kullanıcıya görünmesi ve uçtan uca teyit. Normal Trendyol worker ilerlemesi canlı iş izleme ekranında doğrulandı.
 - **B13:** Şifreli off-host yedek aktarımı ile deploy image SHA'sının CI kaydıyla bağlanması. İzole geri yükleme tatbikatı başarıyla tamamlandı; dış yedek hedefi tanımlı değil.
@@ -434,9 +434,10 @@ Bu bölüm 7 Ekim 2026'daki son uygulama durumunu kaydeder ve yukarıdaki dağı
 |---|---|
 | Kaynak revizyonu | `ba80b9ffb39d` (`perf: index invoice workspace keyset scan`), `origin/main` ve sunucu çalışma ağacı aynı commit'te |
 | Migration | `20261007104323_AddInvoiceWorkspaceKeysetIndex`; `CREATE INDEX CONCURRENTLY` ile `sales.shipment_packages(TenantId, StatusOccurredAt, Id)` eklendi |
-| Doğrulama | İzole, dış bağlantısız PostgreSQL üzerinde tam suite 773/773 geçti. Önceki 100.000 aday koşusu 20 satır döndürdü; beş örnek ve plan doğrulaması bu doğrulama güncellemesinde eklendi ve tekrar çalıştırılacak. |
+| Doğrulama | İzole, dış bağlantısız PostgreSQL üzerinde son tam suite 773/773 geçti. 100.000 aday testi 5/5 istekte 20 satır ve doğru sayfa toplamlarını döndürdü; örnekler 2.327, 2.531, 2.578, 2.626 ve 6.210 ms (median 2.578 ms, nearest-rank p95 6.210 ms). |
+| Sorgu planı | `EXPLAIN (ANALYZE, BUFFERS)` 2.000 kayıtlık anahtar-imleç okumasında yeni indekste `Index Only Scan Backward` kullandı; 18 shared buffer hit, 0 heap fetch ve 0,493 ms execution time ölçüldü. Bu test, servis sorgusunun joins/filtreleri dâhil toplam gecikme ölçümü değildir. |
 | Yedek ve şema uygulaması | `20261007T105109Z` yedeğinin iki SHA-256 özeti ve `pg_restore --list` doğrulandı. Migration ayrı container'da çalıştırıldı; production API/worker yeniden başlatılmadı. |
 | Canlı durum | İndeks PostgreSQL kataloğunda görünüyor. API ve worker sağlıklı, readiness `HTTP 200`. Migration container'ında dış yazmalar kapalıydı; pazaryeri isteği veya dış yazma yapılmadı. |
-| Kalan B10 kapsamı | Aynı 100.000 faturasız sentetik aday üzerinde beş örnek ve `EXPLAIN` sonucu güncel suite'te raporlanacak. Gerçek invoice/delivery karması ve staging koşullarındaki p95 hâlâ açık. |
+| Kalan B10 kapsamı | Tek indeksli tablo okuması hızlı; uçtan uca sayfa çağrısı örneklerinde 6,2 sn p95 gözlendi. Test hostunda canlı worker çalışırken CPU ve gerçek veri dağılımı sonucu etkileyebilir. Gerçek invoice/delivery karması, staging p95 ve ürün için kabul edilecek gecikme hedefi hâlâ açık. |
 
 Dolayısıyla B10'daki yavaş sorgunun kök nedeni giderilip canlı şemaya alınmıştır; tüm proje planı tamamlanmış değildir. B11 çökme/yeniden-yayın senaryosu, B12 bloke worker uyarısının uçtan uca görünmesi, B13 onaylı off-host yedek hedefi ve CI image bağı, B16 çoklu viewport regresyonu ile B18 sağlayıcı sandbox/read-only teyidi açık kalır. Bunlar ilgili ortam, onaylı yedek hedefi veya sağlayıcı erişimi olmadan güvenli biçimde kapatılamaz.
