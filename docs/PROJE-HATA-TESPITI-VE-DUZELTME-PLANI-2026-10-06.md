@@ -571,6 +571,7 @@ CI ve fast-deploy içindeki 778/778 PostgreSQL suite'i güncel `Unknown` durumlu
 | Yedek ve migration | Yedek kümesi `20261007T191157Z`; `database.dump` ve `private-volumes.tar.gz` SHA-256 kontrolleri `OK`; migration ve servis yenilemesi tamamlandı |
 | Canlı sağlık | API ve worker `marketplacehub-app:manual-d7e6f21dabc5` ile `healthy`; `/health/ready` HTTP 200 |
 | Canlı dış yazma ayarı | API ve worker `FeatureFlags__ExternalWrites=true`; mevcut üretim ayarı korundu |
+| B16 katalog seçim kutusu | Hizalama CSS'i `0608e65f` içinde ve canlı `d7e6f21d` commit'inin atası; düzeltme üretimde. 390, 1299, 1537 ve 1600 px fixture ölçümlerinde başlık/satır kutusu farkı 0 px; geniş sayfa/regresyon matrisi açık |
 | Kalan B13 | Yedeğin onaylı, şifreli off-host hedefe aktarılması ve CI imaj digest'inin kaynak commit'e bağlanması henüz kanıtlanmadı |
 
 Yedek kümesi yalnız sunucunun yerel yedek alanında oluşturuldu ve checksum'ları kontrol edildi; off-host kopya yapılmadı. Bu adıma geçmek için onaylanmış hedef deposu ve erişim yöntemi gerekir. Tam proje planı bu nedenle **tamamlandı** sayılmaz; önceki bölümlerdeki B10, B11, B12, B16 ve B18 kanıtları da açık kalır.
