@@ -489,3 +489,16 @@ Aynı izole, iç ağı dışa kapalı PostgreSQL benchmark'ı güncel 10.000 bat
 25.000 batch p95'i düşürmedi ve en yavaş örnek daha yüksek çıktı; bu nedenle canlı 10.000 ayarı korunuyor. Her iki ölçüm tek tenantlı, faturasız sentetik fixture'dır. 1 saniye başlangıç hedefi karşılanmıyor; karışık fatura/delivery verisiyle staging ölçümü ve ürün için kabul edilecek gecikme hedefi açık kalıyor.
 
 **Proje planı hâlâ kısmen açık.** B10 ölçüm/hedef, B11 uzun dönem hacim etkisi, B12 bloke işte uçtan uca alarm, B13 off-host yedek ve CI-image bağı, B16 çoklu viewport görsel regresyonu ve B18 sağlayıcı sözleşmesi için ortam kanıtı henüz tamamlanmadı.
+
+## 16. B10 100.000 aday tekrar ölçümü ve test izolasyonu
+
+7 Ekim'de hedefli `InvoiceWorkspacePage_ProcessesOneHundredThousandCandidatesAndReturnsOnlyOnePage` PostgreSQL testi tekrar çalıştırıldı. Test yalnız `validation` profiline ait izole PostgreSQL konteynerini kullandı; Docker `validation` ağı `internal: true`, test sürecinin `FeatureFlags__ExternalWrites` değeri `false` idi. Test fixture'ı 100.000 sentetik kaydı doğrulama veritabanına ekleyip temizledi. Pazaryeri/provider HTTP çağrısı veya dış yazma yapılmadı.
+
+| Ölçüm | Sonuç |
+|---|---|
+| Doğruluk | 1/1 test geçti; 100.000 toplam, 20 satır dönen sayfa ve 5.000 sayfa sayısı doğrulandı |
+| Uygulama isteği | 2.212, 2.314, 2.320, 2.607 ve 3.873 ms; median 2.320 ms, nearest-rank p95 3.873 ms |
+| Aday tarama SQL'i | EF komut günlüğünde 10.000 satırlı aday sorgularının örnekleri 116–641 ms aralığındaydı; toplam sürede asıl maliyet basit indeksli sıralama değil, `JOIN`/filtre/projeksiyonlu aday taraması olarak görünüyor |
+| Basit indeks planı | Aynı fixture'da `EXPLAIN (ANALYZE, BUFFERS)` 2.000 satırlı yalın keyset okumasında indeksi kullandı ve 0,879 ms ölçtü. Bu plan, servis sorgusundaki joins ve filtreleri kapsamaz; yeni eklenen satırlar nedeniyle 2.000 heap fetch görüldü |
+
+B10'un indeks kök nedeni giderilmiş olsa da uçtan uca p95 hedefi karşılanmıyor. Sonraki teknik adım, gerçek servis sorgusunun `EXPLAIN (ANALYZE, BUFFERS)` planını ve `JOIN`/filtre sürelerini tenant veri dağılımına yakın bir staging fixture'ında ayrıştırıp pahalı adayı erken eleyen sorgu biçimini belirlemektir. 10.000 batch ayarı şimdilik korunuyor; bu tek sentetik tekrar ayar değişikliğini desteklemiyor.
