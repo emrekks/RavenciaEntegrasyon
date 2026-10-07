@@ -1057,7 +1057,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 new CursorCodec(dataProtection, fixture.TimeProvider),
                 dataProtection,
                 fixture.TokenHasher,
-                fixture.TimeProvider,
+                new FixedTimeProvider(now),
                 new ConfigurationBuilder().Build());
 
             var result = await service.SyncPoliciesAsync(tenant.Id, connection.Id, CancellationToken.None);
