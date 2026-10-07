@@ -189,6 +189,11 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             var configuredMinutes = configuration.GetValue<double?>("Worker:TrendyolCargoInfoTimeoutMinutes") ?? 30;
             execution.CancelAfter(TimeSpan.FromMinutes(Math.Clamp(configuredMinutes, 1, 60)));
         }
+        else if (job.JobType == MarketplaceJobTypes.OrderStatusSync)
+        {
+            var configuredMinutes = configuration.GetValue<double?>("Worker:TrendyolOrderStatusTimeoutMinutes") ?? 20;
+            execution.CancelAfter(TimeSpan.FromMinutes(Math.Clamp(configuredMinutes, 1, 60)));
+        }
         else if (IsOrderReadSyncJob(job.JobType))
         {
             var configuredMinutes = configuration.GetValue<double?>("Worker:OrderReadSyncTimeoutMinutes")

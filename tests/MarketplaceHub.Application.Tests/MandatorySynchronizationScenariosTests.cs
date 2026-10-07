@@ -80,6 +80,18 @@ public sealed class MandatorySynchronizationScenariosTests
         Assert.Equal(now.AddDays(-90), OpenOrderLifecyclePolicy.TrendyolCargoInfoLookbackCutoff(now));
     }
 
+    [Theory]
+    [InlineData("TRENDYOL", 5, 1, 1)]
+    [InlineData("SHOPIFY", 5, 1, 5)]
+    [InlineData("HEPSIBURADA", 5, 0, 5)]
+    [InlineData("TRENDYOL", 5, 0, 1)]
+    public void Trendyol_lifecycle_uses_small_bounded_batches(
+        string platformCode,
+        int defaultBatchSize,
+        int trendyolBatchSize,
+        int expected) =>
+        Assert.Equal(expected, OpenOrderLifecyclePolicy.LifecycleBatchSize(platformCode, defaultBatchSize, trendyolBatchSize));
+
     [Fact]
     public void HepsiburadaUndeliveredOrderDoesNotShowShipmentDeadlineWarning()
     {

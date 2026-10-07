@@ -117,6 +117,11 @@ public static class OpenOrderLifecyclePolicy
 {
     public const int TrendyolCargoInfoLookbackDays = 90;
 
+    public static int LifecycleBatchSize(string? platformCode, int defaultBatchSize, int trendyolBatchSize) =>
+        Math.Clamp(string.Equals(platformCode?.Trim(), "TRENDYOL", StringComparison.OrdinalIgnoreCase)
+            ? trendyolBatchSize
+            : defaultBatchSize, 1, 100);
+
     public static DateTimeOffset HepsiburadaPackageStatusHistoryCutoff(DateTimeOffset now) => now.AddMonths(-1);
 
     public static DateTimeOffset HepsiburadaUnpackagedOrderVerificationCutoff(DateTimeOffset now) => HepsiburadaPackageStatusHistoryCutoff(now);

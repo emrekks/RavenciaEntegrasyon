@@ -2363,7 +2363,10 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             .SingleOrDefaultAsync(cancellationToken);
         var isShopify = platformCode == "SHOPIFY";
         var isHepsiburada = platformCode == "HEPSIBURADA";
-        var lifecycleBatchSize = Math.Clamp(configuration.GetValue("MarketplaceSync:OrderLifecycle:BatchSize", 25), 1, 100);
+        var lifecycleBatchSize = OpenOrderLifecyclePolicy.LifecycleBatchSize(
+            platformCode,
+            configuration.GetValue("MarketplaceSync:OrderLifecycle:BatchSize", 25),
+            configuration.GetValue("MarketplaceSync:OrderLifecycle:TrendyolBatchSize", 1));
         var cursor = await Cursor(tenantId, connectionId, "ORDER_LIFECYCLE", cancellationToken);
         List<string> externalOrderIds;
         if (isHepsiburada)
@@ -2403,6 +2406,36 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 externalOrderIds = await lifecycleOrders
                     .OrderBy(order => order.ExternalOrderId)
                     .Select(order => order.ExternalOrderId)
+                    .Take(lifecycleBatchSize)
+                    .ToListAsync(cancellationToken);
+            }
+            cursor.OpaqueCursor = externalOrderIds.Count == lifecycleBatchSize
+                ? (lifecycleOffset + externalOrderIds.Count).ToString(CultureInfo.InvariantCulture)
+                : null;
+        }
+        else if (platformCode == "TRENDYOL")
+        {
+            var lifecycleOrders = from package in db.ShipmentPackages.AsNoTracking()
+                                  join order in db.Orders.AsNoTracking()
+                                      on new { package.TenantId, package.OrderId } equals new { order.TenantId, OrderId = order.Id }
+                                  where package.TenantId == tenantId && package.ConnectionId == connectionId
+                                      && package.Status != ShipmentPackageStatus.Delivered
+                                      && package.Status != ShipmentPackageStatus.Cancelled
+                                      && package.Status != ShipmentPackageStatus.Returned
+                                  group package by order.ExternalOrderId into openOrder
+                                  select openOrder.Key;
+            var lifecycleOffset = int.TryParse(cursor.OpaqueCursor, NumberStyles.None, CultureInfo.InvariantCulture, out var savedOffset)
+                ? Math.Max(0, savedOffset)
+                : 0;
+            var orderedLifecycleOrders = lifecycleOrders.OrderBy(externalOrderId => externalOrderId);
+            externalOrderIds = await orderedLifecycleOrders
+                .Skip(lifecycleOffset)
+                .Take(lifecycleBatchSize)
+                .ToListAsync(cancellationToken);
+            if (externalOrderIds.Count == 0 && lifecycleOffset > 0)
+            {
+                lifecycleOffset = 0;
+                externalOrderIds = await orderedLifecycleOrders
                     .Take(lifecycleBatchSize)
                     .ToListAsync(cancellationToken);
             }
