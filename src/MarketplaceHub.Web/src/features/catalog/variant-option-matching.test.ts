@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { displayVariantOptionEntries, formatColorOptionValue, matchingVariantOptionValues, mergeVariantOptionEntries, mergeVariantOptionValues, normalizeVariantOptionValue } from './variant-option-matching'
+import { displayVariantOptionEntries, formatColorOptionValue, matchingVariantOptionValues, mergeVariantOptionEntries, mergeVariantOptionValues, normalizeVariantOptionValue, parseVariantOptionSignature } from './variant-option-matching'
 
 describe('variant option matching', () => {
   it('treats Turkish dotted and ASCII-uppercase I spellings as the same option value', () => {
@@ -21,6 +21,13 @@ describe('variant option matching', () => {
       { name: 'Desen', value: 'Çiçekli' },
       { name: 'Menşei', value: 'TR' },
     ])).toEqual([
+      { name: 'Beden', value: 'M' },
+      { name: 'Renk', value: 'Siyah' },
+    ])
+  })
+
+  it('parses middle-dot separated option signatures before hiding non-color and non-size features', () => {
+    expect(displayVariantOptionEntries(parseVariantOptionSignature('Beden: M · Renk: Siyah · Astar Durumu: Astarsız'))).toEqual([
       { name: 'Beden', value: 'M' },
       { name: 'Renk', value: 'Siyah' },
     ])

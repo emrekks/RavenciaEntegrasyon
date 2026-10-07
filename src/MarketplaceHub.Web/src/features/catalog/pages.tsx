@@ -16,7 +16,7 @@ import { isStoredProductMediaUrl, mediaImageKey, mediaRefsEqual, mediaRefsSameSe
 import { applyVariantBulkEditValue, updateVariantGroupSelection, variantBulkEditIssue, variantGroupSelectionState, type VariantBulkEditField } from './variant-bulk-edit'
 import { applyGeneratedVariantCodes, buildSequentialVariantCodes, buildVariantGenerationDefaults, resolveVariantSyncAttributeIds } from './variant-generation'
 import { filterVariantsByOptions, selectVariantDraftsByKeys, type VariantOptionFilterSelections } from './variant-filtering'
-import { displayVariantOptionEntries, formatColorOptionValue, matchingVariantOptionValues, mergeVariantOptionEntries, mergeVariantOptionValues, normalizeVariantOptionValue } from './variant-option-matching'
+import { displayVariantOptionEntries, formatColorOptionValue, matchingVariantOptionValues, mergeVariantOptionEntries, mergeVariantOptionValues, normalizeVariantOptionValue, parseVariantOptionSignature } from './variant-option-matching'
 import { classifyPublicationAttributeIssues, type PublicationAttributeSelection, type PublicationMappingReference, type PublicationValueReferenceSet } from './publication-attribute-readiness'
 import { PublicationReadinessSourceError, publicationReadinessFailureDetail, readPublicationReadinessSource } from './publication-readiness-error'
 import { productMediaUrlIssue } from './product-media-url'
@@ -337,16 +337,6 @@ function formatCatalogOptionLabel(value: string) {
 function preferredColorOption(options: ParsedVariantOption[]) {
   return options.find(option => isColorOptionName(option.name) && !isWebColorOptionName(option.name))
     ?? options.find(option => isColorOptionName(option.name))
-}
-
-function parseVariantOptionSignature(signature: string): ParsedVariantOption[] {
-  return signature.split(/\s*\|\s*|_(?=[^_:=]+\s*[:=])/).flatMap(part => {
-    const separatorIndex = part.search(/\s*[:=]/)
-    if (separatorIndex < 0) return []
-    const name = part.slice(0, separatorIndex).trim()
-    const value = cleanOptionValue(part.slice(separatorIndex).replace(/^\s*[:=]\s*/, ''))
-    return name && value ? [{ name, value }] : []
-  })
 }
 
 function displayVariantOptionSignature(signature: string) {

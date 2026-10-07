@@ -1,6 +1,16 @@
 export type VariantOptionEntry = { name: string; value: string }
 export type VariantOptionValue = { id: string; value: string }
 
+export function parseVariantOptionSignature(signature: string): VariantOptionEntry[] {
+  return signature.split(/\s*(?:\||·)\s*|_(?=[^_:=]+\s*[:=])/).flatMap(part => {
+    const separatorIndex = part.search(/\s*[:=]/)
+    if (separatorIndex < 0) return []
+    const name = part.slice(0, separatorIndex).trim()
+    const value = part.slice(separatorIndex).replace(/^\s*[:=]\s*/, '').replace(/^["“”]+|["“”]+$/g, '').trim()
+    return name && value ? [{ name, value }] : []
+  })
+}
+
 function normalizeOptionName(name: string) {
   return name.replace(/[\s_-]+/g, '').toUpperCase()
 }
