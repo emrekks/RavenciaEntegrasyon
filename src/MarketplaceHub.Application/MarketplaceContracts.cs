@@ -18,6 +18,7 @@ public static class MarketplaceJobTypes
     public const string OrderSync = "TRENDYOL_ORDER_SYNC";
     public const string OrderRecoverySync = "TRENDYOL_ORDER_RECOVERY_SYNC";
     public const string OrderStatusSync = "TRENDYOL_ORDER_STATUS_SYNC";
+    public const string TrendyolOrderCargoInfoReconciliation = "TRENDYOL_ORDER_CARGO_INFO_RECONCILIATION";
     public const string OrderReconciliation = "TRENDYOL_ORDER_RECONCILIATION";
     public const string OrderInvoiceReconciliation = "TRENDYOL_ORDER_INVOICE_RECONCILIATION";
     public const string ProductSync = "TRENDYOL_PRODUCT_SYNC";
@@ -63,7 +64,7 @@ public static class MarketplaceJobTypes
         or PriceInventorySync or StockProjectionDispatch
         or OrderSync or ShopifyOrderSync or HepsiburadaOrderSync
         or OrderRecoverySync or ShopifyOrderRecoverySync or HepsiburadaOrderRecoverySync
-        or OrderStatusSync or ShopifyOrderStatusSync or HepsiburadaOrderStatusSync
+        or OrderStatusSync or ShopifyOrderStatusSync or HepsiburadaOrderStatusSync or TrendyolOrderCargoInfoReconciliation
         or OrderReconciliation or ShopifyOrderReconciliation
         or OrderInvoiceReconciliation or ShopifyOrderInvoiceReconciliation or HepsiburadaOrderInvoiceReconciliation
         or ShipmentAction or CommonLabel or CapabilityProbe or StageTestOrder

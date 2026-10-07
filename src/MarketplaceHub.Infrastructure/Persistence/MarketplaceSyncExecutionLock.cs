@@ -81,6 +81,9 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
         // changes for the same connection, while their read-back can safely
         // merge with the order projection when the sync lane is active.
         if (type.Contains("SHIPMENT_ACTION", StringComparison.Ordinal)) return "shipment-actions";
+        // Historical cargo lookups can scan many pages; keep them out of the
+        // lifecycle lane so a slow metadata repair cannot hold up status polling.
+        if (type == MarketplaceJobTypes.TrendyolOrderCargoInfoReconciliation) return "order-cargo-info";
         // Trendyol invoice reconciliation only reads package data and merges
         // invoice fields. Keeping it out of the full order-read lane prevents
         // a long order scan from starving invoice status refreshes.

@@ -12,7 +12,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
     private static readonly string[] OrderReadSyncJobTypes =
     [
         MarketplaceJobTypes.OrderSync, MarketplaceJobTypes.OrderRecoverySync, MarketplaceJobTypes.OrderStatusSync,
-        MarketplaceJobTypes.OrderReconciliation, MarketplaceJobTypes.OrderInvoiceReconciliation,
+        MarketplaceJobTypes.OrderReconciliation, MarketplaceJobTypes.OrderInvoiceReconciliation, MarketplaceJobTypes.TrendyolOrderCargoInfoReconciliation,
         MarketplaceJobTypes.ShopifyOrderSync, MarketplaceJobTypes.ShopifyOrderRecoverySync, MarketplaceJobTypes.ShopifyOrderStatusSync,
         MarketplaceJobTypes.ShopifyOrderReconciliation, MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation,
         MarketplaceJobTypes.HepsiburadaOrderSync, MarketplaceJobTypes.HepsiburadaOrderRecoverySync,
@@ -183,6 +183,11 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         {
             var configuredMinutes = configuration.GetValue<double?>("Worker:OrderInvoiceReconciliationTimeoutMinutes") ?? 45;
             execution.CancelAfter(TimeSpan.FromMinutes(Math.Clamp(configuredMinutes, 1, 120)));
+        }
+        else if (job.JobType == MarketplaceJobTypes.TrendyolOrderCargoInfoReconciliation)
+        {
+            var configuredMinutes = configuration.GetValue<double?>("Worker:TrendyolCargoInfoTimeoutMinutes") ?? 30;
+            execution.CancelAfter(TimeSpan.FromMinutes(Math.Clamp(configuredMinutes, 1, 60)));
         }
         else if (IsOrderReadSyncJob(job.JobType))
         {

@@ -25,6 +25,28 @@ public sealed class HepsiburadaReferencePolicyTests
         Assert.True(ScheduledJobProducer.DefaultPolicyEnabled("TRENDYOL", resourceType));
     }
 
+    [Fact]
+    public void Trendyol_cargo_info_read_policy_is_enabled_only_for_Trendyol()
+    {
+        Assert.True(ScheduledJobProducer.DefaultPolicyEnabled("TRENDYOL", "ORDER_CARGO_INFO"));
+        Assert.False(ScheduledJobProducer.DefaultPolicyEnabled("SHOPIFY", "ORDER_CARGO_INFO"));
+        Assert.False(ScheduledJobProducer.DefaultPolicyEnabled("HEPSIBURADA", "ORDER_CARGO_INFO"));
+    }
+
+    [Fact]
+    public void Trendyol_cargo_info_schedule_default_is_recognized()
+    {
+        var policy = new MarketplaceHub.Domain.ConnectionSyncPolicy
+        {
+            ResourceType = "ORDER_CARGO_INFO",
+            IntervalSeconds = 300,
+            OverlapSeconds = 0,
+            JitterSeconds = 15
+        };
+
+        Assert.True(ScheduledJobProducer.IsKnownDefault(policy, "TRENDYOL"));
+    }
+
     [Theory]
     [InlineData("HEPSIBURADA:ACTIVE", "HEPSIBURADA", "ACTIVE")]
     [InlineData("HEPSIBURADA:PARTIAL", "HEPSIBURADA", "PARTIAL")]

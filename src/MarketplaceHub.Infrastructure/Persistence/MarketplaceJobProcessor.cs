@@ -95,6 +95,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync => await SyncOrders(tenantId, connectionId.Value, payloadJson, correlationId, "ORDERS_HOT", allowBaseline: false, cancellationToken),
                     MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync or MarketplaceJobTypes.HepsiburadaOrderRecoverySync => await SyncOrders(tenantId, connectionId.Value, payloadJson, correlationId, "ORDERS_RECOVERY", allowBaseline: true, cancellationToken),
                     MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.ShopifyOrderStatusSync or MarketplaceJobTypes.HepsiburadaOrderStatusSync => await SyncOpenOrders(tenantId, connectionId.Value, correlationId, cancellationToken),
+                    MarketplaceJobTypes.TrendyolOrderCargoInfoReconciliation => connectionState?.PlatformCode == "TRENDYOL"
+                        && await ReconcileTrendyolCargoInfo(tenantId, connectionId.Value, correlationId, cancellationToken),
                     MarketplaceJobTypes.OrderReconciliation or MarketplaceJobTypes.ShopifyOrderReconciliation => await ReconcileOrders(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                     MarketplaceJobTypes.OrderInvoiceReconciliation or MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation or MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation => await ReconcileOrderInvoices(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                     MarketplaceJobTypes.ProductSync or MarketplaceJobTypes.ShopifyProductSync or MarketplaceJobTypes.HepsiburadaProductSync => await SyncProducts(tenantId, connectionId.Value, payloadJson, correlationId, jobId, cancellationToken),
@@ -135,6 +137,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync => "ORDERS_HOT",
         MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync or MarketplaceJobTypes.HepsiburadaOrderRecoverySync => "ORDERS_RECOVERY",
         MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.ShopifyOrderStatusSync or MarketplaceJobTypes.HepsiburadaOrderStatusSync => "ORDER_LIFECYCLE",
+        MarketplaceJobTypes.TrendyolOrderCargoInfoReconciliation => "ORDER_CARGO_INFO_RECONCILIATION",
         MarketplaceJobTypes.OrderReconciliation or MarketplaceJobTypes.ShopifyOrderReconciliation => "ORDER_RECONCILIATION",
         MarketplaceJobTypes.OrderInvoiceReconciliation or MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation or MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation => "ORDER_INVOICE_RECONCILIATION",
         MarketplaceJobTypes.ReturnSync or MarketplaceJobTypes.HepsiburadaReturnSync => "RETURNS",
@@ -167,6 +170,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         or MarketplaceJobTypes.ShopifyOrderRecoverySync
         or MarketplaceJobTypes.HepsiburadaOrderRecoverySync
         or MarketplaceJobTypes.OrderStatusSync
+        or MarketplaceJobTypes.TrendyolOrderCargoInfoReconciliation
         or MarketplaceJobTypes.ShopifyOrderStatusSync
         or MarketplaceJobTypes.HepsiburadaOrderStatusSync
         or MarketplaceJobTypes.OrderReconciliation
@@ -2359,8 +2363,6 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             .SingleOrDefaultAsync(cancellationToken);
         var isShopify = platformCode == "SHOPIFY";
         var isHepsiburada = platformCode == "HEPSIBURADA";
-        if (string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase))
-            await ReconcileTrendyolCargoInfo(tenantId, connectionId, correlationId, cancellationToken);
         var lifecycleBatchSize = Math.Clamp(configuration.GetValue("MarketplaceSync:OrderLifecycle:BatchSize", 25), 1, 100);
         var cursor = await Cursor(tenantId, connectionId, "ORDER_LIFECYCLE", cancellationToken);
         List<string> externalOrderIds;
@@ -2453,7 +2455,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         return true;
     }
 
-    private async Task ReconcileTrendyolCargoInfo(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
+    private async Task<bool> ReconcileTrendyolCargoInfo(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
         var cursor = await Cursor(tenantId, connectionId, "ORDER_CARGO_INFO", cancellationToken);
@@ -2462,9 +2464,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             (int)TimeSpan.FromMinutes(1).TotalSeconds,
             (int)TimeSpan.FromDays(1).TotalSeconds);
         var interval = TimeSpan.FromSeconds(intervalSeconds);
-        if (!OpenOrderLifecyclePolicy.ShouldRunTrendyolCargoInfoReconciliation(cursor.LastAttemptAt, now, interval)) return;
+        if (!OpenOrderLifecyclePolicy.ShouldRunTrendyolCargoInfoReconciliation(cursor.LastAttemptAt, now, interval)) return true;
 
-        var batchSize = Math.Clamp(configuration.GetValue("MarketplaceSync:TrendyolCargoInfo:BatchSize", 10), 1, 25);
+        var batchSize = Math.Clamp(configuration.GetValue("MarketplaceSync:TrendyolCargoInfo:BatchSize", 1), 1, 25);
         var cutoff = OpenOrderLifecyclePolicy.TrendyolCargoInfoLookbackCutoff(now);
         var candidates =
             from package in db.ShipmentPackages.AsNoTracking()
@@ -2585,6 +2587,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         cursor.ConsecutiveFailureCount = 0;
         cursor.Version++;
         await db.SaveChangesAsync(cancellationToken);
+        return true;
     }
 
     private async Task ReconcileHepsiburadaPackageStatuses(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)

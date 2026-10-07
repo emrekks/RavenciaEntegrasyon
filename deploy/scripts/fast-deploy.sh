@@ -39,7 +39,8 @@ app_image="marketplacehub-app:manual-$revision"
 edge_image="marketplacehub-edge:manual-$revision"
 
 compose=(sudo -n env "MARKETPLACEHUB_APP_IMAGE=$app_image" "MARKETPLACEHUB_EDGE_IMAGE=$edge_image" "MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED=$external_writes_enabled" docker compose --env-file "$environment_file" -f "$base_compose" -f "$production_compose")
-validation_compose=(sudo -n env "MARKETPLACEHUB_APP_IMAGE=$app_image" "MARKETPLACEHUB_EDGE_IMAGE=$edge_image" "MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED=$external_writes_enabled" docker compose --profile validation --env-file "$environment_file" -f "$base_compose" -f "$production_compose")
+# Validation must never inherit the production marketplace-write setting.
+validation_compose=(sudo -n env "MARKETPLACEHUB_APP_IMAGE=$app_image" "MARKETPLACEHUB_EDGE_IMAGE=$edge_image" "MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED=false" docker compose --profile validation --env-file "$environment_file" -f "$base_compose" -f "$production_compose")
 
 # Resolve every production and one-shot profile before building or changing
 # containers. This catches missing variables, secret files, and invalid merged

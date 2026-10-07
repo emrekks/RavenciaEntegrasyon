@@ -9,6 +9,7 @@ public sealed class OrderReadSyncTimeoutTests
     [InlineData(MarketplaceJobTypes.OrderSync)]
     [InlineData(MarketplaceJobTypes.OrderRecoverySync)]
     [InlineData(MarketplaceJobTypes.OrderStatusSync)]
+    [InlineData(MarketplaceJobTypes.TrendyolOrderCargoInfoReconciliation)]
     [InlineData(MarketplaceJobTypes.OrderReconciliation)]
     [InlineData(MarketplaceJobTypes.OrderInvoiceReconciliation)]
     [InlineData(MarketplaceJobTypes.ShopifyOrderSync)]
@@ -36,6 +37,7 @@ public sealed class OrderReadSyncTimeoutTests
 
     [Theory]
     [InlineData(MarketplaceJobTypes.OrderStatusSync)]
+    [InlineData(MarketplaceJobTypes.TrendyolOrderCargoInfoReconciliation)]
     [InlineData(MarketplaceJobTypes.OrderSync)]
     [InlineData(MarketplaceJobTypes.OrderInvoiceReconciliation)]
     public void TimedOutOrderReadJobs_LeaveTimeForTheNextRead(string jobType)
