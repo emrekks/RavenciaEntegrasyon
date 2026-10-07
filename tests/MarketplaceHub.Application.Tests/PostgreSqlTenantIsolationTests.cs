@@ -1354,8 +1354,10 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                     var durationStart = markerStart + marker.Length;
                     var durationEnd = message.IndexOf("ms)", durationStart, StringComparison.Ordinal);
                     if (durationEnd <= durationStart || !int.TryParse(message.AsSpan(durationStart, durationEnd - durationStart), out var durationMs) || durationMs < 100) return;
-                    var commandStart = message.IndexOf("] ", durationEnd, StringComparison.Ordinal);
-                    var command = commandStart < 0 ? "" : message[(commandStart + 2)..].Replace('\r', ' ').Replace('\n', ' ');
+                    var commandStart = message.IndexOf("SELECT", durationEnd, StringComparison.OrdinalIgnoreCase);
+                    if (commandStart < 0) commandStart = message.IndexOf("WITH", durationEnd, StringComparison.OrdinalIgnoreCase);
+                    var command = commandStart < 0 ? message[durationEnd..] : message[commandStart..];
+                    command = command.Replace('\r', ' ').Replace('\n', ' ');
                     output.WriteLine($"Fatura tarama SQL'i {durationMs} ms: {command[..Math.Min(command.Length, 220)]}");
                 }, Microsoft.Extensions.Logging.LogLevel.Information)
                 .Options;
