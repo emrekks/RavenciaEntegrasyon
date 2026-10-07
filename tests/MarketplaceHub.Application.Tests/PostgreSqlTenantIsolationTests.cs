@@ -1370,17 +1370,49 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 null!,
                 new ConfigurationBuilder().Build(),
                 fixture.TimeProvider);
-            var timer = System.Diagnostics.Stopwatch.StartNew();
-            var page = await service.WorkspacePageAsync(tenant.Id,
-                new InvoiceWorkspacePageQuery(PageNumber: 1, PageSize: 20, Tab: "DUE_SOON"), CancellationToken.None);
-            timer.Stop();
+            var request = new InvoiceWorkspacePageQuery(PageNumber: 1, PageSize: 20, Tab: "DUE_SOON");
+            var sampleDurations = new long[5];
+            InvoiceWorkspacePageView? page = null;
+            for (var sampleIndex = 0; sampleIndex < sampleDurations.Length; sampleIndex++)
+            {
+                var timer = System.Diagnostics.Stopwatch.StartNew();
+                var measuredPage = await service.WorkspacePageAsync(tenant.Id, request, CancellationToken.None);
+                timer.Stop();
+                sampleDurations[sampleIndex] = timer.ElapsedMilliseconds;
+                page ??= measuredPage;
+                Assert.Equal(candidateCount, measuredPage.TotalCount);
+                Assert.Equal(candidateCount, measuredPage.DueSoonCount);
+                Assert.Equal(candidateCount, measuredPage.UninvoicedCount);
+                Assert.Equal(20, measuredPage.Items.Count);
+                Assert.Equal(5_000, measuredPage.TotalPages);
+            }
 
-            output.WriteLine($"100,000 aday için fatura sayfası: {timer.ElapsedMilliseconds} ms; dönen satır: {page.Items.Count}.");
-            Assert.Equal(candidateCount, page.TotalCount);
-            Assert.Equal(candidateCount, page.DueSoonCount);
-            Assert.Equal(candidateCount, page.UninvoicedCount);
-            Assert.Equal(20, page.Items.Count);
-            Assert.Equal(5_000, page.TotalPages);
+            Array.Sort(sampleDurations);
+            var p95Sample = sampleDurations[(int)Math.Ceiling(sampleDurations.Length * 0.95) - 1];
+            output.WriteLine($"100.000 fatura adayı: {sampleDurations.Length} istek, örnek ms=[{string.Join(",", sampleDurations)}], nearest-rank p95={p95Sample} ms; dönen satır: {page!.Items.Count}.");
+
+            await db.Database.OpenConnectionAsync();
+            try
+            {
+                await using var explainCommand = db.Database.GetDbConnection().CreateCommand();
+                explainCommand.CommandText = "EXPLAIN (ANALYZE, BUFFERS) SELECT \"Id\", \"StatusOccurredAt\" FROM sales.shipment_packages WHERE \"TenantId\" = @tenantId ORDER BY \"StatusOccurredAt\" DESC, \"Id\" DESC LIMIT 2000";
+                var tenantParameter = explainCommand.CreateParameter();
+                tenantParameter.ParameterName = "tenantId";
+                tenantParameter.Value = tenant.Id;
+                explainCommand.Parameters.Add(tenantParameter);
+                var planLines = new List<string>();
+                await using var planReader = await explainCommand.ExecuteReaderAsync(CancellationToken.None);
+                while (await planReader.ReadAsync(CancellationToken.None)) planLines.Add(planReader.GetString(0));
+                var plan = string.Join(Environment.NewLine, planLines);
+                output.WriteLine($"Fatura aday anahtar-imleç EXPLAIN: {plan}");
+                Assert.Contains("IX_shipment_packages_TenantId_StatusOccurredAt_Id", plan, StringComparison.Ordinal);
+            }
+            finally
+            {
+                await db.Database.CloseConnectionAsync();
+            }
+
+            Assert.NotNull(page);
         }
         finally
         {

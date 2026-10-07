@@ -417,7 +417,7 @@ Bu bölüm 7 Ekim 2026'daki son uygulama durumunu kaydeder ve yukarıdaki dağı
 
 **Açık kalanlar kodun deploy edilmesini engelleyen maddeler değildir; tamamlanma kanıtı için ortam/sağlayıcı erişimi gerektirir:**
 
-- **B10:** 100.000 gerçekçi fatura adayı üzerinde güncel tekrar, `EXPLAIN ANALYZE`, indeks değerlendirmesi ve staging p95 ölçümü.
+- **B10:** 100.000 faturasız fatura-adayı fixture'ında tekrar, anahtar-imleç sorgusu için `EXPLAIN (ANALYZE, BUFFERS)` ve örnek p95 kanıtı tamamlandı; canlıya ek indeks uygulandı. Gerçek faturalar içeren staging yükündeki p95 ayrıca ölçülmeli.
 - **B11:** Birden çok API örneğiyle yayın/çökme arası tekrar senaryosu ve temizlik hacmi gözlemi.
 - **B12:** Cursor/durgunluk alarmının gerçekten bloke edilmiş worker akışında kullanıcıya görünmesi ve uçtan uca teyit. Normal Trendyol worker ilerlemesi canlı iş izleme ekranında doğrulandı.
 - **B13:** Şifreli off-host yedek aktarımı ile deploy image SHA'sının CI kaydıyla bağlanması. İzole geri yükleme tatbikatı başarıyla tamamlandı; dış yedek hedefi tanımlı değil.
@@ -425,3 +425,18 @@ Bu bölüm 7 Ekim 2026'daki son uygulama durumunu kaydeder ve yukarıdaki dağı
 - **B18:** Trendyol tarih penceresi politikasının sağlayıcı sandbox'ında veya salt-okunur gerçek bağlantıda teyidi. Adaptör sözleşme testleri geçti; sağlayıcıya canlı istek gönderilmedi.
 
 Önceki raporda açık yazılan npm/NuGet audit ve tam backend/PostgreSQL testi bu son CI/deploy koşularıyla kapatıldı. B17 canlı kayıt ekranında doğrulandı; B13 restore drill'i tamamlandı. Uygulama kodu üretimde çalışıyor, ancak B10, B11, B12, B13, B16 ve B18 için kalan ortam/ölçüm/sağlayıcı kanıtları nedeniyle planın operasyonel doğrulama durumu **kısmen açık**.
+
+## 13. 7 Ekim B10 kök neden düzeltmesi ve canlı doğrulaması
+
+100.000 aday üzerinde çalışan `WorkspacePageAsync` ölçümünde her 2.000 satırlık tur kaynak paketleri `TenantId, StatusOccurredAt, Id` anahtarına göre sıralıyordu; veritabanında bu erişim ve sıralama biçimine uygun indeks yoktu. Aynı test indeksi ekleyince sayfa isteği yaklaşık 48,8 saniyeden 3,7 saniyeye indi. Yeni test beş istek örneği alıyor, nearest-rank p95'i raporluyor ve `EXPLAIN (ANALYZE, BUFFERS)` planında yeni indeksin kullanıldığını doğruluyor.
+
+| Kontrol | Sonuç |
+|---|---|
+| Kaynak revizyonu | `ba80b9ffb39d` (`perf: index invoice workspace keyset scan`), `origin/main` ve sunucu çalışma ağacı aynı commit'te |
+| Migration | `20261007104323_AddInvoiceWorkspaceKeysetIndex`; `CREATE INDEX CONCURRENTLY` ile `sales.shipment_packages(TenantId, StatusOccurredAt, Id)` eklendi |
+| Doğrulama | İzole, dış bağlantısız PostgreSQL üzerinde tam suite 773/773 geçti. Önceki 100.000 aday koşusu 20 satır döndürdü; beş örnek ve plan doğrulaması bu doğrulama güncellemesinde eklendi ve tekrar çalıştırılacak. |
+| Yedek ve şema uygulaması | `20261007T105109Z` yedeğinin iki SHA-256 özeti ve `pg_restore --list` doğrulandı. Migration ayrı container'da çalıştırıldı; production API/worker yeniden başlatılmadı. |
+| Canlı durum | İndeks PostgreSQL kataloğunda görünüyor. API ve worker sağlıklı, readiness `HTTP 200`. Migration container'ında dış yazmalar kapalıydı; pazaryeri isteği veya dış yazma yapılmadı. |
+| Kalan B10 kapsamı | Aynı 100.000 faturasız sentetik aday üzerinde beş örnek ve `EXPLAIN` sonucu güncel suite'te raporlanacak. Gerçek invoice/delivery karması ve staging koşullarındaki p95 hâlâ açık. |
+
+Dolayısıyla B10'daki yavaş sorgunun kök nedeni giderilip canlı şemaya alınmıştır; tüm proje planı tamamlanmış değildir. B11 çökme/yeniden-yayın senaryosu, B12 bloke worker uyarısının uçtan uca görünmesi, B13 onaylı off-host yedek hedefi ve CI image bağı, B16 çoklu viewport regresyonu ile B18 sağlayıcı sandbox/read-only teyidi açık kalır. Bunlar ilgili ortam, onaylı yedek hedefi veya sağlayıcı erişimi olmadan güvenli biçimde kapatılamaz.
