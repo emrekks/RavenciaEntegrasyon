@@ -2629,7 +2629,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             Assert.Equal(2, requests.Requests.Count);
             Assert.Equal("/integration/order/sellers/seller-contract-test/v2/orders", requests.Requests[0].AbsolutePath);
             Assert.Equal("4052072376", QueryValue(requests.Requests[0], "shipmentPackageIds"));
-            Assert.Equal(TrendyolOrderHistoryPolicy.StreamInitialStart(anchor).ToUnixTimeMilliseconds().ToString(), QueryValue(requests.Requests[0], "startDate"));
+            Assert.Equal(anchor.AddDays(-14).ToUnixTimeMilliseconds().ToString(), QueryValue(requests.Requests[0], "startDate"));
             Assert.Equal(anchor.ToUnixTimeMilliseconds().ToString(), QueryValue(requests.Requests[0], "endDate"));
             Assert.Equal("/integration/order/sellers/seller-contract-test/orders/stream", requests.Requests[1].AbsolutePath);
             Assert.DoesNotContain(requests.Requests, uri => uri.AbsolutePath == "/integration/order/sellers/seller-contract-test/orders");
@@ -2725,7 +2725,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             Assert.Equal(2, requests.Requests.Count);
             Assert.All(requests.Requests, uri => Assert.Equal("/integration/order/sellers/seller-contract-test/v2/orders", uri.AbsolutePath));
             Assert.All(requests.Requests, uri => Assert.Equal("419428742", QueryValue(uri, "shipmentPackageIds")));
-            Assert.All(requests.Requests, uri => Assert.Equal(TrendyolOrderHistoryPolicy.StreamInitialStart(anchor).ToUnixTimeMilliseconds().ToString(), QueryValue(uri, "startDate")));
+            Assert.All(requests.Requests, uri => Assert.Equal(anchor.AddDays(-14).ToUnixTimeMilliseconds().ToString(), QueryValue(uri, "startDate")));
             Assert.All(requests.Requests, uri => Assert.Equal(anchor.ToUnixTimeMilliseconds().ToString(), QueryValue(uri, "endDate")));
         }
         finally
