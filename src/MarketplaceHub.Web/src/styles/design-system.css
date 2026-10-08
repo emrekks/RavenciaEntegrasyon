@@ -1006,9 +1006,9 @@
   .product-import-options-grid { display: grid; grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--rv-space-2); }
   .product-import-body > fieldset:nth-of-type(3) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .product-import-body > fieldset:nth-of-type(3) > legend { grid-column: 1 / -1; }
-  /* Full and existing-only imports always refresh their matched cards in place;
-     there is no alternate content-preservation mode to expose. */
-  .product-import-body > fieldset:nth-of-type(3) .product-import-update-existing-option { display: none; }
+  /* Keep the content refresh switch hidden, but leave its independent
+     price/stock option visible for full and existing-only imports. */
+  .product-import-body > fieldset:nth-of-type(3) .product-import-update-existing-option:first-of-type { display: none; }
   /* Mapping keeps its catalog scope fixed, but still exposes the optional
      Trendyol approval-pending scan. */
   .product-import-scan-grid .product-import-mode { min-height: 100%; }
