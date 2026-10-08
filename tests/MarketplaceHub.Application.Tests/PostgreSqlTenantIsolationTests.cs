@@ -2643,7 +2643,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
-    public async Task TrendyolShipmentPackageReadback_SearchesInternationalStorefrontAfterEmptyTurkeyResult()
+    public async Task TrendyolTargetedReads_SearchInternationalStorefrontAndUseTwoWeekWindow()
     {
         var tenant = NewTenant("trendyol-intl-package");
         var anchor = DateTimeOffset.Parse("2026-10-02T00:00:00Z");
@@ -2727,6 +2727,17 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             Assert.All(requests.Requests, uri => Assert.Equal("419428742", QueryValue(uri, "shipmentPackageIds")));
             Assert.All(requests.Requests, uri => Assert.Equal(anchor.AddDays(-14).ToUnixTimeMilliseconds().ToString(), QueryValue(uri, "startDate")));
             Assert.All(requests.Requests, uri => Assert.Equal(anchor.ToUnixTimeMilliseconds().ToString(), QueryValue(uri, "endDate")));
+
+            var orderLookupStart = requests.Requests.Count;
+            var orderResult = await client.GetAsync(context, "116483573775", CancellationToken.None);
+
+            Assert.True(orderResult.IsSuccess, orderResult.Error?.SafeMessage);
+            Assert.Equal("116483573775", orderResult.Value!.ExternalOrderId);
+            var orderLookupRequests = requests.Requests.Skip(orderLookupStart).ToArray();
+            Assert.Equal(["TR", "TR", "AE"], storeFrontCodes.Skip(2));
+            Assert.All(orderLookupRequests, uri => Assert.Equal("116483573775", QueryValue(uri, "orderNumber")?.Trim('"')));
+            Assert.All(orderLookupRequests, uri => Assert.Equal(anchor.AddDays(-14).ToUnixTimeMilliseconds().ToString(), QueryValue(uri, "startDate")));
+            Assert.All(orderLookupRequests, uri => Assert.Equal(anchor.ToUnixTimeMilliseconds().ToString(), QueryValue(uri, "endDate")));
         }
         finally
         {
