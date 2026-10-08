@@ -224,7 +224,7 @@ public static class TargetedOrderSyncConflictPolicy
             return TargetedOrderSyncConflictResolution.PromotePending;
 
         if (string.IsNullOrWhiteSpace(conflictingExternalOrderId)
-            && conflictingStatus is JobStatus.Leased or JobStatus.RetryScheduled
+            && conflictingStatus is JobStatus.Pending or JobStatus.Leased or JobStatus.RetryScheduled
             && IsOrderSyncLaneJob(requestedJobType, conflictingJobType))
             return TargetedOrderSyncConflictResolution.QueueBehindActiveWork;
 

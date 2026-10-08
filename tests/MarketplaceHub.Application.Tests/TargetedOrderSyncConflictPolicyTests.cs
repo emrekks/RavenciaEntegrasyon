@@ -97,6 +97,23 @@ public sealed class TargetedOrderSyncConflictPolicyTests
         Assert.Equal(TargetedOrderSyncConflictResolution.QueueBehindActiveWork, resolution);
     }
 
+    [Theory]
+    [InlineData(MarketplaceJobTypes.OrderRecoverySync)]
+    [InlineData(MarketplaceJobTypes.OrderStatusSync)]
+    [InlineData(MarketplaceJobTypes.OrderReconciliation)]
+    public void TargetedTrendyolReadQueuesBehindPendingOrderLaneJob(string blockerType)
+    {
+        var resolution = TargetedOrderSyncConflictPolicy.Resolve(
+            MarketplaceJobTypes.OrderSync,
+            "11376153333",
+            blockerType,
+            conflictingExternalOrderId: null,
+            conflictingStatus: JobStatus.Pending,
+            conflictingJobHasStarted: false);
+
+        Assert.Equal(TargetedOrderSyncConflictResolution.QueueBehindActiveWork, resolution);
+    }
+
     [Fact]
     public void TargetedReadReusesSameOrderBeforePromotingAnotherPendingRead()
     {
@@ -145,13 +162,26 @@ public sealed class TargetedOrderSyncConflictPolicyTests
     [Theory]
     [InlineData(MarketplaceJobTypes.HepsiburadaOrderRecoverySync)]
     [InlineData(MarketplaceJobTypes.HepsiburadaOrderStatusSync)]
-    [InlineData(MarketplaceJobTypes.OrderSync)]
-    public void TargetedReadDoesNotOverwriteOtherOrderWork(string conflictingType)
+    public void TargetedHepsiburadaReadQueuesBehindOtherPendingOrderWork(string conflictingType)
     {
         var resolution = TargetedOrderSyncConflictPolicy.Resolve(
             MarketplaceJobTypes.HepsiburadaOrderSync,
             "4146480888",
             conflictingType,
+            null,
+            JobStatus.Pending,
+            conflictingJobHasStarted: false);
+
+        Assert.Equal(TargetedOrderSyncConflictResolution.QueueBehindActiveWork, resolution);
+    }
+
+    [Fact]
+    public void TargetedReadRejectsACrossPlatformOrderConflict()
+    {
+        var resolution = TargetedOrderSyncConflictPolicy.Resolve(
+            MarketplaceJobTypes.HepsiburadaOrderSync,
+            "4146480888",
+            MarketplaceJobTypes.OrderSync,
             null,
             JobStatus.Pending,
             conflictingJobHasStarted: false);
