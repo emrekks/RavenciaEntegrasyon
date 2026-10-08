@@ -89,6 +89,9 @@ run_verified_backup() {
 }
 run_verified_backup
 
+# Keep a daily, verified restore point and prune backup sets older than 72 hours.
+bash "$repository_root/deploy/scripts/install-backup-timer.sh"
+
 # Keep the currently serving API/worker/edge alive until the new database
 # migration has completed successfully. Compose's depends_on condition also
 # protects a fresh stack, but starting the one-shot migration separately makes

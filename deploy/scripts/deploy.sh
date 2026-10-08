@@ -77,6 +77,9 @@ echo "Production configuration passed fail-closed validation."
 
 "${compose[@]}" pull postgres migrate api worker caddy
 run_verified_backup
+
+# Keep a daily, verified restore point and prune backup sets older than 72 hours.
+bash "$repository_root/deploy/scripts/install-backup-timer.sh"
 "${compose[@]}" up -d postgres migrate api worker caddy
 if [[ "$bootstrap" == true ]]; then
   bootstrap_stack=("${compose[@]}" -f "$bootstrap_compose")

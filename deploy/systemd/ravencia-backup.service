@@ -1,0 +1,14 @@
+[Unit]
+Description=Create and verify the daily Ravencia database and private-volume backup
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/RavenciaEntegrasyon
+ExecStart=/home/ubuntu/RavenciaEntegrasyon/deploy/scripts/daily-backup.sh
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
