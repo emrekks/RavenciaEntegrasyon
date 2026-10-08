@@ -888,7 +888,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         return await EnqueueRead(tenantId, connectionId, MarketplaceCapabilities.OrderRead, type, JsonSerializer.Serialize(new { connectionId, externalOrderId, full, packageNumber = normalizedPackageNumber }), correlationId, cancellationToken);
     }
 
-    public async Task<ServiceResult<Guid>> EnqueueProductSyncAsync(Guid tenantId, Guid connectionId, bool full, bool newOnly, bool existingOnly, bool mappingOnly, bool optionsOnly, bool includeArchived, bool includeDrafts, bool includePendingApproval, bool updateExistingProducts, string? productLookup, string correlationId, CancellationToken cancellationToken)
+    public async Task<ServiceResult<Guid>> EnqueueProductSyncAsync(Guid tenantId, Guid connectionId, bool full, bool newOnly, bool existingOnly, bool mappingOnly, bool optionsOnly, bool includeArchived, bool includeDrafts, bool includePendingApproval, bool updateExistingProducts, bool updateExistingPricesAndStock, string? productLookup, string correlationId, CancellationToken cancellationToken)
     {
         var platform = await db.PlatformConnections.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.Id == connectionId)
@@ -906,6 +906,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             includeDrafts = false;
             includePendingApproval = true;
             updateExistingProducts = false;
+            updateExistingPricesAndStock = false;
             productLookup = null;
         }
         includePendingApproval = includePendingApproval
@@ -926,10 +927,12 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             includeArchived = true;
             includeDrafts = true;
             updateExistingProducts = false;
+            updateExistingPricesAndStock = false;
             optionsOnly = false;
         }
+        updateExistingPricesAndStock = updateExistingPricesAndStock && (full || existingOnly) && !newOnly && !mappingOnly && !optionsOnly && !string.Equals(platform, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase);
         var type = MarketplaceJobTypes.ForPlatform(platform, MarketplaceJobTypes.ProductSync);
-        return await EnqueueRead(tenantId, connectionId, MarketplaceCapabilities.ProductRead, type, JsonSerializer.Serialize(new { connectionId, full, newOnly, existingOnly, mappingOnly, optionsOnly, includeArchived, includeDrafts, includePendingApproval, updateExistingProducts, productLookup }), correlationId, cancellationToken);
+        return await EnqueueRead(tenantId, connectionId, MarketplaceCapabilities.ProductRead, type, JsonSerializer.Serialize(new { connectionId, full, newOnly, existingOnly, mappingOnly, optionsOnly, includeArchived, includeDrafts, includePendingApproval, updateExistingProducts, updateExistingPricesAndStock, productLookup }), correlationId, cancellationToken);
     }
 
     public Task<ServiceResult<Guid>> EnqueueReferenceSyncAsync(Guid tenantId, Guid connectionId, string resourceType, string? parentExternalId, string correlationId, CancellationToken cancellationToken)
