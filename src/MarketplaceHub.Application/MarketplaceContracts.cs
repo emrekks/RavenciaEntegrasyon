@@ -289,6 +289,7 @@ public static class MarketplaceExternalWritePolicies
 public static class MarketplaceCapabilities
 {
     public const string ConnectionTest = "CONNECTION_TEST";
+    public const string ShopifyAppScopes = "SHOPIFY_APP_SCOPES";
     public const string ReferenceRead = "REFERENCE_READ";
     public const string ProductRead = "PRODUCT_READ";
     public const string ProductWrite = "PRODUCT_WRITE";

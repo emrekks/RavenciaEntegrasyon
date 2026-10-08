@@ -11963,6 +11963,11 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .shopify-write-toggle-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .shopify-write-controls .integration-write-toggle.is-disabled { opacity: .68; cursor: not-allowed; }
 .shopify-write-requirements { margin: 0; color: var(--rv-color-muted); font-size: 12px; line-height: 1.5; }
+.shopify-scope-status { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--rv-color-border); border-radius: 12px; background: var(--rv-color-surface-raised); }
+.shopify-scope-status > strong { font-size: 13px; }
+.shopify-scope-status > small { color: var(--rv-color-muted); font-size: 12px; line-height: 1.5; }
+.shopify-scope-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.shopify-scope-tags code { padding: 4px 7px; border: 1px solid var(--rv-color-border); border-radius: 999px; color: var(--rv-color-text-secondary); font-size: 11px; }
 @media (max-width: 700px) { .shopify-write-toggle-list { grid-template-columns: minmax(0, 1fr); } }
 .marketplace-pricing-modal { width: min(650px, calc(100vw - 32px)); max-height: min(860px, calc(100vh - 32px)); }
 .marketplace-pricing-modal { width: min(760px, calc(100vw - 32px)); }

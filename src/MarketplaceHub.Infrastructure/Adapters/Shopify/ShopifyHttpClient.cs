@@ -32,6 +32,7 @@ public sealed class ShopifyHttpClient(
     private const string TaxonomyCategoryFields = "nodes { id name fullName parentId level isLeaf isArchived } pageInfo { hasNextPage endCursor }";
     private const string TaxonomyRootsQuery = "query($first:Int!, $after:String) { taxonomy { categories(first:$first, after:$after) { " + TaxonomyCategoryFields + " } } }";
     private const string TaxonomyDescendantsQuery = "query($first:Int!, $after:String, $rootId:ID!) { taxonomy { categories(first:$first, after:$after, descendantsOf:$rootId) { " + TaxonomyCategoryFields + " } } }";
+    private const string GrantedScopesQuery = "query { currentAppInstallation { accessScopes { handle } } }";
 
     private static string OrderFields(string customerFields) => $"{OrderIdentityFields}{customerFields}{OrderFinancialFields}";
     private static string OrderPageQuery(string fields) => "query($first:Int!, $after:String, $query:String) { orders(first:$first, after:$after, query:$query, sortKey:UPDATED_AT, reverse:false) { edges { cursor node { " + fields + " } } pageInfo { hasNextPage endCursor } } }";
@@ -96,14 +97,59 @@ public sealed class ShopifyHttpClient(
         var products = await ListCatalogAsync(context, new(null, 1), new(null), cancellationToken);
         var orders = await PollAsync(context, new OrderPollWindow(null, now, null), new(null, 1), cancellationToken);
         var categories = await ReadAsync(context, new("CATEGORIES", null), new(null, 1), cancellationToken);
+        var shopContext = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
+        if (shopContext is null) return Fail<IReadOnlyList<CapabilityEvidence>>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized);
+        var scopeResult = await QueryAsync(shopContext, GrantedScopesQuery, cancellationToken: cancellationToken);
         var evidence = new List<CapabilityEvidence>
         {
-            Supported(MarketplaceCapabilities.ConnectionTest, identity, "https://shopify.dev/docs/api/admin-graphql", "Shopify mağaza, uygulama tokenı, ürün/sipariş ve müşteri okuma izinleri, para birimi ve depo bilgileri doğrulandı.", now, "read_products,read_inventory,read_orders,read_customers,read_locations")
+            Supported(MarketplaceCapabilities.ConnectionTest, identity, "https://shopify.dev/docs/api/admin-graphql", "Shopify mağaza, para birimi ve depo bilgileri doğrulandı.", now)
         };
+        evidence.Add(ShopifyScopeEvidence(identity, scopeResult, now));
         evidence.Add(Probe(MarketplaceCapabilities.ProductRead, identity, "https://shopify.dev/docs/api/admin-graphql/latest/objects/Product", products, "GraphQL ürün ve varyant okuması", now, "read_products,read_inventory"));
         evidence.Add(Probe(MarketplaceCapabilities.OrderRead, identity, "https://shopify.dev/docs/api/admin-graphql/latest/objects/Order", orders, "GraphQL sipariş, müşteri ve teslimat durumu okuması", now, "read_orders,read_customers"));
         evidence.Add(Probe(MarketplaceCapabilities.ReferenceRead, identity, "https://shopify.dev/docs/api/admin-graphql/latest/queries/taxonomy", categories, "GraphQL ürün taksonomisi kategori okuması", now, "read_products"));
         return AdapterResult<IReadOnlyList<CapabilityEvidence>>.Success(evidence, products.RateLimit ?? orders.RateLimit ?? categories.RateLimit);
+    }
+
+    private static CapabilityEvidence ShopifyScopeEvidence(ConnectionIdentity identity, AdapterResult<JsonDocument> result, DateTimeOffset verifiedAt)
+    {
+        const string source = "https://shopify.dev/docs/apps/build/authentication-authorization/manage-access-scopes";
+        if (!result.IsSuccess)
+            return new(MarketplaceCapabilities.ShopifyAppScopes, "UNKNOWN", identity.ApiVersion, identity.Environment, identity.ExternalStoreId, source, identity.ApiVersion, null, null,
+                $"Shopify uygulama izinleri okunamadı: {result.Error?.SafeMessage ?? "Shopify yanıtı alınamadı."}", null, verifiedAt);
+
+        try
+        {
+            var scopes = MapGrantedScopes(result.Value!.RootElement);
+            var details = JsonSerializer.Serialize(new { grantedScopes = scopes });
+            var note = scopes.Count == 0
+                ? "Shopify tokenında kayıtlı uygulama izni bulunamadı."
+                : $"Shopify tokenında {scopes.Count} uygulama izni doğrulandı.";
+            return Supported(MarketplaceCapabilities.ShopifyAppScopes, identity, source, note, verifiedAt, constraintsJson: details);
+        }
+        catch (JsonException)
+        {
+            return new(MarketplaceCapabilities.ShopifyAppScopes, "UNKNOWN", identity.ApiVersion, identity.Environment, identity.ExternalStoreId, source, identity.ApiVersion, null, null,
+                "Shopify uygulama izinleri beklenen biçimde dönmedi.", null, verifiedAt);
+        }
+    }
+
+    public static IReadOnlyList<string> MapGrantedScopes(JsonElement root)
+    {
+        if (!root.TryGetProperty("currentAppInstallation", out var installation)
+            || installation.ValueKind != JsonValueKind.Object
+            || !installation.TryGetProperty("accessScopes", out var accessScopes)
+            || accessScopes.ValueKind != JsonValueKind.Array)
+            throw new JsonException("Shopify access scopes are missing.");
+
+        return accessScopes.EnumerateArray()
+            .Where(scope => scope.ValueKind == JsonValueKind.Object && scope.TryGetProperty("handle", out var handle) && handle.ValueKind == JsonValueKind.String)
+            .Select(scope => scope.GetProperty("handle").GetString()?.Trim())
+            .Where(handle => !string.IsNullOrWhiteSpace(handle))
+            .Select(handle => handle!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(handle => handle, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     public async Task<AdapterResult<AdapterPageResult<RemoteReferenceItem>>> ReadAsync(AdapterContext context, ReferenceResource resource, AdapterPageRequest page, CancellationToken cancellationToken)
@@ -754,7 +800,7 @@ public sealed class ShopifyHttpClient(
             : null;
         return new(available, null, retryAfter);
     }
-    private static CapabilityEvidence Supported(string code, ConnectionIdentity identity, string source, string note, DateTimeOffset verified, string? scope = null) => new(code, "SUPPORTED", identity.ApiVersion, identity.Environment, identity.ExternalStoreId, source, identity.ApiVersion, scope, null, note, null, verified);
+    private static CapabilityEvidence Supported(string code, ConnectionIdentity identity, string source, string note, DateTimeOffset verified, string? scope = null, string? constraintsJson = null) => new(code, "SUPPORTED", identity.ApiVersion, identity.Environment, identity.ExternalStoreId, source, identity.ApiVersion, scope, constraintsJson, note, null, verified);
     private static CapabilityEvidence Probe<T>(string code, ConnectionIdentity identity, string source, AdapterResult<T> result, string operation, DateTimeOffset verified, string scope) => result.IsSuccess
         ? Supported(code, identity, source, $"{operation} başarılı.", verified, scope)
         : new(code, "UNKNOWN", identity.ApiVersion, identity.Environment, identity.ExternalStoreId, source, identity.ApiVersion, scope, null, $"{operation} doğrulanamadı: {result.Error?.SafeMessage ?? "Shopify yanıtı alınamadı."}", null, verified);
