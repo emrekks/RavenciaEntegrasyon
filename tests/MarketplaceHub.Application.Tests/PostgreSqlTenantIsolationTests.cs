@@ -1169,7 +1169,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
-    public async Task TargetedTrendyolOrderSync_ReadsSuppliedPackageBeforeSearchingOrderNumber()
+    public async Task TargetedTrendyolOrderSync_UsesOrderNumberBeforeSuppliedPackage()
     {
         var tenant = NewTenant("trendyol-package-first-sync");
         var connection = NewQuestionConnection(tenant);
@@ -1201,7 +1201,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             [new RemoteOrderLine("line-1", "RY-P001", "RY-P001", "Test ürün", 1m, 454.31m, 10m, "Shipped")],
             [package],
             "{}");
-        var orderPort = new ReadOnlyOrderTestPort(package, order, externalOrderId);
+        var orderPort = new ReadOnlyOrderTestPort(package, order, externalOrderId, directOrderResult: order);
 
         await using (var seedDb = fixture.CreateContext())
         {
@@ -1227,8 +1227,8 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                     CancellationToken.None);
 
                 Assert.True(result.Succeeded, result.ErrorSummary);
-                Assert.Equal(0, orderPort.OrderReadCalls);
-                Assert.Equal([packageNumber], orderPort.PackageReadCalls);
+                Assert.Equal(1, orderPort.OrderReadCalls);
+                Assert.Empty(orderPort.PackageReadCalls);
             }
 
             await using var verifyDb = fixture.CreateContext();
@@ -3031,7 +3031,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         }
     }
 
-    private sealed class ReadOnlyOrderTestPort(RemotePackage package, RemoteOrder? orderSnapshot = null, string externalOrderId = "regular-order") : IOrderPort
+    private sealed class ReadOnlyOrderTestPort(RemotePackage package, RemoteOrder? orderSnapshot = null, string externalOrderId = "regular-order", RemoteOrder? directOrderResult = null) : IOrderPort
     {
         public int OrderReadCalls { get; private set; }
         public List<string> PackageReadCalls { get; } = [];
@@ -3042,6 +3042,8 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         public Task<AdapterResult<RemoteOrder>> GetAsync(AdapterContext context, string externalOrderId, CancellationToken cancellationToken)
         {
             OrderReadCalls++;
+            if (directOrderResult is not null)
+                return Task.FromResult(AdapterResult<RemoteOrder>.Success(directOrderResult));
             throw new NotSupportedException("Return hydration must defer while the order lane is locked.");
         }
 
