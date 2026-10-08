@@ -7,6 +7,35 @@ namespace MarketplaceHub.Application.Tests;
 public sealed class ShopifyReferenceMapperTests
 {
     [Fact]
+    public void MapGrantedScopesReturnsSortedDistinctHandles()
+    {
+        using var json = JsonDocument.Parse("""
+        {
+          "currentAppInstallation": {
+            "accessScopes": [
+              { "handle": "write_products" },
+              { "handle": "read_orders" },
+              { "handle": "write_products" },
+              { "handle": "read_inventory" }
+            ]
+          }
+        }
+        """);
+
+        var scopes = ShopifyHttpClient.MapGrantedScopes(json.RootElement);
+
+        Assert.Equal(["read_inventory", "read_orders", "write_products"], scopes);
+    }
+
+    [Fact]
+    public void MapGrantedScopesRejectsMissingAccessScopes()
+    {
+        using var json = JsonDocument.Parse("{} ");
+
+        Assert.Throws<JsonException>(() => ShopifyHttpClient.MapGrantedScopes(json.RootElement));
+    }
+
+    [Fact]
     public void TaxonomyCategoryMapsShopifyIdsHierarchyPathAndLifecycle()
     {
         using var json = JsonDocument.Parse("""
