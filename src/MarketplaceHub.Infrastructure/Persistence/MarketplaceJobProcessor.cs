@@ -7192,6 +7192,20 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             foreach (var claim in pageResult.Items)
             {
                 TrackReceived();
+                var orderCreatedAt = claim.OrderCreatedAt;
+                if (orderCreatedAt is null)
+                {
+                    orderCreatedAt = await db.Orders.AsNoTracking()
+                        .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId
+                            && (x.ExternalOrderId == claim.ExternalOrderId || x.OrderNumber == claim.ExternalOrderId))
+                        .Select(x => (DateTimeOffset?)x.OrderedAt)
+                        .SingleOrDefaultAsync(cancellationToken);
+                }
+                if (!HepsiburadaReturnHistoryPolicy.IsOrderWithinReturnHistory(orderCreatedAt, state.AnchorEnd))
+                {
+                    TrackSkipped();
+                    continue;
+                }
                 await ResolveIssue(tenantId, $"hepsiburada-return:{connectionId}:{status}:{claim.ExternalClaimId}", cancellationToken);
                 await UpsertReturn(tenantId, connectionId, correlationId, claim, productSnapshots, cancellationToken);
             }

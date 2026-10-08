@@ -94,6 +94,34 @@ describe('publication attribute readiness', () => {
     expect(result.requiredIssues).toEqual([])
   })
 
+  it('accepts a custom Renk value without requiring a marketplace color-value mapping', () => {
+    const result = classifyPublicationAttributeIssues({
+      ...baseInput,
+      selectedAttributes: [{ attributeId: 'local-color', name: 'Renk', isRequired: true, values: [{ id: 'emerald', label: 'Zümrüt' }], hasCustomValue: false }],
+      remoteAttributes: [{ externalId: 'remote-color', name: 'Renk', isActive: true, isRequired: true, allowsCustomValue: false }],
+      attributeMappings: [{ localId: 'local-color', externalId: 'remote-color', snapshotId: 'attributes-v2', status: 'VERIFIED' }],
+      valueReferencesByAttribute: {
+        'remote-color': { snapshotId: 'values-v2', items: [], mappings: [] }
+      }
+    })
+
+    expect(result.requiredIssues).toEqual([])
+  })
+
+  it('still requires an exact value mapping for Web Color values', () => {
+    const result = classifyPublicationAttributeIssues({
+      ...baseInput,
+      selectedAttributes: [{ attributeId: 'local-color', name: 'Renk', isRequired: true, values: [{ id: 'emerald', label: 'Zümrüt' }], hasCustomValue: false }],
+      remoteAttributes: [{ externalId: 'remote-web-color', name: 'Web Color', isActive: true, isRequired: true, allowsCustomValue: false }],
+      attributeMappings: [{ localId: 'local-color', externalId: 'remote-web-color', snapshotId: 'attributes-v2', status: 'VERIFIED' }],
+      valueReferencesByAttribute: {
+        'remote-web-color': { snapshotId: 'values-v2', items: [], mappings: [] }
+      }
+    })
+
+    expect(result.requiredIssues).toEqual([{ attribute: 'Renk', detail: '“Zümrüt” için güncel Trendyol değer eşlemesi yok.' }])
+  })
+
   it('does not warn for an unused optional attribute', () => {
     const result = classifyPublicationAttributeIssues({
       ...baseInput,

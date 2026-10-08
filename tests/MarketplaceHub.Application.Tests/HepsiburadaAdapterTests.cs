@@ -1319,6 +1319,7 @@ public sealed class HepsiburadaAdapterTests
           "number": "HB-CLAIM-STATUS-DATE",
           "status": "AwaitingPreApproval",
           "claimDate": "2026-09-28T12:15:00Z",
+          "orderDate": "2026-09-20T10:00:00Z",
           "markedAwaitingPreApprovalDate": "2026-09-29T08:30:00Z",
           "orderNumber": "HB-ORDER-STATUS-DATE",
           "lineItemId": "line-status-date",
@@ -1329,6 +1330,7 @@ public sealed class HepsiburadaAdapterTests
         var claim = HepsiburadaJsonMapper.ReturnClaim(json.RootElement);
 
         Assert.Equal(DateTimeOffset.Parse("2026-09-29T08:30:00Z"), claim.LastModifiedAt);
+        Assert.Equal(DateTimeOffset.Parse("2026-09-20T10:00:00Z"), claim.OrderCreatedAt);
     }
 
     [Fact]

@@ -653,7 +653,8 @@ internal static class HepsiburadaJsonMapper
             item.GetRawText(),
             cargoCompany,
             trackingNumber,
-            trackingLink);
+            trackingLink,
+            Date(item, "orderDate", "OrderDate", "orderedAt", "OrderedAt"));
     }
 
     private static JsonElement ReturnDelivery(JsonElement delivery)

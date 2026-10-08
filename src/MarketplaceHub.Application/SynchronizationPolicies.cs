@@ -103,6 +103,9 @@ public static class HepsiburadaReturnHistoryPolicy
     public static readonly TimeSpan InitialLookback = TimeSpan.FromDays(30);
 
     public static DateTimeOffset InitialStatusChangeStart(DateTimeOffset anchor) => anchor - InitialLookback;
+
+    public static bool IsOrderWithinReturnHistory(DateTimeOffset? orderCreatedAt, DateTimeOffset anchor) =>
+        orderCreatedAt is { } orderedAt && orderedAt >= InitialStatusChangeStart(anchor) && orderedAt <= anchor;
 }
 
 public static class MarketplaceSyncHealthPolicy

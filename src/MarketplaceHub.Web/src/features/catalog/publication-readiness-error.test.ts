@@ -1,21 +1,29 @@
 import { describe, expect, it } from 'vitest'
 import { ApiRequestError } from '../../shared/api'
-import { publicationReadinessFailureDetail, readPublicationReadinessSource } from './publication-readiness-error'
+import { PublicationReadinessSourceError, publicationReadinessFailureDetail } from './publication-readiness-error'
 
-describe('publication readiness source errors', () => {
-  it('preserves the failed source, server message, HTTP status, and error code', async () => {
-    const error = await readPublicationReadinessSource('Hepsiburada kategori özellik listesi', async () => {
-      throw new ApiRequestError('Platform erişim izni reddetti.', 403, 'MARKETPLACE_FORBIDDEN')
-    }).catch(reason => reason)
-
-    expect(publicationReadinessFailureDetail('Hepsiburada', error)).toBe(
-      'Hepsiburada zorunlu alan kontrolü tamamlanamadı. Kaynak: Hepsiburada kategori özellik listesi okunamadı. Platform erişim izni reddetti. (HTTP 403 · kod MARKETPLACE_FORBIDDEN)'
+describe('publication readiness errors', () => {
+  it('replaces raw JSON parser details with a simple explanation and next step', () => {
+    const error = new PublicationReadinessSourceError(
+      'Hepsiburada kategori özellik listesi',
+      new TypeError("Failed to execute 'json' on 'Response': Unexpected end of JSON input")
     )
+
+    const detail = publicationReadinessFailureDetail('Hepsiburada', error)
+    expect(detail).toContain('Hepsiburada özellik bilgisi alınamadı.')
+    expect(detail).toContain('eksik ya da bozuk bilgi geldi')
+    expect(detail).not.toContain('Unexpected end of JSON input')
+    expect(detail).not.toContain('HTTP')
   })
 
-  it('reports a clear fallback when no diagnostic detail exists', () => {
-    expect(publicationReadinessFailureDetail('Hepsiburada', null)).toBe(
-      'Hepsiburada zorunlu alan kontrolü tamamlanamadı. Kaynak: Kontrol isteğinin hata ayrıntısı alınamadı.'
+  it('gives a direct remedy when marketplace access is denied', () => {
+    const error = new PublicationReadinessSourceError(
+      'Yerel kategori özellik eşlemeleri',
+      new ApiRequestError('raw upstream details', 403, 'REFERENCE_ACCESS_DENIED')
+    )
+
+    expect(publicationReadinessFailureDetail('Trendyol', error)).toBe(
+      'Trendyol özellik bilgisi alınamadı. Entegrasyon erişim iznini kontrol edip bağlantıyı yenileyin.'
     )
   })
 })
