@@ -239,9 +239,14 @@ public sealed partial class InvoicingBillingService(
     {
         var pageSize = request.PageSize is 20 or 50 or 100 or 200 ? request.PageSize : 20;
         var requestedPage = Math.Max(1, request.PageNumber);
-        var normalizedTab = request.Tab.Trim().ToUpperInvariant() is "INVOICED" or "DUE_SOON"
+        var normalizedTab = request.Tab.Trim().ToUpperInvariant() is "INVOICED" or "DUE_SOON" or "HIDDEN"
             ? request.Tab.Trim().ToUpperInvariant()
             : "UNINVOICED";
+        var hiddenSetting = await db.TenantSettings.AsNoTracking()
+            .SingleOrDefaultAsync(setting => setting.TenantId == tenantId && setting.Key == "invoice-workspace-hidden-packages", cancellationToken);
+        var hiddenPackageIds = hiddenSetting is null
+            ? new HashSet<Guid>()
+            : JsonSerializer.Deserialize<HashSet<Guid>>(hiddenSetting.ValueJson) ?? [];
         var selectedPlatforms = (request.PlatformCodes ?? [])
             .Where(code => !string.IsNullOrWhiteSpace(code))
             .Select(code => code.Trim())
@@ -277,8 +282,9 @@ public sealed partial class InvoicingBillingService(
 
             foreach (var candidate in candidates)
             {
+                var isHidden = hiddenPackageIds.Contains(candidate.Package.Id);
                 var platformSelected = selectedPlatforms.Count == 0 || selectedPlatforms.Contains(candidate.Connection.PlatformCode);
-                if (platformSelected)
+                if (platformSelected && !isHidden)
                 {
                     selectedTotal++;
                     if (candidate.CanCreateInvoice || candidate.InvoiceStatus == "FATURA_REDDEDILDI") selectedUninvoiced++;
@@ -294,7 +300,7 @@ public sealed partial class InvoicingBillingService(
                     cargoProviders.Add(candidate.Package.CargoProviderExternalId.Trim());
                 invoiceStatuses.Add(WorkspaceInvoiceDisplayStatus(candidate));
 
-                if (!MatchesWorkspacePageRequest(candidate, normalizedTab, request, searchKey, from, to)) continue;
+                if (!MatchesWorkspacePageRequest(candidate, normalizedTab, request, searchKey, from, to, isHidden)) continue;
                 var resultIndex = filteredCount++;
                 if (resultIndex >= offset && pageCandidates.Count < pageSize) pageCandidates.Add(candidate);
                 lastPageCandidates.Enqueue(candidate);
@@ -314,7 +320,7 @@ public sealed partial class InvoicingBillingService(
             pageCandidates = lastPageCandidates.TakeLast(lastPageSize).ToList();
         }
         var items = await MaterializeWorkspacePageAsync(tenantId, pageCandidates, cancellationToken);
-        return new(items, filteredCount, pageNumber, pageSize, totalPages, selectedUninvoiced, selectedInvoiced, selectedDueSoon, selectedTotal, hasPendingMarketplaceInvoices,
+        return new(items, filteredCount, pageNumber, pageSize, totalPages, selectedUninvoiced, selectedInvoiced, selectedDueSoon, hiddenPackageIds.Count, selectedTotal, hasPendingMarketplaceInvoices,
             shipmentStatuses.Order(StringComparer.Ordinal).ToArray(), cargoProviders.Order(StringComparer.OrdinalIgnoreCase).ToArray(), invoiceStatuses.Order(StringComparer.Ordinal).ToArray());
     }
 
@@ -458,13 +464,15 @@ public sealed partial class InvoicingBillingService(
         InvoiceWorkspacePageQuery request,
         string? searchKey,
         DateTimeOffset? from,
-        DateTimeOffset? to)
+        DateTimeOffset? to,
+        bool isHidden)
     {
         var tabMatch = normalizedTab switch
         {
-            "INVOICED" => !(candidate.CanCreateInvoice || candidate.InvoiceStatus == "FATURA_REDDEDILDI"),
-            "DUE_SOON" => candidate.IsDueSoon,
-            _ => candidate.CanCreateInvoice || candidate.InvoiceStatus == "FATURA_REDDEDILDI"
+            "HIDDEN" => isHidden,
+            "INVOICED" => !isHidden && !(candidate.CanCreateInvoice || candidate.InvoiceStatus == "FATURA_REDDEDILDI"),
+            "DUE_SOON" => !isHidden && candidate.IsDueSoon,
+            _ => !isHidden && (candidate.CanCreateInvoice || candidate.InvoiceStatus == "FATURA_REDDEDILDI")
         };
         var shipmentMatch = string.IsNullOrWhiteSpace(request.ShipmentStatus) || request.ShipmentStatus == "ALL"
             || string.Equals(candidate.Package.Status.ToString(), request.ShipmentStatus, StringComparison.OrdinalIgnoreCase);
@@ -646,7 +654,7 @@ public sealed partial class InvoicingBillingService(
     }
 
     private static InvoiceWorkspacePageView EmptyWorkspacePage(int pageNumber, int pageSize) =>
-        new([], 0, pageNumber, pageSize, 1, 0, 0, 0, 0, false, [], [], []);
+        new([], 0, pageNumber, pageSize, 1, 0, 0, 0, 0, 0, false, [], [], []);
 
     private static string WorkspaceInvoiceDisplayStatus(WorkspaceCandidate candidate)
     {

@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Identity;
@@ -37,6 +38,7 @@ public static class InvoicingEndpoints
                 providerHasCredential ?? false);
             return Results.Ok(await service.WorkspacePageAsync(tenant.TenantId, filter, http.RequestAborted));
         });
+        api.MapPut("/invoice-workspace/hidden", UpdateInvoiceWorkspaceHiddenAsync);
         api.MapPut("/invoice-workspace/manual-status", UpdateInvoiceWorkspaceManualStatusAsync);
         api.MapPost("/invoices", async (CreateInvoiceCommand command, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Created(await service.CreateDraftAsync(tenant.TenantId, command, http.Request.Headers["Idempotency-Key"].ToString(), http.RequestAborted), "/api/v1/invoices") : MissingContext(http));
         api.MapGet("/invoices/{id:guid}", async (Guid id, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant ? WithEtag(http, await service.GetAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http));
@@ -182,8 +184,35 @@ public static class InvoicingEndpoints
         return Results.Ok(new { status, updatedCount = packages.Count });
     }
 
+    private static async Task<IResult> UpdateInvoiceWorkspaceHiddenAsync(InvoiceWorkspaceHiddenCommand command, HttpContext http, AppDbContext db, TimeProvider timeProvider)
+    {
+        if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        if (RequireIdempotency(http) is { } idempotencyFailure) return idempotencyFailure;
+        if (command.PackageIds is null || command.PackageIds.Count is < 1 or > 200) return Problem(http, new("INVOICE_WORKSPACE_PACKAGES_INVALID", "1 ile 200 arasında sipariş paketi seçilmelidir.", 422));
+        var packageIds = command.PackageIds.Distinct().ToArray();
+        if (packageIds.Length != command.PackageIds.Count) return Problem(http, new("INVOICE_WORKSPACE_PACKAGES_DUPLICATED", "Sipariş paket kimlikleri benzersiz olmalıdır.", 422));
+        var ownedIds = await db.ShipmentPackages.AsNoTracking().Where(package => package.TenantId == tenant.TenantId && packageIds.Contains(package.Id)).Select(package => package.Id).ToListAsync(http.RequestAborted);
+        if (ownedIds.Count != packageIds.Length) return Problem(http, new("RESOURCE_NOT_FOUND", "Seçilen fatura siparişlerinin bir kısmı bulunamadı.", 404));
+
+        var setting = await db.TenantSettings.SingleOrDefaultAsync(item => item.TenantId == tenant.TenantId && item.Key == "invoice-workspace-hidden-packages", http.RequestAborted);
+        var hiddenIds = setting is null ? new HashSet<Guid>() : JsonSerializer.Deserialize<HashSet<Guid>>(setting.ValueJson) ?? [];
+        foreach (var packageId in packageIds)
+        {
+            if (command.Hidden) hiddenIds.Add(packageId);
+            else hiddenIds.Remove(packageId);
+            db.AuditLogs.Add(new AuditLog { TenantId = tenant.TenantId, ActorUserId = tenant.UserId, Action = command.Hidden ? "INVOICE_WORKSPACE_PACKAGE_HIDDEN" : "INVOICE_WORKSPACE_PACKAGE_UNHIDDEN", TargetType = "ShipmentPackage", TargetId = packageId.ToString("D"), CorrelationId = http.TraceIdentifier, CreatedAt = timeProvider.GetUtcNow() });
+        }
+        var now = timeProvider.GetUtcNow();
+        var json = JsonSerializer.Serialize(hiddenIds);
+        if (setting is null) db.TenantSettings.Add(new TenantSetting { TenantId = tenant.TenantId, Key = "invoice-workspace-hidden-packages", ValueJson = json, UpdatedAt = now, Version = 1 });
+        else { setting.ValueJson = json; setting.UpdatedAt = now; setting.Version++; }
+        await db.SaveChangesAsync(http.RequestAborted);
+        return Results.Ok(new { hidden = command.Hidden, updatedCount = packageIds.Length, hiddenCount = hiddenIds.Count });
+    }
+
     private sealed record ShopifyInvoiceStatusCommand(string Status);
     private sealed record InvoiceWorkspaceManualStatusCommand(IReadOnlyList<Guid> PackageIds, string Status);
+    private sealed record InvoiceWorkspaceHiddenCommand(IReadOnlyList<Guid> PackageIds, bool Hidden);
 
     private static string? DetectInvoiceMimeType(byte[] bytes) => bytes.Length >= 5 && bytes[..5].SequenceEqual("%PDF-"u8.ToArray()) ? "application/pdf"
         : bytes.Length >= 3 && bytes[..3].SequenceEqual(new byte[] { 0xFF, 0xD8, 0xFF }) ? "image/jpeg"

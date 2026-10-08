@@ -6,7 +6,7 @@ export const dashboardOperationalLinks = {
 } as const
 
 const returnStatusValues = ['ALL', 'REQUESTED', 'SHIPPING', 'ACTION_REQUIRED', 'APPROVED', 'REJECTED', 'REVIEW', 'DISPUTED', 'SUSPENDED'] as const
-const invoiceTabValues = ['UNINVOICED', 'INVOICED', 'DUE_SOON'] as const
+const invoiceTabValues = ['UNINVOICED', 'INVOICED', 'DUE_SOON', 'HIDDEN'] as const
 
 export function resolveReturnStatus(value: string | null) {
   return returnStatusValues.find(status => status === value) ?? 'ALL'

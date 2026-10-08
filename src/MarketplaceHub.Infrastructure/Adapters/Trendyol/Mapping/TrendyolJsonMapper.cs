@@ -840,7 +840,15 @@ public static class TrendyolJsonMapper
     private static bool IsWaitingInAction(string status) => string.Equals(status, "WaitingInAction", StringComparison.OrdinalIgnoreCase)
         || string.Equals(status, "WAITING_IN_ACTION", StringComparison.OrdinalIgnoreCase);
     private static string? ClaimReasonCode(JsonElement claim) => NestedReason(claim, "code");
-    private static string? ClaimReasonText(JsonElement claim) => NestedReason(claim, "name");
+    private static string? ClaimReasonText(JsonElement claim)
+    {
+        foreach (var item in ClaimItems(claim))
+        {
+            var customerNote = NullText(item, "customerNote");
+            if (!string.IsNullOrWhiteSpace(customerNote)) return customerNote.Trim();
+        }
+        return NestedReason(claim, "name");
+    }
     private static string? NestedReason(JsonElement claim, string field) { foreach (var item in ClaimItems(claim)) if (item.TryGetProperty("customerClaimItemReason", out var reason)) return NullText(reason, field); return null; }
     private static string Snapshot(JsonElement value, params string[] fields) { var map = new Dictionary<string, JsonElement>(); foreach (var field in fields) if (value.TryGetProperty(field, out var item)) map[field] = item.Clone(); return JsonSerializer.Serialize(map); }
     private static string ObjectSnapshot(JsonElement value, string field) { if (value.TryGetProperty(field, out var item) && item.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined)) return item.GetRawText(); return "{}"; }

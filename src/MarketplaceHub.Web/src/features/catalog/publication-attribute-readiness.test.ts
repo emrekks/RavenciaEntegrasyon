@@ -108,6 +108,27 @@ describe('publication attribute readiness', () => {
     expect(result.requiredIssues).toEqual([])
   })
 
+  it('prefers the mapped Renk attribute over Web Color for panel color values', () => {
+    const result = classifyPublicationAttributeIssues({
+      ...baseInput,
+      selectedAttributes: [{ attributeId: 'local-color', name: 'Renk', isRequired: true, values: [{ id: 'emerald', label: 'Zümrüt' }], hasCustomValue: false }],
+      remoteAttributes: [
+        { externalId: 'remote-web-color', name: 'Web Color', isActive: true, isRequired: true, allowsCustomValue: false },
+        { externalId: 'remote-color', name: 'Renk', isActive: true, isRequired: true, allowsCustomValue: false }
+      ],
+      attributeMappings: [
+        { localId: 'local-color', externalId: 'remote-web-color', snapshotId: 'attributes-v2', status: 'VERIFIED' },
+        { localId: 'local-color', externalId: 'remote-color', snapshotId: 'attributes-v2', status: 'VERIFIED' }
+      ],
+      valueReferencesByAttribute: {
+        'remote-web-color': { snapshotId: 'values-v2', items: [], mappings: [] },
+        'remote-color': { snapshotId: 'values-v2', items: [], mappings: [] }
+      }
+    })
+
+    expect(result.requiredIssues).toEqual([])
+  })
+
   it('still requires an exact value mapping for Web Color values', () => {
     const result = classifyPublicationAttributeIssues({
       ...baseInput,

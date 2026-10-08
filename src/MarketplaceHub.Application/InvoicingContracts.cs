@@ -137,6 +137,7 @@ public sealed record InvoiceWorkspacePageView(
     int UninvoicedCount,
     int InvoicedCount,
     int DueSoonCount,
+    int HiddenCount,
     int TotalPackageCount,
     bool HasPendingMarketplaceInvoices,
     IReadOnlyList<string> ShipmentStatuses,

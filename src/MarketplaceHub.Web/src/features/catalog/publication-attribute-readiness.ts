@@ -43,6 +43,12 @@ function isCustomPanelColorName(name: string) {
   return normalized === 'RENK' || normalized === 'COLOR' || normalized === 'COLOUR'
 }
 
+function isWebColorAttributeName(name: string) {
+  return name.replace(/[\s_-]/g, '').toLocaleUpperCase('tr-TR') === 'WEBCOLOR'
+    || name.replace(/[\s_-]/g, '').toLocaleUpperCase('tr-TR') === 'WEBCOLOUR'
+    || name.replace(/[\s_-]/g, '').toLocaleUpperCase('tr-TR') === 'WEBRENK'
+}
+
 export function classifyPublicationAttributeIssues(input: {
   selectedAttributes: PublicationAttributeSelection[]
   remoteAttributes: PublicationAttributeReference[]
@@ -87,9 +93,11 @@ export function classifyPublicationAttributeIssues(input: {
     const mappings = currentAttributeMappings
       .filter(mapping => mapping.localId === selected.attributeId)
       .sort((left, right) => {
-        const leftColor = isCustomPanelColorName(remoteById.get(left.externalId)?.name ?? '') ? 1 : 0
-        const rightColor = isCustomPanelColorName(remoteById.get(right.externalId)?.name ?? '') ? 1 : 0
-        return leftColor - rightColor || left.externalId.localeCompare(right.externalId)
+        const leftWebColor = isWebColorAttributeName(remoteById.get(left.externalId)?.name ?? '') ? 1 : 0
+        const rightWebColor = isWebColorAttributeName(remoteById.get(right.externalId)?.name ?? '') ? 1 : 0
+        const leftCustomColor = isCustomPanelColorName(remoteById.get(left.externalId)?.name ?? '') ? 0 : 1
+        const rightCustomColor = isCustomPanelColorName(remoteById.get(right.externalId)?.name ?? '') ? 0 : 1
+        return leftWebColor - rightWebColor || leftCustomColor - rightCustomColor || left.externalId.localeCompare(right.externalId)
       })
     const mapping = mappings[0]
     const remote = mapping ? remoteById.get(mapping.externalId) : undefined
