@@ -2118,12 +2118,14 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
 
         string? externalOrderId = null;
+        string? packageNumber = null;
         var full = false;
         try
         {
             using var payload = JsonDocument.Parse(payloadJson);
             if (payload.RootElement.TryGetProperty("externalOrderId", out var value) && value.ValueKind == JsonValueKind.String) externalOrderId = value.GetString();
             if (payload.RootElement.TryGetProperty("full", out var fullValue) && fullValue.ValueKind is JsonValueKind.True or JsonValueKind.False) full = fullValue.GetBoolean();
+            if (payload.RootElement.TryGetProperty("packageNumber", out var packageValue) && packageValue.ValueKind == JsonValueKind.String) packageNumber = packageValue.GetString();
         }
         catch (JsonException) { return false; }
         if (!string.IsNullOrWhiteSpace(externalOrderId))
@@ -2154,14 +2156,27 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                                            && order.ExternalOrderId == externalOrderId
                                        select new { package.ExternalPackageId, package.StatusOccurredAt })
                 .ToListAsync(cancellationToken);
-            var packageSnapshots = new List<RemoteOrder>();
+            var packagesToRead = new List<(string ExternalPackageId, DateTimeOffset? StatusOccurredAt)>();
+            var packageIdsToRead = new HashSet<string>(StringComparer.Ordinal);
+            var requestedPackageNumber = packageNumber?.Trim();
+            if (!string.IsNullOrWhiteSpace(requestedPackageNumber) && requestedPackageNumber.Length <= 100 && !requestedPackageNumber.Any(char.IsControl))
+            {
+                packageIdsToRead.Add(requestedPackageNumber);
+                packagesToRead.Add((requestedPackageNumber, null));
+            }
             foreach (var knownPackage in knownPackages)
+            {
+                if (packageIdsToRead.Add(knownPackage.ExternalPackageId))
+                    packagesToRead.Add((knownPackage.ExternalPackageId, knownPackage.StatusOccurredAt));
+            }
+            var packageSnapshots = new List<RemoteOrder>();
+            foreach (var packageToRead in packagesToRead)
             {
                 TrackRequest();
                 var packageRead = await orders.GetShipmentPackageAsync(
-                    Context(tenantId, connectionId, correlationId, $"targeted-order-package-read:{knownPackage.ExternalPackageId}"),
-                    knownPackage.ExternalPackageId,
-                    knownPackage.StatusOccurredAt,
+                    Context(tenantId, connectionId, correlationId, $"targeted-order-package-read:{packageToRead.ExternalPackageId}"),
+                    packageToRead.ExternalPackageId,
+                    packageToRead.StatusOccurredAt,
                     cancellationToken);
                 if (!packageRead.IsSuccess)
                 {

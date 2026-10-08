@@ -882,8 +882,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             .SingleOrDefaultAsync(cancellationToken);
         var normalizedPackageNumber = packageNumber?.Trim();
         if (!string.IsNullOrWhiteSpace(normalizedPackageNumber)
-            && (platform != "HEPSIBURADA" || string.IsNullOrWhiteSpace(externalOrderId) || normalizedPackageNumber.Length > 100 || normalizedPackageNumber.Any(char.IsControl)))
-            return ServiceResult<Guid>.Fail("HEPSIBURADA_PACKAGE_TRACKING_REFRESH_INVALID", "Paket numarasıyla durum yenileme yalnızca tek bir Hepsiburada siparişi için kullanılabilir.", 422);
+            && (platform is not ("TRENDYOL" or "HEPSIBURADA") || string.IsNullOrWhiteSpace(externalOrderId) || normalizedPackageNumber.Length > 100 || normalizedPackageNumber.Any(char.IsControl)))
+            return ServiceResult<Guid>.Fail("ORDER_PACKAGE_LOOKUP_INVALID", "Paket numarasıyla yenileme yalnızca tek bir Trendyol veya Hepsiburada siparişi için kullanılabilir.", 422);
         var type = MarketplaceJobTypes.ForPlatform(platform, full ? MarketplaceJobTypes.OrderRecoverySync : MarketplaceJobTypes.OrderSync);
         return await EnqueueRead(tenantId, connectionId, MarketplaceCapabilities.OrderRead, type, JsonSerializer.Serialize(new { connectionId, externalOrderId, full, packageNumber = normalizedPackageNumber }), correlationId, cancellationToken);
     }

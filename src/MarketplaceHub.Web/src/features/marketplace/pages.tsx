@@ -592,6 +592,10 @@ function SingleOrderSyncModal({ activeConnection: activeConnections, onClose, on
   const [fullScan, setFullScan] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
+  const selectedSyncConnection = selectedConnectionIds.length === 1
+    ? activeConnections.find(connection => connection.id === selectedConnectionIds[0])
+    : undefined
+  const supportsPackageLookup = selectedSyncConnection?.platformCode === 'TRENDYOL' || selectedSyncConnection?.platformCode === 'HEPSIBURADA'
 
   useEffect(() => {
     if (connectionsInitialized || !activeConnections.length) return
@@ -611,9 +615,9 @@ function SingleOrderSyncModal({ activeConnection: activeConnections, onClose, on
       setErrorMsg('En az bir aktif bağlantı seçin.')
       return
     }
-    const packageTrackingRefresh = syncMode === 'single'
+    const packageLookup = syncMode === 'single'
       && selectedConnections.length === 1
-      && selectedConnections[0].platformCode === 'HEPSIBURADA'
+      && ['TRENDYOL', 'HEPSIBURADA'].includes(selectedConnections[0].platformCode)
       && Boolean(packageNumber.trim())
     setIsSubmitting(true)
     setErrorMsg('')
@@ -621,7 +625,7 @@ function SingleOrderSyncModal({ activeConnection: activeConnections, onClose, on
       await Promise.all(selectedConnections.map(connection => hubApi(`/connections/${connection.id}/order-sync-jobs`, {
         method: 'POST',
         headers: { 'Idempotency-Key': idempotency() },
-        body: JSON.stringify({ externalOrderId: syncMode === 'single' ? trimmed : null, full: syncMode === 'changes' && fullScan, packageNumber: packageTrackingRefresh ? packageNumber.trim() : null })
+        body: JSON.stringify({ externalOrderId: syncMode === 'single' ? trimmed : null, full: syncMode === 'changes' && fullScan, packageNumber: packageLookup ? packageNumber.trim() : null })
       })))
       onSuccess(selectedConnections.length, trimmed)
       onClose()
@@ -667,10 +671,10 @@ function SingleOrderSyncModal({ activeConnection: activeConnections, onClose, on
               <span>Pazar yeri sipariş numarası</span>
               <input type="text" value={orderNumber} onChange={e => setOrderNumber(e.target.value)} placeholder="Örn. 1014529381 veya Shopify sipariş adı" disabled={isSubmitting} autoFocus />
             </label>
-            {selectedConnectionIds.length === 1 && activeConnections.find(connection => connection.id === selectedConnectionIds[0])?.platformCode === 'HEPSIBURADA' && <label className="sync-order-number-field">
-              <span>Hepsiburada paket numarası (isteğe bağlı)</span>
-              <input type="text" value={packageNumber} onChange={e => setPackageNumber(e.target.value)} placeholder="Örn. 5435694424" disabled={isSubmitting} />
-              <small>Eski teslimat durumunu Hepsiburada’dan salt okunur olarak yeniler; mağazada değişiklik yapmaz.</small>
+            {selectedSyncConnection && supportsPackageLookup && <label className="sync-order-number-field">
+              <span>{selectedSyncConnection.platformCode === 'TRENDYOL' ? 'Trendyol' : 'Hepsiburada'} paket numarası (isteğe bağlı)</span>
+              <input type="text" value={packageNumber} onChange={e => setPackageNumber(e.target.value)} placeholder={selectedSyncConnection.platformCode === 'TRENDYOL' ? 'Örn. 419428742' : 'Örn. 5435694424'} disabled={isSubmitting} />
+              <small>{selectedSyncConnection.platformCode === 'TRENDYOL' ? 'Sipariş numarası bulunamazsa bu paket numarasıyla Trendyol’dan salt okunur olarak okunur; mağazada değişiklik yapmaz.' : 'Eski teslimat durumunu Hepsiburada’dan salt okunur olarak yeniler; mağazada değişiklik yapmaz.'}</small>
             </label>}
           </> : <label className="sync-mode-option"><input type="checkbox" checked={fullScan} onChange={event => setFullScan(event.target.checked)} /><span><strong>Erişilebilir tüm siparişleri tara</strong><small>Kapalıyken yalnız yeni değişiklikler ve güncellemeler alınır.</small></span></label>}
           {errorMsg && <p className="error single-order-sync-error" role="alert">{errorMsg}</p>}
