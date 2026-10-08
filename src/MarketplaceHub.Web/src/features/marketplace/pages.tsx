@@ -765,7 +765,7 @@ function OrderReferenceRow({ item, selected, onSelect, openMenu, onMenuChange, o
         <div className="order-invoice-payable"><small>Faturalanacak Tutar:</small><strong>{money(invoiceableTotal)}</strong></div>
         {isCancelledOrder ? <InvoiceStatusBadge status={item.invoiceStatus} label={invoiceLabel} /> : <div className="order-invoice-actions">
           {(invoiceNeedsAction || !invoiceDocumentAvailable) && <InvoiceStatusBadge status={item.invoiceStatus} tone={microExportInvoicePending ? 'info' : undefined} label={invoiceLabel} />}
-          {!invoiceNeedsAction && (item.invoiceId ? <a className="invoice-document-link" href={`/api/v1/invoices/${item.invoiceId}/documents/latest/content`} download>Faturayı Gör</a> : item.invoiceDocumentUrl ? <a className="invoice-document-link" href={item.invoiceDocumentUrl} download>Faturayı Gör</a> : null)}
+          {!invoiceNeedsAction && (item.invoiceId ? <a className="invoice-document-link order-invoice-document-link" href={`/api/v1/invoices/${item.invoiceId}/documents/latest/content`} download>Faturayı Gör <UiIcon name="externalLink" /></a> : item.invoiceDocumentUrl ? <a className="invoice-document-link order-invoice-document-link" href={item.invoiceDocumentUrl} download>Faturayı Gör <UiIcon name="externalLink" /></a> : null)}
           <div className="row-menu" title={invoiceLabel}>
             <button type="button" className="row-menu-trigger" onClick={event => toggleMenu('invoice', event)} aria-expanded={openMenu === 'invoice'}><span>Fatura işlemleri</span><UiIcon name="chevronDown" /></button>
             {openMenu === 'invoice' && <div ref={menuPopoverRef} className={`row-popover invoice-popover opens-${menuPlacement}`} role="menu">

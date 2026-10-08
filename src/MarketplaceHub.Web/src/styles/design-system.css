@@ -12043,6 +12043,28 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .app-shell.stitch-shell main .order-label-action.is-printed { color: color-mix(in srgb, var(--rv-color-accent) 78%, var(--rv-color-ink)); background: color-mix(in srgb, var(--rv-color-accent) 10%, var(--rv-color-surface)); border-color: color-mix(in srgb, var(--rv-color-accent) 38%, var(--rv-color-border)); }
 .app-shell.stitch-shell main .order-label-action.is-printed > span { color: inherit; }
 .app-shell.stitch-shell main .invoice-document-link { color: var(--rv-color-success); background: var(--rv-color-success-soft); border: 1px solid color-mix(in srgb, var(--rv-color-success) 30%, transparent); border-radius: var(--rv-radius-sm); padding: 5px 8px; }
+.app-shell.stitch-shell main .order-reference-invoice .order-invoice-document-link {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 26px;
+  box-sizing: border-box;
+  align-items: center;
+  gap: var(--rv-space-1);
+  padding: 4px 8px;
+  color: var(--rv-color-success);
+  background: var(--rv-color-success-soft);
+  border: 1px solid color-mix(in srgb, var(--rv-color-success) 30%, transparent);
+  border-radius: var(--rv-radius-sm);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-decoration: none;
+}
+.app-shell.stitch-shell main .order-reference-invoice .order-invoice-document-link:hover {
+  color: var(--rv-color-success);
+  background: color-mix(in srgb, var(--rv-color-success) 14%, var(--rv-color-surface));
+  text-decoration: none;
+}
 .variant-platform-pricing-modal { width: min(1180px, calc(100vw - 32px)); }
 
 /* Keep every shipping-label text line visually consistent in print previews. */
