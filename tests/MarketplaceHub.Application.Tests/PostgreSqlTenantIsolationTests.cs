@@ -2564,6 +2564,98 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         }
     }
 
+    [PostgreSqlFact]
+    public async Task TrendyolShipmentPackageReadback_SearchesInternationalStorefrontAfterEmptyTurkeyResult()
+    {
+        var tenant = NewTenant("trendyol-international-package-readback");
+        var anchor = DateTimeOffset.Parse("2026-10-02T00:00:00Z");
+        var connection = new PlatformConnection
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            PublicId = Guid.CreateVersion7(),
+            PlatformCode = "TRENDYOL",
+            Environment = "STAGE",
+            DisplayName = "Trendyol international package readback contract test",
+            ExternalStoreId = "seller-contract-test",
+            Status = "ACTIVE",
+            ApiVersion = "V2",
+            SettingsJson = JsonSerializer.Serialize(new { UserAgentIdentity = "ravencia-contract-test", ExternalWritesEnabled = false })
+        };
+        var dataProtection = new EphemeralDataProtectionProvider();
+        var protector = dataProtection.CreateProtector("MarketplaceHub.PlatformCredential.v1");
+        var credential = new PlatformCredential
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            ConnectionId = connection.Id,
+            CredentialType = "TRENDYOL_API_KEY",
+            ProtectedPayload = protector.Protect(JsonSerializer.Serialize(new { ApiKey = "test-key", ApiSecret = "test-secret" })),
+            MaskedHint = "test",
+            CreatedAt = anchor,
+            Version = 1
+        };
+        var storeFrontCodes = new List<string>();
+        var requests = new RecordingHttpMessageHandler(request =>
+        {
+            var storeFrontCode = request.Headers.GetValues("storeFrontCode").Single();
+            storeFrontCodes.Add(storeFrontCode);
+            var content = storeFrontCode == "AE"
+                ? """
+                  {"content":[{"shipmentPackageId":419428742,"orderNumber":"116483573775","status":"Shipped","lastModifiedDate":1790899200000,"lines":[]}],"page":0,"totalPages":1}
+                  """
+                : """
+                  {"content":[],"page":0,"totalPages":0}
+                  """;
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(content, Encoding.UTF8, "application/json")
+            };
+        });
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.PlatformCredentials.Add(credential);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var authentication = new TrendyolAuthenticationHandler(
+                db,
+                dataProtection,
+                Options.Create(new TrendyolOptions()),
+                NullLogger<TrendyolAuthenticationHandler>.Instance);
+            var client = new TrendyolHttpClient(
+                new RecordingHttpClientFactory(requests),
+                authentication,
+                new ConfigurationBuilder().Build(),
+                Options.Create(new TrendyolOptions()),
+                new FixedTimeProvider(anchor),
+                NullLogger<TrendyolHttpClient>.Instance);
+            var context = new AdapterContext(tenant.Id, connection.Id, "trendyol-international-package-readback-contract", "contract-test", anchor.AddMinutes(1));
+
+            var result = await client.GetShipmentPackageAsync(context, "419428742", CancellationToken.None);
+
+            Assert.True(result.IsSuccess, result.Error?.SafeMessage);
+            Assert.Equal("116483573775", result.Value!.OrderSnapshot!.ExternalOrderId);
+            Assert.Equal("419428742", result.Value.Package.ExternalPackageId);
+            Assert.Equal(["TR", "AE"], storeFrontCodes);
+            Assert.Equal(2, requests.Requests.Count);
+            Assert.All(requests.Requests, uri => Assert.Equal("/integration/order/sellers/seller-contract-test/v2/orders", uri.AbsolutePath));
+            Assert.All(requests.Requests, uri => Assert.Equal("419428742", QueryValue(uri, "shipmentPackageIds")));
+        }
+        finally
+        {
+            await using var cleanupDb = fixture.CreateContext();
+            await cleanupDb.PlatformCredentials.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
     private static Order NewInvoiceTestOrder(Guid tenantId, Guid connectionId, Guid id, string externalId, bool isReturnClaim, DateTimeOffset now) => new()
     {
         Id = id,
