@@ -200,7 +200,7 @@ public static class InvoicingEndpoints
         {
             if (command.Hidden) hiddenIds.Add(packageId);
             else hiddenIds.Remove(packageId);
-            db.AuditLogs.Add(new AuditLog { TenantId = tenant.TenantId, ActorUserId = tenant.UserId, Action = command.Hidden ? "INVOICE_WORKSPACE_PACKAGE_HIDDEN" : "INVOICE_WORKSPACE_PACKAGE_UNHIDDEN", TargetType = "ShipmentPackage", TargetId = packageId.ToString("D"), CorrelationId = http.TraceIdentifier, CreatedAt = timeProvider.GetUtcNow() });
+            db.AuditLogs.Add(new AuditLog { TenantId = tenant.TenantId, ActorUserId = tenant.UserId, Action = command.Hidden ? "INVOICE_WORKSPACE_PACKAGE_HIDDEN" : "INVOICE_WORKSPACE_PACKAGE_UNHIDDEN", TargetType = "ShipmentPackage", TargetId = packageId.ToString("D"), Reason = command.Hidden ? "HIDDEN" : "VISIBLE", CorrelationId = http.TraceIdentifier, CreatedAt = timeProvider.GetUtcNow() });
         }
         var now = timeProvider.GetUtcNow();
         var json = JsonSerializer.Serialize(hiddenIds);
