@@ -2567,7 +2567,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     [PostgreSqlFact]
     public async Task TrendyolShipmentPackageReadback_SearchesInternationalStorefrontAfterEmptyTurkeyResult()
     {
-        var tenant = NewTenant("trendyol-international-package-readback");
+        var tenant = NewTenant("trendyol-intl-package");
         var anchor = DateTimeOffset.Parse("2026-10-02T00:00:00Z");
         var connection = new PlatformConnection
         {
