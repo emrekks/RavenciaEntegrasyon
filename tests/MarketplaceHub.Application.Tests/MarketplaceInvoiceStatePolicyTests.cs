@@ -95,7 +95,7 @@ public sealed class MarketplaceInvoiceStatePolicyTests
     }
 
     [Fact]
-    public void MapperReportsInvalidOrderPackageWithoutBlockingThePage()
+    public void MapperKeepsPackageWhenProductLineIsInvalid()
     {
         const string json = """
             {"content":[{"id":"pkg-1","orderNumber":"ord-1","status":"Created","lastModifiedDate":1760000000000,"lines":[{"lineId":"line-1","stockCode":"SKU-1","productName":"Test","quantity":1}]}]}
@@ -103,10 +103,13 @@ public sealed class MarketplaceInvoiceStatePolicyTests
 
         var result = TrendyolJsonMapper.Orders(json);
 
-        Assert.Empty(result.Items);
+        var order = Assert.Single(result.Items);
+        Assert.Equal("ord-1", order.ExternalOrderId);
+        Assert.Empty(order.Lines);
+        Assert.Equal("pkg-1", Assert.Single(order.Packages).ExternalPackageId);
         var issue = Assert.Single(result.Issues!);
-        Assert.Equal("ORDER_PACKAGE_INVALID", issue.Code);
-        Assert.Equal("pkg-1", issue.Identity);
+        Assert.Equal("ORDER_PACKAGE_LINE_INVALID", issue.Code);
+        Assert.Equal("pkg-1:line-1", issue.Identity);
         Assert.Contains("unit price", issue.Message, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -122,10 +125,29 @@ public sealed class MarketplaceInvoiceStatePolicyTests
 
         var result = TrendyolJsonMapper.Orders(json);
 
-        Assert.Single(result.Items);
-        Assert.Equal("good-pkg", result.Items[0].Packages[0].ExternalPackageId);
+        Assert.Equal(2, result.Items.Count);
+        Assert.Contains(result.Items, order => order.Packages.Single().ExternalPackageId == "bad-pkg" && order.Lines.Count == 0);
+        Assert.Contains(result.Items, order => order.Packages.Single().ExternalPackageId == "good-pkg" && order.Lines.Count == 1);
         var issue = Assert.Single(result.Issues!);
-        Assert.Equal("bad-pkg", issue.Identity);
+        Assert.Equal("bad-pkg:bad-line", issue.Identity);
+    }
+
+    [Fact]
+    public void MapperKeepsValidLinesAndPackageWhenAnotherLineIsInvalid()
+    {
+        const string json = """
+            {"content":[{"id":"pkg-1","orderNumber":"ord-1","status":"Shipped","packageTotalPrice":20,"lines":[
+              {"lineId":"bad-line","stockCode":"SKU-BAD","productName":"Bad","quantity":1},
+              {"lineId":"good-line","stockCode":"SKU-GOOD","productName":"Good","quantity":1,"lineItemPrice":20,"vatRate":20}
+            ]}]}
+            """;
+
+        var result = TrendyolJsonMapper.Orders(json);
+
+        var order = Assert.Single(result.Items);
+        Assert.Equal("pkg-1", Assert.Single(order.Packages).ExternalPackageId);
+        Assert.Equal("good-line", Assert.Single(order.Lines).ExternalLineId);
+        Assert.Equal("ORDER_PACKAGE_LINE_INVALID", Assert.Single(result.Issues!).Code);
     }
 
     [Fact]

@@ -28,24 +28,45 @@ public static class TrendyolJsonMapper
                 {
                     foreach (var line in lineArray.EnumerateArray())
                     {
-                        var externalLineId = Text(line, "lineId", "id"); if (string.IsNullOrWhiteSpace(externalLineId)) continue;
-                        if (!TryDecimal(line, out var quantity, "quantity") || quantity <= 0)
-                            throw new JsonException($"Order line {externalLineId} has no valid positive quantity.");
-                        if (!TryDecimal(line, out var unitPrice, "lineItemPrice", "lineUnitPrice", "lineGrossAmount", "price", "amount") || unitPrice < 0)
-                            throw new JsonException($"Order line {externalLineId} has no valid unit price.");
-                        if (!TryDecimal(line, out var vatRate, "vatRate", "vatBaseAmount") || vatRate < 0)
-                            throw new JsonException($"Order line {externalLineId} has no valid VAT value.");
-                        var barcode = NullText(line, "barcode");
-                        var sku = Text(line, "stockCode", "merchantSku");
-                        if (string.IsNullOrWhiteSpace(sku)) sku = barcode ?? "";
-                        var title = Text(line, "productName", "title");
-                        if (string.IsNullOrWhiteSpace(sku) || string.IsNullOrWhiteSpace(title))
-                            throw new JsonException($"Order line {externalLineId} has no SKU/barcode or product name.");
-                        var rawStatus = Text(line, "orderLineItemStatusName");
-                        lines.Add(new(externalLineId, sku, barcode, title, quantity, unitPrice, vatRate, rawStatus, line.GetRawText()));
-                        allocations.Add(new(externalLineId, quantity, 0, 0, 0, 0));
+                        var externalLineId = "";
+                        try
+                        {
+                            if (line.ValueKind != JsonValueKind.Object)
+                                throw new JsonException("Order line is not an object.");
+                            externalLineId = Text(line, "lineId", "id");
+                            if (string.IsNullOrWhiteSpace(externalLineId))
+                                throw new JsonException("Order line has no line ID.");
+                            if (!TryDecimal(line, out var quantity, "quantity") || quantity <= 0)
+                                throw new JsonException($"Order line {externalLineId} has no valid positive quantity.");
+                            if (!TryDecimal(line, out var unitPrice, "lineItemPrice", "lineUnitPrice", "lineGrossAmount", "price", "amount") || unitPrice < 0)
+                                throw new JsonException($"Order line {externalLineId} has no valid unit price.");
+                            if (!TryDecimal(line, out var vatRate, "vatRate", "vatBaseAmount") || vatRate < 0)
+                                throw new JsonException($"Order line {externalLineId} has no valid VAT value.");
+                            var barcode = NullText(line, "barcode");
+                            var sku = Text(line, "stockCode", "merchantSku");
+                            if (string.IsNullOrWhiteSpace(sku)) sku = barcode ?? "";
+                            var title = Text(line, "productName", "title");
+                            if (string.IsNullOrWhiteSpace(sku) || string.IsNullOrWhiteSpace(title))
+                                throw new JsonException($"Order line {externalLineId} has no SKU/barcode or product name.");
+                            var rawStatus = Text(line, "orderLineItemStatusName");
+                            lines.Add(new(externalLineId, sku, barcode, title, quantity, unitPrice, vatRate, rawStatus, line.GetRawText()));
+                            allocations.Add(new(externalLineId, quantity, 0, 0, 0, 0));
+                        }
+                        catch (JsonException exception)
+                        {
+                            // Keep the order and shipment package even when one product line is incomplete.
+                            issues.Add(new(
+                                "ORDER_PACKAGE_LINE_INVALID",
+                                string.IsNullOrWhiteSpace(externalLineId) ? externalPackageId : $"{externalPackageId}:{externalLineId}",
+                                $"Sipariş paketi {externalPackageId} alındı ancak ürün satırı eşlenemedi: {exception.Message}"));
+                        }
                     }
                 }
+                if (lines.Count == 0
+                    && (!package.TryGetProperty("lines", out var rawLines)
+                        || rawLines.ValueKind != JsonValueKind.Array
+                        || rawLines.GetArrayLength() == 0))
+                    issues.Add(new("ORDER_PACKAGE_LINES_MISSING", externalPackageId, $"Sipariş paketi {externalPackageId} alındı ancak eşlenebilir ürün satırı bulunamadı."));
                 var gross = Decimal(package, "packageGrossAmount", "grossAmount", "packageTotalPrice");
                 var discount = Decimal(package, "packageTotalDiscount");
                 if (discount == 0) discount = Decimal(package, "packageSellerDiscount", "totalDiscount") + Decimal(package, "packageTyDiscount", "totalTyDiscount");

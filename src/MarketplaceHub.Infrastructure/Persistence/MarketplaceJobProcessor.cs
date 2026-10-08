@@ -2172,12 +2172,12 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 }
 
                 TrackReceived();
-                if (packageRead.Value?.OrderSnapshot is { Lines.Count: > 0 } orderSnapshot)
+                if (packageRead.Value?.OrderSnapshot is { Packages.Count: > 0 } orderSnapshot)
                     packageSnapshots.Add(orderSnapshot);
             }
 
             var recoveredOrder = TrendyolJsonMapper.MergeOrderPackages(packageSnapshots, externalOrderId);
-            if (recoveredOrder is not null && recoveredOrder.Lines.Count > 0 && recoveredOrder.Packages.Count > 0)
+            if (recoveredOrder is { Packages.Count: > 0 })
             {
                 await UpsertOrder(tenantId, connectionId, recoveredOrder, cancellationToken);
                 return true;
@@ -6281,6 +6281,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             .SingleOrDefaultAsync(cancellationToken);
         var isShopify = platformCode == "SHOPIFY";
         var isHepsiburada = platformCode == "HEPSIBURADA";
+        var isTrendyol = platformCode == "TRENDYOL";
         var now = timeProvider.GetUtcNow();
         var order = batch?.OrdersByExternalId.GetValueOrDefault(remote.ExternalOrderId)
             ?? await db.Orders.SingleOrDefaultAsync(x => x.TenantId == tenantId
@@ -6309,7 +6310,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
 
         IReadOnlyDictionary<string, decimal> remoteLineQuantities;
-        if (remote.Lines.Count == 0 || remote.Packages.Count == 0 && !isHepsiburada)
+        if ((!isTrendyol && remote.Lines.Count == 0) || remote.Packages.Count == 0 && !isHepsiburada)
         {
             await RecordIssue(tenantId, $"order-contract:{connectionId}:{remote.ExternalOrderId}:{remote.LastModifiedAt.ToUnixTimeMilliseconds()}", "ORDER_CONTRACT_INVALID", "Pazar yeri siparişinde satır veya paket verisi eksikti; eksik sipariş projeksiyonu uygulanmadı.", cancellationToken);
             if (saveChanges) await db.SaveChangesAsync(cancellationToken);
@@ -6318,7 +6319,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         else
         {
             remoteLineQuantities = new Dictionary<string, decimal>(StringComparer.Ordinal);
-            if (!PackageIngestionSafety.TryGetOrderedQuantities(remote.Lines, out remoteLineQuantities))
+            if (remote.Lines.Count > 0 && !PackageIngestionSafety.TryGetOrderedQuantities(remote.Lines, out remoteLineQuantities))
             {
                 await RecordIssue(tenantId, $"order-lines:{connectionId}:{remote.ExternalOrderId}:{remote.LastModifiedAt.ToUnixTimeMilliseconds()}", "ORDER_LINE_QUANTITY_INVARIANT_REJECTED", "Sipariş satır kimliği veya miktarı geçersizdi; olayın hiçbir parçası uygulanmadı.", cancellationToken);
                 if (saveChanges) await db.SaveChangesAsync(cancellationToken);
@@ -6327,7 +6328,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
         var detailedPackages = remote.Packages.Where(package => !package.IsStatusObservation).ToArray();
         var allocatedLineIds = detailedPackages.SelectMany(x => x.Allocations).Select(x => x.ExternalLineId).ToHashSet(StringComparer.Ordinal);
-        if (detailedPackages.Length > 0 && remoteLineQuantities.Keys.Any(lineId => !allocatedLineIds.Contains(lineId)))
+        if (remoteLineQuantities.Count > 0 && detailedPackages.Length > 0 && remoteLineQuantities.Keys.Any(lineId => !allocatedLineIds.Contains(lineId)))
         {
             await RecordIssue(tenantId, $"order-coverage:{connectionId}:{remote.ExternalOrderId}:{remote.LastModifiedAt.ToUnixTimeMilliseconds()}", "ORDER_LINE_COVERAGE_INVALID", "Pazar yeri cevabındaki sipariş satırlarının tamamı paket tahsisinde yer almıyordu; eksik veri uygulanmadı.", cancellationToken);
             if (saveChanges) await db.SaveChangesAsync(cancellationToken);
@@ -6338,7 +6339,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         // sibling package; that fragment is validated per package below and
         // merged with the persisted projection instead of being rejected as an
         // incomplete order.
-        if (order is null && detailedPackages.Length > 0 && !PackageIngestionSafety.TryNormalizeOrder(remoteLineQuantities, detailedPackages, out _))
+        if (order is null && remoteLineQuantities.Count > 0 && detailedPackages.Length > 0 && !PackageIngestionSafety.TryNormalizeOrder(remoteLineQuantities, detailedPackages, out _))
         {
             var rejectedEventId = remote.Packages.Count > 0
                 ? PackageIngestionSafety.EventId(remote.Packages[0].ExternalPackageId, remote.Packages[0].OccurredAt)
