@@ -64,6 +64,11 @@ trap cleanup_validation EXIT
 validation_cleanup_needed=false
 trap - EXIT
 
+# The application, edge, and validation images are built and retained now.
+# Drop only transient builder cache before creating the full database backup so
+# an otherwise successful build cannot leave too little space for the backup.
+sudo -n docker builder prune --all --force
+
 run_verified_backup() {
   local backup_output backup_set
   backup_output="$("${compose[@]}" --profile operations run --rm backup)"
