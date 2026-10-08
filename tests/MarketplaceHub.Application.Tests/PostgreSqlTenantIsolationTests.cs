@@ -1200,6 +1200,18 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             Enabled = true,
             Version = 1
         };
+        var recoveryPolicy = new ConnectionSyncPolicy
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            ConnectionId = connection.Id,
+            ResourceType = "ORDER_RECOVERY",
+            IntervalSeconds = 900,
+            OverlapSeconds = 600,
+            JitterSeconds = 30,
+            Enabled = true,
+            Version = 1
+        };
         var cursor = new SyncCursor
         {
             Id = Guid.CreateVersion7(),
@@ -1229,11 +1241,24 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             Id = Guid.CreateVersion7(),
             TenantId = tenant.Id,
             ConnectionId = connection.Id,
-            ResourceType = "ORDER_RECONCILE_DAILY",
+            ResourceType = "ORDER_RECONCILIATION",
             LastAttemptAt = now.AddHours(-24).AddMinutes(-18),
             LastSuccessAt = now.AddHours(-24).AddMinutes(-18),
             LastModifiedWatermark = now.AddDays(-2),
             LastCursorAdvancedAt = now.AddDays(-2),
+            Version = 1
+        };
+        var recoveryCursor = new SyncCursor
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            ConnectionId = connection.Id,
+            ResourceType = "ORDERS_RECOVERY",
+            LastAttemptAt = now.AddMinutes(-4),
+            LastSuccessAt = now.AddMinutes(-5),
+            LastModifiedWatermark = now.AddHours(-1),
+            LastReceivedCount = 2,
+            LastCursorAdvancedAt = now.AddMinutes(-5),
             Version = 1
         };
         IntegrationJob Job(JobStatus status, DateTimeOffset createdAt, DateTimeOffset? completedAt = null) => new()
@@ -1259,8 +1284,8 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         {
             seedDb.Tenants.Add(tenant);
             seedDb.PlatformConnections.AddRange(connection, otherConnection);
-            seedDb.ConnectionSyncPolicies.AddRange(policy, dailyPolicy);
-            seedDb.SyncCursors.AddRange(cursor, dailyCursor);
+            seedDb.ConnectionSyncPolicies.AddRange(policy, dailyPolicy, recoveryPolicy);
+            seedDb.SyncCursors.AddRange(cursor, dailyCursor, recoveryCursor);
             seedDb.IntegrationJobs.AddRange(
                 Job(JobStatus.Pending, now.AddMinutes(-12)),
                 Job(JobStatus.Leased, now.AddMinutes(-1)),
@@ -1306,6 +1331,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             Assert.True(result.Succeeded);
             var view = Assert.Single(result.Value!, item => item.ResourceType == "ORDERS");
             var dailyView = Assert.Single(result.Value!, item => item.ResourceType == "ORDER_RECONCILE_DAILY");
+            var recoveryView = Assert.Single(result.Value!, item => item.ResourceType == "ORDER_RECOVERY");
             Assert.Equal(now.AddMinutes(-3), view.LastAttemptAt);
             Assert.Equal(now.AddMinutes(-4), view.LastSuccessAt);
             Assert.Equal(now.AddMinutes(-20), view.LastCursorAdvancedAt);
@@ -1321,6 +1347,9 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             Assert.Equal(1, view.ConnectionDeadJobCount24h);
             Assert.Equal("DELAYED", dailyView.HealthStatus);
             Assert.Equal("NODATA", dailyView.CursorProgressStatus);
+            Assert.Equal(now.AddMinutes(-4), recoveryView.LastAttemptAt);
+            Assert.Equal(now.AddMinutes(-5), recoveryView.LastSuccessAt);
+            Assert.Equal("HEALTHY", recoveryView.HealthStatus);
         }
         finally
         {

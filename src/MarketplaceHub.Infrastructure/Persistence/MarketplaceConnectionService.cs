@@ -439,8 +439,9 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         var recoveryGapCritical = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("MarketplaceSync:Health:RecoveryGapCriticalDays", 80), (int)recoveryGapWarning.TotalDays + 1, 120));
         var rows = policies.Select(x =>
         {
-            var cursor = cursors.FirstOrDefault(candidate => candidate.ResourceType == x.ResourceType)
-                ?? (x.ResourceType == "ORDERS" ? cursors.FirstOrDefault(candidate => candidate.ResourceType == "ORDERS_HOT") : null);
+            var cursorResourceType = MarketplaceSyncPolicyRules.CursorResourceType(x.ResourceType);
+            var cursor = cursors.FirstOrDefault(candidate => candidate.ResourceType == cursorResourceType)
+                ?? cursors.FirstOrDefault(candidate => candidate.ResourceType == x.ResourceType);
             var expectedCadence = TimeSpan.FromSeconds(Math.Max(0, x.IntervalSeconds) + Math.Max(0, x.JitterSeconds));
             var health = MarketplaceSyncHealthPolicy.Classify(
                 cursor?.LastSuccessAt,

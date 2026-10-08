@@ -250,6 +250,14 @@ public static class TargetedOrderSyncConflictPolicy
 
 public static class MarketplaceSyncPolicyRules
 {
+    public static string CursorResourceType(string resourceType) => resourceType.Trim().ToUpperInvariant() switch
+    {
+        "ORDERS" => "ORDERS_HOT",
+        "ORDER_RECOVERY" => "ORDERS_RECOVERY",
+        "ORDER_RECONCILE_SHORT" or "ORDER_RECONCILE_MEDIUM" or "ORDER_RECONCILE_DAILY" => "ORDER_RECONCILIATION",
+        _ => resourceType.Trim().ToUpperInvariant()
+    };
+
     public static bool RequiresExternalWrites(string? resourceType) => resourceType?.Trim().ToUpperInvariant() is
         "STOCK_RECONCILE_SHORT" or "STOCK_RECONCILE_MEDIUM" or "STOCK_RECONCILE_DAILY"
         or MarketplaceExternalWritePolicies.Price

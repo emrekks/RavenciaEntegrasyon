@@ -6,6 +6,18 @@ namespace MarketplaceHub.Application.Tests;
 public sealed class CatalogColorMappingPolicyTests
 {
     [Theory]
+    [InlineData("ORDERS", "ORDERS_HOT")]
+    [InlineData("ORDER_RECOVERY", "ORDERS_RECOVERY")]
+    [InlineData("ORDER_RECONCILE_SHORT", "ORDER_RECONCILIATION")]
+    [InlineData("ORDER_RECONCILE_MEDIUM", "ORDER_RECONCILIATION")]
+    [InlineData("ORDER_RECONCILE_DAILY", "ORDER_RECONCILIATION")]
+    [InlineData("ORDER_LIFECYCLE", "ORDER_LIFECYCLE")]
+    public void CursorResourceType_MapsPolicyNamesToStoredCursorNames(string policy, string expected)
+    {
+        Assert.Equal(expected, MarketplaceSyncPolicyRules.CursorResourceType(policy));
+    }
+
+    [Theory]
     [InlineData("Saks", "MAVI")]
     [InlineData("Kiremit", "TURUNCU")]
     [InlineData("Mürdüm", "MOR")]
