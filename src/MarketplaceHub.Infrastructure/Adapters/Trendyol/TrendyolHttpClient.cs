@@ -322,7 +322,12 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
         var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (authorized is null) return AdapterResult<RemoteOrderPackage>.Failure(TrendyolErrorMapper.Configuration());
 
-        var query = $"?shipmentPackageIds={Uri.EscapeDataString(externalPackageId.Trim())}&size=200";
+        // The legacy shipment package endpoint defaults to a recent date range.
+        // Always send the documented history bounds so older, still-accessible
+        // packages can be recovered by their exact package ID.
+        var packageReadEnd = timeProvider.GetUtcNow();
+        var packageReadStart = TrendyolOrderHistoryPolicy.StreamInitialStart(packageReadEnd);
+        var query = $"?startDate={packageReadStart.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)}&endDate={packageReadEnd.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)}&shipmentPackageIds={Uri.EscapeDataString(externalPackageId.Trim())}&size=200";
         AdapterResult<string>? v2Response = null;
         AdapterError? v2LookupError = null;
         RemoteOrderPackage? v2Package = null;

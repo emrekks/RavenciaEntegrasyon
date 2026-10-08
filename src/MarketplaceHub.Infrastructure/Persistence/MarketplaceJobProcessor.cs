@@ -2193,10 +2193,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 .ToListAsync(cancellationToken);
             var packagesToRead = new List<(string ExternalPackageId, DateTimeOffset? StatusOccurredAt)>();
             var packageIdsToRead = new HashSet<string>(StringComparer.Ordinal);
-            if (requestedPackageReadFirst && packageIdsToRead.Add(requestedPackageNumber!))
-            {
-                packagesToRead.Add((requestedPackageNumber!, null));
-            }
+            if (requestedPackageReadFirst)
+                packageIdsToRead.Add(requestedPackageNumber!);
             foreach (var knownPackage in knownPackages)
             {
                 if (packageIdsToRead.Add(knownPackage.ExternalPackageId))
