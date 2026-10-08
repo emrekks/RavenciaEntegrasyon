@@ -20,6 +20,8 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
     ];
     private static readonly string[] ReturnReadJobTypes =
         [MarketplaceJobTypes.ReturnSync, MarketplaceJobTypes.HepsiburadaReturnSync, MarketplaceJobTypes.ReturnStatusSync];
+    private static readonly string[] ProductCatalogSyncJobTypes =
+        [MarketplaceJobTypes.ProductSync, MarketplaceJobTypes.ShopifyProductSync, MarketplaceJobTypes.HepsiburadaProductSync];
     private readonly string healthFile = configuration["Worker:HealthFile"] ?? "/tmp/marketplacehub-worker-heartbeat";
     private readonly TimeSpan schedulerScanInterval = TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("Worker:SchedulerScanSeconds", 5), 1, 30));
     private readonly int hotPriorityCeiling = Math.Clamp(configuration.GetValue("Worker:HotPriorityCeiling", 2), 0, 5);
@@ -50,6 +52,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         {
             RunLeaseLaneAsync("hot", hotPriorityCeiling, 0, stoppingToken, reapExpiredLeases: true, excludedJobTypes: HepsiburadaOrderJobTypes),
             RunLeaseLaneAsync("returns-read", null, null, stoppingToken, includedJobTypes: ReturnReadJobTypes),
+            RunLeaseLaneAsync("product-catalog", null, null, stoppingToken, includedJobTypes: ProductCatalogSyncJobTypes),
             RunLeaseLaneAsync("hepsiburada-status", hotPriorityCeiling, 0, stoppingToken, MarketplaceJobTypes.HepsiburadaOrderStatusSync),
             RunLeaseLaneAsync("hepsiburada-orders", hotPriorityCeiling, 0, stoppingToken, includedJobTypes: HepsiburadaOrderJobTypes),
             RunLeaseLaneAsync("initial-data-sync", -1, -1, stoppingToken),
@@ -246,6 +249,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
     }
 
     internal static bool IsOrderReadSyncJob(string jobType) => Array.IndexOf(OrderReadSyncJobTypes, jobType) >= 0;
+    internal static bool IsProductCatalogSyncJob(string jobType) => Array.IndexOf(ProductCatalogSyncJobTypes, jobType) >= 0;
     internal static TimeSpan? RetryDelayAfterOrderReadTimeout(string jobType) =>
         IsOrderReadSyncJob(jobType) ? TimeSpan.FromMinutes(3) : null;
     internal static bool IsOrderInvoiceReconciliationJob(string jobType) => jobType is
