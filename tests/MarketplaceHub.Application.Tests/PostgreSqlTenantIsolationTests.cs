@@ -2823,6 +2823,9 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         await db.IntegrationOutboxEvents.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.OperationalIssues.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.SyncCursors.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.PackageLineAllocations.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.OrderStatusHistory.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.OrderLines.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.ShipmentPackages.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.Orders.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.PlatformConnections.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
