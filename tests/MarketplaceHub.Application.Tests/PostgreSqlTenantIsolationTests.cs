@@ -1112,7 +1112,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         var regularOrder = NewInvoiceTestOrder(tenant.Id, connection.Id, regularOrderId, "regular-order", isReturnClaim: false, fixture.Now);
         var partialPackage = NewInvoiceTestPackage(tenant.Id, connection.Id, partialOrderId, partialPackageId, "partial-package", fixture.Now);
         var regularPackage = NewInvoiceTestPackage(tenant.Id, connection.Id, regularOrderId, regularPackageId, "regular-package", fixture.Now);
-        var orderPort = new ReadOnlyInvoiceTestOrderPort(new RemotePackage(
+        var orderPort = new ReadOnlyOrderTestPort(new RemotePackage(
             "regular-package", null, "Delivered", fixture.Now, null, null, [],
             GrossAmount: 100m, NetAmount: 100m,
             Invoice: new RemotePackageInvoiceObservation("NotInvoiced", null, null, fixture.Now)));
@@ -1161,6 +1161,82 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 .ToDictionaryAsync(package => package.ExternalPackageId);
             Assert.Equal(MarketplaceInvoiceStatus.Unknown, persistedPackages["partial-package"].MarketplaceInvoiceStatus);
             Assert.Equal(MarketplaceInvoiceStatus.NotInvoiced, persistedPackages["regular-package"].MarketplaceInvoiceStatus);
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task TargetedTrendyolOrderSync_ReadsSuppliedPackageBeforeSearchingOrderNumber()
+    {
+        var tenant = NewTenant("trendyol-package-first-sync");
+        var connection = NewQuestionConnection(tenant);
+        connection.ApiVersion = "V2";
+        const string externalOrderId = "116483573775";
+        const string packageNumber = "419428742";
+        var package = new RemotePackage(
+            packageNumber,
+            null,
+            "Shipped",
+            fixture.Now.AddDays(-2),
+            "TRENDYOL_EXPRESS",
+            "7330037500176178",
+            [new RemotePackageAllocation("line-1", 1m, 0m, 1m, 0m, 0m)],
+            GrossAmount: 454.31m,
+            NetAmount: 454.31m);
+        var order = new RemoteOrder(
+            externalOrderId,
+            externalOrderId,
+            fixture.Now.AddDays(-2),
+            fixture.Now.AddDays(-1),
+            "TRY",
+            454.31m,
+            0m,
+            454.31m,
+            "{}",
+            "{}",
+            "{}",
+            [new RemoteOrderLine("line-1", "RY-P001", "RY-P001", "Test ürün", 1m, 454.31m, 10m, "Shipped")],
+            [package],
+            "{}");
+        var orderPort = new ReadOnlyOrderTestPort(package, order, externalOrderId);
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using (var processorDb = fixture.CreateContext())
+            {
+                var processor = new MarketplaceJobProcessor(
+                    processorDb,
+                    null!, null!, null!, null!, orderPort, null!, null!, null!, null!, null!,
+                    new ConfigurationBuilder().Build(), fixture.TimeProvider);
+                var result = await processor.ProcessAsync(
+                    tenant.Id,
+                    connection.Id,
+                    MarketplaceJobTypes.OrderSync,
+                    $$"""{"externalOrderId":"{{externalOrderId}}","full":false,"packageNumber":"{{packageNumber}}"}""",
+                    "targeted-trendyol-package-first-sync",
+                    CancellationToken.None);
+
+                Assert.True(result.Succeeded, result.ErrorSummary);
+                Assert.Equal(0, orderPort.OrderReadCalls);
+                Assert.Equal([packageNumber], orderPort.PackageReadCalls);
+            }
+
+            await using var verifyDb = fixture.CreateContext();
+            var persistedOrder = await verifyDb.Orders.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id && row.ExternalOrderId == externalOrderId);
+            Assert.Equal(externalOrderId, persistedOrder.OrderNumber);
+            var persistedPackage = await verifyDb.ShipmentPackages.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id && row.ExternalPackageId == packageNumber);
+            Assert.Equal(persistedOrder.Id, persistedPackage.OrderId);
+            Assert.Equal("7330037500176178", persistedPackage.CargoTrackingNumber);
         }
         finally
         {
@@ -2937,7 +3013,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         }
     }
 
-    private sealed class ReadOnlyInvoiceTestOrderPort(RemotePackage package) : IOrderPort
+    private sealed class ReadOnlyOrderTestPort(RemotePackage package, RemoteOrder? orderSnapshot = null, string externalOrderId = "regular-order") : IOrderPort
     {
         public int OrderReadCalls { get; private set; }
         public List<string> PackageReadCalls { get; } = [];
@@ -2954,7 +3030,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         public Task<AdapterResult<RemoteOrderPackage>> GetShipmentPackageAsync(AdapterContext context, string externalPackageId, DateTimeOffset? packageStatusOccurredAt, CancellationToken cancellationToken)
         {
             PackageReadCalls.Add(externalPackageId);
-            return Task.FromResult(AdapterResult<RemoteOrderPackage>.Success(new("regular-order", package)));
+            return Task.FromResult(AdapterResult<RemoteOrderPackage>.Success(new(externalOrderId, package, orderSnapshot)));
         }
 
         public Task<AdapterResult<PackageActionResult>> ExecutePackageActionAsync(AdapterContext context, PackageActionCommand command, CancellationToken cancellationToken) =>

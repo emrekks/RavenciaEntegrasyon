@@ -2130,6 +2130,41 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         catch (JsonException) { return false; }
         if (!string.IsNullOrWhiteSpace(externalOrderId))
         {
+            var requestedPackageNumber = packageNumber?.Trim();
+            var requestedPackageReadFirst = !string.IsNullOrWhiteSpace(requestedPackageNumber)
+                && requestedPackageNumber.Length <= 100
+                && !requestedPackageNumber.Any(char.IsControl);
+            if (requestedPackageReadFirst)
+            {
+                // A supplied package number is the most reliable identifier for
+                // micro-export orders. Read it first so an old order-number
+                // lookup timeout cannot prevent recovery of its full snapshot.
+                TrackRequest();
+                var requestedPackageRead = await orders.GetShipmentPackageAsync(
+                    Context(tenantId, connectionId, correlationId, $"targeted-order-package-read:{requestedPackageNumber}"),
+                    requestedPackageNumber!,
+                    null,
+                    cancellationToken);
+                if (!requestedPackageRead.IsSuccess)
+                {
+                    if (requestedPackageRead.Error?.Class != AdapterErrorClass.NotFound && requestedPackageRead.Error?.HttpStatus != 404)
+                    {
+                        TrackResultFailure(requestedPackageRead.Error);
+                        throw JobProcessingException.FromAdapter(requestedPackageRead.Error!);
+                    }
+                }
+                else
+                {
+                    TrackReceived();
+                    if (requestedPackageRead.Value?.OrderSnapshot is { Packages.Count: > 0 } packageOrderSnapshot
+                        && string.Equals(packageOrderSnapshot.ExternalOrderId, externalOrderId.Trim(), StringComparison.Ordinal))
+                    {
+                        await UpsertOrder(tenantId, connectionId, packageOrderSnapshot, cancellationToken);
+                        return true;
+                    }
+                }
+            }
+
             TrackRequest();
             var single = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"order-get:{externalOrderId}"), externalOrderId.Trim(), cancellationToken);
             if (single.IsSuccess)
@@ -2158,11 +2193,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 .ToListAsync(cancellationToken);
             var packagesToRead = new List<(string ExternalPackageId, DateTimeOffset? StatusOccurredAt)>();
             var packageIdsToRead = new HashSet<string>(StringComparer.Ordinal);
-            var requestedPackageNumber = packageNumber?.Trim();
-            if (!string.IsNullOrWhiteSpace(requestedPackageNumber) && requestedPackageNumber.Length <= 100 && !requestedPackageNumber.Any(char.IsControl))
+            if (requestedPackageReadFirst && packageIdsToRead.Add(requestedPackageNumber!))
             {
-                packageIdsToRead.Add(requestedPackageNumber);
-                packagesToRead.Add((requestedPackageNumber, null));
+                packagesToRead.Add((requestedPackageNumber!, null));
             }
             foreach (var knownPackage in knownPackages)
             {
