@@ -4,10 +4,10 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Configuration;
-using Microsoft.EntityFrameworkCore;
 using MarketplaceHub.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace MarketplaceHub.Infrastructure.Adapters.Shopify;
