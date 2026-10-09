@@ -572,8 +572,8 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         {
             var detail = job.LastErrorSummary switch
             {
-                "EFATURAM_RECIPIENT_TAX_ID_REQUIRED" => "Alıcı bilgilerinde geçerli VKN/TCKN bulunamadı. E-Faturam faturayı kabul etmedi; 11111111111 yedek değeri gerçek kimlik numarası yerine kullanılamaz. Siparişin fatura bilgilerine gerçek numara girilip sipariş eşitlendikten sonra fatura yeniden denenmelidir. Bu fatura kesilmiş sayılmaz.",
-                "EFATURAM_RECIPIENT_TAX_ID_PLACEHOLDER_NOT_ALLOWED" => "Alıcı bilgilerinde 11111111111 yer tutucu değeri var. E-Faturam bunu geçerli TCKN olarak kabul etmedi ve fatura gönderilmedi. Siparişin fatura bilgilerine gerçek TCKN girilip sipariş eşitlendikten sonra fatura yeniden denenmelidir.",
+                "EFATURAM_RECIPIENT_TAX_ID_REQUIRED" => "Alıcı için gerekli vergi kimlik numarası bulunamadı. Bireysel e-Arşiv alıcılarında 11111111111 kullanılır; kurumsal alıcı için şirket VKN'si, e-Fatura alıcısı için gerçek TCKN gerekir. Eksik şirket veya alıcı bilgisi pazaryeri fatura adresine girilip sipariş eşitlendikten sonra yeniden deneyin. Bu fatura kesilmiş sayılmaz.",
+                "EFATURAM_RECIPIENT_TAX_ID_PLACEHOLDER_NOT_ALLOWED" => "Bu eski denemede 11111111111 nedeniyle fatura gönderilmedi. Bireysel e-Arşiv alıcılarında bu değer kullanılır; kurumsal ve e-Fatura alıcılarında gerçek VKN/TCKN gerekir. Sipariş bilgilerini güncelleyip fatura denemesini yeniden kuyruğa alın. Fatura kesilmiş sayılmaz.",
                 _ => "E-Faturam isteği kabul etmedi. Bu kayıt fatura olarak kesilmiş sayılmaz; hata ayrıntısındaki alıcı/fatura bilgileri düzeltilip güvenli yeniden deneme yapılmalıdır."
             };
             return new("İstek sonucu", "Fatura gönderilmedi", detail);
