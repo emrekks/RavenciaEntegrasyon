@@ -169,7 +169,13 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                     db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null
                         && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
                         && i.Status == InvoiceStatus.Completed)
-                    || db.ShipmentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Invoiced)),
+                    || db.ShipmentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id
+                        && package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Invoiced
+                        // A stale marketplace "invoiced" snapshot must not mask a failed local invoice attempt.
+                        && !db.Invoices.Any(i => i.TenantId == package.TenantId && i.OrderId == package.OrderId
+                            && i.OriginalInvoiceId == null && (i.PackageId == package.Id || i.PackageId == null)
+                            && (i.Status == InvoiceStatus.Rejected || i.Status == InvoiceStatus.ValidationFailed
+                                || i.Status == InvoiceStatus.ManualReview || i.Status == InvoiceStatus.MarketplaceFailed)))),
                 "FATURA_KONTROLDE" => query.Where(x =>
                     db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null
                         && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))

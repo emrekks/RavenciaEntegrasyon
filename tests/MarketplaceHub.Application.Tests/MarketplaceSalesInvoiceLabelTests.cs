@@ -51,10 +51,14 @@ public sealed class MarketplaceSalesInvoiceLabelTests
         Assert.Equal("FATURA_KESILDI", label);
     }
 
-    [Fact]
-    public void LocalProviderRejectionWinsOverInvoicedMarketplaceSnapshot()
+    [Theory]
+    [InlineData(InvoiceStatus.Rejected)]
+    [InlineData(InvoiceStatus.ValidationFailed)]
+    [InlineData(InvoiceStatus.ManualReview)]
+    [InlineData(InvoiceStatus.MarketplaceFailed)]
+    public void LocalInvoiceFailureWinsOverInvoicedMarketplaceSnapshot(InvoiceStatus failureStatus)
     {
-        var label = MarketplaceSalesService.InvoiceLabel(new Invoice { Status = InvoiceStatus.Rejected, InvoiceType = "EARSIV", SequencePurpose = "MANUAL", Currency = "TRY", Note = string.Empty, IdempotencyKey = "test" }, MarketplaceInvoiceStatus.Invoiced, "{}", []);
+        var label = MarketplaceSalesService.InvoiceLabel(new Invoice { Status = failureStatus, InvoiceType = "EARSIV", SequencePurpose = "MANUAL", Currency = "TRY", Note = string.Empty, IdempotencyKey = "test" }, MarketplaceInvoiceStatus.Invoiced, "{}", []);
 
         Assert.Equal("FATURA_REDDEDILDI", label);
     }
