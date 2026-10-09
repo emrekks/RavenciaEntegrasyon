@@ -459,11 +459,11 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         var history = ReadHistory(existingJson).ToList();
         foreach (var message in incoming)
         {
-            if (!history.Any(existing => existing.Author == message.Author && existing.CreatedAt == message.CreatedAt && existing.Text == message.Text)) history.Add(message);
+            history = MarketplaceQuestionHistory.Deduplicate(history.Append(message)).ToList();
         }
         return history.Count == 0 ? null : JsonSerializer.Serialize(history.OrderBy(message => message.CreatedAt));
     }
-    private static IReadOnlyList<RemoteQuestionConversation> ReadHistory(string? json) { try { return json is null ? [] : JsonSerializer.Deserialize<RemoteQuestionConversation[]>(json, JsonOptions) ?? []; } catch (JsonException) { return []; } }
+    private static IReadOnlyList<RemoteQuestionConversation> ReadHistory(string? json) { try { return MarketplaceQuestionHistory.Deduplicate(json is null ? [] : JsonSerializer.Deserialize<RemoteQuestionConversation[]>(json, JsonOptions) ?? []); } catch (JsonException) { return []; } }
     private static MarketplaceQuestionView Map(MarketplaceQuestion row, string platformCode, string storeName) => new(row.Id, row.ConnectionId, platformCode, storeName, row.ExternalQuestionId, row.Kind, row.Status, row.QuestionText, row.ProductName, row.ProductImageUrl, row.ProductSku, row.ProductBarcode, row.ProductModelCode, row.CustomerName, row.ExternalOrderNumber, ReadHistory(row.HistoryJson), row.CreatedAt, row.ExpiresAt, row.LastRemoteModifiedAt, row.LastSyncedAt, row.Version);
     private static IEnumerable<(DateTimeOffset Start, DateTimeOffset End)> WindowsOldestFirst(DateTimeOffset start, DateTimeOffset end, TimeSpan maximum)
     {
