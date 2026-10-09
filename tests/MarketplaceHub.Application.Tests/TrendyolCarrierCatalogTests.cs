@@ -30,7 +30,7 @@ public sealed class TrendyolCarrierCatalogTests
           "Order":{
             "OrderNumber":"4227866665",
             "OrderedAt":"2026-09-26T18:52:26+03:00",
-            "CustomerSnapshotJson":"{}",
+            "CustomerSnapshotJson":"{\"name\":\"Test Müşteri\"}",
             "InvoiceAddressSnapshotJson":"{\"taxNumber\":\"1234567890\",\"fullAddress\":\"Test adres\",\"city\":\"İstanbul\",\"district\":\"Şişli\"}"
           },
           "Package":{"CargoProviderExternalId":"HepsiJet","StatusOccurredAt":"2026-09-29T10:00:00+03:00"},
@@ -62,7 +62,7 @@ public sealed class TrendyolCarrierCatalogTests
           "Order":{
             "OrderNumber":"4486229624",
             "OrderedAt":"2026-10-07T13:03:01+03:00",
-            "CustomerSnapshotJson":"{}",
+            "CustomerSnapshotJson":"{\"name\":\"Test Müşteri\"}",
             "InvoiceAddressSnapshotJson":"{\"Invoice\":{\"Address\":{\"IdentityNo\":\"12345678901\",\"fullAddress\":\"Test adres\",\"city\":\"İstanbul\",\"district\":\"Şişli\"}}}"
           },
           "Package":{"CargoProviderExternalId":"HepsiJet","StatusOccurredAt":"2026-10-07T13:03:01+03:00"},
@@ -89,7 +89,7 @@ public sealed class TrendyolCarrierCatalogTests
           "Order":{
             "OrderNumber":"4486229624",
             "OrderedAt":"2026-10-07T13:03:01+03:00",
-            "CustomerSnapshotJson":"{}",
+            "CustomerSnapshotJson":"{\"name\":\"Test Müşteri\"}",
             "InvoiceAddressSnapshotJson":"{\"taxNumber\":\"1098765432\",\"address\":{\"city\":\"İstanbul\",\"fullAddress\":\"Test adres\"}}"
           },
           "Package":{"CargoProviderExternalId":"HepsiJet","StatusOccurredAt":"2026-10-07T13:03:01+03:00"},
@@ -118,7 +118,7 @@ public sealed class TrendyolCarrierCatalogTests
             "OrderNumber":"4486229624",
             "OrderedAt":"2026-10-07T13:03:01+03:00",
             "CustomerSnapshotJson":"{\"marketplaceInvoiceStatus\":\"Bireysel Müşteri\"}",
-            "InvoiceAddressSnapshotJson":"{\"address\":\"Örnek Cadde No:1\",\"city\":\"Konya\",\"district\":\"Selçuklu\",\"turkishIdentityNumber\":\"12345678901\"}"
+            "InvoiceAddressSnapshotJson":"{\"address\":\"Örnek Cadde No:1\",\"name\":\"Ayşe Örnek\",\"city\":\"Konya\",\"district\":\"Selçuklu\",\"turkishIdentityNumber\":\"12345678901\"}"
           },
           "Package":{"CargoProviderExternalId":"HepsiJet","StatusOccurredAt":"2026-10-07T13:03:01+03:00"},
           "Lines":[{"DescriptionSnapshot":"Ürün","UnitSnapshot":"ADET","Quantity":1,"UnitPrice":100,"LineTotal":120,"VatAmount":20,"VatRate":20,"DiscountAmount":0}]
@@ -133,6 +133,60 @@ public sealed class TrendyolCarrierCatalogTests
         Assert.Equal("Konya", recipient.GetProperty("city").GetString());
         Assert.Equal("Selçuklu", recipient.GetProperty("district").GetString());
         Assert.Equal("Örnek Cadde No:1", recipient.GetProperty("address").GetString());
+        Assert.Equal("Ayşe Örnek", recipient.GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public void Canonical_payload_uses_customer_name_when_invoice_address_has_no_name()
+    {
+        const string canonical = """
+        {
+          "Id":"invoice-customer-name-fallback",
+          "InvoiceType":"EARSIVFATURA",
+          "Currency":"TRY",
+          "Note":"Satış faturası",
+          "IssuedAt":"2026-10-05T12:00:00+03:00",
+          "Order":{
+            "OrderNumber":"4486229624",
+            "OrderedAt":"2026-10-07T13:03:01+03:00",
+            "CustomerSnapshotJson":"{\"name\":\"Ayşe Örnek\",\"marketplaceInvoiceStatus\":\"Bireysel Müşteri\"}",
+            "InvoiceAddressSnapshotJson":"{\"address\":\"Örnek Cadde No:1\",\"city\":\"Konya\",\"district\":\"Selçuklu\",\"turkishIdentityNumber\":\"12345678901\"}"
+          },
+          "Package":{"CargoProviderExternalId":"HepsiJet","StatusOccurredAt":"2026-10-07T13:03:01+03:00"},
+          "Lines":[{"DescriptionSnapshot":"Ürün","UnitSnapshot":"ADET","Quantity":1,"UnitPrice":100,"LineTotal":120,"VatAmount":20,"VatRate":20,"DiscountAmount":0}]
+        }
+        """;
+
+        var payload = TrendyolEFaturamCanonicalPayload.Create(new(1, 2, null), canonical);
+        using var document = JsonDocument.Parse(payload);
+
+        Assert.Equal("Ayşe Örnek", document.RootElement.GetProperty("recipientInfo").GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public void Canonical_payload_rejects_missing_recipient_name_before_provider_submission()
+    {
+        const string canonical = """
+        {
+          "Id":"invoice-missing-recipient-name",
+          "InvoiceType":"EARSIVFATURA",
+          "Currency":"TRY",
+          "Note":"Satış faturası",
+          "IssuedAt":"2026-10-05T12:00:00+03:00",
+          "Order":{
+            "OrderNumber":"4486229624",
+            "OrderedAt":"2026-10-07T13:03:01+03:00",
+            "CustomerSnapshotJson":"{\"marketplaceInvoiceStatus\":\"Bireysel Müşteri\"}",
+            "InvoiceAddressSnapshotJson":"{\"address\":\"Örnek Cadde No:1\",\"city\":\"Konya\",\"district\":\"Selçuklu\",\"turkishIdentityNumber\":\"12345678901\"}"
+          },
+          "Package":{"CargoProviderExternalId":"HepsiJet","StatusOccurredAt":"2026-10-07T13:03:01+03:00"},
+          "Lines":[{"DescriptionSnapshot":"Ürün","UnitSnapshot":"ADET","Quantity":1,"UnitPrice":100,"LineTotal":120,"VatAmount":20,"VatRate":20,"DiscountAmount":0}]
+        }
+        """;
+
+        var exception = Assert.Throws<JsonException>(() => TrendyolEFaturamCanonicalPayload.Create(new(1, 2, null), canonical));
+
+        Assert.Equal("EFATURAM_RECIPIENT_NAME_REQUIRED", exception.Message);
     }
 
     [Fact]
@@ -149,7 +203,7 @@ public sealed class TrendyolCarrierCatalogTests
             "OrderNumber":"4486229624",
             "OrderedAt":"2026-10-07T13:03:01+03:00",
             "CustomerSnapshotJson":"{\"customerType\":\"Bireysel Müşteri\"}",
-            "InvoiceAddressSnapshotJson":"{\"invoiceAddress\":null,\"address\":\"Örnek Cadde No:1\",\"city\":\"Konya\",\"district\":\"Selçuklu\"}"
+            "InvoiceAddressSnapshotJson":"{\"invoiceAddress\":null,\"address\":\"Örnek Cadde No:1\",\"name\":\"Ayşe Örnek\",\"city\":\"Konya\",\"district\":\"Selçuklu\"}"
           },
           "Package":{"CargoProviderExternalId":"HepsiJet","StatusOccurredAt":"2026-10-07T13:03:01+03:00"},
           "Lines":[{"DescriptionSnapshot":"Ürün","UnitSnapshot":"ADET","Quantity":1,"UnitPrice":100,"LineTotal":120,"VatAmount":20,"VatRate":20,"DiscountAmount":0}]

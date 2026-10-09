@@ -43,6 +43,18 @@ public static class TrendyolEFaturamCanonicalPayload
                     throw new JsonException("EFATURAM_RECIPIENT_TAX_ID_REQUIRED");
             }
 
+            // E-Faturam requires recipientInfo.name. Hepsiburada stores the
+            // recipient's full name as `name` on the flat invoice-address snapshot,
+            // rather than splitting it into firstName/lastName.
+            var recipientName = NullText(address, "firstName", "name", "fullName", "recipientName", "companyTitle", "businessName", "legalName", "tradeName", "companyName")
+                ?? NullText(addressRoot, "firstName", "name", "fullName", "recipientName", "companyTitle", "businessName", "legalName", "tradeName", "companyName")
+                ?? NullText(customer.RootElement, "customerFirstName", "firstName", "name", "fullName", "recipientName", "customerName", "companyTitle", "businessName", "legalName", "tradeName", "companyName");
+            if (recipientName is not { Length: >= 2 })
+                throw new JsonException("EFATURAM_RECIPIENT_NAME_REQUIRED");
+            var recipientSurname = NullText(address, "lastName", "surname", "familyName")
+                ?? NullText(addressRoot, "lastName", "surname", "familyName")
+                ?? NullText(customer.RootElement, "customerLastName", "lastName", "surname", "familyName");
+
             var lines = RequiredArray(root, "Lines").EnumerateArray().Select(line =>
             {
                 var total = Decimal(line, "LineTotal");
@@ -71,8 +83,8 @@ public static class TrendyolEFaturamCanonicalPayload
                 DateOnly.FromDateTime(orderedAt.Date), DateTimeOffset.Parse(RequiredText(root, "IssuedAt")),
                 new(taxId, Text(address, "countryCode") is { Length: > 0 } country ? country : "TR", Text(address, "city"), Text(address, "district"),
                     Text(address, "fullAddress", "address1", "addressText", "address"), NullText(address, "postalCode"), NullText(address, "phone"),
-                    NullText(address, "email") ?? NullText(customer.RootElement, "customerEmail"), NullText(address, "firstName") ?? NullText(customer.RootElement, "customerFirstName"),
-                    NullText(address, "lastName") ?? NullText(customer.RootElement, "customerLastName"), NullText(address, "taxOffice")),
+                    NullText(address, "email") ?? NullText(customer.RootElement, "customerEmail"), recipientName,
+                    recipientSurname, NullText(address, "taxOffice")),
                 lines, payment, delivery);
             return TrendyolEFaturamInvoicePayload.Create(account, source);
         }
