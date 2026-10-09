@@ -1772,8 +1772,14 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             {
                 capability = new PlatformCapability
                 {
-                    Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, Code = evidence.Code,
-                    ApiVersion = connection.ApiVersion, Environment = connection.Environment, StoreScope = connection.ExternalStoreId, Version = 0
+                    Id = Guid.CreateVersion7(),
+                    TenantId = tenantId,
+                    ConnectionId = connectionId,
+                    Code = evidence.Code,
+                    ApiVersion = connection.ApiVersion,
+                    Environment = connection.Environment,
+                    StoreScope = connection.ExternalStoreId,
+                    Version = 0
                 };
                 db.PlatformCapabilities.Add(capability);
             }
