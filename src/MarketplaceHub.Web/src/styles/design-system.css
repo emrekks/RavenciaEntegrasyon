@@ -11711,6 +11711,8 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .rv-question-product > div, .rv-question-content, .rv-question-actions { display: grid; gap: 7px; min-width: 0; }
 .rv-question-product strong, .rv-question-product small, .rv-question-content p { overflow-wrap: anywhere; }
 .rv-question-product strong { color: var(--rv-color-ink); font-size: 13px; line-height: 1.4; }
+.rv-question-product-link { color: inherit; text-decoration: underline; text-decoration-color: var(--rv-color-accent); text-underline-offset: 3px; }
+.rv-question-product-link:hover, .rv-question-product-link:focus-visible { color: var(--rv-color-accent); }
 .rv-question-product small, .rv-question-age { color: var(--rv-color-subtle); font-size: 11px; }
 .rv-question-content p { margin: 0; color: var(--rv-color-ink); line-height: 1.5; white-space: pre-wrap; }
 .rv-question-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 7px 10px; color: var(--rv-color-subtle); font-size: 11px; }

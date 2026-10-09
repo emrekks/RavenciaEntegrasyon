@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, loadAllPages } from '../../shared/api'
+import { marketplaceProductSearchUrl } from './marketplace-product-link'
 import { Badge, Button, EmptyState, LoadingState, PageHeader, Tabs, UiIcon } from '../../shared/components'
 import { platformLogoClass, platformLogoSource } from '../../shared/platform-logos'
 import { productImageFallbackUrls } from '../marketplace/product-image-lookups'
@@ -151,9 +152,10 @@ export function QuestionsPage() {
           const orderedHistory = [...(row.conversations ?? [])].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
           const initialQuestionIndex = orderedHistory.findIndex(message => message.text.trim() === row.questionText.trim())
           const previousMessages = orderedHistory.filter((_message, index) => index !== initialQuestionIndex)
+          const productHref = row.kind === 'PRODUCT' ? marketplaceProductSearchUrl(row.platformCode, row.productBarcode, row.productSku, row.productModelCode, row.productName) : null
           return <article className="rv-question-card" key={row.id}>
             <header className="rv-question-card-header">
-              <div className="rv-question-product"><QuestionProductImage src={row.productImageUrl} connectionId={row.connectionId} sku={row.productSku} barcode={row.productBarcode} modelCode={row.productModelCode} productName={row.productName || 'Ürün'} /><div><strong>{row.productName || (row.kind === 'ORDER' ? 'Sipariş sorusu' : 'Ürün bilgisi yok')}</strong><small>{[row.productSku && `SKU ${row.productSku}`, row.productModelCode && `Model ${row.productModelCode}`, row.productBarcode && `Barkod ${row.productBarcode}`].filter(Boolean).join(' · ') || 'Ürün kodu bilgisi yok'}</small></div></div>
+              <div className="rv-question-product"><QuestionProductImage src={row.productImageUrl} connectionId={row.connectionId} sku={row.productSku} barcode={row.productBarcode} modelCode={row.productModelCode} productName={row.productName || 'Ürün'} /><div><strong>{productHref ? <a className="rv-question-product-link" href={productHref} target="_blank" rel="noopener noreferrer">{row.productName || 'Ürün'}</a> : row.productName || (row.kind === 'ORDER' ? 'Sipariş sorusu' : 'Ürün bilgisi yok')}</strong><small>{[row.productSku && `SKU ${row.productSku}`, row.productModelCode && `Model ${row.productModelCode}`, row.productBarcode && `Barkod ${row.productBarcode}`].filter(Boolean).join(' · ') || 'Ürün kodu bilgisi yok'}</small></div></div>
               <div className="rv-question-actions"><Badge tone={badge.tone}>{badge.label}</Badge>{deadline ? <span className={`rv-question-deadline ${deadline.urgent ? 'is-urgent' : ''}`} title={`Son cevap tarihi: ${formatDate(row.expiresAt)}`}>{deadline.text === 'Süre doldu' ? 'Süre doldu' : `Kalan süre: ${deadline.text}`}</span> : <small className="rv-question-age">Soru tarihi: {formatDate(row.createdAt)}</small>}{row.status === 'WAITING_FOR_ANSWER' && <Button size="sm" variant={replyingId === row.id ? 'primary' : 'secondary'} onClick={() => { setReplyingId(current => current === row.id ? null : row.id); setAnswerText('') }}>{replyingId === row.id ? 'Cevabı kapat' : 'Cevap yaz'}</Button>}</div>
             </header>
             <section className="rv-question-content" aria-label="Soru ve konuşmalar">
