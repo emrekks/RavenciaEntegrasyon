@@ -23,6 +23,12 @@ const invoiceCreationDisabledHelp = 'Fatura oluşturmak için Entegrasyonlar > b
 
 function idempotency() { return crypto.randomUUID() }
 function displayInvoiceOrderNumber(value: string) { return `#${value.trim().replace(/^#+/, '') || '—'}` }
+function invoiceCustomerDisplayName(item: Pick<InvoiceWorkspace, 'customerName' | 'cargoTrackingNumber'>) {
+  const name = item.customerName.trim()
+  const trackingNumber = item.cargoTrackingNumber?.trim()
+  if (!trackingNumber || !name.toLocaleLowerCase('tr-TR').endsWith(trackingNumber.toLocaleLowerCase('tr-TR'))) return name || '—'
+  return name.slice(0, -trackingNumber.length).replace(/[\s·,;:-]+$/u, '').trim() || '—'
+}
 
 function InvoiceProductSummary({ item }: { item: InvoiceWorkspace }) {
   const triggerRef = useRef<HTMLDivElement>(null)
@@ -66,18 +72,6 @@ function InvoiceProductSummary({ item }: { item: InvoiceWorkspace }) {
   </>
 }
 
-async function waitForInvoiceCompletion(invoiceId: string) {
-  const successfulStatuses = new Set(['ACCEPTED', 'COMPLETED'])
-  const failedStatuses = new Set(['REJECTED', 'VALIDATION_FAILED', 'MANUAL_REVIEW', 'MARKETPLACE_FAILED', 'CANCELLED', 'CANCELLED_LOCAL'])
-  for (let attempt = 0; attempt < 120; attempt += 1) {
-    const invoice = await hubApi<InvoiceDetail>(`/invoices/${invoiceId}`)
-    const normalizedStatus = invoice.status.trim().toUpperCase()
-    if (successfulStatuses.has(normalizedStatus)) return invoice
-    if (failedStatuses.has(normalizedStatus)) throw new Error(invoiceFailureToast(invoice))
-    if (attempt < 119) await new Promise(resolve => window.setTimeout(resolve, 2000))
-  }
-  throw new Error('Fatura sağlayıcıda hâlâ işleniyor. İşlem arka planda devam ediyor; lütfen İşlem takibi ekranından sonucu kontrol edin.')
-}
 async function submitInvoice(item: InvoiceWorkspace, provider: Connection | undefined) {
   if (!item.invoiceCreationEnabled) throw new Error(invoiceCreationDisabledHelp)
   if (!provider) throw new Error('Aktif Trendyol E-Faturam bağlantısı gereklidir.')
@@ -196,7 +190,7 @@ function addressLines(value: string | null | undefined) {
 }
 
 export function InvoicesPage() {
-  const tabs = [['UNINVOICED', 'Faturalandırılmamışlar'], ['INVOICED', 'Faturalandırılmışlar'], ['DUE_SOON', 'Süresi Yaklaşanlar'], ['HIDDEN', 'Gizlenenler']] as const
+  const tabs = [['ALL', 'Tümü'], ['UNINVOICED', 'Faturalandırılmamışlar'], ['INVOICED', 'Faturalandırılmışlar'], ['DUE_SOON', 'Süresi Yaklaşanlar'], ['HIDDEN', 'Gizlenenler']] as const
   const [searchParams, setSearchParams] = useSearchParams()
   const requestedTab = searchParams.get('tab')
   const initialTab = resolveInvoiceTab(requestedTab)
@@ -240,11 +234,10 @@ export function InvoicesPage() {
     if (item.platformCode === 'SHOPIFY') return { platformCode: 'SHOPIFY', invoiceId: await ensureShopifyInvoiceRecord(item) }
     const invoiceId = await submitInvoice(item, provider)
     setMessage(`#${item.orderNumber} için fatura sağlayıcıda işleniyor…`)
-    await waitForInvoiceCompletion(invoiceId)
     return { platformCode: item.platformCode, invoiceId }
-  }, onMutate: item => setMessage(`#${item.orderNumber} için ${item.platformCode === 'SHOPIFY' ? 'fatura takip kaydı hazırlanıyor…' : 'fatura oluşturuluyor…'}`), onSuccess: async (_result, item) => {
+  }, onMutate: item => setMessage(`#${item.orderNumber} için ${item.platformCode === 'SHOPIFY' ? 'fatura takip kaydı hazırlanıyor…' : 'fatura isteği sıraya alınıyor…'}`), onSuccess: async (_result, item) => {
     if (item.platformCode === 'SHOPIFY') setMessage(`Shopify #${item.orderNumber} için fatura takip kaydı hazır. Gerçek faturayı “Manuel fatura yükle” seçeneğinden panele ekleyin.`, 'success')
-    else setMessage('Fatura başarıyla oluşturuldu.', 'success')
+    else setMessage('Fatura isteği sıraya alındı. Sonuç bu ekranda güncellenecek.', 'success')
     await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['orders'] })])
   }, onError: async error => {
     setMessage(error instanceof Error ? error.message : 'Fatura oluşturulamadı.', 'error')
@@ -285,7 +278,7 @@ export function InvoicesPage() {
   const allVisibleSelected = pageItems.length > 0 && pageItems.every(item => selectedPackages.has(item.packageId))
   useEffect(() => { setPageNumber(1) }, [search, tab, selectedPlatforms, shipmentStatusFilter, cargoFilter, invoiceStatusFilter, invoiceActionFilter, dateFrom, dateTo, pageSize])
   useEffect(() => { setSelectedPackages(new Set()) }, [search, tab, selectedPlatforms, shipmentStatusFilter, cargoFilter, invoiceStatusFilter, invoiceActionFilter, dateFrom, dateTo, pageNumber, pageSize])
-  const counts = { unInvoiced: pageData?.uninvoicedCount ?? 0, invoiced: pageData?.invoicedCount ?? 0, dueSoon: pageData?.dueSoonCount ?? 0, hidden: pageData?.hiddenCount ?? 0 }
+  const counts = { all: (pageData?.uninvoicedCount ?? 0) + (pageData?.invoicedCount ?? 0), unInvoiced: pageData?.uninvoicedCount ?? 0, invoiced: pageData?.invoicedCount ?? 0, dueSoon: pageData?.dueSoonCount ?? 0, hidden: pageData?.hiddenCount ?? 0 }
   const activeTabLabel = tabs.find(([value]) => value === tab)?.[1] ?? 'Faturalar'
   function selectTab(value: string) {
     const nextTab = tabs.find(([tabValue]) => tabValue === value)?.[0] ?? 'UNINVOICED'
@@ -305,7 +298,7 @@ export function InvoicesPage() {
       <article className="invoice-metric-total"><small>Toplam paket</small><strong>{pageData?.totalPackageCount ?? 0}</strong><span>fatura çalışma alanı</span></article>
     </div>
     <div className="invoice-reference-filter-shell">
-      <Tabs className="invoice-reference-tabs" ariaLabel="Fatura görünümleri" value={tab} onChange={selectTab} items={tabs.map(([value, label]) => ({ value, label, count: value === 'UNINVOICED' ? counts.unInvoiced : value === 'INVOICED' ? counts.invoiced : value === 'DUE_SOON' ? counts.dueSoon : counts.hidden }))} />
+      <Tabs className="invoice-reference-tabs" ariaLabel="Fatura görünümleri" value={tab} onChange={selectTab} items={tabs.map(([value, label]) => ({ value, label, count: value === 'ALL' ? counts.all : value === 'UNINVOICED' ? counts.unInvoiced : value === 'INVOICED' ? counts.invoiced : value === 'DUE_SOON' ? counts.dueSoon : counts.hidden }))} />
       <section className="invoice-reference-filters" aria-label="Fatura filtreleri">
         <label className="invoice-reference-search"><span>Fatura ara</span><span className="invoice-reference-search-control"><UiIcon name="search" size={18} /><input aria-label="Fatura ara" placeholder="Sipariş, müşteri, fatura veya takip no ara…" value={search} onChange={event => setSearch(event.target.value)} /></span></label>
         <PlatformMultiSelect label="Platform" options={platformOptions} selectedCodes={selectedPlatforms} onChange={setSelectedPlatforms} />
@@ -328,7 +321,7 @@ export function InvoicesPage() {
         </div>
         {pageItems.map(item => <article className={`invoice-reference-row ${item.isDueSoon ? 'due-soon' : ''}`} key={item.packageId} role="row">
           <div className="invoice-reference-order"><input className="invoice-reference-select" type="checkbox" aria-label={`${item.platformDisplayName} ${displayInvoiceOrderNumber(item.orderNumber)} siparişini seç`} checked={selectedPackages.has(item.packageId)} onChange={() => setSelectedPackages(current => { const next = new Set(current); if (next.has(item.packageId)) next.delete(item.packageId); else next.add(item.packageId); return next })} /><div className="order-reference-platform"><PlatformMark code={item.platformCode} name={item.platformDisplayName} /></div><div><strong>{displayInvoiceOrderNumber(item.orderNumber)}</strong><small>{new Date(item.orderedAt).toLocaleString('tr-TR')}</small>{item.invoiceNumber?.trim() && <small>{item.invoiceNumber}</small>}</div></div>
-          <div className="invoice-reference-buyer"><strong>{item.customerName}</strong><InvoiceProductSummary item={item} /></div>
+          <div className="invoice-reference-buyer"><strong>{invoiceCustomerDisplayName(item)}</strong><InvoiceProductSummary item={item} /></div>
           <div className="invoice-reference-products"><div className="cargo-provider-display invoice-cargo-provider"><CargoProviderIcon value={item.cargoProviderName ?? 'Kargo bilgisi yok'} fallbackText /></div><small>{item.cargoTrackingNumber ?? 'Takip numarası yok'}</small></div>
           <div className="invoice-reference-shipment"><Badge value={item.shipmentStatus} /><small>{item.deliveredAt ? `Teslim: ${new Date(item.deliveredAt).toLocaleDateString('tr-TR')}` : 'Henüz teslim edilmedi'}</small></div>
           <div className="invoice-reference-status">{(() => { const invoiceState = invoiceWorkspaceStatus(item); return <InvoiceStatusBadge status={invoiceState.value} tone={invoiceState.tone} /> })()}{item.marketplaceInvoiceReadErrorCode && <small className="invoice-marketplace-read-error" title={item.marketplaceInvoiceReadErrorSummary ?? undefined}>{item.marketplaceInvoiceReadErrorCode === 'REMOTE_PACKAGE_NOT_FOUND' ? 'Paket bilgisi pazaryerinden alınamadı; kayıtlı fatura durumu gösteriliyor.' : 'Pazaryeri fatura durumu yenilenemedi.'}</small>}{item.invoiceDueAt && <small className={new Date(item.invoiceDueAt).getTime() - Date.now() <= 86_400_000 ? 'deadline critical' : ''}>Son tarih: {new Date(item.invoiceDueAt).toLocaleDateString('tr-TR')}</small>}</div>

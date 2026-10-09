@@ -1620,6 +1620,8 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
 
             var firstPage = await service.WorkspacePageAsync(tenant.Id,
                 new InvoiceWorkspacePageQuery(PageNumber: 1, PageSize: 20, Tab: "DUE_SOON"), CancellationToken.None);
+            var allPage = await service.WorkspacePageAsync(tenant.Id,
+                new InvoiceWorkspacePageQuery(PageNumber: 1, PageSize: 20, Tab: "ALL"), CancellationToken.None);
             var secondPage = await service.WorkspacePageAsync(tenant.Id,
                 new InvoiceWorkspacePageQuery(PageNumber: 2, PageSize: 20, Tab: "DUE_SOON"), CancellationToken.None);
             var clampedPage = await service.WorkspacePageAsync(tenant.Id,
@@ -1640,6 +1642,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 new InvoiceWorkspacePageQuery(PageNumber: 1, PageSize: 20, Tab: "DUE_SOON", Search: "test"), CancellationToken.None);
 
             Assert.Equal(21, firstPage.TotalCount);
+            Assert.Equal(21, allPage.TotalCount);
             Assert.Equal(21, firstPage.DueSoonCount);
             Assert.Equal(21, firstPage.UninvoicedCount);
             Assert.Equal(21, firstPage.TotalPackageCount);

@@ -10442,8 +10442,7 @@ small,
   border-radius: 0;
 }
 
-.app-shell.stitch-shell main .order-reference-table > .order-reference-row + .order-reference-row,
-.app-shell.stitch-shell main .invoice-reference-table > .invoice-reference-row + .invoice-reference-row {
+.app-shell.stitch-shell main .order-reference-table > .order-reference-row + .order-reference-row {
   margin-top: var(--rv-space-2);
   border: 1px solid var(--rv-color-border-strong);
   border-left: 0;
@@ -10451,8 +10450,7 @@ small,
   box-shadow: var(--rv-shadow-sm);
 }
 
-.app-shell.stitch-shell main .order-reference-table > .order-reference-row + .order-reference-row:last-child,
-.app-shell.stitch-shell main .invoice-reference-table > .invoice-reference-row + .invoice-reference-row:last-child {
+.app-shell.stitch-shell main .order-reference-table > .order-reference-row + .order-reference-row:last-child {
   border-bottom: 1px solid var(--rv-color-border-strong);
   border-radius: 0;
 }

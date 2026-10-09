@@ -5,7 +5,7 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const invoiceFixtures = [
-  { id: 'inv-1', orderId: 'order-1', packageId: 'shopify-package-1', orderNumber: 'SH-1001', customerName: 'Ayşe Yılmaz', orderedAt: '2026-10-04T10:00:00Z', shipmentStatus: 'DELIVERED', deliveredAt: '2026-10-04T12:00:00Z', invoiceDueAt: null, isDueSoon: true, currency: 'TRY', amount: 899, productCount: 1, primaryImageUrl: null, cargoProviderName: 'Yurtiçi', cargoTrackingNumber: 'TRK-1', invoiceId: 'invoice-1', invoiceStatus: 'FATURA_BEKLIYOR', invoiceNumber: null, canCreateInvoice: true, shipmentAddressJson: null, invoiceAddressJson: null, lines: [], invoiceErrorCode: null, invoiceDeliveryStatus: null, invoiceDeliveryReference: null, invoiceDocumentAvailable: false, platformCode: 'SHOPIFY', platformDisplayName: 'Shopify', invoiceCreationEnabled: true },
+  { id: 'inv-1', orderId: 'order-1', packageId: 'shopify-package-1', orderNumber: 'SH-1001', customerName: 'DSM IGA 7330037558908585', orderedAt: '2026-10-04T10:00:00Z', shipmentStatus: 'DELIVERED', deliveredAt: '2026-10-04T12:00:00Z', invoiceDueAt: null, isDueSoon: true, currency: 'TRY', amount: 899, productCount: 1, primaryImageUrl: null, cargoProviderName: 'Yurtiçi', cargoTrackingNumber: '7330037558908585', invoiceId: 'invoice-1', invoiceStatus: 'FATURA_BEKLIYOR', invoiceNumber: null, canCreateInvoice: true, shipmentAddressJson: null, invoiceAddressJson: null, lines: [], invoiceErrorCode: null, invoiceDeliveryStatus: null, invoiceDeliveryReference: null, invoiceDocumentAvailable: false, platformCode: 'SHOPIFY', platformDisplayName: 'Shopify', invoiceCreationEnabled: true },
   { id: 'inv-2', orderId: 'order-2', packageId: 'shopify-package-2', orderNumber: 'SH-1002', customerName: 'Mehmet Kaya', orderedAt: '2026-10-04T11:00:00Z', shipmentStatus: 'DELIVERED', deliveredAt: '2026-10-04T12:30:00Z', invoiceDueAt: null, isDueSoon: true, currency: 'TRY', amount: 1250, productCount: 2, primaryImageUrl: null, cargoProviderName: 'Yurtiçi', cargoTrackingNumber: 'TRK-2', invoiceId: 'invoice-2', invoiceStatus: 'FATURA_BEKLIYOR', invoiceNumber: null, canCreateInvoice: true, shipmentAddressJson: null, invoiceAddressJson: null, lines: [], invoiceErrorCode: null, invoiceDeliveryStatus: null, invoiceDeliveryReference: null, invoiceDocumentAvailable: false, platformCode: 'SHOPIFY', platformDisplayName: 'Shopify', invoiceCreationEnabled: true },
   { id: 'inv-3', orderId: 'order-3', packageId: 'trendyol-package-3', orderNumber: 'TY-1003', customerName: 'Zeynep Demir', orderedAt: '2026-10-04T12:00:00Z', shipmentStatus: 'DELIVERED', deliveredAt: '2026-10-04T13:00:00Z', invoiceDueAt: null, isDueSoon: true, currency: 'TRY', amount: 499, productCount: 1, primaryImageUrl: null, cargoProviderName: 'Aras', cargoTrackingNumber: 'TRK-3', invoiceId: null, invoiceStatus: 'FATURA_BEKLIYOR', invoiceNumber: null, canCreateInvoice: true, shipmentAddressJson: null, invoiceAddressJson: null, lines: [], invoiceErrorCode: null, invoiceDeliveryStatus: null, invoiceDeliveryReference: null, invoiceDocumentAvailable: false, platformCode: 'TRENDYOL', platformDisplayName: 'Trendyol', invoiceCreationEnabled: true },
 ]
@@ -64,6 +64,7 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     expect(container.querySelector('[aria-label="Shopify #SH-1001 siparişini seç"]')).not.toBeNull()
     expect(container.querySelector('[aria-label="Shopify #SH-1002 siparişini seç"]')).not.toBeNull()
     expect(container.querySelector('[aria-label="Trendyol #TY-1003 siparişini seç"]')).not.toBeNull()
+    expect(container.querySelector('.invoice-reference-buyer > strong')?.textContent).toBe('DSM IGA')
 
     const selectAll = container.querySelector<HTMLInputElement>('[aria-label="Bu sayfadaki tüm siparişleri seç"]')!
     act(() => selectAll.click())
@@ -73,6 +74,13 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     }
     expect(container.querySelector('.invoice-reference-bulk-toolbar')?.textContent).toContain('3 sipariş seçildi')
     expect(button('Siparişleri gizle').querySelector('.ui-icon-eyeOff')).not.toBeNull()
+  })
+
+  it('shows the all invoices tab and requests unhidden invoice records', async () => {
+    expect(button('Tümü').textContent).toContain('3')
+    act(() => button('Tümü').click())
+    await settle()
+    expect(apiState.pageRequests.at(-1)).toContain('tab=ALL')
   })
 
   it('changes only Shopify invoice statuses when mixed platforms are selected', async () => {

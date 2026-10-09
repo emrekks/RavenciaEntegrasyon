@@ -41,4 +41,10 @@ describe('PlatformMultiSelect', () => {
     act(() => container.querySelector<HTMLButtonElement>('.platform-multi-select-menu-header button')?.click())
     expect(onChange).toHaveBeenLastCalledWith([])
   })
+
+  it('anchors compact filter menus to the viewport when rendered in a portal', () => {
+    act(() => root.render(<PlatformMultiSelect label="Platform filtresi" options={[{ value: 'SHOPIFY', label: 'Shopify' }]} selectedCodes={[]} onChange={vi.fn()} compact />))
+    act(() => container.querySelector<HTMLButtonElement>('.platform-multi-select-trigger')?.click())
+    expect(document.body.querySelector<HTMLElement>('.platform-multi-select-menu.is-compact')?.style.position).toBe('fixed')
+  })
 })

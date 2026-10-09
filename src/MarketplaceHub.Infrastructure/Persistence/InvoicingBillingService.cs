@@ -242,7 +242,7 @@ public sealed partial class InvoicingBillingService(
     {
         var pageSize = request.PageSize is 20 or 50 or 100 or 200 ? request.PageSize : 20;
         var requestedPage = Math.Max(1, request.PageNumber);
-        var normalizedTab = request.Tab.Trim().ToUpperInvariant() is "INVOICED" or "DUE_SOON" or "HIDDEN"
+        var normalizedTab = request.Tab.Trim().ToUpperInvariant() is "ALL" or "INVOICED" or "DUE_SOON" or "HIDDEN"
             ? request.Tab.Trim().ToUpperInvariant()
             : "UNINVOICED";
         var hiddenSetting = await db.TenantSettings.AsNoTracking()
@@ -476,6 +476,7 @@ public sealed partial class InvoicingBillingService(
         var tabMatch = normalizedTab switch
         {
             "HIDDEN" => isHidden,
+            "ALL" => !isHidden,
             "INVOICED" => !isHidden && !(candidate.CanCreateInvoice || candidate.InvoiceStatus == "FATURA_REDDEDILDI"),
             "DUE_SOON" => !isHidden && candidate.IsDueSoon,
             _ => !isHidden && (candidate.CanCreateInvoice || candidate.InvoiceStatus == "FATURA_REDDEDILDI")
