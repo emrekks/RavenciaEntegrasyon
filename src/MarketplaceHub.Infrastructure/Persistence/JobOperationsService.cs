@@ -1,5 +1,6 @@
 using System.Text.Json;
 using MarketplaceHub.Application;
+using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.ErrorMapping;
 using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
 
@@ -143,7 +144,31 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         }
         var scan = await ScanAsync(job, cancellationToken);
         var failureReasons = await ProductImportFailureReasonsAsync(job, cancellationToken);
-        return new JobDetailView(Summary(job, failureTimes, relatedJobs.Count), attempts, currentOrder, Change(job), relatedOrders, scan, failureReasons, invoice);
+        var summary = Summary(job, failureTimes, relatedJobs.Count);
+        if (job.JobType == InvoicingJobTypes.InvoiceSubmit && job.LastErrorCode == "EFATURAM_REQUEST_REJECTED")
+        {
+            var invoiceId = PayloadGuid(job.PayloadJson, "invoiceId");
+            if (invoiceId is not null)
+            {
+                var providerReference = await db.InvoiceSubmissionAttempts.AsNoTracking()
+                    .Where(attempt => attempt.TenantId == job.TenantId && attempt.InvoiceId == invoiceId.Value)
+                    .OrderByDescending(attempt => attempt.AttemptNumber)
+                    .Select(attempt => attempt.RemoteRequestId)
+                    .FirstOrDefaultAsync(cancellationToken);
+                var providerDetail = TrendyolEFaturamProblemDetails.ToOperatorSummary(providerReference);
+                if (providerDetail is not null)
+                {
+                    var previousSummary = summary.LastErrorSummary;
+                    summary = summary with
+                    {
+                        LastErrorSummary = string.IsNullOrWhiteSpace(previousSummary)
+                            ? providerDetail
+                            : $"{previousSummary} {providerDetail}"
+                    };
+                }
+            }
+        }
+        return new JobDetailView(summary, attempts, currentOrder, Change(job), relatedOrders, scan, failureReasons, invoice);
     }
 
     private async Task<JobInvoiceContextView?> InvoiceContext(IntegrationJob job, CancellationToken cancellationToken)
