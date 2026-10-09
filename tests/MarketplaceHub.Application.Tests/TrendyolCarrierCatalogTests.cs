@@ -31,7 +31,7 @@ public sealed class TrendyolCarrierCatalogTests
             "OrderNumber":"4227866665",
             "OrderedAt":"2026-09-26T18:52:26+03:00",
             "CustomerSnapshotJson":"{}",
-            "InvoiceAddressSnapshotJson":"{\"invoiceAddress\":{\"taxNumber\":\"1234567890\",\"fullAddress\":\"Test adres\",\"city\":\"İstanbul\",\"district\":\"Şişli\"}}"
+            "InvoiceAddressSnapshotJson":"{\"taxNumber\":\"1234567890\",\"fullAddress\":\"Test adres\",\"city\":\"İstanbul\",\"district\":\"Şişli\"}"
           },
           "Package":{"CargoProviderExternalId":"HepsiJet","StatusOccurredAt":"2026-09-29T10:00:00+03:00"},
           "Lines":[{"DescriptionSnapshot":"Ürün","UnitSnapshot":"ADET","Quantity":1,"UnitPrice":100,"LineTotal":120,"VatAmount":20,"VatRate":20,"DiscountAmount":0}]
@@ -44,5 +44,8 @@ public sealed class TrendyolCarrierCatalogTests
 
         Assert.Equal("2650701090", delivery.GetProperty("carrierTaxId").GetString());
         Assert.Equal("D FAST DAĞITIM HİZMETLERİ VE LOJİSTİK ANONİM ŞİRKETİ", delivery.GetProperty("carrierName").GetString());
+        var recipient = document.RootElement.GetProperty("recipientInfo");
+        Assert.Equal("İstanbul", recipient.GetProperty("city").GetString());
+        Assert.Equal("Test adres", recipient.GetProperty("address").GetString());
     }
 }

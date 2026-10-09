@@ -99,6 +99,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             ? null
             : new FailureTime(failure.Min(x => x.StartedAt), failure.Max(x => x.CompletedAt ?? x.StartedAt));
         var currentOrder = await OrderContext(job, cancellationToken);
+        var invoice = await InvoiceContext(job, cancellationToken);
         var relatedJobs = await db.IntegrationJobs.AsNoTracking()
             .Where(x => x.TenantId == job.TenantId && x.CorrelationId == job.CorrelationId)
             .OrderByDescending(x => x.CreatedAt)
@@ -112,7 +113,31 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         }
         var scan = await ScanAsync(job, cancellationToken);
         var failureReasons = await ProductImportFailureReasonsAsync(job, cancellationToken);
-        return new JobDetailView(Summary(job, failureTimes, relatedJobs.Count), attempts, currentOrder, Change(job), relatedOrders, scan, failureReasons);
+        return new JobDetailView(Summary(job, failureTimes, relatedJobs.Count), attempts, currentOrder, Change(job), relatedOrders, scan, failureReasons, invoice);
+    }
+
+    private async Task<JobInvoiceContextView?> InvoiceContext(IntegrationJob job, CancellationToken cancellationToken)
+    {
+        var invoiceId = PayloadGuid(job.PayloadJson, "invoiceId");
+        if (invoiceId is null) return null;
+        var invoice = await db.Invoices.AsNoTracking()
+            .Where(x => x.TenantId == job.TenantId && x.Id == invoiceId.Value)
+            .Select(x => new { x.Id, x.OrderId, x.PackageId, x.Status, x.InvoiceType, x.Currency, x.PayableTotal, x.InvoiceNumber })
+            .SingleOrDefaultAsync(cancellationToken);
+        if (invoice is null) return null;
+        var orderNumber = await db.Orders.AsNoTracking()
+            .Where(x => x.TenantId == job.TenantId && x.Id == invoice.OrderId)
+            .Select(x => x.OrderNumber)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (orderNumber is null) return null;
+        var externalPackageId = invoice.PackageId is { } packageId
+            ? await db.ShipmentPackages.AsNoTracking()
+                .Where(x => x.TenantId == job.TenantId && x.Id == packageId)
+                .Select(x => x.ExternalPackageId)
+                .SingleOrDefaultAsync(cancellationToken)
+            : null;
+        return new JobInvoiceContextView(invoice.Id, orderNumber, invoice.Status.ToString().ToUpperInvariant(), invoice.InvoiceType,
+            invoice.Currency, invoice.PayableTotal, invoice.InvoiceNumber, externalPackageId);
     }
 
     private async Task<IReadOnlyList<JobFailureReasonView>> ProductImportFailureReasonsAsync(IntegrationJob job, CancellationToken cancellationToken)
@@ -284,6 +309,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
     {
         Guid? orderId = null;
         Guid? packageId = null;
+        Guid? invoiceId = null;
         Guid? claimId = null;
         string? externalOrderId = null;
         string? externalPackageId = null;
@@ -294,11 +320,25 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             var root = document.RootElement;
             orderId = GuidValue(root, "orderId");
             packageId = GuidValue(root, "packageId");
+            invoiceId = GuidValue(root, "invoiceId");
             claimId = GuidValue(root, "claimId");
             externalOrderId = StringValue(root, "externalOrderId");
             externalPackageId = StringValue(root, "externalPackageId");
         }
         catch (System.Text.Json.JsonException) { }
+
+        if (invoiceId is { } invoiceGuid && (orderId is null || packageId is null))
+        {
+            var invoice = await db.Invoices.AsNoTracking()
+                .Where(x => x.TenantId == job.TenantId && x.Id == invoiceGuid)
+                .Select(x => new { x.OrderId, x.PackageId })
+                .SingleOrDefaultAsync(cancellationToken);
+            if (invoice is not null)
+            {
+                orderId ??= invoice.OrderId;
+                packageId ??= invoice.PackageId;
+            }
+        }
 
         string? cargoProvider = null;
         string? cargoTrackingNumber = null;
@@ -349,6 +389,16 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
 
         var lineCount = await db.OrderLines.AsNoTracking().CountAsync(x => x.TenantId == job.TenantId && x.OrderId == order.Id, cancellationToken);
         return new JobOrderContextView(order.Id, order.OrderNumber, order.ExternalOrderId, order.DerivedStatus, order.Currency, order.NetAmount, order.OrderedAt, externalPackageId, cargoProvider, cargoTrackingNumber, CustomerName(order.CustomerSnapshotJson), lineCount);
+    }
+
+    private static Guid? PayloadGuid(string payloadJson, string field)
+    {
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(payloadJson);
+            return GuidValue(document.RootElement, field);
+        }
+        catch (System.Text.Json.JsonException) { return null; }
     }
 
     private void AddOutboxEvent(IntegrationJob job, DateTimeOffset now)
@@ -486,6 +536,8 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         var type = job.JobType.ToUpperInvariant();
         if (type is MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.ShopifyOrderStatusSync or MarketplaceJobTypes.HepsiburadaOrderStatusSync) return new("Tarama türü", "Sipariş durum taraması", "Açık siparişlerin paket ve taşıma durumları kontrol edilerek yerel durum güncellendi.");
         if (type == MarketplaceJobTypes.TrendyolOrderCargoInfoReconciliation) return new("Tarama türü", "Trendyol kargo bilgi taraması", "Teslim edilen Trendyol paketlerinin kargo bilgileri salt okunur olarak yenilendi.");
+        if (type == InvoicingJobTypes.InvoiceSubmit && job.LastErrorCode == "EFATURAM_FISCAL_PAYLOAD_INVALID")
+            return new("İstek sonucu", "Fatura gönderilmedi", "E-Faturam'a istek gönderilmeden önce fatura verileri doğrulanırken hata oluştu. Fatura adresi snapshot biçimi düzeltildi; yeniden deneme güncel adres yapısını kullanır.");
         if (type is MarketplaceJobTypes.OrderReconciliation or MarketplaceJobTypes.ShopifyOrderReconciliation) return new("Tarama türü", "Kapsamlı sipariş taraması", "Yerel siparişler ile pazaryeri kayıtları karşılaştırıldı; durum ve paket farklılıkları düzeltildi.");
         if (type is MarketplaceJobTypes.OrderInvoiceReconciliation or MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation or MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation) return new("Tarama türü", "Paket fatura taraması", "Teslim edilmiş ve açık paketlerin pazaryeri fatura durumu kontrol edildi.");
         if (type is MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync or MarketplaceJobTypes.HepsiburadaOrderRecoverySync) return new("Tarama türü", "Tam sipariş taraması", "Erişilebilen sipariş pencereleri taranarak eksik yerel kayıtlar tamamlandı.");

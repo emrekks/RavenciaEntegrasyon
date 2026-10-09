@@ -16,7 +16,15 @@ public static class TrendyolEFaturamCanonicalPayload
         var addressSnapshot = ParseSnapshot(order, "InvoiceAddressSnapshotJson");
         try
         {
-            var address = RequiredObject(addressSnapshot.RootElement, "invoiceAddress");
+            // Trendyol order feeds store invoiceAddress as the snapshot root,
+            // while older/local snapshots may wrap it in an invoiceAddress key.
+            // Accept both shapes so valid order addresses reach the fiscal payload.
+            var addressRoot = addressSnapshot.RootElement;
+            var address = addressRoot;
+            if (addressRoot.TryGetProperty("invoiceAddress", out var wrappedAddress))
+                address = wrappedAddress.ValueKind == JsonValueKind.Object ? wrappedAddress : throw new JsonException("invoiceAddress missing");
+            else if (addressRoot.ValueKind != JsonValueKind.Object)
+                throw new JsonException("invoiceAddress missing");
             var taxId = Text(address, "taxNumber", "invoiceTaxNumber", "identityNumber", "IdentityNumber", "tcIdentityNumber");
             if (!ValidTaxId(taxId))
                 taxId = Text(customer.RootElement, "customerTaxNumber", "taxNumber", "invoiceTaxNumber", "identityNumber", "customerIdentityNumber", "tcIdentityNumber");

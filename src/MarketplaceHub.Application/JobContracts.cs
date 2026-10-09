@@ -92,6 +92,16 @@ public sealed record JobOrderContextView(
     string? CustomerName = null,
     int LineCount = 0);
 
+public sealed record JobInvoiceContextView(
+    Guid InvoiceId,
+    string OrderNumber,
+    string Status,
+    string InvoiceType,
+    string Currency,
+    decimal PayableTotal,
+    string? InvoiceNumber,
+    string? ExternalPackageId);
+
 public sealed record JobChangeView(string Label, string Value, string? Detail = null);
 
 public sealed record JobScanView(
@@ -119,7 +129,8 @@ public sealed record JobDetailView(
     JobChangeView? Change = null,
     IReadOnlyList<JobOrderContextView>? RelatedOrders = null,
     JobScanView? Scan = null,
-    IReadOnlyList<JobFailureReasonView>? FailureReasons = null);
+    IReadOnlyList<JobFailureReasonView>? FailureReasons = null,
+    JobInvoiceContextView? Invoice = null);
 
 public interface IJobOperationsService
 {

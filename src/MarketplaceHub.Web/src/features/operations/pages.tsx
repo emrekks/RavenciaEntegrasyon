@@ -36,10 +36,11 @@ type JobSummary = {
   progressFailed: number
 }
 type JobOrderContext = { orderId: string; orderNumber: string; externalOrderId: string; status: string; currency: string; netAmount: number; orderedAt: string; externalPackageId: string | null; cargoProvider: string | null; cargoTrackingNumber: string | null; customerName: string | null; lineCount: number }
+type JobInvoiceContext = { invoiceId: string; orderNumber: string; status: string; invoiceType: string; currency: string; payableTotal: number; invoiceNumber: string | null; externalPackageId: string | null }
 type JobChange = { label: string; value: string; detail: string | null }
 type JobScan = { mode: string; label: string; detail: string; window: string | null; plannedIntervalSeconds: number | null; plannedIntervalLabel: string | null; previousScheduledAt: string | null; actualIntervalLabel: string | null }
 type JobFailureReason = { key: string; title: string; description: string; technicalDetail: string; affectedRecords: number; sampleProductIds: string[] }
-type JobDetail = { job: JobSummary; attempts: Array<{ attemptNumber: number; startedAt: string; completedAt: string | null; succeeded: boolean; errorCode: string | null; errorSummary: string | null }>; order: JobOrderContext | null; change: JobChange | null; relatedOrders: JobOrderContext[]; scan: JobScan | null; failureReasons: JobFailureReason[] | null }
+type JobDetail = { job: JobSummary; attempts: Array<{ attemptNumber: number; startedAt: string; completedAt: string | null; succeeded: boolean; errorCode: string | null; errorSummary: string | null }>; order: JobOrderContext | null; change: JobChange | null; relatedOrders: JobOrderContext[]; scan: JobScan | null; failureReasons: JobFailureReason[] | null; invoice: JobInvoiceContext | null }
 
 const statuses: Array<{ value: '' | JobStatus; label: string }> = [
   { value: '', label: 'Tüm durumlar' },
@@ -328,6 +329,7 @@ function JobDetailDrawer({ selected, detail, selectedIsRunning, elevated, retrya
         {hasError && <div className="jobs-reference-error-alert"><strong>{job.lastErrorCode ?? 'İşlem hatası'}</strong><span>{job.lastErrorSummary ?? 'İşlem başarısız oldu ancak ayrıntılı hata açıklaması kaydedilmedi.'}</span></div>}
         {selectedIsRunning && action.isPending && <p className="jobs-reference-cancel-note">Çalışan işlem durduruluyor. Dış API çağrısı tamamlanana kadar durum birkaç saniye daha “Çalışıyor” görünebilir.</p>}
         <section className="jobs-reference-change-summary" aria-labelledby="job-change-title"><div><span className="jobs-reference-section-kicker">İşlem özeti</span><h3 id="job-change-title">{change.value}</h3></div><div><strong>{change.label}</strong><p>{change.detail ?? 'İşlem ayrıntısı mevcut.'}</p></div></section>
+        {detail.data.invoice && <section className="jobs-reference-order-context" aria-labelledby="job-invoice-context-title"><div><span className="jobs-reference-section-kicker">Fatura denemesi</span><h3 id="job-invoice-context-title">Sipariş #{detail.data.invoice.orderNumber}</h3><p>Bu e-Fatura işlemi seçili sipariş için başlatıldı.</p></div><div className="jobs-reference-order-facts"><p><small>Fatura kaydı</small><strong>{detail.data.invoice.invoiceId}</strong></p><p><small>Fatura durumu</small><strong>{statusLabel(detail.data.invoice.status)}</strong></p><p><small>Fatura türü</small><strong>{detail.data.invoice.invoiceType}</strong></p><p><small>Fatura tutarı</small><strong>{detail.data.invoice.payableTotal.toLocaleString('tr-TR', { style: 'currency', currency: detail.data.invoice.currency })}</strong></p>{detail.data.invoice.invoiceNumber && <p><small>Fatura numarası</small><strong>{detail.data.invoice.invoiceNumber}</strong></p>}{detail.data.invoice.externalPackageId && <p><small>Paket no</small><strong>{detail.data.invoice.externalPackageId}</strong></p>}</div></section>}
         <JobProgressSummary job={job} />
         <JobFailureReasons job={job} reasons={detail.data.failureReasons ?? null} />
         {detail.data.scan && <JobScanSummary scan={detail.data.scan} />}
