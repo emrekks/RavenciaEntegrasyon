@@ -75,4 +75,110 @@ public sealed class TrendyolCarrierCatalogTests
 
         Assert.Equal("12345678901", document.RootElement.GetProperty("recipientInfo").GetProperty("taxId").GetString());
     }
+
+    [Fact]
+    public void Canonical_payload_reads_tax_id_from_invoice_envelope_sibling_to_address()
+    {
+        const string canonical = """
+        {
+          "Id":"invoice-envelope-tax-id",
+          "InvoiceType":"EARSIVFATURA",
+          "Currency":"TRY",
+          "Note":"Satış faturası",
+          "IssuedAt":"2026-10-05T12:00:00+03:00",
+          "Order":{
+            "OrderNumber":"4486229624",
+            "OrderedAt":"2026-10-07T13:03:01+03:00",
+            "CustomerSnapshotJson":"{}",
+            "InvoiceAddressSnapshotJson":"{\"taxNumber\":\"1098765432\",\"address\":{\"city\":\"İstanbul\",\"fullAddress\":\"Test adres\"}}"
+          },
+          "Package":{"CargoProviderExternalId":"HepsiJet","StatusOccurredAt":"2026-10-07T13:03:01+03:00"},
+          "Lines":[{"DescriptionSnapshot":"Ürün","UnitSnapshot":"ADET","Quantity":1,"UnitPrice":100,"LineTotal":120,"VatAmount":20,"VatRate":20,"DiscountAmount":0}]
+        }
+        """;
+
+        var payload = TrendyolEFaturamCanonicalPayload.Create(new(1, 2, null), canonical);
+        using var document = JsonDocument.Parse(payload);
+
+        Assert.Equal("1098765432", document.RootElement.GetProperty("recipientInfo").GetProperty("taxId").GetString());
+        Assert.Equal("İstanbul", document.RootElement.GetProperty("recipientInfo").GetProperty("city").GetString());
+    }
+
+    [Fact]
+    public void Canonical_e_archive_uses_11_ones_for_noncorporate_recipient_without_a_tax_id()
+    {
+        const string canonical = """
+        {
+          "Id":"invoice-individual",
+          "InvoiceType":"EARSIVFATURA",
+          "Currency":"TRY",
+          "Note":"Satış faturası",
+          "IssuedAt":"2026-10-05T12:00:00+03:00",
+          "Order":{
+            "OrderNumber":"4486229624",
+            "OrderedAt":"2026-10-07T13:03:01+03:00",
+            "CustomerSnapshotJson":"{\"isCorporate\":false}",
+            "InvoiceAddressSnapshotJson":"{\"city\":\"İstanbul\",\"district\":\"Şişli\",\"name\":\"Ayşe Örnek\"}"
+          },
+          "Package":{"CargoProviderExternalId":"HepsiJet","StatusOccurredAt":"2026-10-07T13:03:01+03:00"},
+          "Lines":[{"DescriptionSnapshot":"Ürün","UnitSnapshot":"ADET","Quantity":1,"UnitPrice":100,"LineTotal":120,"VatAmount":20,"VatRate":20,"DiscountAmount":0}]
+        }
+        """;
+
+        var payload = TrendyolEFaturamCanonicalPayload.Create(new(1, 2, null), canonical);
+        using var document = JsonDocument.Parse(payload);
+
+        Assert.Equal("11111111111", document.RootElement.GetProperty("recipientInfo").GetProperty("taxId").GetString());
+    }
+
+    [Fact]
+    public void Canonical_e_archive_does_not_use_noncorporate_placeholder_for_company_recipient()
+    {
+        const string canonical = """
+        {
+          "Id":"invoice-company",
+          "InvoiceType":"EARSIVFATURA",
+          "Currency":"TRY",
+          "Note":"Satış faturası",
+          "IssuedAt":"2026-10-05T12:00:00+03:00",
+          "Order":{
+            "OrderNumber":"4486229624",
+            "OrderedAt":"2026-10-07T13:03:01+03:00",
+            "CustomerSnapshotJson":"{}",
+            "InvoiceAddressSnapshotJson":"{\"companyName\":\"Örnek Ticaret Ltd.\",\"taxOffice\":\"Şişli\",\"city\":\"İstanbul\"}"
+          },
+          "Package":{"CargoProviderExternalId":"HepsiJet","StatusOccurredAt":"2026-10-07T13:03:01+03:00"},
+          "Lines":[{"DescriptionSnapshot":"Ürün","UnitSnapshot":"ADET","Quantity":1,"UnitPrice":100,"LineTotal":120,"VatAmount":20,"VatRate":20,"DiscountAmount":0}]
+        }
+        """;
+
+        var exception = Assert.Throws<JsonException>(() => TrendyolEFaturamCanonicalPayload.Create(new(1, 2, null), canonical));
+
+        Assert.Equal("EFATURAM_RECIPIENT_TAX_ID_REQUIRED", exception.Message);
+    }
+
+    [Fact]
+    public void Canonical_e_invoice_does_not_use_e_archive_consumer_placeholder()
+    {
+        const string canonical = """
+        {
+          "Id":"invoice-einvoice-no-id",
+          "InvoiceType":"TEMELFATURA",
+          "Currency":"TRY",
+          "Note":"Satış faturası",
+          "IssuedAt":"2026-10-05T12:00:00+03:00",
+          "Order":{
+            "OrderNumber":"4486229624",
+            "OrderedAt":"2026-10-07T13:03:01+03:00",
+            "CustomerSnapshotJson":"{\"isCorporate\":false}",
+            "InvoiceAddressSnapshotJson":"{\"city\":\"İstanbul\"}"
+          },
+          "Lines":[{"DescriptionSnapshot":"Ürün","UnitSnapshot":"ADET","Quantity":1,"UnitPrice":100,"LineTotal":120,"VatAmount":20,"VatRate":20,"DiscountAmount":0}]
+        }
+        """;
+
+        var exception = Assert.Throws<JsonException>(() => TrendyolEFaturamCanonicalPayload.Create(new(1, 2, null), canonical));
+
+        Assert.Equal("EFATURAM_RECIPIENT_TAX_ID_REQUIRED", exception.Message);
+    }
 }

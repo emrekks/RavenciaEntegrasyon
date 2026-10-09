@@ -924,7 +924,14 @@ internal static class HepsiburadaJsonMapper
         var discount = Money(item, "totalMerchantDiscount", "TotalMerchantDiscount", "merchantDiscount", "MerchantDiscount", "discountAmount", "DiscountAmount") ?? 0m;
         var invoice = Find(item, "invoice", "Invoice");
         var invoiceAddress = Find(invoice, "address", "Address");
-        if (invoiceAddress.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null) invoiceAddress = Find(item, "invoiceAddress", "InvoiceAddress", "billingAddress", "BillingAddress");
+        var invoiceEnvelope = invoice;
+        if (invoiceAddress.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
+        {
+            invoiceAddress = Find(item, "invoiceAddress", "InvoiceAddress", "billingAddress", "BillingAddress");
+            invoiceEnvelope = default;
+            if (invoiceAddress.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
+                invoiceAddress = invoice;
+        }
         var customer = Find(item, "customer", "Customer");
         var customerSnapshot = customer.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null
             ? JsonSerializer.Serialize(new { name = Text(item, "customerName", "CustomerName", "recipientName", "RecipientName"), email = Text(item, "email", "Email"), phoneNumber = Text(item, "phoneNumber", "PhoneNumber") })
@@ -943,7 +950,7 @@ internal static class HepsiburadaJsonMapper
             Math.Max(0m, gross - discount),
             customerSnapshot,
             Snapshot(Find(item, "shippingAddress", "ShippingAddress", "deliveryAddress", "DeliveryAddress")),
-            Snapshot(invoiceAddress.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null ? invoice : invoiceAddress),
+            Snapshot(MergeInvoiceAddress(invoiceEnvelope, invoiceAddress)),
             [line],
             [],
             item.GetRawText(),
@@ -965,7 +972,13 @@ internal static class HepsiburadaJsonMapper
         var shipmentAddress = Find(item, "shippingAddress", "ShippingAddress", "deliveryAddress", "DeliveryAddress");
         if (shipmentAddress.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
             shipmentAddress = AddressSnapshot(item, "shippingAddressDetail", "recipientName", "shippingCountryCode", "shippingDistrict", "shippingTown", "shippingCity", "shippingPostalCode", "email", "phoneNumber");
-        var invoice = Find(item, "invoice", "Invoice", "invoiceAddress", "InvoiceAddress", "billingAddress", "BillingAddress");
+        var invoiceEnvelope = Find(item, "invoice", "Invoice");
+        var invoiceAddress = Find(invoiceEnvelope, "address", "Address");
+        var invoice = invoiceAddress.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null
+            ? Find(item, "invoiceAddress", "InvoiceAddress", "billingAddress", "BillingAddress")
+            : MergeInvoiceAddress(invoiceEnvelope, invoiceAddress);
+        if (invoice.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
+            invoice = invoiceEnvelope;
         if (invoice.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
             invoice = AddressSnapshot(item, "billingAddress", "companyName", "taxOffice", "taxNumber", "identityNo", "billingDistrict", "billingTown", "billingCity", "billingPostalCode");
         var customerSnapshot = OrderCustomerSnapshot(item, Find(item, "customer", "Customer"));
@@ -1003,6 +1016,28 @@ internal static class HepsiburadaJsonMapper
             if (!string.IsNullOrWhiteSpace(value)) address[name] = value;
         }
         using var document = JsonDocument.Parse(JsonSerializer.Serialize(address));
+        return document.RootElement.Clone();
+    }
+
+    private static JsonElement MergeInvoiceAddress(JsonElement invoiceEnvelope, JsonElement invoiceAddress)
+    {
+        if (invoiceAddress.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null) return invoiceEnvelope;
+        if (invoiceAddress.ValueKind != JsonValueKind.Object || invoiceEnvelope.ValueKind != JsonValueKind.Object)
+            return invoiceAddress;
+
+        var properties = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+        foreach (var property in invoiceAddress.EnumerateObject())
+            properties[property.Name] = property.Value.Clone();
+
+        foreach (var property in invoiceEnvelope.EnumerateObject())
+        {
+            if (property.Name.Equals("address", StringComparison.OrdinalIgnoreCase)
+                || property.Name.Equals("invoiceAddress", StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (!properties.ContainsKey(property.Name)) properties[property.Name] = property.Value.Clone();
+        }
+
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(properties));
         return document.RootElement.Clone();
     }
 
@@ -1149,13 +1184,14 @@ internal static class HepsiburadaJsonMapper
         var paymentStatus = Text(order, "paymentStatus", "PaymentStatus") ?? "Received";
         var customer = Find(order, "customer", "Customer");
         var shipmentAddress = Find(order, "deliveryAddress", "DeliveryAddress", "shipmentAddress", "ShipmentAddress");
+        var invoiceEnvelope = Find(order, "invoice", "Invoice");
         var invoiceAddress = Find(order, "invoiceAddress", "InvoiceAddress", "billingAddress", "BillingAddress");
         if (invoiceAddress.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
         {
-            var invoice = Find(order, "invoice", "Invoice");
-            invoiceAddress = Find(invoice, "address", "Address");
-            if (invoiceAddress.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
-                invoiceAddress = invoice;
+            invoiceAddress = Find(invoiceEnvelope, "address", "Address");
+            invoiceAddress = invoiceAddress.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null
+                ? invoiceEnvelope
+                : MergeInvoiceAddress(invoiceEnvelope, invoiceAddress);
         }
         var modified = Date(order, "lastStatusUpdateDate", "LastStatusUpdateDate", "lastModifiedAt", "LastModifiedAt") ?? orderedAt.Value;
         var invoiceUploaded = Boolean(order, "hasInvoice", "HasInvoice")

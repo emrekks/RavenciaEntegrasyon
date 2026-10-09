@@ -569,7 +569,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         if (type == InvoicingJobTypes.InvoiceSubmit && job.LastErrorCode == "EFATURAM_FISCAL_PAYLOAD_INVALID")
         {
             var detail = job.LastErrorSummary == "EFATURAM_RECIPIENT_TAX_ID_REQUIRED"
-                ? "Alıcının vergi kimlik numarası veya T.C. kimlik numarası fatura adresi ve müşteri snapshot'larında bulunamadı. Kaynak sipariş bu bilgiyi sağlıyorsa yeniden deneme artık Hepsiburada'nın identityNo ve iç içe invoice.address biçimlerini de okuyabilir."
+                ? "Alıcı snapshot'larında geçerli VKN/TCKN bulunamadı. Kurumsal veya e-Fatura alıcısı için gerçek 10 haneli VKN ya da 11 haneli TCKN gerekir. Kimlik bilgisinin zorunlu olmadığı bireysel e-Arşiv siparişlerinde 11111111111 yedek değeri kullanılır; bu kayıt kurumsal olarak işaretliyse siparişin fatura bilgilerini tamamlayın."
                 : "E-Faturam'a istek gönderilmeden önce yerel mali payload doğrulamasında hata oluştu. Hata ayrıntısındaki alan düzeltilmeden yeniden denemek aynı sonucu üretebilir.";
             return new("İstek sonucu", "Fatura gönderilmedi", detail);
         }

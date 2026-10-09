@@ -30,13 +30,22 @@ public static class TrendyolEFaturamCanonicalPayload
                     && !TryGetProperty(address, "address", out wrappedAddress)) break;
                 address = wrappedAddress.ValueKind == JsonValueKind.Object ? wrappedAddress : throw new JsonException("invoiceAddress missing");
             }
+            var invoiceType = RequiredText(root, "InvoiceType");
             var taxId = Text(address, "taxNumber", "invoiceTaxNumber", "identityNumber", "identityNo", "tcIdentityNumber", "taxId", "taxIdentifier", "nationalIdentityNumber", "tckn", "vkn");
             if (!ValidTaxId(taxId))
-                taxId = Text(customer.RootElement, "customerTaxNumber", "taxNumber", "invoiceTaxNumber", "identityNumber", "identityNo", "customerIdentityNumber", "tcIdentityNumber", "taxId", "taxIdentifier", "nationalIdentityNumber", "tckn", "vkn");
+                taxId = FindTaxId(addressRoot);
             if (!ValidTaxId(taxId))
-                throw new JsonException("EFATURAM_RECIPIENT_TAX_ID_REQUIRED");
+                taxId = FindTaxId(customer.RootElement);
+            if (!ValidTaxId(taxId))
+            {
+                // GİB e-Arşiv guidance permits this sentinel when the buyer's TCKN is not required.
+                // Restrict it to consumer/e-Archive cases; corporate and e-Invoice records still need a real VKN/TCKN.
+                if (invoiceType == "EARSIVFATURA" && !IsCorporateRecipient(addressRoot, address, customer.RootElement))
+                    taxId = "11111111111";
+                else
+                    throw new JsonException("EFATURAM_RECIPIENT_TAX_ID_REQUIRED");
+            }
 
-            var invoiceType = RequiredText(root, "InvoiceType");
             var lines = RequiredArray(root, "Lines").EnumerateArray().Select(line =>
             {
                 var total = Decimal(line, "LineTotal");
@@ -83,6 +92,75 @@ public static class TrendyolEFaturamCanonicalPayload
     private static string RequiredText(JsonElement parent, string name) => Text(parent, name) is { Length: > 0 } value ? value : throw new JsonException($"{name} missing");
     private static decimal Decimal(JsonElement parent, string name) => parent.TryGetProperty(name, out var value) && value.TryGetDecimal(out var number) ? number : throw new JsonException($"{name} missing");
     private static bool ValidTaxId(string value) => value.Length is 10 or 11 && value.All(char.IsAsciiDigit);
+    private static string FindTaxId(JsonElement source, int depth = 0)
+    {
+        var value = Text(source, "customerTaxNumber", "taxNumber", "invoiceTaxNumber", "identityNumber", "identityNo", "customerIdentityNumber", "tcIdentityNumber", "taxId", "taxIdentifier", "nationalIdentityNumber", "tckn", "vkn");
+        if (ValidTaxId(value) || depth >= 5) return value;
+        if (source.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in source.EnumerateObject())
+            {
+                var nested = FindTaxId(property.Value, depth + 1);
+                if (ValidTaxId(nested)) return nested;
+            }
+        }
+        else if (source.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in source.EnumerateArray())
+            {
+                var nested = FindTaxId(item, depth + 1);
+                if (ValidTaxId(nested)) return nested;
+            }
+        }
+        return "";
+    }
+    private static bool IsCorporateRecipient(params JsonElement[] sources)
+    {
+        var explicitlyIndividual = sources.Any(source =>
+        {
+            var recipientType = Text(source, "recipientType", "customerType", "entityType", "taxPayerType", "invoiceRecipientType");
+            return Boolean(source, "isIndividual", "isPerson", "isConsumer") == true
+                || Boolean(source, "isCorporate", "isCompany", "isBusiness", "corporate") == false
+                || recipientType.Contains("individual", StringComparison.OrdinalIgnoreCase)
+                || recipientType.Contains("person", StringComparison.OrdinalIgnoreCase)
+                || recipientType.Contains("consumer", StringComparison.OrdinalIgnoreCase)
+                || recipientType.Contains("bireysel", StringComparison.OrdinalIgnoreCase)
+                || recipientType.Contains("gerçek", StringComparison.OrdinalIgnoreCase);
+        });
+        foreach (var source in sources)
+        {
+            if (Boolean(source, "isCorporate", "isCompany", "isBusiness", "corporate") == true) return true;
+            var recipientType = Text(source, "recipientType", "customerType", "entityType", "taxPayerType", "invoiceRecipientType");
+            if (recipientType.Contains("corporate", StringComparison.OrdinalIgnoreCase)
+                || recipientType.Contains("company", StringComparison.OrdinalIgnoreCase)
+                || recipientType.Contains("business", StringComparison.OrdinalIgnoreCase)
+                || recipientType.Contains("kurumsal", StringComparison.OrdinalIgnoreCase)
+                || recipientType.Contains("tüzel", StringComparison.OrdinalIgnoreCase)) return true;
+            if (new[] { "companyTitle", "businessName", "legalName", "tradeName", "taxOffice" }
+                .Any(name => Text(source, name).Length > 0)) return true;
+            var taxNumber = Text(source, "vkn", "taxNumber", "invoiceTaxNumber", "taxId", "taxIdentifier");
+            if (taxNumber.Length == 10 && taxNumber.All(char.IsAsciiDigit)) return true;
+            var companyName = Text(source, "companyName");
+            var personName = Text(source, "fullName", "name", "recipientName", "firstName");
+            if (!explicitlyIndividual && companyName.Length > 0 && !string.Equals(companyName, personName, StringComparison.OrdinalIgnoreCase)) return true;
+        }
+        return false;
+    }
+    private static bool? Boolean(JsonElement parent, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (!TryGetProperty(parent, name, out var value)) continue;
+            return value.ValueKind switch
+            {
+                JsonValueKind.True => true,
+                JsonValueKind.False => false,
+                JsonValueKind.String when bool.TryParse(value.GetString(), out var parsed) => parsed,
+                _ => null
+            };
+        }
+        return null;
+    }
     private static string Text(JsonElement parent, params string[] names)
     {
         foreach (var name in names)
