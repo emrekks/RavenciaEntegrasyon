@@ -22,8 +22,14 @@ public sealed class CapabilityEvidencePolicyTests
     {
         var capability = new PlatformCapability
         {
-            Id = Guid.NewGuid(), TenantId = Guid.NewGuid(), ConnectionId = Guid.NewGuid(), Code = MarketplaceCapabilities.ReturnWrite,
-            ApiVersion = "2026-04", Environment = "STAGE", StoreScope = "old-shop", Version = 1
+            Id = Guid.NewGuid(),
+            TenantId = Guid.NewGuid(),
+            ConnectionId = Guid.NewGuid(),
+            Code = MarketplaceCapabilities.ReturnWrite,
+            ApiVersion = "2026-04",
+            Environment = "STAGE",
+            StoreScope = "old-shop",
+            Version = 1
         };
         var verifiedAt = DateTimeOffset.UtcNow;
         var evidence = new CapabilityEvidence(MarketplaceCapabilities.ReturnWrite, "NOT_SUPPORTED", "2026-07", "PRODUCTION", "shop-name",
