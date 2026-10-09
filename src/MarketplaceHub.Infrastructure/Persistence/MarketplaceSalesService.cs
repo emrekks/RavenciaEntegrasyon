@@ -1408,7 +1408,10 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 "APPROVED" => query.Where(x => x.Status == ReturnClaimStatus.Approved || x.Status == ReturnClaimStatus.Completed),
                 "REJECTED" => query.Where(x => x.Status == ReturnClaimStatus.Rejected || x.Status == ReturnClaimStatus.Cancelled),
                 "DISPUTED" => query.Where(x => x.Status == ReturnClaimStatus.Disputed),
-                "REVIEW" => query.Where(x => x.Status == ReturnClaimStatus.ActionRequired),
+                // The UI's Analysis tab is reserved for explicitly submitted
+                // analysis cases. ActionRequired claims belong only to their
+                // own operational tab and must not leak into Analysis.
+                "REVIEW" => query.Where(_ => false),
                 "SUSPENDED" => query.Where(_ => false),
                 _ => query.Where(_ => false)
             };

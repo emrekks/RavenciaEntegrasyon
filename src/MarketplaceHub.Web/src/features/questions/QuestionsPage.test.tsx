@@ -311,11 +311,13 @@ describe('QuestionsPage workspace flows', () => {
     expect(link?.getAttribute('rel')).toBe('noopener noreferrer')
   })
 
-  it('uses a circular marketplace logo instead of a dotted platform badge', async () => {
+  it('shows the order-style marketplace logo and status at the top right of the question card', async () => {
     apiState.detail = { ...createQuestion(), storeName: 'Trendyol' }
     await renderPage()
 
-    expect(container.querySelector('.rv-question-platform-icon[aria-label="Trendyol"] img')?.getAttribute('src')).toBe('/platforms/trendyol.png')
+    expect(container.querySelector('.rv-question-platform-context .order-platform-logo')?.getAttribute('src')).toBe('/platforms/orders/trendyol.png')
+    expect(container.querySelector('.rv-question-platform-context .rv-badge')?.textContent).toBe('Cevap bekliyor')
+    expect(container.querySelector('.rv-question-meta .order-platform-logo')).toBeNull()
     expect(container.querySelector('.rv-question-meta .rv-badge')).toBeNull()
     expect(container.querySelector('.rv-question-meta')?.textContent).not.toContain('TrendyolTrendyol')
   })

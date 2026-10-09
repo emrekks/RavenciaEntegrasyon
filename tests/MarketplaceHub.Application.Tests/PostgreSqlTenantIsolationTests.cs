@@ -1962,11 +1962,14 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 null!, null!, null!, null!, fixture.TimeProvider);
             var approved = await listService.ReturnsAsync(tenant.Id, 20, null, new ReturnListQuery(Status: "APPROVED"), latest: true, CancellationToken.None);
             var actionRequired = await listService.ReturnsAsync(tenant.Id, 20, null, new ReturnListQuery(Status: "ACTION_REQUIRED"), latest: true, CancellationToken.None);
+            var analysis = await listService.ReturnsAsync(tenant.Id, 20, null, new ReturnListQuery(Status: "REVIEW"), latest: true, CancellationToken.None);
 
             Assert.Equal(1, approved.TotalCount);
             Assert.Equal("APPROVED", Assert.Single(approved.Items).Status);
             Assert.Equal(0, actionRequired.TotalCount);
             Assert.Empty(actionRequired.Items);
+            Assert.Equal(0, analysis.TotalCount);
+            Assert.Empty(analysis.Items);
         }
         finally
         {

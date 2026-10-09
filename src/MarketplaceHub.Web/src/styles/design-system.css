@@ -11789,6 +11789,11 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .rv-question-actions { display: flex; align-items: center; justify-items: unset; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
 .rv-question-actions > .rv-badge { flex: 0 0 auto; }
 .rv-question-actions .rv-question-deadline, .rv-question-actions .rv-question-age { margin-right: auto; }
+.rv-question-platform-context { display: flex; align-items: flex-start; gap: 10px; }
+.rv-question-platform-context > .order-platform-logo { width: 40px; height: 40px; flex: 0 0 40px; object-fit: contain; }
+.rv-question-platform-context > .order-platform-fallback { max-width: 88px; overflow-wrap: anywhere; }
+.rv-question-platform-context > div { display: grid; justify-items: end; gap: 4px; }
+.rv-question-platform-context .rv-question-age, .rv-question-platform-context .rv-question-deadline { margin: 0; white-space: nowrap; }
 .rv-question-conversation { max-height: none; overflow: visible; gap: 7px; padding: 0; }
 .rv-question-thread-message { max-width: min(92%, 850px); min-width: 0; padding: 9px 11px; border: 1px solid var(--rv-color-border); border-radius: 10px; background: var(--rv-color-surface-raised); }
 .rv-question-thread-message.is-customer { justify-self: start; }
@@ -11810,11 +11815,17 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
   .rv-questions-filter-grid, .rv-question-templates { grid-template-columns: minmax(0, 1fr); }
   .rv-question-card-header { flex-direction: column; align-items: stretch; }
   .rv-question-actions { justify-content: flex-start; }
+  .rv-question-platform-context { margin-left: auto; }
+  .rv-question-platform-context > div { justify-items: start; }
   .rv-questions-results > header { align-items: flex-start; flex-direction: column; }
   .rv-question-thread-message { max-width: 100%; }
   .rv-question-template-card { grid-template-columns: minmax(0, 1fr); }
   .rv-question-template-card > div:last-child { justify-content: flex-start; }
 }
+
+/* Return tracking actions use the same neutral surface and ink as the theme control. */
+.return-reference-table .return-cargo-track { min-height: 34px; color: var(--rv-color-ink); background: var(--rv-color-surface); border-color: var(--rv-color-border); }
+.return-reference-table .return-cargo-track:hover { color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border-color: var(--rv-color-border-strong); }
 
 /* Keep customer questions aligned with the shared Ravencia UI tokens and
    retain compact, readable controls inside the fixed sidebar workspace. */
