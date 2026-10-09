@@ -898,12 +898,8 @@ public static class TrendyolJsonMapper
     private static string Text(JsonElement value, params string[] names) => NullText(value, names) ?? "";
     private static string? NullText(JsonElement value, params string[] names) { foreach (var name in names) if (value.TryGetProperty(name, out var item) && item.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined)) return item.ToString(); return null; }
     private static string? NestedText(JsonElement value, string objectName, params string[] names) => value.TryGetProperty(objectName, out var nested) && nested.ValueKind == JsonValueKind.Object ? NullText(nested, names) : null;
-    private static string? ReturnCargoProvider(JsonElement claim)
-    {
-        var nestedProvider = NestedText(claim, "cargoProvider", "name", "code", "label");
-        if (!string.IsNullOrWhiteSpace(nestedProvider)) return nestedProvider;
-        return ReturnCargoField(claim, "cargoProviderName", "cargoProviderCode", "cargoProvider");
-    }
+    private static string? ReturnCargoProvider(JsonElement claim) =>
+        ReturnCargoField(claim, "cargoProviderName", "cargoProviderCode", "cargoProvider");
     private static string? OrderCargoProvider(JsonElement package)
     {
         var nestedProvider = NestedText(package, "cargoProvider", "name", "shortName", "code", "label");
@@ -913,14 +909,16 @@ public static class TrendyolJsonMapper
     }
     private static string? ReturnCargoField(JsonElement claim, params string[] names)
     {
+        // Trendyol puts a rejected return shipment back to the customer in
+        // rejectedPackageInfo. replacementOutboundpackageinfo is for exchange
+        // shipments and must not replace the rejected return's cargo details.
+        var rejectedCargo = NestedCargoText(claim, "rejectedPackageInfo", names);
+        if (!string.IsNullOrWhiteSpace(rejectedCargo)) return rejectedCargo;
+
         var rootValue = ScalarText(claim, names);
         if (!string.IsNullOrWhiteSpace(rootValue)) return rootValue;
 
-        // Trendyol places the shipped rejected-return package under this
-        // object; it is distinct from replacementOutboundpackageinfo, which
-        // must never be shown as the customer's return cargo.
-        return NestedCargoText(claim, "rejectedPackageInfo", names)
-            ?? NestedCargoText(claim, "returnPackageInfo", names);
+        return NestedCargoText(claim, "returnPackageInfo", names);
     }
     private static string? NestedCargoText(JsonElement value, string objectName, params string[] names)
     {

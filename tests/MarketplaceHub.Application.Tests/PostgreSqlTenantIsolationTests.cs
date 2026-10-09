@@ -1511,7 +1511,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
-    public async Task InvoiceWorkspace_ShowsOpenMarketplaceInvoiceReadFailureForPackage()
+    public async Task InvoiceWorkspace_ShowsOpenMarketplaceInvoiceReadFailureAndSummaryOmitsHiddenPackage()
     {
         var tenant = NewTenant("invoice-read-issue-workspace");
         var connection = NewQuestionConnection(tenant);
@@ -1542,6 +1542,13 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             seedDb.Orders.Add(order);
             seedDb.ShipmentPackages.Add(package);
             seedDb.OperationalIssues.Add(issue);
+            seedDb.TenantSettings.Add(new TenantSetting
+            {
+                TenantId = tenant.Id,
+                Key = "invoice-workspace-hidden-packages",
+                ValueJson = JsonSerializer.Serialize(new[] { packageId }),
+                UpdatedAt = fixture.Now
+            });
             await seedDb.SaveChangesAsync();
         }
 
@@ -1566,8 +1573,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             Assert.Equal("REMOTE_5XX", item.MarketplaceInvoiceReadErrorCode);
             Assert.Equal(issue.Summary, item.MarketplaceInvoiceReadErrorSummary);
             Assert.True(item.IsDueSoon);
-            Assert.Equal(items.Count(row => row.IsDueSoon), summary.DueSoonCount);
-            Assert.Equal(1, summary.DueSoonCount);
+            Assert.Equal(0, summary.DueSoonCount);
         }
         finally
         {

@@ -55,6 +55,21 @@ public static class ReturnClaimStateMachine
         current == next || Allowed.TryGetValue(current, out var allowed) && allowed.Contains(next);
 }
 
+public static class ReturnClaimDecisionPolicy
+{
+    public static ReturnClaimStatus StatusAfterLineDecision(ReturnClaimStatus current, string action, int selectedLineCount, int totalLineCount)
+    {
+        if (totalLineCount <= 0 || selectedLineCount < totalLineCount) return current;
+        return action.Trim().ToUpperInvariant() switch
+        {
+            "APPROVE" => ReturnClaimStatus.Approved,
+            "REJECT" => ReturnClaimStatus.Rejected,
+            "PREAPPROVAL_CONFIRM" => ReturnClaimStatus.AwaitingShipment,
+            _ => current
+        };
+    }
+}
+
 public static class OpenReturnLifecyclePolicy
 {
     public static bool ShouldPoll(ReturnClaimStatus status) =>

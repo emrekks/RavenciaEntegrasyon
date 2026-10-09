@@ -7665,7 +7665,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         {
             var claimChanged = false;
             var remoteIsFresh = remote.LastModifiedAt >= claim.LastRemoteModifiedAt;
-            if (remoteIsFresh && ReturnClaimStateMachine.CanTransition(claim.Status, target))
+            var partialLineDecisionPending = string.Equals(claim.RawStatus, "PARTIAL_LINE_DECISION_PENDING", StringComparison.Ordinal);
+            if (remoteIsFresh && !partialLineDecisionPending && ReturnClaimStateMachine.CanTransition(claim.Status, target))
             {
                 claim.Status = target;
                 claim.RawStatus = remote.RawStatus;

@@ -33,7 +33,7 @@ public sealed class ShopifyHttpClient(
     private const string OrderRichCustomerFields = " email phone customer { id displayName firstName lastName email phone } shippingAddress { firstName lastName name company address1 address2 city province provinceCode zip country phone } billingAddress { firstName lastName name company address1 address2 city province provinceCode zip country phone }";
     private const string OrderReducedCustomerFields = " customer { id displayName firstName lastName } shippingAddress { firstName lastName name company address1 address2 city province provinceCode zip country } billingAddress { firstName lastName name company address1 address2 city province provinceCode zip country }";
     private const string OrderAddressOnlyFields = " shippingAddress { firstName lastName name } billingAddress { firstName lastName name }";
-    private const string OrderFinancialFields = " currentTotalPriceSet { shopMoney { amount currencyCode } } totalDiscountsSet { shopMoney { amount currencyCode } } lineItems(first:250) { nodes { id name sku quantity currentQuantity originalUnitPriceSet { shopMoney { amount currencyCode } } variant { sku barcode } } } fulfillments(first:50) { id status displayStatus deliveredAt createdAt trackingInfo { number company url } events(first:50) { nodes { status happenedAt } } fulfillmentLineItems(first:250) { nodes { id quantity lineItem { id } } } } refunds(first:100) { id createdAt totalRefundedSet { shopMoney { amount currencyCode } } }";
+    private const string OrderFinancialFields = " currentTotalPriceSet { shopMoney { amount currencyCode } } totalDiscountsSet { shopMoney { amount currencyCode } } lineItems(first:250) { nodes { id name sku quantity currentQuantity originalUnitPriceSet { shopMoney { amount currencyCode } } variant { sku barcode } } } fulfillments(first:50) { id status displayStatus deliveredAt createdAt updatedAt trackingInfo { number company url } events(first:50) { nodes { status happenedAt } } fulfillmentLineItems(first:250) { nodes { id quantity lineItem { id } } } } refunds(first:100) { id createdAt totalRefundedSet { shopMoney { amount currencyCode } } }";
     private const string TaxonomyCategoryFields = "nodes { id name fullName parentId level isLeaf isArchived } pageInfo { hasNextPage endCursor }";
     private const string TaxonomyRootsQuery = "query($first:Int!, $after:String) { taxonomy { categories(first:$first, after:$after) { " + TaxonomyCategoryFields + " } } }";
     private const string TaxonomyDescendantsQuery = "query($first:Int!, $after:String, $rootId:ID!) { taxonomy { categories(first:$first, after:$after, descendantsOf:$rootId) { " + TaxonomyCategoryFields + " } } }";
@@ -581,7 +581,7 @@ public sealed class ShopifyHttpClient(
                     throttled
                         ? "Shopify API sınırına ulaşıldı; bağlantı bazında yeniden denenecek."
                         : accessDenied
-                            ? $"Shopify okuma izni eksik{(string.IsNullOrWhiteSpace(deniedField) ? string.Empty : $" ({deniedField})")}. read_products, read_inventory, read_orders, read_customers ve read_locations izinlerini kontrol edin."
+                            ? $"Shopify API izni eksik{(string.IsNullOrWhiteSpace(deniedField) ? string.Empty : $" ({deniedField})")}. read_products, read_inventory, read_orders, read_customers, read_locations, write_products ve write_inventory izinlerini kontrol edin."
                             : message ?? "Shopify GraphQL isteği reddedildi.",
                     (int)response.StatusCode,
                     throttled ? rate?.RetryAfter ?? TimeSpan.FromSeconds(5) : null,
@@ -701,7 +701,7 @@ public sealed class ShopifyHttpClient(
                 ShortId(fulfillment.GetProperty("id").GetString()),
                 null,
                 rawStatus,
-                fulfillment.GetProperty("createdAt").GetDateTimeOffset(),
+                FulfillmentStatusOccurredAt(fulfillment, rawStatus),
                 tracking.ValueKind == JsonValueKind.Object && tracking.TryGetProperty("company", out var company) ? company.GetString() : null,
                 tracking.ValueKind == JsonValueKind.Object && tracking.TryGetProperty("number", out var number) ? number.GetString() : null,
                 allocations,
@@ -849,6 +849,42 @@ public sealed class ShopifyHttpClient(
         };
     }
 
+    internal static DateTimeOffset FulfillmentStatusOccurredAt(JsonElement fulfillment, string rawStatus)
+    {
+        if (string.Equals(rawStatus, "DELIVERED", StringComparison.OrdinalIgnoreCase))
+        {
+            if (fulfillment.TryGetProperty("deliveredAt", out var deliveredAt)
+                && deliveredAt.ValueKind == JsonValueKind.String
+                && deliveredAt.TryGetDateTimeOffset(out var deliveredAtValue))
+                return deliveredAtValue;
+
+            if (fulfillment.TryGetProperty("events", out var events)
+                && events.ValueKind == JsonValueKind.Object
+                && events.TryGetProperty("nodes", out var eventNodes)
+                && eventNodes.ValueKind == JsonValueKind.Array)
+            {
+                var deliveredEventAt = eventNodes.EnumerateArray()
+                    .Where(item => item.TryGetProperty("status", out var status)
+                        && string.Equals(status.GetString(), "DELIVERED", StringComparison.OrdinalIgnoreCase))
+                    .Select(item => item.TryGetProperty("happenedAt", out var happenedAt)
+                        && happenedAt.ValueKind == JsonValueKind.String
+                        && happenedAt.TryGetDateTimeOffset(out var happenedAtValue)
+                            ? happenedAtValue
+                            : (DateTimeOffset?)null)
+                    .Where(value => value.HasValue)
+                    .Max();
+                if (deliveredEventAt.HasValue) return deliveredEventAt.Value;
+            }
+        }
+
+        if (fulfillment.TryGetProperty("updatedAt", out var updatedAt)
+            && updatedAt.ValueKind == JsonValueKind.String
+            && updatedAt.TryGetDateTimeOffset(out var updatedAtValue))
+            return updatedAtValue;
+
+        return fulfillment.GetProperty("createdAt").GetDateTimeOffset();
+    }
+
     private static string AddressJson(JsonElement order, string property) => order.TryGetProperty(property, out var address) && address.ValueKind != JsonValueKind.Null ? address.GetRawText() : "{}";
     private static string? TextValue(JsonElement element, string property) => element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
     private static string? JoinName(string? firstName, string? lastName) => string.Join(" ", new[] { firstName, lastName }.Where(value => !string.IsNullOrWhiteSpace(value))).Trim() is { Length: > 0 } name ? name : null;
@@ -988,6 +1024,61 @@ public sealed class ShopifyHttpClient(
         return true;
     }
     private static string EscapeSearch(string value) => value.Trim().Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal);
+    internal static AdapterResult<IReadOnlyList<ShopifyPriceInventoryLine>> ParsePriceInventoryPayload(string payloadJson)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(payloadJson);
+            if (!document.RootElement.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array || items.GetArrayLength() is 0 or > 1000)
+                return Failure<IReadOnlyList<ShopifyPriceInventoryLine>>(new(AdapterErrorClass.Validation, "SHOPIFY_PRICE_INVENTORY_PAYLOAD_INVALID", "Shopify fiyat-stok payload'ı 1-1000 satır içermelidir.", (int)HttpStatusCode.UnprocessableEntity, null, null));
+            var lines = new List<ShopifyPriceInventoryLine>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var item in items.EnumerateArray())
+            {
+                var barcode = item.TryGetProperty("barcode", out var barcodeElement) ? barcodeElement.GetString()?.Trim() : null;
+                if (string.IsNullOrWhiteSpace(barcode) || !seen.Add(barcode)
+                    || !item.TryGetProperty("quantity", out var quantityElement) || !quantityElement.TryGetInt32(out var quantity) || quantity < 0
+                    || !item.TryGetProperty("salePrice", out var saleElement) || !saleElement.TryGetDecimal(out var salePrice) || salePrice <= 0
+                    || !item.TryGetProperty("listPrice", out var listElement) || !listElement.TryGetDecimal(out var listPrice) || listPrice < salePrice)
+                    return Failure<IReadOnlyList<ShopifyPriceInventoryLine>>(new(AdapterErrorClass.Validation, "SHOPIFY_PRICE_INVENTORY_PAYLOAD_INVALID", "Shopify satırlarında benzersiz barkod, quantity >= 0 ve listPrice >= salePrice > 0 gerekir.", (int)HttpStatusCode.UnprocessableEntity, null, null));
+                lines.Add(new(barcode, quantity, salePrice, listPrice));
+            }
+            return AdapterResult<IReadOnlyList<ShopifyPriceInventoryLine>>.Success(lines);
+        }
+        catch (Exception exception) when (exception is JsonException or InvalidOperationException)
+        {
+            return Failure<IReadOnlyList<ShopifyPriceInventoryLine>>(new(AdapterErrorClass.Validation, "SHOPIFY_PRICE_INVENTORY_PAYLOAD_INVALID", "Shopify fiyat-stok payload'ı geçerli JSON değil.", (int)HttpStatusCode.UnprocessableEntity, null, null));
+        }
+    }
+
+    internal static AdapterResult<RemoteOperationStatus> ParseImmediateOperation(string externalOperationId)
+    {
+        try
+        {
+            var encoded = externalOperationId["SHOPIFY_IMMEDIATE:".Length..].Replace('-', '+').Replace('_', '/');
+            encoded = encoded.PadRight(encoded.Length + (4 - encoded.Length % 4) % 4, '=');
+            var lines = JsonSerializer.Deserialize<string[]>(Convert.FromBase64String(encoded));
+            if (lines is null || lines.Length is 0 or > 1000 || lines.Any(string.IsNullOrWhiteSpace) || lines.Distinct(StringComparer.OrdinalIgnoreCase).Count() != lines.Length)
+                throw new JsonException("Shopify operation key list is invalid.");
+            return AdapterResult<RemoteOperationStatus>.Success(new(externalOperationId, "COMPLETED", lines.Select(barcode => new RemoteOperationLine(barcode, true, null, null, false)).ToArray()));
+        }
+        catch (Exception exception) when (exception is FormatException or JsonException or ArgumentException)
+        {
+            return Failure<RemoteOperationStatus>(new(AdapterErrorClass.ContractViolation, "SHOPIFY_OPERATION_REFERENCE_INVALID", "Shopify işleminin doğrulama referansı geçersiz.", (int)HttpStatusCode.BadGateway, null, null));
+        }
+    }
+
+    private static bool HasMutationErrors(JsonElement root, string field) =>
+        root.TryGetProperty(field, out var mutation)
+        && mutation.ValueKind == JsonValueKind.Object
+        && mutation.TryGetProperty("userErrors", out var errors)
+        && errors.ValueKind == JsonValueKind.Array
+        && errors.GetArrayLength() > 0;
+    private static string DeterministicIdempotencyKey(string value)
+    {
+        var bytes = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(value));
+        return new Guid(bytes.AsSpan(0, 16)).ToString("D");
+    }
     private static string ShortId(string? value) => string.IsNullOrWhiteSpace(value) ? "" : value.Split('/').Last();
     private static string? BuildOrderQuery(OrderPollWindow window) => window.ModifiedAfter is { } from ? $"updated_at:>={from.UtcDateTime:yyyy-MM-ddTHH:mm:ssZ}" : null;
     private static AdapterError MapHttpError(HttpStatusCode status, string body, TimeSpan? retryAfter = null, string? remoteRequestId = null) => status switch
@@ -1019,3 +1110,6 @@ public sealed class ShopifyHttpClient(
     private static Task<AdapterResult<T>> Unsupported<T>(string message) => Task.FromResult(Fail<T>(AdapterErrorClass.NotSupported, "SHOPIFY_NOT_SUPPORTED", message, HttpStatusCode.NotImplemented));
     private static AdapterResult<T> Failure<T>(AdapterError error, RateLimitMetadata? rate = null) => AdapterResult<T>.Failure(error, rate);
 }
+
+internal sealed record ShopifyPriceInventoryLine(string Barcode, int Quantity, decimal SalePrice, decimal ListPrice);
+internal sealed record ShopifyPriceInventoryTarget(ShopifyPriceInventoryLine Line, string VariantId, string ProductId, string InventoryItemId, string LocationId, int CurrentQuantity);

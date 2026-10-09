@@ -252,17 +252,37 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                                         && connection.Id == package.ConnectionId
                                         && connection.PlatformCode == "HEPSIBURADA")))
                         || HepsiburadaUnpackagedOnHoldOrders(tenantId).Any(holdOrder => holdOrder.Id == order.Id)),
-                    "DELIVERED" => query.Where(order => db.ShipmentPackages.Any(package => package.TenantId == order.TenantId
-                            && package.OrderId == order.Id
-                            && packageStatuses.Contains(package.Status))
-                        || HepsiburadaUnpackagedDeliveredOrders(tenantId).Any(deliveredOrder => deliveredOrder.Id == order.Id)),
-                    "SHIPPED" => query.Where(order => db.ShipmentPackages.Any(package => package.TenantId == order.TenantId
-                        && package.OrderId == order.Id
-                        && packageStatuses.Contains(package.Status)
-                        && (package.Status != ShipmentPackageStatus.Undelivered
-                            || !db.PlatformConnections.Any(connection => connection.TenantId == package.TenantId
-                                && connection.Id == package.ConnectionId
-                                && connection.PlatformCode == "HEPSIBURADA")))),
+                    "DELIVERED" => query.Where(order =>
+                        db.PlatformConnections.Any(connection => connection.TenantId == order.TenantId
+                            && connection.Id == order.ConnectionId
+                            && connection.PlatformCode == "SHOPIFY")
+                        && db.OrderStatusHistory.Any(history => history.TenantId == order.TenantId
+                            && history.OrderId == order.Id
+                            && history.RawStatus.StartsWith("MANUAL_SHOPIFY_STATUS:")
+                            && history.CanonicalStatus == order.DerivedStatus
+                            && history.OccurredAt >= order.LastRemoteModifiedAt)
+                            ? order.DerivedStatus == "DELIVERED"
+                            : db.ShipmentPackages.Any(package => package.TenantId == order.TenantId
+                                && package.OrderId == order.Id
+                                && packageStatuses.Contains(package.Status))
+                                || HepsiburadaUnpackagedDeliveredOrders(tenantId).Any(deliveredOrder => deliveredOrder.Id == order.Id)),
+                    "SHIPPED" => query.Where(order =>
+                        db.PlatformConnections.Any(connection => connection.TenantId == order.TenantId
+                            && connection.Id == order.ConnectionId
+                            && connection.PlatformCode == "SHOPIFY")
+                        && db.OrderStatusHistory.Any(history => history.TenantId == order.TenantId
+                            && history.OrderId == order.Id
+                            && history.RawStatus.StartsWith("MANUAL_SHOPIFY_STATUS:")
+                            && history.CanonicalStatus == order.DerivedStatus
+                            && history.OccurredAt >= order.LastRemoteModifiedAt)
+                            ? order.DerivedStatus == "SHIPPED"
+                            : db.ShipmentPackages.Any(package => package.TenantId == order.TenantId
+                                && package.OrderId == order.Id
+                                && packageStatuses.Contains(package.Status)
+                                && (package.Status != ShipmentPackageStatus.Undelivered
+                                    || !db.PlatformConnections.Any(connection => connection.TenantId == package.TenantId
+                                        && connection.Id == package.ConnectionId
+                                        && connection.PlatformCode == "HEPSIBURADA")))),
                     _ => query.Where(order => db.ShipmentPackages.Any(package => package.TenantId == order.TenantId
                         && package.OrderId == order.Id
                         && packageStatuses.Contains(package.Status)))
@@ -486,6 +506,19 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     internal IQueryable<Order> ExcludeStaleUnpackagedHepsiburadaOrders(IQueryable<Order> query, Guid tenantId)
     {
         return query.ExcludeStaleUnpackaged(db, tenantId, timeProvider.GetUtcNow());
+    }
+
+    internal IQueryable<ReturnClaim> ExcludeStaleHepsiburadaReturns(IQueryable<ReturnClaim> query, Guid tenantId)
+    {
+        var anchor = timeProvider.GetUtcNow();
+        var lookbackStart = HepsiburadaReturnHistoryPolicy.InitialStatusChangeStart(anchor);
+        return query.Where(claim => !db.PlatformConnections.Any(connection => connection.TenantId == tenantId
+                && connection.Id == claim.ConnectionId
+                && connection.PlatformCode == "HEPSIBURADA")
+            || db.Orders.Any(order => order.TenantId == tenantId
+                && order.Id == claim.OrderId
+                && order.OrderedAt >= lookbackStart
+                && order.OrderedAt <= anchor));
     }
 
     public async Task<ServiceResult<OrderDetailView>> OrderAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
@@ -1237,6 +1270,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var query = db.ReturnClaims.AsNoTracking().Where(x => x.TenantId == tenantId
             && x.Status != ReturnClaimStatus.Cancelled
             && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")));
+        query = ExcludeStaleHepsiburadaReturns(query, tenantId);
         ApplyReturnFilters(ref query, options);
         var totalCount = await query.CountAsync(cancellationToken);
         var afterId = latest ? Guid.Empty : Decode(after);
@@ -1587,6 +1621,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var returnLineIds = command.ReturnLineIds?.Distinct().ToArray() ?? claimLineIds.ToArray();
         if (returnLineIds.Length == 0 || returnLineIds.Except(claimLineIds).Any()) return Invalid<ReturnDetailView>("returnLineIds", "İşlem yapılacak ürün satırları bu iadeye ait olmalıdır.");
         if (isHepsiburada && returnLineIds.Length != claimLineIds.Count) return Invalid<ReturnDetailView>("returnLineIds", "Hepsiburada talep kabul/red işlemi talebin tüm ürün satırlarına uygulanır; kısmi satır seçimi desteklenmez.");
+        var partialLineDecision = returnLineIds.Length < claimLineIds.Count;
         var finalizedWith = command.FinalizedWith?.Trim();
         if (isHepsiburada && action == "APPROVE" && finalizedWith is not ("Refund" or "Change")) return Invalid<ReturnDetailView>("finalizedWith", "Hepsiburada talep kabulünde iade veya ürün değişimi seçilmelidir.");
         if ((!isHepsiburada || action != "APPROVE") && !string.IsNullOrWhiteSpace(finalizedWith)) return Invalid<ReturnDetailView>("finalizedWith", "Kabul türü yalnız Hepsiburada talebini kabul ederken gönderilebilir.");
@@ -1666,13 +1701,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         decision.ExternalOperationId = result.Value?.ExternalOperationId;
         decision.ErrorCode = null;
         effect.CompletedAt = timeProvider.GetUtcNow();
-        claim.Status = action switch
-        {
-            "APPROVE" => ReturnClaimStatus.Approved,
-            "REJECT" => ReturnClaimStatus.Rejected,
-            _ => ReturnClaimStatus.AwaitingShipment
-        };
-        claim.RawStatus = result.Value?.Status ?? (action switch
+        claim.Status = ReturnClaimDecisionPolicy.StatusAfterLineDecision(claim.Status, action, returnLineIds.Length, claimLineIds.Count);
+        claim.RawStatus = partialLineDecision ? "PARTIAL_LINE_DECISION_PENDING" : result.Value?.Status ?? (action switch
         {
             "APPROVE" => "ACCEPTED",
             "REJECT" => "REJECTED",
@@ -1695,8 +1725,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 db.ChangeTracker.Clear();
                 return ServiceResult<ReturnDetailView>.Fail("RETURN_CLAIM_CANCELLED", "Pazaryerindeki iade talebi iptal edilmiş; iptal kaydı saklanmadı.", 409);
             }
-            if (ReturnClaimStateMachine.CanTransition(claim.Status, remoteStatus)) claim.Status = remoteStatus;
-            claim.RawStatus = readback.Value.RawStatus;
+            if (!partialLineDecision && ReturnClaimStateMachine.CanTransition(claim.Status, remoteStatus)) claim.Status = remoteStatus;
+            claim.RawStatus = partialLineDecision ? "PARTIAL_LINE_DECISION_PENDING" : readback.Value.RawStatus;
             claim.CargoProviderName = readback.Value.CargoProviderName ?? claim.CargoProviderName;
             claim.CargoTrackingNumber = readback.Value.CargoTrackingNumber ?? claim.CargoTrackingNumber;
             claim.ReasonCode = readback.Value.ReasonCode;

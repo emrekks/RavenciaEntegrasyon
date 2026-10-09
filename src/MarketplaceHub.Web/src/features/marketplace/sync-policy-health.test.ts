@@ -10,11 +10,16 @@ describe('syncPolicyHealthPresentation', () => {
     })
   })
 
-  it('keeps an offline flow higher priority while preserving its stalled warning', () => {
-    expect(syncPolicyHealthPresentation({ enabled: true, healthStatus: 'OFFLINE', cursorProgressStatus: 'STALLED' })).toEqual({
-      label: 'Çevrim dışı',
+  it('explains stale enabled flows without implying the marketplace connection is offline', () => {
+    expect(syncPolicyHealthPresentation({ enabled: true, lastSuccessAt: '2026-10-08T20:52:50Z', healthStatus: 'OFFLINE', cursorProgressStatus: 'STALLED' })).toEqual({
+      label: 'Güncelleme gecikti',
       tone: 'offline',
       stalled: true,
+    })
+    expect(syncPolicyHealthPresentation({ enabled: true, lastSuccessAt: null, healthStatus: 'OFFLINE' })).toEqual({
+      label: 'İlk çalışma bekliyor',
+      tone: 'offline',
+      stalled: false,
     })
   })
 

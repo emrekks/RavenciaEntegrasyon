@@ -185,6 +185,16 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             if (connection.LastSuccessAt is null || connectionTest?.SupportLevel != CapabilitySupportLevel.Supported)
                 return ServiceResult<ConnectionView>.Fail("CONNECTION_TEST_REQUIRED", "Dış yazmayı açmadan önce başarılı bağlantı testi ve destek kanıtı gerekir.", 422);
         }
+        if (connection.PlatformCode == "SHOPIFY" && requestedExternalWrites && !currentExternalWrites)
+        {
+            if (!await HasCredential(tenantId, id, cancellationToken))
+                return ServiceResult<ConnectionView>.Fail("CREDENTIAL_REQUIRED", "Shopify dış yazmasını açmadan önce aktif mağaza tokenı kaydedilmelidir.", 422);
+            var connectionTest = await db.PlatformCapabilities.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == id && x.Code == MarketplaceCapabilities.ConnectionTest && x.Environment == connection.Environment && x.StoreScope == connection.ExternalStoreId, cancellationToken);
+            if (connection.LastSuccessAt is null || connectionTest?.SupportLevel != CapabilitySupportLevel.Supported)
+                return ServiceResult<ConnectionView>.Fail("CONNECTION_TEST_REQUIRED", "Shopify dış yazmasını açmadan önce başarılı bağlantı testi gerekir.", 422);
+            if (!await HasVerifiedWriteEvidenceAsync(connection, cancellationToken, MarketplaceCapabilities.PriceWrite, MarketplaceCapabilities.InventoryWrite))
+                return ServiceResult<ConnectionView>.Fail("SHOPIFY_WRITE_SCOPES_REQUIRED", "Shopify fiyat ve stok dış yazması için tokenında write_products ve write_inventory izinleri doğrulanmalıdır.", 422);
+        }
         var environmentChanged = requestedEnvironment is not null && !string.Equals(connection.Environment, requestedEnvironment, StringComparison.OrdinalIgnoreCase);
         var storeScopeChanged = requestedStoreId is not null && !string.Equals(connection.ExternalStoreId, requestedStoreId, StringComparison.Ordinal);
         var userAgentChanged = currentSettings is not null && requestedUserAgent is not null && !string.Equals(currentSettings.UserAgentIdentity, requestedUserAgent, StringComparison.Ordinal);
@@ -200,6 +210,8 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             connection.SettingsJson = JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings(ReadEfaturamSettings(connection).ExternalWritesEnabled));
         else if (connection.PlatformCode == "HEPSIBURADA")
             connection.SettingsJson = JsonSerializer.Serialize(new HepsiburadaConnectionSettings(requestedExternalWrites));
+        else if (connection.PlatformCode == "SHOPIFY")
+            connection.SettingsJson = JsonSerializer.Serialize(new ShopifyConnectionSettings(requestedExternalWrites, command.InvoiceCreationEnabled ?? invoiceCreationEnabled));
         else
             connection.SettingsJson = JsonSerializer.Serialize(new ShopifyConnectionSettings(requestedExternalWrites, command.InvoiceCreationEnabled ?? invoiceCreationEnabled));
 
