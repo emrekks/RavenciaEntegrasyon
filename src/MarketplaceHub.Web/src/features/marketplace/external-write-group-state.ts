@@ -17,13 +17,14 @@ export function externalWriteGroupState(
   externalWritesEnabled: boolean,
   evidenceBlocked: boolean,
   capabilitiesLoading = false,
+  evidenceBlockedLabel = 'Bağlantı testi gerekli',
 ): ExternalWriteGroupState {
   const configuredEnabled = policies.length > 0 && policies.every(policy => policy.enabled)
   const activePolicies = policies.filter(policy => policy.enabled)
   const blocked = (!externalWritesEnabled && policies.some(policy => policy.requiresExternalWrites === true)) || evidenceBlocked
   const partiallyEnabled = activePolicies.length > 0 && !configuredEnabled
   const blockedLabel = evidenceBlocked
-    ? capabilitiesLoading ? 'Yetenekler kontrol ediliyor' : 'Bağlantı testi gerekli'
+    ? capabilitiesLoading ? 'Yetenekler kontrol ediliyor' : evidenceBlockedLabel
     : 'Dış yazma kapalı'
 
   return {

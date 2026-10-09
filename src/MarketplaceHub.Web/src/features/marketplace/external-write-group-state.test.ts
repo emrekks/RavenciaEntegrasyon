@@ -28,6 +28,12 @@ describe('externalWriteGroupState', () => {
     ], true, true)).toMatchObject({ enabled: false, disabled: false, label: 'Bağlantı testi gerekli' })
   })
 
+  it('explains missing Shopify write scopes after a successful connection test', () => {
+    expect(externalWriteGroupState([
+      { enabled: false, requiresExternalWrites: true },
+    ], true, true, false, 'Shopify izni eksik')).toMatchObject({ disabled: true, label: 'Shopify izni eksik' })
+  })
+
   it('disables a group when none of its policies are available', () => {
     expect(externalWriteGroupState([], true, false)).toMatchObject({ disabled: true, label: 'Kapalı' })
   })

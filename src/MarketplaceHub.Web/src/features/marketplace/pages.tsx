@@ -30,6 +30,7 @@ import { activeReturnSyncConnections, enqueueReturnSyncs } from './return-sync'
 import { visibleReturnClaims } from './return-claim-visibility'
 import { canPrintReturnLabel } from './return-label-visibility'
 import { shopifyStoreDisplayName } from './shopify-store-name'
+import { shouldLoadConnectionCapabilities } from './connection-capability-query'
 import { formatMarketplaceBarcode, shouldShowReturnCountdown, sortApprovedReturns, type ApprovedReturnSort } from './return-reference-presentation'
 import { productImageFallbackUrls as createProductImageFallbackUrls } from './product-image-lookups'
 import { visibleOrderLineVariantOptions } from './order-line-variant-options'
@@ -1082,7 +1083,7 @@ function SyncPolicyEditorModal({ policy, label, intervals, overlaps, healthHelp,
 }
 
 function IntegrationDetailWorkspace({ id, inline = false }: { id: string; inline?: boolean }) {
-  const client = useQueryClient(); const [feedback, setFeedback] = useState<IntegrationFeedback | null>(null); const [syncPolicyOpen, setSyncPolicyOpen] = useState<SyncPolicy | null>(null); const connection = useQuery({ queryKey: ['connection', id], queryFn: () => hubApi<Connection>(`/connections/${id}`) }); const syncPolicies = useQuery({ queryKey: ['sync-policies', id], queryFn: () => hubApi<SyncPolicy[]>(`/connections/${id}/sync-policies`), enabled: supportsSyncPolicyManagement(connection.data?.platformCode ?? ''), refetchInterval: 30_000, refetchIntervalInBackground: false }); const capabilities = useQuery({ queryKey: ['capabilities', id], queryFn: () => hubApi<Capability[]>(`/connections/${id}/capabilities`), enabled: connection.data?.platformCode === 'HEPSIBURADA' });
+  const client = useQueryClient(); const [feedback, setFeedback] = useState<IntegrationFeedback | null>(null); const [syncPolicyOpen, setSyncPolicyOpen] = useState<SyncPolicy | null>(null); const connection = useQuery({ queryKey: ['connection', id], queryFn: () => hubApi<Connection>(`/connections/${id}`) }); const syncPolicies = useQuery({ queryKey: ['sync-policies', id], queryFn: () => hubApi<SyncPolicy[]>(`/connections/${id}/sync-policies`), enabled: supportsSyncPolicyManagement(connection.data?.platformCode ?? ''), refetchInterval: 30_000, refetchIntervalInBackground: false }); const capabilities = useQuery({ queryKey: ['capabilities', id], queryFn: () => hubApi<Capability[]>(`/connections/${id}/capabilities`), enabled: shouldLoadConnectionCapabilities(connection.data?.platformCode) });
   useEffect(() => {
     if (!feedback) return
     const timeout = window.setTimeout(() => setFeedback(null), 5000)
@@ -1157,7 +1158,10 @@ function IntegrationDetailWorkspace({ id, inline = false }: { id: string; inline
     const policies = visibleSyncPolicies.filter(policy => externalGroup.resourceTypes.includes(policy.resourceType))
     const requiredCapabilities = externalGroup.capabilityCodes?.map(code => ({ code, capability: capabilities.data?.find(value => value.code === code) })) ?? []
     const evidenceBlocked = Boolean(requiredCapabilities.length && (capabilities.isLoading || requiredCapabilities.some(value => !value.capability?.verifiedForConnection)))
-    const state = externalWriteGroupState(policies, item.externalWritesEnabled, evidenceBlocked, capabilities.isLoading)
+    const unsupportedEvidence = requiredCapabilities.some(value => value.capability?.supportLevel === 'NOT_SUPPORTED' && value.capability.verifiedAt)
+    const unknownEvidence = requiredCapabilities.some(value => value.capability?.supportLevel === 'UNKNOWN' && value.capability.verifiedAt)
+    const evidenceLabel = unsupportedEvidence ? `${externalWritePlatform} izni eksik` : unknownEvidence ? `${externalWritePlatform} yetenek doğrulanamadı` : 'Bağlantı testi gerekli'
+    const state = externalWriteGroupState(policies, item.externalWritesEnabled, evidenceBlocked, capabilities.isLoading, evidenceLabel)
 
     return <article className={'sync-policy-row ' + (state.enabled ? 'is-enabled' : 'is-disabled') + (state.partiallyEnabled ? ' is-partial' : '')} key={externalGroup.key} data-external-write-group={externalGroup.key}><div className="sync-policy-card-summary"><strong>{externalGroup.label}</strong><small>{externalGroup.description}</small></div><label className="sync-policy-card-switch" title={externalGroup.label + ' ' + (state.enabled ? 'açık' : 'kapalı')}><span>{state.label}</span><input type="checkbox" checked={state.configuredEnabled} disabled={saveExternalWriteGroup.isPending || state.disabled} onChange={event => saveExternalWriteGroup.mutate({ policies, enabled: event.target.checked })} aria-label={externalGroup.label + ' seçeneğini ' + (state.configuredEnabled ? 'kapat' : 'aç')} /><i aria-hidden="true" /></label></article>
   }
