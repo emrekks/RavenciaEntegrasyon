@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatMarketplaceBarcode, shouldShowReturnCountdown, sortApprovedReturns } from './return-reference-presentation'
+import { formatMarketplaceBarcode, returnReasonPresentation, shouldShowReturnCountdown, sortApprovedReturns } from './return-reference-presentation'
 
 describe('return reference presentation', () => {
   it('removes Hepsiburada zero prefixes from alphanumeric codes but preserves numeric barcodes', () => {
@@ -27,5 +27,17 @@ describe('return reference presentation', () => {
     expect(shouldShowReturnCountdown(false, '2026-10-07T10:00:00Z', now)).toBe(false)
     expect(shouldShowReturnCountdown(true, '2026-10-05T10:00:00Z', now)).toBe(false)
     expect(shouldShowReturnCountdown(true, 'invalid', now)).toBe(false)
+  })
+
+  it('shows the actual reason text instead of a generic Other label', () => {
+    expect(returnReasonPresentation({ reasonCode: 'OTHER', reasonText: 'Beden/Ebat Büyük Geldi' }))
+      .toEqual({ label: 'Beden/Ebat Büyük Geldi', explanation: null })
+    expect(returnReasonPresentation({ reasonCode: 'UNKNOWN_REASON', reasonText: 'Yanlış sipariş verdim' }))
+      .toEqual({ label: 'Yanlış sipariş verdim', explanation: null })
+  })
+
+  it('keeps a known return reason and shows a distinct customer explanation', () => {
+    expect(returnReasonPresentation({ reasonCode: 'SIZE_TOO_LARGE', reasonText: 'Ürün beklediğimden bol oldu' }))
+      .toEqual({ label: 'Bedeni / boyutu büyük geldi', explanation: 'Ürün beklediğimden bol oldu' })
   })
 })
