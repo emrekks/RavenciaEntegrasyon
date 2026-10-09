@@ -105,6 +105,67 @@ public sealed class TrendyolCarrierCatalogTests
     }
 
     [Fact]
+    public void Canonical_payload_accepts_hepsiburada_flat_address_string_and_turkish_identity_field()
+    {
+        const string canonical = """
+        {
+          "Id":"invoice-flat-hepsiburada",
+          "InvoiceType":"EARSIVFATURA",
+          "Currency":"TRY",
+          "Note":"Satış faturası",
+          "IssuedAt":"2026-10-05T12:00:00+03:00",
+          "Order":{
+            "OrderNumber":"4486229624",
+            "OrderedAt":"2026-10-07T13:03:01+03:00",
+            "CustomerSnapshotJson":"{\"marketplaceInvoiceStatus\":\"Bireysel Müşteri\"}",
+            "InvoiceAddressSnapshotJson":"{\"address\":\"Örnek Cadde No:1\",\"city\":\"Konya\",\"district\":\"Selçuklu\",\"turkishIdentityNumber\":\"12345678901\"}"
+          },
+          "Package":{"CargoProviderExternalId":"HepsiJet","StatusOccurredAt":"2026-10-07T13:03:01+03:00"},
+          "Lines":[{"DescriptionSnapshot":"Ürün","UnitSnapshot":"ADET","Quantity":1,"UnitPrice":100,"LineTotal":120,"VatAmount":20,"VatRate":20,"DiscountAmount":0}]
+        }
+        """;
+
+        var payload = TrendyolEFaturamCanonicalPayload.Create(new(1, 2, null), canonical);
+        using var document = JsonDocument.Parse(payload);
+        var recipient = document.RootElement.GetProperty("recipientInfo");
+
+        Assert.Equal("12345678901", recipient.GetProperty("taxId").GetString());
+        Assert.Equal("Konya", recipient.GetProperty("city").GetString());
+        Assert.Equal("Selçuklu", recipient.GetProperty("district").GetString());
+        Assert.Equal("Örnek Cadde No:1", recipient.GetProperty("address").GetString());
+    }
+
+    [Fact]
+    public void Canonical_payload_skips_null_address_wrappers_and_uses_individual_e_archive_fallback()
+    {
+        const string canonical = """
+        {
+          "Id":"invoice-null-address-wrapper",
+          "InvoiceType":"EARSIVFATURA",
+          "Currency":"TRY",
+          "Note":"Satış faturası",
+          "IssuedAt":"2026-10-05T12:00:00+03:00",
+          "Order":{
+            "OrderNumber":"4486229624",
+            "OrderedAt":"2026-10-07T13:03:01+03:00",
+            "CustomerSnapshotJson":"{\"customerType\":\"Bireysel Müşteri\"}",
+            "InvoiceAddressSnapshotJson":"{\"invoiceAddress\":null,\"address\":\"Örnek Cadde No:1\",\"city\":\"Konya\",\"district\":\"Selçuklu\"}"
+          },
+          "Package":{"CargoProviderExternalId":"HepsiJet","StatusOccurredAt":"2026-10-07T13:03:01+03:00"},
+          "Lines":[{"DescriptionSnapshot":"Ürün","UnitSnapshot":"ADET","Quantity":1,"UnitPrice":100,"LineTotal":120,"VatAmount":20,"VatRate":20,"DiscountAmount":0}]
+        }
+        """;
+
+        var payload = TrendyolEFaturamCanonicalPayload.Create(new(1, 2, null), canonical);
+        using var document = JsonDocument.Parse(payload);
+        var recipient = document.RootElement.GetProperty("recipientInfo");
+
+        Assert.Equal("11111111111", recipient.GetProperty("taxId").GetString());
+        Assert.Equal("Konya", recipient.GetProperty("city").GetString());
+        Assert.Equal("Örnek Cadde No:1", recipient.GetProperty("address").GetString());
+    }
+
+    [Fact]
     public void Canonical_e_archive_uses_11_ones_for_noncorporate_recipient_without_a_tax_id()
     {
         const string canonical = """

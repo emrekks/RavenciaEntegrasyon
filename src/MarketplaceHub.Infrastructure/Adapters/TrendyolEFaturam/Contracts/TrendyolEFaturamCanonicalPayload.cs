@@ -19,19 +19,16 @@ public static class TrendyolEFaturamCanonicalPayload
             // Trendyol order feeds store invoiceAddress as the snapshot root,
             // while other marketplace/local snapshots may wrap it in invoiceAddress
             // or address. Accept both shapes so valid recipient details reach the fiscal payload.
-            var addressRoot = addressSnapshot.RootElement;
+            using var normalizedAddress = NormalizeAddressSnapshot(addressSnapshot.RootElement);
+            var addressRoot = normalizedAddress.RootElement;
             var address = addressRoot;
-            if (addressRoot.ValueKind != JsonValueKind.Object)
-                throw new JsonException("invoiceAddress missing");
             for (var depth = 0; depth < 3; depth++)
             {
-                if (!TryGetProperty(address, "invoiceAddress", out var wrappedAddress)
-                    && !TryGetProperty(address, "invoice", out wrappedAddress)
-                    && !TryGetProperty(address, "address", out wrappedAddress)) break;
-                address = wrappedAddress.ValueKind == JsonValueKind.Object ? wrappedAddress : throw new JsonException("invoiceAddress missing");
+                if (!TryGetObjectProperty(address, out var wrappedAddress, "invoiceAddress", "invoice", "address")) break;
+                address = wrappedAddress;
             }
             var invoiceType = RequiredText(root, "InvoiceType");
-            var taxId = Text(address, "taxNumber", "invoiceTaxNumber", "identityNumber", "identityNo", "tcIdentityNumber", "taxId", "taxIdentifier", "nationalIdentityNumber", "tckn", "vkn");
+            var taxId = Text(address, "taxNumber", "invoiceTaxNumber", "identityNumber", "identityNo", "tcIdentityNumber", "turkishIdentityNumber", "taxId", "taxIdentifier", "nationalIdentityNumber", "tckn", "vkn");
             if (!ValidTaxId(taxId))
                 taxId = FindTaxId(addressRoot);
             if (!ValidTaxId(taxId))
@@ -87,6 +84,30 @@ public static class TrendyolEFaturamCanonicalPayload
     }
 
     private static JsonDocument ParseSnapshot(JsonElement parent, string name) => JsonDocument.Parse(RequiredText(parent, name));
+    private static JsonDocument NormalizeAddressSnapshot(JsonElement snapshot)
+    {
+        if (snapshot.ValueKind == JsonValueKind.Object)
+            return JsonDocument.Parse(snapshot.GetRawText());
+
+        if (snapshot.ValueKind == JsonValueKind.String)
+        {
+            var text = snapshot.GetString()?.Trim() ?? "";
+            if (text.Length > 0)
+            {
+                try
+                {
+                    using var nested = JsonDocument.Parse(text);
+                    if (nested.RootElement.ValueKind == JsonValueKind.Object)
+                        return JsonDocument.Parse(nested.RootElement.GetRawText());
+                }
+                catch (JsonException) { }
+            }
+
+            return JsonDocument.Parse(JsonSerializer.Serialize(new { address = text }));
+        }
+
+        throw new JsonException("invoiceAddress missing");
+    }
     private static JsonElement RequiredObject(JsonElement parent, string name) => parent.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Object ? value : throw new JsonException($"{name} missing");
     private static JsonElement RequiredArray(JsonElement parent, string name) => parent.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Array ? value : throw new JsonException($"{name} missing");
     private static string RequiredText(JsonElement parent, string name) => Text(parent, name) is { Length: > 0 } value ? value : throw new JsonException($"{name} missing");
@@ -94,7 +115,7 @@ public static class TrendyolEFaturamCanonicalPayload
     private static bool ValidTaxId(string value) => value.Length is 10 or 11 && value.All(char.IsAsciiDigit);
     private static string FindTaxId(JsonElement source, int depth = 0)
     {
-        var value = Text(source, "customerTaxNumber", "taxNumber", "invoiceTaxNumber", "identityNumber", "identityNo", "customerIdentityNumber", "tcIdentityNumber", "taxId", "taxIdentifier", "nationalIdentityNumber", "tckn", "vkn");
+        var value = Text(source, "customerTaxNumber", "taxNumber", "invoiceTaxNumber", "identityNumber", "identityNo", "customerIdentityNumber", "tcIdentityNumber", "turkishIdentityNumber", "taxId", "taxIdentifier", "nationalIdentityNumber", "tckn", "vkn");
         if (ValidTaxId(value) || depth >= 5) return value;
         if (source.ValueKind == JsonValueKind.Object)
         {
@@ -179,6 +200,19 @@ public static class TrendyolEFaturamCanonicalPayload
                     value = property.Value;
                     return true;
                 }
+            }
+        }
+        value = default;
+        return false;
+    }
+    private static bool TryGetObjectProperty(JsonElement parent, out JsonElement value, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (TryGetProperty(parent, name, out var candidate) && candidate.ValueKind == JsonValueKind.Object)
+            {
+                value = candidate;
+                return true;
             }
         }
         value = default;

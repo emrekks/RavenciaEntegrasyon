@@ -1022,17 +1022,28 @@ internal static class HepsiburadaJsonMapper
     private static JsonElement MergeInvoiceAddress(JsonElement invoiceEnvelope, JsonElement invoiceAddress)
     {
         if (invoiceAddress.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null) return invoiceEnvelope;
-        if (invoiceAddress.ValueKind != JsonValueKind.Object || invoiceEnvelope.ValueKind != JsonValueKind.Object)
+        if (invoiceEnvelope.ValueKind != JsonValueKind.Object)
             return invoiceAddress;
 
         var properties = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
-        foreach (var property in invoiceAddress.EnumerateObject())
-            properties[property.Name] = property.Value.Clone();
+        if (invoiceAddress.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in invoiceAddress.EnumerateObject())
+                properties[property.Name] = property.Value.Clone();
+        }
+        else if (invoiceAddress.ValueKind == JsonValueKind.String)
+        {
+            properties["address"] = invoiceAddress.Clone();
+        }
+        else
+        {
+            return invoiceEnvelope;
+        }
 
         foreach (var property in invoiceEnvelope.EnumerateObject())
         {
-            if (property.Name.Equals("address", StringComparison.OrdinalIgnoreCase)
-                || property.Name.Equals("invoiceAddress", StringComparison.OrdinalIgnoreCase))
+            if (property.Name.Equals("invoiceAddress", StringComparison.OrdinalIgnoreCase)
+                || (invoiceAddress.ValueKind == JsonValueKind.Object && property.Name.Equals("address", StringComparison.OrdinalIgnoreCase)))
                 continue;
             if (!properties.ContainsKey(property.Name)) properties[property.Name] = property.Value.Clone();
         }
