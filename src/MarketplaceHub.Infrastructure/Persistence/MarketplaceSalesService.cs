@@ -395,6 +395,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         // Marketplace status tabs are package-based. Counting Orders here made
         // split packages and the provider's package counters incomparable.
         var resendCreators = new[] { "transfer", "resend", "replacement" };
+        var manuallyOverriddenShopifyOrders = CurrentManualShopifyOrderStatuses(tenantId);
         var packages = db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId
             && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
                 && !db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && connection.PlatformCode == "SHOPIFY"
@@ -409,12 +410,16 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 group.Count(),
                 group.Count(x => x.Status == ShipmentPackageStatus.New),
                 group.Count(x => x.Status == ShipmentPackageStatus.Processing || x.Status == ShipmentPackageStatus.ReadyToShip),
-                group.Count(x => x.Status == ShipmentPackageStatus.Shipped
-                    || x.Status == ShipmentPackageStatus.Undelivered
-                        && !db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId
-                            && connection.Id == x.ConnectionId
-                            && connection.PlatformCode == "HEPSIBURADA")),
-                group.Count(x => x.Status == ShipmentPackageStatus.Delivered),
+                group.Count(x => manuallyOverriddenShopifyOrders.Any(order => order.Id == x.OrderId)
+                    ? manuallyOverriddenShopifyOrders.Any(order => order.Id == x.OrderId && order.DerivedStatus == "SHIPPED")
+                    : x.Status == ShipmentPackageStatus.Shipped
+                        || x.Status == ShipmentPackageStatus.Undelivered
+                            && !db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId
+                                && connection.Id == x.ConnectionId
+                                && connection.PlatformCode == "HEPSIBURADA")),
+                group.Count(x => manuallyOverriddenShopifyOrders.Any(order => order.Id == x.OrderId)
+                    ? manuallyOverriddenShopifyOrders.Any(order => order.Id == x.OrderId && order.DerivedStatus == "DELIVERED")
+                    : x.Status == ShipmentPackageStatus.Delivered),
                 group.Count(x => x.OriginExternalPackageId != null && x.Status != ShipmentPackageStatus.Cancelled && x.CreatedBy != null && resendCreators.Contains(x.CreatedBy)),
                 group.Count(x => x.Status == ShipmentPackageStatus.OnHold
                     || x.Status == ShipmentPackageStatus.Undelivered
@@ -460,6 +465,16 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             Unverified = unverifiedOrderCount
         };
     }
+
+    internal IQueryable<Order> CurrentManualShopifyOrderStatuses(Guid tenantId) => db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId
+        && db.PlatformConnections.Any(connection => connection.TenantId == order.TenantId
+            && connection.Id == order.ConnectionId
+            && connection.PlatformCode == "SHOPIFY")
+        && db.OrderStatusHistory.Any(history => history.TenantId == order.TenantId
+            && history.OrderId == order.Id
+            && history.RawStatus.StartsWith("MANUAL_SHOPIFY_STATUS:")
+            && history.CanonicalStatus == order.DerivedStatus
+            && history.OccurredAt >= order.LastRemoteModifiedAt));
 
     private IQueryable<Order> HepsiburadaUnpackagedNewOrders(Guid tenantId)
     {

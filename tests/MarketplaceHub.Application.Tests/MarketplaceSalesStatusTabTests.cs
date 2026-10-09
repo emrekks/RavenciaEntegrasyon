@@ -274,4 +274,21 @@ public sealed class MarketplaceSalesStatusTabTests
         Assert.Contains("DerivedStatus", shippedSql, StringComparison.Ordinal);
         Assert.Contains("DerivedStatus", deliveredSql, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void Shopify_status_summary_uses_only_current_manual_status_overrides()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql("Host=localhost;Port=5432;Database=metadata-only;Username=metadata-only;Password=metadata-only")
+            .Options;
+        using var db = new AppDbContext(options);
+        var service = new MarketplaceSalesService(db, null!, null!, null!, null!, null!, null!, TimeProvider.System);
+
+        var sql = service.CurrentManualShopifyOrderStatuses(Guid.NewGuid()).ToQueryString();
+
+        Assert.Contains("SHOPIFY", sql, StringComparison.Ordinal);
+        Assert.Contains("RawStatus", sql, StringComparison.Ordinal);
+        Assert.Contains("LastRemoteModifiedAt", sql, StringComparison.Ordinal);
+        Assert.Contains("DerivedStatus", sql, StringComparison.Ordinal);
+    }
 }
