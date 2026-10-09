@@ -160,7 +160,9 @@ public sealed class TrendyolCarrierCatalogTests
         var payload = TrendyolEFaturamCanonicalPayload.Create(new(1, 2, null), canonical);
         using var document = JsonDocument.Parse(payload);
 
-        Assert.Equal("Ayşe Örnek", document.RootElement.GetProperty("recipientInfo").GetProperty("name").GetString());
+        var recipient = document.RootElement.GetProperty("recipientInfo");
+        Assert.Equal("Ayşe", recipient.GetProperty("name").GetString());
+        Assert.Equal("Örnek", recipient.GetProperty("surname").GetString());
         Assert.Equal("11111111111", document.RootElement.GetProperty("recipientInfo").GetProperty("taxId").GetString());
     }
 
@@ -218,6 +220,8 @@ public sealed class TrendyolCarrierCatalogTests
         Assert.Equal("11111111111", recipient.GetProperty("taxId").GetString());
         Assert.Equal("Konya", recipient.GetProperty("city").GetString());
         Assert.Equal("Örnek Cadde No:1", recipient.GetProperty("address").GetString());
+        Assert.Equal("Ayşe", recipient.GetProperty("name").GetString());
+        Assert.Equal("Örnek", recipient.GetProperty("surname").GetString());
     }
 
     [Fact]

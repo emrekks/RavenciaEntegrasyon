@@ -46,13 +46,19 @@ public static class TrendyolEFaturamCanonicalPayload
             // E-Faturam requires recipientInfo.name. Hepsiburada stores the
             // recipient's full name as `name` on the flat invoice-address snapshot,
             // rather than splitting it into firstName/lastName.
+            var recipientFirstName = isCorporate
+                ? null
+                : NullText(address, "firstName")
+                    ?? NullText(addressRoot, "firstName")
+                    ?? NullText(customer.RootElement, "customerFirstName", "firstName");
             var recipientName = isCorporate
                 ? NullText(address, "companyName", "companyTitle", "businessName", "legalName", "tradeName", "company", "business", "name", "fullName", "recipientName", "firstName")
                     ?? NullText(addressRoot, "companyName", "companyTitle", "businessName", "legalName", "tradeName", "company", "business", "name", "fullName", "recipientName", "firstName")
                     ?? NullText(customer.RootElement, "companyName", "companyTitle", "businessName", "legalName", "tradeName", "company", "business", "name", "fullName", "recipientName", "customerName", "customerFirstName", "firstName")
-                : NullText(address, "firstName", "name", "fullName", "recipientName")
-                    ?? NullText(addressRoot, "firstName", "name", "fullName", "recipientName")
-                    ?? NullText(customer.RootElement, "customerFirstName", "firstName", "name", "fullName", "recipientName", "customerName");
+                : recipientFirstName
+                    ?? NullText(address, "name", "fullName", "recipientName")
+                    ?? NullText(addressRoot, "name", "fullName", "recipientName")
+                    ?? NullText(customer.RootElement, "name", "fullName", "recipientName", "customerName");
             if (recipientName is not { Length: >= 2 })
                 throw new JsonException("EFATURAM_RECIPIENT_NAME_REQUIRED");
             var recipientSurname = isCorporate
@@ -60,6 +66,8 @@ public static class TrendyolEFaturamCanonicalPayload
                 : NullText(address, "lastName", "surname", "familyName")
                     ?? NullText(addressRoot, "lastName", "surname", "familyName")
                     ?? NullText(customer.RootElement, "customerLastName", "lastName", "surname", "familyName");
+            if (!isCorporate && recipientSurname is null && recipientFirstName is null)
+                (recipientName, recipientSurname) = SplitFullName(recipientName);
 
             var lines = RequiredArray(root, "Lines").EnumerateArray().Select(line =>
             {
@@ -341,5 +349,14 @@ public static class TrendyolEFaturamCanonicalPayload
         return false;
     }
     private static string? NullText(JsonElement parent, params string[] names) => Text(parent, names) is { Length: > 0 } value ? value : null;
+    private static (string Name, string? Surname) SplitFullName(string name)
+    {
+        var separator = name.LastIndexOf(' ');
+        if (separator <= 0 || separator == name.Length - 1) return (name, null);
+
+        var firstName = name[..separator].Trim();
+        var surname = name[(separator + 1)..].Trim();
+        return firstName.Length >= 2 && surname.Length >= 2 ? (firstName, surname) : (name, null);
+    }
     private static string Unit(string value) => value.Trim().ToUpperInvariant() switch { "ADET" or "C62" => "C62", _ => throw new JsonException("EFATURAM_UNIT_CODE_UNSUPPORTED") };
 }
