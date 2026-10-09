@@ -220,6 +220,7 @@ public sealed partial class InvoicingBillingService(
         var hiddenPackageIds = hiddenSetting is null
             ? new HashSet<Guid>()
             : JsonSerializer.Deserialize<HashSet<Guid>>(hiddenSetting.ValueJson) ?? [];
+
         var now = timeProvider.GetUtcNow();
         var dueSoonCount = 0;
         WorkspaceScanCursor? cursor = null;
@@ -229,7 +230,10 @@ public sealed partial class InvoicingBillingService(
             if (candidates.Count == 0) break;
             foreach (var candidate in candidates)
             {
-                if (!hiddenPackageIds.Contains(candidate.Package.Id) && candidate.IsDueSoon) dueSoonCount++;
+                if (!hiddenPackageIds.Contains(candidate.Package.Id)
+                    && candidate.Package.Status == ShipmentPackageStatus.Delivered
+                    && now >= candidate.Package.StatusOccurredAt.AddDays(DashboardMetricPolicy.InvoiceReminderStartDays)
+                    && candidate.InvoiceStatus == "FATURA_BEKLIYOR") dueSoonCount++;
             }
             var last = candidates[^1];
             cursor = new(last.Package.StatusOccurredAt, last.Package.Id);
@@ -242,7 +246,7 @@ public sealed partial class InvoicingBillingService(
     {
         var pageSize = request.PageSize is 20 or 50 or 100 or 200 ? request.PageSize : 20;
         var requestedPage = Math.Max(1, request.PageNumber);
-        var normalizedTab = request.Tab.Trim().ToUpperInvariant() is "ALL" or "INVOICED" or "DUE_SOON" or "HIDDEN"
+        var normalizedTab = request.Tab.Trim().ToUpperInvariant() is "INVOICED" or "DUE_SOON" or "HIDDEN"
             ? request.Tab.Trim().ToUpperInvariant()
             : "UNINVOICED";
         var hiddenSetting = await db.TenantSettings.AsNoTracking()
@@ -287,18 +291,15 @@ public sealed partial class InvoicingBillingService(
             {
                 var isHidden = hiddenPackageIds.Contains(candidate.Package.Id);
                 var platformSelected = selectedPlatforms.Count == 0 || selectedPlatforms.Contains(candidate.Connection.PlatformCode);
-                if (platformSelected)
+                if (platformSelected && !isHidden)
                 {
-                    if (!isHidden && candidate.IsDueSoon) selectedDueSoon++;
-                    if (!isHidden)
-                    {
-                        selectedTotal++;
-                        if (candidate.CanCreateInvoice || candidate.InvoiceStatus == "FATURA_REDDEDILDI") selectedUninvoiced++;
-                        else selectedInvoiced++;
-                        if (!string.Equals(candidate.Connection.PlatformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase)
-                            && (candidate.CanCreateInvoice || candidate.InvoiceStatus == "FATURA_REDDEDILDI"))
-                            hasPendingMarketplaceInvoices = true;
-                    }
+                    selectedTotal++;
+                    if (IsWorkspaceInvoiceUninvoiced(candidate.InvoiceStatus, candidate.CanCreateInvoice)) selectedUninvoiced++;
+                    else selectedInvoiced++;
+                    if (candidate.IsDueSoon) selectedDueSoon++;
+                    if (!string.Equals(candidate.Connection.PlatformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase)
+                        && (candidate.CanCreateInvoice || candidate.InvoiceStatus == "FATURA_REDDEDILDI"))
+                        hasPendingMarketplaceInvoices = true;
                 }
 
                 shipmentStatuses.Add(candidate.Package.Status.ToString().ToUpperInvariant());
@@ -476,10 +477,9 @@ public sealed partial class InvoicingBillingService(
         var tabMatch = normalizedTab switch
         {
             "HIDDEN" => isHidden,
-            "ALL" => !isHidden,
-            "INVOICED" => !isHidden && !(candidate.CanCreateInvoice || candidate.InvoiceStatus == "FATURA_REDDEDILDI"),
+            "INVOICED" => !isHidden && !IsWorkspaceInvoiceUninvoiced(candidate.InvoiceStatus, candidate.CanCreateInvoice),
             "DUE_SOON" => !isHidden && candidate.IsDueSoon,
-            _ => !isHidden && (candidate.CanCreateInvoice || candidate.InvoiceStatus == "FATURA_REDDEDILDI")
+            _ => !isHidden && IsWorkspaceInvoiceUninvoiced(candidate.InvoiceStatus, candidate.CanCreateInvoice)
         };
         var shipmentMatch = string.IsNullOrWhiteSpace(request.ShipmentStatus) || request.ShipmentStatus == "ALL"
             || string.Equals(candidate.Package.Status.ToString(), request.ShipmentStatus, StringComparison.OrdinalIgnoreCase);
@@ -494,6 +494,9 @@ public sealed partial class InvoicingBillingService(
             .Any(value => value?.ToLower(WorkspaceSearchCulture).Contains(searchKey, StringComparison.Ordinal) == true);
         return tabMatch && shipmentMatch && cargoMatch && invoiceMatch && actionMatch && dateMatch && searchMatch;
     }
+
+    internal static bool IsWorkspaceInvoiceUninvoiced(string invoiceStatus, bool canCreateInvoice) =>
+        canCreateInvoice || invoiceStatus is "FATURA_REDDEDILDI" or "FATURA_ISLENIYOR";
 
     private async Task<IReadOnlyList<InvoiceWorkspaceItemView>> MaterializeWorkspacePageAsync(Guid tenantId, IReadOnlyList<WorkspaceCandidate> candidates, CancellationToken cancellationToken)
     {
@@ -1120,9 +1123,11 @@ public sealed partial class InvoicingBillingService(
     private async Task<ServiceResult<Guid>> AddJob(Invoice invoice, string jobType, string idempotencyKey, string correlationId, CancellationToken cancellationToken, Guid? connectionId = null)
     {
         var dedup = $"{jobType}:{invoice.Id}:{idempotencyKey}"; var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == invoice.TenantId && x.JobType == jobType && x.JobDedupKey == dedup, cancellationToken); if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);
-        var payload = JsonSerializer.Serialize(new { invoiceId = invoice.Id }); var job = new IntegrationJob { Id = Guid.CreateVersion7(), TenantId = invoice.TenantId, ConnectionId = connectionId ?? invoice.ProviderConnectionId, JobType = jobType, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{jobType}:{invoice.Id}:{idempotencyKey}", AvailableAt = timeProvider.GetUtcNow(), CorrelationId = correlationId, Version = 1 };
+        var payload = JsonSerializer.Serialize(new { invoiceId = invoice.Id }); var job = new IntegrationJob { Id = Guid.CreateVersion7(), TenantId = invoice.TenantId, ConnectionId = connectionId ?? invoice.ProviderConnectionId, JobType = jobType, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{jobType}:{invoice.Id}:{idempotencyKey}", Priority = InvoiceJobPriority(jobType), AvailableAt = timeProvider.GetUtcNow(), CorrelationId = correlationId, Version = 1 };
         db.IntegrationJobs.Add(job); await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(job.Id);
     }
+
+    internal static int InvoiceJobPriority(string jobType) => jobType == InvoicingJobTypes.InvoiceSubmit ? -1 : 0;
 
     private async Task<IReadOnlyList<string>> AllowedActions(Invoice invoice, PlatformConnection? connection, CancellationToken cancellationToken)
     {

@@ -17,17 +17,22 @@ public static class TrendyolEFaturamCanonicalPayload
         try
         {
             // Trendyol order feeds store invoiceAddress as the snapshot root,
-            // while older/local snapshots may wrap it in an invoiceAddress key.
-            // Accept both shapes so valid order addresses reach the fiscal payload.
+            // while other marketplace/local snapshots may wrap it in invoiceAddress
+            // or address. Accept both shapes so valid recipient details reach the fiscal payload.
             var addressRoot = addressSnapshot.RootElement;
             var address = addressRoot;
-            if (addressRoot.TryGetProperty("invoiceAddress", out var wrappedAddress))
-                address = wrappedAddress.ValueKind == JsonValueKind.Object ? wrappedAddress : throw new JsonException("invoiceAddress missing");
-            else if (addressRoot.ValueKind != JsonValueKind.Object)
+            if (addressRoot.ValueKind != JsonValueKind.Object)
                 throw new JsonException("invoiceAddress missing");
-            var taxId = Text(address, "taxNumber", "invoiceTaxNumber", "identityNumber", "IdentityNumber", "tcIdentityNumber");
+            for (var depth = 0; depth < 3; depth++)
+            {
+                if (!TryGetProperty(address, "invoiceAddress", out var wrappedAddress)
+                    && !TryGetProperty(address, "invoice", out wrappedAddress)
+                    && !TryGetProperty(address, "address", out wrappedAddress)) break;
+                address = wrappedAddress.ValueKind == JsonValueKind.Object ? wrappedAddress : throw new JsonException("invoiceAddress missing");
+            }
+            var taxId = Text(address, "taxNumber", "invoiceTaxNumber", "identityNumber", "identityNo", "tcIdentityNumber", "taxId", "taxIdentifier", "nationalIdentityNumber", "tckn", "vkn");
             if (!ValidTaxId(taxId))
-                taxId = Text(customer.RootElement, "customerTaxNumber", "taxNumber", "invoiceTaxNumber", "identityNumber", "customerIdentityNumber", "tcIdentityNumber");
+                taxId = Text(customer.RootElement, "customerTaxNumber", "taxNumber", "invoiceTaxNumber", "identityNumber", "identityNo", "customerIdentityNumber", "tcIdentityNumber", "taxId", "taxIdentifier", "nationalIdentityNumber", "tckn", "vkn");
             if (!ValidTaxId(taxId))
                 throw new JsonException("EFATURAM_RECIPIENT_TAX_ID_REQUIRED");
 
@@ -81,9 +86,25 @@ public static class TrendyolEFaturamCanonicalPayload
     private static string Text(JsonElement parent, params string[] names)
     {
         foreach (var name in names)
-            if (parent.TryGetProperty(name, out var value) && value.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined))
+            if (TryGetProperty(parent, name, out var value) && value.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined))
                 return value.ToString().Trim();
         return "";
+    }
+    private static bool TryGetProperty(JsonElement parent, string name, out JsonElement value)
+    {
+        if (parent.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in parent.EnumerateObject())
+            {
+                if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    value = property.Value;
+                    return true;
+                }
+            }
+        }
+        value = default;
+        return false;
     }
     private static string? NullText(JsonElement parent, params string[] names) => Text(parent, names) is { Length: > 0 } value ? value : null;
     private static string Unit(string value) => value.Trim().ToUpperInvariant() switch { "ADET" or "C62" => "C62", _ => throw new JsonException("EFATURAM_UNIT_CODE_UNSUPPORTED") };

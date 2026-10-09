@@ -78,7 +78,12 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
     private async Task<bool> Submit(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken, bool isStageCapabilityProbe = false)
     {
         var invoice = await FindInvoice(tenantId, payloadJson, cancellationToken);
-        if (invoice is null || invoice.ProviderConnectionId != connectionId || invoice.Status != InvoiceStatus.Submitting) return false;
+        if (invoice is null)
+            throw new JobProcessingException(JobExecutionResult.Blocked("INVOICE_SUBMIT_INVOICE_NOT_FOUND", "Fatura gönderim isteği geçerli bir fatura kaydıyla eşleşmedi. Job payloadındaki fatura kimliğini kontrol edin."));
+        if (invoice.ProviderConnectionId != connectionId)
+            throw new JobProcessingException(JobExecutionResult.Blocked("INVOICE_SUBMIT_CONNECTION_MISMATCH", "Faturanın sağlayıcı bağlantısı job bağlantısıyla eşleşmiyor. Faturayı doğru e-Fatura bağlantısından yeniden kuyruğa alın."));
+        if (invoice.Status != InvoiceStatus.Submitting)
+            throw new JobProcessingException(JobExecutionResult.Blocked("INVOICE_SUBMIT_STATE_MISMATCH", $"Fatura gönderilemedi; beklenen durum Submitting, mevcut durum {invoice.Status}. Fatura durumunu kontrol edip güvenli yeniden deneme işlemini kullanın."));
         var order = await db.Orders.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.Id == invoice.OrderId, cancellationToken);
         var orderConnection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == order.ConnectionId, cancellationToken);
         if (orderConnection is not null
@@ -89,7 +94,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             invoice.UpdatedAt = timeProvider.GetUtcNow();
             invoice.Version++;
             await db.SaveChangesAsync(cancellationToken);
-            return false;
+            throw new JobProcessingException(JobExecutionResult.Blocked(MarketplaceInvoiceCreationPolicy.DisabledErrorCode, "Bu pazaryeri için fatura oluşturma izni kapalı. Bağlantı ayarlarında izin verilmeden fatura gönderilmedi."));
         }
         var lines = await db.InvoiceLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id).OrderBy(x => x.LineSequence).ToListAsync(cancellationToken);
         var package = invoice.PackageId is null ? null : await db.ShipmentPackages.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == invoice.PackageId, cancellationToken);

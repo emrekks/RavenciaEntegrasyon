@@ -37,16 +37,46 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         if (job.Status is JobStatus.Leased or JobStatus.Pending or JobStatus.RetryScheduled or JobStatus.Succeeded or JobStatus.Cancelled)
             return ServiceResult<JobDetailView>.Fail("JOB_NOT_RETRYABLE", "Bu job mevcut durumunda manuel yeniden deneme kabul etmiyor.", 409);
 
+        var now = timeProvider.GetUtcNow();
+        if (job.JobType == InvoicingJobTypes.InvoiceSubmit)
+        {
+            var invoiceId = PayloadGuid(job.PayloadJson, "invoiceId");
+            if (invoiceId is null)
+                return ServiceResult<JobDetailView>.Fail("INVOICE_JOB_PAYLOAD_INVALID", "Fatura gönderim job'unda geçerli bir fatura kimliği bulunamadı.", 409);
+            var invoice = await db.Invoices.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == invoiceId.Value, cancellationToken);
+            if (invoice is null)
+                return ServiceResult<JobDetailView>.Fail("INVOICE_NOT_FOUND", "Yeniden denenecek fatura kaydı bulunamadı.", 404);
+            if (!PrepareInvoiceSubmitRetry(invoice, now))
+                return ServiceResult<JobDetailView>.Fail("INVOICE_STATE_NOT_RETRYABLE", $"Fatura mevcut durumu ({invoice.Status}) ile güvenli biçimde yeniden gönderilemez. Önce fatura kaydındaki işlemi tamamlayın.", 409);
+            job.Priority = Math.Min(job.Priority, InvoicingBillingService.InvoiceJobPriority(job.JobType));
+        }
+
         job.Status = JobStatus.RetryScheduled;
-        job.AvailableAt = timeProvider.GetUtcNow();
+        job.AvailableAt = now;
         job.CompletedAt = null;
         job.LeaseTokenHash = null;
         job.LeaseExpiresAt = null;
         job.HeartbeatAt = null;
+        job.LastErrorCode = null;
+        job.LastErrorSummary = null;
         job.MaxAttempts = Math.Max(job.MaxAttempts, job.AttemptCount + 1);
         job.Version++;
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<JobDetailView>.Ok(await DetailAsync(job, cancellationToken));
+    }
+
+    internal static bool PrepareInvoiceSubmitRetry(Invoice invoice, DateTimeOffset now)
+    {
+        if (invoice.LastErrorCode == MarketplaceInvoiceCreationPolicy.DisabledErrorCode) return false;
+        if (invoice.Status == InvoiceStatus.Submitting && invoice.LastErrorCode is null) return true;
+        if (!InvoicingBillingService.CanRetryPreProviderFailure(invoice.Status, invoice.LastErrorCode, invoice.ExternalReference)) return false;
+
+        invoice.Status = InvoiceStatus.Submitting;
+        invoice.LastErrorCode = null;
+        invoice.IssuedAt ??= now;
+        invoice.UpdatedAt = now;
+        invoice.Version++;
+        return true;
     }
 
     public async Task<ServiceResult<JobDetailView>> CancelAsync(Guid tenantId, Guid jobId, CancellationToken cancellationToken)
@@ -537,7 +567,12 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         if (type is MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.ShopifyOrderStatusSync or MarketplaceJobTypes.HepsiburadaOrderStatusSync) return new("Tarama türü", "Sipariş durum taraması", "Açık siparişlerin paket ve taşıma durumları kontrol edilerek yerel durum güncellendi.");
         if (type == MarketplaceJobTypes.TrendyolOrderCargoInfoReconciliation) return new("Tarama türü", "Trendyol kargo bilgi taraması", "Teslim edilen Trendyol paketlerinin kargo bilgileri salt okunur olarak yenilendi.");
         if (type == InvoicingJobTypes.InvoiceSubmit && job.LastErrorCode == "EFATURAM_FISCAL_PAYLOAD_INVALID")
-            return new("İstek sonucu", "Fatura gönderilmedi", "E-Faturam'a istek gönderilmeden önce fatura verileri doğrulanırken hata oluştu. Fatura adresi snapshot biçimi düzeltildi; yeniden deneme güncel adres yapısını kullanır.");
+        {
+            var detail = job.LastErrorSummary == "EFATURAM_RECIPIENT_TAX_ID_REQUIRED"
+                ? "Alıcının vergi kimlik numarası veya T.C. kimlik numarası fatura adresi ve müşteri snapshot'larında bulunamadı. Kaynak sipariş bu bilgiyi sağlıyorsa yeniden deneme artık Hepsiburada'nın identityNo ve iç içe invoice.address biçimlerini de okuyabilir."
+                : "E-Faturam'a istek gönderilmeden önce yerel mali payload doğrulamasında hata oluştu. Hata ayrıntısındaki alan düzeltilmeden yeniden denemek aynı sonucu üretebilir.";
+            return new("İstek sonucu", "Fatura gönderilmedi", detail);
+        }
         if (type is MarketplaceJobTypes.OrderReconciliation or MarketplaceJobTypes.ShopifyOrderReconciliation) return new("Tarama türü", "Kapsamlı sipariş taraması", "Yerel siparişler ile pazaryeri kayıtları karşılaştırıldı; durum ve paket farklılıkları düzeltildi.");
         if (type is MarketplaceJobTypes.OrderInvoiceReconciliation or MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation or MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation) return new("Tarama türü", "Paket fatura taraması", "Teslim edilmiş ve açık paketlerin pazaryeri fatura durumu kontrol edildi.");
         if (type is MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync or MarketplaceJobTypes.HepsiburadaOrderRecoverySync) return new("Tarama türü", "Tam sipariş taraması", "Erişilebilen sipariş pencereleri taranarak eksik yerel kayıtlar tamamlandı.");
