@@ -101,7 +101,9 @@ public sealed class ShopifyHttpClient(
         var products = await ListCatalogAsync(context, new(null, 1), new(null), cancellationToken);
         var orders = await PollAsync(context, new OrderPollWindow(null, now, null), new(null, 1), cancellationToken);
         var categories = await ReadAsync(context, new("CATEGORIES", null), new(null, 1), cancellationToken);
-        var scopesResult = await QueryAsync(await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken)!, "query { currentAppInstallation { accessScopes { handle } } }", cancellationToken: cancellationToken);
+        var scopesContext = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
+        if (scopesContext is null) return AdapterResult<IReadOnlyList<CapabilityEvidence>>.Failure(new(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", 401, null, null));
+        var scopesResult = await QueryAsync(scopesContext, "query { currentAppInstallation { accessScopes { handle } } }", cancellationToken: cancellationToken);
         var scopes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (scopesResult.IsSuccess && scopesResult.Value!.RootElement.TryGetProperty("currentAppInstallation", out var installation)
             && installation.ValueKind == JsonValueKind.Object && installation.TryGetProperty("accessScopes", out var accessScopes)
@@ -267,7 +269,8 @@ public sealed class ShopifyHttpClient(
         {
             if (!externalOperationId.StartsWith("shopify-completed:", StringComparison.Ordinal)) return Unsupported<RemoteOperationStatus>("Shopify operation kimliği tanınmıyor.");
             var lines = JsonSerializer.Deserialize<List<RemoteOperationLine>>(Encoding.UTF8.GetString(Convert.FromBase64String(externalOperationId["shopify-completed:".Length..])));
-            return Task.FromResult(lines is null ? Unsupported<RemoteOperationStatus>("Shopify operation sonucu okunamadı.") : AdapterResult<RemoteOperationStatus>.Success(new(externalOperationId, "COMPLETED", lines)));
+            if (lines is null) return Unsupported<RemoteOperationStatus>("Shopify operation sonucu okunamadı.");
+            return Task.FromResult(AdapterResult<RemoteOperationStatus>.Success(new(externalOperationId, "COMPLETED", lines)));
         }
         catch (Exception exception) when (exception is FormatException or JsonException or ArgumentException) { return Unsupported<RemoteOperationStatus>("Shopify operation sonucu geçersiz."); }
     }
