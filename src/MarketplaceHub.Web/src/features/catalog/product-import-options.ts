@@ -7,6 +7,7 @@ export function supportsProductOptionsOnly(method: ProductImportMethod, platform
     && platforms.every(platform => platform.trim().toUpperCase() === 'TRENDYOL')
 }
 
+
 export type ProductImportOptionVisibility = {
   showUpdateExisting: boolean
   showHepsiburadaReadOnlyNote: boolean
@@ -32,7 +33,7 @@ export function productImportOptionVisibility(options: {
       showOptionsSection: false
     }
   }
-  const showUpdateExisting = isBulk && (options.mode === 'FULL' || options.mode === 'EXISTING_ONLY') && !options.onlyHepsiburada
+  const showUpdateExisting = isBulk && options.mode === 'EXISTING_ONLY' && !options.onlyHepsiburada
   const showHepsiburadaReadOnlyNote = isBulk && options.hasHepsiburada && options.mode !== 'MAPPING_ONLY'
   const showArchived = isBulk && options.mode !== 'MAPPING_ONLY'
   const showPendingApproval = isBulk && options.supportsPendingApproval

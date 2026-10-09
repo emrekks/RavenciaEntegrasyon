@@ -9,6 +9,7 @@ public static class CapabilityEvidencePolicy
         "TRENDYOL" => "developers.trendyol.com",
         "TRENDYOL_EFATURAM" => "developers.trendyolefaturam.com",
         "HEPSIBURADA" => "developers.hepsiburada.com",
+        "SHOPIFY" => "shopify.dev",
         _ => throw new ArgumentOutOfRangeException(nameof(platformCode), "Unsupported platform capability evidence scope.")
     };
 
@@ -32,7 +33,8 @@ public static class CapabilityEvidencePolicy
             || source.Scheme != Uri.UriSchemeHttps
             || !source.Host.Equals(OfficialDocumentationHost(connection.PlatformCode), StringComparison.OrdinalIgnoreCase)) return false;
 
-        if (!RequiresStageFixtureChecksum(capabilityCode)
+        if (string.Equals(connection.PlatformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase)
+            || !RequiresStageFixtureChecksum(capabilityCode)
             || string.Equals(connection.PlatformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
                 && capabilityCode.Trim().ToUpperInvariant() is MarketplaceCapabilities.PriceWrite or MarketplaceCapabilities.InventoryWrite or MarketplaceCapabilities.ShipmentWrite or MarketplaceCapabilities.ReturnWrite) return true;
         var checksum = capability.FixtureChecksum;

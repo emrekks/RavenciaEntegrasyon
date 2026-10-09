@@ -1106,9 +1106,10 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             if (!WritesEnabled(connection.SettingsJson))
                 return JobExecutionResult.Blocked("EXTERNAL_WRITES_DISABLED", "Dış yazma kapalı olduğu için fiyat-stok gönderimi çalıştırılmadı.");
             var isHepsiburadaConnection = string.Equals(connection.PlatformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase);
-            var requiredWritePolicies = isHepsiburadaConnection
+            var requiresPriceAndStock = isHepsiburadaConnection || string.Equals(connection.PlatformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase) || payload.VariantId.HasValue;
+            var requiredWritePolicies = requiresPriceAndStock
                 ? new[] { MarketplaceExternalWritePolicies.Price, MarketplaceExternalWritePolicies.Stock }
-                : new[] { payload.VariantId.HasValue ? MarketplaceExternalWritePolicies.Stock : MarketplaceExternalWritePolicies.Price };
+                : new[] { MarketplaceExternalWritePolicies.Price };
             foreach (var writePolicy in requiredWritePolicies)
                 if (!await ExternalWritePolicyEnabledAsync(tenantId, connectionId, writePolicy, cancellationToken))
                     return JobExecutionResult.Blocked("EXTERNAL_WRITE_POLICY_DISABLED", writePolicy == MarketplaceExternalWritePolicies.Stock ? "Stok dış yazma akışı kapalı; pazar yeri isteği gönderilmedi." : "Fiyat dış yazma akışı kapalı; pazar yeri isteği gönderilmedi.");
@@ -4977,18 +4978,25 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         // that do not have a trustworthy imported-product version yet.
         if (!onlyNewVariants
             && !isNewProduct
+            && !updateExistingPricesAndStock
             && link is not null
             && string.Equals(link.LastImportedPayloadHash, remoteHash, StringComparison.OrdinalIgnoreCase)
             && link.LastImportedProductVersion == product!.Version
             && string.Equals(link.SyncStatus, "SYNCED", StringComparison.OrdinalIgnoreCase)
             && hasCompleteVariantLinks)
         {
+            await RepairMissingCatalogOptionAssignments(tenantId, connectionId, product.Id, snapshot, categoryContext, cancellationToken);
+            if (saveChanges)
+                await db.SaveChangesAsync(cancellationToken);
             telemetrySkippedCount++;
             return observeOnly;
         }
 
         if (!onlyNewVariants && !isNewProduct && link is not null && hasCompleteVariantLinks && string.Equals(link.LastImportedPayloadHash, remoteHash, StringComparison.OrdinalIgnoreCase) && await CatalogSnapshotAlreadyApplied(tenantId, product.Id, snapshot, cancellationToken))
         {
+            // Repair missing option values/assignments even when the product payload
+            // itself was already imported and no longer needs a full upsert.
+            await RepairMissingCatalogOptionAssignments(tenantId, connectionId, product.Id, snapshot, categoryContext, cancellationToken);
             // A previous import may have stored the remote observation while
             // leaving the untouched local projection at zero. Reconcile that
             // legacy state even when the payload itself has not changed.
@@ -5871,7 +5879,45 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         return localValue?.Value ?? cleanedRemoteValue;
     }
 
-    private async Task UpsertCatalogOptions(Guid tenantId, Guid connectionId, Guid productId, Guid variantId, IReadOnlyDictionary<string, string> options, CategoryAttributeContext? categoryContext, CancellationToken cancellationToken)
+    private async Task RepairMissingCatalogOptionAssignments(Guid tenantId, Guid connectionId, Guid productId, RemoteCatalogProduct snapshot, CategoryAttributeContext? categoryContext, CancellationToken cancellationToken)
+    {
+        var colorVariants = snapshot.Variants
+            .Where(variant => !string.IsNullOrWhiteSpace(variant.ExternalVariantId) && variant.Options.Keys.Any(IsRealColorOptionKey))
+            .ToList();
+        if (colorVariants.Count == 0) return;
+        var colorName = colorVariants.SelectMany(variant => variant.Options.Keys)
+            .First(IsRealColorOptionKey);
+        var colorLabel = categoryContext is not null && TryGetMappedAttribute(categoryContext.Attributes, colorName, out var mappedColor)
+            ? mappedColor.Definition.Name
+            : "Renk";
+        var colorKey = NormalizeCatalogKey(colorLabel, 160);
+        var colorOption = await db.ProductOptions.AsNoTracking()
+            .SingleOrDefaultAsync(option => option.TenantId == tenantId && option.ProductId == productId && option.NormalizedKey == colorKey, cancellationToken);
+        var externalIds = colorVariants.Select(variant => Short(variant.ExternalVariantId, 256)).ToArray();
+        var linkedVariants = await (from link in db.MarketplaceVariantLinks.AsNoTracking()
+                                    join variant in db.ProductVariants.AsNoTracking()
+                                        on new { link.TenantId, VariantId = link.VariantId }
+                                        equals new { variant.TenantId, VariantId = variant.Id }
+                                    where link.TenantId == tenantId
+                                        && link.ConnectionId == connectionId
+                                        && externalIds.Contains(link.ExternalId)
+                                        && variant.ProductId == productId
+                                    select new { link.ExternalId, VariantId = variant.Id }).ToListAsync(cancellationToken);
+        var assignedVariantIds = colorOption is null
+            ? new HashSet<Guid>()
+            : (await db.VariantOptionValues.AsNoTracking()
+                .Where(assignment => assignment.TenantId == tenantId && assignment.OptionId == colorOption.Id)
+                .Select(assignment => assignment.VariantId)
+                .ToListAsync(cancellationToken)).ToHashSet();
+        var linksByExternalId = linkedVariants.ToDictionary(link => MarketplaceVariantLinkCoverage.Normalize(link.ExternalId), link => link.VariantId, StringComparer.Ordinal);
+        foreach (var remote in colorVariants)
+        {
+            var externalId = MarketplaceVariantLinkCoverage.Normalize(Short(remote.ExternalVariantId, 256));
+            if (!linksByExternalId.TryGetValue(externalId, out var variantId) || assignedVariantIds.Contains(variantId)) continue;
+            await UpsertCatalogOptions(tenantId, connectionId, productId, variantId, remote.Options, categoryContext, cancellationToken, onlyFillMissingAssignments: true);
+        }
+    }
+    private async Task UpsertCatalogOptions(Guid tenantId, Guid connectionId, Guid productId, Guid variantId, IReadOnlyDictionary<string, string> options, CategoryAttributeContext? categoryContext, CancellationToken cancellationToken, bool onlyFillMissingAssignments = false)
     {
         var order = 0;
         var processedPanelOptions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -5898,7 +5944,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             var assignment = db.VariantOptionValues.Local.FirstOrDefault(x => x.TenantId == tenantId && x.VariantId == variantId && x.OptionId == option.Id)
                 ?? await db.VariantOptionValues.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.VariantId == variantId && x.OptionId == option.Id, cancellationToken);
             if (assignment is null) db.VariantOptionValues.Add(new VariantOptionValue { Id = Guid.CreateVersion7(), TenantId = tenantId, VariantId = variantId, OptionId = option.Id, OptionValueId = optionValue.Id });
-            else assignment.OptionValueId = optionValue.Id;
+            else if (!onlyFillMissingAssignments) assignment.OptionValueId = optionValue.Id;
             order++;
         }
     }
@@ -7073,6 +7119,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
     // Trendyol's claims feed is date-bounded for the initial scan. Invalidating
     // the previous all-time cursor makes the next read start at three months.
+    private const string ShopifyReturnSyncStateVersion = "shopify-returns-v1";
+    private sealed record ShopifyReturnSyncState(string Version, string? Cursor, DateTimeOffset? ModifiedAfter, DateTimeOffset Anchor);
     private const string ReturnSyncStateVersion = "returns-v10";
     private sealed record ReturnSyncState(string Version, int StoreFrontIndex, int Page, bool Full = true, DateTimeOffset? StartAt = null, DateTimeOffset? EndAt = null);
     private const string HepsiburadaReturnSyncStateVersion = "hepsiburada-returns-v2";
@@ -7085,6 +7133,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             .Where(x => x.TenantId == tenantId && x.Id == connectionId)
             .Select(x => x.PlatformCode)
             .SingleOrDefaultAsync(cancellationToken);
+        if (string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase))
+            return await SyncShopifyReturns(tenantId, connectionId, payloadJson, correlationId, cancellationToken);
         if (string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase))
             return await SyncHepsiburadaReturns(tenantId, connectionId, payloadJson, correlationId, cancellationToken);
 
@@ -7157,6 +7207,59 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         return true;
     }
 
+    private async Task<bool> SyncShopifyReturns(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    {
+        var cursor = await Cursor(tenantId, connectionId, "RETURNS", cancellationToken);
+        var now = timeProvider.GetUtcNow();
+        var state = ReadBoolean(payloadJson, "forceFull") ? null : ReadShopifyReturnSyncState(cursor.OpaqueCursor);
+        if (state is null)
+        {
+            var forceFull = ReadBoolean(payloadJson, "forceFull") || cursor.LastSuccessAt is null || cursor.ConsecutiveFailureCount > 0 || !string.IsNullOrWhiteSpace(cursor.LastError);
+            var watermark = cursor.LastModifiedWatermark ?? cursor.LastSuccessAt;
+            var modifiedAfter = forceFull ? now.AddDays(-180) : watermark?.AddMinutes(-15);
+            state = new(ShopifyReturnSyncStateVersion, null, modifiedAfter, now);
+        }
+        var productSnapshots = new Dictionary<string, string?>(StringComparer.Ordinal);
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            TrackRequest();
+            var page = await returns.PollAsync(Context(tenantId, connectionId, correlationId, $"shopify-return-sync:{state.Cursor ?? "first"}"), new(state.ModifiedAfter, state.Anchor), new(state.Cursor, 100), cancellationToken);
+            if (!page.IsSuccess) { TrackResultFailure(page.Error); throw JobProcessingException.FromAdapter(page.Error!); }
+            foreach (var _ in page.Value!.Items) TrackReceived();
+            foreach (var claim in page.Value.Items) await UpsertReturn(tenantId, connectionId, correlationId, claim, productSnapshots, cancellationToken);
+            if (page.Value.HasMore)
+            {
+                if (string.IsNullOrWhiteSpace(page.Value.NextCursor) || string.Equals(page.Value.NextCursor, state.Cursor, StringComparison.Ordinal))
+                    throw JobProcessingException.FromAdapter(new AdapterError(AdapterErrorClass.ContractViolation, "SHOPIFY_RETURN_CURSOR_INVALID", "Shopify iade akışı geçersiz veya yinelenen sayfa imleci döndürdü.", 502, null, null));
+                state = state with { Cursor = page.Value.NextCursor };
+                cursor.OpaqueCursor = JsonSerializer.Serialize(state);
+                cursor.Version++;
+                await db.SaveChangesAsync(cancellationToken);
+                continue;
+            }
+            cursor.OpaqueCursor = null;
+            cursor.LastModifiedWatermark = state.Anchor;
+            cursor.LastSuccessAt = timeProvider.GetUtcNow();
+            cursor.LastError = null;
+            cursor.LastErrorAt = null;
+            cursor.ConsecutiveFailureCount = 0;
+            cursor.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+            return true;
+        }
+        return false;
+    }
+
+    private static ShopifyReturnSyncState? ReadShopifyReturnSyncState(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        try
+        {
+            var state = JsonSerializer.Deserialize<ShopifyReturnSyncState>(value);
+            return state is { Version: ShopifyReturnSyncStateVersion } ? state : null;
+        }
+        catch (JsonException) { return null; }
+    }
     private async Task<bool> SyncHepsiburadaReturns(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
         var cursor = await Cursor(tenantId, connectionId, "RETURNS", cancellationToken);

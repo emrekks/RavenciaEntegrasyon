@@ -12100,3 +12100,6 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
   }
   .app-shell.stitch-shell main .return-approved-sort { min-width: 0; }
 }
+/* Keep label section headings distinct from the regular print text. */
+.app-shell.stitch-shell main .shipping-label-print-surface :is(.shipping-label-block-title, .shipping-label-meta > strong, .shipping-label-footer > strong, .shipping-label-custom-content > strong) { font-size: 1.08em !important; font-weight: 850 !important; line-height: 1.15 !important; }
+.app-shell.stitch-shell main .shipping-label-print-surface :is(.shipping-label-meta, .shipping-label-footer, .shipping-label-block-content, .shipping-label-custom-content) > span > small { color: #334155 !important; font-size: .9em !important; font-weight: 800 !important; line-height: 1.1 !important; }

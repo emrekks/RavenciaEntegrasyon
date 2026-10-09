@@ -215,6 +215,11 @@ public sealed partial class InvoicingBillingService(
         var workspaceConnections = await ReadWorkspaceConnectionsAsync(tenantId, cancellationToken);
         if (workspaceConnections.Count == 0) return new(0);
 
+        var hiddenSetting = await db.TenantSettings.AsNoTracking()
+            .SingleOrDefaultAsync(setting => setting.TenantId == tenantId && setting.Key == "invoice-workspace-hidden-packages", cancellationToken);
+        var hiddenPackageIds = hiddenSetting is null
+            ? new HashSet<Guid>()
+            : JsonSerializer.Deserialize<HashSet<Guid>>(hiddenSetting.ValueJson) ?? [];
         var now = timeProvider.GetUtcNow();
         var dueSoonCount = 0;
         WorkspaceScanCursor? cursor = null;
@@ -224,9 +229,7 @@ public sealed partial class InvoicingBillingService(
             if (candidates.Count == 0) break;
             foreach (var candidate in candidates)
             {
-                if (candidate.Package.Status == ShipmentPackageStatus.Delivered
-                    && now >= candidate.Package.StatusOccurredAt.AddDays(DashboardMetricPolicy.InvoiceReminderStartDays)
-                    && candidate.InvoiceStatus == "FATURA_BEKLIYOR") dueSoonCount++;
+                if (!hiddenPackageIds.Contains(candidate.Package.Id) && candidate.IsDueSoon) dueSoonCount++;
             }
             var last = candidates[^1];
             cursor = new(last.Package.StatusOccurredAt, last.Package.Id);
@@ -284,15 +287,18 @@ public sealed partial class InvoicingBillingService(
             {
                 var isHidden = hiddenPackageIds.Contains(candidate.Package.Id);
                 var platformSelected = selectedPlatforms.Count == 0 || selectedPlatforms.Contains(candidate.Connection.PlatformCode);
-                if (platformSelected && !isHidden)
+                if (platformSelected)
                 {
-                    selectedTotal++;
-                    if (candidate.CanCreateInvoice || candidate.InvoiceStatus == "FATURA_REDDEDILDI") selectedUninvoiced++;
-                    else selectedInvoiced++;
-                    if (candidate.IsDueSoon) selectedDueSoon++;
-                    if (!string.Equals(candidate.Connection.PlatformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase)
-                        && (candidate.CanCreateInvoice || candidate.InvoiceStatus == "FATURA_REDDEDILDI"))
-                        hasPendingMarketplaceInvoices = true;
+                    if (!isHidden && candidate.IsDueSoon) selectedDueSoon++;
+                    if (!isHidden)
+                    {
+                        selectedTotal++;
+                        if (candidate.CanCreateInvoice || candidate.InvoiceStatus == "FATURA_REDDEDILDI") selectedUninvoiced++;
+                        else selectedInvoiced++;
+                        if (!string.Equals(candidate.Connection.PlatformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase)
+                            && (candidate.CanCreateInvoice || candidate.InvoiceStatus == "FATURA_REDDEDILDI"))
+                            hasPendingMarketplaceInvoices = true;
+                    }
                 }
 
                 shipmentStatuses.Add(candidate.Package.Status.ToString().ToUpperInvariant());

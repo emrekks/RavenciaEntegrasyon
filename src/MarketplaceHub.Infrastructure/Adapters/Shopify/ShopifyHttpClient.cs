@@ -5,6 +5,9 @@ using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Configuration;
+using Microsoft.EntityFrameworkCore;
+using MarketplaceHub.Infrastructure.Persistence;
 using Microsoft.Extensions.Options;
 
 namespace MarketplaceHub.Infrastructure.Adapters.Shopify;
@@ -14,7 +17,9 @@ public sealed class ShopifyHttpClient(
     ShopifyAuthenticationHandler authentication,
     IOptions<ShopifyOptions> options,
     TimeProvider timeProvider,
-    ILogger<ShopifyHttpClient> logger)
+    ILogger<ShopifyHttpClient> logger,
+    AppDbContext db,
+    IConfiguration configuration)
     : IConnectionPort, IReferenceDataPort, IProductPort, IProductVisualLookupPort, IInventoryPricePort, IOrderPort, IReturnPort
 {
     private readonly ShopifyOptions settings = options.Value;
@@ -96,6 +101,13 @@ public sealed class ShopifyHttpClient(
         var products = await ListCatalogAsync(context, new(null, 1), new(null), cancellationToken);
         var orders = await PollAsync(context, new OrderPollWindow(null, now, null), new(null, 1), cancellationToken);
         var categories = await ReadAsync(context, new("CATEGORIES", null), new(null, 1), cancellationToken);
+        var scopesResult = await QueryAsync(await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken)!, "query { currentAppInstallation { accessScopes { handle } } }", cancellationToken: cancellationToken);
+        var scopes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (scopesResult.IsSuccess && scopesResult.Value!.RootElement.TryGetProperty("currentAppInstallation", out var installation)
+            && installation.ValueKind == JsonValueKind.Object && installation.TryGetProperty("accessScopes", out var accessScopes)
+            && accessScopes.ValueKind == JsonValueKind.Array)
+            foreach (var scope in accessScopes.EnumerateArray())
+                if (scope.TryGetProperty("handle", out var handle) && handle.ValueKind == JsonValueKind.String && handle.GetString() is { Length: > 0 } value) scopes.Add(value);
         var evidence = new List<CapabilityEvidence>
         {
             Supported(MarketplaceCapabilities.ConnectionTest, identity, "https://shopify.dev/docs/api/admin-graphql", "Shopify mağaza, uygulama tokenı, ürün/sipariş ve müşteri okuma izinleri, para birimi ve depo bilgileri doğrulandı.", now, "read_products,read_inventory,read_orders,read_customers,read_locations")
@@ -103,6 +115,12 @@ public sealed class ShopifyHttpClient(
         evidence.Add(Probe(MarketplaceCapabilities.ProductRead, identity, "https://shopify.dev/docs/api/admin-graphql/latest/objects/Product", products, "GraphQL ürün ve varyant okuması", now, "read_products,read_inventory"));
         evidence.Add(Probe(MarketplaceCapabilities.OrderRead, identity, "https://shopify.dev/docs/api/admin-graphql/latest/objects/Order", orders, "GraphQL sipariş, müşteri ve teslimat durumu okuması", now, "read_orders,read_customers"));
         evidence.Add(Probe(MarketplaceCapabilities.ReferenceRead, identity, "https://shopify.dev/docs/api/admin-graphql/latest/queries/taxonomy", categories, "GraphQL ürün taksonomisi kategori okuması", now, "read_products"));
+        evidence.Add(ScopeEvidence(MarketplaceCapabilities.PriceWrite, identity, "https://shopify.dev/docs/api/admin-graphql/2026-07/mutations/productVariantsBulkUpdate", scopesResult, scopes, ["write_products"], now));
+        evidence.Add(ScopeEvidence(MarketplaceCapabilities.InventoryWrite, identity, "https://shopify.dev/docs/api/admin-graphql/2026-07/mutations/inventorySetQuantities", scopesResult, scopes, ["write_inventory"], now));
+        evidence.Add(ScopeEvidence(MarketplaceCapabilities.ShipmentWrite, identity, "https://shopify.dev/docs/api/admin-graphql/2026-07/objects/Fulfillment", scopesResult, scopes, ["write_assigned_fulfillment_orders", "write_merchant_managed_fulfillment_orders", "write_third_party_fulfillment_orders"], now));
+        evidence.Add(ScopeEvidence(MarketplaceCapabilities.ReturnRead, identity, "https://shopify.dev/docs/api/admin-graphql/2026-07/objects/Return", scopesResult, scopes, ["read_returns"], now));
+        evidence.Add(ScopeEvidence(MarketplaceCapabilities.ReturnWrite, identity, "https://shopify.dev/docs/api/admin-graphql/2026-07/mutations/returnApproveRequest", scopesResult, scopes, ["write_returns", "write_marketplace_returns"], now));
+        evidence.Add(new(MarketplaceCapabilities.LabelWrite, "NOT_SUPPORTED", identity.ApiVersion, identity.Environment, identity.ExternalStoreId, "https://shopify.dev/docs/api/admin-graphql/2026-07/objects/Fulfillment", identity.ApiVersion, null, null, "Shopify Admin API sipariş takibi sunar; taşıyıcı etiketi satın alma/oluşturma bu API kapsamına dahil değildir.", null, now));
         return AdapterResult<IReadOnlyList<CapabilityEvidence>>.Success(evidence, products.RateLimit ?? orders.RateLimit ?? categories.RateLimit);
     }
 
@@ -243,10 +261,102 @@ public sealed class ShopifyHttpClient(
     public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedContentAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => Unsupported<RemoteOperationRef>("Shopify ürün yazma ilk sürümde kapalıdır.");
     public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedVariantsAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => Unsupported<RemoteOperationRef>("Shopify ürün yazma ilk sürümde kapalıdır.");
     public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedDeliveryAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => Unsupported<RemoteOperationRef>("Shopify ürün yazma ilk sürümde kapalıdır.");
-    public Task<AdapterResult<RemoteOperationStatus>> GetOperationAsync(AdapterContext context, string externalOperationId, CancellationToken cancellationToken) => Unsupported<RemoteOperationStatus>("Shopify ürün yazma ilk sürümde kapalıdır.");
+    public Task<AdapterResult<RemoteOperationStatus>> GetOperationAsync(AdapterContext context, string externalOperationId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (!externalOperationId.StartsWith("shopify-completed:", StringComparison.Ordinal)) return Unsupported<RemoteOperationStatus>("Shopify operation kimliği tanınmıyor.");
+            var lines = JsonSerializer.Deserialize<List<RemoteOperationLine>>(Encoding.UTF8.GetString(Convert.FromBase64String(externalOperationId["shopify-completed:".Length..])));
+            return Task.FromResult(lines is null ? Unsupported<RemoteOperationStatus>("Shopify operation sonucu okunamadı.") : AdapterResult<RemoteOperationStatus>.Success(new(externalOperationId, "COMPLETED", lines)));
+        }
+        catch (Exception exception) when (exception is FormatException or JsonException or ArgumentException) { return Unsupported<RemoteOperationStatus>("Shopify operation sonucu geçersiz."); }
+    }
     public Task<AdapterResult<RemotePublicationStatus>> GetPublicationStatusAsync(AdapterContext context, string barcode, CancellationToken cancellationToken) => Unsupported<RemotePublicationStatus>("Shopify ürün yazma ilk sürümde kapalıdır.");
     public Task<AdapterResult<RemoteOperationRef>> ArchiveAsync(AdapterContext context, string payloadJson, CancellationToken cancellationToken) => Unsupported<RemoteOperationRef>("Shopify ürün yazma ilk sürümde kapalıdır.");
-    public Task<AdapterResult<RemoteOperationRef>> PushPriceAndInventoryAsync(AdapterContext context, string payloadJson, CancellationToken cancellationToken) => Unsupported<RemoteOperationRef>("Shopify dış yazma ilk sürümde kapalıdır.");
+    public async Task<AdapterResult<RemoteOperationRef>> PushPriceAndInventoryAsync(AdapterContext context, string payloadJson, CancellationToken cancellationToken)
+    {
+        var shop = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
+        if (shop is null) return Fail<RemoteOperationRef>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized);
+        if (!await CanWriteAsync(shop, context, MarketplaceCapabilities.PriceWrite, MarketplaceCapabilities.InventoryWrite, cancellationToken)) return WriteClosed<RemoteOperationRef>();
+        JsonDocument payload;
+        try { payload = JsonDocument.Parse(payloadJson); }
+        catch (JsonException) { return Fail<RemoteOperationRef>(AdapterErrorClass.Validation, "SHOPIFY_PRICE_INVENTORY_PAYLOAD_INVALID", "Fiyat-stok gönderimi geçersiz JSON içeriyor.", HttpStatusCode.BadRequest); }
+        using (payload)
+        {
+            if (!payload.RootElement.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array || items.GetArrayLength() == 0)
+                return Fail<RemoteOperationRef>(AdapterErrorClass.Validation, "SHOPIFY_PRICE_INVENTORY_PAYLOAD_INVALID", "Fiyat-stok gönderimi en az bir ürün satırı içermelidir.", HttpStatusCode.BadRequest);
+            var results = new List<RemoteOperationLine>();
+            foreach (var item in items.EnumerateArray())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var barcode = TextValue(item, "barcode")?.Trim();
+                var quantity = DecimalOrNull(item, "quantity");
+                var salePrice = DecimalOrNull(item, "salePrice");
+                var listPrice = DecimalOrNull(item, "listPrice");
+                if (string.IsNullOrWhiteSpace(barcode) || quantity is null || quantity < 0 || quantity != decimal.Truncate(quantity.Value) || quantity > int.MaxValue || salePrice is null || salePrice <= 0 || listPrice is null || listPrice < salePrice)
+                {
+                    results.Add(new(barcode ?? "", false, null, "SHOPIFY_PRICE_INVENTORY_LINE_INVALID", false, "REJECTED"));
+                    continue;
+                }
+                var lookup = await QueryAsync(shop, "query($query:String!){productVariants(first:2,query:$query){nodes{id barcode product{id} inventoryItem{id tracked inventoryLevels(first:250){nodes{location{id isActive} quantities(names:[\"available\"]){name quantity}} pageInfo{hasNextPage}}}}}}", new { query = $"barcode:\"{EscapeSearch(barcode)}\"" }, cancellationToken);
+                if (!lookup.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(lookup.Error!, lookup.RateLimit);
+                var variants = lookup.Value!.RootElement.GetProperty("productVariants").GetProperty("nodes");
+                if (variants.GetArrayLength() != 1)
+                {
+                    results.Add(new(barcode, false, null, variants.GetArrayLength() == 0 ? "SHOPIFY_VARIANT_NOT_FOUND" : "SHOPIFY_BARCODE_AMBIGUOUS", false, "REJECTED"));
+                    continue;
+                }
+                var variant = variants[0];
+                if (!variant.TryGetProperty("inventoryItem", out var inventoryItem) || inventoryItem.ValueKind != JsonValueKind.Object || !inventoryItem.GetProperty("tracked").GetBoolean())
+                {
+                    results.Add(new(barcode, false, null, "SHOPIFY_INVENTORY_NOT_TRACKED", false, "REJECTED"));
+                    continue;
+                }
+                var inventoryLevels = inventoryItem.GetProperty("inventoryLevels");
+                if (inventoryLevels.GetProperty("pageInfo").GetProperty("hasNextPage").GetBoolean())
+                {
+                    results.Add(new(barcode, false, null, "SHOPIFY_INVENTORY_LOCATION_LIST_INCOMPLETE", false, "REJECTED"));
+                    continue;
+                }
+                var activeLevels = inventoryLevels.GetProperty("nodes").EnumerateArray()
+                    .Where(level => level.GetProperty("location").GetProperty("isActive").GetBoolean()).ToArray();
+                if (activeLevels.Length != 1)
+                {
+                    results.Add(new(barcode, false, null, "SHOPIFY_INVENTORY_LOCATION_AMBIGUOUS", false, "REJECTED"));
+                    continue;
+                }
+                var available = activeLevels[0].GetProperty("quantities").GetProperty("quantity");
+                if (!available.TryGetInt32(out var compareQuantity))
+                {
+                    results.Add(new(barcode, false, null, "SHOPIFY_INVENTORY_QUANTITY_MISSING", false, "REJECTED"));
+                    continue;
+                }
+                var variantId = variant.GetProperty("id").GetString()!;
+                var productId = variant.GetProperty("product").GetProperty("id").GetString()!;
+                var inventoryItemId = inventoryItem.GetProperty("id").GetString()!;
+                var locationId = activeLevels[0].GetProperty("location").GetProperty("id").GetString()!;
+                var priceMutation = await QueryAsync(shop, "mutation($productId:ID!,$variants:[ProductVariantsBulkInput!]!){productVariantsBulkUpdate(productId:$productId,variants:$variants){userErrors{field message}}}", new { productId, variants = new[] { new { id = variantId, price = salePrice.Value.ToString("0.00##", CultureInfo.InvariantCulture), compareAtPrice = listPrice.Value > salePrice.Value ? listPrice.Value.ToString("0.00##", CultureInfo.InvariantCulture) : null } } }, cancellationToken);
+                if (!priceMutation.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(priceMutation.Error!, priceMutation.RateLimit);
+                if (HasUserErrors(priceMutation.Value!.RootElement.GetProperty("productVariantsBulkUpdate"), out var priceError))
+                {
+                    results.Add(new(barcode, false, null, "SHOPIFY_PRICE_REJECTED", false, priceError));
+                    continue;
+                }
+                var effect = string.IsNullOrWhiteSpace(context.IdempotencyKey) ? Guid.NewGuid().ToString("N") : context.IdempotencyKey;
+                var key = IdempotencyKey($"{effect}:{barcode}:inventory");
+                var stockMutation = await QueryAsync(shop, "mutation($input:InventorySetQuantitiesInput!,$idempotencyKey:String!){inventorySetQuantities(input:$input) @idempotent(key:$idempotencyKey){userErrors{field message}}}", new { input = new { name = "available", reason = "correction", referenceDocumentUri = $"marketplacehub://{context.TenantId:D}/{context.ConnectionId:D}/{barcode}", quantities = new[] { new { inventoryItemId, locationId, quantity = (int)quantity.Value, changeFromQuantity = compareQuantity } } }, idempotencyKey = key }, cancellationToken);
+                if (!stockMutation.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(stockMutation.Error!, stockMutation.RateLimit);
+                if (HasUserErrors(stockMutation.Value!.RootElement.GetProperty("inventorySetQuantities"), out var stockError))
+                {
+                    results.Add(new(barcode, false, null, "SHOPIFY_INVENTORY_REJECTED", false, stockError));
+                    continue;
+                }
+                results.Add(new(barcode, true, variantId, null, false, "COMPLETED"));
+            }
+            var operationId = EncodeCompletedOperation(results);
+            return AdapterResult<RemoteOperationRef>.Success(new(operationId, "SHOPIFY_PRICE_INVENTORY", timeProvider.GetUtcNow()));
+        }
+    }
 
     public async Task<AdapterResult<AdapterPageResult<RemoteOrder>>> PollAsync(AdapterContext context, OrderPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken)
     {
@@ -282,18 +392,149 @@ public sealed class ShopifyHttpClient(
         return AdapterResult<RemoteOrder>.Success(MapOrder(order), result.RateLimit);
     }
 
-    public Task<AdapterResult<PackageActionResult>> ExecutePackageActionAsync(AdapterContext context, PackageActionCommand command, CancellationToken cancellationToken) => Unsupported<PackageActionResult>("Shopify kargo dış yazması ilk sürümde kapalıdır.");
+    public async Task<AdapterResult<PackageActionResult>> ExecutePackageActionAsync(AdapterContext context, PackageActionCommand command, CancellationToken cancellationToken)
+    {
+        var shop = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
+        if (shop is null) return Fail<PackageActionResult>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized);
+        if (!await CanWriteAsync(shop, context, MarketplaceCapabilities.ShipmentWrite, cancellationToken)) return WriteClosed<PackageActionResult>();
+        if (string.IsNullOrWhiteSpace(command.ExternalPackageId)) return Fail<PackageActionResult>(AdapterErrorClass.Validation, "SHOPIFY_FULFILLMENT_ID_REQUIRED", "Shopify fulfillment kimliği zorunludur.", HttpStatusCode.BadRequest);
+        if (!string.Equals(command.Action, "TRACKING_NUMBER", StringComparison.OrdinalIgnoreCase))
+            return Fail<PackageActionResult>(AdapterErrorClass.NotSupported, "SHOPIFY_SHIPMENT_ACTION_UNSUPPORTED", "Shopify bu panelde yalnız mevcut kargo takibi bilgisinin güncellenmesini destekler.", HttpStatusCode.NotImplemented);
+        JsonDocument payload;
+        try { payload = JsonDocument.Parse(command.PayloadJson); }
+        catch (JsonException) { return Fail<PackageActionResult>(AdapterErrorClass.Validation, "SHOPIFY_TRACKING_PAYLOAD_INVALID", "Kargo takip bilgisi geçerli JSON olmalıdır.", HttpStatusCode.BadRequest); }
+        using (payload)
+        {
+            var number = TextValue(payload.RootElement, "trackingNumber") ?? TextValue(payload.RootElement, "number");
+            var url = TextValue(payload.RootElement, "trackingUrl") ?? TextValue(payload.RootElement, "url");
+            var company = TextValue(payload.RootElement, "cargoProviderName") ?? TextValue(payload.RootElement, "company");
+            if (string.IsNullOrWhiteSpace(number) || number.Length > 255 || url is not null && (!Uri.TryCreate(url, UriKind.Absolute, out var trackingUri) || trackingUri.Scheme != Uri.UriSchemeHttps))
+                return Fail<PackageActionResult>(AdapterErrorClass.Validation, "SHOPIFY_TRACKING_PAYLOAD_INVALID", "Geçerli takip numarası ve varsa HTTPS takip bağlantısı zorunludur.", HttpStatusCode.BadRequest);
+            var fulfillmentId = command.ExternalPackageId.StartsWith("gid://", StringComparison.Ordinal) ? command.ExternalPackageId : $"gid://shopify/Fulfillment/{command.ExternalPackageId}";
+            var result = await QueryAsync(shop, "mutation($fulfillmentId:ID!,$trackingInfoInput:FulfillmentTrackingInput!){fulfillmentTrackingInfoUpdate(fulfillmentId:$fulfillmentId,trackingInfoInput:$trackingInfoInput,notifyCustomer:false){fulfillment{id} userErrors{field message}}}", new { fulfillmentId, trackingInfoInput = new { number, url, company } }, cancellationToken);
+            if (!result.IsSuccess) return AdapterResult<PackageActionResult>.Failure(result.Error!, result.RateLimit);
+            var response = result.Value!.RootElement.GetProperty("fulfillmentTrackingInfoUpdate");
+            if (HasUserErrors(response, out var error)) return Fail<PackageActionResult>(AdapterErrorClass.Validation, "SHOPIFY_TRACKING_UPDATE_REJECTED", error ?? "Shopify kargo takip bilgisini güncellemedi.", HttpStatusCode.UnprocessableEntity);
+            return AdapterResult<PackageActionResult>.Success(new(command.ExternalPackageId, "TRACKING_UPDATED", null), result.RateLimit);
+        }
+    }
     public Task<AdapterResult<IReadOnlyList<RemoteCargoCompany>>> GetChangeableCargoCompaniesAsync(AdapterContext context, string externalPackageId, CancellationToken cancellationToken) => Unsupported<IReadOnlyList<RemoteCargoCompany>>("Shopify kargo firması listesi sağlamaz.");
     public Task<AdapterResult<IReadOnlyList<RemotePackageableLine>>> GetPackageableLineItemsAsync(AdapterContext context, string externalLineItemId, CancellationToken cancellationToken) => Unsupported<IReadOnlyList<RemotePackageableLine>>("Shopify Hepsiburada paketlenebilir kalem listesini sağlamaz.");
     public Task<AdapterResult<CreateOrderPackageResult>> CreateOrderPackageAsync(AdapterContext context, CreateOrderPackageCommand command, CancellationToken cancellationToken) => Unsupported<CreateOrderPackageResult>("Shopify Hepsiburada paket oluşturma işlemini sağlamaz.");
     public Task<AdapterResult<bool>> CreateCommonLabelAsync(AdapterContext context, CommonLabelRequest request, CancellationToken cancellationToken) => Unsupported<bool>("Shopify etiket işlemi ilk sürümde kapalıdır.");
     public Task<AdapterResult<CommonLabelDocument>> GetCommonLabelAsync(AdapterContext context, string cargoTrackingNumber, CancellationToken cancellationToken, string format = "ZPL") => Unsupported<CommonLabelDocument>("Shopify etiket işlemi ilk sürümde kapalıdır.");
     public Task<AdapterResult<StageTestOrderResult>> CreateStageTestOrderAsync(AdapterContext context, string barcode, CancellationToken cancellationToken) => Unsupported<StageTestOrderResult>("Shopify test siparişi oluşturma ilk sürümde kapalıdır.");
-    public Task<AdapterResult<AdapterPageResult<RemoteReturnClaim>>> PollAsync(AdapterContext context, ReturnPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken) => Unsupported<AdapterPageResult<RemoteReturnClaim>>("Shopify iade okuması sonraki aşamada açılacaktır.");
-    async Task<AdapterResult<RemoteReturnClaim>> IReturnPort.GetAsync(AdapterContext context, string externalReturnId, CancellationToken cancellationToken) => await Unsupported<RemoteReturnClaim>("Shopify iade okuması sonraki aşamada açılacaktır.");
-    public Task<AdapterResult<IReadOnlyList<ReturnIssueReason>>> IssueReasonsAsync(AdapterContext context, CancellationToken cancellationToken) => Unsupported<IReadOnlyList<ReturnIssueReason>>("Shopify iade işlemi sonraki aşamada açılacaktır.");
-    public Task<AdapterResult<ReturnActionResult>> ExecuteAsync(AdapterContext context, ReturnActionCommand command, CancellationToken cancellationToken) => Unsupported<ReturnActionResult>("Shopify iade dış yazması ilk sürümde kapalıdır.");
+    public async Task<AdapterResult<AdapterPageResult<RemoteReturnClaim>>> PollAsync(AdapterContext context, ReturnPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken)
+    {
+        var shop = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
+        if (shop is null) return Fail<AdapterPageResult<RemoteReturnClaim>>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized);
+        if (!IntegrationRuntimePolicy.AllowsManualRead(shop.Connection)) return Fail<AdapterPageResult<RemoteReturnClaim>>(AdapterErrorClass.NotSupported, "SHOPIFY_CONNECTION_INACTIVE", "Shopify iadeleri yalnızca etkin bağlantıdan okunabilir.", HttpStatusCode.Forbidden);
+        var query = "query($first:Int!,$after:String,$query:String){orders(first:$first,after:$after,query:$query,sortKey:UPDATED_AT,reverse:false){edges{node{id name createdAt returns(first:100){nodes{id status createdAt returnLineItems(first:100){nodes{id quantity returnReason returnReasonNote fulfillmentLineItem{id lineItem{id}}}}}}}} pageInfo{hasNextPage endCursor}}}";
+        var search = window.ModifiedAfter is { } from ? $"updated_at:>={from.UtcDateTime:yyyy-MM-ddTHH:mm:ssZ}" : null;
+        var result = await QueryAsync(shop, query, new { first = Math.Clamp(page.Limit, 1, 100), after = page.Cursor, query = search }, cancellationToken);
+        if (!result.IsSuccess) return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Failure(result.Error!, result.RateLimit);
+        try
+        {
+            var orders = result.Value!.RootElement.GetProperty("orders");
+            var items = orders.GetProperty("edges").EnumerateArray().SelectMany(edge =>
+            {
+                var order = edge.GetProperty("node");
+                return order.GetProperty("returns").GetProperty("nodes").EnumerateArray().Select(item => MapShopifyReturn(item, order));
+            }).ToArray();
+            var info = orders.GetProperty("pageInfo");
+            var hasMore = info.GetProperty("hasNextPage").GetBoolean();
+            return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Success(new(items, hasMore ? info.GetProperty("endCursor").GetString() : null, hasMore, items.Length), result.RateLimit);
+        }
+        catch (Exception exception) when (exception is KeyNotFoundException or InvalidOperationException or JsonException)
+        {
+            return Fail<AdapterPageResult<RemoteReturnClaim>>(AdapterErrorClass.ContractViolation, "SHOPIFY_RETURN_CONTRACT_INVALID", "Shopify iade yanıtı beklenen alanları içermiyor.", HttpStatusCode.BadGateway);
+        }
+    }
 
+    async Task<AdapterResult<RemoteReturnClaim>> IReturnPort.GetAsync(AdapterContext context, string externalReturnId, CancellationToken cancellationToken)
+    {
+        var shop = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
+        if (shop is null) return Fail<RemoteReturnClaim>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized);
+        var id = externalReturnId.StartsWith("gid://", StringComparison.Ordinal) ? externalReturnId : $"gid://shopify/Return/{externalReturnId}";
+        var result = await QueryAsync(shop, "query($id:ID!){return(id:$id){id status createdAt order{id name createdAt} returnLineItems(first:100){nodes{id quantity returnReason returnReasonNote fulfillmentLineItem{id lineItem{id}}}}}}", new { id }, cancellationToken);
+        if (!result.IsSuccess) return AdapterResult<RemoteReturnClaim>.Failure(result.Error!, result.RateLimit);
+        var item = result.Value!.RootElement.GetProperty("return");
+        return item.ValueKind == JsonValueKind.Null ? Fail<RemoteReturnClaim>(AdapterErrorClass.NotFound, "SHOPIFY_RETURN_NOT_FOUND", "Shopify iadesi bulunamadı.", HttpStatusCode.NotFound) : AdapterResult<RemoteReturnClaim>.Success(MapShopifyReturn(item), result.RateLimit);
+    }
+
+    public Task<AdapterResult<IReadOnlyList<ReturnIssueReason>>> IssueReasonsAsync(AdapterContext context, CancellationToken cancellationToken) =>
+        Task.FromResult(AdapterResult<IReadOnlyList<ReturnIssueReason>>.Success([new("OTHER", "Diğer", false)]));
+
+    public async Task<AdapterResult<ReturnActionResult>> ExecuteAsync(AdapterContext context, ReturnActionCommand command, CancellationToken cancellationToken)
+    {
+        var shop = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
+        if (shop is null) return Fail<ReturnActionResult>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized);
+        if (!await CanWriteAsync(shop, context, MarketplaceCapabilities.ReturnWrite, cancellationToken)) return WriteClosed<ReturnActionResult>();
+        if (string.IsNullOrWhiteSpace(command.ExternalClaimId)) return Fail<ReturnActionResult>(AdapterErrorClass.Validation, "SHOPIFY_RETURN_ID_REQUIRED", "Shopify iade kimliği zorunludur.", HttpStatusCode.BadRequest);
+        var id = command.ExternalClaimId.StartsWith("gid://", StringComparison.Ordinal) ? command.ExternalClaimId : $"gid://shopify/Return/{command.ExternalClaimId}";
+        var action = command.Action.Trim().ToUpperInvariant();
+        var query = action switch
+        {
+            "APPROVE" => "mutation($input:ReturnApproveRequestInput!){returnApproveRequest(input:$input){return{id status} userErrors{field message}}}",
+            "REJECT" => "mutation($input:ReturnDeclineRequestInput!){returnDeclineRequest(input:$input){return{id status} userErrors{field message}}}",
+            _ => null
+        };
+        if (query is null) return Fail<ReturnActionResult>(AdapterErrorClass.NotSupported, "SHOPIFY_RETURN_ACTION_UNSUPPORTED", "Shopify iade işlemi APPROVE veya REJECT olmalıdır.", HttpStatusCode.NotImplemented);
+        if (action == "REJECT" && string.IsNullOrWhiteSpace(command.Explanation)) return Fail<ReturnActionResult>(AdapterErrorClass.Validation, "SHOPIFY_RETURN_DECLINE_NOTE_REQUIRED", "İade reddi için müşteriye gönderilecek açıklama zorunludur.", HttpStatusCode.BadRequest);
+        object variables = action == "APPROVE" ? new { input = new { id } } : new { input = new { id, declineReason = "OTHER", declineNote = command.Explanation!.Trim()[..Math.Min(500, command.Explanation.Trim().Length)] } };
+        var result = await QueryAsync(shop, query, variables, cancellationToken);
+        if (!result.IsSuccess) return AdapterResult<ReturnActionResult>.Failure(result.Error!, result.RateLimit);
+        var field = action == "APPROVE" ? "returnApproveRequest" : "returnDeclineRequest";
+        var response = result.Value!.RootElement.GetProperty(field);
+        if (HasUserErrors(response, out var error)) return Fail<ReturnActionResult>(AdapterErrorClass.Validation, "SHOPIFY_RETURN_ACTION_REJECTED", error ?? "Shopify iade kararını reddetti.", HttpStatusCode.UnprocessableEntity);
+        var returned = response.GetProperty("return");
+        return AdapterResult<ReturnActionResult>.Success(new(command.ExternalClaimId, TextValue(returned, "status") ?? (action == "APPROVE" ? "OPEN" : "DECLINED"), null), result.RateLimit);
+    }
+
+
+    private async Task<bool> CanWriteAsync(ShopifyRequestContext shop, AdapterContext context, string capabilityCode, CancellationToken cancellationToken)
+    {
+        if (!configuration.GetValue<bool>("FeatureFlags:ExternalWrites")) return false;
+        var enabled = false;
+        try
+        {
+            using var settingsJson = JsonDocument.Parse(shop.Connection.SettingsJson);
+            enabled = settingsJson.RootElement.TryGetProperty("ExternalWritesEnabled", out var value) && value.ValueKind == JsonValueKind.True;
+        }
+        catch (JsonException) { return false; }
+        if (!enabled || !IntegrationRuntimePolicy.AllowsExternalWrite(shop.Connection, context, globalWritesEnabled: true, connectionWritesEnabled: true)) return false;
+        var capabilities = await db.PlatformCapabilities.AsNoTracking()
+            .Where(item => item.TenantId == context.TenantId && item.ConnectionId == context.ConnectionId && item.Code == capabilityCode)
+            .ToListAsync(cancellationToken);
+        return capabilities.Count == 1 && CapabilityEvidencePolicy.IsVerifiedWriteCapability(capabilities[0], shop.Connection, capabilityCode);
+    }
+
+    private async Task<bool> CanWriteAsync(ShopifyRequestContext shop, AdapterContext context, string capabilityOne, string capabilityTwo, CancellationToken cancellationToken) =>
+        await CanWriteAsync(shop, context, capabilityOne, cancellationToken)
+        && await CanWriteAsync(shop, context, capabilityTwo, cancellationToken);
+
+    private static AdapterResult<T> WriteClosed<T>() => Fail<T>(AdapterErrorClass.NotSupported, "SHOPIFY_EXTERNAL_WRITE_CLOSED", "Shopify dış yazması kapalı, bağlantı etkin değil veya gerekli API izni doğrulanmadı.", HttpStatusCode.Forbidden);
+
+    private static bool HasUserErrors(JsonElement payload, out string? message)
+    {
+        message = null;
+        if (!payload.TryGetProperty("userErrors", out var errors) || errors.ValueKind != JsonValueKind.Array || errors.GetArrayLength() == 0) return false;
+        message = string.Join("; ", errors.EnumerateArray().Select(error => TextValue(error, "message")).Where(value => !string.IsNullOrWhiteSpace(value)));
+        return true;
+    }
+
+    private static string IdempotencyKey(string value) => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
+    private static string EncodeCompletedOperation(IReadOnlyList<RemoteOperationLine> lines) => "shopify-completed:" + Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(lines));
+
+    private static CapabilityEvidence ScopeEvidence(string code, ConnectionIdentity identity, string source, AdapterResult<JsonDocument> scopeResult, IReadOnlySet<string> scopes, string[] requiredScopes, DateTimeOffset verified)
+    {
+        if (!scopeResult.IsSuccess)
+            return new(code, "UNKNOWN", identity.ApiVersion, identity.Environment, identity.ExternalStoreId, source, identity.ApiVersion, string.Join(",", requiredScopes), null, "Shopify uygulama scope listesi doğrulanamadı.", null, verified);
+        var granted = requiredScopes.Where(scopes.Contains).ToArray();
+        var support = granted.Length > 0 ? "SUPPORTED" : "NOT_SUPPORTED";
+        return new(code, support, identity.ApiVersion, identity.Environment, identity.ExternalStoreId, source, identity.ApiVersion, string.Join(",", requiredScopes), null,
+            granted.Length > 0 ? $"Shopify uygulamasında {string.Join(", ", granted)} izni var." : $"Shopify uygulamasında gerekli izinlerden biri yok: {string.Join(", ", requiredScopes)}.", null, verified);
+    }
     private async Task<AdapterResult<JsonDocument>> QueryAsync(ShopifyRequestContext context, string query, object? variables = null, CancellationToken cancellationToken = default)
     {
         var client = clients.CreateClient("Shopify");
@@ -556,6 +797,19 @@ public sealed class ShopifyHttpClient(
             refunds);
     }
 
+    private static RemoteReturnClaim MapShopifyReturn(JsonElement item) => MapShopifyReturn(item, item.GetProperty("order"));
+
+    private static RemoteReturnClaim MapShopifyReturn(JsonElement item, JsonElement order)
+    {
+        var lines = item.GetProperty("returnLineItems").GetProperty("nodes").EnumerateArray().Select(line =>
+        {
+            var fulfillment = line.TryGetProperty("fulfillmentLineItem", out var fulfillmentLine) && fulfillmentLine.ValueKind == JsonValueKind.Object ? fulfillmentLine : default;
+            var orderLine = fulfillment.ValueKind == JsonValueKind.Object && fulfillment.TryGetProperty("lineItem", out var lineItem) && lineItem.ValueKind == JsonValueKind.Object ? lineItem : default;
+            return new RemoteReturnLine(ShortId(TextValue(line, "id")), orderLine.ValueKind == JsonValueKind.Object ? ShortId(TextValue(orderLine, "id")) : string.Empty, DecimalOrNull(line, "quantity") ?? 0m);
+        }).Where(line => !string.IsNullOrWhiteSpace(line.ExternalLineId) && !string.IsNullOrWhiteSpace(line.ExternalOrderLineId)).ToArray();
+        var createdAt = item.GetProperty("createdAt").GetDateTimeOffset();
+        return new(ShortId(TextValue(item, "id")), ShortId(TextValue(order, "id")), TextValue(item, "status") ?? "UNKNOWN", TextValue(item, "returnReason"), TextValue(item, "returnReasonNote"), null, createdAt, lines, item.GetRawText(), OrderCreatedAt: order.GetProperty("createdAt").GetDateTimeOffset());
+    }
     private static RemoteOrderLine MapOrderLine(JsonElement line, string financialStatus)
     {
         var variant = line.TryGetProperty("variant", out var variantElement) && variantElement.ValueKind == JsonValueKind.Object ? variantElement : default;
