@@ -566,11 +566,16 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         var type = job.JobType.ToUpperInvariant();
         if (type is MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.ShopifyOrderStatusSync or MarketplaceJobTypes.HepsiburadaOrderStatusSync) return new("Tarama türü", "Sipariş durum taraması", "Açık siparişlerin paket ve taşıma durumları kontrol edilerek yerel durum güncellendi.");
         if (type == MarketplaceJobTypes.TrendyolOrderCargoInfoReconciliation) return new("Tarama türü", "Trendyol kargo bilgi taraması", "Teslim edilen Trendyol paketlerinin kargo bilgileri salt okunur olarak yenilendi.");
-        if (type == InvoicingJobTypes.InvoiceSubmit && job.LastErrorCode == "EFATURAM_FISCAL_PAYLOAD_INVALID")
+        if (type == InvoicingJobTypes.InvoiceSubmit
+            && (job.LastErrorCode == "EFATURAM_FISCAL_PAYLOAD_INVALID"
+                || job.LastErrorCode == "EFATURAM_REQUEST_REJECTED"))
         {
-            var detail = job.LastErrorSummary == "EFATURAM_RECIPIENT_TAX_ID_REQUIRED"
-                ? "Alıcı snapshot'larında geçerli VKN/TCKN bulunamadı. Kurumsal veya e-Fatura alıcısı için gerçek 10 haneli VKN ya da 11 haneli TCKN gerekir. Kimlik bilgisinin zorunlu olmadığı bireysel e-Arşiv siparişlerinde 11111111111 yedek değeri kullanılır; bu kayıt kurumsal olarak işaretliyse siparişin fatura bilgilerini tamamlayın."
-                : "E-Faturam'a istek gönderilmeden önce yerel mali payload doğrulamasında hata oluştu. Hata ayrıntısındaki alan düzeltilmeden yeniden denemek aynı sonucu üretebilir.";
+            var detail = job.LastErrorSummary switch
+            {
+                "EFATURAM_RECIPIENT_TAX_ID_REQUIRED" => "Alıcı bilgilerinde geçerli VKN/TCKN bulunamadı. E-Faturam faturayı kabul etmedi; 11111111111 yedek değeri gerçek kimlik numarası yerine kullanılamaz. Siparişin fatura bilgilerine gerçek numara girilip sipariş eşitlendikten sonra fatura yeniden denenmelidir. Bu fatura kesilmiş sayılmaz.",
+                "EFATURAM_RECIPIENT_TAX_ID_PLACEHOLDER_NOT_ALLOWED" => "Alıcı bilgilerinde 11111111111 yer tutucu değeri var. E-Faturam bunu geçerli TCKN olarak kabul etmedi ve fatura gönderilmedi. Siparişin fatura bilgilerine gerçek TCKN girilip sipariş eşitlendikten sonra fatura yeniden denenmelidir.",
+                _ => "E-Faturam isteği kabul etmedi. Bu kayıt fatura olarak kesilmiş sayılmaz; hata ayrıntısındaki alıcı/fatura bilgileri düzeltilip güvenli yeniden deneme yapılmalıdır."
+            };
             return new("İstek sonucu", "Fatura gönderilmedi", detail);
         }
         if (type is MarketplaceJobTypes.OrderReconciliation or MarketplaceJobTypes.ShopifyOrderReconciliation) return new("Tarama türü", "Kapsamlı sipariş taraması", "Yerel siparişler ile pazaryeri kayıtları karşılaştırıldı; durum ve paket farklılıkları düzeltildi.");

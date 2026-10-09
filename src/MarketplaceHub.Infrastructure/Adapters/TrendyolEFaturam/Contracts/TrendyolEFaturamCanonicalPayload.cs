@@ -33,15 +33,10 @@ public static class TrendyolEFaturamCanonicalPayload
                 taxId = FindTaxId(addressRoot);
             if (!ValidTaxId(taxId))
                 taxId = FindTaxId(customer.RootElement);
+            if (taxId == "11111111111")
+                throw new JsonException("EFATURAM_RECIPIENT_TAX_ID_PLACEHOLDER_NOT_ALLOWED");
             if (!ValidTaxId(taxId))
-            {
-                // GİB e-Arşiv guidance permits this sentinel when the buyer's TCKN is not required.
-                // Restrict it to consumer/e-Archive cases; corporate and e-Invoice records still need a real VKN/TCKN.
-                if (invoiceType == "EARSIVFATURA" && !IsCorporateRecipient(addressRoot, address, customer.RootElement))
-                    taxId = "11111111111";
-                else
-                    throw new JsonException("EFATURAM_RECIPIENT_TAX_ID_REQUIRED");
-            }
+                throw new JsonException("EFATURAM_RECIPIENT_TAX_ID_REQUIRED");
 
             // E-Faturam requires recipientInfo.name. Hepsiburada stores the
             // recipient's full name as `name` on the flat invoice-address snapshot,
@@ -146,53 +141,6 @@ public static class TrendyolEFaturamCanonicalPayload
             }
         }
         return "";
-    }
-    private static bool IsCorporateRecipient(params JsonElement[] sources)
-    {
-        var explicitlyIndividual = sources.Any(source =>
-        {
-            var recipientType = Text(source, "recipientType", "customerType", "entityType", "taxPayerType", "invoiceRecipientType");
-            return Boolean(source, "isIndividual", "isPerson", "isConsumer") == true
-                || Boolean(source, "isCorporate", "isCompany", "isBusiness", "corporate") == false
-                || recipientType.Contains("individual", StringComparison.OrdinalIgnoreCase)
-                || recipientType.Contains("person", StringComparison.OrdinalIgnoreCase)
-                || recipientType.Contains("consumer", StringComparison.OrdinalIgnoreCase)
-                || recipientType.Contains("bireysel", StringComparison.OrdinalIgnoreCase)
-                || recipientType.Contains("gerçek", StringComparison.OrdinalIgnoreCase);
-        });
-        foreach (var source in sources)
-        {
-            if (Boolean(source, "isCorporate", "isCompany", "isBusiness", "corporate") == true) return true;
-            var recipientType = Text(source, "recipientType", "customerType", "entityType", "taxPayerType", "invoiceRecipientType");
-            if (recipientType.Contains("corporate", StringComparison.OrdinalIgnoreCase)
-                || recipientType.Contains("company", StringComparison.OrdinalIgnoreCase)
-                || recipientType.Contains("business", StringComparison.OrdinalIgnoreCase)
-                || recipientType.Contains("kurumsal", StringComparison.OrdinalIgnoreCase)
-                || recipientType.Contains("tüzel", StringComparison.OrdinalIgnoreCase)) return true;
-            if (new[] { "companyTitle", "businessName", "legalName", "tradeName", "taxOffice" }
-                .Any(name => Text(source, name).Length > 0)) return true;
-            var taxNumber = Text(source, "vkn", "taxNumber", "invoiceTaxNumber", "taxId", "taxIdentifier");
-            if (taxNumber.Length == 10 && taxNumber.All(char.IsAsciiDigit)) return true;
-            var companyName = Text(source, "companyName");
-            var personName = Text(source, "fullName", "name", "recipientName", "firstName");
-            if (!explicitlyIndividual && companyName.Length > 0 && !string.Equals(companyName, personName, StringComparison.OrdinalIgnoreCase)) return true;
-        }
-        return false;
-    }
-    private static bool? Boolean(JsonElement parent, params string[] names)
-    {
-        foreach (var name in names)
-        {
-            if (!TryGetProperty(parent, name, out var value)) continue;
-            return value.ValueKind switch
-            {
-                JsonValueKind.True => true,
-                JsonValueKind.False => false,
-                JsonValueKind.String when bool.TryParse(value.GetString(), out var parsed) => parsed,
-                _ => null
-            };
-        }
-        return null;
     }
     private static string Text(JsonElement parent, params string[] names)
     {
