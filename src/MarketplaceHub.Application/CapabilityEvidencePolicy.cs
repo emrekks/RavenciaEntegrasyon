@@ -4,6 +4,31 @@ namespace MarketplaceHub.Application;
 
 public static class CapabilityEvidencePolicy
 {
+    public static CapabilitySupportLevel ParseSupportLevel(string? supportLevel) =>
+        (supportLevel ?? string.Empty).Trim().Replace("_", string.Empty, StringComparison.Ordinal).ToUpperInvariant() switch
+        {
+            "SUPPORTED" => CapabilitySupportLevel.Supported,
+            "NOTSUPPORTED" => CapabilitySupportLevel.NotSupported,
+            "TEMPORARILYUNAVAILABLE" => CapabilitySupportLevel.TemporarilyUnavailable,
+            _ => CapabilitySupportLevel.Unknown
+        };
+
+    public static void ApplyEvidence(PlatformCapability capability, CapabilityEvidence evidence)
+    {
+        capability.SupportLevel = ParseSupportLevel(evidence.SupportLevel);
+        capability.ApiVersion = evidence.ApiVersion;
+        capability.Environment = evidence.Environment;
+        capability.StoreScope = evidence.StoreScope;
+        capability.SourceUrl = evidence.SourceUrl;
+        capability.SourceVersion = evidence.SourceVersion;
+        capability.RequiredScope = evidence.RequiredScope;
+        capability.ConstraintsJson = evidence.ConstraintsJson;
+        capability.EvidenceNote = evidence.EvidenceNote;
+        capability.FixtureChecksum = evidence.FixtureChecksum;
+        capability.VerifiedAt = evidence.VerifiedAt;
+        capability.Version++;
+    }
+
     public static string OfficialDocumentationHost(string platformCode) => platformCode.Trim().ToUpperInvariant() switch
     {
         "TRENDYOL" => "developers.trendyol.com",

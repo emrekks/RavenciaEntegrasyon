@@ -1758,11 +1758,26 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         IConnectionPort port = connections;
         var context = Context(tenantId, connectionId, correlationId, "connection-test"); TrackRequest(); var result = await port.TestAsync(context, cancellationToken); if (!result.IsSuccess) { TrackResultFailure(result.Error); connection.LastErrorCode = result.Error!.Code; connection.Version++; await db.SaveChangesAsync(cancellationToken); throw JobProcessingException.FromAdapter(result.Error!); }
         TrackRequest(); var discovery = await port.DiscoverCapabilitiesAsync(context, cancellationToken); if (!discovery.IsSuccess) { TrackResultFailure(discovery.Error); connection.LastErrorCode = discovery.Error!.Code; connection.Version++; await db.SaveChangesAsync(cancellationToken); throw JobProcessingException.FromAdapter(discovery.Error!); }
+        if (connection.PlatformCode == "SHOPIFY")
+        {
+            connection.ApiVersion = result.Value!.ApiVersion;
+            connection.Environment = result.Value.Environment;
+            connection.ExternalStoreId = result.Value.ExternalStoreId;
+        }
         foreach (var _ in discovery.Value!) TrackReceived();
         foreach (var evidence in discovery.Value!)
         {
-            var capability = await db.PlatformCapabilities.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == evidence.Code, cancellationToken); if (capability is null) continue;
-            capability.SupportLevel = string.Equals(evidence.SupportLevel, "SUPPORTED", StringComparison.Ordinal) ? CapabilitySupportLevel.Supported : CapabilitySupportLevel.Unknown; capability.SourceUrl = evidence.SourceUrl; capability.SourceVersion = evidence.SourceVersion; capability.RequiredScope = evidence.RequiredScope; capability.ConstraintsJson = evidence.ConstraintsJson; capability.EvidenceNote = evidence.EvidenceNote; capability.FixtureChecksum = evidence.FixtureChecksum; capability.VerifiedAt = evidence.VerifiedAt; capability.Version++;
+            var capability = await db.PlatformCapabilities.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == evidence.Code, cancellationToken);
+            if (capability is null)
+            {
+                capability = new PlatformCapability
+                {
+                    Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, Code = evidence.Code,
+                    ApiVersion = connection.ApiVersion, Environment = connection.Environment, StoreScope = connection.ExternalStoreId, Version = 0
+                };
+                db.PlatformCapabilities.Add(capability);
+            }
+            CapabilityEvidencePolicy.ApplyEvidence(capability, evidence);
         }
         if (connection.PlatformCode == "HEPSIBURADA" && discovery.Value is not null
             && !new[] { MarketplaceCapabilities.ProductRead, MarketplaceCapabilities.OrderRead }.All(code => discovery.Value.Any(item => item.Code == code && item.SupportLevel == "SUPPORTED")))
