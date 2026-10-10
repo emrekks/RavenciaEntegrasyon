@@ -76,7 +76,9 @@ public sealed record JobSummaryView(
     int ProgressReceived = 0,
     int ProgressProcessed = 0,
     int ProgressSkipped = 0,
-    int ProgressFailed = 0);
+    int ProgressFailed = 0,
+    DateTimeOffset? LastAttemptStartedAt = null,
+    DateTimeOffset? HeartbeatAt = null);
 
 public sealed record JobOrderContextView(
     Guid OrderId,

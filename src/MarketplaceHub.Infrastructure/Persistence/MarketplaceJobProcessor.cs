@@ -98,7 +98,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     MarketplaceJobTypes.TrendyolOrderCargoInfoReconciliation => connectionState?.PlatformCode == "TRENDYOL"
                         && await ReconcileTrendyolCargoInfo(tenantId, connectionId.Value, correlationId, cancellationToken),
                     MarketplaceJobTypes.OrderReconciliation or MarketplaceJobTypes.ShopifyOrderReconciliation => await ReconcileOrders(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
-                    MarketplaceJobTypes.OrderInvoiceReconciliation or MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation or MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation => await ReconcileOrderInvoices(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
+                    MarketplaceJobTypes.OrderInvoiceReconciliation or MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation or MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation => await ReconcileOrderInvoices(tenantId, connectionId.Value, payloadJson, correlationId, jobId, cancellationToken),
                     MarketplaceJobTypes.ProductSync or MarketplaceJobTypes.ShopifyProductSync or MarketplaceJobTypes.HepsiburadaProductSync => await SyncProducts(tenantId, connectionId.Value, payloadJson, correlationId, jobId, cancellationToken),
                     MarketplaceJobTypes.ReturnSync or MarketplaceJobTypes.HepsiburadaReturnSync => await SyncReturns(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                     MarketplaceJobTypes.ReturnStatusSync => await SyncOpenReturns(tenantId, connectionId.Value, correlationId, cancellationToken),
@@ -2916,7 +2916,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         return true;
     }
 
-    private async Task<bool> ReconcileOrderInvoices(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    private async Task<bool> ReconcileOrderInvoices(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, Guid? jobId, CancellationToken cancellationToken)
     {
         var platformCode = await db.PlatformConnections.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.Id == connectionId)
@@ -3021,37 +3021,66 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 invoiceCursor.OpaqueCursor = OrderInvoiceReconciliationBatchPolicy.WriteCursor(lastOrderId);
         }
 
+        var totalOrders = externalOrderIds.Count;
+        await UpdateOrderInvoiceReconciliationProgressAsync(
+            tenantId,
+            jobId,
+            0,
+            totalOrders,
+            totalOrders == 0 ? 100 : 0,
+            totalOrders == 0 ? "Kontrol edilecek sipariş bulunamadı" : $"0 / {totalOrders:N0} sipariş kontrol edildi",
+            cancellationToken);
+
+        var processedOrders = 0;
         foreach (var externalOrderId in externalOrderIds)
         {
-            if (isTrendyol)
+            try
             {
-                // Historical return claims can create a deliberately partial
-                // order projection. Hydrate those rows from the full read-only
-                // order contract before reconciling package invoice data.
-                if (!await HydrateTrendyolReturnClaimOrder(tenantId, connectionId, externalOrderId, correlationId, cancellationToken))
+                if (isTrendyol)
+                {
+                    // Historical return claims can create a deliberately partial
+                    // order projection. Hydrate those rows from the full read-only
+                    // order contract before reconciling package invoice data.
+                    if (!await HydrateTrendyolReturnClaimOrder(tenantId, connectionId, externalOrderId, correlationId, cancellationToken))
+                        continue;
+                    await ReconcileTrendyolPackageInvoices(tenantId, connectionId, externalOrderId, correlationId, cancellationToken);
                     continue;
-                await ReconcileTrendyolPackageInvoices(tenantId, connectionId, externalOrderId, correlationId, cancellationToken);
-                continue;
-            }
+                }
 
-            TrackRequest();
-            var result = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"order-invoice-reconciliation:{externalOrderId}"), externalOrderId, cancellationToken);
-            if (!result.IsSuccess)
-            {
-                if (result.Error?.Class != AdapterErrorClass.NotFound) TrackResultFailure(result.Error);
-                await RecordIssue(tenantId, $"order-invoice-reconciliation:{connectionId}:{externalOrderId}", result.Error!.Code,
-                    $"Siparişin pazaryeri fatura durumu yenilenemedi; sonraki otomatik taramada tekrar denenecek. {result.Error.SafeMessage}", cancellationToken);
-                continue;
+                TrackRequest();
+                var result = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"order-invoice-reconciliation:{externalOrderId}"), externalOrderId, cancellationToken);
+                if (!result.IsSuccess)
+                {
+                    if (result.Error?.Class != AdapterErrorClass.NotFound) TrackResultFailure(result.Error);
+                    await RecordIssue(tenantId, $"order-invoice-reconciliation:{connectionId}:{externalOrderId}", result.Error!.Code,
+                        $"Siparişin pazaryeri fatura durumu yenilenemedi; sonraki otomatik taramada tekrar denenecek. {result.Error.SafeMessage}", cancellationToken);
+                    continue;
+                }
+                else
+                {
+                    TrackReceived();
+                    if (isHepsiburada && !await MergeHepsiburadaOrderInvoiceState(tenantId, connectionId, result.Value!, cancellationToken))
+                        hepsiburadaInvoiceStatusUnavailable.Add(externalOrderId);
+                    await UpsertOrder(tenantId, connectionId, result.Value!, cancellationToken, projectReservations: !isShopify, persistFinancialObservations: isShopify);
+                    await ResolveIssue(tenantId, $"order-invoice-reconciliation:{connectionId}:{externalOrderId}", cancellationToken);
+                }
             }
-            else
+            finally
             {
-                TrackReceived();
-                if (isHepsiburada && !await MergeHepsiburadaOrderInvoiceState(tenantId, connectionId, result.Value!, cancellationToken))
-                    hepsiburadaInvoiceStatusUnavailable.Add(externalOrderId);
-                await UpsertOrder(tenantId, connectionId, result.Value!, cancellationToken, projectReservations: !isShopify, persistFinancialObservations: isShopify);
-                await ResolveIssue(tenantId, $"order-invoice-reconciliation:{connectionId}:{externalOrderId}", cancellationToken);
+                processedOrders++;
+                if (!cancellationToken.IsCancellationRequested)
+                {
+                    var percent = totalOrders == 0 ? 100 : Math.Min(99, (int)Math.Floor(processedOrders * 100d / totalOrders));
+                    await UpdateOrderInvoiceReconciliationProgressAsync(
+                        tenantId,
+                        jobId,
+                        processedOrders,
+                        totalOrders,
+                        percent,
+                        $"{processedOrders:N0} / {totalOrders:N0} sipariş kontrol edildi",
+                        cancellationToken);
+                }
             }
-
         }
 
         if (isHepsiburada)
@@ -3072,7 +3101,44 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             await db.SaveChangesAsync(cancellationToken);
         }
 
+        await UpdateOrderInvoiceReconciliationProgressAsync(
+            tenantId,
+            jobId,
+            processedOrders,
+            totalOrders,
+            100,
+            totalOrders == 0 ? "Kontrol edilecek sipariş bulunamadı" : $"{totalOrders:N0} / {totalOrders:N0} sipariş kontrol edildi",
+            cancellationToken);
+
         return true;
+    }
+
+    private Task<int> UpdateOrderInvoiceReconciliationProgressAsync(
+        Guid tenantId,
+        Guid? jobId,
+        int current,
+        int total,
+        int percent,
+        string label,
+        CancellationToken cancellationToken)
+    {
+        if (jobId is null) return Task.FromResult(0);
+
+        return db.IntegrationJobs
+            .Where(job => job.TenantId == tenantId
+                && job.Id == jobId.Value
+                && (job.JobType == MarketplaceJobTypes.OrderInvoiceReconciliation
+                    || job.JobType == MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation
+                    || job.JobType == MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation))
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(job => job.ProgressCurrent, current)
+                .SetProperty(job => job.ProgressTotal, total)
+                .SetProperty(job => job.ProgressPercent, percent)
+                .SetProperty(job => job.ProgressLabel, label)
+                .SetProperty(job => job.ProgressReceived, telemetryReceivedCount)
+                .SetProperty(job => job.ProgressProcessed, telemetryUpdatedCount)
+                .SetProperty(job => job.ProgressSkipped, telemetrySkippedCount)
+                .SetProperty(job => job.ProgressFailed, telemetryFailedCount), cancellationToken);
     }
 
     private async Task<bool> HydrateTrendyolReturnClaimOrder(Guid tenantId, Guid connectionId, string externalOrderId, string correlationId, CancellationToken cancellationToken)

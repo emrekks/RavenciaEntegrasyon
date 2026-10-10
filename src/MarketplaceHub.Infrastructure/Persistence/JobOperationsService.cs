@@ -20,9 +20,25 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         }
         var jobs = await query.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id).ToListAsync(cancellationToken);
         var failures = await FailureTimes(jobs, cancellationToken);
+        var jobIds = jobs.Select(job => job.Id).ToArray();
+        var lastAttemptStarts = jobIds.Length == 0
+            ? new Dictionary<Guid, DateTimeOffset>()
+            : await db.JobAttempts.AsNoTracking()
+                .Where(attempt => attempt.TenantId == tenantId && jobIds.Contains(attempt.JobId))
+                .GroupBy(attempt => attempt.JobId)
+                .Select(group => new { JobId = group.Key, StartedAt = group.Max(attempt => attempt.StartedAt) })
+                .ToDictionaryAsync(attempt => attempt.JobId, attempt => attempt.StartedAt, cancellationToken);
         var batchCounts = jobs.GroupBy(job => job.CorrelationId, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
-        return jobs.Select(job => Summary(job, failures.GetValueOrDefault(job.Id), batchCounts.GetValueOrDefault(job.CorrelationId, 1))).ToList();
+        return jobs.Select(job =>
+        {
+            lastAttemptStarts.TryGetValue(job.Id, out var lastAttemptStartedAt);
+            return Summary(
+                job,
+                failures.GetValueOrDefault(job.Id),
+                batchCounts.GetValueOrDefault(job.CorrelationId, 1),
+                lastAttemptStarts.ContainsKey(job.Id) ? lastAttemptStartedAt : null);
+        }).ToList();
     }
 
     public async Task<ServiceResult<JobDetailView>> GetAsync(Guid tenantId, Guid jobId, CancellationToken cancellationToken)
@@ -265,7 +281,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         }
         var scan = await ScanAsync(job, cancellationToken);
         var failureReasons = await ProductImportFailureReasonsAsync(job, cancellationToken);
-        var summary = Summary(job, failureTimes, relatedJobs.Count);
+        var summary = Summary(job, failureTimes, relatedJobs.Count, attempts.FirstOrDefault()?.StartedAt);
         if (job.JobType == InvoicingJobTypes.InvoiceSubmit && job.LastErrorCode == "EFATURAM_REQUEST_REJECTED")
         {
             var invoiceId = PayloadGuid(job.PayloadJson, "invoiceId");
@@ -698,14 +714,15 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             .ToDictionary(x => x.JobId, x => new FailureTime(x.FirstFailedAt, x.LastFailedAt));
     }
 
-    private static JobSummaryView Summary(IntegrationJob x, FailureTime? failure = null, int batchCount = 1) => new(
+    private static JobSummaryView Summary(IntegrationJob x, FailureTime? failure = null, int batchCount = 1, DateTimeOffset? lastAttemptStartedAt = null) => new(
         x.Id, x.ConnectionId, x.JobType, Wire(x.Status), x.AttemptCount, x.MaxAttempts,
         x.AvailableAt, x.LastErrorCode, x.LastErrorSummary, x.CorrelationId,
         x.CreatedAt, x.StartedAt, x.CompletedAt, Marketplace(x.JobType), ExternalId(x.PayloadJson),
         failure?.FirstFailedAt, failure?.LastFailedAt,
         x.Status is JobStatus.Pending or JobStatus.RetryScheduled ? x.AvailableAt : null,
         Math.Max(1, batchCount), x.ProgressCurrent, x.ProgressTotal, x.ProgressPercent, x.ProgressLabel,
-        x.ProgressReceived, x.ProgressProcessed, x.ProgressSkipped, x.ProgressFailed);
+        x.ProgressReceived, x.ProgressProcessed, x.ProgressSkipped, x.ProgressFailed,
+        lastAttemptStartedAt, x.HeartbeatAt);
 
     private static JobChangeView? Change(IntegrationJob job)
     {
