@@ -52,6 +52,16 @@ public static class IntegrationRuntimePolicy
         && !string.IsNullOrWhiteSpace(orderNumber)
         && string.Equals(context.OneTimeInvoiceDeliveryOrderNumber, orderNumber, StringComparison.Ordinal);
 
+    public static bool AllowsAutomaticInvoiceMarketplaceDelivery(PlatformConnection connection, AdapterContext context, bool invoiceMarketplaceDeliveryWritesEnabled) =>
+        invoiceMarketplaceDeliveryWritesEnabled
+        && context.IsAutomaticInvoiceMarketplaceDelivery
+        && context.Operation == IntegrationOperation.Automatic
+        && context.ConnectionId == connection.Id
+        && IsProduction(connection)
+        && IsActive(connection)
+        && (string.Equals(connection.PlatformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(connection.PlatformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase));
+
     public static bool RequiresSensitiveConfirmation(PlatformConnection connection) => !IsStage(connection);
 
     public static bool TryResolveBaseAddress(string environment, Uri stageBaseAddress, Uri productionBaseAddress, out Uri baseAddress)

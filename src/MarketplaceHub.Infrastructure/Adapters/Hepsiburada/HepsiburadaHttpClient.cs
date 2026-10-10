@@ -891,9 +891,13 @@ public sealed partial class HepsiburadaHttpClient(
         if (!HepsiburadaInvoiceDeliveryPolicy.TryCreate(command, out var invoice, out var validationError))
             return Failure<InvoiceDeliveryResult>(AdapterErrorClass.Validation, "HEPSIBURADA_INVOICE_DELIVERY_INVALID", validationError, HttpStatusCode.BadRequest);
         var regularWriteAllowed = IntegrationRuntimePolicy.AllowsExternalWrite(account.Connection, context, GlobalWritesEnabled, ConnectionWritesEnabled(account.Connection.SettingsJson));
+        var automaticInvoiceWriteAllowed = IntegrationRuntimePolicy.AllowsAutomaticInvoiceMarketplaceDelivery(
+            account.Connection,
+            context,
+            configuration.GetValue<bool>("FeatureFlags:InvoiceMarketplaceDeliveryWrites"));
         var oneTimeInvoiceWriteAllowed = IntegrationRuntimePolicy.AllowsOneTimeHepsiburadaInvoiceDelivery(account.Connection, context, invoice!.OrderNumber);
-        if (!regularWriteAllowed && !oneTimeInvoiceWriteAllowed)
-            return await Unsupported<InvoiceDeliveryResult>("Hepsiburada fatura teslimi yalnız doğrulanmış Stage bağlantısında, dış yazma kapıları açılmış canlı bağlantıda veya doğrulanmış tek seferlik fatura yetkisinde kullanılabilir.");
+        if (!regularWriteAllowed && !automaticInvoiceWriteAllowed && !oneTimeInvoiceWriteAllowed)
+            return await Unsupported<InvoiceDeliveryResult>("Hepsiburada fatura teslimi yalnız genel dış yazma izinleri, ayrı fatura iletme izni veya doğrulanmış tek seferlik fatura yetkisi açıkken kullanılabilir.");
 
         var body = JsonSerializer.Serialize(new
         {

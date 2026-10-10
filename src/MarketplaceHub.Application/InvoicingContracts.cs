@@ -1,3 +1,5 @@
+using MarketplaceHub.Domain;
+
 namespace MarketplaceHub.Application;
 
 public static class InvoicingJobTypes
@@ -75,6 +77,41 @@ public static class InvoiceDeliveryFailurePolicy
         AdapterErrorClass.TransientNetwork or AdapterErrorClass.Remote5xx or AdapterErrorClass.BusinessConflict => InvoiceDeliveryFailureDisposition.Unknown,
         _ => InvoiceDeliveryFailureDisposition.Failed
     };
+}
+
+public enum InvoiceDeliveryRecoveryAction
+{
+    WaitForMarketplaceReadback,
+    RetryDelivery,
+    ConfirmDelivery,
+    StopRejected,
+    ManualReview
+}
+
+public static class InvoiceDeliveryRecoveryPolicy
+{
+    public static InvoiceDeliveryRecoveryAction Decide(
+        MarketplaceInvoiceStatus marketplaceStatus,
+        string? marketplaceInvoiceNumber,
+        string? expectedInvoiceNumber,
+        DateTimeOffset? observedAt,
+        DateTimeOffset uncertainAttemptAt)
+    {
+        if (observedAt is null || observedAt <= uncertainAttemptAt)
+            return InvoiceDeliveryRecoveryAction.WaitForMarketplaceReadback;
+
+        return marketplaceStatus switch
+        {
+            MarketplaceInvoiceStatus.NotInvoiced => InvoiceDeliveryRecoveryAction.RetryDelivery,
+            MarketplaceInvoiceStatus.Invoiced
+                when !string.IsNullOrWhiteSpace(expectedInvoiceNumber)
+                     && string.Equals(marketplaceInvoiceNumber?.Trim(), expectedInvoiceNumber.Trim(), StringComparison.Ordinal)
+                => InvoiceDeliveryRecoveryAction.ConfirmDelivery,
+            MarketplaceInvoiceStatus.Invoiced => InvoiceDeliveryRecoveryAction.ManualReview,
+            MarketplaceInvoiceStatus.Rejected => InvoiceDeliveryRecoveryAction.StopRejected,
+            _ => InvoiceDeliveryRecoveryAction.WaitForMarketplaceReadback
+        };
+    }
 }
 
 public interface IInvoiceProviderPort

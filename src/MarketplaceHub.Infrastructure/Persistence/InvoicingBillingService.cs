@@ -1127,7 +1127,7 @@ public sealed partial class InvoicingBillingService(
         db.IntegrationJobs.Add(job); await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(job.Id);
     }
 
-    internal static int InvoiceJobPriority(string jobType) => jobType == InvoicingJobTypes.InvoiceSubmit ? -1 : 0;
+    internal static int InvoiceJobPriority(string jobType) => jobType is InvoicingJobTypes.InvoiceSubmit or InvoicingJobTypes.MarketplaceDelivery ? -1 : 0;
 
     private async Task<IReadOnlyList<string>> AllowedActions(Invoice invoice, PlatformConnection? connection, CancellationToken cancellationToken)
     {

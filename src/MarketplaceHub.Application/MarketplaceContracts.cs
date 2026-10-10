@@ -329,7 +329,8 @@ public sealed record AdapterContext(
     bool IsStageCapabilityProbe = false,
     IntegrationOperation Operation = IntegrationOperation.Manual,
     bool IsOneTimeInvoiceDeliveryAuthorized = false,
-    string? OneTimeInvoiceDeliveryOrderNumber = null);
+    string? OneTimeInvoiceDeliveryOrderNumber = null,
+    bool IsAutomaticInvoiceMarketplaceDelivery = false);
 public sealed record AdapterError(AdapterErrorClass Class, string Code, string SafeMessage, int? HttpStatus, TimeSpan? RetryAfter, string? RemoteRequestId);
 public sealed record RateLimitMetadata(int? Remaining, DateTimeOffset? ResetAt, TimeSpan? RetryAfter, int? Limit = null);
 public sealed record AdapterResult<T>(bool IsSuccess, T? Value, AdapterError? Error, RateLimitMetadata? RateLimit)

@@ -108,7 +108,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             added++;
         }
 
-        var dueTenants = await db.InvoicePolicies.AsNoTracking().Where(x => x.AutoSubmit).Select(x => x.TenantId).Distinct().ToListAsync(cancellationToken);
+        var dueTenants = await db.Invoices.AsNoTracking().Select(x => x.TenantId).Distinct().ToListAsync(cancellationToken);
         const int invoiceScanInterval = 300;
         var invoiceBucket = now.ToUnixTimeSeconds() / invoiceScanInterval;
         foreach (var tenantId in dueTenants)
