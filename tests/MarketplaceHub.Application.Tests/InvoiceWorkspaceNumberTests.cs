@@ -6,9 +6,9 @@ namespace MarketplaceHub.Application.Tests;
 public sealed class InvoiceWorkspaceNumberTests
 {
     [Fact]
-    public void Prefers_the_local_invoice_number_when_both_sources_have_values()
+    public void Prefers_the_latest_marketplace_invoice_number_when_both_sources_have_values()
     {
-        Assert.Equal("LOCAL-2026-001", InvoicingBillingService.ResolveInvoiceNumber("LOCAL-2026-001", "TY-2026-001"));
+        Assert.Equal("TY-2026-001", InvoicingBillingService.ResolveInvoiceNumber("LOCAL-2026-001", "TY-2026-001"));
     }
 
     [Fact]
