@@ -76,7 +76,8 @@ public sealed record JobSummaryView(
     int ProgressReceived = 0,
     int ProgressProcessed = 0,
     int ProgressSkipped = 0,
-    int ProgressFailed = 0);
+    int ProgressFailed = 0,
+    DateTimeOffset? CurrentAttemptStartedAt = null);
 
 public sealed record JobOrderContextView(
     Guid OrderId,
@@ -91,6 +92,16 @@ public sealed record JobOrderContextView(
     string? CargoTrackingNumber = null,
     string? CustomerName = null,
     int LineCount = 0);
+
+public sealed record JobInvoiceContextView(
+    Guid InvoiceId,
+    string OrderNumber,
+    string Status,
+    string InvoiceType,
+    string Currency,
+    decimal PayableTotal,
+    string? InvoiceNumber,
+    string? ExternalPackageId);
 
 public sealed record JobChangeView(string Label, string Value, string? Detail = null);
 
@@ -119,7 +130,8 @@ public sealed record JobDetailView(
     JobChangeView? Change = null,
     IReadOnlyList<JobOrderContextView>? RelatedOrders = null,
     JobScanView? Scan = null,
-    IReadOnlyList<JobFailureReasonView>? FailureReasons = null);
+    IReadOnlyList<JobFailureReasonView>? FailureReasons = null,
+    JobInvoiceContextView? Invoice = null);
 
 public interface IJobOperationsService
 {

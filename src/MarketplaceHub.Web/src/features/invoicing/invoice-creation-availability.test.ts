@@ -1,7 +1,24 @@
 import { describe, expect, it } from 'vitest'
-import { invoiceSubmissionAction, isInvoiceCreationAvailable, isValidatedInvoiceReadyToSubmit, matchesInvoiceActionFilter } from './invoice-creation-availability'
+import { invoiceProviderForEnvironment, invoiceSubmissionAction, isInvoiceCreationAvailable, isValidatedInvoiceReadyToSubmit, matchesInvoiceActionFilter } from './invoice-creation-availability'
 
 describe('invoice creation availability', () => {
+  it('selects only a credentialed provider from the marketplace environment', () => {
+    const providers = [
+      { id: 'stage', platformCode: 'TRENDYOL_EFATURAM', environment: 'STAGE', status: 'ACTIVE', hasCredential: true },
+      { id: 'production', platformCode: 'TRENDYOL_EFATURAM', environment: 'PRODUCTION', status: 'VERIFIED', hasCredential: true }
+    ]
+    expect(invoiceProviderForEnvironment(providers, 'production')?.id).toBe('production')
+    expect(invoiceProviderForEnvironment(providers, 'STAGE')?.id).toBe('stage')
+    expect(invoiceProviderForEnvironment(providers.slice(0, 1), 'PRODUCTION')).toBeUndefined()
+  })
+
+  it('rejects providers without credentials, an active status, or a known environment', () => {
+    const base = { id: 'provider', platformCode: 'TRENDYOL_EFATURAM', environment: 'PRODUCTION', status: 'ACTIVE', hasCredential: true }
+    expect(invoiceProviderForEnvironment([{ ...base, hasCredential: false }], 'PRODUCTION')).toBeUndefined()
+    expect(invoiceProviderForEnvironment([{ ...base, status: 'DRAFT' }], 'PRODUCTION')).toBeUndefined()
+    expect(invoiceProviderForEnvironment([base], 'UNKNOWN')).toBeUndefined()
+  })
+
   it('marks Trendyol rows unavailable when invoice creation or the provider credential is locked', () => {
     const eligible = { platformCode: 'TRENDYOL', invoiceId: null, invoiceStatus: 'FATURA_BEKLIYOR', canCreateInvoice: true, invoiceCreationEnabled: true }
     expect(isInvoiceCreationAvailable(eligible, false)).toBe(false)

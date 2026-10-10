@@ -1,5 +1,6 @@
 export type SyncPolicyHealthInput = {
   enabled: boolean
+  lastSuccessAt?: string | null
   healthStatus?: string | null
   cursorProgressStatus?: string | null
 }
@@ -19,7 +20,7 @@ export function syncPolicyHealthPresentation(
   const health = policy.healthStatus?.trim().toUpperCase()
   const stalled = policy.cursorProgressStatus?.trim().toUpperCase() === 'STALLED'
 
-  if (health === 'OFFLINE') return { label: 'Çevrim dışı', tone: 'offline', stalled }
+  if (health === 'OFFLINE') return { label: policy.lastSuccessAt ? 'Güncelleme gecikti' : 'İlk çalışma bekliyor', tone: 'offline', stalled }
   if (health === 'DEGRADED') return { label: 'Kısmi hata', tone: 'degraded', stalled }
   if (stalled) return { label: 'İmleç durgun', tone: 'stalled', stalled: true }
   if (health === 'DELAYED') return { label: 'Gecikiyor', tone: 'delayed', stalled: false }

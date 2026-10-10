@@ -20,7 +20,7 @@ public static class InvoicingEndpoints
 
         api.MapGet("/invoices", async (HttpContext http, IInvoicingBillingService service, int? limit, string? after, string? status) => Tenant(http) is { } tenant ? Results.Ok(await service.ListAsync(tenant.TenantId, PageSize(limit), after, status, http.RequestAborted)) : Unauthorized(http));
         api.MapGet("/invoice-workspace/summary", async (HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant ? Results.Ok(await service.WorkspaceSummaryAsync(tenant.TenantId, http.RequestAborted)) : Unauthorized(http));
-        api.MapGet("/invoice-workspace/page", async (HttpContext http, IInvoicingBillingService service, int? pageNumber, int? pageSize, string? tab, string? search, string? platformCodes, string? shipmentStatus, string? cargoProviderName, string? invoiceStatus, string? invoiceAction, DateTimeOffset? from, DateTimeOffset? to, bool? providerHasCredential) =>
+        api.MapGet("/invoice-workspace/page", async (HttpContext http, IInvoicingBillingService service, int? pageNumber, int? pageSize, string? tab, string? search, string? platformCodes, string? shipmentStatus, string? cargoProviderName, string? invoiceStatus, string? invoiceAction, DateTimeOffset? from, DateTimeOffset? to, bool? providerHasCredential, string? providerEnvironmentsWithCredential) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
             var filter = new InvoiceWorkspacePageQuery(
@@ -35,7 +35,8 @@ public static class InvoicingEndpoints
                 invoiceAction,
                 from,
                 to,
-                providerHasCredential ?? false);
+                providerHasCredential ?? false,
+                providerEnvironmentsWithCredential?.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries));
             return Results.Ok(await service.WorkspacePageAsync(tenant.TenantId, filter, http.RequestAborted));
         });
         api.MapPut("/invoice-workspace/hidden", UpdateInvoiceWorkspaceHiddenAsync);

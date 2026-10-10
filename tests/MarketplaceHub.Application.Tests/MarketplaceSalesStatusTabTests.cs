@@ -169,6 +169,25 @@ public sealed class MarketplaceSalesStatusTabTests
     }
 
     [Fact]
+    public void Return_list_hides_Hepsiburada_claims_without_a_recent_order()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql("Host=localhost;Port=5432;Database=metadata-only;Username=metadata-only;Password=metadata-only")
+            .Options;
+        using var db = new AppDbContext(options);
+        var service = new MarketplaceSalesService(db, null!, null!, null!, null!, null!, null!, TimeProvider.System);
+        var tenantId = Guid.NewGuid();
+        IQueryable<ReturnClaim> query = db.ReturnClaims.AsNoTracking().Where(claim => claim.TenantId == tenantId);
+
+        query = service.ExcludeStaleHepsiburadaReturns(query, tenantId);
+
+        var sql = query.ToQueryString();
+        Assert.Contains("HEPSIBURADA", sql, StringComparison.Ordinal);
+        Assert.Contains("EXISTS", sql, StringComparison.Ordinal);
+        Assert.Contains("OrderedAt", sql, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void On_hold_filter_includes_unpacked_Hepsiburada_hold_orders_without_package_rows()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
@@ -232,4 +251,28 @@ public sealed class MarketplaceSalesStatusTabTests
         Assert.Contains("NOT EXISTS", sql, StringComparison.Ordinal);
         Assert.DoesNotContain("ON_HOLD", sql, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void Shopify_manual_delivery_status_controls_shipped_and_delivered_tab_membership()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql("Host=localhost;Port=5432;Database=metadata-only;Username=metadata-only;Password=metadata-only")
+            .Options;
+        using var db = new AppDbContext(options);
+        var service = new MarketplaceSalesService(db, null!, null!, null!, null!, null!, null!, TimeProvider.System);
+        var tenantId = Guid.NewGuid();
+        IQueryable<Order> shippedQuery = db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId);
+        IQueryable<Order> deliveredQuery = db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId);
+
+        service.ApplyOrderFilters(ref shippedQuery, new OrderListQuery(Status: "SHIPPED"), tenantId);
+        service.ApplyOrderFilters(ref deliveredQuery, new OrderListQuery(Status: "DELIVERED"), tenantId);
+
+        var shippedSql = shippedQuery.ToQueryString();
+        var deliveredSql = deliveredQuery.ToQueryString();
+        Assert.Contains("RawStatus", shippedSql, StringComparison.Ordinal);
+        Assert.Contains("RawStatus", deliveredSql, StringComparison.Ordinal);
+        Assert.Contains("DerivedStatus", shippedSql, StringComparison.Ordinal);
+        Assert.Contains("DerivedStatus", deliveredSql, StringComparison.Ordinal);
+    }
+
 }

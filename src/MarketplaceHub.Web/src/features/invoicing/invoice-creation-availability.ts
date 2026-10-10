@@ -8,8 +8,24 @@ export type InvoiceCreationCandidate = {
 
 export type InvoiceActionFilter = 'ALL' | 'CREATABLE' | 'NOT_CREATABLE'
 export type InvoiceSubmissionAction = 'VALIDATE' | 'SUBMIT' | 'BLOCK'
+export type InvoiceProviderConnection = { id: string; platformCode: string; environment: string; status: string; hasCredential: boolean }
 
 const retryableInvoiceStatuses = new Set(['FATURA_REDDEDILDI', 'REJECTED', 'VALIDATION_FAILED', 'MANUAL_REVIEW', 'MARKETPLACE_FAILED'])
+
+function normalizedInvoiceEnvironment(value: string | null | undefined) {
+  const environment = value?.trim().toUpperCase()
+  return environment === 'STAGE' || environment === 'PRODUCTION' ? environment : null
+}
+
+/** Selects a credentialed provider only when it belongs to the marketplace's exact environment. */
+export function invoiceProviderForEnvironment<T extends InvoiceProviderConnection>(connections: T[], marketplaceEnvironment: string | null | undefined): T | undefined {
+  const environment = normalizedInvoiceEnvironment(marketplaceEnvironment)
+  if (!environment) return undefined
+  return connections.find(connection => connection.platformCode.trim().toUpperCase() === 'TRENDYOL_EFATURAM'
+    && ['ACTIVE', 'VERIFIED'].includes(connection.status.trim().toUpperCase())
+    && connection.hasCredential
+    && normalizedInvoiceEnvironment(connection.environment) === environment)
+}
 
 /** Mirrors the invoice action rendered for a row, excluding only a transient in-flight request. */
 export function isInvoiceCreationAvailable(item: InvoiceCreationCandidate, providerHasCredential: boolean) {

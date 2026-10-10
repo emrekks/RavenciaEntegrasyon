@@ -282,6 +282,43 @@ public sealed class TrendyolCatalogMapperTests
     }
 
     [Fact]
+    public void RejectedReturnClaim_PrefersRejectedPackageCargoOverRootAndExchangeCargo()
+    {
+        const string json = """
+        {
+          "content": [
+            {
+              "claimId": "claim-rejected-reship-1",
+              "orderNumber": "11633780933",
+              "claimItemStatus": { "name": "Rejected" },
+              "cargoProviderName": "PTT Kargo",
+              "cargoTrackingNumber": "7340037640876324",
+              "rejectedPackageInfo": {
+                "cargoProviderName": "Trendyol Express",
+                "cargoTrackingNumber": "7330037747126806",
+                "cargoTrackingLink": "https://tracking.example.test/7330037747126806"
+              },
+              "replacementOutboundpackageinfo": {
+                "cargoProviderName": "Yurtiçi Kargo",
+                "cargoTrackingNumber": "YURTICI-EXCHANGE-1",
+                "cargoTrackingLink": "https://tracking.example.test/exchange"
+              },
+              "items": []
+            }
+          ],
+          "page": 0,
+          "totalPages": 1
+        }
+        """;
+
+        var claim = Assert.Single(TrendyolJsonMapper.Returns(json).Items);
+
+        Assert.Equal("Trendyol Express", claim.CargoProviderName);
+        Assert.Equal("7330037747126806", claim.CargoTrackingNumber);
+        Assert.Equal("https://tracking.example.test/7330037747126806", claim.CargoTrackingLink);
+    }
+
+    [Fact]
     public void ReturnClaim_ReadsNestedReturnPackageCargoProviderObject()
     {
         const string json = """

@@ -57,6 +57,47 @@ public static class InvoiceDeliveryFailurePolicy
     };
 }
 
+public static class InvoiceDeliveryEnvironmentPolicy
+{
+    public const string MismatchErrorCode = "INVOICE_DELIVERY_ENVIRONMENT_MISMATCH";
+
+    public static bool HasProviderCredentialForMarketplace(string? marketplaceEnvironment, IReadOnlyList<string>? providerEnvironmentsWithCredential, bool legacyProviderHasCredential = false)
+    {
+        var marketplace = Normalize(marketplaceEnvironment);
+        if (providerEnvironmentsWithCredential is null) return marketplace is not null && legacyProviderHasCredential;
+        return marketplace is not null && providerEnvironmentsWithCredential
+            .Select(Normalize)
+            .Any(provider => string.Equals(provider, marketplace, StringComparison.Ordinal));
+    }
+
+    public static bool IsCompatible(string? invoiceProviderEnvironment, string? marketplaceEnvironment)
+    {
+        var provider = Normalize(invoiceProviderEnvironment);
+        var marketplace = Normalize(marketplaceEnvironment);
+        return provider is not null && marketplace is not null
+            && string.Equals(provider, marketplace, StringComparison.Ordinal);
+    }
+
+    public static string DescribeMismatch(string? invoiceProviderEnvironment, string? marketplaceEnvironment)
+    {
+        var provider = Normalize(invoiceProviderEnvironment) ?? "bilinmiyor";
+        var marketplace = Normalize(marketplaceEnvironment) ?? "bilinmiyor";
+        return $"Fatura {provider} e-Fatura ortamında oluşturulmuş, sipariş ise {marketplace} pazaryeri ortamında. Fatura yalnız aynı ortamdaki pazaryeri siparişine iletilebilir.";
+    }
+
+    private static string? Normalize(string? environment)
+    {
+        var normalized = environment?.Trim().ToUpperInvariant();
+        return normalized is "STAGE" or "PRODUCTION" ? normalized : null;
+    }
+}
+
+public static class InvoiceDeliveryOperationPolicy
+{
+    public static AdapterContext ForAutomaticMarketplaceDelivery(AdapterContext context) =>
+        context with { Operation = IntegrationOperation.Automatic };
+}
+
 public interface IInvoiceProviderPort
 {
     Task<AdapterResult<ConnectionIdentity>> TestConnectionAsync(AdapterContext context, CancellationToken cancellationToken);
@@ -127,7 +168,8 @@ public sealed record InvoiceWorkspacePageQuery(
     string? InvoiceAction = null,
     DateTimeOffset? From = null,
     DateTimeOffset? To = null,
-    bool ProviderHasCredential = false);
+    bool ProviderHasCredential = false,
+    IReadOnlyList<string>? ProviderEnvironmentsWithCredential = null);
 public sealed record InvoiceWorkspacePageView(
     IReadOnlyList<InvoiceWorkspaceItemView> Items,
     int TotalCount,
@@ -147,7 +189,7 @@ public sealed record InvoiceLineView(Guid Id, int LineSequence, string Descripti
 public sealed record InvoiceDocumentView(Guid Id, string DocumentType, string Sha256, DateTimeOffset CreatedAt);
 public sealed record InvoiceAttemptView(int AttemptNumber, string Outcome, string? ErrorCode, DateTimeOffset StartedAt, DateTimeOffset? CompletedAt);
 public sealed record MarketplaceDeliveryView(Guid Id, string DeliveryType, string Status, string? ExternalReference, string? ErrorCode, DateTimeOffset CreatedAt);
-public sealed record InvoiceDetailView(Guid Id, Guid OrderId, string OrderNumber, Guid? PackageId, Guid ProviderConnectionId, string InvoiceType, string SequencePurpose, string Status, string Currency, decimal TaxExclusiveTotal, decimal DiscountTotal, decimal TaxTotal, decimal PayableTotal, string Note, string? InvoiceNumber, string? EttnUuid, DateTimeOffset? DueAt, DateTimeOffset? IssuedAt, string? LastErrorCode, IReadOnlyList<InvoiceLineView> Lines, IReadOnlyList<InvoiceDocumentView> Documents, IReadOnlyList<InvoiceAttemptView> Attempts, IReadOnlyList<MarketplaceDeliveryView> Deliveries, IReadOnlyList<string> AllowedActions, long Version, bool RequiresSensitiveConfirmation);
+public sealed record InvoiceDetailView(Guid Id, Guid OrderId, string OrderNumber, Guid? PackageId, Guid ProviderConnectionId, string InvoiceType, string SequencePurpose, string Status, string Currency, decimal TaxExclusiveTotal, decimal DiscountTotal, decimal TaxTotal, decimal PayableTotal, string Note, string? InvoiceNumber, string? EttnUuid, DateTimeOffset? DueAt, DateTimeOffset? IssuedAt, string? LastErrorCode, IReadOnlyList<InvoiceLineView> Lines, IReadOnlyList<InvoiceDocumentView> Documents, IReadOnlyList<InvoiceAttemptView> Attempts, IReadOnlyList<MarketplaceDeliveryView> Deliveries, IReadOnlyList<string> AllowedActions, long Version, bool RequiresSensitiveConfirmation, string MarketplacePlatformCode = "TRENDYOL", string MarketplacePlatformDisplayName = "Trendyol");
 
 public interface IInvoicingBillingService
 {

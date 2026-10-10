@@ -4,6 +4,7 @@ import { hubApi, type Me } from '../../shared/api'
 import { Pagination, Tabs, Toast, UiIcon, type UiIconName } from '../../shared/components'
 import { statusLabel } from '../../shared/status-labels'
 import { marketplaceQuestionSyncChange, marketplaceQuestionSyncPresentation } from './marketplace-question-sync'
+import { jobDuration } from './job-duration'
 
 type JobStatus = 'PENDING' | 'LEASED' | 'RETRY_SCHEDULED' | 'BLOCKED' | 'MANUAL_REVIEW' | 'SUCCEEDED' | 'DEAD' | 'CANCELLED'
 type JobSummary = {
@@ -19,6 +20,7 @@ type JobSummary = {
   correlationId: string
   createdAt: string
   startedAt: string | null
+  currentAttemptStartedAt?: string | null
   completedAt: string | null
   marketplace: string
   externalId: string | null
@@ -36,10 +38,11 @@ type JobSummary = {
   progressFailed: number
 }
 type JobOrderContext = { orderId: string; orderNumber: string; externalOrderId: string; status: string; currency: string; netAmount: number; orderedAt: string; externalPackageId: string | null; cargoProvider: string | null; cargoTrackingNumber: string | null; customerName: string | null; lineCount: number }
+type JobInvoiceContext = { invoiceId: string; orderNumber: string; status: string; invoiceType: string; currency: string; payableTotal: number; invoiceNumber: string | null; externalPackageId: string | null }
 type JobChange = { label: string; value: string; detail: string | null }
 type JobScan = { mode: string; label: string; detail: string; window: string | null; plannedIntervalSeconds: number | null; plannedIntervalLabel: string | null; previousScheduledAt: string | null; actualIntervalLabel: string | null }
 type JobFailureReason = { key: string; title: string; description: string; technicalDetail: string; affectedRecords: number; sampleProductIds: string[] }
-type JobDetail = { job: JobSummary; attempts: Array<{ attemptNumber: number; startedAt: string; completedAt: string | null; succeeded: boolean; errorCode: string | null; errorSummary: string | null }>; order: JobOrderContext | null; change: JobChange | null; relatedOrders: JobOrderContext[]; scan: JobScan | null; failureReasons: JobFailureReason[] | null }
+type JobDetail = { job: JobSummary; attempts: Array<{ attemptNumber: number; startedAt: string; completedAt: string | null; succeeded: boolean; errorCode: string | null; errorSummary: string | null }>; order: JobOrderContext | null; change: JobChange | null; relatedOrders: JobOrderContext[]; scan: JobScan | null; failureReasons: JobFailureReason[] | null; invoice: JobInvoiceContext | null }
 
 const statuses: Array<{ value: '' | JobStatus; label: string }> = [
   { value: '', label: 'Tüm durumlar' },
@@ -96,6 +99,7 @@ function jobPresentation(jobType: string): JobPresentation {
   if (type === 'TRENDYOL_ORDER_INVOICE_RECONCILIATION') return { title: 'Paket Fatura Durum Kontrolü', icon: 'invoice', description: 'Trendyol’daki açık paketlerin fatura durumu okunur ve yerel pakete işlenir. Yeni fatura oluşturmaz.' }
   if (type === 'TRENDYOL_ORDER_RECOVERY_SYNC') return { title: 'Sipariş Geçmişi Taraması', icon: 'order', description: 'Erişilebilen sipariş geçmişi taranarak eksik yerel sipariş kayıtları tamamlanır.' }
   if (type === 'TRENDYOL_ORDER_SYNC') return { title: 'Yeni Sipariş Senkronizasyonu', icon: 'order', description: 'Trendyol’daki yeni ve değişen siparişler güvenli aralıklarla sisteme alınır.' }
+  if (type === 'HEPSIBURADA_ORDER_SYNC') return { title: 'Hepsiburada Sipariş İşlemi', icon: 'order', description: 'Hepsiburada sipariş bilgileri güvenli biçimde panele aktarılır.' }
   if (type.includes('SHIPMENT') || type.includes('PACKAGE') || type.includes('COURIER')) return { title: 'Kargo ve Paket İşlemi', icon: 'order', description: 'Paket, kargo firması veya teslimatla ilgili işlem pazaryerine gönderilir.' }
   if (type.includes('LABEL')) return { title: 'Kargo Etiketi', icon: 'order', description: 'Seçilen sipariş veya paket için kargo etiketi işlemi yürütülür.' }
   if (type.includes('ORDER')) return { title: 'Sipariş İşlemi', icon: 'order', description: 'Siparişle ilgili arka plan işlemi yürütülür.' }
@@ -150,15 +154,6 @@ function formatOptionalJobTime(value: string | null) {
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('tr-TR')
 }
-function jobDuration(startedAt: string | null, completedAt: string | null) {
-  if (!startedAt) return 'Başlamadı'
-  const start = new Date(startedAt).getTime(); const end = completedAt ? new Date(completedAt).getTime() : Date.now()
-  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return '—'
-  const seconds = Math.max(0, Math.round((end - start) / 1000))
-  if (seconds < 60) return `${seconds} sn`
-  return `${Math.floor(seconds / 60)} dk ${seconds % 60} sn`
-}
-
 type JobTimeRange = '24h' | '7d' | 'all'
 
 function timeRangeLabel(value: JobTimeRange) {
@@ -240,7 +235,7 @@ function JobStatusSummary({ job }: { job: JobSummary }) {
     </div>
     <div className="jobs-reference-status-hero-time">
       <small>Son kayıt</small>
-      <strong>{formatOptionalJobTime(job.completedAt ?? job.startedAt ?? job.createdAt)}</strong>
+      <strong>{formatOptionalJobTime(job.completedAt ?? job.currentAttemptStartedAt ?? job.startedAt ?? job.createdAt)}</strong>
     </div>
   </section>
 }
@@ -327,11 +322,12 @@ function JobDetailDrawer({ selected, detail, selectedIsRunning, elevated, retrya
         {hasError && <div className="jobs-reference-error-alert"><strong>{job.lastErrorCode ?? 'İşlem hatası'}</strong><span>{job.lastErrorSummary ?? 'İşlem başarısız oldu ancak ayrıntılı hata açıklaması kaydedilmedi.'}</span></div>}
         {selectedIsRunning && action.isPending && <p className="jobs-reference-cancel-note">Çalışan işlem durduruluyor. Dış API çağrısı tamamlanana kadar durum birkaç saniye daha “Çalışıyor” görünebilir.</p>}
         <section className="jobs-reference-change-summary" aria-labelledby="job-change-title"><div><span className="jobs-reference-section-kicker">İşlem özeti</span><h3 id="job-change-title">{change.value}</h3></div><div><strong>{change.label}</strong><p>{change.detail ?? 'İşlem ayrıntısı mevcut.'}</p></div></section>
+        {detail.data.invoice && <section className="jobs-reference-order-context" aria-labelledby="job-invoice-context-title"><div><span className="jobs-reference-section-kicker">Fatura denemesi</span><h3 id="job-invoice-context-title">Sipariş #{detail.data.invoice.orderNumber}</h3><p>Bu e-Fatura işlemi seçili sipariş için başlatıldı.</p></div><div className="jobs-reference-order-facts"><p><small>Fatura kaydı</small><strong>{detail.data.invoice.invoiceId}</strong></p><p><small>Fatura durumu</small><strong>{statusLabel(detail.data.invoice.status)}</strong></p><p><small>Fatura türü</small><strong>{detail.data.invoice.invoiceType}</strong></p><p><small>Fatura tutarı</small><strong>{detail.data.invoice.payableTotal.toLocaleString('tr-TR', { style: 'currency', currency: detail.data.invoice.currency })}</strong></p>{detail.data.invoice.invoiceNumber && <p><small>Fatura numarası</small><strong>{detail.data.invoice.invoiceNumber}</strong></p>}{detail.data.invoice.externalPackageId && <p><small>Paket no</small><strong>{detail.data.invoice.externalPackageId}</strong></p>}</div></section>}
         <JobProgressSummary job={job} />
         <JobFailureReasons job={job} reasons={detail.data.failureReasons ?? null} />
         {detail.data.scan && <JobScanSummary scan={detail.data.scan} />}
         {job.batchCount > 1 ? <section className="jobs-reference-batch-context" aria-labelledby="job-batch-title"><div className="jobs-reference-batch-heading"><div><span className="jobs-reference-section-kicker">Toplu işlem</span><h3 id="job-batch-title">{job.batchCount} job · {detail.data.relatedOrders.length} sipariş</h3></div><span className="jobs-reference-batch-note">Sonuçlar sipariş bazında</span></div><div className="jobs-reference-batch-list">{detail.data.relatedOrders.map(order => <article key={order.orderId}><div><strong>Sipariş #{order.orderNumber}</strong><small>{order.customerName ?? 'Müşteri bilgisi yok'} · {order.lineCount} ürün satırı</small></div><span>{order.cargoProvider ?? 'Kargo bilgisi yok'}</span><b>{statusLabel(order.status)}</b></article>)}{detail.data.relatedOrders.length === 0 && <p>Sipariş bağlantısı bulunamadı.</p>}</div></section> : detail.data.order && <section className="jobs-reference-order-context" aria-labelledby="job-order-context-title"><div><span className="jobs-reference-section-kicker">İlgili sipariş</span><h3 id="job-order-context-title">Sipariş #{detail.data.order.orderNumber}</h3><p>{detail.data.order.customerName ?? 'Müşteri bilgisi yok'} · {detail.data.order.lineCount} ürün satırı</p></div><div className="jobs-reference-order-facts"><p><small>Dış sipariş ID</small><strong>{detail.data.order.externalOrderId}</strong></p><p><small>Sipariş durumu</small><strong>{statusLabel(detail.data.order.status)}</strong></p><p><small>Sipariş tarihi</small><strong>{formatOptionalJobTime(detail.data.order.orderedAt)}</strong></p><p><small>Sipariş tutarı</small><strong>{detail.data.order.netAmount.toLocaleString('tr-TR', { style: 'currency', currency: detail.data.order.currency })}</strong></p>{detail.data.order.externalPackageId && <p><small>Paket no</small><strong>{detail.data.order.externalPackageId}</strong></p>}{detail.data.order.cargoTrackingNumber && <p><small>Kargo takip no</small><strong>{detail.data.order.cargoTrackingNumber}</strong></p>}</div></section>}
-        <section className="jobs-reference-facts-section" aria-labelledby="job-facts-title"><div className="jobs-reference-section-heading"><div><span className="jobs-reference-section-kicker">Kayıt ayrıntıları</span><h3 id="job-facts-title">Teknik bilgiler</h3></div><span>İşlemin kimliği ve yürütme zamanları</span></div><div className="job-detail-facts"><p><small>Pazaryeri</small><strong>{job.marketplace}</strong></p><p><small>İşlem</small><strong>{job.jobType}</strong></p><p><small>Dış kimlik</small><strong>{job.externalId ?? '—'}</strong></p><p><small>Retry sayısı</small><strong>{job.attemptCount} / {job.maxAttempts}</strong></p><p><small>Oluşturulma</small><strong>{formatOptionalJobTime(job.createdAt)}</strong></p><p><small>Çalışma başlangıcı</small><strong>{formatOptionalJobTime(job.startedAt)}</strong></p><p><small>Tamamlanma</small><strong>{formatOptionalJobTime(job.completedAt)}</strong></p><p><small>Çalışma süresi</small><strong>{jobDuration(job.startedAt, job.completedAt)}</strong></p><p><small>İlk hata</small><strong>{formatOptionalJobTime(job.firstFailedAt)}</strong></p><p><small>Son hata</small><strong>{formatOptionalJobTime(job.lastFailedAt)}</strong></p><p><small>Sonraki deneme</small><strong>{formatOptionalJobTime(job.nextRetryAt)}</strong></p><p><small>Correlation ID</small><strong>{job.correlationId}</strong></p></div></section>
+        <section className="jobs-reference-facts-section" aria-labelledby="job-facts-title"><div className="jobs-reference-section-heading"><div><span className="jobs-reference-section-kicker">Kayıt ayrıntıları</span><h3 id="job-facts-title">Teknik bilgiler</h3></div><span>İşlemin kimliği ve yürütme zamanları</span></div><div className="job-detail-facts"><p><small>Pazaryeri</small><strong>{job.marketplace}</strong></p><p><small>İşlem</small><strong>{job.jobType}</strong></p><p><small>Dış kimlik</small><strong>{job.externalId ?? '—'}</strong></p><p><small>Retry sayısı</small><strong>{job.attemptCount} / {job.maxAttempts}</strong></p><p><small>Oluşturulma</small><strong>{formatOptionalJobTime(job.createdAt)}</strong></p><p><small>{job.status === 'LEASED' ? 'Bu denemenin başlangıcı' : 'İlk çalışma başlangıcı'}</small><strong>{formatOptionalJobTime(job.status === 'LEASED' ? job.currentAttemptStartedAt ?? job.startedAt : job.startedAt)}</strong></p><p><small>Tamamlanma</small><strong>{formatOptionalJobTime(job.completedAt)}</strong></p><p><small>Çalışma süresi</small><strong>{jobDuration(job.startedAt, job.completedAt, job.currentAttemptStartedAt ?? null, job.status)}</strong></p><p><small>İlk hata</small><strong>{formatOptionalJobTime(job.firstFailedAt)}</strong></p><p><small>Son hata</small><strong>{formatOptionalJobTime(job.lastFailedAt)}</strong></p><p><small>Sonraki deneme</small><strong>{formatOptionalJobTime(job.nextRetryAt)}</strong></p><p><small>Correlation ID</small><strong>{job.correlationId}</strong></p></div></section>
         {elevated && <div className="job-detail-actions">{retryable && <button type="button" disabled={action.isPending} onClick={() => action.mutate({ id: job.id, verb: 'retry' })}>Manuel Yeniden Dene</button>}{cancellable && <button type="button" className="secondary" disabled={action.isPending} onClick={() => action.mutate({ id: job.id, verb: 'cancel' })}>{action.isPending ? selectedIsRunning ? 'Durduruluyor…' : 'İptal ediliyor…' : selectedIsRunning ? 'Durdur' : 'İptal et'}</button>}</div>}
         {action.isError && <div role="alert" className="error">İşlem güncellenemedi.</div>}
         <section className="jobs-reference-attempts-section" aria-labelledby="job-attempts-title"><div className="jobs-reference-section-heading"><div><span className="jobs-reference-section-kicker">Yürütme geçmişi</span><h3 id="job-attempts-title">Deneme geçmişi</h3></div><span>{detail.data.attempts.length} kayıt</span></div><div className="table-wrap"><table><thead><tr><th>#</th><th>Başlangıç</th><th>Sonuç</th><th>Hata</th></tr></thead><tbody>{detail.data.attempts.map(attempt => <tr key={attempt.attemptNumber}><td>{attempt.attemptNumber}</td><td>{new Date(attempt.startedAt).toLocaleString('tr-TR')}</td><td>{attempt.completedAt ? (attempt.succeeded ? 'Başarılı' : 'Başarısız') : 'Çalışıyor'}</td><td>{attempt.errorCode ?? '—'}<small>{attempt.errorSummary ?? ''}</small></td></tr>)}{detail.data.attempts.length === 0 && <tr><td colSpan={4}>Henüz deneme yok.</td></tr>}</tbody></table></div></section>
@@ -487,10 +483,10 @@ export function JobsPage({ me }: { me: Me }) {
             const time = formatJobTime(job.createdAt)
             const typeDescriptionId = `job-type-description-${job.id}`
             return <tr className="jobs-reference-row" key={job.id} aria-describedby={typeDescriptionId} onClick={() => setSelectedId(job.id)} tabIndex={0} onKeyDown={event => { if (event.key === 'Enter') setSelectedId(job.id) }}>
-              <td><div className="jobs-reference-type"><span className="jobs-reference-type-icon" aria-hidden="true"><JobsIcon name={presentation.icon} /></span><span className="jobs-reference-type-content"><strong>{presentation.title}</strong><small>{job.marketplace} · {job.batchCount > 1 ? `Toplu işlem · ${job.batchCount} job` : job.externalId ?? jobSource(job.jobType)}</small><span id={typeDescriptionId} className="jobs-reference-type-tooltip" role="tooltip">{presentation.description}</span></span></div></td>
+              <td><div className="jobs-reference-type"><span className="jobs-reference-type-icon" aria-hidden="true"><JobsIcon name={presentation.icon} /></span><span className="jobs-reference-type-content"><strong>{presentation.title}</strong>{(job.batchCount > 1 || job.externalId || job.jobType.toUpperCase() !== 'HEPSIBURADA_ORDER_SYNC') && <small>{job.batchCount > 1 ? `Toplu işlem · ${job.batchCount} job` : job.externalId ?? `${job.marketplace} · ${jobSource(job.jobType)}`}</small>}<span id={typeDescriptionId} className="jobs-reference-type-tooltip" role="tooltip">{presentation.description}</span></span></div></td>
               <td><span className={`jobs-reference-status ${jobStatusTone(job.status)}`}><i aria-hidden="true" />{jobStatusLabel(job.status)}</span></td>
               <td className="jobs-reference-attempt">{job.attemptCount} / {job.maxAttempts}</td>
-              <td><div className="jobs-reference-time"><strong>{time.time}</strong><small>{time.day}</small><small>{job.startedAt ? `Süre ${jobDuration(job.startedAt, job.completedAt)}` : 'Çalışma başlamadı'}</small></div></td>
+              <td><div className="jobs-reference-time"><strong>{time.time}</strong><small>{time.day}</small><small>{job.startedAt ? `Süre ${jobDuration(job.startedAt, job.completedAt, job.currentAttemptStartedAt ?? null, job.status)}` : 'Çalışma başlamadı'}</small></div></td>
               <td><span className="jobs-reference-correlation">{job.correlationId}</span></td>
               <td><button type="button" className="jobs-reference-row-action" aria-label={`${presentation.title} ayrıntısını aç`} onClick={event => { event.stopPropagation(); setSelectedId(job.id) }}><UiIcon name="chevronRight" /></button></td>
             </tr>

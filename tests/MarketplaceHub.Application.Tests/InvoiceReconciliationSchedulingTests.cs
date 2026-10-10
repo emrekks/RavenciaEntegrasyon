@@ -13,7 +13,7 @@ public sealed class InvoiceReconciliationSchedulingTests
         var configuration = new ConfigurationBuilder().Build();
 
         Assert.Equal(100, ScheduledJobProducer.InvoiceReconciliationBatchSize("HEPSIBURADA", configuration));
-        Assert.Equal(20, ScheduledJobProducer.InvoiceReconciliationBatchSize("TRENDYOL", configuration));
+        Assert.Equal(5, ScheduledJobProducer.InvoiceReconciliationBatchSize("TRENDYOL", configuration));
         Assert.Equal(20, ScheduledJobProducer.InvoiceReconciliationBatchSize("SHOPIFY", configuration));
     }
 
@@ -23,11 +23,26 @@ public sealed class InvoiceReconciliationSchedulingTests
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["MarketplaceSync:OrderInvoiceReconciliation:HepsiburadaBatchSize"] = "999",
+            ["MarketplaceSync:OrderInvoiceReconciliation:TrendyolBatchSize"] = "999",
             ["MarketplaceSync:OrderInvoiceReconciliation:BatchSize"] = "0"
         }).Build();
 
         Assert.Equal(250, ScheduledJobProducer.InvoiceReconciliationBatchSize("HEPSIBURADA", configuration));
-        Assert.Equal(1, ScheduledJobProducer.InvoiceReconciliationBatchSize("TRENDYOL", configuration));
+        Assert.Equal(100, ScheduledJobProducer.InvoiceReconciliationBatchSize("TRENDYOL", configuration));
+        Assert.Equal(1, ScheduledJobProducer.InvoiceReconciliationBatchSize("SHOPIFY", configuration));
+    }
+
+    [Fact]
+    public void TrendyolInvoiceReadBatchCanBeConfiguredWithoutChangingOtherPlatforms()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["MarketplaceSync:OrderInvoiceReconciliation:TrendyolBatchSize"] = "3",
+            ["MarketplaceSync:OrderInvoiceReconciliation:BatchSize"] = "40"
+        }).Build();
+
+        Assert.Equal(3, ScheduledJobProducer.InvoiceReconciliationBatchSize("TRENDYOL", configuration));
+        Assert.Equal(40, ScheduledJobProducer.InvoiceReconciliationBatchSize("SHOPIFY", configuration));
     }
 
     [Theory]

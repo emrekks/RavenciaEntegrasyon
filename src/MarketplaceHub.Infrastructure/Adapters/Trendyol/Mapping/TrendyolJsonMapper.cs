@@ -28,24 +28,45 @@ public static class TrendyolJsonMapper
                 {
                     foreach (var line in lineArray.EnumerateArray())
                     {
-                        var externalLineId = Text(line, "lineId", "id"); if (string.IsNullOrWhiteSpace(externalLineId)) continue;
-                        if (!TryDecimal(line, out var quantity, "quantity") || quantity <= 0)
-                            throw new JsonException($"Order line {externalLineId} has no valid positive quantity.");
-                        if (!TryDecimal(line, out var unitPrice, "lineItemPrice", "lineUnitPrice", "lineGrossAmount", "price", "amount") || unitPrice < 0)
-                            throw new JsonException($"Order line {externalLineId} has no valid unit price.");
-                        if (!TryDecimal(line, out var vatRate, "vatRate", "vatBaseAmount") || vatRate < 0)
-                            throw new JsonException($"Order line {externalLineId} has no valid VAT value.");
-                        var barcode = NullText(line, "barcode");
-                        var sku = Text(line, "stockCode", "merchantSku");
-                        if (string.IsNullOrWhiteSpace(sku)) sku = barcode ?? "";
-                        var title = Text(line, "productName", "title");
-                        if (string.IsNullOrWhiteSpace(sku) || string.IsNullOrWhiteSpace(title))
-                            throw new JsonException($"Order line {externalLineId} has no SKU/barcode or product name.");
-                        var rawStatus = Text(line, "orderLineItemStatusName");
-                        lines.Add(new(externalLineId, sku, barcode, title, quantity, unitPrice, vatRate, rawStatus, line.GetRawText()));
-                        allocations.Add(new(externalLineId, quantity, 0, 0, 0, 0));
+                        var externalLineId = Text(line, "lineId", "id");
+                        try
+                        {
+                            if (string.IsNullOrWhiteSpace(externalLineId))
+                                throw new JsonException("Order line has no line ID.");
+                            if (!TryDecimal(line, out var quantity, "quantity") || quantity <= 0)
+                                throw new JsonException($"Order line {externalLineId} has no valid positive quantity.");
+                            if (!TryDecimal(line, out var unitPrice, "lineItemPrice", "lineUnitPrice", "lineGrossAmount", "price", "amount") || unitPrice < 0)
+                                throw new JsonException($"Order line {externalLineId} has no valid unit price.");
+                            if (!TryDecimal(line, out var vatRate, "vatRate", "vatBaseAmount") || vatRate < 0)
+                                throw new JsonException($"Order line {externalLineId} has no valid VAT value.");
+                            var barcode = NullText(line, "barcode");
+                            var sku = Text(line, "stockCode", "merchantSku");
+                            if (string.IsNullOrWhiteSpace(sku)) sku = barcode ?? "";
+                            var title = Text(line, "productName", "title");
+                            if (string.IsNullOrWhiteSpace(sku) || string.IsNullOrWhiteSpace(title))
+                                throw new JsonException($"Order line {externalLineId} has no SKU/barcode or product name.");
+                            var rawStatus = Text(line, "orderLineItemStatusName");
+                            lines.Add(new(externalLineId, sku, barcode, title, quantity, unitPrice, vatRate, rawStatus, line.GetRawText()));
+                            allocations.Add(new(externalLineId, quantity, 0, 0, 0, 0));
+                        }
+                        catch (JsonException exception)
+                        {
+                            // A single incomplete product line must not hide its
+                            // otherwise valid order and shipment package. Keep
+                            // the package totals/status and report the omitted
+                            // line so it can be repaired without inventing data.
+                            issues.Add(new(
+                                "ORDER_PACKAGE_LINE_INVALID",
+                                string.IsNullOrWhiteSpace(externalLineId) ? externalPackageId : $"{externalPackageId}:{externalLineId}",
+                                $"Sipariş paketi {externalPackageId} alındı ancak ürün satırı eşlenemedi: {exception.Message}"));
+                        }
                     }
                 }
+                if (lines.Count == 0
+                    && (!package.TryGetProperty("lines", out var rawLines)
+                        || rawLines.ValueKind != JsonValueKind.Array
+                        || rawLines.GetArrayLength() == 0))
+                    issues.Add(new("ORDER_PACKAGE_LINES_MISSING", externalPackageId, $"Sipariş paketi {externalPackageId} alındı ancak eşlenebilir ürün satırı bulunamadı."));
                 var gross = Decimal(package, "packageGrossAmount", "grossAmount", "packageTotalPrice");
                 var discount = Decimal(package, "packageTotalDiscount");
                 if (discount == 0) discount = Decimal(package, "packageSellerDiscount", "totalDiscount") + Decimal(package, "packageTyDiscount", "totalTyDiscount");
@@ -877,12 +898,8 @@ public static class TrendyolJsonMapper
     private static string Text(JsonElement value, params string[] names) => NullText(value, names) ?? "";
     private static string? NullText(JsonElement value, params string[] names) { foreach (var name in names) if (value.TryGetProperty(name, out var item) && item.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined)) return item.ToString(); return null; }
     private static string? NestedText(JsonElement value, string objectName, params string[] names) => value.TryGetProperty(objectName, out var nested) && nested.ValueKind == JsonValueKind.Object ? NullText(nested, names) : null;
-    private static string? ReturnCargoProvider(JsonElement claim)
-    {
-        var nestedProvider = NestedText(claim, "cargoProvider", "name", "code", "label");
-        if (!string.IsNullOrWhiteSpace(nestedProvider)) return nestedProvider;
-        return ReturnCargoField(claim, "cargoProviderName", "cargoProviderCode", "cargoProvider");
-    }
+    private static string? ReturnCargoProvider(JsonElement claim) =>
+        ReturnCargoField(claim, "cargoProviderName", "cargoProviderCode", "cargoProvider");
     private static string? OrderCargoProvider(JsonElement package)
     {
         var nestedProvider = NestedText(package, "cargoProvider", "name", "shortName", "code", "label");
@@ -892,14 +909,16 @@ public static class TrendyolJsonMapper
     }
     private static string? ReturnCargoField(JsonElement claim, params string[] names)
     {
+        // Trendyol puts a rejected return shipment back to the customer in
+        // rejectedPackageInfo. replacementOutboundpackageinfo is for exchange
+        // shipments and must not replace the rejected return's cargo details.
+        var rejectedCargo = NestedCargoText(claim, "rejectedPackageInfo", names);
+        if (!string.IsNullOrWhiteSpace(rejectedCargo)) return rejectedCargo;
+
         var rootValue = ScalarText(claim, names);
         if (!string.IsNullOrWhiteSpace(rootValue)) return rootValue;
 
-        // Trendyol places the shipped rejected-return package under this
-        // object; it is distinct from replacementOutboundpackageinfo, which
-        // must never be shown as the customer's return cargo.
-        return NestedCargoText(claim, "rejectedPackageInfo", names)
-            ?? NestedCargoText(claim, "returnPackageInfo", names);
+        return NestedCargoText(claim, "returnPackageInfo", names);
     }
     private static string? NestedCargoText(JsonElement value, string objectName, params string[] names)
     {

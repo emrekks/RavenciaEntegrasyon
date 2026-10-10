@@ -446,6 +446,8 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
     internal static int InvoiceReconciliationBatchSize(string platformCode, IConfiguration configuration) =>
         string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
             ? Math.Clamp(configuration.GetValue("MarketplaceSync:OrderInvoiceReconciliation:HepsiburadaBatchSize", 100), 1, 250)
+            : string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase)
+                ? Math.Clamp(configuration.GetValue("MarketplaceSync:OrderInvoiceReconciliation:TrendyolBatchSize", 5), 1, 100)
             : Math.Clamp(configuration.GetValue("MarketplaceSync:OrderInvoiceReconciliation:BatchSize", 20), 1, 250);
 
     private bool WritesEnabled(string settingsJson)

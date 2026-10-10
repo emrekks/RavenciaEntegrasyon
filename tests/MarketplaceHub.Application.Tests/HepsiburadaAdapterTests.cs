@@ -728,6 +728,86 @@ public sealed class HepsiburadaAdapterTests
     }
 
     [Fact]
+    public void OrderMapperMergesInvoiceEnvelopeIdentityFieldsWithNestedAddress()
+    {
+        using var json = JsonDocument.Parse("""
+        {
+          "orderNumber": "HB-INVOICE-ENVELOPE",
+          "orderDate": "2026-09-28T12:15:00Z",
+          "invoice": {
+            "identityNo": "10987654321",
+            "isCorporate": false,
+            "address": { "city": "İstanbul", "district": "Şişli", "fullAddress": "Test adres" }
+          },
+          "items": [{ "id": "line-invoice-envelope", "merchantSku": "sku-invoice-envelope", "quantity": 1, "price": 20 }]
+        }
+        """);
+
+        var order = HepsiburadaJsonMapper.Order(json.RootElement, "HB-INVOICE-ENVELOPE");
+        using var invoiceAddress = JsonDocument.Parse(order.InvoiceAddressSnapshotJson);
+
+        Assert.Equal("10987654321", invoiceAddress.RootElement.GetProperty("identityNo").GetString());
+        Assert.False(invoiceAddress.RootElement.GetProperty("isCorporate").GetBoolean());
+        Assert.Equal("İstanbul", invoiceAddress.RootElement.GetProperty("city").GetString());
+        Assert.Equal("Test adres", invoiceAddress.RootElement.GetProperty("fullAddress").GetString());
+    }
+
+    [Fact]
+    public void PackageOrderMapperMergesInvoiceEnvelopeIdentityFieldsWithNestedAddress()
+    {
+        using var json = JsonDocument.Parse("""
+        {
+          "orderNumber": "HB-PACKAGE-INVOICE-ENVELOPE",
+          "packageNumber": "5000031600",
+          "status": "Delivered",
+          "orderDate": "2026-09-28T12:15:00Z",
+          "invoice": {
+            "identityNo": "10987654321",
+            "address": { "city": "İstanbul", "district": "Şişli" }
+          },
+          "lineItems": [{ "lineItemId": "line-package-envelope", "merchantSku": "sku-package-envelope", "quantity": 1, "price": 20 }]
+        }
+        """);
+
+        var result = HepsiburadaJsonMapper.OrderPackage(json.RootElement);
+        using var invoiceAddress = JsonDocument.Parse(result.OrderSnapshot!.InvoiceAddressSnapshotJson);
+
+        Assert.Equal("10987654321", invoiceAddress.RootElement.GetProperty("identityNo").GetString());
+        Assert.Equal("İstanbul", invoiceAddress.RootElement.GetProperty("city").GetString());
+    }
+
+    [Fact]
+    public void PackageOrderMapperKeepsFlatInvoiceFieldsWhenAddressIsAString()
+    {
+        using var json = JsonDocument.Parse("""
+        {
+          "orderNumber": "HB-PACKAGE-FLAT-INVOICE",
+          "packageNumber": "5000031601",
+          "status": "Delivered",
+          "orderDate": "2026-09-28T12:15:00Z",
+          "invoice": {
+            "turkishIdentityNumber": "10987654321",
+            "isCorporate": false,
+            "address": "Örnek Cadde No:1",
+            "city": "Konya",
+            "town": "Selçuklu",
+            "name": "Ayşe Örnek"
+          },
+          "lineItems": [{ "lineItemId": "line-flat-invoice", "merchantSku": "sku-flat-invoice", "quantity": 1, "price": 20 }]
+        }
+        """);
+
+        var result = HepsiburadaJsonMapper.OrderPackage(json.RootElement);
+        using var invoiceAddress = JsonDocument.Parse(result.OrderSnapshot!.InvoiceAddressSnapshotJson);
+
+        Assert.Equal(JsonValueKind.Object, invoiceAddress.RootElement.ValueKind);
+        Assert.Equal("Örnek Cadde No:1", invoiceAddress.RootElement.GetProperty("address").GetString());
+        Assert.Equal("Konya", invoiceAddress.RootElement.GetProperty("city").GetString());
+        Assert.Equal("Selçuklu", invoiceAddress.RootElement.GetProperty("town").GetString());
+        Assert.Equal("10987654321", invoiceAddress.RootElement.GetProperty("turkishIdentityNumber").GetString());
+    }
+
+    [Fact]
     public void OrderMapperKeepsOrderLifecycleSeparateFromClaimCreatedLineStatus()
     {
         using var json = JsonDocument.Parse("""
@@ -861,7 +941,7 @@ public sealed class HepsiburadaAdapterTests
           "hasInvoice": false,
           "customerName": "Ayşe Test",
           "shippingAddress": { "city": "İstanbul", "town": "Kadıköy" },
-          "invoice": { "address": { "city": "İstanbul", "town": "Üsküdar" } }
+          "invoice": { "identityNo": "10987654321", "address": { "city": "İstanbul", "town": "Üsküdar" } }
         }
         """);
 
@@ -880,10 +960,12 @@ public sealed class HepsiburadaAdapterTests
         Assert.Equal("Ayşe Test", customer.RootElement.GetProperty("name").GetString());
         Assert.Equal("NOT_INVOICED", customer.RootElement.GetProperty("marketplaceInvoiceStatus").GetString());
         Assert.Equal("HepsiJet", customer.RootElement.GetProperty("marketplaceCargoProviderName").GetString());
+        using var invoiceAddress = JsonDocument.Parse(order.InvoiceAddressSnapshotJson);
+        Assert.Equal("10987654321", invoiceAddress.RootElement.GetProperty("identityNo").GetString());
+        Assert.Equal("Üsküdar", invoiceAddress.RootElement.GetProperty("town").GetString());
         using var source = JsonDocument.Parse(order.Lines[0].SourceSnapshotJson);
         Assert.Equal("https://productimages.hepsiburada.net/test/hb-19.jpg", source.RootElement.GetProperty("imageUrl").GetString());
         Assert.Contains("Kadıköy", order.ShipmentAddressSnapshotJson, StringComparison.Ordinal);
-        Assert.Contains("Üsküdar", order.InvoiceAddressSnapshotJson, StringComparison.Ordinal);
     }
 
     [Theory]

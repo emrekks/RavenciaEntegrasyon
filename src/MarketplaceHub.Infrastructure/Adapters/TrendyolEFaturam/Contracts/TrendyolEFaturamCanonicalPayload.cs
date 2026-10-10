@@ -16,14 +16,40 @@ public static class TrendyolEFaturamCanonicalPayload
         var addressSnapshot = ParseSnapshot(order, "InvoiceAddressSnapshotJson");
         try
         {
-            var address = RequiredObject(addressSnapshot.RootElement, "invoiceAddress");
-            var taxId = Text(address, "taxNumber", "invoiceTaxNumber", "identityNumber", "IdentityNumber", "tcIdentityNumber");
+            // Trendyol order feeds store invoiceAddress as the snapshot root,
+            // while other marketplace/local snapshots may wrap it in invoiceAddress
+            // or address. Accept both shapes so valid recipient details reach the fiscal payload.
+            using var normalizedAddress = NormalizeAddressSnapshot(addressSnapshot.RootElement);
+            var addressRoot = normalizedAddress.RootElement;
+            var address = addressRoot;
+            for (var depth = 0; depth < 3; depth++)
+            {
+                if (!TryGetObjectProperty(address, out var wrappedAddress, "invoiceAddress", "invoice", "address")) break;
+                address = wrappedAddress;
+            }
+            var invoiceType = RequiredText(root, "InvoiceType");
+            var taxId = Text(address, "taxNumber", "invoiceTaxNumber", "identityNumber", "identityNo", "tcIdentityNumber", "turkishIdentityNumber", "taxId", "taxIdentifier", "nationalIdentityNumber", "tckn", "vkn");
             if (!ValidTaxId(taxId))
-                taxId = Text(customer.RootElement, "customerTaxNumber", "taxNumber", "invoiceTaxNumber", "identityNumber", "customerIdentityNumber", "tcIdentityNumber");
+                taxId = FindTaxId(addressRoot);
+            if (!ValidTaxId(taxId))
+                taxId = FindTaxId(customer.RootElement);
+            if (taxId == "11111111111")
+                throw new JsonException("EFATURAM_RECIPIENT_TAX_ID_PLACEHOLDER_NOT_ALLOWED");
             if (!ValidTaxId(taxId))
                 throw new JsonException("EFATURAM_RECIPIENT_TAX_ID_REQUIRED");
 
-            var invoiceType = RequiredText(root, "InvoiceType");
+            // E-Faturam requires recipientInfo.name. Hepsiburada stores the
+            // recipient's full name as `name` on the flat invoice-address snapshot,
+            // rather than splitting it into firstName/lastName.
+            var recipientName = NullText(address, "firstName", "name", "fullName", "recipientName", "companyTitle", "businessName", "legalName", "tradeName", "companyName")
+                ?? NullText(addressRoot, "firstName", "name", "fullName", "recipientName", "companyTitle", "businessName", "legalName", "tradeName", "companyName")
+                ?? NullText(customer.RootElement, "customerFirstName", "firstName", "name", "fullName", "recipientName", "customerName", "companyTitle", "businessName", "legalName", "tradeName", "companyName");
+            if (recipientName is not { Length: >= 2 })
+                throw new JsonException("EFATURAM_RECIPIENT_NAME_REQUIRED");
+            var recipientSurname = NullText(address, "lastName", "surname", "familyName")
+                ?? NullText(addressRoot, "lastName", "surname", "familyName")
+                ?? NullText(customer.RootElement, "customerLastName", "lastName", "surname", "familyName");
+
             var lines = RequiredArray(root, "Lines").EnumerateArray().Select(line =>
             {
                 var total = Decimal(line, "LineTotal");
@@ -52,8 +78,8 @@ public static class TrendyolEFaturamCanonicalPayload
                 DateOnly.FromDateTime(orderedAt.Date), DateTimeOffset.Parse(RequiredText(root, "IssuedAt")),
                 new(taxId, Text(address, "countryCode") is { Length: > 0 } country ? country : "TR", Text(address, "city"), Text(address, "district"),
                     Text(address, "fullAddress", "address1", "addressText", "address"), NullText(address, "postalCode"), NullText(address, "phone"),
-                    NullText(address, "email") ?? NullText(customer.RootElement, "customerEmail"), NullText(address, "firstName") ?? NullText(customer.RootElement, "customerFirstName"),
-                    NullText(address, "lastName") ?? NullText(customer.RootElement, "customerLastName"), NullText(address, "taxOffice")),
+                    NullText(address, "email") ?? NullText(customer.RootElement, "customerEmail"), recipientName,
+                    recipientSurname, NullText(address, "taxOffice")),
                 lines, payment, delivery);
             return TrendyolEFaturamInvoicePayload.Create(account, source);
         }
@@ -65,17 +91,92 @@ public static class TrendyolEFaturamCanonicalPayload
     }
 
     private static JsonDocument ParseSnapshot(JsonElement parent, string name) => JsonDocument.Parse(RequiredText(parent, name));
+    private static JsonDocument NormalizeAddressSnapshot(JsonElement snapshot)
+    {
+        if (snapshot.ValueKind == JsonValueKind.Object)
+            return JsonDocument.Parse(snapshot.GetRawText());
+
+        if (snapshot.ValueKind == JsonValueKind.String)
+        {
+            var text = snapshot.GetString()?.Trim() ?? "";
+            if (text.Length > 0)
+            {
+                try
+                {
+                    using var nested = JsonDocument.Parse(text);
+                    if (nested.RootElement.ValueKind == JsonValueKind.Object)
+                        return JsonDocument.Parse(nested.RootElement.GetRawText());
+                }
+                catch (JsonException) { }
+            }
+
+            return JsonDocument.Parse(JsonSerializer.Serialize(new { address = text }));
+        }
+
+        throw new JsonException("invoiceAddress missing");
+    }
     private static JsonElement RequiredObject(JsonElement parent, string name) => parent.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Object ? value : throw new JsonException($"{name} missing");
     private static JsonElement RequiredArray(JsonElement parent, string name) => parent.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Array ? value : throw new JsonException($"{name} missing");
     private static string RequiredText(JsonElement parent, string name) => Text(parent, name) is { Length: > 0 } value ? value : throw new JsonException($"{name} missing");
     private static decimal Decimal(JsonElement parent, string name) => parent.TryGetProperty(name, out var value) && value.TryGetDecimal(out var number) ? number : throw new JsonException($"{name} missing");
     private static bool ValidTaxId(string value) => value.Length is 10 or 11 && value.All(char.IsAsciiDigit);
+    private static string FindTaxId(JsonElement source, int depth = 0)
+    {
+        var value = Text(source, "customerTaxNumber", "taxNumber", "invoiceTaxNumber", "identityNumber", "identityNo", "customerIdentityNumber", "tcIdentityNumber", "turkishIdentityNumber", "taxId", "taxIdentifier", "nationalIdentityNumber", "tckn", "vkn");
+        if (ValidTaxId(value) || depth >= 5) return value;
+        if (source.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in source.EnumerateObject())
+            {
+                var nested = FindTaxId(property.Value, depth + 1);
+                if (ValidTaxId(nested)) return nested;
+            }
+        }
+        else if (source.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in source.EnumerateArray())
+            {
+                var nested = FindTaxId(item, depth + 1);
+                if (ValidTaxId(nested)) return nested;
+            }
+        }
+        return "";
+    }
     private static string Text(JsonElement parent, params string[] names)
     {
         foreach (var name in names)
-            if (parent.TryGetProperty(name, out var value) && value.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined))
+            if (TryGetProperty(parent, name, out var value) && value.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined))
                 return value.ToString().Trim();
         return "";
+    }
+    private static bool TryGetProperty(JsonElement parent, string name, out JsonElement value)
+    {
+        if (parent.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in parent.EnumerateObject())
+            {
+                if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    value = property.Value;
+                    return true;
+                }
+            }
+        }
+        value = default;
+        return false;
+    }
+    private static bool TryGetObjectProperty(JsonElement parent, out JsonElement value, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (TryGetProperty(parent, name, out var candidate) && candidate.ValueKind == JsonValueKind.Object)
+            {
+                value = candidate;
+                return true;
+            }
+        }
+        value = default;
+        return false;
     }
     private static string? NullText(JsonElement parent, params string[] names) => Text(parent, names) is { Length: > 0 } value ? value : null;
     private static string Unit(string value) => value.Trim().ToUpperInvariant() switch { "ADET" or "C62" => "C62", _ => throw new JsonException("EFATURAM_UNIT_CODE_UNSUPPORTED") };

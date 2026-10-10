@@ -167,10 +167,11 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         var invoiceCreationEnabled = MarketplaceInvoiceCreationPolicy.IsEnabled(connection.PlatformCode, connection.SettingsJson);
         var currentSettings = connection.PlatformCode == "TRENDYOL" ? ReadSettings(connection) : null;
         var hepsiburadaSettings = connection.PlatformCode == "HEPSIBURADA" ? ReadHepsiburadaSettings(connection) : null;
-        var currentExternalWrites = currentSettings?.ExternalWritesEnabled ?? hepsiburadaSettings?.ExternalWritesEnabled ?? false;
+        var shopifySettings = connection.PlatformCode == "SHOPIFY" ? ReadShopifySettings(connection) : null;
+        var currentExternalWrites = currentSettings?.ExternalWritesEnabled ?? hepsiburadaSettings?.ExternalWritesEnabled ?? shopifySettings?.ExternalWritesEnabled ?? false;
         var requestedUserAgent = string.IsNullOrWhiteSpace(command.UserAgentIdentity) ? null : command.UserAgentIdentity.Trim();
         var externalWritesRequested = (command.ExternalWritesEnabled ?? currentExternalWrites)
-            && (currentSettings is not null || hepsiburadaSettings is not null);
+            && (currentSettings is not null || hepsiburadaSettings is not null || shopifySettings is not null);
         if (command.ExternalWritesEnabled == true && !configuration.GetValue<bool>("FeatureFlags:ExternalWrites"))
             return ServiceResult<ConnectionView>.Fail("EXTERNAL_WRITES_DISABLED", "Global dış yazma anahtarı kapalı olduğu için dış yazma açılamaz.", 422);
         var requestedExternalWrites = externalWritesRequested && configuration.GetValue<bool>("FeatureFlags:ExternalWrites");
@@ -181,6 +182,16 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             var connectionTest = await db.PlatformCapabilities.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == id && x.Code == MarketplaceCapabilities.ConnectionTest && x.Environment == connection.Environment && x.StoreScope == connection.ExternalStoreId, cancellationToken);
             if (connection.LastSuccessAt is null || connectionTest?.SupportLevel != CapabilitySupportLevel.Supported)
                 return ServiceResult<ConnectionView>.Fail("CONNECTION_TEST_REQUIRED", "Dış yazmayı açmadan önce başarılı bağlantı testi ve destek kanıtı gerekir.", 422);
+        }
+        if (connection.PlatformCode == "SHOPIFY" && requestedExternalWrites && !currentExternalWrites)
+        {
+            if (!await HasCredential(tenantId, id, cancellationToken))
+                return ServiceResult<ConnectionView>.Fail("CREDENTIAL_REQUIRED", "Shopify dış yazmasını açmadan önce aktif mağaza tokenı kaydedilmelidir.", 422);
+            var connectionTest = await db.PlatformCapabilities.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == id && x.Code == MarketplaceCapabilities.ConnectionTest && x.Environment == connection.Environment && x.StoreScope == connection.ExternalStoreId, cancellationToken);
+            if (connection.LastSuccessAt is null || connectionTest?.SupportLevel != CapabilitySupportLevel.Supported)
+                return ServiceResult<ConnectionView>.Fail("CONNECTION_TEST_REQUIRED", "Shopify dış yazmasını açmadan önce başarılı bağlantı testi gerekir.", 422);
+            if (!await ShopifyWriteScopesGrantedAsync(tenantId, id, connection.Environment, connection.ExternalStoreId, cancellationToken))
+                return ServiceResult<ConnectionView>.Fail("SHOPIFY_WRITE_SCOPES_REQUIRED", "Shopify fiyat ve stok dış yazması için tokenında write_products ve write_inventory izinleri doğrulanmalıdır.", 422);
         }
         var environmentChanged = requestedEnvironment is not null && !string.Equals(connection.Environment, requestedEnvironment, StringComparison.OrdinalIgnoreCase);
         var storeScopeChanged = requestedStoreId is not null && !string.Equals(connection.ExternalStoreId, requestedStoreId, StringComparison.Ordinal);
@@ -197,6 +208,8 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             connection.SettingsJson = JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings(ReadEfaturamSettings(connection).ExternalWritesEnabled));
         else if (connection.PlatformCode == "HEPSIBURADA")
             connection.SettingsJson = JsonSerializer.Serialize(new HepsiburadaConnectionSettings(requestedExternalWrites));
+        else if (connection.PlatformCode == "SHOPIFY")
+            connection.SettingsJson = JsonSerializer.Serialize(new ShopifyConnectionSettings(requestedExternalWrites, command.InvoiceCreationEnabled ?? invoiceCreationEnabled));
         else
             connection.SettingsJson = JsonSerializer.Serialize(new ShopifyConnectionSettings(false, command.InvoiceCreationEnabled ?? invoiceCreationEnabled));
 
@@ -668,7 +681,9 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             ? ReadSettings(x).ExternalWritesEnabled
             : x.PlatformCode == "HEPSIBURADA"
                 ? ReadHepsiburadaSettings(x).ExternalWritesEnabled
-                : x.PlatformCode == "TRENDYOL_EFATURAM" && ReadEfaturamSettings(x).ExternalWritesEnabled);
+                : x.PlatformCode == "SHOPIFY"
+                    ? ReadShopifySettings(x).ExternalWritesEnabled
+                    : x.PlatformCode == "TRENDYOL_EFATURAM" && ReadEfaturamSettings(x).ExternalWritesEnabled);
         var invoiceCreationEnabled = x.PlatformCode != "HEPSIBURADA" && MarketplaceInvoiceCreationPolicy.IsEnabled(x.PlatformCode, x.SettingsJson);
         return new(x.Id, x.PublicId, x.PlatformCode, x.Environment, x.DisplayName, x.ExternalStoreId, x.Status, x.ApiVersion, x.LastTestedAt, x.LastSuccessAt, x.LastErrorCode, hasCredential, externalWritesEnabled, x.Version, invoiceCreationEnabled);
     }
@@ -676,6 +691,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
     private static WebhookSubscriptionView Map(WebhookSubscription x) => new(x.Id, x.AuthenticationType, x.Status, x.ExternalSubscriptionId, x.VerifiedAt, x.LastReceivedAt, x.Version);
     private static ConnectionSettings ReadSettings(PlatformConnection value) { try { return JsonSerializer.Deserialize<ConnectionSettings>(value.SettingsJson) ?? new("", false); } catch (JsonException) { return new("", false); } }
     private static HepsiburadaConnectionSettings ReadHepsiburadaSettings(PlatformConnection value) { try { return JsonSerializer.Deserialize<HepsiburadaConnectionSettings>(value.SettingsJson) ?? new(false); } catch (JsonException) { return new(false); } }
+    private static ShopifyConnectionSettings ReadShopifySettings(PlatformConnection value) { try { return JsonSerializer.Deserialize<ShopifyConnectionSettings>(value.SettingsJson) ?? new(false); } catch (JsonException) { return new(false); } }
     private static TrendyolEFaturamConnectionSettings ReadEfaturamSettings(PlatformConnection value) { try { return JsonSerializer.Deserialize<TrendyolEFaturamConnectionSettings>(value.SettingsJson) ?? new(false); } catch (JsonException) { return new(false); } }
     private bool WritesEnabled(string settingsJson)
     {
@@ -684,6 +700,19 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         {
             using var document = JsonDocument.Parse(settingsJson);
             return document.RootElement.TryGetProperty("ExternalWritesEnabled", out var enabled) && enabled.ValueKind == JsonValueKind.True;
+        }
+        catch (JsonException) { return false; }
+    }
+    private async Task<bool> ShopifyWriteScopesGrantedAsync(Guid tenantId, Guid connectionId, string environment, string storeScope, CancellationToken cancellationToken)
+    {
+        var capability = await db.PlatformCapabilities.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == MarketplaceCapabilities.ShopifyAppScopes && x.SupportLevel == CapabilitySupportLevel.Supported && x.Environment == environment && x.StoreScope == storeScope, cancellationToken);
+        if (capability?.ConstraintsJson is null) return false;
+        try
+        {
+            using var document = JsonDocument.Parse(capability.ConstraintsJson);
+            if (!document.RootElement.TryGetProperty("grantedScopes", out var scopes) || scopes.ValueKind != JsonValueKind.Array) return false;
+            var granted = scopes.EnumerateArray().Where(value => value.ValueKind == JsonValueKind.String).Select(value => value.GetString()).Where(value => value is not null).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            return granted.Contains("write_products") && granted.Contains("write_inventory");
         }
         catch (JsonException) { return false; }
     }

@@ -33,6 +33,7 @@ public sealed class OrderReadSyncTimeoutTests
     public void InvoiceReadJobs_UseTheirLongerBoundedExecution(string jobType)
     {
         Assert.True(MarketplaceHub.Worker.Worker.IsOrderInvoiceReconciliationJob(jobType));
+        Assert.True(MarketplaceHub.Worker.Worker.StopLeaseHeartbeatOnExecutionTimeout(jobType));
     }
 
     [Theory]
@@ -58,5 +59,6 @@ public sealed class OrderReadSyncTimeoutTests
     public void MarketplaceWriteJobs_AreNotOrderReadTimeoutJobs(string jobType)
     {
         Assert.False(MarketplaceHub.Worker.Worker.IsOrderReadSyncJob(jobType));
+        Assert.False(MarketplaceHub.Worker.Worker.StopLeaseHeartbeatOnExecutionTimeout(jobType));
     }
 }

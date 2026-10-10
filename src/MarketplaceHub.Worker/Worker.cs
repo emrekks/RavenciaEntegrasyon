@@ -181,8 +181,8 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         }
         else if (IsOrderInvoiceReconciliationJob(job.JobType))
         {
-            var configuredMinutes = configuration.GetValue<double?>("Worker:OrderInvoiceReconciliationTimeoutMinutes") ?? 45;
-            execution.CancelAfter(TimeSpan.FromMinutes(Math.Clamp(configuredMinutes, 1, 120)));
+            var configuredMinutes = configuration.GetValue<double?>("Worker:OrderInvoiceReconciliationTimeoutMinutes") ?? 15;
+            execution.CancelAfter(TimeSpan.FromMinutes(Math.Clamp(configuredMinutes, 1, 30)));
         }
         else if (job.JobType == MarketplaceJobTypes.TrendyolOrderCargoInfoReconciliation)
         {
@@ -201,7 +201,9 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
                 ?? 10;
             execution.CancelAfter(TimeSpan.FromMinutes(Math.Clamp(configuredMinutes, 1, 60)));
         }
-        using var heartbeatStop = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+        using var heartbeatStop = StopLeaseHeartbeatOnExecutionTimeout(job.JobType)
+            ? CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, execution.Token)
+            : CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
         var heartbeat = MaintainLeaseAsync(job, execution, heartbeatStop.Token);
         JobExecutionResult? result = null;
 
@@ -252,6 +254,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         MarketplaceJobTypes.OrderInvoiceReconciliation
         or MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation
         or MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation;
+    internal static bool StopLeaseHeartbeatOnExecutionTimeout(string jobType) => IsOrderInvoiceReconciliationJob(jobType);
 
     private async Task<bool> MaintainLeaseAsync(LeasedJob job, CancellationTokenSource execution, CancellationToken cancellationToken)
     {

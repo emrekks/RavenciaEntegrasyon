@@ -72,6 +72,7 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
       expect(container.querySelector<HTMLInputElement>(`[aria-label$="#${item.orderNumber} siparişini seç"]`)?.checked).toBe(true)
     }
     expect(container.querySelector('.invoice-reference-bulk-toolbar')?.textContent).toContain('3 sipariş seçildi')
+    expect(button('Siparişleri gizle').querySelector('.ui-icon-eyeOff')).not.toBeNull()
   })
 
   it('changes only Shopify invoice statuses when mixed platforms are selected', async () => {

@@ -78,7 +78,12 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
     private async Task<bool> Submit(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken, bool isStageCapabilityProbe = false)
     {
         var invoice = await FindInvoice(tenantId, payloadJson, cancellationToken);
-        if (invoice is null || invoice.ProviderConnectionId != connectionId || invoice.Status != InvoiceStatus.Submitting) return false;
+        if (invoice is null)
+            throw new JobProcessingException(JobExecutionResult.Blocked("INVOICE_SUBMIT_INVOICE_NOT_FOUND", "Fatura gönderim isteği geçerli bir fatura kaydıyla eşleşmedi. Job payloadındaki fatura kimliğini kontrol edin."));
+        if (invoice.ProviderConnectionId != connectionId)
+            throw new JobProcessingException(JobExecutionResult.Blocked("INVOICE_SUBMIT_CONNECTION_MISMATCH", "Faturanın sağlayıcı bağlantısı job bağlantısıyla eşleşmiyor. Faturayı doğru e-Fatura bağlantısından yeniden kuyruğa alın."));
+        if (invoice.Status != InvoiceStatus.Submitting)
+            throw new JobProcessingException(JobExecutionResult.Blocked("INVOICE_SUBMIT_STATE_MISMATCH", $"Fatura gönderilemedi; beklenen durum Submitting, mevcut durum {invoice.Status}. Fatura durumunu kontrol edip güvenli yeniden deneme işlemini kullanın."));
         var order = await db.Orders.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.Id == invoice.OrderId, cancellationToken);
         var orderConnection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == order.ConnectionId, cancellationToken);
         if (orderConnection is not null
@@ -89,7 +94,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             invoice.UpdatedAt = timeProvider.GetUtcNow();
             invoice.Version++;
             await db.SaveChangesAsync(cancellationToken);
-            return false;
+            throw new JobProcessingException(JobExecutionResult.Blocked(MarketplaceInvoiceCreationPolicy.DisabledErrorCode, "Bu pazaryeri için fatura oluşturma izni kapalı. Bağlantı ayarlarında izin verilmeden fatura gönderilmedi."));
         }
         var lines = await db.InvoiceLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id).OrderBy(x => x.LineSequence).ToListAsync(cancellationToken);
         var package = invoice.PackageId is null ? null : await db.ShipmentPackages.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == invoice.PackageId, cancellationToken);
@@ -220,6 +225,25 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             await db.SaveChangesAsync(cancellationToken);
             return true;
         }
+
+        var environments = await db.PlatformConnections.AsNoTracking()
+            .Where(connection => connection.TenantId == tenantId && (connection.Id == invoice.ProviderConnectionId || connection.Id == package.ConnectionId))
+            .Select(connection => new { connection.Id, connection.Environment })
+            .ToDictionaryAsync(connection => connection.Id, connection => connection.Environment, cancellationToken);
+        environments.TryGetValue(invoice.ProviderConnectionId, out var providerEnvironment);
+        environments.TryGetValue(package.ConnectionId, out var marketplaceEnvironment);
+        if (!InvoiceDeliveryEnvironmentPolicy.IsCompatible(providerEnvironment, marketplaceEnvironment))
+        {
+            invoice.Status = InvoiceStatus.ManualReview;
+            invoice.LastErrorCode = InvoiceDeliveryEnvironmentPolicy.MismatchErrorCode;
+            invoice.UpdatedAt = timeProvider.GetUtcNow();
+            invoice.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+            throw new JobProcessingException(JobExecutionResult.Blocked(
+                InvoiceDeliveryEnvironmentPolicy.MismatchErrorCode,
+                InvoiceDeliveryEnvironmentPolicy.DescribeMismatch(providerEnvironment, marketplaceEnvironment)));
+        }
+
         if (state?.Status == "SUBMITTED")
         {
             if (string.IsNullOrWhiteSpace(state.ExternalReference))
@@ -299,7 +323,9 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         AdapterResult<InvoiceDeliveryResult> result;
         try
         {
-            result = await marketplace.DeliverAsync(Context(tenantId, package.ConnectionId, correlationId, state.ExternalIdempotencyKey), new(package.ExternalPackageId, state.DeliveryType, payload, state.RequestHash), cancellationToken);
+            var deliveryContext = InvoiceDeliveryOperationPolicy.ForAutomaticMarketplaceDelivery(
+                Context(tenantId, package.ConnectionId, correlationId, state.ExternalIdempotencyKey));
+            result = await marketplace.DeliverAsync(deliveryContext, new(package.ExternalPackageId, state.DeliveryType, payload, state.RequestHash), cancellationToken);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -528,6 +554,18 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             .Select(x => (Guid?)x.ConnectionId)
             .SingleOrDefaultAsync(cancellationToken);
         if (marketplaceConnectionId is null) return;
+        var environments = await db.PlatformConnections.AsNoTracking()
+            .Where(connection => connection.TenantId == tenantId && (connection.Id == invoice.ProviderConnectionId || connection.Id == marketplaceConnectionId.Value))
+            .Select(connection => new { connection.Id, connection.Environment })
+            .ToDictionaryAsync(connection => connection.Id, connection => connection.Environment, cancellationToken);
+        environments.TryGetValue(invoice.ProviderConnectionId, out var providerEnvironment);
+        environments.TryGetValue(marketplaceConnectionId.Value, out var marketplaceEnvironment);
+        if (!InvoiceDeliveryEnvironmentPolicy.IsCompatible(providerEnvironment, marketplaceEnvironment))
+        {
+            invoice.Status = InvoiceStatus.ManualReview;
+            invoice.LastErrorCode = InvoiceDeliveryEnvironmentPolicy.MismatchErrorCode;
+            return;
+        }
         await EnqueueAutomaticJob(tenantId, marketplaceConnectionId.Value, invoice.Id, InvoicingJobTypes.MarketplaceDelivery, "after-document", correlationId, cancellationToken);
     }
 
