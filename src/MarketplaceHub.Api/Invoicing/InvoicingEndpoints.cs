@@ -6,6 +6,7 @@ using MarketplaceHub.Infrastructure.Identity;
 using MarketplaceHub.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.DataProtection;
 
 namespace MarketplaceHub.Api.Invoicing;
 
@@ -14,6 +15,18 @@ public static class InvoicingEndpoints
     public static IEndpointRouteBuilder MapInvoicingEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var api = endpoints.MapGroup("/api/v1").AddEndpointFilter(async (context, next) => { try { return await next(context); } catch (ArgumentException exception) { return Problem(context.HttpContext, new("INVALID_CURSOR", exception.Message, 400)); } });
+
+        api.MapGet("/public/invoice-documents/{token}/content", async (string token, HttpContext http, IDataProtectionProvider protection, AppDbContext db, IInvoicingBillingService service) =>
+        {
+            if (!InvoiceDocumentLink.TryRead(protection, token, out var tenantId, out var invoiceId, out var documentId)) return Results.NotFound();
+            var expectedPath = $"/api/v1/public/invoice-documents/{token}/content";
+            var permanentUrl = await db.InvoiceDocuments.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.InvoiceId == invoiceId && x.Id == documentId)
+                .Select(x => x.PermanentUrl).SingleOrDefaultAsync(http.RequestAborted);
+            if (!Uri.TryCreate(permanentUrl, UriKind.Absolute, out var uri) || uri.AbsolutePath != expectedPath) return Results.NotFound();
+            try { return Stream(await service.OpenDocumentAsync(tenantId, invoiceId, documentId, http.RequestAborted), http); }
+            catch (FileNotFoundException) { return Results.NotFound(); }
+        });
 
         api.MapGet("/billing/invoice-policies/{connectionId:guid}", async (Guid connectionId, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant ? WithEtag(http, await service.GetPolicyAsync(tenant.TenantId, connectionId, http.RequestAborted), x => x.Version) : Unauthorized(http));
         api.MapPut("/billing/invoice-policies/{connectionId:guid}", UpsertPolicy);

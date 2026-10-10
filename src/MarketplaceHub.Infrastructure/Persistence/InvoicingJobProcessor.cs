@@ -322,6 +322,22 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         if (oneTimeAuthorization is not null
             && !await IsValidOneTimeInvoiceDeliveryAsync(tenantId, jobConnectionId, invoice, package, order?.OrderNumber, oneTimeAuthorization, state, cancellationToken))
             return false;
+        if (oneTimeAuthorization is not null && OneTimeInvoiceDeliveryPolicy.IsAuthorizedStageDocument(order?.OrderNumber, invoice.Id)
+            && state?.Status is not ("STARTED" or "UNKNOWN" or "SUBMITTED" or "CONFIRMATION_RETRYABLE" or "CONFIRMED"))
+        {
+            // Provider URLs may require authentication. Publish only the already
+            // stored PDF, through a document-bound bearer link, for this explicit delivery.
+            var document = await db.InvoiceDocuments.Where(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id && x.DocumentType == "PDF")
+                .OrderByDescending(x => x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
+            if (document is null) return false;
+            if (!Uri.TryCreate(document.PermanentUrl, UriKind.Absolute, out var documentUri)
+                || !documentUri.AbsolutePath.StartsWith("/api/v1/public/invoice-documents/", StringComparison.Ordinal))
+            {
+                document.PermanentUrl = InvoiceDocumentLink.Create(dataProtection, configuration["Marketplace:PublicBaseUrl"] ?? "", tenantId, invoice.Id, document.Id);
+                await db.SaveChangesAsync(cancellationToken);
+            }
+            permanentUrl = document.PermanentUrl;
+        }
         if (state?.Status == "CONFIRMED") return true;
         if (oneTimeAuthorization is not null && state?.Status == "STARTED")
             throw new JobProcessingException(JobExecutionResult.ManualReview("ONE_TIME_INVOICE_DELIVERY_ALREADY_STARTED", "Tek seferlik fatura isteği daha önce başlatıldı; dış sonuç doğrulanmadan tekrar gönderilmedi."));
@@ -495,6 +511,9 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             deliveryPayload["shopifyOrderId"] = ShopifyOrderGid(order?.ExternalOrderId);
         var payload = JsonSerializer.Serialize(deliveryPayload);
         var requestHash = Hash(payload);
+        if (state?.Status == "FAILED" && oneTimeAuthorization is not null
+            && OneTimeInvoiceDeliveryPolicy.IsAuthorizedStageDocument(order?.OrderNumber, invoice.Id))
+            state.RequestHash = requestHash;
         if (state is not null && !string.Equals(state.RequestHash, requestHash, StringComparison.Ordinal))
             throw new JobProcessingException(JobExecutionResult.ManualReview("DELIVERY_RETRY_PAYLOAD_CHANGED", "Önceki belirsiz teslim denemesinden sonra fatura bağlantısı payloadı değişti."));
 
