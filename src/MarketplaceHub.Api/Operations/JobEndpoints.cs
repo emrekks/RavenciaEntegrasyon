@@ -1,6 +1,5 @@
 using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Identity;
-using Microsoft.AspNetCore.Identity;
 
 namespace MarketplaceHub.Api.Operations;
 
@@ -21,16 +20,13 @@ public static class JobEndpoints
             Tenant(http) is { } tenant
                 ? RequireIdempotency(http) ?? Result(http, await service.RetryAsync(tenant.TenantId, id, http.RequestAborted))
                 : Unauthorized(http));
-        api.MapPost("/{id:guid}/invoice-delivery-once", async (Guid id, OneTimeInvoiceDeliveryAction command, HttpContext http, IJobOperationsService service, UserManager<ApplicationUser> users) =>
+        api.MapPost("/{id:guid}/invoice-delivery-once", async (Guid id, OneTimeInvoiceDeliveryAction command, HttpContext http, IJobOperationsService service) =>
         {
             var tenant = Tenant(http);
             if (tenant is null) return Unauthorized(http);
             if (RequireIdempotency(http) is { } idempotencyFailure) return idempotencyFailure;
             if (!command.Confirmed) return Problem(http, new("EXPLICIT_CONFIRMATION_REQUIRED", "Bu tek seferlik dış fatura iletimi için açık onay zorunludur.", 422));
             if (!OneTimeInvoiceDeliveryPolicy.IsAuthorizedTarget(command.OrderNumber)) return Problem(http, new("ONE_TIME_INVOICE_ORDER_NOT_AUTHORIZED", "Tek seferlik fatura iletimi yalnızca 4486229624 numaralı sipariş için yetkilendirildi.", 403));
-            var user = await users.FindByIdAsync(tenant.UserId.ToString());
-            if (user is null || string.IsNullOrWhiteSpace(command.Password) || !await users.CheckPasswordAsync(user, command.Password))
-                return Problem(http, new("REAUTHENTICATION_FAILED", "İşlem için parola ile yeniden doğrulama başarısız.", 401));
             var result = await service.EnqueueOneTimeInvoiceDeliveryAsync(
                 tenant.TenantId,
                 id,
@@ -66,5 +62,5 @@ public static class JobEndpoints
         fieldErrors = error.FieldErrors
     }, statusCode: error.Status, contentType: "application/problem+json");
 
-    public sealed record OneTimeInvoiceDeliveryAction(string Password, bool Confirmed, string OrderNumber);
+    public sealed record OneTimeInvoiceDeliveryAction(bool Confirmed, string OrderNumber);
 }
