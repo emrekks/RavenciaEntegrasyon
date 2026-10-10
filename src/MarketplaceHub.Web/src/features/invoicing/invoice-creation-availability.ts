@@ -29,10 +29,12 @@ export function invoiceProviderForEnvironment<T extends InvoiceProviderConnectio
 
 /** Mirrors the invoice action rendered for a row, excluding only a transient in-flight request. */
 export function isInvoiceCreationAvailable(item: InvoiceCreationCandidate, providerHasCredential: boolean) {
+  // Existing invoices open a read-only preview. The server decides whether
+  // delivery or fiscal retry is safe using the original provider and gates.
+  if (item.invoiceId) return retryableInvoiceStatuses.has(item.invoiceStatus.trim().toUpperCase())
   if (!item.invoiceCreationEnabled) return false
   if (item.platformCode === 'SHOPIFY') return item.canCreateInvoice
   if (!providerHasCredential) return false
-  if (item.invoiceId) return retryableInvoiceStatuses.has(item.invoiceStatus.trim().toUpperCase())
   return item.canCreateInvoice
 }
 

@@ -105,6 +105,8 @@ function invoiceFailureReason(code: string | null) {
     EFATURAM_ACCESS_TOKEN_REJECTED: 'E-Faturam erişim anahtarını reddetti.',
     EFATURAM_INVOICE_CREATE_PRIVILEGE_MISSING: 'Bu hesapta fatura oluşturma yetkisi bulunmuyor.',
     EFATURAM_CARRIER_CATALOG_MISS: 'Kargo firmasının fatura bilgisi sağlayıcıya tanımlı değil.',
+    HEPSIBURADA_INVOICE_DELIVERY_REPEATED_500: 'Fatura oluşturuldu; Hepsiburada belge iletiminde tekrarlanan sunucu hatası verdi.',
+    INVOICE_DELIVERY_ENVIRONMENT_MISMATCH: 'Fatura sağlayıcısı ve pazaryeri farklı ortamlarda. Platform iletimi engellendi.',
     REMOTE_INVOICE_REJECTED: 'Pazaryeri faturayı reddetti.'
   }
   return labels[code ?? ''] ?? (code ? `Fatura oluşturulamadı: ${code}` : 'Fatura oluşturulamadı. Detayları açın.')
@@ -118,6 +120,8 @@ function invoiceFailureGuidance(code: string | null) {
     EFATURAM_ACCESS_TOKEN_REJECTED: 'E-Faturam bağlantısını yeniden yetkilendirin, ardından faturayı tekrar deneyin.',
     EFATURAM_INVOICE_CREATE_PRIVILEGE_MISSING: 'E-Faturam hesabında fatura oluşturma yetkisini açtırın.',
     EFATURAM_CARRIER_CATALOG_MISS: 'Faturayı tekrar deneyin; kargo taşıyıcı bilgisi doğrulamaya eklendi.',
+    HEPSIBURADA_INVOICE_DELIVERY_REPEATED_500: 'Platforma iletimi tekrar dene ile mevcut belgeyi kontrol edin. Yeni mali fatura oluşturulmaz.',
+    INVOICE_DELIVERY_ENVIRONMENT_MISMATCH: 'İletim önizlemesindeki ortam bilgisini kontrol edin. Canlı sipariş için canlı ortamda düzenlenmiş belge gereklidir.',
     REMOTE_INVOICE_REJECTED: 'Provider veya pazaryeri ret nedenini kontrol edip gerekli bilgileri düzelttikten sonra tekrar deneyin.'
   }
   return labels[code ?? ''] ?? 'Fatura detaylarını açıp son hata kodunu ve provider denemelerini kontrol edin.'
@@ -204,10 +208,19 @@ export function InvoicesPage() {
   })
   useEffect(() => { if (query.data && query.data.pageNumber !== pageNumber) setPageNumber(query.data.pageNumber) }, [query.data?.pageNumber, pageNumber])
   const [previewTargets, setPreviewTargets] = useState<InvoicePreviewTarget[] | null>(null)
-  function openInvoicePreview(items: InvoiceWorkspace[]) {
+  async function openInvoicePreview(items: InvoiceWorkspace[]) {
     const targets: InvoicePreviewTarget[] = []
     const missing: string[] = []
     for (const item of items) {
+      if (item.invoiceId) {
+        try {
+          const existing = await hubApi<InvoiceDetail>(`/invoices/${item.invoiceId}`)
+          targets.push({ orderId: item.orderId, packageId: item.packageId, providerConnectionId: existing.providerConnectionId })
+        } catch (error) {
+          setMessage(error instanceof Error ? error.message : 'Mevcut fatura bilgileri okunamadı.', 'error')
+        }
+        continue
+      }
       const exactEnvironmentProvider = providerForItem(item)
       if (!exactEnvironmentProvider) { missing.push(`#${item.orderNumber} (${item.environment})`); continue }
       targets.push({ orderId: item.orderId, packageId: item.packageId, providerConnectionId: exactEnvironmentProvider.id })

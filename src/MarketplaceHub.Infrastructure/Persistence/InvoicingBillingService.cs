@@ -719,6 +719,8 @@ public sealed partial class InvoicingBillingService(
 
         if (invoice.Status is InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending or InvoiceStatus.MarketplaceFailed)
             return "FATURA_PLATFORMA_AKTARILMADI";
+        if (InvoiceMarketplaceRetryPolicy.IsDeliveryReview(invoice.Status, invoice.LastErrorCode))
+            return "FATURA_PLATFORMA_AKTARILMADI";
         if (invoice.Status is InvoiceStatus.Submitting or InvoiceStatus.UnknownResult or InvoiceStatus.Submitted)
             return "FATURA_ISLENIYOR";
         if (invoice.Status == InvoiceStatus.Completed)
@@ -1061,7 +1063,7 @@ public sealed partial class InvoicingBillingService(
     {
         var invoice = await db.Invoices.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken); if (invoice is null) return NotFound<Guid>();
         if (await IsShopifyManualInvoiceAsync(tenantId, invoice, cancellationToken)) return ServiceResult<Guid>.Fail("SHOPIFY_MANUAL_INVOICE_ONLY", "Shopify manuel belge kayıtları pazaryeri fatura aktarımına gönderilemez.", 422);
-        if (invoice.Status is not (InvoiceStatus.Accepted or InvoiceStatus.MarketplaceFailed)) return ServiceResult<Guid>.Fail("INVOICE_STATE_INVALID", "Fatura pazaryerine iletime hazır değil.", 409);
+        if (!InvoiceMarketplaceRetryPolicy.CanRetryDelivery(invoice.Status, invoice.LastErrorCode)) return ServiceResult<Guid>.Fail("INVOICE_STATE_INVALID", "Fatura pazaryerine iletime hazır değil.", 409);
         if (invoice.PackageId is null) return Invalid<Guid>("packageId", "Pazaryeri fatura iletimi için paket zorunludur.");
         if (!await db.InvoiceDocuments.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id && x.PermanentUrl != null, cancellationToken)) return ServiceResult<Guid>.Fail("INVOICE_PERMANENT_LINK_REQUIRED", "Trendyol iletimi için kalıcı HTTPS fatura bağlantısı henüz hazır değil.", 409);
         var marketplaceConnectionId = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == invoice.PackageId).Select(x => (Guid?)x.ConnectionId).SingleOrDefaultAsync(cancellationToken);
@@ -1078,8 +1080,16 @@ public sealed partial class InvoicingBillingService(
                 InvoiceDeliveryEnvironmentPolicy.DescribeMismatch(providerEnvironment, marketplaceEnvironment),
                 409);
         if (!await WriteGates(tenantId, marketplaceConnectionId.Value, InvoicingCapabilities.InvoiceDeliver, cancellationToken)) return CapabilityUnknown<Guid>(InvoicingCapabilities.InvoiceDeliver);
+        var manualDeliveryRetry = invoice.LastErrorCode == InvoiceMarketplaceRetryPolicy.RepeatedRemoteFailure;
+        var deliveryState = await db.MarketplaceDeliveryStates.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.InvoiceId == id, cancellationToken);
+        if (manualDeliveryRetry && deliveryState?.Status == "FAILED" && deliveryState.ErrorCode == InvoiceMarketplaceRetryPolicy.RepeatedRemoteFailure)
+        {
+            deliveryState.Status = "UNKNOWN";
+            deliveryState.UpdatedAt = timeProvider.GetUtcNow();
+            deliveryState.Version++;
+        }
         invoice.Status = InvoiceStatus.MarketplacePending; invoice.UpdatedAt = timeProvider.GetUtcNow(); invoice.Version++;
-        return await AddJob(invoice, InvoicingJobTypes.MarketplaceDelivery, idempotencyKey, correlationId, cancellationToken, marketplaceConnectionId.Value);
+        return await AddJob(invoice, InvoicingJobTypes.MarketplaceDelivery, idempotencyKey, correlationId, cancellationToken, marketplaceConnectionId.Value, manualDeliveryRetry);
     }
 
     public async Task<ServiceResult<(Stream Content, string MimeType, string FileName)>> OpenDocumentAsync(Guid tenantId, Guid invoiceId, Guid documentId, CancellationToken cancellationToken)
@@ -1104,10 +1114,10 @@ public sealed partial class InvoicingBillingService(
         invoice.Status = next; invoice.UpdatedAt = timeProvider.GetUtcNow(); if (jobType == InvoicingJobTypes.InvoiceSubmit) invoice.IssuedAt ??= invoice.UpdatedAt; invoice.Version++; return await AddJob(invoice, jobType, idempotencyKey, correlationId, cancellationToken);
     }
 
-    private async Task<ServiceResult<Guid>> AddJob(Invoice invoice, string jobType, string idempotencyKey, string correlationId, CancellationToken cancellationToken, Guid? connectionId = null)
+    private async Task<ServiceResult<Guid>> AddJob(Invoice invoice, string jobType, string idempotencyKey, string correlationId, CancellationToken cancellationToken, Guid? connectionId = null, bool manualDeliveryRetry = false)
     {
         var dedup = $"{jobType}:{invoice.Id}:{idempotencyKey}"; var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == invoice.TenantId && x.JobType == jobType && x.JobDedupKey == dedup, cancellationToken); if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);
-        var payload = JsonSerializer.Serialize(new { invoiceId = invoice.Id }); var job = new IntegrationJob { Id = Guid.CreateVersion7(), TenantId = invoice.TenantId, ConnectionId = connectionId ?? invoice.ProviderConnectionId, JobType = jobType, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{jobType}:{invoice.Id}:{idempotencyKey}", Priority = InvoiceJobPriority(jobType), AvailableAt = timeProvider.GetUtcNow(), CorrelationId = correlationId, Version = 1 };
+        var payload = JsonSerializer.Serialize(new { invoiceId = invoice.Id, manualDeliveryRetry }); var job = new IntegrationJob { Id = Guid.CreateVersion7(), TenantId = invoice.TenantId, ConnectionId = connectionId ?? invoice.ProviderConnectionId, JobType = jobType, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{jobType}:{invoice.Id}:{idempotencyKey}", Priority = InvoiceJobPriority(jobType), AvailableAt = timeProvider.GetUtcNow(), CorrelationId = correlationId, Version = 1 };
         db.IntegrationJobs.Add(job); await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(job.Id);
     }
 

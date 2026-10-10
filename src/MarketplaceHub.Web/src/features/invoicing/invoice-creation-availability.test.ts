@@ -43,6 +43,7 @@ describe('invoice creation availability', () => {
     const issuedButNotDelivered = { platformCode: 'TRENDYOL', invoiceId: 'invoice-1', invoiceStatus: 'FATURA_PLATFORMA_AKTARILMADI', canCreateInvoice: false, invoiceCreationEnabled: true }
     expect(isInvoiceCreationAvailable(issuedButNotDelivered, true)).toBe(true)
     expect(matchesInvoiceActionFilter(issuedButNotDelivered, 'CREATABLE', true)).toBe(true)
+    expect(isInvoiceCreationAvailable({ ...issuedButNotDelivered, invoiceCreationEnabled: false }, false)).toBe(true)
   })
 
   it('revalidates a failed invoice and never queues it while validation still fails', () => {

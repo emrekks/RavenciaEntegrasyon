@@ -83,7 +83,7 @@ public sealed partial class InvoicingBillingService
                 }
 
                 var itemKey = $"{idempotencyKey}:package:{confirmation.PackageId:N}";
-                if (invoice is not null && invoice.Status is InvoiceStatus.Accepted or InvoiceStatus.MarketplaceFailed)
+                if (invoice is not null && InvoiceMarketplaceRetryPolicy.CanRetryDelivery(invoice.Status, invoice.LastErrorCode))
                 {
                     var queuedDelivery = await EnqueueDeliveryAsync(tenantId, invoice.Id, $"{itemKey}:delivery", correlationId, cancellationToken);
                     if (!queuedDelivery.Succeeded)
@@ -200,6 +200,8 @@ public sealed partial class InvoicingBillingService
             .OrderByDescending(x => x.CreatedAt)
             .FirstOrDefaultAsync(cancellationToken);
         var existing = packageExisting ?? orderWideExisting;
+        if (existing is not null && existing.ProviderConnectionId != provider.Id)
+            return ServiceResult<InvoiceWorkspacePreviewItem>.Fail("INVOICE_PROVIDER_MISMATCH", "Mevcut faturanın sağlayıcısı kullanılmalıdır. Başka sağlayıcıyla yeniden mali fatura oluşturulamaz.", 409);
         var packageTotal = package.NetAmount > 0 ? package.NetAmount : order.NetAmount;
         if (!InvoiceAmounts.TryCalculatePackage(
             activeLines.Select(line => new InvoicePackageLineSource(line.Id, line.TitleSnapshot, line.Sku,
@@ -220,17 +222,17 @@ public sealed partial class InvoicingBillingService
         var customerName = InvoiceWorkspaceCustomerName(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
         var taxTotal = calculated.TaxTotal;
         var taxExclusive = calculated.TaxExclusiveTotal;
-        var canCreate = MarketplaceInvoiceCreationPolicy.IsEnabled(marketplace.PlatformCode, marketplace.SettingsJson)
+        var canCreate = (existing is not null || MarketplaceInvoiceCreationPolicy.IsEnabled(marketplace.PlatformCode, marketplace.SettingsJson))
             && InvoiceDeliveryEnvironmentPolicy.IsCompatible(provider.Environment, marketplace.Environment);
         string? blockedReason = canCreate ? null
-            : !MarketplaceInvoiceCreationPolicy.IsEnabled(marketplace.PlatformCode, marketplace.SettingsJson)
+            : existing is null && !MarketplaceInvoiceCreationPolicy.IsEnabled(marketplace.PlatformCode, marketplace.SettingsJson)
                 ? string.Equals(marketplace.PlatformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase)
                     ? MarketplaceInvoiceCreationPolicy.UnsupportedFiscalProviderMessage
                     : MarketplaceInvoiceCreationPolicy.DisabledMessage
                 : InvoiceDeliveryEnvironmentPolicy.DescribeMismatch(provider.Environment, marketplace.Environment);
         var nextAction = existing is null ? "CREATE_AND_SUBMIT" : existing.Status switch
         {
-            InvoiceStatus.Accepted or InvoiceStatus.MarketplaceFailed => "DELIVERY_ONLY",
+            _ when InvoiceMarketplaceRetryPolicy.CanRetryDelivery(existing.Status, existing.LastErrorCode) => "DELIVERY_ONLY",
             InvoiceStatus.Completed => "NONE",
             InvoiceStatus.Submitting or InvoiceStatus.UnknownResult or InvoiceStatus.Submitted or InvoiceStatus.MarketplacePending => "WAIT",
             _ when CanRetryPreProviderFailure(existing.Status, existing.LastErrorCode, existing.ExternalReference) => "SUBMIT_RETRY",

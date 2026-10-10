@@ -305,6 +305,10 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         if (!TryReadOneTimeInvoiceDeliveryAuthorization(payloadJson, out var oneTimeAuthorization)) return false;
         var invoice = await FindInvoice(tenantId, payloadJson, cancellationToken);
         if (invoice?.PackageId is null) return false;
+        using var deliveryJobPayload = JsonDocument.Parse(payloadJson);
+        var manualDeliveryRetry = deliveryJobPayload.RootElement.TryGetProperty("manualDeliveryRetry", out var retryValue)
+            && retryValue.ValueKind == JsonValueKind.True
+            && invoice.LastErrorCode == InvoiceMarketplaceRetryPolicy.RepeatedRemoteFailure;
         var package = await db.ShipmentPackages.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == invoice.PackageId, cancellationToken);
         var order = package is null
             ? null
@@ -424,7 +428,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                     await db.SaveChangesAsync(cancellationToken);
                     return true;
                 case InvoiceDeliveryRecoveryAction.RetryDelivery when oneTimeAuthorization is null:
-                    if (InvoiceDeliveryRecoveryPolicy.ShouldStopAfterRemoteFailures(
+                    if (!manualDeliveryRetry && InvoiceDeliveryRecoveryPolicy.ShouldStopAfterRemoteFailures(
                         platformCode,
                         await db.MarketplaceDeliveries.AsNoTracking().CountAsync(
                             attempt => attempt.TenantId == tenantId
