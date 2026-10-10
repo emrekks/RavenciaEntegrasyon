@@ -2063,7 +2063,10 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "OriginalInvoiceId");
 
-                    b.HasIndex("TenantId", "PackageId");
+                    b.HasIndex("TenantId", "PackageId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_invoices_TenantId_PackageId_ActiveSaleFiscal")
+                        .HasFilter("\"PackageId\" IS NOT NULL AND \"OriginalInvoiceId\" IS NULL AND \"SequencePurpose\" = 'SALE'");
 
                     b.HasIndex("TenantId", "ProviderConnectionId");
 

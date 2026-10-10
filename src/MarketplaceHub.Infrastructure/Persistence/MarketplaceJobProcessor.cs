@@ -6882,23 +6882,90 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         package.Version++;
         telemetryUpdatedCount++;
 
-        var invoice = await db.Invoices.SingleOrDefaultAsync(x => x.TenantId == package.TenantId && x.PackageId == package.Id, cancellationToken);
+        var invoice = await db.Invoices.SingleOrDefaultAsync(x => x.TenantId == package.TenantId && x.PackageId == package.Id
+            && x.OriginalInvoiceId == null && x.SequencePurpose == "SALE", cancellationToken);
         if (invoice is null) return;
 
-        if (incomingStatus == MarketplaceInvoiceStatus.Invoiced && invoice.Status is InvoiceStatus.Submitted or InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending)
+        if (incomingStatus == MarketplaceInvoiceStatus.Invoiced && invoice.Status is InvoiceStatus.Submitted or InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending or InvoiceStatus.Completed)
         {
-            invoice.Status = InvoiceStatus.Completed;
-            invoice.LastErrorCode = null;
-            invoice.UpdatedAt = observedAt;
-            invoice.Version++;
+            var remoteInvoiceNumber = observation?.InvoiceNumber?.Trim();
+            if (!string.IsNullOrWhiteSpace(invoice.InvoiceNumber)
+                && string.Equals(remoteInvoiceNumber, invoice.InvoiceNumber.Trim(), StringComparison.Ordinal))
+            {
+                await RecordExactMarketplaceInvoiceProofAsync(invoice, package, observedAt, cancellationToken);
+                invoice.Status = InvoiceStatus.Completed;
+                invoice.LastErrorCode = null;
+                invoice.UpdatedAt = observedAt;
+                invoice.Version++;
+            }
+            else
+            {
+                invoice.Status = InvoiceStatus.MarketplacePending;
+                invoice.LastErrorCode = "MARKETPLACE_INVOICE_IDENTITY_MISMATCH";
+                invoice.UpdatedAt = observedAt;
+                invoice.Version++;
+            }
         }
         else if (incomingStatus == MarketplaceInvoiceStatus.Rejected && invoice.Status is InvoiceStatus.Submitted or InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending)
         {
-            invoice.Status = InvoiceStatus.MarketplaceFailed;
-            invoice.LastErrorCode = "REMOTE_INVOICE_REJECTED";
-            invoice.UpdatedAt = observedAt;
-            invoice.Version++;
+            var delivery = await db.MarketplaceDeliveryStates.AsNoTracking()
+                .SingleOrDefaultAsync(x => x.TenantId == package.TenantId && x.InvoiceId == invoice.Id, cancellationToken);
+            var rejectedAfterDeliveryAttempt = delivery is not null
+                && observation?.SourceUpdatedAt is { } remoteUpdatedAt
+                && remoteUpdatedAt > delivery.CreatedAt;
+            if (rejectedAfterDeliveryAttempt)
+            {
+                invoice.Status = InvoiceStatus.MarketplaceFailed;
+                invoice.LastErrorCode = "REMOTE_INVOICE_REJECTED";
+                invoice.UpdatedAt = observedAt;
+                invoice.Version++;
+            }
         }
+    }
+
+    private async Task RecordExactMarketplaceInvoiceProofAsync(Invoice invoice, ShipmentPackage package, DateTimeOffset observedAt, CancellationToken cancellationToken)
+    {
+        var state = await db.MarketplaceDeliveryStates.SingleOrDefaultAsync(
+            x => x.TenantId == invoice.TenantId && x.InvoiceId == invoice.Id,
+            cancellationToken);
+        var proofKey = $"remote-invoice-proof:{invoice.Id:N}:{package.Id:N}";
+        var proofHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
+            $"{invoice.Id:N}|{package.Id:N}|{invoice.InvoiceNumber?.Trim()}|{package.MarketplaceInvoiceNumber?.Trim()}|{package.MarketplaceInvoiceUrl?.Trim()}")));
+        if (state is null)
+        {
+            state = new MarketplaceDeliveryState
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = invoice.TenantId,
+                InvoiceId = invoice.Id,
+                ConnectionId = package.ConnectionId,
+                PackageId = package.Id,
+                AttemptNumber = 0,
+                ExternalIdempotencyKey = proofKey,
+                RequestHash = proofHash,
+                DeliveryType = "LINK",
+                Status = "CONFIRMED",
+                ExternalReference = package.ExternalPackageId,
+                CreatedAt = observedAt,
+                UpdatedAt = observedAt,
+                CompletedAt = observedAt,
+                Version = 1
+            };
+            db.MarketplaceDeliveryStates.Add(state);
+            return;
+        }
+
+        state.ConnectionId = package.ConnectionId;
+        state.PackageId = package.Id;
+        state.ExternalIdempotencyKey = proofKey;
+        state.RequestHash = proofHash;
+        state.DeliveryType = "LINK";
+        state.Status = "CONFIRMED";
+        state.ExternalReference = package.ExternalPackageId;
+        state.ErrorCode = null;
+        state.UpdatedAt = observedAt;
+        state.CompletedAt = observedAt;
+        state.Version++;
     }
 
     private async Task<Dictionary<string, Guid>> ResolveOrderLineVariantIds(Guid tenantId, IReadOnlyList<RemoteOrderLine> remoteLines, CancellationToken cancellationToken)

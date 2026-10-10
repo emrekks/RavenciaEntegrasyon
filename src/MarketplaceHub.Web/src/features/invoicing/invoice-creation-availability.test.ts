@@ -39,6 +39,12 @@ describe('invoice creation availability', () => {
     expect(isInvoiceCreationAvailable({ ...failed, invoiceStatus: 'COMPLETED' }, true)).toBe(false)
   })
 
+  it('shows a delivery-only retry for an issued invoice that was not confirmed at the marketplace', () => {
+    const issuedButNotDelivered = { platformCode: 'TRENDYOL', invoiceId: 'invoice-1', invoiceStatus: 'FATURA_PLATFORMA_AKTARILMADI', canCreateInvoice: false, invoiceCreationEnabled: true }
+    expect(isInvoiceCreationAvailable(issuedButNotDelivered, true)).toBe(true)
+    expect(matchesInvoiceActionFilter(issuedButNotDelivered, 'CREATABLE', true)).toBe(true)
+  })
+
   it('revalidates a failed invoice and never queues it while validation still fails', () => {
     expect(invoiceSubmissionAction('VALIDATION_FAILED', ['VALIDATE'])).toBe('VALIDATE')
     expect(invoiceSubmissionAction('REJECTED', ['SUBMIT'])).toBe('SUBMIT')

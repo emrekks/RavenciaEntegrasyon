@@ -7,16 +7,20 @@ public sealed class MarketplaceInvoiceCreationPolicyTests
 {
     [Theory]
     [InlineData("TRENDYOL")]
-    [InlineData("SHOPIFY")]
     [InlineData("HEPSIBURADA")]
     public void MissingSettingKeepsExistingMarketplaceConnectionsEnabled(string platformCode)
     {
         Assert.True(MarketplaceInvoiceCreationPolicy.IsEnabled(platformCode, "{\"ExternalWritesEnabled\":false}"));
     }
 
+    [Fact]
+    public void ShopifyFiscalCreationRemainsDisabledUntilProviderContractIsVerified()
+    {
+        Assert.False(MarketplaceInvoiceCreationPolicy.IsEnabled("SHOPIFY", "{}"));
+    }
+
     [Theory]
     [InlineData("TRENDYOL")]
-    [InlineData("SHOPIFY")]
     [InlineData("HEPSIBURADA")]
     public void ExplicitFalseDisablesInvoiceCreationForMarketplaceConnection(string platformCode)
     {

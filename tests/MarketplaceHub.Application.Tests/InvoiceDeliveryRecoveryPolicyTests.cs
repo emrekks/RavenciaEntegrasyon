@@ -56,6 +56,19 @@ public sealed class InvoiceDeliveryRecoveryPolicyTests
     }
 
     [Fact]
+    public void GenericMarketplaceInvoicedObservationWithoutAnInvoiceNumberIsNotProof()
+    {
+        var result = InvoiceDeliveryRecoveryPolicy.Decide(
+            MarketplaceInvoiceStatus.Invoiced,
+            null,
+            "INV-1",
+            FreshReadAt,
+            AttemptAt);
+
+        Assert.Equal(InvoiceDeliveryRecoveryAction.ManualReview, result);
+    }
+
+    [Fact]
     public void RejectedInvoiceIsNotAutomaticallyResent()
     {
         var result = InvoiceDeliveryRecoveryPolicy.Decide(

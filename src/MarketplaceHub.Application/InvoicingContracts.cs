@@ -52,9 +52,24 @@ public sealed record RemoteInvoiceDocument(string DocumentKind, string MimeType,
 public sealed record InvoiceCancellation(string ExternalReference, string? EttnUuid, string Reason);
 public sealed record InvoiceCancellationResult(string ExternalReference, string RawStatus, string CanonicalStatus, bool IsTerminal);
 public sealed record InvoiceDeliveryCommand(string ExternalPackageId, string DeliveryType, string PayloadJson, string RequestHash);
-public sealed record InvoiceDeliveryResult(string ExternalReference, string RawStatus);
-public sealed record ExternalInvoiceDeliveryReference(string ExternalReference, string? OrderNumber = null);
-public sealed record InvoiceDeliveryStatus(string ExternalReference, string RawStatus, bool IsTerminal);
+public sealed record InvoiceDeliveryResult(
+    string ExternalReference,
+    string RawStatus,
+    bool SameAttemptVerified = false,
+    string? VerifiedInvoiceNumber = null,
+    string? VerifiedInvoiceLink = null);
+public sealed record ExternalInvoiceDeliveryReference(
+    string ExternalReference,
+    string? OrderNumber = null,
+    string? ExternalOrderId = null,
+    string? InvoiceNumber = null,
+    string? InvoiceLink = null);
+public sealed record InvoiceDeliveryStatus(
+    string ExternalReference,
+    string RawStatus,
+    bool IsTerminal,
+    string? VerifiedInvoiceNumber = null,
+    string? VerifiedInvoiceLink = null);
 public sealed record RemoteMissingInvoicePackage(string OrderNumber, string PackageNumber, string? OrderStatus);
 
 public enum InvoiceDeliveryFailureDisposition
@@ -143,6 +158,38 @@ public interface IHepsiburadaInvoiceStatusPort
 public sealed record InvoicePolicyView(Guid Id, Guid ProviderConnectionId, string TriggerState, string PackageScope, string DueRule, string RoundingRule, string AdjustmentRule, bool AutoSubmit, long Version);
 public sealed record UpsertInvoicePolicyCommand(string TriggerState, string PackageScope, string DueRule, string RoundingRule, string AdjustmentRule, bool AutoSubmit);
 public sealed record CreateInvoiceCommand(Guid OrderId, Guid? PackageId, Guid ProviderConnectionId, Guid? OriginalInvoiceId);
+public sealed record InvoiceWorkspacePreviewRequest(IReadOnlyList<InvoiceWorkspacePreviewTarget> Items);
+public sealed record InvoiceWorkspacePreviewTarget(Guid OrderId, Guid PackageId, Guid ProviderConnectionId);
+public sealed record InvoiceWorkspacePreviewConfirmRequest(IReadOnlyList<InvoiceWorkspacePreviewConfirmation> Items);
+public sealed record InvoiceWorkspacePreviewConfirmation(Guid OrderId, Guid PackageId, Guid ProviderConnectionId, string PreviewDigest);
+public sealed record InvoiceWorkspacePreviewLine(string Description, string? Sku, decimal Quantity, string Unit, decimal VatRate, decimal UnitPrice, decimal DiscountAmount, decimal VatAmount, decimal Total);
+public sealed record InvoiceWorkspacePreviewItem(
+    Guid OrderId,
+    Guid PackageId,
+    Guid ProviderConnectionId,
+    string OrderNumber,
+    string PlatformCode,
+    string PlatformName,
+    string Environment,
+    string CustomerType,
+    string CustomerName,
+    string TaxIdentityNumber,
+    string InvoiceAddressJson,
+    string InvoiceType,
+    string Currency,
+    decimal TaxExclusiveTotal,
+    decimal DiscountTotal,
+    decimal TaxTotal,
+    decimal PayableTotal,
+    IReadOnlyList<InvoiceWorkspacePreviewLine> Lines,
+    bool CanConfirm,
+    string? BlockedReason,
+    string PreviewDigest,
+    Guid? ExistingInvoiceId,
+    string? ExistingInvoiceStatus,
+    string? NextAction);
+public sealed record InvoiceWorkspaceConfirmResult(IReadOnlyList<InvoiceWorkspaceConfirmItemResult> Items);
+public sealed record InvoiceWorkspaceConfirmItemResult(Guid PackageId, Guid? InvoiceId, Guid? JobId, string Status, string Action, string Message);
 public sealed record InvoiceListView(Guid Id, string OrderNumber, string InvoiceType, string Status, string Currency, decimal PayableTotal, string? InvoiceNumber, DateTimeOffset? DueAt, DateTimeOffset CreatedAt, long Version);
 public sealed record InvoiceWorkspaceItemView(
     Guid OrderId,
@@ -175,7 +222,8 @@ public sealed record InvoiceWorkspaceItemView(
     string PlatformDisplayName = "Trendyol",
     bool InvoiceCreationEnabled = true,
     string? MarketplaceInvoiceReadErrorCode = null,
-    string? MarketplaceInvoiceReadErrorSummary = null);
+    string? MarketplaceInvoiceReadErrorSummary = null,
+    string Environment = "UNKNOWN");
 public sealed record InvoiceWorkspaceLineView(string Sku, string? Barcode, string Description, decimal Quantity, decimal UnitPrice, decimal VatRate, string? ImageUrl);
 public sealed record InvoiceWorkspaceSummaryView(int DueSoonCount);
 public sealed record InvoiceWorkspacePageQuery(
@@ -220,6 +268,8 @@ public interface IInvoicingBillingService
     Task<IReadOnlyList<InvoiceWorkspaceItemView>> WorkspaceAsync(Guid tenantId, CancellationToken cancellationToken);
     Task<InvoiceWorkspacePageView> WorkspacePageAsync(Guid tenantId, InvoiceWorkspacePageQuery query, CancellationToken cancellationToken);
     Task<InvoiceWorkspaceSummaryView> WorkspaceSummaryAsync(Guid tenantId, CancellationToken cancellationToken);
+    Task<ServiceResult<IReadOnlyList<InvoiceWorkspacePreviewItem>>> PreviewWorkspaceInvoicesAsync(Guid tenantId, InvoiceWorkspacePreviewRequest request, CancellationToken cancellationToken);
+    Task<ServiceResult<InvoiceWorkspaceConfirmResult>> ConfirmWorkspaceInvoicesAsync(Guid tenantId, InvoiceWorkspacePreviewConfirmRequest request, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<InvoiceDetailView>> CreateDraftAsync(Guid tenantId, CreateInvoiceCommand command, string idempotencyKey, CancellationToken cancellationToken);
     Task<ServiceResult<InvoiceDetailView>> GetAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
     Task<ServiceResult<InvoiceDetailView>> ValidateAsync(Guid tenantId, Guid id, long expectedVersion, CancellationToken cancellationToken);

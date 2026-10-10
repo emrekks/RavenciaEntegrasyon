@@ -896,8 +896,16 @@ public sealed partial class HepsiburadaHttpClient(
             context,
             configuration.GetValue<bool>("FeatureFlags:InvoiceMarketplaceDeliveryWrites"));
         var oneTimeInvoiceWriteAllowed = IntegrationRuntimePolicy.AllowsOneTimeHepsiburadaInvoiceDelivery(account.Connection, context, invoice!.OrderNumber);
-        if (!regularWriteAllowed && !automaticInvoiceWriteAllowed && !oneTimeInvoiceWriteAllowed)
+        if (!(regularWriteAllowed && automaticInvoiceWriteAllowed) && !oneTimeInvoiceWriteAllowed)
             return await Unsupported<InvoiceDeliveryResult>("Hepsiburada fatura teslimi yalnız genel dış yazma izinleri, ayrı fatura iletme izni veya doğrulanmış tek seferlik fatura yetkisi açıkken kullanılabilir.");
+
+        // hasInvoice cannot identify which invoice is attached. Only send when
+        // the package is observed empty immediately before this request; a
+        // successful post-write read then ties the observation to this attempt.
+        var before = await QueryDeliveryAsync(context, new(invoice!.PackageNumber, invoice.OrderNumber), cancellationToken);
+        if (!before.IsSuccess) return AdapterResult<InvoiceDeliveryResult>.Failure(before.Error!, before.RateLimit);
+        if (!string.Equals(before.Value!.RawStatus, "NOT_INVOICED", StringComparison.Ordinal))
+            return AdapterResult<InvoiceDeliveryResult>.Failure(new(AdapterErrorClass.BusinessConflict, "HEPSIBURADA_INVOICE_ALREADY_PRESENT", "Hepsiburada paketi faturalı görünüyor; faturanın bu mali belgeyle eşleştiği kanıtlanmadan üzerine yazılmadı.", (int)HttpStatusCode.Conflict, null, null), before.RateLimit);
 
         var body = JsonSerializer.Serialize(new
         {
@@ -918,7 +926,11 @@ public sealed partial class HepsiburadaHttpClient(
         var path = InvoiceLink(account, invoice.PackageNumber);
         var response = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Put, path, content, cancellationToken);
         if (!response.IsSuccess) return AdapterResult<InvoiceDeliveryResult>.Failure(response.Error!, response.RateLimit);
-        return AdapterResult<InvoiceDeliveryResult>.Success(new(invoice.PackageNumber, "SUBMITTED"), response.RateLimit);
+        var after = await QueryDeliveryAsync(context, new(invoice.PackageNumber, invoice.OrderNumber), cancellationToken);
+        if (!after.IsSuccess) return AdapterResult<InvoiceDeliveryResult>.Failure(after.Error!, after.RateLimit);
+        if (!string.Equals(after.Value!.RawStatus, "INVOICED", StringComparison.Ordinal))
+            return AdapterResult<InvoiceDeliveryResult>.Failure(new(AdapterErrorClass.BusinessConflict, "HEPSIBURADA_INVOICE_DELIVERY_READBACK_MISSING", "Hepsiburada isteği kabul etti ancak pakette fatura bulunduğu doğrulanmadı; gönderim otomatik tekrarlanmayacak.", (int)HttpStatusCode.Conflict, null, null), after.RateLimit ?? response.RateLimit);
+        return AdapterResult<InvoiceDeliveryResult>.Success(new(invoice.PackageNumber, "INVOICED", true, invoice.InvoiceNumber, invoice.InvoiceLink.AbsoluteUri), after.RateLimit ?? response.RateLimit);
     }
 
     public async Task<AdapterResult<InvoiceDeliveryStatus>> QueryDeliveryAsync(AdapterContext context, ExternalInvoiceDeliveryReference reference, CancellationToken cancellationToken)

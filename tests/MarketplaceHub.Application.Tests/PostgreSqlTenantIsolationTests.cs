@@ -1709,7 +1709,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
 
             Assert.Equal(1, page.TotalCount);
             Assert.Equal(package.Id, Assert.Single(page.Items).PackageId);
-            Assert.Equal("FATURA_KESILDI", page.Items.Single().InvoiceStatus);
+            Assert.Equal("FATURA_KONTROLDE", page.Items.Single().InvoiceStatus);
         }
         finally
         {

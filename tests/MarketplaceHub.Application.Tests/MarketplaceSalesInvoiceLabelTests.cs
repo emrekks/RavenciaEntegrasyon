@@ -9,11 +9,11 @@ public sealed class MarketplaceSalesInvoiceLabelTests
     [Theory]
     [InlineData("INVOICED")]
     [InlineData("Invoiced")]
-    public void InvoicedPackageStatusIsPresentedAsIssuedInvoice(string rawStatus)
+    public void InvoicedPackageStatusWithoutMatchedLocalInvoiceIsPresentedForReview(string rawStatus)
     {
         var label = MarketplaceSalesService.InvoiceLabel(null, "{}", [rawStatus]);
 
-        Assert.Equal("FATURA_KESILDI", label);
+        Assert.Equal("FATURA_KONTROLDE", label);
     }
 
     [Fact]
@@ -25,7 +25,7 @@ public sealed class MarketplaceSalesInvoiceLabelTests
     }
 
     [Theory]
-    [InlineData("INVOICED", "FATURA_KESILDI")]
+    [InlineData("INVOICED", "FATURA_KONTROLDE")]
     [InlineData("NOT_INVOICED", "FATURA_BEKLIYOR")]
     public void HepsiburadaOrderDetailInvoiceEvidenceIsPresented(string marketplaceStatus, string expected)
     {
@@ -44,23 +44,62 @@ public sealed class MarketplaceSalesInvoiceLabelTests
     }
 
     [Fact]
-    public void ReturnWithInvoicedPackageEvidenceRemainsIssued()
+    public void ReturnWithRemoteInvoicedEvidenceWithoutMatchedLocalInvoiceRemainsForReview()
     {
         var label = MarketplaceSalesService.ReturnInvoiceLabel(null, MarketplaceInvoiceStatus.Unknown, "{}", ["Invoiced"]);
 
-        Assert.Equal("FATURA_KESILDI", label);
+        Assert.Equal("FATURA_KONTROLDE", label);
     }
 
     [Theory]
     [InlineData(InvoiceStatus.Rejected)]
     [InlineData(InvoiceStatus.ValidationFailed)]
     [InlineData(InvoiceStatus.ManualReview)]
-    [InlineData(InvoiceStatus.MarketplaceFailed)]
     public void LocalInvoiceFailureWinsOverInvoicedMarketplaceSnapshot(InvoiceStatus failureStatus)
     {
         var label = MarketplaceSalesService.InvoiceLabel(new Invoice { Status = failureStatus, InvoiceType = "EARSIV", SequencePurpose = "MANUAL", Currency = "TRY", Note = string.Empty, IdempotencyKey = "test" }, MarketplaceInvoiceStatus.Invoiced, "{}", []);
 
         Assert.Equal("FATURA_REDDEDILDI", label);
+    }
+
+    [Fact]
+    public void CompletedFiscalInvoiceWithoutMarketplaceDeliveryProofStaysUnderReview()
+    {
+        var label = MarketplaceSalesService.InvoiceLabel(
+            InvoiceStatus.Completed,
+            "INV-1",
+            MarketplaceInvoiceStatus.Invoiced,
+            "{}",
+            [],
+            marketplaceDeliveryConfirmed: false);
+
+        Assert.Equal("FATURA_KONTROLDE", label);
+    }
+
+    [Fact]
+    public void CompletedFiscalInvoiceWithConfirmedMarketplaceDeliveryIsIssued()
+    {
+        var label = MarketplaceSalesService.InvoiceLabel(
+            InvoiceStatus.Completed,
+            "INV-1",
+            MarketplaceInvoiceStatus.Unknown,
+            "{}",
+            [],
+            marketplaceDeliveryConfirmed: true);
+
+        Assert.Equal("FATURA_KESILDI", label);
+    }
+
+    [Fact]
+    public void MarketplaceDeliveryFailureRemainsRetryableInsteadOfLookingLikeFiscalRejection()
+    {
+        var label = MarketplaceSalesService.InvoiceLabel(
+            new Invoice { Status = InvoiceStatus.MarketplaceFailed, InvoiceType = "EARSIV", SequencePurpose = "SALE", Currency = "TRY", Note = string.Empty, IdempotencyKey = "test" },
+            MarketplaceInvoiceStatus.Invoiced,
+            "{}",
+            []);
+
+        Assert.Equal("FATURA_PLATFORMA_AKTARILMADI", label);
     }
 
     [Fact]

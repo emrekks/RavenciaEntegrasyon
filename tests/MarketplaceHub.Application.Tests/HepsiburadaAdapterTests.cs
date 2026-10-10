@@ -1876,6 +1876,7 @@ public sealed class HepsiburadaAdapterTests
         {
           "shipmentPackageId": "package-1",
           "orderNumber": "order-1",
+          "invoiceNumber": "DAP2026000000016",
           "invoiceLink": "https://files.example/invoice.pdf",
           "arrangementDate": "2026-09-29T12:00:00+03:00",
           "contentType": "Application/PDF"
@@ -1887,6 +1888,7 @@ public sealed class HepsiburadaAdapterTests
         Assert.NotNull(request);
         Assert.Equal("package-1", request.PackageNumber);
         Assert.Equal("order-1", request.OrderNumber);
+        Assert.Equal("DAP2026000000016", request.InvoiceNumber);
         Assert.Equal("application/pdf", request.ContentType);
         Assert.Equal("https", request.InvoiceLink.Scheme);
 
@@ -1896,6 +1898,8 @@ public sealed class HepsiburadaAdapterTests
         Assert.False(HepsiburadaInvoiceDeliveryPolicy.TryCreate(httpLink, out _, out _));
         var unsupportedContentType = command with { PayloadJson = command.PayloadJson.Replace("Application/PDF", "image/png", StringComparison.Ordinal) };
         Assert.False(HepsiburadaInvoiceDeliveryPolicy.TryCreate(unsupportedContentType, out _, out _));
+        var missingInvoiceNumber = command with { PayloadJson = command.PayloadJson.Replace("\"invoiceNumber\": \"DAP2026000000016\",", string.Empty, StringComparison.Ordinal) };
+        Assert.False(HepsiburadaInvoiceDeliveryPolicy.TryCreate(missingInvoiceNumber, out _, out _));
     }
 
     [Theory]

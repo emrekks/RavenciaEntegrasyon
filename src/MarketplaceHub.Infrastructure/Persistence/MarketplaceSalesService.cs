@@ -59,6 +59,17 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var packages = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId)).OrderByDescending(x => x.StatusOccurredAt).ToListAsync(cancellationToken);
         var invoices = await db.Invoices.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId)
             && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))).OrderByDescending(x => x.CreatedAt).ToListAsync(cancellationToken);
+        var invoiceIds = invoices.Select(invoice => invoice.Id).ToArray();
+        var confirmedDeliveryInvoiceIds = invoiceIds.Length == 0
+            ? new HashSet<Guid>()
+            : (await db.MarketplaceDeliveryStates.AsNoTracking()
+                .Where(delivery => delivery.TenantId == tenantId && invoiceIds.Contains(delivery.InvoiceId) && delivery.Status == "CONFIRMED")
+                .Select(delivery => delivery.InvoiceId)
+                .Concat(db.MarketplaceDeliveries.AsNoTracking()
+                    .Where(delivery => delivery.TenantId == tenantId && invoiceIds.Contains(delivery.InvoiceId) && delivery.Status == "CONFIRMED")
+                    .Select(delivery => delivery.InvoiceId))
+                .Distinct()
+                .ToListAsync(cancellationToken)).ToHashSet();
         var linesByOrder = lines.GroupBy(x => x.OrderId).ToDictionary(x => x.Key, x => x.ToList());
         var packagesByOrder = packages.GroupBy(x => x.OrderId).ToDictionary(x => x.Key, x => x.ToList());
         var invoicesByOrder = invoices.Where(x => x.OriginalInvoiceId == null).GroupBy(x => x.OrderId).ToDictionary(x => x.Key, x => x.First());
@@ -143,7 +154,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 orderLines.Count, orderPackages.Count, order.Version,
                 order.ConnectionId, connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol",
                 customer.Name, customer.OrderType, customer.IsMicroExport, dueAt,
-                OpenOrderLifecyclePolicy.ShouldShowShipmentDeadlineWarning(connection?.PlatformCode, displayStatus, dueAt, now, unverifiedWithoutPackage), InvoiceLabelForPlatform(invoice, package?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown, order.CustomerSnapshotJson, orderPackages.Select(x => x.RawStatus), connection?.PlatformCode),
+                OpenOrderLifecyclePolicy.ShouldShowShipmentDeadlineWarning(connection?.PlatformCode, displayStatus, dueAt, now, unverifiedWithoutPackage), InvoiceLabelForPlatform(invoice, package?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown, order.CustomerSnapshotJson, orderPackages.Select(x => x.RawStatus), connection?.PlatformCode, invoice is not null && confirmedDeliveryInvoiceIds.Contains(invoice.Id)),
                 package?.CargoProviderExternalId ?? JsonText(order.CustomerSnapshotJson, "marketplaceCargoProviderName"), package?.CargoTrackingNumber,
                 orderLines.Select(x => ResolveOrderVariant(order, x)).Where(x => x is not null).Select(x => imageUrls.GetValueOrDefault(x!.Id)).FirstOrDefault(x => x is not null),
                 orderLines.Sum(x => OrderLinePresentationPolicy.ActiveQuantity(x.OrderedQuantity, x.CancelledQuantity)), customer.Email, customer.TaxOrIdentityNumber,
@@ -168,19 +179,21 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 "FATURA_KESILDI" => query.Where(x =>
                     db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null
                         && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
-                        && i.Status == InvoiceStatus.Completed)
-                    || db.ShipmentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id
-                        && package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Invoiced
-                        // A stale marketplace "invoiced" snapshot must not mask a failed local invoice attempt.
-                        && !db.Invoices.Any(i => i.TenantId == package.TenantId && i.OrderId == package.OrderId
-                            && i.OriginalInvoiceId == null && (i.PackageId == package.Id || i.PackageId == null)
-                            && (i.Status == InvoiceStatus.Rejected || i.Status == InvoiceStatus.ValidationFailed
-                                || i.Status == InvoiceStatus.ManualReview || i.Status == InvoiceStatus.MarketplaceFailed)))),
+                        && i.Status == InvoiceStatus.Completed
+                        && (db.MarketplaceDeliveryStates.Any(state => state.TenantId == i.TenantId && state.InvoiceId == i.Id && state.Status == "CONFIRMED")
+                            || db.MarketplaceDeliveries.Any(delivery => delivery.TenantId == i.TenantId && delivery.InvoiceId == i.Id && delivery.Status == "CONFIRMED")))),
                 "FATURA_KONTROLDE" => query.Where(x =>
                     db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null
                         && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
-                        && (i.Status == InvoiceStatus.Submitted || i.Status == InvoiceStatus.Accepted || i.Status == InvoiceStatus.MarketplacePending))
-                    || db.ShipmentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Received)),
+                        && ((i.Status == InvoiceStatus.Submitted || i.Status == InvoiceStatus.Accepted || i.Status == InvoiceStatus.MarketplacePending)
+                            || (i.Status == InvoiceStatus.Completed
+                                && !db.MarketplaceDeliveryStates.Any(state => state.TenantId == i.TenantId && state.InvoiceId == i.Id && state.Status == "CONFIRMED")
+                                && !db.MarketplaceDeliveries.Any(delivery => delivery.TenantId == i.TenantId && delivery.InvoiceId == i.Id && delivery.Status == "CONFIRMED"))))
+                    || db.ShipmentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id
+                        && (package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Received || package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Invoiced))),
+                "FATURA_PLATFORMA_AKTARILMADI" => query.Where(x => db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null
+                    && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
+                    && (i.Status == InvoiceStatus.Accepted || i.Status == InvoiceStatus.MarketplacePending || i.Status == InvoiceStatus.MarketplaceFailed))),
                 "FATURA_REDDEDILDI" => query.Where(x =>
                     db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null
                         && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
@@ -194,7 +207,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                     || x.CustomerSnapshotJson.Contains("NOTINVOICED") || x.CustomerSnapshotJson.Contains("NOT_INVOICED")),
                 "FATURA_ISLENIYOR" => query.Where(x => db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null
                     && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
-                    && i.Status != InvoiceStatus.Completed && i.Status != InvoiceStatus.Cancelled && i.Status != InvoiceStatus.CancelledLocal && i.Status != InvoiceStatus.Rejected && i.Status != InvoiceStatus.ValidationFailed && i.Status != InvoiceStatus.ManualReview)),
+                    && (i.Status == InvoiceStatus.Draft || i.Status == InvoiceStatus.Validating || i.Status == InvoiceStatus.Ready || i.Status == InvoiceStatus.Submitting || i.Status == InvoiceStatus.UnknownResult || i.Status == InvoiceStatus.Submitted))),
                 _ => query.Where(_ => false)
             };
         }
@@ -591,6 +604,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var invoice = packages.Select(x => invoices.FirstOrDefault(invoice => invoice.PackageId == x.Id)).FirstOrDefault(x => x is not null)
             ?? invoices.FirstOrDefault(x => x.PackageId == null)
             ?? invoices.FirstOrDefault();
+        var deliveryConfirmed = invoice is not null && (await db.MarketplaceDeliveryStates.AsNoTracking().AnyAsync(state => state.TenantId == tenantId && state.InvoiceId == invoice.Id && state.Status == "CONFIRMED", cancellationToken)
+            || await db.MarketplaceDeliveries.AsNoTracking().AnyAsync(delivery => delivery.TenantId == tenantId && delivery.InvoiceId == invoice.Id && delivery.Status == "CONFIRMED", cancellationToken));
         var invoiceDocumentUrl = packages
             .Select(x => ValidInvoiceDocumentUrl(x.MarketplaceInvoiceUrl))
             .FirstOrDefault(x => x is not null)
@@ -601,7 +616,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             lines, visiblePackages.Select(x => Map(x, order.OrderNumber)).ToList(), order.Version,
             order.ConnectionId, connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol",
             customer.Name, customer.Email, customer.TaxOrIdentityNumber, customer.OrderType, customer.IsMicroExport,
-            order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentDueAt ?? OperationalDueAt(order.CustomerSnapshotJson), InvoiceLabelForPlatform(invoice, displayPackage?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown, order.CustomerSnapshotJson, packages.Select(x => x.RawStatus), connection?.PlatformCode),
+            order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentDueAt ?? OperationalDueAt(order.CustomerSnapshotJson), InvoiceLabelForPlatform(invoice, displayPackage?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown, order.CustomerSnapshotJson, packages.Select(x => x.RawStatus), connection?.PlatformCode, deliveryConfirmed),
             customer.Phone, customer.IsEInvoiceAvailable, invoiceDocumentUrl));
     }
 
@@ -1363,6 +1378,17 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var packages = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId)).OrderByDescending(x => x.StatusOccurredAt).ToListAsync(cancellationToken);
         var invoices = await db.Invoices.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId) && x.OriginalInvoiceId == null
             && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))).OrderByDescending(x => x.CreatedAt).ToListAsync(cancellationToken);
+        var invoiceIds = invoices.Select(invoice => invoice.Id).ToArray();
+        var confirmedDeliveryInvoiceIds = invoiceIds.Length == 0
+            ? new HashSet<Guid>()
+            : (await db.MarketplaceDeliveryStates.AsNoTracking()
+                .Where(delivery => delivery.TenantId == tenantId && invoiceIds.Contains(delivery.InvoiceId) && delivery.Status == "CONFIRMED")
+                .Select(delivery => delivery.InvoiceId)
+                .Concat(db.MarketplaceDeliveries.AsNoTracking()
+                    .Where(delivery => delivery.TenantId == tenantId && invoiceIds.Contains(delivery.InvoiceId) && delivery.Status == "CONFIRMED")
+                    .Select(delivery => delivery.InvoiceId))
+                .Distinct()
+                .ToListAsync(cancellationToken)).ToHashSet();
         var rows = claims.Select(claim =>
         {
             var order = orders.GetValueOrDefault(claim.OrderId);
@@ -1390,7 +1416,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             return new ReturnListView(claim.Id, claim.ExternalClaimId, order?.OrderNumber ?? "—", Wire(claim.Status), claim.RawStatus, claim.ReasonText, ReturnActionDueAt(platformCode, claim.RawStatus, claim.ActionDueAt, claim.LastRemoteModifiedAt), claim.Version,
                 order is null ? "—" : Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson).Name,
                 order?.OrderedAt, order?.NetAmount ?? 0, order?.Currency ?? "TRY", claim.CargoProviderName, claim.CargoTrackingNumber, image, claimLines.Count, firstLine?.Barcode ?? firstVariant?.Barcode,
-                lineViews, package?.ExternalPackageId, order is null ? "FATURA_BEKLIYOR" : ReturnInvoiceLabel(invoice, package?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown, order.CustomerSnapshotJson, package is null ? [] : [package.RawStatus]), order?.GrossAmount ?? 0, order?.DiscountAmount ?? 0,
+                lineViews, package?.ExternalPackageId, order is null ? "FATURA_BEKLIYOR" : ReturnInvoiceLabel(invoice, package?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown, order.CustomerSnapshotJson, package is null ? [] : [package.RawStatus], invoice is not null && confirmedDeliveryInvoiceIds.Contains(invoice.Id)), order?.GrossAmount ?? 0, order?.DiscountAmount ?? 0,
                 order is not null && Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson).IsMicroExport,
                 claimConnection?.Id ?? connection?.Id, platformCode, claimConnection?.DisplayName ?? connection?.DisplayName ?? "Trendyol", outboundPackage?.CargoProviderExternalId, outboundPackage?.CargoTrackingNumber, claim.ReasonCode, approvedAt, claim.CargoTrackingLink);
         }).ToList();
@@ -2186,13 +2212,13 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     private static DateTimeOffset? OperationalDueAt(string json) =>
         JsonInstant(json, "agreedDeliveryDate", "estimatedDeliveryEndDate", "lastDeliveryDate", "deliveryDate", "estimatedDeliveryStartDate", "packageLastModifiedDate", "packageDeliveryDate", "packageEstimatedDeliveryDate", "dueDate", "shipmentDueDate", "deliveryDueAt");
 
-    internal static string InvoiceLabel(Invoice? invoice, string customerJson) =>
-        InvoiceLabel(invoice, customerJson, []);
+    internal static string InvoiceLabel(Invoice? invoice, string customerJson, bool marketplaceDeliveryConfirmed = false) =>
+        InvoiceLabel(invoice, customerJson, [], marketplaceDeliveryConfirmed);
 
-    internal static string InvoiceLabel(Invoice? invoice, string customerJson, IEnumerable<string?> packageRawStatuses) =>
-        InvoiceLabel(invoice?.Status, invoice?.InvoiceNumber, customerJson, packageRawStatuses);
+    internal static string InvoiceLabel(Invoice? invoice, string customerJson, IEnumerable<string?> packageRawStatuses, bool marketplaceDeliveryConfirmed = false) =>
+        InvoiceLabel(invoice?.Status, invoice?.InvoiceNumber, customerJson, packageRawStatuses, marketplaceDeliveryConfirmed);
 
-    internal static string InvoiceLabel(InvoiceStatus? invoiceStatus, string? invoiceNumber, string customerJson, IEnumerable<string?> packageRawStatuses)
+    internal static string InvoiceLabel(InvoiceStatus? invoiceStatus, string? invoiceNumber, string customerJson, IEnumerable<string?> packageRawStatuses, bool marketplaceDeliveryConfirmed = false)
     {
         // The local fiscal invoice and the marketplace delivery are separate
         // facts. A fiscal invoice number does not prove that Trendyol accepted
@@ -2200,12 +2226,14 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         // as an in-progress marketplace delivery.
         if (invoiceStatus is { } status)
         {
-            if (status is InvoiceStatus.Rejected or InvoiceStatus.ValidationFailed or InvoiceStatus.ManualReview or InvoiceStatus.MarketplaceFailed) return "FATURA_REDDEDILDI";
+            if (status is InvoiceStatus.Rejected or InvoiceStatus.ValidationFailed or InvoiceStatus.ManualReview) return "FATURA_REDDEDILDI";
+            if (status is InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending or InvoiceStatus.MarketplaceFailed)
+                return "FATURA_PLATFORMA_AKTARILMADI";
             if (status is InvoiceStatus.Cancelled or InvoiceStatus.CancelledLocal) return "FATURA_IPTAL";
             if (status == InvoiceStatus.Completed)
-                return "FATURA_KESILDI";
-            if (status is InvoiceStatus.Submitted or InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending)
-                return "FATURA_KONTROLDE";
+                return marketplaceDeliveryConfirmed ? "FATURA_KESILDI" : "FATURA_KONTROLDE";
+            if (status is InvoiceStatus.Submitting or InvoiceStatus.UnknownResult or InvoiceStatus.Submitted)
+                return "FATURA_ISLENIYOR";
             if (!string.IsNullOrWhiteSpace(invoiceNumber) && status is not (InvoiceStatus.Draft or InvoiceStatus.Validating or InvoiceStatus.Ready))
                 return "FATURA_KONTROLDE";
             return "FATURA_ISLENIYOR";
@@ -2216,10 +2244,10 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         // RawStatus must be considered before the snapshot fallback because a
         // later shipment update can replace the snapshot's invoice fields.
         if (packageRawStatuses.Any(IsInvoicedRemoteStatus))
-            return "FATURA_KESILDI";
+            return "FATURA_KONTROLDE";
 
         var remote = JsonText(customerJson, "marketplaceInvoiceStatus", "invoiceStatus")?.Trim().ToUpperInvariant();
-        if (remote is "INVOICED") return "FATURA_KESILDI";
+        if (remote is "INVOICED") return "FATURA_KONTROLDE";
         if (remote is "RECEIVED") return "FATURA_KONTROLDE";
         if (remote is "REJECTED") return "FATURA_REDDEDILDI";
         if (remote is "NOTINVOICED" or "NOT_INVOICED") return "FATURA_BEKLIYOR";
@@ -2230,52 +2258,53 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         return "FATURA_BILINMIYOR";
     }
 
-    internal static string InvoiceLabel(Invoice? invoice, MarketplaceInvoiceStatus marketplaceStatus, string customerJson, IEnumerable<string?> packageRawStatuses) =>
-        InvoiceLabel(invoice?.Status, invoice?.InvoiceNumber, marketplaceStatus, customerJson, packageRawStatuses);
+    internal static string InvoiceLabel(Invoice? invoice, MarketplaceInvoiceStatus marketplaceStatus, string customerJson, IEnumerable<string?> packageRawStatuses, bool marketplaceDeliveryConfirmed = false) =>
+        InvoiceLabel(invoice?.Status, invoice?.InvoiceNumber, marketplaceStatus, customerJson, packageRawStatuses, marketplaceDeliveryConfirmed);
 
-    internal static string InvoiceLabel(InvoiceStatus? invoiceStatus, string? invoiceNumber, MarketplaceInvoiceStatus marketplaceStatus, string customerJson, IEnumerable<string?> packageRawStatuses)
+    internal static string InvoiceLabel(InvoiceStatus? invoiceStatus, string? invoiceNumber, MarketplaceInvoiceStatus marketplaceStatus, string customerJson, IEnumerable<string?> packageRawStatuses, bool marketplaceDeliveryConfirmed = false)
     {
         if (invoiceStatus is { } status)
         {
             if (status is InvoiceStatus.Rejected or InvoiceStatus.ValidationFailed or InvoiceStatus.ManualReview or InvoiceStatus.MarketplaceFailed)
-                return "FATURA_REDDEDILDI";
+                return status == InvoiceStatus.MarketplaceFailed ? "FATURA_PLATFORMA_AKTARILMADI" : "FATURA_REDDEDILDI";
             if (status is InvoiceStatus.Cancelled or InvoiceStatus.CancelledLocal)
                 return "FATURA_IPTAL";
+            if (status is InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending)
+                return "FATURA_PLATFORMA_AKTARILMADI";
+            if (status is InvoiceStatus.Submitting or InvoiceStatus.UnknownResult or InvoiceStatus.Submitted)
+                return "FATURA_ISLENIYOR";
             // The marketplace observation is authoritative for the delivery
             // leg. A local invoice number only proves that our fiscal provider
             // created a document; it does not prove Trendyol accepted it.
-            if (marketplaceStatus == MarketplaceInvoiceStatus.Invoiced) return "FATURA_KESILDI";
+            if (status == InvoiceStatus.Completed) return marketplaceDeliveryConfirmed ? "FATURA_KESILDI" : "FATURA_KONTROLDE";
             if (marketplaceStatus == MarketplaceInvoiceStatus.Rejected) return "FATURA_REDDEDILDI";
             if (marketplaceStatus == MarketplaceInvoiceStatus.Received) return "FATURA_KONTROLDE";
-            if ((marketplaceStatus is MarketplaceInvoiceStatus.Unknown or MarketplaceInvoiceStatus.NotInvoiced)
-                && (status is InvoiceStatus.Submitted or InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending or InvoiceStatus.Completed))
-                return "FATURA_KONTROLDE";
-            return InvoiceLabel(invoiceStatus, invoiceNumber, customerJson, packageRawStatuses);
+            return InvoiceLabel(invoiceStatus, invoiceNumber, customerJson, packageRawStatuses, marketplaceDeliveryConfirmed);
         }
         return marketplaceStatus switch
         {
-            MarketplaceInvoiceStatus.Invoiced => "FATURA_KESILDI",
+            MarketplaceInvoiceStatus.Invoiced => "FATURA_KONTROLDE",
             MarketplaceInvoiceStatus.Received => "FATURA_KONTROLDE",
             MarketplaceInvoiceStatus.Rejected => "FATURA_REDDEDILDI",
             MarketplaceInvoiceStatus.NotInvoiced => "FATURA_BEKLIYOR",
-            _ => InvoiceLabel(invoiceStatus, invoiceNumber, customerJson, packageRawStatuses)
+            _ => InvoiceLabel(invoiceStatus, invoiceNumber, customerJson, packageRawStatuses, marketplaceDeliveryConfirmed)
         };
     }
 
-    internal static string ReturnInvoiceLabel(Invoice? invoice, MarketplaceInvoiceStatus marketplaceStatus, string customerJson, IEnumerable<string?> packageRawStatuses)
+    internal static string ReturnInvoiceLabel(Invoice? invoice, MarketplaceInvoiceStatus marketplaceStatus, string customerJson, IEnumerable<string?> packageRawStatuses, bool marketplaceDeliveryConfirmed = false)
     {
         // An absent marketplace observation does not prove that the package is
         // waiting for an invoice. Keep unknown separate so the return list does
         // not report a false pending state when Trendyol has not exposed it.
-        return InvoiceLabel(invoice, marketplaceStatus, customerJson, packageRawStatuses);
+        return InvoiceLabel(invoice, marketplaceStatus, customerJson, packageRawStatuses, marketplaceDeliveryConfirmed);
     }
 
-    internal static string InvoiceLabelForPlatform(Invoice? invoice, MarketplaceInvoiceStatus marketplaceStatus, string customerJson, IEnumerable<string?> packageRawStatuses, string? platformCode)
-        => InvoiceLabelForPlatform(invoice?.Status, invoice?.InvoiceNumber, marketplaceStatus, customerJson, packageRawStatuses, platformCode);
+    internal static string InvoiceLabelForPlatform(Invoice? invoice, MarketplaceInvoiceStatus marketplaceStatus, string customerJson, IEnumerable<string?> packageRawStatuses, string? platformCode, bool marketplaceDeliveryConfirmed = false)
+        => InvoiceLabelForPlatform(invoice?.Status, invoice?.InvoiceNumber, marketplaceStatus, customerJson, packageRawStatuses, platformCode, marketplaceDeliveryConfirmed);
 
-    internal static string InvoiceLabelForPlatform(InvoiceStatus? invoiceStatus, string? invoiceNumber, MarketplaceInvoiceStatus marketplaceStatus, string customerJson, IEnumerable<string?> packageRawStatuses, string? platformCode)
+    internal static string InvoiceLabelForPlatform(InvoiceStatus? invoiceStatus, string? invoiceNumber, MarketplaceInvoiceStatus marketplaceStatus, string customerJson, IEnumerable<string?> packageRawStatuses, string? platformCode, bool marketplaceDeliveryConfirmed = false)
     {
-        var label = InvoiceLabel(invoiceStatus, invoiceNumber, marketplaceStatus, customerJson, packageRawStatuses);
+        var label = InvoiceLabel(invoiceStatus, invoiceNumber, marketplaceStatus, customerJson, packageRawStatuses, marketplaceDeliveryConfirmed);
         if (string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase))
         {
             if (invoiceStatus == InvoiceStatus.Draft) return "FATURA_BEKLIYOR";

@@ -4,6 +4,17 @@ namespace MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Contracts;
 
 public static class TrendyolEFaturamCanonicalPayload
 {
+    public static bool IsCorporateRecipient(string customerSnapshotJson, string invoiceAddressSnapshotJson, string taxId)
+    {
+        try
+        {
+            using var customer = JsonDocument.Parse(customerSnapshotJson);
+            using var address = JsonDocument.Parse(invoiceAddressSnapshotJson);
+            return IsCorporateRecipient(customer.RootElement, address.RootElement, taxId);
+        }
+        catch (JsonException) { return taxId.Length == 10 && taxId.All(char.IsAsciiDigit); }
+    }
+
     public static string Create(EfaturamFiscalAccount account, string canonicalJson)
     {
         if (account.CompanyId <= 0 || account.UserId <= 0)

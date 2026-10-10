@@ -33,7 +33,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         MarketplaceCapabilities.ConnectionTest, MarketplaceCapabilities.ReferenceRead, MarketplaceCapabilities.ProductRead,
         MarketplaceCapabilities.OrderRead, MarketplaceCapabilities.PriceWrite, MarketplaceCapabilities.InventoryWrite,
         MarketplaceCapabilities.ShipmentWrite, MarketplaceCapabilities.LabelWrite, MarketplaceCapabilities.ReturnRead,
-        MarketplaceCapabilities.ReturnWrite
+        MarketplaceCapabilities.ReturnWrite, InvoicingCapabilities.InvoiceDeliver
     ];
     internal static readonly string[] HepsiburadaCapabilityCodes =
     [

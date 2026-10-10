@@ -58,6 +58,7 @@ public sealed class IntegrationRuntimePolicyTests
     [Theory]
     [InlineData("TRENDYOL")]
     [InlineData("HEPSIBURADA")]
+    [InlineData("SHOPIFY")]
     public void DedicatedInvoiceDeliveryPermissionDoesNotEnableOtherMarketplaceWrites(string platformCode)
     {
         var connection = Connection("PRODUCTION", platformCode);
@@ -81,7 +82,8 @@ public sealed class IntegrationRuntimePolicyTests
         Assert.False(IntegrationRuntimePolicy.AllowsAutomaticInvoiceMarketplaceDelivery(connection, context with { ConnectionId = Guid.NewGuid() }, invoiceMarketplaceDeliveryWritesEnabled: true));
         Assert.False(IntegrationRuntimePolicy.AllowsAutomaticInvoiceMarketplaceDelivery(stageConnection, context, invoiceMarketplaceDeliveryWritesEnabled: true));
         Assert.False(IntegrationRuntimePolicy.AllowsAutomaticInvoiceMarketplaceDelivery(verifiedConnection, context, invoiceMarketplaceDeliveryWritesEnabled: true));
-        Assert.False(IntegrationRuntimePolicy.AllowsAutomaticInvoiceMarketplaceDelivery(shopifyConnection, context, invoiceMarketplaceDeliveryWritesEnabled: true));
+        Assert.True(IntegrationRuntimePolicy.AllowsAutomaticInvoiceMarketplaceDelivery(shopifyConnection, context, invoiceMarketplaceDeliveryWritesEnabled: true));
+        Assert.False(IntegrationRuntimePolicy.AllowsExternalWrite(shopifyConnection, context, globalWritesEnabled: false, connectionWritesEnabled: false));
     }
 
     private static PlatformConnection Connection(string environment, string platformCode = "TRENDYOL") => new()

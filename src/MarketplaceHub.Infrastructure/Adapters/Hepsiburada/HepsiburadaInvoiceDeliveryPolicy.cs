@@ -9,7 +9,8 @@ internal sealed record HepsiburadaInvoiceDeliveryRequest(
     string OrderNumber,
     Uri InvoiceLink,
     string ArrangementDate,
-    string ContentType);
+    string ContentType,
+    string InvoiceNumber);
 
 internal static class HepsiburadaInvoiceDeliveryPolicy
 {
@@ -40,6 +41,7 @@ internal static class HepsiburadaInvoiceDeliveryPolicy
             var invoiceLinkText = String(root, "invoiceLink");
             var arrangementDateText = String(root, "arrangementDate");
             var contentType = String(root, "contentType")?.Trim();
+            var invoiceNumber = String(root, "invoiceNumber")?.Trim();
             if (string.IsNullOrWhiteSpace(command.ExternalPackageId)
                 || string.IsNullOrWhiteSpace(packageNumber)
                 || !string.Equals(packageNumber, command.ExternalPackageId, StringComparison.Ordinal))
@@ -69,8 +71,13 @@ internal static class HepsiburadaInvoiceDeliveryPolicy
                 error = "Hepsiburada fatura bağlantısı PDF veya HTML belge sunmalıdır.";
                 return false;
             }
+            if (string.IsNullOrWhiteSpace(invoiceNumber))
+            {
+                error = "Hepsiburada fatura bağlantısı doğrulaması için fatura numarası zorunludur.";
+                return false;
+            }
 
-            request = new(packageNumber, orderNumber, invoiceLink, arrangementDate.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture), contentType!.ToLowerInvariant());
+            request = new(packageNumber, orderNumber, invoiceLink, arrangementDate.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture), contentType!.ToLowerInvariant(), invoiceNumber);
             error = string.Empty;
             return true;
         }

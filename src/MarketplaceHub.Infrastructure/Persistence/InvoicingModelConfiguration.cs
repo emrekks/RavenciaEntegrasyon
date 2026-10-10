@@ -60,6 +60,10 @@ internal static class InvoicingModelConfiguration
             entity.Property(x => x.Version).IsConcurrencyToken();
             entity.HasIndex(x => new { x.TenantId, x.IdempotencyKey }).IsUnique();
             entity.HasIndex(x => new { x.TenantId, x.OrderId, x.Status });
+            entity.HasIndex(x => new { x.TenantId, x.PackageId })
+                .IsUnique()
+                .HasDatabaseName("IX_invoices_TenantId_PackageId_ActiveSaleFiscal")
+                .HasFilter("\"PackageId\" IS NOT NULL AND \"OriginalInvoiceId\" IS NULL AND \"SequencePurpose\" = 'SALE'");
             entity.HasOne<Order>().WithMany().HasForeignKey(x => new { x.TenantId, x.OrderId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<ShipmentPackage>().WithMany().HasForeignKey(x => new { x.TenantId, x.PackageId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ProviderConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);

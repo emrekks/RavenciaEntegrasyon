@@ -16,6 +16,7 @@ describe('invoice completion', () => {
   it('does not treat delivery errors as successful invoice creation', () => {
     expect(invoiceCompletionOutcome('MANUAL_REVIEW')).toBe('failed')
     expect(invoiceCompletionOutcome('MARKETPLACE_FAILED')).toBe('failed')
+    expect(invoiceCompletionOutcome('FATURA_PLATFORMA_AKTARILMADI')).toBe('failed')
     expect(invoiceCompletionOutcome('REJECTED')).toBe('failed')
   })
 })

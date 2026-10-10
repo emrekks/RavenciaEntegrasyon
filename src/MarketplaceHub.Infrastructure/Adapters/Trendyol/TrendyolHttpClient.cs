@@ -639,7 +639,7 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
             authorized.Connection,
             context,
             configuration.GetValue<bool>("FeatureFlags:InvoiceMarketplaceDeliveryWrites"));
-        if (!CanWrite(authorized, context) && !invoiceDeliveryWriteAllowed) return AdapterResult<InvoiceDeliveryResult>.Failure(TrendyolErrorMapper.WriteClosed());
+        if (!CanWrite(authorized, context) || !invoiceDeliveryWriteAllowed) return AdapterResult<InvoiceDeliveryResult>.Failure(TrendyolErrorMapper.WriteClosed());
         if (!string.Equals(command.DeliveryType, "LINK", StringComparison.Ordinal)) return AdapterResult<InvoiceDeliveryResult>.Failure(TrendyolErrorMapper.Unsupported("Yalnız resmî link delivery sözleşmesi doğrulandı; file delivery ayrı content akışı kanıtı bekliyor."));
         JsonDocument payload; try { payload = JsonDocument.Parse(command.PayloadJson); } catch (JsonException) { return AdapterResult<InvoiceDeliveryResult>.Failure(TrendyolErrorMapper.Contract()); }
         using (payload)

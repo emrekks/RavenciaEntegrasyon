@@ -10,7 +10,7 @@ export type InvoiceActionFilter = 'ALL' | 'CREATABLE' | 'NOT_CREATABLE'
 export type InvoiceSubmissionAction = 'VALIDATE' | 'SUBMIT' | 'BLOCK'
 export type InvoiceProviderConnection = { id: string; platformCode: string; environment: string; status: string; hasCredential: boolean }
 
-const retryableInvoiceStatuses = new Set(['FATURA_REDDEDILDI', 'REJECTED', 'VALIDATION_FAILED', 'MANUAL_REVIEW', 'MARKETPLACE_FAILED'])
+const retryableInvoiceStatuses = new Set(['FATURA_REDDEDILDI', 'FATURA_PLATFORMA_AKTARILMADI', 'REJECTED', 'VALIDATION_FAILED', 'MANUAL_REVIEW', 'MARKETPLACE_FAILED'])
 
 function normalizedInvoiceEnvironment(value: string | null | undefined) {
   const environment = value?.trim().toUpperCase()

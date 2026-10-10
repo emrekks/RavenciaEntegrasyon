@@ -60,7 +60,8 @@ public static class IntegrationRuntimePolicy
         && IsProduction(connection)
         && IsActive(connection)
         && (string.Equals(connection.PlatformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(connection.PlatformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase));
+            || string.Equals(connection.PlatformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(connection.PlatformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase));
 
     public static bool RequiresSensitiveConfirmation(PlatformConnection connection) => !IsStage(connection);
 

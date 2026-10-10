@@ -40,6 +40,20 @@ public static class InvoicingEndpoints
         });
         api.MapPut("/invoice-workspace/hidden", UpdateInvoiceWorkspaceHiddenAsync);
         api.MapPut("/invoice-workspace/manual-status", UpdateInvoiceWorkspaceManualStatusAsync);
+        api.MapPost("/invoice-workspace/preview", async (InvoiceWorkspacePreviewRequest request, HttpContext http, IInvoicingBillingService service) =>
+        {
+            if (Tenant(http) is not { } tenant) return Unauthorized(http);
+            var result = await service.PreviewWorkspaceInvoicesAsync(tenant.TenantId, request, http.RequestAborted);
+            return result.Succeeded ? Results.Ok(result.Value) : Problem(http, result.Error!);
+        });
+        api.MapPost("/invoice-workspace/confirm", async (InvoiceWorkspacePreviewConfirmRequest request, HttpContext http, IInvoicingBillingService service) =>
+        {
+            if (Tenant(http) is not { } tenant) return Unauthorized(http);
+            if (RequireIdempotency(http) is { } failure) return failure;
+            var result = await service.ConfirmWorkspaceInvoicesAsync(tenant.TenantId, request,
+                http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted);
+            return result.Succeeded ? Results.Accepted(value: result.Value) : Problem(http, result.Error!);
+        });
         api.MapPost("/invoices", async (CreateInvoiceCommand command, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Created(await service.CreateDraftAsync(tenant.TenantId, command, http.Request.Headers["Idempotency-Key"].ToString(), http.RequestAborted), "/api/v1/invoices") : MissingContext(http));
         api.MapGet("/invoices/{id:guid}", async (Guid id, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant ? WithEtag(http, await service.GetAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http));
         api.MapPost("/invoices/{id:guid}/validate", async (Guid id, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant ? TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.ValidateAsync(tenant.TenantId, id, version, http.RequestAborted), x => x.Version) : failure! : Unauthorized(http));
@@ -146,14 +160,16 @@ public static class InvoicingEndpoints
         if (providerPlatform != "SHOPIFY") return Problem(http, new("SHOPIFY_INVOICE_ONLY", "Bu manuel durum akışı yalnız Shopify faturaları için kullanılabilir.", 422));
         var orderUsesShopifyConnection = await db.Orders.AsNoTracking().AnyAsync(x => x.TenantId == tenant.TenantId && x.Id == invoice.OrderId && x.ConnectionId == invoice.ProviderConnectionId, http.RequestAborted);
         if (!orderUsesShopifyConnection) return Problem(http, new("SHOPIFY_INVOICE_ONLY", "Fatura kaydı aynı Shopify bağlantısına ait bir siparişle eşleşmiyor.", 422));
+        if (invoice.PackageId is not { } packageId) return Problem(http, new("SHOPIFY_INVOICE_PACKAGE_REQUIRED", "Manuel Shopify fatura durumu bir sipariş paketine bağlı olmalıdır.", 422));
+        var package = await db.ShipmentPackages.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Id == packageId && x.OrderId == invoice.OrderId, http.RequestAborted);
+        if (package is null) return Problem(http, new("SHOPIFY_INVOICE_PACKAGE_REQUIRED", "Shopify sipariş paketi bulunamadı.", 422));
         var now = timeProvider.GetUtcNow();
-        invoice.Status = status == "UPLOADED" ? InvoiceStatus.Completed : InvoiceStatus.Draft;
-        if (status == "UPLOADED") invoice.IssuedAt ??= now;
-        invoice.UpdatedAt = now;
-        invoice.Version++;
-        db.AuditLogs.Add(new AuditLog { TenantId = tenant.TenantId, ActorUserId = tenant.UserId, Action = "SHOPIFY_INVOICE_STATUS_MANUAL", TargetType = "Invoice", TargetId = id.ToString("D"), Reason = status, CorrelationId = http.TraceIdentifier, CreatedAt = now });
+        package.ManualInvoiceStatus = status;
+        package.UpdatedAt = now;
+        package.Version++;
+        db.AuditLogs.Add(new AuditLog { TenantId = tenant.TenantId, ActorUserId = tenant.UserId, Action = "SHOPIFY_INVOICE_STATUS_MANUAL", TargetType = "ShipmentPackage", TargetId = package.Id.ToString("D"), Reason = status, CorrelationId = http.TraceIdentifier, CreatedAt = now });
         await db.SaveChangesAsync(http.RequestAborted);
-        return Results.Ok(new { id = invoice.Id, status = status == "UPLOADED" ? "FATURA_YUKLENDI" : "FATURA_BEKLIYOR", version = invoice.Version });
+        return Results.Ok(new { id = package.Id, status = status == "UPLOADED" ? "FATURA_KONTROLDE" : "FATURA_BEKLIYOR", version = package.Version });
     }
 
     private static async Task<IResult> UpdateInvoiceWorkspaceManualStatusAsync(InvoiceWorkspaceManualStatusCommand command, HttpContext http, AppDbContext db, TimeProvider timeProvider)
