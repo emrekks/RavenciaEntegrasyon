@@ -6,10 +6,12 @@ set -Eeuo pipefail
 
 verify=true
 disable_external_writes=false
+enable_invoice_marketplace_delivery=false
 while (($#)); do
   case "$1" in
     --verify) verify=true; shift ;;
     --disable-external-writes) disable_external_writes=true; shift ;;
+    --enable-invoice-marketplace-delivery) enable_invoice_marketplace_delivery=true; shift ;;
     *) echo "Unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -31,6 +33,8 @@ read_env() {
 external_writes_enabled="$(sudo -n awk -F= '$1 == "MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED" { sub(/^[^=]*=/, ""); print; found=1; exit } END { if (!found) print "true" }' "$environment_file")"
 if [[ "$disable_external_writes" == true ]]; then external_writes_enabled=false; fi
 [[ "$external_writes_enabled" == true || "$external_writes_enabled" == false ]] || { echo "MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED must be true or false." >&2; exit 1; }
+invoice_marketplace_delivery_writes_enabled=false
+if [[ "$enable_invoice_marketplace_delivery" == true ]]; then invoice_marketplace_delivery_writes_enabled=true; fi
 
 cd "$repository_root"
 git pull --ff-only origin main
@@ -38,9 +42,9 @@ revision="$(git rev-parse --short=12 HEAD)"
 app_image="marketplacehub-app:manual-$revision"
 edge_image="marketplacehub-edge:manual-$revision"
 
-compose=(sudo -n env "MARKETPLACEHUB_APP_IMAGE=$app_image" "MARKETPLACEHUB_EDGE_IMAGE=$edge_image" "MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED=$external_writes_enabled" docker compose --env-file "$environment_file" -f "$base_compose" -f "$production_compose")
+compose=(sudo -n env "MARKETPLACEHUB_APP_IMAGE=$app_image" "MARKETPLACEHUB_EDGE_IMAGE=$edge_image" "MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED=$external_writes_enabled" "MARKETPLACEHUB_INVOICE_MARKETPLACE_DELIVERY_WRITES_ENABLED=$invoice_marketplace_delivery_writes_enabled" docker compose --env-file "$environment_file" -f "$base_compose" -f "$production_compose")
 # Validation must never inherit the production marketplace-write setting.
-validation_compose=(sudo -n env "MARKETPLACEHUB_APP_IMAGE=$app_image" "MARKETPLACEHUB_EDGE_IMAGE=$edge_image" "MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED=false" docker compose --profile validation --env-file "$environment_file" -f "$base_compose" -f "$production_compose")
+validation_compose=(sudo -n env "MARKETPLACEHUB_APP_IMAGE=$app_image" "MARKETPLACEHUB_EDGE_IMAGE=$edge_image" "MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED=false" "MARKETPLACEHUB_INVOICE_MARKETPLACE_DELIVERY_WRITES_ENABLED=false" docker compose --profile validation --env-file "$environment_file" -f "$base_compose" -f "$production_compose")
 
 # Resolve every production and one-shot profile before building or changing
 # containers. This catches missing variables, secret files, and invalid merged

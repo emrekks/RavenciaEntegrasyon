@@ -30,8 +30,10 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
     ];
     private static readonly string[] ShopifyCapabilityCodes =
     [
-        MarketplaceCapabilities.ConnectionTest, MarketplaceCapabilities.ShopifyAppScopes, MarketplaceCapabilities.ReferenceRead, MarketplaceCapabilities.ProductRead,
-        MarketplaceCapabilities.OrderRead
+        MarketplaceCapabilities.ConnectionTest, MarketplaceCapabilities.ReferenceRead, MarketplaceCapabilities.ProductRead,
+        MarketplaceCapabilities.OrderRead, MarketplaceCapabilities.PriceWrite, MarketplaceCapabilities.InventoryWrite,
+        MarketplaceCapabilities.ShipmentWrite, MarketplaceCapabilities.LabelWrite, MarketplaceCapabilities.ReturnRead,
+        MarketplaceCapabilities.ReturnWrite
     ];
     internal static readonly string[] HepsiburadaCapabilityCodes =
     [
@@ -190,7 +192,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             var connectionTest = await db.PlatformCapabilities.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == id && x.Code == MarketplaceCapabilities.ConnectionTest && x.Environment == connection.Environment && x.StoreScope == connection.ExternalStoreId, cancellationToken);
             if (connection.LastSuccessAt is null || connectionTest?.SupportLevel != CapabilitySupportLevel.Supported)
                 return ServiceResult<ConnectionView>.Fail("CONNECTION_TEST_REQUIRED", "Shopify dış yazmasını açmadan önce başarılı bağlantı testi gerekir.", 422);
-            if (!await ShopifyWriteScopesGrantedAsync(tenantId, id, connection.Environment, connection.ExternalStoreId, cancellationToken))
+            if (!await HasVerifiedWriteEvidenceAsync(connection, cancellationToken, MarketplaceCapabilities.PriceWrite, MarketplaceCapabilities.InventoryWrite))
                 return ServiceResult<ConnectionView>.Fail("SHOPIFY_WRITE_SCOPES_REQUIRED", "Shopify fiyat ve stok dış yazması için tokenında write_products ve write_inventory izinleri doğrulanmalıdır.", 422);
         }
         var environmentChanged = requestedEnvironment is not null && !string.Equals(connection.Environment, requestedEnvironment, StringComparison.OrdinalIgnoreCase);
@@ -211,7 +213,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         else if (connection.PlatformCode == "SHOPIFY")
             connection.SettingsJson = JsonSerializer.Serialize(new ShopifyConnectionSettings(requestedExternalWrites, command.InvoiceCreationEnabled ?? invoiceCreationEnabled));
         else
-            connection.SettingsJson = JsonSerializer.Serialize(new ShopifyConnectionSettings(false, command.InvoiceCreationEnabled ?? invoiceCreationEnabled));
+            connection.SettingsJson = JsonSerializer.Serialize(new ShopifyConnectionSettings(requestedExternalWrites, command.InvoiceCreationEnabled ?? invoiceCreationEnabled));
 
         if (environmentChanged || storeScopeChanged || userAgentChanged)
         {
@@ -278,7 +280,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         if (connection.PlatformCode == "TRENDYOL_EFATURAM")
             connection.SettingsJson = JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings(ReadEfaturamSettings(connection).ExternalWritesEnabled));
         else if (connection.PlatformCode == "SHOPIFY")
-            connection.SettingsJson = JsonSerializer.Serialize(new ShopifyConnectionSettings(false, MarketplaceInvoiceCreationPolicy.IsEnabled(connection.PlatformCode, connection.SettingsJson)));
+            connection.SettingsJson = JsonSerializer.Serialize(new ShopifyConnectionSettings(ReadShopifySettings(connection).ExternalWritesEnabled, MarketplaceInvoiceCreationPolicy.IsEnabled(connection.PlatformCode, connection.SettingsJson)));
         else if (connection.PlatformCode == "HEPSIBURADA")
             connection.SettingsJson = JsonSerializer.Serialize(new HepsiburadaConnectionSettings(ReadHepsiburadaSettings(connection).ExternalWritesEnabled));
         connection.LastTestedAt = null; connection.LastSuccessAt = null; connection.LastErrorCode = null; connection.Status = "DRAFT"; connection.Version++;
@@ -357,7 +359,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         if (connection.PlatformCode == "TRENDYOL_EFATURAM")
             connection.SettingsJson = JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings(ReadEfaturamSettings(connection).ExternalWritesEnabled));
         else if (connection.PlatformCode == "SHOPIFY")
-            connection.SettingsJson = JsonSerializer.Serialize(new ShopifyConnectionSettings(false, MarketplaceInvoiceCreationPolicy.IsEnabled(connection.PlatformCode, connection.SettingsJson)));
+            connection.SettingsJson = JsonSerializer.Serialize(new ShopifyConnectionSettings(ReadShopifySettings(connection).ExternalWritesEnabled, MarketplaceInvoiceCreationPolicy.IsEnabled(connection.PlatformCode, connection.SettingsJson)));
         else if (connection.PlatformCode == "HEPSIBURADA")
             connection.SettingsJson = JsonSerializer.Serialize(new HepsiburadaConnectionSettings(ReadHepsiburadaSettings(connection).ExternalWritesEnabled));
         connection.Version++;
@@ -407,7 +409,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             try { using var constraints = JsonDocument.Parse(command.ConstraintsJson); if (constraints.RootElement.ValueKind != JsonValueKind.Object) return Invalid<CapabilityView>("constraintsJson", "Capability constraints JSON nesnesi olmalıdır."); }
             catch (JsonException) { return Invalid<CapabilityView>("constraintsJson", "Capability constraints geçerli JSON olmalıdır."); }
         }
-        var writeCapability = CapabilityEvidencePolicy.RequiresStageFixtureChecksum(normalizedCode);
+        var writeCapability = CapabilityEvidencePolicy.RequiresStageFixtureChecksum(normalizedCode) && connection.PlatformCode != "SHOPIFY";
         var checksum = command.FixtureChecksum?.Trim().ToUpperInvariant();
         if (support == "SUPPORTED" && writeCapability && (checksum is null || checksum.Length != 64 || checksum.Any(x => !Uri.IsHexDigit(x))))
             return Invalid<CapabilityView>("fixtureChecksum", "Write capability SUPPORTED yapılırken 64 haneli SHA-256 Stage/SIT fixture checksum zorunludur.");
@@ -690,8 +692,8 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
     private static SyncPolicyView Map(ConnectionSyncPolicy x) => new(x.Id, x.ResourceType, x.IntervalSeconds, x.OverlapSeconds, x.JitterSeconds, x.Enabled, x.Version, RequiresExternalWrites: MarketplaceSyncPolicyRules.RequiresExternalWrites(x.ResourceType));
     private static WebhookSubscriptionView Map(WebhookSubscription x) => new(x.Id, x.AuthenticationType, x.Status, x.ExternalSubscriptionId, x.VerifiedAt, x.LastReceivedAt, x.Version);
     private static ConnectionSettings ReadSettings(PlatformConnection value) { try { return JsonSerializer.Deserialize<ConnectionSettings>(value.SettingsJson) ?? new("", false); } catch (JsonException) { return new("", false); } }
+    private static ShopifyConnectionSettings ReadShopifySettings(PlatformConnection value) { try { return JsonSerializer.Deserialize<ShopifyConnectionSettings>(value.SettingsJson) ?? new(false, MarketplaceInvoiceCreationPolicy.IsEnabled(value.PlatformCode, value.SettingsJson)); } catch (JsonException) { return new(false, MarketplaceInvoiceCreationPolicy.IsEnabled(value.PlatformCode, value.SettingsJson)); } }
     private static HepsiburadaConnectionSettings ReadHepsiburadaSettings(PlatformConnection value) { try { return JsonSerializer.Deserialize<HepsiburadaConnectionSettings>(value.SettingsJson) ?? new(false); } catch (JsonException) { return new(false); } }
-    private static ShopifyConnectionSettings ReadShopifySettings(PlatformConnection value) { try { return JsonSerializer.Deserialize<ShopifyConnectionSettings>(value.SettingsJson) ?? new(false); } catch (JsonException) { return new(false); } }
     private static TrendyolEFaturamConnectionSettings ReadEfaturamSettings(PlatformConnection value) { try { return JsonSerializer.Deserialize<TrendyolEFaturamConnectionSettings>(value.SettingsJson) ?? new(false); } catch (JsonException) { return new(false); } }
     private bool WritesEnabled(string settingsJson)
     {
@@ -700,19 +702,6 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         {
             using var document = JsonDocument.Parse(settingsJson);
             return document.RootElement.TryGetProperty("ExternalWritesEnabled", out var enabled) && enabled.ValueKind == JsonValueKind.True;
-        }
-        catch (JsonException) { return false; }
-    }
-    private async Task<bool> ShopifyWriteScopesGrantedAsync(Guid tenantId, Guid connectionId, string environment, string storeScope, CancellationToken cancellationToken)
-    {
-        var capability = await db.PlatformCapabilities.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == MarketplaceCapabilities.ShopifyAppScopes && x.SupportLevel == CapabilitySupportLevel.Supported && x.Environment == environment && x.StoreScope == storeScope, cancellationToken);
-        if (capability?.ConstraintsJson is null) return false;
-        try
-        {
-            using var document = JsonDocument.Parse(capability.ConstraintsJson);
-            if (!document.RootElement.TryGetProperty("grantedScopes", out var scopes) || scopes.ValueKind != JsonValueKind.Array) return false;
-            var granted = scopes.EnumerateArray().Where(value => value.ValueKind == JsonValueKind.String).Select(value => value.GetString()).Where(value => value is not null).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            return granted.Contains("write_products") && granted.Contains("write_inventory");
         }
         catch (JsonException) { return false; }
     }

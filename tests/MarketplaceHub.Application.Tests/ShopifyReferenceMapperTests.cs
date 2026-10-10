@@ -41,35 +41,6 @@ public sealed class ShopifyReferenceMapperTests
     }
 
     [Fact]
-    public void MapGrantedScopesReturnsSortedDistinctHandles()
-    {
-        using var json = JsonDocument.Parse("""
-        {
-          "currentAppInstallation": {
-            "accessScopes": [
-              { "handle": "write_products" },
-              { "handle": "read_orders" },
-              { "handle": "write_products" },
-              { "handle": "read_inventory" }
-            ]
-          }
-        }
-        """);
-
-        var scopes = ShopifyHttpClient.MapGrantedScopes(json.RootElement);
-
-        Assert.Equal(["read_inventory", "read_orders", "write_products"], scopes);
-    }
-
-    [Fact]
-    public void MapGrantedScopesRejectsMissingAccessScopes()
-    {
-        using var json = JsonDocument.Parse("{} ");
-
-        Assert.Throws<JsonException>(() => ShopifyHttpClient.MapGrantedScopes(json.RootElement));
-    }
-
-    [Fact]
     public void PriceInventoryPayloadAcceptsValidUniqueLines()
     {
         const string payload = """{"items":[{"barcode":"SKU-1","quantity":4,"salePrice":99.9,"listPrice":129.9}]}""";

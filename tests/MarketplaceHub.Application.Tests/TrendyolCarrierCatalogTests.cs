@@ -62,7 +62,7 @@ public sealed class TrendyolCarrierCatalogTests
           "Order":{
             "OrderNumber":"4486229624",
             "OrderedAt":"2026-10-07T13:03:01+03:00",
-            "CustomerSnapshotJson":"{\"name\":\"Test Müşteri\"}",
+            "CustomerSnapshotJson":"{\"name\":\"Test Müşteri\",\"isCorporate\":true}",
             "InvoiceAddressSnapshotJson":"{\"Invoice\":{\"Address\":{\"IdentityNo\":\"12345678901\",\"fullAddress\":\"Test adres\",\"city\":\"İstanbul\",\"district\":\"Şişli\"}}}"
           },
           "Package":{"CargoProviderExternalId":"HepsiJet","StatusOccurredAt":"2026-10-07T13:03:01+03:00"},
@@ -117,8 +117,8 @@ public sealed class TrendyolCarrierCatalogTests
           "Order":{
             "OrderNumber":"4486229624",
             "OrderedAt":"2026-10-07T13:03:01+03:00",
-            "CustomerSnapshotJson":"{\"marketplaceInvoiceStatus\":\"Bireysel Müşteri\"}",
-            "InvoiceAddressSnapshotJson":"{\"address\":\"Örnek Cadde No:1\",\"name\":\"Ayşe Örnek\",\"city\":\"Konya\",\"district\":\"Selçuklu\",\"turkishIdentityNumber\":\"12345678901\"}"
+            "CustomerSnapshotJson":"{\"marketplaceInvoiceStatus\":\"Kurumsal Müşteri\"}",
+            "InvoiceAddressSnapshotJson":"{\"address\":\"Örnek Cadde No:1\",\"companyName\":\"Örnek Ticaret Ltd.\",\"taxOffice\":\"Selçuklu\",\"name\":\"Ayşe Örnek\",\"city\":\"Konya\",\"district\":\"Selçuklu\",\"turkishIdentityNumber\":\"12345678901\"}"
           },
           "Package":{"CargoProviderExternalId":"HepsiJet","StatusOccurredAt":"2026-10-07T13:03:01+03:00"},
           "Lines":[{"DescriptionSnapshot":"Ürün","UnitSnapshot":"ADET","Quantity":1,"UnitPrice":100,"LineTotal":120,"VatAmount":20,"VatRate":20,"DiscountAmount":0}]
@@ -133,7 +133,7 @@ public sealed class TrendyolCarrierCatalogTests
         Assert.Equal("Konya", recipient.GetProperty("city").GetString());
         Assert.Equal("Selçuklu", recipient.GetProperty("district").GetString());
         Assert.Equal("Örnek Cadde No:1", recipient.GetProperty("address").GetString());
-        Assert.Equal("Ayşe Örnek", recipient.GetProperty("name").GetString());
+        Assert.Equal("Örnek Ticaret Ltd.", recipient.GetProperty("name").GetString());
     }
 
     [Fact]
@@ -160,7 +160,10 @@ public sealed class TrendyolCarrierCatalogTests
         var payload = TrendyolEFaturamCanonicalPayload.Create(new(1, 2, null), canonical);
         using var document = JsonDocument.Parse(payload);
 
-        Assert.Equal("Ayşe Örnek", document.RootElement.GetProperty("recipientInfo").GetProperty("name").GetString());
+        var recipient = document.RootElement.GetProperty("recipientInfo");
+        Assert.Equal("Ayşe", recipient.GetProperty("name").GetString());
+        Assert.Equal("Örnek", recipient.GetProperty("surname").GetString());
+        Assert.Equal("11111111111", document.RootElement.GetProperty("recipientInfo").GetProperty("taxId").GetString());
     }
 
     [Fact]
@@ -190,7 +193,7 @@ public sealed class TrendyolCarrierCatalogTests
     }
 
     [Fact]
-    public void Canonical_payload_skips_null_address_wrappers_and_uses_real_tax_id()
+    public void Canonical_payload_uses_consumer_identifier_for_explicit_individual_customer()
     {
         const string canonical = """
         {
@@ -214,13 +217,15 @@ public sealed class TrendyolCarrierCatalogTests
         using var document = JsonDocument.Parse(payload);
         var recipient = document.RootElement.GetProperty("recipientInfo");
 
-        Assert.Equal("1234567890", recipient.GetProperty("taxId").GetString());
+        Assert.Equal("11111111111", recipient.GetProperty("taxId").GetString());
         Assert.Equal("Konya", recipient.GetProperty("city").GetString());
         Assert.Equal("Örnek Cadde No:1", recipient.GetProperty("address").GetString());
+        Assert.Equal("Ayşe", recipient.GetProperty("name").GetString());
+        Assert.Equal("Örnek", recipient.GetProperty("surname").GetString());
     }
 
     [Fact]
-    public void Canonical_e_archive_requires_a_real_tax_id_for_individual_without_a_tax_id()
+    public void Canonical_e_archive_uses_consumer_identifier_for_individual_without_a_tax_id()
     {
         const string canonical = """
         {
@@ -240,13 +245,13 @@ public sealed class TrendyolCarrierCatalogTests
         }
         """;
 
-        var exception = Assert.Throws<JsonException>(() => TrendyolEFaturamCanonicalPayload.Create(new(1, 2, null), canonical));
+        using var payload = JsonDocument.Parse(TrendyolEFaturamCanonicalPayload.Create(new(1, 2, null), canonical));
 
-        Assert.Equal("EFATURAM_RECIPIENT_TAX_ID_REQUIRED", exception.Message);
+        Assert.Equal("11111111111", payload.RootElement.GetProperty("recipientInfo").GetProperty("taxId").GetString());
     }
 
     [Fact]
-    public void Canonical_e_archive_rejects_the_all_ones_tax_id_placeholder()
+    public void Canonical_e_archive_uses_consumer_identifier_for_individual_with_marketplace_tckn()
     {
         const string canonical = """
         {
@@ -259,20 +264,20 @@ public sealed class TrendyolCarrierCatalogTests
             "OrderNumber":"4486229624",
             "OrderedAt":"2026-10-07T13:03:01+03:00",
             "CustomerSnapshotJson":"{\"isCorporate\":false}",
-            "InvoiceAddressSnapshotJson":"{\"taxNumber\":\"11111111111\",\"city\":\"İstanbul\",\"district\":\"Şişli\",\"name\":\"Ayşe Örnek\"}"
+            "InvoiceAddressSnapshotJson":"{\"taxNumber\":\"12345678901\",\"city\":\"İstanbul\",\"district\":\"Şişli\",\"name\":\"Ayşe Örnek\"}"
           },
           "Package":{"CargoProviderExternalId":"HepsiJet","StatusOccurredAt":"2026-10-07T13:03:01+03:00"},
           "Lines":[{"DescriptionSnapshot":"Ürün","UnitSnapshot":"ADET","Quantity":1,"UnitPrice":100,"LineTotal":120,"VatAmount":20,"VatRate":20,"DiscountAmount":0}]
         }
         """;
 
-        var exception = Assert.Throws<JsonException>(() => TrendyolEFaturamCanonicalPayload.Create(new(1, 2, null), canonical));
+        using var payload = JsonDocument.Parse(TrendyolEFaturamCanonicalPayload.Create(new(1, 2, null), canonical));
 
-        Assert.Equal("EFATURAM_RECIPIENT_TAX_ID_PLACEHOLDER_NOT_ALLOWED", exception.Message);
+        Assert.Equal("11111111111", payload.RootElement.GetProperty("recipientInfo").GetProperty("taxId").GetString());
     }
 
     [Fact]
-    public void Canonical_e_archive_does_not_use_noncorporate_placeholder_for_company_recipient()
+    public void Canonical_e_archive_uses_company_tax_details_for_corporate_recipient()
     {
         const string canonical = """
         {
@@ -285,7 +290,37 @@ public sealed class TrendyolCarrierCatalogTests
             "OrderNumber":"4486229624",
             "OrderedAt":"2026-10-07T13:03:01+03:00",
             "CustomerSnapshotJson":"{}",
-            "InvoiceAddressSnapshotJson":"{\"companyName\":\"Örnek Ticaret Ltd.\",\"taxOffice\":\"Şişli\",\"city\":\"İstanbul\"}"
+            "InvoiceAddressSnapshotJson":"{\"companyName\":\"Örnek Ticaret Ltd.\",\"taxNumber\":\"1234567890\",\"taxOffice\":\"Şişli\",\"city\":\"İstanbul\",\"name\":\"Yetkili Kişi\",\"lastName\":\"Yetkili\"}"
+          },
+          "Package":{"CargoProviderExternalId":"HepsiJet","StatusOccurredAt":"2026-10-07T13:03:01+03:00"},
+          "Lines":[{"DescriptionSnapshot":"Ürün","UnitSnapshot":"ADET","Quantity":1,"UnitPrice":100,"LineTotal":120,"VatAmount":20,"VatRate":20,"DiscountAmount":0}]
+        }
+        """;
+
+        using var payload = JsonDocument.Parse(TrendyolEFaturamCanonicalPayload.Create(new(1, 2, null), canonical));
+        var recipient = payload.RootElement.GetProperty("recipientInfo");
+
+        Assert.Equal("1234567890", recipient.GetProperty("taxId").GetString());
+        Assert.Equal("Örnek Ticaret Ltd.", recipient.GetProperty("name").GetString());
+        Assert.Equal("Şişli", recipient.GetProperty("taxOffice").GetString());
+        Assert.False(recipient.TryGetProperty("surname", out _));
+    }
+
+    [Fact]
+    public void Canonical_e_archive_does_not_use_consumer_identifier_for_corporate_recipient_without_vkn()
+    {
+        const string canonical = """
+        {
+          "Id":"invoice-company-no-vkn",
+          "InvoiceType":"EARSIVFATURA",
+          "Currency":"TRY",
+          "Note":"Satış faturası",
+          "IssuedAt":"2026-10-05T12:00:00+03:00",
+          "Order":{
+            "OrderNumber":"4486229624",
+            "OrderedAt":"2026-10-07T13:03:01+03:00",
+            "CustomerSnapshotJson":"{\"isCorporate\":true}",
+            "InvoiceAddressSnapshotJson":"{\"companyName\":\"Örnek Ticaret Ltd.\",\"taxNumber\":\"11111111111\",\"city\":\"İstanbul\"}"
           },
           "Package":{"CargoProviderExternalId":"HepsiJet","StatusOccurredAt":"2026-10-07T13:03:01+03:00"},
           "Lines":[{"DescriptionSnapshot":"Ürün","UnitSnapshot":"ADET","Quantity":1,"UnitPrice":100,"LineTotal":120,"VatAmount":20,"VatRate":20,"DiscountAmount":0}]

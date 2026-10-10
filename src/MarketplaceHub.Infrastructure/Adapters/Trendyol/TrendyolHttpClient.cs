@@ -273,17 +273,23 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
         if (string.IsNullOrWhiteSpace(externalOrderId)) return AdapterResult<RemoteOrder>.Failure(TrendyolErrorMapper.Contract());
         var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken); if (authorized is null) return AdapterResult<RemoteOrder>.Failure(TrendyolErrorMapper.Configuration());
         var normalizedOrderNumber = externalOrderId.Trim();
+        // Order V2 defaults an unbounded lookup to a short recent window.
+        // Supply its maximum supported two-week range so targeted recovery can
+        // find orders that have been in transit longer than the default window.
+        var lookupEnd = timeProvider.GetUtcNow();
+        var lookupStart = lookupEnd.AddDays(-14);
+        var dateFilters = $"startDate={lookupStart.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)}&endDate={lookupEnd.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)}";
         AdapterPageIssue? firstPageIssue = null;
         // A direct order lookup is also used by the single-order sync flow.
         // Unlike return hydration, that flow must search every storefront so
         // international orders are not reported as missing.
         foreach (var storeFrontCode in TrendyolReadStorefronts.Codes)
         {
-            var lookupFilters = $"orderNumber={Uri.EscapeDataString(normalizedOrderNumber)}&page=0&size=200";
+            var lookupFilters = $"{dateFilters}&orderNumber={Uri.EscapeDataString(normalizedOrderNumber)}&page=0&size=200";
             var endpoints = new[]
             {
                 TrendyolEndpoints.Orders(authorized.Connection.ExternalStoreId) + "?" + lookupFilters,
-                TrendyolEndpoints.Orders(authorized.Connection.ExternalStoreId) + $"?orderNumber={Uri.EscapeDataString($"\"{normalizedOrderNumber}\"")}&page=0&size=200"
+                TrendyolEndpoints.Orders(authorized.Connection.ExternalStoreId) + $"?{dateFilters}&orderNumber={Uri.EscapeDataString($"\"{normalizedOrderNumber}\"")}&page=0&size=200"
             };
             foreach (var endpoint in endpoints)
             {
@@ -322,18 +328,51 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
         var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (authorized is null) return AdapterResult<RemoteOrderPackage>.Failure(TrendyolErrorMapper.Configuration());
 
-        var query = $"?shipmentPackageIds={Uri.EscapeDataString(externalPackageId.Trim())}&size=200";
-        var v2Response = await SendAsync(authorized, HttpMethod.Get, TrendyolEndpoints.Orders(authorized.Connection.ExternalStoreId) + query, null, cancellationToken);
+        // Order V2 accepts date ranges of at most two weeks. Keep the targeted
+        // package lookup inside that limit; older known packages are recovered
+        // by the cursor stream below using their recorded status timestamp.
+        var packageReadEnd = timeProvider.GetUtcNow();
+        var packageReadStart = packageReadEnd.AddDays(-14);
+        var query = $"?startDate={packageReadStart.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)}&endDate={packageReadEnd.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)}&shipmentPackageIds={Uri.EscapeDataString(externalPackageId.Trim())}&size=200";
+        AdapterResult<string>? v2Response = null;
+        AdapterError? v2LookupError = null;
         RemoteOrderPackage? v2Package = null;
-        try
+        foreach (var storeFrontCode in TrendyolReadStorefronts.Codes)
         {
-            if (v2Response.IsSuccess)
-                v2Package = TrendyolJsonMapper.ShipmentPackage(v2Response.Value!, externalPackageId.Trim());
+            var response = await SendAsync(
+                authorized,
+                HttpMethod.Get,
+                TrendyolEndpoints.Orders(authorized.Connection.ExternalStoreId) + query,
+                null,
+                cancellationToken,
+                storeFrontCode: storeFrontCode);
+            if (!response.IsSuccess)
+            {
+                if (response.Error?.HttpStatus is 400 or 404)
+                {
+                    v2LookupError = response.Error;
+                    continue;
+                }
+                return AdapterResult<RemoteOrderPackage>.Failure(response.Error!, response.RateLimit);
+            }
+
+            v2Response = response;
+            try
+            {
+                v2Package = TrendyolJsonMapper.ShipmentPackage(response.Value!, externalPackageId.Trim());
+            }
+            catch (JsonException)
+            {
+                return AdapterResult<RemoteOrderPackage>.Failure(TrendyolErrorMapper.Contract(), response.RateLimit);
+            }
+
+            // Micro-export packages belong to their destination storefront.
+            // Keep searching after an empty TR response, but stop as soon as
+            // the exact package ID is found under one of the supported codes.
+            if (v2Package is not null) break;
         }
-        catch (JsonException)
-        {
-            return AdapterResult<RemoteOrderPackage>.Failure(TrendyolErrorMapper.Contract(), v2Response.RateLimit);
-        }
+        var v2RateLimit = v2Response?.RateLimit;
+        var v2ReadError = v2Response?.IsSuccess == true ? null : v2LookupError;
 
         if ((!string.IsNullOrWhiteSpace(v2Package?.Package.CargoProviderExternalId)
                 || !string.IsNullOrWhiteSpace(v2Package?.Package.CargoTrackingNumber))
@@ -343,7 +382,7 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
                 !string.IsNullOrWhiteSpace(v2Package!.Package.CargoProviderExternalId),
                 !string.IsNullOrWhiteSpace(v2Package!.Package.CargoTrackingNumber),
                 HasInvoiceObservation(v2Package));
-            return AdapterResult<RemoteOrderPackage>.Success(v2Package!, v2Response.RateLimit);
+            return AdapterResult<RemoteOrderPackage>.Success(v2Package!, v2RateLimit);
         }
 
         var directPackage = v2Package;
@@ -355,7 +394,7 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
                 !string.IsNullOrWhiteSpace(directPackage!.Package.CargoProviderExternalId),
                 !string.IsNullOrWhiteSpace(directPackage!.Package.CargoTrackingNumber),
                 HasInvoiceObservation(directPackage));
-            return AdapterResult<RemoteOrderPackage>.Success(directPackage!, v2Response.RateLimit);
+            return AdapterResult<RemoteOrderPackage>.Success(directPackage!, v2RateLimit);
         }
 
         AdapterError? streamError = null;
@@ -406,7 +445,7 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
                                 !string.IsNullOrWhiteSpace(mergedStreamPackage!.Package.CargoTrackingNumber),
                                 HasInvoiceObservation(mergedStreamPackage));
                             return AdapterResult<RemoteOrderPackage>.Success(mergedStreamPackage!,
-                                streamResponse.RateLimit ?? v2Response.RateLimit);
+                                streamResponse.RateLimit ?? v2RateLimit);
                         }
 
                         var mapped = TrendyolJsonMapper.Orders(streamResponse.Value!);
@@ -432,21 +471,21 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
                 !string.IsNullOrWhiteSpace(selectedPackage!.Package.CargoTrackingNumber),
                 HasInvoiceObservation(selectedPackage),
                 "Order V2");
-            return AdapterResult<RemoteOrderPackage>.Success(selectedPackage!, v2Response.RateLimit);
+            return AdapterResult<RemoteOrderPackage>.Success(selectedPackage!, v2RateLimit);
         }
 
         logger.LogInformation("Trendyol package cargo read returned no cargo fields from V2 or historical stream; package match V2={V2PackageFound}.",
             v2Package is not null);
-        if (v2Response.IsSuccess && selectedPackage is not null)
-            return AdapterResult<RemoteOrderPackage>.Success(selectedPackage, v2Response.RateLimit);
+        if (v2Response?.IsSuccess == true && selectedPackage is not null)
+            return AdapterResult<RemoteOrderPackage>.Success(selectedPackage, v2RateLimit);
         if (streamError is not null)
-            return AdapterResult<RemoteOrderPackage>.Failure(streamError, v2Response.RateLimit);
+            return AdapterResult<RemoteOrderPackage>.Failure(streamError, v2RateLimit);
 
-        var error = v2Response.Error
+        var error = v2ReadError
             ?? new AdapterError(AdapterErrorClass.NotFound, "REMOTE_PACKAGE_NOT_FOUND", "Trendyol paket bilgisi bulunamadı.", 404, null, null);
         return error.Class == AdapterErrorClass.NotFound || error.HttpStatus == 404
-            ? AdapterResult<RemoteOrderPackage>.Failure(new(AdapterErrorClass.NotFound, "REMOTE_PACKAGE_NOT_FOUND", "Trendyol paket bilgisi bulunamadı.", 404, null, error.RemoteRequestId), v2Response.RateLimit)
-            : AdapterResult<RemoteOrderPackage>.Failure(error, v2Response.RateLimit);
+            ? AdapterResult<RemoteOrderPackage>.Failure(new(AdapterErrorClass.NotFound, "REMOTE_PACKAGE_NOT_FOUND", "Trendyol paket bilgisi bulunamadı.", 404, null, error.RemoteRequestId), v2RateLimit)
+            : AdapterResult<RemoteOrderPackage>.Failure(error, v2RateLimit);
     }
 
     private static bool HasInvoiceObservation(RemoteOrderPackage? package) => package?.Package.Invoice is { } invoice
@@ -595,7 +634,12 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
 
     public async Task<AdapterResult<InvoiceDeliveryResult>> DeliverAsync(AdapterContext context, InvoiceDeliveryCommand command, CancellationToken cancellationToken)
     {
-        var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken); if (authorized is null) return AdapterResult<InvoiceDeliveryResult>.Failure(TrendyolErrorMapper.Configuration()); if (!CanWrite(authorized, context)) return AdapterResult<InvoiceDeliveryResult>.Failure(TrendyolErrorMapper.WriteClosed());
+        var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken); if (authorized is null) return AdapterResult<InvoiceDeliveryResult>.Failure(TrendyolErrorMapper.Configuration());
+        var invoiceDeliveryWriteAllowed = IntegrationRuntimePolicy.AllowsAutomaticInvoiceMarketplaceDelivery(
+            authorized.Connection,
+            context,
+            configuration.GetValue<bool>("FeatureFlags:InvoiceMarketplaceDeliveryWrites"));
+        if (!CanWrite(authorized, context) && !invoiceDeliveryWriteAllowed) return AdapterResult<InvoiceDeliveryResult>.Failure(TrendyolErrorMapper.WriteClosed());
         if (!string.Equals(command.DeliveryType, "LINK", StringComparison.Ordinal)) return AdapterResult<InvoiceDeliveryResult>.Failure(TrendyolErrorMapper.Unsupported("Yalnız resmî link delivery sözleşmesi doğrulandı; file delivery ayrı content akışı kanıtı bekliyor."));
         JsonDocument payload; try { payload = JsonDocument.Parse(command.PayloadJson); } catch (JsonException) { return AdapterResult<InvoiceDeliveryResult>.Failure(TrendyolErrorMapper.Contract()); }
         using (payload)

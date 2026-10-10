@@ -108,7 +108,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             added++;
         }
 
-        var dueTenants = await db.InvoicePolicies.AsNoTracking().Where(x => x.AutoSubmit).Select(x => x.TenantId).Distinct().ToListAsync(cancellationToken);
+        var dueTenants = await db.Invoices.AsNoTracking().Select(x => x.TenantId).Distinct().ToListAsync(cancellationToken);
         const int invoiceScanInterval = 300;
         var invoiceBucket = now.ToUnixTimeSeconds() / invoiceScanInterval;
         foreach (var tenantId in dueTenants)
@@ -254,7 +254,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             var defaultsForConnection = DefaultPolicies()
                 .Where(defaults => connection.PlatformCode switch
                 {
-                    "SHOPIFY" => IsShopifyReadPolicy(defaults.ResourceType),
+                    "SHOPIFY" => SupportsShopifyPolicy(defaults.ResourceType),
                     "HEPSIBURADA" => SupportsHepsiburadaScheduledPolicy(defaults.ResourceType),
                     _ => true
                 })
@@ -402,7 +402,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             or MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation
             or MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation;
 
-    private static bool IsShopifyReadPolicy(string resourceType) => resourceType is
+    internal static bool IsShopifyReadPolicy(string resourceType) => resourceType is
         "ORDERS"
         or "ORDER_RECOVERY"
         or "ORDER_LIFECYCLE"
@@ -410,13 +410,16 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         or "ORDER_RECONCILE_MEDIUM"
         or "ORDER_RECONCILE_DAILY";
 
+    internal static bool SupportsShopifyPolicy(string resourceType) =>
+        IsShopifyReadPolicy(resourceType) || MarketplaceExternalWritePolicies.IsPolicy(resourceType);
+
     internal static bool SupportsHepsiburadaScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "ORDER_LIFECYCLE" or "ORDER_INVOICE_RECONCILIATION" or "RETURNS" or "REFERENCE_DATA" or "QUESTIONS"
         || MarketplaceExternalWritePolicies.IsPolicy(resourceType);
 
     internal static bool DefaultPolicyEnabled(string platformCode, string resourceType) =>
         resourceType == "ORDER_CARGO_INFO"
             ? platformCode == "TRENDYOL"
-            : !(platformCode == "HEPSIBURADA" && MarketplaceExternalWritePolicies.IsPolicy(resourceType));
+            : !((platformCode is "HEPSIBURADA" or "SHOPIFY") && MarketplaceExternalWritePolicies.IsPolicy(resourceType));
 
     private (string JobType, string DedupPrefix, string PayloadJson)? Definition(string resourceType, Guid connectionId, string platformCode) => resourceType switch
     {
@@ -508,6 +511,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
 
     private static int Priority(string type) => type switch
     {
+        InvoicingJobTypes.InvoiceDueScan => -1,
         MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync or MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.ShopifyOrderStatusSync or MarketplaceJobTypes.HepsiburadaOrderStatusSync or MarketplaceJobTypes.WebhookIngest or MarketplaceJobTypes.ShopifyWebhookIngest => 0,
         MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync => 6,
         MarketplaceJobTypes.OrderReconciliation or MarketplaceJobTypes.ShopifyOrderReconciliation or MarketplaceJobTypes.ReturnReconciliation or MarketplaceJobTypes.StockReconciliation => 4,

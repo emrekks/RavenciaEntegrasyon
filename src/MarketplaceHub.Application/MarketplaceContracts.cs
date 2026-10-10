@@ -224,7 +224,8 @@ public static class TargetedOrderSyncConflictPolicy
             return TargetedOrderSyncConflictResolution.PromotePending;
 
         if (string.IsNullOrWhiteSpace(conflictingExternalOrderId)
-            && conflictingStatus is JobStatus.Leased or JobStatus.RetryScheduled
+            && (conflictingStatus is JobStatus.Leased or JobStatus.RetryScheduled
+                || conflictingStatus == JobStatus.Pending && !conflictingJobHasStarted)
             && IsOrderSyncLaneJob(requestedJobType, conflictingJobType))
             return TargetedOrderSyncConflictResolution.QueueBehindActiveWork;
 
@@ -320,7 +321,17 @@ public enum AdapterErrorClass
     InternalBug
 }
 
-public sealed record AdapterContext(Guid TenantId, Guid ConnectionId, string CorrelationId, string IdempotencyKey, DateTimeOffset DeadlineUtc, bool IsStageCapabilityProbe = false, IntegrationOperation Operation = IntegrationOperation.Manual);
+public sealed record AdapterContext(
+    Guid TenantId,
+    Guid ConnectionId,
+    string CorrelationId,
+    string IdempotencyKey,
+    DateTimeOffset DeadlineUtc,
+    bool IsStageCapabilityProbe = false,
+    IntegrationOperation Operation = IntegrationOperation.Manual,
+    bool IsOneTimeInvoiceDeliveryAuthorized = false,
+    string? OneTimeInvoiceDeliveryOrderNumber = null,
+    bool IsAutomaticInvoiceMarketplaceDelivery = false);
 public sealed record AdapterError(AdapterErrorClass Class, string Code, string SafeMessage, int? HttpStatus, TimeSpan? RetryAfter, string? RemoteRequestId);
 public sealed record RateLimitMetadata(int? Remaining, DateTimeOffset? ResetAt, TimeSpan? RetryAfter, int? Limit = null);
 public sealed record AdapterResult<T>(bool IsSuccess, T? Value, AdapterError? Error, RateLimitMetadata? RateLimit)

@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, loadAllPages } from '../../shared/api'
+import { marketplaceProductSearchUrl } from './marketplace-product-link'
 import { Badge, Button, EmptyState, LoadingState, PageHeader, Tabs, UiIcon } from '../../shared/components'
 import { platformLogoClass, platformLogoSource } from '../../shared/platform-logos'
+import { PlatformMark } from '../../shared/platform-mark'
 import { productImageFallbackUrls } from '../marketplace/product-image-lookups'
 import { questionDeadline } from './question-time'
 import { DateRangePicker } from '../../shared/DateRangePicker'
@@ -45,12 +47,6 @@ function formatDate(value?: string | null) {
 }
 
 function displayPlatform(code: string) { return code === 'HEPSIBURADA' ? 'Hepsiburada' : 'Trendyol' }
-function QuestionPlatformIcon({ code }: { code: string }) {
-  const trendyol = code === 'TRENDYOL'
-  const logo = platformLogoSource(code)
-  return <span className={`rv-question-platform-icon ${trendyol ? 'is-trendyol' : 'is-hepsiburada'}`} title={displayPlatform(code)} aria-label={displayPlatform(code)}>{logo ? <img src={logo} alt="" /> : <span>{trendyol ? 'TY' : 'HB'}</span>}</span>
-}
-
 function QuestionProductImage({ src, connectionId, sku, barcode, modelCode, productName }: { src?: string | null; connectionId: string; sku?: string | null; barcode?: string | null; modelCode?: string | null; productName: string }) {
   const sources = [...new Set([src, ...productImageFallbackUrls([barcode, sku, modelCode], connectionId, productName), ...(productName.trim() ? productImageFallbackUrls([], connectionId, productName) : [])].filter((value): value is string => Boolean(value)))]
   const sourceKey = sources.join('\u0000')
@@ -151,15 +147,16 @@ export function QuestionsPage() {
           const orderedHistory = [...(row.conversations ?? [])].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
           const initialQuestionIndex = orderedHistory.findIndex(message => message.text.trim() === row.questionText.trim())
           const previousMessages = orderedHistory.filter((_message, index) => index !== initialQuestionIndex)
+          const productHref = row.kind === 'PRODUCT' ? marketplaceProductSearchUrl(row.platformCode, row.productBarcode, row.productSku, row.productModelCode, row.productName) : null
           return <article className="rv-question-card" key={row.id}>
             <header className="rv-question-card-header">
-              <div className="rv-question-product"><QuestionProductImage src={row.productImageUrl} connectionId={row.connectionId} sku={row.productSku} barcode={row.productBarcode} modelCode={row.productModelCode} productName={row.productName || 'Ürün'} /><div><strong>{row.productName || (row.kind === 'ORDER' ? 'Sipariş sorusu' : 'Ürün bilgisi yok')}</strong><small>{[row.productSku && `SKU ${row.productSku}`, row.productModelCode && `Model ${row.productModelCode}`, row.productBarcode && `Barkod ${row.productBarcode}`].filter(Boolean).join(' · ') || 'Ürün kodu bilgisi yok'}</small></div></div>
-              <div className="rv-question-actions"><Badge tone={badge.tone}>{badge.label}</Badge>{deadline ? <span className={`rv-question-deadline ${deadline.urgent ? 'is-urgent' : ''}`} title={`Son cevap tarihi: ${formatDate(row.expiresAt)}`}>{deadline.text === 'Süre doldu' ? 'Süre doldu' : `Kalan süre: ${deadline.text}`}</span> : <small className="rv-question-age">Soru tarihi: {formatDate(row.createdAt)}</small>}{row.status === 'WAITING_FOR_ANSWER' && <Button size="sm" variant={replyingId === row.id ? 'primary' : 'secondary'} onClick={() => { setReplyingId(current => current === row.id ? null : row.id); setAnswerText('') }}>{replyingId === row.id ? 'Cevabı kapat' : 'Cevap yaz'}</Button>}</div>
+              <div className="rv-question-product"><QuestionProductImage src={row.productImageUrl} connectionId={row.connectionId} sku={row.productSku} barcode={row.productBarcode} modelCode={row.productModelCode} productName={row.productName || 'Ürün'} /><div><strong>{productHref ? <a className="rv-question-product-link" href={productHref} target="_blank" rel="noopener noreferrer">{row.productName || 'Ürün'}</a> : row.productName || (row.kind === 'ORDER' ? 'Sipariş sorusu' : 'Ürün bilgisi yok')}</strong><small>{[row.productSku && `SKU ${row.productSku}`, row.productModelCode && `Model ${row.productModelCode}`, row.productBarcode && `Barkod ${row.productBarcode}`].filter(Boolean).join(' · ') || 'Ürün kodu bilgisi yok'}</small></div></div>
+              <div className="rv-question-actions"><div className="rv-question-platform-context"><PlatformMark code={row.platformCode} name={displayPlatform(row.platformCode)} /><div><Badge tone={badge.tone}>{badge.label}</Badge>{deadline ? <span className={`rv-question-deadline ${deadline.urgent ? 'is-urgent' : ''}`} title={`Son cevap tarihi: ${formatDate(row.expiresAt)}`}>{deadline.text === 'Süre doldu' ? 'Süre doldu' : `Kalan süre: ${deadline.text}`}</span> : <small className="rv-question-age">Soru tarihi: {formatDate(row.createdAt)}</small>}</div></div>{row.status === 'WAITING_FOR_ANSWER' && <Button size="sm" variant={replyingId === row.id ? 'primary' : 'secondary'} onClick={() => { setReplyingId(current => current === row.id ? null : row.id); setAnswerText('') }}>{replyingId === row.id ? 'Cevabı kapat' : 'Cevap yaz'}</Button>}</div>
             </header>
             <section className="rv-question-content" aria-label="Soru ve konuşmalar">
               <div className="rv-question-thread-message is-customer is-question"><header><strong>{row.customerName || 'Müşteri sorusu'}</strong><time dateTime={row.createdAt}>{formatDate(row.createdAt)}</time></header><p>{row.questionText}</p></div>
               {previousMessages.length > 0 && <div className="rv-question-conversation" aria-label="Konuşma geçmişi">{previousMessages.map((message, index) => { const sellerMessage = message.author.toLowerCase().includes('merchant') || message.author.toLowerCase().includes('seller'); return <article className={`rv-question-thread-message ${sellerMessage ? 'is-seller' : 'is-customer'}`} key={`${message.createdAt}-${index}`}><header><strong>{sellerMessage ? 'Satıcı cevabı' : message.author || 'Müşteri'}</strong><time dateTime={message.createdAt}>{formatDate(message.createdAt)}</time></header><p>{message.text}</p>{message.rejectionReason && <small className="rv-question-rejection">Ret nedeni: {message.rejectionReason}</small>}</article> })}</div>}
-              <div className="rv-question-meta"><QuestionPlatformIcon code={row.platformCode} />{row.storeName && row.storeName.toLocaleLowerCase('tr-TR') !== displayPlatform(row.platformCode).toLocaleLowerCase('tr-TR') && <span>{row.storeName}</span>}{tab === 'ORDER' && row.externalOrderNumber && <Link to={`/orders?search=${encodeURIComponent(row.externalOrderNumber)}`}>Sipariş #{row.externalOrderNumber}</Link>}</div>
+              <div className="rv-question-meta">{row.storeName && row.storeName.toLocaleLowerCase('tr-TR') !== displayPlatform(row.platformCode).toLocaleLowerCase('tr-TR') && <span>{row.storeName}</span>}{tab === 'ORDER' && row.externalOrderNumber && <Link to={`/orders?search=${encodeURIComponent(row.externalOrderNumber)}`}>Sipariş #{row.externalOrderNumber}</Link>}</div>
             </section>
             {replyingId === row.id && <section className="rv-question-inline-compose" aria-label={`#${row.externalQuestionId} için cevap`}>
             {templates.data?.length ? <div className="rv-question-bubbles" aria-label="Hazır cevaplar">{templates.data.map(item => <button type="button" key={item.id} title={item.text} onClick={() => setAnswerText(item.text)}>{item.title}</button>)}</div> : null}

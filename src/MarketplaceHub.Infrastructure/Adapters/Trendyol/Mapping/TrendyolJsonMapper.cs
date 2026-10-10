@@ -28,9 +28,12 @@ public static class TrendyolJsonMapper
                 {
                     foreach (var line in lineArray.EnumerateArray())
                     {
-                        var externalLineId = Text(line, "lineId", "id");
+                        var externalLineId = "";
                         try
                         {
+                            if (line.ValueKind != JsonValueKind.Object)
+                                throw new JsonException("Order line is not an object.");
+                            externalLineId = Text(line, "lineId", "id");
                             if (string.IsNullOrWhiteSpace(externalLineId))
                                 throw new JsonException("Order line has no line ID.");
                             if (!TryDecimal(line, out var quantity, "quantity") || quantity <= 0)
@@ -51,10 +54,7 @@ public static class TrendyolJsonMapper
                         }
                         catch (JsonException exception)
                         {
-                            // A single incomplete product line must not hide its
-                            // otherwise valid order and shipment package. Keep
-                            // the package totals/status and report the omitted
-                            // line so it can be repaired without inventing data.
+                            // Keep the order and shipment package even when one product line is incomplete.
                             issues.Add(new(
                                 "ORDER_PACKAGE_LINE_INVALID",
                                 string.IsNullOrWhiteSpace(externalLineId) ? externalPackageId : $"{externalPackageId}:{externalLineId}",

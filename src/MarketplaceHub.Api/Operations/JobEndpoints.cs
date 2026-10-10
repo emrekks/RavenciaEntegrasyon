@@ -1,4 +1,5 @@
 using MarketplaceHub.Application;
+using MarketplaceHub.Infrastructure.Identity;
 
 namespace MarketplaceHub.Api.Operations;
 
@@ -19,6 +20,22 @@ public static class JobEndpoints
             Tenant(http) is { } tenant
                 ? RequireIdempotency(http) ?? Result(http, await service.RetryAsync(tenant.TenantId, id, http.RequestAborted))
                 : Unauthorized(http));
+        api.MapPost("/{id:guid}/invoice-delivery-once", async (Guid id, OneTimeInvoiceDeliveryAction command, HttpContext http, IJobOperationsService service) =>
+        {
+            var tenant = Tenant(http);
+            if (tenant is null) return Unauthorized(http);
+            if (RequireIdempotency(http) is { } idempotencyFailure) return idempotencyFailure;
+            if (!command.Confirmed) return Problem(http, new("EXPLICIT_CONFIRMATION_REQUIRED", "Bu tek seferlik dış fatura iletimi için açık onay zorunludur.", 422));
+            if (!OneTimeInvoiceDeliveryPolicy.IsAuthorizedTarget(command.OrderNumber)) return Problem(http, new("ONE_TIME_INVOICE_ORDER_NOT_AUTHORIZED", "Tek seferlik fatura iletimi yalnızca 4486229624 numaralı sipariş için yetkilendirildi.", 403));
+            var result = await service.EnqueueOneTimeInvoiceDeliveryAsync(
+                tenant.TenantId,
+                id,
+                command.OrderNumber,
+                http.Request.Headers["Idempotency-Key"].ToString(),
+                http.TraceIdentifier,
+                http.RequestAborted);
+            return Result(http, result);
+        });
         api.MapPost("/{id:guid}/cancel", async (Guid id, HttpContext http, IJobOperationsService service) =>
             Tenant(http) is { } tenant
                 ? RequireIdempotency(http) ?? Result(http, await service.CancelAsync(tenant.TenantId, id, http.RequestAborted))
@@ -44,4 +61,6 @@ public static class JobEndpoints
         retryable = error.Status is 429 or >= 500,
         fieldErrors = error.FieldErrors
     }, statusCode: error.Status, contentType: "application/problem+json");
+
+    public sealed record OneTimeInvoiceDeliveryAction(bool Confirmed, string OrderNumber);
 }

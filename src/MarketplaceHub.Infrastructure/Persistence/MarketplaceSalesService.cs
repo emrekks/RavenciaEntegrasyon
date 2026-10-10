@@ -401,7 +401,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         // Marketplace status tabs are package-based. Counting Orders here made
         // split packages and the provider's package counters incomparable.
         var resendCreators = new[] { "transfer", "resend", "replacement" };
-
+        var manuallyOverriddenShopifyOrders = CurrentManualShopifyOrderStatuses(tenantId);
         var packages = db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId
             && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
                 && !db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && connection.PlatformCode == "SHOPIFY"
@@ -416,12 +416,16 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 group.Count(),
                 group.Count(x => x.Status == ShipmentPackageStatus.New),
                 group.Count(x => x.Status == ShipmentPackageStatus.Processing || x.Status == ShipmentPackageStatus.ReadyToShip),
-                group.Count(x => x.Status == ShipmentPackageStatus.Shipped
-                    || x.Status == ShipmentPackageStatus.Undelivered
-                        && !db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId
-                            && connection.Id == x.ConnectionId
-                            && connection.PlatformCode == "HEPSIBURADA")),
-                group.Count(x => x.Status == ShipmentPackageStatus.Delivered),
+                group.Count(x => manuallyOverriddenShopifyOrders.Any(order => order.Id == x.OrderId)
+                    ? manuallyOverriddenShopifyOrders.Any(order => order.Id == x.OrderId && order.DerivedStatus == "SHIPPED")
+                    : x.Status == ShipmentPackageStatus.Shipped
+                        || x.Status == ShipmentPackageStatus.Undelivered
+                            && !db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId
+                                && connection.Id == x.ConnectionId
+                                && connection.PlatformCode == "HEPSIBURADA")),
+                group.Count(x => manuallyOverriddenShopifyOrders.Any(order => order.Id == x.OrderId)
+                    ? manuallyOverriddenShopifyOrders.Any(order => order.Id == x.OrderId && order.DerivedStatus == "DELIVERED")
+                    : x.Status == ShipmentPackageStatus.Delivered),
                 group.Count(x => x.OriginExternalPackageId != null && x.Status != ShipmentPackageStatus.Cancelled && x.CreatedBy != null && resendCreators.Contains(x.CreatedBy)),
                 group.Count(x => x.Status == ShipmentPackageStatus.OnHold
                     || x.Status == ShipmentPackageStatus.Undelivered
@@ -468,7 +472,15 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         };
     }
 
-
+    internal IQueryable<Order> CurrentManualShopifyOrderStatuses(Guid tenantId) => db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId
+        && db.PlatformConnections.Any(connection => connection.TenantId == order.TenantId
+            && connection.Id == order.ConnectionId
+            && connection.PlatformCode == "SHOPIFY")
+        && db.OrderStatusHistory.Any(history => history.TenantId == order.TenantId
+            && history.OrderId == order.Id
+            && history.RawStatus.StartsWith("MANUAL_SHOPIFY_STATUS:")
+            && history.CanonicalStatus == order.DerivedStatus
+            && history.OccurredAt >= order.LastRemoteModifiedAt));
 
     private IQueryable<Order> HepsiburadaUnpackagedNewOrders(Guid tenantId)
     {
@@ -924,8 +936,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             .SingleOrDefaultAsync(cancellationToken);
         var normalizedPackageNumber = packageNumber?.Trim();
         if (!string.IsNullOrWhiteSpace(normalizedPackageNumber)
-            && (platform != "HEPSIBURADA" || string.IsNullOrWhiteSpace(externalOrderId) || normalizedPackageNumber.Length > 100 || normalizedPackageNumber.Any(char.IsControl)))
-            return ServiceResult<Guid>.Fail("HEPSIBURADA_PACKAGE_TRACKING_REFRESH_INVALID", "Paket numarasıyla durum yenileme yalnızca tek bir Hepsiburada siparişi için kullanılabilir.", 422);
+            && (platform is not ("TRENDYOL" or "HEPSIBURADA") || string.IsNullOrWhiteSpace(externalOrderId) || normalizedPackageNumber.Length > 100 || normalizedPackageNumber.Any(char.IsControl)))
+            return ServiceResult<Guid>.Fail("ORDER_PACKAGE_LOOKUP_INVALID", "Paket numarasıyla yenileme yalnızca tek bir Trendyol veya Hepsiburada siparişi için kullanılabilir.", 422);
         var type = MarketplaceJobTypes.ForPlatform(platform, full ? MarketplaceJobTypes.OrderRecoverySync : MarketplaceJobTypes.OrderSync);
         return await EnqueueRead(tenantId, connectionId, MarketplaceCapabilities.OrderRead, type, JsonSerializer.Serialize(new { connectionId, externalOrderId, full, packageNumber = normalizedPackageNumber }), correlationId, cancellationToken);
     }
@@ -1417,7 +1429,10 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 "APPROVED" => query.Where(x => x.Status == ReturnClaimStatus.Approved || x.Status == ReturnClaimStatus.Completed),
                 "REJECTED" => query.Where(x => x.Status == ReturnClaimStatus.Rejected || x.Status == ReturnClaimStatus.Cancelled),
                 "DISPUTED" => query.Where(x => x.Status == ReturnClaimStatus.Disputed),
-                "REVIEW" => query.Where(x => x.Status == ReturnClaimStatus.ActionRequired),
+                // The UI's Analysis tab is reserved for explicitly submitted
+                // analysis cases. ActionRequired claims belong only to their
+                // own operational tab and must not leak into Analysis.
+                "REVIEW" => query.Where(_ => false),
                 "SUSPENDED" => query.Where(_ => false),
                 _ => query.Where(_ => false)
             };

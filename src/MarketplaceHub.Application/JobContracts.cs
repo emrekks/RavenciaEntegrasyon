@@ -77,7 +77,8 @@ public sealed record JobSummaryView(
     int ProgressProcessed = 0,
     int ProgressSkipped = 0,
     int ProgressFailed = 0,
-    DateTimeOffset? CurrentAttemptStartedAt = null);
+    DateTimeOffset? LastAttemptStartedAt = null,
+    DateTimeOffset? HeartbeatAt = null);
 
 public sealed record JobOrderContextView(
     Guid OrderId,
@@ -138,6 +139,7 @@ public interface IJobOperationsService
     Task<IReadOnlyList<JobSummaryView>> ListAsync(Guid tenantId, string? status, CancellationToken cancellationToken);
     Task<ServiceResult<JobDetailView>> GetAsync(Guid tenantId, Guid jobId, CancellationToken cancellationToken);
     Task<ServiceResult<JobDetailView>> RetryAsync(Guid tenantId, Guid jobId, CancellationToken cancellationToken);
+    Task<ServiceResult<JobDetailView>> EnqueueOneTimeInvoiceDeliveryAsync(Guid tenantId, Guid jobId, string orderNumber, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<JobDetailView>> CancelAsync(Guid tenantId, Guid jobId, CancellationToken cancellationToken);
 }
 

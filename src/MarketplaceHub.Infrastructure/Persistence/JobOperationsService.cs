@@ -1,5 +1,8 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
+using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.ErrorMapping;
 using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
 
@@ -17,10 +20,25 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         }
         var jobs = await query.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id).ToListAsync(cancellationToken);
         var failures = await FailureTimes(jobs, cancellationToken);
-        var currentAttemptStarts = await CurrentAttemptStarts(jobs, cancellationToken);
+        var jobIds = jobs.Select(job => job.Id).ToArray();
+        var lastAttemptStarts = jobIds.Length == 0
+            ? new Dictionary<Guid, DateTimeOffset>()
+            : await db.JobAttempts.AsNoTracking()
+                .Where(attempt => attempt.TenantId == tenantId && jobIds.Contains(attempt.JobId))
+                .GroupBy(attempt => attempt.JobId)
+                .Select(group => new { JobId = group.Key, StartedAt = group.Max(attempt => attempt.StartedAt) })
+                .ToDictionaryAsync(attempt => attempt.JobId, attempt => attempt.StartedAt, cancellationToken);
         var batchCounts = jobs.GroupBy(job => job.CorrelationId, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
-        return jobs.Select(job => Summary(job, failures.GetValueOrDefault(job.Id), batchCounts.GetValueOrDefault(job.CorrelationId, 1), currentAttemptStarts.GetValueOrDefault(job.Id))).ToList();
+        return jobs.Select(job =>
+        {
+            lastAttemptStarts.TryGetValue(job.Id, out var lastAttemptStartedAt);
+            return Summary(
+                job,
+                failures.GetValueOrDefault(job.Id),
+                batchCounts.GetValueOrDefault(job.CorrelationId, 1),
+                lastAttemptStarts.ContainsKey(job.Id) ? lastAttemptStartedAt : null);
+        }).ToList();
     }
 
     public async Task<ServiceResult<JobDetailView>> GetAsync(Guid tenantId, Guid jobId, CancellationToken cancellationToken)
@@ -62,6 +80,125 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         job.LastErrorSummary = null;
         job.MaxAttempts = Math.Max(job.MaxAttempts, job.AttemptCount + 1);
         job.Version++;
+        await db.SaveChangesAsync(cancellationToken);
+        return ServiceResult<JobDetailView>.Ok(await DetailAsync(job, cancellationToken));
+    }
+
+    public async Task<ServiceResult<JobDetailView>> EnqueueOneTimeInvoiceDeliveryAsync(
+        Guid tenantId,
+        Guid jobId,
+        string orderNumber,
+        string idempotencyKey,
+        string correlationId,
+        CancellationToken cancellationToken)
+    {
+        if (!OneTimeInvoiceDeliveryPolicy.IsAuthorizedTarget(orderNumber))
+            return ServiceResult<JobDetailView>.Fail("ONE_TIME_INVOICE_ORDER_NOT_AUTHORIZED", "Tek seferlik fatura iletimi yalnızca 4486229624 numaralı sipariş için yetkilendirildi.", 403);
+
+        var sourceJob = await db.IntegrationJobs.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == jobId, cancellationToken);
+        if (sourceJob is null) return ServiceResult<JobDetailView>.Fail("JOB_NOT_FOUND", "Job bulunamadı.", 404);
+        var hasPriorNoWriteAttempt = sourceJob.LastErrorCode == OneTimeInvoiceDeliveryPolicy.PriorNoWriteFailureCode
+            || await db.JobAttempts.AsNoTracking().AnyAsync(x =>
+                x.TenantId == tenantId
+                && x.JobId == sourceJob.Id
+                && !x.Succeeded
+                && x.ErrorCode == OneTimeInvoiceDeliveryPolicy.PriorNoWriteFailureCode,
+                cancellationToken);
+        if (sourceJob.JobType != InvoicingJobTypes.MarketplaceDelivery
+            || sourceJob.Status is not (JobStatus.Blocked or JobStatus.ManualReview or JobStatus.Dead)
+            || !OneTimeInvoiceDeliveryPolicy.IsEligibleSourceFailure(sourceJob.LastErrorCode, hasPriorNoWriteAttempt))
+            return ServiceResult<JobDetailView>.Fail("ONE_TIME_INVOICE_SOURCE_NOT_SAFE", "Bu sipariş için dış çağrı yapılmadan oluştuğu doğrulanmış bir fatura iletim engeli bulunamadı.", 409);
+
+        var invoiceId = PayloadGuid(sourceJob.PayloadJson, "invoiceId");
+        if (invoiceId is null) return ServiceResult<JobDetailView>.Fail("INVOICE_JOB_PAYLOAD_INVALID", "Fatura iletim job'unda geçerli bir fatura kimliği bulunamadı.", 409);
+        var invoice = await db.Invoices.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == invoiceId.Value, cancellationToken);
+        if (invoice is null) return ServiceResult<JobDetailView>.Fail("INVOICE_NOT_FOUND", "İletilecek fatura kaydı bulunamadı.", 404);
+        if (invoice.Status is not (InvoiceStatus.Accepted or InvoiceStatus.MarketplaceFailed)
+            || string.IsNullOrWhiteSpace(invoice.InvoiceNumber)
+            || invoice.PackageId is null)
+            return ServiceResult<JobDetailView>.Fail("ONE_TIME_INVOICE_NOT_READY", "Siparişin kesilmiş, numarası bulunan ve pazaryerine iletime hazır faturası yok.", 409);
+
+        var package = await db.ShipmentPackages.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == invoice.PackageId && x.OrderId == invoice.OrderId, cancellationToken);
+        if (package is null
+            || sourceJob.ConnectionId != package.ConnectionId
+            || string.IsNullOrWhiteSpace(package.ExternalPackageId))
+            return ServiceResult<JobDetailView>.Fail("ONE_TIME_INVOICE_PACKAGE_MISMATCH", "Fatura ve başarısız Hepsiburada teslim job'ı aynı sipariş paketini göstermiyor.", 409);
+
+        var order = await db.Orders.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.Id == invoice.OrderId)
+            .Select(x => new { x.OrderNumber })
+            .SingleOrDefaultAsync(cancellationToken);
+        if (order is null || !OneTimeInvoiceDeliveryPolicy.IsAuthorizedTarget(order.OrderNumber))
+            return ServiceResult<JobDetailView>.Fail("ONE_TIME_INVOICE_ORDER_MISMATCH", "Fatura 4486229624 numaralı siparişe ait değil.", 409);
+
+        var connection = await db.PlatformConnections.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == package.ConnectionId, cancellationToken);
+        if (connection is null
+            || !string.Equals(connection.PlatformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
+            || !IntegrationRuntimePolicy.IsProduction(connection)
+            || !IntegrationRuntimePolicy.IsActive(connection))
+            return ServiceResult<JobDetailView>.Fail("ONE_TIME_INVOICE_DESTINATION_INVALID", "Tek seferlik işlem yalnızca etkin Hepsiburada Production siparişine gönderilebilir.", 409);
+
+        var documentReady = await db.InvoiceDocuments.AsNoTracking().AnyAsync(x =>
+            x.TenantId == tenantId && x.InvoiceId == invoice.Id && x.PermanentUrl != null,
+            cancellationToken);
+        if (!documentReady)
+            return ServiceResult<JobDetailView>.Fail("INVOICE_PERMANENT_LINK_REQUIRED", "Pazaryerine gönderilebilecek kalıcı HTTPS fatura belgesi hazır değil.", 409);
+
+        var state = await db.MarketplaceDeliveryStates.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id, cancellationToken);
+        var latestHistory = state is null
+            ? await db.MarketplaceDeliveries.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id)
+                .OrderByDescending(x => x.AttemptNumber)
+                .FirstOrDefaultAsync(cancellationToken)
+            : null;
+        if (state is not null && !OneTimeInvoiceDeliveryPolicy.IsSafePriorFailure(state.Status, state.ErrorCode, state.ExternalReference)
+            || latestHistory is not null && !OneTimeInvoiceDeliveryPolicy.IsSafePriorFailure(latestHistory.Status, latestHistory.ErrorCode, latestHistory.ExternalReference))
+            return ServiceResult<JobDetailView>.Fail("ONE_TIME_INVOICE_PRIOR_ATTEMPT_UNSAFE", "Önceki pazaryeri denemesinin dış etkisi kesin olarak dışlanamadığı için yeniden gönderim engellendi.", 409);
+
+        var dedupKey = $"one-time-invoice-delivery:{invoice.Id:N}:{OneTimeInvoiceDeliveryPolicy.TargetOrderNumber}";
+        var existing = await db.IntegrationJobs.SingleOrDefaultAsync(x =>
+            x.TenantId == tenantId && x.JobType == InvoicingJobTypes.MarketplaceDelivery && x.JobDedupKey == dedupKey,
+            cancellationToken);
+        if (existing is not null) return ServiceResult<JobDetailView>.Ok(await DetailAsync(existing, cancellationToken));
+
+        var now = timeProvider.GetUtcNow();
+        var payload = JsonSerializer.Serialize(new
+        {
+            invoiceId = invoice.Id,
+            oneTimeInvoiceDelivery = new
+            {
+                orderNumber = OneTimeInvoiceDeliveryPolicy.TargetOrderNumber,
+                sourceJobId = sourceJob.Id
+            }
+        });
+        var job = new IntegrationJob
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenantId,
+            ConnectionId = package.ConnectionId,
+            JobType = InvoicingJobTypes.MarketplaceDelivery,
+            PayloadJson = payload,
+            PayloadVersion = 1,
+            PayloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))),
+            JobDedupKey = dedupKey,
+            EffectIdempotencyKey = $"{InvoicingJobTypes.MarketplaceDelivery}:one-time:{invoice.Id:N}:{idempotencyKey}",
+            Priority = -1,
+            MaxAttempts = 1,
+            Status = JobStatus.Pending,
+            AvailableAt = now,
+            TriggerType = "manual",
+            ResourceType = "invoices",
+            OperationType = "marketplace-delivery-once",
+            CorrelationId = correlationId,
+            CreatedAt = now,
+            Version = 1
+        };
+        db.IntegrationJobs.Add(job);
+        AddOutboxEvent(job, now);
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<JobDetailView>.Ok(await DetailAsync(job, cancellationToken));
     }
@@ -129,9 +266,6 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         var failureTimes = failure.Count == 0
             ? null
             : new FailureTime(failure.Min(x => x.StartedAt), failure.Max(x => x.CompletedAt ?? x.StartedAt));
-        var currentAttemptStartedAt = job.Status == JobStatus.Leased
-            ? attempts.FirstOrDefault(x => x.AttemptNumber == job.AttemptCount && x.CompletedAt is null)?.StartedAt
-            : null;
         var currentOrder = await OrderContext(job, cancellationToken);
         var invoice = await InvoiceContext(job, cancellationToken);
         var relatedJobs = await db.IntegrationJobs.AsNoTracking()
@@ -147,25 +281,31 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         }
         var scan = await ScanAsync(job, cancellationToken);
         var failureReasons = await ProductImportFailureReasonsAsync(job, cancellationToken);
-        return new JobDetailView(Summary(job, failureTimes, relatedJobs.Count, currentAttemptStartedAt), attempts, currentOrder, Change(job), relatedOrders, scan, failureReasons, invoice);
-    }
-
-    private async Task<Dictionary<Guid, DateTimeOffset>> CurrentAttemptStarts(IReadOnlyCollection<IntegrationJob> jobs, CancellationToken cancellationToken)
-    {
-        var leasedAttempts = jobs.Where(job => job.Status == JobStatus.Leased)
-            .ToDictionary(job => job.Id, job => job.AttemptCount);
-        if (leasedAttempts.Count == 0) return [];
-
-        var jobIds = leasedAttempts.Keys.ToArray();
-        var attempts = await db.JobAttempts.AsNoTracking()
-            .Where(attempt => attempt.TenantId == jobs.First().TenantId
-                && jobIds.Contains(attempt.JobId)
-                && attempt.CompletedAt == null)
-            .Select(attempt => new { attempt.JobId, attempt.AttemptNumber, attempt.StartedAt })
-            .ToListAsync(cancellationToken);
-        return attempts
-            .Where(attempt => leasedAttempts.TryGetValue(attempt.JobId, out var attemptNumber) && attempt.AttemptNumber == attemptNumber)
-            .ToDictionary(attempt => attempt.JobId, attempt => attempt.StartedAt);
+        var summary = Summary(job, failureTimes, relatedJobs.Count, attempts.FirstOrDefault()?.StartedAt);
+        if (job.JobType == InvoicingJobTypes.InvoiceSubmit && job.LastErrorCode == "EFATURAM_REQUEST_REJECTED")
+        {
+            var invoiceId = PayloadGuid(job.PayloadJson, "invoiceId");
+            if (invoiceId is not null)
+            {
+                var providerReference = await db.InvoiceSubmissionAttempts.AsNoTracking()
+                    .Where(attempt => attempt.TenantId == job.TenantId && attempt.InvoiceId == invoiceId.Value)
+                    .OrderByDescending(attempt => attempt.AttemptNumber)
+                    .Select(attempt => attempt.RemoteRequestId)
+                    .FirstOrDefaultAsync(cancellationToken);
+                var providerDetail = TrendyolEFaturamProblemDetails.ToOperatorSummary(providerReference);
+                if (providerDetail is not null)
+                {
+                    var previousSummary = summary.LastErrorSummary;
+                    summary = summary with
+                    {
+                        LastErrorSummary = string.IsNullOrWhiteSpace(previousSummary)
+                            ? providerDetail
+                            : $"{previousSummary} {providerDetail}"
+                    };
+                }
+            }
+        }
+        return new JobDetailView(summary, attempts, currentOrder, Change(job), relatedOrders, scan, failureReasons, invoice);
     }
 
     private async Task<JobInvoiceContextView?> InvoiceContext(IntegrationJob job, CancellationToken cancellationToken)
@@ -574,7 +714,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             .ToDictionary(x => x.JobId, x => new FailureTime(x.FirstFailedAt, x.LastFailedAt));
     }
 
-    private static JobSummaryView Summary(IntegrationJob x, FailureTime? failure = null, int batchCount = 1, DateTimeOffset? currentAttemptStartedAt = null) => new(
+    private static JobSummaryView Summary(IntegrationJob x, FailureTime? failure = null, int batchCount = 1, DateTimeOffset? lastAttemptStartedAt = null) => new(
         x.Id, x.ConnectionId, x.JobType, Wire(x.Status), x.AttemptCount, x.MaxAttempts,
         x.AvailableAt, x.LastErrorCode, x.LastErrorSummary, x.CorrelationId,
         x.CreatedAt, x.StartedAt, x.CompletedAt, Marketplace(x.JobType), ExternalId(x.PayloadJson),
@@ -582,7 +722,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         x.Status is JobStatus.Pending or JobStatus.RetryScheduled ? x.AvailableAt : null,
         Math.Max(1, batchCount), x.ProgressCurrent, x.ProgressTotal, x.ProgressPercent, x.ProgressLabel,
         x.ProgressReceived, x.ProgressProcessed, x.ProgressSkipped, x.ProgressFailed,
-        x.Status == JobStatus.Leased ? currentAttemptStartedAt : null);
+        lastAttemptStartedAt, x.HeartbeatAt);
 
     private static JobChangeView? Change(IntegrationJob job)
     {
@@ -595,8 +735,8 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         {
             var detail = job.LastErrorSummary switch
             {
-                "EFATURAM_RECIPIENT_TAX_ID_REQUIRED" => "Alıcı bilgilerinde geçerli VKN/TCKN bulunamadı. E-Faturam faturayı kabul etmedi; 11111111111 yedek değeri gerçek kimlik numarası yerine kullanılamaz. Siparişin fatura bilgilerine gerçek numara girilip sipariş eşitlendikten sonra fatura yeniden denenmelidir. Bu fatura kesilmiş sayılmaz.",
-                "EFATURAM_RECIPIENT_TAX_ID_PLACEHOLDER_NOT_ALLOWED" => "Alıcı bilgilerinde 11111111111 yer tutucu değeri var. E-Faturam bunu geçerli TCKN olarak kabul etmedi ve fatura gönderilmedi. Siparişin fatura bilgilerine gerçek TCKN girilip sipariş eşitlendikten sonra fatura yeniden denenmelidir.",
+                "EFATURAM_RECIPIENT_TAX_ID_REQUIRED" => "Alıcı için gerekli vergi kimlik numarası bulunamadı. Bireysel e-Arşiv alıcılarında 11111111111 kullanılır; kurumsal alıcı için şirket VKN'si, e-Fatura alıcısı için gerçek TCKN gerekir. Eksik şirket veya alıcı bilgisi pazaryeri fatura adresine girilip sipariş eşitlendikten sonra yeniden deneyin. Bu fatura kesilmiş sayılmaz.",
+                "EFATURAM_RECIPIENT_TAX_ID_PLACEHOLDER_NOT_ALLOWED" => "Bu eski denemede 11111111111 nedeniyle fatura gönderilmedi. Bireysel e-Arşiv alıcılarında bu değer kullanılır; kurumsal ve e-Fatura alıcılarında gerçek VKN/TCKN gerekir. Sipariş bilgilerini güncelleyip fatura denemesini yeniden kuyruğa alın. Fatura kesilmiş sayılmaz.",
                 _ => "E-Faturam isteği kabul etmedi. Bu kayıt fatura olarak kesilmiş sayılmaz; hata ayrıntısındaki alıcı/fatura bilgileri düzeltilip güvenli yeniden deneme yapılmalıdır."
             };
             return new("İstek sonucu", "Fatura gönderilmedi", detail);

@@ -888,10 +888,16 @@ public sealed partial class HepsiburadaHttpClient(
             return await Unsupported<InvoiceDeliveryResult>("Hepsiburada auth biçimi SIT hesabında doğrulanana kadar fatura bağlantısı gönderilmedi.");
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return Failure<InvoiceDeliveryResult>(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIAL_INVALID", "Hepsiburada bağlantı bilgileri bulunamadı.", HttpStatusCode.Unauthorized);
-        if (!IntegrationRuntimePolicy.AllowsExternalWrite(account.Connection, context, GlobalWritesEnabled, ConnectionWritesEnabled(account.Connection.SettingsJson)))
-            return await Unsupported<InvoiceDeliveryResult>("Hepsiburada fatura teslimi yalnız doğrulanmış Stage bağlantısında veya dış yazma kapıları açılmış canlı bağlantıda kullanılabilir.");
         if (!HepsiburadaInvoiceDeliveryPolicy.TryCreate(command, out var invoice, out var validationError))
             return Failure<InvoiceDeliveryResult>(AdapterErrorClass.Validation, "HEPSIBURADA_INVOICE_DELIVERY_INVALID", validationError, HttpStatusCode.BadRequest);
+        var regularWriteAllowed = IntegrationRuntimePolicy.AllowsExternalWrite(account.Connection, context, GlobalWritesEnabled, ConnectionWritesEnabled(account.Connection.SettingsJson));
+        var automaticInvoiceWriteAllowed = IntegrationRuntimePolicy.AllowsAutomaticInvoiceMarketplaceDelivery(
+            account.Connection,
+            context,
+            configuration.GetValue<bool>("FeatureFlags:InvoiceMarketplaceDeliveryWrites"));
+        var oneTimeInvoiceWriteAllowed = IntegrationRuntimePolicy.AllowsOneTimeHepsiburadaInvoiceDelivery(account.Connection, context, invoice!.OrderNumber);
+        if (!regularWriteAllowed && !automaticInvoiceWriteAllowed && !oneTimeInvoiceWriteAllowed)
+            return await Unsupported<InvoiceDeliveryResult>("Hepsiburada fatura teslimi yalnız genel dış yazma izinleri, ayrı fatura iletme izni veya doğrulanmış tek seferlik fatura yetkisi açıkken kullanılabilir.");
 
         var body = JsonSerializer.Serialize(new
         {
@@ -1117,7 +1123,11 @@ public sealed partial class HepsiburadaHttpClient(
                 var retryAfter = response.Headers.RetryAfter?.Delta
                     ?? (response.Headers.RetryAfter?.Date is { } retryDate ? retryDate - timeProvider.GetUtcNow() : null);
                 var error = Error(response.StatusCode, retryAfter ?? rate?.RetryAfter, requestId);
-                logger.LogWarning("Hepsiburada API isteği reddedildi. ConnectionId: {ConnectionId}, Status: {Status}, Code: {Code}, RequestId: {RequestId}, Limit: {Limit}, Remaining: {Remaining}, ResetAt: {ResetAt}, RetryAfterSeconds: {RetryAfterSeconds}", context.Connection.Id, (int)response.StatusCode, error.Code, requestId, rate?.Limit, rate?.Remaining, rate?.ResetAt, error.RetryAfter?.TotalSeconds ?? rate?.RetryAfter?.TotalSeconds);
+                var invoiceErrorDetails = method == HttpMethod.Put
+                    && path.EndsWith("/invoice", StringComparison.OrdinalIgnoreCase)
+                    ? SafeInvoiceErrorDetails(body)
+                    : null;
+                logger.LogWarning("Hepsiburada API isteği reddedildi. ConnectionId: {ConnectionId}, Status: {Status}, Code: {Code}, RequestId: {RequestId}, Limit: {Limit}, Remaining: {Remaining}, ResetAt: {ResetAt}, RetryAfterSeconds: {RetryAfterSeconds}, InvoiceErrorDetails: {InvoiceErrorDetails}", context.Connection.Id, (int)response.StatusCode, error.Code, requestId, rate?.Limit, rate?.Remaining, rate?.ResetAt, error.RetryAfter?.TotalSeconds ?? rate?.RetryAfter?.TotalSeconds, invoiceErrorDetails);
                 return AdapterResult<JsonDocument>.Failure(error, rate);
             }
             try { return AdapterResult<JsonDocument>.Success(JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body), rate); }
@@ -1134,6 +1144,55 @@ public sealed partial class HepsiburadaHttpClient(
         {
             logger.LogWarning(exception, "Hepsiburada API isteği başarısız. ConnectionId: {ConnectionId}", context.Connection.Id);
             return AdapterResult<JsonDocument>.Failure(new(AdapterErrorClass.TransientNetwork, "HEPSIBURADA_NETWORK_ERROR", "Hepsiburada bağlantısı geçici olarak kurulamadı.", null, TimeSpan.FromSeconds(15), null));
+        }
+    }
+
+    internal static string? SafeInvoiceErrorDetails(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body)) return null;
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            var details = new List<string>();
+            CollectSafeInvoiceErrorFields(document.RootElement, details, 0);
+            if (details.Count == 0) return null;
+            var safe = string.Join(" | ", details.Distinct(StringComparer.OrdinalIgnoreCase));
+            safe = System.Text.RegularExpressions.Regex.Replace(safe, @"https?://\S+", "[url]", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            safe = System.Text.RegularExpressions.Regex.Replace(safe, @"\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b", "[email]");
+            safe = System.Text.RegularExpressions.Regex.Replace(safe, @"(?<!\d)\d{10,11}(?!\d)", "[id]");
+            safe = System.Text.RegularExpressions.Regex.Replace(safe, @"[\r\n\t]+", " ").Trim();
+            return safe.Length <= 600 ? safe : safe[..600];
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static void CollectSafeInvoiceErrorFields(JsonElement element, List<string> details, int depth)
+    {
+        if (depth > 3 || element.ValueKind != JsonValueKind.Object || details.Count >= 8) return;
+        foreach (var property in element.EnumerateObject())
+        {
+            if (details.Count >= 8) return;
+            if (property.Name.Equals("code", StringComparison.OrdinalIgnoreCase)
+                || property.Name.Equals("errorCode", StringComparison.OrdinalIgnoreCase)
+                || property.Name.Equals("message", StringComparison.OrdinalIgnoreCase)
+                || property.Name.Equals("error", StringComparison.OrdinalIgnoreCase)
+                || property.Name.Equals("detail", StringComparison.OrdinalIgnoreCase))
+            {
+                var value = property.Value.ValueKind switch
+                {
+                    JsonValueKind.String => property.Value.GetString(),
+                    JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False => property.Value.ToString(),
+                    _ => null
+                };
+                if (!string.IsNullOrWhiteSpace(value)) details.Add($"{property.Name}={value.Trim()}");
+            }
+            if (property.Value.ValueKind == JsonValueKind.Object)
+            {
+                CollectSafeInvoiceErrorFields(property.Value, details, depth + 1);
+            }
         }
     }
 

@@ -1112,7 +1112,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         var regularOrder = NewInvoiceTestOrder(tenant.Id, connection.Id, regularOrderId, "regular-order", isReturnClaim: false, fixture.Now);
         var partialPackage = NewInvoiceTestPackage(tenant.Id, connection.Id, partialOrderId, partialPackageId, "partial-package", fixture.Now);
         var regularPackage = NewInvoiceTestPackage(tenant.Id, connection.Id, regularOrderId, regularPackageId, "regular-package", fixture.Now);
-        var orderPort = new ReadOnlyInvoiceTestOrderPort(new RemotePackage(
+        var orderPort = new ReadOnlyOrderTestPort(new RemotePackage(
             "regular-package", null, "Delivered", fixture.Now, null, null, [],
             GrossAmount: 100m, NetAmount: 100m,
             Invoice: new RemotePackageInvoiceObservation("NotInvoiced", null, null, fixture.Now)));
@@ -1161,6 +1161,82 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 .ToDictionaryAsync(package => package.ExternalPackageId);
             Assert.Equal(MarketplaceInvoiceStatus.Unknown, persistedPackages["partial-package"].MarketplaceInvoiceStatus);
             Assert.Equal(MarketplaceInvoiceStatus.NotInvoiced, persistedPackages["regular-package"].MarketplaceInvoiceStatus);
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task TargetedTrendyolOrderSync_UsesOrderNumberBeforeSuppliedPackage()
+    {
+        var tenant = NewTenant("trendyol-package-first-sync");
+        var connection = NewQuestionConnection(tenant);
+        connection.ApiVersion = "V2";
+        const string externalOrderId = "116483573775";
+        const string packageNumber = "419428742";
+        var package = new RemotePackage(
+            packageNumber,
+            null,
+            "Shipped",
+            fixture.Now.AddDays(-2),
+            "TRENDYOL_EXPRESS",
+            "7330037500176178",
+            [new RemotePackageAllocation("line-1", 1m, 0m, 1m, 0m, 0m)],
+            GrossAmount: 454.31m,
+            NetAmount: 454.31m);
+        var order = new RemoteOrder(
+            externalOrderId,
+            externalOrderId,
+            fixture.Now.AddDays(-2),
+            fixture.Now.AddDays(-1),
+            "TRY",
+            454.31m,
+            0m,
+            454.31m,
+            "{}",
+            "{}",
+            "{}",
+            [new RemoteOrderLine("line-1", "RY-P001", "RY-P001", "Test ürün", 1m, 454.31m, 10m, "Shipped")],
+            [package],
+            "{}");
+        var orderPort = new ReadOnlyOrderTestPort(package, order, externalOrderId, directOrderResult: order);
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using (var processorDb = fixture.CreateContext())
+            {
+                var processor = new MarketplaceJobProcessor(
+                    processorDb,
+                    null!, null!, null!, null!, orderPort, null!, null!, null!, null!, null!,
+                    new ConfigurationBuilder().Build(), fixture.TimeProvider);
+                var result = await processor.ProcessAsync(
+                    tenant.Id,
+                    connection.Id,
+                    MarketplaceJobTypes.OrderSync,
+                    $$"""{"externalOrderId":"{{externalOrderId}}","full":false,"packageNumber":"{{packageNumber}}"}""",
+                    "targeted-trendyol-package-first-sync",
+                    CancellationToken.None);
+
+                Assert.True(result.Succeeded, result.ErrorSummary);
+                Assert.Equal(1, orderPort.OrderReadCalls);
+                Assert.Empty(orderPort.PackageReadCalls);
+            }
+
+            await using var verifyDb = fixture.CreateContext();
+            var persistedOrder = await verifyDb.Orders.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id && row.ExternalOrderId == externalOrderId);
+            Assert.Equal(externalOrderId, persistedOrder.OrderNumber);
+            var persistedPackage = await verifyDb.ShipmentPackages.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id && row.ExternalPackageId == packageNumber);
+            Assert.Equal(persistedOrder.Id, persistedPackage.OrderId);
+            Assert.Equal("7330037500176178", persistedPackage.CargoTrackingNumber);
         }
         finally
         {
@@ -1544,6 +1620,8 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
 
             var firstPage = await service.WorkspacePageAsync(tenant.Id,
                 new InvoiceWorkspacePageQuery(PageNumber: 1, PageSize: 20, Tab: "DUE_SOON"), CancellationToken.None);
+            var allPage = await service.WorkspacePageAsync(tenant.Id,
+                new InvoiceWorkspacePageQuery(PageNumber: 1, PageSize: 20, Tab: "ALL"), CancellationToken.None);
             var secondPage = await service.WorkspacePageAsync(tenant.Id,
                 new InvoiceWorkspacePageQuery(PageNumber: 2, PageSize: 20, Tab: "DUE_SOON"), CancellationToken.None);
             var clampedPage = await service.WorkspacePageAsync(tenant.Id,
@@ -1564,6 +1642,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 new InvoiceWorkspacePageQuery(PageNumber: 1, PageSize: 20, Tab: "DUE_SOON", Search: "test"), CancellationToken.None);
 
             Assert.Equal(21, firstPage.TotalCount);
+            Assert.Equal(21, allPage.TotalCount);
             Assert.Equal(21, firstPage.DueSoonCount);
             Assert.Equal(21, firstPage.UninvoicedCount);
             Assert.Equal(21, firstPage.TotalPackageCount);
@@ -1886,11 +1965,14 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 null!, null!, null!, null!, fixture.TimeProvider);
             var approved = await listService.ReturnsAsync(tenant.Id, 20, null, new ReturnListQuery(Status: "APPROVED"), latest: true, CancellationToken.None);
             var actionRequired = await listService.ReturnsAsync(tenant.Id, 20, null, new ReturnListQuery(Status: "ACTION_REQUIRED"), latest: true, CancellationToken.None);
+            var analysis = await listService.ReturnsAsync(tenant.Id, 20, null, new ReturnListQuery(Status: "REVIEW"), latest: true, CancellationToken.None);
 
             Assert.Equal(1, approved.TotalCount);
             Assert.Equal("APPROVED", Assert.Single(approved.Items).Status);
             Assert.Equal(0, actionRequired.TotalCount);
             Assert.Empty(actionRequired.Items);
+            Assert.Equal(0, analysis.TotalCount);
+            Assert.Empty(analysis.Items);
         }
         finally
         {
@@ -2559,8 +2641,115 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             Assert.Equal(2, requests.Requests.Count);
             Assert.Equal("/integration/order/sellers/seller-contract-test/v2/orders", requests.Requests[0].AbsolutePath);
             Assert.Equal("4052072376", QueryValue(requests.Requests[0], "shipmentPackageIds"));
+            Assert.Equal(anchor.AddDays(-14).ToUnixTimeMilliseconds().ToString(), QueryValue(requests.Requests[0], "startDate"));
+            Assert.Equal(anchor.ToUnixTimeMilliseconds().ToString(), QueryValue(requests.Requests[0], "endDate"));
             Assert.Equal("/integration/order/sellers/seller-contract-test/orders/stream", requests.Requests[1].AbsolutePath);
             Assert.DoesNotContain(requests.Requests, uri => uri.AbsolutePath == "/integration/order/sellers/seller-contract-test/orders");
+        }
+        finally
+        {
+            await using var cleanupDb = fixture.CreateContext();
+            await cleanupDb.PlatformCredentials.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task TrendyolTargetedReads_SearchInternationalStorefrontAndUseTwoWeekWindow()
+    {
+        var tenant = NewTenant("trendyol-intl-package");
+        var anchor = DateTimeOffset.Parse("2026-10-02T00:00:00Z");
+        var connection = new PlatformConnection
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            PublicId = Guid.CreateVersion7(),
+            PlatformCode = "TRENDYOL",
+            Environment = "STAGE",
+            DisplayName = "Trendyol international package readback contract test",
+            ExternalStoreId = "seller-contract-test",
+            Status = "ACTIVE",
+            ApiVersion = "V2",
+            SettingsJson = JsonSerializer.Serialize(new { UserAgentIdentity = "ravencia-contract-test", ExternalWritesEnabled = false })
+        };
+        var dataProtection = new EphemeralDataProtectionProvider();
+        var protector = dataProtection.CreateProtector("MarketplaceHub.PlatformCredential.v1");
+        var credential = new PlatformCredential
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            ConnectionId = connection.Id,
+            CredentialType = "TRENDYOL_API_KEY",
+            ProtectedPayload = protector.Protect(JsonSerializer.Serialize(new { ApiKey = "test-key", ApiSecret = "test-secret" })),
+            MaskedHint = "test",
+            CreatedAt = anchor,
+            Version = 1
+        };
+        var storeFrontCodes = new List<string>();
+        var requests = new RecordingHttpMessageHandler(request =>
+        {
+            var storeFrontCode = request.Headers.GetValues("storeFrontCode").Single();
+            storeFrontCodes.Add(storeFrontCode);
+            var content = storeFrontCode == "AE"
+                ? """
+                  {"content":[{"shipmentPackageId":419428742,"orderNumber":"116483573775","status":"Shipped","lastModifiedDate":1790899200000,"lines":[]}],"page":0,"totalPages":1}
+                  """
+                : """
+                  {"content":[],"page":0,"totalPages":0}
+                  """;
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(content, Encoding.UTF8, "application/json")
+            };
+        });
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.PlatformCredentials.Add(credential);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var authentication = new TrendyolAuthenticationHandler(
+                db,
+                dataProtection,
+                Options.Create(new TrendyolOptions()),
+                NullLogger<TrendyolAuthenticationHandler>.Instance);
+            var client = new TrendyolHttpClient(
+                new RecordingHttpClientFactory(requests),
+                authentication,
+                new ConfigurationBuilder().Build(),
+                Options.Create(new TrendyolOptions()),
+                new FixedTimeProvider(anchor),
+                NullLogger<TrendyolHttpClient>.Instance);
+            var context = new AdapterContext(tenant.Id, connection.Id, "trendyol-international-package-readback-contract", "contract-test", anchor.AddMinutes(1));
+
+            var result = await client.GetShipmentPackageAsync(context, "419428742", CancellationToken.None);
+
+            Assert.True(result.IsSuccess, result.Error?.SafeMessage);
+            Assert.Equal("116483573775", result.Value!.OrderSnapshot!.ExternalOrderId);
+            Assert.Equal("419428742", result.Value.Package.ExternalPackageId);
+            Assert.Equal(["TR", "AE"], storeFrontCodes);
+            Assert.Equal(2, requests.Requests.Count);
+            Assert.All(requests.Requests, uri => Assert.Equal("/integration/order/sellers/seller-contract-test/v2/orders", uri.AbsolutePath));
+            Assert.All(requests.Requests, uri => Assert.Equal("419428742", QueryValue(uri, "shipmentPackageIds")));
+            Assert.All(requests.Requests, uri => Assert.Equal(anchor.AddDays(-14).ToUnixTimeMilliseconds().ToString(), QueryValue(uri, "startDate")));
+            Assert.All(requests.Requests, uri => Assert.Equal(anchor.ToUnixTimeMilliseconds().ToString(), QueryValue(uri, "endDate")));
+
+            var orderLookupStart = requests.Requests.Count;
+            var orderResult = await client.GetAsync(context, "116483573775", CancellationToken.None);
+
+            Assert.True(orderResult.IsSuccess, orderResult.Error?.SafeMessage);
+            Assert.Equal("116483573775", orderResult.Value!.ExternalOrderId);
+            var orderLookupRequests = requests.Requests.Skip(orderLookupStart).ToArray();
+            Assert.Equal(["TR", "TR", "AE"], storeFrontCodes.Skip(2));
+            Assert.All(orderLookupRequests, uri => Assert.Equal("116483573775", QueryValue(uri, "orderNumber")?.Trim('"')));
+            Assert.All(orderLookupRequests, uri => Assert.Equal(anchor.AddDays(-14).ToUnixTimeMilliseconds().ToString(), QueryValue(uri, "startDate")));
+            Assert.All(orderLookupRequests, uri => Assert.Equal(anchor.ToUnixTimeMilliseconds().ToString(), QueryValue(uri, "endDate")));
         }
         finally
         {
@@ -2661,6 +2850,9 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         await db.IntegrationOutboxEvents.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.OperationalIssues.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.SyncCursors.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.PackageLineAllocations.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.OrderStatusHistory.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.OrderLines.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.ShipmentPackages.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.Orders.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.PlatformConnections.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
@@ -2851,7 +3043,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         }
     }
 
-    private sealed class ReadOnlyInvoiceTestOrderPort(RemotePackage package) : IOrderPort
+    private sealed class ReadOnlyOrderTestPort(RemotePackage package, RemoteOrder? orderSnapshot = null, string externalOrderId = "regular-order", RemoteOrder? directOrderResult = null) : IOrderPort
     {
         public int OrderReadCalls { get; private set; }
         public List<string> PackageReadCalls { get; } = [];
@@ -2862,13 +3054,15 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         public Task<AdapterResult<RemoteOrder>> GetAsync(AdapterContext context, string externalOrderId, CancellationToken cancellationToken)
         {
             OrderReadCalls++;
+            if (directOrderResult is not null)
+                return Task.FromResult(AdapterResult<RemoteOrder>.Success(directOrderResult));
             throw new NotSupportedException("Return hydration must defer while the order lane is locked.");
         }
 
         public Task<AdapterResult<RemoteOrderPackage>> GetShipmentPackageAsync(AdapterContext context, string externalPackageId, DateTimeOffset? packageStatusOccurredAt, CancellationToken cancellationToken)
         {
             PackageReadCalls.Add(externalPackageId);
-            return Task.FromResult(AdapterResult<RemoteOrderPackage>.Success(new("regular-order", package)));
+            return Task.FromResult(AdapterResult<RemoteOrderPackage>.Success(new(externalOrderId, package, orderSnapshot)));
         }
 
         public Task<AdapterResult<PackageActionResult>> ExecutePackageActionAsync(AdapterContext context, PackageActionCommand command, CancellationToken cancellationToken) =>

@@ -1,3 +1,5 @@
+using MarketplaceHub.Domain;
+
 namespace MarketplaceHub.Application;
 
 public static class InvoicingJobTypes
@@ -20,6 +22,26 @@ public static class InvoicingCapabilities
     public const string InvoiceDocumentRead = "INVOICE_DOCUMENT_READ";
     public const string InvoiceCancel = "INVOICE_CANCEL";
     public const string InvoiceDeliver = "INVOICE_DELIVER";
+}
+
+public static class OneTimeInvoiceDeliveryPolicy
+{
+    public const string TargetOrderNumber = "4486229624";
+    public const string PriorNoWriteFailureCode = "HEPSIBURADA_CAPABILITY_NOT_ENABLED";
+    public const string DeliveryAlreadyFailedErrorCode = "DELIVERY_ALREADY_FAILED";
+
+    public static bool IsAuthorizedTarget(string? orderNumber) =>
+        string.Equals(orderNumber, TargetOrderNumber, StringComparison.Ordinal);
+
+    public static bool IsEligibleSourceFailure(string? latestErrorCode, bool hasPriorNoWriteAttempt) =>
+        string.Equals(latestErrorCode, PriorNoWriteFailureCode, StringComparison.Ordinal)
+        || string.Equals(latestErrorCode, DeliveryAlreadyFailedErrorCode, StringComparison.Ordinal)
+            && hasPriorNoWriteAttempt;
+
+    public static bool IsSafePriorFailure(string? status, string? errorCode, string? externalReference) =>
+        string.Equals(status, "FAILED", StringComparison.Ordinal)
+        && string.Equals(errorCode, PriorNoWriteFailureCode, StringComparison.Ordinal)
+        && string.IsNullOrWhiteSpace(externalReference);
 }
 
 public sealed record InvoiceSubmission(Guid InvoiceId, string LocalReferenceId, string InvoiceType, string Currency, string PayloadJson, string RequestHash);
@@ -57,45 +79,45 @@ public static class InvoiceDeliveryFailurePolicy
     };
 }
 
-public static class InvoiceDeliveryEnvironmentPolicy
+public enum InvoiceDeliveryRecoveryAction
 {
-    public const string MismatchErrorCode = "INVOICE_DELIVERY_ENVIRONMENT_MISMATCH";
-
-    public static bool HasProviderCredentialForMarketplace(string? marketplaceEnvironment, IReadOnlyList<string>? providerEnvironmentsWithCredential, bool legacyProviderHasCredential = false)
-    {
-        var marketplace = Normalize(marketplaceEnvironment);
-        if (providerEnvironmentsWithCredential is null) return marketplace is not null && legacyProviderHasCredential;
-        return marketplace is not null && providerEnvironmentsWithCredential
-            .Select(Normalize)
-            .Any(provider => string.Equals(provider, marketplace, StringComparison.Ordinal));
-    }
-
-    public static bool IsCompatible(string? invoiceProviderEnvironment, string? marketplaceEnvironment)
-    {
-        var provider = Normalize(invoiceProviderEnvironment);
-        var marketplace = Normalize(marketplaceEnvironment);
-        return provider is not null && marketplace is not null
-            && string.Equals(provider, marketplace, StringComparison.Ordinal);
-    }
-
-    public static string DescribeMismatch(string? invoiceProviderEnvironment, string? marketplaceEnvironment)
-    {
-        var provider = Normalize(invoiceProviderEnvironment) ?? "bilinmiyor";
-        var marketplace = Normalize(marketplaceEnvironment) ?? "bilinmiyor";
-        return $"Fatura {provider} e-Fatura ortamında oluşturulmuş, sipariş ise {marketplace} pazaryeri ortamında. Fatura yalnız aynı ortamdaki pazaryeri siparişine iletilebilir.";
-    }
-
-    private static string? Normalize(string? environment)
-    {
-        var normalized = environment?.Trim().ToUpperInvariant();
-        return normalized is "STAGE" or "PRODUCTION" ? normalized : null;
-    }
+    WaitForMarketplaceReadback,
+    RetryDelivery,
+    ConfirmDelivery,
+    StopRejected,
+    ManualReview
 }
 
-public static class InvoiceDeliveryOperationPolicy
+public static class InvoiceDeliveryRecoveryPolicy
 {
-    public static AdapterContext ForAutomaticMarketplaceDelivery(AdapterContext context) =>
-        context with { Operation = IntegrationOperation.Automatic };
+    public const int HepsiburadaRemoteFailureLimit = 3;
+
+    public static bool ShouldStopAfterRemoteFailures(string? platformCode, int failureCount) =>
+        string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
+        && failureCount >= HepsiburadaRemoteFailureLimit;
+
+    public static InvoiceDeliveryRecoveryAction Decide(
+        MarketplaceInvoiceStatus marketplaceStatus,
+        string? marketplaceInvoiceNumber,
+        string? expectedInvoiceNumber,
+        DateTimeOffset? observedAt,
+        DateTimeOffset uncertainAttemptAt)
+    {
+        if (observedAt is null || observedAt <= uncertainAttemptAt)
+            return InvoiceDeliveryRecoveryAction.WaitForMarketplaceReadback;
+
+        return marketplaceStatus switch
+        {
+            MarketplaceInvoiceStatus.NotInvoiced => InvoiceDeliveryRecoveryAction.RetryDelivery,
+            MarketplaceInvoiceStatus.Invoiced
+                when !string.IsNullOrWhiteSpace(expectedInvoiceNumber)
+                     && string.Equals(marketplaceInvoiceNumber?.Trim(), expectedInvoiceNumber.Trim(), StringComparison.Ordinal)
+                => InvoiceDeliveryRecoveryAction.ConfirmDelivery,
+            MarketplaceInvoiceStatus.Invoiced => InvoiceDeliveryRecoveryAction.ManualReview,
+            MarketplaceInvoiceStatus.Rejected => InvoiceDeliveryRecoveryAction.StopRejected,
+            _ => InvoiceDeliveryRecoveryAction.WaitForMarketplaceReadback
+        };
+    }
 }
 
 public interface IInvoiceProviderPort
@@ -168,8 +190,7 @@ public sealed record InvoiceWorkspacePageQuery(
     string? InvoiceAction = null,
     DateTimeOffset? From = null,
     DateTimeOffset? To = null,
-    bool ProviderHasCredential = false,
-    IReadOnlyList<string>? ProviderEnvironmentsWithCredential = null);
+    bool ProviderHasCredential = false);
 public sealed record InvoiceWorkspacePageView(
     IReadOnlyList<InvoiceWorkspaceItemView> Items,
     int TotalCount,
@@ -189,7 +210,7 @@ public sealed record InvoiceLineView(Guid Id, int LineSequence, string Descripti
 public sealed record InvoiceDocumentView(Guid Id, string DocumentType, string Sha256, DateTimeOffset CreatedAt);
 public sealed record InvoiceAttemptView(int AttemptNumber, string Outcome, string? ErrorCode, DateTimeOffset StartedAt, DateTimeOffset? CompletedAt);
 public sealed record MarketplaceDeliveryView(Guid Id, string DeliveryType, string Status, string? ExternalReference, string? ErrorCode, DateTimeOffset CreatedAt);
-public sealed record InvoiceDetailView(Guid Id, Guid OrderId, string OrderNumber, Guid? PackageId, Guid ProviderConnectionId, string InvoiceType, string SequencePurpose, string Status, string Currency, decimal TaxExclusiveTotal, decimal DiscountTotal, decimal TaxTotal, decimal PayableTotal, string Note, string? InvoiceNumber, string? EttnUuid, DateTimeOffset? DueAt, DateTimeOffset? IssuedAt, string? LastErrorCode, IReadOnlyList<InvoiceLineView> Lines, IReadOnlyList<InvoiceDocumentView> Documents, IReadOnlyList<InvoiceAttemptView> Attempts, IReadOnlyList<MarketplaceDeliveryView> Deliveries, IReadOnlyList<string> AllowedActions, long Version, bool RequiresSensitiveConfirmation, string MarketplacePlatformCode = "TRENDYOL", string MarketplacePlatformDisplayName = "Trendyol");
+public sealed record InvoiceDetailView(Guid Id, Guid OrderId, string OrderNumber, Guid? PackageId, Guid ProviderConnectionId, string InvoiceType, string SequencePurpose, string Status, string Currency, decimal TaxExclusiveTotal, decimal DiscountTotal, decimal TaxTotal, decimal PayableTotal, string Note, string? InvoiceNumber, string? EttnUuid, DateTimeOffset? DueAt, DateTimeOffset? IssuedAt, string? LastErrorCode, IReadOnlyList<InvoiceLineView> Lines, IReadOnlyList<InvoiceDocumentView> Documents, IReadOnlyList<InvoiceAttemptView> Attempts, IReadOnlyList<MarketplaceDeliveryView> Deliveries, IReadOnlyList<string> AllowedActions, long Version, bool RequiresSensitiveConfirmation);
 
 public interface IInvoicingBillingService
 {

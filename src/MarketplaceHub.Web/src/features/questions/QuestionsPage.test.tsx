@@ -301,11 +301,23 @@ describe('QuestionsPage workspace flows', () => {
     expect(apiState.calls.some(call => call.path.startsWith('/products?'))).toBe(false)
   })
 
-  it('uses a circular marketplace logo instead of a dotted platform badge', async () => {
+  it('links a product question to its marketplace product search', async () => {
+    await renderPage()
+
+    const link = container.querySelector<HTMLAnchorElement>('.rv-question-product-link')
+    expect(link?.textContent).toBe('Kadın triko bluz')
+    expect(link?.getAttribute('href')).toBe('https://www.trendyol.com/sr?q=86900001')
+    expect(link?.getAttribute('target')).toBe('_blank')
+    expect(link?.getAttribute('rel')).toBe('noopener noreferrer')
+  })
+
+  it('shows the order-style marketplace logo and status at the top right of the question card', async () => {
     apiState.detail = { ...createQuestion(), storeName: 'Trendyol' }
     await renderPage()
 
-    expect(container.querySelector('.rv-question-platform-icon[aria-label="Trendyol"] img')?.getAttribute('src')).toBe('/platforms/trendyol.png')
+    expect(container.querySelector('.rv-question-platform-context .order-platform-logo')?.getAttribute('src')).toBe('/platforms/orders/trendyol.png')
+    expect(container.querySelector('.rv-question-platform-context .rv-badge')?.textContent).toBe('Cevap bekliyor')
+    expect(container.querySelector('.rv-question-meta .order-platform-logo')).toBeNull()
     expect(container.querySelector('.rv-question-meta .rv-badge')).toBeNull()
     expect(container.querySelector('.rv-question-meta')?.textContent).not.toContain('TrendyolTrendyol')
   })

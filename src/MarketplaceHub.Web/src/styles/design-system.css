@@ -10442,8 +10442,7 @@ small,
   border-radius: 0;
 }
 
-.app-shell.stitch-shell main .order-reference-table > .order-reference-row + .order-reference-row,
-.app-shell.stitch-shell main .invoice-reference-table > .invoice-reference-row + .invoice-reference-row {
+.app-shell.stitch-shell main .order-reference-table > .order-reference-row + .order-reference-row {
   margin-top: var(--rv-space-2);
   border: 1px solid var(--rv-color-border-strong);
   border-left: 0;
@@ -10451,8 +10450,7 @@ small,
   box-shadow: var(--rv-shadow-sm);
 }
 
-.app-shell.stitch-shell main .order-reference-table > .order-reference-row + .order-reference-row:last-child,
-.app-shell.stitch-shell main .invoice-reference-table > .invoice-reference-row + .invoice-reference-row:last-child {
+.app-shell.stitch-shell main .order-reference-table > .order-reference-row + .order-reference-row:last-child {
   border-bottom: 1px solid var(--rv-color-border-strong);
   border-radius: 0;
 }
@@ -11711,6 +11709,8 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .rv-question-product > div, .rv-question-content, .rv-question-actions { display: grid; gap: 7px; min-width: 0; }
 .rv-question-product strong, .rv-question-product small, .rv-question-content p { overflow-wrap: anywhere; }
 .rv-question-product strong { color: var(--rv-color-ink); font-size: 13px; line-height: 1.4; }
+.rv-question-product-link { color: inherit; text-decoration: underline; text-decoration-color: var(--rv-color-accent); text-underline-offset: 3px; }
+.rv-question-product-link:hover, .rv-question-product-link:focus-visible { color: var(--rv-color-accent); }
 .rv-question-product small, .rv-question-age { color: var(--rv-color-subtle); font-size: 11px; }
 .rv-question-content p { margin: 0; color: var(--rv-color-ink); line-height: 1.5; white-space: pre-wrap; }
 .rv-question-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 7px 10px; color: var(--rv-color-subtle); font-size: 11px; }
@@ -11787,6 +11787,11 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .rv-question-actions { display: flex; align-items: center; justify-items: unset; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
 .rv-question-actions > .rv-badge { flex: 0 0 auto; }
 .rv-question-actions .rv-question-deadline, .rv-question-actions .rv-question-age { margin-right: auto; }
+.rv-question-platform-context { display: flex; align-items: flex-start; gap: 10px; }
+.rv-question-platform-context > .order-platform-logo { width: 40px; height: 40px; flex: 0 0 40px; object-fit: contain; }
+.rv-question-platform-context > .order-platform-fallback { max-width: 88px; overflow-wrap: anywhere; }
+.rv-question-platform-context > div { display: grid; justify-items: end; gap: 4px; }
+.rv-question-platform-context .rv-question-age, .rv-question-platform-context .rv-question-deadline { margin: 0; white-space: nowrap; }
 .rv-question-conversation { max-height: none; overflow: visible; gap: 7px; padding: 0; }
 .rv-question-thread-message { max-width: min(92%, 850px); min-width: 0; padding: 9px 11px; border: 1px solid var(--rv-color-border); border-radius: 10px; background: var(--rv-color-surface-raised); }
 .rv-question-thread-message.is-customer { justify-self: start; }
@@ -11808,11 +11813,17 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
   .rv-questions-filter-grid, .rv-question-templates { grid-template-columns: minmax(0, 1fr); }
   .rv-question-card-header { flex-direction: column; align-items: stretch; }
   .rv-question-actions { justify-content: flex-start; }
+  .rv-question-platform-context { margin-left: auto; }
+  .rv-question-platform-context > div { justify-items: start; }
   .rv-questions-results > header { align-items: flex-start; flex-direction: column; }
   .rv-question-thread-message { max-width: 100%; }
   .rv-question-template-card { grid-template-columns: minmax(0, 1fr); }
   .rv-question-template-card > div:last-child { justify-content: flex-start; }
 }
+
+/* Return tracking actions use the same neutral surface and ink as the theme control. */
+.return-reference-table .return-cargo-track { min-height: 34px; color: var(--rv-color-ink); background: var(--rv-color-surface); border-color: var(--rv-color-border); }
+.return-reference-table .return-cargo-track:hover { color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border-color: var(--rv-color-border-strong); }
 
 /* Keep customer questions aligned with the shared Ravencia UI tokens and
    retain compact, readable controls inside the fixed sidebar workspace. */
@@ -12105,3 +12116,6 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
   }
   .app-shell.stitch-shell main .return-approved-sort { min-width: 0; }
 }
+/* Keep label section headings distinct from the regular print text. */
+.app-shell.stitch-shell main .shipping-label-print-surface :is(.shipping-label-block-title, .shipping-label-meta > strong, .shipping-label-footer > strong, .shipping-label-custom-content > strong) { font-size: 1.08em !important; font-weight: 850 !important; line-height: 1.15 !important; }
+.app-shell.stitch-shell main .shipping-label-print-surface :is(.shipping-label-meta, .shipping-label-footer, .shipping-label-block-content, .shipping-label-custom-content) > span > small { color: #334155 !important; font-size: .9em !important; font-weight: 800 !important; line-height: 1.1 !important; }
