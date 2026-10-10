@@ -26,9 +26,15 @@ public static class OneTimeInvoiceDeliveryPolicy
 {
     public const string TargetOrderNumber = "4486229624";
     public const string PriorNoWriteFailureCode = "HEPSIBURADA_CAPABILITY_NOT_ENABLED";
+    public const string DeliveryAlreadyFailedErrorCode = "DELIVERY_ALREADY_FAILED";
 
     public static bool IsAuthorizedTarget(string? orderNumber) =>
         string.Equals(orderNumber, TargetOrderNumber, StringComparison.Ordinal);
+
+    public static bool IsEligibleSourceFailure(string? latestErrorCode, bool hasPriorNoWriteAttempt) =>
+        string.Equals(latestErrorCode, PriorNoWriteFailureCode, StringComparison.Ordinal)
+        || string.Equals(latestErrorCode, DeliveryAlreadyFailedErrorCode, StringComparison.Ordinal)
+            && hasPriorNoWriteAttempt;
 
     public static bool IsSafePriorFailure(string? status, string? errorCode, string? externalReference) =>
         string.Equals(status, "FAILED", StringComparison.Ordinal)

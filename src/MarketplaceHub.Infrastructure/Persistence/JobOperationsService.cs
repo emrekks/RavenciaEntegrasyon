@@ -82,9 +82,16 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         var sourceJob = await db.IntegrationJobs.AsNoTracking()
             .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == jobId, cancellationToken);
         if (sourceJob is null) return ServiceResult<JobDetailView>.Fail("JOB_NOT_FOUND", "Job bulunamadı.", 404);
+        var hasPriorNoWriteAttempt = sourceJob.LastErrorCode == OneTimeInvoiceDeliveryPolicy.PriorNoWriteFailureCode
+            || await db.JobAttempts.AsNoTracking().AnyAsync(x =>
+                x.TenantId == tenantId
+                && x.JobId == sourceJob.Id
+                && !x.Succeeded
+                && x.ErrorCode == OneTimeInvoiceDeliveryPolicy.PriorNoWriteFailureCode,
+                cancellationToken);
         if (sourceJob.JobType != InvoicingJobTypes.MarketplaceDelivery
             || sourceJob.Status is not (JobStatus.Blocked or JobStatus.ManualReview or JobStatus.Dead)
-            || sourceJob.LastErrorCode != OneTimeInvoiceDeliveryPolicy.PriorNoWriteFailureCode)
+            || !OneTimeInvoiceDeliveryPolicy.IsEligibleSourceFailure(sourceJob.LastErrorCode, hasPriorNoWriteAttempt))
             return ServiceResult<JobDetailView>.Fail("ONE_TIME_INVOICE_SOURCE_NOT_SAFE", "Bu sipariş için dış çağrı yapılmadan oluştuğu doğrulanmış bir fatura iletim engeli bulunamadı.", 409);
 
         var invoiceId = PayloadGuid(sourceJob.PayloadJson, "invoiceId");

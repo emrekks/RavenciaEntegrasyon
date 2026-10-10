@@ -413,11 +413,19 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
 
         var sourceJob = await db.IntegrationJobs.AsNoTracking()
             .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == authorization.SourceJobId, cancellationToken);
+        var hasPriorNoWriteAttempt = sourceJob is not null
+            && (sourceJob.LastErrorCode == OneTimeInvoiceDeliveryPolicy.PriorNoWriteFailureCode
+                || await db.JobAttempts.AsNoTracking().AnyAsync(x =>
+                    x.TenantId == tenantId
+                    && x.JobId == sourceJob.Id
+                    && !x.Succeeded
+                    && x.ErrorCode == OneTimeInvoiceDeliveryPolicy.PriorNoWriteFailureCode,
+                    cancellationToken));
         if (sourceJob is null
             || sourceJob.JobType != InvoicingJobTypes.MarketplaceDelivery
             || sourceJob.ConnectionId != package.ConnectionId
             || sourceJob.Status is not (JobStatus.Blocked or JobStatus.ManualReview or JobStatus.Dead)
-            || sourceJob.LastErrorCode != OneTimeInvoiceDeliveryPolicy.PriorNoWriteFailureCode
+            || !OneTimeInvoiceDeliveryPolicy.IsEligibleSourceFailure(sourceJob.LastErrorCode, hasPriorNoWriteAttempt)
             || FindInvoiceId(sourceJob.PayloadJson) != invoice.Id)
             return false;
 

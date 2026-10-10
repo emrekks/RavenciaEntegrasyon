@@ -4,6 +4,7 @@ import { hubApi, type Me } from '../../shared/api'
 import { Pagination, Tabs, Toast, UiIcon, type UiIconName } from '../../shared/components'
 import { statusLabel } from '../../shared/status-labels'
 import { marketplaceQuestionSyncChange, marketplaceQuestionSyncPresentation } from './marketplace-question-sync'
+import { hasEligibleOneTimeInvoiceSourceFailure } from './one-time-invoice-delivery-visibility'
 
 type JobStatus = 'PENDING' | 'LEASED' | 'RETRY_SCHEDULED' | 'BLOCKED' | 'MANUAL_REVIEW' | 'SUCCEEDED' | 'DEAD' | 'CANCELLED'
 type JobSummary = {
@@ -331,7 +332,7 @@ function JobDetailDrawer({ selected, detail, selectedIsRunning, elevated, retrya
       const invoice = detail.data.invoice
       const canSendOneTimeInvoice = elevated
         && job.jobType === 'INVOICE_MARKETPLACE_DELIVERY'
-        && job.lastErrorCode === 'HEPSIBURADA_CAPABILITY_NOT_ENABLED'
+        && hasEligibleOneTimeInvoiceSourceFailure(job.lastErrorCode, detail.data.attempts)
         && ['BLOCKED', 'MANUAL_REVIEW', 'DEAD'].includes(job.status)
         && invoice?.orderNumber === '4486229624'
         && ['ACCEPTED', 'MARKETPLACEFAILED'].includes(invoice.status)

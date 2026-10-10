@@ -25,4 +25,16 @@ public sealed class OneTimeInvoiceDeliveryPolicyTests
         Assert.False(OneTimeInvoiceDeliveryPolicy.IsSafePriorFailure("FAILED", "REMOTE_REJECTED", null));
         Assert.False(OneTimeInvoiceDeliveryPolicy.IsSafePriorFailure("FAILED", OneTimeInvoiceDeliveryPolicy.PriorNoWriteFailureCode, "remote-reference"));
     }
+
+    [Fact]
+    public void LatestAlreadyFailedGuardIsEligibleOnlyWhenEarlierAttemptProvesNoWrite()
+    {
+        Assert.True(OneTimeInvoiceDeliveryPolicy.IsEligibleSourceFailure(
+            OneTimeInvoiceDeliveryPolicy.DeliveryAlreadyFailedErrorCode,
+            hasPriorNoWriteAttempt: true));
+        Assert.False(OneTimeInvoiceDeliveryPolicy.IsEligibleSourceFailure(
+            OneTimeInvoiceDeliveryPolicy.DeliveryAlreadyFailedErrorCode,
+            hasPriorNoWriteAttempt: false));
+        Assert.False(OneTimeInvoiceDeliveryPolicy.IsEligibleSourceFailure("REMOTE_REJECTED", hasPriorNoWriteAttempt: true));
+    }
 }
