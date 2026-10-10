@@ -509,6 +509,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
 
     private static int Priority(string type) => type switch
     {
+        InvoicingJobTypes.InvoiceDueScan => -1,
         MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync or MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.ShopifyOrderStatusSync or MarketplaceJobTypes.HepsiburadaOrderStatusSync or MarketplaceJobTypes.WebhookIngest or MarketplaceJobTypes.ShopifyWebhookIngest => 0,
         MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync => 6,
         MarketplaceJobTypes.OrderReconciliation or MarketplaceJobTypes.ShopifyOrderReconciliation or MarketplaceJobTypes.ReturnReconciliation or MarketplaceJobTypes.StockReconciliation => 4,
