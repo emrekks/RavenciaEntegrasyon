@@ -310,8 +310,12 @@ const categoryTabs: Array<{ key: JobCategory; label: string; match: (type: strin
 
 type JobDetailQueryState = { isLoading: boolean; isError: boolean; data: JobDetail | undefined }
 type JobActionState = { isPending: boolean; isError: boolean; mutate: (variables: { id: string; verb: 'retry' | 'cancel' }) => void }
+type OneTimeInvoiceDeliveryActionState = { isPending: boolean; isError: boolean; mutate: (variables: { id: string; password: string; confirmed: boolean; orderNumber: string }) => void }
 
-function JobDetailDrawer({ selected, detail, selectedIsRunning, elevated, retryable, cancellable, action, onClose }: { selected: JobSummary | undefined; detail: JobDetailQueryState; selectedIsRunning: boolean; elevated: boolean; retryable: boolean | undefined; cancellable: boolean | undefined; action: JobActionState; onClose: () => void }) {
+function JobDetailDrawer({ selected, detail, selectedIsRunning, elevated, retryable, cancellable, action, oneTimeInvoiceDelivery, onClose }: { selected: JobSummary | undefined; detail: JobDetailQueryState; selectedIsRunning: boolean; elevated: boolean; retryable: boolean | undefined; cancellable: boolean | undefined; action: JobActionState; oneTimeInvoiceDelivery: OneTimeInvoiceDeliveryActionState; onClose: () => void }) {
+  const [oneTimeDeliveryOpen, setOneTimeDeliveryOpen] = useState(false)
+  const [oneTimeDeliveryPassword, setOneTimeDeliveryPassword] = useState('')
+  const [oneTimeDeliveryConfirmed, setOneTimeDeliveryConfirmed] = useState(false)
   return <div className="job-detail-backdrop jobs-reference-drawer-backdrop" role="presentation" onMouseDown={onClose}><aside className="job-detail-drawer jobs-reference-drawer panel" role="dialog" aria-modal="true" aria-labelledby="job-detail-title" onMouseDown={event => event.stopPropagation()}>
     <div className="jobs-reference-drawer-header">
       <div>
@@ -324,6 +328,14 @@ function JobDetailDrawer({ selected, detail, selectedIsRunning, elevated, retrya
       const job = detail.data.job
       const change = detail.data.change ?? fallbackJobChange(job)
       const hasError = job.status !== 'SUCCEEDED' && Boolean(job.lastErrorCode || job.lastErrorSummary)
+      const invoice = detail.data.invoice
+      const canSendOneTimeInvoice = elevated
+        && job.jobType === 'INVOICE_MARKETPLACE_DELIVERY'
+        && job.lastErrorCode === 'HEPSIBURADA_CAPABILITY_NOT_ENABLED'
+        && ['BLOCKED', 'MANUAL_REVIEW', 'DEAD'].includes(job.status)
+        && invoice?.orderNumber === '4486229624'
+        && ['ACCEPTED', 'MARKETPLACEFAILED'].includes(invoice.status)
+        && Boolean(invoice.invoiceNumber && invoice.externalPackageId)
       return <div className="jobs-reference-drawer-body">
         <JobStatusSummary job={job} />
         {hasError && <div className="jobs-reference-error-alert"><strong>{job.lastErrorCode ?? 'İşlem hatası'}</strong><span>{job.lastErrorSummary ?? 'İşlem başarısız oldu ancak ayrıntılı hata açıklaması kaydedilmedi.'}</span></div>}
@@ -332,6 +344,7 @@ function JobDetailDrawer({ selected, detail, selectedIsRunning, elevated, retrya
         {detail.data.invoice && <section className="jobs-reference-order-context" aria-labelledby="job-invoice-context-title"><div><span className="jobs-reference-section-kicker">Fatura denemesi</span><h3 id="job-invoice-context-title">Sipariş #{detail.data.invoice.orderNumber}</h3><p>Bu e-Fatura işlemi seçili sipariş için başlatıldı.</p></div><div className="jobs-reference-order-facts"><p><small>Fatura kaydı</small><strong>{detail.data.invoice.invoiceId}</strong></p><p><small>Fatura durumu</small><strong>{statusLabel(detail.data.invoice.status)}</strong></p><p><small>Fatura türü</small><strong>{detail.data.invoice.invoiceType}</strong></p><p><small>Fatura tutarı</small><strong>{detail.data.invoice.payableTotal.toLocaleString('tr-TR', { style: 'currency', currency: detail.data.invoice.currency })}</strong></p>{detail.data.invoice.invoiceNumber && <p><small>Fatura numarası</small><strong>{detail.data.invoice.invoiceNumber}</strong></p>}{detail.data.invoice.externalPackageId && <p><small>Paket no</small><strong>{detail.data.invoice.externalPackageId}</strong></p>}</div></section>}
         <JobProgressSummary job={job} />
         <JobFailureReasons job={job} reasons={detail.data.failureReasons ?? null} />
+        {canSendOneTimeInvoice && invoice && <section className="jobs-reference-order-context jobs-reference-one-time-invoice"><div><span className="jobs-reference-section-kicker">Tek seferlik dış işlem</span><h3>Faturayı Hepsiburada’ya ilet</h3><p>Sipariş #{invoice.orderNumber} · Fatura {invoice.invoiceNumber} · Paket {invoice.externalPackageId}. Bu işlem yalnız bu faturayı gönderir; fiyat, stok, sipariş veya iade yazma kapılarını açmaz.</p>{!oneTimeDeliveryOpen ? <button type="button" disabled={oneTimeInvoiceDelivery.isPending} onClick={() => setOneTimeDeliveryOpen(true)}>Tek seferlik gönderimi hazırla</button> : <form onSubmit={event => { event.preventDefault(); if (!oneTimeDeliveryPassword || !oneTimeDeliveryConfirmed) return; const password = oneTimeDeliveryPassword; setOneTimeDeliveryPassword(''); oneTimeInvoiceDelivery.mutate({ id: job.id, password, confirmed: true, orderNumber: invoice.orderNumber }) }}><p>Hepsiburada Production siparişine mevcut faturanın PDF bağlantısı iletilecek. Belirsiz bir yanıt olursa sistem otomatik tekrar göndermeyecek.</p><label>Hesap parolası<input type="password" autoComplete="current-password" value={oneTimeDeliveryPassword} onChange={event => setOneTimeDeliveryPassword(event.target.value)} required /></label><label className="check"><input type="checkbox" checked={oneTimeDeliveryConfirmed} onChange={event => setOneTimeDeliveryConfirmed(event.target.checked)} /> Yalnızca #4486229624 siparişine bu faturanın iletilmesini onaylıyorum.</label><div className="job-detail-actions"><button type="submit" disabled={oneTimeInvoiceDelivery.isPending || !oneTimeDeliveryPassword || !oneTimeDeliveryConfirmed}>{oneTimeInvoiceDelivery.isPending ? 'Kuyruğa alınıyor…' : 'Faturayı bir kez ilet'}</button><button type="button" className="secondary" disabled={oneTimeInvoiceDelivery.isPending} onClick={() => { setOneTimeDeliveryOpen(false); setOneTimeDeliveryPassword(''); setOneTimeDeliveryConfirmed(false) }}>Vazgeç</button></div></form>}{oneTimeInvoiceDelivery.isError && <div role="alert" className="error">Tek seferlik fatura işlemi başlatılamadı. Hata ayrıntısı için işlemi yeniden yükleyin.</div>}</div></section>}
         {detail.data.scan && <JobScanSummary scan={detail.data.scan} />}
         {job.batchCount > 1 ? <section className="jobs-reference-batch-context" aria-labelledby="job-batch-title"><div className="jobs-reference-batch-heading"><div><span className="jobs-reference-section-kicker">Toplu işlem</span><h3 id="job-batch-title">{job.batchCount} job · {detail.data.relatedOrders.length} sipariş</h3></div><span className="jobs-reference-batch-note">Sonuçlar sipariş bazında</span></div><div className="jobs-reference-batch-list">{detail.data.relatedOrders.map(order => <article key={order.orderId}><div><strong>Sipariş #{order.orderNumber}</strong><small>{order.customerName ?? 'Müşteri bilgisi yok'} · {order.lineCount} ürün satırı</small></div><span>{order.cargoProvider ?? 'Kargo bilgisi yok'}</span><b>{statusLabel(order.status)}</b></article>)}{detail.data.relatedOrders.length === 0 && <p>Sipariş bağlantısı bulunamadı.</p>}</div></section> : detail.data.order && <section className="jobs-reference-order-context" aria-labelledby="job-order-context-title"><div><span className="jobs-reference-section-kicker">İlgili sipariş</span><h3 id="job-order-context-title">Sipariş #{detail.data.order.orderNumber}</h3><p>{detail.data.order.customerName ?? 'Müşteri bilgisi yok'} · {detail.data.order.lineCount} ürün satırı</p></div><div className="jobs-reference-order-facts"><p><small>Dış sipariş ID</small><strong>{detail.data.order.externalOrderId}</strong></p><p><small>Sipariş durumu</small><strong>{statusLabel(detail.data.order.status)}</strong></p><p><small>Sipariş tarihi</small><strong>{formatOptionalJobTime(detail.data.order.orderedAt)}</strong></p><p><small>Sipariş tutarı</small><strong>{detail.data.order.netAmount.toLocaleString('tr-TR', { style: 'currency', currency: detail.data.order.currency })}</strong></p>{detail.data.order.externalPackageId && <p><small>Paket no</small><strong>{detail.data.order.externalPackageId}</strong></p>}{detail.data.order.cargoTrackingNumber && <p><small>Kargo takip no</small><strong>{detail.data.order.cargoTrackingNumber}</strong></p>}</div></section>}
         <section className="jobs-reference-facts-section" aria-labelledby="job-facts-title"><div className="jobs-reference-section-heading"><div><span className="jobs-reference-section-kicker">Kayıt ayrıntıları</span><h3 id="job-facts-title">Teknik bilgiler</h3></div><span>İşlemin kimliği ve yürütme zamanları</span></div><div className="job-detail-facts"><p><small>Pazaryeri</small><strong>{job.marketplace}</strong></p><p><small>İşlem</small><strong>{job.jobType}</strong></p><p><small>Dış kimlik</small><strong>{job.externalId ?? '—'}</strong></p><p><small>Retry sayısı</small><strong>{job.attemptCount} / {job.maxAttempts}</strong></p><p><small>Oluşturulma</small><strong>{formatOptionalJobTime(job.createdAt)}</strong></p><p><small>Çalışma başlangıcı</small><strong>{formatOptionalJobTime(job.startedAt)}</strong></p><p><small>Tamamlanma</small><strong>{formatOptionalJobTime(job.completedAt)}</strong></p><p><small>Çalışma süresi</small><strong>{jobDuration(job.startedAt, job.completedAt)}</strong></p><p><small>İlk hata</small><strong>{formatOptionalJobTime(job.firstFailedAt)}</strong></p><p><small>Son hata</small><strong>{formatOptionalJobTime(job.lastFailedAt)}</strong></p><p><small>Sonraki deneme</small><strong>{formatOptionalJobTime(job.nextRetryAt)}</strong></p><p><small>Correlation ID</small><strong>{job.correlationId}</strong></p></div></section>
@@ -402,6 +415,19 @@ export function JobsPage({ me }: { me: Me }) {
       await Promise.all([client.invalidateQueries({ queryKey: ['jobs'] }), client.invalidateQueries({ queryKey: ['job', data.job.id] })])
     },
     onError: error => setFeedback({ message: error instanceof Error ? error.message : 'İşlem güncellenemedi.', tone: 'danger' })
+  })
+  const oneTimeInvoiceDelivery = useMutation({
+    mutationFn: ({ id, password, confirmed, orderNumber }: { id: string; password: string; confirmed: boolean; orderNumber: string }) => hubApi<JobDetail>(`/jobs/${id}/invoice-delivery-once`, {
+      method: 'POST',
+      headers: { 'Idempotency-Key': `one-time-invoice-delivery:${id}` },
+      body: JSON.stringify({ password, confirmed, orderNumber })
+    }),
+    onSuccess: async data => {
+      setSelectedId(data.job.id)
+      setFeedback({ message: '4486229624 siparişi için tek seferlik fatura iletimi kuyruğa alındı. Genel dış yazma kapıları kapalı kaldı.', tone: 'info' })
+      await Promise.all([client.invalidateQueries({ queryKey: ['jobs'] }), client.invalidateQueries({ queryKey: ['job', data.job.id] })])
+    },
+    onError: error => setFeedback({ message: error instanceof Error ? error.message : 'Tek seferlik fatura işlemi başlatılamadı.', tone: 'danger' })
   })
   const rawJobs = list.data ?? []
   const rangeFiltered = useMemo(() => {
@@ -503,7 +529,7 @@ export function JobsPage({ me }: { me: Me }) {
         {filtered.length > 0 && <div className="jobs-reference-pagination"><strong>Toplam {filtered.length.toLocaleString('tr-TR')} kayıt</strong><Pagination className="jobs-reference-page-controls" page={currentPage} totalPages={totalPages} onPageChange={setPageNumber} onPrevious={() => setPageNumber(value => Math.max(1, value - 1))} onNext={() => setPageNumber(value => Math.min(totalPages, value + 1))} /></div>}
       </>}
     </div>
-     {selectedId && <JobDetailDrawer selected={selected} detail={detail} selectedIsRunning={Boolean(selectedIsRunning)} elevated={elevated} retryable={retryable} cancellable={cancellable} action={action} onClose={() => setSelectedId(null)} />}
+     {selectedId && <JobDetailDrawer selected={selected} detail={detail} selectedIsRunning={Boolean(selectedIsRunning)} elevated={elevated} retryable={retryable} cancellable={cancellable} action={action} oneTimeInvoiceDelivery={oneTimeInvoiceDelivery} onClose={() => setSelectedId(null)} />}
      {feedback && <Toast tone={feedback.tone}>{feedback.message}</Toast>}
   </section>
 }

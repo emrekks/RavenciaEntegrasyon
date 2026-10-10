@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.ErrorMapping;
@@ -62,6 +64,118 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         job.LastErrorSummary = null;
         job.MaxAttempts = Math.Max(job.MaxAttempts, job.AttemptCount + 1);
         job.Version++;
+        await db.SaveChangesAsync(cancellationToken);
+        return ServiceResult<JobDetailView>.Ok(await DetailAsync(job, cancellationToken));
+    }
+
+    public async Task<ServiceResult<JobDetailView>> EnqueueOneTimeInvoiceDeliveryAsync(
+        Guid tenantId,
+        Guid jobId,
+        string orderNumber,
+        string idempotencyKey,
+        string correlationId,
+        CancellationToken cancellationToken)
+    {
+        if (!OneTimeInvoiceDeliveryPolicy.IsAuthorizedTarget(orderNumber))
+            return ServiceResult<JobDetailView>.Fail("ONE_TIME_INVOICE_ORDER_NOT_AUTHORIZED", "Tek seferlik fatura iletimi yalnızca 4486229624 numaralı sipariş için yetkilendirildi.", 403);
+
+        var sourceJob = await db.IntegrationJobs.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == jobId, cancellationToken);
+        if (sourceJob is null) return ServiceResult<JobDetailView>.Fail("JOB_NOT_FOUND", "Job bulunamadı.", 404);
+        if (sourceJob.JobType != InvoicingJobTypes.MarketplaceDelivery
+            || sourceJob.Status is not (JobStatus.Blocked or JobStatus.ManualReview or JobStatus.Dead)
+            || sourceJob.LastErrorCode != OneTimeInvoiceDeliveryPolicy.PriorNoWriteFailureCode)
+            return ServiceResult<JobDetailView>.Fail("ONE_TIME_INVOICE_SOURCE_NOT_SAFE", "Bu sipariş için dış çağrı yapılmadan oluştuğu doğrulanmış bir fatura iletim engeli bulunamadı.", 409);
+
+        var invoiceId = PayloadGuid(sourceJob.PayloadJson, "invoiceId");
+        if (invoiceId is null) return ServiceResult<JobDetailView>.Fail("INVOICE_JOB_PAYLOAD_INVALID", "Fatura iletim job'unda geçerli bir fatura kimliği bulunamadı.", 409);
+        var invoice = await db.Invoices.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == invoiceId.Value, cancellationToken);
+        if (invoice is null) return ServiceResult<JobDetailView>.Fail("INVOICE_NOT_FOUND", "İletilecek fatura kaydı bulunamadı.", 404);
+        if (invoice.Status is not (InvoiceStatus.Accepted or InvoiceStatus.MarketplaceFailed)
+            || string.IsNullOrWhiteSpace(invoice.InvoiceNumber)
+            || invoice.PackageId is null)
+            return ServiceResult<JobDetailView>.Fail("ONE_TIME_INVOICE_NOT_READY", "Siparişin kesilmiş, numarası bulunan ve pazaryerine iletime hazır faturası yok.", 409);
+
+        var package = await db.ShipmentPackages.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == invoice.PackageId && x.OrderId == invoice.OrderId, cancellationToken);
+        if (package is null
+            || sourceJob.ConnectionId != package.ConnectionId
+            || string.IsNullOrWhiteSpace(package.ExternalPackageId))
+            return ServiceResult<JobDetailView>.Fail("ONE_TIME_INVOICE_PACKAGE_MISMATCH", "Fatura ve başarısız Hepsiburada teslim job'ı aynı sipariş paketini göstermiyor.", 409);
+
+        var order = await db.Orders.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.Id == invoice.OrderId)
+            .Select(x => new { x.OrderNumber })
+            .SingleOrDefaultAsync(cancellationToken);
+        if (order is null || !OneTimeInvoiceDeliveryPolicy.IsAuthorizedTarget(order.OrderNumber))
+            return ServiceResult<JobDetailView>.Fail("ONE_TIME_INVOICE_ORDER_MISMATCH", "Fatura 4486229624 numaralı siparişe ait değil.", 409);
+
+        var connection = await db.PlatformConnections.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == package.ConnectionId, cancellationToken);
+        if (connection is null
+            || !string.Equals(connection.PlatformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
+            || !IntegrationRuntimePolicy.IsProduction(connection)
+            || !IntegrationRuntimePolicy.IsActive(connection))
+            return ServiceResult<JobDetailView>.Fail("ONE_TIME_INVOICE_DESTINATION_INVALID", "Tek seferlik işlem yalnızca etkin Hepsiburada Production siparişine gönderilebilir.", 409);
+
+        var documentReady = await db.InvoiceDocuments.AsNoTracking().AnyAsync(x =>
+            x.TenantId == tenantId && x.InvoiceId == invoice.Id && x.PermanentUrl != null,
+            cancellationToken);
+        if (!documentReady)
+            return ServiceResult<JobDetailView>.Fail("INVOICE_PERMANENT_LINK_REQUIRED", "Pazaryerine gönderilebilecek kalıcı HTTPS fatura belgesi hazır değil.", 409);
+
+        var state = await db.MarketplaceDeliveryStates.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id, cancellationToken);
+        var latestHistory = state is null
+            ? await db.MarketplaceDeliveries.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id)
+                .OrderByDescending(x => x.AttemptNumber)
+                .FirstOrDefaultAsync(cancellationToken)
+            : null;
+        if (state is not null && !OneTimeInvoiceDeliveryPolicy.IsSafePriorFailure(state.Status, state.ErrorCode, state.ExternalReference)
+            || latestHistory is not null && !OneTimeInvoiceDeliveryPolicy.IsSafePriorFailure(latestHistory.Status, latestHistory.ErrorCode, latestHistory.ExternalReference))
+            return ServiceResult<JobDetailView>.Fail("ONE_TIME_INVOICE_PRIOR_ATTEMPT_UNSAFE", "Önceki pazaryeri denemesinin dış etkisi kesin olarak dışlanamadığı için yeniden gönderim engellendi.", 409);
+
+        var dedupKey = $"one-time-invoice-delivery:{invoice.Id:N}:{OneTimeInvoiceDeliveryPolicy.TargetOrderNumber}";
+        var existing = await db.IntegrationJobs.SingleOrDefaultAsync(x =>
+            x.TenantId == tenantId && x.JobType == InvoicingJobTypes.MarketplaceDelivery && x.JobDedupKey == dedupKey,
+            cancellationToken);
+        if (existing is not null) return ServiceResult<JobDetailView>.Ok(await DetailAsync(existing, cancellationToken));
+
+        var now = timeProvider.GetUtcNow();
+        var payload = JsonSerializer.Serialize(new
+        {
+            invoiceId = invoice.Id,
+            oneTimeInvoiceDelivery = new
+            {
+                orderNumber = OneTimeInvoiceDeliveryPolicy.TargetOrderNumber,
+                sourceJobId = sourceJob.Id
+            }
+        });
+        var job = new IntegrationJob
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenantId,
+            ConnectionId = package.ConnectionId,
+            JobType = InvoicingJobTypes.MarketplaceDelivery,
+            PayloadJson = payload,
+            PayloadVersion = 1,
+            PayloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))),
+            JobDedupKey = dedupKey,
+            EffectIdempotencyKey = $"{InvoicingJobTypes.MarketplaceDelivery}:one-time:{invoice.Id:N}:{idempotencyKey}",
+            Priority = -1,
+            MaxAttempts = 1,
+            Status = JobStatus.Pending,
+            AvailableAt = now,
+            TriggerType = "manual",
+            ResourceType = "invoices",
+            OperationType = "marketplace-delivery-once",
+            CorrelationId = correlationId,
+            CreatedAt = now,
+            Version = 1
+        };
+        db.IntegrationJobs.Add(job);
+        AddOutboxEvent(job, now);
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<JobDetailView>.Ok(await DetailAsync(job, cancellationToken));
     }

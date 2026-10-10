@@ -35,12 +35,32 @@ public sealed class IntegrationRuntimePolicyTests
         Assert.True(IntegrationRuntimePolicy.AllowsExternalWrite(connection, context, globalWritesEnabled: false, connectionWritesEnabled: false));
     }
 
-    private static PlatformConnection Connection(string environment) => new()
+    [Fact]
+    public void OneTimeHepsiburadaInvoiceWriteIsNarrowAndDoesNotOpenGeneralWrites()
+    {
+        var connection = Connection("PRODUCTION", "HEPSIBURADA");
+        var context = Context(IntegrationOperation.Manual) with
+        {
+            ConnectionId = connection.Id,
+            IsOneTimeInvoiceDeliveryAuthorized = true,
+            OneTimeInvoiceDeliveryOrderNumber = OneTimeInvoiceDeliveryPolicy.TargetOrderNumber
+        };
+
+        Assert.False(IntegrationRuntimePolicy.AllowsExternalWrite(connection, context, globalWritesEnabled: false, connectionWritesEnabled: false));
+        Assert.True(IntegrationRuntimePolicy.AllowsOneTimeHepsiburadaInvoiceDelivery(connection, context, OneTimeInvoiceDeliveryPolicy.TargetOrderNumber));
+        Assert.False(IntegrationRuntimePolicy.AllowsOneTimeHepsiburadaInvoiceDelivery(connection, context, "OTHER-ORDER"));
+        Assert.False(IntegrationRuntimePolicy.AllowsOneTimeHepsiburadaInvoiceDelivery(connection, context with { Operation = IntegrationOperation.Automatic }, OneTimeInvoiceDeliveryPolicy.TargetOrderNumber));
+        Assert.False(IntegrationRuntimePolicy.AllowsOneTimeHepsiburadaInvoiceDelivery(Connection("STAGE", "HEPSIBURADA"), context, OneTimeInvoiceDeliveryPolicy.TargetOrderNumber));
+        Assert.False(IntegrationRuntimePolicy.AllowsOneTimeHepsiburadaInvoiceDelivery(Connection("PRODUCTION"), context, OneTimeInvoiceDeliveryPolicy.TargetOrderNumber));
+        Assert.False(IntegrationRuntimePolicy.AllowsOneTimeHepsiburadaInvoiceDelivery(connection, context with { IsOneTimeInvoiceDeliveryAuthorized = false }, OneTimeInvoiceDeliveryPolicy.TargetOrderNumber));
+    }
+
+    private static PlatformConnection Connection(string environment, string platformCode = "TRENDYOL") => new()
     {
         Id = Guid.NewGuid(),
         TenantId = Guid.NewGuid(),
         PublicId = Guid.NewGuid(),
-        PlatformCode = "TRENDYOL",
+        PlatformCode = platformCode,
         Environment = environment,
         DisplayName = "Test",
         ExternalStoreId = "2738",

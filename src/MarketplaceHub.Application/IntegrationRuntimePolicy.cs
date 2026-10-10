@@ -42,6 +42,16 @@ public static class IntegrationRuntimePolicy
             ? IsProduction(connection) && IsActive(connection) && globalWritesEnabled && connectionWritesEnabled
             : AllowsManualWrite(connection, context, globalWritesEnabled, connectionWritesEnabled);
 
+    public static bool AllowsOneTimeHepsiburadaInvoiceDelivery(PlatformConnection connection, AdapterContext context, string? orderNumber) =>
+        context.IsOneTimeInvoiceDeliveryAuthorized
+        && context.Operation == IntegrationOperation.Manual
+        && context.ConnectionId == connection.Id
+        && string.Equals(connection.PlatformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
+        && IsProduction(connection)
+        && IsActive(connection)
+        && !string.IsNullOrWhiteSpace(orderNumber)
+        && string.Equals(context.OneTimeInvoiceDeliveryOrderNumber, orderNumber, StringComparison.Ordinal);
+
     public static bool RequiresSensitiveConfirmation(PlatformConnection connection) => !IsStage(connection);
 
     public static bool TryResolveBaseAddress(string environment, Uri stageBaseAddress, Uri productionBaseAddress, out Uri baseAddress)

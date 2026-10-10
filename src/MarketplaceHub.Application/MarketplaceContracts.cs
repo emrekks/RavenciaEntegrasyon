@@ -320,7 +320,16 @@ public enum AdapterErrorClass
     InternalBug
 }
 
-public sealed record AdapterContext(Guid TenantId, Guid ConnectionId, string CorrelationId, string IdempotencyKey, DateTimeOffset DeadlineUtc, bool IsStageCapabilityProbe = false, IntegrationOperation Operation = IntegrationOperation.Manual);
+public sealed record AdapterContext(
+    Guid TenantId,
+    Guid ConnectionId,
+    string CorrelationId,
+    string IdempotencyKey,
+    DateTimeOffset DeadlineUtc,
+    bool IsStageCapabilityProbe = false,
+    IntegrationOperation Operation = IntegrationOperation.Manual,
+    bool IsOneTimeInvoiceDeliveryAuthorized = false,
+    string? OneTimeInvoiceDeliveryOrderNumber = null);
 public sealed record AdapterError(AdapterErrorClass Class, string Code, string SafeMessage, int? HttpStatus, TimeSpan? RetryAfter, string? RemoteRequestId);
 public sealed record RateLimitMetadata(int? Remaining, DateTimeOffset? ResetAt, TimeSpan? RetryAfter, int? Limit = null);
 public sealed record AdapterResult<T>(bool IsSuccess, T? Value, AdapterError? Error, RateLimitMetadata? RateLimit)

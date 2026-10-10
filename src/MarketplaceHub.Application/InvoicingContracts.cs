@@ -22,6 +22,20 @@ public static class InvoicingCapabilities
     public const string InvoiceDeliver = "INVOICE_DELIVER";
 }
 
+public static class OneTimeInvoiceDeliveryPolicy
+{
+    public const string TargetOrderNumber = "4486229624";
+    public const string PriorNoWriteFailureCode = "HEPSIBURADA_CAPABILITY_NOT_ENABLED";
+
+    public static bool IsAuthorizedTarget(string? orderNumber) =>
+        string.Equals(orderNumber, TargetOrderNumber, StringComparison.Ordinal);
+
+    public static bool IsSafePriorFailure(string? status, string? errorCode, string? externalReference) =>
+        string.Equals(status, "FAILED", StringComparison.Ordinal)
+        && string.Equals(errorCode, PriorNoWriteFailureCode, StringComparison.Ordinal)
+        && string.IsNullOrWhiteSpace(externalReference);
+}
+
 public sealed record InvoiceSubmission(Guid InvoiceId, string LocalReferenceId, string InvoiceType, string Currency, string PayloadJson, string RequestHash);
 public sealed record InvoiceSubmissionResult(string ExternalReference, string? InvoiceNumber, string? EttnUuid, string RawStatus, string? RemoteRequestId);
 public sealed record ExternalInvoiceReference(string ExternalReference, string? EttnUuid, string? InvoiceType = null);

@@ -888,10 +888,12 @@ public sealed partial class HepsiburadaHttpClient(
             return await Unsupported<InvoiceDeliveryResult>("Hepsiburada auth biçimi SIT hesabında doğrulanana kadar fatura bağlantısı gönderilmedi.");
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return Failure<InvoiceDeliveryResult>(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIAL_INVALID", "Hepsiburada bağlantı bilgileri bulunamadı.", HttpStatusCode.Unauthorized);
-        if (!IntegrationRuntimePolicy.AllowsExternalWrite(account.Connection, context, GlobalWritesEnabled, ConnectionWritesEnabled(account.Connection.SettingsJson)))
-            return await Unsupported<InvoiceDeliveryResult>("Hepsiburada fatura teslimi yalnız doğrulanmış Stage bağlantısında veya dış yazma kapıları açılmış canlı bağlantıda kullanılabilir.");
         if (!HepsiburadaInvoiceDeliveryPolicy.TryCreate(command, out var invoice, out var validationError))
             return Failure<InvoiceDeliveryResult>(AdapterErrorClass.Validation, "HEPSIBURADA_INVOICE_DELIVERY_INVALID", validationError, HttpStatusCode.BadRequest);
+        var regularWriteAllowed = IntegrationRuntimePolicy.AllowsExternalWrite(account.Connection, context, GlobalWritesEnabled, ConnectionWritesEnabled(account.Connection.SettingsJson));
+        var oneTimeInvoiceWriteAllowed = IntegrationRuntimePolicy.AllowsOneTimeHepsiburadaInvoiceDelivery(account.Connection, context, invoice!.OrderNumber);
+        if (!regularWriteAllowed && !oneTimeInvoiceWriteAllowed)
+            return await Unsupported<InvoiceDeliveryResult>("Hepsiburada fatura teslimi yalnız doğrulanmış Stage bağlantısında, dış yazma kapıları açılmış canlı bağlantıda veya doğrulanmış tek seferlik fatura yetkisinde kullanılabilir.");
 
         var body = JsonSerializer.Serialize(new
         {

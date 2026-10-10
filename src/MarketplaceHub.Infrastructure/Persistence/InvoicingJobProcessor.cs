@@ -25,7 +25,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 InvoicingJobTypes.InvoiceSubmit => await Submit(tenantId, connectionId!.Value, payloadJson, correlationId, cancellationToken),
                 InvoicingJobTypes.InvoiceReconcile => await Reconcile(tenantId, connectionId!.Value, payloadJson, correlationId, cancellationToken),
                 InvoicingJobTypes.InvoiceDocumentFetch => await FetchDocument(tenantId, connectionId!.Value, payloadJson, correlationId, cancellationToken),
-                InvoicingJobTypes.MarketplaceDelivery => await Deliver(tenantId, payloadJson, correlationId, cancellationToken),
+                InvoicingJobTypes.MarketplaceDelivery => await Deliver(tenantId, connectionId!.Value, payloadJson, correlationId, cancellationToken),
                 InvoicingJobTypes.InvoiceCancellation => await Cancel(tenantId, connectionId!.Value, payloadJson, correlationId, cancellationToken),
                 InvoicingJobTypes.InvoiceDueScan => await ScanDue(tenantId, cancellationToken),
                 InvoicingJobTypes.StageCapabilityProbe => await StageCapabilityProbe(tenantId, connectionId!.Value, payloadJson, correlationId, cancellationToken),
@@ -201,8 +201,9 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         return true;
     }
 
-    private async Task<bool> Deliver(Guid tenantId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    private async Task<bool> Deliver(Guid tenantId, Guid jobConnectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
+        if (!TryReadOneTimeInvoiceDeliveryAuthorization(payloadJson, out var oneTimeAuthorization)) return false;
         var invoice = await FindInvoice(tenantId, payloadJson, cancellationToken);
         if (invoice?.PackageId is null) return false;
         var package = await db.ShipmentPackages.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == invoice.PackageId, cancellationToken);
@@ -212,7 +213,12 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         if (package is null) return false;
 
         var state = await LoadDeliveryState(tenantId, invoice.Id, cancellationToken);
+        if (oneTimeAuthorization is not null
+            && !await IsValidOneTimeInvoiceDeliveryAsync(tenantId, jobConnectionId, invoice, package, order?.OrderNumber, oneTimeAuthorization, state, cancellationToken))
+            return false;
         if (state?.Status == "CONFIRMED") return true;
+        if (oneTimeAuthorization is not null && state?.Status == "STARTED")
+            throw new JobProcessingException(JobExecutionResult.ManualReview("ONE_TIME_INVOICE_DELIVERY_ALREADY_STARTED", "Tek seferlik fatura isteği daha önce başlatıldı; dış sonuç doğrulanmadan tekrar gönderilmedi."));
         if (invoice.Status == InvoiceStatus.Completed && state is null) return true;
         if (invoice.Status == InvoiceStatus.Completed
             && state is not null
@@ -245,8 +251,11 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             await db.SaveChangesAsync(cancellationToken);
             return await ConfirmDelivery(tenantId, invoice, package, state, correlationId, cancellationToken);
         }
-        if (state?.Status == "FAILED")
+        if (state?.Status == "FAILED" && oneTimeAuthorization is null)
             throw new JobProcessingException(JobExecutionResult.Blocked("DELIVERY_ALREADY_FAILED", "Önceki fatura bağlantısı teslimi kalıcı olarak reddedildi; yeni dış işlem başlatılmadı."));
+        if (state?.Status == "FAILED" && oneTimeAuthorization is not null
+            && !OneTimeInvoiceDeliveryPolicy.IsSafePriorFailure(state.Status, state.ErrorCode, state.ExternalReference))
+            throw new JobProcessingException(JobExecutionResult.Blocked("ONE_TIME_INVOICE_PRIOR_ATTEMPT_UNSAFE", "Önceki teslim sonucu tek seferlik yeniden gönderim için güvenli değil."));
         if (state?.Status == "UNKNOWN")
             throw new JobProcessingException(JobExecutionResult.ManualReview("DELIVERY_RESULT_UNKNOWN", "Fatura bağlantısı sonucu kesinleşmedi; kurtarma/uzlaştırma tamamlanmadan yeniden gönderim yapılmadı."));
 
@@ -304,7 +313,14 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         AdapterResult<InvoiceDeliveryResult> result;
         try
         {
-            result = await marketplace.DeliverAsync(Context(tenantId, package.ConnectionId, correlationId, state.ExternalIdempotencyKey), new(package.ExternalPackageId, state.DeliveryType, payload, state.RequestHash), cancellationToken);
+            var context = Context(tenantId, package.ConnectionId, correlationId, state.ExternalIdempotencyKey);
+            if (oneTimeAuthorization is not null)
+                context = context with
+                {
+                    IsOneTimeInvoiceDeliveryAuthorized = true,
+                    OneTimeInvoiceDeliveryOrderNumber = oneTimeAuthorization.OrderNumber
+                };
+            result = await marketplace.DeliverAsync(context, new(package.ExternalPackageId, state.DeliveryType, payload, state.RequestHash), cancellationToken);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -339,6 +355,17 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 throw new JobProcessingException(JobExecutionResult.ManualReview("DELIVERY_RESULT_UNKNOWN", "Fatura bağlantısı sonucu kesinleşmedi; aynı dış işlem körlemesine tekrarlanmadı.", result.Error.RemoteRequestId ?? state.ExternalIdempotencyKey));
             }
 
+            if (oneTimeAuthorization is not null && disposition == InvoiceDeliveryFailureDisposition.Retry)
+            {
+                AppendDeliveryHistory(state, "FAILED", result.Value?.ExternalReference, result.Error.Code, timeProvider.GetUtcNow());
+                invoice.Status = InvoiceStatus.MarketplaceFailed;
+                invoice.LastErrorCode = result.Error.Code;
+                invoice.UpdatedAt = timeProvider.GetUtcNow();
+                invoice.Version++;
+                await db.SaveChangesAsync(CancellationToken.None);
+                throw new JobProcessingException(JobExecutionResult.Blocked("ONE_TIME_INVOICE_DELIVERY_FAILED", "Tek seferlik fatura iletimi reddedildi; ikinci bir dış istek otomatik olarak gönderilmedi."));
+            }
+
             var status = disposition == InvoiceDeliveryFailureDisposition.Retry ? "RETRYABLE_FAILURE" : "FAILED";
             AppendDeliveryHistory(state, status, result.Value?.ExternalReference, result.Error.Code, timeProvider.GetUtcNow());
             invoice.Status = disposition == InvoiceDeliveryFailureDisposition.Retry ? InvoiceStatus.MarketplacePending : InvoiceStatus.MarketplaceFailed;
@@ -357,6 +384,92 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         await db.SaveChangesAsync(cancellationToken);
         return await ConfirmDelivery(tenantId, invoice, package, state, correlationId, cancellationToken);
     }
+
+    private async Task<bool> IsValidOneTimeInvoiceDeliveryAsync(
+        Guid tenantId,
+        Guid jobConnectionId,
+        Invoice invoice,
+        ShipmentPackage package,
+        string? orderNumber,
+        OneTimeInvoiceDeliveryAuthorization authorization,
+        MarketplaceDeliveryState? state,
+        CancellationToken cancellationToken)
+    {
+        if (!OneTimeInvoiceDeliveryPolicy.IsAuthorizedTarget(authorization.OrderNumber)
+            || !OneTimeInvoiceDeliveryPolicy.IsAuthorizedTarget(orderNumber)
+            || invoice.Status is not (InvoiceStatus.Accepted or InvoiceStatus.MarketplaceFailed)
+            || string.IsNullOrWhiteSpace(invoice.InvoiceNumber)
+            || string.IsNullOrWhiteSpace(package.ExternalPackageId)
+            || package.ConnectionId != jobConnectionId)
+            return false;
+
+        var destination = await db.PlatformConnections.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == package.ConnectionId, cancellationToken);
+        if (destination is null
+            || !string.Equals(destination.PlatformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
+            || !IntegrationRuntimePolicy.IsProduction(destination)
+            || !IntegrationRuntimePolicy.IsActive(destination))
+            return false;
+
+        var sourceJob = await db.IntegrationJobs.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == authorization.SourceJobId, cancellationToken);
+        if (sourceJob is null
+            || sourceJob.JobType != InvoicingJobTypes.MarketplaceDelivery
+            || sourceJob.ConnectionId != package.ConnectionId
+            || sourceJob.Status is not (JobStatus.Blocked or JobStatus.ManualReview or JobStatus.Dead)
+            || sourceJob.LastErrorCode != OneTimeInvoiceDeliveryPolicy.PriorNoWriteFailureCode
+            || FindInvoiceId(sourceJob.PayloadJson) != invoice.Id)
+            return false;
+
+        if (state is not null)
+            return OneTimeInvoiceDeliveryPolicy.IsSafePriorFailure(state.Status, state.ErrorCode, state.ExternalReference)
+                || state.Status is "STARTED" or "UNKNOWN" or "SUBMITTED" or "CONFIRMATION_RETRYABLE" or "CONFIRMED";
+
+        return !await db.MarketplaceDeliveries.AsNoTracking()
+            .AnyAsync(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id, cancellationToken);
+    }
+
+    private static bool TryReadOneTimeInvoiceDeliveryAuthorization(string payloadJson, out OneTimeInvoiceDeliveryAuthorization? authorization)
+    {
+        authorization = null;
+        try
+        {
+            using var document = JsonDocument.Parse(payloadJson);
+            if (!document.RootElement.TryGetProperty("oneTimeInvoiceDelivery", out var value)) return true;
+            if (value.ValueKind != JsonValueKind.Object
+                || !value.TryGetProperty("orderNumber", out var orderNumber)
+                || orderNumber.ValueKind != JsonValueKind.String
+                || !value.TryGetProperty("sourceJobId", out var sourceJobId)
+                || sourceJobId.ValueKind != JsonValueKind.String
+                || !Guid.TryParse(sourceJobId.GetString(), out var parsedSourceJobId))
+                return false;
+            authorization = new OneTimeInvoiceDeliveryAuthorization(orderNumber.GetString()!, parsedSourceJobId);
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static Guid? FindInvoiceId(string payloadJson)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(payloadJson);
+            return document.RootElement.TryGetProperty("invoiceId", out var value)
+                && value.ValueKind == JsonValueKind.String
+                && Guid.TryParse(value.GetString(), out var invoiceId)
+                    ? invoiceId
+                    : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private sealed record OneTimeInvoiceDeliveryAuthorization(string OrderNumber, Guid SourceJobId);
 
     private async Task<MarketplaceDeliveryState?> LoadDeliveryState(Guid tenantId, Guid invoiceId, CancellationToken cancellationToken)
     {

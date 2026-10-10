@@ -137,6 +137,7 @@ public interface IJobOperationsService
     Task<IReadOnlyList<JobSummaryView>> ListAsync(Guid tenantId, string? status, CancellationToken cancellationToken);
     Task<ServiceResult<JobDetailView>> GetAsync(Guid tenantId, Guid jobId, CancellationToken cancellationToken);
     Task<ServiceResult<JobDetailView>> RetryAsync(Guid tenantId, Guid jobId, CancellationToken cancellationToken);
+    Task<ServiceResult<JobDetailView>> EnqueueOneTimeInvoiceDeliveryAsync(Guid tenantId, Guid jobId, string orderNumber, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<JobDetailView>> CancelAsync(Guid tenantId, Guid jobId, CancellationToken cancellationToken);
 }
 
