@@ -52,6 +52,7 @@ internal static class InvoicingModelConfiguration
             entity.Property(x => x.TaxTotal).HasPrecision(19, 4);
             entity.Property(x => x.PayableTotal).HasPrecision(19, 4);
             entity.Property(x => x.Note).HasMaxLength(512);
+            entity.Property(x => x.IncludeInternetSalesInfo).HasDefaultValue(true);
             entity.Property(x => x.IdempotencyKey).HasMaxLength(256);
             entity.Property(x => x.ExternalReference).HasMaxLength(256);
             entity.Property(x => x.InvoiceNumber).HasMaxLength(64);

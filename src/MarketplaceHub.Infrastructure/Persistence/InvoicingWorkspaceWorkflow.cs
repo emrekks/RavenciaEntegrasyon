@@ -25,7 +25,7 @@ public sealed partial class InvoicingBillingService
         var items = new List<InvoiceWorkspacePreviewItem>(request.Items.Count);
         foreach (var target in request.Items)
         {
-            var result = await BuildWorkspacePreviewAsync(tenantId, target, cancellationToken);
+            var result = await BuildWorkspacePreviewAsync(tenantId, target, request.IncludeInternetSalesInfo, cancellationToken);
             if (!result.Succeeded) return ServiceResult<IReadOnlyList<InvoiceWorkspacePreviewItem>>.Fail(result.Error!.Code, result.Error.Message, result.Error.Status, result.Error.FieldErrors);
             items.Add(result.Value!);
         }
@@ -49,7 +49,7 @@ public sealed partial class InvoicingBillingService
         {
             await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
             var fresh = await BuildWorkspacePreviewAsync(tenantId,
-                new(confirmation.OrderId, confirmation.PackageId, confirmation.ProviderConnectionId), cancellationToken);
+                new(confirmation.OrderId, confirmation.PackageId, confirmation.ProviderConnectionId), request.IncludeInternetSalesInfo, cancellationToken);
             if (!fresh.Succeeded)
             {
                 await transaction.RollbackAsync(cancellationToken);
@@ -106,6 +106,10 @@ public sealed partial class InvoicingBillingService
 
                 if (invoice is not null && InvoicingBillingService.CanRetryPreProviderFailure(invoice.Status, invoice.LastErrorCode, invoice.ExternalReference))
                 {
+                    invoice.IncludeInternetSalesInfo = request.IncludeInternetSalesInfo;
+                    invoice.UpdatedAt = timeProvider.GetUtcNow();
+                    invoice.Version++;
+                    await db.SaveChangesAsync(cancellationToken);
                     var queuedRetry = await EnqueueSubmitAsync(tenantId, invoice.Id, invoice.Version, $"{itemKey}:submit-retry", correlationId, cancellationToken);
                     if (!queuedRetry.Succeeded)
                     {
@@ -121,7 +125,7 @@ public sealed partial class InvoicingBillingService
                 if (invoice is null)
                 {
                     var created = await CreateDraftAsync(tenantId,
-                        new(confirmation.OrderId, confirmation.PackageId, confirmation.ProviderConnectionId, null),
+                        new(confirmation.OrderId, confirmation.PackageId, confirmation.ProviderConnectionId, null, request.IncludeInternetSalesInfo),
                         $"invoice-workspace:{confirmation.PackageId:N}", cancellationToken);
                     if (!created.Succeeded)
                     {
@@ -166,6 +170,7 @@ public sealed partial class InvoicingBillingService
     private async Task<ServiceResult<InvoiceWorkspacePreviewItem>> BuildWorkspacePreviewAsync(
         Guid tenantId,
         InvoiceWorkspacePreviewTarget target,
+        bool includeInternetSalesInfo,
         CancellationToken cancellationToken)
     {
         var order = await db.Orders.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == target.OrderId, cancellationToken);
@@ -278,6 +283,7 @@ public sealed partial class InvoicingBillingService
             Allocations = allocations.OrderBy(item => item.PackageId).ThenBy(item => item.OrderLineId).ThenBy(item => item.SourceEventId).Select(item => new { item.PackageId, item.OrderLineId, item.AllocatedQuantity, item.SourceEventId }),
             SourceLines = sourceLines.Select(line => new { line.Id, line.TitleSnapshot, line.Sku, line.OrderedQuantity, line.CancelledQuantity, line.UnitPrice, line.VatRate }),
             Existing = existing is null ? null : new { existing.Id, existing.PackageId, existing.Status, existing.Version, existing.InvoiceNumber, existing.ExternalReference, existing.LastErrorCode },
+            includeInternetSalesInfo,
             Totals = new { taxExclusive, Discount = calculated.DiscountTotal, taxTotal, Payable = packageTotal, invoiceType }
         });
         var digest = Hash(digestSource);
@@ -294,7 +300,7 @@ public sealed partial class InvoicingBillingService
             string.IsNullOrWhiteSpace(order.InvoiceAddressSnapshotJson) ? "{}" : order.InvoiceAddressSnapshotJson,
             invoiceType, order.Currency, taxExclusive, calculated.DiscountTotal, taxTotal, packageTotal, lines,
             canConfirm,
-            blockedReason, digest, existing?.Id, existing?.Status.ToString().ToUpperInvariant(), nextAction);
+            blockedReason, digest, existing?.Id, existing?.Status.ToString().ToUpperInvariant(), nextAction, includeInternetSalesInfo);
         return ServiceResult<InvoiceWorkspacePreviewItem>.Ok(view);
     }
 

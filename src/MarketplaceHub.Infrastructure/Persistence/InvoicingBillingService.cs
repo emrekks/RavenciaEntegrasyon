@@ -893,6 +893,7 @@ public sealed partial class InvoicingBillingService(
             SequencePurpose = command.OriginalInvoiceId is null ? "SALE" : "ADJUSTMENT",
             Currency = order.Currency,
             Note = string.Empty,
+            IncludeInternetSalesInfo = command.IncludeInternetSalesInfo,
             IdempotencyKey = idempotencyKey,
             OriginalInvoiceId = command.OriginalInvoiceId,
             Status = InvoiceStatus.Draft,

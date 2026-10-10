@@ -185,10 +185,10 @@ public interface IHepsiburadaInvoiceStatusPort
 
 public sealed record InvoicePolicyView(Guid Id, Guid ProviderConnectionId, string TriggerState, string PackageScope, string DueRule, string RoundingRule, string AdjustmentRule, bool AutoSubmit, long Version);
 public sealed record UpsertInvoicePolicyCommand(string TriggerState, string PackageScope, string DueRule, string RoundingRule, string AdjustmentRule, bool AutoSubmit);
-public sealed record CreateInvoiceCommand(Guid OrderId, Guid? PackageId, Guid ProviderConnectionId, Guid? OriginalInvoiceId);
-public sealed record InvoiceWorkspacePreviewRequest(IReadOnlyList<InvoiceWorkspacePreviewTarget> Items);
+public sealed record CreateInvoiceCommand(Guid OrderId, Guid? PackageId, Guid ProviderConnectionId, Guid? OriginalInvoiceId, bool IncludeInternetSalesInfo = true);
+public sealed record InvoiceWorkspacePreviewRequest(IReadOnlyList<InvoiceWorkspacePreviewTarget> Items, bool IncludeInternetSalesInfo = true);
 public sealed record InvoiceWorkspacePreviewTarget(Guid OrderId, Guid PackageId, Guid ProviderConnectionId);
-public sealed record InvoiceWorkspacePreviewConfirmRequest(IReadOnlyList<InvoiceWorkspacePreviewConfirmation> Items);
+public sealed record InvoiceWorkspacePreviewConfirmRequest(IReadOnlyList<InvoiceWorkspacePreviewConfirmation> Items, bool IncludeInternetSalesInfo = true);
 public sealed record InvoiceWorkspacePreviewConfirmation(Guid OrderId, Guid PackageId, Guid ProviderConnectionId, string PreviewDigest);
 public sealed record InvoiceWorkspacePreviewLine(string Description, string? Sku, decimal Quantity, string Unit, decimal VatRate, decimal UnitPrice, decimal DiscountAmount, decimal VatAmount, decimal Total);
 public sealed record InvoiceWorkspacePreviewItem(
@@ -215,7 +215,8 @@ public sealed record InvoiceWorkspacePreviewItem(
     string PreviewDigest,
     Guid? ExistingInvoiceId,
     string? ExistingInvoiceStatus,
-    string? NextAction);
+    string? NextAction,
+    bool IncludeInternetSalesInfo = true);
 public sealed record InvoiceWorkspaceConfirmResult(IReadOnlyList<InvoiceWorkspaceConfirmItemResult> Items);
 public sealed record InvoiceWorkspaceConfirmItemResult(Guid PackageId, Guid? InvoiceId, Guid? JobId, string Status, string Action, string Message);
 public sealed record InvoiceListView(Guid Id, string OrderNumber, string InvoiceType, string Status, string Currency, decimal PayableTotal, string? InvoiceNumber, DateTimeOffset? DueAt, DateTimeOffset CreatedAt, long Version);

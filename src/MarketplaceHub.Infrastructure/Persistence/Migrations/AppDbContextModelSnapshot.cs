@@ -2011,6 +2011,11 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("OriginalInvoiceId")
                         .HasColumnType("uuid");
 
+                    b.Property<bool>("IncludeInternetSalesInfo")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
                     b.Property<Guid?>("PackageId")
                         .HasColumnType("uuid");
 

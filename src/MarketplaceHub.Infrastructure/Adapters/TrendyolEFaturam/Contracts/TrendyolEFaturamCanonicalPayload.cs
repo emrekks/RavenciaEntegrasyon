@@ -90,6 +90,7 @@ public static class TrendyolEFaturamCanonicalPayload
             }).ToArray();
 
             var orderedAt = DateTimeOffset.Parse(RequiredText(order, "OrderedAt"));
+            var includeInternetSalesInfo = OptionalBoolean(root, "IncludeInternetSalesInfo", true);
             EfaturamPayment? payment = null;
             EfaturamDelivery? delivery = null;
             if (invoiceType == "EARSIVFATURA")
@@ -99,7 +100,8 @@ public static class TrendyolEFaturamCanonicalPayload
                 if (!TrendyolCarrierCatalog.TryResolve(cargoProvider, out var carrier))
                     throw new JsonException("EFATURAM_CARRIER_CATALOG_MISS");
                 var sentAt = DateTimeOffset.Parse(RequiredText(package, "StatusOccurredAt"));
-                payment = new("https://www.trendyol.com", "Trendyol", "PAZARYERI", orderedAt, "MEDIATOR");
+                if (includeInternetSalesInfo)
+                    payment = new("https://www.trendyol.com", "Trendyol", "PAZARYERI", orderedAt, "MEDIATOR");
                 delivery = new(carrier.TaxId, carrier.Name, null, DateOnly.FromDateTime(sentAt.Date));
             }
 
@@ -121,6 +123,10 @@ public static class TrendyolEFaturamCanonicalPayload
     }
 
     private static JsonDocument ParseSnapshot(JsonElement parent, string name) => JsonDocument.Parse(RequiredText(parent, name));
+    private static bool OptionalBoolean(JsonElement parent, string name, bool fallback) =>
+        parent.TryGetProperty(name, out var value) && value.ValueKind is JsonValueKind.True or JsonValueKind.False
+            ? value.GetBoolean()
+            : fallback;
     private static JsonDocument NormalizeAddressSnapshot(JsonElement snapshot)
     {
         if (snapshot.ValueKind == JsonValueKind.Object)

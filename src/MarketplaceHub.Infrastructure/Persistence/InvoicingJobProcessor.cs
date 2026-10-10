@@ -148,6 +148,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 invoice.Currency,
                 invoice.PayableTotal,
                 invoice.Note,
+                invoice.IncludeInternetSalesInfo,
                 IssuedAt = invoice.IssuedAt ?? invoice.UpdatedAt,
                 MarketplacePlatformCode = orderConnection?.PlatformCode ?? "TRENDYOL",
                 MarketplaceDisplayName = orderConnection?.DisplayName ?? "Trendyol",
