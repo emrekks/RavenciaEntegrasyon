@@ -112,6 +112,8 @@ public static class InvoiceDeliveryRecoveryPolicy
 {
     public const int HepsiburadaRemoteFailureLimit = 3;
     public const string HepsiburadaAcceptedButReadbackMissingErrorCode = "HEPSIBURADA_INVOICE_DELIVERY_READBACK_MISSING";
+    public const string MarketplaceInvoiceNotPresentErrorCode = "REMOTE_INVOICE_NOT_PRESENT";
+    public const string MarketplaceInvoiceIdentityMismatchErrorCode = "MARKETPLACE_INVOICE_IDENTITY_MISMATCH";
 
     public static bool ShouldStopAfterRemoteFailures(string? platformCode, int failureCount) =>
         string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
@@ -139,6 +141,17 @@ public static class InvoiceDeliveryRecoveryPolicy
         && string.Equals(deliveryStatus, "CONFIRMED", StringComparison.Ordinal)
         && string.IsNullOrWhiteSpace(remoteInvoiceNumber);
 
+    public static bool ShouldMarkMarketplaceInvoiceNotPresent(
+        InvoiceStatus invoiceStatus,
+        string? lastErrorCode,
+        MarketplaceInvoiceStatus marketplaceStatus) =>
+        marketplaceStatus == MarketplaceInvoiceStatus.NotInvoiced
+        && (invoiceStatus == InvoiceStatus.Completed
+            || (invoiceStatus is InvoiceStatus.MarketplacePending or InvoiceStatus.MarketplaceFailed)
+                && string.Equals(lastErrorCode, MarketplaceInvoiceIdentityMismatchErrorCode, StringComparison.Ordinal)
+            || (invoiceStatus == InvoiceStatus.ManualReview
+                && string.Equals(lastErrorCode, MarketplaceInvoiceIdentityMismatchErrorCode, StringComparison.Ordinal)));
+
     public static InvoiceDeliveryRecoveryAction Decide(
         MarketplaceInvoiceStatus marketplaceStatus,
         string? marketplaceInvoiceNumber,
@@ -161,6 +174,13 @@ public static class InvoiceDeliveryRecoveryPolicy
             _ => InvoiceDeliveryRecoveryAction.WaitForMarketplaceReadback
         };
     }
+}
+
+public static class MarketplaceInvoiceDeliveryEvidencePolicy
+{
+    public static bool HasConfirmedDelivery(string? currentStateStatus, bool hasConfirmedHistoricalAttempt) =>
+        string.Equals(currentStateStatus, "CONFIRMED", StringComparison.Ordinal)
+        || currentStateStatus is null && hasConfirmedHistoricalAttempt;
 }
 
 public interface IInvoiceProviderPort
@@ -252,7 +272,8 @@ public sealed record InvoiceWorkspaceItemView(
     bool InvoiceCreationEnabled = true,
     string? MarketplaceInvoiceReadErrorCode = null,
     string? MarketplaceInvoiceReadErrorSummary = null,
-    string Environment = "UNKNOWN");
+    string Environment = "UNKNOWN",
+    string? MarketplaceInvoiceUrl = null);
 public sealed record InvoiceWorkspaceLineView(string Sku, string? Barcode, string Description, decimal Quantity, decimal UnitPrice, decimal VatRate, string? ImageUrl);
 public sealed record InvoiceWorkspaceSummaryView(int DueSoonCount);
 public sealed record InvoiceWorkspacePageQuery(

@@ -117,6 +117,29 @@ public sealed class InvoiceDeliveryRecoveryPolicyTests
             deliveryStatus,
             remoteInvoiceNumber));
 
+    [Theory]
+    [InlineData("CONFIRMED", true, true)]
+    [InlineData("REVOKED", true, false)]
+    [InlineData("REVIEW_REQUIRED", true, false)]
+    [InlineData(null, true, true)]
+    public void CurrentMarketplaceDeliveryStateOverridesHistoricalConfirmation(string? currentStatus, bool hasHistory, bool expected) =>
+        Assert.Equal(expected, MarketplaceInvoiceDeliveryEvidencePolicy.HasConfirmedDelivery(currentStatus, hasHistory));
+
+    [Theory]
+    [InlineData(InvoiceStatus.Completed, null, true)]
+    [InlineData(InvoiceStatus.MarketplacePending, InvoiceDeliveryRecoveryPolicy.MarketplaceInvoiceIdentityMismatchErrorCode, true)]
+    [InlineData(InvoiceStatus.Accepted, null, false)]
+    [InlineData(InvoiceStatus.Rejected, null, false)]
+    [InlineData(InvoiceStatus.ManualReview, "OTHER_REVIEW", false)]
+    public void ExplicitMarketplaceRemovalMakesOnlyExistingDeliveryEligibleForRecovery(
+        InvoiceStatus invoiceStatus,
+        string? lastErrorCode,
+        bool expected) =>
+        Assert.Equal(expected, InvoiceDeliveryRecoveryPolicy.ShouldMarkMarketplaceInvoiceNotPresent(
+            invoiceStatus,
+            lastErrorCode,
+            MarketplaceInvoiceStatus.NotInvoiced));
+
     [Fact]
     public void RejectedInvoiceIsNotAutomaticallyResent()
     {

@@ -686,6 +686,58 @@ public sealed class HepsiburadaAdapterTests
     }
 
     [Fact]
+    public void OrderMapperCarriesChangedInvoiceLinkAndNumberFromPackageReadback()
+    {
+        using var json = JsonDocument.Parse("""
+        {
+          "orderNumber": "HB-INVOICE-CHANGE",
+          "orderDate": "2026-09-28T12:15:00Z",
+          "packages": [{
+            "packageNumber": "PKG-CHANGE",
+            "status": "Delivered",
+            "hasInvoice": true,
+            "invoiceNumber": "HB-NEW-42",
+            "invoiceLink": "https://documents.example.test/hb-new-42.pdf",
+            "items": [{ "orderLineId": "line-1", "quantity": 1 }]
+          }],
+          "items": [{ "id": "line-1", "merchantSku": "sku-1", "quantity": 1, "price": 20 }]
+        }
+        """);
+
+        var invoice = Assert.Single(HepsiburadaJsonMapper.Order(json.RootElement, "HB-INVOICE-CHANGE").Packages).Invoice;
+
+        Assert.NotNull(invoice);
+        Assert.Equal("INVOICED", invoice.RawStatus);
+        Assert.Equal("HB-NEW-42", invoice.InvoiceNumber);
+        Assert.Equal("https://documents.example.test/hb-new-42.pdf", invoice.InvoiceUrl);
+    }
+
+    [Fact]
+    public void OrderMapperDetectsRemovedHepsiburadaInvoiceFromPackageReadback()
+    {
+        using var json = JsonDocument.Parse("""
+        {
+          "orderNumber": "HB-INVOICE-REMOVED",
+          "orderDate": "2026-09-28T12:15:00Z",
+          "packages": [{
+            "packageNumber": "PKG-REMOVED",
+            "status": "Delivered",
+            "invoiceStatus": "NOT_UPLOADED",
+            "items": [{ "orderLineId": "line-1", "quantity": 1 }]
+          }],
+          "items": [{ "id": "line-1", "merchantSku": "sku-1", "quantity": 1, "price": 20 }]
+        }
+        """);
+
+        var invoice = Assert.Single(HepsiburadaJsonMapper.Order(json.RootElement, "HB-INVOICE-REMOVED").Packages).Invoice;
+
+        Assert.NotNull(invoice);
+        Assert.Equal("NOT_INVOICED", invoice.RawStatus);
+        Assert.Null(invoice.InvoiceNumber);
+        Assert.Null(invoice.InvoiceUrl);
+    }
+
+    [Fact]
     public void OrderMapperUsesConsistentLineItemLifecycleStatusWhenOrderStatusIsAbsent()
     {
         using var json = JsonDocument.Parse("""

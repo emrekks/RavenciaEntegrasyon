@@ -2940,16 +2940,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             var eligibleOrders = db.Orders.AsNoTracking()
                 .Where(order => order.TenantId == tenantId
                     && order.ConnectionId == connectionId
-                    && !DashboardMetricPolicy.InvoiceExcludedOrderStatuses.Contains(order.DerivedStatus)
-                    && (!db.ShipmentPackages.Any(package => package.TenantId == tenantId
-                            && package.ConnectionId == connectionId
-                            && package.OrderId == order.Id
-                            && package.Status != ShipmentPackageStatus.Cancelled)
-                        || db.ShipmentPackages.Any(package => package.TenantId == tenantId
-                            && package.ConnectionId == connectionId
-                            && package.OrderId == order.Id
-                            && package.Status != ShipmentPackageStatus.Cancelled
-                            && package.MarketplaceInvoiceStatus != MarketplaceInvoiceStatus.Invoiced)));
+                    && !DashboardMetricPolicy.InvoiceExcludedOrderStatuses.Contains(order.DerivedStatus));
 
             var afterCursorQuery = eligibleOrders;
             if (afterOrderId is { } cursorOrderId)
@@ -2987,12 +2978,12 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             var eligibleOrders = db.Orders.AsNoTracking()
                 .Where(order => order.TenantId == tenantId
                     && order.ConnectionId == connectionId
-                    && !DashboardMetricPolicy.InvoiceExcludedOrderStatuses.Contains(order.DerivedStatus)
-                    && db.ShipmentPackages.Any(package => package.TenantId == tenantId
-                        && package.ConnectionId == connectionId
-                        && package.OrderId == order.Id
-                        && package.Status != ShipmentPackageStatus.Cancelled
-                        && package.MarketplaceInvoiceStatus != MarketplaceInvoiceStatus.Invoiced));
+                    && !DashboardMetricPolicy.InvoiceExcludedOrderStatuses.Contains(order.DerivedStatus));
+            eligibleOrders = eligibleOrders.Where(order => db.ShipmentPackages.Any(package => package.TenantId == tenantId
+                    && package.ConnectionId == connectionId
+                    && package.OrderId == order.Id
+                    && package.Status != ShipmentPackageStatus.Cancelled
+                    && (isTrendyol || package.MarketplaceInvoiceStatus != MarketplaceInvoiceStatus.Invoiced)));
 
             var afterCursorQuery = eligibleOrders;
             if (afterOrderId is { } cursorOrderId)
@@ -3211,7 +3202,6 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                                 where package.TenantId == tenantId
                                     && package.ConnectionId == connectionId
                                     && package.Status != ShipmentPackageStatus.Cancelled
-                                    && package.MarketplaceInvoiceStatus != MarketplaceInvoiceStatus.Invoiced
                                     && order.ExternalOrderId == externalOrderId
                                 select new { package.Id, package.ExternalPackageId, package.StatusOccurredAt })
             .ToListAsync(cancellationToken);
@@ -3305,14 +3295,25 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var allPackagesObserved = packages.Count > 0;
         foreach (var package in packages)
         {
-            var rawStatus = packageInvoiceStatuses.GetValueOrDefault(package.ExternalPackageId) ?? orderInvoiceStatus;
-            if (rawStatus is null)
+            var packageSnapshot = remote.Packages.FirstOrDefault(candidate =>
+                string.Equals(candidate.ExternalPackageId, package.ExternalPackageId, StringComparison.OrdinalIgnoreCase));
+            var invoiceObservation = packageSnapshot?.Invoice;
+            var rawStatus = invoiceObservation?.RawStatus
+                ?? packageInvoiceStatuses.GetValueOrDefault(package.ExternalPackageId)
+                ?? orderInvoiceStatus;
+            if (rawStatus is null && invoiceObservation?.InvoiceNumber is null && invoiceObservation?.InvoiceUrl is null)
             {
                 allPackagesObserved = false;
                 continue;
             }
 
-            var observation = new RemotePackageInvoiceObservation(rawStatus, null, null, null);
+            if (rawStatus is not null && string.IsNullOrWhiteSpace(invoiceObservation?.RawStatus))
+                invoiceObservation = new RemotePackageInvoiceObservation(
+                    rawStatus,
+                    invoiceObservation?.InvoiceNumber,
+                    invoiceObservation?.InvoiceUrl,
+                    invoiceObservation?.SourceUpdatedAt ?? remote.LastModifiedAt);
+            if (rawStatus is null) allPackagesObserved = false;
             var remotePackage = new RemotePackage(
                 package.ExternalPackageId,
                 null,
@@ -3321,7 +3322,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 package.CargoProviderExternalId,
                 package.CargoTrackingNumber,
                 [],
-                Invoice: observation);
+                Invoice: invoiceObservation);
             await MergeMarketplaceInvoiceState(package, remotePackage, cancellationToken);
         }
 
@@ -6864,19 +6865,49 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             remotePackage.RawStatus,
             observation?.InvoiceNumber,
             observation?.InvoiceUrl);
-        if (!MarketplaceInvoiceStatePolicy.ShouldApply(
+        var applyStatus = MarketplaceInvoiceStatePolicy.ShouldApply(
                 package.MarketplaceInvoiceStatus,
                 package.MarketplaceInvoiceSourceUpdatedAt,
                 package.MarketplaceInvoiceObservedAt,
                 incomingStatus,
                 observation?.SourceUpdatedAt,
-                observedAt)) return;
+                observedAt);
+        var applyReferences = MarketplaceInvoiceStatePolicy.ShouldApplyReferenceUpdate(
+            package.MarketplaceInvoiceSourceUpdatedAt,
+            package.MarketplaceInvoiceObservedAt,
+            observation?.SourceUpdatedAt,
+            observedAt);
+        var referenceChanged = false;
+        if (applyReferences && incomingStatus == MarketplaceInvoiceStatus.NotInvoiced)
+        {
+            referenceChanged = package.MarketplaceInvoiceNumber is not null || package.MarketplaceInvoiceUrl is not null;
+            package.MarketplaceInvoiceNumber = null;
+            package.MarketplaceInvoiceUrl = null;
+        }
+        else if (applyReferences)
+        {
+            var invoiceNumber = MarketplaceInvoiceStatePolicy.PreferNonEmptyReference(package.MarketplaceInvoiceNumber, observation?.InvoiceNumber);
+            var invoiceUrl = MarketplaceInvoiceStatePolicy.PreferNonEmptyReference(package.MarketplaceInvoiceUrl, observation?.InvoiceUrl);
+            referenceChanged = !string.Equals(invoiceNumber, package.MarketplaceInvoiceNumber, StringComparison.Ordinal)
+                || !string.Equals(invoiceUrl, package.MarketplaceInvoiceUrl, StringComparison.Ordinal);
+            package.MarketplaceInvoiceNumber = invoiceNumber;
+            package.MarketplaceInvoiceUrl = invoiceUrl;
+        }
 
-        package.MarketplaceInvoiceStatus = incomingStatus;
-        package.MarketplaceInvoiceRawStatus = observation?.RawStatus ?? package.MarketplaceInvoiceRawStatus;
-        package.MarketplaceInvoiceNumber = observation?.InvoiceNumber ?? package.MarketplaceInvoiceNumber;
-        package.MarketplaceInvoiceUrl = observation?.InvoiceUrl ?? package.MarketplaceInvoiceUrl;
-        package.MarketplaceInvoiceSourceUpdatedAt = observation?.SourceUpdatedAt ?? package.MarketplaceInvoiceSourceUpdatedAt;
+        if (applyStatus)
+        {
+            package.MarketplaceInvoiceStatus = incomingStatus;
+            package.MarketplaceInvoiceRawStatus = observation?.RawStatus ?? package.MarketplaceInvoiceRawStatus;
+            package.MarketplaceInvoiceSourceUpdatedAt = observation?.SourceUpdatedAt ?? package.MarketplaceInvoiceSourceUpdatedAt;
+            package.MarketplaceInvoiceObservedAt = observedAt;
+        }
+        else if (referenceChanged)
+        {
+            package.MarketplaceInvoiceSourceUpdatedAt = observation?.SourceUpdatedAt ?? package.MarketplaceInvoiceSourceUpdatedAt;
+            package.MarketplaceInvoiceObservedAt = observedAt;
+        }
+        if (!applyStatus && !referenceChanged) return;
+
         package.MarketplaceInvoiceObservedAt = observedAt;
         package.UpdatedAt = timeProvider.GetUtcNow();
         package.Version++;
@@ -6885,6 +6916,28 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var invoice = await db.Invoices.SingleOrDefaultAsync(x => x.TenantId == package.TenantId && x.PackageId == package.Id
             && x.OriginalInvoiceId == null && x.SequencePurpose == "SALE", cancellationToken);
         if (invoice is null) return;
+
+        if (incomingStatus == MarketplaceInvoiceStatus.NotInvoiced)
+        {
+            var deliveryState = await db.MarketplaceDeliveryStates.SingleOrDefaultAsync(
+                x => x.TenantId == invoice.TenantId && x.InvoiceId == invoice.Id,
+                cancellationToken);
+            var previouslyConfirmed = string.Equals(deliveryState?.Status, "CONFIRMED", StringComparison.Ordinal);
+            var shouldMarkNotPresent = InvoiceDeliveryRecoveryPolicy.ShouldMarkMarketplaceInvoiceNotPresent(invoice.Status, invoice.LastErrorCode, incomingStatus);
+            if (previouslyConfirmed || shouldMarkNotPresent)
+            {
+                await RecordMarketplaceInvoiceDeliveryObservationAsync(invoice, package, "REVOKED", observedAt, cancellationToken);
+                if (invoice.Status != InvoiceStatus.MarketplaceFailed
+                    || !string.Equals(invoice.LastErrorCode, InvoiceDeliveryRecoveryPolicy.MarketplaceInvoiceNotPresentErrorCode, StringComparison.Ordinal))
+                {
+                    invoice.Status = InvoiceStatus.MarketplaceFailed;
+                    invoice.LastErrorCode = InvoiceDeliveryRecoveryPolicy.MarketplaceInvoiceNotPresentErrorCode;
+                    invoice.UpdatedAt = observedAt;
+                    invoice.Version++;
+                }
+            }
+            return;
+        }
 
         if (incomingStatus == MarketplaceInvoiceStatus.Invoiced && invoice.Status is InvoiceStatus.Submitted or InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending or InvoiceStatus.Completed)
         {
@@ -6934,8 +6987,9 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 }
                 else
                 {
+                    await RecordMarketplaceInvoiceDeliveryObservationAsync(invoice, package, "REVIEW_REQUIRED", observedAt, cancellationToken);
                     invoice.Status = InvoiceStatus.MarketplacePending;
-                    invoice.LastErrorCode = "MARKETPLACE_INVOICE_IDENTITY_MISMATCH";
+                    invoice.LastErrorCode = InvoiceDeliveryRecoveryPolicy.MarketplaceInvoiceIdentityMismatchErrorCode;
                     invoice.UpdatedAt = observedAt;
                     invoice.Version++;
                 }
@@ -6956,6 +7010,75 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 invoice.Version++;
             }
         }
+    }
+
+    private async Task RecordMarketplaceInvoiceDeliveryObservationAsync(
+        Invoice invoice,
+        ShipmentPackage package,
+        string status,
+        DateTimeOffset observedAt,
+        CancellationToken cancellationToken)
+    {
+        var state = await db.MarketplaceDeliveryStates.SingleOrDefaultAsync(
+            x => x.TenantId == invoice.TenantId && x.InvoiceId == invoice.Id,
+            cancellationToken);
+        if (state?.Status == status) return;
+
+        if (state is null)
+        {
+            var latestAttemptNumber = await db.MarketplaceDeliveries.AsNoTracking()
+                .Where(x => x.TenantId == invoice.TenantId && x.InvoiceId == invoice.Id)
+                .Select(x => (int?)x.AttemptNumber)
+                .MaxAsync(cancellationToken) ?? 0;
+            var proofKey = $"marketplace-observation:{invoice.Id:N}:{package.Id:N}";
+            var proofHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
+                $"{invoice.Id:N}|{package.Id:N}|{status}|{package.MarketplaceInvoiceNumber}|{package.MarketplaceInvoiceUrl}")));
+            state = new MarketplaceDeliveryState
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = invoice.TenantId,
+                InvoiceId = invoice.Id,
+                ConnectionId = package.ConnectionId,
+                PackageId = package.Id,
+                AttemptNumber = latestAttemptNumber,
+                ExternalIdempotencyKey = proofKey,
+                RequestHash = proofHash,
+                DeliveryType = "LINK",
+                Status = "UNKNOWN",
+                ExternalReference = package.ExternalPackageId,
+                CreatedAt = observedAt,
+                UpdatedAt = observedAt,
+                Version = 1
+            };
+            db.MarketplaceDeliveryStates.Add(state);
+        }
+
+        var sequence = state.AttemptNumber + 1;
+        db.MarketplaceDeliveries.Add(new MarketplaceDelivery
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = state.TenantId,
+            InvoiceId = state.InvoiceId,
+            ConnectionId = state.ConnectionId,
+            PackageId = state.PackageId,
+            AttemptNumber = sequence,
+            IdempotencyKey = $"delivery-observation:{state.Id:N}:{sequence}",
+            ExternalIdempotencyKey = state.ExternalIdempotencyKey,
+            RequestHash = state.RequestHash,
+            DeliveryType = state.DeliveryType,
+            Status = status,
+            ExternalReference = package.ExternalPackageId,
+            ErrorCode = status == "REVOKED" ? InvoiceDeliveryRecoveryPolicy.MarketplaceInvoiceNotPresentErrorCode : InvoiceDeliveryRecoveryPolicy.MarketplaceInvoiceIdentityMismatchErrorCode,
+            CreatedAt = observedAt,
+            CompletedAt = observedAt
+        });
+        state.AttemptNumber = sequence;
+        state.Status = status;
+        state.ExternalReference = package.ExternalPackageId;
+        state.ErrorCode = status == "REVOKED" ? InvoiceDeliveryRecoveryPolicy.MarketplaceInvoiceNotPresentErrorCode : InvoiceDeliveryRecoveryPolicy.MarketplaceInvoiceIdentityMismatchErrorCode;
+        state.UpdatedAt = observedAt;
+        state.CompletedAt = observedAt;
+        state.Version++;
     }
 
     private async Task RecordExactMarketplaceInvoiceProofAsync(Invoice invoice, ShipmentPackage package, DateTimeOffset observedAt, CancellationToken cancellationToken)

@@ -415,7 +415,9 @@ internal static class HepsiburadaJsonMapper
         return normalized switch
         {
             "INVOICED" or "INVOICE" or "COMPLETED" or "UPLOADED" => "INVOICED",
-            "NOTINVOICED" or "NOT_INVOICED" or "WAITING" or "WAITING_FOR_INVOICE" => "NOT_INVOICED",
+            "NOTINVOICED" or "NOT_INVOICED" or "UNINVOICED" or "WAITING" or "WAITING_FOR_INVOICE"
+                or "DELETED" or "REMOVED" or "INVOICE_DELETED" or "INVOICE_REMOVED" or "NO_INVOICE" or "NO_INVOICE_UPLOADED"
+                or "NOT_UPLOADED" or "INVOICE_NOT_UPLOADED" => "NOT_INVOICED",
             "RECEIVED" or "PROCESSING" or "PENDING" => "RECEIVED",
             "REJECTED" or "FAILED" => "REJECTED",
             _ => null
@@ -1344,11 +1346,15 @@ internal static class HepsiburadaJsonMapper
     private static RemotePackageInvoiceObservation? InvoiceObservation(JsonElement source)
     {
         var status = Text(source, "invoiceStatus", "InvoiceStatus");
+        status = NormalizeInvoiceStatus(status) ?? status;
         var uploaded = Boolean(source, "hasInvoice", "HasInvoice");
         status ??= uploaded is { } hasInvoice ? (hasInvoice ? "INVOICED" : "NOT_INVOICED") : null;
-        return status is null
+        var invoiceNumber = Text(source, "invoiceNumber", "InvoiceNumber", "invoiceNo", "InvoiceNo");
+        var invoiceUrl = Text(source, "invoiceLink", "InvoiceLink", "invoiceUrl", "InvoiceUrl", "invoiceDocumentUrl", "InvoiceDocumentUrl");
+        var sourceUpdatedAt = Date(source, "invoiceUpdatedAt", "InvoiceUpdatedAt");
+        return status is null && invoiceNumber is null && invoiceUrl is null
             ? null
-            : new(status, Text(source, "invoiceNumber", "InvoiceNumber"), Text(source, "invoiceUrl", "InvoiceUrl"), Date(source, "invoiceUpdatedAt", "InvoiceUpdatedAt"));
+            : new(status, invoiceNumber, invoiceUrl, sourceUpdatedAt);
     }
     private static bool? Boolean(JsonElement element, params string[] names)
     {

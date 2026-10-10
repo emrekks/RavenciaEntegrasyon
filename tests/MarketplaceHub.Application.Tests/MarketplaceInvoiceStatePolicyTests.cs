@@ -9,6 +9,8 @@ public sealed class MarketplaceInvoiceStatePolicyTests
     [Theory]
     [InlineData("Invoiced", MarketplaceInvoiceStatus.Invoiced)]
     [InlineData("NotInvoiced", MarketplaceInvoiceStatus.NotInvoiced)]
+    [InlineData("Deleted", MarketplaceInvoiceStatus.NotInvoiced)]
+    [InlineData("Invoice removed", MarketplaceInvoiceStatus.NotInvoiced)]
     [InlineData("Received", MarketplaceInvoiceStatus.Received)]
     [InlineData("Rejected", MarketplaceInvoiceStatus.Rejected)]
     public void FromRemote_MapsExplicitMarketplaceInvoiceState(string rawStatus, MarketplaceInvoiceStatus expected)
@@ -30,13 +32,36 @@ public sealed class MarketplaceInvoiceStatePolicyTests
     }
 
     [Fact]
-    public void ConflictingStatesWithTheSameProviderTimestampAreIgnored()
+    public void FreshReadCanCorrectAConflictingStateEvenWhenProviderTimestampIsUnchanged()
     {
         var sourceAt = DateTimeOffset.Parse("2026-09-01T10:00:00Z");
 
-        Assert.False(MarketplaceInvoiceStatePolicy.ShouldApply(
+        Assert.True(MarketplaceInvoiceStatePolicy.ShouldApply(
             MarketplaceInvoiceStatus.NotInvoiced, sourceAt, sourceAt,
             MarketplaceInvoiceStatus.Invoiced, sourceAt, sourceAt.AddMinutes(1)));
+    }
+
+    [Fact]
+    public void NewMarketplaceReferenceReplacesTheStoredValueWhileEmptyReferencePreservesIt()
+    {
+        Assert.Equal("INV-2", MarketplaceInvoiceStatePolicy.PreferNonEmptyReference("INV-1", " INV-2 "));
+        Assert.Equal("INV-1", MarketplaceInvoiceStatePolicy.PreferNonEmptyReference("INV-1", "  "));
+    }
+
+    [Fact]
+    public void ReferenceReadbackUsesProviderTimestampAndFallsBackToObservationTime()
+    {
+        var sourceAt = DateTimeOffset.Parse("2026-09-01T10:00:00Z");
+        var observedAt = sourceAt.AddMinutes(2);
+
+        Assert.False(MarketplaceInvoiceStatePolicy.ShouldApplyReferenceUpdate(
+            sourceAt, observedAt, sourceAt.AddMinutes(-1), observedAt.AddMinutes(1)));
+        Assert.False(MarketplaceInvoiceStatePolicy.ShouldApplyReferenceUpdate(
+            sourceAt, observedAt, null, observedAt.AddMinutes(-1)));
+        Assert.True(MarketplaceInvoiceStatePolicy.ShouldApplyReferenceUpdate(
+            sourceAt, observedAt, null, observedAt.AddMinutes(1)));
+        Assert.True(MarketplaceInvoiceStatePolicy.ShouldApplyReferenceUpdate(
+            null, null, sourceAt, observedAt));
     }
 
     [Fact]
@@ -54,6 +79,21 @@ public sealed class MarketplaceInvoiceStatePolicyTests
         Assert.Equal("INV-1", invoice.InvoiceNumber);
         Assert.Equal("https://example.test/invoice.pdf", invoice.InvoiceUrl);
         Assert.Equal(DateTimeOffset.FromUnixTimeMilliseconds(1760000000000), invoice.SourceUpdatedAt);
+    }
+
+    [Fact]
+    public void MapperCapturesTrendyolInvoiceRemovalWithoutAStaleDocumentLink()
+    {
+        const string json = """
+            {"content":[{"id":"pkg-1","orderNumber":"ord-1","status":"Delivered","lastModifiedDate":1760000100000,"invoiceStatus":"NotInvoiced","lines":[{"lineId":"line-1","stockCode":"SKU-1","productName":"Test","quantity":1,"lineItemPrice":10,"vatRate":20}]}]}
+            """;
+
+        var invoice = Assert.Single(Assert.Single(TrendyolJsonMapper.Orders(json).Items).Packages).Invoice;
+
+        Assert.NotNull(invoice);
+        Assert.Equal("NotInvoiced", invoice.RawStatus);
+        Assert.Null(invoice.InvoiceNumber);
+        Assert.Null(invoice.InvoiceUrl);
     }
 
     [Fact]

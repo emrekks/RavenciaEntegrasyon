@@ -35,9 +35,9 @@ public static class InvoiceStateMachine
             [InvoiceStatus.UnknownResult] = [InvoiceStatus.Submitted, InvoiceStatus.Rejected, InvoiceStatus.ManualReview],
             [InvoiceStatus.Submitted] = [InvoiceStatus.Accepted, InvoiceStatus.Rejected, InvoiceStatus.MarketplacePending, InvoiceStatus.Completed, InvoiceStatus.MarketplaceFailed],
             [InvoiceStatus.Accepted] = [InvoiceStatus.MarketplacePending, InvoiceStatus.CancellationPending, InvoiceStatus.Completed, InvoiceStatus.MarketplaceFailed],
-            [InvoiceStatus.MarketplacePending] = [InvoiceStatus.Completed, InvoiceStatus.MarketplaceFailed],
+            [InvoiceStatus.MarketplacePending] = [InvoiceStatus.Completed, InvoiceStatus.MarketplaceFailed, InvoiceStatus.ManualReview],
             [InvoiceStatus.MarketplaceFailed] = [InvoiceStatus.MarketplacePending, InvoiceStatus.ManualReview],
-            [InvoiceStatus.Completed] = [InvoiceStatus.CancellationPending, InvoiceStatus.AdjustmentRequired],
+            [InvoiceStatus.Completed] = [InvoiceStatus.CancellationPending, InvoiceStatus.AdjustmentRequired, InvoiceStatus.MarketplaceFailed, InvoiceStatus.ManualReview],
             [InvoiceStatus.CancellationPending] = [InvoiceStatus.Cancelled, InvoiceStatus.CancellationRejected],
             [InvoiceStatus.ManualReview] = [InvoiceStatus.Submitting]
         };

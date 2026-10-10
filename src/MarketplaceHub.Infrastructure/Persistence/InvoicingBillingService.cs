@@ -185,8 +185,11 @@ public sealed partial class InvoicingBillingService(
                 .Where(line => OrderLinePresentationPolicy.HasActiveQuantity(line.OrderedQuantity, line.CancelledQuantity))
                 .ToList();
             var invoice = invoices.FirstOrDefault(x => x.PackageId == package.Id) ?? invoices.FirstOrDefault(x => x.PackageId == null && x.OrderId == order.Id);
-            var deliveryConfirmed = invoice is not null && (deliveryStates.Any(state => state.InvoiceId == invoice.Id && state.Status == "CONFIRMED")
-                || deliveryAttempts.Any(attempt => attempt.InvoiceId == invoice.Id && attempt.Status == "CONFIRMED"));
+            var currentDeliveryState = invoice is null ? null : deliveryStates
+                .Where(state => state.InvoiceId == invoice.Id).OrderByDescending(state => state.UpdatedAt).FirstOrDefault();
+            var hasConfirmedHistoricalAttempt = invoice is not null
+                && deliveryAttempts.Any(attempt => attempt.InvoiceId == invoice.Id && attempt.Status == "CONFIRMED");
+            var deliveryConfirmed = MarketplaceInvoiceDeliveryEvidencePolicy.HasConfirmedDelivery(currentDeliveryState?.Status, hasConfirmedHistoricalAttempt);
             var invoiceStatus = package.ManualInvoiceStatus?.Trim().ToUpperInvariant() switch
             {
                 "UPLOADED" => "FATURA_YUKLENDI",
@@ -201,15 +204,13 @@ public sealed partial class InvoicingBillingService(
             var image = orderLines.Select(line => ResolveVariantId(line) is { } variantId ? mediaByVariant.GetValueOrDefault(variantId) ?? mediaByProduct.GetValueOrDefault(variantProductIds.GetValueOrDefault(variantId)) : null).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
             var customerName = InvoiceWorkspaceCustomerName(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
             var workspaceLines = orderLines.Select(line => new InvoiceWorkspaceLineView(line.Sku, line.Barcode, line.TitleSnapshot, OrderLinePresentationPolicy.ActiveQuantity(line.OrderedQuantity, line.CancelledQuantity), line.UnitPrice, line.VatRate, ResolveVariantId(line) is { } variantId ? mediaByVariant.GetValueOrDefault(variantId) ?? mediaByProduct.GetValueOrDefault(variantProductIds.GetValueOrDefault(variantId)) : null)).ToList();
-            var deliveryState = invoice is null
-                ? null
-                : deliveryStates.Where(x => x.InvoiceId == invoice.Id).OrderByDescending(x => x.UpdatedAt).FirstOrDefault();
+            var deliveryState = currentDeliveryState;
             var deliveryAttempt = invoice is null
                 ? null
                 : deliveryAttempts.Where(x => x.InvoiceId == invoice.Id).OrderByDescending(x => x.AttemptNumber).FirstOrDefault();
             var invoiceReadIssue = invoiceReadIssues.GetValueOrDefault($"trendyol-invoice-package-read:{package.ConnectionId}:{package.Id}")
                 ?? invoiceReadIssues.GetValueOrDefault($"order-invoice-reconciliation:{order.ConnectionId}:{order.ExternalOrderId}");
-            return new InvoiceWorkspaceItemView(order.Id, package.Id, order.OrderNumber, customerName, order.OrderedAt, package.Status.ToString().ToUpperInvariant(), deliveredAt, dueAt, dueSoon, order.Currency, package.NetAmount > 0 ? package.NetAmount : order.NetAmount, orderLines.Count, image, package.CargoProviderExternalId, package.CargoTrackingNumber, invoice?.Id, invoiceStatus, ResolveInvoiceNumber(invoice?.InvoiceNumber, package.MarketplaceInvoiceNumber), invoiceStatus == "FATURA_BEKLIYOR", order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, workspaceLines, invoice?.LastErrorCode, deliveryState?.Status ?? deliveryAttempt?.Status, deliveryState?.ExternalReference ?? deliveryAttempt?.ExternalReference, invoice is not null && invoiceDocumentIds.Contains(invoice.Id), connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol", connection is not null && MarketplaceInvoiceCreationPolicy.IsEnabled(connection.PlatformCode, connection.SettingsJson), invoiceReadIssue?.Code, invoiceReadIssue?.Summary);
+            return new InvoiceWorkspaceItemView(order.Id, package.Id, order.OrderNumber, customerName, order.OrderedAt, package.Status.ToString().ToUpperInvariant(), deliveredAt, dueAt, dueSoon, order.Currency, package.NetAmount > 0 ? package.NetAmount : order.NetAmount, orderLines.Count, image, package.CargoProviderExternalId, package.CargoTrackingNumber, invoice?.Id, invoiceStatus, ResolveInvoiceNumber(invoice?.InvoiceNumber, package.MarketplaceInvoiceNumber), invoiceStatus == "FATURA_BEKLIYOR", order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, workspaceLines, invoice?.LastErrorCode, deliveryState?.Status ?? deliveryAttempt?.Status, deliveryState?.ExternalReference ?? deliveryAttempt?.ExternalReference, invoice is not null && invoiceDocumentIds.Contains(invoice.Id), connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol", connection is not null && MarketplaceInvoiceCreationPolicy.IsEnabled(connection.PlatformCode, connection.SettingsJson), invoiceReadIssue?.Code, invoiceReadIssue?.Summary, connection?.Environment ?? "UNKNOWN", package.MarketplaceInvoiceUrl);
         }).Where(x => x is not null).Select(x => x!).ToList();
     }
 
@@ -390,6 +391,7 @@ public sealed partial class InvoicingBillingService(
                     source.package.StatusOccurredAt,
                     source.package.MarketplaceInvoiceStatus,
                     includeCustomerName ? source.package.MarketplaceInvoiceNumber : null,
+                    source.package.MarketplaceInvoiceUrl,
                     source.package.ManualInvoiceStatus),
                 new WorkspaceOrderProjection(
                     source.order.Id,
@@ -414,8 +416,9 @@ public sealed partial class InvoicingBillingService(
                     && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")))
             .OrderByDescending(invoice => invoice.CreatedAt)
             .Select(invoice => new WorkspaceInvoiceProjection(invoice.Id, invoice.OrderId, invoice.PackageId, invoice.Status, invoice.InvoiceNumber, invoice.LastErrorCode, invoice.CreatedAt,
-                db.MarketplaceDeliveryStates.Any(state => state.TenantId == tenantId && state.InvoiceId == invoice.Id && state.Status == "CONFIRMED")
-                    || db.MarketplaceDeliveries.Any(delivery => delivery.TenantId == tenantId && delivery.InvoiceId == invoice.Id && delivery.Status == "CONFIRMED")))
+                db.MarketplaceDeliveryStates.Where(state => state.TenantId == tenantId && state.InvoiceId == invoice.Id)
+                    .OrderByDescending(state => state.UpdatedAt).Select(state => state.Status).FirstOrDefault(),
+                db.MarketplaceDeliveries.Any(delivery => delivery.TenantId == tenantId && delivery.InvoiceId == invoice.Id && delivery.Status == "CONFIRMED")))
             .ToListAsync(cancellationToken);
         var invoicesByPackage = invoices.Where(invoice => invoice.PackageId.HasValue)
             .GroupBy(invoice => invoice.PackageId!.Value)
@@ -535,7 +538,7 @@ public sealed partial class InvoicingBillingService(
             .ToDictionaryAsync(order => order.Id, cancellationToken);
         var packageDetails = await db.ShipmentPackages.AsNoTracking()
             .Where(package => package.TenantId == tenantId && packageIds.Contains(package.Id))
-            .Select(package => new { package.Id, package.NetAmount, package.CargoTrackingNumber, package.MarketplaceInvoiceNumber })
+            .Select(package => new { package.Id, package.NetAmount, package.CargoTrackingNumber, package.MarketplaceInvoiceNumber, package.MarketplaceInvoiceUrl })
             .ToDictionaryAsync(package => package.Id, cancellationToken);
         var variantIds = lines.Where(line => line.VariantId != null).Select(line => line.VariantId!.Value).Distinct().ToArray();
         var lineSkus = lines.Select(line => line.Sku).Where(sku => !string.IsNullOrWhiteSpace(sku)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
@@ -671,7 +674,8 @@ public sealed partial class InvoicingBillingService(
                 candidate.InvoiceCreationEnabled,
                 issue == default ? null : issue.Code,
                 issue == default ? null : issue.Summary,
-                candidate.Connection.Environment);
+                candidate.Connection.Environment,
+                packageDetailsForItem?.MarketplaceInvoiceUrl ?? candidate.Package.MarketplaceInvoiceUrl);
         }).ToList();
     }
 
@@ -751,12 +755,15 @@ public sealed partial class InvoicingBillingService(
     private sealed record WorkspacePackageProjection(
         Guid Id, Guid OrderId, Guid ConnectionId, string? CargoProviderExternalId, string? CargoTrackingNumber,
         ShipmentPackageStatus Status, string RawStatus, DateTimeOffset StatusOccurredAt,
-        MarketplaceInvoiceStatus MarketplaceInvoiceStatus, string? MarketplaceInvoiceNumber, string? ManualInvoiceStatus);
+        MarketplaceInvoiceStatus MarketplaceInvoiceStatus, string? MarketplaceInvoiceNumber, string? MarketplaceInvoiceUrl, string? ManualInvoiceStatus);
     private sealed record WorkspaceOrderProjection(
         Guid Id, string OrderNumber, DateTimeOffset OrderedAt,
         string CustomerSnapshotJson, string ShipmentAddressSnapshotJson, string InvoiceAddressSnapshotJson);
     private sealed record WorkspaceConnectionProjection(Guid Id, string PlatformCode, string DisplayName, bool InvoiceCreationEnabled, string Environment);
-    private sealed record WorkspaceInvoiceProjection(Guid Id, Guid OrderId, Guid? PackageId, InvoiceStatus Status, string? InvoiceNumber, string? LastErrorCode, DateTimeOffset CreatedAt, bool HasConfirmedMarketplaceDelivery);
+    private sealed record WorkspaceInvoiceProjection(Guid Id, Guid OrderId, Guid? PackageId, InvoiceStatus Status, string? InvoiceNumber, string? LastErrorCode, DateTimeOffset CreatedAt, string? CurrentDeliveryStateStatus, bool HasConfirmedHistoricalAttempt)
+    {
+        public bool HasConfirmedMarketplaceDelivery => MarketplaceInvoiceDeliveryEvidencePolicy.HasConfirmedDelivery(CurrentDeliveryStateStatus, HasConfirmedHistoricalAttempt);
+    }
     private sealed record WorkspaceCandidateSource(WorkspacePackageProjection Package, WorkspaceOrderProjection Order);
     private sealed record WorkspaceScanCursor(DateTimeOffset StatusOccurredAt, Guid PackageId);
     private sealed record WorkspaceCandidate(
@@ -773,7 +780,7 @@ public sealed partial class InvoicingBillingService(
         : $"/api/v1/files/product-media/{assetId:D}/content";
 
     internal static string? ResolveInvoiceNumber(string? invoiceNumber, string? marketplaceInvoiceNumber) =>
-        !string.IsNullOrWhiteSpace(invoiceNumber) ? invoiceNumber : !string.IsNullOrWhiteSpace(marketplaceInvoiceNumber) ? marketplaceInvoiceNumber : null;
+        !string.IsNullOrWhiteSpace(marketplaceInvoiceNumber) ? marketplaceInvoiceNumber : !string.IsNullOrWhiteSpace(invoiceNumber) ? invoiceNumber : null;
 
     internal static string InvoiceWorkspaceCustomerName(string customerJson, string invoiceAddressJson, string shipmentAddressJson = "{}")
     {

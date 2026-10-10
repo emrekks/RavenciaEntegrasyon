@@ -29,11 +29,14 @@ public static class MarketplaceInvoiceStatePolicy
 {
     public static MarketplaceInvoiceStatus FromRemote(string? rawStatus, string? packageRawStatus = null, string? invoiceNumber = null, string? invoiceUrl = null)
     {
-        var normalized = rawStatus?.Trim().ToUpperInvariant();
+        var normalized = rawStatus?.Trim().ToUpperInvariant().Replace('-', '_').Replace(' ', '_');
         if (normalized is "INVOICED" or "INVOICE" or "COMPLETED") return MarketplaceInvoiceStatus.Invoiced;
         if (normalized is "RECEIVED" or "PROCESSING" or "PENDING") return MarketplaceInvoiceStatus.Received;
         if (normalized is "REJECTED" or "FAILED") return MarketplaceInvoiceStatus.Rejected;
-        if (normalized is "NOTINVOICED" or "NOT_INVOICED" or "WAITING" or "WAITING_FOR_INVOICE") return MarketplaceInvoiceStatus.NotInvoiced;
+        if (normalized is "NOTINVOICED" or "NOT_INVOICED" or "UNINVOICED" or "WAITING" or "WAITING_FOR_INVOICE"
+            or "DELETED" or "REMOVED" or "INVOICE_DELETED" or "INVOICE_REMOVED" or "NO_INVOICE" or "NO_INVOICE_UPLOADED"
+            or "NOT_UPLOADED" or "INVOICE_NOT_UPLOADED")
+            return MarketplaceInvoiceStatus.NotInvoiced;
         // Older Trendyol payloads sometimes exposed only the package status.
         // Preserve this as positive evidence, while never treating a generic
         // delivered/shipped status, an invoice number, or a URL as proof that
@@ -55,14 +58,30 @@ public static class MarketplaceInvoiceStatePolicy
         if (incoming == MarketplaceInvoiceStatus.Unknown) return false;
         if (currentSourceUpdatedAt is { } currentSource && incomingSourceUpdatedAt is { } incomingSource && incomingSource < currentSource)
             return false;
-        if (currentSourceUpdatedAt is { } sameCurrentSource && incomingSourceUpdatedAt is { } sameIncomingSource
-            && sameIncomingSource == sameCurrentSource && current != incoming)
-            return false;
         if (current == incoming)
             return incomingSourceUpdatedAt > currentSourceUpdatedAt || incomingObservedAt > currentObservedAt;
         if (incomingSourceUpdatedAt is not null && currentSourceUpdatedAt is null) return true;
         return currentObservedAt is null || incomingObservedAt >= currentObservedAt;
     }
+
+    public static bool ShouldApplyReferenceUpdate(
+        DateTimeOffset? currentSourceUpdatedAt,
+        DateTimeOffset? currentObservedAt,
+        DateTimeOffset? incomingSourceUpdatedAt,
+        DateTimeOffset incomingObservedAt)
+    {
+        if (currentSourceUpdatedAt is { } currentSource
+            && incomingSourceUpdatedAt is { } incomingSource)
+        {
+            if (incomingSource < currentSource) return false;
+            if (incomingSource > currentSource) return true;
+        }
+        if (incomingSourceUpdatedAt is not null && currentSourceUpdatedAt is null) return true;
+        return currentObservedAt is null || incomingObservedAt >= currentObservedAt;
+    }
+
+    public static string? PreferNonEmptyReference(string? current, string? incoming) =>
+        string.IsNullOrWhiteSpace(incoming) ? current : incoming.Trim();
 }
 
 public static class ShipmentPackageStateMachine
