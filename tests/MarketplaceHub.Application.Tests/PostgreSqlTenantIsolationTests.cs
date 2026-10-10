@@ -1670,7 +1670,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
-    public async Task InvoiceWorkspacePage_UsesCustomerInvoiceSnapshotWhenPackageStatusIsUnknown()
+    public async Task InvoiceWorkspacePage_KeepsUnverifiedCustomerInvoiceSnapshotUninvoiced()
     {
         var tenant = NewTenant("invoice-unknown");
         var connection = NewQuestionConnection(tenant);
@@ -1704,12 +1704,18 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 fixture.TimeProvider);
 
             var page = await service.WorkspacePageAsync(tenant.Id,
-                new InvoiceWorkspacePageQuery(PageNumber: 1, PageSize: 20, Tab: "INVOICED"),
+                new InvoiceWorkspacePageQuery(PageNumber: 1, PageSize: 20, Tab: "UNINVOICED"),
                 CancellationToken.None);
 
             Assert.Equal(1, page.TotalCount);
             Assert.Equal(package.Id, Assert.Single(page.Items).PackageId);
             Assert.Equal("FATURA_KONTROLDE", page.Items.Single().InvoiceStatus);
+
+            var invoicedPage = await service.WorkspacePageAsync(tenant.Id,
+                new InvoiceWorkspacePageQuery(PageNumber: 1, PageSize: 20, Tab: "INVOICED"),
+                CancellationToken.None);
+            Assert.Equal(0, invoicedPage.TotalCount);
+            Assert.Empty(invoicedPage.Items);
         }
         finally
         {
