@@ -494,15 +494,20 @@ public sealed partial class InvoicingBillingService(
         var invoiceMatch = string.IsNullOrWhiteSpace(request.InvoiceStatus) || request.InvoiceStatus == "ALL"
             || string.Equals(WorkspaceInvoiceDisplayStatus(candidate), request.InvoiceStatus, StringComparison.OrdinalIgnoreCase);
         var actionMatch = WorkspaceMatchesInvoiceAction(candidate, request.InvoiceAction, request.ProviderHasCredential);
+        var platformMatch = MatchesWorkspacePlatformFilter(request.PlatformCodes, candidate.Connection.PlatformCode);
         var dateMatch = (!from.HasValue || candidate.Order.OrderedAt >= from.Value)
             && (!to.HasValue || candidate.Order.OrderedAt <= to.Value);
         var searchMatch = searchKey is null || new[] { candidate.Order.OrderNumber, candidate.CustomerName, candidate.InvoiceNumber, candidate.Package.CargoTrackingNumber }
             .Any(value => value?.ToLower(WorkspaceSearchCulture).Contains(searchKey, StringComparison.Ordinal) == true);
-        return tabMatch && shipmentMatch && cargoMatch && invoiceMatch && actionMatch && dateMatch && searchMatch;
+        return tabMatch && platformMatch && shipmentMatch && cargoMatch && invoiceMatch && actionMatch && dateMatch && searchMatch;
     }
 
     internal static bool IsWorkspaceInvoiceUninvoiced(string invoiceStatus, bool canCreateInvoice) =>
         canCreateInvoice || invoiceStatus is "FATURA_REDDEDILDI" or "FATURA_ISLENIYOR" or "FATURA_KONTROLDE" or "FATURA_PLATFORMA_AKTARILMADI";
+
+    internal static bool MatchesWorkspacePlatformFilter(IReadOnlyList<string>? platformCodes, string candidatePlatformCode) =>
+        platformCodes is null || platformCodes.Count == 0 || platformCodes.Any(platform =>
+            string.Equals(platform?.Trim(), candidatePlatformCode, StringComparison.OrdinalIgnoreCase));
 
     private async Task<IReadOnlyList<InvoiceWorkspaceItemView>> MaterializeWorkspacePageAsync(Guid tenantId, IReadOnlyList<WorkspaceCandidate> candidates, CancellationToken cancellationToken)
     {

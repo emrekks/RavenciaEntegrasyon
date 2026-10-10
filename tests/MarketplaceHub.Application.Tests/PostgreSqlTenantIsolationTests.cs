@@ -1586,11 +1586,15 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     {
         var tenant = NewTenant("invoice-workspace-page");
         var connection = NewQuestionConnection(tenant);
+        var hepsiburadaConnection = NewQuestionConnection(tenant);
+        hepsiburadaConnection.PlatformCode = "HEPSIBURADA";
+        hepsiburadaConnection.DisplayName = "Hepsiburada fatura filtre testi";
         var seededRows = Enumerable.Range(0, 21).Select(index =>
         {
             var orderId = Guid.CreateVersion7();
             var order = NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, $"page-order-{index:D2}", isReturnClaim: false, fixture.Now);
             var package = NewInvoiceTestPackage(tenant.Id, connection.Id, orderId, Guid.CreateVersion7(), $"page-package-{index:D2}", fixture.Now);
+            if (index == 0) package.ConnectionId = hepsiburadaConnection.Id;
             package.CreatedBy = "MARKETPLACE_DETAIL";
             package.StatusOccurredAt = fixture.Now.AddDays(-(6 + index));
             package.MarketplaceInvoiceStatus = MarketplaceInvoiceStatus.NotInvoiced;
@@ -1601,6 +1605,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         {
             seedDb.Tenants.Add(tenant);
             seedDb.PlatformConnections.Add(connection);
+            seedDb.PlatformConnections.Add(hepsiburadaConnection);
             seedDb.Orders.AddRange(seededRows.Select(row => row.order));
             seedDb.ShipmentPackages.AddRange(seededRows.Select(row => row.package));
             await seedDb.SaveChangesAsync();
@@ -1640,6 +1645,8 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                     ProviderHasCredential: true), CancellationToken.None);
             var customerSearchPage = await service.WorkspacePageAsync(tenant.Id,
                 new InvoiceWorkspacePageQuery(PageNumber: 1, PageSize: 20, Tab: "DUE_SOON", Search: "test"), CancellationToken.None);
+            var hepsiburadaPage = await service.WorkspacePageAsync(tenant.Id,
+                new InvoiceWorkspacePageQuery(PageNumber: 1, PageSize: 20, Tab: "DUE_SOON", PlatformCodes: ["HEPSIBURADA"]), CancellationToken.None);
 
             Assert.Equal(21, firstPage.TotalCount);
             Assert.Equal(21, allPage.TotalCount);
@@ -1662,6 +1669,8 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             Assert.Equal(seededRows[20].package.Id, Assert.Single(searchedPage.Items).PackageId);
             Assert.Equal(21, customerSearchPage.TotalCount);
             Assert.Equal("Test", customerSearchPage.Items[0].CustomerName);
+            Assert.Equal(1, hepsiburadaPage.TotalCount);
+            Assert.Equal("HEPSIBURADA", Assert.Single(hepsiburadaPage.Items).PlatformCode);
         }
         finally
         {
