@@ -5,6 +5,7 @@ import { Pagination, Tabs, Toast, UiIcon, type UiIconName } from '../../shared/c
 import { statusLabel } from '../../shared/status-labels'
 import { marketplaceQuestionSyncChange, marketplaceQuestionSyncPresentation } from './marketplace-question-sync'
 import { hasEligibleOneTimeInvoiceSourceFailure } from './one-time-invoice-delivery-visibility'
+import { oneTimeInvoiceDeliveryIdempotencyKey } from './one-time-invoice-delivery-idempotency'
 
 type JobStatus = 'PENDING' | 'LEASED' | 'RETRY_SCHEDULED' | 'BLOCKED' | 'MANUAL_REVIEW' | 'SUCCEEDED' | 'DEAD' | 'CANCELLED'
 type JobSummary = {
@@ -433,7 +434,7 @@ export function JobsPage({ me }: { me: Me }) {
   const oneTimeInvoiceDelivery = useMutation({
     mutationFn: ({ id, confirmed, orderNumber }: { id: string; confirmed: boolean; orderNumber: string }) => hubApi<JobDetail>(`/jobs/${id}/invoice-delivery-once`, {
       method: 'POST',
-      headers: { 'Idempotency-Key': `one-time-invoice-delivery:${id}` },
+      headers: { 'Idempotency-Key': oneTimeInvoiceDeliveryIdempotencyKey(id) },
       body: JSON.stringify({ confirmed, orderNumber })
     }),
     onSuccess: async data => {
