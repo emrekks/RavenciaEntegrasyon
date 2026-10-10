@@ -67,4 +67,12 @@ public sealed class InvoiceDeliveryRecoveryPolicyTests
 
         Assert.Equal(InvoiceDeliveryRecoveryAction.StopRejected, result);
     }
+
+    [Theory]
+    [InlineData("HEPSIBURADA", 3, true)]
+    [InlineData("hepsiburada", 4, true)]
+    [InlineData("HEPSIBURADA", 2, false)]
+    [InlineData("TRENDYOL", 20, false)]
+    public void StopsRepeatedHepsiburadaServerFailuresOnlyAtTheConfiguredLimit(string platformCode, int failureCount, bool expected) =>
+        Assert.Equal(expected, InvoiceDeliveryRecoveryPolicy.ShouldStopAfterRemoteFailures(platformCode, failureCount));
 }

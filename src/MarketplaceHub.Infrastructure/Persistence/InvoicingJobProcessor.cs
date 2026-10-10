@@ -212,6 +212,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             ? null
             : await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.OrderId).Select(x => new { x.OrderNumber, x.CustomerSnapshotJson }).SingleOrDefaultAsync(cancellationToken);
         if (package is null) return false;
+        var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.ConnectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
 
         var state = await LoadDeliveryState(tenantId, invoice.Id, cancellationToken);
         if (oneTimeAuthorization is not null
@@ -259,6 +260,24 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             throw new JobProcessingException(JobExecutionResult.Blocked("ONE_TIME_INVOICE_PRIOR_ATTEMPT_UNSAFE", "Önceki teslim sonucu tek seferlik yeniden gönderim için güvenli değil."));
         if (state?.Status == "UNKNOWN")
         {
+            if (string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase))
+            {
+                var liveReadback = await marketplace.QueryDeliveryAsync(
+                    Context(tenantId, package.ConnectionId, correlationId, $"delivery-recovery-read:{invoice.Id:N}"),
+                    new(package.ExternalPackageId, order?.OrderNumber),
+                    cancellationToken);
+                if (!liveReadback.IsSuccess)
+                    throw JobProcessingException.FromAdapter(liveReadback.Error!);
+
+                // Hepsiburada exposes hasInvoice on order detail. Refresh the
+                // decision from this live read instead of waiting for an order
+                // stream that may not update MarketplaceInvoiceObservedAt.
+                package.MarketplaceInvoiceStatus = MarketplaceInvoiceStatePolicy.FromRemote(liveReadback.Value!.RawStatus);
+                package.MarketplaceInvoiceRawStatus = liveReadback.Value.RawStatus;
+                package.MarketplaceInvoiceNumber = null;
+                package.MarketplaceInvoiceObservedAt = timeProvider.GetUtcNow();
+            }
+
             var recovery = InvoiceDeliveryRecoveryPolicy.Decide(
                 package.MarketplaceInvoiceStatus,
                 package.MarketplaceInvoiceNumber,
@@ -276,6 +295,25 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                     await db.SaveChangesAsync(cancellationToken);
                     return true;
                 case InvoiceDeliveryRecoveryAction.RetryDelivery when oneTimeAuthorization is null:
+                    if (InvoiceDeliveryRecoveryPolicy.ShouldStopAfterRemoteFailures(
+                        platformCode,
+                        await db.MarketplaceDeliveries.AsNoTracking().CountAsync(
+                            attempt => attempt.TenantId == tenantId
+                                && attempt.InvoiceId == invoice.Id
+                                && attempt.ErrorCode == "HEPSIBURADA_REMOTE_ERROR",
+                            cancellationToken)))
+                    {
+                        const string errorCode = "HEPSIBURADA_INVOICE_DELIVERY_REPEATED_500";
+                        AppendDeliveryHistory(state, "FAILED", state.ExternalReference, errorCode, timeProvider.GetUtcNow());
+                        invoice.Status = InvoiceStatus.ManualReview;
+                        invoice.LastErrorCode = errorCode;
+                        invoice.UpdatedAt = timeProvider.GetUtcNow();
+                        invoice.Version++;
+                        await db.SaveChangesAsync(cancellationToken);
+                        throw new JobProcessingException(JobExecutionResult.ManualReview(
+                            errorCode,
+                            "Hepsiburada faturayı üç veya daha fazla kez HTTP 500 ile reddetti. Siparişte fatura görünmediği doğrudan doğrulandı; yeni otomatik gönderim durduruldu."));
+                    }
                     AppendDeliveryHistory(state, "RETRYABLE_FAILURE", state.ExternalReference, "REMOTE_NOT_INVOICED", timeProvider.GetUtcNow());
                     invoice.Status = InvoiceStatus.MarketplacePending;
                     invoice.LastErrorCode = null;
@@ -320,7 +358,6 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             ["invoiceNumber"] = invoice.InvoiceNumber,
             ["micro"] = IsMicroExport(order?.CustomerSnapshotJson)
         };
-        var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.ConnectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
         if (string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase))
         {
             deliveryPayload["arrangementDate"] = invoice.IssuedAt?.ToString("O", System.Globalization.CultureInfo.InvariantCulture);

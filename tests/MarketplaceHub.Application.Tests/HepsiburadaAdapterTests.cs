@@ -1909,6 +1909,17 @@ public sealed class HepsiburadaAdapterTests
     }
 
     [Fact]
+    public void InvoiceFailureDetailsKeepUsefulFieldsAndRedactPersonalData()
+    {
+        var details = HepsiburadaHttpClient.SafeInvoiceErrorDetails("""
+            {"errorCode":"HB-500","message":"Cannot attach invoice for 12345678901, customer test@example.com; see https://example.test/private"}
+            """);
+
+        Assert.Equal("errorCode=HB-500 | message=Cannot attach invoice for [id], customer [email]; see [url]", details);
+        Assert.Null(HepsiburadaHttpClient.SafeInvoiceErrorDetails("<html>internal error</html>"));
+    }
+
+    [Fact]
     public void InvoiceStatusMapper_ReadsInvoiceFlagFromLineItemsWhenOrderLevelFieldIsAbsent()
     {
         using var json = JsonDocument.Parse("""

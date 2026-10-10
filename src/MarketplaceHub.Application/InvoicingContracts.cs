@@ -90,6 +90,12 @@ public enum InvoiceDeliveryRecoveryAction
 
 public static class InvoiceDeliveryRecoveryPolicy
 {
+    public const int HepsiburadaRemoteFailureLimit = 3;
+
+    public static bool ShouldStopAfterRemoteFailures(string? platformCode, int failureCount) =>
+        string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
+        && failureCount >= HepsiburadaRemoteFailureLimit;
+
     public static InvoiceDeliveryRecoveryAction Decide(
         MarketplaceInvoiceStatus marketplaceStatus,
         string? marketplaceInvoiceNumber,
