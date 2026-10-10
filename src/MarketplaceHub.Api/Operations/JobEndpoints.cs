@@ -26,7 +26,7 @@ public static class JobEndpoints
             if (tenant is null) return Unauthorized(http);
             if (RequireIdempotency(http) is { } idempotencyFailure) return idempotencyFailure;
             if (!command.Confirmed) return Problem(http, new("EXPLICIT_CONFIRMATION_REQUIRED", "Bu tek seferlik dış fatura iletimi için açık onay zorunludur.", 422));
-            if (!OneTimeInvoiceDeliveryPolicy.IsAuthorizedTarget(command.OrderNumber)) return Problem(http, new("ONE_TIME_INVOICE_ORDER_NOT_AUTHORIZED", "Tek seferlik fatura iletimi yalnızca 4486229624 numaralı sipariş için yetkilendirildi.", 403));
+            if (!OneTimeInvoiceDeliveryPolicy.IsAuthorizedTarget(command.OrderNumber)) return Problem(http, new("ONE_TIME_INVOICE_ORDER_NOT_AUTHORIZED", "Tek seferlik fatura iletimi yalnızca yetkilendirilmiş test siparişleri için yetkilendirildi.", 403));
             var result = await service.EnqueueOneTimeInvoiceDeliveryAsync(
                 tenant.TenantId,
                 id,

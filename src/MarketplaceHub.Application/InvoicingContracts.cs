@@ -31,16 +31,21 @@ public static class OneTimeInvoiceDeliveryPolicy
     public const string DeliveryAlreadyFailedErrorCode = "DELIVERY_ALREADY_FAILED";
 
     public static bool IsAuthorizedTarget(string? orderNumber) =>
-        string.Equals(orderNumber, TargetOrderNumber, StringComparison.Ordinal);
+        orderNumber is TargetOrderNumber or "4034357330";
+
+    public static bool IsAuthorizedStageDocument(string? orderNumber, Guid invoiceId) =>
+        orderNumber == "4034357330" && invoiceId == Guid.Parse("01a125c4-a478-74a8-8865-943228b09515")
+        || orderNumber == TargetOrderNumber && invoiceId == Guid.Parse("01a121b0-28bf-7bc7-9e3e-0c1ca397c0ae");
 
     public static bool IsEligibleSourceFailure(string? latestErrorCode, bool hasPriorNoWriteAttempt) =>
-        string.Equals(latestErrorCode, PriorNoWriteFailureCode, StringComparison.Ordinal)
+        latestErrorCode == InvoiceMarketplaceRetryPolicy.RepeatedRemoteFailure
+        || string.Equals(latestErrorCode, PriorNoWriteFailureCode, StringComparison.Ordinal)
         || string.Equals(latestErrorCode, DeliveryAlreadyFailedErrorCode, StringComparison.Ordinal)
             && hasPriorNoWriteAttempt;
 
     public static bool IsSafePriorFailure(string? status, string? errorCode, string? externalReference) =>
         string.Equals(status, "FAILED", StringComparison.Ordinal)
-        && string.Equals(errorCode, PriorNoWriteFailureCode, StringComparison.Ordinal)
+        && (errorCode == PriorNoWriteFailureCode || errorCode == InvoiceMarketplaceRetryPolicy.RepeatedRemoteFailure)
         && string.IsNullOrWhiteSpace(externalReference);
 }
 

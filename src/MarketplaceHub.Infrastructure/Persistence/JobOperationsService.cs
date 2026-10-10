@@ -93,7 +93,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         CancellationToken cancellationToken)
     {
         if (!OneTimeInvoiceDeliveryPolicy.IsAuthorizedTarget(orderNumber))
-            return ServiceResult<JobDetailView>.Fail("ONE_TIME_INVOICE_ORDER_NOT_AUTHORIZED", "Tek seferlik fatura iletimi yalnızca 4486229624 numaralı sipariş için yetkilendirildi.", 403);
+            return ServiceResult<JobDetailView>.Fail("ONE_TIME_INVOICE_ORDER_NOT_AUTHORIZED", "Tek seferlik fatura iletimi yalnızca yetkilendirilmiş test siparişleri için yetkilendirildi.", 403);
 
         var sourceJob = await db.IntegrationJobs.AsNoTracking()
             .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == jobId, cancellationToken);
@@ -114,7 +114,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         if (invoiceId is null) return ServiceResult<JobDetailView>.Fail("INVOICE_JOB_PAYLOAD_INVALID", "Fatura iletim job'unda geçerli bir fatura kimliği bulunamadı.", 409);
         var invoice = await db.Invoices.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == invoiceId.Value, cancellationToken);
         if (invoice is null) return ServiceResult<JobDetailView>.Fail("INVOICE_NOT_FOUND", "İletilecek fatura kaydı bulunamadı.", 404);
-        if (invoice.Status is not (InvoiceStatus.Accepted or InvoiceStatus.MarketplaceFailed)
+        if (!InvoiceMarketplaceRetryPolicy.CanRetryDelivery(invoice.Status, invoice.LastErrorCode)
             || string.IsNullOrWhiteSpace(invoice.InvoiceNumber)
             || invoice.PackageId is null)
             return ServiceResult<JobDetailView>.Fail("ONE_TIME_INVOICE_NOT_READY", "Siparişin kesilmiş, numarası bulunan ve pazaryerine iletime hazır faturası yok.", 409);
@@ -130,8 +130,9 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             .Where(x => x.TenantId == tenantId && x.Id == invoice.OrderId)
             .Select(x => new { x.OrderNumber })
             .SingleOrDefaultAsync(cancellationToken);
-        if (order is null || !OneTimeInvoiceDeliveryPolicy.IsAuthorizedTarget(order.OrderNumber))
-            return ServiceResult<JobDetailView>.Fail("ONE_TIME_INVOICE_ORDER_MISMATCH", "Fatura 4486229624 numaralı siparişe ait değil.", 409);
+        if (order is null || !string.Equals(order.OrderNumber, orderNumber, StringComparison.Ordinal)
+            || !OneTimeInvoiceDeliveryPolicy.IsAuthorizedTarget(order.OrderNumber))
+            return ServiceResult<JobDetailView>.Fail("ONE_TIME_INVOICE_ORDER_MISMATCH", "Fatura onaylanan siparişe ait değil.", 409);
 
         var connection = await db.PlatformConnections.AsNoTracking()
             .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == package.ConnectionId, cancellationToken);
@@ -159,7 +160,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             || latestHistory is not null && !OneTimeInvoiceDeliveryPolicy.IsSafePriorFailure(latestHistory.Status, latestHistory.ErrorCode, latestHistory.ExternalReference))
             return ServiceResult<JobDetailView>.Fail("ONE_TIME_INVOICE_PRIOR_ATTEMPT_UNSAFE", "Önceki pazaryeri denemesinin dış etkisi kesin olarak dışlanamadığı için yeniden gönderim engellendi.", 409);
 
-        var dedupKey = $"one-time-invoice-delivery:{invoice.Id:N}:{OneTimeInvoiceDeliveryPolicy.TargetOrderNumber}";
+        var dedupKey = $"one-time-invoice-delivery:{invoice.Id:N}:{orderNumber}:stage-test-20261010";
         var existing = await db.IntegrationJobs.SingleOrDefaultAsync(x =>
             x.TenantId == tenantId && x.JobType == InvoicingJobTypes.MarketplaceDelivery && x.JobDedupKey == dedupKey,
             cancellationToken);
@@ -171,7 +172,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             invoiceId = invoice.Id,
             oneTimeInvoiceDelivery = new
             {
-                orderNumber = OneTimeInvoiceDeliveryPolicy.TargetOrderNumber,
+                orderNumber,
                 sourceJobId = sourceJob.Id
             }
         });

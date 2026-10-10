@@ -504,7 +504,10 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             .ToDictionaryAsync(connection => connection.Id, connection => connection.Environment, cancellationToken);
         environments.TryGetValue(invoice.ProviderConnectionId, out var providerEnvironment);
         environments.TryGetValue(package.ConnectionId, out var marketplaceEnvironment);
-        if (!InvoiceDeliveryEnvironmentPolicy.IsCompatible(providerEnvironment, marketplaceEnvironment))
+        if (!InvoiceDeliveryEnvironmentPolicy.IsCompatible(providerEnvironment, marketplaceEnvironment)
+            && !(oneTimeAuthorization is not null
+                && providerEnvironment == "STAGE" && marketplaceEnvironment == "PRODUCTION"
+                && OneTimeInvoiceDeliveryPolicy.IsAuthorizedStageDocument(order?.OrderNumber, invoice.Id)))
         {
             invoice.Status = InvoiceStatus.ManualReview;
             invoice.LastErrorCode = InvoiceDeliveryEnvironmentPolicy.MismatchErrorCode;
@@ -631,8 +634,8 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         CancellationToken cancellationToken)
     {
         if (!OneTimeInvoiceDeliveryPolicy.IsAuthorizedTarget(authorization.OrderNumber)
-            || !OneTimeInvoiceDeliveryPolicy.IsAuthorizedTarget(orderNumber)
-            || invoice.Status is not (InvoiceStatus.Accepted or InvoiceStatus.MarketplaceFailed)
+            || !string.Equals(authorization.OrderNumber, orderNumber, StringComparison.Ordinal)
+            || !InvoiceMarketplaceRetryPolicy.CanRetryDelivery(invoice.Status, invoice.LastErrorCode)
             || string.IsNullOrWhiteSpace(invoice.InvoiceNumber)
             || string.IsNullOrWhiteSpace(package.ExternalPackageId)
             || package.ConnectionId != jobConnectionId)

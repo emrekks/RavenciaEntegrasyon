@@ -7,7 +7,7 @@ export function hasEligibleOneTimeInvoiceSourceFailure(
   latestErrorCode: string | null,
   attempts: readonly InvoiceDeliveryAttempt[],
 ): boolean {
-  if (latestErrorCode === priorNoWriteFailureCode) return true
+  if (latestErrorCode === 'HEPSIBURADA_INVOICE_DELIVERY_REPEATED_500' || latestErrorCode === priorNoWriteFailureCode) return true
   return latestErrorCode === deliveryAlreadyFailedCode
     && attempts.some(attempt => !attempt.succeeded && attempt.errorCode === priorNoWriteFailureCode)
 }

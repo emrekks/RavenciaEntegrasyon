@@ -6,6 +6,19 @@ namespace MarketplaceHub.Application.Tests;
 public sealed class OneTimeInvoiceDeliveryPolicyTests
 {
     [Fact]
+    public void StageExceptionIsBoundToExactInvoiceAndOrder()
+    {
+        var invoice = Guid.Parse("01a125c4-a478-74a8-8865-943228b09515");
+        Assert.True(OneTimeInvoiceDeliveryPolicy.IsAuthorizedStageDocument("4034357330", invoice));
+        Assert.False(OneTimeInvoiceDeliveryPolicy.IsAuthorizedStageDocument("4486229624", invoice));
+        Assert.False(OneTimeInvoiceDeliveryPolicy.IsAuthorizedStageDocument("4034357330", Guid.NewGuid()));
+        Assert.True(OneTimeInvoiceDeliveryPolicy.IsAuthorizedTarget("4034357330"));
+        Assert.True(OneTimeInvoiceDeliveryPolicy.IsEligibleSourceFailure(InvoiceMarketplaceRetryPolicy.RepeatedRemoteFailure, false));
+        Assert.True(OneTimeInvoiceDeliveryPolicy.IsSafePriorFailure("FAILED", InvoiceMarketplaceRetryPolicy.RepeatedRemoteFailure, null));
+        Assert.False(OneTimeInvoiceDeliveryPolicy.IsSafePriorFailure("UNKNOWN", InvoiceMarketplaceRetryPolicy.RepeatedRemoteFailure, null));
+    }
+
+    [Fact]
     public void TargetOrderIsExactAndCaseSensitive()
     {
         Assert.True(OneTimeInvoiceDeliveryPolicy.IsAuthorizedTarget("4486229624"));
