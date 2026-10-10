@@ -69,6 +69,55 @@ public sealed class InvoiceDeliveryRecoveryPolicyTests
     }
 
     [Fact]
+    public void ConfirmsDelayedHepsiburadaReadbackOnlyForTheSameAuthorizedAcceptedAttempt()
+    {
+        Assert.True(InvoiceDeliveryRecoveryPolicy.ConfirmsAcceptedHepsiburadaAttemptReadback(
+            isAuthorizedStageDocument: true,
+            deliveryStatus: "UNKNOWN",
+            deliveryErrorCode: InvoiceDeliveryRecoveryPolicy.HepsiburadaAcceptedButReadbackMissingErrorCode,
+            observedMarketplaceStatus: MarketplaceInvoiceStatus.Invoiced,
+            observedAt: FreshReadAt,
+            acceptedAttemptAt: AttemptAt));
+    }
+
+    [Theory]
+    [InlineData(false, "UNKNOWN", InvoiceDeliveryRecoveryPolicy.HepsiburadaAcceptedButReadbackMissingErrorCode, MarketplaceInvoiceStatus.Invoiced, true)]
+    [InlineData(true, "FAILED", InvoiceDeliveryRecoveryPolicy.HepsiburadaAcceptedButReadbackMissingErrorCode, MarketplaceInvoiceStatus.Invoiced, true)]
+    [InlineData(true, "UNKNOWN", "DELIVERY_TIMEOUT", MarketplaceInvoiceStatus.Invoiced, true)]
+    [InlineData(true, "UNKNOWN", InvoiceDeliveryRecoveryPolicy.HepsiburadaAcceptedButReadbackMissingErrorCode, MarketplaceInvoiceStatus.NotInvoiced, true)]
+    [InlineData(true, "UNKNOWN", InvoiceDeliveryRecoveryPolicy.HepsiburadaAcceptedButReadbackMissingErrorCode, MarketplaceInvoiceStatus.Invoiced, false)]
+    public void DoesNotAcceptGenericOrStaleHepsiburadaInvoiceObservations(
+        bool isAuthorizedStageDocument,
+        string deliveryStatus,
+        string deliveryErrorCode,
+        MarketplaceInvoiceStatus observedMarketplaceStatus,
+        bool observedAfterAttempt)
+    {
+        Assert.False(InvoiceDeliveryRecoveryPolicy.ConfirmsAcceptedHepsiburadaAttemptReadback(
+            isAuthorizedStageDocument,
+            deliveryStatus,
+            deliveryErrorCode,
+            observedMarketplaceStatus,
+            observedAfterAttempt ? FreshReadAt : AttemptAt,
+            AttemptAt));
+    }
+
+    [Theory]
+    [InlineData(InvoiceStatus.Completed, "CONFIRMED", null, true)]
+    [InlineData(InvoiceStatus.Completed, "CONFIRMED", "INV-1", false)]
+    [InlineData(InvoiceStatus.MarketplacePending, "CONFIRMED", null, false)]
+    [InlineData(InvoiceStatus.Completed, "UNKNOWN", null, false)]
+    public void PreservesPreviouslyConfirmedDeliveryWhenMarketplaceOmitsInvoiceNumber(
+        InvoiceStatus invoiceStatus,
+        string deliveryStatus,
+        string? remoteInvoiceNumber,
+        bool expected) =>
+        Assert.Equal(expected, InvoiceDeliveryRecoveryPolicy.ShouldPreservePreviouslyConfirmedDelivery(
+            invoiceStatus,
+            deliveryStatus,
+            remoteInvoiceNumber));
+
+    [Fact]
     public void RejectedInvoiceIsNotAutomaticallyResent()
     {
         var result = InvoiceDeliveryRecoveryPolicy.Decide(

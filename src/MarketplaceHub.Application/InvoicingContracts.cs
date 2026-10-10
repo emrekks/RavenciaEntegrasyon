@@ -111,10 +111,33 @@ public enum InvoiceDeliveryRecoveryAction
 public static class InvoiceDeliveryRecoveryPolicy
 {
     public const int HepsiburadaRemoteFailureLimit = 3;
+    public const string HepsiburadaAcceptedButReadbackMissingErrorCode = "HEPSIBURADA_INVOICE_DELIVERY_READBACK_MISSING";
 
     public static bool ShouldStopAfterRemoteFailures(string? platformCode, int failureCount) =>
         string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
         && failureCount >= HepsiburadaRemoteFailureLimit;
+
+    public static bool ConfirmsAcceptedHepsiburadaAttemptReadback(
+        bool isAuthorizedStageDocument,
+        string? deliveryStatus,
+        string? deliveryErrorCode,
+        MarketplaceInvoiceStatus observedMarketplaceStatus,
+        DateTimeOffset? observedAt,
+        DateTimeOffset acceptedAttemptAt) =>
+        isAuthorizedStageDocument
+        && string.Equals(deliveryStatus, "UNKNOWN", StringComparison.Ordinal)
+        && string.Equals(deliveryErrorCode, HepsiburadaAcceptedButReadbackMissingErrorCode, StringComparison.Ordinal)
+        && observedMarketplaceStatus == MarketplaceInvoiceStatus.Invoiced
+        && observedAt is { } readAt
+        && readAt > acceptedAttemptAt;
+
+    public static bool ShouldPreservePreviouslyConfirmedDelivery(
+        InvoiceStatus invoiceStatus,
+        string? deliveryStatus,
+        string? remoteInvoiceNumber) =>
+        invoiceStatus == InvoiceStatus.Completed
+        && string.Equals(deliveryStatus, "CONFIRMED", StringComparison.Ordinal)
+        && string.IsNullOrWhiteSpace(remoteInvoiceNumber);
 
     public static InvoiceDeliveryRecoveryAction Decide(
         MarketplaceInvoiceStatus marketplaceStatus,

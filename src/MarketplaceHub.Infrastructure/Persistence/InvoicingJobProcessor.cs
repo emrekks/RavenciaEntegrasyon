@@ -435,6 +435,25 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 package.MarketplaceInvoiceRawStatus = liveReadback.Value.RawStatus;
                 package.MarketplaceInvoiceNumber = null;
                 package.MarketplaceInvoiceObservedAt = timeProvider.GetUtcNow();
+
+                if (OneTimeInvoiceDeliveryPolicy.IsAuthorizedStageDocument(order?.OrderNumber, invoice.Id)
+                    && InvoiceDeliveryRecoveryPolicy.ConfirmsAcceptedHepsiburadaAttemptReadback(
+                        isAuthorizedStageDocument: true,
+                        state.Status,
+                        state.ErrorCode,
+                        package.MarketplaceInvoiceStatus,
+                        package.MarketplaceInvoiceObservedAt,
+                        state.UpdatedAt))
+                {
+                    var confirmedAt = timeProvider.GetUtcNow();
+                    AppendDeliveryHistory(state, "CONFIRMED", liveReadback.Value.ExternalReference ?? package.ExternalPackageId, null, confirmedAt);
+                    invoice.Status = InvoiceStatus.Completed;
+                    invoice.LastErrorCode = null;
+                    invoice.UpdatedAt = confirmedAt;
+                    invoice.Version++;
+                    await db.SaveChangesAsync(cancellationToken);
+                    return true;
+                }
             }
 
             var recovery = InvoiceDeliveryRecoveryPolicy.Decide(
@@ -662,9 +681,13 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         MarketplaceDeliveryState? state,
         CancellationToken cancellationToken)
     {
+        var reconcileAcceptedButDelayedReadback = OneTimeInvoiceDeliveryPolicy.IsAuthorizedStageDocument(orderNumber, invoice.Id)
+            && invoice.Status is InvoiceStatus.MarketplacePending or InvoiceStatus.ManualReview
+            && state?.Status == "UNKNOWN"
+            && state.ErrorCode == InvoiceDeliveryRecoveryPolicy.HepsiburadaAcceptedButReadbackMissingErrorCode;
         if (!OneTimeInvoiceDeliveryPolicy.IsAuthorizedTarget(authorization.OrderNumber)
             || !string.Equals(authorization.OrderNumber, orderNumber, StringComparison.Ordinal)
-            || !InvoiceMarketplaceRetryPolicy.CanRetryDelivery(invoice.Status, invoice.LastErrorCode)
+            || !InvoiceMarketplaceRetryPolicy.CanRetryDelivery(invoice.Status, invoice.LastErrorCode) && !reconcileAcceptedButDelayedReadback
             || string.IsNullOrWhiteSpace(invoice.InvoiceNumber)
             || string.IsNullOrWhiteSpace(package.ExternalPackageId)
             || package.ConnectionId != jobConnectionId)

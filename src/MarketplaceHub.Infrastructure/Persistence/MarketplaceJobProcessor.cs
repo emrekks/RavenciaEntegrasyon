@@ -6900,10 +6900,45 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             }
             else
             {
-                invoice.Status = InvoiceStatus.MarketplacePending;
-                invoice.LastErrorCode = "MARKETPLACE_INVOICE_IDENTITY_MISMATCH";
-                invoice.UpdatedAt = observedAt;
-                invoice.Version++;
+                var deliveryState = await db.MarketplaceDeliveryStates.SingleOrDefaultAsync(
+                    x => x.TenantId == invoice.TenantId && x.InvoiceId == invoice.Id,
+                    cancellationToken);
+                if (InvoiceDeliveryRecoveryPolicy.ShouldPreservePreviouslyConfirmedDelivery(
+                    invoice.Status,
+                    deliveryState?.Status,
+                    remoteInvoiceNumber))
+                    return;
+
+                var orderNumber = deliveryState is not null
+                    && deliveryState.Status == "UNKNOWN"
+                    && deliveryState.ErrorCode == InvoiceDeliveryRecoveryPolicy.HepsiburadaAcceptedButReadbackMissingErrorCode
+                    ? await db.Orders.AsNoTracking().Where(x => x.TenantId == package.TenantId && x.Id == package.OrderId).Select(x => x.OrderNumber).SingleOrDefaultAsync(cancellationToken)
+                    : null;
+                var sameAttemptProof = OneTimeInvoiceDeliveryPolicy.IsAuthorizedStageDocument(orderNumber, invoice.Id)
+                    && deliveryState is not null
+                    && InvoiceDeliveryRecoveryPolicy.ConfirmsAcceptedHepsiburadaAttemptReadback(
+                        isAuthorizedStageDocument: true,
+                        deliveryState.Status,
+                        deliveryState.ErrorCode,
+                        incomingStatus,
+                        observedAt,
+                        deliveryState.UpdatedAt);
+
+                if (sameAttemptProof && deliveryState is not null)
+                {
+                    RecordAcceptedHepsiburadaReadbackProof(deliveryState, package, observedAt);
+                    invoice.Status = InvoiceStatus.Completed;
+                    invoice.LastErrorCode = null;
+                    invoice.UpdatedAt = observedAt;
+                    invoice.Version++;
+                }
+                else
+                {
+                    invoice.Status = InvoiceStatus.MarketplacePending;
+                    invoice.LastErrorCode = "MARKETPLACE_INVOICE_IDENTITY_MISMATCH";
+                    invoice.UpdatedAt = observedAt;
+                    invoice.Version++;
+                }
             }
         }
         else if (incomingStatus == MarketplaceInvoiceStatus.Rejected && invoice.Status is InvoiceStatus.Submitted or InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending)
@@ -6960,6 +6995,35 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         state.ExternalIdempotencyKey = proofKey;
         state.RequestHash = proofHash;
         state.DeliveryType = "LINK";
+        state.Status = "CONFIRMED";
+        state.ExternalReference = package.ExternalPackageId;
+        state.ErrorCode = null;
+        state.UpdatedAt = observedAt;
+        state.CompletedAt = observedAt;
+        state.Version++;
+    }
+
+    private void RecordAcceptedHepsiburadaReadbackProof(MarketplaceDeliveryState state, ShipmentPackage package, DateTimeOffset observedAt)
+    {
+        var sequence = state.AttemptNumber + 1;
+        db.MarketplaceDeliveries.Add(new MarketplaceDelivery
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = state.TenantId,
+            InvoiceId = state.InvoiceId,
+            ConnectionId = state.ConnectionId,
+            PackageId = state.PackageId,
+            AttemptNumber = sequence,
+            IdempotencyKey = $"delivery-event:{state.Id:N}:{sequence}",
+            ExternalIdempotencyKey = state.ExternalIdempotencyKey,
+            RequestHash = state.RequestHash,
+            DeliveryType = state.DeliveryType,
+            Status = "CONFIRMED",
+            ExternalReference = package.ExternalPackageId,
+            CreatedAt = observedAt,
+            CompletedAt = observedAt
+        });
+        state.AttemptNumber = sequence;
         state.Status = "CONFIRMED";
         state.ExternalReference = package.ExternalPackageId;
         state.ErrorCode = null;
