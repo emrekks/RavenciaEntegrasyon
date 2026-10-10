@@ -348,7 +348,7 @@ function JobDetailDrawer({ selected, detail, selectedIsRunning, elevated, retrya
         && ['BLOCKED', 'MANUAL_REVIEW', 'DEAD'].includes(job.status)
         && invoice != null
         && ['4486229624', '4034357330'].includes(invoice.orderNumber)
-        && ['ACCEPTED', 'MARKETPLACEFAILED', 'MANUALREVIEW'].includes(invoice!.status)
+        && ['ACCEPTED', 'MARKETPLACEFAILED', 'MANUALREVIEW'].includes(invoice.status.toUpperCase())
         && Boolean(invoice.invoiceNumber && invoice.externalPackageId)
       return <div className="jobs-reference-drawer-body">
         <JobStatusSummary job={job} />
