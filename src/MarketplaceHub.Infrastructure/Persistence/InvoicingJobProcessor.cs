@@ -327,16 +327,26 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         {
             // Provider URLs may require authentication. Publish only the already
             // stored PDF, through a document-bound bearer link, for this explicit delivery.
-            var document = await db.InvoiceDocuments.Where(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id && x.DocumentType == "PDF")
-                .OrderByDescending(x => x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
-            if (document is null) return false;
-            if (!Uri.TryCreate(document.PermanentUrl, UriKind.Absolute, out var documentUri)
-                || !documentUri.AbsolutePath.StartsWith("/api/v1/public/invoice-documents/", StringComparison.Ordinal))
+            var deliveryLinkDocument = await db.InvoiceDocuments.SingleOrDefaultAsync(x => x.TenantId == tenantId
+                && x.InvoiceId == invoice.Id && x.DocumentType == "MARKETPLACE_DELIVERY", cancellationToken);
+            if (deliveryLinkDocument is null)
             {
-                document.PermanentUrl = InvoiceDocumentLink.Create(dataProtection, configuration["Marketplace:PublicBaseUrl"] ?? "", tenantId, invoice.Id, document.Id);
+                var document = await db.InvoiceDocuments.Where(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id && x.DocumentType == "PDF")
+                    .OrderByDescending(x => x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
+                if (document is null) return false;
+                deliveryLinkDocument = new InvoiceDocument
+                {
+                    Id = Guid.CreateVersion7(), TenantId = tenantId, InvoiceId = invoice.Id,
+                    DocumentType = "MARKETPLACE_DELIVERY", FileAssetId = document.FileAssetId,
+                    Sha256 = document.Sha256, CreatedAt = timeProvider.GetUtcNow()
+                };
+                deliveryLinkDocument.PermanentUrl = InvoiceDocumentLink.Create(dataProtection, configuration["Marketplace:PublicBaseUrl"] ?? "", tenantId, invoice.Id, deliveryLinkDocument.Id);
+                db.InvoiceDocuments.Add(deliveryLinkDocument);
                 await db.SaveChangesAsync(cancellationToken);
             }
-            permanentUrl = document.PermanentUrl;
+            if (!Uri.TryCreate(deliveryLinkDocument.PermanentUrl, UriKind.Absolute, out var publicDocumentUri)
+                || !publicDocumentUri.AbsolutePath.StartsWith("/api/v1/public/invoice-documents/", StringComparison.Ordinal)) return false;
+            permanentUrl = deliveryLinkDocument.PermanentUrl;
         }
         if (state?.Status == "CONFIRMED") return true;
         if (oneTimeAuthorization is not null && state?.Status == "STARTED")

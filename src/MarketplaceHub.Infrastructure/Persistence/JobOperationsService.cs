@@ -160,7 +160,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             || latestHistory is not null && !OneTimeInvoiceDeliveryPolicy.IsSafePriorFailure(latestHistory.Status, latestHistory.ErrorCode, latestHistory.ExternalReference))
             return ServiceResult<JobDetailView>.Fail("ONE_TIME_INVOICE_PRIOR_ATTEMPT_UNSAFE", "Önceki pazaryeri denemesinin dış etkisi kesin olarak dışlanamadığı için yeniden gönderim engellendi.", 409);
 
-        var dedupKey = $"one-time-invoice-delivery:{invoice.Id:N}:{orderNumber}:stage-test-20261010";
+        var dedupKey = $"one-time-invoice-delivery:{invoice.Id:N}:{orderNumber}:stage-test-v2";
         var existing = await db.IntegrationJobs.SingleOrDefaultAsync(x =>
             x.TenantId == tenantId && x.JobType == InvoicingJobTypes.MarketplaceDelivery && x.JobDedupKey == dedupKey,
             cancellationToken);
