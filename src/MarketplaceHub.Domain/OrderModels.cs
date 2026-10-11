@@ -90,6 +90,10 @@ public static class MarketplaceInvoiceStatePolicy
         string? incomingInvoiceUrl,
         bool referencesAreAuthoritative)
     {
+        // Some marketplace reads only report a status and omit reference
+        // fields. Keep known values in that case; when both reference fields
+        // are present in the provider snapshot, null means the reference was
+        // removed and the persisted history keeps the previous value.
         if (!referencesAreAuthoritative)
             return (PreferNonEmptyReference(currentInvoiceNumber, incomingInvoiceNumber),
                 PreferNonEmptyReference(currentInvoiceUrl, incomingInvoiceUrl));
@@ -408,6 +412,20 @@ public sealed class ShipmentPackage
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public long Version { get; set; } = 1;
+}
+
+/// <summary>Append-only history of replaced or removed marketplace invoice references.</summary>
+public sealed class MarketplaceInvoiceReferenceHistory
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid OrderId { get; set; }
+    public Guid PackageId { get; set; }
+    public Guid ConnectionId { get; set; }
+    public string? InvoiceNumber { get; set; }
+    public string? InvoiceUrl { get; set; }
+    public required string ChangeReason { get; set; }
+    public DateTimeOffset ChangedAt { get; set; }
 }
 
 public static class ShipmentPackageClassification

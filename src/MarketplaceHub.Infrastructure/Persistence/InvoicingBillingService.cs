@@ -633,6 +633,16 @@ public sealed partial class InvoicingBillingService(
             .Where(package => package.TenantId == tenantId && packageIds.Contains(package.Id))
             .Select(package => new { package.Id, package.NetAmount, package.CargoTrackingNumber, package.MarketplaceInvoiceNumber, package.MarketplaceInvoiceUrl })
             .ToDictionaryAsync(package => package.Id, cancellationToken);
+        var previousPlatformReferences = await db.MarketplaceInvoiceReferenceHistories.AsNoTracking()
+            .Where(reference => reference.TenantId == tenantId && packageIds.Contains(reference.PackageId))
+            .OrderByDescending(reference => reference.ChangedAt)
+            .Select(reference => new { reference.PackageId, reference.InvoiceNumber, reference.InvoiceUrl, reference.ChangeReason, reference.ChangedAt })
+            .ToListAsync(cancellationToken);
+        var previousPlatformReferencesByPackage = previousPlatformReferences
+            .GroupBy(reference => reference.PackageId)
+            .ToDictionary(group => group.Key, group => (IReadOnlyList<MarketplaceInvoiceReferenceHistoryView>)group
+                .Select(reference => new MarketplaceInvoiceReferenceHistoryView(reference.InvoiceNumber, reference.InvoiceUrl, reference.ChangeReason, reference.ChangedAt))
+                .ToArray());
         var variantIds = lines.Where(line => line.VariantId != null).Select(line => line.VariantId!.Value).Distinct().ToArray();
         var lineSkus = lines.Select(line => line.Sku).Where(sku => !string.IsNullOrWhiteSpace(sku)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         var lineBarcodes = lines.Select(line => line.Barcode).Where(barcode => !string.IsNullOrWhiteSpace(barcode)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
@@ -812,7 +822,8 @@ public sealed partial class InvoicingBillingService(
                 deliveryStatus,
                 currentPlatformInvoiceUrl,
                 candidate.Package.MarketplaceInvoiceObservedAt,
-                allowedActions);
+                allowedActions,
+                previousPlatformReferencesByPackage.GetValueOrDefault(candidate.Package.Id) ?? []);
         }).ToList();
     }
 

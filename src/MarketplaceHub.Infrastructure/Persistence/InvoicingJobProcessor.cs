@@ -203,6 +203,8 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                             observation.VerifiedInvoiceNumber,
                             observation.VerifiedInvoiceLink,
                             observation.ReferencesAreAuthoritative);
+                    MarketplaceInvoiceReferenceHistoryRecorder.RecordPreviousReferences(
+                        db, targetPackage, references.InvoiceNumber, references.InvoiceUrl, observedAt, "FISCAL_PRECHECK");
                     targetPackage.MarketplaceInvoiceNumber = references.InvoiceNumber;
                     targetPackage.MarketplaceInvoiceUrl = references.InvoiceUrl;
                     targetPackage.MarketplaceInvoiceObservedAt = observedAt;
@@ -623,9 +625,11 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         var trackedPackage = await db.ShipmentPackages.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == package.Id, cancellationToken);
         if (trackedPackage is not null)
         {
+            MarketplaceInvoiceReferenceHistoryRecorder.RecordPreviousReferences(
+                db, trackedPackage, verifiedInvoiceNumber, verifiedInvoiceLink, now, "MANUAL_DELIVERY_READBACK");
             trackedPackage.MarketplaceInvoiceStatus = MarketplaceInvoiceStatus.Invoiced;
-            trackedPackage.MarketplaceInvoiceNumber = verifiedInvoiceNumber ?? document.InvoiceNumber;
-            trackedPackage.MarketplaceInvoiceUrl = verifiedInvoiceLink ?? document.DocumentUrl;
+            trackedPackage.MarketplaceInvoiceNumber = verifiedInvoiceNumber;
+            trackedPackage.MarketplaceInvoiceUrl = verifiedInvoiceLink;
             trackedPackage.MarketplaceInvoiceObservedAt = now;
             trackedPackage.UpdatedAt = now;
             trackedPackage.Version++;
@@ -794,8 +798,13 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 // stream that may not update MarketplaceInvoiceObservedAt.
                 package.MarketplaceInvoiceStatus = MarketplaceInvoiceStatePolicy.FromRemote(liveReadback.Value!.RawStatus);
                 package.MarketplaceInvoiceRawStatus = liveReadback.Value.RawStatus;
-                package.MarketplaceInvoiceNumber = null;
-                package.MarketplaceInvoiceObservedAt = timeProvider.GetUtcNow();
+                var readAt = timeProvider.GetUtcNow();
+                MarketplaceInvoiceReferenceHistoryRecorder.RecordPreviousReferences(
+                    db, package, liveReadback.Value.VerifiedInvoiceNumber, liveReadback.Value.VerifiedInvoiceLink,
+                    readAt, "DELIVERY_RECOVERY_READBACK");
+                package.MarketplaceInvoiceNumber = liveReadback.Value.VerifiedInvoiceNumber;
+                package.MarketplaceInvoiceUrl = liveReadback.Value.VerifiedInvoiceLink;
+                package.MarketplaceInvoiceObservedAt = readAt;
 
                 if (OneTimeInvoiceDeliveryPolicy.IsAuthorizedStageDocument(order?.OrderNumber, invoice.Id)
                     && InvoiceDeliveryRecoveryPolicy.ConfirmsAcceptedHepsiburadaAttemptReadback(
@@ -912,6 +921,8 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 latestMarketplaceInvoice.VerifiedInvoiceNumber,
                 latestMarketplaceInvoice.VerifiedInvoiceLink,
                 latestMarketplaceInvoice.ReferencesAreAuthoritative);
+        MarketplaceInvoiceReferenceHistoryRecorder.RecordPreviousReferences(
+            db, package, latestReferences.InvoiceNumber, latestReferences.InvoiceUrl, observedAt, "DELIVERY_PRECHECK");
         package.MarketplaceInvoiceNumber = latestReferences.InvoiceNumber;
         package.MarketplaceInvoiceUrl = latestReferences.InvoiceUrl;
         package.MarketplaceInvoiceObservedAt = observedAt;

@@ -80,7 +80,9 @@ public static class TrendyolJsonMapper
                     NullText(package, "invoiceStatus"),
                     NullText(package, "invoiceNumber", "invoiceNo", "invoiceSerialNumber"),
                     NullText(package, "invoiceLink", "invoiceUrl", "invoiceDocumentUrl"),
-                    FlexibleInstant(package, "invoiceUpdatedAt") ?? modified);
+                    FlexibleInstant(package, "invoiceUpdatedAt") ?? modified,
+                    ReferencesAreAuthoritative: HasAnyProperty(package, "invoiceNumber", "invoiceNo", "invoiceSerialNumber")
+                        && HasAnyProperty(package, "invoiceLink", "invoiceUrl", "invoiceDocumentUrl"));
                 var remotePackage = new RemotePackage(externalPackageId, FirstArrayText(package, "originPackageIds"), rawStatusPackage, modified, OrderCargoProvider(package), ScalarText(package, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber", "trackingInfoCode"), allocations, gross, discount, net, invoice, NormalizeCreatedBy(NullText(package, "createdBy")));
                 var dueAt = FlexibleInstant(package, "agreedDeliveryDate", "estimatedDeliveryEndDate", "lastDeliveryDate", "deliveryDate", "estimatedDeliveryStartDate", "packageLastModifiedDate", "packageDeliveryDate", "packageEstimatedDeliveryDate", "dueDate", "shipmentDueDate", "deliveryDueAt");
                 rows.Add(new(orderNumber, orderNumber, ordered, modified, Text(package, "currencyCode"), gross, discount, net,
@@ -229,8 +231,11 @@ public static class TrendyolJsonMapper
         return preferred with
         {
             RawStatus = FirstText(preferred.RawStatus, other.RawStatus),
-            InvoiceNumber = FirstText(preferred.InvoiceNumber, other.InvoiceNumber),
-            InvoiceUrl = FirstText(preferred.InvoiceUrl, other.InvoiceUrl),
+            // References belong to the selected observation. Backfilling a
+            // missing field from an older payload makes a removed/replaced
+            // platform link look current.
+            InvoiceNumber = preferred.InvoiceNumber,
+            InvoiceUrl = preferred.InvoiceUrl,
             SourceUpdatedAt = preferred.SourceUpdatedAt ?? other.SourceUpdatedAt
         };
     }
@@ -241,7 +246,12 @@ public static class TrendyolJsonMapper
     private static bool HasInvoiceObservation(RemotePackageInvoiceObservation? invoice) => invoice is not null
         && (!string.IsNullOrWhiteSpace(invoice.RawStatus)
             || !string.IsNullOrWhiteSpace(invoice.InvoiceNumber)
-            || !string.IsNullOrWhiteSpace(invoice.InvoiceUrl));
+            || !string.IsNullOrWhiteSpace(invoice.InvoiceUrl)
+            || invoice.ReferencesAreAuthoritative);
+
+    private static bool HasAnyProperty(JsonElement value, params string[] names) =>
+        value.ValueKind == JsonValueKind.Object
+        && value.EnumerateObject().Any(property => names.Contains(property.Name, StringComparer.OrdinalIgnoreCase));
 
     private static RemoteOrder? PreferOrderSnapshot(RemoteOrder? first, RemoteOrder? second) =>
         first is null ? second

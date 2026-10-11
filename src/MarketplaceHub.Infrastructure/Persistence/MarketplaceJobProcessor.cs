@@ -6925,7 +6925,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 incomingStatus,
                 observation?.SourceUpdatedAt,
                 observedAt);
-        var applyReferences = MarketplaceInvoiceStatePolicy.ShouldApplyReferenceUpdate(
+        var applyReferences = incomingStatus != MarketplaceInvoiceStatus.Unknown
+            && MarketplaceInvoiceStatePolicy.ShouldApplyReferenceUpdate(
             package.MarketplaceInvoiceSourceUpdatedAt,
             package.MarketplaceInvoiceObservedAt,
             observation?.SourceUpdatedAt,
@@ -6934,6 +6935,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         if (applyReferences && incomingStatus == MarketplaceInvoiceStatus.NotInvoiced)
         {
             referenceChanged = package.MarketplaceInvoiceNumber is not null || package.MarketplaceInvoiceUrl is not null;
+            if (referenceChanged)
+                MarketplaceInvoiceReferenceHistoryRecorder.RecordPreviousReferences(db, package, null, null, observedAt, "ORDER_RECONCILIATION");
             package.MarketplaceInvoiceNumber = null;
             package.MarketplaceInvoiceUrl = null;
         }
@@ -6949,6 +6952,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             var invoiceUrl = references.InvoiceUrl;
             referenceChanged = !string.Equals(invoiceNumber, package.MarketplaceInvoiceNumber, StringComparison.Ordinal)
                 || !string.Equals(invoiceUrl, package.MarketplaceInvoiceUrl, StringComparison.Ordinal);
+            if (referenceChanged)
+                MarketplaceInvoiceReferenceHistoryRecorder.RecordPreviousReferences(db, package, invoiceNumber, invoiceUrl, observedAt, "ORDER_RECONCILIATION");
             package.MarketplaceInvoiceNumber = invoiceNumber;
             package.MarketplaceInvoiceUrl = invoiceUrl;
         }

@@ -82,6 +82,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<OrderLine> OrderLines => Set<OrderLine>();
     public DbSet<OrderFinancialAllocation> OrderFinancialAllocations => Set<OrderFinancialAllocation>();
     public DbSet<ShipmentPackage> ShipmentPackages => Set<ShipmentPackage>();
+    public DbSet<MarketplaceInvoiceReferenceHistory> MarketplaceInvoiceReferenceHistories => Set<MarketplaceInvoiceReferenceHistory>();
     public DbSet<PackageLineAllocation> PackageLineAllocations => Set<PackageLineAllocation>();
     public DbSet<OrderStatusHistory> OrderStatusHistory => Set<OrderStatusHistory>();
     public DbSet<ShipmentDocument> ShipmentDocuments => Set<ShipmentDocument>();
@@ -214,6 +215,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         InvoiceDocument value => (value.TenantId, "invoices", "Invoice", value.InvoiceId, null),
         ManualOrderInvoiceDocument value => (value.TenantId, "invoices", "ManualOrderInvoiceDocument", value.Id, value.Version),
         ManualOrderInvoiceDeliveryState value => (value.TenantId, "invoices", "ManualOrderInvoiceDocument", value.DocumentId, value.Version),
+        MarketplaceInvoiceReferenceHistory value => (value.TenantId, "invoices", "MarketplaceInvoiceReferenceHistory", value.Id, null),
         MarketplaceDelivery value => (value.TenantId, "invoices", "Invoice", value.InvoiceId, null),
         MarketplaceDeliveryState value => (value.TenantId, "invoices", "Invoice", value.InvoiceId, value.Version),
         PlatformConnection value => (value.TenantId, "connections", "PlatformConnection", value.Id, value.Version),
@@ -239,6 +241,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             throw new InvalidOperationException("Invoice submission attempts are append-only.");
         if (ChangeTracker.Entries<MarketplaceDelivery>().Any(x => x.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Marketplace delivery attempts are append-only.");
+        if (ChangeTracker.Entries<MarketplaceInvoiceReferenceHistory>().Any(x => x.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("Marketplace invoice reference history is append-only.");
     }
 
     private static void ConfigureIdentity(ModelBuilder builder)

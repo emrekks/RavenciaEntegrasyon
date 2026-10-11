@@ -9,7 +9,7 @@ type InvoiceReferenceDocumentSource = {
 
 export function invoiceReferenceDocumentHref(item: InvoiceReferenceDocumentSource): string | null {
   for (const candidate of [item.currentPlatformInvoiceUrl ?? item.marketplaceInvoiceUrl, item.manualInvoiceDocumentUrl]) {
-    const safeUrl = safeInvoiceUrl(candidate)
+    const safeUrl = safeInvoiceReferenceUrl(candidate)
     if (safeUrl) return safeUrl
   }
 
@@ -20,7 +20,7 @@ export function invoiceReferenceDocumentHref(item: InvoiceReferenceDocumentSourc
 
 export function invoiceReferenceDocumentLabel(item: InvoiceReferenceDocumentSource): string | null {
   if (invoiceReferenceMarketplaceHref(item)) return 'Fatura linki'
-  if (safeInvoiceUrl(item.manualInvoiceDocumentUrl)) return 'Manuel belge'
+  if (safeInvoiceReferenceUrl(item.manualInvoiceDocumentUrl)) return 'Manuel belge'
   return item.invoiceId && item.invoiceDocumentAvailable ? 'Yerel PDF' : null
 }
 
@@ -30,10 +30,10 @@ export function platformInvoiceLinkUnavailable(item: InvoiceReferenceDocumentSou
 }
 
 export function invoiceReferenceMarketplaceHref(item: InvoiceReferenceDocumentSource): string | null {
-  return safeInvoiceUrl(item.currentPlatformInvoiceUrl ?? item.marketplaceInvoiceUrl)
+  return safeInvoiceReferenceUrl(item.currentPlatformInvoiceUrl ?? item.marketplaceInvoiceUrl)
 }
 
-function safeInvoiceUrl(candidate: string | null | undefined): string | null {
+export function safeInvoiceReferenceUrl(candidate: string | null | undefined): string | null {
     const documentUrl = candidate?.trim()
     if (!documentUrl) return null
     try {

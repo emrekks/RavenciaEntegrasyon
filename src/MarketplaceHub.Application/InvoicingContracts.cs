@@ -323,7 +323,14 @@ public sealed record InvoiceWorkspaceItemView(
     string DeliveryStatus = "NOT_SENT",
     string? CurrentPlatformInvoiceUrl = null,
     DateTimeOffset? LastSuccessfulCheckAt = null,
-    IReadOnlyList<string>? AllowedActions = null);
+    IReadOnlyList<string>? AllowedActions = null,
+    IReadOnlyList<MarketplaceInvoiceReferenceHistoryView>? PreviousPlatformInvoiceReferences = null);
+
+public sealed record MarketplaceInvoiceReferenceHistoryView(
+    string? InvoiceNumber,
+    string? InvoiceUrl,
+    string ChangeReason,
+    DateTimeOffset ChangedAt);
 
 public static class InvoiceWorkspaceActionPolicy
 {

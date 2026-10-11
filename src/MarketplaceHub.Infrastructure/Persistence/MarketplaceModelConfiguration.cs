@@ -10,6 +10,7 @@ internal static class MarketplaceModelConfiguration
         ConfigureConnectionEvidence(builder);
         ConfigureOrders(builder);
         ConfigureShipments(builder);
+        ConfigureMarketplaceInvoiceReferenceHistory(builder);
         ConfigureReturns(builder);
     }
 
@@ -135,6 +136,23 @@ internal static class MarketplaceModelConfiguration
         {
             entity.ToTable("cargo_provider_mappings", "sales"); entity.HasKey(x => x.Id); entity.Property(x => x.ExternalProviderId).HasMaxLength(256); entity.Property(x => x.ExternalProviderName).HasMaxLength(256); entity.Property(x => x.LocalProviderCode).HasMaxLength(96); entity.Property(x => x.Status).HasMaxLength(24); entity.Property(x => x.Version).IsConcurrencyToken();
             entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ExternalProviderId }).IsUnique(); entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
+        });
+    }
+
+    private static void ConfigureMarketplaceInvoiceReferenceHistory(ModelBuilder builder)
+    {
+        builder.Entity<MarketplaceInvoiceReferenceHistory>(entity =>
+        {
+            entity.ToTable("marketplace_invoice_reference_history", "sales", table =>
+                table.HasCheckConstraint("ck_marketplace_invoice_reference_history_has_reference", "\"InvoiceNumber\" IS NOT NULL OR \"InvoiceUrl\" IS NOT NULL"));
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.InvoiceNumber).HasMaxLength(256);
+            entity.Property(x => x.InvoiceUrl).HasMaxLength(2048);
+            entity.Property(x => x.ChangeReason).HasMaxLength(64);
+            entity.HasIndex(x => new { x.TenantId, x.PackageId, x.ChangedAt });
+            entity.HasOne<Order>().WithMany().HasForeignKey(x => new { x.TenantId, x.OrderId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ShipmentPackage>().WithMany().HasForeignKey(x => new { x.TenantId, x.PackageId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
         });
     }
 

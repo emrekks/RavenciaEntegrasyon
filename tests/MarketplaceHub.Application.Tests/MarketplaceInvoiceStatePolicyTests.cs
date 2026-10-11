@@ -49,7 +49,7 @@ public sealed class MarketplaceInvoiceStatePolicyTests
     }
 
     [Fact]
-    public void AuthoritativeInvoiceReferenceSnapshotCanReplaceAndClearChangedValues()
+    public void CurrentInvoiceReferenceSnapshotReplacesOrClearsOldValues()
     {
         var changed = MarketplaceInvoiceStatePolicy.MergeReferences(
             "INV-1", "https://market.example/old.pdf", " INV-2 ", null, referencesAreAuthoritative: true);
@@ -60,6 +60,11 @@ public sealed class MarketplaceInvoiceStatePolicyTests
             "INV-1", "https://market.example/old.pdf", "INV-2", null, referencesAreAuthoritative: false);
         Assert.Equal("INV-2", partialObservation.InvoiceNumber);
         Assert.Equal("https://market.example/old.pdf", partialObservation.InvoiceUrl);
+
+        var refreshedLink = MarketplaceInvoiceStatePolicy.MergeReferences(
+            "INV-1", "https://market.example/old.pdf", "INV-2", " https://market.example/new.pdf ", referencesAreAuthoritative: false);
+        Assert.Equal("INV-2", refreshedLink.InvoiceNumber);
+        Assert.Equal("https://market.example/new.pdf", refreshedLink.InvoiceUrl);
     }
 
     [Fact]
@@ -145,7 +150,27 @@ public sealed class MarketplaceInvoiceStatePolicyTests
         Assert.Equal("Invoiced", invoice.RawStatus);
         Assert.Equal("INV-1", invoice.InvoiceNumber);
         Assert.Equal("https://example.test/invoice.pdf", invoice.InvoiceUrl);
+        Assert.True(invoice.ReferencesAreAuthoritative);
         Assert.Equal(DateTimeOffset.FromUnixTimeMilliseconds(1760000000000), invoice.SourceUpdatedAt);
+    }
+
+    [Fact]
+    public void MapperTreatsExplicitEmptyInvoiceFieldsAsAuthoritativeRemoval()
+    {
+        const string json = """
+            {"content":[{"id":"pkg-1","orderNumber":"ord-1","status":"Delivered","lastModifiedDate":1760000000000,"invoiceStatus":"Invoiced","invoiceNumber":null,"invoiceLink":null,"lines":[{"lineId":"line-1","stockCode":"SKU-1","productName":"Test","quantity":1,"lineItemPrice":10,"vatRate":20}]}]}
+            """;
+
+        var result = TrendyolJsonMapper.Orders(json);
+        var invoice = Assert.Single(Assert.Single(result.Items).Packages).Invoice;
+
+        Assert.NotNull(invoice);
+        Assert.True(invoice.ReferencesAreAuthoritative);
+        var current = MarketplaceInvoiceStatePolicy.MergeReferences(
+            "INV-OLD", "https://example.test/old.pdf", invoice.InvoiceNumber, invoice.InvoiceUrl,
+            invoice.ReferencesAreAuthoritative);
+        Assert.Null(current.InvoiceNumber);
+        Assert.Null(current.InvoiceUrl);
     }
 
     [Fact]
