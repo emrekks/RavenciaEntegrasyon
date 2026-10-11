@@ -12231,7 +12231,7 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
   flex: 0 0 24px;
 }
 
-/* Keep each invoice/shipment badge on the cell's vertical midline; explanatory text hangs below it. */
+/* Keep each invoice/shipment badge on the cell's vertical midline; explanatory text hangs below it (date, error, delivery note stack under the badge). */
 .app-shell.stitch-shell main .invoice-reference-shipment,
 .app-shell.stitch-shell main .invoice-reference-status {
   grid-template: 1fr 34px 1fr / minmax(0, 1fr);
