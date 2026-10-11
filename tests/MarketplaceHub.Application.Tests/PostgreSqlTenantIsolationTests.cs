@@ -1247,7 +1247,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     [PostgreSqlFact]
     public async Task TrendyolOrderSync_RepairsLegacyZeroPackageHoldWhenRealPackageExists()
     {
-        var tenant = NewTenant("trendyol-zero-package-hold-repair");
+        var tenant = NewTenant("ty-zero-hold");
         var connection = NewQuestionConnection(tenant);
         var orderId = Guid.CreateVersion7();
         var lineId = Guid.CreateVersion7();
