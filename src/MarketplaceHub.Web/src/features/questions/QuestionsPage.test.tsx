@@ -169,7 +169,7 @@ describe('QuestionsPage workspace flows', () => {
     expect(params.get('dateTo')).toBe(new Date('2026-10-05T23:59:59').toISOString())
     expect(params.get('search')).toBe('bluz 01')
 
-    act(() => button('Sipariş soruları').click())
+    act(() => button('Sipariş Soruları').click())
     await settle()
     params = lastQuestionRequest()
     expect(params.get('kind')).toBe('ORDER')
@@ -190,11 +190,11 @@ describe('QuestionsPage workspace flows', () => {
     act(() => button('Cevabı kapat').click())
     await settle()
 
-    act(() => button('Ürün soruları').click())
+    act(() => button('Ürün Soruları').click())
     await settle()
     expect(lastQuestionRequest().get('kind')).toBe('PRODUCT')
     expect(lastQuestionRequest().get('platform')).toBeNull()
-    act(() => button('Hazır cevaplar').click())
+    act(() => button('Hazır Cevaplar').click())
     await settle()
     expect(container.querySelector('.rv-question-template-editor')).not.toBeNull()
     expect(container.textContent).toContain('Ölçü bilgisi')
@@ -202,7 +202,7 @@ describe('QuestionsPage workspace flows', () => {
 
   it('creates, edits, and deletes shared quick replies using mocked API calls', async () => {
     await renderPage()
-    act(() => button('Hazır cevaplar').click())
+    act(() => button('Hazır Cevaplar').click())
     await settle()
     const fields = container.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('.rv-question-template-editor input, .rv-question-template-editor textarea')
     input(fields[0] as HTMLInputElement, 'Kargo bilgisi')

@@ -11334,10 +11334,10 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .app-shell.stitch-shell main .invoice-reference-actions-trigger { display: inline-flex; width: 100%; min-width: 0; min-height: 34px; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 9px; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-sm); font-size: var(--rv-font-size-xs); font-weight: 700; }
 .app-shell.stitch-shell main .invoice-reference-actions-trigger:hover:not(:disabled) { background: var(--rv-color-surface-soft); border-color: var(--rv-color-border-strong); }
 .invoice-reference-actions-trigger .ui-icon { width: 14px; height: 14px; flex: 0 0 14px; }
-.invoice-reference-actions-popover { position: fixed; z-index: var(--rv-z-dropdown); display: grid; width: max-content; min-width: min(240px, calc(100vw - 32px)); max-width: calc(100vw - 32px); gap: 6px; padding: 8px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); box-shadow: var(--rv-shadow-lg); }
-.invoice-reference-actions-popover > button { display: block; width: 100%; min-width: 0; min-height: 36px; padding: 7px 9px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-sm); font-size: var(--rv-font-size-xs); font-weight: 600; text-align: left; white-space: normal; }
-.invoice-reference-actions-popover > button:hover:not(:disabled) { color: var(--rv-color-ink); background: var(--rv-color-primary-soft); border-color: color-mix(in srgb, var(--rv-color-primary) 45%, var(--rv-color-border)); }
-.invoice-reference-actions-popover > button:disabled { color: var(--rv-color-subtle); background: color-mix(in srgb, var(--rv-color-surface) 65%, var(--rv-color-surface-raised)); border-color: var(--rv-color-border); cursor: not-allowed; opacity: .62; }
+.invoice-reference-actions-popover { position: fixed; z-index: var(--rv-z-dropdown); display: grid; width: max-content; min-width: min(220px, calc(100vw - 32px)); max-width: calc(100vw - 32px); gap: 2px; padding: 5px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); box-shadow: var(--rv-shadow-lg); }
+.invoice-reference-actions-popover > button { display: block; width: 100%; min-width: 0; min-height: 34px; padding: 7px 9px; color: var(--rv-color-ink); background: transparent; border: 0; border-radius: var(--rv-radius-sm); font-size: var(--rv-font-size-xs); font-weight: 600; text-align: left; white-space: normal; }
+.invoice-reference-actions-popover > button:hover:not(:disabled) { color: var(--rv-color-ink); background: var(--rv-color-primary-soft); }
+.invoice-reference-actions-popover > button:disabled { color: var(--rv-color-muted); cursor: not-allowed; opacity: .65; }
 
 /* Make invoice actions read as controls, not as another data tile. */
 .app-shell.stitch-shell main .invoice-detail-summary-facts > div {
@@ -12234,9 +12234,10 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .app-shell.stitch-shell main .invoice-reference-shipment,
 .app-shell.stitch-shell main .invoice-reference-status {
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: 34px minmax(34px, max-content);
+  grid-template-rows: 34px max-content;
   align-content: center;
   justify-items: stretch;
+  row-gap: var(--rv-space-2);
   text-align: center;
 }
 .app-shell.stitch-shell main .invoice-reference-shipment > :is(.badge, .rv-badge),
@@ -12375,4 +12376,9 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .app-shell.stitch-shell main .invoice-reference-status:not(:has(> small)) {
   grid-template-rows: minmax(0, 1fr);
   align-content: stretch;
+}
+
+.app-shell.stitch-shell main .invoice-reference-head .invoice-reference-platform-heading > strong {
+  text-transform: none;
+  letter-spacing: normal;
 }

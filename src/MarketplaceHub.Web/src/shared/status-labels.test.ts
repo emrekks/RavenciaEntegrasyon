@@ -21,5 +21,6 @@ describe('invoice status labels', () => {
     expect(statusLabel('Invoiced')).toBe('Fatura kesildi')
     expect(statusLabel('Remote Present Unmatched')).toBe('Pazaryerinde mevcut, eşleşmedi')
     expect(statusLabel('REMOTE_PRESENT_UNMATCHED')).toBe('Pazaryerinde mevcut, eşleşmedi')
+    expect(statusLabel('Delivered')).toBe('Teslim Edildi')
   })
 })
