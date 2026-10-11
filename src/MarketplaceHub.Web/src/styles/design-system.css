@@ -1392,6 +1392,7 @@
   .invoice-status.complete { color: var(--rv-color-accent); }
   .invoice-reference-amount strong { font-family: var(--rv-font-mono); font-size: var(--rv-font-size-md); }
   .invoice-reference-actions { justify-items: stretch; gap: var(--rv-space-2); }
+  .invoice-reference-actions.has-platform-check { position: relative; padding-top: 22px; }
   .invoice-reference-actions > * { width: 100%; min-width: 0; }
   .invoice-shopify-split { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 4px; min-width: 0; }
   .shopify-invoice-create-wrap { display: block; grid-column: 1; grid-row: 1; min-width: 0; }
@@ -1409,11 +1410,11 @@
   .invoice-reference-document-link { display: inline-flex; align-items: center; justify-content: center; gap: var(--rv-space-1); min-width: 0; padding: 5px 8px; color: var(--rv-color-ink); background: #18181f; border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-sm); font-size: var(--rv-font-size-xs); font-weight: 700; text-decoration: none; }
   .invoice-reference-document-link:hover { color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border-color: var(--rv-color-border-strong); }
   .invoice-reference-actions > button:not(.invoice-reference-details-trigger) { display: inline-flex; align-items: center; justify-content: center; gap: var(--rv-space-1); min-width: 0; overflow: hidden; padding-inline: var(--rv-space-2); white-space: nowrap; }
-  .invoice-reference-action-footer { position: relative; display: flex; min-width: 0; min-height: 52px; align-items: flex-end; justify-content: flex-start; padding-top: 18px; }
+  .invoice-reference-action-footer { display: flex; min-width: 0; align-items: flex-end; justify-content: flex-start; }
   .invoice-reference-action-footer > .invoice-reference-details-trigger { width: fit-content; min-width: 0; }
-  .invoice-reference-action-footer > .invoice-reference-check-trigger { position: absolute; top: 0; right: 0; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; min-height: 20px; padding: 0; color: var(--rv-color-muted); background: transparent; border: 0; border-radius: 4px; box-shadow: none; }
-  .app-shell.stitch-shell main .invoice-reference-action-footer > .invoice-reference-check-trigger:hover:not(:disabled) { color: var(--rv-color-ink); background: transparent; border-color: transparent; box-shadow: none; }
-  .invoice-reference-action-footer > .invoice-reference-check-trigger:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 1px; }
+  .invoice-reference-actions.has-platform-check > .invoice-reference-check-trigger { position: absolute; top: 0; right: 0; display: inline-flex; align-items: center; justify-content: center; width: 20px; min-width: 20px; height: 20px; min-height: 20px; padding: 0; color: var(--rv-color-muted); background: transparent; border: 0; border-radius: 4px; box-shadow: none; }
+  .app-shell.stitch-shell main .invoice-reference-actions.has-platform-check > .invoice-reference-check-trigger:hover:not(:disabled) { color: var(--rv-color-ink); background: transparent; border-color: transparent; box-shadow: none; }
+  .invoice-reference-actions.has-platform-check > .invoice-reference-check-trigger:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 1px; }
   .invoice-reference-check-trigger .ui-icon { width: 15px; height: 15px; }
   .invoice-reference-check-trigger[disabled] .ui-icon-loader { animation: rv-spin 1s linear infinite; }
   .invoice-action-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
