@@ -311,12 +311,17 @@ describe('QuestionsPage workspace flows', () => {
     expect(link?.getAttribute('rel')).toBe('noopener noreferrer')
   })
 
-  it('shows the order-style marketplace logo and status at the top right of the question card', async () => {
+  it('shows the marketplace logo above question timing and status at the bottom right', async () => {
     apiState.detail = { ...createQuestion(), storeName: 'Trendyol' }
     await renderPage()
 
-    expect(container.querySelector('.rv-question-platform-context .order-platform-logo')?.getAttribute('src')).toBe('/platforms/orders/trendyol.png')
-    expect(container.querySelector('.rv-question-platform-context .rv-badge')?.textContent).toBe('Cevap bekliyor')
+    const context = container.querySelector('.rv-question-platform-context')!
+    const details = context.lastElementChild!
+    expect(context.firstElementChild?.classList.contains('order-platform-logo')).toBe(true)
+    expect(context.querySelector('.order-platform-logo')?.getAttribute('src')).toBe('/platforms/orders/trendyol.png')
+    expect(details.querySelector('.rv-question-deadline, .rv-question-age')).not.toBeNull()
+    expect(details.lastElementChild?.classList.contains('rv-badge')).toBe(true)
+    expect(context.querySelector('.rv-badge')?.textContent).toBe('Cevap bekliyor')
     expect(container.querySelector('.rv-question-meta .order-platform-logo')).toBeNull()
     expect(container.querySelector('.rv-question-meta .rv-badge')).toBeNull()
     expect(container.querySelector('.rv-question-meta')?.textContent).not.toContain('TrendyolTrendyol')
