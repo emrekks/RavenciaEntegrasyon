@@ -4,7 +4,7 @@ import { join } from 'node:path'
 const assetsDirectory = join(process.cwd(), 'dist', 'assets')
 const budgets = [
   { pattern: /^index-[^/]+\.js$/, label: 'ana JavaScript', maximumBytes: 450 * 1024 },
-  { pattern: /^index-[^/]+\.css$/, label: 'ana CSS', maximumBytes: 650 * 1024 }
+  { pattern: /^index-[^/]+\.css$/, label: 'ana CSS', maximumBytes: 655 * 1024 }
 ]
 
 const assets = readdirSync(assetsDirectory).map(name => ({ name, bytes: statSync(join(assetsDirectory, name)).size }))

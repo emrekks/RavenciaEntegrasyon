@@ -28,6 +28,17 @@ export function PlatformMultiSelect({ label, options, selectedCodes, onChange, c
         ? selectedOptions[0].label
         : `${selectedOptions.length} platform seçili`
 
+  function updateCompactMenuPosition() {
+    if (!compact || !menu.current || !trigger.current) return
+    const triggerRect = trigger.current.getBoundingClientRect()
+    const menuRect = menu.current.getBoundingClientRect()
+    const top = triggerRect.bottom + menuRect.height + 8 <= window.innerHeight - 12
+      ? triggerRect.bottom + 8
+      : Math.max(12, triggerRect.top - menuRect.height - 8)
+    const left = Math.max(12, Math.min(triggerRect.right - menuRect.width, window.innerWidth - menuRect.width - 12))
+    setCompactMenuPosition(current => current?.top === top && current.left === left ? current : { top, left })
+  }
+
   useEffect(() => {
     const closeOutside = (event: PointerEvent) => {
       if (event.target instanceof Node && !root.current?.contains(event.target) && !menu.current?.contains(event.target)) setOpen(false)
@@ -45,25 +56,18 @@ export function PlatformMultiSelect({ label, options, selectedCodes, onChange, c
 
   useEffect(() => {
     if (!open || !compact) return
-    const closeOnViewportChange = () => setOpen(false)
-    window.addEventListener('scroll', closeOnViewportChange, { passive: true })
-    window.addEventListener('resize', closeOnViewportChange)
+    const repositionOnViewportChange = () => updateCompactMenuPosition()
+    window.addEventListener('scroll', repositionOnViewportChange, { passive: true, capture: true })
+    window.addEventListener('resize', repositionOnViewportChange)
     return () => {
-      window.removeEventListener('scroll', closeOnViewportChange)
-      window.removeEventListener('resize', closeOnViewportChange)
+      window.removeEventListener('scroll', repositionOnViewportChange, true)
+      window.removeEventListener('resize', repositionOnViewportChange)
     }
   }, [open, compact])
 
   useLayoutEffect(() => {
-    if (!open || !compact || !menu.current || !trigger.current) return
-    const triggerRect = trigger.current.getBoundingClientRect()
-    const menuRect = menu.current.getBoundingClientRect()
-    const top = triggerRect.bottom + menuRect.height + 8 <= window.innerHeight - 12
-      ? triggerRect.bottom + 8
-      : Math.max(12, triggerRect.top - menuRect.height - 8)
-    const left = Math.max(12, Math.min(triggerRect.right - menuRect.width, window.innerWidth - menuRect.width - 12))
-    setCompactMenuPosition(current => current?.top === top && current.left === left ? current : { top, left })
-  }, [open, compact])
+    if (open && compact) updateCompactMenuPosition()
+  }, [open, compact, selectedCodes])
 
   function toggleOption(value: string, checked: boolean) {
     const current = selectedCodes ?? []
@@ -98,7 +102,8 @@ export function PlatformMultiSelect({ label, options, selectedCodes, onChange, c
       <button ref={trigger} type="button" className={`platform-multi-select-trigger${compact ? ' is-compact' : ''}${open ? ' is-open' : ''}${hasSelection ? ' has-selection' : ''}`} aria-label={compact ? `${label}: ${triggerLabel}` : undefined} aria-labelledby={!compact ? `${id}-label ${id}-value` : undefined} title={compact ? `${label}: ${triggerLabel}` : undefined} aria-expanded={open} aria-controls={open ? `${id}-menu` : undefined} onClick={toggleMenu} disabled={!options.length}>
         {compact ? <><svg className="order-filter-funnel" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7.2V18l-4 1v-6.8L4 5z" /></svg>{hasSelection && <span className="platform-multi-select-selection-count" aria-hidden="true">{selectedCodes?.length ?? 0}</span>}</> : <><span id={`${id}-value`}>{triggerLabel}</span><UiIcon name="chevronDown" /></>}
       </button>
+      {!compact && menuContent}
     </div>
-    {compact ? menuContent && createPortal(menuContent, document.body) : menuContent}
+    {compact && menuContent && createPortal(menuContent, document.body)}
   </div>
 }

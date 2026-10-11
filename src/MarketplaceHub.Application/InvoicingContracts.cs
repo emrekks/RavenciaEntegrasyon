@@ -324,7 +324,10 @@ public sealed record InvoiceWorkspaceItemView(
     string? CurrentPlatformInvoiceUrl = null,
     DateTimeOffset? LastSuccessfulCheckAt = null,
     IReadOnlyList<string>? AllowedActions = null,
-    IReadOnlyList<MarketplaceInvoiceReferenceHistoryView>? PreviousPlatformInvoiceReferences = null);
+    IReadOnlyList<MarketplaceInvoiceReferenceHistoryView>? PreviousPlatformInvoiceReferences = null,
+    Guid? MarketplaceConnectionId = null,
+    string? ExternalOrderId = null,
+    string? ExternalPackageNumber = null);
 
 public sealed record MarketplaceInvoiceReferenceHistoryView(
     string? InvoiceNumber,

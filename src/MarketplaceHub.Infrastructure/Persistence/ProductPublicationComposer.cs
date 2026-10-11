@@ -306,7 +306,7 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
 
     private static bool IsValidBarcode(string value) => value.All(character => char.IsLetterOrDigit(character) || character is '.' or '-' or '_');
 
-    internal static bool IsPublicHttpsUrl(string value)
+    public static bool IsPublicHttpsUrl(string value)
     {
         if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps || string.IsNullOrWhiteSpace(uri.Host) || !string.IsNullOrEmpty(uri.UserInfo) || uri.IsLoopback || !IsPublicHost(uri.Host)) return false;
         return !IPAddress.TryParse(uri.Host, out var address) || IsPublicAddress(address);

@@ -12,6 +12,9 @@
   html[data-theme="dark"] { color-scheme: dark; }
   body { min-width: 320px; min-height: 100vh; margin: 0; }
   button, input, select, textarea { font: inherit; }
+  input[type="number"] { appearance: textfield; -moz-appearance: textfield; }
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button { margin: 0; appearance: none; -webkit-appearance: none; }
   button { cursor: pointer; line-height: 1.2; }
   img { max-width: 100%; }
 }
@@ -949,6 +952,7 @@
   .product-catalog-head > .product-sort-header { display: inline-flex; align-items: center; justify-content: flex-start; gap: 3px; min-height: 100%; border: 0; padding: 0 8px; color: inherit; background: transparent; font: inherit; letter-spacing: inherit; text-align: left; text-transform: inherit; cursor: pointer; }
   .product-catalog-head > .product-sort-header:hover { color: var(--rv-color-ink); background: transparent; }
   .product-catalog-head > .product-sort-header.is-active { color: var(--rv-color-ink); }
+  .product-catalog-head > :nth-child(3) { justify-content: center; text-align: center; }
   .product-sort-arrow { width: 12px; height: 12px; flex: 0 0 12px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
   .product-catalog-item { display: block; border-top: 1px solid var(--rv-color-border); }
   .product-catalog-row { min-height: 152px; color: var(--rv-color-ink); background: var(--rv-color-surface); }
@@ -974,7 +978,7 @@
   .product-variant-value.is-low b { color: var(--rv-color-warning); }
   .product-variant-value.is-healthy b { color: var(--rv-color-accent); }
   .product-variant-value.is-empty b { color: var(--rv-color-danger); }
-  .product-list-price { grid-column: 5; }
+  .product-list-price { display: flex; grid-column: 5; align-items: center; justify-content: center; text-align: center; }
   .product-list-stock { grid-column: 6; }
   .product-list-platforms { grid-column: 7; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 6px; }
   .product-list-status { grid-column: 8; width: fit-content; max-width: 100%; min-height: 0; justify-self: center; box-sizing: border-box; }
@@ -1989,12 +1993,12 @@
   .quick-edit-color-list { display: grid; gap: var(--rv-space-3); }
   .quick-edit-color { overflow: hidden; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
   .product-quick-edit-modal .quick-edit-color.is-open { border-bottom-right-radius: 0; border-bottom-left-radius: 0; }
-  .quick-edit-color-heading { display: grid; grid-template-columns: 42px minmax(0, 1fr); align-items: stretch; }
-  .quick-edit-color.is-open .quick-edit-color-heading { background: var(--rv-color-primary-soft); }
-  .quick-edit-color-select { display: grid; min-width: 0; place-items: center; margin: 0; cursor: pointer; }
+  .quick-edit-color-heading { display: grid; grid-template-columns: 42px minmax(0, 1fr); align-items: stretch; transition: background var(--rv-duration-fast) var(--rv-ease-standard); }
+  .quick-edit-color-heading:hover, .quick-edit-color-heading:focus-within { background: color-mix(in srgb, var(--rv-color-ink) 5%, transparent); }
+  .quick-edit-color-select { display: grid; width: 24px; height: 24px; min-width: 0; place-self: center; place-items: center; margin: 0; cursor: pointer; }
   .quick-edit-color-select input { margin: 0; }
   .quick-edit-color-toggle { display: flex; width: auto; min-width: 0; min-height: 58px; align-items: center; gap: var(--rv-space-3); padding: var(--rv-space-3) var(--rv-space-3) var(--rv-space-3) 0; color: var(--rv-color-ink); background: transparent; border: 0; text-align: left; cursor: pointer; }
-  .quick-edit-color-toggle:hover, .quick-edit-color.is-open .quick-edit-color-toggle { color: var(--rv-color-primary); background: var(--rv-color-primary-soft); }
+  .quick-edit-color-toggle:hover, .quick-edit-color.is-open .quick-edit-color-toggle { color: var(--rv-color-ink); background: transparent; }
   .quick-edit-color-toggle > span { display: grid; min-width: 0; gap: 3px; }
   .quick-edit-color-toggle > span strong, .quick-edit-color-toggle > span small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .quick-edit-color-toggle > span small { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); }
@@ -11326,6 +11330,15 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
   box-sizing: border-box;
 }
 
+.invoice-reference-actions-menu { position: relative; width: 100%; min-width: 0; }
+.app-shell.stitch-shell main .invoice-reference-actions-trigger { display: inline-flex; width: 100%; min-width: 0; min-height: 34px; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 9px; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-sm); font-size: var(--rv-font-size-xs); font-weight: 700; }
+.app-shell.stitch-shell main .invoice-reference-actions-trigger:hover:not(:disabled) { background: var(--rv-color-surface-soft); border-color: var(--rv-color-border-strong); }
+.invoice-reference-actions-trigger .ui-icon { width: 14px; height: 14px; flex: 0 0 14px; }
+.invoice-reference-actions-popover { position: fixed; z-index: var(--rv-z-dropdown); display: grid; width: max-content; min-width: min(220px, calc(100vw - 32px)); max-width: calc(100vw - 32px); gap: 2px; padding: 5px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); box-shadow: var(--rv-shadow-lg); }
+.invoice-reference-actions-popover > button { display: block; width: 100%; min-width: 0; min-height: 34px; padding: 7px 9px; color: var(--rv-color-ink); background: transparent; border: 0; border-radius: var(--rv-radius-sm); font-size: var(--rv-font-size-xs); font-weight: 600; text-align: left; white-space: normal; }
+.invoice-reference-actions-popover > button:hover:not(:disabled) { color: var(--rv-color-ink); background: var(--rv-color-primary-soft); }
+.invoice-reference-actions-popover > button:disabled { color: var(--rv-color-muted); cursor: not-allowed; opacity: .65; }
+
 /* Make invoice actions read as controls, not as another data tile. */
 .app-shell.stitch-shell main .invoice-detail-summary-facts > div {
   min-height: 0;
@@ -12298,4 +12311,67 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
   .app-shell.stitch-shell main .invoice-detail-platform-refresh {
     align-self: flex-start;
   }
+}
+
+/* Match the positive shipment and invoice status badge fills on invoice rows. */
+.app-shell.stitch-shell main .invoice-reference-shipment > .badge.good,
+.app-shell.stitch-shell main .invoice-reference-status > .invoice-status-label.rv-badge-success {
+  background: var(--rv-color-accent-soft);
+}
+
+/* Keep return tracking links compact and on one line. */
+.app-shell.stitch-shell main .return-reference-table .return-cargo-track {
+  display: inline-flex;
+  height: 34px;
+  min-height: 34px;
+  max-width: 100%;
+  box-sizing: border-box;
+  flex-wrap: nowrap;
+  padding-inline: 8px;
+  white-space: nowrap;
+}
+.app-shell.stitch-shell main .return-reference-table .return-cargo-track > .ui-icon {
+  flex: 0 0 auto;
+}
+
+/* Invoice detail thumbnails open the shared product image lightbox. */
+.app-shell.stitch-shell main .invoice-detail-line-image-button {
+  box-sizing: border-box;
+  padding: 0;
+  border: 0;
+  background: var(--rv-color-surface-soft);
+  cursor: zoom-in;
+}
+.app-shell.stitch-shell main .invoice-detail-line-image-button:focus-visible {
+  outline: 2px solid var(--rv-color-primary);
+  outline-offset: 2px;
+}
+
+/* Keep already printed label actions purple, readable, and free of a button frame. */
+.app-shell.stitch-shell main .order-label-action.is-printed {
+  color: #fff;
+  background: color-mix(in srgb, var(--rv-color-primary) 55%, var(--rv-color-surface));
+  border: 0;
+  opacity: 1;
+}
+.app-shell.stitch-shell main .order-label-action.is-printed > span,
+.app-shell.stitch-shell main .order-label-action.is-printed > .ui-icon {
+  color: #fff;
+}
+.app-shell.stitch-shell main .order-label-action.is-printed:hover:not(:disabled) {
+  color: #fff;
+  background: color-mix(in srgb, var(--rv-color-primary) 68%, var(--rv-color-surface));
+}
+:root[data-theme="light"] .app-shell.stitch-shell main .order-label-action.is-printed {
+  background: color-mix(in srgb, var(--rv-color-primary) 92%, var(--rv-color-surface));
+}
+:root[data-theme="light"] .app-shell.stitch-shell main .order-label-action.is-printed:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--rv-color-primary) 96%, var(--rv-color-surface));
+}
+
+/* Vertically center invoice badges when the row has no secondary status text. */
+.app-shell.stitch-shell main .invoice-reference-shipment:not(:has(> small)),
+.app-shell.stitch-shell main .invoice-reference-status:not(:has(> small)) {
+  grid-template-rows: minmax(0, 1fr);
+  align-content: stretch;
 }

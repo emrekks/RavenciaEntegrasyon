@@ -481,6 +481,7 @@ public sealed partial class InvoicingBillingService(
             .Select(source => new WorkspaceCandidateSource(
                 new WorkspacePackageProjection(
                     source.package.Id,
+                    source.package.ExternalPackageId,
                     source.package.OrderId,
                     source.package.ConnectionId,
                     source.package.CargoProviderExternalId,
@@ -664,7 +665,7 @@ public sealed partial class InvoicingBillingService(
             .ToDictionaryAsync(order => order.Id, cancellationToken);
         var packageDetails = await db.ShipmentPackages.AsNoTracking()
             .Where(package => package.TenantId == tenantId && packageIds.Contains(package.Id))
-            .Select(package => new { package.Id, package.NetAmount, package.CargoTrackingNumber, package.MarketplaceInvoiceNumber, package.MarketplaceInvoiceUrl })
+            .Select(package => new { package.Id, package.ExternalPackageId, package.NetAmount, package.CargoTrackingNumber, package.MarketplaceInvoiceNumber, package.MarketplaceInvoiceUrl })
             .ToDictionaryAsync(package => package.Id, cancellationToken);
         var previousPlatformReferences = await db.MarketplaceInvoiceReferenceHistories.AsNoTracking()
             .Where(reference => reference.TenantId == tenantId && packageIds.Contains(reference.PackageId))
@@ -860,7 +861,10 @@ public sealed partial class InvoicingBillingService(
                 currentPlatformInvoiceUrl,
                 candidate.Package.MarketplaceInvoiceObservedAt,
                 allowedActions,
-                previousPlatformReferencesByPackage.GetValueOrDefault(candidate.Package.Id) ?? []);
+                previousPlatformReferencesByPackage.GetValueOrDefault(candidate.Package.Id) ?? [],
+                orderSnapshotsForItem?.ConnectionId,
+                orderSnapshotsForItem?.ExternalOrderId,
+                packageDetailsForItem?.ExternalPackageId ?? candidate.Package.ExternalPackageId);
         }).ToList();
     }
 
@@ -942,7 +946,7 @@ public sealed partial class InvoicingBillingService(
     }
 
     private sealed record WorkspacePackageProjection(
-        Guid Id, Guid OrderId, Guid ConnectionId, string? CargoProviderExternalId, string? CargoTrackingNumber,
+        Guid Id, string ExternalPackageId, Guid OrderId, Guid ConnectionId, string? CargoProviderExternalId, string? CargoTrackingNumber,
         ShipmentPackageStatus Status, string RawStatus, DateTimeOffset StatusOccurredAt,
         MarketplaceInvoiceStatus MarketplaceInvoiceStatus, string? MarketplaceInvoiceNumber, string? MarketplaceInvoiceUrl,
         DateTimeOffset? MarketplaceInvoiceObservedAt, string? ManualInvoiceStatus);

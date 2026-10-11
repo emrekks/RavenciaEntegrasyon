@@ -17,7 +17,7 @@ import './manual-invoice-document.css'
 
 type Invoice = { id: string; orderNumber: string; invoiceType: string; status: string; currency: string; payableTotal: number; invoiceNumber: string | null; dueAt: string | null; createdAt: string; version: number }
 type InvoiceWorkspaceLine = { sku: string; barcode: string | null; description: string; quantity: number; unitPrice: number; vatRate: number; imageUrl: string | null }
-type InvoiceWorkspace = { orderId: string; packageId: string; orderNumber: string; customerName: string; orderedAt: string; shipmentStatus: string; deliveredAt: string | null; invoiceDueAt: string | null; isDueSoon: boolean; currency: string; amount: number; productCount: number; primaryImageUrl: string | null; cargoProviderName: string | null; cargoTrackingNumber: string | null; invoiceId: string | null; invoiceStatus: string; invoiceNumber: string | null; canCreateInvoice: boolean; shipmentAddressJson: string | null; invoiceAddressJson: string | null; lines: InvoiceWorkspaceLine[] | null; invoiceErrorCode: string | null; invoiceDeliveryStatus: string | null; invoiceDeliveryReference: string | null; invoiceDocumentAvailable: boolean; marketplaceInvoiceUrl: string | null; platformCode: string; platformDisplayName: string; invoiceCreationEnabled: boolean; marketplaceInvoiceReadErrorCode?: string | null; marketplaceInvoiceReadErrorSummary?: string | null; environment: string; manualInvoiceDocumentId: string | null; manualInvoiceDocumentType: string | null; manualInvoiceDocumentUrl: string | null; manualInvoiceNumber: string | null; manualInvoiceIssuedAt: string | null; manualInvoiceDeliveryStatus: string | null; manualInvoiceDeliveryErrorCode: string | null; fiscalStatus: string; platformInvoiceStatus: string; deliveryStatus: string; currentPlatformInvoiceUrl: string | null; lastSuccessfulCheckAt: string | null; allowedActions: string[]; previousPlatformInvoiceReferences?: Array<{ invoiceNumber: string | null; invoiceUrl: string | null; changeReason: string; changedAt: string }> }
+type InvoiceWorkspace = { orderId: string; packageId: string; orderNumber: string; customerName: string; orderedAt: string; shipmentStatus: string; deliveredAt: string | null; invoiceDueAt: string | null; isDueSoon: boolean; currency: string; amount: number; productCount: number; primaryImageUrl: string | null; cargoProviderName: string | null; cargoTrackingNumber: string | null; invoiceId: string | null; invoiceStatus: string; invoiceNumber: string | null; canCreateInvoice: boolean; shipmentAddressJson: string | null; invoiceAddressJson: string | null; lines: InvoiceWorkspaceLine[] | null; invoiceErrorCode: string | null; invoiceDeliveryStatus: string | null; invoiceDeliveryReference: string | null; invoiceDocumentAvailable: boolean; marketplaceInvoiceUrl: string | null; platformCode: string; platformDisplayName: string; invoiceCreationEnabled: boolean; marketplaceInvoiceReadErrorCode?: string | null; marketplaceInvoiceReadErrorSummary?: string | null; environment: string; manualInvoiceDocumentId: string | null; manualInvoiceDocumentType: string | null; manualInvoiceDocumentUrl: string | null; manualInvoiceNumber: string | null; manualInvoiceIssuedAt: string | null; manualInvoiceDeliveryStatus: string | null; manualInvoiceDeliveryErrorCode: string | null; fiscalStatus: string; platformInvoiceStatus: string; deliveryStatus: string; currentPlatformInvoiceUrl: string | null; lastSuccessfulCheckAt: string | null; allowedActions: string[]; previousPlatformInvoiceReferences?: Array<{ invoiceNumber: string | null; invoiceUrl: string | null; changeReason: string; changedAt: string }>; marketplaceConnectionId?: string | null; externalOrderId?: string | null; externalPackageNumber?: string | null }
 type InvoiceWorkspacePage = { items: InvoiceWorkspace[]; totalCount: number; pageNumber: number; pageSize: number; totalPages: number; uninvoicedCount: number; invoicedCount: number; dueSoonCount: number; hiddenCount: number; totalPackageCount: number; hasPendingMarketplaceInvoices: boolean; shipmentStatuses: string[]; cargoProviders: string[]; invoiceStatuses: string[] }
 type InvoiceDetail = Invoice & { orderId: string; packageId: string | null; providerConnectionId: string; sequencePurpose: string; ettnUuid: string | null; taxExclusiveTotal: number; discountTotal: number; taxTotal: number; note: string; issuedAt: string | null; lastErrorCode: string | null; lines: Array<{ id: string; lineSequence: number; description: string; sku: string | null; unit: string; quantity: number; unitPrice: number; discountAmount: number; vatRate: number; vatAmount: number; lineTotal: number }>; documents: Array<{ id: string; documentType: string; sha256: string; createdAt: string }>; attempts: Array<{ attemptNumber: number; outcome: string; errorCode: string | null; startedAt: string; completedAt: string | null }>; deliveries: Array<{ id: string; deliveryType: string; status: string; externalReference: string | null; errorCode: string | null; createdAt: string }>; allowedActions: string[]; requiresSensitiveConfirmation: boolean }
 type Connection = { id: string; platformCode: string; displayName: string; status: string; environment: string; hasCredential: boolean }
@@ -191,6 +191,88 @@ function addressLines(value: string | null | undefined) {
   } catch { return [] }
 }
 
+function InvoiceDetailImagePreview({ url, title, onClose }: { url: string; title: string; onClose: () => void }) {
+  return createPortal(<div className="workspace-modal-backdrop image-lightbox-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
+    <section className="workspace-modal product-image-modal" role="dialog" aria-modal="true" aria-labelledby="invoice-detail-image-modal-title" onMouseDown={event => event.stopPropagation()}>
+      <header className="product-image-modal-header"><div><h2 id="invoice-detail-image-modal-title">{title}</h2></div><button type="button" className="modal-close" onClick={onClose} aria-label="Kapat"><UiIcon name="close" /></button></header>
+      <div className="product-image-modal-body"><div className="product-image-modal-frame"><img src={url} alt={`${title} büyük ürün görseli`} loading="eager" decoding="async" /></div></div>
+    </section>
+  </div>, document.body)
+}
+
+function InvoiceDetailLineImage({ url, title }: { url: string; title: string }) {
+  const [previewOpen, setPreviewOpen] = useState(false)
+  return <>
+    <button type="button" className="invoice-detail-line-media invoice-detail-line-image-button" onClick={() => setPreviewOpen(true)} aria-label={`${title} görselini büyüt`} title="Büyütmek için tıklayın">
+      <img src={url} alt="" loading="lazy" decoding="async" />
+    </button>
+    {previewOpen && <InvoiceDetailImagePreview url={url} title={title} onClose={() => setPreviewOpen(false)} />}
+  </>
+}
+
+function InvoiceReferenceActionsMenu({ item, canCreateInvoice, canSyncOrder, deliveryPending, onCreateInvoice, onSyncOrder, onAddManualInvoice, onSendManualInvoice }: {
+  item: InvoiceWorkspace
+  canCreateInvoice: boolean
+  canSyncOrder: boolean
+  deliveryPending: boolean
+  onCreateInvoice: () => void
+  onSyncOrder: () => void
+  onAddManualInvoice: () => void
+  onSendManualInvoice: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const [position, setPosition] = useState({ left: 8, top: 8 })
+  const hasManualDocument = Boolean(item.manualInvoiceDocumentId)
+  const canSendManual = hasManualDocument && item.manualInvoiceDeliveryStatus !== 'CONFIRMED'
+  const canRetryInvoice = Boolean(item.platformCode !== 'SHOPIFY' && item.invoiceId && isInvoiceFailureStatus(item.invoiceStatus) && isInvoiceCreationActionVisible(item))
+  useLayoutEffect(() => {
+    if (!open) return
+    const updatePosition = () => {
+      const trigger = triggerRef.current?.getBoundingClientRect()
+      const menu = menuRef.current?.getBoundingClientRect()
+      if (!trigger) return
+      const width = menu?.width ?? 220
+      const height = menu?.height ?? 150
+      const below = trigger.bottom + 5
+      const top = window.innerHeight - below >= height + 8 || trigger.top <= height + 12
+        ? below
+        : Math.max(8, trigger.top - height - 5)
+      const left = Math.max(8, Math.min(trigger.right - width, window.innerWidth - width - 8))
+      setPosition({ left, top })
+    }
+    const frame = window.requestAnimationFrame(updatePosition)
+    window.addEventListener('resize', updatePosition)
+    window.addEventListener('scroll', updatePosition, true)
+    const dismiss = (event: MouseEvent | KeyboardEvent) => {
+      if (event instanceof KeyboardEvent && event.key === 'Escape') setOpen(false)
+      if (event instanceof MouseEvent && !menuRef.current?.contains(event.target as Node) && !triggerRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', dismiss)
+    document.addEventListener('keydown', dismiss)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', updatePosition, true)
+      document.removeEventListener('mousedown', dismiss)
+      document.removeEventListener('keydown', dismiss)
+    }
+  }, [open])
+  return <div className="invoice-reference-actions-menu">
+    <button ref={triggerRef} type="button" className="invoice-reference-actions-trigger" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(value => !value)}>
+      <span>İşlemler</span><UiIcon name="chevronDown" />
+    </button>
+    {open && createPortal(<div ref={menuRef} className="invoice-reference-actions-popover" role="menu" aria-label={`${displayInvoiceOrderNumber(item.orderNumber)} sipariş işlemleri`} style={{ left: position.left, top: position.top }}>
+      {canCreateInvoice && <button type="button" role="menuitem" onClick={() => { setOpen(false); onCreateInvoice() }}>Fatura oluştur</button>}
+      {canRetryInvoice && <button type="button" role="menuitem" onClick={() => { setOpen(false); onCreateInvoice() }}>{item.invoiceStatus === 'FATURA_PLATFORMA_AKTARILMADI' ? 'Platforma iletimi tekrar dene' : 'Faturayı tekrar dene'}</button>}
+      <button type="button" role="menuitem" disabled={!canSyncOrder} title={!canSyncOrder ? 'Pazaryeri sipariş bilgileri bulunamadı veya bağlantı etkin değil.' : undefined} onClick={() => { setOpen(false); onSyncOrder() }}>Sipariş durumunu güncelle</button>
+      <button type="button" role="menuitem" onClick={() => { setOpen(false); onAddManualInvoice() }}>{hasManualDocument ? 'Manuel faturayı değiştir' : 'Manuel fatura ekle'}</button>
+      {canSendManual && <button type="button" role="menuitem" disabled={deliveryPending || !item.manualInvoiceIssuedAt} title={!item.manualInvoiceIssuedAt ? 'Pazaryerine iletmek için fatura tarihi gerekli.' : item.manualInvoiceDeliveryErrorCode ?? undefined} onClick={() => { setOpen(false); onSendManualInvoice() }}>{deliveryPending ? 'Kuyruğa alınıyor…' : 'Manuel faturayı pazaryerine gönder'}</button>}
+    </div>, document.body)}
+  </div>
+}
+
 export function InvoicesPage() {
   const tabs = [['ALL', 'Tümü'], ['UNINVOICED', 'Faturalandırılmamışlar'], ['INVOICED', 'Faturalandırılmışlar'], ['DUE_SOON', 'Süresi Yaklaşanlar'], ['HIDDEN', 'Gizlenenler']] as const
   const [searchParams, setSearchParams] = useSearchParams()
@@ -245,6 +327,26 @@ export function InvoicesPage() {
       await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['jobs'] })])
     },
     onError: error => setMessage(error instanceof Error ? error.message : 'Manuel fatura iletimi kuyruğa alınamadı.', 'error')
+  })
+  const orderStatusSync = useMutation({
+    mutationFn: async (item: InvoiceWorkspace) => {
+      const connection = connections.data?.items.find(candidate => candidate.id === item.marketplaceConnectionId
+        && candidate.platformCode === item.platformCode
+        && (!item.environment || item.environment === 'UNKNOWN' || candidate.environment === item.environment))
+      if (!connection || !['ACTIVE', 'VERIFIED'].includes(connection.status)) throw new Error('Sipariş için etkin pazaryeri bağlantısı bulunamadı.')
+      if (!item.externalOrderId?.trim()) throw new Error('Pazaryeri sipariş numarası bulunamadı.')
+      const supportsPackageLookup = ['TRENDYOL', 'HEPSIBURADA'].includes(item.platformCode)
+      return hubApi<{ jobId: string }>(`/connections/${connection.id}/order-sync-jobs`, {
+        method: 'POST',
+        headers: { 'Idempotency-Key': `invoice-order-refresh:${item.packageId}:${idempotency()}` },
+        body: JSON.stringify({ externalOrderId: item.externalOrderId, full: false, packageNumber: supportsPackageLookup ? item.externalPackageNumber : null })
+      })
+    },
+    onSuccess: async () => {
+      setMessage('Pazaryerindeki sipariş durumu yenileme kuyruğuna alındı.', 'success')
+      await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['jobs'] })])
+    },
+    onError: error => setMessage(error instanceof Error ? error.message : 'Sipariş durumu pazaryerinden yenilenemedi.', 'error')
   })
   const invoiceReconcile = useMutation({
     mutationFn: async (item: InvoiceWorkspace) => hubApi<{ jobId: string }>(`/invoice-workspace/orders/${item.orderId}/reconcile-jobs`, { method: 'POST', headers: { 'Idempotency-Key': `invoice-workspace-check:${item.orderId}:${idempotency()}` } }),
@@ -350,14 +452,18 @@ export function InvoicesPage() {
           <div className="invoice-reference-status">{(() => { const invoiceState = invoiceWorkspaceStatus(item); return <InvoiceStatusBadge status={invoiceState.value} tone={invoiceState.tone} /> })()}{item.marketplaceInvoiceReadErrorCode && <small className="invoice-marketplace-read-error" title={item.marketplaceInvoiceReadErrorSummary ?? undefined}>{item.marketplaceInvoiceReadErrorCode === 'REMOTE_PACKAGE_NOT_FOUND' ? 'Paket bilgisi pazaryerinden alınamadı; kayıtlı fatura durumu gösteriliyor.' : 'Pazaryeri fatura durumu yenilenemedi.'}</small>}{item.invoiceDueAt && <small className={new Date(item.invoiceDueAt).getTime() - Date.now() <= 86_400_000 ? 'deadline critical' : ''}>Son tarih: {new Date(item.invoiceDueAt).toLocaleDateString('tr-TR')}</small>}</div>
           <div className="invoice-reference-amount"><strong>{item.amount.toLocaleString('tr-TR', { style: 'currency', currency: item.currency })}</strong><small>{item.isDueSoon ? 'Öncelikli takip' : 'Sipariş toplamı'}</small></div>
           <div className="invoice-reference-actions">
-            {item.manualInvoiceDocumentId ? <>
-              <Badge value={item.manualInvoiceDeliveryStatus ?? 'MANUAL_DOCUMENT'} tone={item.manualInvoiceDeliveryStatus === 'CONFIRMED' ? 'good' : item.manualInvoiceDeliveryStatus === 'FAILED' || item.manualInvoiceDeliveryStatus === 'MANUAL_REVIEW' ? 'warn' : 'neutral'} label={manualInvoiceDeliveryLabel(item.manualInvoiceDeliveryStatus)} />
-              {item.manualInvoiceDeliveryStatus !== 'CONFIRMED' && <button type="button" disabled={manualInvoiceDelivery.isPending || !item.manualInvoiceIssuedAt} title={!item.manualInvoiceIssuedAt ? 'Platforma iletim için fatura tarihi gerekli.' : item.manualInvoiceDeliveryErrorCode ?? undefined} onClick={() => manualInvoiceDelivery.mutate(item)}><span className="invoice-action-label">{manualInvoiceDeliveryActionLabel(item.manualInvoiceDeliveryStatus)}</span></button>}
-            </> : item.platformCode === 'SHOPIFY' ? <>
-              <div className="invoice-shopify-split">
-                {item.invoiceId && !item.canCreateInvoice ? <InvoiceStatusBadge status={invoiceWorkspaceStatus(item).value} tone={invoiceWorkspaceStatus(item).tone} /> : isInvoiceCreationAvailable(item, Boolean(providerForItem(item)?.hasCredential)) && <span className="shopify-invoice-create-wrap"><button type="button" className="shopify-invoice-create-trigger" onClick={() => openInvoicePreview([item])}><span className="invoice-action-label">Fatura önizlemesi</span></button></span>}
-              </div>
-            </> : item.invoiceId ? isInvoiceFailureStatus(item.invoiceStatus) ? isInvoiceCreationActionVisible(item) ? <button type="button" onClick={() => openInvoicePreview([item])}><span className="invoice-action-label">{item.invoiceStatus === 'FATURA_PLATFORMA_AKTARILMADI' ? 'Platforma iletimi tekrar dene' : 'Tekrar dene'}</span></button> : <InvoiceStatusBadge status={item.invoiceStatus} /> : <InvoiceStatusBadge status={item.invoiceStatus} /> : isInvoiceCreationActionVisible(item) && <button type="button" onClick={() => openInvoicePreview([item])}><span className="invoice-action-label">Fatura oluştur</span></button>}
+            <InvoiceReferenceActionsMenu
+              item={item}
+              canCreateInvoice={!item.manualInvoiceDocumentId && (item.platformCode === 'SHOPIFY'
+                ? isInvoiceCreationAvailable(item, Boolean(providerForItem(item)?.hasCredential)) && (!item.invoiceId || item.canCreateInvoice)
+                : !item.invoiceId && isInvoiceCreationActionVisible(item))}
+              canSyncOrder={Boolean(item.marketplaceConnectionId && item.externalOrderId?.trim() && connections.data?.items.some(connection => connection.id === item.marketplaceConnectionId && ['ACTIVE', 'VERIFIED'].includes(connection.status)))}
+              deliveryPending={manualInvoiceDelivery.isPending}
+              onCreateInvoice={() => openInvoicePreview([item])}
+              onSyncOrder={() => orderStatusSync.mutate(item)}
+              onAddManualInvoice={() => setManualUploadItem(item)}
+              onSendManualInvoice={() => manualInvoiceDelivery.mutate(item)}
+            />
             {platformInvoiceLinkUnavailable(item) && <small className="invoice-marketplace-read-error">Platformda fatura var; güncel bağlantı alınamıyor. Açılan yerel PDF pazaryeri bağlantısı değildir.</small>}
             <div className="invoice-reference-action-footer"><button type="button" className="invoice-reference-details-trigger" onClick={() => setSelectedItem(item)}>Detayları aç <UiIcon name="externalLink" /></button></div>
           </div>
@@ -369,7 +475,7 @@ export function InvoicesPage() {
       <div className="invoice-detail-body"><section className="invoice-detail-summary"><div><small>Sipariş durumu</small><Badge value={selectedItem.shipmentStatus} /></div><div className="invoice-detail-invoice-status"><small>Fatura durumu</small><InvoiceStatusBadge status={selectedItem.invoiceStatus} />{selectedItem.marketplaceInvoiceReadErrorSummary && <small className="invoice-detail-error-reason">Pazaryeri fatura durumu güncellenemedi: {selectedItem.marketplaceInvoiceReadErrorSummary}</small>}{selectedItem.marketplaceInvoiceReadErrorCode && <code className="invoice-detail-error-code">Pazaryeri kontrol hatası: {selectedItem.marketplaceInvoiceReadErrorCode}</code>}{isInvoiceFailureStatus(selectedItem.invoiceStatus) && <small className="invoice-detail-error-reason">{invoiceFailureReason(selectedItem.invoiceErrorCode)}</small>}{selectedItem.invoiceErrorCode && <code className="invoice-detail-error-code">Hata kodu: {selectedItem.invoiceErrorCode}</code>}{isInvoiceFailureStatus(selectedItem.invoiceStatus) && <small className="invoice-detail-error-guidance">{invoiceFailureGuidance(selectedItem.invoiceErrorCode)}</small>}</div><div><small>Toplam</small><strong>{selectedItem.amount.toLocaleString('tr-TR', { style: 'currency', currency: selectedItem.currency })}</strong></div><div><small>Kargo / takip</small><strong>{selectedItem.cargoProviderName ?? '—'}<br />{selectedItem.cargoTrackingNumber ?? 'Takip no yok'}</strong></div></section>
         <section className="invoice-detail-section invoice-summary-section"><div className="invoice-detail-section-heading"><div><h3>Fatura bilgileri</h3><p className="invoice-detail-muted">Mali fatura, pazaryerindeki fatura ve teslim kanıtı ayrı izlenir.</p></div>{selectedItem.allowedActions?.includes('CHECK_PLATFORM') && <button type="button" className="secondary invoice-detail-platform-refresh" onClick={() => invoiceReconcile.mutate(selectedItem)} disabled={invoiceReconcile.isPending} aria-label={invoiceReconcile.isPending ? 'Pazaryeri fatura kontrolü kuyruğa alınıyor' : 'Pazaryeri fatura bilgisini yenile'}>{invoiceReconcile.isPending ? <UiIcon name="loader" /> : <UiIcon name="refresh" />}<span>{invoiceReconcile.isPending ? 'Kontrol kuyruğa alınıyor…' : 'Pazaryeri bilgisini yenile'}</span></button>}</div><div className="invoice-detail-summary-facts">{selectedItem.invoiceNumber?.trim() && <div><small>Mali fatura numarası</small><strong>{selectedItem.invoiceNumber}</strong></div>}<div><small>Mali fatura</small><Badge value={selectedItem.fiscalStatus ?? 'NONE'} label={statusLabel(selectedItem.fiscalStatus ?? 'NONE')} /></div><div><small>Pazaryerindeki fatura</small><Badge value={selectedItem.platformInvoiceStatus ?? 'UNKNOWN'} label={statusLabel(selectedItem.platformInvoiceStatus ?? 'UNKNOWN')} tone={selectedItem.platformInvoiceStatus === 'INVOICED' ? 'good' : selectedItem.platformInvoiceStatus === 'UNKNOWN' ? 'warn' : 'neutral'} /></div><div><small>İletim kanıtı</small><Badge value={selectedItem.deliveryStatus ?? selectedItem.invoiceDeliveryStatus ?? 'NOT_SENT'} tone={invoiceDeliveryTone(selectedItem.deliveryStatus ?? selectedItem.invoiceDeliveryStatus)} label={invoiceDeliveryLabel(selectedItem.deliveryStatus ?? selectedItem.invoiceDeliveryStatus)} />{selectedItem.invoiceDeliveryReference && <small>Referans: {selectedItem.invoiceDeliveryReference}</small>}</div><div><small>Son başarılı kontrol</small><strong>{selectedItem.lastSuccessfulCheckAt ? new Date(selectedItem.lastSuccessfulCheckAt).toLocaleString('tr-TR') : 'Henüz başarılı kontrol yok'}</strong></div></div>{platformInvoiceLinkUnavailable(selectedItem) && <p className="invoice-marketplace-read-error">Pazaryerinde fatura kaydı var ancak API güncel bağlantıyı vermedi. Yerel PDF varsa ayrı belge olarak açılabilir; platform bağlantısı sayılmaz.</p>}{invoiceReferenceMarketplaceHref(selectedItem) && <a className="invoice-document-link" href={invoiceReferenceMarketplaceHref(selectedItem)!} target="_blank" rel="noreferrer">Pazaryerindeki güncel fatura bağlantısını aç <UiIcon name="externalLink" /></a>}{selectedItem.manualInvoiceDocumentUrl && <a className="invoice-document-link" href={selectedItem.manualInvoiceDocumentUrl} target="_blank" rel="noreferrer">Manuel fatura belgesini aç <UiIcon name="externalLink" /></a>}{selectedItem.invoiceId && selectedItem.invoiceDocumentAvailable && <a className="invoice-document-link" href={`/api/v1/invoices/${selectedItem.invoiceId}/documents/latest/content`} target="_blank" rel="noreferrer">Mali sağlayıcı yerel PDF’sini aç <UiIcon name="externalLink" /></a>}{selectedItem.manualInvoiceDocumentId && <div className="invoice-detail-summary-facts"><div><small>Manuel platform belgesi</small><Badge value={manualInvoiceDeliveryLabel(selectedItem.manualInvoiceDeliveryStatus)} tone={selectedItem.manualInvoiceDeliveryStatus === 'CONFIRMED' ? 'good' : 'neutral'} />{selectedItem.manualInvoiceDeliveryErrorCode && <small>{selectedItem.manualInvoiceDeliveryErrorCode}</small>}</div>{selectedItem.manualInvoiceNumber && <div><small>Belge numarası</small><strong>{selectedItem.manualInvoiceNumber}</strong></div>}</div>}<div className="invoice-detail-document-actions"><button type="button" className="secondary" onClick={() => { setManualUploadItem(selectedItem); setSelectedItem(null) }}>{selectedItem.manualInvoiceDocumentId ? 'Manuel belgeyi değiştir' : 'Manuel fatura belgesi ekle'}</button>{selectedItem.manualInvoiceDocumentId && selectedItem.manualInvoiceDeliveryStatus !== 'CONFIRMED' && <button type="button" onClick={() => manualInvoiceDelivery.mutate(selectedItem)} disabled={manualInvoiceDelivery.isPending || !selectedItem.manualInvoiceIssuedAt}>{manualInvoiceDelivery.isPending ? 'Kuyruğa alınıyor…' : manualInvoiceDeliveryActionLabel(selectedItem.manualInvoiceDeliveryStatus)}</button>}{selectedItem.platformCode === 'SHOPIFY' && <button type="button" className="secondary" disabled={!selectedItem.invoiceCreationEnabled && !selectedItem.invoiceId} title={!selectedItem.invoiceCreationEnabled && !selectedItem.invoiceId ? invoiceCreationDisabledHelp : undefined} onClick={() => { setShopifyStatusItem(selectedItem); setSelectedItem(null) }}>Fatura durumunu değiştir</button>}</div></section>
         {Boolean(selectedItem.previousPlatformInvoiceReferences?.length) && <section className="invoice-detail-section"><details className="invoice-platform-reference-history"><summary>Önceki pazaryeri fatura referansları ({selectedItem.previousPlatformInvoiceReferences!.length})</summary>{selectedItem.previousPlatformInvoiceReferences!.map((reference, index) => <div className="invoice-detail-document-actions" key={`${reference.changedAt}-${index}`}><span>{reference.invoiceNumber ? `Fatura ${reference.invoiceNumber} · ` : ''}{new Date(reference.changedAt).toLocaleString('tr-TR')} · {reference.changeReason}</span>{safeInvoiceReferenceUrl(reference.invoiceUrl) && <a className="invoice-document-link" href={safeInvoiceReferenceUrl(reference.invoiceUrl)!} target="_blank" rel="noreferrer">Geçmiş bağlantıyı aç <UiIcon name="externalLink" /></a>}</div>)}</details></section>}
-        <section className="invoice-detail-section"><div className="invoice-detail-section-heading"><h3>Ürünler</h3><span>{selectedItem.lines?.length ?? selectedItem.productCount} kalem</span></div><div className="invoice-detail-lines">{(selectedItem.lines ?? []).map((line, index) => <article className="invoice-detail-line" key={`${line.sku}-${index}`}><span className="invoice-detail-line-media">{line.imageUrl ? <img src={line.imageUrl} alt="" /> : <UiIcon name="image" />}</span><div><strong>{line.description}</strong><small>SKU: {line.sku || '—'} · Barkod: {line.barcode || '—'}</small><small>{line.quantity} adet · Birim {line.unitPrice.toLocaleString('tr-TR', { style: 'currency', currency: selectedItem.currency })} · KDV %{line.vatRate}</small></div></article>)}{!selectedItem.lines?.length && <p className="invoice-detail-muted">Ürün satırı detayına ulaşılamadı; sipariş kaydı korunuyor.</p>}</div></section>
+        <section className="invoice-detail-section"><div className="invoice-detail-section-heading"><h3>Ürünler</h3><span>{selectedItem.lines?.length ?? selectedItem.productCount} kalem</span></div><div className="invoice-detail-lines">{(selectedItem.lines ?? []).map((line, index) => <article className="invoice-detail-line" key={`${line.sku}-${index}`}>{line.imageUrl ? <InvoiceDetailLineImage url={line.imageUrl} title={line.description} /> : <span className="invoice-detail-line-media"><UiIcon name="image" /></span>}<div><strong>{line.description}</strong><small>SKU: {line.sku || '—'} · Barkod: {line.barcode || '—'}</small><small>{line.quantity} adet · Birim {line.unitPrice.toLocaleString('tr-TR', { style: 'currency', currency: selectedItem.currency })} · KDV %{line.vatRate}</small></div></article>)}{!selectedItem.lines?.length && <p className="invoice-detail-muted">Ürün satırı detayına ulaşılamadı; sipariş kaydı korunuyor.</p>}</div></section>
         {addressLines(selectedItem.shipmentAddressJson).length || addressLines(selectedItem.invoiceAddressJson).length ? <section className="invoice-detail-addresses">{addressLines(selectedItem.shipmentAddressJson).length > 0 && <article><h3>Teslimat adresi</h3>{addressLines(selectedItem.shipmentAddressJson).map(line => <span key={line}>{line}</span>)}</article>}{addressLines(selectedItem.invoiceAddressJson).length > 0 && <article><h3>Fatura adresi</h3>{addressLines(selectedItem.invoiceAddressJson).map(line => <span key={line}>{line}</span>)}</article>}</section> : <p className="invoice-detail-address-note">Pazaryeri sipariş kaydında adres bilgisi bulunmuyor.</p>}
       </div><footer className="invoice-detail-footer"><button type="button" className="secondary" onClick={() => setSelectedItem(null)}>Kapat</button><button type="button" className="secondary" onClick={() => visibility.mutate({ packageIds: [selectedItem.packageId], hidden: tab !== 'HIDDEN' })} disabled={visibility.isPending}>{tab === 'HIDDEN' ? 'Görünür yap' : 'Siparişi gizle'}</button>{selectedItem.invoiceId && <Link className="button-link" to={`/invoices/${selectedItem.invoiceId}`}>Fatura kaydını aç</Link>}</footer>
     </section></div>}

@@ -5,12 +5,12 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const invoiceFixtures = [
-  { id: 'inv-1', orderId: 'order-1', packageId: 'shopify-package-1', orderNumber: 'SH-1001', customerName: 'DSM IGA', orderedAt: '2026-10-04T10:00:00Z', shipmentStatus: 'NEW', deliveredAt: null, invoiceDueAt: null, isDueSoon: true, currency: 'TRY', amount: 899, productCount: 1, primaryImageUrl: null, cargoProviderName: 'Yurtiçi', cargoTrackingNumber: '7330037879585', invoiceId: 'invoice-1', invoiceStatus: 'FATURA_BEKLIYOR', invoiceNumber: null, canCreateInvoice: true, shipmentAddressJson: null, invoiceAddressJson: null, lines: [], invoiceErrorCode: null, invoiceDeliveryStatus: null, invoiceDeliveryReference: null, invoiceDocumentAvailable: false, marketplaceInvoiceUrl: 'https://documents.example.test/current-invoice.pdf', platformInvoiceStatus: 'INVOICED', platformCode: 'SHOPIFY', platformDisplayName: 'Shopify', invoiceCreationEnabled: true },
-  { id: 'inv-2', orderId: 'order-2', packageId: 'shopify-package-2', orderNumber: 'SH-1002', customerName: 'Mehmet Kaya', orderedAt: '2026-10-04T11:00:00Z', shipmentStatus: 'DELIVERED', deliveredAt: '2026-10-04T12:30:00Z', invoiceDueAt: null, isDueSoon: true, currency: 'TRY', amount: 1250, productCount: 2, primaryImageUrl: null, cargoProviderName: 'Yurtiçi', cargoTrackingNumber: 'TRK-2', invoiceId: 'invoice-2', invoiceStatus: 'FATURA_BEKLIYOR', invoiceNumber: null, canCreateInvoice: true, shipmentAddressJson: null, invoiceAddressJson: null, lines: [], invoiceErrorCode: null, invoiceDeliveryStatus: null, invoiceDeliveryReference: null, invoiceDocumentAvailable: false, marketplaceInvoiceUrl: 'https://documents.example.test/stale-invoice.pdf', platformInvoiceStatus: 'NOT_INVOICED', platformCode: 'SHOPIFY', platformDisplayName: 'Shopify', invoiceCreationEnabled: true },
-  { id: 'inv-3', orderId: 'order-3', packageId: 'trendyol-package-3', orderNumber: 'TY-1003', customerName: 'Zeynep Demir', orderedAt: '2026-10-04T12:00:00Z', shipmentStatus: 'NEW', deliveredAt: null, invoiceDueAt: null, isDueSoon: true, currency: 'TRY', amount: 499, productCount: 1, primaryImageUrl: null, cargoProviderName: 'Aras', cargoTrackingNumber: 'TRK-3', invoiceId: null, invoiceStatus: 'FATURA_BEKLIYOR', invoiceNumber: null, canCreateInvoice: true, shipmentAddressJson: null, invoiceAddressJson: null, lines: [], invoiceErrorCode: null, invoiceDeliveryStatus: null, invoiceDeliveryReference: null, invoiceDocumentAvailable: false, marketplaceInvoiceUrl: null, platformInvoiceStatus: 'NOT_INVOICED', allowedActions: ['CHECK_PLATFORM'], platformCode: 'TRENDYOL', platformDisplayName: 'Trendyol', invoiceCreationEnabled: true },
+  { id: 'inv-1', orderId: 'order-1', packageId: 'shopify-package-1', orderNumber: 'SH-1001', customerName: 'DSM IGA', orderedAt: '2026-10-04T10:00:00Z', shipmentStatus: 'NEW', deliveredAt: null, invoiceDueAt: null, isDueSoon: true, currency: 'TRY', amount: 899, productCount: 1, primaryImageUrl: null, cargoProviderName: 'Yurtiçi', cargoTrackingNumber: '7330037879585', invoiceId: 'invoice-1', invoiceStatus: 'FATURA_BEKLIYOR', invoiceNumber: null, canCreateInvoice: true, shipmentAddressJson: null, invoiceAddressJson: null, lines: [{ sku: 'SKU-1', barcode: '0012345678901', description: 'Ravencia test ürün', quantity: 1, unitPrice: 899, vatRate: 10, imageUrl: 'https://images.example.test/pants.jpg' }], invoiceErrorCode: null, invoiceDeliveryStatus: null, invoiceDeliveryReference: null, invoiceDocumentAvailable: false, marketplaceInvoiceUrl: 'https://documents.example.test/current-invoice.pdf', platformInvoiceStatus: 'INVOICED', platformCode: 'SHOPIFY', platformDisplayName: 'Shopify', invoiceCreationEnabled: true, marketplaceConnectionId: 'shopify-connection', externalOrderId: 'gid://shopify/Order/1001' },
+  { id: 'inv-2', orderId: 'order-2', packageId: 'shopify-package-2', orderNumber: 'SH-1002', customerName: 'Mehmet Kaya', orderedAt: '2026-10-04T11:00:00Z', shipmentStatus: 'DELIVERED', deliveredAt: '2026-10-04T12:30:00Z', invoiceDueAt: null, isDueSoon: true, currency: 'TRY', amount: 1250, productCount: 2, primaryImageUrl: null, cargoProviderName: 'Yurtiçi', cargoTrackingNumber: 'TRK-2', invoiceId: 'invoice-2', invoiceStatus: 'FATURA_BEKLIYOR', invoiceNumber: null, canCreateInvoice: true, shipmentAddressJson: null, invoiceAddressJson: null, lines: [], invoiceErrorCode: null, invoiceDeliveryStatus: null, invoiceDeliveryReference: null, invoiceDocumentAvailable: false, marketplaceInvoiceUrl: 'https://documents.example.test/stale-invoice.pdf', platformInvoiceStatus: 'NOT_INVOICED', platformCode: 'SHOPIFY', platformDisplayName: 'Shopify', invoiceCreationEnabled: true, marketplaceConnectionId: 'shopify-connection', externalOrderId: 'gid://shopify/Order/1002', manualInvoiceDocumentId: 'manual-doc-2', manualInvoiceIssuedAt: '2026-10-04T11:00:00Z', manualInvoiceDeliveryStatus: null },
+  { id: 'inv-3', orderId: 'order-3', packageId: 'trendyol-package-3', orderNumber: 'TY-1003', customerName: 'Zeynep Demir', orderedAt: '2026-10-04T12:00:00Z', shipmentStatus: 'NEW', deliveredAt: null, invoiceDueAt: null, isDueSoon: true, currency: 'TRY', amount: 499, productCount: 1, primaryImageUrl: null, cargoProviderName: 'Aras', cargoTrackingNumber: 'TRK-3', invoiceId: null, invoiceStatus: 'FATURA_BEKLIYOR', invoiceNumber: null, canCreateInvoice: true, shipmentAddressJson: null, invoiceAddressJson: null, lines: [], invoiceErrorCode: null, invoiceDeliveryStatus: null, invoiceDeliveryReference: null, invoiceDocumentAvailable: false, marketplaceInvoiceUrl: null, platformInvoiceStatus: 'NOT_INVOICED', allowedActions: ['CHECK_PLATFORM'], platformCode: 'TRENDYOL', platformDisplayName: 'Trendyol', invoiceCreationEnabled: true, marketplaceConnectionId: 'trendyol-connection', externalOrderId: 'external-ty-1003', externalPackageNumber: 'package-ty-3' },
 ]
 
-const apiState = vi.hoisted(() => ({ uploads: [] as Array<{ path: string; fileName: string | null }>, statusUpdates: [] as Array<{ path: string; status: string; packageIds: string[] }>, pageRequests: [] as string[] }))
+const apiState = vi.hoisted(() => ({ uploads: [] as Array<{ path: string; fileName: string | null }>, statusUpdates: [] as Array<{ path: string; status: string; packageIds: string[] }>, pageRequests: [] as string[], orderSyncRequests: [] as Array<{ path: string; body: unknown }> }))
 
 vi.mock('../../shared/api', () => ({
   hubApi: vi.fn(async (path: string, init?: RequestInit) => {
@@ -23,9 +23,14 @@ vi.mock('../../shared/api', () => ({
       apiState.statusUpdates.push({ path, status: body.status, packageIds: body.packageIds })
       return { updatedCount: body.packageIds.length }
     }
+    if (path.endsWith('/order-sync-jobs')) {
+      apiState.orderSyncRequests.push({ path, body: init?.body ? JSON.parse(String(init.body)) : null })
+      return { jobId: 'order-sync-job' }
+    }
+    if (path === '/invoice-workspace/manual-documents/manual-doc-2/delivery-jobs') return { jobIds: ['manual-delivery-job'], queuedPackageCount: 1, inspectionOnlyPackageCount: 0 }
     throw new Error(`Test API fixture does not handle ${init?.method ?? 'GET'} ${path}`)
   }),
-  loadAllPages: vi.fn(async () => ({ items: [{ id: 'shopify-connection', platformCode: 'SHOPIFY', displayName: 'Shopify', status: 'ACTIVE', hasCredential: false }, { id: 'trendyol-connection', platformCode: 'TRENDYOL', displayName: 'Trendyol', status: 'ACTIVE', hasCredential: false }], nextCursor: null, hasMore: false })),
+  loadAllPages: vi.fn(async () => ({ items: [{ id: 'shopify-connection', platformCode: 'SHOPIFY', displayName: 'Shopify', status: 'ACTIVE', environment: 'LIVE', hasCredential: false }, { id: 'trendyol-connection', platformCode: 'TRENDYOL', displayName: 'Trendyol', status: 'ACTIVE', environment: 'LIVE', hasCredential: false }], nextCursor: null, hasMore: false })),
 }))
 vi.mock('../../shared/notifications', () => ({ appendNotification: vi.fn() }))
 
@@ -47,6 +52,7 @@ beforeEach(async () => {
   apiState.uploads = []
   apiState.statusUpdates = []
   apiState.pageRequests = []
+  apiState.orderSyncRequests = []
   container = document.createElement('div')
   document.body.append(container)
   client = new QueryClient({ defaultOptions: { queries: { retry: false, refetchInterval: false }, mutations: { retry: false } } })
@@ -76,6 +82,23 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     expect(link?.rel).toContain('noreferrer')
   })
 
+  it('opens invoice detail product images in the shared image lightbox', async () => {
+    const row = Array.from(container.querySelectorAll<HTMLElement>('.invoice-reference-row'))
+      .find(item => item.textContent?.includes('SH-1001'))!
+    act(() => row.querySelector<HTMLButtonElement>('.invoice-reference-details-trigger')!.click())
+    await settle()
+
+    const thumbnail = container.querySelector<HTMLButtonElement>('.invoice-detail-line-image-button')
+    expect(thumbnail?.getAttribute('aria-label')).toBe('Ravencia test ürün görselini büyüt')
+    act(() => thumbnail!.click())
+
+    const dialog = document.getElementById('invoice-detail-image-modal-title')?.closest('[role="dialog"]')
+    expect(dialog).not.toBeNull()
+    expect(dialog?.querySelector('img')?.getAttribute('alt')).toBe('Ravencia test ürün büyük ürün görseli')
+    act(() => dialog?.querySelector<HTMLButtonElement>('.modal-close')?.click())
+    expect(document.getElementById('invoice-detail-image-modal-title')).toBeNull()
+  })
+
   it('does not present a stale marketplace document link while the platform says invoice pending', () => {
     const rows = Array.from(container.querySelectorAll<HTMLElement>('.invoice-reference-row'))
     const row = rows.find(item => item.textContent?.includes('SH-1002'))!
@@ -100,10 +123,46 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     const row = Array.from(container.querySelectorAll<HTMLElement>('.invoice-reference-row'))
       .find(item => item.textContent?.includes('TY-1003'))!
     expect(row.querySelector('.invoice-reference-shipment')?.textContent).not.toContain('Henüz teslim edilmedi')
-    const actionButtons = Array.from(row.querySelectorAll<HTMLButtonElement>('.invoice-reference-actions button'))
+    act(() => row.querySelector<HTMLButtonElement>('.invoice-reference-actions-trigger')!.click())
+    const actionButtons = Array.from(document.body.querySelectorAll<HTMLButtonElement>('[role="menu"] button'))
     const create = actionButtons.find(item => item.textContent?.includes('Fatura oluştur'))
     expect(create).toBeUndefined()
     expect(container.querySelector('[role="dialog"]')).toBeNull()
+  })
+
+  it('queues a read-only refresh of the marketplace order using its order and package identifiers', async () => {
+    const row = Array.from(container.querySelectorAll<HTMLElement>('.invoice-reference-row'))
+      .find(item => item.textContent?.includes('TY-1003'))!
+    act(() => row.querySelector<HTMLButtonElement>('.invoice-reference-actions-trigger')!.click())
+    await settle()
+    act(() => Array.from(document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')).find(item => item.textContent?.includes('Sipariş durumunu güncelle'))!.click())
+    await settle()
+    expect(apiState.orderSyncRequests).toEqual([{ path: '/connections/trendyol-connection/order-sync-jobs', body: { externalOrderId: 'external-ty-1003', full: false, packageNumber: 'package-ty-3' } }])
+    expect(container.textContent).toContain('Pazaryerindeki sipariş durumu yenileme kuyruğuna alındı.')
+  })
+
+  it('opens manual invoice upload from the row actions menu without sending it', async () => {
+    const row = Array.from(container.querySelectorAll<HTMLElement>('.invoice-reference-row'))
+      .find(item => item.textContent?.includes('SH-1001'))!
+    act(() => row.querySelector<HTMLButtonElement>('.invoice-reference-actions-trigger')!.click())
+    await settle()
+    act(() => Array.from(document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')).find(item => item.textContent?.includes('Manuel fatura ekle'))!.click())
+    await settle()
+    expect(container.querySelector('[role="dialog"]')?.textContent).toContain('Siparişe manuel fatura belgesi ekle')
+    expect(apiState.orderSyncRequests).toEqual([])
+    act(() => button('Vazgeç').click())
+  })
+
+  it('offers marketplace delivery when a manual invoice document already exists', async () => {
+    const row = Array.from(container.querySelectorAll<HTMLElement>('.invoice-reference-row'))
+      .find(item => item.textContent?.includes('SH-1002'))!
+    act(() => row.querySelector<HTMLButtonElement>('.invoice-reference-actions-trigger')!.click())
+    await settle()
+    const send = Array.from(document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')).find(item => item.textContent?.includes('Manuel faturayı pazaryerine gönder'))
+    expect(send).not.toBeUndefined()
+    act(() => send!.click())
+    await settle()
+    expect(container.textContent).toContain('1 paket için taze durum kontrolü ve manuel fatura iletimi kuyruğa alındı.')
   })
 
   it('copies the raw invoice order number using the copy control', async () => {
