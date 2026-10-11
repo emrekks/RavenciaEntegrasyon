@@ -11887,8 +11887,8 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .rv-question-thread-message header strong { color: var(--rv-color-ink); }
 .rv-question-thread-message p { margin: 5px 0 0; color: var(--rv-color-ink); white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
 .rv-question-thread-message .rv-question-rejection { display: block; margin-top: 6px; color: var(--rv-color-danger); }
-.rv-question-inline-compose { display: grid; gap: 9px; min-width: 0; padding: 10px; border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); background: var(--rv-color-surface); }
-.rv-question-inline-compose textarea { width: 100%; min-height: 78px; box-sizing: border-box; padding: 9px 11px; border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); background: var(--rv-color-surface-raised); color: var(--rv-color-ink); font: inherit; resize: vertical; }
+.rv-question-inline-compose { display: grid; justify-self: end; width: min(92%, 850px); box-sizing: border-box; gap: 9px; min-width: 0; padding: 10px; border: 1px solid color-mix(in srgb, var(--rv-color-primary) 44%, var(--rv-color-border)); border-radius: var(--rv-radius-md); background: color-mix(in srgb, var(--rv-color-primary) 10%, var(--rv-color-surface-raised)); }
+.rv-question-inline-compose textarea { width: 100%; min-height: 78px; box-sizing: border-box; padding: 9px 11px; border: 1px solid color-mix(in srgb, var(--rv-color-primary) 28%, var(--rv-color-border)); border-radius: var(--rv-radius-md); background: var(--rv-color-surface-raised); color: var(--rv-color-ink); font: inherit; resize: vertical; }
 .rv-question-detail-product .rv-question-product-placeholder { width: 56px; height: 68px; flex: 0 0 56px; }
 .rv-question-detail-product .rv-question-product-placeholder > .ui-icon { width: 22px; height: 22px; }
 @media (max-width: 1080px) {
@@ -12412,6 +12412,13 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .app-shell.stitch-shell main .order-label-action.is-printed:hover:not(:disabled) { opacity: .52; background: color-mix(in srgb, var(--rv-color-primary) 28%, var(--rv-color-surface)); }
 
 .app-shell.stitch-shell main .return-reference-table :is(.badge, .invoice-status-label) { height: 34px; color: #fff; }
+.app-shell.stitch-shell main .return-reference-table .return-reference-status > button.return-detail-trigger:not(.return-print-label) {
+  width: fit-content;
+  height: 34px;
+  min-height: 34px;
+  box-sizing: border-box;
+  padding-inline: var(--rv-space-2);
+}
 @media (max-width: 760px) {
   .date-range-picker-layout { grid-template-columns: minmax(0, 1fr); }
   .date-range-picker-presets { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 0 0 10px; border-right: 0; border-bottom: 1px solid var(--rv-color-border); }

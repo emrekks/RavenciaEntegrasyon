@@ -77,13 +77,12 @@ export function QuestionsPage() {
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState('NEWEST')
   const [page, setPage] = useState(1)
-  const [replyingId, setReplyingId] = useState<string | null>(null)
+  const [answerDrafts, setAnswerDrafts] = useState<Record<string, string>>({})
   const [now, setNow] = useState(Date.now())
   const [notice, setNotice] = useState('')
   const [templateTitle, setTemplateTitle] = useState('')
   const [templateText, setTemplateText] = useState('')
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null)
-  const [answerText, setAnswerText] = useState('')
   const requestedSync = useRef(false)
   const kind = tab === 'ORDER' ? 'ORDER' : 'PRODUCT'
   const connections = useQuery({ queryKey: ['questions', 'connections'], queryFn: async () => (await loadAllPages<Connection>('/connections', 100)).items.filter(item => ['TRENDYOL', 'HEPSIBURADA'].includes(item.platformCode)), staleTime: 60_000 })
@@ -112,7 +111,7 @@ export function QuestionsPage() {
   const deleteTemplate = useMutation({ mutationFn: (item: Template) => hubApi<void>(`/question-templates/${item.id}`, { method: 'DELETE', headers: { 'If-Match': `"v${item.version}"` } }), onSuccess: async () => { setNotice(''); await client.invalidateQueries({ queryKey: ['question-templates'] }) }, onError: error => setNotice(error instanceof Error ? error.message : 'Hazır cevap silinemedi.') })
   const sendAnswer = useMutation({
     mutationFn: ({ id, version, text }: { id: string; version: number; text: string }) => hubApi<MarketplaceQuestion>(`/questions/${id}/answer`, { method: 'POST', headers: { 'X-Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ text, version }) }),
-    onSuccess: async () => { setNotice(''); setReplyingId(null); setAnswerText(''); await client.invalidateQueries({ queryKey: ['questions'] }) },
+    onSuccess: async (_data, variables) => { setNotice(''); setAnswerDrafts(current => ({ ...current, [variables.id]: '' })); await client.invalidateQueries({ queryKey: ['questions'] }) },
     onError: error => setNotice(error instanceof Error ? error.message : 'Cevap gönderilemedi.'),
   })
 
@@ -151,18 +150,18 @@ export function QuestionsPage() {
           return <article className="rv-question-card" key={row.id}>
             <header className="rv-question-card-header">
               <div className="rv-question-product"><QuestionProductImage src={row.productImageUrl} connectionId={row.connectionId} sku={row.productSku} barcode={row.productBarcode} modelCode={row.productModelCode} productName={row.productName || 'Ürün'} /><div><strong>{productHref ? <a className="rv-question-product-link" href={productHref} target="_blank" rel="noopener noreferrer">{row.productName || 'Ürün'}</a> : row.productName || (row.kind === 'ORDER' ? 'Sipariş sorusu' : 'Ürün bilgisi yok')}</strong><small>{[row.productSku && `SKU ${row.productSku}`, row.productModelCode && `Model ${row.productModelCode}`, row.productBarcode && `Barkod ${row.productBarcode}`].filter(Boolean).join(' · ') || 'Ürün kodu bilgisi yok'}</small></div></div>
-              <div className="rv-question-actions"><div className="rv-question-platform-context"><PlatformMark code={row.platformCode} name={displayPlatform(row.platformCode)} /><div>{deadline ? <span className={`rv-question-deadline ${deadline.urgent ? 'is-urgent' : ''}`} title={`Son cevap tarihi: ${formatDate(row.expiresAt)}`}>{deadline.text === 'Süre doldu' ? 'Süre doldu' : `Kalan süre: ${deadline.text}`}</span> : <small className="rv-question-age">Soru tarihi: {formatDate(row.createdAt)}</small>}<Badge tone={badge.tone}>{badge.label}</Badge></div></div>{row.status === 'WAITING_FOR_ANSWER' && <Button size="sm" variant={replyingId === row.id ? 'primary' : 'secondary'} onClick={() => { setReplyingId(current => current === row.id ? null : row.id); setAnswerText('') }}>{replyingId === row.id ? 'Cevabı kapat' : 'Cevap yaz'}</Button>}</div>
+              <div className="rv-question-actions"><div className="rv-question-platform-context"><PlatformMark code={row.platformCode} name={displayPlatform(row.platformCode)} /><div>{deadline ? <span className={`rv-question-deadline ${deadline.urgent ? 'is-urgent' : ''}`} title={`Son cevap tarihi: ${formatDate(row.expiresAt)}`}>{deadline.text === 'Süre doldu' ? 'Süre doldu' : `Kalan süre: ${deadline.text}`}</span> : <small className="rv-question-age">Soru tarihi: {formatDate(row.createdAt)}</small>}<Badge tone={badge.tone}>{badge.label}</Badge></div></div></div>
             </header>
             <section className="rv-question-content" aria-label="Soru ve konuşmalar">
               <div className="rv-question-thread-message is-customer is-question"><header><strong>{row.customerName || 'Müşteri sorusu'}</strong><time dateTime={row.createdAt}>{formatDate(row.createdAt)}</time></header><p>{row.questionText}</p></div>
               {previousMessages.length > 0 && <div className="rv-question-conversation" aria-label="Konuşma geçmişi">{previousMessages.map((message, index) => { const sellerMessage = message.author.toLowerCase().includes('merchant') || message.author.toLowerCase().includes('seller'); return <article className={`rv-question-thread-message ${sellerMessage ? 'is-seller' : 'is-customer'}`} key={`${message.createdAt}-${index}`}><header><strong>{sellerMessage ? 'Satıcı cevabı' : message.author || 'Müşteri'}</strong><time dateTime={message.createdAt}>{formatDate(message.createdAt)}</time></header><p>{message.text}</p>{message.rejectionReason && <small className="rv-question-rejection">Ret nedeni: {message.rejectionReason}</small>}</article> })}</div>}
               <div className="rv-question-meta">{row.storeName && row.storeName.toLocaleLowerCase('tr-TR') !== displayPlatform(row.platformCode).toLocaleLowerCase('tr-TR') && <span>{row.storeName}</span>}{tab === 'ORDER' && row.externalOrderNumber && <Link to={`/orders?search=${encodeURIComponent(row.externalOrderNumber)}`}>Sipariş #{row.externalOrderNumber}</Link>}</div>
             </section>
-            {replyingId === row.id && <section className="rv-question-inline-compose" aria-label={`#${row.externalQuestionId} için cevap`}>
-            {templates.data?.length ? <div className="rv-question-bubbles" aria-label="Hazır cevaplar">{templates.data.map(item => <button type="button" key={item.id} title={item.text} onClick={() => setAnswerText(item.text)}>{item.title}</button>)}</div> : null}
-            <textarea rows={3} maxLength={2000} value={answerText} onChange={event => setAnswerText(event.target.value)} placeholder="Cevabınızı sorunun altında yazın…" aria-label="Soruya cevap" />
-            <div className="rv-question-compose-footer"><small>{answerText.trim().length}/{row.platformCode === 'TRENDYOL' ? '10–2000' : '1–2000'} karakter</small><Button onClick={() => sendAnswer.mutate({ id: row.id, version: row.version, text: answerText })} loading={sendAnswer.isPending} disabled={answerText.trim().length < (row.platformCode === 'TRENDYOL' ? 10 : 1) || answerText.trim().length > 2000}>Gönder</Button></div>
-            {sendAnswer.isError && <p className="rv-question-send-error" role="alert">{sendAnswer.error instanceof Error ? sendAnswer.error.message : 'Cevap gönderilemedi.'}</p>}
+            {row.status === 'WAITING_FOR_ANSWER' && <section className="rv-question-inline-compose" aria-label={`#${row.externalQuestionId} için cevap`}>
+            {templates.data?.length ? <div className="rv-question-bubbles" aria-label="Hazır cevaplar">{templates.data.map(item => <button type="button" key={item.id} title={item.text} onClick={() => setAnswerDrafts(current => ({ ...current, [row.id]: item.text }))}>{item.title}</button>)}</div> : null}
+            <textarea rows={3} maxLength={2000} value={answerDrafts[row.id] ?? ''} onChange={event => setAnswerDrafts(current => ({ ...current, [row.id]: event.target.value }))} placeholder="Cevabınızı buraya yazın…" aria-label="Soruya cevap" />
+            <div className="rv-question-compose-footer"><small>{(answerDrafts[row.id] ?? '').trim().length}/{row.platformCode === 'TRENDYOL' ? '10–2000' : '1–2000'} karakter</small><Button onClick={() => sendAnswer.mutate({ id: row.id, version: row.version, text: answerDrafts[row.id] ?? '' })} loading={sendAnswer.isPending} disabled={(answerDrafts[row.id] ?? '').trim().length < (row.platformCode === 'TRENDYOL' ? 10 : 1) || (answerDrafts[row.id] ?? '').trim().length > 2000}>Gönder</Button></div>
+            {sendAnswer.isError && sendAnswer.variables?.id === row.id && <p className="rv-question-send-error" role="alert">{sendAnswer.error instanceof Error ? sendAnswer.error.message : 'Cevap gönderilemedi.'}</p>}
             </section>}
           </article>
         })}</div>}
