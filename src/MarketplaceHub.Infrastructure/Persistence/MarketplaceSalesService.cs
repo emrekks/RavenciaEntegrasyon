@@ -60,16 +60,32 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var invoices = await db.Invoices.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId)
             && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))).OrderByDescending(x => x.CreatedAt).ToListAsync(cancellationToken);
         var invoiceIds = invoices.Select(invoice => invoice.Id).ToArray();
-        var confirmedDeliveryInvoiceIds = invoiceIds.Length == 0
-            ? new HashSet<Guid>()
-            : (await db.MarketplaceDeliveryStates.AsNoTracking()
-                .Where(delivery => delivery.TenantId == tenantId && invoiceIds.Contains(delivery.InvoiceId) && delivery.Status == "CONFIRMED")
-                .Select(delivery => delivery.InvoiceId)
-                .Concat(db.MarketplaceDeliveries.AsNoTracking()
-                    .Where(delivery => delivery.TenantId == tenantId && invoiceIds.Contains(delivery.InvoiceId) && delivery.Status == "CONFIRMED")
-                    .Select(delivery => delivery.InvoiceId))
-                .Distinct()
-                .ToListAsync(cancellationToken)).ToHashSet();
+        var deliveryStates = invoiceIds.Length == 0
+            ? []
+            : await db.MarketplaceDeliveryStates.AsNoTracking()
+                .Where(delivery => delivery.TenantId == tenantId && invoiceIds.Contains(delivery.InvoiceId))
+                .Select(delivery => new { delivery.InvoiceId, delivery.PackageId, delivery.Status, delivery.UpdatedAt })
+                .ToListAsync(cancellationToken);
+        var deliveryAttempts = invoiceIds.Length == 0
+            ? []
+            : await db.MarketplaceDeliveries.AsNoTracking()
+                .Where(delivery => delivery.TenantId == tenantId && invoiceIds.Contains(delivery.InvoiceId))
+                .Select(delivery => new { delivery.InvoiceId, delivery.PackageId, delivery.Status })
+                .ToListAsync(cancellationToken);
+        var confirmedDeliveryInvoiceIds = new HashSet<Guid>();
+        foreach (var candidateInvoice in invoices.Where(invoice => invoice.OriginalInvoiceId == null && invoice.SequencePurpose == "SALE"))
+        {
+            var targetPackages = candidateInvoice.PackageId is { } targetPackageId
+                ? packages.Where(package => package.Id == targetPackageId).ToArray()
+                : packages.Where(package => package.OrderId == candidateInvoice.OrderId && package.Status != ShipmentPackageStatus.Cancelled).ToArray();
+            var confirmedPackageIds = targetPackages.Where(package => MarketplaceInvoiceDeliveryEvidencePolicy.HasConfirmedDelivery(
+                    deliveryStates.Where(state => state.InvoiceId == candidateInvoice.Id && state.PackageId == package.Id)
+                        .OrderByDescending(state => state.UpdatedAt).Select(state => state.Status).FirstOrDefault(),
+                    deliveryAttempts.Any(attempt => attempt.InvoiceId == candidateInvoice.Id && attempt.PackageId == package.Id && attempt.Status == "CONFIRMED")))
+                .Select(package => package.Id).ToArray();
+            if (MarketplaceInvoiceDeliveryEvidencePolicy.AllTargetsConfirmed(targetPackages.Select(package => package.Id), confirmedPackageIds))
+                confirmedDeliveryInvoiceIds.Add(candidateInvoice.Id);
+        }
         var linesByOrder = lines.GroupBy(x => x.OrderId).ToDictionary(x => x.Key, x => x.ToList());
         var packagesByOrder = packages.GroupBy(x => x.OrderId).ToDictionary(x => x.Key, x => x.ToList());
         var invoicesByOrder = invoices.Where(x => x.OriginalInvoiceId == null).GroupBy(x => x.OrderId).ToDictionary(x => x.Key, x => x.First());
@@ -174,21 +190,47 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var invoice = options.Invoice?.Trim().ToUpperInvariant();
         if (!string.IsNullOrWhiteSpace(invoice) && invoice != "ALL")
         {
+            var fullyDeliveredInvoiceOrderIds = db.Invoices.AsNoTracking()
+                .Where(candidate => candidate.TenantId == tenantId && candidate.OriginalInvoiceId == null
+                    && candidate.SequencePurpose == "SALE" && candidate.Status == InvoiceStatus.Completed
+                    && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == candidate.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
+                    && (candidate.PackageId.HasValue
+                        ? db.ShipmentPackages.Any(package => package.TenantId == tenantId && package.Id == candidate.PackageId.Value
+                            && package.Status != ShipmentPackageStatus.Cancelled
+                            && (db.MarketplaceDeliveryStates.Any(state => state.TenantId == tenantId && state.InvoiceId == candidate.Id && state.PackageId == package.Id && state.Status == "CONFIRMED")
+                                || (!db.MarketplaceDeliveryStates.Any(state => state.TenantId == tenantId && state.InvoiceId == candidate.Id && state.PackageId == package.Id)
+                                    && db.MarketplaceDeliveries.Any(delivery => delivery.TenantId == tenantId && delivery.InvoiceId == candidate.Id && delivery.PackageId == package.Id && delivery.Status == "CONFIRMED"))))
+                        : db.ShipmentPackages.Any(package => package.TenantId == tenantId && package.OrderId == candidate.OrderId && package.Status != ShipmentPackageStatus.Cancelled)
+                            && !db.ShipmentPackages.Any(package => package.TenantId == tenantId && package.OrderId == candidate.OrderId && package.Status != ShipmentPackageStatus.Cancelled
+                                && !((db.MarketplaceDeliveryStates.Any(state => state.TenantId == tenantId && state.InvoiceId == candidate.Id && state.PackageId == package.Id && state.Status == "CONFIRMED"))
+                                    || (!db.MarketplaceDeliveryStates.Any(state => state.TenantId == tenantId && state.InvoiceId == candidate.Id && state.PackageId == package.Id)
+                                        && db.MarketplaceDeliveries.Any(delivery => delivery.TenantId == tenantId && delivery.InvoiceId == candidate.Id && delivery.PackageId == package.Id && delivery.Status == "CONFIRMED"))))))
+                .Select(candidate => candidate.OrderId);
+            var completedInvoiceOrderIdsMissingDelivery = db.Invoices.AsNoTracking()
+                .Where(candidate => candidate.TenantId == tenantId && candidate.OriginalInvoiceId == null
+                    && candidate.SequencePurpose == "SALE" && candidate.Status == InvoiceStatus.Completed
+                    && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == candidate.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
+                    && (candidate.PackageId.HasValue
+                        ? !db.ShipmentPackages.Any(package => package.TenantId == tenantId && package.Id == candidate.PackageId.Value
+                            && package.Status != ShipmentPackageStatus.Cancelled
+                            && (db.MarketplaceDeliveryStates.Any(state => state.TenantId == tenantId && state.InvoiceId == candidate.Id && state.PackageId == package.Id && state.Status == "CONFIRMED")
+                                || (!db.MarketplaceDeliveryStates.Any(state => state.TenantId == tenantId && state.InvoiceId == candidate.Id && state.PackageId == package.Id)
+                                    && db.MarketplaceDeliveries.Any(delivery => delivery.TenantId == tenantId && delivery.InvoiceId == candidate.Id && delivery.PackageId == package.Id && delivery.Status == "CONFIRMED"))))
+                        : !db.ShipmentPackages.Any(package => package.TenantId == tenantId && package.OrderId == candidate.OrderId && package.Status != ShipmentPackageStatus.Cancelled)
+                            || db.ShipmentPackages.Any(package => package.TenantId == tenantId && package.OrderId == candidate.OrderId && package.Status != ShipmentPackageStatus.Cancelled
+                                && !((db.MarketplaceDeliveryStates.Any(state => state.TenantId == tenantId && state.InvoiceId == candidate.Id && state.PackageId == package.Id && state.Status == "CONFIRMED"))
+                                    || (!db.MarketplaceDeliveryStates.Any(state => state.TenantId == tenantId && state.InvoiceId == candidate.Id && state.PackageId == package.Id)
+                                        && db.MarketplaceDeliveries.Any(delivery => delivery.TenantId == tenantId && delivery.InvoiceId == candidate.Id && delivery.PackageId == package.Id && delivery.Status == "CONFIRMED"))))))
+                .Select(candidate => candidate.OrderId);
             query = invoice switch
             {
-                "FATURA_KESILDI" => query.Where(x =>
-                    db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null
-                        && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
-                        && i.Status == InvoiceStatus.Completed
-                        && (db.MarketplaceDeliveryStates.Any(state => state.TenantId == i.TenantId && state.InvoiceId == i.Id && state.Status == "CONFIRMED")
-                            || db.MarketplaceDeliveries.Any(delivery => delivery.TenantId == i.TenantId && delivery.InvoiceId == i.Id && delivery.Status == "CONFIRMED")))),
+                "FATURA_KESILDI" => query.Where(x => fullyDeliveredInvoiceOrderIds.Contains(x.Id)),
                 "FATURA_KONTROLDE" => query.Where(x =>
                     db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null
+                        && i.SequencePurpose == "SALE"
                         && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
-                        && ((i.Status == InvoiceStatus.Submitted || i.Status == InvoiceStatus.Accepted || i.Status == InvoiceStatus.MarketplacePending)
-                            || (i.Status == InvoiceStatus.Completed
-                                && !db.MarketplaceDeliveryStates.Any(state => state.TenantId == i.TenantId && state.InvoiceId == i.Id && state.Status == "CONFIRMED")
-                                && !db.MarketplaceDeliveries.Any(delivery => delivery.TenantId == i.TenantId && delivery.InvoiceId == i.Id && delivery.Status == "CONFIRMED"))))
+                        && (i.Status == InvoiceStatus.Submitted || i.Status == InvoiceStatus.Accepted || i.Status == InvoiceStatus.MarketplacePending))
+                    || completedInvoiceOrderIdsMissingDelivery.Contains(x.Id)
                     || db.ShipmentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id
                         && (package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Received || package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Invoiced))),
                 "FATURA_PLATFORMA_AKTARILMADI" => query.Where(x => db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null
@@ -604,8 +646,35 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var invoice = packages.Select(x => invoices.FirstOrDefault(invoice => invoice.PackageId == x.Id)).FirstOrDefault(x => x is not null)
             ?? invoices.FirstOrDefault(x => x.PackageId == null)
             ?? invoices.FirstOrDefault();
-        var deliveryConfirmed = invoice is not null && (await db.MarketplaceDeliveryStates.AsNoTracking().AnyAsync(state => state.TenantId == tenantId && state.InvoiceId == invoice.Id && state.Status == "CONFIRMED", cancellationToken)
-            || await db.MarketplaceDeliveries.AsNoTracking().AnyAsync(delivery => delivery.TenantId == tenantId && delivery.InvoiceId == invoice.Id && delivery.Status == "CONFIRMED", cancellationToken));
+        var invoiceTargetPackages = invoice?.PackageId is { } invoicePackageId
+            ? packages.Where(package => package.Id == invoicePackageId && package.Status != ShipmentPackageStatus.Cancelled).ToArray()
+            : packages.Where(package => package.Status != ShipmentPackageStatus.Cancelled).ToArray();
+        var invoiceTargetPackageIds = invoiceTargetPackages.Select(package => package.Id).ToArray();
+        var currentInvoiceDeliveryStates = invoice is null || invoiceTargetPackageIds.Length == 0
+            ? []
+            : await db.MarketplaceDeliveryStates.AsNoTracking()
+                .Where(state => state.TenantId == tenantId && state.InvoiceId == invoice.Id
+                    && state.PackageId.HasValue && invoiceTargetPackageIds.Contains(state.PackageId.Value))
+                .Select(state => new { state.PackageId, state.Status, state.UpdatedAt })
+                .ToListAsync(cancellationToken);
+        var historicalConfirmedInvoiceDeliveries = invoice is null || invoiceTargetPackageIds.Length == 0
+            ? []
+            : await db.MarketplaceDeliveries.AsNoTracking()
+                .Where(delivery => delivery.TenantId == tenantId && delivery.InvoiceId == invoice.Id
+                    && delivery.PackageId.HasValue && invoiceTargetPackageIds.Contains(delivery.PackageId.Value)
+                    && delivery.Status == "CONFIRMED")
+                .Select(delivery => delivery.PackageId!.Value)
+                .Distinct()
+                .ToListAsync(cancellationToken);
+        var confirmedInvoicePackageIds = invoiceTargetPackages
+            .Where(package => MarketplaceInvoiceDeliveryEvidencePolicy.HasConfirmedDelivery(
+                currentInvoiceDeliveryStates.Where(state => state.PackageId == package.Id)
+                    .OrderByDescending(state => state.UpdatedAt).Select(state => state.Status).FirstOrDefault(),
+                historicalConfirmedInvoiceDeliveries.Contains(package.Id)))
+            .Select(package => package.Id)
+            .ToArray();
+        var deliveryConfirmed = invoice is not null && MarketplaceInvoiceDeliveryEvidencePolicy.AllTargetsConfirmed(
+            invoiceTargetPackageIds, confirmedInvoicePackageIds);
         var invoiceDocumentUrl = packages
             .Select(x => ValidInvoiceDocumentUrl(x.MarketplaceInvoiceUrl))
             .FirstOrDefault(x => x is not null)
@@ -1379,16 +1448,18 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var invoices = await db.Invoices.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId) && x.OriginalInvoiceId == null
             && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))).OrderByDescending(x => x.CreatedAt).ToListAsync(cancellationToken);
         var invoiceIds = invoices.Select(invoice => invoice.Id).ToArray();
-        var confirmedDeliveryInvoiceIds = invoiceIds.Length == 0
-            ? new HashSet<Guid>()
-            : (await db.MarketplaceDeliveryStates.AsNoTracking()
-                .Where(delivery => delivery.TenantId == tenantId && invoiceIds.Contains(delivery.InvoiceId) && delivery.Status == "CONFIRMED")
-                .Select(delivery => delivery.InvoiceId)
-                .Concat(db.MarketplaceDeliveries.AsNoTracking()
-                    .Where(delivery => delivery.TenantId == tenantId && invoiceIds.Contains(delivery.InvoiceId) && delivery.Status == "CONFIRMED")
-                    .Select(delivery => delivery.InvoiceId))
-                .Distinct()
-                .ToListAsync(cancellationToken)).ToHashSet();
+        var returnDeliveryStates = invoiceIds.Length == 0
+            ? []
+            : await db.MarketplaceDeliveryStates.AsNoTracking()
+                .Where(delivery => delivery.TenantId == tenantId && invoiceIds.Contains(delivery.InvoiceId))
+                .Select(delivery => new { delivery.InvoiceId, delivery.PackageId, delivery.Status, delivery.UpdatedAt })
+                .ToListAsync(cancellationToken);
+        var returnDeliveryAttempts = invoiceIds.Length == 0
+            ? []
+            : await db.MarketplaceDeliveries.AsNoTracking()
+                .Where(delivery => delivery.TenantId == tenantId && invoiceIds.Contains(delivery.InvoiceId))
+                .Select(delivery => new { delivery.InvoiceId, delivery.PackageId, delivery.Status })
+                .ToListAsync(cancellationToken);
         var rows = claims.Select(claim =>
         {
             var order = orders.GetValueOrDefault(claim.OrderId);
@@ -1399,6 +1470,11 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             var package = packages.FirstOrDefault(x => x.OrderId == claim.OrderId);
             var outboundPackage = packages.FirstOrDefault(x => x.OrderId == claim.OrderId && !string.IsNullOrWhiteSpace(x.CargoTrackingNumber)) ?? package;
             var invoice = invoices.FirstOrDefault(x => x.OrderId == claim.OrderId);
+            var packageDeliveryConfirmed = invoice is not null && package is not null
+                && MarketplaceInvoiceDeliveryEvidencePolicy.HasConfirmedDelivery(
+                    returnDeliveryStates.Where(state => state.InvoiceId == invoice.Id && state.PackageId == package.Id)
+                        .OrderByDescending(state => state.UpdatedAt).Select(state => state.Status).FirstOrDefault(),
+                    returnDeliveryAttempts.Any(attempt => attempt.InvoiceId == invoice.Id && attempt.PackageId == package.Id && attempt.Status == "CONFIRMED"));
             DateTimeOffset? approvedAt = claim.Status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed
                 ? approvedAtByClaim.GetValueOrDefault(claim.Id) ?? claim.LastRemoteModifiedAt
                 : null;
@@ -1416,7 +1492,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             return new ReturnListView(claim.Id, claim.ExternalClaimId, order?.OrderNumber ?? "—", Wire(claim.Status), claim.RawStatus, claim.ReasonText, ReturnActionDueAt(platformCode, claim.RawStatus, claim.ActionDueAt, claim.LastRemoteModifiedAt), claim.Version,
                 order is null ? "—" : Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson).Name,
                 order?.OrderedAt, order?.NetAmount ?? 0, order?.Currency ?? "TRY", claim.CargoProviderName, claim.CargoTrackingNumber, image, claimLines.Count, firstLine?.Barcode ?? firstVariant?.Barcode,
-                lineViews, package?.ExternalPackageId, order is null ? "FATURA_BEKLIYOR" : ReturnInvoiceLabel(invoice, package?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown, order.CustomerSnapshotJson, package is null ? [] : [package.RawStatus], invoice is not null && confirmedDeliveryInvoiceIds.Contains(invoice.Id)), order?.GrossAmount ?? 0, order?.DiscountAmount ?? 0,
+                lineViews, package?.ExternalPackageId, order is null ? "FATURA_BEKLIYOR" : ReturnInvoiceLabel(invoice, package?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown, order.CustomerSnapshotJson, package is null ? [] : [package.RawStatus], packageDeliveryConfirmed), order?.GrossAmount ?? 0, order?.DiscountAmount ?? 0,
                 order is not null && Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson).IsMicroExport,
                 claimConnection?.Id ?? connection?.Id, platformCode, claimConnection?.DisplayName ?? connection?.DisplayName ?? "Trendyol", outboundPackage?.CargoProviderExternalId, outboundPackage?.CargoTrackingNumber, claim.ReasonCode, approvedAt, claim.CargoTrackingLink);
         }).ToList();

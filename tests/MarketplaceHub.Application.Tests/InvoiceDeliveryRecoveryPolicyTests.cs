@@ -125,6 +125,17 @@ public sealed class InvoiceDeliveryRecoveryPolicyTests
     public void CurrentMarketplaceDeliveryStateOverridesHistoricalConfirmation(string? currentStatus, bool hasHistory, bool expected) =>
         Assert.Equal(expected, MarketplaceInvoiceDeliveryEvidencePolicy.HasConfirmedDelivery(currentStatus, hasHistory));
 
+    [Fact]
+    public void OrderInvoiceCompletesOnlyAfterEveryActivePackageIsConfirmed()
+    {
+        var packageA = Guid.NewGuid();
+        var packageB = Guid.NewGuid();
+
+        Assert.False(MarketplaceInvoiceDeliveryEvidencePolicy.AllTargetsConfirmed([packageA, packageB], [packageA]));
+        Assert.True(MarketplaceInvoiceDeliveryEvidencePolicy.AllTargetsConfirmed([packageA, packageB], [packageA, packageB]));
+        Assert.False(MarketplaceInvoiceDeliveryEvidencePolicy.AllTargetsConfirmed([], [packageA]));
+    }
+
     [Theory]
     [InlineData(InvoiceStatus.Completed, null, true)]
     [InlineData(InvoiceStatus.MarketplacePending, InvoiceDeliveryRecoveryPolicy.MarketplaceInvoiceIdentityMismatchErrorCode, true)]

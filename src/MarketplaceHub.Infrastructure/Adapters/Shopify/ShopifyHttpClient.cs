@@ -393,7 +393,11 @@ public sealed class ShopifyHttpClient(
         if (!result.IsSuccess) return AdapterResult<RemoteOrder>.Failure(result.Error!, result.RateLimit);
         var order = result.Value!.RootElement.GetProperty("order");
         if (order.ValueKind == JsonValueKind.Null) return Fail<RemoteOrder>(AdapterErrorClass.NotFound, "SHOPIFY_ORDER_NOT_FOUND", "Shopify siparişi bulunamadı.", HttpStatusCode.NotFound);
-        return AdapterResult<RemoteOrder>.Success(MapOrder(order), result.RateLimit);
+        var mapped = MapOrder(order);
+        var invoiceRead = await ReadInvoiceMetafieldsAsync(shop, id, cancellationToken);
+        if (!invoiceRead.IsSuccess) return AdapterResult<RemoteOrder>.Failure(invoiceRead.Error!, invoiceRead.RateLimit ?? result.RateLimit);
+        mapped = AttachInvoiceMetafields(mapped, invoiceRead.Value!.InvoiceNumber?.Value, invoiceRead.Value.PdfUrl?.Value, timeProvider.GetUtcNow());
+        return AdapterResult<RemoteOrder>.Success(mapped, invoiceRead.RateLimit ?? result.RateLimit);
     }
 
     public async Task<AdapterResult<PackageActionResult>> ExecutePackageActionAsync(AdapterContext context, PackageActionCommand command, CancellationToken cancellationToken)
@@ -500,8 +504,15 @@ public sealed class ShopifyHttpClient(
     {
         var shop = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
         if (shop is null) return Fail<InvoiceDeliveryResult>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized);
-        if (!IntegrationRuntimePolicy.AllowsAutomaticInvoiceMarketplaceDelivery(shop.Connection, context, configuration.GetValue<bool>("FeatureFlags:InvoiceMarketplaceDeliveryWrites"))
-            || !await CanWriteAsync(shop, context, InvoicingCapabilities.InvoiceDeliver, cancellationToken))
+        var automaticDeliveryAllowed = IntegrationRuntimePolicy.AllowsAutomaticInvoiceMarketplaceDelivery(shop.Connection, context, configuration.GetValue<bool>("FeatureFlags:InvoiceMarketplaceDeliveryWrites"))
+            && await CanWriteAsync(shop, context, InvoicingCapabilities.InvoiceDeliver, cancellationToken);
+        var manualDeliveryAllowed = IntegrationRuntimePolicy.AllowsExplicitManualInvoiceMarketplaceDelivery(
+                shop.Connection,
+                context,
+                configuration.GetValue<bool>("FeatureFlags:ExternalWrites"),
+                ConnectionExternalWritesEnabled(shop.Connection.SettingsJson))
+            && await HasVerifiedWriteCapabilityAsync(shop, context, InvoicingCapabilities.InvoiceDeliver, cancellationToken);
+        if (!automaticDeliveryAllowed && !manualDeliveryAllowed)
             return WriteClosed<InvoiceDeliveryResult>();
         if (!TryReadInvoiceDeliveryPayload(command.PayloadJson, out var delivery))
             return Fail<InvoiceDeliveryResult>(AdapterErrorClass.Validation, "SHOPIFY_INVOICE_DELIVERY_INVALID", "Shopify fatura iletimi için siparişin GraphQL kimliği, HTTPS PDF bağlantısı ve fatura numarası zorunludur.", HttpStatusCode.BadRequest);
@@ -538,15 +549,19 @@ public sealed class ShopifyHttpClient(
         if (!IntegrationRuntimePolicy.AllowsManualRead(shop.Connection))
             return Fail<InvoiceDeliveryStatus>(AdapterErrorClass.NotSupported, "SHOPIFY_CONNECTION_INACTIVE", "Shopify fatura durumu yalnızca etkin bağlantıdan okunabilir.", HttpStatusCode.Forbidden);
         var orderId = reference.ExternalOrderId ?? reference.ExternalReference;
-        if (!IsShopifyOrderGid(orderId) || string.IsNullOrWhiteSpace(reference.InvoiceNumber) || string.IsNullOrWhiteSpace(reference.InvoiceLink))
-            return Fail<InvoiceDeliveryStatus>(AdapterErrorClass.Validation, "SHOPIFY_INVOICE_READBACK_REFERENCE_INVALID", "Fatura doğrulaması için Shopify sipariş kimliği, fatura numarası ve HTTPS bağlantısı gereklidir.", HttpStatusCode.BadRequest);
+        if (!IsShopifyOrderGid(orderId))
+            return Fail<InvoiceDeliveryStatus>(AdapterErrorClass.Validation, "SHOPIFY_INVOICE_READBACK_REFERENCE_INVALID", "Shopify fatura kontrolü için sipariş kimliği gereklidir.", HttpStatusCode.BadRequest);
         var read = await ReadInvoiceMetafieldsAsync(shop, orderId!, cancellationToken);
         if (!read.IsSuccess) return AdapterResult<InvoiceDeliveryStatus>.Failure(read.Error!, read.RateLimit);
-        if (InvoiceMetafieldsMatch(read.Value!, reference.InvoiceNumber!, reference.InvoiceLink!))
-            return AdapterResult<InvoiceDeliveryStatus>.Success(new(orderId!, "INVOICED", true, read.Value!.InvoiceNumber!.Value, read.Value.PdfUrl!.Value), read.RateLimit);
-        if (HasAnyInvoiceMetafield(read.Value!))
-            return AdapterResult<InvoiceDeliveryStatus>.Success(new(orderId!, "INVOICE_MISMATCH", true), read.RateLimit);
-        return AdapterResult<InvoiceDeliveryStatus>.Success(new(orderId!, "NOT_INVOICED", false), read.RateLimit);
+        var invoiceNumber = EmptyToNull(read.Value!.InvoiceNumber?.Value);
+        var invoiceUrl = EmptyToNull(read.Value.PdfUrl?.Value);
+        var hasNumber = invoiceNumber is not null;
+        var hasUrl = invoiceUrl is not null;
+        var rawStatus = hasNumber && hasUrl ? "INVOICED"
+            : !hasNumber && !hasUrl ? "NOT_INVOICED"
+            : "RECEIVED";
+        return AdapterResult<InvoiceDeliveryStatus>.Success(new(orderId!, rawStatus,
+            rawStatus != "RECEIVED", invoiceNumber, invoiceUrl, ReferencesAreAuthoritative: true), read.RateLimit);
     }
 
     private async Task<AdapterResult<ShopifyInvoiceMetafields>> ReadInvoiceMetafieldsAsync(ShopifyRequestContext shop, string orderId, CancellationToken cancellationToken)
@@ -573,7 +588,33 @@ public sealed class ShopifyHttpClient(
         return new(TextValue(value, "value"), TextValue(value, "compareDigest"));
     }
 
-    private static bool HasAnyInvoiceMetafield(ShopifyInvoiceMetafields values) => values.PdfUrl is not null || values.InvoiceNumber is not null;
+    private static bool HasAnyInvoiceMetafield(ShopifyInvoiceMetafields values) =>
+        !string.IsNullOrWhiteSpace(values.PdfUrl?.Value) || !string.IsNullOrWhiteSpace(values.InvoiceNumber?.Value);
+
+    internal static RemoteOrder AttachInvoiceMetafields(RemoteOrder order, string? invoiceNumber, string? invoiceUrl, DateTimeOffset observedAt)
+    {
+        invoiceNumber = EmptyToNull(invoiceNumber);
+        invoiceUrl = EmptyToNull(invoiceUrl);
+        var hasNumber = invoiceNumber is not null;
+        var hasUrl = invoiceUrl is not null;
+        var rawStatus = hasNumber && hasUrl ? "INVOICED"
+            : !hasNumber && !hasUrl ? "NOT_INVOICED"
+            : "RECEIVED";
+        var observation = new RemotePackageInvoiceObservation(
+            rawStatus,
+            invoiceNumber,
+            invoiceUrl,
+            observedAt,
+            ReferencesAreAuthoritative: true);
+        // Shopify invoice metafields are order-level. Project the same
+        // read-only observation onto each fulfillment/remainder target so the
+        // shared reconciliation path can revoke stale package delivery proofs
+        // when metafields are removed and refresh changed links.
+        return order with { Packages = order.Packages.Select(package => package with { Invoice = observation }).ToArray() };
+    }
+
+    private static string? EmptyToNull(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static bool InvoiceMetafieldsMatch(ShopifyInvoiceMetafields values, string invoiceNumber, string invoiceLink) =>
         AreShopifyInvoiceMetafieldsMatching(values.InvoiceNumber?.Value, values.PdfUrl?.Value, invoiceNumber, invoiceLink);
@@ -617,18 +658,27 @@ public sealed class ShopifyHttpClient(
     private async Task<bool> CanWriteAsync(ShopifyRequestContext shop, AdapterContext context, string capabilityCode, CancellationToken cancellationToken)
     {
         if (!configuration.GetValue<bool>("FeatureFlags:ExternalWrites")) return false;
-        var enabled = false;
-        try
-        {
-            using var settingsJson = JsonDocument.Parse(shop.Connection.SettingsJson);
-            enabled = settingsJson.RootElement.TryGetProperty("ExternalWritesEnabled", out var value) && value.ValueKind == JsonValueKind.True;
-        }
-        catch (JsonException) { return false; }
-        if (!enabled || !IntegrationRuntimePolicy.AllowsExternalWrite(shop.Connection, context, globalWritesEnabled: true, connectionWritesEnabled: true)) return false;
+        if (!ConnectionExternalWritesEnabled(shop.Connection.SettingsJson)
+            || !IntegrationRuntimePolicy.AllowsExternalWrite(shop.Connection, context, globalWritesEnabled: true, connectionWritesEnabled: true)) return false;
+        return await HasVerifiedWriteCapabilityAsync(shop, context, capabilityCode, cancellationToken);
+    }
+
+    private async Task<bool> HasVerifiedWriteCapabilityAsync(ShopifyRequestContext shop, AdapterContext context, string capabilityCode, CancellationToken cancellationToken)
+    {
         var capabilities = await db.PlatformCapabilities.AsNoTracking()
             .Where(item => item.TenantId == context.TenantId && item.ConnectionId == context.ConnectionId && item.Code == capabilityCode)
             .ToListAsync(cancellationToken);
         return capabilities.Count == 1 && CapabilityEvidencePolicy.IsVerifiedWriteCapability(capabilities[0], shop.Connection, capabilityCode);
+    }
+
+    private static bool ConnectionExternalWritesEnabled(string settingsJson)
+    {
+        try
+        {
+            using var settings = JsonDocument.Parse(settingsJson);
+            return settings.RootElement.TryGetProperty("ExternalWritesEnabled", out var value) && value.ValueKind == JsonValueKind.True;
+        }
+        catch (JsonException) { return false; }
     }
 
     private async Task<bool> CanWriteAsync(ShopifyRequestContext shop, AdapterContext context, string capabilityOne, string capabilityTwo, CancellationToken cancellationToken) =>

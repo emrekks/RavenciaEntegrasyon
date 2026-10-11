@@ -11,12 +11,13 @@ import { PlatformMark } from '../../shared/platform-mark'
 import { PlatformMultiSelect } from '../../shared/platform-multi-select'
 import { invoiceProviderForEnvironment, isInvoiceCreationAvailable } from './invoice-creation-availability'
 import { InvoiceWorkspacePreviewModal, type InvoicePreviewTarget } from './InvoiceWorkspacePreviewModal'
-import { invoiceReferenceDocumentHref } from './invoice-reference-document-link'
+import { invoiceReferenceDocumentHref, invoiceReferenceDocumentLabel, invoiceReferenceMarketplaceHref, platformInvoiceLinkUnavailable } from './invoice-reference-document-link'
 import { marketplacePlatformOptions } from '../marketplace/marketplace-platform-support'
+import './manual-invoice-document.css'
 
 type Invoice = { id: string; orderNumber: string; invoiceType: string; status: string; currency: string; payableTotal: number; invoiceNumber: string | null; dueAt: string | null; createdAt: string; version: number }
 type InvoiceWorkspaceLine = { sku: string; barcode: string | null; description: string; quantity: number; unitPrice: number; vatRate: number; imageUrl: string | null }
-type InvoiceWorkspace = { orderId: string; packageId: string; orderNumber: string; customerName: string; orderedAt: string; shipmentStatus: string; deliveredAt: string | null; invoiceDueAt: string | null; isDueSoon: boolean; currency: string; amount: number; productCount: number; primaryImageUrl: string | null; cargoProviderName: string | null; cargoTrackingNumber: string | null; invoiceId: string | null; invoiceStatus: string; invoiceNumber: string | null; canCreateInvoice: boolean; shipmentAddressJson: string | null; invoiceAddressJson: string | null; lines: InvoiceWorkspaceLine[] | null; invoiceErrorCode: string | null; invoiceDeliveryStatus: string | null; invoiceDeliveryReference: string | null; invoiceDocumentAvailable: boolean; marketplaceInvoiceUrl: string | null; platformCode: string; platformDisplayName: string; invoiceCreationEnabled: boolean; marketplaceInvoiceReadErrorCode?: string | null; marketplaceInvoiceReadErrorSummary?: string | null; environment: string }
+type InvoiceWorkspace = { orderId: string; packageId: string; orderNumber: string; customerName: string; orderedAt: string; shipmentStatus: string; deliveredAt: string | null; invoiceDueAt: string | null; isDueSoon: boolean; currency: string; amount: number; productCount: number; primaryImageUrl: string | null; cargoProviderName: string | null; cargoTrackingNumber: string | null; invoiceId: string | null; invoiceStatus: string; invoiceNumber: string | null; canCreateInvoice: boolean; shipmentAddressJson: string | null; invoiceAddressJson: string | null; lines: InvoiceWorkspaceLine[] | null; invoiceErrorCode: string | null; invoiceDeliveryStatus: string | null; invoiceDeliveryReference: string | null; invoiceDocumentAvailable: boolean; marketplaceInvoiceUrl: string | null; platformCode: string; platformDisplayName: string; invoiceCreationEnabled: boolean; marketplaceInvoiceReadErrorCode?: string | null; marketplaceInvoiceReadErrorSummary?: string | null; environment: string; manualInvoiceDocumentId: string | null; manualInvoiceDocumentType: string | null; manualInvoiceDocumentUrl: string | null; manualInvoiceNumber: string | null; manualInvoiceIssuedAt: string | null; manualInvoiceDeliveryStatus: string | null; manualInvoiceDeliveryErrorCode: string | null; fiscalStatus: string; platformInvoiceStatus: string; deliveryStatus: string; currentPlatformInvoiceUrl: string | null; lastSuccessfulCheckAt: string | null; allowedActions: string[] }
 type InvoiceWorkspacePage = { items: InvoiceWorkspace[]; totalCount: number; pageNumber: number; pageSize: number; totalPages: number; uninvoicedCount: number; invoicedCount: number; dueSoonCount: number; hiddenCount: number; totalPackageCount: number; hasPendingMarketplaceInvoices: boolean; shipmentStatuses: string[]; cargoProviders: string[]; invoiceStatuses: string[] }
 type InvoiceDetail = Invoice & { orderId: string; packageId: string | null; providerConnectionId: string; sequencePurpose: string; ettnUuid: string | null; taxExclusiveTotal: number; discountTotal: number; taxTotal: number; note: string; issuedAt: string | null; lastErrorCode: string | null; lines: Array<{ id: string; lineSequence: number; description: string; sku: string | null; unit: string; quantity: number; unitPrice: number; discountAmount: number; vatRate: number; vatAmount: number; lineTotal: number }>; documents: Array<{ id: string; documentType: string; sha256: string; createdAt: string }>; attempts: Array<{ attemptNumber: number; outcome: string; errorCode: string | null; startedAt: string; completedAt: string | null }>; deliveries: Array<{ id: string; deliveryType: string; status: string; externalReference: string | null; errorCode: string | null; createdAt: string }>; allowedActions: string[]; requiresSensitiveConfirmation: boolean }
 type Connection = { id: string; platformCode: string; displayName: string; status: string; environment: string; hasCredential: boolean }
@@ -30,6 +31,24 @@ function invoiceCustomerDisplayName(item: Pick<InvoiceWorkspace, 'customerName' 
   const trackingNumber = item.cargoTrackingNumber?.trim()
   if (!trackingNumber || !name.toLocaleLowerCase('tr-TR').endsWith(trackingNumber.toLocaleLowerCase('tr-TR'))) return name || '—'
   return name.slice(0, -trackingNumber.length).replace(/[\s·,;:-]+$/u, '').trim() || '—'
+}
+function manualInvoiceDeliveryLabel(status: string | null) {
+  switch (status) {
+    case 'CONFIRMED': return 'Pazaryerinde doğrulandı'
+    case 'QUEUED': return 'Platforma iletim sırada'
+    case 'STARTED': return 'Platforma iletiliyor'
+    case 'UNKNOWN': return 'Sonuç doğrulanıyor'
+    case 'MANUAL_REVIEW': return 'İnceleme gerekli'
+    case 'RETRYABLE_FAILURE': return 'Güvenli tekrar bekliyor'
+    case 'FAILED': return 'İletim başarısız'
+    default: return 'Henüz iletilmedi'
+  }
+}
+function manualInvoiceDeliveryActionLabel(status: string | null) {
+  if (status === 'UNKNOWN' || status === 'STARTED') return 'Sonucu denetle'
+  if (status === 'MANUAL_REVIEW') return 'Pazaryeri durumunu denetle'
+  if (status) return 'Kontrol et ve tekrar ilet'
+  return 'Platforma ilet'
 }
 
 function InvoiceProductSummary({ item }: { item: InvoiceWorkspace }) {
@@ -74,27 +93,18 @@ function InvoiceProductSummary({ item }: { item: InvoiceWorkspace }) {
   </>
 }
 
-async function ensureShopifyInvoiceRecord(item: InvoiceWorkspace) {
-  if (item.platformCode !== 'SHOPIFY') throw new Error('Manuel fatura kaydı yalnızca Shopify siparişlerinde kullanılabilir.')
-  if (item.invoiceId) return item.invoiceId
-  throw new Error('Shopify için yeni mali fatura oluşturma henüz etkin değil. Önce geçerli bir fatura kaydı veya belge sağlayın.');
-}
-async function uploadManualInvoiceDocument(item: InvoiceWorkspace, file: File, provider?: Connection) {
-  if (file.size > 10 * 1024 * 1024) throw new Error('Fatura dosyası en fazla 10 MB olabilir.')
-  if (!/\.(pdf|jpe?g|png)$/i.test(file.name)) throw new Error('Yalnız PDF, JPEG, JPG veya PNG dosyası yükleyebilirsiniz.')
-  let invoiceId = item.invoiceId
-  if (!invoiceId) {
-    if (!item.invoiceCreationEnabled) throw new Error(invoiceCreationDisabledHelp)
-    if (item.platformCode === 'SHOPIFY') invoiceId = await ensureShopifyInvoiceRecord(item)
-    else {
-      if (!provider) throw new Error('Aktif fatura bağlantısı gereklidir.')
-      const invoice = await hubApi<{ id: string }>('/invoices', { method: 'POST', headers: { 'Idempotency-Key': `invoice:${item.orderId}:${item.packageId}` }, body: JSON.stringify({ orderId: item.orderId, packageId: item.packageId, providerConnectionId: provider.id, originalInvoiceId: null }) })
-      invoiceId = invoice.id
-    }
-  }
+async function uploadManualInvoiceDocument(item: InvoiceWorkspace, file: File | null, invoiceUrl: string, invoiceNumber: string, issuedAt: string) {
+  if (file && file.size > 10 * 1024 * 1024) throw new Error('Fatura dosyası en fazla 10 MB olabilir.')
+  if (file && !/\.pdf$/i.test(file.name)) throw new Error('Yalnız PDF dosyası yükleyebilirsiniz.')
+  if (Boolean(file) === Boolean(invoiceUrl.trim())) throw new Error('PDF dosyası veya HTTPS fatura bağlantısından yalnızca birini girin.')
+  if (!issuedAt) throw new Error('Fatura tarihi gereklidir.')
   const form = new FormData()
-  form.append('file', file)
-  await hubApi(`/invoices/${invoiceId}/documents/manual`, { method: 'POST', headers: { 'Idempotency-Key': `invoice-document:${invoiceId}:${file.name}:${file.size}:${file.lastModified}` }, body: form })
+  form.append('orderId', item.orderId)
+  form.append('invoiceUrl', invoiceUrl.trim())
+  form.append('invoiceNumber', invoiceNumber.trim())
+  form.append('issuedAt', new Date(issuedAt).toISOString())
+  if (file) form.append('file', file)
+  await hubApi('/invoice-workspace/manual-documents', { method: 'POST', headers: { 'Idempotency-Key': `manual-invoice-document:${item.orderId}:${crypto.randomUUID()}` }, body: form })
 }
 function requiresInvoiceAction(item: InvoiceWorkspace) { return item.canCreateInvoice || item.invoiceStatus === 'FATURA_REDDEDILDI' }
 function invoiceFailureReason(code: string | null) {
@@ -207,12 +217,40 @@ export function InvoicesPage() {
     },
     onError: error => setMessage(error instanceof Error ? error.message : 'Sipariş görünürlüğü güncellenemedi.', 'error')
   })
+  const manualInvoiceDelivery = useMutation({
+    mutationFn: async (item: InvoiceWorkspace) => {
+      if (!item.manualInvoiceDocumentId) throw new Error('Siparişte güncel manuel fatura belgesi bulunamadı.')
+      return hubApi<{ jobIds: string[]; queuedPackageCount: number; inspectionOnlyPackageCount: number }>(`/invoice-workspace/manual-documents/${item.manualInvoiceDocumentId}/delivery-jobs`, { method: 'POST', headers: { 'Idempotency-Key': idempotency() } })
+    },
+    onSuccess: async result => {
+      setMessage(result.inspectionOnlyPackageCount > 0
+        ? `${result.inspectionOnlyPackageCount} paketin önceki iletim sonucu belirsiz; yalnızca pazaryeri durumu okunacak, yeni belge gönderilmeyecek.`
+        : `${result.queuedPackageCount} paket için taze durum kontrolü ve manuel fatura iletimi kuyruğa alındı.`, 'success')
+      await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['jobs'] })])
+    },
+    onError: error => setMessage(error instanceof Error ? error.message : 'Manuel fatura iletimi kuyruğa alınamadı.', 'error')
+  })
+  const invoiceReconcile = useMutation({
+    mutationFn: async (item: InvoiceWorkspace) => hubApi<{ jobId: string }>(`/invoice-workspace/orders/${item.orderId}/reconcile-jobs`, { method: 'POST', headers: { 'Idempotency-Key': `invoice-workspace-check:${item.orderId}:${idempotency()}` } }),
+    onSuccess: async () => {
+      setMessage('Pazaryerindeki güncel fatura bilgisi salt okunur kontrol kuyruğuna alındı.', 'success')
+      await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['jobs'] })])
+    },
+    onError: error => setMessage(error instanceof Error ? error.message : 'Pazaryeri fatura kontrolü kuyruğa alınamadı.', 'error')
+  })
   useEffect(() => { if (query.data && query.data.pageNumber !== pageNumber) setPageNumber(query.data.pageNumber) }, [query.data?.pageNumber, pageNumber])
   const [previewTargets, setPreviewTargets] = useState<InvoicePreviewTarget[] | null>(null)
   async function openInvoicePreview(items: InvoiceWorkspace[]) {
     const targets: InvoicePreviewTarget[] = []
     const missing: string[] = []
+    const seenOrders = new Set<string>()
     for (const item of items) {
+      if (seenOrders.has(item.orderId)) continue
+      seenOrders.add(item.orderId)
+      if (item.manualInvoiceDocumentId) {
+        missing.push(`#${item.orderNumber} için manuel fatura belgesi zaten kayıtlı`)
+        continue
+      }
       if (item.invoiceId) {
         try {
           const existing = await hubApi<InvoiceDetail>(`/invoices/${item.invoiceId}`)
@@ -243,7 +281,7 @@ export function InvoicesPage() {
   const currentPage = pageData?.pageNumber ?? pageNumber
   const selectedItems = pageItems.filter(item => selectedPackages.has(item.packageId))
   const selectedShopifyItems = selectedItems.filter(item => item.platformCode === 'SHOPIFY')
-  const selectedCreatableItems = selectedItems.filter(item => requiresInvoiceAction(item) && isInvoiceCreationAvailable(item, Boolean(providerForItem(item)?.hasCredential)))
+  const selectedCreatableItems = selectedItems.filter(item => !item.manualInvoiceDocumentId && requiresInvoiceAction(item) && isInvoiceCreationAvailable(item, Boolean(providerForItem(item)?.hasCredential)))
   const allVisibleSelected = pageItems.length > 0 && pageItems.every(item => selectedPackages.has(item.packageId))
   useEffect(() => { setPageNumber(1) }, [search, tab, selectedPlatforms, shipmentStatusFilter, cargoFilter, invoiceStatusFilter, invoiceActionFilter, dateFrom, dateTo, pageSize])
   useEffect(() => { setSelectedPackages(new Set()) }, [search, tab, selectedPlatforms, shipmentStatusFilter, cargoFilter, invoiceStatusFilter, invoiceActionFilter, dateFrom, dateTo, pageNumber, pageSize])
@@ -296,12 +334,17 @@ export function InvoicesPage() {
           <div className="invoice-reference-status">{(() => { const invoiceState = invoiceWorkspaceStatus(item); return <InvoiceStatusBadge status={invoiceState.value} tone={invoiceState.tone} /> })()}{item.marketplaceInvoiceReadErrorCode && <small className="invoice-marketplace-read-error" title={item.marketplaceInvoiceReadErrorSummary ?? undefined}>{item.marketplaceInvoiceReadErrorCode === 'REMOTE_PACKAGE_NOT_FOUND' ? 'Paket bilgisi pazaryerinden alınamadı; kayıtlı fatura durumu gösteriliyor.' : 'Pazaryeri fatura durumu yenilenemedi.'}</small>}{item.invoiceDueAt && <small className={new Date(item.invoiceDueAt).getTime() - Date.now() <= 86_400_000 ? 'deadline critical' : ''}>Son tarih: {new Date(item.invoiceDueAt).toLocaleDateString('tr-TR')}</small>}</div>
           <div className="invoice-reference-amount"><strong>{item.amount.toLocaleString('tr-TR', { style: 'currency', currency: item.currency })}</strong><small>{item.isDueSoon ? 'Öncelikli takip' : 'Sipariş toplamı'}</small></div>
           <div className="invoice-reference-actions">
-            {item.platformCode === 'SHOPIFY' ? <>
+            {item.manualInvoiceDocumentId ? <>
+              <Badge value={item.manualInvoiceDeliveryStatus ?? 'MANUAL_DOCUMENT'} tone={item.manualInvoiceDeliveryStatus === 'CONFIRMED' ? 'good' : item.manualInvoiceDeliveryStatus === 'FAILED' || item.manualInvoiceDeliveryStatus === 'MANUAL_REVIEW' ? 'warn' : 'neutral'} label={manualInvoiceDeliveryLabel(item.manualInvoiceDeliveryStatus)} />
+              {item.manualInvoiceDeliveryStatus !== 'CONFIRMED' && <button type="button" disabled={manualInvoiceDelivery.isPending || !item.manualInvoiceIssuedAt} title={!item.manualInvoiceIssuedAt ? 'Platforma iletim için fatura tarihi gerekli.' : item.manualInvoiceDeliveryErrorCode ?? undefined} onClick={() => manualInvoiceDelivery.mutate(item)}><span className="invoice-action-label">{manualInvoiceDeliveryActionLabel(item.manualInvoiceDeliveryStatus)}</span></button>}
+            </> : item.platformCode === 'SHOPIFY' ? <>
               <div className="invoice-shopify-split">
                 {item.invoiceId && !item.canCreateInvoice ? <InvoiceStatusBadge status={invoiceWorkspaceStatus(item).value} tone={invoiceWorkspaceStatus(item).tone} /> : <span className="shopify-invoice-create-wrap" title={!item.invoiceCreationEnabled ? invoiceCreationDisabledHelp : undefined}><button type="button" className="shopify-invoice-create-trigger" disabled={!isInvoiceCreationAvailable(item, Boolean(providerForItem(item)?.hasCredential))} onClick={() => openInvoicePreview([item])}><span className="invoice-action-label">Fatura önizlemesi</span></button></span>}
               </div>
             </> : item.invoiceId ? isInvoiceFailureStatus(item.invoiceStatus) ? <button type="button" disabled={!isInvoiceCreationAvailable(item, Boolean(providerForItem(item)?.hasCredential))} title={!item.invoiceCreationEnabled ? invoiceCreationDisabledHelp : undefined} onClick={() => openInvoicePreview([item])}><span className="invoice-action-label">{item.invoiceStatus === 'FATURA_PLATFORMA_AKTARILMADI' ? 'Platforma iletimi tekrar dene' : 'Tekrar dene'}</span></button> : <InvoiceStatusBadge status={item.invoiceStatus} /> : <button type="button" disabled={!isInvoiceCreationAvailable(item, Boolean(providerForItem(item)?.hasCredential))} title={!item.invoiceCreationEnabled ? invoiceCreationDisabledHelp : undefined} onClick={() => openInvoicePreview([item])}><span className="invoice-action-label">Fatura oluştur</span></button>}
-            {invoiceReferenceDocumentHref(item) && <a className="invoice-reference-document-link" href={invoiceReferenceDocumentHref(item)!} target="_blank" rel="noopener noreferrer">Fatura linki <UiIcon name="externalLink" /></a>}
+            {invoiceReferenceDocumentHref(item) && <a className="invoice-reference-document-link" href={invoiceReferenceDocumentHref(item)!} target="_blank" rel="noopener noreferrer">{invoiceReferenceDocumentLabel(item)} <UiIcon name="externalLink" /></a>}
+            {platformInvoiceLinkUnavailable(item) && <small className="invoice-marketplace-read-error">Platformda fatura var; güncel bağlantı alınamıyor. Açılan yerel PDF pazaryeri bağlantısı değildir.</small>}
+            {item.allowedActions?.includes('CHECK_PLATFORM') && <button type="button" className="secondary invoice-reference-check-trigger" onClick={() => invoiceReconcile.mutate(item)} disabled={invoiceReconcile.isPending}>{invoiceReconcile.isPending ? 'Kontrol kuyruğa alınıyor…' : 'Şimdi kontrol et'}</button>}
             <button type="button" className="invoice-reference-details-trigger" onClick={() => setSelectedItem(item)}>Detayları aç <UiIcon name="externalLink" /></button>
           </div>
         </article>)}
@@ -310,14 +353,14 @@ export function InvoicesPage() {
     {selectedItem && <div className="invoice-detail-backdrop" role="presentation" onMouseDown={() => setSelectedItem(null)}><section className="workspace-modal invoice-detail-modal" role="dialog" aria-modal="true" aria-labelledby="invoice-detail-title" onMouseDown={event => event.stopPropagation()}>
       <header className="invoice-detail-header"><div><p className="eyebrow">Sipariş ve fatura özeti</p><h2 id="invoice-detail-title">#{selectedItem.orderNumber}</h2><p>{selectedItem.customerName} · {new Date(selectedItem.orderedAt).toLocaleString('tr-TR')}</p></div><button type="button" className="modal-close" onClick={() => setSelectedItem(null)} aria-label="Detay panelini kapat"><UiIcon name="close" /></button></header>
       <div className="invoice-detail-body"><section className="invoice-detail-summary"><div><small>Sipariş durumu</small><Badge value={selectedItem.shipmentStatus} /></div><div className="invoice-detail-invoice-status"><small>Fatura durumu</small><InvoiceStatusBadge status={selectedItem.invoiceStatus} />{selectedItem.marketplaceInvoiceReadErrorSummary && <small className="invoice-detail-error-reason">Pazaryeri fatura durumu güncellenemedi: {selectedItem.marketplaceInvoiceReadErrorSummary}</small>}{selectedItem.marketplaceInvoiceReadErrorCode && <code className="invoice-detail-error-code">Pazaryeri kontrol hatası: {selectedItem.marketplaceInvoiceReadErrorCode}</code>}{isInvoiceFailureStatus(selectedItem.invoiceStatus) && <small className="invoice-detail-error-reason">{invoiceFailureReason(selectedItem.invoiceErrorCode)}</small>}{selectedItem.invoiceErrorCode && <code className="invoice-detail-error-code">Hata kodu: {selectedItem.invoiceErrorCode}</code>}{isInvoiceFailureStatus(selectedItem.invoiceStatus) && <small className="invoice-detail-error-guidance">{invoiceFailureGuidance(selectedItem.invoiceErrorCode)}</small>}</div><div><small>Toplam</small><strong>{selectedItem.amount.toLocaleString('tr-TR', { style: 'currency', currency: selectedItem.currency })}</strong></div><div><small>Kargo / takip</small><strong>{selectedItem.cargoProviderName ?? '—'}<br />{selectedItem.cargoTrackingNumber ?? 'Takip no yok'}</strong></div></section>
-        <section className="invoice-detail-section invoice-summary-section"><div className="invoice-detail-section-heading"><div><h3>Fatura bilgileri</h3><p className="invoice-detail-muted">Fatura numarasını, yüklenen belgeyi ve varsa pazaryeri aktarımını buradan takip edebilirsiniz.</p></div></div><div className="invoice-detail-summary-facts">{selectedItem.invoiceNumber?.trim() && <div><small>Fatura numarası</small><strong>{selectedItem.invoiceNumber}</strong></div>}<div><small>Platform aktarımı</small><Badge value={selectedItem.invoiceDeliveryStatus ?? 'NOT_SENT'} tone={invoiceDeliveryTone(selectedItem.invoiceDeliveryStatus)} label={invoiceDeliveryLabel(selectedItem.invoiceDeliveryStatus)} />{selectedItem.invoiceDeliveryReference && <small>Referans: {selectedItem.invoiceDeliveryReference}</small>}</div></div>{selectedItem.invoiceId && selectedItem.invoiceDocumentAvailable ? <a className="invoice-document-link" href={`/api/v1/invoices/${selectedItem.invoiceId}/documents/latest/content`} target="_blank" rel="noreferrer">Fatura dosyasını aç <UiIcon name="externalLink" /></a> : <p className="invoice-detail-muted">Fatura belgesi henüz yüklenmedi. Manuel olarak panele ekleyebilirsiniz.</p>}<div className="invoice-detail-document-actions"><button type="button" className="secondary" disabled={!selectedItem.invoiceId && (!selectedItem.invoiceCreationEnabled || (selectedItem.platformCode !== 'SHOPIFY' && !provider))} title={!selectedItem.invoiceId && !selectedItem.invoiceCreationEnabled ? invoiceCreationDisabledHelp : !selectedItem.invoiceId && selectedItem.platformCode !== 'SHOPIFY' && !provider ? 'Manuel fatura yüklemek için aktif fatura bağlantısı gereklidir.' : undefined} onClick={() => { setManualUploadItem(selectedItem); setSelectedItem(null) }}>Manuel fatura yükle</button>{selectedItem.platformCode === 'SHOPIFY' && <button type="button" className="secondary" disabled={!selectedItem.invoiceCreationEnabled && !selectedItem.invoiceId} title={!selectedItem.invoiceCreationEnabled && !selectedItem.invoiceId ? invoiceCreationDisabledHelp : undefined} onClick={() => { setShopifyStatusItem(selectedItem); setSelectedItem(null) }}>Fatura durumunu değiştir</button>}</div></section>
+        <section className="invoice-detail-section invoice-summary-section"><div className="invoice-detail-section-heading"><div><h3>Fatura bilgileri</h3><p className="invoice-detail-muted">Mali fatura, pazaryerindeki fatura ve teslim kanıtı ayrı izlenir.</p></div></div><div className="invoice-detail-summary-facts">{selectedItem.invoiceNumber?.trim() && <div><small>Mali fatura numarası</small><strong>{selectedItem.invoiceNumber}</strong></div>}<div><small>Mali fatura</small><Badge value={selectedItem.fiscalStatus ?? 'NONE'} label={statusLabel(selectedItem.fiscalStatus ?? 'NONE')} /></div><div><small>Pazaryerindeki fatura</small><Badge value={selectedItem.platformInvoiceStatus ?? 'UNKNOWN'} label={statusLabel(selectedItem.platformInvoiceStatus ?? 'UNKNOWN')} tone={selectedItem.platformInvoiceStatus === 'INVOICED' ? 'good' : selectedItem.platformInvoiceStatus === 'UNKNOWN' ? 'warn' : 'neutral'} /></div><div><small>İletim kanıtı</small><Badge value={selectedItem.deliveryStatus ?? selectedItem.invoiceDeliveryStatus ?? 'NOT_SENT'} tone={invoiceDeliveryTone(selectedItem.deliveryStatus ?? selectedItem.invoiceDeliveryStatus)} label={invoiceDeliveryLabel(selectedItem.deliveryStatus ?? selectedItem.invoiceDeliveryStatus)} />{selectedItem.invoiceDeliveryReference && <small>Referans: {selectedItem.invoiceDeliveryReference}</small>}</div><div><small>Son başarılı kontrol</small><strong>{selectedItem.lastSuccessfulCheckAt ? new Date(selectedItem.lastSuccessfulCheckAt).toLocaleString('tr-TR') : 'Henüz başarılı kontrol yok'}</strong></div></div>{platformInvoiceLinkUnavailable(selectedItem) && <p className="invoice-marketplace-read-error">Pazaryerinde fatura kaydı var ancak API güncel bağlantıyı vermedi. Yerel PDF varsa ayrı belge olarak açılabilir; platform bağlantısı sayılmaz.</p>}{invoiceReferenceMarketplaceHref(selectedItem) && <a className="invoice-document-link" href={invoiceReferenceMarketplaceHref(selectedItem)!} target="_blank" rel="noreferrer">Pazaryerindeki güncel fatura bağlantısını aç <UiIcon name="externalLink" /></a>}{selectedItem.manualInvoiceDocumentUrl && <a className="invoice-document-link" href={selectedItem.manualInvoiceDocumentUrl} target="_blank" rel="noreferrer">Manuel fatura belgesini aç <UiIcon name="externalLink" /></a>}{selectedItem.invoiceId && selectedItem.invoiceDocumentAvailable && <a className="invoice-document-link" href={`/api/v1/invoices/${selectedItem.invoiceId}/documents/latest/content`} target="_blank" rel="noreferrer">Mali sağlayıcı yerel PDF’sini aç <UiIcon name="externalLink" /></a>}{selectedItem.manualInvoiceDocumentId && <div className="invoice-detail-summary-facts"><div><small>Manuel platform belgesi</small><Badge value={manualInvoiceDeliveryLabel(selectedItem.manualInvoiceDeliveryStatus)} tone={selectedItem.manualInvoiceDeliveryStatus === 'CONFIRMED' ? 'good' : 'neutral'} />{selectedItem.manualInvoiceDeliveryErrorCode && <small>{selectedItem.manualInvoiceDeliveryErrorCode}</small>}</div>{selectedItem.manualInvoiceNumber && <div><small>Belge numarası</small><strong>{selectedItem.manualInvoiceNumber}</strong></div>}</div>}<div className="invoice-detail-document-actions"><button type="button" className="secondary" onClick={() => { setManualUploadItem(selectedItem); setSelectedItem(null) }}>{selectedItem.manualInvoiceDocumentId ? 'Manuel belgeyi değiştir' : 'Manuel fatura belgesi ekle'}</button>{selectedItem.manualInvoiceDocumentId && selectedItem.manualInvoiceDeliveryStatus !== 'CONFIRMED' && <button type="button" onClick={() => manualInvoiceDelivery.mutate(selectedItem)} disabled={manualInvoiceDelivery.isPending || !selectedItem.manualInvoiceIssuedAt}>{manualInvoiceDelivery.isPending ? 'Kuyruğa alınıyor…' : manualInvoiceDeliveryActionLabel(selectedItem.manualInvoiceDeliveryStatus)}</button>}{selectedItem.allowedActions?.includes('CHECK_PLATFORM') && <button type="button" className="secondary" onClick={() => invoiceReconcile.mutate(selectedItem)} disabled={invoiceReconcile.isPending}>{invoiceReconcile.isPending ? 'Kontrol kuyruğa alınıyor…' : 'Şimdi kontrol et'}</button>}{selectedItem.platformCode === 'SHOPIFY' && <button type="button" className="secondary" disabled={!selectedItem.invoiceCreationEnabled && !selectedItem.invoiceId} title={!selectedItem.invoiceCreationEnabled && !selectedItem.invoiceId ? invoiceCreationDisabledHelp : undefined} onClick={() => { setShopifyStatusItem(selectedItem); setSelectedItem(null) }}>Fatura durumunu değiştir</button>}</div></section>
         <section className="invoice-detail-section"><div className="invoice-detail-section-heading"><h3>Ürünler</h3><span>{selectedItem.lines?.length ?? selectedItem.productCount} kalem</span></div><div className="invoice-detail-lines">{(selectedItem.lines ?? []).map((line, index) => <article className="invoice-detail-line" key={`${line.sku}-${index}`}><span className="invoice-detail-line-media">{line.imageUrl ? <img src={line.imageUrl} alt="" /> : <UiIcon name="image" />}</span><div><strong>{line.description}</strong><small>SKU: {line.sku || '—'} · Barkod: {line.barcode || '—'}</small><small>{line.quantity} adet · Birim {line.unitPrice.toLocaleString('tr-TR', { style: 'currency', currency: selectedItem.currency })} · KDV %{line.vatRate}</small></div></article>)}{!selectedItem.lines?.length && <p className="invoice-detail-muted">Ürün satırı detayına ulaşılamadı; sipariş kaydı korunuyor.</p>}</div></section>
         {addressLines(selectedItem.shipmentAddressJson).length || addressLines(selectedItem.invoiceAddressJson).length ? <section className="invoice-detail-addresses">{addressLines(selectedItem.shipmentAddressJson).length > 0 && <article><h3>Teslimat adresi</h3>{addressLines(selectedItem.shipmentAddressJson).map(line => <span key={line}>{line}</span>)}</article>}{addressLines(selectedItem.invoiceAddressJson).length > 0 && <article><h3>Fatura adresi</h3>{addressLines(selectedItem.invoiceAddressJson).map(line => <span key={line}>{line}</span>)}</article>}</section> : <p className="invoice-detail-address-note">Pazaryeri sipariş kaydında adres bilgisi bulunmuyor.</p>}
       </div><footer className="invoice-detail-footer"><button type="button" className="secondary" onClick={() => setSelectedItem(null)}>Kapat</button><button type="button" className="secondary" onClick={() => visibility.mutate({ packageIds: [selectedItem.packageId], hidden: tab !== 'HIDDEN' })} disabled={visibility.isPending}>{tab === 'HIDDEN' ? 'Görünür yap' : 'Siparişi gizle'}</button>{selectedItem.invoiceId && <Link className="button-link" to={`/invoices/${selectedItem.invoiceId}`}>Fatura kaydını aç</Link>}</footer>
     </section></div>}
     {!provider?.hasCredential && Boolean(pageData?.hasPendingMarketplaceInvoices) && <div className="unknown invoice-provider-notice"><strong>E-Faturam provider hazır değil</strong><p>Fatura oluşturmak için sipariş bağlantısıyla aynı ortamda (Stage veya Canlı) etkin ve credential’ı olan E-Faturam bağlantısı gerekir. Shopify mali fatura oluşturma sağlayıcı sözleşmesi doğrulanana kadar kapalıdır.</p><Link className="button-link" to="/integrations">Bağlantıyı yönet</Link></div>}
     {shopifyStatusItem && <ShopifyInvoiceStatusModal item={shopifyStatusItem} onClose={() => setShopifyStatusItem(null)} onFeedback={setMessage} />}
-    {manualUploadItem && <InvoiceWorkspaceUploadModal item={manualUploadItem} provider={provider} onClose={() => setManualUploadItem(null)} onFeedback={setMessage} />}
+    {manualUploadItem && <InvoiceWorkspaceUploadModal item={manualUploadItem} onClose={() => setManualUploadItem(null)} onFeedback={setMessage} />}
     {manualStatusBatch && <InvoiceWorkspaceBulkStatusModal items={manualStatusBatch} onClose={() => setManualStatusBatch(null)} onFeedback={setMessage} />}
     {previewTargets && <InvoiceWorkspacePreviewModal targets={previewTargets} onClose={() => setPreviewTargets(null)} onComplete={() => { void Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['invoice'] })]) }} />}
   </section>
@@ -358,27 +401,40 @@ function InvoiceWorkspaceBulkStatusModal({ items, onClose, onFeedback }: { items
   return <div className="workspace-modal-backdrop" role="presentation" onMouseDown={() => { if (!update.isPending) onClose() }}><section className="workspace-modal shopify-invoice-status-modal" role="dialog" aria-modal="true" aria-labelledby="invoice-workspace-bulk-status-title" onMouseDown={event => event.stopPropagation()}><header><div><p className="eyebrow">TOPLU FATURA DURUMU · SHOPIFY</p><h2 id="invoice-workspace-bulk-status-title">Seçilen Shopify faturalarını güncelle</h2><p>{items.length} Shopify siparişi · Fatura dosyası yüklenmez.</p></div><button type="button" className="modal-close" onClick={onClose} disabled={update.isPending} aria-label="Pencereyi kapat"><UiIcon name="close" /></button></header><div className="shopify-invoice-status-form"><label><span>Yeni fatura durumu</span><select aria-label="Yeni fatura durumu" value={status} onChange={event => setStatus(event.target.value as 'PENDING' | 'UPLOADED')} disabled={update.isPending}><option value="PENDING">Fatura bekliyor</option><option value="UPLOADED">Faturası yüklendi</option></select></label><p className="notice">Durum yalnızca Shopify siparişlerinin panel kaydında güncellenir. Dosya yüklenmez ve Shopify’a fatura gönderilmez.</p><ul className="invoice-bulk-status-orders">{items.map(item => <li key={item.packageId}><span className="invoice-bulk-status-platform">Shopify</span><span className="invoice-bulk-status-order">{displayInvoiceOrderNumber(item.orderNumber)}<small>{item.customerName} · {new Date(item.orderedAt).toLocaleDateString('tr-TR')}</small></span><span className="invoice-bulk-status-value">{invoiceStatusLabel(invoiceWorkspaceStatus(item).value)}</span></li>)}</ul><footer><button type="button" className="secondary" onClick={onClose} disabled={update.isPending}>Vazgeç</button><button type="button" onClick={() => update.mutate()} disabled={update.isPending}>{update.isPending ? 'Güncelleniyor…' : `${items.length} Shopify siparişini güncelle`}</button></footer></div></section></div>
 }
 
-function InvoiceWorkspaceUploadModal({ item, provider, onClose, onFeedback }: { item: InvoiceWorkspace; provider: Connection | undefined; onClose: () => void; onFeedback: (message: string, kind: InvoiceNoticeKind) => void }) {
+function InvoiceWorkspaceUploadModal({ item, onClose, onFeedback }: { item: InvoiceWorkspace; onClose: () => void; onFeedback: (message: string, kind: InvoiceNoticeKind) => void }) {
   const client = useQueryClient()
   const [file, setFile] = useState<File | null>(null)
+  const [invoiceUrl, setInvoiceUrl] = useState('')
+  const [invoiceNumber, setInvoiceNumber] = useState(item.manualInvoiceNumber ?? '')
+  const [issuedAt, setIssuedAt] = useState(item.manualInvoiceIssuedAt ? new Date(item.manualInvoiceIssuedAt).toISOString().slice(0, 16) : '')
   const [message, setMessage] = useState('')
   const [dragging, setDragging] = useState(false)
-  const canCreateTrackingRecord = item.invoiceCreationEnabled && (item.platformCode === 'SHOPIFY' || Boolean(provider))
   const upload = useMutation({
     mutationFn: async () => {
-      if (!file) throw new Error('Yüklenecek fatura dosyasını seçin.')
-      await uploadManualInvoiceDocument(item, file, provider)
+      await uploadManualInvoiceDocument(item, file, invoiceUrl, invoiceNumber, issuedAt)
     },
     onSuccess: async () => {
-      onFeedback('Fatura dosyası güvenli panele yüklendi; bu işlem pazaryerine veya mali sağlayıcıya gönderim yapmadı.', 'success')
+      onFeedback('Manuel fatura belgesi siparişe kaydedildi. Platforma iletim başlamadı; iletimi ayrı düğmeden başlatabilirsiniz.', 'success')
       await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['invoice'] })])
       onClose()
     },
-    onError: error => { const errorMessage = error instanceof Error ? error.message : 'Fatura dosyası yüklenemedi.'; setMessage(errorMessage); onFeedback(errorMessage, 'error') }
+    onError: error => { const errorMessage = error instanceof Error ? error.message : 'Manuel fatura belgesi kaydedilemedi.'; setMessage(errorMessage); onFeedback(errorMessage, 'error') }
   })
-  function choose(selected: File | undefined) { if (selected) { setFile(selected); setMessage('') } }
-  const canUpload = Boolean(item.invoiceId) || canCreateTrackingRecord
-  return <div className="workspace-modal-backdrop" role="presentation" onMouseDown={() => { if (!upload.isPending) onClose() }}><section className="workspace-modal invoice-upload-modal invoice-workspace-upload-modal" role="dialog" aria-modal="true" aria-labelledby="invoice-workspace-upload-title" onMouseDown={event => event.stopPropagation()}><header><div><p className="eyebrow">{item.platformDisplayName.toLocaleUpperCase('tr-TR')} · {displayInvoiceOrderNumber(item.orderNumber)}</p><h2 id="invoice-workspace-upload-title">Manuel fatura yükle</h2><p>Dosya güvenli panele eklenir; bu işlem pazaryerine veya mali sağlayıcıya gönderim yapmaz.</p></div><button type="button" className="modal-close" onClick={onClose} disabled={upload.isPending} aria-label="Pencereyi kapat"><UiIcon name="close" /></button></header><div className="invoice-upload-context"><div><small>Fatura durumu</small><InvoiceStatusBadge status={item.invoiceStatus} /></div>{item.invoiceNumber?.trim() && <div><small>Fatura numarası</small><strong>{item.invoiceNumber}</strong></div>}<div><small>Pazaryeri aktarımı</small><Badge value={item.invoiceDeliveryStatus ?? 'NOT_SENT'} tone={invoiceDeliveryTone(item.invoiceDeliveryStatus)} label={invoiceDeliveryLabel(item.invoiceDeliveryStatus)} /></div></div>{item.invoiceId && item.invoiceDocumentAvailable && <a className="invoice-document-link" href={`/api/v1/invoices/${item.invoiceId}/documents/latest/content`} target="_blank" rel="noreferrer">Mevcut fatura dosyasını aç <UiIcon name="externalLink" /></a>}<label className={`invoice-dropzone${dragging ? ' dragging' : ''}`} onDragEnter={event => { event.preventDefault(); setDragging(true) }} onDragOver={event => event.preventDefault()} onDragLeave={() => setDragging(false)} onDrop={event => { event.preventDefault(); setDragging(false); choose(event.dataTransfer.files[0]) }}><input type="file" accept=".pdf,.jpeg,.jpg,.png,application/pdf,image/jpeg,image/png" onChange={event => choose(event.target.files?.[0])} /><span className="invoice-upload-icon" aria-hidden="true"><UiIcon name="upload" /></span><strong>{file ? file.name : 'Fatura dosyasını seçin'}</strong><small>{file ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : 'PDF, JPEG veya PNG · En fazla 10 MB'}</small><b>Dosya Seç</b></label>{!item.invoiceId && !canCreateTrackingRecord && <p className="notice" role="status">{!item.invoiceCreationEnabled ? invoiceCreationDisabledHelp : 'Aktif fatura bağlantısı gereklidir.'}</p>}{message && <p className="error" role="alert">{message}</p>}<footer><button type="button" className="secondary" onClick={onClose} disabled={upload.isPending}>Vazgeç</button><button type="button" disabled={!file || upload.isPending || !canUpload} title={!canUpload ? !item.invoiceCreationEnabled ? invoiceCreationDisabledHelp : 'Aktif fatura bağlantısı gereklidir.' : undefined} onClick={() => upload.mutate()}>{upload.isPending ? 'Yükleniyor…' : 'Faturayı Yükle'}</button></footer></section></div>
+  function choose(selected: File | undefined) { if (selected) { setFile(selected); setInvoiceUrl(''); setMessage('') } }
+  const hasOneSource = Boolean(file) !== Boolean(invoiceUrl.trim())
+  return <div className="workspace-modal-backdrop" role="presentation" onMouseDown={() => { if (!upload.isPending) onClose() }}><section className="workspace-modal invoice-upload-modal invoice-workspace-upload-modal" role="dialog" aria-modal="true" aria-labelledby="invoice-workspace-upload-title" onMouseDown={event => event.stopPropagation()}>
+    <header><div><p className="eyebrow">{item.platformDisplayName.toLocaleUpperCase('tr-TR')} · {displayInvoiceOrderNumber(item.orderNumber)}</p><h2 id="invoice-workspace-upload-title">Siparişe manuel fatura belgesi ekle</h2><p>Belge e-Faturam bağlantısı veya mali taslak gerektirmeden kaydedilir. Kaydetmek platforma gönderim başlatmaz.</p></div><button type="button" className="modal-close" onClick={onClose} disabled={upload.isPending} aria-label="Pencereyi kapat"><UiIcon name="close" /></button></header>
+    <div className="invoice-upload-context"><div><small>Mali fatura kaydı</small><InvoiceStatusBadge status={item.invoiceStatus} /></div><div><small>Platform belgesi</small><Badge value={manualInvoiceDeliveryLabel(item.manualInvoiceDeliveryStatus)} tone={item.manualInvoiceDeliveryStatus === 'CONFIRMED' ? 'good' : 'neutral'} /></div></div>
+    {item.manualInvoiceDocumentUrl && <a className="invoice-document-link" href={item.manualInvoiceDocumentUrl} target="_blank" rel="noreferrer">Mevcut manuel belgeyi aç <UiIcon name="externalLink" /></a>}
+    {item.invoiceId && item.invoiceDocumentAvailable && <a className="invoice-document-link" href={`/api/v1/invoices/${item.invoiceId}/documents/latest/content`} target="_blank" rel="noreferrer">Mali sağlayıcı belgesini aç <UiIcon name="externalLink" /></a>}
+    <label className="invoice-upload-field"><span>Fatura numarası</span><input value={invoiceNumber} onChange={event => setInvoiceNumber(event.target.value)} maxLength={64} placeholder="Fatura numarası" /></label>
+    <label className="invoice-upload-field"><span>Fatura tarihi</span><input type="datetime-local" value={issuedAt} onChange={event => setIssuedAt(event.target.value)} /></label>
+    <label className="invoice-upload-field"><span>Mevcut HTTPS fatura bağlantısı</span><input type="url" value={invoiceUrl} onChange={event => { setInvoiceUrl(event.target.value); if (event.target.value) setFile(null) }} placeholder="https://…" /></label>
+    <div className="invoice-upload-or">veya PDF dosyası</div>
+    <label className={`invoice-dropzone${dragging ? ' dragging' : ''}`} onDragEnter={event => { event.preventDefault(); setDragging(true) }} onDragOver={event => event.preventDefault()} onDragLeave={() => setDragging(false)} onDrop={event => { event.preventDefault(); setDragging(false); choose(event.dataTransfer.files[0]) }}><input type="file" accept=".pdf,application/pdf" onChange={event => choose(event.target.files?.[0])} /><span className="invoice-upload-icon" aria-hidden="true"><UiIcon name="upload" /></span><strong>{file ? file.name : 'PDF dosyasını seçin'}</strong><small>{file ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : 'PDF · En fazla 10 MB'}</small><b>Dosya Seç</b></label>
+    {item.manualInvoiceDocumentId && <p className="notice">Kaydedilen yeni belge siparişin güncel manuel sürümü olur. Eski sürüm ve gönderim geçmişi korunur.</p>}{message && <p className="error" role="alert">{message}</p>}
+    <footer><button type="button" className="secondary" onClick={onClose} disabled={upload.isPending}>Vazgeç</button><button type="button" disabled={!hasOneSource || !issuedAt || upload.isPending} onClick={() => upload.mutate()}>{upload.isPending ? 'Kaydediliyor…' : 'Belgeyi kaydet'}</button></footer>
+  </section></div>
 }
 
 export function InvoiceDetailPage() {

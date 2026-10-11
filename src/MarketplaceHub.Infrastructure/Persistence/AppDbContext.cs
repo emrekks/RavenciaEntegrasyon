@@ -101,6 +101,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<InvoiceLine> InvoiceLines => Set<InvoiceLine>();
     public DbSet<InvoicePartySnapshot> InvoicePartySnapshots => Set<InvoicePartySnapshot>();
     public DbSet<InvoiceDocument> InvoiceDocuments => Set<InvoiceDocument>();
+    public DbSet<ManualOrderInvoiceDocument> ManualOrderInvoiceDocuments => Set<ManualOrderInvoiceDocument>();
+    public DbSet<ManualOrderInvoiceDeliveryState> ManualOrderInvoiceDeliveryStates => Set<ManualOrderInvoiceDeliveryState>();
     public DbSet<InvoiceSubmissionAttempt> InvoiceSubmissionAttempts => Set<InvoiceSubmissionAttempt>();
     public DbSet<MarketplaceDelivery> MarketplaceDeliveries => Set<MarketplaceDelivery>();
     public DbSet<MarketplaceDeliveryState> MarketplaceDeliveryStates => Set<MarketplaceDeliveryState>();
@@ -210,6 +212,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         Invoice value => (value.TenantId, "invoices", "Invoice", value.Id, value.Version),
         InvoiceLine value => (value.TenantId, "invoices", "Invoice", value.InvoiceId, null),
         InvoiceDocument value => (value.TenantId, "invoices", "Invoice", value.InvoiceId, null),
+        ManualOrderInvoiceDocument value => (value.TenantId, "invoices", "ManualOrderInvoiceDocument", value.Id, value.Version),
+        ManualOrderInvoiceDeliveryState value => (value.TenantId, "invoices", "ManualOrderInvoiceDocument", value.DocumentId, value.Version),
         MarketplaceDelivery value => (value.TenantId, "invoices", "Invoice", value.InvoiceId, null),
         MarketplaceDeliveryState value => (value.TenantId, "invoices", "Invoice", value.InvoiceId, value.Version),
         PlatformConnection value => (value.TenantId, "connections", "PlatformConnection", value.Id, value.Version),

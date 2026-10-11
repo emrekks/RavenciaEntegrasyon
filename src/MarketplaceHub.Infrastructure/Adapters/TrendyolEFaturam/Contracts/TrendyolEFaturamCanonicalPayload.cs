@@ -101,7 +101,7 @@ public static class TrendyolEFaturamCanonicalPayload
                     throw new JsonException("EFATURAM_CARRIER_CATALOG_MISS");
                 var sentAt = DateTimeOffset.Parse(RequiredText(package, "StatusOccurredAt"));
                 if (includeInternetSalesInfo)
-                    payment = new("https://www.trendyol.com", "Trendyol", "PAZARYERI", orderedAt, "MEDIATOR");
+                    payment = MarketplacePayment(root, orderedAt);
                 delivery = new(carrier.TaxId, carrier.Name, null, DateOnly.FromDateTime(sentAt.Date));
             }
 
@@ -123,6 +123,18 @@ public static class TrendyolEFaturamCanonicalPayload
     }
 
     private static JsonDocument ParseSnapshot(JsonElement parent, string name) => JsonDocument.Parse(RequiredText(parent, name));
+    private static EfaturamPayment MarketplacePayment(JsonElement root, DateTimeOffset orderedAt)
+    {
+        var platformCode = Text(root, "MarketplacePlatformCode")?.Trim().ToUpperInvariant();
+        return platformCode switch
+        {
+            null or "" or "TRENDYOL" => new("https://www.trendyol.com", "Trendyol", "PAZARYERI", orderedAt, "MEDIATOR"),
+            "HEPSIBURADA" => new("https://www.hepsiburada.com", "Hepsiburada", "PAZARYERI", orderedAt, "MEDIATOR"),
+            "SHOPIFY" => throw new JsonException("EFATURAM_SHOPIFY_PAYMENT_INFO_UNVERIFIED"),
+            _ => throw new JsonException("EFATURAM_MARKETPLACE_PAYMENT_INFO_UNSUPPORTED")
+        };
+    }
+
     private static bool OptionalBoolean(JsonElement parent, string name, bool fallback) =>
         parent.TryGetProperty(name, out var value) && value.ValueKind is JsonValueKind.True or JsonValueKind.False
             ? value.GetBoolean()

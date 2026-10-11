@@ -408,7 +408,8 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         or "ORDER_LIFECYCLE"
         or "ORDER_RECONCILE_SHORT"
         or "ORDER_RECONCILE_MEDIUM"
-        or "ORDER_RECONCILE_DAILY";
+        or "ORDER_RECONCILE_DAILY"
+        or "ORDER_INVOICE_RECONCILIATION";
 
     internal static bool SupportsShopifyPolicy(string resourceType) =>
         IsShopifyReadPolicy(resourceType) || MarketplaceExternalWritePolicies.IsPolicy(resourceType);
@@ -450,7 +451,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
             ? Math.Clamp(configuration.GetValue("MarketplaceSync:OrderInvoiceReconciliation:HepsiburadaBatchSize", 100), 1, 250)
             : string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase)
-                ? Math.Clamp(configuration.GetValue("MarketplaceSync:OrderInvoiceReconciliation:TrendyolBatchSize", 5), 1, 100)
+                ? Math.Clamp(configuration.GetValue("MarketplaceSync:OrderInvoiceReconciliation:TrendyolBatchSize", 50), 1, 100)
             : Math.Clamp(configuration.GetValue("MarketplaceSync:OrderInvoiceReconciliation:BatchSize", 20), 1, 250);
 
     private bool WritesEnabled(string settingsJson)

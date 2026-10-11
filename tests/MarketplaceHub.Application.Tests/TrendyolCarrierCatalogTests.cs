@@ -51,6 +51,35 @@ public sealed class TrendyolCarrierCatalogTests
     }
 
     [Fact]
+    public void Canonical_e_archive_uses_hepsiburada_for_marketplace_payment_information()
+    {
+        const string canonical = """
+        {
+          "Id":"invoice-hepsiburada",
+          "InvoiceType":"EARSIVFATURA",
+          "Currency":"TRY",
+          "Note":"Satış faturası",
+          "IssuedAt":"2026-10-05T12:00:00+03:00",
+          "MarketplacePlatformCode":"HEPSIBURADA",
+          "Order":{
+            "OrderNumber":"4486229624",
+            "OrderedAt":"2026-10-07T13:03:01+03:00",
+            "CustomerSnapshotJson":"{\"name\":\"Test Müşteri\"}",
+            "InvoiceAddressSnapshotJson":"{\"taxNumber\":\"1234567890\",\"fullAddress\":\"Test adres\",\"city\":\"İstanbul\",\"district\":\"Şişli\"}"
+          },
+          "Package":{"CargoProviderExternalId":"HepsiJet","StatusOccurredAt":"2026-10-07T13:03:01+03:00"},
+          "Lines":[{"DescriptionSnapshot":"Ürün","UnitSnapshot":"ADET","Quantity":1,"UnitPrice":100,"LineTotal":120,"VatAmount":20,"VatRate":20,"DiscountAmount":0}]
+        }
+        """;
+
+        using var payload = JsonDocument.Parse(TrendyolEFaturamCanonicalPayload.Create(new(1, 2, null), canonical));
+        var payment = payload.RootElement.GetProperty("paymentInfo");
+
+        Assert.Equal("https://www.hepsiburada.com", payment.GetProperty("purchaseUrl").GetString());
+        Assert.Equal("Hepsiburada", payment.GetProperty("paymentAgentName").GetString());
+    }
+
+    [Fact]
     public void Canonical_e_archive_omits_internet_sales_fields_when_disabled_but_keeps_delivery_info()
     {
         const string canonical = """

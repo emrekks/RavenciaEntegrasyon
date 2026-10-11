@@ -31,6 +31,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 InvoicingJobTypes.InvoiceReconcile => await Reconcile(tenantId, connectionId!.Value, payloadJson, correlationId, cancellationToken),
                 InvoicingJobTypes.InvoiceDocumentFetch => await FetchDocument(tenantId, connectionId!.Value, payloadJson, correlationId, cancellationToken),
                 InvoicingJobTypes.MarketplaceDelivery => await Deliver(tenantId, connectionId!.Value, payloadJson, correlationId, cancellationToken),
+                InvoicingJobTypes.ManualOrderInvoiceDelivery => await DeliverManualOrderInvoiceDocument(tenantId, connectionId!.Value, payloadJson, correlationId, cancellationToken),
                 InvoicingJobTypes.InvoiceCancellation => await Cancel(tenantId, connectionId!.Value, payloadJson, correlationId, cancellationToken),
                 InvoicingJobTypes.InvoiceDueScan => await ScanDue(tenantId, cancellationToken),
                 InvoicingJobTypes.StageCapabilityProbe => await StageCapabilityProbe(tenantId, connectionId!.Value, payloadJson, correlationId, cancellationToken),
@@ -141,6 +142,14 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             var customerSnapshotJson = SnapshotText(snapshotRoot, "CustomerSnapshotJson", order.CustomerSnapshotJson);
             var invoiceAddressSnapshotJson = SnapshotText(snapshotRoot, "InvoiceAddressSnapshotJson", order.InvoiceAddressSnapshotJson);
             var shipmentAddressSnapshotJson = SnapshotText(snapshotRoot, "ShipmentAddressSnapshotJson", order.ShipmentAddressSnapshotJson);
+            var fiscalDeliveryPackage = InvoicingBillingService.ReadFiscalDeliveryPackage(snapshotRoot)
+                ?? (package is null ? null : new InvoiceFiscalDeliveryPackageSnapshot(package.ExternalPackageId, package.CargoProviderExternalId, package.StatusOccurredAt));
+            if (invoice.InvoiceType == "EARSIVFATURA"
+                && !InvoicingBillingService.IsValidFiscalDeliveryPackage(fiscalDeliveryPackage))
+            {
+                await BlockFiscalSubmission(invoice, "INVOICE_DELIVERY_PACKAGE_SNAPSHOT_INVALID",
+                    "E-Arşiv için doğrulanmış kargo firması ve gönderim tarihi bulunamadı. Fatura sağlayıcıya gönderilmedi.", cancellationToken);
+            }
             var canonical = JsonSerializer.Serialize(new
             {
                 invoice.Id,
@@ -152,11 +161,66 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 IssuedAt = invoice.IssuedAt ?? invoice.UpdatedAt,
                 MarketplacePlatformCode = orderConnection?.PlatformCode ?? "TRENDYOL",
                 MarketplaceDisplayName = orderConnection?.DisplayName ?? "Trendyol",
+                MarketplaceExternalStoreId = orderConnection?.ExternalStoreId,
                 MarketplaceEnvironment = orderConnection?.Environment ?? "UNKNOWN",
                 Order = new { OrderNumber = orderNumber, OrderedAt = orderedAt, CustomerSnapshotJson = customerSnapshotJson, InvoiceAddressSnapshotJson = invoiceAddressSnapshotJson, ShipmentAddressSnapshotJson = shipmentAddressSnapshotJson },
-                Package = package is null ? null : new { package.ExternalPackageId, package.CargoProviderExternalId, package.StatusOccurredAt },
+                Package = fiscalDeliveryPackage,
                 Lines = lines.Select(x => new { x.LineSequence, x.DescriptionSnapshot, x.SkuSnapshot, x.UnitSnapshot, x.Quantity, x.UnitPrice, x.DiscountAmount, x.VatRate, x.VatAmount, x.LineTotal })
             });
+            if (orderConnection is null)
+                await BlockFiscalSubmission(invoice, "MARKETPLACE_INVOICE_PRECHECK_FAILED", "Siparişin pazaryeri bağlantısı okunamadı; mali kesim başlatılmadı.", cancellationToken);
+
+            if (ActiveIntegrationScope.IsMarketplace(orderConnection!.PlatformCode))
+            {
+                var packages = await db.ShipmentPackages.Where(item => item.TenantId == tenantId
+                    && item.OrderId == order.Id && item.Status != ShipmentPackageStatus.Cancelled)
+                    .OrderBy(item => item.Id).ToListAsync(cancellationToken);
+                if (packages.Count == 0)
+                    await BlockFiscalSubmission(invoice, "MARKETPLACE_INVOICE_PRECHECK_FAILED", "Sipariş için kontrol edilebilir etkin paket bulunamadı; mali kesim başlatılmadı.", cancellationToken);
+
+                foreach (var targetPackage in packages)
+                {
+                    var platformRead = await marketplace.QueryDeliveryAsync(
+                        Context(tenantId, targetPackage.ConnectionId, correlationId, $"invoice-precheck:{invoice.Id:N}:{targetPackage.Id:N}", IntegrationOperation.Automatic),
+                        new(targetPackage.ExternalPackageId, order.OrderNumber, ShopifyOrderGid(order.ExternalOrderId)),
+                        cancellationToken);
+                    if (!platformRead.IsSuccess)
+                        await BlockFiscalSubmission(invoice, "MARKETPLACE_INVOICE_PRECHECK_FAILED",
+                            $"{orderConnection.PlatformCode} siparişindeki mevcut fatura güvenle okunamadı ({platformRead.Error!.Code}); mali kesim başlatılmadı.", cancellationToken);
+
+                    var observation = platformRead.Value!;
+                    var observedAt = timeProvider.GetUtcNow();
+                    targetPackage.MarketplaceInvoiceRawStatus = observation.RawStatus;
+                    targetPackage.MarketplaceInvoiceStatus = MarketplaceInvoiceStatePolicy.FromRemote(
+                        observation.RawStatus, invoiceNumber: observation.VerifiedInvoiceNumber, invoiceUrl: observation.VerifiedInvoiceLink);
+                    var explicitlyNotInvoiced = MarketplaceInvoiceStatePolicy.FromRemote(observation.RawStatus,
+                        invoiceNumber: observation.VerifiedInvoiceNumber, invoiceUrl: observation.VerifiedInvoiceLink) == MarketplaceInvoiceStatus.NotInvoiced;
+                    var references = explicitlyNotInvoiced
+                        ? (InvoiceNumber: (string?)null, InvoiceUrl: (string?)null)
+                        : MarketplaceInvoiceStatePolicy.MergeReferences(
+                            targetPackage.MarketplaceInvoiceNumber,
+                            targetPackage.MarketplaceInvoiceUrl,
+                            observation.VerifiedInvoiceNumber,
+                            observation.VerifiedInvoiceLink,
+                            observation.ReferencesAreAuthoritative);
+                    targetPackage.MarketplaceInvoiceNumber = references.InvoiceNumber;
+                    targetPackage.MarketplaceInvoiceUrl = references.InvoiceUrl;
+                    targetPackage.MarketplaceInvoiceObservedAt = observedAt;
+                    targetPackage.UpdatedAt = observedAt;
+                    targetPackage.Version++;
+
+                    if (!explicitlyNotInvoiced)
+                    {
+                        await db.SaveChangesAsync(cancellationToken);
+                        var present = targetPackage.MarketplaceInvoiceStatus is MarketplaceInvoiceStatus.Invoiced or MarketplaceInvoiceStatus.Received;
+                        await BlockFiscalSubmission(invoice, present ? "PLATFORM_INVOICE_ALREADY_PRESENT" : "PLATFORM_INVOICE_STATUS_NOT_CLEAR",
+                            present
+                                ? "Pazaryerinde fatura bulundu veya platform faturanın var olduğunu bildiriyor. Yeni mali kesim yapılmadı."
+                                : "Pazaryeri açık ve güvenilir bir 'fatura yok' durumu döndürmedi. Yeni mali kesim yapılmadı.", cancellationToken);
+                    }
+                }
+                await db.SaveChangesAsync(cancellationToken);
+            }
             var hash = Hash(canonical); var started = timeProvider.GetUtcNow();
             var attempt = new InvoiceSubmissionAttempt { Id = Guid.CreateVersion7(), TenantId = tenantId, InvoiceId = invoice.Id, AttemptNumber = await NextAttempt(tenantId, invoice.Id, cancellationToken), RequestHash = hash, Outcome = "STARTED", StartedAt = started };
             db.InvoiceSubmissionAttempts.Add(attempt);
@@ -227,6 +291,16 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         invoice.LastErrorCode = errorCode;
         invoice.UpdatedAt = now;
         invoice.Version++;
+    }
+
+    private async Task BlockFiscalSubmission(Invoice invoice, string errorCode, string message, CancellationToken cancellationToken)
+    {
+        invoice.Status = InvoiceStatus.ManualReview;
+        invoice.LastErrorCode = errorCode;
+        invoice.UpdatedAt = timeProvider.GetUtcNow();
+        invoice.Version++;
+        await db.SaveChangesAsync(cancellationToken);
+        throw new JobProcessingException(JobExecutionResult.Blocked(errorCode, message));
     }
 
     private static string SnapshotText(JsonElement root, string property, string fallback) =>
@@ -305,21 +379,302 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
     {
         if (!TryReadOneTimeInvoiceDeliveryAuthorization(payloadJson, out var oneTimeAuthorization)) return false;
         var invoice = await FindInvoice(tenantId, payloadJson, cancellationToken);
-        if (invoice?.PackageId is null) return false;
+        if (invoice is null) return false;
+        var requestedPackageId = ReadPackageId(payloadJson);
+        var packageIds = invoice.PackageId is { } legacyPackageId
+            ? new[] { legacyPackageId }
+            : requestedPackageId is { } selectedPackageId
+                ? new[] { selectedPackageId }
+                : await db.ShipmentPackages.AsNoTracking()
+                    .Where(item => item.TenantId == tenantId && item.OrderId == invoice.OrderId && item.Status != ShipmentPackageStatus.Cancelled)
+                    .OrderBy(item => item.Id).Select(item => item.Id).ToArrayAsync(cancellationToken);
+        if (packageIds.Length == 0 || oneTimeAuthorization is not null && packageIds.Length != 1) return false;
+
+        foreach (var packageId in packageIds)
+        {
+            var succeeded = await DeliverSinglePackage(tenantId, jobConnectionId, packageId, payloadJson, correlationId, cancellationToken);
+            if (!succeeded) return false;
+        }
+        return true;
+    }
+
+    private async Task<bool> DeliverManualOrderInvoiceDocument(Guid tenantId, Guid jobConnectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    {
+        Guid documentId;
+        Guid packageId;
+        var inspectionOnly = false;
+        try
+        {
+            using var payloadDocument = JsonDocument.Parse(payloadJson);
+            var root = payloadDocument.RootElement;
+            if (!root.TryGetProperty("manualOrderInvoiceDocumentId", out var documentValue)
+                || documentValue.ValueKind != JsonValueKind.String
+                || !Guid.TryParse(documentValue.GetString(), out documentId)
+                || !root.TryGetProperty("packageId", out var packageValue)
+                || packageValue.ValueKind != JsonValueKind.String
+                || !Guid.TryParse(packageValue.GetString(), out packageId)) return false;
+            inspectionOnly = root.TryGetProperty("inspectionOnly", out var inspectionValue)
+                && inspectionValue.ValueKind == JsonValueKind.True;
+        }
+        catch (JsonException) { return false; }
+
+        var document = await db.ManualOrderInvoiceDocuments.SingleOrDefaultAsync(
+            item => item.TenantId == tenantId && item.Id == documentId,
+            cancellationToken);
+        var package = await db.ShipmentPackages.AsNoTracking().SingleOrDefaultAsync(
+            item => item.TenantId == tenantId && item.Id == packageId && item.Status != ShipmentPackageStatus.Cancelled,
+            cancellationToken);
+        var order = package is null ? null : await db.Orders.AsNoTracking().SingleOrDefaultAsync(
+            item => item.TenantId == tenantId && item.Id == package.OrderId,
+            cancellationToken);
+        if (document is null || document.Status != "ACTIVE" || package is null || order is null
+            || document.OrderId != order.Id || package.OrderId != order.Id
+            || document.ConnectionId != package.ConnectionId || package.ConnectionId != jobConnectionId
+            || string.IsNullOrWhiteSpace(document.DocumentUrl)
+            || !ProductPublicationComposer.IsPublicHttpsUrl(document.DocumentUrl)) return false;
+
+        var state = await db.ManualOrderInvoiceDeliveryStates.SingleOrDefaultAsync(
+            item => item.TenantId == tenantId && item.DocumentId == document.Id && item.PackageId == package.Id,
+            cancellationToken);
+        inspectionOnly |= ManualInvoiceDeliveryPolicy.RequiresReadOnlyInspection(state?.Status);
+        var documentHash = Hash($"{document.DocumentUrl}\n{document.InvoiceNumber}\n{document.IssuedAt:O}");
+        if (state is not null && !string.Equals(state.RequestHash, documentHash, StringComparison.Ordinal))
+        {
+            SetManualInvoiceDeliveryState(state, "MANUAL_REVIEW", "MANUAL_INVOICE_DELIVERY_DOCUMENT_CHANGED", null, timeProvider.GetUtcNow());
+            await db.SaveChangesAsync(cancellationToken);
+            return true;
+        }
+
+        if (document.IssuedAt is null)
+        {
+            if (state is not null) SetManualInvoiceDeliveryState(state, "FAILED", "MANUAL_INVOICE_ISSUED_AT_REQUIRED", null, timeProvider.GetUtcNow());
+            await db.SaveChangesAsync(cancellationToken);
+            return true;
+        }
+
+        var platformCode = await db.PlatformConnections.AsNoTracking()
+            .Where(connection => connection.TenantId == tenantId && connection.Id == package.ConnectionId)
+            .Select(connection => connection.PlatformCode)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (platformCode is not ("TRENDYOL" or "HEPSIBURADA" or "SHOPIFY")
+            || platformCode == "SHOPIFY" && string.IsNullOrWhiteSpace(document.InvoiceNumber))
+        {
+            if (state is not null) SetManualInvoiceDeliveryState(state, "FAILED", "MANUAL_INVOICE_PLATFORM_FIELDS_REQUIRED", null, timeProvider.GetUtcNow());
+            await db.SaveChangesAsync(cancellationToken);
+            return true;
+        }
+
+        var deliveryContext = Context(tenantId, package.ConnectionId, correlationId,
+            state?.IdempotencyKey ?? $"manual-invoice-delivery:{document.Id:N}:{package.Id:N}");
+        var reference = new ExternalInvoiceDeliveryReference(
+            package.ExternalPackageId,
+            order.OrderNumber,
+            platformCode == "SHOPIFY" ? ShopifyOrderGid(order.ExternalOrderId) : null,
+            document.InvoiceNumber,
+            document.DocumentUrl);
+        var before = await marketplace.QueryDeliveryAsync(deliveryContext, reference, cancellationToken);
+        if (!before.IsSuccess)
+        {
+            if (state is not null) SetManualInvoiceDeliveryState(state, "MANUAL_REVIEW", before.Error!.Code, null, timeProvider.GetUtcNow());
+            await db.SaveChangesAsync(cancellationToken);
+            return true;
+        }
+
+        var beforeStatus = MarketplaceInvoiceStatePolicy.FromRemote(before.Value!.RawStatus,
+            invoiceNumber: before.Value.VerifiedInvoiceNumber, invoiceUrl: before.Value.VerifiedInvoiceLink);
+        if (beforeStatus == MarketplaceInvoiceStatus.Invoiced)
+        {
+            if (ManualInvoiceIdentityMatches(document, before.Value.VerifiedInvoiceNumber, before.Value.VerifiedInvoiceLink))
+                await ConfirmManualOrderInvoiceDelivery(tenantId, document, package, state, before.Value.ExternalReference, before.Value.VerifiedInvoiceNumber, before.Value.VerifiedInvoiceLink, cancellationToken);
+            else
+            {
+                if (state is not null) SetManualInvoiceDeliveryState(state, "MANUAL_REVIEW", "MARKETPLACE_HAS_DIFFERENT_OR_UNVERIFIABLE_INVOICE", before.Value.ExternalReference, timeProvider.GetUtcNow());
+                await db.SaveChangesAsync(cancellationToken);
+            }
+            return true;
+        }
+        if (beforeStatus != MarketplaceInvoiceStatus.NotInvoiced)
+        {
+            if (state is not null) SetManualInvoiceDeliveryState(state, "MANUAL_REVIEW", "MARKETPLACE_INVOICE_PRECHECK_NOT_CLEAR", before.Value.ExternalReference, timeProvider.GetUtcNow());
+            await db.SaveChangesAsync(cancellationToken);
+            return true;
+        }
+        if (inspectionOnly || !ManualInvoiceDeliveryPolicy.CanSubmitAfterPrecheck(state?.Status, beforeStatus))
+        {
+            if (state is not null) SetManualInvoiceDeliveryState(state, "MANUAL_REVIEW", "MANUAL_INVOICE_DELIVERY_ABSENCE_REQUIRES_REVIEW", before.Value.ExternalReference, timeProvider.GetUtcNow());
+            await db.SaveChangesAsync(cancellationToken);
+            return true;
+        }
+
+        var deliveryPayload = new Dictionary<string, object?>
+        {
+            ["shipmentPackageId"] = package.ExternalPackageId,
+            ["invoiceLink"] = document.DocumentUrl,
+            ["invoiceDateTime"] = document.IssuedAt.Value.ToUnixTimeMilliseconds(),
+            ["invoiceNumber"] = document.InvoiceNumber,
+            ["micro"] = IsMicroExport(order.CustomerSnapshotJson)
+        };
+        if (platformCode == "HEPSIBURADA")
+        {
+            deliveryPayload["arrangementDate"] = document.IssuedAt.Value.ToString("O", CultureInfo.InvariantCulture);
+            deliveryPayload["contentType"] = "application/pdf";
+            deliveryPayload["orderNumber"] = order.OrderNumber;
+        }
+        if (platformCode == "SHOPIFY") deliveryPayload["shopifyOrderId"] = ShopifyOrderGid(order.ExternalOrderId);
+        var payloadJsonValue = JsonSerializer.Serialize(deliveryPayload);
+        var deliveryRequestHash = Hash(payloadJsonValue);
+        if (state is null)
+        {
+            state = new ManualOrderInvoiceDeliveryState
+            {
+                Id = Guid.CreateVersion7(), TenantId = tenantId, DocumentId = document.Id,
+                ConnectionId = package.ConnectionId, PackageId = package.Id,
+                IdempotencyKey = $"manual-invoice-delivery:{document.Id:N}:{package.Id:N}",
+                RequestHash = documentHash, Status = "STARTED", AttemptCount = 1,
+                CreatedAt = timeProvider.GetUtcNow(), UpdatedAt = timeProvider.GetUtcNow(), Version = 1
+            };
+            db.ManualOrderInvoiceDeliveryStates.Add(state);
+        }
+        else
+        {
+            if (state.Status == "CONFIRMED") return true;
+            state.Status = "STARTED";
+            state.ErrorCode = null;
+            state.AttemptCount++;
+            state.UpdatedAt = timeProvider.GetUtcNow();
+            state.CompletedAt = null;
+            state.Version++;
+        }
+        await db.SaveChangesAsync(cancellationToken);
+
+        AdapterResult<InvoiceDeliveryResult> submitted;
+        try
+        {
+            var explicitContext = Context(tenantId, package.ConnectionId, correlationId, state.IdempotencyKey, IntegrationOperation.Manual) with
+            {
+                IsExplicitManualInvoiceDelivery = true
+            };
+            submitted = await marketplace.DeliverAsync(explicitContext,
+                new(package.ExternalPackageId, "LINK", payloadJsonValue, deliveryRequestHash), cancellationToken);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            SetManualInvoiceDeliveryState(state, "UNKNOWN", "MANUAL_INVOICE_DELIVERY_TIMEOUT", null, timeProvider.GetUtcNow());
+            await db.SaveChangesAsync(CancellationToken.None);
+            return true;
+        }
+        catch (Exception)
+        {
+            SetManualInvoiceDeliveryState(state, "UNKNOWN", "MANUAL_INVOICE_DELIVERY_RESULT_UNKNOWN", null, timeProvider.GetUtcNow());
+            await db.SaveChangesAsync(CancellationToken.None);
+            return true;
+        }
+
+        if (!submitted.IsSuccess)
+        {
+            var outcome = InvoiceDeliveryFailurePolicy.Classify(submitted.Error!.Class);
+            var newState = outcome switch
+            {
+                InvoiceDeliveryFailureDisposition.Retry => "RETRYABLE_FAILURE",
+                InvoiceDeliveryFailureDisposition.Unknown => "UNKNOWN",
+                _ => "FAILED"
+            };
+            SetManualInvoiceDeliveryState(state, newState, submitted.Error.Code, submitted.Value?.ExternalReference, timeProvider.GetUtcNow());
+            await db.SaveChangesAsync(cancellationToken);
+            if (outcome == InvoiceDeliveryFailureDisposition.Retry)
+                throw new JobProcessingException(JobExecutionResult.Retry(submitted.Error.Code,
+                    "Pazaryeri faturayı kesin olarak kabul etmedi; güvenli geçici hata yeniden denenecek.",
+                    submitted.Error.RetryAfter ?? TimeSpan.FromSeconds(30), state.IdempotencyKey));
+            return true;
+        }
+
+        if (submitted.Value!.SameAttemptVerified)
+        {
+            await ConfirmManualOrderInvoiceDelivery(tenantId, document, package, state,
+                submitted.Value.ExternalReference,
+                submitted.Value.VerifiedInvoiceNumber,
+                submitted.Value.VerifiedInvoiceLink,
+                cancellationToken);
+            return true;
+        }
+
+        var after = await marketplace.QueryDeliveryAsync(deliveryContext, reference, cancellationToken);
+        if (after.IsSuccess && MarketplaceInvoiceStatePolicy.FromRemote(after.Value!.RawStatus,
+                invoiceNumber: after.Value.VerifiedInvoiceNumber, invoiceUrl: after.Value.VerifiedInvoiceLink) == MarketplaceInvoiceStatus.Invoiced
+            && ManualInvoiceIdentityMatches(document, after.Value.VerifiedInvoiceNumber, after.Value.VerifiedInvoiceLink))
+        {
+            await ConfirmManualOrderInvoiceDelivery(tenantId, document, package, state, after.Value.ExternalReference,
+                after.Value.VerifiedInvoiceNumber, after.Value.VerifiedInvoiceLink, cancellationToken);
+            return true;
+        }
+
+        var readbackCode = !after.IsSuccess ? after.Error!.Code : "MANUAL_INVOICE_DELIVERY_READBACK_UNVERIFIED";
+        SetManualInvoiceDeliveryState(state, "UNKNOWN", readbackCode, submitted.Value.ExternalReference, timeProvider.GetUtcNow());
+        await db.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    private async Task ConfirmManualOrderInvoiceDelivery(Guid tenantId, ManualOrderInvoiceDocument document, ShipmentPackage package,
+        ManualOrderInvoiceDeliveryState? state, string? externalReference, string? verifiedInvoiceNumber, string? verifiedInvoiceLink,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        if (state is not null) SetManualInvoiceDeliveryState(state, "CONFIRMED", null, externalReference, now);
+        var trackedPackage = await db.ShipmentPackages.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == package.Id, cancellationToken);
+        if (trackedPackage is not null)
+        {
+            trackedPackage.MarketplaceInvoiceStatus = MarketplaceInvoiceStatus.Invoiced;
+            trackedPackage.MarketplaceInvoiceNumber = verifiedInvoiceNumber ?? document.InvoiceNumber;
+            trackedPackage.MarketplaceInvoiceUrl = verifiedInvoiceLink ?? document.DocumentUrl;
+            trackedPackage.MarketplaceInvoiceObservedAt = now;
+            trackedPackage.UpdatedAt = now;
+            trackedPackage.Version++;
+        }
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private static void SetManualInvoiceDeliveryState(ManualOrderInvoiceDeliveryState state, string status, string? errorCode, string? externalReference, DateTimeOffset now)
+    {
+        state.Status = status;
+        state.ErrorCode = errorCode;
+        state.ExternalReference = externalReference;
+        state.UpdatedAt = now;
+        state.CompletedAt = status is "CONFIRMED" or "FAILED" or "MANUAL_REVIEW" ? now : null;
+        state.Version++;
+    }
+
+    private static bool ManualInvoiceIdentityMatches(ManualOrderInvoiceDocument document, string? remoteNumber, string? remoteUrl)
+    {
+        if (!string.IsNullOrWhiteSpace(document.InvoiceNumber) && !string.IsNullOrWhiteSpace(remoteNumber)
+            && !string.Equals(document.InvoiceNumber.Trim(), remoteNumber.Trim(), StringComparison.Ordinal)) return false;
+        if (!string.IsNullOrWhiteSpace(remoteUrl)
+            && !string.Equals(document.DocumentUrl.TrimEnd('/'), remoteUrl.Trim().TrimEnd('/'), StringComparison.OrdinalIgnoreCase)) return false;
+        var numberMatches = !string.IsNullOrWhiteSpace(document.InvoiceNumber)
+            && string.Equals(document.InvoiceNumber.Trim(), remoteNumber?.Trim(), StringComparison.Ordinal);
+        var urlMatches = !string.IsNullOrWhiteSpace(remoteUrl)
+            && string.Equals(document.DocumentUrl.TrimEnd('/'), remoteUrl.Trim().TrimEnd('/'), StringComparison.OrdinalIgnoreCase);
+        return numberMatches || urlMatches;
+    }
+
+    private async Task<bool> DeliverSinglePackage(Guid tenantId, Guid jobConnectionId, Guid targetPackageId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    {
+        if (!TryReadOneTimeInvoiceDeliveryAuthorization(payloadJson, out var oneTimeAuthorization)) return false;
+        var invoice = await FindInvoice(tenantId, payloadJson, cancellationToken);
+        if (invoice is null) return false;
         using var deliveryJobPayload = JsonDocument.Parse(payloadJson);
         var manualDeliveryRetry = deliveryJobPayload.RootElement.TryGetProperty("manualDeliveryRetry", out var retryValue)
             && retryValue.ValueKind == JsonValueKind.True
             && invoice.LastErrorCode == InvoiceMarketplaceRetryPolicy.RepeatedRemoteFailure;
-        var package = await db.ShipmentPackages.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == invoice.PackageId, cancellationToken);
+        var package = await db.ShipmentPackages.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == targetPackageId && x.OrderId == invoice.OrderId, cancellationToken);
         var order = package is null
             ? null
             : await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.OrderId).Select(x => new { x.OrderNumber, x.ExternalOrderId, x.CustomerSnapshotJson }).SingleOrDefaultAsync(cancellationToken);
-        if (package is null) return false;
+        if (package is null || package.ConnectionId != jobConnectionId) return false;
         var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.ConnectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
         var permanentDocument = await LoadPermanentInvoiceDocumentAsync(tenantId, invoice.Id, cancellationToken);
         var permanentUrl = permanentDocument?.PermanentUrl;
 
-        var state = await LoadDeliveryState(tenantId, invoice.Id, cancellationToken);
+        var state = await LoadDeliveryState(tenantId, invoice.Id, package.Id, cancellationToken);
         if (oneTimeAuthorization is not null
             && !await IsValidOneTimeInvoiceDeliveryAsync(tenantId, jobConnectionId, invoice, package, order?.OrderNumber, oneTimeAuthorization, state, cancellationToken))
             return false;
@@ -405,20 +760,25 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 if (HasExactDeliveryProof(liveReadback.Value!, invoice.InvoiceNumber, unknownPermanentUrl))
                 {
                     AppendDeliveryHistory(state, "CONFIRMED", liveReadback.Value!.ExternalReference, null, timeProvider.GetUtcNow());
-                    invoice.Status = InvoiceStatus.Completed;
-                    invoice.LastErrorCode = null;
-                    invoice.UpdatedAt = timeProvider.GetUtcNow();
-                    invoice.Version++;
+                    await SetInvoiceDeliveryOutcome(tenantId, invoice, cancellationToken);
                     await db.SaveChangesAsync(cancellationToken);
                     return true;
                 }
-                invoice.Status = InvoiceStatus.ManualReview;
-                invoice.LastErrorCode = liveReadback.Value!.RawStatus == "NOT_INVOICED" ? "DELIVERY_RESULT_UNKNOWN" : "REMOTE_INVOICE_NUMBER_MISMATCH";
-                invoice.UpdatedAt = timeProvider.GetUtcNow();
-                invoice.Version++;
-                AppendDeliveryHistory(state, "UNKNOWN", state.ExternalReference, invoice.LastErrorCode, timeProvider.GetUtcNow());
-                await db.SaveChangesAsync(cancellationToken);
-                throw new JobProcessingException(JobExecutionResult.ManualReview(invoice.LastErrorCode, "Shopify'da bu mali faturayla eşleşen iki metafield doğrulanamadı. Belirsiz yazma otomatik tekrarlanmadı."));
+                if (MarketplaceInvoiceStatePolicy.FromRemote(liveReadback.Value!.RawStatus) == MarketplaceInvoiceStatus.NotInvoiced)
+                {
+                    AppendDeliveryHistory(state, "RETRYABLE_FAILURE", state.ExternalReference, "REMOTE_NOT_INVOICED", timeProvider.GetUtcNow());
+                    await db.SaveChangesAsync(cancellationToken);
+                }
+                else
+                {
+                    invoice.Status = InvoiceStatus.ManualReview;
+                    invoice.LastErrorCode = "REMOTE_INVOICE_NUMBER_MISMATCH";
+                    invoice.UpdatedAt = timeProvider.GetUtcNow();
+                    invoice.Version++;
+                    AppendDeliveryHistory(state, "UNKNOWN", state.ExternalReference, invoice.LastErrorCode, timeProvider.GetUtcNow());
+                    await db.SaveChangesAsync(cancellationToken);
+                    throw new JobProcessingException(JobExecutionResult.ManualReview(invoice.LastErrorCode, "Shopify'da bu mali faturayla eşleşen iki metafield doğrulanamadı. Belirsiz yazma otomatik tekrarlanmadı."));
+                }
             }
             if (string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase))
             {
@@ -448,10 +808,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 {
                     var confirmedAt = timeProvider.GetUtcNow();
                     AppendDeliveryHistory(state, "CONFIRMED", liveReadback.Value.ExternalReference ?? package.ExternalPackageId, null, confirmedAt);
-                    invoice.Status = InvoiceStatus.Completed;
-                    invoice.LastErrorCode = null;
-                    invoice.UpdatedAt = confirmedAt;
-                    invoice.Version++;
+                    await SetInvoiceDeliveryOutcome(tenantId, invoice, cancellationToken, confirmedAt);
                     await db.SaveChangesAsync(cancellationToken);
                     return true;
                 }
@@ -467,10 +824,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             {
                 case InvoiceDeliveryRecoveryAction.ConfirmDelivery:
                     AppendDeliveryHistory(state, "CONFIRMED", state.ExternalReference ?? package.ExternalPackageId, null, timeProvider.GetUtcNow());
-                    invoice.Status = InvoiceStatus.Completed;
-                    invoice.LastErrorCode = null;
-                    invoice.UpdatedAt = timeProvider.GetUtcNow();
-                    invoice.Version++;
+                    await SetInvoiceDeliveryOutcome(tenantId, invoice, cancellationToken);
                     await db.SaveChangesAsync(cancellationToken);
                     return true;
                 case InvoiceDeliveryRecoveryAction.RetryDelivery when oneTimeAuthorization is null:
@@ -479,6 +833,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                         await db.MarketplaceDeliveries.AsNoTracking().CountAsync(
                             attempt => attempt.TenantId == tenantId
                                 && attempt.InvoiceId == invoice.Id
+                                && attempt.PackageId == package.Id
                                 && attempt.ErrorCode == "HEPSIBURADA_REMOTE_ERROR",
                             cancellationToken)))
                     {
@@ -520,6 +875,82 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                     throw new JobProcessingException(JobExecutionResult.Retry("DELIVERY_RESULT_UNKNOWN", "Belirsiz fatura gönderiminden sonra siparişin güncel fatura durumu bekleniyor; yeni dış istek yapılmadı.", TimeSpan.FromMinutes(2), state.ExternalIdempotencyKey));
             }
         }
+
+        // Each delivery is gated by a fresh read immediately before the write.
+        // A previous precheck (including the one before fiscal submission) is
+        // not sufficient because the marketplace may have changed meanwhile.
+        var beforeDelivery = await marketplace.QueryDeliveryAsync(
+            Context(tenantId, package.ConnectionId, correlationId, $"delivery-precheck:{invoice.Id:N}:{package.Id:N}", IntegrationOperation.Automatic),
+            new(package.ExternalPackageId, order?.OrderNumber, ShopifyOrderGid(order?.ExternalOrderId)),
+            cancellationToken);
+        if (!beforeDelivery.IsSuccess)
+        {
+            invoice.Status = InvoiceStatus.MarketplacePending;
+            invoice.LastErrorCode = "MARKETPLACE_INVOICE_PRECHECK_FAILED";
+            invoice.UpdatedAt = timeProvider.GetUtcNow();
+            invoice.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+            throw JobProcessingException.FromAdapter(beforeDelivery.Error!);
+        }
+
+        var latestMarketplaceInvoice = beforeDelivery.Value!;
+        var explicitlyNotInvoiced = MarketplaceInvoiceStatePolicy.FromRemote(
+            latestMarketplaceInvoice.RawStatus,
+            invoiceNumber: latestMarketplaceInvoice.VerifiedInvoiceNumber,
+            invoiceUrl: latestMarketplaceInvoice.VerifiedInvoiceLink) == MarketplaceInvoiceStatus.NotInvoiced;
+        var observedAt = timeProvider.GetUtcNow();
+        package.MarketplaceInvoiceRawStatus = latestMarketplaceInvoice.RawStatus;
+        package.MarketplaceInvoiceStatus = MarketplaceInvoiceStatePolicy.FromRemote(
+            latestMarketplaceInvoice.RawStatus,
+            invoiceNumber: latestMarketplaceInvoice.VerifiedInvoiceNumber,
+            invoiceUrl: latestMarketplaceInvoice.VerifiedInvoiceLink);
+        var latestReferences = explicitlyNotInvoiced
+            ? (InvoiceNumber: (string?)null, InvoiceUrl: (string?)null)
+            : MarketplaceInvoiceStatePolicy.MergeReferences(
+                package.MarketplaceInvoiceNumber,
+                package.MarketplaceInvoiceUrl,
+                latestMarketplaceInvoice.VerifiedInvoiceNumber,
+                latestMarketplaceInvoice.VerifiedInvoiceLink,
+                latestMarketplaceInvoice.ReferencesAreAuthoritative);
+        package.MarketplaceInvoiceNumber = latestReferences.InvoiceNumber;
+        package.MarketplaceInvoiceUrl = latestReferences.InvoiceUrl;
+        package.MarketplaceInvoiceObservedAt = observedAt;
+        package.UpdatedAt = observedAt;
+        package.Version++;
+
+        if (!explicitlyNotInvoiced)
+        {
+            if (HasExactDeliveryProof(latestMarketplaceInvoice, invoice.InvoiceNumber, permanentUrl))
+            {
+                state ??= new MarketplaceDeliveryState
+                {
+                    Id = Guid.CreateVersion7(), TenantId = tenantId, InvoiceId = invoice.Id,
+                    ConnectionId = package.ConnectionId, PackageId = package.Id,
+                    AttemptNumber = 0, ExternalIdempotencyKey = $"delivery:{invoice.Id:N}:{package.Id:N}",
+                    RequestHash = Hash($"remote-proof:{invoice.Id:N}:{package.Id:N}:{invoice.InvoiceNumber}:{permanentUrl}"),
+                    DeliveryType = "LINK", Status = "UNKNOWN", ExternalReference = package.ExternalPackageId,
+                    CreatedAt = observedAt, UpdatedAt = observedAt, Version = 1
+                };
+                if (db.Entry(state).State == EntityState.Detached) db.MarketplaceDeliveryStates.Add(state);
+                AppendDeliveryHistory(state, "CONFIRMED", latestMarketplaceInvoice.ExternalReference, null, observedAt);
+                await SetInvoiceDeliveryOutcome(tenantId, invoice, cancellationToken, observedAt);
+                await db.SaveChangesAsync(cancellationToken);
+                return true;
+            }
+
+            var presentButDifferent = package.MarketplaceInvoiceStatus is MarketplaceInvoiceStatus.Invoiced or MarketplaceInvoiceStatus.Received;
+            invoice.Status = InvoiceStatus.ManualReview;
+            invoice.LastErrorCode = presentButDifferent ? "PLATFORM_INVOICE_ALREADY_PRESENT" : "PLATFORM_INVOICE_STATUS_NOT_CLEAR";
+            invoice.UpdatedAt = observedAt;
+            invoice.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+            throw new JobProcessingException(JobExecutionResult.ManualReview(invoice.LastErrorCode,
+                presentButDifferent
+                    ? "Pazaryerinde mevcut fatura veya farklı bir belge bulundu. Üzerine yazılmadı ve yeni belge gönderilmedi."
+                    : "Pazaryeri açık bir 'fatura yok' cevabı vermedi. Güvenli iletim için işlem durduruldu."));
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
 
         if (string.IsNullOrWhiteSpace(permanentUrl) || !Uri.TryCreate(permanentUrl, UriKind.Absolute, out var link) || link.Scheme != Uri.UriSchemeHttps) return false;
 
@@ -578,7 +1009,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 InvoiceId = invoice.Id,
                 ConnectionId = package.ConnectionId,
                 PackageId = package.Id,
-                ExternalIdempotencyKey = $"delivery:{invoice.Id:N}",
+                ExternalIdempotencyKey = $"delivery:{invoice.Id:N}:{package.Id:N}",
                 RequestHash = requestHash,
                 DeliveryType = "LINK",
                 Status = "STARTED",
@@ -725,7 +1156,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 || state.Status is "STARTED" or "UNKNOWN" or "SUBMITTED" or "CONFIRMATION_RETRYABLE" or "CONFIRMED";
 
         return !await db.MarketplaceDeliveries.AsNoTracking()
-            .AnyAsync(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id, cancellationToken);
+            .AnyAsync(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id && x.PackageId == package.Id, cancellationToken);
     }
 
     private static bool TryReadOneTimeInvoiceDeliveryAuthorization(string payloadJson, out OneTimeInvoiceDeliveryAuthorization? authorization)
@@ -770,15 +1201,15 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
 
     private sealed record OneTimeInvoiceDeliveryAuthorization(string OrderNumber, Guid SourceJobId);
 
-    private async Task<MarketplaceDeliveryState?> LoadDeliveryState(Guid tenantId, Guid invoiceId, CancellationToken cancellationToken)
+    private async Task<MarketplaceDeliveryState?> LoadDeliveryState(Guid tenantId, Guid invoiceId, Guid packageId, CancellationToken cancellationToken)
     {
-        var state = await db.MarketplaceDeliveryStates.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.InvoiceId == invoiceId, cancellationToken);
+        var state = await db.MarketplaceDeliveryStates.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.InvoiceId == invoiceId && x.PackageId == packageId, cancellationToken);
         if (state is not null) return state;
 
         // Bootstrap existing append-only attempts without rewriting them. New
         // processing uses the separate mutable state row from this point on.
         var latest = await db.MarketplaceDeliveries.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.InvoiceId == invoiceId)
+            .Where(x => x.TenantId == tenantId && x.InvoiceId == invoiceId && x.PackageId == packageId)
             .OrderByDescending(x => x.AttemptNumber)
             .FirstOrDefaultAsync(cancellationToken);
         if (latest is null) return null;
@@ -805,6 +1236,18 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         return state;
     }
 
+    private static Guid? ReadPackageId(string payloadJson)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(payloadJson);
+            return document.RootElement.TryGetProperty("packageId", out var value)
+                && value.ValueKind == JsonValueKind.String
+                && Guid.TryParse(value.GetString(), out var packageId) ? packageId : null;
+        }
+        catch (JsonException) { return null; }
+    }
+
     private async Task<PermanentInvoiceDocument?> LoadPermanentInvoiceDocumentAsync(Guid tenantId, Guid invoiceId, CancellationToken cancellationToken) =>
         await (from document in db.InvoiceDocuments.AsNoTracking()
                join asset in db.FileAssets.AsNoTracking() on new { document.TenantId, Id = document.FileAssetId } equals new { asset.TenantId, asset.Id }
@@ -825,10 +1268,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
     }
 
     private static bool HasExactDeliveryProof(InvoiceDeliveryStatus status, string? invoiceNumber, string? invoiceLink) =>
-        (!string.IsNullOrWhiteSpace(invoiceNumber)
-         && string.Equals(status.VerifiedInvoiceNumber, invoiceNumber, StringComparison.Ordinal))
-        || (!string.IsNullOrWhiteSpace(invoiceLink)
-            && string.Equals(status.VerifiedInvoiceLink, invoiceLink, StringComparison.Ordinal));
+        InvoiceDeliveryProofPolicy.HasExactProof(status, invoiceNumber, invoiceLink);
 
     private sealed record PermanentInvoiceDocument(string? PermanentUrl, string? MimeType);
 
@@ -876,10 +1316,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             && string.Equals(submittedResult.VerifiedInvoiceLink, permanentUrl, StringComparison.Ordinal))
         {
             AppendDeliveryHistory(state, "CONFIRMED", submittedResult.ExternalReference, null, timeProvider.GetUtcNow());
-            invoice.Status = InvoiceStatus.Completed;
-            invoice.LastErrorCode = null;
-            invoice.UpdatedAt = timeProvider.GetUtcNow();
-            invoice.Version++;
+            await SetInvoiceDeliveryOutcome(tenantId, invoice, cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
             return true;
         }
@@ -955,12 +1392,32 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         }
 
         AppendDeliveryHistory(state, "CONFIRMED", state.ExternalReference, null, timeProvider.GetUtcNow());
-        invoice.Status = InvoiceStatus.Completed;
-        invoice.LastErrorCode = null;
-        invoice.UpdatedAt = timeProvider.GetUtcNow();
-        invoice.Version++;
+        await SetInvoiceDeliveryOutcome(tenantId, invoice, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return true;
+    }
+
+    private async Task SetInvoiceDeliveryOutcome(Guid tenantId, Invoice invoice, CancellationToken cancellationToken, DateTimeOffset? at = null)
+    {
+        var packageIds = invoice.PackageId is { } packageId
+            ? new[] { packageId }
+            : await db.ShipmentPackages.AsNoTracking()
+                .Where(item => item.TenantId == tenantId && item.OrderId == invoice.OrderId && item.Status != ShipmentPackageStatus.Cancelled)
+                .Select(item => item.Id).ToArrayAsync(cancellationToken);
+        var persistedStates = await db.MarketplaceDeliveryStates
+            .Where(state => state.TenantId == tenantId && state.InvoiceId == invoice.Id && state.PackageId != null && packageIds.Contains(state.PackageId.Value))
+            .ToListAsync(cancellationToken);
+        var deliveryStates = persistedStates.Concat(db.ChangeTracker.Entries<MarketplaceDeliveryState>()
+            .Where(entry => (entry.State == EntityState.Added || entry.State == EntityState.Modified) && entry.Entity.TenantId == tenantId
+                && entry.Entity.InvoiceId == invoice.Id && entry.Entity.PackageId.HasValue && packageIds.Contains(entry.Entity.PackageId.Value))
+            .Select(entry => entry.Entity)).DistinctBy(state => state.Id).ToArray();
+        var confirmedPackageIds = deliveryStates.Where(state => state.Status == "CONFIRMED" && state.PackageId.HasValue)
+            .Select(state => state.PackageId!.Value).ToHashSet();
+        var completed = MarketplaceInvoiceDeliveryEvidencePolicy.AllTargetsConfirmed(packageIds, confirmedPackageIds);
+        invoice.Status = completed ? InvoiceStatus.Completed : InvoiceStatus.MarketplacePending;
+        invoice.LastErrorCode = null;
+        invoice.UpdatedAt = at ?? timeProvider.GetUtcNow();
+        invoice.Version++;
     }
 
     private static bool IsMicroExport(string? customerSnapshotJson)
@@ -1004,18 +1461,29 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
 
     private async Task QueueMarketplaceDeliveryAfterDocument(Guid tenantId, Invoice invoice, string? permanentUrl, string correlationId, CancellationToken cancellationToken)
     {
-        if (invoice.Status != InvoiceStatus.Accepted || invoice.PackageId is null || string.IsNullOrWhiteSpace(permanentUrl)) return;
-        var marketplaceConnectionId = await db.ShipmentPackages.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.Id == invoice.PackageId)
-            .Select(x => (Guid?)x.ConnectionId)
-            .SingleOrDefaultAsync(cancellationToken);
-        if (marketplaceConnectionId is null) return;
+        if (invoice.Status != InvoiceStatus.Accepted || string.IsNullOrWhiteSpace(permanentUrl)) return;
+        var packages = await db.ShipmentPackages.AsNoTracking()
+            .Where(item => item.TenantId == tenantId && (invoice.PackageId == null
+                ? item.OrderId == invoice.OrderId && item.Status != ShipmentPackageStatus.Cancelled
+                : item.Id == invoice.PackageId.Value))
+            .OrderBy(item => item.Id).ToListAsync(cancellationToken);
+        var marketplaceConnectionIds = packages.Select(item => item.ConnectionId).Distinct().ToArray();
+        if (marketplaceConnectionIds.Length == 0) return;
+        if (marketplaceConnectionIds.Length > 1)
+        {
+            invoice.Status = InvoiceStatus.ManualReview;
+            invoice.LastErrorCode = "INVOICE_PACKAGE_CONNECTION_MISMATCH";
+            invoice.UpdatedAt = timeProvider.GetUtcNow();
+            invoice.Version++;
+            return;
+        }
+        var marketplaceConnectionId = marketplaceConnectionIds[0];
         var environments = await db.PlatformConnections.AsNoTracking()
-            .Where(connection => connection.TenantId == tenantId && (connection.Id == invoice.ProviderConnectionId || connection.Id == marketplaceConnectionId.Value))
+            .Where(connection => connection.TenantId == tenantId && (connection.Id == invoice.ProviderConnectionId || connection.Id == marketplaceConnectionId))
             .Select(connection => new { connection.Id, connection.Environment })
             .ToDictionaryAsync(connection => connection.Id, connection => connection.Environment, cancellationToken);
         environments.TryGetValue(invoice.ProviderConnectionId, out var providerEnvironment);
-        environments.TryGetValue(marketplaceConnectionId.Value, out var marketplaceEnvironment);
+        environments.TryGetValue(marketplaceConnectionId, out var marketplaceEnvironment);
         if (!InvoiceDeliveryEnvironmentPolicy.IsCompatible(providerEnvironment, marketplaceEnvironment))
         {
             invoice.Status = InvoiceStatus.ManualReview;
@@ -1024,7 +1492,12 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             invoice.Version++;
             return;
         }
-        await EnqueueAutomaticJob(tenantId, marketplaceConnectionId.Value, invoice.Id, InvoicingJobTypes.MarketplaceDelivery, "after-document", correlationId, cancellationToken);
+        if (!configuration.GetValue<bool>("FeatureFlags:InvoiceMarketplaceDeliveryWrites")
+            && !configuration.GetValue<bool>("FeatureFlags:ExternalWrites")) return;
+        if (!await db.PlatformCapabilities.AsNoTracking().AnyAsync(capability => capability.TenantId == tenantId
+            && capability.ConnectionId == marketplaceConnectionId && capability.Code == InvoicingCapabilities.InvoiceDeliver
+            && capability.SupportLevel == CapabilitySupportLevel.Supported && capability.VerifiedAt != null, cancellationToken)) return;
+        await EnqueueAutomaticJob(tenantId, marketplaceConnectionId, invoice.Id, InvoicingJobTypes.MarketplaceDelivery, "after-document", correlationId, cancellationToken);
     }
 
     private async Task<bool> StageCapabilityProbe(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
@@ -1077,27 +1550,28 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         if (!configuration.GetValue<bool>("FeatureFlags:InvoiceMarketplaceDeliveryWrites")
             && !configuration.GetValue<bool>("FeatureFlags:ExternalWrites")) return;
 
-        var candidates = await (from invoice in db.Invoices.AsNoTracking()
+        var candidates = await (from state in db.MarketplaceDeliveryStates.AsNoTracking()
+                                join invoice in db.Invoices.AsNoTracking()
+                                    on new { state.TenantId, Id = state.InvoiceId } equals new { invoice.TenantId, invoice.Id }
                                 join package in db.ShipmentPackages.AsNoTracking()
-                                    on new { invoice.TenantId, Id = invoice.PackageId!.Value } equals new { package.TenantId, package.Id }
+                                    on new { state.TenantId, Id = state.PackageId!.Value } equals new { package.TenantId, package.Id }
                                 join connection in db.PlatformConnections.AsNoTracking()
                                     on new { package.TenantId, Id = package.ConnectionId } equals new { connection.TenantId, connection.Id }
-                                join state in db.MarketplaceDeliveryStates.AsNoTracking()
-                                    on new { invoice.TenantId, InvoiceId = invoice.Id } equals new { state.TenantId, state.InvoiceId }
                                 where invoice.TenantId == tenantId
-                                    && invoice.Status == InvoiceStatus.MarketplacePending
-                                    && (state.Status == "UNKNOWN" || state.Status == "CONFIRMATION_RETRYABLE")
+                                    && invoice.SequencePurpose == "SALE"
+                                    && (invoice.Status == InvoiceStatus.MarketplacePending || invoice.Status == InvoiceStatus.MarketplaceFailed)
+                                    && (state.Status == "REVOKED" || state.Status == "UNKNOWN" || state.Status == "CONFIRMATION_RETRYABLE" || state.Status == "RETRYABLE_FAILURE")
                                     && state.UpdatedAt <= now.AddMinutes(-2)
                                     && connection.Status == "ACTIVE"
                                     && connection.Environment == "PRODUCTION"
-                                    && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "HEPSIBURADA")
+                                    && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "HEPSIBURADA" || connection.PlatformCode == "SHOPIFY")
                                     && db.InvoiceDocuments.Any(document => document.TenantId == invoice.TenantId && document.InvoiceId == invoice.Id && document.PermanentUrl != null)
-                                select new { invoice.Id, ConnectionId = package.ConnectionId, StateVersion = state.Version }).ToListAsync(cancellationToken);
+                                select new { invoice.Id, PackageId = package.Id, ConnectionId = package.ConnectionId, StateVersion = state.Version }).ToListAsync(cancellationToken);
 
         var bucket = now.ToUnixTimeSeconds() / 300;
         foreach (var candidate in candidates)
         {
-            var payload = JsonSerializer.Serialize(new { invoiceId = candidate.Id });
+            var payload = JsonSerializer.Serialize(new { invoiceId = candidate.Id, packageId = candidate.PackageId });
             var activeJobExists = await db.IntegrationJobs.AsNoTracking().AnyAsync(job =>
                 job.TenantId == tenantId
                 && job.JobType == InvoicingJobTypes.MarketplaceDelivery
@@ -1105,7 +1579,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 && (job.Status == JobStatus.Pending || job.Status == JobStatus.Leased || job.Status == JobStatus.RetryScheduled), cancellationToken);
             if (activeJobExists) continue;
 
-            var dedup = $"{InvoicingJobTypes.MarketplaceDelivery}:{candidate.Id}:recovery:{candidate.StateVersion}:{bucket}";
+            var dedup = $"{InvoicingJobTypes.MarketplaceDelivery}:{candidate.Id}:{candidate.PackageId}:recovery:{candidate.StateVersion}:{bucket}";
             if (await db.IntegrationJobs.AsNoTracking().AnyAsync(job => job.TenantId == tenantId && job.JobType == InvoicingJobTypes.MarketplaceDelivery && job.JobDedupKey == dedup, cancellationToken)) continue;
 
             db.IntegrationJobs.Add(new IntegrationJob
@@ -1121,7 +1595,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 EffectIdempotencyKey = dedup,
                 Priority = InvoicingBillingService.InvoiceJobPriority(InvoicingJobTypes.MarketplaceDelivery),
                 AvailableAt = now,
-                CorrelationId = $"invoice-delivery-recovery:{candidate.Id:N}",
+                CorrelationId = $"invoice-delivery-recovery:{candidate.Id:N}:{candidate.PackageId:N}",
                 Version = 1
             });
         }

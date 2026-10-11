@@ -49,6 +49,73 @@ public sealed class MarketplaceInvoiceStatePolicyTests
     }
 
     [Fact]
+    public void AuthoritativeInvoiceReferenceSnapshotCanReplaceAndClearChangedValues()
+    {
+        var changed = MarketplaceInvoiceStatePolicy.MergeReferences(
+            "INV-1", "https://market.example/old.pdf", " INV-2 ", null, referencesAreAuthoritative: true);
+        Assert.Equal("INV-2", changed.InvoiceNumber);
+        Assert.Null(changed.InvoiceUrl);
+
+        var partialObservation = MarketplaceInvoiceStatePolicy.MergeReferences(
+            "INV-1", "https://market.example/old.pdf", "INV-2", null, referencesAreAuthoritative: false);
+        Assert.Equal("INV-2", partialObservation.InvoiceNumber);
+        Assert.Equal("https://market.example/old.pdf", partialObservation.InvoiceUrl);
+    }
+
+    [Fact]
+    public void AuthoritativeDeliveryReadbackRequiresBothInvoiceNumberAndLink()
+    {
+        var expectedNumber = "INV-1";
+        var expectedLink = "https://shop.example/invoice.pdf";
+
+        Assert.True(InvoiceDeliveryProofPolicy.HasExactProof(
+            new("order-1", "INVOICED", true, expectedNumber, expectedLink, ReferencesAreAuthoritative: true),
+            expectedNumber, expectedLink));
+        Assert.False(InvoiceDeliveryProofPolicy.HasExactProof(
+            new("order-1", "INVOICED", true, expectedNumber, "https://shop.example/old.pdf", ReferencesAreAuthoritative: true),
+            expectedNumber, expectedLink));
+        Assert.True(InvoiceDeliveryProofPolicy.HasExactProof(
+            new("package-1", "INVOICED", true, expectedNumber, null), expectedNumber, expectedLink));
+    }
+
+    [Theory]
+    [InlineData(InvoiceStatus.Accepted, null, true)]
+    [InlineData(InvoiceStatus.MarketplacePending, null, true)]
+    [InlineData(InvoiceStatus.Completed, null, true)]
+    [InlineData(InvoiceStatus.MarketplaceFailed, InvoiceDeliveryRecoveryPolicy.MarketplaceInvoiceNotPresentErrorCode, true)]
+    [InlineData(InvoiceStatus.MarketplaceFailed, "REMOTE_INVOICE_REJECTED", false)]
+    [InlineData(InvoiceStatus.Submitting, null, false)]
+    public void ConfirmedLocalInvoiceIsAutomaticallyRedeliveredOnlyAfterExplicitRemoteAbsence(
+        InvoiceStatus invoiceStatus, string? errorCode, bool expected)
+    {
+        Assert.Equal(expected, InvoiceDeliveryRecoveryPolicy.ShouldQueueAutomaticRedelivery(
+            invoiceStatus, errorCode, MarketplaceInvoiceStatus.NotInvoiced));
+        Assert.False(InvoiceDeliveryRecoveryPolicy.ShouldQueueAutomaticRedelivery(
+            invoiceStatus, errorCode, MarketplaceInvoiceStatus.Unknown));
+    }
+
+    [Fact]
+    public void HepsiburadaInvoiceReadbackSelectsTheRequestedPackageAndCurrentReferences()
+    {
+        using var document = System.Text.Json.JsonDocument.Parse("""
+            {"orderNumber":"O-1","packages":[
+              {"packageNumber":"P-1","invoiceStatus":"INVOICED","invoiceNumber":"HB-1","invoiceLink":"https://hb.example/new.pdf"},
+              {"packageNumber":"P-2","invoiceStatus":"NOT_INVOICED"}
+            ]}
+            """);
+
+        var found = MarketplaceHub.Infrastructure.Adapters.Hepsiburada.HepsiburadaJsonMapper.InvoiceObservationForPackage(document.RootElement, "P-1");
+        var removed = MarketplaceHub.Infrastructure.Adapters.Hepsiburada.HepsiburadaJsonMapper.InvoiceObservationForPackage(document.RootElement, "P-2");
+
+        Assert.Equal("INVOICED", found?.RawStatus);
+        Assert.Equal("HB-1", found?.InvoiceNumber);
+        Assert.Equal("https://hb.example/new.pdf", found?.InvoiceUrl);
+        Assert.True(found?.ReferencesAreAuthoritative);
+        Assert.Equal("NOT_INVOICED", removed?.RawStatus);
+        Assert.Null(removed?.InvoiceNumber);
+    }
+
+    [Fact]
     public void ReferenceReadbackUsesProviderTimestampAndFallsBackToObservationTime()
     {
         var sourceAt = DateTimeOffset.Parse("2026-09-01T10:00:00Z");

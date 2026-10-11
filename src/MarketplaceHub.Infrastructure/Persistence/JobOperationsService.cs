@@ -115,12 +115,15 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         var invoice = await db.Invoices.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == invoiceId.Value, cancellationToken);
         if (invoice is null) return ServiceResult<JobDetailView>.Fail("INVOICE_NOT_FOUND", "İletilecek fatura kaydı bulunamadı.", 404);
         if (!InvoiceMarketplaceRetryPolicy.CanRetryDelivery(invoice.Status, invoice.LastErrorCode)
-            || string.IsNullOrWhiteSpace(invoice.InvoiceNumber)
-            || invoice.PackageId is null)
+            || string.IsNullOrWhiteSpace(invoice.InvoiceNumber))
             return ServiceResult<JobDetailView>.Fail("ONE_TIME_INVOICE_NOT_READY", "Siparişin kesilmiş, numarası bulunan ve pazaryerine iletime hazır faturası yok.", 409);
 
-        var package = await db.ShipmentPackages.AsNoTracking()
-            .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == invoice.PackageId && x.OrderId == invoice.OrderId, cancellationToken);
+        var requestedPackageId = PayloadGuid(sourceJob.PayloadJson, "packageId") ?? invoice.PackageId;
+        var packageCandidates = await db.ShipmentPackages.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.OrderId == invoice.OrderId && x.Status != ShipmentPackageStatus.Cancelled
+                && (requestedPackageId != null ? x.Id == requestedPackageId : x.ConnectionId == sourceJob.ConnectionId))
+            .OrderBy(x => x.Id).ToListAsync(cancellationToken);
+        var package = packageCandidates.Count == 1 ? packageCandidates[0] : null;
         if (package is null
             || sourceJob.ConnectionId != package.ConnectionId
             || string.IsNullOrWhiteSpace(package.ExternalPackageId))
@@ -149,10 +152,10 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             return ServiceResult<JobDetailView>.Fail("INVOICE_PERMANENT_LINK_REQUIRED", "Pazaryerine gönderilebilecek kalıcı HTTPS fatura belgesi hazır değil.", 409);
 
         var state = await db.MarketplaceDeliveryStates.AsNoTracking()
-            .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id, cancellationToken);
+            .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id && x.PackageId == package.Id, cancellationToken);
         var latestHistory = state is null
             ? await db.MarketplaceDeliveries.AsNoTracking()
-                .Where(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id)
+                .Where(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id && x.PackageId == package.Id)
                 .OrderByDescending(x => x.AttemptNumber)
                 .FirstOrDefaultAsync(cancellationToken)
             : null;
@@ -170,6 +173,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         var payload = JsonSerializer.Serialize(new
         {
             invoiceId = invoice.Id,
+            packageId = package.Id,
             oneTimeInvoiceDelivery = new
             {
                 orderNumber,

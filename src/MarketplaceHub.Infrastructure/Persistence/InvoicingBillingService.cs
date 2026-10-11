@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Data;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -137,11 +138,11 @@ public sealed partial class InvoicingBillingService(
             .ToListAsync(cancellationToken)).ToHashSet();
         var deliveryStates = await db.MarketplaceDeliveryStates.AsNoTracking()
             .Where(x => x.TenantId == tenantId && invoiceIds.Contains(x.InvoiceId))
-            .Select(x => new { x.InvoiceId, x.Status, x.ExternalReference, x.UpdatedAt })
+            .Select(x => new { x.InvoiceId, x.PackageId, x.Status, x.ExternalReference, x.UpdatedAt })
             .ToListAsync(cancellationToken);
         var deliveryAttempts = await db.MarketplaceDeliveries.AsNoTracking()
             .Where(x => x.TenantId == tenantId && invoiceIds.Contains(x.InvoiceId))
-            .Select(x => new { x.InvoiceId, x.Status, x.ExternalReference, x.AttemptNumber })
+            .Select(x => new { x.InvoiceId, x.PackageId, x.Status, x.ExternalReference, x.AttemptNumber })
             .ToListAsync(cancellationToken);
         var invoiceReadIssues = await db.OperationalIssues.AsNoTracking()
             .Where(issue => issue.TenantId == tenantId
@@ -186,9 +187,9 @@ public sealed partial class InvoicingBillingService(
                 .ToList();
             var invoice = invoices.FirstOrDefault(x => x.PackageId == package.Id) ?? invoices.FirstOrDefault(x => x.PackageId == null && x.OrderId == order.Id);
             var currentDeliveryState = invoice is null ? null : deliveryStates
-                .Where(state => state.InvoiceId == invoice.Id).OrderByDescending(state => state.UpdatedAt).FirstOrDefault();
+                .Where(state => state.InvoiceId == invoice.Id && state.PackageId == package.Id).OrderByDescending(state => state.UpdatedAt).FirstOrDefault();
             var hasConfirmedHistoricalAttempt = invoice is not null
-                && deliveryAttempts.Any(attempt => attempt.InvoiceId == invoice.Id && attempt.Status == "CONFIRMED");
+                && deliveryAttempts.Any(attempt => attempt.InvoiceId == invoice.Id && attempt.PackageId == package.Id && attempt.Status == "CONFIRMED");
             var deliveryConfirmed = MarketplaceInvoiceDeliveryEvidencePolicy.HasConfirmedDelivery(currentDeliveryState?.Status, hasConfirmedHistoricalAttempt);
             var invoiceStatus = package.ManualInvoiceStatus?.Trim().ToUpperInvariant() switch
             {
@@ -207,7 +208,7 @@ public sealed partial class InvoicingBillingService(
             var deliveryState = currentDeliveryState;
             var deliveryAttempt = invoice is null
                 ? null
-                : deliveryAttempts.Where(x => x.InvoiceId == invoice.Id).OrderByDescending(x => x.AttemptNumber).FirstOrDefault();
+                : deliveryAttempts.Where(x => x.InvoiceId == invoice.Id && x.PackageId == package.Id).OrderByDescending(x => x.AttemptNumber).FirstOrDefault();
             var invoiceReadIssue = invoiceReadIssues.GetValueOrDefault($"trendyol-invoice-package-read:{package.ConnectionId}:{package.Id}")
                 ?? invoiceReadIssues.GetValueOrDefault($"order-invoice-reconciliation:{order.ConnectionId}:{order.ExternalOrderId}");
             return new InvoiceWorkspaceItemView(order.Id, package.Id, order.OrderNumber, customerName, order.OrderedAt, package.Status.ToString().ToUpperInvariant(), deliveredAt, dueAt, dueSoon, order.Currency, package.NetAmount > 0 ? package.NetAmount : order.NetAmount, orderLines.Count, image, package.CargoProviderExternalId, package.CargoTrackingNumber, invoice?.Id, invoiceStatus, ResolveInvoiceNumber(invoice?.InvoiceNumber, package.MarketplaceInvoiceNumber), invoiceStatus == "FATURA_BEKLIYOR", order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, workspaceLines, invoice?.LastErrorCode, deliveryState?.Status ?? deliveryAttempt?.Status, deliveryState?.ExternalReference ?? deliveryAttempt?.ExternalReference, invoice is not null && invoiceDocumentIds.Contains(invoice.Id), connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol", connection is not null && MarketplaceInvoiceCreationPolicy.IsEnabled(connection.PlatformCode, connection.SettingsJson), invoiceReadIssue?.Code, invoiceReadIssue?.Summary, connection?.Environment ?? "UNKNOWN", package.MarketplaceInvoiceUrl);
@@ -244,6 +245,75 @@ public sealed partial class InvoicingBillingService(
         }
 
         return new(dueSoonCount);
+    }
+
+    public async Task<ServiceResult<Guid>> EnqueueOrderInvoiceReconciliationAsync(
+        Guid tenantId,
+        Guid orderId,
+        string idempotencyKey,
+        string correlationId,
+        CancellationToken cancellationToken)
+    {
+        var order = await db.Orders.AsNoTracking()
+            .SingleOrDefaultAsync(item => item.TenantId == tenantId && item.Id == orderId, cancellationToken);
+        if (order is null) return NotFound<Guid>();
+
+        var connection = await db.PlatformConnections.AsNoTracking()
+            .SingleOrDefaultAsync(item => item.TenantId == tenantId && item.Id == order.ConnectionId, cancellationToken);
+        if (connection is null || connection.PlatformCode is not ("TRENDYOL" or "HEPSIBURADA" or "SHOPIFY"))
+            return ServiceResult<Guid>.Fail("INVOICE_MARKETPLACE_UNSUPPORTED", "Bu sipariş için pazaryeri fatura kontrolü desteklenmiyor.", 422);
+        if (connection.Status is not ("ACTIVE" or "VERIFIED") || !IntegrationRuntimePolicy.AllowsManualRead(connection))
+            return ServiceResult<Guid>.Fail("INVOICE_MARKETPLACE_READ_UNAVAILABLE", "Pazaryeri bağlantısı şu anda salt okunur durum kontrolüne uygun değil.", 409);
+        if (!await db.ShipmentPackages.AsNoTracking().AnyAsync(package => package.TenantId == tenantId
+                && package.OrderId == orderId && package.Status != ShipmentPackageStatus.Cancelled,
+                cancellationToken))
+            return ServiceResult<Guid>.Fail("INVOICE_PACKAGE_REQUIRED", "Siparişte kontrol edilecek etkin paket bulunamadı.", 422);
+        if (string.IsNullOrWhiteSpace(order.ExternalOrderId))
+            return ServiceResult<Guid>.Fail("INVOICE_EXTERNAL_ORDER_ID_MISSING", "Pazaryerindeki sipariş kimliği bulunamadığı için durum kontrolü kuyruğa alınamadı.", 409);
+
+        var normalizedKey = idempotencyKey.Trim();
+        if (normalizedKey.Length is < 1 or > 200)
+            return ServiceResult<Guid>.Fail("IDEMPOTENCY_KEY_INVALID", "Idempotency-Key uzunluğu geçersiz.", 400);
+        var jobType = MarketplaceJobTypes.ForPlatform(connection.PlatformCode, MarketplaceJobTypes.OrderInvoiceReconciliation);
+        var dedup = $"workspace-invoice-check:{connection.Id:N}:{order.Id:N}:{Hash(normalizedKey)}";
+        var existing = await db.IntegrationJobs.AsNoTracking()
+            .SingleOrDefaultAsync(job => job.TenantId == tenantId && job.JobType == jobType && job.JobDedupKey == dedup, cancellationToken);
+        if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);
+
+        var now = timeProvider.GetUtcNow();
+        var payload = JsonSerializer.Serialize(new { connectionId = connection.Id, targetOrderId = order.Id, batchSize = 1 });
+        var job = new IntegrationJob
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenantId,
+            ConnectionId = connection.Id,
+            JobType = jobType,
+            PayloadJson = payload,
+            PayloadVersion = 1,
+            PayloadHash = Hash(payload),
+            JobDedupKey = dedup,
+            EffectIdempotencyKey = dedup,
+            Priority = -1,
+            AvailableAt = now,
+            CorrelationId = correlationId,
+            CreatedAt = now,
+            Version = 1
+        };
+        db.IntegrationJobs.Add(job);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            return ServiceResult<Guid>.Ok(job.Id);
+        }
+        catch (DbUpdateException)
+        {
+            db.Entry(job).State = EntityState.Detached;
+            existing = await db.IntegrationJobs.AsNoTracking()
+                .SingleOrDefaultAsync(candidate => candidate.TenantId == tenantId && candidate.JobType == jobType && candidate.JobDedupKey == dedup, cancellationToken);
+            return existing is not null
+                ? ServiceResult<Guid>.Ok(existing.Id)
+                : ServiceResult<Guid>.Fail("INVOICE_RECONCILIATION_QUEUE_FAILED", "Fatura durum kontrolü kuyruğa alınamadı. Yenileyip tekrar deneyin.", 409);
+        }
     }
 
     public async Task<InvoiceWorkspacePageView> WorkspacePageAsync(Guid tenantId, InvoiceWorkspacePageQuery request, CancellationToken cancellationToken)
@@ -392,6 +462,7 @@ public sealed partial class InvoicingBillingService(
                     source.package.MarketplaceInvoiceStatus,
                     includeCustomerName ? source.package.MarketplaceInvoiceNumber : null,
                     source.package.MarketplaceInvoiceUrl,
+                    source.package.MarketplaceInvoiceObservedAt,
                     source.package.ManualInvoiceStatus),
                 new WorkspaceOrderProjection(
                     source.order.Id,
@@ -416,10 +487,24 @@ public sealed partial class InvoicingBillingService(
                     && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")))
             .OrderByDescending(invoice => invoice.CreatedAt)
             .Select(invoice => new WorkspaceInvoiceProjection(invoice.Id, invoice.OrderId, invoice.PackageId, invoice.Status, invoice.InvoiceNumber, invoice.LastErrorCode, invoice.CreatedAt,
-                db.MarketplaceDeliveryStates.Where(state => state.TenantId == tenantId && state.InvoiceId == invoice.Id)
-                    .OrderByDescending(state => state.UpdatedAt).Select(state => state.Status).FirstOrDefault(),
-                db.MarketplaceDeliveries.Any(delivery => delivery.TenantId == tenantId && delivery.InvoiceId == invoice.Id && delivery.Status == "CONFIRMED")))
+                null,
+                false))
             .ToListAsync(cancellationToken);
+        var selectedInvoiceIds = invoices.Select(invoice => invoice.Id).Distinct().ToArray();
+        var packageDeliveryStates = selectedInvoiceIds.Length == 0
+            ? []
+            : await db.MarketplaceDeliveryStates.AsNoTracking()
+                .Where(state => state.TenantId == tenantId && selectedInvoiceIds.Contains(state.InvoiceId)
+                    && state.PackageId != null && packageIds.Contains(state.PackageId.Value))
+                .Select(state => new { state.InvoiceId, PackageId = state.PackageId!.Value, state.Status, state.UpdatedAt })
+                .ToListAsync(cancellationToken);
+        var packageDeliveryAttempts = selectedInvoiceIds.Length == 0
+            ? []
+            : await db.MarketplaceDeliveries.AsNoTracking()
+                .Where(attempt => attempt.TenantId == tenantId && selectedInvoiceIds.Contains(attempt.InvoiceId)
+                    && attempt.PackageId != null && packageIds.Contains(attempt.PackageId.Value))
+                .Select(attempt => new { attempt.InvoiceId, PackageId = attempt.PackageId!.Value, attempt.Status, attempt.AttemptNumber })
+                .ToListAsync(cancellationToken);
         var invoicesByPackage = invoices.Where(invoice => invoice.PackageId.HasValue)
             .GroupBy(invoice => invoice.PackageId!.Value)
             .ToDictionary(group => group.Key, group => group.First());
@@ -432,7 +517,15 @@ public sealed partial class InvoicingBillingService(
             var package = source.Package;
             var order = source.Order;
             var connection = workspaceConnections[package.ConnectionId];
-            var invoice = invoicesByPackage.GetValueOrDefault(package.Id) ?? invoicesByOrder.GetValueOrDefault(order.Id);
+            var selectedInvoice = invoicesByPackage.GetValueOrDefault(package.Id) ?? invoicesByOrder.GetValueOrDefault(order.Id);
+            var invoice = selectedInvoice is null ? null : selectedInvoice with
+            {
+                CurrentDeliveryStateStatus = packageDeliveryStates
+                    .Where(state => state.InvoiceId == selectedInvoice.Id && state.PackageId == package.Id)
+                    .OrderByDescending(state => state.UpdatedAt).Select(state => state.Status).FirstOrDefault(),
+                HasConfirmedHistoricalAttempt = packageDeliveryAttempts.Any(attempt => attempt.InvoiceId == selectedInvoice.Id
+                    && attempt.PackageId == package.Id && attempt.Status == "CONFIRMED")
+            };
             var invoiceStatus = WorkspaceInvoiceStatus(package, order, invoice, connection);
             var deliveredAt = package.Status == ShipmentPackageStatus.Delivered ? package.StatusOccurredAt : (DateTimeOffset?)null;
             var dueSoon = invoiceStatus == "FATURA_BEKLIYOR" && deliveredAt is not null
@@ -582,17 +675,29 @@ public sealed partial class InvoicingBillingService(
             ? new HashSet<Guid>()
             : (await db.InvoiceDocuments.AsNoTracking().Where(document => document.TenantId == tenantId && invoiceIds.Contains(document.InvoiceId))
                 .Select(document => document.InvoiceId).Distinct().ToListAsync(cancellationToken)).ToHashSet();
+        var manualInvoiceDocuments = await db.ManualOrderInvoiceDocuments.AsNoTracking()
+            .Where(document => document.TenantId == tenantId && orderIds.Contains(document.OrderId) && document.Status == "ACTIVE")
+            .OrderByDescending(document => document.CreatedAt)
+            .Select(document => new { document.Id, document.OrderId, document.DocumentType, document.DocumentUrl, document.InvoiceNumber, document.IssuedAt })
+            .ToListAsync(cancellationToken);
+        var manualInvoiceDocumentIds = manualInvoiceDocuments.Select(document => document.Id).ToArray();
+        var manualInvoiceDeliveryStates = manualInvoiceDocumentIds.Length == 0
+            ? []
+            : await db.ManualOrderInvoiceDeliveryStates.AsNoTracking()
+                .Where(state => state.TenantId == tenantId && manualInvoiceDocumentIds.Contains(state.DocumentId) && packageIds.Contains(state.PackageId))
+                .Select(state => new { state.DocumentId, state.PackageId, state.Status, state.ErrorCode, state.UpdatedAt })
+                .ToListAsync(cancellationToken);
         var deliveryStates = invoiceIds.Length == 0
             ? []
             : await db.MarketplaceDeliveryStates.AsNoTracking()
                 .Where(state => state.TenantId == tenantId && invoiceIds.Contains(state.InvoiceId))
-                .Select(state => new { state.InvoiceId, state.Status, state.ExternalReference, state.UpdatedAt })
+                .Select(state => new { state.InvoiceId, state.PackageId, state.Status, state.ExternalReference, state.UpdatedAt })
                 .ToListAsync(cancellationToken);
         var deliveryAttempts = invoiceIds.Length == 0
             ? []
             : await db.MarketplaceDeliveries.AsNoTracking()
                 .Where(attempt => attempt.TenantId == tenantId && invoiceIds.Contains(attempt.InvoiceId))
-                .Select(attempt => new { attempt.InvoiceId, attempt.Status, attempt.ExternalReference, attempt.AttemptNumber })
+                .Select(attempt => new { attempt.InvoiceId, attempt.PackageId, attempt.Status, attempt.ExternalReference, attempt.AttemptNumber })
                 .ToListAsync(cancellationToken);
         var invoiceReadIssueKeys = candidates.SelectMany(candidate =>
         {
@@ -632,14 +737,33 @@ public sealed partial class InvoicingBillingService(
                     : null)).ToList();
             var primaryImage = workspaceLines.Select(line => line.ImageUrl).FirstOrDefault(url => !string.IsNullOrWhiteSpace(url));
             var deliveryState = candidate.Invoice is null ? null : deliveryStates
-                .Where(state => state.InvoiceId == candidate.Invoice.Id).OrderByDescending(state => state.UpdatedAt).FirstOrDefault();
+                .Where(state => state.InvoiceId == candidate.Invoice.Id && state.PackageId == candidate.Package.Id).OrderByDescending(state => state.UpdatedAt).FirstOrDefault();
             var deliveryAttempt = candidate.Invoice is null ? null : deliveryAttempts
-                .Where(attempt => attempt.InvoiceId == candidate.Invoice.Id).OrderByDescending(attempt => attempt.AttemptNumber).FirstOrDefault();
+                .Where(attempt => attempt.InvoiceId == candidate.Invoice.Id && attempt.PackageId == candidate.Package.Id).OrderByDescending(attempt => attempt.AttemptNumber).FirstOrDefault();
+            var manualDocument = manualInvoiceDocuments.FirstOrDefault(document => document.OrderId == candidate.Order.Id);
+            var manualDeliveryState = manualDocument is null ? null : manualInvoiceDeliveryStates
+                .Where(state => state.DocumentId == manualDocument.Id && state.PackageId == candidate.Package.Id)
+                .OrderByDescending(state => state.UpdatedAt).FirstOrDefault();
             var issue = invoiceReadIssues.GetValueOrDefault($"trendyol-invoice-package-read:{candidate.Package.ConnectionId}:{candidate.Package.Id}");
             if (issue == default
                 && orderSnapshotsForItem is not null
                 && !string.IsNullOrWhiteSpace(orderSnapshotsForItem.ExternalOrderId))
                 invoiceReadIssues.TryGetValue($"order-invoice-reconciliation:{orderSnapshotsForItem.ConnectionId}:{orderSnapshotsForItem.ExternalOrderId}", out issue);
+            var hasFiscalDocument = candidate.Invoice is not null && invoiceDocumentIds.Contains(candidate.Invoice.Id);
+            var deliveryStatus = manualDeliveryState?.Status
+                ?? deliveryState?.Status
+                ?? deliveryAttempt?.Status
+                ?? (candidate.Package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Invoiced ? "REMOTE_PRESENT_UNMATCHED" : "NOT_SENT");
+            var currentPlatformInvoiceUrl = packageDetailsForItem?.MarketplaceInvoiceUrl ?? candidate.Package.MarketplaceInvoiceUrl;
+            var allowedActions = InvoiceWorkspaceActionPolicy.Resolve(
+                candidate.Connection.PlatformCode,
+                candidate.Package.MarketplaceInvoiceStatus,
+                candidate.Invoice is not null,
+                candidate.Invoice?.Status,
+                hasFiscalDocument,
+                manualDocument is not null,
+                candidate.CanCreateInvoice,
+                issue != default);
             return new InvoiceWorkspaceItemView(
                 candidate.Order.Id,
                 candidate.Package.Id,
@@ -666,16 +790,29 @@ public sealed partial class InvoicingBillingService(
                 orderSnapshotsForItem?.InvoiceAddressSnapshotJson ?? candidate.Order.InvoiceAddressSnapshotJson,
                 workspaceLines,
                 candidate.Invoice?.LastErrorCode,
-                deliveryState?.Status ?? deliveryAttempt?.Status,
+                deliveryStatus,
                 deliveryState?.ExternalReference ?? deliveryAttempt?.ExternalReference,
-                candidate.Invoice is not null && invoiceDocumentIds.Contains(candidate.Invoice.Id),
+                hasFiscalDocument,
                 candidate.Connection.PlatformCode,
                 candidate.Connection.DisplayName,
                 candidate.InvoiceCreationEnabled,
                 issue == default ? null : issue.Code,
                 issue == default ? null : issue.Summary,
                 candidate.Connection.Environment,
-                packageDetailsForItem?.MarketplaceInvoiceUrl ?? candidate.Package.MarketplaceInvoiceUrl);
+                currentPlatformInvoiceUrl,
+                manualDocument?.Id,
+                manualDocument?.DocumentType,
+                manualDocument?.DocumentUrl,
+                manualDocument?.InvoiceNumber,
+                manualDocument?.IssuedAt,
+                manualDeliveryState?.Status,
+                manualDeliveryState?.ErrorCode,
+                candidate.Invoice?.Status.ToString().ToUpperInvariant() ?? (manualDocument is null ? "NONE" : "MANUAL_DOCUMENT"),
+                candidate.Package.MarketplaceInvoiceStatus.ToString().ToUpperInvariant(),
+                deliveryStatus,
+                currentPlatformInvoiceUrl,
+                candidate.Package.MarketplaceInvoiceObservedAt,
+                allowedActions);
         }).ToList();
     }
 
@@ -722,7 +859,10 @@ public sealed partial class InvoicingBillingService(
         }
 
         if (invoice.Status is InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending or InvoiceStatus.MarketplaceFailed)
+        {
+            if (invoice.HasConfirmedMarketplaceDelivery) return "FATURA_KESILDI";
             return "FATURA_PLATFORMA_AKTARILMADI";
+        }
         if (InvoiceMarketplaceRetryPolicy.IsDeliveryReview(invoice.Status, invoice.LastErrorCode))
             return "FATURA_PLATFORMA_AKTARILMADI";
         if (invoice.Status is InvoiceStatus.Submitting or InvoiceStatus.UnknownResult or InvoiceStatus.Submitted)
@@ -755,7 +895,8 @@ public sealed partial class InvoicingBillingService(
     private sealed record WorkspacePackageProjection(
         Guid Id, Guid OrderId, Guid ConnectionId, string? CargoProviderExternalId, string? CargoTrackingNumber,
         ShipmentPackageStatus Status, string RawStatus, DateTimeOffset StatusOccurredAt,
-        MarketplaceInvoiceStatus MarketplaceInvoiceStatus, string? MarketplaceInvoiceNumber, string? MarketplaceInvoiceUrl, string? ManualInvoiceStatus);
+        MarketplaceInvoiceStatus MarketplaceInvoiceStatus, string? MarketplaceInvoiceNumber, string? MarketplaceInvoiceUrl,
+        DateTimeOffset? MarketplaceInvoiceObservedAt, string? ManualInvoiceStatus);
     private sealed record WorkspaceOrderProjection(
         Guid Id, string OrderNumber, DateTimeOffset OrderedAt,
         string CustomerSnapshotJson, string ShipmentAddressSnapshotJson, string InvoiceAddressSnapshotJson);
@@ -832,13 +973,27 @@ public sealed partial class InvoicingBillingService(
     {
         var existing = await db.Invoices.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.IdempotencyKey == idempotencyKey, cancellationToken);
         if (existing is not null) return await GetAsync(tenantId, existing.Id, cancellationToken);
+        await using var mutationTransaction = command.OriginalInvoiceId is null && db.Database.CurrentTransaction is null
+            ? await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
         if (command.OriginalInvoiceId is null)
         {
-            var duplicate = command.PackageId is { } requestedPackageId
-                ? await db.Invoices.AsNoTracking().Where(x => x.TenantId == tenantId && x.OriginalInvoiceId == null && x.SequencePurpose == "SALE"
-                    && (x.PackageId == requestedPackageId || x.PackageId == null && x.OrderId == command.OrderId)).OrderByDescending(x => x.CreatedAt).FirstOrDefaultAsync(cancellationToken)
-                : await db.Invoices.AsNoTracking().Where(x => x.TenantId == tenantId && x.OriginalInvoiceId == null && x.SequencePurpose == "SALE" && x.PackageId == null && x.OrderId == command.OrderId).OrderByDescending(x => x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
-            if (duplicate is not null) return ServiceResult<InvoiceDetailView>.Fail("INVOICE_ALREADY_EXISTS", "Bu sipariş paketi için daha önce fatura oluşturulmuş; ikinci satış faturası oluşturulamaz.", 409);
+            if (!await InvoiceOrderMutationLock.AcquireAsync(db, tenantId, command.OrderId, cancellationToken))
+                return ServiceResult<InvoiceDetailView>.Fail("ORDER_NOT_FOUND", "Sipariş bulunamadı.", 404);
+            existing = await db.Invoices.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.IdempotencyKey == idempotencyKey, cancellationToken);
+            if (existing is not null)
+            {
+                if (mutationTransaction is not null) await mutationTransaction.CommitAsync(cancellationToken);
+                return await GetAsync(tenantId, existing.Id, cancellationToken);
+            }
+            if (await db.ManualOrderInvoiceDocuments.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.OrderId == command.OrderId && x.Status == "ACTIVE", cancellationToken))
+                return ServiceResult<InvoiceDetailView>.Fail("MANUAL_INVOICE_DOCUMENT_ALREADY_EXISTS", "Bu sipariş için manuel fatura belgesi zaten kayıtlı. İkinci mali fatura oluşturulamaz; mevcut belgeyi platforma iletin.", 409);
+            var duplicateCount = await db.Invoices.AsNoTracking().CountAsync(x => x.TenantId == tenantId
+                && x.OrderId == command.OrderId && x.OriginalInvoiceId == null && x.SequencePurpose == "SALE", cancellationToken);
+            if (duplicateCount > 0)
+                return ServiceResult<InvoiceDetailView>.Fail("INVOICE_ALREADY_EXISTS", duplicateCount == 1
+                    ? "Bu sipariş için mali satış faturası zaten kayıtlı; ikinci fatura oluşturulamaz."
+                    : "Bu siparişte birden fazla eski mali fatura kaydı var. Kayıtlar korunuyor ve yeni kesim inceleme tamamlanana kadar kapalı.", 409);
         }
         var order = await db.Orders.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == command.OrderId, cancellationToken);
         if (order is null) return Invalid<InvoiceDetailView>("orderId", "Sipariş bulunamadı.");
@@ -862,6 +1017,22 @@ public sealed partial class InvoicingBillingService(
         var orderConnection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == order.ConnectionId, cancellationToken);
         if (orderConnection is null) return Invalid<InvoiceDetailView>("billing", "Siparişin pazaryeri bağlantısı bulunamadı.");
         var orderPlatform = orderConnection.PlatformCode;
+        var activePackagesForOrder = await db.ShipmentPackages.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.OrderId == order.Id && x.Status != ShipmentPackageStatus.Cancelled)
+            .ToListAsync(cancellationToken);
+        var invoiceType = InvoiceAmounts.TrendyolInvoiceType(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson);
+        if (command.OriginalInvoiceId is null && invoiceType == "EARSIVFATURA")
+        {
+            if (!IsValidFiscalDeliveryPackage(selectedPackage is null ? null : new(
+                    selectedPackage.ExternalPackageId,
+                    selectedPackage.CargoProviderExternalId,
+                    selectedPackage.StatusOccurredAt)))
+                return ServiceResult<InvoiceDetailView>.Fail("INVOICE_DELIVERY_PACKAGE_REQUIRED", "E-Arşiv için gönderim tarihi ve E-Faturam kataloğunda doğrulanmış kargo firması gerekli. Sipariş paketini yeniden eşitleyin.", 422);
+        }
+        if (command.OriginalInvoiceId is null && activePackagesForOrder.Any(item => item.ConnectionId != order.ConnectionId))
+            return ServiceResult<InvoiceDetailView>.Fail("INVOICE_PACKAGE_CONNECTION_MISMATCH", "Sipariş paketleri farklı pazaryeri bağlantılarına bağlı; yeni mali fatura kesilmedi.", 409);
+        if (command.OriginalInvoiceId is null && activePackagesForOrder.Any(item => item.MarketplaceInvoiceStatus is MarketplaceInvoiceStatus.Invoiced or MarketplaceInvoiceStatus.Received))
+            return ServiceResult<InvoiceDetailView>.Fail("MARKETPLACE_INVOICE_ALREADY_PRESENT", "Pazaryerinde fatura bulundu veya işleniyor. Yeni mali fatura kesimi kapatıldı.", 409);
         if (ActiveIntegrationScope.IsMarketplace(orderPlatform) && !MarketplaceInvoiceCreationPolicy.IsEnabled(orderPlatform, orderConnection.SettingsJson))
             return ServiceResult<InvoiceDetailView>.Fail(MarketplaceInvoiceCreationPolicy.DisabledErrorCode, MarketplaceInvoiceCreationPolicy.DisabledMessage, 422);
         var profile = await ProviderManagedProfile(tenantId, provider.Id, cancellationToken);
@@ -871,7 +1042,7 @@ public sealed partial class InvoicingBillingService(
         var orderLines = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         if (orderLines.Count == 0) return Invalid<InvoiceDetailView>("orderId", "Fatura taslağı için sipariş satırı gerekir.");
         Dictionary<Guid, decimal>? packageQuantities = null;
-        if (command.PackageId is { } selectedPackageId)
+        if (command.OriginalInvoiceId is not null && command.PackageId is { } selectedPackageId)
         {
             var activePackageIds = await db.ShipmentPackages.AsNoTracking()
                 .Where(x => x.TenantId == tenantId && x.OrderId == order.Id && x.Status != ShipmentPackageStatus.Cancelled)
@@ -884,19 +1055,22 @@ public sealed partial class InvoicingBillingService(
         }
         else
         {
-            orderLines = orderLines.Where(x => x.OrderedQuantity - x.CancelledQuantity > 0).ToList();
-            if (orderLines.Count == 0) return Invalid<InvoiceDetailView>("orderId", "Siparişte faturalanabilir pozitif miktarlı kalem bulunamadı.");
+            var allocations = await db.PackageLineAllocations.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && activePackagesForOrder.Select(item => item.Id).Contains(x.PackageId)).ToListAsync(cancellationToken);
+            if (!TryResolveWholeOrderInvoiceLines(orderLines, allocations, activePackagesForOrder.Select(item => item.Id).ToArray(), out orderLines, out var allocationError))
+                return ServiceResult<InvoiceDetailView>.Fail("INVOICE_PACKAGE_LINE_ALLOCATION_INVALID", allocationError!, 422);
         }
         var now = timeProvider.GetUtcNow(); var invoice = new Invoice
         {
             Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             OrderId = order.Id,
-            PackageId = command.PackageId,
+            PackageId = command.OriginalInvoiceId is null ? null : command.PackageId,
+            OrderFiscalGuarded = command.OriginalInvoiceId is null,
             ProviderConnectionId = provider.Id,
             LegalEntityProfileId = profile.Id,
             InvoicePolicyId = policy.Id,
-            InvoiceType = InvoiceAmounts.TrendyolInvoiceType(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson),
+            InvoiceType = invoiceType,
             SequencePurpose = command.OriginalInvoiceId is null ? "SALE" : "ADJUSTMENT",
             Currency = order.Currency,
             Note = string.Empty,
@@ -908,10 +1082,16 @@ public sealed partial class InvoicingBillingService(
             UpdatedAt = now,
             Version = 1
         };
-        var remotePayable = order.NetAmount;
-        decimal packageGrossAmount = 0;
-        decimal packageDiscountAmount = 0;
-        if (command.PackageId is { } billedPackageId)
+        var activePackages = activePackagesForOrder;
+        var orderTotals = InvoiceAmounts.ResolveOrderTotals(
+            order.NetAmount,
+            order.GrossAmount,
+            order.DiscountAmount,
+            activePackages.Select(item => new InvoicePackageTotalSource(item.NetAmount, item.GrossAmount, item.DiscountAmount)).ToArray());
+        var remotePayable = orderTotals.PayableAmount;
+        var packageGrossAmount = orderTotals.GrossAmount;
+        var packageDiscountAmount = orderTotals.DiscountAmount;
+        if (command.OriginalInvoiceId is not null && command.PackageId is { } billedPackageId)
         {
             var billedPackage = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == billedPackageId).Select(x => new { x.GrossAmount, x.DiscountAmount, x.NetAmount, x.OrderId }).SingleAsync(cancellationToken);
             if (billedPackage.NetAmount > 0) remotePayable = billedPackage.NetAmount;
@@ -919,6 +1099,10 @@ public sealed partial class InvoicingBillingService(
             packageDiscountAmount = billedPackage.DiscountAmount;
             if (billedPackage.NetAmount <= 0 && provider.PlatformCode != "SHOPIFY" && await db.ShipmentPackages.AsNoTracking().CountAsync(x => x.TenantId == tenantId && x.OrderId == billedPackage.OrderId, cancellationToken) != 1)
                 return Invalid<InvoiceDetailView>("packageId", "Paket toplamı henüz Trendyol'dan doğrulanmadı; siparişi yeniden eşitleyin.");
+        }
+        else if (remotePayable <= 0 && provider.PlatformCode != "SHOPIFY")
+        {
+            return Invalid<InvoiceDetailView>("orderId", "Sipariş toplamı ve paket toplamları doğrulanamadı; mali fatura kesilmeden önce siparişi yeniden eşitleyin.");
         }
         var sourceLines = orderLines.Select(line => new InvoicePackageLineSource(
             line.Id,
@@ -948,10 +1132,26 @@ public sealed partial class InvoicingBillingService(
             order.OrderedAt,
             order.CustomerSnapshotJson,
             order.InvoiceAddressSnapshotJson,
-            order.ShipmentAddressSnapshotJson
+            order.ShipmentAddressSnapshotJson,
+            FiscalDeliveryPackage = selectedPackage is null ? null : new InvoiceFiscalDeliveryPackageSnapshot(
+                selectedPackage.ExternalPackageId,
+                selectedPackage.CargoProviderExternalId,
+                selectedPackage.StatusOccurredAt)
         });
         db.InvoicePartySnapshots.Add(Snapshot(invoice, "RECEIVER", receiverJson, now));
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException exception) when (exception.InnerException is Npgsql.PostgresException postgres
+            && postgres.SqlState == Npgsql.PostgresErrorCodes.UniqueViolation
+            && postgres.ConstraintName == "IX_invoices_TenantId_OrderId_ActiveSaleFiscal")
+        {
+            db.ChangeTracker.Clear();
+            return ServiceResult<InvoiceDetailView>.Fail("INVOICE_ALREADY_EXISTS",
+                "Bu sipariş için eşzamanlı bir mali fatura işlemi oluştu. Kayıt korunuyor; güncel durumu yenileyin ve yeni fatura oluşturmayın.", 409);
+        }
+        if (mutationTransaction is not null) await mutationTransaction.CommitAsync(cancellationToken);
         return await GetAsync(tenantId, invoice.Id, cancellationToken);
     }
 
@@ -997,12 +1197,40 @@ public sealed partial class InvoicingBillingService(
         if (invoice.InvoiceType is not ("TEMELFATURA" or "EARSIVFATURA")) failures.Add("INVOICE_TYPE_INVALID");
         if (invoice.InvoiceType == "EARSIVFATURA")
         {
-            if (invoice.PackageId is null) failures.Add("EFATURAM_INTERNET_SALE_PACKAGE_REQUIRED");
-            else
+            InvoiceFiscalDeliveryPackageSnapshot? deliveryPackage = null;
+            var receiverSnapshot = await db.InvoicePartySnapshots.AsNoTracking()
+                .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id && x.Role == "RECEIVER", cancellationToken);
+            if (receiverSnapshot is not null)
             {
-                var packageCarrier = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == invoice.PackageId).Select(x => x.CargoProviderExternalId).SingleOrDefaultAsync(cancellationToken);
-                if (!TrendyolCarrierCatalog.TryResolve(packageCarrier, out _)) failures.Add("EFATURAM_CARRIER_CATALOG_MISS");
+                try
+                {
+                    using var snapshot = JsonDocument.Parse(_partyProtector.Unprotect(receiverSnapshot.ProtectedContent));
+                    deliveryPackage = ReadFiscalDeliveryPackage(snapshot.RootElement);
+                }
+                catch (Exception exception) when (exception is System.Security.Cryptography.CryptographicException or JsonException)
+                {
+                    failures.Add("INVOICE_PARTY_SNAPSHOT_INVALID");
+                }
             }
+
+            // Order-level invoices intentionally keep PackageId null so the
+            // order's one-invoice guard and all-package marketplace delivery
+            // remain intact. E-Archive delivery data is frozen in the receiver
+            // snapshot when the invoice is drafted.
+            if (deliveryPackage is null && invoice.PackageId is { } packageId)
+            {
+                var package = await db.ShipmentPackages.AsNoTracking()
+                    .Where(x => x.TenantId == tenantId && x.Id == packageId)
+                    .Select(x => new { x.ExternalPackageId, x.CargoProviderExternalId, x.StatusOccurredAt })
+                    .SingleOrDefaultAsync(cancellationToken);
+                if (package is not null)
+                    deliveryPackage = new(package.ExternalPackageId, package.CargoProviderExternalId, package.StatusOccurredAt);
+            }
+
+            if (deliveryPackage is null)
+                failures.Add("EFATURAM_INTERNET_SALE_PACKAGE_REQUIRED");
+            else if (!IsValidFiscalDeliveryPackage(deliveryPackage))
+                failures.Add("EFATURAM_CARRIER_CATALOG_MISS");
         }
         invoice.Status = failures.Count == 0 ? InvoiceStatus.Ready : InvoiceStatus.ValidationFailed; invoice.LastErrorCode = failures.FirstOrDefault(); invoice.Version++; invoice.UpdatedAt = timeProvider.GetUtcNow();
         await db.SaveChangesAsync(cancellationToken);
@@ -1072,32 +1300,43 @@ public sealed partial class InvoicingBillingService(
         var invoice = await db.Invoices.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken); if (invoice is null) return NotFound<Guid>();
         if (await IsShopifyManualInvoiceAsync(tenantId, invoice, cancellationToken)) return ServiceResult<Guid>.Fail("SHOPIFY_MANUAL_INVOICE_ONLY", "Shopify manuel belge kayıtları pazaryeri fatura aktarımına gönderilemez.", 422);
         if (!InvoiceMarketplaceRetryPolicy.CanRetryDelivery(invoice.Status, invoice.LastErrorCode)) return ServiceResult<Guid>.Fail("INVOICE_STATE_INVALID", "Fatura pazaryerine iletime hazır değil.", 409);
-        if (invoice.PackageId is null) return Invalid<Guid>("packageId", "Pazaryeri fatura iletimi için paket zorunludur.");
         if (!await db.InvoiceDocuments.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id && x.PermanentUrl != null, cancellationToken)) return ServiceResult<Guid>.Fail("INVOICE_PERMANENT_LINK_REQUIRED", "Trendyol iletimi için kalıcı HTTPS fatura bağlantısı henüz hazır değil.", 409);
-        var marketplaceConnectionId = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == invoice.PackageId).Select(x => (Guid?)x.ConnectionId).SingleOrDefaultAsync(cancellationToken);
-        if (marketplaceConnectionId is null) return Invalid<Guid>("packageId", "Faturaya bağlı pazaryeri paketi bulunamadı.");
+        var packages = await db.ShipmentPackages.AsNoTracking()
+            .Where(item => item.TenantId == tenantId && (invoice.PackageId == null
+                ? item.OrderId == invoice.OrderId && item.Status != ShipmentPackageStatus.Cancelled
+                : item.Id == invoice.PackageId.Value))
+            .OrderBy(item => item.Id).ToListAsync(cancellationToken);
+        if (packages.Count == 0) return Invalid<Guid>("packageId", "Faturaya bağlı etkin pazaryeri paketi bulunamadı.");
+        var marketplaceConnectionIds = packages.Select(item => item.ConnectionId).Distinct().ToArray();
         var environments = await db.PlatformConnections.AsNoTracking()
-            .Where(connection => connection.TenantId == tenantId && (connection.Id == invoice.ProviderConnectionId || connection.Id == marketplaceConnectionId.Value))
+            .Where(connection => connection.TenantId == tenantId && (connection.Id == invoice.ProviderConnectionId || marketplaceConnectionIds.Contains(connection.Id)))
             .Select(connection => new { connection.Id, connection.Environment })
             .ToDictionaryAsync(connection => connection.Id, connection => connection.Environment, cancellationToken);
         environments.TryGetValue(invoice.ProviderConnectionId, out var providerEnvironment);
-        environments.TryGetValue(marketplaceConnectionId.Value, out var marketplaceEnvironment);
-        if (!InvoiceDeliveryEnvironmentPolicy.IsCompatible(providerEnvironment, marketplaceEnvironment))
-            return ServiceResult<Guid>.Fail(
-                InvoiceDeliveryEnvironmentPolicy.MismatchErrorCode,
-                InvoiceDeliveryEnvironmentPolicy.DescribeMismatch(providerEnvironment, marketplaceEnvironment),
-                409);
-        if (!await WriteGates(tenantId, marketplaceConnectionId.Value, InvoicingCapabilities.InvoiceDeliver, cancellationToken)) return CapabilityUnknown<Guid>(InvoicingCapabilities.InvoiceDeliver);
-        var manualDeliveryRetry = invoice.LastErrorCode == InvoiceMarketplaceRetryPolicy.RepeatedRemoteFailure;
-        var deliveryState = await db.MarketplaceDeliveryStates.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.InvoiceId == id, cancellationToken);
-        if (manualDeliveryRetry && deliveryState?.Status == "FAILED" && deliveryState.ErrorCode == InvoiceMarketplaceRetryPolicy.RepeatedRemoteFailure)
+        foreach (var connectionId in marketplaceConnectionIds)
         {
-            deliveryState.Status = "UNKNOWN";
-            deliveryState.UpdatedAt = timeProvider.GetUtcNow();
-            deliveryState.Version++;
+            environments.TryGetValue(connectionId, out var marketplaceEnvironment);
+            if (!InvoiceDeliveryEnvironmentPolicy.IsCompatible(providerEnvironment, marketplaceEnvironment))
+                return ServiceResult<Guid>.Fail(InvoiceDeliveryEnvironmentPolicy.MismatchErrorCode,
+                    InvoiceDeliveryEnvironmentPolicy.DescribeMismatch(providerEnvironment, marketplaceEnvironment), 409);
+            if (!await WriteGates(tenantId, connectionId, InvoicingCapabilities.InvoiceDeliver, cancellationToken)) return CapabilityUnknown<Guid>(InvoicingCapabilities.InvoiceDeliver);
+        }
+        var manualDeliveryRetry = invoice.LastErrorCode == InvoiceMarketplaceRetryPolicy.RepeatedRemoteFailure;
+        var packageIds = packages.Select(item => item.Id).ToArray();
+        var deliveryStates = await db.MarketplaceDeliveryStates
+            .Where(item => item.TenantId == tenantId && item.InvoiceId == id && packageIds.Contains(item.PackageId!.Value))
+            .ToListAsync(cancellationToken);
+        if (manualDeliveryRetry)
+        {
+            foreach (var state in deliveryStates.Where(state => state.Status == "FAILED" && state.ErrorCode == InvoiceMarketplaceRetryPolicy.RepeatedRemoteFailure))
+            {
+                state.Status = "UNKNOWN";
+                state.UpdatedAt = timeProvider.GetUtcNow();
+                state.Version++;
+            }
         }
         invoice.Status = InvoiceStatus.MarketplacePending; invoice.UpdatedAt = timeProvider.GetUtcNow(); invoice.Version++;
-        return await AddJob(invoice, InvoicingJobTypes.MarketplaceDelivery, idempotencyKey, correlationId, cancellationToken, marketplaceConnectionId.Value, manualDeliveryRetry);
+        return await AddJob(invoice, InvoicingJobTypes.MarketplaceDelivery, idempotencyKey, correlationId, cancellationToken, packages[0].ConnectionId, manualDeliveryRetry);
     }
 
     public async Task<ServiceResult<(Stream Content, string MimeType, string FileName)>> OpenDocumentAsync(Guid tenantId, Guid invoiceId, Guid documentId, CancellationToken cancellationToken)
@@ -1139,11 +1378,23 @@ public sealed partial class InvoicingBillingService(
         if ((invoice.Status == InvoiceStatus.Ready || CanRetryPreProviderFailure(invoice.Status, invoice.LastErrorCode, invoice.ExternalReference)) && await WriteGates(invoice.TenantId, invoice.ProviderConnectionId, InvoicingCapabilities.InvoiceSubmit, cancellationToken)) actions.Add("SUBMIT");
         if (AllowsStageCapabilityProbe(invoice.Status, invoice.LastErrorCode, invoice.ExternalReference, invoice.InvoiceType, connection)) actions.Add("STAGE_CAPABILITY_PROBE");
         if (invoice.Status is (InvoiceStatus.UnknownResult or InvoiceStatus.Submitted) && await ReadGate(invoice.TenantId, invoice.ProviderConnectionId, InvoicingCapabilities.InvoiceStatusRead, cancellationToken)) actions.Add("RECONCILE");
-        if (invoice.Status is (InvoiceStatus.Accepted or InvoiceStatus.MarketplaceFailed) && invoice.PackageId is not null)
+        if (invoice.Status is (InvoiceStatus.Accepted or InvoiceStatus.MarketplaceFailed))
         {
-            var marketplaceConnectionId = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == invoice.TenantId && x.Id == invoice.PackageId).Select(x => (Guid?)x.ConnectionId).SingleOrDefaultAsync(cancellationToken);
+            var packageConnections = await db.ShipmentPackages.AsNoTracking()
+                .Where(item => item.TenantId == invoice.TenantId && (invoice.PackageId == null
+                    ? item.OrderId == invoice.OrderId && item.Status != ShipmentPackageStatus.Cancelled
+                    : item.Id == invoice.PackageId.Value))
+                .Select(item => item.ConnectionId).Distinct().ToListAsync(cancellationToken);
             var permanentLinkReady = await db.InvoiceDocuments.AsNoTracking().AnyAsync(x => x.TenantId == invoice.TenantId && x.InvoiceId == invoice.Id && x.PermanentUrl != null, cancellationToken);
-            if (permanentLinkReady && marketplaceConnectionId is not null && await WriteGates(invoice.TenantId, marketplaceConnectionId.Value, InvoicingCapabilities.InvoiceDeliver, cancellationToken)) actions.Add("DELIVER");
+            var providerEnvironment = await db.PlatformConnections.AsNoTracking().Where(item => item.TenantId == invoice.TenantId && item.Id == invoice.ProviderConnectionId).Select(item => item.Environment).SingleOrDefaultAsync(cancellationToken);
+            var allConnectionsReady = packageConnections.Count > 0;
+            foreach (var packageConnectionId in packageConnections)
+            {
+                var environment = await db.PlatformConnections.AsNoTracking().Where(item => item.TenantId == invoice.TenantId && item.Id == packageConnectionId).Select(item => item.Environment).SingleOrDefaultAsync(cancellationToken);
+                allConnectionsReady &= InvoiceDeliveryEnvironmentPolicy.IsCompatible(providerEnvironment, environment)
+                    && await WriteGates(invoice.TenantId, packageConnectionId, InvoicingCapabilities.InvoiceDeliver, cancellationToken);
+            }
+            if (permanentLinkReady && allConnectionsReady) actions.Add("DELIVER");
         }
         if (invoice.InvoiceType == "EARSIVFATURA" && invoice.Status is (InvoiceStatus.Accepted or InvoiceStatus.Completed) && await WriteGates(invoice.TenantId, invoice.ProviderConnectionId, InvoicingCapabilities.InvoiceCancel, cancellationToken)) actions.Add("CANCEL");
         if (invoice.Status == InvoiceStatus.CancellationPending && await ReadGate(invoice.TenantId, invoice.ProviderConnectionId, InvoicingCapabilities.InvoiceStatusRead, cancellationToken)) actions.Add("RECONCILE");
@@ -1177,10 +1428,38 @@ public sealed partial class InvoicingBillingService(
         && lastErrorCode is "EFATURAM_FISCAL_PAYLOAD_INVALID" or "EFATURAM_REQUEST_REJECTED" or "EFATURAM_APPLICATION_NOT_ACTIVE"
         && string.IsNullOrWhiteSpace(externalReference);
 
+    internal static bool IsValidFiscalDeliveryPackage(InvoiceFiscalDeliveryPackageSnapshot? package) =>
+        package is not null
+        && package.StatusOccurredAt is { } sentAt
+        && sentAt != default
+        && TrendyolCarrierCatalog.TryResolve(package.CargoProviderExternalId, out _);
+
+    internal static InvoiceFiscalDeliveryPackageSnapshot? ReadFiscalDeliveryPackage(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object
+            || !root.TryGetProperty("FiscalDeliveryPackage", out var package)
+            || package.ValueKind != JsonValueKind.Object)
+            return null;
+
+        var externalPackageId = package.TryGetProperty("ExternalPackageId", out var externalId) && externalId.ValueKind == JsonValueKind.String
+            ? externalId.GetString()
+            : null;
+        var cargoProviderExternalId = package.TryGetProperty("CargoProviderExternalId", out var cargoProvider) && cargoProvider.ValueKind == JsonValueKind.String
+            ? cargoProvider.GetString()
+            : null;
+        DateTimeOffset? statusOccurredAt = package.TryGetProperty("StatusOccurredAt", out var statusDate)
+            && statusDate.ValueKind == JsonValueKind.String
+            && DateTimeOffset.TryParse(statusDate.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsed)
+                ? parsed
+                : null;
+        return new(externalPackageId, cargoProviderExternalId, statusOccurredAt);
+    }
+
     internal static bool CanRetryPreProviderFailure(InvoiceStatus status, string? lastErrorCode, string? externalReference) =>
         string.IsNullOrWhiteSpace(externalReference)
         && (CanRetryLocalPayloadFailure(status, lastErrorCode, externalReference)
-            || (status == InvoiceStatus.Submitting && lastErrorCode is "EFATURAM_AUTHENTICATION_FAILED" or "EFATURAM_ACCESS_TOKEN_REJECTED" or "EFATURAM_INVOICE_CREATE_PRIVILEGE_MISSING" or MarketplaceInvoiceCreationPolicy.DisabledErrorCode));
+            || (status == InvoiceStatus.Submitting && lastErrorCode is "EFATURAM_AUTHENTICATION_FAILED" or "EFATURAM_ACCESS_TOKEN_REJECTED" or "EFATURAM_INVOICE_CREATE_PRIVILEGE_MISSING" or MarketplaceInvoiceCreationPolicy.DisabledErrorCode)
+            || (status == InvoiceStatus.ManualReview && lastErrorCode is "MARKETPLACE_INVOICE_PRECHECK_FAILED" or "PLATFORM_INVOICE_STATUS_NOT_CLEAR"));
 
     private async Task<bool> IsMarketplaceInvoiceCreationDisabledAsync(Guid tenantId, Guid orderId, CancellationToken cancellationToken)
     {
@@ -1312,6 +1591,48 @@ public sealed partial class InvoicingBillingService(
         return true;
     }
 
+    private static bool TryResolveWholeOrderInvoiceLines(
+        IReadOnlyList<OrderLine> sourceLines,
+        IReadOnlyList<PackageLineAllocation> allocationEvents,
+        IReadOnlyCollection<Guid> activePackageIds,
+        out List<OrderLine> invoiceLines,
+        out string? error)
+    {
+        error = null;
+        var remainingByLine = sourceLines.ToDictionary(line => line.Id, line => line.OrderedQuantity - line.CancelledQuantity);
+        if (remainingByLine.Values.Any(remaining => remaining < 0))
+        {
+            invoiceLines = [];
+            error = "Sipariş satırındaki iptal miktarı satın alınan adetten büyük. Paket dağılımı düzeltilmeden fatura kesilmedi.";
+            return false;
+        }
+
+        var activeIds = activePackageIds.ToHashSet();
+        var latest = allocationEvents.Where(item => activeIds.Contains(item.PackageId))
+            .GroupBy(item => new { item.PackageId, item.OrderLineId })
+            .Select(group => group.OrderByDescending(item => EventSequence(item.SourceEventId))
+                .ThenByDescending(item => item.SourceEventId, StringComparer.Ordinal).First()).ToArray();
+        if (latest.Any(item => !remainingByLine.ContainsKey(item.OrderLineId)
+            || item.AllocatedQuantity < 0 || item.AllocatedQuantity > remainingByLine.GetValueOrDefault(item.OrderLineId)))
+        {
+            invoiceLines = [];
+            error = "Paket ürün adetleri sipariş satırlarıyla uyuşmuyor. Dağılım düzeltilmeden fatura kesilmedi.";
+            return false;
+        }
+        if (activeIds.Count > 1 && sourceLines.Any(line =>
+            latest.Where(item => item.OrderLineId == line.Id).Sum(item => item.AllocatedQuantity) != remainingByLine[line.Id]))
+        {
+            invoiceLines = [];
+            error = "Çok paketli siparişte paketlere dağıtılan miktarlar sipariş satırlarını tam karşılamıyor. Yeniden eşitlemeden fatura kesilmedi.";
+            return false;
+        }
+
+        invoiceLines = sourceLines.Where(line => remainingByLine[line.Id] > 0).ToList();
+        if (invoiceLines.Count > 0) return true;
+        error = "Siparişte faturalanabilir pozitif miktarlı kalem bulunamadı.";
+        return false;
+    }
+
     private async Task<LegalEntityProfile> ProviderManagedProfile(Guid tenantId, Guid providerConnectionId, CancellationToken cancellationToken)
     {
         var existing = await db.LegalEntityProfiles.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Title == $"EFATURAM_PROVIDER:{providerConnectionId:N}", cancellationToken);
@@ -1334,3 +1655,5 @@ public sealed partial class InvoicingBillingService(
     private static ServiceResult<T> CapabilityUnknown<T>(string capability) => ServiceResult<T>.Fail("EXTERNAL_WRITE_NOT_ENABLED", "Bu bağlantıda dış yazma işlemi etkin değil.", 422);
 
 }
+
+internal sealed record InvoiceFiscalDeliveryPackageSnapshot(string? ExternalPackageId, string? CargoProviderExternalId, DateTimeOffset? StatusOccurredAt);

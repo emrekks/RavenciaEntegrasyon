@@ -83,6 +83,9 @@ public sealed class Invoice
     public Guid TenantId { get; set; }
     public Guid OrderId { get; set; }
     public Guid? PackageId { get; set; }
+    // New sale invoices claim one durable fiscal slot for the whole order.
+    // Legacy duplicates stay unguarded and are blocked by application review.
+    public bool OrderFiscalGuarded { get; set; }
     public Guid ProviderConnectionId { get; set; }
     public Guid LegalEntityProfileId { get; set; }
     public Guid InvoicePolicyId { get; set; }
@@ -150,6 +153,50 @@ public sealed class InvoiceDocument
     public string? ExternalDocumentId { get; set; }
     public string? PermanentUrl { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
+}
+
+/// <summary>
+/// A document supplied by the operator for an order. It deliberately has no
+/// dependency on a fiscal provider connection or a fiscal Invoice row.
+/// Uploading it is local-only; delivery is a separate, explicit action.
+/// </summary>
+public sealed class ManualOrderInvoiceDocument
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid OrderId { get; set; }
+    public Guid? PackageId { get; set; }
+    public Guid ConnectionId { get; set; }
+    public string? InvoiceNumber { get; set; }
+    public DateTimeOffset? IssuedAt { get; set; }
+    public required string IdempotencyKey { get; set; }
+    public required string DocumentType { get; set; }
+    public required string DocumentUrl { get; set; }
+    public Guid? FileAssetId { get; set; }
+    public string? Sha256 { get; set; }
+    public required string Status { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+    public long Version { get; set; } = 1;
+}
+
+public sealed class ManualOrderInvoiceDeliveryState
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid DocumentId { get; set; }
+    public Guid ConnectionId { get; set; }
+    public Guid PackageId { get; set; }
+    public required string IdempotencyKey { get; set; }
+    public required string RequestHash { get; set; }
+    public required string Status { get; set; }
+    public int AttemptCount { get; set; }
+    public string? ExternalReference { get; set; }
+    public string? ErrorCode { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+    public DateTimeOffset? CompletedAt { get; set; }
+    public long Version { get; set; } = 1;
 }
 
 public sealed class InvoiceSubmissionAttempt

@@ -1978,6 +1978,11 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
 
+                    b.Property<bool>("IncludeInternetSalesInfo")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
                     b.Property<string>("InvoiceNumber")
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
@@ -2005,16 +2010,16 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasMaxLength(512)
                         .HasColumnType("character varying(512)");
 
+                    b.Property<bool>("OrderFiscalGuarded")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
                     b.Property<Guid>("OrderId")
                         .HasColumnType("uuid");
 
                     b.Property<Guid?>("OriginalInvoiceId")
                         .HasColumnType("uuid");
-
-                    b.Property<bool>("IncludeInternetSalesInfo")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(true);
 
                     b.Property<Guid?>("PackageId")
                         .HasColumnType("uuid");
@@ -2065,6 +2070,11 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "InvoicePolicyId");
 
                     b.HasIndex("TenantId", "LegalEntityProfileId");
+
+                    b.HasIndex("TenantId", "OrderId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_invoices_TenantId_OrderId_ActiveSaleFiscal")
+                        .HasFilter("\"OrderFiscalGuarded\" = TRUE AND \"OriginalInvoiceId\" IS NULL AND \"SequencePurpose\" = 'SALE'");
 
                     b.HasIndex("TenantId", "OriginalInvoiceId");
 
@@ -2444,6 +2454,159 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.ToTable("legal_entity_profiles", "billing");
                 });
 
+            modelBuilder.Entity("MarketplaceHub.Domain.ManualOrderInvoiceDeliveryState", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(96)
+                        .HasColumnType("character varying(96)");
+
+                    b.Property<string>("ExternalReference")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<Guid>("PackageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("RequestHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ConnectionId");
+
+                    b.HasIndex("TenantId", "IdempotencyKey")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "PackageId");
+
+                    b.HasIndex("TenantId", "DocumentId", "PackageId")
+                        .IsUnique();
+
+                    b.ToTable("manual_order_invoice_delivery_states", "billing");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ManualOrderInvoiceDocument", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DocumentType")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("DocumentUrl")
+                        .IsRequired()
+                        .HasMaxLength(4096)
+                        .HasColumnType("character varying(4096)");
+
+                    b.Property<Guid?>("FileAssetId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("InvoiceNumber")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset?>("IssuedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("PackageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Sha256")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ConnectionId");
+
+                    b.HasIndex("TenantId", "FileAssetId");
+
+                    b.HasIndex("TenantId", "IdempotencyKey")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "PackageId");
+
+                    b.HasIndex("TenantId", "OrderId", "Status")
+                        .IsUnique()
+                        .HasDatabaseName("IX_manual_order_invoice_documents_TenantId_OrderId_Active")
+                        .HasFilter("\"Status\" = 'ACTIVE'");
+
+                    b.ToTable("manual_order_invoice_documents", "billing");
+                });
+
             modelBuilder.Entity("MarketplaceHub.Domain.MarketplaceDelivery", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2512,8 +2675,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "PackageId");
 
-                    b.HasIndex("TenantId", "InvoiceId", "AttemptNumber")
-                        .IsUnique();
+                    b.HasIndex("TenantId", "InvoiceId", "PackageId", "AttemptNumber")
+                        .IsUnique()
+                        .HasDatabaseName("IX_marketplace_deliveries_TenantId_InvoiceId_PackageId_AttemptNumber");
 
                     b.ToTable("marketplace_deliveries", "billing");
                 });
@@ -2587,10 +2751,11 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "ExternalIdempotencyKey")
                         .IsUnique();
 
-                    b.HasIndex("TenantId", "InvoiceId")
-                        .IsUnique();
-
                     b.HasIndex("TenantId", "PackageId");
+
+                    b.HasIndex("TenantId", "InvoiceId", "PackageId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_marketplace_delivery_states_TenantId_InvoiceId_PackageId");
 
                     b.ToTable("marketplace_delivery_states", "billing");
                 });
@@ -5910,6 +6075,59 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasForeignKey("TenantId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ManualOrderInvoiceDeliveryState", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.PlatformConnection", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ConnectionId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.ManualOrderInvoiceDocument", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "DocumentId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.ShipmentPackage", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "PackageId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ManualOrderInvoiceDocument", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.PlatformConnection", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ConnectionId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.FileAsset", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "FileAssetId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("MarketplaceHub.Domain.Order", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "OrderId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.ShipmentPackage", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "PackageId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("MarketplaceHub.Domain.MarketplaceDelivery", b =>

@@ -15,7 +15,7 @@ using Npgsql;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort connections, IReferenceDataPort references, IProductPort products, IInventoryPricePort inventoryPrice, IOrderPort orders, IHepsiburadaInvoiceStatusPort hepsiburadaInvoiceStatus, IOrderPackageReadPort orderPackages, IReturnPort returns, IMarketplaceQuestionService questions, IPrivateFileStorage files, IConfiguration configuration, TimeProvider timeProvider) : IMarketplaceJobProcessor
+public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort connections, IReferenceDataPort references, IProductPort products, IInventoryPricePort inventoryPrice, IOrderPort orders, IHepsiburadaInvoiceStatusPort hepsiburadaInvoiceStatus, IOrderPackageReadPort orderPackages, IReturnPort returns, IMarketplaceQuestionService questions, IPrivateFileStorage files, IConfiguration configuration, TimeProvider timeProvider, IInvoicingBillingService? invoiceBilling = null) : IMarketplaceJobProcessor
 {
     // The payload deadline is the authoritative approval bound. The worker currently
     // applies exponential backoff, but this ceiling also keeps retry accounting from
@@ -2928,20 +2928,47 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var batchSize = ReadBoundedInt(payloadJson, "batchSize", 50, 1, 250);
         var externalOrderIds = new List<string>();
         var hepsiburadaInvoiceStatusUnavailable = new HashSet<string>(StringComparer.Ordinal);
+        var now = timeProvider.GetUtcNow();
+        Guid? targetedOrderId = null;
+        try
+        {
+            using var payload = JsonDocument.Parse(payloadJson);
+            if (payload.RootElement.TryGetProperty("targetOrderId", out var targetOrderElement)
+                && targetOrderElement.ValueKind == JsonValueKind.String
+                && targetOrderElement.TryGetGuid(out var parsedTargetOrderId))
+                targetedOrderId = parsedTargetOrderId;
+        }
+        catch (JsonException)
+        {
+            // The normal scheduled payload is valid and has no targetOrderId.
+        }
+        var eligibleOrders = targetedOrderId is { } requestedOrderId
+            ? db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId
+                && order.ConnectionId == connectionId
+                && order.Id == requestedOrderId
+                && order.ExternalOrderId != null
+                && !DashboardMetricPolicy.InvoiceExcludedOrderStatuses.Contains(order.DerivedStatus)
+                && db.ShipmentPackages.Any(package => package.TenantId == tenantId
+                    && package.ConnectionId == connectionId
+                    && package.OrderId == order.Id
+                    && package.Status != ShipmentPackageStatus.Cancelled))
+            : DueInvoiceReconciliationOrders(tenantId, connectionId, now);
         SyncCursor? invoiceCursor = null;
         Guid? lastReconciledOrderId = null;
-        if (isHepsiburada)
+        if (targetedOrderId is not null)
+        {
+            externalOrderIds = await eligibleOrders.OrderBy(order => order.Id)
+                .Select(order => order.ExternalOrderId)
+                .Take(1)
+                .ToListAsync(cancellationToken);
+        }
+        else if (isHepsiburada)
         {
             // Order detail is the only documented source for hasInvoice. Rotate
             // by immutable order ID: UpdatedAt changes during every upsert and
             // would move reconciled orders ahead of the cursor indefinitely.
             invoiceCursor = await Cursor(tenantId, connectionId, "ORDER_INVOICE_RECONCILIATION", cancellationToken);
             var afterOrderId = HepsiburadaInvoiceReconciliationBatchPolicy.ReadCursor(invoiceCursor.OpaqueCursor)?.OrderId;
-            var eligibleOrders = db.Orders.AsNoTracking()
-                .Where(order => order.TenantId == tenantId
-                    && order.ConnectionId == connectionId
-                    && !DashboardMetricPolicy.InvoiceExcludedOrderStatuses.Contains(order.DerivedStatus));
-
             var afterCursorQuery = eligibleOrders;
             if (afterOrderId is { } cursorOrderId)
                 afterCursorQuery = afterCursorQuery.Where(order => order.Id.CompareTo(cursorOrderId) > 0);
@@ -2975,16 +3002,6 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             // unchanged first page cannot starve the rest of the catalog.
             invoiceCursor = await Cursor(tenantId, connectionId, "ORDER_INVOICE_RECONCILIATION", cancellationToken);
             var afterOrderId = OrderInvoiceReconciliationBatchPolicy.ReadCursor(invoiceCursor.OpaqueCursor);
-            var eligibleOrders = db.Orders.AsNoTracking()
-                .Where(order => order.TenantId == tenantId
-                    && order.ConnectionId == connectionId
-                    && !DashboardMetricPolicy.InvoiceExcludedOrderStatuses.Contains(order.DerivedStatus));
-            eligibleOrders = eligibleOrders.Where(order => db.ShipmentPackages.Any(package => package.TenantId == tenantId
-                    && package.ConnectionId == connectionId
-                    && package.OrderId == order.Id
-                    && package.Status != ShipmentPackageStatus.Cancelled
-                    && (isTrendyol || package.MarketplaceInvoiceStatus != MarketplaceInvoiceStatus.Invoiced)));
-
             var afterCursorQuery = eligibleOrders;
             if (afterOrderId is { } cursorOrderId)
                 afterCursorQuery = afterCursorQuery.Where(order => order.Id.CompareTo(cursorOrderId) > 0);
@@ -3102,6 +3119,42 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             cancellationToken);
 
         return true;
+    }
+
+    private IQueryable<Order> DueInvoiceReconciliationOrders(Guid tenantId, Guid connectionId, DateTimeOffset now)
+    {
+        var recentOrderCutoff = now - MarketplaceInvoiceReconciliationCadencePolicy.RecentOrderWindow;
+        var recentCheckCutoff = now - MarketplaceInvoiceReconciliationCadencePolicy.RecentInterval;
+        var olderCheckCutoff = now - MarketplaceInvoiceReconciliationCadencePolicy.OlderInterval;
+
+        return db.Orders.AsNoTracking()
+            .Where(order => order.TenantId == tenantId
+                && order.ConnectionId == connectionId
+                && !DashboardMetricPolicy.InvoiceExcludedOrderStatuses.Contains(order.DerivedStatus))
+            .Where(order => db.ShipmentPackages.Any(package => package.TenantId == tenantId
+                && package.ConnectionId == connectionId
+                && package.OrderId == order.Id
+                && package.Status != ShipmentPackageStatus.Cancelled
+                && (package.MarketplaceInvoiceStatus != MarketplaceInvoiceStatus.Invoiced
+                    || db.Invoices.Any(invoice => invoice.TenantId == tenantId
+                        && invoice.OrderId == order.Id
+                        && invoice.OriginalInvoiceId == null
+                        && invoice.SequencePurpose == "SALE"
+                        && (invoice.Status != InvoiceStatus.Completed
+                            || db.MarketplaceDeliveryStates.Any(state => state.TenantId == tenantId
+                                && state.InvoiceId == invoice.Id
+                                && state.PackageId == package.Id
+                                && state.Status != "CONFIRMED")
+                            || !db.MarketplaceDeliveryStates.Any(state => state.TenantId == tenantId
+                                && state.InvoiceId == invoice.Id
+                                && state.PackageId == package.Id)
+                                && !db.MarketplaceDeliveries.Any(attempt => attempt.TenantId == tenantId
+                                    && attempt.InvoiceId == invoice.Id
+                                    && attempt.PackageId == package.Id
+                                    && attempt.Status == "CONFIRMED")))
+                    || (order.OrderedAt >= recentOrderCutoff
+                        ? package.MarketplaceInvoiceObservedAt == null || package.MarketplaceInvoiceObservedAt <= recentCheckCutoff
+                        : package.MarketplaceInvoiceObservedAt == null || package.MarketplaceInvoiceObservedAt <= olderCheckCutoff))));
     }
 
     private Task<int> UpdateOrderInvoiceReconciliationProgressAsync(
@@ -6886,8 +6939,14 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
         else if (applyReferences)
         {
-            var invoiceNumber = MarketplaceInvoiceStatePolicy.PreferNonEmptyReference(package.MarketplaceInvoiceNumber, observation?.InvoiceNumber);
-            var invoiceUrl = MarketplaceInvoiceStatePolicy.PreferNonEmptyReference(package.MarketplaceInvoiceUrl, observation?.InvoiceUrl);
+            var references = MarketplaceInvoiceStatePolicy.MergeReferences(
+                package.MarketplaceInvoiceNumber,
+                package.MarketplaceInvoiceUrl,
+                observation?.InvoiceNumber,
+                observation?.InvoiceUrl,
+                observation?.ReferencesAreAuthoritative == true);
+            var invoiceNumber = references.InvoiceNumber;
+            var invoiceUrl = references.InvoiceUrl;
             referenceChanged = !string.Equals(invoiceNumber, package.MarketplaceInvoiceNumber, StringComparison.Ordinal)
                 || !string.Equals(invoiceUrl, package.MarketplaceInvoiceUrl, StringComparison.Ordinal);
             package.MarketplaceInvoiceNumber = invoiceNumber;
@@ -6913,48 +6972,67 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         package.Version++;
         telemetryUpdatedCount++;
 
-        var invoice = await db.Invoices.SingleOrDefaultAsync(x => x.TenantId == package.TenantId && x.PackageId == package.Id
-            && x.OriginalInvoiceId == null && x.SequencePurpose == "SALE", cancellationToken);
-        if (invoice is null) return;
+        // New invoices belong to the order rather than one shipment package.
+        // Include those alongside legacy package-scoped invoices, and fail
+        // closed if history contains more than one candidate.
+        var matchingInvoices = await db.Invoices
+            .Where(x => x.TenantId == package.TenantId && x.OrderId == package.OrderId
+                && x.OriginalInvoiceId == null && x.SequencePurpose == "SALE"
+                && (x.PackageId == null || x.PackageId == package.Id))
+            .OrderBy(x => x.CreatedAt)
+            .ToListAsync(cancellationToken);
+        if (matchingInvoices.Count != 1) return;
+        var invoice = matchingInvoices[0];
 
         if (incomingStatus == MarketplaceInvoiceStatus.NotInvoiced)
         {
             var deliveryState = await db.MarketplaceDeliveryStates.SingleOrDefaultAsync(
-                x => x.TenantId == invoice.TenantId && x.InvoiceId == invoice.Id,
+                x => x.TenantId == invoice.TenantId && x.InvoiceId == invoice.Id && x.PackageId == package.Id,
                 cancellationToken);
             var previouslyConfirmed = string.Equals(deliveryState?.Status, "CONFIRMED", StringComparison.Ordinal);
             var shouldMarkNotPresent = InvoiceDeliveryRecoveryPolicy.ShouldMarkMarketplaceInvoiceNotPresent(invoice.Status, invoice.LastErrorCode, incomingStatus);
-            if (previouslyConfirmed || shouldMarkNotPresent)
+            var shouldQueueRedelivery = InvoiceDeliveryRecoveryPolicy.ShouldQueueAutomaticRedelivery(invoice.Status, invoice.LastErrorCode, incomingStatus);
+            if (previouslyConfirmed || shouldMarkNotPresent || shouldQueueRedelivery)
             {
                 await RecordMarketplaceInvoiceDeliveryObservationAsync(invoice, package, "REVOKED", observedAt, cancellationToken);
-                if (invoice.Status != InvoiceStatus.MarketplaceFailed
-                    || !string.Equals(invoice.LastErrorCode, InvoiceDeliveryRecoveryPolicy.MarketplaceInvoiceNotPresentErrorCode, StringComparison.Ordinal))
-                {
-                    invoice.Status = InvoiceStatus.MarketplaceFailed;
-                    invoice.LastErrorCode = InvoiceDeliveryRecoveryPolicy.MarketplaceInvoiceNotPresentErrorCode;
-                    invoice.UpdatedAt = observedAt;
-                    invoice.Version++;
-                }
+                await UpdateOrderInvoiceDeliveryStatusAsync(invoice, observedAt, cancellationToken,
+                    InvoiceDeliveryRecoveryPolicy.MarketplaceInvoiceNotPresentErrorCode);
+                await QueueAutomaticInvoiceRedelivery(invoice, package, cancellationToken);
             }
+            return;
+        }
+
+        if (incomingStatus == MarketplaceInvoiceStatus.Received
+            && observation?.ReferencesAreAuthoritative == true
+            && invoice.Status == InvoiceStatus.Completed)
+        {
+            await RecordMarketplaceInvoiceDeliveryObservationAsync(invoice, package, "REVIEW_REQUIRED", observedAt, cancellationToken);
+            await UpdateOrderInvoiceDeliveryStatusAsync(invoice, observedAt, cancellationToken);
             return;
         }
 
         if (incomingStatus == MarketplaceInvoiceStatus.Invoiced && invoice.Status is InvoiceStatus.Submitted or InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending or InvoiceStatus.Completed)
         {
             var remoteInvoiceNumber = observation?.InvoiceNumber?.Trim();
-            if (!string.IsNullOrWhiteSpace(invoice.InvoiceNumber)
-                && string.Equals(remoteInvoiceNumber, invoice.InvoiceNumber.Trim(), StringComparison.Ordinal))
+            var localInvoiceLink = await db.InvoiceDocuments.AsNoTracking()
+                .Where(document => document.TenantId == invoice.TenantId && document.InvoiceId == invoice.Id && document.PermanentUrl != null)
+                .OrderByDescending(document => document.CreatedAt)
+                .Select(document => document.PermanentUrl)
+                .FirstOrDefaultAsync(cancellationToken);
+            var exactProof = InvoiceDeliveryProofPolicy.HasExactProof(
+                new(package.ExternalPackageId, observation?.RawStatus ?? string.Empty, true,
+                    observation?.InvoiceNumber, observation?.InvoiceUrl, observation?.ReferencesAreAuthoritative == true),
+                invoice.InvoiceNumber,
+                localInvoiceLink);
+            if (exactProof)
             {
                 await RecordExactMarketplaceInvoiceProofAsync(invoice, package, observedAt, cancellationToken);
-                invoice.Status = InvoiceStatus.Completed;
-                invoice.LastErrorCode = null;
-                invoice.UpdatedAt = observedAt;
-                invoice.Version++;
+                await UpdateOrderInvoiceDeliveryStatusAsync(invoice, observedAt, cancellationToken);
             }
             else
             {
                 var deliveryState = await db.MarketplaceDeliveryStates.SingleOrDefaultAsync(
-                    x => x.TenantId == invoice.TenantId && x.InvoiceId == invoice.Id,
+                    x => x.TenantId == invoice.TenantId && x.InvoiceId == invoice.Id && x.PackageId == package.Id,
                     cancellationToken);
                 if (InvoiceDeliveryRecoveryPolicy.ShouldPreservePreviouslyConfirmedDelivery(
                     invoice.Status,
@@ -6980,10 +7058,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 if (sameAttemptProof && deliveryState is not null)
                 {
                     RecordAcceptedHepsiburadaReadbackProof(deliveryState, package, observedAt);
-                    invoice.Status = InvoiceStatus.Completed;
-                    invoice.LastErrorCode = null;
-                    invoice.UpdatedAt = observedAt;
-                    invoice.Version++;
+                    await UpdateOrderInvoiceDeliveryStatusAsync(invoice, observedAt, cancellationToken);
                 }
                 else
                 {
@@ -6998,7 +7073,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         else if (incomingStatus == MarketplaceInvoiceStatus.Rejected && invoice.Status is InvoiceStatus.Submitted or InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending)
         {
             var delivery = await db.MarketplaceDeliveryStates.AsNoTracking()
-                .SingleOrDefaultAsync(x => x.TenantId == package.TenantId && x.InvoiceId == invoice.Id, cancellationToken);
+                .SingleOrDefaultAsync(x => x.TenantId == package.TenantId && x.InvoiceId == invoice.Id && x.PackageId == package.Id, cancellationToken);
             var rejectedAfterDeliveryAttempt = delivery is not null
                 && observation?.SourceUpdatedAt is { } remoteUpdatedAt
                 && remoteUpdatedAt > delivery.CreatedAt;
@@ -7012,6 +7087,27 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         }
     }
 
+    private async Task QueueAutomaticInvoiceRedelivery(Invoice invoice, ShipmentPackage package, CancellationToken cancellationToken)
+    {
+        if (invoiceBilling is null) return;
+        var state = db.ChangeTracker.Entries<MarketplaceDeliveryState>()
+            .Where(entry => entry.Entity.TenantId == invoice.TenantId
+                && entry.Entity.InvoiceId == invoice.Id
+                && entry.Entity.PackageId == package.Id)
+            .Select(entry => entry.Entity)
+            .SingleOrDefault();
+        var stateVersion = state?.Version ?? await db.MarketplaceDeliveryStates.AsNoTracking()
+            .Where(item => item.TenantId == invoice.TenantId && item.InvoiceId == invoice.Id && item.PackageId == package.Id)
+            .Select(item => (long?)item.Version)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (stateVersion is null) return;
+
+        var retryBucket = timeProvider.GetUtcNow().ToUnixTimeSeconds() / 900;
+        var idempotencyKey = $"invoice-reconcile-redelivery:{invoice.Id:N}:{package.Id:N}:{stateVersion.Value}:{retryBucket}";
+        await invoiceBilling.EnqueueDeliveryAsync(invoice.TenantId, invoice.Id, idempotencyKey,
+            $"invoice-reconcile:{invoice.Id:N}:{package.Id:N}", cancellationToken);
+    }
+
     private async Task RecordMarketplaceInvoiceDeliveryObservationAsync(
         Invoice invoice,
         ShipmentPackage package,
@@ -7020,14 +7116,14 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         CancellationToken cancellationToken)
     {
         var state = await db.MarketplaceDeliveryStates.SingleOrDefaultAsync(
-            x => x.TenantId == invoice.TenantId && x.InvoiceId == invoice.Id,
+            x => x.TenantId == invoice.TenantId && x.InvoiceId == invoice.Id && x.PackageId == package.Id,
             cancellationToken);
         if (state?.Status == status) return;
 
         if (state is null)
         {
             var latestAttemptNumber = await db.MarketplaceDeliveries.AsNoTracking()
-                .Where(x => x.TenantId == invoice.TenantId && x.InvoiceId == invoice.Id)
+                .Where(x => x.TenantId == invoice.TenantId && x.InvoiceId == invoice.Id && x.PackageId == package.Id)
                 .Select(x => (int?)x.AttemptNumber)
                 .MaxAsync(cancellationToken) ?? 0;
             var proofKey = $"marketplace-observation:{invoice.Id:N}:{package.Id:N}";
@@ -7084,7 +7180,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
     private async Task RecordExactMarketplaceInvoiceProofAsync(Invoice invoice, ShipmentPackage package, DateTimeOffset observedAt, CancellationToken cancellationToken)
     {
         var state = await db.MarketplaceDeliveryStates.SingleOrDefaultAsync(
-            x => x.TenantId == invoice.TenantId && x.InvoiceId == invoice.Id,
+            x => x.TenantId == invoice.TenantId && x.InvoiceId == invoice.Id && x.PackageId == package.Id,
             cancellationToken);
         var proofKey = $"remote-invoice-proof:{invoice.Id:N}:{package.Id:N}";
         var proofHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
@@ -7124,6 +7220,41 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         state.UpdatedAt = observedAt;
         state.CompletedAt = observedAt;
         state.Version++;
+    }
+
+    private async Task UpdateOrderInvoiceDeliveryStatusAsync(
+        Invoice invoice,
+        DateTimeOffset observedAt,
+        CancellationToken cancellationToken,
+        string? incompleteErrorCode = null)
+    {
+        var targetPackageIds = invoice.PackageId is { } legacyPackageId
+            ? new[] { legacyPackageId }
+            : await db.ShipmentPackages.AsNoTracking()
+                .Where(x => x.TenantId == invoice.TenantId && x.OrderId == invoice.OrderId && x.Status != ShipmentPackageStatus.Cancelled)
+                .Select(x => x.Id)
+                .ToArrayAsync(cancellationToken);
+        var states = await db.MarketplaceDeliveryStates
+            .Where(x => x.TenantId == invoice.TenantId && x.InvoiceId == invoice.Id
+                && x.PackageId != null && targetPackageIds.Contains(x.PackageId.Value))
+            .ToListAsync(cancellationToken);
+        var trackedStates = db.ChangeTracker.Entries<MarketplaceDeliveryState>()
+            .Where(entry => (entry.State is EntityState.Added or EntityState.Modified)
+                && entry.Entity.TenantId == invoice.TenantId && entry.Entity.InvoiceId == invoice.Id
+                && entry.Entity.PackageId.HasValue && targetPackageIds.Contains(entry.Entity.PackageId.Value))
+            .Select(entry => entry.Entity);
+        var confirmedPackageIds = states.Concat(trackedStates)
+            .DistinctBy(x => x.Id)
+            .Where(x => string.Equals(x.Status, "CONFIRMED", StringComparison.Ordinal) && x.PackageId.HasValue)
+            .Select(x => x.PackageId!.Value)
+            .ToHashSet();
+        var allConfirmed = MarketplaceInvoiceDeliveryEvidencePolicy.AllTargetsConfirmed(targetPackageIds, confirmedPackageIds);
+        invoice.Status = allConfirmed ? InvoiceStatus.Completed
+            : incompleteErrorCode is not null ? InvoiceStatus.MarketplaceFailed
+            : InvoiceStatus.MarketplacePending;
+        invoice.LastErrorCode = allConfirmed ? null : incompleteErrorCode;
+        invoice.UpdatedAt = observedAt;
+        invoice.Version++;
     }
 
     private void RecordAcceptedHepsiburadaReadbackProof(MarketplaceDeliveryState state, ShipmentPackage package, DateTimeOffset observedAt)

@@ -82,6 +82,23 @@ public static class MarketplaceInvoiceStatePolicy
 
     public static string? PreferNonEmptyReference(string? current, string? incoming) =>
         string.IsNullOrWhiteSpace(incoming) ? current : incoming.Trim();
+
+    public static (string? InvoiceNumber, string? InvoiceUrl) MergeReferences(
+        string? currentInvoiceNumber,
+        string? currentInvoiceUrl,
+        string? incomingInvoiceNumber,
+        string? incomingInvoiceUrl,
+        bool referencesAreAuthoritative)
+    {
+        if (!referencesAreAuthoritative)
+            return (PreferNonEmptyReference(currentInvoiceNumber, incomingInvoiceNumber),
+                PreferNonEmptyReference(currentInvoiceUrl, incomingInvoiceUrl));
+
+        return (NormalizeReference(incomingInvoiceNumber), NormalizeReference(incomingInvoiceUrl));
+    }
+
+    private static string? NormalizeReference(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
 
 public static class ShipmentPackageStateMachine

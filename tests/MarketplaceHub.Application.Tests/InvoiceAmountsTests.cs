@@ -6,6 +6,34 @@ namespace MarketplaceHub.Application.Tests;
 public sealed class InvoiceAmountsTests
 {
     [Fact]
+    public void ResolvesOrderTotalsUsingPackageAggregatesWhenEveryActivePackageHasTotals()
+    {
+        var packages = new[]
+        {
+            new InvoicePackageTotalSource(100m, 120m, 20m),
+            new InvoicePackageTotalSource(200m, 240m, 40m)
+        };
+
+        var totals = InvoiceAmounts.ResolveOrderTotals(999m, 888m, 77m, packages);
+
+        Assert.Equal(new InvoiceOrderTotals(360m, 60m, 300m), totals);
+    }
+
+    [Fact]
+    public void ResolvesOrderTotalsFromOrderWhenPackagePayableDataIsIncomplete()
+    {
+        var packages = new[]
+        {
+            new InvoicePackageTotalSource(100m, 120m, 20m),
+            new InvoicePackageTotalSource(0m, 240m, 40m)
+        };
+
+        var totals = InvoiceAmounts.ResolveOrderTotals(300m, 360m, 60m, packages);
+
+        Assert.Equal(new InvoiceOrderTotals(360m, 60m, 300m), totals);
+    }
+
+    [Fact]
     public void AllocatesDiscountAndVatAcrossPackageLinesWithoutChangingPayableTotal()
     {
         var sources = new[]

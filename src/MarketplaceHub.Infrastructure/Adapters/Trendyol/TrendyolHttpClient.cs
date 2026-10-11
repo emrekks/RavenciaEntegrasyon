@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
+using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol.Contracts;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol.ErrorMapping;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping;
@@ -638,7 +639,12 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
         var invoiceDeliveryWriteAllowed = IntegrationRuntimePolicy.AllowsAutomaticInvoiceMarketplaceDelivery(
             authorized.Connection,
             context,
-            configuration.GetValue<bool>("FeatureFlags:InvoiceMarketplaceDeliveryWrites"));
+            configuration.GetValue<bool>("FeatureFlags:InvoiceMarketplaceDeliveryWrites"))
+            || IntegrationRuntimePolicy.AllowsExplicitManualInvoiceMarketplaceDelivery(
+                authorized.Connection,
+                context,
+                GlobalWritesEnabled,
+                authorized.ExternalWritesEnabled);
         if (!CanWrite(authorized, context) || !invoiceDeliveryWriteAllowed) return AdapterResult<InvoiceDeliveryResult>.Failure(TrendyolErrorMapper.WriteClosed());
         if (!string.Equals(command.DeliveryType, "LINK", StringComparison.Ordinal)) return AdapterResult<InvoiceDeliveryResult>.Failure(TrendyolErrorMapper.Unsupported("Yalnız resmî link delivery sözleşmesi doğrulandı; file delivery ayrı content akışı kanıtı bekliyor."));
         JsonDocument payload; try { payload = JsonDocument.Parse(command.PayloadJson); } catch (JsonException) { return AdapterResult<InvoiceDeliveryResult>.Failure(TrendyolErrorMapper.Contract()); }
@@ -660,7 +666,20 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
         }
     }
 
-    public Task<AdapterResult<InvoiceDeliveryStatus>> QueryDeliveryAsync(AdapterContext context, ExternalInvoiceDeliveryReference reference, CancellationToken cancellationToken) => Task.FromResult(AdapterResult<InvoiceDeliveryStatus>.Failure(TrendyolErrorMapper.Unsupported("Invoice delivery status query endpoint’i doğrulanmadı; 409 sahte başarı sayılmaz.")));
+    public async Task<AdapterResult<InvoiceDeliveryStatus>> QueryDeliveryAsync(AdapterContext context, ExternalInvoiceDeliveryReference reference, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(reference.ExternalReference))
+            return AdapterResult<InvoiceDeliveryStatus>.Failure(TrendyolErrorMapper.Contract());
+        var package = await GetShipmentPackageAsync(context, reference.ExternalReference, cancellationToken);
+        if (!package.IsSuccess) return AdapterResult<InvoiceDeliveryStatus>.Failure(package.Error!, package.RateLimit);
+        var invoice = package.Value?.Package.Invoice;
+        if (invoice is null || string.IsNullOrWhiteSpace(invoice.RawStatus))
+            return AdapterResult<InvoiceDeliveryStatus>.Failure(new(AdapterErrorClass.ContractViolation,
+                "TRENDYOL_INVOICE_STATUS_UNAVAILABLE", "Trendyol yanıtı paket için açık fatura durumu içermiyor; mali kesim güvenle başlatılamaz.", 502, null, null), package.RateLimit);
+        return AdapterResult<InvoiceDeliveryStatus>.Success(new(reference.ExternalReference, invoice.RawStatus,
+            MarketplaceInvoiceStatePolicy.FromRemote(invoice.RawStatus) != MarketplaceInvoiceStatus.Unknown,
+            invoice.InvoiceNumber, invoice.InvoiceUrl, invoice.ReferencesAreAuthoritative), package.RateLimit);
+    }
 
     private async Task<AdapterResult<RemoteOperationRef>> SubmitBatchAsync(AdapterContext context, HttpMethod method, Func<string, string> endpointFactory, string payloadJson, string kind, CancellationToken cancellationToken)
     {

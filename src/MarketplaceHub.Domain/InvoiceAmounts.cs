@@ -6,9 +6,25 @@ public sealed record VatIncludedInvoiceAmount(decimal TaxExclusiveAmount, decima
 public sealed record InvoicePackageLineSource(Guid OrderLineId, string Description, string? Sku, decimal Quantity, decimal UnitPrice, decimal VatRate);
 public sealed record InvoicePackageLineCalculation(Guid OrderLineId, string Description, string? Sku, decimal Quantity, decimal UnitPrice, decimal DiscountAmount, decimal VatRate, decimal VatAmount, decimal PayableAmount);
 public sealed record InvoicePackageCalculation(IReadOnlyList<InvoicePackageLineCalculation> Lines, decimal TaxExclusiveTotal, decimal DiscountTotal, decimal TaxTotal, decimal PayableTotal);
+public sealed record InvoicePackageTotalSource(decimal NetAmount, decimal GrossAmount, decimal DiscountAmount);
+public sealed record InvoiceOrderTotals(decimal GrossAmount, decimal DiscountAmount, decimal PayableAmount);
 
 public static class InvoiceAmounts
 {
+    public static InvoiceOrderTotals ResolveOrderTotals(
+        decimal orderPayableAmount,
+        decimal orderGrossAmount,
+        decimal orderDiscountAmount,
+        IReadOnlyList<InvoicePackageTotalSource> activePackages)
+    {
+        var hasPackagePayableTotals = activePackages.Count > 0 && activePackages.All(package => package.NetAmount > 0);
+        var hasPackageGrossTotals = activePackages.Count > 0 && activePackages.All(package => package.GrossAmount > 0);
+        return new(
+            hasPackageGrossTotals ? activePackages.Sum(package => package.GrossAmount) : orderGrossAmount,
+            hasPackageGrossTotals ? activePackages.Sum(package => package.DiscountAmount) : orderDiscountAmount,
+            hasPackagePayableTotals ? activePackages.Sum(package => package.NetAmount) : orderPayableAmount);
+    }
+
     public static bool TryCalculatePackage(
         IReadOnlyList<InvoicePackageLineSource> sourceLines,
         decimal packageGrossAmount,

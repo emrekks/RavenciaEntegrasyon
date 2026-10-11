@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using System.Xml.Linq;
 using MarketplaceHub.Application;
+using MarketplaceHub.Domain;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -895,8 +896,13 @@ public sealed partial class HepsiburadaHttpClient(
             account.Connection,
             context,
             configuration.GetValue<bool>("FeatureFlags:InvoiceMarketplaceDeliveryWrites"));
+        var explicitManualInvoiceWriteAllowed = IntegrationRuntimePolicy.AllowsExplicitManualInvoiceMarketplaceDelivery(
+            account.Connection,
+            context,
+            GlobalWritesEnabled,
+            ConnectionWritesEnabled(account.Connection.SettingsJson));
         var oneTimeInvoiceWriteAllowed = IntegrationRuntimePolicy.AllowsOneTimeHepsiburadaInvoiceDelivery(account.Connection, context, invoice!.OrderNumber);
-        if (!(regularWriteAllowed && automaticInvoiceWriteAllowed) && !oneTimeInvoiceWriteAllowed)
+        if (!(regularWriteAllowed && automaticInvoiceWriteAllowed) && !explicitManualInvoiceWriteAllowed && !oneTimeInvoiceWriteAllowed)
             return await Unsupported<InvoiceDeliveryResult>("Hepsiburada fatura teslimi yalnız genel dış yazma izinleri, ayrı fatura iletme izni veya doğrulanmış tek seferlik fatura yetkisi açıkken kullanılabilir.");
 
         // hasInvoice cannot identify which invoice is attached. Only send when
@@ -948,8 +954,16 @@ public sealed partial class HepsiburadaHttpClient(
         if (!response.IsSuccess) return AdapterResult<InvoiceDeliveryStatus>.Failure(response.Error!, response.RateLimit);
         try
         {
-            var uploaded = HepsiburadaJsonMapper.InvoiceUploaded(response.Value!.RootElement);
-            return AdapterResult<InvoiceDeliveryStatus>.Success(new(reference.ExternalReference, uploaded ? "INVOICED" : "NOT_INVOICED", uploaded), response.RateLimit);
+            var observation = HepsiburadaJsonMapper.InvoiceObservationForPackage(response.Value!.RootElement, reference.ExternalReference);
+            var rawStatus = observation?.RawStatus ?? HepsiburadaJsonMapper.InvoiceStatus(response.Value.RootElement);
+            if (string.IsNullOrWhiteSpace(rawStatus)) throw new JsonException("Hepsiburada yanıtında istenen paket için fatura durumu yok.");
+            return AdapterResult<InvoiceDeliveryStatus>.Success(new(
+                reference.ExternalReference,
+                rawStatus,
+                MarketplaceInvoiceStatePolicy.FromRemote(rawStatus) != MarketplaceInvoiceStatus.Unknown,
+                observation?.InvoiceNumber,
+                observation?.InvoiceUrl,
+                observation?.ReferencesAreAuthoritative == true), response.RateLimit);
         }
         catch (JsonException)
         {

@@ -1,4 +1,7 @@
 using System.Security.Cryptography;
+using System.Data;
+using System.Net;
+using System.Net.Sockets;
 using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
@@ -27,6 +30,7 @@ public static class InvoicingEndpoints
             try { return Stream(await service.OpenDocumentAsync(tenantId, invoiceId, documentId, http.RequestAborted), http); }
             catch (FileNotFoundException) { return Results.NotFound(); }
         });
+        api.MapGet("/public/manual-invoice-documents/{token}/content", OpenPublicManualOrderInvoiceDocumentAsync);
 
         api.MapGet("/billing/invoice-policies/{connectionId:guid}", async (Guid connectionId, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant ? WithEtag(http, await service.GetPolicyAsync(tenant.TenantId, connectionId, http.RequestAborted), x => x.Version) : Unauthorized(http));
         api.MapPut("/billing/invoice-policies/{connectionId:guid}", UpsertPolicy);
@@ -53,6 +57,17 @@ public static class InvoicingEndpoints
         });
         api.MapPut("/invoice-workspace/hidden", UpdateInvoiceWorkspaceHiddenAsync);
         api.MapPut("/invoice-workspace/manual-status", UpdateInvoiceWorkspaceManualStatusAsync);
+        api.MapPost("/invoice-workspace/orders/{orderId:guid}/reconcile-jobs", async (Guid orderId, HttpContext http, IInvoicingBillingService service) =>
+        {
+            if (Tenant(http) is not { } tenant) return Unauthorized(http);
+            if (RequireIdempotency(http) is { } failure) return failure;
+            var result = await service.EnqueueOrderInvoiceReconciliationAsync(tenant.TenantId, orderId,
+                http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted);
+            return result.Succeeded ? Results.Accepted(value: new { jobId = result.Value }) : Problem(http, result.Error!);
+        });
+        api.MapPost("/invoice-workspace/manual-documents", CreateManualOrderInvoiceDocumentAsync).DisableAntiforgery();
+        api.MapPost("/invoice-workspace/manual-documents/{id:guid}/delivery-jobs", QueueManualOrderInvoiceDeliveryAsync);
+        api.MapGet("/invoice-workspace/manual-documents/{id:guid}/content", OpenManualOrderInvoiceDocumentAsync);
         api.MapPost("/invoice-workspace/preview", async (InvoiceWorkspacePreviewRequest request, HttpContext http, IInvoicingBillingService service) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
@@ -99,6 +114,281 @@ public static class InvoicingEndpoints
     {
         var tenant = Tenant(http); if (tenant is null) return Unauthorized(http); var version = OptionalIfMatch(http, out var failure); if (failure is not null) return failure;
         return WithEtag(http, await service.UpsertPolicyAsync(tenant.TenantId, connectionId, version, command, http.RequestAborted), x => x.Version);
+    }
+
+    private static async Task<IResult> CreateManualOrderInvoiceDocumentAsync(HttpContext http, AppDbContext db, IPrivateFileStorage storage, TimeProvider timeProvider, IDataProtectionProvider protection, IConfiguration configuration)
+    {
+        const long maximumBytes = 10 * 1024 * 1024;
+        if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        if (RequireIdempotency(http) is { } idempotencyFailure) return idempotencyFailure;
+        if (!http.Request.HasFormContentType) return Problem(http, new("INVOICE_DOCUMENT_FORM_REQUIRED", "multipart/form-data body gereklidir.", 400));
+        var form = await http.Request.ReadFormAsync(http.RequestAborted);
+        if (!Guid.TryParse(form["orderId"], out var orderId)) return Problem(http, new("INVOICE_ORDER_REQUIRED", "Sipariş kimliği gereklidir.", 400));
+        var order = await db.Orders.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Id == orderId, http.RequestAborted);
+        if (order is null) return Problem(http, new("RESOURCE_NOT_FOUND", "Sipariş bulunamadı.", 404));
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Id == order.ConnectionId, http.RequestAborted);
+        if (connection is null || connection.PlatformCode is not ("TRENDYOL" or "HEPSIBURADA" or "SHOPIFY"))
+            return Problem(http, new("INVOICE_MARKETPLACE_UNSUPPORTED", "Manuel fatura belgesi yalnız desteklenen Trendyol, Hepsiburada veya Shopify siparişlerine eklenebilir.", 422));
+        if (!await db.ShipmentPackages.AsNoTracking().AnyAsync(x => x.TenantId == tenant.TenantId && x.OrderId == orderId && x.Status != ShipmentPackageStatus.Cancelled, http.RequestAborted))
+            return Problem(http, new("INVOICE_PACKAGE_REQUIRED", "Siparişte etkin bir paket bulunamadı.", 422));
+
+        var file = form.Files.GetFile("file");
+        var externalUrl = form["invoiceUrl"].ToString().Trim();
+        if ((file is null) == string.IsNullOrWhiteSpace(externalUrl))
+            return Problem(http, new("INVOICE_DOCUMENT_SOURCE_REQUIRED", "Bir PDF dosyası veya herkese açık HTTPS fatura bağlantısı girin.", 422));
+        if (!string.IsNullOrWhiteSpace(externalUrl)
+            && (externalUrl.Length > 4096 || !IsPublicHttpsInvoiceUrl(externalUrl)))
+            return Problem(http, new("INVOICE_DOCUMENT_URL_INVALID", "Fatura bağlantısı geçerli, herkese açık HTTPS adresi olmalıdır.", 422));
+        var invoiceNumber = form["invoiceNumber"].ToString().Trim();
+        if (invoiceNumber.Length > 64) return Problem(http, new("INVOICE_NUMBER_INVALID", "Fatura numarası en fazla 64 karakter olabilir.", 422));
+        DateTimeOffset? issuedAt = null;
+        if (!string.IsNullOrWhiteSpace(form["issuedAt"]))
+        {
+            if (!DateTimeOffset.TryParse(form["issuedAt"], System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal, out var parsed))
+                return Problem(http, new("INVOICE_DATE_INVALID", "Fatura tarihi geçerli bir tarih olmalıdır.", 422));
+            issuedAt = parsed.ToUniversalTime();
+        }
+
+        byte[]? bytes = null;
+        string? sha256 = null;
+        if (file is not null)
+        {
+            if (file.Length <= 0) return Problem(http, new("INVOICE_DOCUMENT_FILE_REQUIRED", "PDF dosyası boş olamaz.", 400));
+            if (file.Length > maximumBytes) return Problem(http, new("INVOICE_DOCUMENT_TOO_LARGE", "Fatura PDF dosyası en fazla 10 MiB olabilir.", 413));
+            await using var input = file.OpenReadStream();
+            await using var buffer = new MemoryStream((int)file.Length);
+            await input.CopyToAsync(buffer, http.RequestAborted);
+            bytes = buffer.ToArray();
+            if (bytes.LongLength != file.Length || bytes.LongLength > maximumBytes) return Problem(http, new("INVOICE_DOCUMENT_SIZE_MISMATCH", "Dosya boyutu doğrulanamadı.", 422));
+            if (DetectInvoiceMimeType(bytes) != "application/pdf") return Problem(http, new("INVOICE_DOCUMENT_TYPE_UNSUPPORTED", "Manuel platform iletimi için yalnız PDF dosyası kabul edilir.", 415));
+            sha256 = Convert.ToHexString(SHA256.HashData(bytes));
+        }
+
+        var idempotencyKey = http.Request.Headers["Idempotency-Key"].ToString();
+        var prior = await db.ManualOrderInvoiceDocuments.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.IdempotencyKey == idempotencyKey, http.RequestAborted);
+        if (prior is not null)
+        {
+            var sameRequest = prior.OrderId == orderId
+                && string.Equals(prior.Sha256, sha256, StringComparison.Ordinal)
+                && string.Equals(prior.DocumentType == "URL" ? prior.DocumentUrl : null, string.IsNullOrWhiteSpace(externalUrl) ? null : externalUrl, StringComparison.Ordinal)
+                && string.Equals(prior.InvoiceNumber, string.IsNullOrWhiteSpace(invoiceNumber) ? null : invoiceNumber, StringComparison.Ordinal)
+                && prior.IssuedAt == issuedAt;
+            return sameRequest
+                ? Results.Ok(new { prior.Id, prior.DocumentType, prior.DocumentUrl, prior.InvoiceNumber, prior.Status, duplicate = true })
+                : Problem(http, new("IDEMPOTENCY_KEY_REUSED", "Aynı idempotency anahtarı farklı belge bilgileriyle kullanılamaz.", 409));
+        }
+
+        await using var mutationTransaction = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, http.RequestAborted);
+        if (!await InvoiceOrderMutationLock.AcquireAsync(db, tenant.TenantId, orderId, http.RequestAborted))
+            return Problem(http, new("RESOURCE_NOT_FOUND", "Sipariş bulunamadı.", 404));
+        prior = await db.ManualOrderInvoiceDocuments.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.IdempotencyKey == idempotencyKey, http.RequestAborted);
+        if (prior is not null)
+        {
+            var sameRequest = prior.OrderId == orderId
+                && string.Equals(prior.Sha256, sha256, StringComparison.Ordinal)
+                && string.Equals(prior.DocumentType == "URL" ? prior.DocumentUrl : null, string.IsNullOrWhiteSpace(externalUrl) ? null : externalUrl, StringComparison.Ordinal)
+                && string.Equals(prior.InvoiceNumber, string.IsNullOrWhiteSpace(invoiceNumber) ? null : invoiceNumber, StringComparison.Ordinal)
+                && prior.IssuedAt == issuedAt;
+            if (!sameRequest) return Problem(http, new("IDEMPOTENCY_KEY_REUSED", "Aynı idempotency anahtarı farklı belge bilgileriyle kullanılamaz.", 409));
+            await mutationTransaction.CommitAsync(http.RequestAborted);
+            return Results.Ok(new { prior.Id, prior.DocumentType, prior.DocumentUrl, prior.InvoiceNumber, prior.Status, duplicate = true });
+        }
+        if (await db.Invoices.AsNoTracking().AnyAsync(x => x.TenantId == tenant.TenantId && x.OrderId == orderId
+                && x.OriginalInvoiceId == null && x.SequencePurpose == "SALE", http.RequestAborted))
+            return Problem(http, new("INVOICE_ALREADY_EXISTS", "Bu sipariş için mali fatura kaydı zaten var. Mevcut faturaya yeni belge ekleyin; siparişe ikinci belge kaydedilmedi.", 409));
+
+        var now = timeProvider.GetUtcNow();
+        var documentId = Guid.CreateVersion7();
+        Guid? assetId = null;
+        string documentUrl;
+        if (file is null) documentUrl = externalUrl;
+        else
+        {
+            var publicBaseUrl = configuration["Marketplace:PublicBaseUrl"] ?? string.Empty;
+            try { documentUrl = ManualOrderInvoiceDocumentLink.Create(protection, publicBaseUrl, tenant.TenantId, documentId); }
+            catch (ArgumentException) { return Problem(http, new("INVOICE_PUBLIC_DOCUMENT_URL_UNAVAILABLE", "Manuel PDF iletimi için herkese açık HTTPS belge sunucusu yapılandırılmalıdır.", 409)); }
+            assetId = Guid.CreateVersion7();
+            await using var fileBuffer = new MemoryStream(bytes!, writable: false);
+            var stored = await storage.SaveAsync(tenant.TenantId, $"{assetId.Value:N}.pdf", "application/pdf", fileBuffer, maximumBytes, http.RequestAborted);
+            db.FileAssets.Add(new FileAsset { Id = assetId.Value, TenantId = tenant.TenantId, Classification = "INVOICE_DOCUMENT_MANUAL", RelativePath = stored, OriginalNameSafe = Path.GetFileName(file!.FileName), MimeType = "application/pdf", SizeBytes = bytes!.LongLength, Sha256 = sha256!, Status = "ACTIVE", CreatedAt = now });
+        }
+
+        var activeDocuments = await db.ManualOrderInvoiceDocuments
+            .Where(x => x.TenantId == tenant.TenantId && x.OrderId == orderId && x.Status == "ACTIVE")
+            .ToListAsync(http.RequestAborted);
+        foreach (var old in activeDocuments)
+        {
+            old.Status = "REPLACED";
+            old.UpdatedAt = now;
+            old.Version++;
+        }
+        var document = new ManualOrderInvoiceDocument
+        {
+            Id = documentId,
+            TenantId = tenant.TenantId,
+            OrderId = orderId,
+            PackageId = null,
+            ConnectionId = order.ConnectionId,
+            InvoiceNumber = string.IsNullOrWhiteSpace(invoiceNumber) ? null : invoiceNumber,
+            IssuedAt = issuedAt,
+            IdempotencyKey = idempotencyKey,
+            DocumentType = file is null ? "URL" : "PDF",
+            DocumentUrl = documentUrl,
+            FileAssetId = assetId,
+            Sha256 = sha256,
+            Status = "ACTIVE",
+            CreatedAt = now,
+            UpdatedAt = now,
+            Version = 1
+        };
+        db.ManualOrderInvoiceDocuments.Add(document);
+        db.AuditLogs.Add(new AuditLog { TenantId = tenant.TenantId, ActorUserId = tenant.UserId, Action = "MANUAL_ORDER_INVOICE_DOCUMENT_ADDED", TargetType = "Order", TargetId = orderId.ToString("D"), Reason = file is null ? "URL" : $"PDF:{bytes!.LongLength}", CorrelationId = http.TraceIdentifier, CreatedAt = now });
+        try { await db.SaveChangesAsync(http.RequestAborted); }
+        catch (DbUpdateException) { return Problem(http, new("MANUAL_INVOICE_DOCUMENT_CONFLICT", "Siparişin manuel fatura belgesi eşzamanlı olarak değişti. Sayfayı yenileyip tekrar deneyin.", 409)); }
+        await mutationTransaction.CommitAsync(http.RequestAborted);
+        return Results.Ok(new { document.Id, document.DocumentType, document.DocumentUrl, document.InvoiceNumber, document.Status, duplicate = false });
+    }
+
+    private static async Task<IResult> QueueManualOrderInvoiceDeliveryAsync(Guid id, HttpContext http, AppDbContext db, TimeProvider timeProvider)
+    {
+        if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        if (RequireIdempotency(http) is { } idempotencyFailure) return idempotencyFailure;
+        var document = await db.ManualOrderInvoiceDocuments.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Id == id, http.RequestAborted);
+        if (document is null) return Problem(http, new("RESOURCE_NOT_FOUND", "Manuel fatura belgesi bulunamadı.", 404));
+        if (document.Status != "ACTIVE") return Problem(http, new("MANUAL_INVOICE_DOCUMENT_NOT_CURRENT", "Yalnız siparişin güncel manuel fatura belgesi iletilebilir.", 409));
+        var packages = await db.ShipmentPackages.AsNoTracking()
+            .Where(x => x.TenantId == tenant.TenantId && x.OrderId == document.OrderId && x.Status != ShipmentPackageStatus.Cancelled)
+            .OrderBy(x => x.Id).ToListAsync(http.RequestAborted);
+        if (packages.Count == 0) return Problem(http, new("INVOICE_PACKAGE_REQUIRED", "Siparişte etkin bir paket bulunamadı.", 422));
+        if (document.IssuedAt is null) return Problem(http, new("INVOICE_DATE_REQUIRED", "Platforma iletim için faturanın tarihi gereklidir.", 422));
+        var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenant.TenantId && x.Id == document.ConnectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(http.RequestAborted);
+        if (platformCode == "SHOPIFY" && string.IsNullOrWhiteSpace(document.InvoiceNumber))
+            return Problem(http, new("INVOICE_NUMBER_REQUIRED", "Shopify siparişine iletim için fatura numarası gereklidir.", 422));
+        if (packages.Any(package => package.ConnectionId != document.ConnectionId))
+            return Problem(http, new("INVOICE_PACKAGE_CONNECTION_MISMATCH", "Sipariş paketleri farklı pazaryeri bağlantılarına bağlı. Belgenin hangi hedeflere gönderileceği güvenle belirlenemedi.", 409));
+        var jobs = new List<Guid>();
+        var now = timeProvider.GetUtcNow();
+        var hash = Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes($"{document.DocumentUrl}\n{document.InvoiceNumber}\n{document.IssuedAt:O}")));
+        var inspectionOnlyCount = 0;
+        foreach (var package in packages)
+        {
+            var state = await db.ManualOrderInvoiceDeliveryStates.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.DocumentId == document.Id && x.PackageId == package.Id, http.RequestAborted);
+            if (state?.Status == "CONFIRMED") continue;
+            var inspectionOnly = ManualInvoiceDeliveryPolicy.RequiresReadOnlyInspection(state?.Status);
+            if (inspectionOnly) inspectionOnlyCount++;
+            var idempotencyDigest = Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(http.Request.Headers["Idempotency-Key"].ToString())));
+            var packageKey = $"manual-invoice-delivery:{document.Id:N}:{package.Id:N}";
+            var dedup = $"{InvoicingJobTypes.ManualOrderInvoiceDelivery}:{id:N}:{package.Id:N}:{idempotencyDigest}";
+            var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.JobType == InvoicingJobTypes.ManualOrderInvoiceDelivery && x.JobDedupKey == dedup, http.RequestAborted);
+            if (existing is not null) { jobs.Add(existing.Id); continue; }
+            if (state is not null)
+            {
+                var activeJob = await db.IntegrationJobs.AsNoTracking()
+                    .Where(x => x.TenantId == tenant.TenantId && x.JobType == InvoicingJobTypes.ManualOrderInvoiceDelivery
+                        && x.EffectIdempotencyKey == state.IdempotencyKey
+                        && (x.Status == JobStatus.Pending || x.Status == JobStatus.Leased || x.Status == JobStatus.RetryScheduled))
+                    .OrderByDescending(x => x.CreatedAt).Select(x => (Guid?)x.Id).FirstOrDefaultAsync(http.RequestAborted);
+                if (activeJob is { } activeId) { jobs.Add(activeId); continue; }
+                if (state.Status == "QUEUED") return Problem(http, new("MANUAL_INVOICE_DELIVERY_ALREADY_RUNNING", "İletim işi başladı ancak durumu kesinleşmedi; yeni bir iletim oluşturulmadı.", 409));
+            }
+            if (state is null)
+            {
+                state = new ManualOrderInvoiceDeliveryState { Id = Guid.CreateVersion7(), TenantId = tenant.TenantId, DocumentId = document.Id, ConnectionId = package.ConnectionId, PackageId = package.Id, IdempotencyKey = packageKey, RequestHash = hash, Status = "QUEUED", CreatedAt = now, UpdatedAt = now, Version = 1 };
+                db.ManualOrderInvoiceDeliveryStates.Add(state);
+            }
+            else
+            {
+                if (!string.Equals(state.RequestHash, hash, StringComparison.Ordinal)) return Problem(http, new("MANUAL_INVOICE_DELIVERY_DOCUMENT_CHANGED", "Belirsiz önceki teslimat başka bir belge sürümüne aittir; otomatik tekrar durduruldu.", 409));
+                state.ConnectionId = package.ConnectionId;
+                state.IdempotencyKey = packageKey;
+                if (!inspectionOnly)
+                {
+                    state.Status = "QUEUED";
+                    state.ErrorCode = null;
+                }
+                state.UpdatedAt = now;
+                state.Version++;
+            }
+            var payload = JsonSerializer.Serialize(new { manualOrderInvoiceDocumentId = document.Id, packageId = package.Id, inspectionOnly });
+            var job = new IntegrationJob { Id = Guid.CreateVersion7(), TenantId = tenant.TenantId, ConnectionId = package.ConnectionId, JobType = InvoicingJobTypes.ManualOrderInvoiceDelivery, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(payload))), JobDedupKey = dedup, EffectIdempotencyKey = packageKey, Priority = -1, Status = JobStatus.Pending, AvailableAt = now, MaxAttempts = 4, CorrelationId = http.TraceIdentifier, CreatedAt = now, Version = 1 };
+            db.IntegrationJobs.Add(job);
+            jobs.Add(job.Id);
+        }
+        if (jobs.Count == 0) return Results.Ok(new { documentId = document.Id, jobIds = Array.Empty<Guid>(), message = "Belge seçili paketlerin tamamında zaten doğrulanmış." });
+        db.AuditLogs.Add(new AuditLog { TenantId = tenant.TenantId, ActorUserId = tenant.UserId, Action = "MANUAL_ORDER_INVOICE_DELIVERY_QUEUED", TargetType = "Order", TargetId = document.OrderId.ToString("D"), Reason = $"{jobs.Count} paket", CorrelationId = http.TraceIdentifier, CreatedAt = now });
+        try { await db.SaveChangesAsync(http.RequestAborted); }
+        catch (DbUpdateException)
+        {
+            db.ChangeTracker.Clear();
+            var operationKeys = packages.Select(package => $"manual-invoice-delivery:{document.Id:N}:{package.Id:N}").ToArray();
+            var concurrentJobs = await db.IntegrationJobs.AsNoTracking()
+                .Where(job => job.TenantId == tenant.TenantId && job.JobType == InvoicingJobTypes.ManualOrderInvoiceDelivery
+                    && operationKeys.Contains(job.EffectIdempotencyKey)
+                    && (job.Status == JobStatus.Pending || job.Status == JobStatus.Leased || job.Status == JobStatus.RetryScheduled))
+                .OrderBy(job => job.CreatedAt).Select(job => job.Id).ToArrayAsync(http.RequestAborted);
+            if (concurrentJobs.Length == 0)
+                return Problem(http, new("MANUAL_INVOICE_DELIVERY_CONFLICT", "İletim durumu eşzamanlı değişti. Sayfayı yenileyip pazaryeri durumunu yeniden kontrol edin.", 409));
+            return Results.Accepted($"/api/v1/jobs/{concurrentJobs[0]:D}", new { documentId = document.Id, jobIds = concurrentJobs, queuedPackageCount = concurrentJobs.Length, inspectionOnlyPackageCount = inspectionOnlyCount });
+        }
+        return Results.Accepted($"/api/v1/jobs/{jobs[0]:D}", new { documentId = document.Id, jobIds = jobs, queuedPackageCount = jobs.Count, inspectionOnlyPackageCount = inspectionOnlyCount });
+    }
+
+    private static async Task<IResult> OpenManualOrderInvoiceDocumentAsync(Guid id, HttpContext http, AppDbContext db, IPrivateFileStorage storage)
+    {
+        if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        var row = await (from document in db.ManualOrderInvoiceDocuments.AsNoTracking()
+                         join asset in db.FileAssets.AsNoTracking() on new { document.TenantId, Id = document.FileAssetId } equals new { asset.TenantId, Id = (Guid?)asset.Id }
+                         where document.TenantId == tenant.TenantId && document.Id == id && asset.Status == "ACTIVE"
+                         select new { asset.RelativePath, asset.MimeType, asset.OriginalNameSafe }).SingleOrDefaultAsync(http.RequestAborted);
+        if (row is null) return Results.NotFound();
+        return Results.File(await storage.OpenReadAsync(tenant.TenantId, row.RelativePath, http.RequestAborted), row.MimeType, row.OriginalNameSafe ?? $"invoice-{id:N}.pdf", enableRangeProcessing: false);
+    }
+
+    private static async Task<IResult> OpenPublicManualOrderInvoiceDocumentAsync(string token, HttpContext http, IDataProtectionProvider protection, AppDbContext db, IPrivateFileStorage storage)
+    {
+        if (!ManualOrderInvoiceDocumentLink.TryRead(protection, token, out var tenantId, out var documentId)) return Results.NotFound();
+        var expectedPath = $"/api/v1/public/manual-invoice-documents/{token}/content";
+        var row = await (from document in db.ManualOrderInvoiceDocuments.AsNoTracking()
+                         join asset in db.FileAssets.AsNoTracking() on new { document.TenantId, Id = document.FileAssetId } equals new { asset.TenantId, Id = (Guid?)asset.Id }
+                         where document.TenantId == tenantId && document.Id == documentId && document.DocumentType == "PDF"
+                             && asset.Status == "ACTIVE"
+                         select new { asset.RelativePath, asset.MimeType, asset.OriginalNameSafe, document.DocumentUrl }).SingleOrDefaultAsync(http.RequestAborted);
+        if (row is null || !Uri.TryCreate(row.DocumentUrl, UriKind.Absolute, out var storedUri)
+            || !string.Equals(storedUri.AbsolutePath, expectedPath, StringComparison.Ordinal)
+            || !string.IsNullOrEmpty(storedUri.Query)
+            || !string.IsNullOrEmpty(storedUri.Fragment)) return Results.NotFound();
+        http.Response.Headers.CacheControl = "public, max-age=300";
+        return Results.File(await storage.OpenReadAsync(tenantId, row.RelativePath, http.RequestAborted), row.MimeType, row.OriginalNameSafe ?? $"invoice-{documentId:N}.pdf", enableRangeProcessing: false);
+    }
+
+    private static bool IsPublicHttpsInvoiceUrl(string value)
+    {
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri)
+            || uri.Scheme != Uri.UriSchemeHttps
+            || string.IsNullOrWhiteSpace(uri.Host)
+            || !string.IsNullOrEmpty(uri.UserInfo)
+            || uri.IsLoopback) return false;
+
+        var host = uri.Host.TrimEnd('.');
+        if (host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+            || host.EndsWith(".local", StringComparison.OrdinalIgnoreCase)
+            || host.EndsWith(".internal", StringComparison.OrdinalIgnoreCase)
+            || host.EndsWith(".lan", StringComparison.OrdinalIgnoreCase)) return false;
+        if (!IPAddress.TryParse(host, out var address)) return true;
+        if (IPAddress.IsLoopback(address) || address.Equals(IPAddress.Any) || address.Equals(IPAddress.IPv6Any)
+            || address.Equals(IPAddress.None) || address.Equals(IPAddress.IPv6None)) return false;
+        if (address.AddressFamily == AddressFamily.InterNetworkV6)
+        {
+            var bytes = address.GetAddressBytes();
+            return !address.IsIPv6LinkLocal && !address.IsIPv6SiteLocal && !address.IsIPv6Multicast
+                && (bytes[0] & 0xfe) != 0xfc;
+        }
+        var octets = address.GetAddressBytes();
+        return octets[0] is not 0 and not 10 and not 127
+            && !(octets[0] == 169 && octets[1] == 254)
+            && !(octets[0] == 172 && octets[1] is >= 16 and <= 31)
+            && !(octets[0] == 192 && octets[1] == 168)
+            && octets[0] < 224;
     }
 
     private static async Task<IResult> UploadManualInvoiceDocumentAsync(Guid id, HttpContext http, AppDbContext db, IPrivateFileStorage storage, TimeProvider timeProvider)

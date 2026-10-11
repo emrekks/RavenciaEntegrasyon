@@ -19,8 +19,8 @@ public sealed partial class InvoicingBillingService
     {
         if (request.Items is null || request.Items.Count is < 1 or > 200)
             return ServiceResult<IReadOnlyList<InvoiceWorkspacePreviewItem>>.Fail("INVOICE_PREVIEW_ITEMS_INVALID", "Önizleme için 1 ile 200 paket seçilmelidir.", 422);
-        if (request.Items.Select(item => item.PackageId).Distinct().Count() != request.Items.Count)
-            return ServiceResult<IReadOnlyList<InvoiceWorkspacePreviewItem>>.Fail("INVOICE_PREVIEW_DUPLICATE_PACKAGE", "Aynı paket önizlemede birden fazla kez seçilemez.", 422);
+        if (request.Items.Select(item => item.OrderId).Distinct().Count() != request.Items.Count)
+            return ServiceResult<IReadOnlyList<InvoiceWorkspacePreviewItem>>.Fail("INVOICE_PREVIEW_DUPLICATE_ORDER", "Sipariş başına tek mali fatura oluşturulabilir; aynı sipariş önizlemede bir kez yer almalıdır.", 422);
 
         var items = new List<InvoiceWorkspacePreviewItem>(request.Items.Count);
         foreach (var target in request.Items)
@@ -41,13 +41,19 @@ public sealed partial class InvoicingBillingService
     {
         if (request.Items is null || request.Items.Count is < 1 or > 200)
             return ServiceResult<InvoiceWorkspaceConfirmResult>.Fail("INVOICE_CONFIRM_ITEMS_INVALID", "Onay için 1 ile 200 paket seçilmelidir.", 422);
-        if (request.Items.Select(item => item.PackageId).Distinct().Count() != request.Items.Count)
-            return ServiceResult<InvoiceWorkspaceConfirmResult>.Fail("INVOICE_CONFIRM_DUPLICATE_PACKAGE", "Aynı paket onay isteğinde birden fazla kez bulunamaz.", 422);
+        if (request.Items.Select(item => item.OrderId).Distinct().Count() != request.Items.Count)
+            return ServiceResult<InvoiceWorkspaceConfirmResult>.Fail("INVOICE_CONFIRM_DUPLICATE_ORDER", "Sipariş başına tek mali fatura oluşturulabilir; aynı sipariş onay isteğinde bir kez yer almalıdır.", 422);
 
         var results = new List<InvoiceWorkspaceConfirmItemResult>(request.Items.Count);
         foreach (var confirmation in request.Items)
         {
             await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+            if (!await InvoiceOrderMutationLock.AcquireAsync(db, tenantId, confirmation.OrderId, cancellationToken))
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                results.Add(new(confirmation.PackageId, null, null, "BLOCKED", "NONE", "Sipariş bulunamadı."));
+                continue;
+            }
             var fresh = await BuildWorkspacePreviewAsync(tenantId,
                 new(confirmation.OrderId, confirmation.PackageId, confirmation.ProviderConnectionId), request.IncludeInternetSalesInfo, cancellationToken);
             if (!fresh.Succeeded)
@@ -82,7 +88,7 @@ public sealed partial class InvoicingBillingService
                     continue;
                 }
 
-                var itemKey = $"{idempotencyKey}:package:{confirmation.PackageId:N}";
+                var itemKey = $"{idempotencyKey}:order:{confirmation.OrderId:N}";
                 if (invoice is not null && InvoiceMarketplaceRetryPolicy.CanRetryDelivery(invoice.Status, invoice.LastErrorCode))
                 {
                     var queuedDelivery = await EnqueueDeliveryAsync(tenantId, invoice.Id, $"{itemKey}:delivery", correlationId, cancellationToken);
@@ -126,7 +132,7 @@ public sealed partial class InvoicingBillingService
                 {
                     var created = await CreateDraftAsync(tenantId,
                         new(confirmation.OrderId, confirmation.PackageId, confirmation.ProviderConnectionId, null, request.IncludeInternetSalesInfo),
-                        $"invoice-workspace:{confirmation.PackageId:N}", cancellationToken);
+                        $"invoice-workspace-order:{confirmation.OrderId:N}", cancellationToken);
                     if (!created.Succeeded)
                     {
                         await transaction.RollbackAsync(cancellationToken);
@@ -187,32 +193,40 @@ public sealed partial class InvoicingBillingService
 
         var sourceLines = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         if (sourceLines.Count == 0) return ServiceResult<InvoiceWorkspacePreviewItem>.Fail("INVOICE_LINES_MISSING", "Fatura önizlemesi için sipariş ürün satırları bulunamadı.", 422);
-        var activePackageIds = await db.ShipmentPackages.AsNoTracking()
+        var activePackages = await db.ShipmentPackages.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.OrderId == order.Id && x.Status != ShipmentPackageStatus.Cancelled)
-            .Select(x => x.Id).ToListAsync(cancellationToken);
+            .OrderBy(x => x.Id).ToListAsync(cancellationToken);
+        if (activePackages.Count == 0)
+            return ServiceResult<InvoiceWorkspacePreviewItem>.Fail("INVOICE_PACKAGE_NOT_ELIGIBLE", "Siparişte faturalanabilir etkin paket bulunamadı.", 422);
+        if (activePackages.Any(item => item.ConnectionId != order.ConnectionId))
+            return ServiceResult<InvoiceWorkspacePreviewItem>.Fail("INVOICE_PACKAGE_CONNECTION_MISMATCH", "Sipariş paketleri farklı pazaryeri bağlantılarına bağlı. Tek belge güvenli hedeflere ayrıştırılamadığı için fatura kesilmedi.", 422);
+        var activePackageIds = activePackages.Select(item => item.Id).ToList();
         var allocations = await db.PackageLineAllocations.AsNoTracking()
             .Where(x => x.TenantId == tenantId && activePackageIds.Contains(x.PackageId)).ToListAsync(cancellationToken);
-        if (!TryResolvePackageInvoiceLines(sourceLines, allocations, package.Id, activePackageIds.Count,
-                out var activeLines, out var quantities, out var allocationError))
+        if (!TryResolveWholeOrderInvoiceLines(sourceLines, allocations, activePackageIds, out var activeLines, out var allocationError))
             return ServiceResult<InvoiceWorkspacePreviewItem>.Fail("INVOICE_PACKAGE_LINE_ALLOCATION_INVALID", allocationError!, 422);
+        var remainingByLine = sourceLines.ToDictionary(line => line.Id, line => line.OrderedQuantity - line.CancelledQuantity);
 
-        var packageExisting = await db.Invoices.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.PackageId == package.Id && x.OriginalInvoiceId == null && x.SequencePurpose == "SALE")
+        var orderInvoices = await db.Invoices.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.OrderId == order.Id && x.OriginalInvoiceId == null && x.SequencePurpose == "SALE")
             .OrderByDescending(x => x.CreatedAt)
-            .FirstOrDefaultAsync(cancellationToken);
-        var orderWideExisting = await db.Invoices.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.OrderId == order.Id && x.PackageId == null && x.OriginalInvoiceId == null && x.SequencePurpose == "SALE")
-            .OrderByDescending(x => x.CreatedAt)
-            .FirstOrDefaultAsync(cancellationToken);
-        var existing = packageExisting ?? orderWideExisting;
+            .ToListAsync(cancellationToken);
+        var existing = orderInvoices.Count == 1 ? orderInvoices[0] : null;
         if (existing is not null && existing.ProviderConnectionId != provider.Id)
             return ServiceResult<InvoiceWorkspacePreviewItem>.Fail("INVOICE_PROVIDER_MISMATCH", "Mevcut faturanın sağlayıcısı kullanılmalıdır. Başka sağlayıcıyla yeniden mali fatura oluşturulamaz.", 409);
-        var packageTotal = package.NetAmount > 0 ? package.NetAmount : order.NetAmount;
+        var orderTotals = InvoiceAmounts.ResolveOrderTotals(
+            order.NetAmount,
+            order.GrossAmount,
+            order.DiscountAmount,
+            activePackages.Select(item => new InvoicePackageTotalSource(item.NetAmount, item.GrossAmount, item.DiscountAmount)).ToArray());
+        var packageTotal = orderTotals.PayableAmount;
+        var orderGross = orderTotals.GrossAmount;
+        var orderDiscount = orderTotals.DiscountAmount;
         if (!InvoiceAmounts.TryCalculatePackage(
             activeLines.Select(line => new InvoicePackageLineSource(line.Id, line.TitleSnapshot, line.Sku,
-                quantities?.GetValueOrDefault(line.Id) ?? line.OrderedQuantity - line.CancelledQuantity, line.UnitPrice, line.VatRate)).ToArray(),
-            package.GrossAmount, package.DiscountAmount, packageTotal, out var calculated, out var calculationError))
-            return ServiceResult<InvoiceWorkspacePreviewItem>.Fail("INVOICE_TOTAL_MISMATCH", calculationError ?? "Paket ürün toplamı ile sipariş/paket toplamı eşleşmiyor.", 422);
+                remainingByLine[line.Id], line.UnitPrice, line.VatRate)).ToArray(),
+            orderGross, orderDiscount, packageTotal, out var calculated, out var calculationError))
+            return ServiceResult<InvoiceWorkspacePreviewItem>.Fail("INVOICE_TOTAL_MISMATCH", calculationError ?? "Sipariş ürün toplamı ile sipariş/paket toplamı eşleşmiyor.", 422);
 
         var lines = calculated!.Lines.Select(line => new InvoiceWorkspacePreviewLine(line.Description, line.Sku, line.Quantity, "ADET", line.VatRate,
             line.UnitPrice, line.DiscountAmount, line.VatAmount, line.PayableAmount)).ToArray();
@@ -225,17 +239,46 @@ public sealed partial class InvoicingBillingService
         else if (taxIdentity.Length is not (10 or 11) || taxIdentity.Any(character => !char.IsAsciiDigit(character)))
             return ServiceResult<InvoiceWorkspacePreviewItem>.Fail("EFATURAM_CORPORATE_TAX_ID_REQUIRED", "Kurumsal müşteri için geçerli 10 haneli vergi numarası veya 11 haneli T.C. kimlik numarası eksik.", 422);
         var customerName = InvoiceWorkspaceCustomerName(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
+        string? deliveryCarrierName = null;
+        DateTimeOffset? deliverySentAt = null;
+        string? deliveryBlockedReason = null;
+        if (existing is null && invoiceType == "EARSIVFATURA")
+        {
+            if (!InvoicingBillingService.IsValidFiscalDeliveryPackage(new(
+                    package.ExternalPackageId,
+                    package.CargoProviderExternalId,
+                    package.StatusOccurredAt)))
+                deliveryBlockedReason = "E-Arşiv için gönderim tarihi ve E-Faturam kataloğunda doğrulanmış kargo firması gerekli. Sipariş paketini yeniden eşitleyin.";
+            else
+            {
+                deliverySentAt = package.StatusOccurredAt;
+                TrendyolCarrierCatalog.TryResolve(package.CargoProviderExternalId ?? string.Empty, out var carrier);
+                deliveryCarrierName = carrier.Name;
+            }
+        }
         var taxTotal = calculated.TaxTotal;
         var taxExclusive = calculated.TaxExclusiveTotal;
-        var canCreate = (existing is not null || MarketplaceInvoiceCreationPolicy.IsEnabled(marketplace.PlatformCode, marketplace.SettingsJson))
+        var remoteInvoicePresent = activePackages.Any(item => item.MarketplaceInvoiceStatus is MarketplaceInvoiceStatus.Invoiced or MarketplaceInvoiceStatus.Received);
+        var legacyInvoiceConflict = orderInvoices.Count > 1;
+        var manualDocument = await db.ManualOrderInvoiceDocuments.AsNoTracking()
+            .Where(item => item.TenantId == tenantId && item.OrderId == order.Id && item.Status == "ACTIVE")
+            .OrderByDescending(item => item.CreatedAt)
+            .Select(item => new { item.Id, item.DocumentType, item.DocumentUrl, item.InvoiceNumber, item.IssuedAt })
+            .FirstOrDefaultAsync(cancellationToken);
+        var canCreate = !remoteInvoicePresent && !legacyInvoiceConflict && manualDocument is null && deliveryBlockedReason is null
+            && (existing is not null || MarketplaceInvoiceCreationPolicy.IsEnabled(marketplace.PlatformCode, marketplace.SettingsJson))
             && InvoiceDeliveryEnvironmentPolicy.IsCompatible(provider.Environment, marketplace.Environment);
         string? blockedReason = canCreate ? null
+            : remoteInvoicePresent ? "Pazaryeri siparişinde fatura bulundu veya işleniyor. Yeni mali fatura kesimi kapatıldı; önce platformdaki belgeyi eşitleyin."
+            : legacyInvoiceConflict ? "Siparişte birden fazla tarihî mali fatura kaydı bulundu. Yeni kesim durduruldu; kayıtlar korunarak incelenmeli."
+            : manualDocument is not null ? "Siparişe manuel fatura belgesi eklendi. İkinci mali fatura kesilmedi; aynı belgeyi platforma iletin veya yeni sürümle değiştirin."
+            : deliveryBlockedReason is not null ? deliveryBlockedReason
             : existing is null && !MarketplaceInvoiceCreationPolicy.IsEnabled(marketplace.PlatformCode, marketplace.SettingsJson)
                 ? string.Equals(marketplace.PlatformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase)
                     ? MarketplaceInvoiceCreationPolicy.UnsupportedFiscalProviderMessage
                     : MarketplaceInvoiceCreationPolicy.DisabledMessage
                 : InvoiceDeliveryEnvironmentPolicy.DescribeMismatch(provider.Environment, marketplace.Environment);
-        var nextAction = existing is null ? "CREATE_AND_SUBMIT" : existing.Status switch
+        var nextAction = manualDocument is not null ? "MANUAL_DOCUMENT_PRESENT" : existing is null ? "CREATE_AND_SUBMIT" : existing.Status switch
         {
             _ when InvoiceMarketplaceRetryPolicy.CanRetryDelivery(existing.Status, existing.LastErrorCode) => "DELIVERY_ONLY",
             InvoiceStatus.Completed => "NONE",
@@ -243,6 +286,7 @@ public sealed partial class InvoicingBillingService
             _ when CanRetryPreProviderFailure(existing.Status, existing.LastErrorCode, existing.ExternalReference) => "SUBMIT_RETRY",
             _ => "REVIEW"
         };
+        if (remoteInvoicePresent || legacyInvoiceConflict) nextAction = "REVIEW";
         if (existing is not null && nextAction == "REVIEW")
         {
             canCreate = false;
@@ -277,30 +321,33 @@ public sealed partial class InvoicingBillingService
             target.OrderId, target.PackageId, target.ProviderConnectionId,
             order.OrderNumber, order.OrderedAt, order.Currency, OrderNetAmount = order.NetAmount,
             order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson,
-            package.ExternalPackageId, PackageNetAmount = package.NetAmount, package.Status, package.StatusOccurredAt, package.CargoProviderExternalId,
+            Packages = activePackages.Select(item => new { item.Id, item.ExternalPackageId, item.NetAmount, item.GrossAmount, item.DiscountAmount, item.Status, item.StatusOccurredAt, item.CargoProviderExternalId, item.MarketplaceInvoiceStatus, item.MarketplaceInvoiceNumber, item.MarketplaceInvoiceUrl, item.MarketplaceInvoiceSourceUpdatedAt, item.MarketplaceInvoiceObservedAt }),
             Marketplace = new { marketplace.PlatformCode, marketplace.Environment, marketplace.SettingsJson },
             Provider = new { provider.PlatformCode, provider.Environment },
             Allocations = allocations.OrderBy(item => item.PackageId).ThenBy(item => item.OrderLineId).ThenBy(item => item.SourceEventId).Select(item => new { item.PackageId, item.OrderLineId, item.AllocatedQuantity, item.SourceEventId }),
             SourceLines = sourceLines.Select(line => new { line.Id, line.TitleSnapshot, line.Sku, line.OrderedQuantity, line.CancelledQuantity, line.UnitPrice, line.VatRate }),
-            Existing = existing is null ? null : new { existing.Id, existing.PackageId, existing.Status, existing.Version, existing.InvoiceNumber, existing.ExternalReference, existing.LastErrorCode },
+            Existing = orderInvoices.Select(item => new { item.Id, item.PackageId, item.Status, item.Version, item.InvoiceNumber, item.ExternalReference, item.LastErrorCode, item.OrderFiscalGuarded }),
+            ManualDocument = manualDocument,
             includeInternetSalesInfo,
             Totals = new { taxExclusive, Discount = calculated.DiscountTotal, taxTotal, Payable = packageTotal, invoiceType }
         });
         var digest = Hash(digestSource);
         var canConfirm = canCreate && (nextAction is "DELIVERY_ONLY" or "SUBMIT_RETRY" or "CREATE_AND_SUBMIT");
-        if (orderWideExisting is not null)
+        if (existing is not null && existing.PackageId is not null && existing.OrderFiscalGuarded)
         {
             canCreate = false;
             canConfirm = false;
             nextAction = "REVIEW";
-            blockedReason = "Bu siparişte pakete bağlanmamış eski bir mali fatura kaydı var. Mükerrer kesimi önlemek için otomatik işlem durduruldu; fatura ve paket eşleşmesi incelenmeli.";
+            blockedReason = "Sipariş düzeyinde korunan eski bir mali fatura kaydı paketle ilişkili. Kayıt eşlemesi incelenmeden yeni işlem başlatılmadı.";
         }
         var view = new InvoiceWorkspacePreviewItem(order.Id, package.Id, provider.Id, order.OrderNumber, marketplace.PlatformCode,
             marketplace.DisplayName, marketplace.Environment, customerType, customerName, taxIdentity,
             string.IsNullOrWhiteSpace(order.InvoiceAddressSnapshotJson) ? "{}" : order.InvoiceAddressSnapshotJson,
             invoiceType, order.Currency, taxExclusive, calculated.DiscountTotal, taxTotal, packageTotal, lines,
             canConfirm,
-            blockedReason, digest, existing?.Id, existing?.Status.ToString().ToUpperInvariant(), nextAction, includeInternetSalesInfo);
+            blockedReason, digest, existing?.Id, existing?.Status.ToString().ToUpperInvariant(), nextAction, includeInternetSalesInfo,
+            activePackages.Select(item => item.ExternalPackageId).Where(value => !string.IsNullOrWhiteSpace(value)).ToArray(),
+            deliveryCarrierName, deliverySentAt, deliveryCarrierName is null ? null : package.ExternalPackageId);
         return ServiceResult<InvoiceWorkspacePreviewItem>.Ok(view);
     }
 

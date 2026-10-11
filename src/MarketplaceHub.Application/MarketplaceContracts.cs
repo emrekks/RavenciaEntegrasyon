@@ -331,7 +331,8 @@ public sealed record AdapterContext(
     IntegrationOperation Operation = IntegrationOperation.Manual,
     bool IsOneTimeInvoiceDeliveryAuthorized = false,
     string? OneTimeInvoiceDeliveryOrderNumber = null,
-    bool IsAutomaticInvoiceMarketplaceDelivery = false);
+    bool IsAutomaticInvoiceMarketplaceDelivery = false,
+    bool IsExplicitManualInvoiceDelivery = false);
 public sealed record AdapterError(AdapterErrorClass Class, string Code, string SafeMessage, int? HttpStatus, TimeSpan? RetryAfter, string? RemoteRequestId);
 public sealed record RateLimitMetadata(int? Remaining, DateTimeOffset? ResetAt, TimeSpan? RetryAfter, int? Limit = null);
 public sealed record AdapterResult<T>(bool IsSuccess, T? Value, AdapterError? Error, RateLimitMetadata? RateLimit)
@@ -400,7 +401,40 @@ public sealed record BatchResult<T>(IReadOnlyList<T> Lines, string? ExternalOper
 public sealed record OrderPollWindow(DateTimeOffset? ModifiedAfter, DateTimeOffset? ModifiedBefore, string? PackageItemStatuses = null, string? StoreFrontCode = null);
 public sealed record RemoteOrderLine(string ExternalLineId, string Sku, string? Barcode, string Title, decimal Quantity, decimal UnitPrice, decimal VatRate, string RawStatus, string SourceSnapshotJson = "{}", decimal CancelledQuantity = 0);
 public sealed record RemotePackageAllocation(string ExternalLineId, decimal AllocatedQuantity, decimal CancelledQuantity, decimal ShippedQuantity, decimal DeliveredQuantity, decimal ReturnedQuantity);
-public sealed record RemotePackageInvoiceObservation(string? RawStatus, string? InvoiceNumber, string? InvoiceUrl, DateTimeOffset? SourceUpdatedAt);
+public sealed record RemotePackageInvoiceObservation(
+    string? RawStatus,
+    string? InvoiceNumber,
+    string? InvoiceUrl,
+    DateTimeOffset? SourceUpdatedAt,
+    bool ReferencesAreAuthoritative = false);
+
+public static class MarketplaceInvoiceReconciliationCadencePolicy
+{
+    public static readonly TimeSpan UnresolvedInterval = TimeSpan.FromMinutes(15);
+    public static readonly TimeSpan RecentInterval = TimeSpan.FromHours(1);
+    public static readonly TimeSpan OlderInterval = TimeSpan.FromHours(24);
+    public static readonly TimeSpan RecentOrderWindow = TimeSpan.FromDays(90);
+
+    public static TimeSpan IntervalFor(
+        MarketplaceInvoiceStatus platformStatus,
+        bool hasUnresolvedLocalInvoice,
+        DateTimeOffset orderCreatedAt,
+        DateTimeOffset now)
+    {
+        if (platformStatus != MarketplaceInvoiceStatus.Invoiced || hasUnresolvedLocalInvoice)
+            return UnresolvedInterval;
+        return now - orderCreatedAt < RecentOrderWindow ? RecentInterval : OlderInterval;
+    }
+
+    public static bool IsDue(
+        MarketplaceInvoiceStatus platformStatus,
+        bool hasUnresolvedLocalInvoice,
+        DateTimeOffset orderCreatedAt,
+        DateTimeOffset? lastSuccessfulCheckAt,
+        DateTimeOffset now) =>
+        lastSuccessfulCheckAt is null
+        || now - lastSuccessfulCheckAt.Value >= IntervalFor(platformStatus, hasUnresolvedLocalInvoice, orderCreatedAt, now);
+}
 public sealed record RemotePackage(string ExternalPackageId, string? OriginExternalPackageId, string RawStatus, DateTimeOffset OccurredAt, string? CargoProviderExternalId, string? CargoTrackingNumber, IReadOnlyList<RemotePackageAllocation> Allocations, decimal GrossAmount = 0, decimal DiscountAmount = 0, decimal NetAmount = 0, RemotePackageInvoiceObservation? Invoice = null, string? CreatedBy = null, bool IsStatusObservation = false);
 public sealed record RemoteOrderRefund(string ExternalRefundId, DateTimeOffset OccurredAt, decimal Amount, string Currency, string RawJson);
 public sealed record RemoteOrder(string ExternalOrderId, string OrderNumber, DateTimeOffset OrderedAt, DateTimeOffset LastModifiedAt, string Currency, decimal GrossAmount, decimal DiscountAmount, decimal NetAmount, string CustomerSnapshotJson, string ShipmentAddressSnapshotJson, string InvoiceAddressSnapshotJson, IReadOnlyList<RemoteOrderLine> Lines, IReadOnlyList<RemotePackage> Packages, string RawJson, DateTimeOffset? ShipmentDueAt = null, string PaymentStatus = "UNKNOWN", string CancellationStatus = "NOT_CANCELLED", string RefundStatus = "NOT_REFUNDED", decimal RefundedAmount = 0, IReadOnlyList<RemoteOrderRefund>? Refunds = null, string? LifecycleStatus = null);

@@ -372,6 +372,21 @@ internal static class HepsiburadaJsonMapper
         return UniformInvoiceStatus(Find(order, "packages", "Packages", "shipments", "Shipments"));
     }
 
+    public static RemotePackageInvoiceObservation? InvoiceObservationForPackage(JsonElement root, string packageNumber)
+    {
+        var order = Unwrap(root);
+        var packages = Find(order, "packages", "Packages", "shipments", "Shipments");
+        if (packages.ValueKind != JsonValueKind.Array) return InvoiceObservation(order);
+
+        foreach (var package in packages.EnumerateArray())
+        {
+            var remoteNumber = Text(package, "packageNumber", "PackageNumber", "packageId", "PackageId", "id", "Id");
+            if (string.Equals(remoteNumber?.Trim(), packageNumber.Trim(), StringComparison.Ordinal))
+                return InvoiceObservation(package);
+        }
+        return null;
+    }
+
     public static IReadOnlyDictionary<string, string> PackageInvoiceStatuses(JsonElement root)
     {
         var order = Unwrap(root);
@@ -1352,9 +1367,11 @@ internal static class HepsiburadaJsonMapper
         var invoiceNumber = Text(source, "invoiceNumber", "InvoiceNumber", "invoiceNo", "InvoiceNo");
         var invoiceUrl = Text(source, "invoiceLink", "InvoiceLink", "invoiceUrl", "InvoiceUrl", "invoiceDocumentUrl", "InvoiceDocumentUrl");
         var sourceUpdatedAt = Date(source, "invoiceUpdatedAt", "InvoiceUpdatedAt");
+        var referencesAreAuthoritative = Find(source, "invoiceNumber", "InvoiceNumber", "invoiceNo", "InvoiceNo").ValueKind != JsonValueKind.Undefined
+            && Find(source, "invoiceLink", "InvoiceLink", "invoiceUrl", "InvoiceUrl", "invoiceDocumentUrl", "InvoiceDocumentUrl").ValueKind != JsonValueKind.Undefined;
         return status is null && invoiceNumber is null && invoiceUrl is null
             ? null
-            : new(status, invoiceNumber, invoiceUrl, sourceUpdatedAt);
+            : new(status, invoiceNumber, invoiceUrl, sourceUpdatedAt, referencesAreAuthoritative);
     }
     private static bool? Boolean(JsonElement element, params string[] names)
     {

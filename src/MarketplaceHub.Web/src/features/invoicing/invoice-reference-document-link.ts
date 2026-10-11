@@ -2,13 +2,42 @@ type InvoiceReferenceDocumentSource = {
   invoiceId: string | null
   invoiceDocumentAvailable: boolean
   marketplaceInvoiceUrl?: string | null
+  currentPlatformInvoiceUrl?: string | null
+  platformInvoiceStatus?: string | null
+  manualInvoiceDocumentUrl?: string | null
 }
 
 export function invoiceReferenceDocumentHref(item: InvoiceReferenceDocumentSource): string | null {
-  const marketplaceUrl = item.marketplaceInvoiceUrl?.trim()
-  if (marketplaceUrl) {
+  for (const candidate of [item.currentPlatformInvoiceUrl ?? item.marketplaceInvoiceUrl, item.manualInvoiceDocumentUrl]) {
+    const safeUrl = safeInvoiceUrl(candidate)
+    if (safeUrl) return safeUrl
+  }
+
+  return item.invoiceId && item.invoiceDocumentAvailable
+    ? `/api/v1/invoices/${encodeURIComponent(item.invoiceId)}/documents/latest/content`
+    : null
+}
+
+export function invoiceReferenceDocumentLabel(item: InvoiceReferenceDocumentSource): string | null {
+  if (invoiceReferenceMarketplaceHref(item)) return 'Fatura linki'
+  if (safeInvoiceUrl(item.manualInvoiceDocumentUrl)) return 'Manuel belge'
+  return item.invoiceId && item.invoiceDocumentAvailable ? 'Yerel PDF' : null
+}
+
+export function platformInvoiceLinkUnavailable(item: InvoiceReferenceDocumentSource): boolean {
+  return item.platformInvoiceStatus?.toUpperCase() === 'INVOICED'
+    && !invoiceReferenceMarketplaceHref(item)
+}
+
+export function invoiceReferenceMarketplaceHref(item: InvoiceReferenceDocumentSource): string | null {
+  return safeInvoiceUrl(item.currentPlatformInvoiceUrl ?? item.marketplaceInvoiceUrl)
+}
+
+function safeInvoiceUrl(candidate: string | null | undefined): string | null {
+    const documentUrl = candidate?.trim()
+    if (!documentUrl) return null
     try {
-      const url = new URL(marketplaceUrl)
+      const url = new URL(documentUrl)
       const host = url.hostname.toLowerCase().replace(/\.$/u, '')
       if (url.protocol === 'https:'
         && !url.username
@@ -20,13 +49,9 @@ export function invoiceReferenceDocumentHref(item: InvoiceReferenceDocumentSourc
         && !isPrivateIpv4(host)
         && !host.startsWith('[')) return url.href
     } catch {
-      // An invalid or unsafe marketplace URL falls back to the stored PDF.
+      // Invalid or unsafe URLs are never opened.
     }
-  }
-
-  return item.invoiceId && item.invoiceDocumentAvailable
-    ? `/api/v1/invoices/${encodeURIComponent(item.invoiceId)}/documents/latest/content`
-    : null
+  return null
 }
 
 function isPrivateIpv4(host: string): boolean {

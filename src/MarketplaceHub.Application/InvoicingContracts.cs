@@ -9,6 +9,7 @@ public static class InvoicingJobTypes
     public const string InvoiceReconcile = "INVOICE_RECONCILE";
     public const string InvoiceDocumentFetch = "INVOICE_DOCUMENT_FETCH";
     public const string MarketplaceDelivery = "INVOICE_MARKETPLACE_DELIVERY";
+    public const string ManualOrderInvoiceDelivery = "MANUAL_ORDER_INVOICE_DELIVERY";
     public const string InvoiceCancellation = "INVOICE_CANCELLATION";
     public const string InvoiceDueScan = "INVOICE_DUE_SCAN";
     public const string StageCapabilityProbe = "EFATURAM_STAGE_CAPABILITY_PROBE";
@@ -74,7 +75,22 @@ public sealed record InvoiceDeliveryStatus(
     string RawStatus,
     bool IsTerminal,
     string? VerifiedInvoiceNumber = null,
-    string? VerifiedInvoiceLink = null);
+    string? VerifiedInvoiceLink = null,
+    bool ReferencesAreAuthoritative = false);
+
+public static class InvoiceDeliveryProofPolicy
+{
+    public static bool HasExactProof(InvoiceDeliveryStatus status, string? invoiceNumber, string? invoiceLink)
+    {
+        var numberMatches = !string.IsNullOrWhiteSpace(invoiceNumber)
+            && string.Equals(status.VerifiedInvoiceNumber, invoiceNumber, StringComparison.Ordinal);
+        var linkMatches = !string.IsNullOrWhiteSpace(invoiceLink)
+            && string.Equals(status.VerifiedInvoiceLink, invoiceLink, StringComparison.Ordinal);
+        return status.ReferencesAreAuthoritative
+            ? numberMatches && linkMatches
+            : numberMatches || linkMatches;
+    }
+}
 public sealed record RemoteMissingInvoicePackage(string OrderNumber, string PackageNumber, string? OrderStatus);
 
 public enum InvoiceDeliveryFailureDisposition
@@ -152,6 +168,15 @@ public static class InvoiceDeliveryRecoveryPolicy
             || (invoiceStatus == InvoiceStatus.ManualReview
                 && string.Equals(lastErrorCode, MarketplaceInvoiceIdentityMismatchErrorCode, StringComparison.Ordinal)));
 
+    public static bool ShouldQueueAutomaticRedelivery(
+        InvoiceStatus invoiceStatus,
+        string? lastErrorCode,
+        MarketplaceInvoiceStatus marketplaceStatus) =>
+        marketplaceStatus == MarketplaceInvoiceStatus.NotInvoiced
+        && (invoiceStatus is InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending or InvoiceStatus.Completed
+            || invoiceStatus == InvoiceStatus.MarketplaceFailed
+                && string.Equals(lastErrorCode, MarketplaceInvoiceNotPresentErrorCode, StringComparison.Ordinal));
+
     public static InvoiceDeliveryRecoveryAction Decide(
         MarketplaceInvoiceStatus marketplaceStatus,
         string? marketplaceInvoiceNumber,
@@ -181,6 +206,14 @@ public static class MarketplaceInvoiceDeliveryEvidencePolicy
     public static bool HasConfirmedDelivery(string? currentStateStatus, bool hasConfirmedHistoricalAttempt) =>
         string.Equals(currentStateStatus, "CONFIRMED", StringComparison.Ordinal)
         || currentStateStatus is null && hasConfirmedHistoricalAttempt;
+
+    public static bool AllTargetsConfirmed(IEnumerable<Guid> targetPackageIds, IEnumerable<Guid> confirmedPackageIds)
+    {
+        var targets = targetPackageIds.ToHashSet();
+        if (targets.Count == 0) return false;
+        var confirmed = confirmedPackageIds.ToHashSet();
+        return targets.IsSubsetOf(confirmed);
+    }
 }
 
 public interface IInvoiceProviderPort
@@ -236,7 +269,11 @@ public sealed record InvoiceWorkspacePreviewItem(
     Guid? ExistingInvoiceId,
     string? ExistingInvoiceStatus,
     string? NextAction,
-    bool IncludeInternetSalesInfo = true);
+    bool IncludeInternetSalesInfo = true,
+    IReadOnlyList<string>? TargetPackageNumbers = null,
+    string? DeliveryCarrierName = null,
+    DateTimeOffset? DeliverySentAt = null,
+    string? DeliveryPackageNumber = null);
 public sealed record InvoiceWorkspaceConfirmResult(IReadOnlyList<InvoiceWorkspaceConfirmItemResult> Items);
 public sealed record InvoiceWorkspaceConfirmItemResult(Guid PackageId, Guid? InvoiceId, Guid? JobId, string Status, string Action, string Message);
 public sealed record InvoiceListView(Guid Id, string OrderNumber, string InvoiceType, string Status, string Currency, decimal PayableTotal, string? InvoiceNumber, DateTimeOffset? DueAt, DateTimeOffset CreatedAt, long Version);
@@ -273,7 +310,50 @@ public sealed record InvoiceWorkspaceItemView(
     string? MarketplaceInvoiceReadErrorCode = null,
     string? MarketplaceInvoiceReadErrorSummary = null,
     string Environment = "UNKNOWN",
-    string? MarketplaceInvoiceUrl = null);
+    string? MarketplaceInvoiceUrl = null,
+    Guid? ManualInvoiceDocumentId = null,
+    string? ManualInvoiceDocumentType = null,
+    string? ManualInvoiceDocumentUrl = null,
+    string? ManualInvoiceNumber = null,
+    DateTimeOffset? ManualInvoiceIssuedAt = null,
+    string? ManualInvoiceDeliveryStatus = null,
+    string? ManualInvoiceDeliveryErrorCode = null,
+    string FiscalStatus = "NONE",
+    string PlatformInvoiceStatus = "UNKNOWN",
+    string DeliveryStatus = "NOT_SENT",
+    string? CurrentPlatformInvoiceUrl = null,
+    DateTimeOffset? LastSuccessfulCheckAt = null,
+    IReadOnlyList<string>? AllowedActions = null);
+
+public static class InvoiceWorkspaceActionPolicy
+{
+    public static IReadOnlyList<string> Resolve(
+        string platformCode,
+        MarketplaceInvoiceStatus platformStatus,
+        bool hasFiscalInvoice,
+        InvoiceStatus? fiscalStatus,
+        bool fiscalDocumentAvailable,
+        bool hasManualDocument,
+        bool canCreateInvoice,
+        bool hasReadError)
+    {
+        var actions = new List<string> { "CHECK_PLATFORM" };
+        if (platformStatus != MarketplaceInvoiceStatus.NotInvoiced || hasReadError) return actions;
+
+        if (hasFiscalInvoice || hasManualDocument)
+        {
+            var fiscalAccepted = fiscalStatus is InvoiceStatus.Accepted or InvoiceStatus.Completed or InvoiceStatus.MarketplaceFailed;
+            if (hasManualDocument || fiscalAccepted && fiscalDocumentAvailable)
+                actions.Add("DELIVER_EXISTING");
+            return actions;
+        }
+
+        if (canCreateInvoice && (platformCode is "TRENDYOL" or "HEPSIBURADA" or "SHOPIFY"))
+            actions.Add("CREATE_FISCAL_INVOICE");
+        return actions;
+    }
+}
+
 public sealed record InvoiceWorkspaceLineView(string Sku, string? Barcode, string Description, decimal Quantity, decimal UnitPrice, decimal VatRate, string? ImageUrl);
 public sealed record InvoiceWorkspaceSummaryView(int DueSoonCount);
 public sealed record InvoiceWorkspacePageQuery(
@@ -318,6 +398,7 @@ public interface IInvoicingBillingService
     Task<IReadOnlyList<InvoiceWorkspaceItemView>> WorkspaceAsync(Guid tenantId, CancellationToken cancellationToken);
     Task<InvoiceWorkspacePageView> WorkspacePageAsync(Guid tenantId, InvoiceWorkspacePageQuery query, CancellationToken cancellationToken);
     Task<InvoiceWorkspaceSummaryView> WorkspaceSummaryAsync(Guid tenantId, CancellationToken cancellationToken);
+    Task<ServiceResult<Guid>> EnqueueOrderInvoiceReconciliationAsync(Guid tenantId, Guid orderId, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<IReadOnlyList<InvoiceWorkspacePreviewItem>>> PreviewWorkspaceInvoicesAsync(Guid tenantId, InvoiceWorkspacePreviewRequest request, CancellationToken cancellationToken);
     Task<ServiceResult<InvoiceWorkspaceConfirmResult>> ConfirmWorkspaceInvoicesAsync(Guid tenantId, InvoiceWorkspacePreviewConfirmRequest request, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<InvoiceDetailView>> CreateDraftAsync(Guid tenantId, CreateInvoiceCommand command, string idempotencyKey, CancellationToken cancellationToken);
