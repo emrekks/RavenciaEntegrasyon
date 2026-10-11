@@ -12235,8 +12235,8 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .app-shell.stitch-shell main .invoice-reference-shipment,
 .app-shell.stitch-shell main .invoice-reference-status {
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: 34px max-content;
-  align-content: center;
+  grid-template-rows: minmax(34px, 1fr) max-content;
+  align-content: stretch;
   justify-items: stretch;
   row-gap: var(--rv-space-2);
   text-align: center;
