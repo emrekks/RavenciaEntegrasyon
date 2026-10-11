@@ -1503,8 +1503,9 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             invoice.Version++;
             return;
         }
-        if (!configuration.GetValue<bool>("FeatureFlags:InvoiceMarketplaceDeliveryWrites")
-            && !configuration.GetValue<bool>("FeatureFlags:ExternalWrites")) return;
+        if (!IntegrationRuntimePolicy.AllowsAutomaticInvoiceMarketplaceDeliveryQueue(
+                configuration.GetValue<bool>("FeatureFlags:ExternalWrites"),
+                configuration.GetValue<bool>("FeatureFlags:InvoiceMarketplaceDeliveryWrites"))) return;
         if (!await db.PlatformCapabilities.AsNoTracking().AnyAsync(capability => capability.TenantId == tenantId
             && capability.ConnectionId == marketplaceConnectionId && capability.Code == InvoicingCapabilities.InvoiceDeliver
             && capability.SupportLevel == CapabilitySupportLevel.Supported && capability.VerifiedAt != null, cancellationToken)) return;
@@ -1558,8 +1559,9 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
 
     private async Task QueuePendingMarketplaceDeliveryRecovery(Guid tenantId, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        if (!configuration.GetValue<bool>("FeatureFlags:InvoiceMarketplaceDeliveryWrites")
-            && !configuration.GetValue<bool>("FeatureFlags:ExternalWrites")) return;
+        if (!IntegrationRuntimePolicy.AllowsAutomaticInvoiceMarketplaceDeliveryQueue(
+                configuration.GetValue<bool>("FeatureFlags:ExternalWrites"),
+                configuration.GetValue<bool>("FeatureFlags:InvoiceMarketplaceDeliveryWrites"))) return;
 
         var candidates = await (from state in db.MarketplaceDeliveryStates.AsNoTracking()
                                 join invoice in db.Invoices.AsNoTracking()

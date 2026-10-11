@@ -30,3 +30,26 @@ public static class JobRetryPolicy
         return baseDelay + TimeSpan.FromTicks(baseDelay.Ticks * jitterPercent / 100);
     }
 }
+
+public static class InvoiceDeliveryRetryPolicy
+{
+    private static readonly TimeSpan[] RetryDelays =
+    [
+        TimeSpan.FromSeconds(30),
+        TimeSpan.FromMinutes(2),
+        TimeSpan.FromMinutes(10),
+        TimeSpan.FromMinutes(30)
+    ];
+
+    public static IReadOnlyList<TimeSpan> Schedule => RetryDelays;
+
+    public static TimeSpan DelayAfterAttempt(int attemptCount, TimeSpan? providerRetryAfter = null)
+    {
+        if (attemptCount <= 0) throw new ArgumentOutOfRangeException(nameof(attemptCount));
+
+        var policyDelay = RetryDelays[Math.Min(attemptCount - 1, RetryDelays.Length - 1)];
+        return providerRetryAfter is { } requested && requested > policyDelay
+            ? requested
+            : policyDelay;
+    }
+}

@@ -86,6 +86,19 @@ public sealed class IntegrationRuntimePolicyTests
         Assert.False(IntegrationRuntimePolicy.AllowsExternalWrite(shopifyConnection, context, globalWritesEnabled: false, connectionWritesEnabled: false));
     }
 
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(true, false, false)]
+    [InlineData(true, true, true)]
+    public void AutomaticInvoiceDeliveryQueueRequiresBothWriteSwitches(
+        bool globalWritesEnabled,
+        bool invoiceMarketplaceDeliveryWritesEnabled,
+        bool expected) =>
+        Assert.Equal(expected, IntegrationRuntimePolicy.AllowsAutomaticInvoiceMarketplaceDeliveryQueue(
+            globalWritesEnabled,
+            invoiceMarketplaceDeliveryWritesEnabled));
+
     private static PlatformConnection Connection(string environment, string platformCode = "TRENDYOL") => new()
     {
         Id = Guid.NewGuid(),

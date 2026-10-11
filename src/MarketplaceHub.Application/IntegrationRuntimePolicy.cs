@@ -63,6 +63,9 @@ public static class IntegrationRuntimePolicy
             || string.Equals(connection.PlatformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
             || string.Equals(connection.PlatformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase));
 
+    public static bool AllowsAutomaticInvoiceMarketplaceDeliveryQueue(bool globalWritesEnabled, bool invoiceMarketplaceDeliveryWritesEnabled) =>
+        globalWritesEnabled && invoiceMarketplaceDeliveryWritesEnabled;
+
     public static bool AllowsExplicitManualInvoiceMarketplaceDelivery(
         PlatformConnection connection,
         AdapterContext context,

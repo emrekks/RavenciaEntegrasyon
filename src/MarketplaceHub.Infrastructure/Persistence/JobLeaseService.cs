@@ -84,6 +84,9 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
     private static TimeSpan EffectiveRetryDelay(IntegrationJob job, JobExecutionResult result)
     {
         var requested = result.RetryAfter;
+        if (job.JobType is InvoicingJobTypes.MarketplaceDelivery or InvoicingJobTypes.ManualOrderInvoiceDelivery)
+            return InvoiceDeliveryRetryPolicy.DelayAfterAttempt(job.AttemptCount, requested);
+
         // Product approval is a bounded, read-only reconciliation poll. Its processor
         // deliberately asks for five minutes; applying the generic terminal one-hour
         // backoff would prevent the seven-day acceptance window from being observed.
