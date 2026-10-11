@@ -101,7 +101,7 @@ export type InvoiceStatusTone = 'neutral' | 'info' | 'success' | 'warning' | 'da
 export function invoiceStatusLabel(value: string | null | undefined) {
   const normalized = value?.trim().toLocaleUpperCase('tr-TR') ?? ''
   if (['FATURA_BEKLIYOR', 'PENDING', 'DRAFT'].includes(normalized)) return 'Fatura Bekliyor'
-  if (normalized === 'FATURA_KONTROLDE') return 'Fatura eşleşmesi doğrulanıyor'
+  if (normalized === 'FATURA_KONTROLDE') return 'Faturası Kesildi'
   if (['FATURA_ISLENIYOR', 'PROCESSING', 'SUBMITTING', 'SUBMITTED', 'MARKETPLACE_PENDING', 'READY'].includes(normalized)) return 'Fatura İşleniyor'
   if (normalized === 'MANUAL_REVIEW') return 'İnceleme gerekli'
   if (normalized === 'MARKETPLACE_FAILED') return 'Pazaryeri aktarımı başarısız'
