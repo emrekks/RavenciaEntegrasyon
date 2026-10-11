@@ -19,7 +19,8 @@ export function DateRangePicker({ from, to, onChange, label = 'Tarih aralığı'
     { label: 'Dün', range: { from: dateOffset(-1), to: dateOffset(-1) } },
     { label: 'Geçen hafta', range: (() => { const end = new Date(); const weekday = (end.getDay() + 6) % 7; end.setDate(end.getDate() - weekday - 1); const start = new Date(end); start.setDate(start.getDate() - 6); return { from: dateKey(start), to: dateKey(end) } })() },
     { label: 'Geçen ay', range: (() => { const start = new Date(); start.setDate(1); start.setMonth(start.getMonth() - 1); const end = new Date(start.getFullYear(), start.getMonth() + 1, 0); return { from: dateKey(start), to: dateKey(end) } })() },
-    ...([60, 90, 180] as const).map(days => ({ label: `Son ${days} gün`, range: { from: dateOffset(1 - days), to: today } })),
+    { label: 'Bu ay', range: (() => { const now = new Date(); return { from: dateKey(new Date(now.getFullYear(), now.getMonth(), 1)), to: today } })() },
+    { label: 'Bu sene', range: { from: `${new Date().getFullYear()}-01-01`, to: today } },
   ]
   function toggleOpen() {
     if (open) { setOpen(false); return }
@@ -27,10 +28,17 @@ export function DateRangePicker({ from, to, onChange, label = 'Tarih aralığı'
     if (bounds) {
       const viewportWidth = window.innerWidth || 1024
       const viewportHeight = window.innerHeight || 768
-      const width = Math.min(760, viewportWidth - 32)
+      const width = Math.min(640, viewportWidth - 32)
       const left = Math.max(16, Math.min(bounds.left, viewportWidth - width - 16))
-      const top = Math.max(16, Math.min(bounds.bottom + 7, viewportHeight - 430))
-      setPopoverPosition({ left, top, maxHeight: Math.max(260, viewportHeight - top - 16) })
+      const desiredHeight = Math.min(430, viewportHeight - 32)
+      const spaceBelow = viewportHeight - bounds.bottom - 16
+      const spaceAbove = bounds.top - 16
+      const openAbove = spaceBelow < desiredHeight && spaceAbove > spaceBelow
+      const top = openAbove
+        ? Math.max(16, bounds.top - desiredHeight - 7)
+        : Math.max(16, Math.min(bounds.bottom + 7, viewportHeight - desiredHeight - 16))
+      const availableHeight = openAbove ? spaceAbove - 7 : viewportHeight - top - 16
+      setPopoverPosition({ left, top, maxHeight: Math.max(220, Math.min(desiredHeight, availableHeight)) })
     }
     setOpen(true)
   }
