@@ -12383,6 +12383,22 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
   align-content: stretch;
 }
 
+/* With secondary text, keep the badge on the cell's vertical midline and hang the text below it. */
+.app-shell.stitch-shell main .invoice-reference-shipment:has(> small),
+.app-shell.stitch-shell main .invoice-reference-status:has(> small) {
+  grid-template-rows: 1fr 34px 1fr;
+  align-content: stretch;
+}
+.app-shell.stitch-shell main .invoice-reference-shipment:has(> small) > :is(.badge, .rv-badge),
+.app-shell.stitch-shell main .invoice-reference-status:has(> small) > :is(.badge, .rv-badge, .invoice-status, .invoice-status-label) {
+  grid-row: 2;
+}
+.app-shell.stitch-shell main .invoice-reference-shipment:has(> small) > small,
+.app-shell.stitch-shell main .invoice-reference-status:has(> small) > small {
+  grid-row: 3;
+  align-self: start;
+}
+
 .app-shell.stitch-shell main .invoice-reference-head .invoice-reference-platform-heading > strong {
   text-transform: none;
   letter-spacing: normal;
