@@ -15,7 +15,11 @@ COPY src/MarketplaceHub.Worker/packages.lock.json src/MarketplaceHub.Worker/
 COPY tests/MarketplaceHub.Application.Tests/MarketplaceHub.Application.Tests.csproj tests/MarketplaceHub.Application.Tests/
 COPY tests/MarketplaceHub.Application.Tests/packages.lock.json tests/MarketplaceHub.Application.Tests/
 RUN dotnet restore MarketplaceHub.sln --locked-mode
-COPY src/ src/
+COPY src/MarketplaceHub.Api/ src/MarketplaceHub.Api/
+COPY src/MarketplaceHub.Application/ src/MarketplaceHub.Application/
+COPY src/MarketplaceHub.Domain/ src/MarketplaceHub.Domain/
+COPY src/MarketplaceHub.Infrastructure/ src/MarketplaceHub.Infrastructure/
+COPY src/MarketplaceHub.Worker/ src/MarketplaceHub.Worker/
 RUN dotnet publish src/MarketplaceHub.Api/MarketplaceHub.Api.csproj -c Release --no-restore -o /out/api \
  && dotnet publish src/MarketplaceHub.Worker/MarketplaceHub.Worker.csproj -c Release --no-restore -o /out/worker
 

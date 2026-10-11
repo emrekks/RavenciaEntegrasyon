@@ -50,3 +50,16 @@ Eski anahtarı `~/.ssh/authorized_keys` içinden silin ve `DEPLOY_SSH_KEY` secre
 - Security group 22. portu GitHub runner'larına açık olmalıdır (IP aralığı değişkendir).
 - `fast-deploy.sh` doğrulama veritabanının anonim volume'ünü artık `--volumes` ile siler;
   eskiden her deploy ~570 MB sızdırıyordu.
+
+## Hız
+
+- `Validate` paralel çalışır: `plan`, `ops`, `backend-format`, `backend`, `frontend`, sonda `gate`.
+- Backend ve frontend işleri, **aynı içerik** (git tree hash) daha önce geçtiyse atlanır; geçen içerik
+  için Actions cache'ine `validated-backend-*` / `validated-frontend-*` işareti yazılır. Yalnızca
+  `src/MarketplaceHub.Web` değişirse backend atlanır; hatalı bir backend commit'i asla atlanamaz.
+- CI'dan gelen deploy'da (`DEPLOY_REVISION`) sunucudaki test tekrarı atlanır; elle çalıştırılan
+  `fast-deploy.sh` testleri yine koşar.
+- Dockerfile yalnızca backend klasörlerini kopyalar, bu yüzden frontend değişikliği .NET katmanlarını
+  yeniden derletmez. Build cache 7 gün korunur (disk 15 GB altına düşerse tamamı silinir).
+- Frontend CSS bundle bütçesi (`check-bundle-budget.mjs`, 655 KiB) sınırda; aşılırsa Validate kırmızı olur
+  ve Deploy çalışmaz.

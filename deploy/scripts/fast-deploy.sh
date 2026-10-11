@@ -61,22 +61,33 @@ validation_compose=(sudo -n env "MARKETPLACEHUB_APP_IMAGE=$app_image" "MARKETPLA
 sudo -n docker build --pull=false -t "$app_image" -f Dockerfile .
 sudo -n docker build --pull=false -t "$edge_image" -f deploy/caddy/Dockerfile.production .
 
-validation_cleanup_needed=true
-cleanup_validation() {
-  if [[ "$validation_cleanup_needed" == true ]]; then
-    "${validation_compose[@]}" rm --stop --force --volumes validation-postgres >/dev/null 2>&1 || true
-  fi
-}
-trap cleanup_validation EXIT
-"${validation_compose[@]}" run --build --rm validation-tests
-"${validation_compose[@]}" rm --stop --force --volumes validation-postgres >/dev/null
-validation_cleanup_needed=false
-trap - EXIT
+if [[ -n "${DEPLOY_REVISION:-}" ]]; then
+  # The Validate workflow already ran the same tests against this exact commit
+  # on PostgreSQL 18.4, so only manual runs repeat them in the isolated stack.
+  echo "Skipping isolated test run: Validate already passed for $DEPLOY_REVISION."
+else
+  validation_cleanup_needed=true
+  cleanup_validation() {
+    if [[ "$validation_cleanup_needed" == true ]]; then
+      "${validation_compose[@]}" rm --stop --force --volumes validation-postgres >/dev/null 2>&1 || true
+    fi
+  }
+  trap cleanup_validation EXIT
+  "${validation_compose[@]}" run --build --rm validation-tests
+  "${validation_compose[@]}" rm --stop --force --volumes validation-postgres >/dev/null
+  validation_cleanup_needed=false
+  trap - EXIT
+fi
 
-# The application, edge, and validation images are built and retained now.
-# Drop only transient builder cache before creating the full database backup so
-# an otherwise successful build cannot leave too little space for the backup.
-sudo -n docker builder prune --all --force
+# Keep recent layer cache so the next deploy only rebuilds what changed. Fall
+# back to dropping all builder cache only when the disk is getting tight, so an
+# otherwise successful build cannot leave too little space for the backup.
+free_kib="$(df --output=avail -k / | tail -n 1 | tr -d ' ')"
+if (( free_kib < 15000000 )); then
+  sudo -n docker builder prune --all --force
+else
+  sudo -n docker builder prune --all --force --filter until=168h
+fi
 
 run_verified_backup() {
   local backup_output backup_set
