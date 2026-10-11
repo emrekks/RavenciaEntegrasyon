@@ -64,6 +64,12 @@ beforeEach(async () => {
 afterEach(() => { act(() => root?.unmount()); client?.clear(); container.remove() })
 
 describe('InvoicesPage Shopify bulk invoice status', () => {
+  it('shows only the invoice package result count in the table summary', () => {
+    const summary = container.querySelector('.invoice-reference-workspace > header p')
+    expect(summary?.textContent).toBe('Filtreleme sonuçları: 3 paket')
+    expect(summary?.textContent).not.toContain('Fatura işlemleri kayıt bazında yürütülür')
+  })
+
   it('shows recognizable labels for structured address fields in invoice details', async () => {
     const row = Array.from(container.querySelectorAll<HTMLElement>('.invoice-reference-row'))
       .find(item => item.textContent?.includes('SH-1001'))!
