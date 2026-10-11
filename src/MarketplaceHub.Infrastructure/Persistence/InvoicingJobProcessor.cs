@@ -1,5 +1,5 @@
-using System.Security.Cryptography;
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
@@ -529,11 +529,18 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         {
             state = new ManualOrderInvoiceDeliveryState
             {
-                Id = Guid.CreateVersion7(), TenantId = tenantId, DocumentId = document.Id,
-                ConnectionId = package.ConnectionId, PackageId = package.Id,
+                Id = Guid.CreateVersion7(),
+                TenantId = tenantId,
+                DocumentId = document.Id,
+                ConnectionId = package.ConnectionId,
+                PackageId = package.Id,
                 IdempotencyKey = $"manual-invoice-delivery:{document.Id:N}:{package.Id:N}",
-                RequestHash = documentHash, Status = "STARTED", AttemptCount = 1,
-                CreatedAt = timeProvider.GetUtcNow(), UpdatedAt = timeProvider.GetUtcNow(), Version = 1
+                RequestHash = documentHash,
+                Status = "STARTED",
+                AttemptCount = 1,
+                CreatedAt = timeProvider.GetUtcNow(),
+                UpdatedAt = timeProvider.GetUtcNow(),
+                Version = 1
             };
             db.ManualOrderInvoiceDeliveryStates.Add(state);
         }
@@ -696,9 +703,13 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 if (document is null) return false;
                 deliveryLinkDocument = new InvoiceDocument
                 {
-                    Id = Guid.CreateVersion7(), TenantId = tenantId, InvoiceId = invoice.Id,
-                    DocumentType = "MARKETPLACE_DELIVERY", FileAssetId = document.FileAssetId,
-                    Sha256 = document.Sha256, CreatedAt = timeProvider.GetUtcNow()
+                    Id = Guid.CreateVersion7(),
+                    TenantId = tenantId,
+                    InvoiceId = invoice.Id,
+                    DocumentType = "MARKETPLACE_DELIVERY",
+                    FileAssetId = document.FileAssetId,
+                    Sha256 = document.Sha256,
+                    CreatedAt = timeProvider.GetUtcNow()
                 };
                 deliveryLinkDocument.PermanentUrl = InvoiceDocumentLink.Create(dataProtection, configuration["Marketplace:PublicBaseUrl"] ?? "", tenantId, invoice.Id, deliveryLinkDocument.Id);
                 db.InvoiceDocuments.Add(deliveryLinkDocument);
@@ -935,12 +946,20 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             {
                 state ??= new MarketplaceDeliveryState
                 {
-                    Id = Guid.CreateVersion7(), TenantId = tenantId, InvoiceId = invoice.Id,
-                    ConnectionId = package.ConnectionId, PackageId = package.Id,
-                    AttemptNumber = 0, ExternalIdempotencyKey = $"delivery:{invoice.Id:N}:{package.Id:N}",
+                    Id = Guid.CreateVersion7(),
+                    TenantId = tenantId,
+                    InvoiceId = invoice.Id,
+                    ConnectionId = package.ConnectionId,
+                    PackageId = package.Id,
+                    AttemptNumber = 0,
+                    ExternalIdempotencyKey = $"delivery:{invoice.Id:N}:{package.Id:N}",
                     RequestHash = Hash($"remote-proof:{invoice.Id:N}:{package.Id:N}:{invoice.InvoiceNumber}:{permanentUrl}"),
-                    DeliveryType = "LINK", Status = "UNKNOWN", ExternalReference = package.ExternalPackageId,
-                    CreatedAt = observedAt, UpdatedAt = observedAt, Version = 1
+                    DeliveryType = "LINK",
+                    Status = "UNKNOWN",
+                    ExternalReference = package.ExternalPackageId,
+                    CreatedAt = observedAt,
+                    UpdatedAt = observedAt,
+                    Version = 1
                 };
                 if (db.Entry(state).State == EntityState.Detached) db.MarketplaceDeliveryStates.Add(state);
                 AppendDeliveryHistory(state, "CONFIRMED", latestMarketplaceInvoice.ExternalReference, null, observedAt);

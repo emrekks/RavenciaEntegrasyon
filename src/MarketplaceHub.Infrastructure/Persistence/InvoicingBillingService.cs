@@ -1,5 +1,5 @@
-using System.Globalization;
 using System.Data;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -1168,10 +1168,20 @@ public sealed partial class InvoicingBillingService(
             return Invalid<InvoiceDetailView>("orderId", calculationError ?? "Fatura kalemleri paket tutarıyla uyuşmuyor.");
         var lines = amounts!.Lines.Select((line, index) => new InvoiceLine
         {
-            Id = Guid.CreateVersion7(), TenantId = tenantId, InvoiceId = invoice.Id, OrderLineId = line.OrderLineId,
-            LineSequence = index + 1, DescriptionSnapshot = line.Description, SkuSnapshot = line.Sku, UnitSnapshot = "ADET",
-            Quantity = line.Quantity, UnitPrice = line.UnitPrice, DiscountAmount = line.DiscountAmount, VatRate = line.VatRate,
-            VatAmount = line.VatAmount, LineTotal = line.PayableAmount
+            Id = Guid.CreateVersion7(),
+            TenantId = tenantId,
+            InvoiceId = invoice.Id,
+            OrderLineId = line.OrderLineId,
+            LineSequence = index + 1,
+            DescriptionSnapshot = line.Description,
+            SkuSnapshot = line.Sku,
+            UnitSnapshot = "ADET",
+            Quantity = line.Quantity,
+            UnitPrice = line.UnitPrice,
+            DiscountAmount = line.DiscountAmount,
+            VatRate = line.VatRate,
+            VatAmount = line.VatAmount,
+            LineTotal = line.PayableAmount
         }).ToList();
         invoice.TaxExclusiveTotal = amounts.TaxExclusiveTotal;
         invoice.DiscountTotal = amounts.DiscountTotal;

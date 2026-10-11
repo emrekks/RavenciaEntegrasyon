@@ -318,9 +318,16 @@ public sealed partial class InvoicingBillingService
 
         var digestSource = JsonSerializer.Serialize(new
         {
-            target.OrderId, target.PackageId, target.ProviderConnectionId,
-            order.OrderNumber, order.OrderedAt, order.Currency, OrderNetAmount = order.NetAmount,
-            order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson,
+            target.OrderId,
+            target.PackageId,
+            target.ProviderConnectionId,
+            order.OrderNumber,
+            order.OrderedAt,
+            order.Currency,
+            OrderNetAmount = order.NetAmount,
+            order.CustomerSnapshotJson,
+            order.InvoiceAddressSnapshotJson,
+            order.ShipmentAddressSnapshotJson,
             Packages = activePackages.Select(item => new { item.Id, item.ExternalPackageId, item.NetAmount, item.GrossAmount, item.DiscountAmount, item.Status, item.StatusOccurredAt, item.CargoProviderExternalId, item.MarketplaceInvoiceStatus, item.MarketplaceInvoiceNumber, item.MarketplaceInvoiceUrl, item.MarketplaceInvoiceSourceUpdatedAt, item.MarketplaceInvoiceObservedAt }),
             Marketplace = new { marketplace.PlatformCode, marketplace.Environment, marketplace.SettingsJson },
             Provider = new { provider.PlatformCode, provider.Environment },
