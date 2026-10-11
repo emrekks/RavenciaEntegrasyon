@@ -1128,15 +1128,22 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     {
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
-        if (connection is null || connection.PlatformCode is not ("TRENDYOL" or "HEPSIBURADA") || !IntegrationRuntimePolicy.IsManualProductWriteReady(connection)) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Yayın için ACTIVE veya doğrulanmış STAGE marketplace bağlantısı gerekir.", 422);
+        if (connection is null || connection.PlatformCode is not ("TRENDYOL" or "HEPSIBURADA" or "SHOPIFY") || !IntegrationRuntimePolicy.IsManualProductWriteReady(connection)) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Yayın için ACTIVE veya doğrulanmış STAGE marketplace bağlantısı gerekir.", 422);
         if (!IntegrationRuntimePolicy.IsSupportedEnvironment(connection)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Yayın yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
         if (IntegrationRuntimePolicy.IsProduction(connection) && !WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
+        if (connection.PlatformCode == "SHOPIFY")
+        {
+            if (!WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Shopify ürün yayınlamak için global ve bağlantı dış yazma anahtarları açık olmalıdır.", 422);
+            if (!await HasShopifyPublicationEvidenceAsync(connection, cancellationToken)) return ServiceResult<Guid>.Fail("SHOPIFY_PUBLICATION_SCOPES_REQUIRED", "Shopify ürün yayını için PRODUCT_WRITE, INVENTORY_WRITE, PUBLICATION_READ ve PUBLICATION_WRITE izinleri aynı bağlantı/ortamda doğrulanmalıdır.", 422);
+        }
         if (connection.PlatformCode == "HEPSIBURADA")
         {
             if (!string.Equals(configuration["Hepsiburada:AuthenticationMode"], "BASIC", StringComparison.OrdinalIgnoreCase)) return ServiceResult<Guid>.Fail("HEPSIBURADA_AUTHENTICATION_UNVERIFIED", "Hepsiburada auth biçimi SIT hesabında doğrulanana kadar ürün yayını kuyruğa alınamaz.", 422);
             if (!await HasHepsiburadaPublicationEvidenceAsync(connection, cancellationToken)) return ServiceResult<Guid>.Fail("HEPSIBURADA_WRITE_CAPABILITY_EVIDENCE_REQUIRED", "Ürün aktarımı fiyat ve stok da içerdiğinden PRODUCT_WRITE, PRICE_WRITE ve INVENTORY_WRITE için aynı bağlantı/ortam SIT kanıtı gerekir.", 422);
         }
-        var draftResult = await new ProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken);
+        var draftResult = connection.PlatformCode == "SHOPIFY"
+            ? await new ShopifyProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken)
+            : await new ProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken);
         if (!draftResult.Succeeded) return ServiceResult<Guid>.Fail(draftResult.Error!.Code, draftResult.Error.Message, draftResult.Error.Status, draftResult.Error.FieldErrors);
         var draft = draftResult.Value!;
         var dedup = $"product-create:{connectionId:N}:{productId:N}:{draft.PayloadHash}";
@@ -1419,6 +1426,21 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     private async Task<bool> HasHepsiburadaPublicationEvidenceAsync(PlatformConnection connection, CancellationToken cancellationToken)
     {
         var required = new[] { MarketplaceCapabilities.ProductWrite, MarketplaceCapabilities.PriceWrite, MarketplaceCapabilities.InventoryWrite };
+        var capabilities = await db.PlatformCapabilities.AsNoTracking()
+            .Where(x => x.TenantId == connection.TenantId && x.ConnectionId == connection.Id && required.Contains(x.Code))
+            .ToListAsync(cancellationToken);
+        return required.All(code => CapabilityEvidencePolicy.IsVerifiedWriteCapability(capabilities.SingleOrDefault(x => x.Code == code), connection, code));
+    }
+
+    private async Task<bool> HasShopifyPublicationEvidenceAsync(PlatformConnection connection, CancellationToken cancellationToken)
+    {
+        var required = new[]
+        {
+            MarketplaceCapabilities.ProductWrite,
+            MarketplaceCapabilities.InventoryWrite,
+            MarketplaceCapabilities.PublicationRead,
+            MarketplaceCapabilities.PublicationWrite
+        };
         var capabilities = await db.PlatformCapabilities.AsNoTracking()
             .Where(x => x.TenantId == connection.TenantId && x.ConnectionId == connection.Id && required.Contains(x.Code))
             .ToListAsync(cancellationToken);

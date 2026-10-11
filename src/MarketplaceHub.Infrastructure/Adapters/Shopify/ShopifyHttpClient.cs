@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -118,7 +119,10 @@ public sealed class ShopifyHttpClient(
         evidence.Add(Probe(MarketplaceCapabilities.OrderRead, identity, "https://shopify.dev/docs/api/admin-graphql/latest/objects/Order", orders, "GraphQL sipariş, müşteri ve teslimat durumu okuması", now, "read_orders,read_customers"));
         evidence.Add(Probe(MarketplaceCapabilities.ReferenceRead, identity, "https://shopify.dev/docs/api/admin-graphql/latest/queries/taxonomy", categories, "GraphQL ürün taksonomisi kategori okuması", now, "read_products"));
         evidence.Add(ScopeEvidence(MarketplaceCapabilities.PriceWrite, identity, "https://shopify.dev/docs/api/admin-graphql/2026-07/mutations/productVariantsBulkUpdate", scopesResult, scopes, ["write_products"], now));
+        evidence.Add(ScopeEvidence(MarketplaceCapabilities.ProductWrite, identity, "https://shopify.dev/docs/api/admin-graphql/2026-07/mutations/productSet", scopesResult, scopes, ["write_products"], now));
         evidence.Add(ScopeEvidence(MarketplaceCapabilities.InventoryWrite, identity, "https://shopify.dev/docs/api/admin-graphql/2026-07/mutations/inventorySetQuantities", scopesResult, scopes, ["write_inventory"], now));
+        evidence.Add(ScopeEvidence(MarketplaceCapabilities.PublicationRead, identity, "https://shopify.dev/docs/api/admin-graphql/2026-07/queries/publications", scopesResult, scopes, ["read_publications"], now));
+        evidence.Add(ScopeEvidence(MarketplaceCapabilities.PublicationWrite, identity, "https://shopify.dev/docs/api/admin-graphql/2026-07/mutations/publishablePublish", scopesResult, scopes, ["write_publications"], now));
         evidence.Add(ScopeEvidence(MarketplaceCapabilities.ShipmentWrite, identity, "https://shopify.dev/docs/api/admin-graphql/2026-07/objects/Fulfillment", scopesResult, scopes, ["write_assigned_fulfillment_orders", "write_merchant_managed_fulfillment_orders", "write_third_party_fulfillment_orders"], now));
         evidence.Add(ScopeEvidence(MarketplaceCapabilities.ReturnRead, identity, "https://shopify.dev/docs/api/admin-graphql/2026-07/objects/Return", scopesResult, scopes, ["read_returns", "read_marketplace_returns"], now));
         evidence.Add(ScopeEvidence(MarketplaceCapabilities.ReturnWrite, identity, "https://shopify.dev/docs/api/admin-graphql/2026-07/mutations/returnApproveRequest", scopesResult, scopes, ["write_returns", "write_marketplace_returns"], now));
@@ -259,7 +263,172 @@ public sealed class ShopifyHttpClient(
         return AdapterResult<RemoteProduct?>.Success(match, result.RateLimit);
     }
 
-    public Task<AdapterResult<RemoteOperationRef>> CreateAsync(AdapterContext context, ProductPublication publication, CancellationToken cancellationToken) => Unsupported<RemoteOperationRef>("Shopify ürün yazma ilk sürümde kapalıdır.");
+    public async Task<AdapterResult<RemoteOperationRef>> CreateAsync(AdapterContext context, ProductPublication publication, CancellationToken cancellationToken)
+    {
+        var shop = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
+        if (shop is null) return Fail<RemoteOperationRef>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized);
+        if (!await CanWriteAsync(shop, context, MarketplaceCapabilities.ProductWrite, MarketplaceCapabilities.InventoryWrite, cancellationToken)
+            || !await CanWriteAsync(shop, context, MarketplaceCapabilities.PublicationRead, cancellationToken)
+            || !await CanWriteAsync(shop, context, MarketplaceCapabilities.PublicationWrite, cancellationToken)) return WriteClosed<RemoteOperationRef>();
+
+        JsonObject input;
+        try
+        {
+            input = JsonNode.Parse(publication.PayloadJson) as JsonObject
+                ?? throw new JsonException("ProductSet payload must be an object.");
+        }
+        catch (JsonException)
+        {
+            return Fail<RemoteOperationRef>(AdapterErrorClass.Validation, "SHOPIFY_PRODUCT_PAYLOAD_INVALID", "Shopify ürün yayını geçerli JSON içermiyor.", HttpStatusCode.BadRequest);
+        }
+
+        var handle = input["handle"]?.GetValue<string>()?.Trim();
+        var variants = input["variants"] as JsonArray;
+        if (string.IsNullOrWhiteSpace(handle) || variants is null || variants.Count == 0 || variants.Count > 250)
+            return Fail<RemoteOperationRef>(AdapterErrorClass.Validation, "SHOPIFY_PRODUCT_PAYLOAD_INVALID", "Shopify ürün yayını benzersiz handle ve 1-250 varyant içermelidir.", HttpStatusCode.BadRequest);
+        var requestedSkus = variants.Select(variant => variant?["sku"]?.GetValue<string>()?.Trim()).ToArray();
+        if (requestedSkus.Any(string.IsNullOrWhiteSpace) || requestedSkus.Distinct(StringComparer.OrdinalIgnoreCase).Count() != requestedSkus.Length)
+            return Fail<RemoteOperationRef>(AdapterErrorClass.Validation, "SHOPIFY_PRODUCT_SKUS_INVALID", "Shopify ürün yayınındaki varyant SKU değerleri boş veya yinelenen olamaz.", HttpStatusCode.BadRequest);
+
+        var existingProductResult = await QueryAsync(shop,
+            "query($handle:String!){productByHandle(handle:$handle){id metafield(namespace:\"marketplacehub\",key:\"ravencia_product_id\"){value}}}",
+            new { handle }, cancellationToken);
+        if (!existingProductResult.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(existingProductResult.Error!, existingProductResult.RateLimit);
+        try
+        {
+            var existingProduct = existingProductResult.Value!.RootElement.GetProperty("productByHandle");
+            if (existingProduct.ValueKind == JsonValueKind.Object)
+            {
+                var ownerId = existingProduct.TryGetProperty("metafield", out var owner) && owner.ValueKind == JsonValueKind.Object
+                    ? TextValue(owner, "value")
+                    : null;
+                var requestedOwnerId = input["metafields"] is JsonArray metafields
+                    ? metafields.Select(item => item?["value"]?.GetValue<string>()).SingleOrDefault()
+                    : null;
+                if (string.IsNullOrWhiteSpace(ownerId) || !string.Equals(ownerId, requestedOwnerId, StringComparison.OrdinalIgnoreCase))
+                    return Fail<RemoteOperationRef>(AdapterErrorClass.BusinessConflict, "SHOPIFY_PRODUCT_HANDLE_CONFLICT", "Bu Shopify ürün adresi başka bir kayıt tarafından kullanılıyor; mevcut ürün değiştirilmedi.", HttpStatusCode.Conflict);
+            }
+        }
+        catch (Exception exception) when (exception is KeyNotFoundException or InvalidOperationException or JsonException)
+        {
+            return Fail<RemoteOperationRef>(AdapterErrorClass.ContractViolation, "SHOPIFY_PRODUCT_LOOKUP_CONTRACT_INVALID", "Shopify ürün adresi kontrolü beklenen alanları içermiyor; ürün oluşturulmadı.", HttpStatusCode.BadGateway);
+        }
+
+        var locationsResult = await QueryAsync(shop, "query { locations(first:250) { nodes { id isActive } pageInfo { hasNextPage } } }", cancellationToken: cancellationToken);
+        if (!locationsResult.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(locationsResult.Error!, locationsResult.RateLimit);
+        JsonElement activeLocation;
+        try
+        {
+            var locationList = locationsResult.Value!.RootElement.GetProperty("locations");
+            if (locationList.GetProperty("pageInfo").GetProperty("hasNextPage").GetBoolean())
+                return Fail<RemoteOperationRef>(AdapterErrorClass.Validation, "SHOPIFY_LOCATION_LIST_INCOMPLETE", "Shopify depo listesi tek bir etkin depo doğrulanamayacak kadar büyük.", HttpStatusCode.UnprocessableEntity);
+            var activeLocations = locationList.GetProperty("nodes").EnumerateArray()
+                .Where(location => location.GetProperty("isActive").GetBoolean())
+                .ToArray();
+            if (activeLocations.Length != 1)
+                return Fail<RemoteOperationRef>(AdapterErrorClass.Validation, "SHOPIFY_INVENTORY_LOCATION_AMBIGUOUS", "Ürün ve stok yayını için Shopify mağazasında tam bir etkin depo olmalıdır.", HttpStatusCode.UnprocessableEntity);
+            activeLocation = activeLocations[0].Clone();
+        }
+        catch (Exception exception) when (exception is KeyNotFoundException or InvalidOperationException or JsonException)
+        {
+            return Fail<RemoteOperationRef>(AdapterErrorClass.ContractViolation, "SHOPIFY_LOCATION_CONTRACT_INVALID", "Shopify etkin depo yanıtı beklenen alanları içermiyor.", HttpStatusCode.BadGateway);
+        }
+        var locationId = TextValue(activeLocation, "id");
+        if (string.IsNullOrWhiteSpace(locationId))
+            return Fail<RemoteOperationRef>(AdapterErrorClass.ContractViolation, "SHOPIFY_LOCATION_CONTRACT_INVALID", "Shopify etkin depo kimliği boş döndü.", HttpStatusCode.BadGateway);
+
+        var publicationsResult = await QueryAsync(shop, "query { publications(first:100) { nodes { id channels(first:20) { nodes { name handle } } } pageInfo { hasNextPage } } }", cancellationToken: cancellationToken);
+        if (!publicationsResult.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(publicationsResult.Error!, publicationsResult.RateLimit);
+        string publicationId;
+        try
+        {
+            var publications = publicationsResult.Value!.RootElement.GetProperty("publications");
+            if (publications.GetProperty("pageInfo").GetProperty("hasNextPage").GetBoolean())
+                return Fail<RemoteOperationRef>(AdapterErrorClass.Validation, "SHOPIFY_PUBLICATION_LIST_INCOMPLETE", "Shopify satış kanalı listesi tamamlanamadı; ürün oluşturulmadı.", HttpStatusCode.UnprocessableEntity);
+            var onlineStorePublications = publications.GetProperty("nodes").EnumerateArray()
+                .Where(publication => publication.GetProperty("channels").GetProperty("nodes").EnumerateArray()
+                    .Any(channel => string.Equals(TextValue(channel, "name"), "Online Store", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(TextValue(channel, "handle"), "online-store", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(TextValue(channel, "handle"), "online_store", StringComparison.OrdinalIgnoreCase)))
+                .Select(publication => TextValue(publication, "id"))
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            if (onlineStorePublications.Length != 1)
+                return Fail<RemoteOperationRef>(AdapterErrorClass.Validation, "SHOPIFY_ONLINE_STORE_PUBLICATION_REQUIRED", "Shopify mağazasında tek bir Online Store yayın kanalı bulunamadı; ürün oluşturulmadı.", HttpStatusCode.UnprocessableEntity);
+            publicationId = onlineStorePublications[0]!;
+        }
+        catch (Exception exception) when (exception is KeyNotFoundException or InvalidOperationException or JsonException)
+        {
+            return Fail<RemoteOperationRef>(AdapterErrorClass.ContractViolation, "SHOPIFY_PUBLICATION_CONTRACT_INVALID", "Shopify yayın kanalı yanıtı beklenen alanları içermiyor.", HttpStatusCode.BadGateway);
+        }
+
+        foreach (var variant in variants)
+        {
+            if (variant is not JsonObject variantObject || variantObject["inventoryQuantity"] is not JsonValue quantityValue
+                || !quantityValue.TryGetValue<int>(out var quantity) || quantity < 0)
+                return Fail<RemoteOperationRef>(AdapterErrorClass.Validation, "SHOPIFY_INVENTORY_QUANTITY_INVALID", "Shopify varyant stoku geçersiz veya negatif olamaz.", HttpStatusCode.BadRequest);
+            variantObject.Remove("inventoryQuantity");
+            variantObject["inventoryQuantities"] = new JsonArray(new JsonObject
+            {
+                ["locationId"] = locationId,
+                ["name"] = "available",
+                ["quantity"] = quantity
+            });
+        }
+
+        var productSet = await QueryAsync(shop,
+            "mutation($identifier:ProductSetIdentifiers!,$input:ProductSetInput!){productSet(identifier:$identifier,input:$input,synchronous:true){product{id status variants(first:250){nodes{id sku}}}userErrors{field message}}}",
+            new { identifier = new { handle }, input }, cancellationToken);
+        if (!productSet.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(productSet.Error!, productSet.RateLimit);
+        string productId;
+        IReadOnlyList<RemoteOperationLine> lines;
+        try
+        {
+            var productSetPayload = productSet.Value!.RootElement.GetProperty("productSet");
+            if (HasUserErrors(productSetPayload, out var productError))
+                return Fail<RemoteOperationRef>(AdapterErrorClass.Validation, "SHOPIFY_PRODUCT_CREATE_REJECTED", productError ?? "Shopify ürünü oluşturmayı reddetti.", HttpStatusCode.UnprocessableEntity);
+            var product = productSetPayload.GetProperty("product");
+            productId = TextValue(product, "id") ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(productId) || !string.Equals(TextValue(product, "status"), "ACTIVE", StringComparison.OrdinalIgnoreCase))
+                return Fail<RemoteOperationRef>(AdapterErrorClass.ContractViolation, "SHOPIFY_PRODUCT_CREATE_CONTRACT_INVALID", "Shopify ürün yanıtında etkin ürün kimliği bulunamadı.", HttpStatusCode.BadGateway);
+            var remoteVariants = product.GetProperty("variants").GetProperty("nodes").EnumerateArray()
+                .Select(variant => new { Id = TextValue(variant, "id"), Sku = TextValue(variant, "sku")?.Trim() })
+                .ToArray();
+            if (remoteVariants.Length != requestedSkus.Length
+                || remoteVariants.Any(variant => string.IsNullOrWhiteSpace(variant.Id) || string.IsNullOrWhiteSpace(variant.Sku))
+                || remoteVariants.Select(variant => variant.Sku).Distinct(StringComparer.OrdinalIgnoreCase).Count() != requestedSkus.Length
+                || requestedSkus.Any(sku => !remoteVariants.Any(variant => string.Equals(variant.Sku, sku, StringComparison.OrdinalIgnoreCase))))
+                return Fail<RemoteOperationRef>(AdapterErrorClass.ContractViolation, "SHOPIFY_PRODUCT_VARIANT_CONTRACT_INVALID", "Shopify yanıtındaki varyant SKU listesi gönderilen ürünle eşleşmiyor.", HttpStatusCode.BadGateway);
+            lines = remoteVariants.Select(variant => new RemoteOperationLine(variant.Sku!, true, variant.Id, null, false, "COMPLETED")).ToArray();
+        }
+        catch (Exception exception) when (exception is KeyNotFoundException or InvalidOperationException or JsonException)
+        {
+            return Fail<RemoteOperationRef>(AdapterErrorClass.ContractViolation, "SHOPIFY_PRODUCT_CREATE_CONTRACT_INVALID", "Shopify ürün oluşturma yanıtı beklenen alanları içermiyor.", HttpStatusCode.BadGateway);
+        }
+
+        var publish = await QueryAsync(shop,
+            "mutation($id:ID!,$input:[PublicationInput!]!){publishablePublish(id:$id,input:$input){publishable{id}userErrors{field message}}}",
+            new { id = productId, input = new[] { new { publicationId } } }, cancellationToken);
+        if (!publish.IsSuccess)
+            return Fail<RemoteOperationRef>(AdapterErrorClass.ContractViolation, "SHOPIFY_PRODUCT_CREATED_BUT_PUBLISH_FAILED", "Shopify ürünü oluşturdu ancak Online Store yayını doğrulanamadı. Ürünü Shopify yönetim panelinde kontrol edin.", HttpStatusCode.BadGateway);
+        try
+        {
+            var publishPayload = publish.Value!.RootElement.GetProperty("publishablePublish");
+            if (HasUserErrors(publishPayload, out _))
+                return Fail<RemoteOperationRef>(AdapterErrorClass.ContractViolation, "SHOPIFY_PRODUCT_CREATED_BUT_PUBLISH_FAILED", "Shopify ürünü oluşturdu ancak Online Store kanalına yayınlayamadı. Ürünü Shopify yönetim panelinde kontrol edin.", HttpStatusCode.BadGateway);
+            var publishedResourceId = TextValue(publishPayload.GetProperty("publishable"), "id");
+            if (!string.Equals(publishedResourceId, productId, StringComparison.Ordinal))
+                return Fail<RemoteOperationRef>(AdapterErrorClass.ContractViolation, "SHOPIFY_PRODUCT_PUBLISH_CONTRACT_INVALID", "Shopify ürün oluşturuldu ancak Online Store yayın sonucu ürün kimliğiyle eşleşmedi.", HttpStatusCode.BadGateway);
+        }
+        catch (Exception exception) when (exception is KeyNotFoundException or InvalidOperationException or JsonException)
+        {
+            return Fail<RemoteOperationRef>(AdapterErrorClass.ContractViolation, "SHOPIFY_PRODUCT_CREATED_PUBLISH_CONTRACT_INVALID", "Shopify ürünü oluşturdu ancak Online Store yayın yanıtı doğrulanamadı. Ürünü Shopify yönetim panelinde kontrol edin.", HttpStatusCode.BadGateway);
+        }
+
+        var operationId = EncodeCompletedOperation(lines);
+        return AdapterResult<RemoteOperationRef>.Success(new(operationId, "SHOPIFY_PRODUCT_CREATE", timeProvider.GetUtcNow()), publish.RateLimit ?? productSet.RateLimit ?? publicationsResult.RateLimit ?? locationsResult.RateLimit);
+    }
     public Task<AdapterResult<RemoteOperationRef>> UpdateUnapprovedAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => Unsupported<RemoteOperationRef>("Shopify ürün yazma ilk sürümde kapalıdır.");
     public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedContentAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => Unsupported<RemoteOperationRef>("Shopify ürün yazma ilk sürümde kapalıdır.");
     public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedVariantsAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => Unsupported<RemoteOperationRef>("Shopify ürün yazma ilk sürümde kapalıdır.");

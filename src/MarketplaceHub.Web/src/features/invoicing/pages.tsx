@@ -9,7 +9,7 @@ import { appendNotification } from '../../shared/notifications'
 import { resolveInvoiceTab } from '../../shared/dashboard-operational-links'
 import { PlatformMark } from '../../shared/platform-mark'
 import { PlatformMultiSelect } from '../../shared/platform-multi-select'
-import { invoiceProviderForEnvironment, isInvoiceCreationAvailable } from './invoice-creation-availability'
+import { invoiceProviderForEnvironment, isInvoiceCreationActionVisible, isInvoiceCreationAvailable } from './invoice-creation-availability'
 import { InvoiceWorkspacePreviewModal, type InvoicePreviewTarget } from './InvoiceWorkspacePreviewModal'
 import { invoiceReferenceMarketplaceHref, platformInvoiceLinkUnavailable, safeInvoiceReferenceUrl } from './invoice-reference-document-link'
 import { marketplacePlatformOptions } from '../marketplace/marketplace-platform-support'
@@ -26,6 +26,21 @@ const invoiceCreationDisabledHelp = 'Fatura oluşturmak için Entegrasyonlar > b
 
 function idempotency() { return crypto.randomUUID() }
 function displayInvoiceOrderNumber(value: string) { return `#${value.trim().replace(/^#+/, '') || '—'}` }
+
+function InvoiceOrderNumber({ item }: { item: InvoiceWorkspace }) {
+  const [copied, setCopied] = useState(false)
+  async function copyOrderNumber() {
+    try {
+      await navigator.clipboard.writeText(item.orderNumber)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1400)
+    } catch {
+      setCopied(false)
+    }
+  }
+  const tooltipId = `invoice-order-copy-tooltip-${item.packageId}`
+  return <span className="order-number invoice-order-number"><strong>{displayInvoiceOrderNumber(item.orderNumber)}</strong><button type="button" className="order-number-copy" onClick={copyOrderNumber} aria-label={copied ? `Sipariş numarası ${item.orderNumber} kopyalandı` : `Sipariş numarası ${item.orderNumber} kopyala`} aria-describedby={tooltipId}><UiIcon name="copy" /><span id={tooltipId} className={`order-copy-tooltip${copied ? ' is-copied' : ''}`} role="status" aria-live="polite" aria-hidden={!copied}>{copied ? 'Kopyalandı' : 'Kopyala'}</span></button></span>
+}
 function invoiceCustomerDisplayName(item: Pick<InvoiceWorkspace, 'customerName' | 'cargoTrackingNumber'>) {
   const name = item.customerName.trim()
   const trackingNumber = item.cargoTrackingNumber?.trim()
@@ -328,7 +343,7 @@ export function InvoicesPage() {
           <div className={`order-column-filter${invoiceActionFilter !== 'ALL' ? ' has-filter' : ''}`}><span className="order-column-filter-label">İşlemler</span><button type="button" className="order-column-filter-trigger" aria-label="Fatura oluşturma filtresini aç" aria-expanded={columnFilterOpen === 'action'} aria-controls={columnFilterOpen === 'action' ? 'invoices-action-filter' : undefined} onClick={() => setColumnFilterOpen(current => current === 'action' ? null : 'action')}><svg className="order-filter-funnel" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7.2V18l-4 1v-6.8L4 5z" /></svg></button>{columnFilterOpen === 'action' && <div id="invoices-action-filter" className="order-column-filter-popover invoice-filter-popover" role="dialog" aria-label="Fatura oluşturma uygunluğu filtreleri"><label>Oluşturma durumu<select aria-label="Fatura oluşturma durumuna göre filtrele" value={invoiceActionFilter} onChange={event => setInvoiceActionFilter(event.target.value as typeof invoiceActionFilter)}><option value="ALL">Tüm işlem durumları</option><option value="CREATABLE">Fatura oluşturulabilir</option><option value="NOT_CREATABLE">Fatura oluşturulamaz</option></select></label>{invoiceActionFilter !== 'ALL' && <button type="button" className="order-column-filter-reset" onClick={() => { setInvoiceActionFilter('ALL'); setColumnFilterOpen(null) }}>Filtreyi temizle</button>}</div>}</div>
         </div>
         {pageItems.map(item => <article className={`invoice-reference-row ${item.isDueSoon ? 'due-soon' : ''}`} key={item.packageId} role="row">
-          <div className="invoice-reference-order"><input className="invoice-reference-select" type="checkbox" aria-label={`${item.platformDisplayName} ${displayInvoiceOrderNumber(item.orderNumber)} siparişini seç`} checked={selectedPackages.has(item.packageId)} onChange={() => setSelectedPackages(current => { const next = new Set(current); if (next.has(item.packageId)) next.delete(item.packageId); else next.add(item.packageId); return next })} /><div className="order-reference-platform"><PlatformMark code={item.platformCode} name={item.platformDisplayName} /></div><div><strong>{displayInvoiceOrderNumber(item.orderNumber)}</strong><small>{new Date(item.orderedAt).toLocaleString('tr-TR')}</small>{item.invoiceNumber?.trim() && <small>{item.invoiceNumber}</small>}</div></div>
+          <div className="invoice-reference-order"><input className="invoice-reference-select" type="checkbox" aria-label={`${item.platformDisplayName} ${displayInvoiceOrderNumber(item.orderNumber)} siparişini seç`} checked={selectedPackages.has(item.packageId)} onChange={() => setSelectedPackages(current => { const next = new Set(current); if (next.has(item.packageId)) next.delete(item.packageId); else next.add(item.packageId); return next })} /><div className="order-reference-platform"><PlatformMark code={item.platformCode} name={item.platformDisplayName} /></div><div><InvoiceOrderNumber item={item} /><small>{new Date(item.orderedAt).toLocaleString('tr-TR')}</small>{item.invoiceNumber?.trim() && <small>{item.invoiceNumber}</small>}</div></div>
           <div className="invoice-reference-buyer"><strong>{invoiceCustomerDisplayName(item)}</strong><InvoiceProductSummary item={item} /></div>
           <div className="invoice-reference-products"><div className="cargo-provider-display invoice-cargo-provider"><CargoProviderIcon value={item.cargoProviderName ?? 'Kargo bilgisi yok'} fallbackText /></div><small>{item.cargoTrackingNumber ?? 'Takip numarası yok'}</small></div>
           <div className="invoice-reference-shipment"><Badge value={item.shipmentStatus} />{invoiceWorkspaceStatus(item).value !== 'FATURA_KONTROLDE' && <small>{item.deliveredAt ? `Teslim: ${new Date(item.deliveredAt).toLocaleDateString('tr-TR')}` : 'Henüz teslim edilmedi'}</small>}</div>
@@ -343,7 +358,7 @@ export function InvoicesPage() {
               <div className="invoice-shopify-split">
                 {item.invoiceId && !item.canCreateInvoice ? <InvoiceStatusBadge status={invoiceWorkspaceStatus(item).value} tone={invoiceWorkspaceStatus(item).tone} /> : isInvoiceCreationAvailable(item, Boolean(providerForItem(item)?.hasCredential)) && <span className="shopify-invoice-create-wrap"><button type="button" className="shopify-invoice-create-trigger" onClick={() => openInvoicePreview([item])}><span className="invoice-action-label">Fatura önizlemesi</span></button></span>}
               </div>
-            </> : item.invoiceId ? isInvoiceFailureStatus(item.invoiceStatus) ? isInvoiceCreationAvailable(item, Boolean(providerForItem(item)?.hasCredential)) ? <button type="button" onClick={() => openInvoicePreview([item])}><span className="invoice-action-label">{item.invoiceStatus === 'FATURA_PLATFORMA_AKTARILMADI' ? 'Platforma iletimi tekrar dene' : 'Tekrar dene'}</span></button> : <InvoiceStatusBadge status={item.invoiceStatus} /> : <InvoiceStatusBadge status={item.invoiceStatus} /> : isInvoiceCreationAvailable(item, Boolean(providerForItem(item)?.hasCredential)) && <button type="button" onClick={() => openInvoicePreview([item])}><span className="invoice-action-label">Fatura oluştur</span></button>}
+            </> : item.invoiceId ? isInvoiceFailureStatus(item.invoiceStatus) ? isInvoiceCreationActionVisible(item) ? <button type="button" onClick={() => openInvoicePreview([item])}><span className="invoice-action-label">{item.invoiceStatus === 'FATURA_PLATFORMA_AKTARILMADI' ? 'Platforma iletimi tekrar dene' : 'Tekrar dene'}</span></button> : <InvoiceStatusBadge status={item.invoiceStatus} /> : <InvoiceStatusBadge status={item.invoiceStatus} /> : isInvoiceCreationActionVisible(item) && <button type="button" onClick={() => openInvoicePreview([item])}><span className="invoice-action-label">Fatura oluştur</span></button>}
             {platformInvoiceLinkUnavailable(item) && <small className="invoice-marketplace-read-error">Platformda fatura var; güncel bağlantı alınamıyor. Açılan yerel PDF pazaryeri bağlantısı değildir.</small>}
             <div className="invoice-reference-action-footer"><button type="button" className="invoice-reference-details-trigger" onClick={() => setSelectedItem(item)}>Detayları aç <UiIcon name="externalLink" /></button></div>
           </div>

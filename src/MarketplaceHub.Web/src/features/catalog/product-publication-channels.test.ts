@@ -6,8 +6,9 @@ describe('product publication channel availability', () => {
     expect(productPublicationChannelMode(platform, 'ACTIVE')).toBe('PUBLISH')
   })
 
-  it('shows Shopify as read only while product write support is unavailable', () => {
+  it('keeps Shopify read only until its external-write gate is enabled', () => {
     expect(productPublicationChannelMode('SHOPIFY', 'ACTIVE')).toBe('READ_ONLY')
+    expect(productPublicationChannelMode('SHOPIFY', 'ACTIVE', true)).toBe('PUBLISH')
   })
 
   it('does not show inactive connections as publication channels', () => {

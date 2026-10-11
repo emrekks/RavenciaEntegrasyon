@@ -38,6 +38,14 @@ export function isInvoiceCreationAvailable(item: InvoiceCreationCandidate, provi
   return item.canCreateInvoice
 }
 
+/** Keeps the invoice action visible for eligible marketplace rows; submission still validates its fiscal provider. */
+export function isInvoiceCreationActionVisible(item: InvoiceCreationCandidate) {
+  if (item.invoiceId) return retryableInvoiceStatuses.has(item.invoiceStatus.trim().toUpperCase())
+  return item.platformCode.trim().toUpperCase() !== 'SHOPIFY'
+    && item.invoiceCreationEnabled
+    && item.canCreateInvoice
+}
+
 export function matchesInvoiceActionFilter(item: InvoiceCreationCandidate, filter: InvoiceActionFilter, providerHasCredential: boolean) {
   const available = isInvoiceCreationAvailable(item, providerHasCredential)
   return filter === 'ALL' || (filter === 'CREATABLE' ? available : !available)

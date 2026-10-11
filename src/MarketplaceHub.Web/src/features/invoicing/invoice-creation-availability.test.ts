@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { invoiceProviderForEnvironment, invoiceSubmissionAction, isInvoiceCreationAvailable, isValidatedInvoiceReadyToSubmit, matchesInvoiceActionFilter } from './invoice-creation-availability'
+import { invoiceProviderForEnvironment, invoiceSubmissionAction, isInvoiceCreationActionVisible, isInvoiceCreationAvailable, isValidatedInvoiceReadyToSubmit, matchesInvoiceActionFilter } from './invoice-creation-availability'
 
 describe('invoice creation availability', () => {
   it('selects only a credentialed provider from the marketplace environment', () => {
@@ -25,6 +25,8 @@ describe('invoice creation availability', () => {
     expect(isInvoiceCreationAvailable({ ...eligible, invoiceCreationEnabled: false }, true)).toBe(false)
     expect(matchesInvoiceActionFilter(eligible, 'NOT_CREATABLE', false)).toBe(true)
     expect(matchesInvoiceActionFilter(eligible, 'CREATABLE', false)).toBe(false)
+    expect(isInvoiceCreationActionVisible(eligible)).toBe(true)
+    expect(isInvoiceCreationActionVisible({ ...eligible, invoiceCreationEnabled: false })).toBe(false)
   })
 
   it('marks eligible Shopify and Trendyol rows available', () => {
@@ -37,6 +39,8 @@ describe('invoice creation availability', () => {
     const failed = { platformCode: 'TRENDYOL', invoiceId: 'invoice-1', invoiceStatus: 'MARKETPLACE_FAILED', canCreateInvoice: false, invoiceCreationEnabled: true }
     expect(isInvoiceCreationAvailable(failed, true)).toBe(true)
     expect(isInvoiceCreationAvailable({ ...failed, invoiceStatus: 'COMPLETED' }, true)).toBe(false)
+    expect(isInvoiceCreationActionVisible(failed)).toBe(true)
+    expect(isInvoiceCreationActionVisible({ ...failed, invoiceStatus: 'COMPLETED' })).toBe(false)
   })
 
   it('shows a delivery-only retry for an issued invoice that was not confirmed at the marketplace', () => {

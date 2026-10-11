@@ -305,12 +305,17 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             var next = payload with { Phase = "POLL", ExternalOperationId = operation.ExternalOperationId, SubmittedAt = operation.SubmittedAt };
             job.PayloadJson = JsonSerializer.Serialize(next);
             job.PayloadHash = Hash(job.PayloadJson);
-            profile.ActualStatus = string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase) ? "IMPORT_SUBMITTED" : "BATCH_SUBMITTED";
+            profile.ActualStatus = string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
+                ? "IMPORT_SUBMITTED"
+                : string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase) ? "SHOPIFY_SUBMITTED" : "BATCH_SUBMITTED";
             profile.LastRejectionCode = null;
             profile.Version++;
             await SetListingStatus(tenantId, connectionId, profile.Id, profile.ActualStatus, null, cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
-            return JobExecutionResult.Retry("PRODUCT_BATCH_PENDING", string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase) ? "Hepsiburada ürün import sonucu bekleniyor." : "Trendyol create batch sonucu bekleniyor.", TimeSpan.FromSeconds(15), operation.ExternalOperationId);
+            var waitingMessage = string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
+                ? "Hepsiburada ürün import sonucu bekleniyor."
+                : string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase) ? "Shopify ürün ve Online Store yayın sonucu kaydediliyor." : "Trendyol create batch sonucu bekleniyor.";
+            return JobExecutionResult.Retry("PRODUCT_BATCH_PENDING", waitingMessage, TimeSpan.FromSeconds(15), operation.ExternalOperationId);
         }
 
         if (!string.Equals(payload.Phase, "POLL", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(payload.ExternalOperationId) || payload.SubmittedAt is null) return JobExecutionResult.Blocked("PRODUCT_PUBLICATION_PHASE_INVALID", "Yayın işi bilinmeyen bir fazda.");
@@ -330,11 +335,16 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var operationStatus = operationResult.Value!;
         if (string.Equals(operationStatus.Status, "IN_PROGRESS", StringComparison.OrdinalIgnoreCase))
         {
-            profile.ActualStatus = string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase) ? "IMPORT_IN_PROGRESS" : "BATCH_IN_PROGRESS";
+            profile.ActualStatus = string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
+                ? "IMPORT_IN_PROGRESS"
+                : string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase) ? "SHOPIFY_IN_PROGRESS" : "BATCH_IN_PROGRESS";
             profile.Version++;
             await SetListingStatus(tenantId, connectionId, profile.Id, profile.ActualStatus, null, cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
-            return JobExecutionResult.Retry("PRODUCT_BATCH_PENDING", string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase) ? "Hepsiburada ürün import işlemi sürüyor." : "Trendyol create batch işlemi sürüyor.", TimeSpan.FromSeconds(15), payload.ExternalOperationId);
+            var runningMessage = string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
+                ? "Hepsiburada ürün import işlemi sürüyor."
+                : string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase) ? "Shopify ürün yayın işlemi sürüyor." : "Trendyol create batch işlemi sürüyor.";
+            return JobExecutionResult.Retry("PRODUCT_BATCH_PENDING", runningMessage, TimeSpan.FromSeconds(15), payload.ExternalOperationId);
         }
         if (!string.Equals(operationStatus.Status, "COMPLETED", StringComparison.OrdinalIgnoreCase)) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_STATUS_UNKNOWN", JobExecutionResult.ManualReview("PRODUCT_BATCH_STATUS_UNKNOWN", "Batch servisi tanınmayan bir durum döndürdü.", payload.ExternalOperationId), cancellationToken);
 
@@ -342,11 +352,14 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var listingVariantIds = listings.Select(x => x.VariantId).ToArray();
         var states = await db.MarketplaceListingStates.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && listingVariantIds.Contains(x.VariantId)).ToDictionaryAsync(x => x.VariantId, cancellationToken);
         var isHepsiburada = string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase);
+        var isShopify = string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase);
         var lines = operationStatus.Lines.Where(x => !string.IsNullOrWhiteSpace(x.ExternalKey)).ToList();
-        if (lines.Count == 0 || lines.GroupBy(x => x.ExternalKey, StringComparer.OrdinalIgnoreCase).Any(group => group.Count() > 1)) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", "Tamamlanan batch sonucu eksik veya yinelenen merchantSku/barkod satırları içeriyor.", payload.ExternalOperationId), cancellationToken);
-        var resultKeys = listings.Select(x => isHepsiburada ? x.ExternalSku ?? "" : x.ExternalBarcode ?? "").ToList();
-        if (resultKeys.Any(string.IsNullOrWhiteSpace) || resultKeys.Distinct(StringComparer.OrdinalIgnoreCase).Count() != listings.Count) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", "Uzak sonuç eşlemesi için listing merchantSku/barkodları eksik veya yinelenmiş.", payload.ExternalOperationId), cancellationToken);
-        var resultKeyByListing = listings.ToDictionary(x => isHepsiburada ? x.ExternalSku! : x.ExternalBarcode!, x => x, StringComparer.OrdinalIgnoreCase);
+        var remoteKeyLabel = isShopify || isHepsiburada ? "merchantSku" : "barkod";
+        var marketplaceName = isShopify ? "Shopify" : isHepsiburada ? "Hepsiburada" : "Trendyol";
+        if (lines.Count == 0 || lines.GroupBy(x => x.ExternalKey, StringComparer.OrdinalIgnoreCase).Any(group => group.Count() > 1)) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", $"Tamamlanan {marketplaceName} sonucu eksik veya yinelenen {remoteKeyLabel} satırları içeriyor.", payload.ExternalOperationId), cancellationToken);
+        var resultKeys = listings.Select(x => isHepsiburada || isShopify ? x.ExternalSku ?? "" : x.ExternalBarcode ?? "").ToList();
+        if (resultKeys.Any(string.IsNullOrWhiteSpace) || resultKeys.Distinct(StringComparer.OrdinalIgnoreCase).Count() != listings.Count) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", $"Uzak sonuç eşlemesi için listing {remoteKeyLabel} değerleri eksik veya yinelenmiş.", payload.ExternalOperationId), cancellationToken);
+        var resultKeyByListing = listings.ToDictionary(x => isHepsiburada || isShopify ? x.ExternalSku! : x.ExternalBarcode!, x => x, StringComparer.OrdinalIgnoreCase);
         var resultByKey = lines.ToDictionary(x => x.ExternalKey, StringComparer.OrdinalIgnoreCase);
         if (resultKeyByListing.Keys.Any(key => !resultByKey.ContainsKey(key))) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", "Batch sonucu gönderilen tüm merchantSku/barkodları içermiyor.", payload.ExternalOperationId), cancellationToken);
         if (resultByKey.Keys.Any(key => !resultKeyByListing.ContainsKey(key))) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", "Batch sonucu bilinmeyen merchantSku/barkod içeriyor.", payload.ExternalOperationId), cancellationToken);
@@ -354,7 +367,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var succeeded = 0;
         foreach (var listing in listings)
         {
-            var key = isHepsiburada ? listing.ExternalSku! : listing.ExternalBarcode!;
+            var key = isHepsiburada || isShopify ? listing.ExternalSku! : listing.ExternalBarcode!;
             var line = resultByKey[key];
             var rejection = line.Succeeded ? null : SafeCode(line.ErrorCode ?? "REMOTE_VALIDATION_FAILED");
             listing.ActualStatus = line.Succeeded ? "CREATE_ACCEPTED" : "CREATE_REJECTED";
@@ -367,16 +380,16 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 state.Version++;
             }
         }
-        profile.ActualStatus = succeeded == listings.Count ? (isHepsiburada ? "IMPORT_ACCEPTED" : "APPROVAL_PENDING") : succeeded == 0 ? "CREATE_REJECTED" : "PARTIAL_FAILURE";
+        profile.ActualStatus = succeeded == listings.Count ? (isHepsiburada ? "IMPORT_ACCEPTED" : isShopify ? "LIVE" : "APPROVAL_PENDING") : succeeded == 0 ? "CREATE_REJECTED" : "PARTIAL_FAILURE";
         profile.LastRejectionCode = listings.Select(x => x.RejectionCode).FirstOrDefault(x => x is not null);
         profile.Version++;
-        if (succeeded > 0)
+        if (succeeded > 0 && !isShopify)
             await EnsureApprovalReconciliationJob(tenantId, connectionId, payload.ProductId, profile.Id, payload.PayloadHash, correlationId, cancellationToken, payload.ExternalOperationId);
         await db.SaveChangesAsync(cancellationToken);
         if (succeeded == listings.Count) return JobExecutionResult.Success();
         return succeeded == 0
-            ? JobExecutionResult.Blocked("PRODUCT_BATCH_REJECTED", isHepsiburada ? "Hepsiburada ürün import içindeki tüm varyantlar reddedildi." : "Trendyol create batch içindeki tüm varyantlar reddedildi.", payload.ExternalOperationId)
-            : JobExecutionResult.Blocked("PRODUCT_BATCH_PARTIAL_FAILURE", isHepsiburada ? "Hepsiburada ürün import kısmi başarısızlıkla tamamlandı." : "Trendyol create batch kısmi başarısızlıkla tamamlandı.", payload.ExternalOperationId);
+            ? JobExecutionResult.Blocked("PRODUCT_BATCH_REJECTED", $"{marketplaceName} ürün yayınındaki tüm varyantlar reddedildi.", payload.ExternalOperationId)
+            : JobExecutionResult.Blocked("PRODUCT_BATCH_PARTIAL_FAILURE", $"{marketplaceName} ürün yayını kısmi başarısızlıkla tamamlandı.", payload.ExternalOperationId);
     }
 
     private async Task<JobExecutionResult> ReconcileProductApproval(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)

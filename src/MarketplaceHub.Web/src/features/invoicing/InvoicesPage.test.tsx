@@ -90,11 +90,35 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     expect(refresh?.textContent?.trim()).toBe('')
   })
 
-  it('does not render a disabled invoice creation button when the row is not eligible', () => {
+  it('shows the invoice action for an eligible row and explains when the fiscal provider is missing', async () => {
     const row = Array.from(container.querySelectorAll<HTMLElement>('.invoice-reference-row'))
       .find(item => item.textContent?.includes('TY-1003'))!
     const actionButtons = Array.from(row.querySelectorAll<HTMLButtonElement>('.invoice-reference-actions button'))
-    expect(actionButtons.some(item => /Fatura oluştur|Fatura önizlemesi/.test(item.textContent ?? ''))).toBe(false)
+    const create = actionButtons.find(item => item.textContent?.includes('Fatura oluştur'))
+    expect(create).toBeDefined()
+    act(() => create!.click())
+    await settle()
+    expect(container.textContent).toContain('Aynı ortamda etkin ve credential\'ı olan E-Faturam bağlantısı bulunamadı')
+    expect(container.querySelector('[role="dialog"]')).toBeNull()
+  })
+
+  it('copies the raw invoice order number using the copy control', async () => {
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    try {
+      const row = Array.from(container.querySelectorAll<HTMLElement>('.invoice-reference-row'))
+        .find(item => item.textContent?.includes('TY-1003'))!
+      const copy = row.querySelector<HTMLButtonElement>('.invoice-reference-order .order-number-copy')!
+      expect(copy.getAttribute('aria-label')).toBe('Sipariş numarası TY-1003 kopyala')
+      act(() => copy.click())
+      await settle()
+      expect(writeText).toHaveBeenCalledWith('TY-1003')
+      expect(copy.getAttribute('aria-label')).toBe('Sipariş numarası TY-1003 kopyalandı')
+    } finally {
+      if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard)
+      else Reflect.deleteProperty(navigator, 'clipboard')
+    }
   })
 
   it('places the subtle marketplace refresh in the action area top right', () => {

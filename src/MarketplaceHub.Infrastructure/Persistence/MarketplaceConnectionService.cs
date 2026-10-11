@@ -31,6 +31,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
     private static readonly string[] ShopifyCapabilityCodes =
     [
         MarketplaceCapabilities.ConnectionTest, MarketplaceCapabilities.ReferenceRead, MarketplaceCapabilities.ProductRead,
+        MarketplaceCapabilities.ProductWrite, MarketplaceCapabilities.PublicationRead, MarketplaceCapabilities.PublicationWrite,
         MarketplaceCapabilities.OrderRead, MarketplaceCapabilities.PriceWrite, MarketplaceCapabilities.InventoryWrite,
         MarketplaceCapabilities.ShipmentWrite, MarketplaceCapabilities.LabelWrite, MarketplaceCapabilities.ReturnRead,
         MarketplaceCapabilities.ReturnWrite, InvoicingCapabilities.InvoiceDeliver
@@ -192,8 +193,13 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             var connectionTest = await db.PlatformCapabilities.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == id && x.Code == MarketplaceCapabilities.ConnectionTest && x.Environment == connection.Environment && x.StoreScope == connection.ExternalStoreId, cancellationToken);
             if (connection.LastSuccessAt is null || connectionTest?.SupportLevel != CapabilitySupportLevel.Supported)
                 return ServiceResult<ConnectionView>.Fail("CONNECTION_TEST_REQUIRED", "Shopify dış yazmasını açmadan önce başarılı bağlantı testi gerekir.", 422);
-            if (!await HasVerifiedWriteEvidenceAsync(connection, cancellationToken, MarketplaceCapabilities.PriceWrite, MarketplaceCapabilities.InventoryWrite))
-                return ServiceResult<ConnectionView>.Fail("SHOPIFY_WRITE_SCOPES_REQUIRED", "Shopify fiyat ve stok dış yazması için tokenında write_products ve write_inventory izinleri doğrulanmalıdır.", 422);
+            if (!await HasVerifiedWriteEvidenceAsync(connection, cancellationToken,
+                    MarketplaceCapabilities.PriceWrite,
+                    MarketplaceCapabilities.InventoryWrite,
+                    MarketplaceCapabilities.ProductWrite,
+                    MarketplaceCapabilities.PublicationRead,
+                    MarketplaceCapabilities.PublicationWrite))
+                return ServiceResult<ConnectionView>.Fail("SHOPIFY_WRITE_SCOPES_REQUIRED", "Shopify ürün yayınlama ve fiyat-stok dış yazması için tokenında write_products, write_inventory, read_publications ve write_publications izinleri doğrulanmalıdır.", 422);
         }
         var environmentChanged = requestedEnvironment is not null && !string.Equals(connection.Environment, requestedEnvironment, StringComparison.OrdinalIgnoreCase);
         var storeScopeChanged = requestedStoreId is not null && !string.Equals(connection.ExternalStoreId, requestedStoreId, StringComparison.Ordinal);

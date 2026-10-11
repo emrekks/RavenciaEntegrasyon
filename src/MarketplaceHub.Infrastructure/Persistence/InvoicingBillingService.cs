@@ -94,6 +94,22 @@ public sealed partial class InvoicingBillingService(
             .ToListAsync(cancellationToken);
         if (packages.Count == 0) return [];
 
+        var packageConnectionIds = packages.Select(package => package.ConnectionId).Distinct().ToArray();
+        var packagePlatforms = await db.PlatformConnections.AsNoTracking()
+            .Where(connection => connection.TenantId == tenantId && packageConnectionIds.Contains(connection.Id))
+            .ToDictionaryAsync(connection => connection.Id, connection => connection.PlatformCode, cancellationToken);
+        var ordersWithRealTrendyolPackage = packages
+            .Where(package => string.Equals(packagePlatforms.GetValueOrDefault(package.ConnectionId), "TRENDYOL", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(package.ExternalPackageId)
+                && !string.Equals(package.ExternalPackageId, "0", StringComparison.Ordinal))
+            .Select(package => package.OrderId)
+            .ToHashSet();
+        packages = packages.Where(package => InvoiceWorkspacePackagePolicy.ShouldIncludeTrendyolPaymentPlaceholder(
+            packagePlatforms.GetValueOrDefault(package.ConnectionId),
+            package.ExternalPackageId,
+            ordersWithRealTrendyolPackage.Contains(package.OrderId))).ToList();
+        if (packages.Count == 0) return [];
+
         var statusFeedPackageIds = packages
             .Where(package => string.Equals(package.CreatedBy, "HEPSIBURADA_STATUS_FEED", StringComparison.Ordinal))
             .Select(package => package.Id)
@@ -420,6 +436,10 @@ public sealed partial class InvoicingBillingService(
             .Where(connection => string.Equals(connection.PlatformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase))
             .Select(connection => connection.Id)
             .ToArray();
+        var trendyolConnectionIds = workspaceConnections.Values
+            .Where(connection => string.Equals(connection.PlatformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase))
+            .Select(connection => connection.Id)
+            .ToArray();
         var sourceQuery =
             from package in db.ShipmentPackages.AsNoTracking()
             join order in db.Orders.AsNoTracking()
@@ -431,6 +451,13 @@ public sealed partial class InvoicingBillingService(
                 && !(shopifyConnectionIds.Contains(package.ConnectionId)
                     && package.ExternalPackageId.StartsWith("order:")
                     && package.ExternalPackageId.EndsWith(":remainder"))
+                && !(trendyolConnectionIds.Contains(package.ConnectionId)
+                    && package.ExternalPackageId == "0"
+                    && db.ShipmentPackages.Any(realPackage => realPackage.TenantId == tenantId
+                        && realPackage.ConnectionId == package.ConnectionId
+                        && realPackage.OrderId == package.OrderId
+                        && realPackage.ExternalPackageId != "0"
+                        && realPackage.ExternalPackageId != string.Empty))
                 && (package.CreatedBy != "HEPSIBURADA_STATUS_FEED"
                     || db.PackageLineAllocations.Any(allocation => allocation.TenantId == tenantId && allocation.PackageId == package.Id)
                     || !db.ShipmentPackages.Any(otherPackage => otherPackage.TenantId == tenantId

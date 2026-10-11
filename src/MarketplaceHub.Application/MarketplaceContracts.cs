@@ -294,6 +294,8 @@ public static class MarketplaceCapabilities
     public const string ReferenceRead = "REFERENCE_READ";
     public const string ProductRead = "PRODUCT_READ";
     public const string ProductWrite = "PRODUCT_WRITE";
+    public const string PublicationRead = "PUBLICATION_READ";
+    public const string PublicationWrite = "PUBLICATION_WRITE";
     public const string InventoryWrite = "INVENTORY_WRITE";
     public const string PriceWrite = "PRICE_WRITE";
     public const string OrderRead = "ORDER_READ";

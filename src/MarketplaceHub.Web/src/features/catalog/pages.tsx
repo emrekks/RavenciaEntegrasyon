@@ -23,7 +23,7 @@ import { productMediaUrlIssue } from './product-media-url'
 import { barcodeClipboardIssue, parseBarcodeClipboardValues } from './product-barcode-paste'
 import { productCopyIdentifierConflicts } from './product-copy-identifiers'
 import { sameProductSnapshotIgnoringVersion } from './product-save-version'
-import { isPublicationLive, isPublicationSelectionDisabled, isPublicationStatusJobRunning, missingPublicationChecks, publicationStatusLabel, publicationStatusNote, publicationStatusTone, shouldCheckPublicationAttributes } from './publication-status'
+import { isPublicationLive, isPublicationSelectionDisabled, isPublicationStatusJobRunning, publicationStatusLabel, publicationStatusNote, publicationStatusTone, shouldCheckPublicationAttributes } from './publication-status'
 import { productPlatformDisplayLabel, productPlatformDisplayState } from './product-platform-status'
 import { quickPlatformUpdateTargets } from './platform-update-targets'
 import { nextProductCatalogSort, sortProductGroups, type ProductCatalogSort } from './product-catalog-sorting'
@@ -174,7 +174,7 @@ type ProductListFilters = { search: string; status: string; platform: string; st
 type ProductSummary = { totalCount: number; activeCount: number; outOfStockCount: number; lowStockCount: number; platforms: string[] }
 type ImportSession = Versioned & { sourceType: string; status: string; totalRows: number; validRows: number; errorRows: number; reviewRows: number; sourceAssetId: string | null }
 type Candidate = Versioned & { matchRule: string; safeSummary: string; productId: string | null; variantId: string | null }
-type MarketplaceConnection = { id: string; platformCode: string; displayName: string; externalStoreId: string; status: string }
+type MarketplaceConnection = { id: string; platformCode: string; displayName: string; externalStoreId: string; status: string; externalWritesEnabled?: boolean }
 type ChannelPricingDraft = { listPrice: string; salePrice: string }
 type ProductUpdateRequest = { connectionIds: string[]; includeProductInformation: boolean }
 type AcceptedJob = { jobId: string }
@@ -185,7 +185,7 @@ type ProductSyncJob = { id: string; connectionId: string | null; jobType: string
 const key = () => crypto.randomUUID()
 const isProductImportConnection = productImportConnection
 const isProductUpdateConnection = (item: MarketplaceConnection) => ['TRENDYOL', 'HEPSIBURADA', 'SHOPIFY'].includes(item.platformCode.trim().toUpperCase()) && ['ACTIVE', 'VERIFIED'].includes(item.status.trim().toUpperCase())
-const productPublicationMode = (item: MarketplaceConnection) => productPublicationChannelMode(item.platformCode, item.status)
+const productPublicationMode = (item: MarketplaceConnection) => productPublicationChannelMode(item.platformCode, item.status, item.externalWritesEnabled)
 const isProductPublicationConnection = (item: MarketplaceConnection) => productPublicationMode(item) === 'PUBLISH'
 const isProductPublicationChannel = (item: MarketplaceConnection) => productPublicationMode(item) !== null
 const productUpdateCapabilities = (platformCode: string) => {
@@ -1966,7 +1966,7 @@ function PublishPlatformCard({ card, selected, productId, categoryId, productChe
   selected: boolean
   productId?: string
   categoryId: string
-  productChecks: Array<{ title: string; detail: string; ok: boolean }>
+  productChecks: Array<{ title: string; detail: string; ok: boolean; shopifyOk?: boolean; shopifyDetail?: string }>
   selectedAttributes: PublicationAttributeSelection[]
   onSelect: () => void
   onDeselect: () => void
@@ -2010,12 +2010,26 @@ function PublishPlatformCard({ card, selected, productId, categoryId, productChe
   const alreadyPublished = isPublicationLive(publication.data?.actualStatus)
   const publicationCheckPending = Boolean(card.mode === 'PUBLISH' && productId && publication.isPending)
   const publicationCheckUnavailable = Boolean(card.mode === 'PUBLISH' && productId && publication.isError && !publication.data)
+  const shopifyWriteCapabilities = useQuery<Array<{ code: string; supportLevel: string; verifiedForConnection: boolean }>>({
+    queryKey: ['capabilities', card.connection.id],
+    queryFn: () => hubApi(`/connections/${card.connection.id}/capabilities`),
+    enabled: card.mode === 'PUBLISH' && card.code === 'SHOPIFY',
+    staleTime: 15_000,
+    retry: false
+  })
+  const shopifyCapabilityCheckPending = card.mode === 'PUBLISH' && card.code === 'SHOPIFY' && shopifyWriteCapabilities.isPending
+  const requiredShopifyCapabilities = ['PRODUCT_WRITE', 'INVENTORY_WRITE', 'PUBLICATION_READ', 'PUBLICATION_WRITE']
+  const missingShopifyCapabilities = card.code === 'SHOPIFY' && shopifyWriteCapabilities.data
+    ? requiredShopifyCapabilities.filter(code => !shopifyWriteCapabilities.data?.some(capability => capability.code === code && capability.supportLevel.toUpperCase() === 'SUPPORTED' && capability.verifiedForConnection))
+    : []
   useEffect(() => {
     if (alreadyPublished && selected) onDeselect()
   }, [alreadyPublished, onDeselect, selected])
   const publicationNote = publicationStatusNote(publication.data?.lastRejectionCode)
-  const missingChecks = card.mode === 'PUBLISH' ? missingPublicationChecks(productChecks) : []
-  const mappingReadinessEnabled = card.mode === 'PUBLISH' && (!productId || !publication.isPending)
+  const missingChecks = card.mode === 'PUBLISH' ? productChecks
+    .filter(check => !(card.code === 'SHOPIFY' ? check.shopifyOk ?? check.ok : check.ok))
+    .map(check => ({ ...check, detail: card.code === 'SHOPIFY' ? check.shopifyDetail ?? check.detail : check.detail })) : []
+  const mappingReadinessEnabled = card.mode === 'PUBLISH' && card.code !== 'SHOPIFY' && (!productId || !publication.isPending)
     && shouldCheckPublicationAttributes(categoryId, publication.data?.actualStatus, publication.data?.lastJobStatus)
   const mappingReadiness = useQuery({
     queryKey: ['publication-attribute-readiness', card.connection.id, categoryId, selectedAttributes],
@@ -2075,29 +2089,37 @@ function PublishPlatformCard({ card, selected, productId, categoryId, productChe
   const mappingCheckPending = mappingReadinessEnabled && mappingReadiness.isPending
   const blockedIssues = [
     ...missingChecks.map(check => ({ attribute: check.title, detail: check.detail })),
+    ...(missingShopifyCapabilities.length ? [{ attribute: 'Shopify API izinleri', detail: `Ürün göndermeden önce Entegrasyonlar bölümünde Shopify erişimini yeniden yetkilendirin ve ${missingShopifyCapabilities.join(', ')} izinlerini doğrulayın.` }] : []),
+    ...(card.code === 'SHOPIFY' && shopifyWriteCapabilities.isError ? [{ attribute: 'Shopify API izin kontrolü', detail: 'Shopify bağlantı izinleri okunamadı. Entegrasyonlar bölümünde bağlantıyı test edip izin kanıtlarını yenileyin.' }] : []),
     ...requiredMappingIssues,
     ...(mappingCheckFailed ? [{ attribute: `${card.name} özellik kontrolü`, detail: publicationReadinessFailureDetail(card.name, mappingReadiness.error) }] : [])
   ]
-  const selectionBlocked = blockedIssues.length > 0 || mappingCheckPending
+  const selectionBlocked = blockedIssues.length > 0 || mappingCheckPending || shopifyCapabilityCheckPending
   const issueListId = `publish-issues-${card.connection.id}`
   const issueDescriptionIds = [
     blockedIssues.length ? `${issueListId}-required` : '',
     mappingCheckPending ? `${issueListId}-pending` : '',
+    shopifyCapabilityCheckPending ? `${issueListId}-shopify-pending` : '',
     optionalMappingWarnings.length ? `${issueListId}-optional` : ''
   ].filter(Boolean).join(' ') || undefined
+  const hasRequiredPublicationBlock = blockedIssues.length > 0 && !alreadyPublished
+  const publicationBlockTooltip = blockedIssues.map(issue => `${issue.attribute}: ${issue.detail}`).join('\n')
+  const displayedPublicationLabel = hasRequiredPublicationBlock ? 'Yayın için zorunlu eksik' : publicationLabel
+  const displayedPublicationTone = hasRequiredPublicationBlock ? 'danger' : publicationTone
   return <article className={`publish-platform-card${selected ? ' selected' : ''}${card.mode === 'READ_ONLY' ? ' is-read-only' : ''}`}>
-    <button type="button" className="publish-platform-card-head" onClick={onSelect} aria-pressed={selected} aria-describedby={issueDescriptionIds} title={card.mode === 'READ_ONLY' ? 'Shopify bağlantısı salt okunur; ürün yayınlama bu bağlantıda desteklenmiyor.' : alreadyPublished ? 'Ürün bu platformda zaten yayında.' : undefined} disabled={card.mode === 'READ_ONLY' || isPublicationSelectionDisabled(publication.data?.actualStatus, selected, publicationCheckPending, publicationCheckUnavailable, selectionBlocked)}>
+    <button type="button" className="publish-platform-card-head" onClick={onSelect} aria-pressed={selected} aria-describedby={issueDescriptionIds} title={card.mode === 'READ_ONLY' ? 'Shopify ürün yayını için Entegrasyonlar bölümünde dış yazma anahtarını açın ve gerekli API izinlerini doğrulayın.' : alreadyPublished ? 'Ürün bu platformda zaten yayında.' : undefined} disabled={card.mode === 'READ_ONLY' || isPublicationSelectionDisabled(publication.data?.actualStatus, selected, publicationCheckPending, publicationCheckUnavailable, selectionBlocked)}>
       <span className={`publish-platform-mark ${card.tone}`}><img className={`publish-platform-logo ${platformLogoClass(card.connection.platformCode)}`} src={platformLogoSource(card.connection.platformCode) ?? '/platforms/trendyol.png'} alt="" aria-hidden="true" /></span>
-      <span><strong>{card.name}</strong><small>{card.mode === 'READ_ONLY' ? 'Salt okunur · ürün yayını desteklenmiyor' : alreadyPublished ? 'Zaten yayında · yeniden seçilemez' : publicationCheckPending ? 'Yayın durumu kontrol ediliyor…' : publicationCheckUnavailable ? 'Yayın durumu doğrulanamadı' : selected ? 'Yayın için seçildi' : mappingCheckPending ? 'Zorunlu alanlar kontrol ediliyor…' : selectionBlocked ? 'Zorunlu eksikler giderilmeden seçilemez' : 'Yayın için seçilmedi'}</small></span>
+      <span><strong>{card.name}</strong><small>{card.mode === 'READ_ONLY' ? 'Dış yazma kapalı · yayın kuyruğu devre dışı' : alreadyPublished ? 'Zaten yayında · yeniden seçilemez' : publicationCheckPending ? 'Yayın durumu kontrol ediliyor…' : publicationCheckUnavailable ? 'Yayın durumu doğrulanamadı' : shopifyCapabilityCheckPending ? 'Shopify yazma izinleri kontrol ediliyor…' : selected ? 'Yayın için seçildi' : mappingCheckPending ? 'Zorunlu alanlar kontrol ediliyor…' : selectionBlocked ? 'Zorunlu eksikler giderilmeden seçilemez' : 'Yayın için seçilmedi'}</small></span>
       <i className={`publish-platform-toggle ${selected ? 'on' : ''}`} aria-hidden="true"><b /></i>
     </button>
     <dl className="publish-platform-facts">
       <div><dt>Mağaza</dt><dd>{card.connection.externalStoreId || '—'}</dd></div>
       <div><dt>Platform</dt><dd>{card.connection.platformCode}</dd></div>
       <div><dt>Bağlantı</dt><dd><span className="publish-platform-status active"><i aria-hidden="true" />Aktif bağlantı</span></dd></div>
-      {productId && <div className="publish-platform-fact-publication" aria-live="polite"><dt>Yayın durumu</dt><dd><span className={`publish-platform-status status-${publicationTone}`}><i aria-hidden="true" />{publicationLabel}</span>{publication.data?.profileId && publication.data.actualStatus && publication.data.actualStatus !== 'UNKNOWN' && <button type="button" className="publish-tracking-action" aria-label={`${card.name} yayın durumunu güncelle`} title="Platformdaki mevcut durumu yeniden sorgula" disabled={refreshPublication.isPending || isPublicationStatusJobRunning(publication.data.lastJobStatus)} onClick={() => refreshPublication.mutate()}><UiIcon name="refresh" /></button>}</dd>{publicationNote && <small>{publicationNote}</small>}</div>}
+      {productId && <div className="publish-platform-fact-publication" aria-live="polite"><dt>Yayın durumu</dt><dd><span className={`publish-platform-status status-${displayedPublicationTone}`} title={hasRequiredPublicationBlock ? publicationBlockTooltip : undefined}><i aria-hidden="true" />{displayedPublicationLabel}</span>{publication.data?.profileId && publication.data.actualStatus && publication.data.actualStatus !== 'UNKNOWN' && <button type="button" className="publish-tracking-action" aria-label={`${card.name} yayın durumunu güncelle`} title="Platformdaki mevcut durumu yeniden sorgula" disabled={refreshPublication.isPending || isPublicationStatusJobRunning(publication.data.lastJobStatus)} onClick={() => refreshPublication.mutate()}><UiIcon name="refresh" /></button>}</dd>{publicationNote && <small>{publicationNote}</small>}</div>}
     </dl>
-    {card.mode === 'READ_ONLY' && <div className="publish-platform-warning" role="note"><UiIcon name="alert" /><div><strong>Shopify bağlantısı salt okunur</strong><p>Bu bağlantının uygulama izinleri ürün oluşturma veya güncelleme kapsamıyor. Dış yazma desteği etkinleştirilmeden yayın kuyruğuna alınamaz.</p></div></div>}
+    {card.mode === 'READ_ONLY' && <div className="publish-platform-warning" role="note"><UiIcon name="alert" /><div><strong>Shopify dış yazması kapalı</strong><p>Ürün yayınını açmak için Entegrasyonlar bölümünde Shopify dış yazma anahtarını etkinleştirin; bağlantı testinde write_products, write_inventory, read_publications ve write_publications izinleri doğrulanmalıdır.</p></div></div>}
+    {shopifyCapabilityCheckPending && <div id={`${issueListId}-shopify-pending`} className="publish-platform-warning" role="status" aria-label="Shopify yayın izinleri kontrol ediliyor"><UiIcon name="alert" /><div><strong>Shopify izinleri kontrol ediliyor</strong><p>Ürün, stok ve Online Store yayın izinleri doğrulanıyor.</p></div></div>}
     {productId && publication.data?.lastJobId && <PublicationJobProgress jobId={publication.data.lastJobId} productId={productId} connectionId={card.connection.id} />}
     {blockedIssues.length > 0 && <div id={`${issueListId}-required`} className="publish-platform-missing" role="alert" aria-label={`${card.name} zorunlu yayın eksikleri`}>
       <UiIcon name="alert" />
@@ -3563,10 +3585,10 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     !hasBarcodeData && 'barkod'
   ].filter((part): part is string => Boolean(part))
   const productChecks = [
-    { title: 'Temel Ürün Verileri', detail: hasBasicProductData ? 'İsim, açıklama, marka, model ve barkod bilgileri eksiksiz.' : `Eksik alanlar: ${basicProductMissingParts.join(', ')}.`, ok: hasBasicProductData },
-    { title: 'Görsel Kalitesi', detail: hasProductMedia ? `${mediaCount} adet ürün görseli eklendi.${mediaCount > 8 ? ' Trendyol için sıralamadaki ilk 8 görsel kullanılır.' : ''}` : 'En az bir yüksek çözünürlüklü görsel ekleyin.', ok: hasProductMedia },
-    { title: 'Varyant Bilgileri', detail: hasVariantData ? 'Varyant yapısı yayınlanmaya hazır.' : 'Seçilen seçenekler için varyant satırlarını oluşturun.', ok: hasVariantData },
-    { title: 'Kategori ve Web Color', detail: catalogValidationDetail, ok: catalogValidationIssues.length === 0 }
+    { title: 'Temel Ürün Verileri', detail: hasBasicProductData ? 'İsim, açıklama, marka, model ve barkod bilgileri eksiksiz.' : `Eksik alanlar: ${basicProductMissingParts.join(', ')}.`, ok: hasBasicProductData, shopifyOk: Boolean(form.title.trim() && form.description.trim()), shopifyDetail: 'Shopify ürünü için ad ve açıklama gereklidir.' },
+    { title: 'Görsel Kalitesi', detail: hasProductMedia ? `${mediaCount} adet ürün görseli eklendi.${mediaCount > 8 ? ' Trendyol için sıralamadaki ilk 8 görsel kullanılır.' : ''}` : 'En az bir yüksek çözünürlüklü görsel ekleyin.', ok: hasProductMedia, shopifyOk: hasProductMedia, shopifyDetail: 'Shopify yayını için en az bir geçerli HTTPS görseli gerekir.' },
+    { title: 'Varyant Bilgileri', detail: hasVariantData ? 'Varyant yapısı yayınlanmaya hazır.' : 'Seçilen seçenekler için varyant satırlarını oluşturun.', ok: hasVariantData, shopifyOk: hasVariantData, shopifyDetail: 'Shopify yayını için en az bir SKU değerli varyant oluşturun.' },
+    { title: 'Kategori ve Web Color', detail: catalogValidationDetail, ok: catalogValidationIssues.length === 0, shopifyOk: true, shopifyDetail: 'Shopify yayını için pazaryeri kategori eşlemesi veya Web Color gerekmez.' }
   ]
   const publicationAttributeSelections = useMemo<PublicationAttributeSelection[]>(() => allRequirements.map(requirement => {
     const valueIds = new Set(attributeSelections[requirement.attributeId] ?? [])

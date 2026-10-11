@@ -31,4 +31,13 @@ public sealed class InvoiceWorkspaceMarketplacePolicyTests
         Assert.True(InvoiceWorkspacePackagePolicy.ShouldInclude("HEPSIBURADA_STATUS_FEED", true, 2));
         Assert.True(InvoiceWorkspacePackagePolicy.ShouldInclude("MARKETPLACE_DETAIL", false, 2));
     }
+
+    [Fact]
+    public void TrendyolPaymentPlaceholderIsHiddenAfterRealPackageArrives()
+    {
+        Assert.False(InvoiceWorkspacePackagePolicy.ShouldIncludeTrendyolPaymentPlaceholder("TRENDYOL", "0", true));
+        Assert.True(InvoiceWorkspacePackagePolicy.ShouldIncludeTrendyolPaymentPlaceholder("TRENDYOL", "0", false));
+        Assert.True(InvoiceWorkspacePackagePolicy.ShouldIncludeTrendyolPaymentPlaceholder("TRENDYOL", "package-1", true));
+        Assert.True(InvoiceWorkspacePackagePolicy.ShouldIncludeTrendyolPaymentPlaceholder("SHOPIFY", "0", true));
+    }
 }
