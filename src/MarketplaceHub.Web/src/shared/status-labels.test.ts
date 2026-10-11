@@ -18,5 +18,8 @@ describe('invoice status labels', () => {
     expect(statusLabel('None')).toBe('Yok')
     expect(statusLabel('NotInvoiced')).toBe('Fatura kesilmedi')
     expect(statusLabel('Not Sent')).toBe('Gönderilmedi')
+    expect(statusLabel('Invoiced')).toBe('Fatura kesildi')
+    expect(statusLabel('Remote Present Unmatched')).toBe('Pazaryerinde mevcut, eşleşmedi')
+    expect(statusLabel('REMOTE_PRESENT_UNMATCHED')).toBe('Pazaryerinde mevcut, eşleşmedi')
   })
 })
