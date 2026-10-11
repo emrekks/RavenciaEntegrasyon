@@ -12013,8 +12013,8 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .invoice-reference-product-tooltip small, .invoice-reference-product-tooltip p { margin: 0; color: var(--rv-color-muted); font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
 
 /* Return search uses one query field plus the date range and actions. */
-.return-reference-filters { grid-template-columns: minmax(240px, 1.5fr) repeat(2, minmax(150px, .8fr)) auto; }
-.return-reference-filters.has-approved-sort { grid-template-columns: minmax(160px, 1.1fr) repeat(2, minmax(130px, .8fr)) minmax(205px, .95fr) auto; }
+.return-reference-filters { grid-template-columns: minmax(240px, 1.5fr) minmax(230px, 1fr) auto; }
+.return-reference-filters.has-approved-sort { grid-template-columns: minmax(160px, 1.1fr) minmax(230px, 1fr) minmax(205px, .95fr) auto; }
 @media (max-width: 900px) {
   .return-reference-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .return-reference-filters > input[aria-label="İadelerde ara"] { grid-column: 1 / -1; }
@@ -12381,4 +12381,39 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .app-shell.stitch-shell main .invoice-reference-head .invoice-reference-platform-heading > strong {
   text-transform: none;
   letter-spacing: normal;
+}
+
+/* Keep range selection in one anchored popover across page filters. */
+.date-range-picker-popover {
+  position: fixed;
+  width: min(760px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  padding: 14px;
+}
+.date-range-picker-layout { display: grid; grid-template-columns: 145px minmax(0, 1fr); gap: 16px; }
+.date-range-picker-presets { display: grid; align-content: start; gap: 3px; padding-right: 14px; border-right: 1px solid var(--rv-color-border); }
+.date-range-picker-presets > button { min-height: 32px; padding: 5px 8px; color: var(--rv-color-ink); background: transparent; border: 0; border-radius: var(--rv-radius-sm); text-align: left; }
+.date-range-picker-presets > button:hover { background: var(--rv-color-primary-soft); }
+.date-range-picker-calendars > header { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.date-range-picker-calendars > header > button { min-width: 34px; min-height: 34px; padding: 4px; }
+.date-range-picker-months { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.date-range-picker-month > strong { display: block; margin-bottom: 5px; text-align: center; text-transform: capitalize; }
+.date-range-picker-month .date-range-picker-grid { gap: 2px; }
+.date-range-picker-month .date-range-picker-grid > span { min-height: 26px; }
+.date-range-picker-month .date-range-picker-grid > button { min-height: 32px; }
+.date-range-picker-calendars > footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; color: var(--rv-color-muted); font-size: 11px; }
+.date-range-picker-calendars > footer > button { min-height: 30px; padding: 0 9px; }
+.invoice-reference-date-filter, .return-reference-date-range { min-width: 0; }
+.return-reference-date-range .date-range-picker-trigger { min-height: var(--rv-control-height-md); }
+.app-shell.stitch-shell main .reference-integration-footer .reference-action { box-sizing: border-box; height: 34px; min-height: 34px; max-height: 34px; }
+.app-shell.stitch-shell main .order-label-action.is-printed { opacity: .62; background: color-mix(in srgb, var(--rv-color-primary) 30%, var(--rv-color-surface)); }
+.app-shell.stitch-shell main .order-label-action.is-printed:hover:not(:disabled) { opacity: .7; background: color-mix(in srgb, var(--rv-color-primary) 36%, var(--rv-color-surface)); }
+@media (max-width: 760px) {
+  .date-range-picker-layout { grid-template-columns: minmax(0, 1fr); }
+  .date-range-picker-presets { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 0 0 10px; border-right: 0; border-bottom: 1px solid var(--rv-color-border); }
+  .date-range-picker-months { gap: 8px; }
+}
+@media (max-width: 520px) {
+  .date-range-picker-months { grid-template-columns: minmax(0, 1fr); }
 }

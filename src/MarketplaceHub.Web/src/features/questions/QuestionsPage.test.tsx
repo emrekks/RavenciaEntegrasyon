@@ -157,9 +157,9 @@ describe('QuestionsPage workspace flows', () => {
     expect(Array.from(selects[0].options).map(option => option.textContent)).toContain('Hepsiburada Mağazası')
     select(selects[0], 'ty-store')
     act(() => button('Tarih aralığı seçin').click())
-    const calendarDays = Array.from(container.querySelectorAll<HTMLButtonElement>('.date-range-picker-grid button'))
+    const calendarDays = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.date-range-picker-grid button'))
     act(() => calendarDays.find(day => day.textContent === '1')!.click())
-    const endDate = Array.from(container.querySelectorAll<HTMLButtonElement>('.date-range-picker-grid button')).find(day => day.textContent === '5')!
+    const endDate = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.date-range-picker-grid button')).find(day => day.textContent === '5')!
     act(() => endDate.click())
     input(container.querySelector<HTMLInputElement>('.rv-questions-search input')!, 'bluz 01')
     await settle()

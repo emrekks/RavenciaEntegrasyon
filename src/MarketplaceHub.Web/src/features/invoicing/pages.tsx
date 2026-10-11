@@ -9,6 +9,7 @@ import { appendNotification } from '../../shared/notifications'
 import { resolveInvoiceTab } from '../../shared/dashboard-operational-links'
 import { PlatformMark } from '../../shared/platform-mark'
 import { PlatformMultiSelect } from '../../shared/platform-multi-select'
+import { DateRangePicker } from '../../shared/DateRangePicker'
 import { invoiceProviderForEnvironment, isInvoiceCreationActionVisible, isInvoiceCreationAvailable } from './invoice-creation-availability'
 import { InvoiceWorkspacePreviewModal, type InvoicePreviewTarget } from './InvoiceWorkspacePreviewModal'
 import { invoiceReferenceMarketplaceHref, platformInvoiceLinkUnavailable, safeInvoiceReferenceUrl } from './invoice-reference-document-link'
@@ -440,7 +441,7 @@ export function InvoicesPage() {
       <section className="invoice-reference-filters" aria-label="Fatura filtreleri">
         <label className="invoice-reference-search"><span>Fatura Ara</span><span className="invoice-reference-search-control"><UiIcon name="search" size={18} /><input aria-label="Fatura Ara" placeholder="Sipariş, müşteri, fatura veya takip no ara…" value={search} onChange={event => setSearch(event.target.value)} /></span></label>
         <PlatformMultiSelect label="Platform" options={platformOptions} selectedCodes={selectedPlatforms} onChange={setSelectedPlatforms} />
-        <label className="invoice-reference-date-filter"><span>Sipariş Tarihi</span><span className="invoice-reference-date-range"><input type="date" aria-label="Başlangıç tarihi" value={dateFrom} max={dateTo || undefined} onChange={event => setDateFrom(event.target.value)} /><span aria-hidden="true">–</span><input type="date" aria-label="Bitiş tarihi" value={dateTo} min={dateFrom || undefined} onChange={event => setDateTo(event.target.value)} /></span></label>
+        <DateRangePicker className="invoice-reference-date-filter" from={dateFrom} to={dateTo} onChange={range => { setDateFrom(range.from); setDateTo(range.to) }} label="Sipariş Tarihi" />
         {hasInvoiceFilters && <button type="button" className="secondary invoice-reference-filter-reset" onClick={() => { setSearch(''); setSelectedPlatforms(null); setShipmentStatusFilter('ALL'); setCargoFilter('ALL'); setInvoiceStatusFilter('ALL'); setInvoiceActionFilter('ALL'); setDateFrom(''); setDateTo(''); setColumnFilterOpen(null) }}>Filtreleri temizle</button>}
       </section>
     </div>
