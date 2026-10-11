@@ -7,12 +7,13 @@ describe('order status tabs', () => {
     expect(values).not.toContain('PENDING')
     expect(values).not.toContain('UNVERIFIED')
     expect(values).toContain('NEW')
-    expect(values).toContain('PAYMENT_PENDING')
+    expect(values).not.toContain('PAYMENT_PENDING')
   })
 
   it('redirects legacy pending links to New', () => {
     expect(resolveOrderStatusTab('PENDING')).toBe('NEW')
     expect(resolveOrderStatusTab('pending')).toBe('NEW')
+    expect(resolveOrderStatusTab('PAYMENT_PENDING')).toBe('NEW')
     expect(resolveOrderStatusTab('UNVERIFIED')).toBe('ALL')
     expect(resolveOrderStatusTab(null)).toBe('ALL')
     expect(resolveOrderStatusTab('CANCELLED')).toBe('CANCELLED')

@@ -7,13 +7,13 @@ export const orderStatusTabs = [
   ['CANCELLED', 'İptal'],
   ['RESENT', 'Yeniden Gönderimler'],
   ['ON_HOLD', 'Askıdaki'],
-  ['PAYMENT_PENDING', 'Ödeme onayı bekliyor'],
   ['PARTIALLY_CANCELLED', 'Kısmi iptal'],
 ] as const
 
 export function resolveOrderStatusTab(status: string | null | undefined) {
   const normalizedStatus = status?.trim().toUpperCase()
   if (normalizedStatus === 'PENDING') return 'NEW'
+  if (normalizedStatus === 'PAYMENT_PENDING') return 'NEW'
   if (normalizedStatus === 'UNVERIFIED') return 'ALL'
   return status || 'ALL'
 }

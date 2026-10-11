@@ -1436,10 +1436,17 @@ export function OrdersPage() {
   useEffect(() => { setPageCursors({ 1: null }); setPage(1); setSelectedIds([]) }, [filters, selectedPlatforms, pageSize])
   useEffect(() => { if (!requestedSearch) return; setFilterForm(current => ({ ...current, search: requestedSearch })); setFilters(current => ({ ...current, search: requestedSearch })); setPage(1) }, [requestedSearch])
   useEffect(() => {
-    if (searchParams.get('status')?.trim().toUpperCase() !== 'PENDING') return
-    setFilterForm(current => ({ ...current, status: 'NEW' }))
-    setFilters(current => ({ ...current, status: 'NEW' }))
-    setSearchParams(current => { const params = new URLSearchParams(current); params.set('status', 'NEW'); return params }, { replace: true })
+    const requestedStatus = searchParams.get('status')
+    const resolvedStatus = resolveOrderStatusTab(requestedStatus)
+    if (!requestedStatus || requestedStatus.trim().toUpperCase() === resolvedStatus) return
+    setFilterForm(current => ({ ...current, status: resolvedStatus }))
+    setFilters(current => ({ ...current, status: resolvedStatus }))
+    setSearchParams(current => {
+      const params = new URLSearchParams(current)
+      if (resolvedStatus === 'ALL') params.delete('status')
+      else params.set('status', resolvedStatus)
+      return params
+    }, { replace: true })
   }, [searchParams, setSearchParams])
   useEffect(() => {
     const closeColumnFilter = (event: PointerEvent) => {
