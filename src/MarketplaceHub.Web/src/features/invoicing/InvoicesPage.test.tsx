@@ -58,17 +58,22 @@ beforeEach(async () => {
 afterEach(() => { act(() => root?.unmount()); client?.clear(); container.remove() })
 
 describe('InvoicesPage Shopify bulk invoice status', () => {
-  it('opens a current marketplace invoice link even when no local PDF is available', () => {
-    const link = Array.from(container.querySelectorAll<HTMLAnchorElement>('.invoice-reference-document-link'))
-      .find(item => item.textContent?.includes('Fatura linki'))
+  it('keeps the current marketplace invoice link inside the invoice details', async () => {
     const row = Array.from(container.querySelectorAll<HTMLElement>('.invoice-reference-row'))
       .find(item => item.textContent?.includes('SH-1001'))
 
-    expect(link?.href).toBe('https://documents.example.test/current-invoice.pdf')
-    expect(link?.rel).toBe('noopener noreferrer')
-    expect(row?.querySelector('.invoice-reference-status')?.textContent).toContain('Faturası Kesildi')
+    expect(row?.querySelector('.invoice-reference-document-link')).toBeNull()
+    expect(row?.querySelector('.invoice-reference-status')?.textContent).toContain('Faturası Mevcut')
+    expect(row?.querySelector('.invoice-reference-status .rv-badge-success')).not.toBeNull()
     expect(row?.querySelector('.invoice-reference-status')?.textContent).not.toContain('Fatura Bekliyor')
     expect(row?.querySelector('.invoice-reference-shipment')?.textContent).not.toContain('Henüz teslim edilmedi')
+
+    act(() => button('Detayları aç').click())
+    await settle()
+    const link = Array.from(container.querySelectorAll<HTMLAnchorElement>('.invoice-document-link'))
+      .find(item => item.textContent?.includes('Pazaryerindeki güncel fatura bağlantısını aç'))
+    expect(link?.href).toBe('https://documents.example.test/current-invoice.pdf')
+    expect(link?.rel).toContain('noreferrer')
   })
 
   it('does not present a stale marketplace document link while the platform says invoice pending', () => {
@@ -83,6 +88,13 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     expect(refresh?.getAttribute('aria-label')).toBe('Pazaryeri fatura bilgisini yenile')
     expect(refresh?.querySelector('.ui-icon-refresh')).not.toBeNull()
     expect(refresh?.textContent?.trim()).toBe('')
+  })
+
+  it('does not render a disabled invoice creation button when the row is not eligible', () => {
+    const row = Array.from(container.querySelectorAll<HTMLElement>('.invoice-reference-row'))
+      .find(item => item.textContent?.includes('TY-1003'))!
+    const actionButtons = Array.from(row.querySelectorAll<HTMLButtonElement>('.invoice-reference-actions button'))
+    expect(actionButtons.some(item => /Fatura oluştur|Fatura önizlemesi/.test(item.textContent ?? ''))).toBe(false)
   })
 
   it('renders selection controls for every platform order and selects the whole page', async () => {

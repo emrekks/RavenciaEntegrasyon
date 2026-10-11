@@ -945,10 +945,10 @@
   .product-catalog-head > :nth-child(5) { grid-column: 7; }
   .product-catalog-head > :nth-child(6) { grid-column: 8; }
   .product-catalog-head > :nth-child(7) { grid-column: 9; }
-  .product-catalog-head > .product-sort-header { display: inline-flex; align-items: center; justify-content: flex-start; gap: 5px; min-height: 100%; border: 0; padding: 0 var(--rv-space-3); color: inherit; background: transparent; font: inherit; letter-spacing: inherit; text-align: left; text-transform: inherit; cursor: pointer; }
+  .product-catalog-head > .product-sort-header { display: inline-flex; align-items: center; justify-content: flex-start; gap: 3px; min-height: 100%; border: 0; padding: 0 8px; color: inherit; background: transparent; font: inherit; letter-spacing: inherit; text-align: left; text-transform: inherit; cursor: pointer; }
   .product-catalog-head > .product-sort-header:hover { color: var(--rv-color-ink); background: transparent; }
   .product-catalog-head > .product-sort-header.is-active { color: var(--rv-color-ink); }
-  .product-sort-arrow { width: 14px; height: 14px; flex: 0 0 14px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
+  .product-sort-arrow { width: 12px; height: 12px; flex: 0 0 12px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
   .product-catalog-item { display: block; border-top: 1px solid var(--rv-color-border); }
   .product-catalog-row { min-height: 152px; color: var(--rv-color-ink); background: var(--rv-color-surface); }
   .product-catalog-row > * { min-width: 0; padding-inline: var(--rv-space-3); }
@@ -1390,8 +1390,7 @@
   .invoice-status.pending { color: var(--rv-color-warning); }
   .invoice-status.complete { color: var(--rv-color-accent); }
   .invoice-reference-amount strong { font-family: var(--rv-font-mono); font-size: var(--rv-font-size-md); }
-  .invoice-reference-actions { position: relative; justify-items: stretch; }
-  .invoice-reference-actions:has(> .invoice-reference-check-trigger) { padding-top: 34px; }
+  .invoice-reference-actions { justify-items: stretch; }
   .invoice-reference-actions > * { width: 100%; min-width: 0; }
   .invoice-shopify-split { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 4px; min-width: 0; }
   .shopify-invoice-create-wrap { display: block; grid-column: 1; grid-row: 1; min-width: 0; }
@@ -1409,9 +1408,11 @@
   .invoice-reference-document-link { display: inline-flex; align-items: center; justify-content: center; gap: var(--rv-space-1); min-width: 0; padding: 5px 8px; color: var(--rv-color-ink); background: #18181f; border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-sm); font-size: var(--rv-font-size-xs); font-weight: 700; text-decoration: none; }
   .invoice-reference-document-link:hover { color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border-color: var(--rv-color-border-strong); }
   .invoice-reference-actions > button:not(.invoice-reference-details-trigger) { display: inline-flex; align-items: center; justify-content: center; gap: var(--rv-space-1); min-width: 0; overflow: hidden; padding-inline: var(--rv-space-2); white-space: nowrap; }
-  .invoice-reference-actions > .invoice-reference-check-trigger { position: absolute; top: 6px; right: 8px; justify-self: end; width: 24px; height: 24px; min-height: 24px; padding: 0; color: var(--rv-color-muted); background: transparent; border: 0; border-radius: 4px; box-shadow: none; }
-  .invoice-reference-actions > .invoice-reference-check-trigger:hover:not(:disabled) { color: var(--rv-color-ink); background: var(--rv-color-surface-soft); }
-  .invoice-reference-actions > .invoice-reference-check-trigger:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 1px; }
+  .invoice-reference-action-footer { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: var(--rv-space-2); }
+  .invoice-reference-action-footer > .invoice-reference-details-trigger { width: fit-content; min-width: 0; }
+  .invoice-reference-action-footer > .invoice-reference-check-trigger { display: inline-flex; flex: 0 0 24px; align-items: center; justify-content: center; width: 24px; height: 24px; min-height: 24px; padding: 0; color: var(--rv-color-muted); background: transparent; border: 0; border-radius: 4px; box-shadow: none; }
+  .invoice-reference-action-footer > .invoice-reference-check-trigger:hover:not(:disabled) { color: var(--rv-color-ink); background: transparent; }
+  .invoice-reference-action-footer > .invoice-reference-check-trigger:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 1px; }
   .invoice-reference-check-trigger .ui-icon { width: 15px; height: 15px; }
   .invoice-reference-check-trigger[disabled] .ui-icon-loader { animation: rv-spin 1s linear infinite; }
   .invoice-action-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -10450,6 +10451,16 @@ small,
 .app-shell.stitch-shell main .invoice-reference-table > .invoice-reference-row {
   border-bottom-color: var(--rv-color-border-strong);
   border-radius: 0;
+}
+
+.app-shell.stitch-shell main .invoice-reference-table > .invoice-reference-row:hover {
+  border-color: color-mix(in srgb, var(--rv-color-primary) 42%, var(--rv-color-border-strong));
+  background: color-mix(in srgb, var(--rv-color-primary) 10%, var(--rv-color-surface-raised));
+  box-shadow: none;
+}
+
+.app-shell.stitch-shell main .invoice-reference-table > .invoice-reference-row {
+  transition: background var(--rv-duration-fast) var(--rv-ease-standard), border-color var(--rv-duration-fast) var(--rv-ease-standard);
 }
 
 .app-shell.stitch-shell main .order-reference-table > .order-reference-row + .order-reference-row {

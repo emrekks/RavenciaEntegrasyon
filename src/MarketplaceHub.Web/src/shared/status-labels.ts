@@ -26,7 +26,7 @@ const statusLabels: Record<string, string> = {
   FATURA_ISLENIYOR: 'Fatura kontrol ediliyor',
   FATURA_KESILDI: 'Fatura kesildi',
   FATURA_YUKLENDI: 'Faturası yüklendi',
-  FATURA_KONTROLDE: 'Fatura eşleşmesi doğrulanıyor',
+  FATURA_KONTROLDE: 'Faturası Mevcut',
   FATURA_IPTAL: 'Fatura iptal edildi',
   FATURA_REDDEDILDI: 'Fatura reddedildi',
   HEALTHY: 'Sağlıklı',
@@ -101,7 +101,7 @@ export type InvoiceStatusTone = 'neutral' | 'info' | 'success' | 'warning' | 'da
 export function invoiceStatusLabel(value: string | null | undefined) {
   const normalized = value?.trim().toLocaleUpperCase('tr-TR') ?? ''
   if (['FATURA_BEKLIYOR', 'PENDING', 'DRAFT'].includes(normalized)) return 'Fatura Bekliyor'
-  if (normalized === 'FATURA_KONTROLDE') return 'Faturası Kesildi'
+  if (normalized === 'FATURA_KONTROLDE') return 'Faturası Mevcut'
   if (['FATURA_ISLENIYOR', 'PROCESSING', 'SUBMITTING', 'SUBMITTED', 'MARKETPLACE_PENDING', 'READY'].includes(normalized)) return 'Fatura İşleniyor'
   if (normalized === 'MANUAL_REVIEW') return 'İnceleme gerekli'
   if (normalized === 'MARKETPLACE_FAILED') return 'Pazaryeri aktarımı başarısız'
@@ -122,12 +122,12 @@ export function invoiceStatusDisplayLabel(value: string | null | undefined, isMi
 export function invoiceStatusTone(value: string | null | undefined): InvoiceStatusTone {
   const normalized = value?.trim().toLocaleUpperCase('tr-TR') ?? ''
   if (['FATURA_BEKLIYOR', 'PENDING', 'DRAFT'].includes(normalized)) return 'warning'
-  if (['FATURA_ISLENIYOR', 'FATURA_KONTROLDE', 'PROCESSING', 'SUBMITTING', 'SUBMITTED', 'MARKETPLACE_PENDING', 'READY'].includes(normalized)) return 'info'
+  if (['FATURA_ISLENIYOR', 'PROCESSING', 'SUBMITTING', 'SUBMITTED', 'MARKETPLACE_PENDING', 'READY'].includes(normalized)) return 'info'
   if (normalized === 'MANUAL_REVIEW') return 'warning'
   if (['FATURA_REDDEDILDI', 'REJECTED', 'VALIDATION_FAILED', 'MARKETPLACE_FAILED'].includes(normalized)) return 'danger'
   if (normalized === 'FATURA_PLATFORMA_AKTARILMADI') return 'warning'
   if (['FATURA_IPTAL', 'CANCELLED', 'CANCELLED_LOCAL'].includes(normalized)) return 'neutral'
-  if (['FATURA_YUKLENDI', 'FATURA_KESILDI', 'COMPLETED', 'ACCEPTED'].includes(normalized)) return 'success'
+  if (['FATURA_YUKLENDI', 'FATURA_KESILDI', 'FATURA_KONTROLDE', 'COMPLETED', 'ACCEPTED'].includes(normalized)) return 'success'
   return 'neutral'
 }
 

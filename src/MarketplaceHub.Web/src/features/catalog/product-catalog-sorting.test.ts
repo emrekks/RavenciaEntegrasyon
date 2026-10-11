@@ -9,21 +9,23 @@ const groups = [
 ]
 
 describe('product catalog sorting', () => {
-  it('starts a selected column with the largest values first and toggles direction on repeated clicks', () => {
-    const stockDescending = nextProductCatalogSort(null, 'stock')
+  it('cycles a column through ascending, descending, and unsorted', () => {
+    const stockAscending = nextProductCatalogSort(null, 'stock')
+    expect(stockAscending).toEqual({ field: 'stock', direction: 'asc' })
+    const stockDescending = nextProductCatalogSort(stockAscending, 'stock')
     expect(stockDescending).toEqual({ field: 'stock', direction: 'desc' })
-    expect(nextProductCatalogSort(stockDescending, 'stock')).toEqual({ field: 'stock', direction: 'asc' })
-    expect(nextProductCatalogSort(stockDescending, 'price')).toEqual({ field: 'price', direction: 'desc' })
+    expect(nextProductCatalogSort(stockDescending, 'stock')).toBeNull()
+    expect(nextProductCatalogSort(stockAscending, 'price')).toEqual({ field: 'price', direction: 'asc' })
   })
 
   it('sorts by the displayed combined stock in both directions', () => {
-    expect(sortProductGroups(groups, { field: 'stock', direction: 'desc' }).map(group => group.id)).toEqual(['high', 'medium', 'no-price', 'low'])
     expect(sortProductGroups(groups, { field: 'stock', direction: 'asc' }).map(group => group.id)).toEqual(['low', 'no-price', 'medium', 'high'])
+    expect(sortProductGroups(groups, { field: 'stock', direction: 'desc' }).map(group => group.id)).toEqual(['high', 'medium', 'no-price', 'low'])
   })
 
   it('sorts by the lowest displayed family price and treats a missing price as zero', () => {
     expect(productGroupMetric(groups[1], 'price')).toBe(30)
-    expect(sortProductGroups(groups, { field: 'price', direction: 'desc' }).map(group => group.id)).toEqual(['high', 'medium', 'low', 'no-price'])
     expect(sortProductGroups(groups, { field: 'price', direction: 'asc' }).map(group => group.id)).toEqual(['no-price', 'low', 'medium', 'high'])
+    expect(sortProductGroups(groups, { field: 'price', direction: 'desc' }).map(group => group.id)).toEqual(['high', 'medium', 'low', 'no-price'])
   })
 })

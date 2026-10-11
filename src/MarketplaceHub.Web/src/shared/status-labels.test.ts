@@ -8,4 +8,9 @@ describe('invoice status labels', () => {
     expect(invoiceStatusLabel('REJECTED')).toBe('Fatura reddedildi')
     expect(invoiceStatusTone('MANUAL_REVIEW')).toBe('warning')
   })
+
+  it('shows a marketplace invoice awaiting reconciliation as issued and successful', () => {
+    expect(invoiceStatusLabel('FATURA_KONTROLDE')).toBe('Faturası Mevcut')
+    expect(invoiceStatusTone('FATURA_KONTROLDE')).toBe('success')
+  })
 })

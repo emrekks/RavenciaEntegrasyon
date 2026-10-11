@@ -11,9 +11,9 @@ export function productGroupMetric(group: ProductGroupMetrics, field: 'price' | 
 }
 
 export function nextProductCatalogSort(current: ProductCatalogSort, field: 'price' | 'stock'): ProductCatalogSort {
-  return current?.field === field
-    ? { field, direction: current.direction === 'desc' ? 'asc' : 'desc' }
-    : { field, direction: 'desc' }
+  if (current?.field !== field) return { field, direction: 'asc' }
+  if (current.direction === 'asc') return { field, direction: 'desc' }
+  return null
 }
 
 export function sortProductGroups<T extends ProductGroupMetrics>(groups: T[], sort: ProductCatalogSort): T[] {
