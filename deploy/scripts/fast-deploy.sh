@@ -37,7 +37,12 @@ invoice_marketplace_delivery_writes_enabled=false
 if [[ "$enable_invoice_marketplace_delivery" == true ]]; then invoice_marketplace_delivery_writes_enabled=true; fi
 
 cd "$repository_root"
-git pull --ff-only origin main
+if [[ -n "${DEPLOY_REVISION:-}" ]]; then
+  # CI passes the exact validated commit and has already fast-forwarded to it.
+  [[ "$(git rev-parse HEAD)" == "$DEPLOY_REVISION" ]] || { echo "Checked-out revision does not match DEPLOY_REVISION." >&2; exit 1; }
+else
+  git pull --ff-only origin main
+fi
 revision="$(git rev-parse --short=12 HEAD)"
 app_image="marketplacehub-app:manual-$revision"
 edge_image="marketplacehub-edge:manual-$revision"
@@ -59,12 +64,12 @@ sudo -n docker build --pull=false -t "$edge_image" -f deploy/caddy/Dockerfile.pr
 validation_cleanup_needed=true
 cleanup_validation() {
   if [[ "$validation_cleanup_needed" == true ]]; then
-    "${validation_compose[@]}" rm --stop --force validation-postgres >/dev/null 2>&1 || true
+    "${validation_compose[@]}" rm --stop --force --volumes validation-postgres >/dev/null 2>&1 || true
   fi
 }
 trap cleanup_validation EXIT
 "${validation_compose[@]}" run --build --rm validation-tests
-"${validation_compose[@]}" rm --stop --force validation-postgres >/dev/null
+"${validation_compose[@]}" rm --stop --force --volumes validation-postgres >/dev/null
 validation_cleanup_needed=false
 trap - EXIT
 
