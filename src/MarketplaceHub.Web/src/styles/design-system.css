@@ -58,7 +58,7 @@
 .app-shell.stitch-shell main .order-reference-head { color: rgb(244 244 247); }
 .app-shell.stitch-shell main .order-reference-head .order-column-filter-trigger { color: rgb(244 244 247); }
 .app-shell.stitch-shell main .order-reference-head .order-column-filter.has-filter .order-column-filter-trigger { color: var(--rv-color-primary); }
-.app-shell.stitch-shell main .order-filter-empty { display: grid; min-height: 80px; place-items: center; padding: var(--rv-space-5); color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); font-size: var(--rv-font-size-sm); text-align: center; }
+.app-shell.stitch-shell main .order-filter-empty { display: grid; min-height: 80px; place-items: center; padding: var(--rv-space-5); color: var(--rv-color-muted); background: transparent; border: 0; border-radius: 0; font-size: var(--rv-font-size-sm); text-align: center; }
 
 .order-bulk-notice { position: relative; overflow: hidden; }
 .order-bulk-notice::after { position: absolute; top: 0; right: 0; left: 0; height: 3px; background: currentColor; content: ''; transform: scaleX(0); transform-origin: left center; animation: order-notice-progress 5s linear forwards; }
