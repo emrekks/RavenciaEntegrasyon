@@ -8,7 +8,7 @@ type InvoiceReferenceDocumentSource = {
 }
 
 export function invoiceReferenceDocumentHref(item: InvoiceReferenceDocumentSource): string | null {
-  for (const candidate of [item.currentPlatformInvoiceUrl ?? item.marketplaceInvoiceUrl, item.manualInvoiceDocumentUrl]) {
+  for (const candidate of [invoiceReferenceMarketplaceHref(item), item.manualInvoiceDocumentUrl]) {
     const safeUrl = safeInvoiceReferenceUrl(candidate)
     if (safeUrl) return safeUrl
   }
@@ -30,6 +30,7 @@ export function platformInvoiceLinkUnavailable(item: InvoiceReferenceDocumentSou
 }
 
 export function invoiceReferenceMarketplaceHref(item: InvoiceReferenceDocumentSource): string | null {
+  if (item.platformInvoiceStatus?.toUpperCase() !== 'INVOICED') return null
   return safeInvoiceReferenceUrl(item.currentPlatformInvoiceUrl ?? item.marketplaceInvoiceUrl)
 }
 

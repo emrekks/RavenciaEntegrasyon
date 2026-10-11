@@ -141,7 +141,8 @@ function Badge({ value, tone, label }: { value: string; tone?: 'good' | 'warn' |
 function isInvoiceFailureStatus(value: string | null | undefined) {
   return ['FATURA_REDDEDILDI', 'FATURA_PLATFORMA_AKTARILMADI', 'REJECTED', 'VALIDATION_FAILED', 'MANUAL_REVIEW', 'MARKETPLACE_FAILED'].includes(value?.trim().toUpperCase() ?? '')
 }
-function invoiceWorkspaceStatus(item: Pick<InvoiceWorkspace, 'invoiceId' | 'invoiceStatus' | 'canCreateInvoice'>) {
+function invoiceWorkspaceStatus(item: Pick<InvoiceWorkspace, 'invoiceId' | 'invoiceStatus' | 'canCreateInvoice' | 'platformInvoiceStatus'>) {
+  if (['INVOICED', 'RECEIVED'].includes(item.platformInvoiceStatus?.trim().toUpperCase() ?? '')) return { value: 'FATURA_KONTROLDE', tone: 'info' as const }
   if (!item.invoiceId || item.canCreateInvoice || item.invoiceStatus === 'FATURA_BEKLIYOR') return { value: 'FATURA_BEKLIYOR', tone: 'warning' as const }
   if (isInvoiceFailureStatus(item.invoiceStatus)) return { value: item.invoiceStatus, tone: 'danger' as const }
   if (['FATURA_YUKLENDI', 'FATURA_KESILDI', 'COMPLETED'].includes(item.invoiceStatus)) return { value: item.invoiceStatus, tone: 'success' as const }
@@ -344,7 +345,7 @@ export function InvoicesPage() {
             </> : item.invoiceId ? isInvoiceFailureStatus(item.invoiceStatus) ? <button type="button" disabled={!isInvoiceCreationAvailable(item, Boolean(providerForItem(item)?.hasCredential))} title={!item.invoiceCreationEnabled ? invoiceCreationDisabledHelp : undefined} onClick={() => openInvoicePreview([item])}><span className="invoice-action-label">{item.invoiceStatus === 'FATURA_PLATFORMA_AKTARILMADI' ? 'Platforma iletimi tekrar dene' : 'Tekrar dene'}</span></button> : <InvoiceStatusBadge status={item.invoiceStatus} /> : <button type="button" disabled={!isInvoiceCreationAvailable(item, Boolean(providerForItem(item)?.hasCredential))} title={!item.invoiceCreationEnabled ? invoiceCreationDisabledHelp : undefined} onClick={() => openInvoicePreview([item])}><span className="invoice-action-label">Fatura oluştur</span></button>}
             {invoiceReferenceDocumentHref(item) && <a className="invoice-reference-document-link" href={invoiceReferenceDocumentHref(item)!} target="_blank" rel="noopener noreferrer">{invoiceReferenceDocumentLabel(item)} <UiIcon name="externalLink" /></a>}
             {platformInvoiceLinkUnavailable(item) && <small className="invoice-marketplace-read-error">Platformda fatura var; güncel bağlantı alınamıyor. Açılan yerel PDF pazaryeri bağlantısı değildir.</small>}
-            {item.allowedActions?.includes('CHECK_PLATFORM') && <button type="button" className="secondary invoice-reference-check-trigger" onClick={() => invoiceReconcile.mutate(item)} disabled={invoiceReconcile.isPending}>{invoiceReconcile.isPending ? 'Kontrol kuyruğa alınıyor…' : 'Şimdi kontrol et'}</button>}
+            {item.allowedActions?.includes('CHECK_PLATFORM') && <button type="button" className="secondary invoice-reference-check-trigger" onClick={() => invoiceReconcile.mutate(item)} disabled={invoiceReconcile.isPending} aria-label={invoiceReconcile.isPending ? 'Pazaryeri fatura kontrolü kuyruğa alınıyor' : 'Pazaryeri fatura bilgisini yenile'} title={invoiceReconcile.isPending ? 'Pazaryeri fatura kontrolü kuyruğa alınıyor' : 'Pazaryeri fatura bilgisini yenile'}>{invoiceReconcile.isPending ? <UiIcon name="loader" /> : <UiIcon name="refresh" />}</button>}
             <button type="button" className="invoice-reference-details-trigger" onClick={() => setSelectedItem(item)}>Detayları aç <UiIcon name="externalLink" /></button>
           </div>
         </article>)}

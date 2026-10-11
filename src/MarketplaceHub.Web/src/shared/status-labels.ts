@@ -26,7 +26,7 @@ const statusLabels: Record<string, string> = {
   FATURA_ISLENIYOR: 'Fatura kontrol ediliyor',
   FATURA_KESILDI: 'Fatura kesildi',
   FATURA_YUKLENDI: 'Faturası yüklendi',
-  FATURA_KONTROLDE: 'Fatura kontrol ediliyor',
+  FATURA_KONTROLDE: 'Fatura eşleşmesi doğrulanıyor',
   FATURA_IPTAL: 'Fatura iptal edildi',
   FATURA_REDDEDILDI: 'Fatura reddedildi',
   HEALTHY: 'Sağlıklı',
@@ -101,7 +101,8 @@ export type InvoiceStatusTone = 'neutral' | 'info' | 'success' | 'warning' | 'da
 export function invoiceStatusLabel(value: string | null | undefined) {
   const normalized = value?.trim().toLocaleUpperCase('tr-TR') ?? ''
   if (['FATURA_BEKLIYOR', 'PENDING', 'DRAFT'].includes(normalized)) return 'Fatura Bekliyor'
-  if (['FATURA_ISLENIYOR', 'FATURA_KONTROLDE', 'PROCESSING', 'SUBMITTING', 'SUBMITTED', 'MARKETPLACE_PENDING', 'READY'].includes(normalized)) return 'Fatura İşleniyor'
+  if (normalized === 'FATURA_KONTROLDE') return 'Fatura eşleşmesi doğrulanıyor'
+  if (['FATURA_ISLENIYOR', 'PROCESSING', 'SUBMITTING', 'SUBMITTED', 'MARKETPLACE_PENDING', 'READY'].includes(normalized)) return 'Fatura İşleniyor'
   if (normalized === 'MANUAL_REVIEW') return 'İnceleme gerekli'
   if (normalized === 'MARKETPLACE_FAILED') return 'Pazaryeri aktarımı başarısız'
   if (normalized === 'FATURA_PLATFORMA_AKTARILMADI') return 'Fatura oluşturuldu, platforma aktarılmadı'

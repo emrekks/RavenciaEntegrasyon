@@ -1404,6 +1404,9 @@
   .invoice-reference-document-link { display: inline-flex; align-items: center; justify-content: center; gap: var(--rv-space-1); min-width: 0; padding: 5px 8px; color: var(--rv-color-ink); background: #18181f; border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-sm); font-size: var(--rv-font-size-xs); font-weight: 700; text-decoration: none; }
   .invoice-reference-document-link:hover { color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border-color: var(--rv-color-border-strong); }
   .invoice-reference-actions > button:not(.invoice-reference-details-trigger) { display: inline-flex; align-items: center; justify-content: center; gap: var(--rv-space-1); min-width: 0; overflow: hidden; padding-inline: var(--rv-space-2); white-space: nowrap; }
+  .invoice-reference-actions > .invoice-reference-check-trigger { justify-self: end; width: 30px; height: 30px; min-height: 30px; padding: 0; color: var(--rv-color-muted); border-radius: 50%; }
+  .invoice-reference-check-trigger .ui-icon { width: 15px; height: 15px; }
+  .invoice-reference-check-trigger[disabled] .ui-icon-loader { animation: rv-spin 1s linear infinite; }
   .invoice-action-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .invoice-reference-actions > button[aria-busy="true"] { cursor: default; }
   .invoice-action-spinner { display: inline-block; width: 14px; height: 14px; flex: 0 0 14px; border: 2px solid color-mix(in srgb, currentColor 28%, transparent); border-top-color: currentColor; border-radius: 50%; animation: rv-spin .8s linear infinite; }

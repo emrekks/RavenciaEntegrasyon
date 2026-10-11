@@ -7,6 +7,7 @@ describe('invoiceReferenceDocumentHref', () => {
       invoiceId: 'invoice-1',
       invoiceDocumentAvailable: true,
       marketplaceInvoiceUrl: 'https://documents.example.test/current.pdf',
+      platformInvoiceStatus: 'INVOICED',
     })).toBe('https://documents.example.test/current.pdf')
   })
 
@@ -24,6 +25,7 @@ describe('invoiceReferenceDocumentHref', () => {
       invoiceDocumentAvailable: true,
       marketplaceInvoiceUrl: 'https://marketplace.example.test/current.pdf',
       manualInvoiceDocumentUrl: 'https://documents.example.test/manual.pdf',
+      platformInvoiceStatus: 'INVOICED',
     })).toBe('https://marketplace.example.test/current.pdf')
   })
 
@@ -40,6 +42,18 @@ describe('invoiceReferenceDocumentHref', () => {
 
   it('does not render a document action when no usable document exists', () => {
     expect(invoiceReferenceDocumentHref({ invoiceId: 'invoice-1', invoiceDocumentAvailable: false })).toBeNull()
+  })
+
+  it('does not treat a stale marketplace URL as an invoice link when platform status is pending', () => {
+    const item = {
+      invoiceId: null,
+      invoiceDocumentAvailable: false,
+      marketplaceInvoiceUrl: 'https://marketplace.example.test/old.pdf',
+      platformInvoiceStatus: 'NOT_INVOICED',
+    }
+    expect(invoiceReferenceMarketplaceHref(item)).toBeNull()
+    expect(invoiceReferenceDocumentHref(item)).toBeNull()
+    expect(invoiceReferenceDocumentLabel(item)).toBeNull()
   })
 
   it('opens the platform link first and labels stored documents by their actual source', () => {

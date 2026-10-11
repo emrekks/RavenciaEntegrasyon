@@ -332,6 +332,15 @@ public sealed record MarketplaceInvoiceReferenceHistoryView(
     string ChangeReason,
     DateTimeOffset ChangedAt);
 
+public static class InvoiceWorkspaceReadIssuePolicy
+{
+    // Trendyol removes older packages from its package lookup. The worker
+    // intentionally preserves the last known invoice state for those records,
+    // so a 404 for a historical package is not an actionable workspace error.
+    public static bool ShouldDisplay(string? code) =>
+        !string.Equals(code?.Trim(), "REMOTE_PACKAGE_NOT_FOUND", StringComparison.OrdinalIgnoreCase);
+}
+
 public static class InvoiceWorkspaceActionPolicy
 {
     public static IReadOnlyList<string> Resolve(

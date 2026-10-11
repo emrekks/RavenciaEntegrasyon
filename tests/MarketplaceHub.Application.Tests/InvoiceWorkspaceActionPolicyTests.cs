@@ -6,6 +6,15 @@ namespace MarketplaceHub.Application.Tests;
 
 public sealed class InvoiceWorkspaceActionPolicyTests
 {
+    [Theory]
+    [InlineData("REMOTE_PACKAGE_NOT_FOUND", false)]
+    [InlineData("TIMEOUT", true)]
+    [InlineData(null, true)]
+    public void HistoricalPackageNotFoundIsNotShownAsAnActionableWorkspaceError(string? code, bool expected)
+    {
+        Assert.Equal(expected, InvoiceWorkspaceReadIssuePolicy.ShouldDisplay(code));
+    }
+
     [Fact]
     public void UnknownMarketplaceStateAllowsReadCheckOnly()
     {

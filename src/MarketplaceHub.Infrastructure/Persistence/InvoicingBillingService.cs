@@ -211,6 +211,8 @@ public sealed partial class InvoicingBillingService(
                 : deliveryAttempts.Where(x => x.InvoiceId == invoice.Id && x.PackageId == package.Id).OrderByDescending(x => x.AttemptNumber).FirstOrDefault();
             var invoiceReadIssue = invoiceReadIssues.GetValueOrDefault($"trendyol-invoice-package-read:{package.ConnectionId}:{package.Id}")
                 ?? invoiceReadIssues.GetValueOrDefault($"order-invoice-reconciliation:{order.ConnectionId}:{order.ExternalOrderId}");
+            if (invoiceReadIssue is not null && !InvoiceWorkspaceReadIssuePolicy.ShouldDisplay(invoiceReadIssue.Code))
+                invoiceReadIssue = null;
             return new InvoiceWorkspaceItemView(order.Id, package.Id, order.OrderNumber, customerName, order.OrderedAt, package.Status.ToString().ToUpperInvariant(), deliveredAt, dueAt, dueSoon, order.Currency, package.NetAmount > 0 ? package.NetAmount : order.NetAmount, orderLines.Count, image, package.CargoProviderExternalId, package.CargoTrackingNumber, invoice?.Id, invoiceStatus, ResolveInvoiceNumber(invoice?.InvoiceNumber, package.MarketplaceInvoiceNumber), invoiceStatus == "FATURA_BEKLIYOR", order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, workspaceLines, invoice?.LastErrorCode, deliveryState?.Status ?? deliveryAttempt?.Status, deliveryState?.ExternalReference ?? deliveryAttempt?.ExternalReference, invoice is not null && invoiceDocumentIds.Contains(invoice.Id), connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol", connection is not null && MarketplaceInvoiceCreationPolicy.IsEnabled(connection.PlatformCode, connection.SettingsJson), invoiceReadIssue?.Code, invoiceReadIssue?.Summary, connection?.Environment ?? "UNKNOWN", package.MarketplaceInvoiceUrl);
         }).Where(x => x is not null).Select(x => x!).ToList();
     }
@@ -720,7 +722,8 @@ public sealed partial class InvoicingBillingService(
         var invoiceReadIssues = invoiceReadIssueKeys.Length == 0
             ? new Dictionary<string, (string Code, string Summary)>(StringComparer.Ordinal)
             : (await db.OperationalIssues.AsNoTracking()
-                .Where(issue => issue.TenantId == tenantId && issue.Status == IssueStatus.Open && invoiceReadIssueKeys.Contains(issue.DedupeKey))
+                .Where(issue => issue.TenantId == tenantId && issue.Status == IssueStatus.Open
+                    && invoiceReadIssueKeys.Contains(issue.DedupeKey))
                 .Select(issue => new { issue.DedupeKey, issue.Code, issue.Summary })
                 .ToListAsync(cancellationToken))
                 .ToDictionary(issue => issue.DedupeKey, issue => (issue.Code, issue.Summary), StringComparer.Ordinal);
@@ -759,6 +762,9 @@ public sealed partial class InvoicingBillingService(
                 && orderSnapshotsForItem is not null
                 && !string.IsNullOrWhiteSpace(orderSnapshotsForItem.ExternalOrderId))
                 invoiceReadIssues.TryGetValue($"order-invoice-reconciliation:{orderSnapshotsForItem.ConnectionId}:{orderSnapshotsForItem.ExternalOrderId}", out issue);
+            var hasReadIssue = issue != default;
+            var shouldDisplayReadIssue = hasReadIssue && InvoiceWorkspaceReadIssuePolicy.ShouldDisplay(issue.Code);
+            if (!shouldDisplayReadIssue) issue = default;
             var hasFiscalDocument = candidate.Invoice is not null && invoiceDocumentIds.Contains(candidate.Invoice.Id);
             var deliveryStatus = manualDeliveryState?.Status
                 ?? deliveryState?.Status
@@ -773,7 +779,7 @@ public sealed partial class InvoicingBillingService(
                 hasFiscalDocument,
                 manualDocument is not null,
                 candidate.CanCreateInvoice,
-                issue != default);
+                hasReadIssue);
             return new InvoiceWorkspaceItemView(
                 candidate.Order.Id,
                 candidate.Package.Id,

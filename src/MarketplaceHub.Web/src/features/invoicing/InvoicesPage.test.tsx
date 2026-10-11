@@ -5,9 +5,9 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const invoiceFixtures = [
-  { id: 'inv-1', orderId: 'order-1', packageId: 'shopify-package-1', orderNumber: 'SH-1001', customerName: 'DSM IGA', orderedAt: '2026-10-04T10:00:00Z', shipmentStatus: 'DELIVERED', deliveredAt: '2026-10-04T12:00:00Z', invoiceDueAt: null, isDueSoon: true, currency: 'TRY', amount: 899, productCount: 1, primaryImageUrl: null, cargoProviderName: 'Yurtiçi', cargoTrackingNumber: '7330037879585', invoiceId: 'invoice-1', invoiceStatus: 'FATURA_BEKLIYOR', invoiceNumber: null, canCreateInvoice: true, shipmentAddressJson: null, invoiceAddressJson: null, lines: [], invoiceErrorCode: null, invoiceDeliveryStatus: null, invoiceDeliveryReference: null, invoiceDocumentAvailable: false, marketplaceInvoiceUrl: 'https://documents.example.test/current-invoice.pdf', platformCode: 'SHOPIFY', platformDisplayName: 'Shopify', invoiceCreationEnabled: true },
-  { id: 'inv-2', orderId: 'order-2', packageId: 'shopify-package-2', orderNumber: 'SH-1002', customerName: 'Mehmet Kaya', orderedAt: '2026-10-04T11:00:00Z', shipmentStatus: 'DELIVERED', deliveredAt: '2026-10-04T12:30:00Z', invoiceDueAt: null, isDueSoon: true, currency: 'TRY', amount: 1250, productCount: 2, primaryImageUrl: null, cargoProviderName: 'Yurtiçi', cargoTrackingNumber: 'TRK-2', invoiceId: 'invoice-2', invoiceStatus: 'FATURA_BEKLIYOR', invoiceNumber: null, canCreateInvoice: true, shipmentAddressJson: null, invoiceAddressJson: null, lines: [], invoiceErrorCode: null, invoiceDeliveryStatus: null, invoiceDeliveryReference: null, invoiceDocumentAvailable: false, marketplaceInvoiceUrl: null, platformCode: 'SHOPIFY', platformDisplayName: 'Shopify', invoiceCreationEnabled: true },
-  { id: 'inv-3', orderId: 'order-3', packageId: 'trendyol-package-3', orderNumber: 'TY-1003', customerName: 'Zeynep Demir', orderedAt: '2026-10-04T12:00:00Z', shipmentStatus: 'DELIVERED', deliveredAt: '2026-10-04T13:00:00Z', invoiceDueAt: null, isDueSoon: true, currency: 'TRY', amount: 499, productCount: 1, primaryImageUrl: null, cargoProviderName: 'Aras', cargoTrackingNumber: 'TRK-3', invoiceId: null, invoiceStatus: 'FATURA_BEKLIYOR', invoiceNumber: null, canCreateInvoice: true, shipmentAddressJson: null, invoiceAddressJson: null, lines: [], invoiceErrorCode: null, invoiceDeliveryStatus: null, invoiceDeliveryReference: null, invoiceDocumentAvailable: false, marketplaceInvoiceUrl: null, platformCode: 'TRENDYOL', platformDisplayName: 'Trendyol', invoiceCreationEnabled: true },
+  { id: 'inv-1', orderId: 'order-1', packageId: 'shopify-package-1', orderNumber: 'SH-1001', customerName: 'DSM IGA', orderedAt: '2026-10-04T10:00:00Z', shipmentStatus: 'DELIVERED', deliveredAt: '2026-10-04T12:00:00Z', invoiceDueAt: null, isDueSoon: true, currency: 'TRY', amount: 899, productCount: 1, primaryImageUrl: null, cargoProviderName: 'Yurtiçi', cargoTrackingNumber: '7330037879585', invoiceId: 'invoice-1', invoiceStatus: 'FATURA_BEKLIYOR', invoiceNumber: null, canCreateInvoice: true, shipmentAddressJson: null, invoiceAddressJson: null, lines: [], invoiceErrorCode: null, invoiceDeliveryStatus: null, invoiceDeliveryReference: null, invoiceDocumentAvailable: false, marketplaceInvoiceUrl: 'https://documents.example.test/current-invoice.pdf', platformInvoiceStatus: 'INVOICED', platformCode: 'SHOPIFY', platformDisplayName: 'Shopify', invoiceCreationEnabled: true },
+  { id: 'inv-2', orderId: 'order-2', packageId: 'shopify-package-2', orderNumber: 'SH-1002', customerName: 'Mehmet Kaya', orderedAt: '2026-10-04T11:00:00Z', shipmentStatus: 'DELIVERED', deliveredAt: '2026-10-04T12:30:00Z', invoiceDueAt: null, isDueSoon: true, currency: 'TRY', amount: 1250, productCount: 2, primaryImageUrl: null, cargoProviderName: 'Yurtiçi', cargoTrackingNumber: 'TRK-2', invoiceId: 'invoice-2', invoiceStatus: 'FATURA_BEKLIYOR', invoiceNumber: null, canCreateInvoice: true, shipmentAddressJson: null, invoiceAddressJson: null, lines: [], invoiceErrorCode: null, invoiceDeliveryStatus: null, invoiceDeliveryReference: null, invoiceDocumentAvailable: false, marketplaceInvoiceUrl: 'https://documents.example.test/stale-invoice.pdf', platformInvoiceStatus: 'NOT_INVOICED', platformCode: 'SHOPIFY', platformDisplayName: 'Shopify', invoiceCreationEnabled: true },
+  { id: 'inv-3', orderId: 'order-3', packageId: 'trendyol-package-3', orderNumber: 'TY-1003', customerName: 'Zeynep Demir', orderedAt: '2026-10-04T12:00:00Z', shipmentStatus: 'DELIVERED', deliveredAt: '2026-10-04T13:00:00Z', invoiceDueAt: null, isDueSoon: true, currency: 'TRY', amount: 499, productCount: 1, primaryImageUrl: null, cargoProviderName: 'Aras', cargoTrackingNumber: 'TRK-3', invoiceId: null, invoiceStatus: 'FATURA_BEKLIYOR', invoiceNumber: null, canCreateInvoice: true, shipmentAddressJson: null, invoiceAddressJson: null, lines: [], invoiceErrorCode: null, invoiceDeliveryStatus: null, invoiceDeliveryReference: null, invoiceDocumentAvailable: false, marketplaceInvoiceUrl: null, platformInvoiceStatus: 'NOT_INVOICED', allowedActions: ['CHECK_PLATFORM'], platformCode: 'TRENDYOL', platformDisplayName: 'Trendyol', invoiceCreationEnabled: true },
 ]
 
 const apiState = vi.hoisted(() => ({ uploads: [] as Array<{ path: string; fileName: string | null }>, statusUpdates: [] as Array<{ path: string; status: string; packageIds: string[] }>, pageRequests: [] as string[] }))
@@ -61,9 +61,27 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
   it('opens a current marketplace invoice link even when no local PDF is available', () => {
     const link = Array.from(container.querySelectorAll<HTMLAnchorElement>('.invoice-reference-document-link'))
       .find(item => item.textContent?.includes('Fatura linki'))
+    const row = Array.from(container.querySelectorAll<HTMLElement>('.invoice-reference-row'))
+      .find(item => item.textContent?.includes('SH-1001'))
 
     expect(link?.href).toBe('https://documents.example.test/current-invoice.pdf')
     expect(link?.rel).toBe('noopener noreferrer')
+    expect(row?.querySelector('.invoice-reference-status')?.textContent).toContain('Fatura eşleşmesi doğrulanıyor')
+    expect(row?.querySelector('.invoice-reference-status')?.textContent).not.toContain('Fatura Bekliyor')
+  })
+
+  it('does not present a stale marketplace document link while the platform says invoice pending', () => {
+    const rows = Array.from(container.querySelectorAll<HTMLElement>('.invoice-reference-row'))
+    const row = rows.find(item => item.textContent?.includes('SH-1002'))!
+    expect(row.querySelector('.invoice-reference-document-link')).toBeNull()
+    expect(row.querySelector('.invoice-reference-status')?.textContent).toContain('Fatura Bekliyor')
+  })
+
+  it('uses a compact accessible refresh icon for checking marketplace invoice status', () => {
+    const refresh = container.querySelector<HTMLButtonElement>('.invoice-reference-check-trigger')
+    expect(refresh?.getAttribute('aria-label')).toBe('Pazaryeri fatura bilgisini yenile')
+    expect(refresh?.querySelector('.ui-icon-refresh')).not.toBeNull()
+    expect(refresh?.textContent?.trim()).toBe('')
   })
 
   it('renders selection controls for every platform order and selects the whole page', async () => {
