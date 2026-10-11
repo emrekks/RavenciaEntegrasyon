@@ -11309,6 +11309,19 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
   text-overflow: ellipsis;
 }
 
+.app-shell.stitch-shell main .invoice-reference-status > :is(.badge, .rv-badge, .invoice-status, .invoice-status-label),
+.app-shell.stitch-shell main .invoice-reference-actions > :is(.invoice-status, .invoice-status-label) {
+  height: 34px;
+  min-height: 34px;
+  box-sizing: border-box;
+}
+
+.app-shell.stitch-shell main .invoice-reference-actions > button:not(.invoice-reference-check-trigger):not(.invoice-reference-details-trigger) {
+  height: 34px;
+  min-height: 34px;
+  box-sizing: border-box;
+}
+
 /* Make invoice actions read as controls, not as another data tile. */
 .app-shell.stitch-shell main .invoice-detail-summary-facts > div {
   min-height: 0;
