@@ -370,7 +370,7 @@ public sealed partial class InvoicingBillingService(
                 if (platformSelected && !isHidden)
                 {
                     selectedTotal++;
-                    if (IsWorkspaceInvoiceUninvoiced(candidate.InvoiceStatus, candidate.CanCreateInvoice)) selectedUninvoiced++;
+                    if (IsWorkspaceInvoiceUninvoiced(candidate.InvoiceStatus, candidate.CanCreateInvoice, HasMarketplaceInvoiceObservation(candidate))) selectedUninvoiced++;
                     else selectedInvoiced++;
                     if (candidate.IsDueSoon) selectedDueSoon++;
                     if (!string.Equals(candidate.Connection.PlatformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase)
@@ -581,9 +581,9 @@ public sealed partial class InvoicingBillingService(
         var tabMatch = normalizedTab switch
         {
             "HIDDEN" => isHidden,
-            "INVOICED" => !isHidden && !IsWorkspaceInvoiceUninvoiced(candidate.InvoiceStatus, candidate.CanCreateInvoice),
+            "INVOICED" => !isHidden && !IsWorkspaceInvoiceUninvoiced(candidate.InvoiceStatus, candidate.CanCreateInvoice, HasMarketplaceInvoiceObservation(candidate)),
             "DUE_SOON" => !isHidden && candidate.IsDueSoon,
-            _ => !isHidden && IsWorkspaceInvoiceUninvoiced(candidate.InvoiceStatus, candidate.CanCreateInvoice)
+            _ => !isHidden && IsWorkspaceInvoiceUninvoiced(candidate.InvoiceStatus, candidate.CanCreateInvoice, HasMarketplaceInvoiceObservation(candidate))
         };
         var shipmentMatch = string.IsNullOrWhiteSpace(request.ShipmentStatus) || request.ShipmentStatus == "ALL"
             || string.Equals(candidate.Package.Status.ToString(), request.ShipmentStatus, StringComparison.OrdinalIgnoreCase);
@@ -600,8 +600,12 @@ public sealed partial class InvoicingBillingService(
         return tabMatch && platformMatch && shipmentMatch && cargoMatch && invoiceMatch && actionMatch && dateMatch && searchMatch;
     }
 
-    internal static bool IsWorkspaceInvoiceUninvoiced(string invoiceStatus, bool canCreateInvoice) =>
-        canCreateInvoice || invoiceStatus is "FATURA_REDDEDILDI" or "FATURA_ISLENIYOR" or "FATURA_KONTROLDE" or "FATURA_PLATFORMA_AKTARILMADI";
+    internal static bool IsWorkspaceInvoiceUninvoiced(string invoiceStatus, bool canCreateInvoice, bool marketplaceInvoicePresent = false) =>
+        !marketplaceInvoicePresent && (canCreateInvoice
+            || invoiceStatus is "FATURA_REDDEDILDI" or "FATURA_ISLENIYOR" or "FATURA_KONTROLDE" or "FATURA_PLATFORMA_AKTARILMADI");
+
+    private static bool HasMarketplaceInvoiceObservation(WorkspaceCandidate candidate) =>
+        candidate.Package.MarketplaceInvoiceStatus is MarketplaceInvoiceStatus.Invoiced or MarketplaceInvoiceStatus.Received;
 
     internal static bool MatchesWorkspacePlatformFilter(IReadOnlyList<string>? platformCodes, string candidatePlatformCode) =>
         platformCodes is null || platformCodes.Count == 0 || platformCodes.Any(platform =>
@@ -838,6 +842,7 @@ public sealed partial class InvoicingBillingService(
 
     private static string WorkspaceInvoiceDisplayStatus(WorkspaceCandidate candidate)
     {
+        if (HasMarketplaceInvoiceObservation(candidate)) return "FATURA_KONTROLDE";
         if (candidate.Invoice is null || candidate.CanCreateInvoice || candidate.InvoiceStatus == "FATURA_BEKLIYOR") return "FATURA_BEKLIYOR";
         if (candidate.InvoiceStatus is "FATURA_REDDEDILDI" or "REJECTED" or "VALIDATION_FAILED" or "MANUAL_REVIEW" or "MARKETPLACE_FAILED") return candidate.InvoiceStatus;
         if (candidate.InvoiceStatus is "FATURA_YUKLENDI" or "FATURA_KESILDI" or "COMPLETED") return candidate.InvoiceStatus;
