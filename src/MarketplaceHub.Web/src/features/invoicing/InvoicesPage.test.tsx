@@ -97,11 +97,11 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     expect(actionButtons.some(item => /Fatura oluştur|Fatura önizlemesi/.test(item.textContent ?? ''))).toBe(false)
   })
 
-  it('keeps marketplace refresh at the top of the action cell, separate from details', () => {
+  it('groups the subtle marketplace refresh with details at the action area top right', () => {
     const row = Array.from(container.querySelectorAll<HTMLElement>('.invoice-reference-row'))
       .find(item => item.textContent?.includes('TY-1003'))!
-    expect(row.querySelector('.invoice-reference-action-header .invoice-reference-check-trigger')).not.toBeNull()
-    expect(row.querySelector('.invoice-reference-action-footer .invoice-reference-check-trigger')).toBeNull()
+    expect(row.querySelector('.invoice-reference-action-footer .invoice-reference-check-trigger')).not.toBeNull()
+    expect(row.querySelector('.invoice-reference-action-header')).toBeNull()
   })
 
   it('renders selection controls for every platform order and selects the whole page', async () => {

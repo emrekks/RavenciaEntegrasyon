@@ -1409,12 +1409,11 @@
   .invoice-reference-document-link { display: inline-flex; align-items: center; justify-content: center; gap: var(--rv-space-1); min-width: 0; padding: 5px 8px; color: var(--rv-color-ink); background: #18181f; border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-sm); font-size: var(--rv-font-size-xs); font-weight: 700; text-decoration: none; }
   .invoice-reference-document-link:hover { color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border-color: var(--rv-color-border-strong); }
   .invoice-reference-actions > button:not(.invoice-reference-details-trigger) { display: inline-flex; align-items: center; justify-content: center; gap: var(--rv-space-1); min-width: 0; overflow: hidden; padding-inline: var(--rv-space-2); white-space: nowrap; }
-  .invoice-reference-action-header { display: flex; min-width: 0; align-items: center; justify-content: flex-end; }
-  .invoice-reference-action-footer { display: flex; min-width: 0; align-items: center; justify-content: flex-start; gap: var(--rv-space-2); }
+  .invoice-reference-action-footer { position: relative; display: flex; min-width: 0; min-height: 52px; align-items: flex-end; justify-content: flex-start; padding-top: 18px; }
   .invoice-reference-action-footer > .invoice-reference-details-trigger { width: fit-content; min-width: 0; }
-  .invoice-reference-action-header > .invoice-reference-check-trigger { display: inline-flex; flex: 0 0 24px; align-items: center; justify-content: center; width: 24px; height: 24px; min-height: 24px; padding: 0; color: var(--rv-color-muted); background: transparent; border: 0; border-radius: 4px; box-shadow: none; }
-  .app-shell.stitch-shell main .invoice-reference-action-header > .invoice-reference-check-trigger:hover:not(:disabled) { color: var(--rv-color-ink); background: transparent; border-color: transparent; box-shadow: none; }
-  .invoice-reference-action-header > .invoice-reference-check-trigger:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 1px; }
+  .invoice-reference-action-footer > .invoice-reference-check-trigger { position: absolute; top: 0; right: 0; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; min-height: 20px; padding: 0; color: var(--rv-color-muted); background: transparent; border: 0; border-radius: 4px; box-shadow: none; }
+  .app-shell.stitch-shell main .invoice-reference-action-footer > .invoice-reference-check-trigger:hover:not(:disabled) { color: var(--rv-color-ink); background: transparent; border-color: transparent; box-shadow: none; }
+  .invoice-reference-action-footer > .invoice-reference-check-trigger:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 1px; }
   .invoice-reference-check-trigger .ui-icon { width: 15px; height: 15px; }
   .invoice-reference-check-trigger[disabled] .ui-icon-loader { animation: rv-spin 1s linear infinite; }
   .invoice-action-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
