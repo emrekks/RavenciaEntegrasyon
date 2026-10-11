@@ -8,9 +8,9 @@ import { platformLogoClass, platformLogoSource } from '../../shared/platform-log
 import { PlatformMark } from '../../shared/platform-mark'
 import { productImageFallbackUrls } from '../marketplace/product-image-lookups'
 import { questionDeadline } from './question-time'
+import { visibleQuestionConversation, type QuestionConversation } from './question-conversation'
 import { DateRangePicker } from '../../shared/DateRangePicker'
 
-type QuestionConversation = { author: string; text: string; createdAt: string; rejectionReason?: string | null }
 type MarketplaceQuestion = {
   id: string; connectionId: string; platformCode: string; storeName: string; externalQuestionId: string; kind: string; status: string
   questionText: string; productName?: string | null; productImageUrl?: string | null; productSku?: string | null; productBarcode?: string | null
@@ -143,9 +143,7 @@ export function QuestionsPage() {
         {questions.isLoading ? <LoadingState>Sorular yükleniyor…</LoadingState> : questions.isError ? <EmptyState>Sorular alınamadı. Biraz sonra yeniden deneyin.</EmptyState> : rows.length === 0 ? <EmptyState>Bu filtrelerde soru bulunamadı. Geçmiş aktarımı tamamlandıkça erişilebilen sorular listelenir.</EmptyState> : <div className="rv-questions-list">{rows.map(row => {
           const badge = questionStatus(row.status)
           const deadline = row.status === 'WAITING_FOR_ANSWER' ? questionDeadline(row.expiresAt, now) : null
-          const orderedHistory = [...(row.conversations ?? [])].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-          const initialQuestionIndex = orderedHistory.findIndex(message => message.text.trim() === row.questionText.trim())
-          const previousMessages = orderedHistory.filter((_message, index) => index !== initialQuestionIndex)
+          const previousMessages = visibleQuestionConversation(row.conversations ?? [], row.questionText)
           const productHref = row.kind === 'PRODUCT' ? marketplaceProductSearchUrl(row.platformCode, row.productBarcode, row.productSku, row.productModelCode, row.productName) : null
           return <article className="rv-question-card" key={row.id}>
             <header className="rv-question-card-header">

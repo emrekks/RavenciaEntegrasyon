@@ -130,6 +130,22 @@ afterEach(() => {
 })
 
 describe('QuestionsPage workspace flows', () => {
+  it('renders a duplicate marketplace seller reply once without sending another answer', async () => {
+    apiState.detail = {
+      ...createQuestion(),
+      conversations: [
+        { author: 'customer', text: 'Ürün boyu kaç santimetredir?', createdAt: '2026-10-05T09:00:00Z' },
+        { author: 'merchant', text: 'Kolları düz kol, ürün yeni bir üründür.', createdAt: '2026-10-05T09:55:08Z' },
+        { author: 'seller', text: 'Kolları düz kol, ürün yeni bir üründür.', createdAt: '2026-10-05T09:55:55Z' },
+      ],
+    }
+
+    await renderPage()
+
+    expect(container.querySelectorAll('.rv-question-conversation .rv-question-thread-message.is-seller')).toHaveLength(1)
+    expect(apiState.calls.some(call => call.path.endsWith('/answer'))).toBe(false)
+  })
+
   it('covers workspace tabs, every status filter, platform/store filters, date range, and search', async () => {
     await renderPage()
     expect(lastQuestionRequest().get('kind')).toBe('PRODUCT')
