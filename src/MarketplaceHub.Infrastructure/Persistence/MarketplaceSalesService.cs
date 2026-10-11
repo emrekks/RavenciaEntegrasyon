@@ -11,6 +11,16 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors, IConfiguration configuration, IProductVisualLookupPort productVisuals, IOrderPort orders, IReturnPort returns, IPrivateFileStorage files, TimeProvider timeProvider) : IMarketplaceSalesService
 {
+    // A real Trendyol package supersedes the zero-ID payment placeholder.
+    // Retain its history without displaying or counting a second live package.
+    internal IQueryable<ShipmentPackage> CurrentShipmentPackages() => db.ShipmentPackages.AsNoTracking()
+        .Where(package => package.ExternalPackageId != "0"
+            || !db.PlatformConnections.Any(connection => connection.TenantId == package.TenantId
+                && connection.Id == package.ConnectionId && connection.PlatformCode == "TRENDYOL")
+            || !db.ShipmentPackages.Any(real => real.TenantId == package.TenantId
+                && real.ConnectionId == package.ConnectionId && real.OrderId == package.OrderId
+                && real.ExternalPackageId != "0" && real.ExternalPackageId != ""));
+
     public async Task<PageResult<OrderListView>> OrdersAsync(Guid tenantId, int limit, int page, string? after, OrderListQuery queryOptions, CancellationToken cancellationToken)
     {
         // The panel is a local read model. Remote reads belong to the scheduled worker.
@@ -56,7 +66,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var orderIds = orders.Select(x => x.Id).ToArray();
         var connectionIds = orders.Select(x => x.ConnectionId).Distinct().ToArray();
         var lines = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId)).ToListAsync(cancellationToken);
-        var packages = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId)).OrderByDescending(x => x.StatusOccurredAt).ToListAsync(cancellationToken);
+        var packages = await CurrentShipmentPackages().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId)).OrderByDescending(x => x.StatusOccurredAt).ToListAsync(cancellationToken);
         var invoices = await db.Invoices.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId)
             && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))).OrderByDescending(x => x.CreatedAt).ToListAsync(cancellationToken);
         var invoiceIds = invoices.Select(invoice => invoice.Id).ToArray();
@@ -285,6 +295,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         else if (invoiceRegion == "TR")
             query = query.Where(x => !x.CustomerSnapshotJson.Contains("\"micro\":true") && !x.CustomerSnapshotJson.Contains("\"micro\": true") && !x.CustomerSnapshotJson.Contains("\"microExport\":true") && !x.CustomerSnapshotJson.Contains("\"microExport\": true") && !x.CustomerSnapshotJson.Contains("\"3pByTrendyol\":true") && !x.CustomerSnapshotJson.Contains("MICRO") && !x.CustomerSnapshotJson.Contains("İHRAC") && !x.CustomerSnapshotJson.Contains("IHRAC"));
 
+        var currentPackages = CurrentShipmentPackages();
         var status = options.Status?.Trim().ToUpperInvariant();
         if (!string.IsNullOrWhiteSpace(status) && status != "ALL")
         {
@@ -293,7 +304,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             query = status == "CANCELLED"
                 ? query.Where(order => order.DerivedStatus == "CANCELLED"
                     || (!db.PlatformConnections.Any(connection => connection.TenantId == order.TenantId && connection.Id == order.ConnectionId && connection.PlatformCode == "SHOPIFY")
-                        && db.ShipmentPackages.Any(package => package.TenantId == order.TenantId && package.OrderId == order.Id && package.Status == ShipmentPackageStatus.Cancelled)))
+                        && currentPackages.Any(package => package.TenantId == order.TenantId && package.OrderId == order.Id && package.Status == ShipmentPackageStatus.Cancelled)))
                 : status == "UNVERIFIED"
                 ? query.Where(_ => false)
                 : derivedStatuses is not null
@@ -301,11 +312,11 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 : packageStatuses is not null
                 ? status switch
                 {
-                    "NEW" => query.Where(order => db.ShipmentPackages.Any(package => package.TenantId == order.TenantId
+                    "NEW" => query.Where(order => currentPackages.Any(package => package.TenantId == order.TenantId
                             && package.OrderId == order.Id
                             && packageStatuses.Contains(package.Status))
                         || HepsiburadaUnpackagedNewOrders(tenantId).Any(newOrder => newOrder.Id == order.Id)),
-                    "ON_HOLD" => query.Where(order => db.ShipmentPackages.Any(package => package.TenantId == order.TenantId
+                    "ON_HOLD" => query.Where(order => currentPackages.Any(package => package.TenantId == order.TenantId
                             && package.OrderId == order.Id
                             && (packageStatuses.Contains(package.Status)
                                 || package.Status == ShipmentPackageStatus.Undelivered
@@ -323,7 +334,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                             && history.CanonicalStatus == order.DerivedStatus
                             && history.OccurredAt >= order.LastRemoteModifiedAt)
                             ? order.DerivedStatus == "DELIVERED"
-                            : db.ShipmentPackages.Any(package => package.TenantId == order.TenantId
+                            : currentPackages.Any(package => package.TenantId == order.TenantId
                                 && package.OrderId == order.Id
                                 && packageStatuses.Contains(package.Status))
                                 || HepsiburadaUnpackagedDeliveredOrders(tenantId).Any(deliveredOrder => deliveredOrder.Id == order.Id)),
@@ -337,14 +348,14 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                             && history.CanonicalStatus == order.DerivedStatus
                             && history.OccurredAt >= order.LastRemoteModifiedAt)
                             ? order.DerivedStatus == "SHIPPED"
-                            : db.ShipmentPackages.Any(package => package.TenantId == order.TenantId
+                            : currentPackages.Any(package => package.TenantId == order.TenantId
                                 && package.OrderId == order.Id
                                 && packageStatuses.Contains(package.Status)
                                 && (package.Status != ShipmentPackageStatus.Undelivered
                                     || !db.PlatformConnections.Any(connection => connection.TenantId == package.TenantId
                                         && connection.Id == package.ConnectionId
                                         && connection.PlatformCode == "HEPSIBURADA")))),
-                    _ => query.Where(order => db.ShipmentPackages.Any(package => package.TenantId == order.TenantId
+                    _ => query.Where(order => currentPackages.Any(package => package.TenantId == order.TenantId
                         && package.OrderId == order.Id
                         && packageStatuses.Contains(package.Status)))
                 }
@@ -352,7 +363,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 {
                     // originPackageIds is also present for split/cancel packages;
                     // only Trendyol's explicit creator marker identifies a resend.
-                    "RESENT" => query.Where(x => db.ShipmentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.OriginExternalPackageId != null && package.Status != ShipmentPackageStatus.Cancelled && package.CreatedBy != null && resendCreators.Contains(package.CreatedBy))),
+                    "RESENT" => query.Where(x => currentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.OriginExternalPackageId != null && package.Status != ShipmentPackageStatus.Cancelled && package.CreatedBy != null && resendCreators.Contains(package.CreatedBy))),
                     _ => query.Where(x => x.DerivedStatus == status)
                 };
         }
@@ -458,7 +469,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         // split packages and the provider's package counters incomparable.
         var resendCreators = new[] { "transfer", "resend", "replacement" };
         var manuallyOverriddenShopifyOrders = CurrentManualShopifyOrderStatuses(tenantId);
-        var packages = db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId
+        var packages = CurrentShipmentPackages().Where(x => x.TenantId == tenantId
             && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
                 && !db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && connection.PlatformCode == "SHOPIFY"
                     && x.ExternalPackageId.StartsWith("order:") && x.ExternalPackageId.EndsWith(":remainder")));
@@ -635,7 +646,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             return new OrderLineView(x.Id, x.Sku, x.Barcode, x.TitleSnapshot, x.OrderedQuantity, x.CancelledQuantity, x.ShippedQuantity, x.DeliveredQuantity, x.ReturnedQuantity, x.UnitPrice, x.VatRate, x.RawStatus, x.VariantId, variant?.ModelCode ?? source.ModelCode, variant?.OptionSignature ?? source.OptionSignature, source.ImageUrl ?? (variant is null ? null : imageUrls.GetValueOrDefault(variant.Id)), allocatedQuantities.GetValueOrDefault(x.Id));
         }).ToList();
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == order.ConnectionId, cancellationToken);
-        var packages = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == id).OrderBy(x => x.Id).ToListAsync(cancellationToken);
+        var packages = await CurrentShipmentPackages().Where(x => x.TenantId == tenantId && x.OrderId == id).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         var visiblePackages = packages
             .Where(package => !string.Equals(connection?.PlatformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase)
                 || !(package.ExternalPackageId.StartsWith("order:", StringComparison.OrdinalIgnoreCase)

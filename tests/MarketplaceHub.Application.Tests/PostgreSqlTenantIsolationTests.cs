@@ -1414,6 +1414,20 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             Assert.Equal("NEW", persistedOrder.DerivedStatus);
             Assert.Equal(ShipmentPackageStatus.PaymentPending, persistedPackages["0"].Status);
             Assert.Equal(ShipmentPackageStatus.New, persistedPackages[currentPackageNumber].Status);
+            var sales = new MarketplaceSalesService(verifyDb,
+                new CursorCodec(new EphemeralDataProtectionProvider(), fixture.TimeProvider),
+                new ConfigurationBuilder().Build(), null!, null!, null!, null!, fixture.TimeProvider);
+            Assert.Equal(currentPackageId, Assert.Single(await sales.CurrentShipmentPackages()
+                .Where(package => package.TenantId == tenant.Id).ToListAsync()).Id);
+            var summary = await sales.OrderSummaryAsync(tenant.Id, "TRENDYOL", CancellationToken.None);
+            Assert.Equal(1, summary.All);
+            Assert.Equal(1, summary.New);
+            Assert.Equal(0, summary.OnHold);
+            Assert.Equal(0, summary.PaymentPending);
+            var paymentPending = await sales.OrdersAsync(tenant.Id, 20, 1, null,
+                new OrderListQuery(Status: "PAYMENT_PENDING"), CancellationToken.None);
+            Assert.Equal(0, paymentPending.TotalCount);
+            Assert.Empty(paymentPending.Items);
         }
         finally
         {
