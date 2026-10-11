@@ -12191,3 +12191,111 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 /* Keep label section headings distinct from the regular print text. */
 .app-shell.stitch-shell main .shipping-label-print-surface :is(.shipping-label-block-title, .shipping-label-meta > strong, .shipping-label-footer > strong, .shipping-label-custom-content > strong) { font-size: 1.08em !important; font-weight: 850 !important; line-height: 1.15 !important; }
 .app-shell.stitch-shell main .shipping-label-print-surface :is(.shipping-label-meta, .shipping-label-footer, .shipping-label-block-content, .shipping-label-custom-content) > span > small { color: #334155 !important; font-size: .9em !important; font-weight: 800 !important; line-height: 1.1 !important; }
+
+/* Keep long marketplace references and their copy control inside the invoice column. */
+.app-shell.stitch-shell main .invoice-reference-order .invoice-order-number {
+  display: flex;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  white-space: normal;
+}
+.app-shell.stitch-shell main .invoice-reference-order .invoice-order-number > strong {
+  min-width: 0;
+  flex: 1 1 auto;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.app-shell.stitch-shell main .invoice-reference-order .invoice-order-number > .order-number-copy {
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  min-height: 24px;
+  flex: 0 0 24px;
+}
+
+/* Center each invoice/shipment badge; keep explanatory dates in the row below. */
+.app-shell.stitch-shell main .invoice-reference-shipment,
+.app-shell.stitch-shell main .invoice-reference-status {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: 34px minmax(34px, max-content);
+  align-content: center;
+  justify-items: stretch;
+  text-align: center;
+}
+.app-shell.stitch-shell main .invoice-reference-shipment > :is(.badge, .rv-badge),
+.app-shell.stitch-shell main .invoice-reference-status > :is(.badge, .rv-badge, .invoice-status, .invoice-status-label) {
+  grid-row: 1;
+  align-self: center;
+  justify-self: center;
+  margin-inline: auto;
+}
+.app-shell.stitch-shell main .invoice-reference-shipment > small,
+.app-shell.stitch-shell main .invoice-reference-status > small {
+  grid-column: 1;
+  justify-self: center;
+  align-self: start;
+  width: 100%;
+  text-align: center;
+}
+
+/* Product metric glyphs share the dashboard's unboxed, larger icon treatment. */
+.app-shell.stitch-shell main .product-metrics .product-metric-icon {
+  width: 48px;
+  height: 48px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+.app-shell.stitch-shell main .product-metrics .product-metric-icon > .ui-icon {
+  width: 36px;
+  height: 36px;
+  stroke-width: 1.5;
+}
+
+/* Lighter outlines match the dashboard's operational icon treatment. */
+.app-shell.stitch-shell main .dashboard-operational-card > .dashboard-metric-icon > .ui-icon {
+  stroke-width: 1.5;
+}
+.app-shell.stitch-shell main .invoice-detail-platform-refresh {
+  display: inline-flex;
+  min-height: 34px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 10px;
+  color: var(--rv-color-muted);
+  background: transparent;
+  border: 1px solid var(--rv-color-border);
+  border-radius: var(--rv-radius-sm);
+  font-size: var(--rv-font-size-xs);
+}
+.app-shell.stitch-shell main .invoice-detail-platform-refresh:hover:not(:disabled) {
+  color: var(--rv-color-ink);
+  background: var(--rv-color-surface-raised);
+}
+.app-shell.stitch-shell main .invoice-detail-platform-refresh > .ui-icon {
+  width: 15px;
+  height: 15px;
+}
+@media (max-width: 700px) {
+  .app-shell.stitch-shell main .product-metrics .product-metric-icon {
+    width: 42px;
+    height: 42px;
+  }
+  .app-shell.stitch-shell main .product-metrics .product-metric-icon > .ui-icon {
+    width: 30px;
+    height: 30px;
+  }
+  .app-shell.stitch-shell main .invoice-detail-section-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .app-shell.stitch-shell main .invoice-detail-platform-refresh {
+    align-self: flex-start;
+  }
+}

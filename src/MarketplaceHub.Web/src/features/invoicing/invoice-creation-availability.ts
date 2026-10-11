@@ -32,8 +32,11 @@ export function isInvoiceCreationAvailable(item: InvoiceCreationCandidate, provi
   // Existing invoices open a read-only preview. The server decides whether
   // delivery or fiscal retry is safe using the original provider and gates.
   if (item.invoiceId) return retryableInvoiceStatuses.has(item.invoiceStatus.trim().toUpperCase())
+  // Trendyol invoice creation is disabled in this workspace. Keep its rows
+  // out of direct and bulk invoice creation even if a stale API flag is true.
+  if (item.platformCode.trim().toUpperCase() === 'TRENDYOL') return false
   if (!item.invoiceCreationEnabled) return false
-  if (item.platformCode === 'SHOPIFY') return item.canCreateInvoice
+  if (item.platformCode.trim().toUpperCase() === 'SHOPIFY') return item.canCreateInvoice
   if (!providerHasCredential) return false
   return item.canCreateInvoice
 }
@@ -42,6 +45,7 @@ export function isInvoiceCreationAvailable(item: InvoiceCreationCandidate, provi
 export function isInvoiceCreationActionVisible(item: InvoiceCreationCandidate) {
   if (item.invoiceId) return retryableInvoiceStatuses.has(item.invoiceStatus.trim().toUpperCase())
   return item.platformCode.trim().toUpperCase() !== 'SHOPIFY'
+    && item.platformCode.trim().toUpperCase() !== 'TRENDYOL'
     && item.invoiceCreationEnabled
     && item.canCreateInvoice
 }

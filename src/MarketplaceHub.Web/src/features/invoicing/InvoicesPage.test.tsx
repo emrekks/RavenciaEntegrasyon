@@ -83,23 +83,26 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     expect(row.querySelector('.invoice-reference-status')?.textContent).toContain('Fatura Bekliyor')
   })
 
-  it('uses a compact accessible refresh icon for checking marketplace invoice status', () => {
-    const refresh = container.querySelector<HTMLButtonElement>('.invoice-reference-check-trigger')
+  it('shows the marketplace refresh control inside the invoice details, not on the row', async () => {
+    const row = Array.from(container.querySelectorAll<HTMLElement>('.invoice-reference-row'))
+      .find(item => item.textContent?.includes('TY-1003'))!
+    expect(row.querySelector('[aria-label="Pazaryeri fatura bilgisini yenile"]')).toBeNull()
+
+    act(() => row.querySelector<HTMLButtonElement>('.invoice-reference-details-trigger')!.click())
+    await settle()
+    const refresh = container.querySelector<HTMLButtonElement>('.invoice-detail-platform-refresh')
     expect(refresh?.getAttribute('aria-label')).toBe('Pazaryeri fatura bilgisini yenile')
     expect(refresh?.querySelector('.ui-icon-refresh')).not.toBeNull()
-    expect(refresh?.textContent?.trim()).toBe('')
+    expect(refresh?.textContent).toContain('Pazaryeri bilgisini yenile')
   })
 
-  it('shows the invoice action for an eligible row and explains when the fiscal provider is missing', async () => {
+  it('hides the disabled Trendyol invoice creation action', () => {
     const row = Array.from(container.querySelectorAll<HTMLElement>('.invoice-reference-row'))
       .find(item => item.textContent?.includes('TY-1003'))!
     expect(row.querySelector('.invoice-reference-shipment')?.textContent).not.toContain('Henüz teslim edilmedi')
     const actionButtons = Array.from(row.querySelectorAll<HTMLButtonElement>('.invoice-reference-actions button'))
     const create = actionButtons.find(item => item.textContent?.includes('Fatura oluştur'))
-    expect(create).toBeDefined()
-    act(() => create!.click())
-    await settle()
-    expect(container.textContent).toContain('Aynı ortamda etkin ve credential\'ı olan E-Faturam bağlantısı bulunamadı')
+    expect(create).toBeUndefined()
     expect(container.querySelector('[role="dialog"]')).toBeNull()
   })
 
@@ -120,13 +123,6 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
       if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard)
       else Reflect.deleteProperty(navigator, 'clipboard')
     }
-  })
-
-  it('places the subtle marketplace refresh in the action area top right', () => {
-    const row = Array.from(container.querySelectorAll<HTMLElement>('.invoice-reference-row'))
-      .find(item => item.textContent?.includes('TY-1003'))!
-    expect(row.querySelector('.invoice-reference-actions.has-platform-check > .invoice-reference-check-trigger')).not.toBeNull()
-    expect(row.querySelector('.invoice-reference-action-header')).toBeNull()
   })
 
   it('renders selection controls for every platform order and selects the whole page', async () => {

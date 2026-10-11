@@ -19,20 +19,21 @@ describe('invoice creation availability', () => {
     expect(invoiceProviderForEnvironment([base], 'UNKNOWN')).toBeUndefined()
   })
 
-  it('marks Trendyol rows unavailable when invoice creation or the provider credential is locked', () => {
+  it('keeps disabled Trendyol invoice creation unavailable even when stale flags say it is enabled', () => {
     const eligible = { platformCode: 'TRENDYOL', invoiceId: null, invoiceStatus: 'FATURA_BEKLIYOR', canCreateInvoice: true, invoiceCreationEnabled: true }
     expect(isInvoiceCreationAvailable(eligible, false)).toBe(false)
+    expect(isInvoiceCreationAvailable(eligible, true)).toBe(false)
     expect(isInvoiceCreationAvailable({ ...eligible, invoiceCreationEnabled: false }, true)).toBe(false)
     expect(matchesInvoiceActionFilter(eligible, 'NOT_CREATABLE', false)).toBe(true)
     expect(matchesInvoiceActionFilter(eligible, 'CREATABLE', false)).toBe(false)
-    expect(isInvoiceCreationActionVisible(eligible)).toBe(true)
+    expect(isInvoiceCreationActionVisible(eligible)).toBe(false)
     expect(isInvoiceCreationActionVisible({ ...eligible, invoiceCreationEnabled: false })).toBe(false)
   })
 
-  it('marks eligible Shopify and Trendyol rows available', () => {
+  it('keeps invoice creation available on enabled non-Trendyol platforms', () => {
     const eligible = { platformCode: 'TRENDYOL', invoiceId: null, invoiceStatus: 'FATURA_BEKLIYOR', canCreateInvoice: true, invoiceCreationEnabled: true }
-    expect(isInvoiceCreationAvailable(eligible, true)).toBe(true)
     expect(isInvoiceCreationAvailable({ ...eligible, platformCode: 'SHOPIFY' }, false)).toBe(true)
+    expect(isInvoiceCreationAvailable({ ...eligible, platformCode: 'HEPSIBURADA' }, true)).toBe(true)
   })
 
   it('permits an enabled retry for failed Trendyol invoices, but not completed records', () => {
