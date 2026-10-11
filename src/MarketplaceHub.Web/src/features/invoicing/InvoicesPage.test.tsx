@@ -119,14 +119,21 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     expect(refresh?.textContent).toContain('Pazaryeri bilgisini yenile')
   })
 
-  it('hides the disabled Trendyol invoice creation action', () => {
+  it('shows every invoice operation and locks actions that are unavailable for the Trendyol order', () => {
     const row = Array.from(container.querySelectorAll<HTMLElement>('.invoice-reference-row'))
       .find(item => item.textContent?.includes('TY-1003'))!
     expect(row.querySelector('.invoice-reference-shipment')?.textContent).not.toContain('Henüz teslim edilmedi')
     act(() => row.querySelector<HTMLButtonElement>('.invoice-reference-actions-trigger')!.click())
     const actionButtons = Array.from(document.body.querySelectorAll<HTMLButtonElement>('[role="menu"] button'))
     const create = actionButtons.find(item => item.textContent?.includes('Fatura oluştur'))
-    expect(create).toBeUndefined()
+    const sync = actionButtons.find(item => item.textContent?.includes('Sipariş durumunu güncelle'))
+    const manual = actionButtons.find(item => item.textContent?.includes('Manuel fatura ekle'))
+    const send = actionButtons.find(item => item.textContent?.includes('Manuel faturayı pazaryerine gönder'))
+    expect(create).not.toBeUndefined()
+    expect(create?.disabled).toBe(true)
+    expect(sync).not.toBeUndefined()
+    expect(manual?.disabled).toBe(false)
+    expect(send?.disabled).toBe(true)
     expect(container.querySelector('[role="dialog"]')).toBeNull()
   })
 

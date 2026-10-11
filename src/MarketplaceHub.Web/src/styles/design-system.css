@@ -11334,10 +11334,10 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .app-shell.stitch-shell main .invoice-reference-actions-trigger { display: inline-flex; width: 100%; min-width: 0; min-height: 34px; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 9px; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-sm); font-size: var(--rv-font-size-xs); font-weight: 700; }
 .app-shell.stitch-shell main .invoice-reference-actions-trigger:hover:not(:disabled) { background: var(--rv-color-surface-soft); border-color: var(--rv-color-border-strong); }
 .invoice-reference-actions-trigger .ui-icon { width: 14px; height: 14px; flex: 0 0 14px; }
-.invoice-reference-actions-popover { position: fixed; z-index: var(--rv-z-dropdown); display: grid; width: max-content; min-width: min(220px, calc(100vw - 32px)); max-width: calc(100vw - 32px); gap: 2px; padding: 5px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); box-shadow: var(--rv-shadow-lg); }
-.invoice-reference-actions-popover > button { display: block; width: 100%; min-width: 0; min-height: 34px; padding: 7px 9px; color: var(--rv-color-ink); background: transparent; border: 0; border-radius: var(--rv-radius-sm); font-size: var(--rv-font-size-xs); font-weight: 600; text-align: left; white-space: normal; }
-.invoice-reference-actions-popover > button:hover:not(:disabled) { color: var(--rv-color-ink); background: var(--rv-color-primary-soft); }
-.invoice-reference-actions-popover > button:disabled { color: var(--rv-color-muted); cursor: not-allowed; opacity: .65; }
+.invoice-reference-actions-popover { position: fixed; z-index: var(--rv-z-dropdown); display: grid; width: max-content; min-width: min(240px, calc(100vw - 32px)); max-width: calc(100vw - 32px); gap: 6px; padding: 8px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); box-shadow: var(--rv-shadow-lg); }
+.invoice-reference-actions-popover > button { display: block; width: 100%; min-width: 0; min-height: 36px; padding: 7px 9px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-sm); font-size: var(--rv-font-size-xs); font-weight: 600; text-align: left; white-space: normal; }
+.invoice-reference-actions-popover > button:hover:not(:disabled) { color: var(--rv-color-ink); background: var(--rv-color-primary-soft); border-color: color-mix(in srgb, var(--rv-color-primary) 45%, var(--rv-color-border)); }
+.invoice-reference-actions-popover > button:disabled { color: var(--rv-color-subtle); background: color-mix(in srgb, var(--rv-color-surface) 65%, var(--rv-color-surface-raised)); border-color: var(--rv-color-border); cursor: not-allowed; opacity: .62; }
 
 /* Make invoice actions read as controls, not as another data tile. */
 .app-shell.stitch-shell main .invoice-detail-summary-facts > div {
@@ -12350,9 +12350,9 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 /* Keep already printed label actions purple, readable, and free of a button frame. */
 .app-shell.stitch-shell main .order-label-action.is-printed {
   color: #fff;
-  background: color-mix(in srgb, var(--rv-color-primary) 55%, var(--rv-color-surface));
+  background: color-mix(in srgb, var(--rv-color-primary) 40%, var(--rv-color-surface));
   border: 0;
-  opacity: 1;
+  opacity: .84;
 }
 .app-shell.stitch-shell main .order-label-action.is-printed > span,
 .app-shell.stitch-shell main .order-label-action.is-printed > .ui-icon {
@@ -12360,13 +12360,14 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 }
 .app-shell.stitch-shell main .order-label-action.is-printed:hover:not(:disabled) {
   color: #fff;
-  background: color-mix(in srgb, var(--rv-color-primary) 68%, var(--rv-color-surface));
+  background: color-mix(in srgb, var(--rv-color-primary) 50%, var(--rv-color-surface));
+  opacity: .92;
 }
 :root[data-theme="light"] .app-shell.stitch-shell main .order-label-action.is-printed {
-  background: color-mix(in srgb, var(--rv-color-primary) 92%, var(--rv-color-surface));
+  background: color-mix(in srgb, var(--rv-color-primary) 72%, var(--rv-color-surface));
 }
 :root[data-theme="light"] .app-shell.stitch-shell main .order-label-action.is-printed:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--rv-color-primary) 96%, var(--rv-color-surface));
+  background: color-mix(in srgb, var(--rv-color-primary) 82%, var(--rv-color-surface));
 }
 
 /* Vertically center invoice badges when the row has no secondary status text. */

@@ -227,6 +227,20 @@ function InvoiceReferenceActionsMenu({ item, canCreateInvoice, canSyncOrder, del
   const hasManualDocument = Boolean(item.manualInvoiceDocumentId)
   const canSendManual = hasManualDocument && item.manualInvoiceDeliveryStatus !== 'CONFIRMED'
   const canRetryInvoice = Boolean(item.platformCode !== 'SHOPIFY' && item.invoiceId && isInvoiceFailureStatus(item.invoiceStatus) && isInvoiceCreationActionVisible(item))
+  const invoiceActionAvailable = canCreateInvoice || canRetryInvoice
+  const invoiceActionLabel = canRetryInvoice
+    ? item.invoiceStatus === 'FATURA_PLATFORMA_AKTARILMADI' ? 'Platforma iletimi tekrar dene' : 'Faturayı tekrar dene'
+    : 'Fatura oluştur'
+  const manualDeliveryDisabled = deliveryPending || !canSendManual || !item.manualInvoiceIssuedAt
+  const manualDeliveryTitle = deliveryPending
+    ? 'Fatura iletimi zaten sırada.'
+    : !hasManualDocument
+      ? 'Önce manuel fatura belgesi ekleyin.'
+      : item.manualInvoiceDeliveryStatus === 'CONFIRMED'
+        ? 'Manuel fatura pazaryerine zaten iletildi.'
+        : !item.manualInvoiceIssuedAt
+          ? 'Pazaryerine iletmek için fatura tarihi gerekli.'
+          : item.manualInvoiceDeliveryErrorCode ?? undefined
   useLayoutEffect(() => {
     if (!open) return
     const updatePosition = () => {
@@ -264,11 +278,10 @@ function InvoiceReferenceActionsMenu({ item, canCreateInvoice, canSyncOrder, del
       <span>İşlemler</span><UiIcon name="chevronDown" />
     </button>
     {open && createPortal(<div ref={menuRef} className="invoice-reference-actions-popover" role="menu" aria-label={`${displayInvoiceOrderNumber(item.orderNumber)} sipariş işlemleri`} style={{ left: position.left, top: position.top }}>
-      {canCreateInvoice && <button type="button" role="menuitem" onClick={() => { setOpen(false); onCreateInvoice() }}>Fatura oluştur</button>}
-      {canRetryInvoice && <button type="button" role="menuitem" onClick={() => { setOpen(false); onCreateInvoice() }}>{item.invoiceStatus === 'FATURA_PLATFORMA_AKTARILMADI' ? 'Platforma iletimi tekrar dene' : 'Faturayı tekrar dene'}</button>}
+      <button type="button" role="menuitem" disabled={!invoiceActionAvailable} title={!invoiceActionAvailable ? 'Bu sipariş için fatura oluşturma şu anda uygun değil.' : undefined} onClick={() => { setOpen(false); onCreateInvoice() }}>{invoiceActionLabel}</button>
       <button type="button" role="menuitem" disabled={!canSyncOrder} title={!canSyncOrder ? 'Pazaryeri sipariş bilgileri bulunamadı veya bağlantı etkin değil.' : undefined} onClick={() => { setOpen(false); onSyncOrder() }}>Sipariş durumunu güncelle</button>
       <button type="button" role="menuitem" onClick={() => { setOpen(false); onAddManualInvoice() }}>{hasManualDocument ? 'Manuel faturayı değiştir' : 'Manuel fatura ekle'}</button>
-      {canSendManual && <button type="button" role="menuitem" disabled={deliveryPending || !item.manualInvoiceIssuedAt} title={!item.manualInvoiceIssuedAt ? 'Pazaryerine iletmek için fatura tarihi gerekli.' : item.manualInvoiceDeliveryErrorCode ?? undefined} onClick={() => { setOpen(false); onSendManualInvoice() }}>{deliveryPending ? 'Kuyruğa alınıyor…' : 'Manuel faturayı pazaryerine gönder'}</button>}
+      <button type="button" role="menuitem" disabled={manualDeliveryDisabled} title={manualDeliveryDisabled ? manualDeliveryTitle : undefined} onClick={() => { setOpen(false); onSendManualInvoice() }}>{deliveryPending ? 'Kuyruğa alınıyor…' : 'Manuel faturayı pazaryerine gönder'}</button>
     </div>, document.body)}
   </div>
 }
