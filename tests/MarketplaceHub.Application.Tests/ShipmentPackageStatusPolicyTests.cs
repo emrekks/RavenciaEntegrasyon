@@ -30,6 +30,43 @@ public sealed class ShipmentPackageStatusPolicyTests
     }
 
     [Theory]
+    [InlineData("Awaiting", ShipmentPackageStatus.PaymentPending)]
+    [InlineData("Verified", ShipmentPackageStatus.PaymentPending)]
+    [InlineData("UnPacked", ShipmentPackageStatus.New)]
+    [InlineData("At_Collection_Point", ShipmentPackageStatus.Shipped)]
+    [InlineData("Created", ShipmentPackageStatus.New)]
+    public void TrendyolFromRemote_UsesShipmentMeaningInsteadOfGenericHoldMapping(string rawStatus, ShipmentPackageStatus expected)
+    {
+        Assert.Equal(expected, TrendyolShipmentPackageStatusPolicy.FromRemote(rawStatus));
+    }
+
+    [Theory]
+    [InlineData("Awaiting")]
+    [InlineData("Verified")]
+    [InlineData("UnPacked")]
+    [InlineData("At_Collection_Point")]
+    public void TrendyolStatusPolicy_RecognizesLegacyHoldProjections(string rawStatus)
+    {
+        Assert.True(TrendyolShipmentPackageStatusPolicy.IsLegacyOnHoldProjection(rawStatus));
+    }
+
+    [Fact]
+    public void TrendyolStatusPolicy_MatchesStatusFormattingVariantsDuringProjectionRepair()
+    {
+        Assert.True(TrendyolShipmentPackageStatusPolicy.HasSameNormalizedStatus("AtCollectionPoint", "AT_COLLECTION_POINT"));
+    }
+
+    [Fact]
+    public void PaymentPending_IsSeparatedFromHoldsAndMayAdvanceWhenTrendyolConfirmsPayment()
+    {
+        Assert.Equal(ShipmentPackageStatus.PaymentPending, ShipmentPackageStatusPolicy.Aggregate([ShipmentPackageStatus.PaymentPending]));
+        Assert.Equal(ShipmentPackageStatus.New, ShipmentPackageStatusPolicy.Aggregate([ShipmentPackageStatus.PaymentPending, ShipmentPackageStatus.New]));
+        Assert.True(ShipmentPackageStateMachine.CanTransition(ShipmentPackageStatus.OnHold, ShipmentPackageStatus.PaymentPending));
+        Assert.True(ShipmentPackageStateMachine.CanTransition(ShipmentPackageStatus.PaymentPending, ShipmentPackageStatus.New));
+        Assert.False(ShipmentPackageStateMachine.CanTransition(ShipmentPackageStatus.New, ShipmentPackageStatus.PaymentPending));
+    }
+
+    [Theory]
     [InlineData(ShipmentPackageStatus.New, ShipmentPackageStatus.Shipped)]
     [InlineData(ShipmentPackageStatus.Processing, ShipmentPackageStatus.Delivered)]
     [InlineData(ShipmentPackageStatus.ReadyToShip, ShipmentPackageStatus.Returned)]

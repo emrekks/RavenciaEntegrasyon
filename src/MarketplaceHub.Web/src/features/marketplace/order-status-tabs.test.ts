@@ -7,6 +7,7 @@ describe('order status tabs', () => {
     expect(values).not.toContain('PENDING')
     expect(values).not.toContain('UNVERIFIED')
     expect(values).toContain('NEW')
+    expect(values).toContain('PAYMENT_PENDING')
   })
 
   it('redirects legacy pending links to New', () => {

@@ -1,4 +1,4 @@
-const shipmentDeadlineExemptStatuses = new Set(['ON_HOLD'])
+const shipmentDeadlineExemptStatuses = new Set(['ON_HOLD', 'PAYMENT_PENDING'])
 
 export function onHoldOrderStatusText(platformCode: string, rawStatuses: readonly string[] = []) {
   if (platformCode.trim().toUpperCase() !== 'HEPSIBURADA') return 'Askıda'

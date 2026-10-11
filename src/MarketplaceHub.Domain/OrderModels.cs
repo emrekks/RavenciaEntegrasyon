@@ -13,7 +13,8 @@ public enum ShipmentPackageStatus
     Undelivered,
     ReturnInTransit,
     Returned,
-    ManualReview
+    ManualReview,
+    PaymentPending
 }
 
 public enum MarketplaceInvoiceStatus
@@ -112,7 +113,8 @@ public static class ShipmentPackageStateMachine
         {
             [ShipmentPackageStatus.New] = [ShipmentPackageStatus.Processing, ShipmentPackageStatus.OnHold, ShipmentPackageStatus.PartiallyCancelled, ShipmentPackageStatus.Cancelled],
             [ShipmentPackageStatus.Processing] = [ShipmentPackageStatus.ReadyToShip, ShipmentPackageStatus.OnHold, ShipmentPackageStatus.PartiallyCancelled, ShipmentPackageStatus.Cancelled],
-            [ShipmentPackageStatus.OnHold] = [ShipmentPackageStatus.New, ShipmentPackageStatus.Processing, ShipmentPackageStatus.ReadyToShip, ShipmentPackageStatus.Cancelled],
+            [ShipmentPackageStatus.OnHold] = [ShipmentPackageStatus.New, ShipmentPackageStatus.Processing, ShipmentPackageStatus.ReadyToShip, ShipmentPackageStatus.PaymentPending, ShipmentPackageStatus.Cancelled],
+            [ShipmentPackageStatus.PaymentPending] = [ShipmentPackageStatus.New, ShipmentPackageStatus.Processing, ShipmentPackageStatus.ReadyToShip, ShipmentPackageStatus.Shipped, ShipmentPackageStatus.Cancelled, ShipmentPackageStatus.ManualReview],
             [ShipmentPackageStatus.ReadyToShip] = [ShipmentPackageStatus.Shipped, ShipmentPackageStatus.OnHold, ShipmentPackageStatus.PartiallyCancelled, ShipmentPackageStatus.Cancelled],
             [ShipmentPackageStatus.Shipped] = [ShipmentPackageStatus.Delivered, ShipmentPackageStatus.Undelivered, ShipmentPackageStatus.ReturnInTransit],
             [ShipmentPackageStatus.Undelivered] = [ShipmentPackageStatus.Delivered, ShipmentPackageStatus.ReturnInTransit, ShipmentPackageStatus.ManualReview],
@@ -148,6 +150,7 @@ public static class ShipmentPackageStateMachine
         ShipmentPackageStatus.Delivered => 80,
         ShipmentPackageStatus.ReturnInTransit => 90,
         ShipmentPackageStatus.Returned => 100,
+        ShipmentPackageStatus.PaymentPending => 5,
         ShipmentPackageStatus.Cancelled => 0,
         _ => 110
     };
@@ -322,9 +325,35 @@ public static class ShipmentPackageStatusPolicy
         ShipmentPackageStatus.Delivered => 80,
         ShipmentPackageStatus.ReturnInTransit => 90,
         ShipmentPackageStatus.Returned => 100,
+        ShipmentPackageStatus.PaymentPending => 5,
         ShipmentPackageStatus.Cancelled => 0,
         _ => 110
     };
+}
+
+public static class TrendyolShipmentPackageStatusPolicy
+{
+    public static ShipmentPackageStatus FromRemote(string? rawStatus) => Normalize(rawStatus) switch
+    {
+        // Trendyol documents AWAITING/VERIFIED as payment states. They are
+        // not shipment holds, and must stay out of order processing until the
+        // platform advances the package to Created.
+        "AWAITING" or "VERIFIED" => ShipmentPackageStatus.PaymentPending,
+        // UNPACKED denotes a split package; AT_COLLECTION_POINT means the
+        // parcel has reached a pickup point and is already in transit.
+        "UNPACKED" => ShipmentPackageStatus.New,
+        "ATCOLLECTIONPOINT" => ShipmentPackageStatus.Shipped,
+        _ => ShipmentPackageStatusPolicy.FromRemote(rawStatus)
+    };
+
+    public static bool IsLegacyOnHoldProjection(string? rawStatus) => Normalize(rawStatus) is
+        "AWAITING" or "VERIFIED" or "UNPACKED" or "ATCOLLECTIONPOINT";
+
+    public static bool HasSameNormalizedStatus(string? left, string? right) =>
+        string.Equals(Normalize(left), Normalize(right), StringComparison.Ordinal);
+
+    private static string Normalize(string? rawStatus) =>
+        (rawStatus ?? string.Empty).Trim().ToUpperInvariant().Replace("_", string.Empty, StringComparison.Ordinal).Replace("-", string.Empty, StringComparison.Ordinal).Replace(" ", string.Empty, StringComparison.Ordinal);
 }
 
 public sealed class Order

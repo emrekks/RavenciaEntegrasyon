@@ -2401,6 +2401,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             .SingleOrDefaultAsync(cancellationToken);
         var isShopify = platformCode == "SHOPIFY";
         var isHepsiburada = platformCode == "HEPSIBURADA";
+        var isTrendyol = string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase);
         var lifecycleBatchSize = OpenOrderLifecyclePolicy.LifecycleBatchSize(
             platformCode,
             configuration.GetValue("MarketplaceSync:OrderLifecycle:BatchSize", 25),
@@ -6558,7 +6559,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             var repairCandidates = batch is not null
                 ? (batch.PackagesByOrder.GetValueOrDefault(order.Id)?.Values.Where(x => x.Status == ShipmentPackageStatus.ManualReview).ToList() ?? [])
                 : await db.ShipmentPackages.Where(x => x.TenantId == tenantId && x.OrderId == order.Id && x.Status == ShipmentPackageStatus.ManualReview).ToListAsync(cancellationToken);
-            foreach (var candidate in repairCandidates) { var canonical = ShipmentPackageStatusPolicy.FromRemote(candidate.RawStatus); if (canonical != ShipmentPackageStatus.ManualReview) { candidate.Status = canonical; candidate.UpdatedAt = now; candidate.Version++; } }
+            foreach (var candidate in repairCandidates) { var canonical = isTrendyol ? TrendyolShipmentPackageStatusPolicy.FromRemote(candidate.RawStatus) : ShipmentPackageStatusPolicy.FromRemote(candidate.RawStatus); if (canonical != ShipmentPackageStatus.ManualReview) { candidate.Status = canonical; candidate.UpdatedAt = now; candidate.Version++; } }
         }
         // Do not short-circuit empty-line replays: the same remote package can need a safe local canonical projection repair after a previously unknown raw status becomes recognized.
         var orderIsFresh = order is null
@@ -6684,8 +6685,14 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         var externalLineIdsById = lines.Values.ToDictionary(line => line.Id, line => line.ExternalLineId);
         foreach (var remotePackage in remote.Packages)
         {
-            var target = ShipmentPackageStatusPolicy.FromRemote(remotePackage.RawStatus); var eventId = PackageIngestionSafety.EventId(remotePackage.ExternalPackageId, remotePackage.OccurredAt); var orderedQuantities = lines.ToDictionary(x => x.Key, x => x.Value.OrderedQuantity, StringComparer.Ordinal);
+            var target = isTrendyol ? TrendyolShipmentPackageStatusPolicy.FromRemote(remotePackage.RawStatus) : ShipmentPackageStatusPolicy.FromRemote(remotePackage.RawStatus); var eventId = PackageIngestionSafety.EventId(remotePackage.ExternalPackageId, remotePackage.OccurredAt); var orderedQuantities = lines.ToDictionary(x => x.Key, x => x.Value.OrderedQuantity, StringComparer.Ordinal);
             var package = packagesByExternalId.GetValueOrDefault(remotePackage.ExternalPackageId);
+            var legacyTrendyolHoldCorrection = isTrendyol
+                && package is not null
+                && package.Status == ShipmentPackageStatus.OnHold
+                && TrendyolShipmentPackageStatusPolicy.HasSameNormalizedStatus(package.RawStatus, remotePackage.RawStatus)
+                && target != ShipmentPackageStatus.OnHold
+                && TrendyolShipmentPackageStatusPolicy.IsLegacyOnHoldProjection(remotePackage.RawStatus);
             var packageAllocations = remotePackage.Allocations;
             if (remotePackage.IsStatusObservation && packageAllocations.Count == 0 && package is not null)
             {
@@ -6724,14 +6731,14 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 // Treat that as an idempotent status enrichment, not as a
                 // reason to discard the authoritative forward transition.
                 var statusChanged = package is not null
-                    && (isHepsiburada
+                    && (legacyTrendyolHoldCorrection || (isHepsiburada
                         ? HepsiburadaPackageStatusReconciliationPolicy.ShouldAcceptStatusObservation(
                             package.Status,
                             package.StatusOccurredAt,
                             target,
                             remotePackage.OccurredAt,
                             remotePackage.IsStatusObservation)
-                        : PackageIngestionSafety.ShouldAccept(package.Status, package.StatusOccurredAt, target, remotePackage.OccurredAt))
+                        : PackageIngestionSafety.ShouldAccept(package.Status, package.StatusOccurredAt, target, remotePackage.OccurredAt)))
                     && package.Status != target;
                 var packageMetadataChanged = package is not null
                     && ((!string.IsNullOrWhiteSpace(remotePackage.CargoProviderExternalId) && package.CargoProviderExternalId != remotePackage.CargoProviderExternalId)
@@ -6794,7 +6801,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 if (package is not null && package.Status == ShipmentPackageStatus.ManualReview && package.RawStatus == remotePackage.RawStatus && target != ShipmentPackageStatus.ManualReview) { package.Status = target; package.UpdatedAt = now; package.Version++; }
                 continue;
             }
-            var accept = package is null || (isHepsiburada
+            var accept = package is null || legacyTrendyolHoldCorrection || (isHepsiburada
                 ? HepsiburadaPackageStatusReconciliationPolicy.ShouldAcceptStatusObservation(
                     package.Status,
                     package.StatusOccurredAt,

@@ -399,6 +399,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         "RETURN_IN_TRANSIT" => [ShipmentPackageStatus.ReturnInTransit],
         "PARTIALLY_CANCELLED" => [ShipmentPackageStatus.PartiallyCancelled],
         "MANUAL_REVIEW" => [ShipmentPackageStatus.ManualReview],
+        "PAYMENT_PENDING" => [ShipmentPackageStatus.PaymentPending],
         _ => null
     };
 
@@ -493,7 +494,10 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 group.Count(x => x.Status == ShipmentPackageStatus.Returned),
                 group.Count(x => x.Status == ShipmentPackageStatus.ReturnInTransit),
                 group.Count(x => x.Status == ShipmentPackageStatus.PartiallyCancelled),
-                group.Count(x => x.Status == ShipmentPackageStatus.ManualReview)))
+                group.Count(x => x.Status == ShipmentPackageStatus.ManualReview),
+                0,
+                0,
+                group.Count(x => x.Status == ShipmentPackageStatus.PaymentPending)))
             .SingleOrDefaultAsync(cancellationToken) ?? new OrderSummaryView(0, 0, 0, 0, 0, 0, 0);
 
         var pendingOrders = db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId
@@ -857,6 +861,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var actions = stage
             ? row.PlatformCode == "HEPSIBURADA" ? HepsiburadaShipmentActionsFor(row.Package) : ShipmentActions
             : await CapabilityValues(tenantId, row.Package.ConnectionId, MarketplaceCapabilities.ShipmentWrite, "allowedActions", cancellationToken);
+        if (row.Package.Status == ShipmentPackageStatus.PaymentPending)
+            actions = [];
         if (!stage && row.PlatformCode == "HEPSIBURADA")
         {
             var evidencedActions = actions;
@@ -1950,6 +1956,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     {
         var supported = new HashSet<string>(StringComparer.Ordinal) { "PICKING", "INVOICED", "TRACKING_NUMBER", "CANCEL_ITEMS", "SPLIT", "MULTI_SPLIT", "CHANGE_CARGO_PROVIDER", "ALTERNATIVE_DELIVERY", "MANUAL_DELIVER", "MANUAL_RETURN" };
         if (!supported.Contains(action)) return new("SHIPMENT_ACTION_UNSUPPORTED", "Paket aksiyonu tanınmıyor.", 422);
+        if (package.Status == ShipmentPackageStatus.PaymentPending) return new("SHIPMENT_PAYMENT_PENDING", "Trendyol ödeme onayı vermeden paket işlemi yapılamaz.", 409);
         if (action == "PICKING" && package.Status is not (ShipmentPackageStatus.New or ShipmentPackageStatus.OnHold)) return new("SHIPMENT_STATE_CONFLICT", "PICKING yalnız NEW/ON_HOLD paket için gönderilebilir.", 409);
         if (action == "INVOICED" && package.Status != ShipmentPackageStatus.Processing) return new("SHIPMENT_STATE_CONFLICT", "INVOICED yalnız PROCESSING paket için gönderilebilir.", 409);
         if (action == "TRACKING_NUMBER" && package.Status is not (ShipmentPackageStatus.Processing or ShipmentPackageStatus.ReadyToShip)) return new("SHIPMENT_STATE_CONFLICT", "TRACKING_NUMBER yalnız PICKING/INVOICED paket için gönderilebilir.", 409);

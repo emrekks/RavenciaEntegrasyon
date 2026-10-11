@@ -75,6 +75,8 @@ public static class MarketplaceEndpoints
 
             var detail = await service.OrderAsync(tenant.TenantId, id, http.RequestAborted);
             if (!detail.Succeeded) return Problem(http, detail.Error!);
+            if (detail.Value!.Packages.Any(package => package.Status == "PAYMENT_PENDING"))
+                return Problem(http, new("SHIPMENT_PAYMENT_PENDING", "Trendyol ödeme onayı vermeden sipariş işleme alınamaz.", 409));
             var package = detail.Value!.Packages.FirstOrDefault();
             if (package is null)
             {
@@ -102,6 +104,8 @@ public static class MarketplaceEndpoints
 
                 detail = await service.OrderAsync(tenant.TenantId, id, http.RequestAborted);
                 if (!detail.Succeeded) return Problem(http, detail.Error!);
+                if (detail.Value!.Packages.Any(package => package.Status == "PAYMENT_PENDING"))
+                    return Problem(http, new("SHIPMENT_PAYMENT_PENDING", "Trendyol ödeme onayı vermeden sipariş işleme alınamaz.", 409));
                 package = detail.Value!.Packages.FirstOrDefault();
             }
 

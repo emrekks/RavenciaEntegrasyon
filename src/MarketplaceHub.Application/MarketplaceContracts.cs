@@ -760,7 +760,8 @@ public sealed record OrderSummaryView(
     int PartiallyCancelled = 0,
     int ManualReview = 0,
     int Pending = 0,
-    int Unverified = 0);
+    int Unverified = 0,
+    int PaymentPending = 0);
 public sealed record OrderLineView(
     Guid Id,
     string Sku,

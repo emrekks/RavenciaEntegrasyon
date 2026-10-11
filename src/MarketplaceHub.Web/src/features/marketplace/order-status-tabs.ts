@@ -7,6 +7,7 @@ export const orderStatusTabs = [
   ['CANCELLED', 'İptal'],
   ['RESENT', 'Yeniden Gönderimler'],
   ['ON_HOLD', 'Askıdaki'],
+  ['PAYMENT_PENDING', 'Ödeme onayı bekliyor'],
   ['PARTIALLY_CANCELLED', 'Kısmi iptal'],
 ] as const
 
