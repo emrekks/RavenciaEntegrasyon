@@ -26,6 +26,7 @@ import { sameProductSnapshotIgnoringVersion } from './product-save-version'
 import { isPublicationLive, isPublicationSelectionDisabled, isPublicationStatusJobRunning, missingPublicationChecks, publicationStatusLabel, publicationStatusNote, publicationStatusTone, shouldCheckPublicationAttributes } from './publication-status'
 import { productPlatformDisplayLabel, productPlatformDisplayState } from './product-platform-status'
 import { quickPlatformUpdateTargets } from './platform-update-targets'
+import { nextProductCatalogSort, sortProductGroups, type ProductCatalogSort } from './product-catalog-sorting'
 import { productPublicationTargets } from './product-publication-submit'
 import { productPublicationChannelMode } from './product-publication-channels'
 import { activeProductSyncJobs as filterActiveProductSyncJobs, productSyncJobsFinished } from './product-sync-tracking'
@@ -1018,6 +1019,7 @@ export function ProductsPage() {
   const [trackedProductImportJobIds, setTrackedProductImportJobIds] = useState<string[]>([])
   const client = useQueryClient(); const navigate = useNavigate(); const [search, setSearch] = useState(''); const [searchFilter, setSearchFilter] = useState(''); const [status, setStatus] = useState(''); const [platform, setPlatform] = useState(''); const [stock, setStock] = useState(''); const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]); const [selectedProductCache, setSelectedProductCache] = useState<Record<string, Product>>({}); const [allProductsSelected, setAllProductsSelected] = useState(false); const [selectingAllProducts, setSelectingAllProducts] = useState(false); const [quickEdit, setQuickEdit] = useState<{ productIds: string[]; mode: QuickEditMode } | null>(null); const [productToast, setProductToast] = useState<{ message: string; kind: 'success' | 'error' | 'info' } | null>(null); const [bulkOpen, setBulkOpen] = useState(false); const [platformFilterOpen, setPlatformFilterOpen] = useState(false); const [deleteRequest, setDeleteRequest] = useState<ProductDeleteRequest | null>(null); const [deletingProducts, setDeletingProducts] = useState(false); const [productImportOpen, setProductImportOpen] = useState(false); const [productImportMethod, setProductImportMethod] = useState<ProductImportMethod>('BULK'); const [productImportConnectionIds, setProductImportConnectionIds] = useState<string[]>([]); const [productImportMode, setProductImportMode] = useState<ProductImportMode>('FULL'); const [productImportLookup, setProductImportLookup] = useState(''); const [productImportIncludeArchived, setProductImportIncludeArchived] = useState(true); const [productImportUpdateExistingProducts, setProductImportUpdateExistingProducts] = useState(true); const [productImportUpdateExistingPricesAndStock, setProductImportUpdateExistingPricesAndStock] = useState(false); const [productImporting, setProductImporting] = useState(false); const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null); const [lowStockOpen, setLowStockOpen] = useState(false); const [pageSize, setPageSize] = useState(20); const [pageNumber, setPageNumber] = useState(1); const [pageCursors, setPageCursors] = useState<Record<string, Record<number, string | null>>>({})
   const [pageJumping, setPageJumping] = useState(false)
+  const [catalogSort, setCatalogSort] = useState<ProductCatalogSort>(null)
   const [productImportIncludePendingApproval, setProductImportIncludePendingApproval] = useState(false)
   const [expandedPlatformGroup, setExpandedPlatformGroup] = useState<string | null>(null)
   const bulkMenuRef = useRef<HTMLDivElement>(null)
@@ -1045,7 +1047,7 @@ export function ProductsPage() {
   useEffect(() => { if (selectedImportOnlyHepsiburada && productImportMode === 'EXISTING_ONLY') setProductImportMode('MAPPING_ONLY') }, [selectedImportOnlyHepsiburada, productImportMode])
   const selectedPlatformFilter = productPlatformFilterGroups.flatMap(group => group.options.map(option => ({ ...option, group: group.label }))).find(option => option.value === platform)
   const selectedPlatformLabel = selectedPlatformFilter ? `${selectedPlatformFilter.group} · ${selectedPlatformFilter.label}` : platform || 'Tüm platformlar'
-  const totalCount = query.data?.totalCount ?? products.length; const totalPages = Math.max(1, Math.ceil(totalCount / pageSize)); const currentPage = Math.min(pageNumber, totalPages); const pageProducts = currentPage === pageNumber ? products : []; const pageProductGroups = useMemo(() => productRowsAsCards(pageProducts), [pageProducts])
+  const totalCount = query.data?.totalCount ?? products.length; const totalPages = Math.max(1, Math.ceil(totalCount / pageSize)); const currentPage = Math.min(pageNumber, totalPages); const pageProducts = currentPage === pageNumber ? products : []; const pageProductGroups = useMemo(() => sortProductGroups(productRowsAsCards(pageProducts), catalogSort), [pageProducts, catalogSort])
   const activeProductSyncJobs = useMemo(() => filterActiveProductSyncJobs(productSyncJobsQuery.data ?? []), [productSyncJobsQuery.data])
   const cancelProductSync = useMutation({ mutationFn: (jobId: string) => hubApi(`/jobs/${jobId}/cancel`, { method: 'POST', headers: { 'Idempotency-Key': `cancel-product-import:${jobId}` } }), onSuccess: () => { void productSyncJobsQuery.refetch(); void client.invalidateQueries({ queryKey: ['jobs'] }) } })
   const quickEditProducts = quickEdit
@@ -1306,6 +1308,17 @@ export function ProductsPage() {
     setDeleteRequest({ productIds: ids, title: `${selectedProductCardCount} ürün kartı`, description: `${ids.length} katalog kaydı seçildi. Sipariş geçmişi korunur; yalnızca yerel katalog verileri silinir.` })
   }
 
+  function toggleCatalogSort(field: 'price' | 'stock') {
+    setCatalogSort(current => nextProductCatalogSort(current, field))
+  }
+
+  function catalogSortHeader(field: 'price' | 'stock', label: string) {
+    const active = catalogSort?.field === field
+    const direction = active ? catalogSort.direction : null
+    const directionLabel = direction === 'desc' ? 'yüksekten düşüğe' : 'düşükten yükseğe'
+    return <button type="button" className={`product-sort-header${active ? ' is-active' : ''}`} onClick={() => toggleCatalogSort(field)} aria-label={`${label} sıralaması${active ? `, ${directionLabel}` : ''}`} aria-pressed={active}>{label}{active && <svg className={`product-sort-arrow ${direction}`} viewBox="0 0 16 16" aria-hidden="true"><path d={direction === 'desc' ? 'M8 2v12m-5-5 5 5 5-5' : 'M8 14V2m-5 5 5-5 5 5'} /></svg>}</button>
+  }
+
   return <Page className="products-page" title="Ürünler" eyebrow="Katalog" action={<div className="products-page-actions page-heading-actions"><button type="button" className="button-link product-import-trigger" onClick={openProductImport}><UiIcon name="download" /> Platformdan Ürün Çek</button><Link className="button-link product-create-trigger" to="/products/new"><UiIcon name="plus" /> Yeni Ürün Ekle</Link></div>}>
     <div className="product-metrics metrics"><article className="product-metric-total"><span className="product-metric-icon" aria-hidden="true"><UiIcon name="bag" /></span><small>Toplam Ürün</small><strong>{summaryQuery.isLoading ? '—' : summaryQuery.data?.totalCount ?? 0}</strong></article><article className="product-metric-active"><span className="product-metric-icon" aria-hidden="true"><UiIcon name="circleCheck" /></span><small>Aktif Ürün</small><strong>{summaryQuery.isLoading ? '—' : summaryQuery.data?.activeCount ?? 0}</strong></article><article className="product-metric-empty"><span className="product-metric-icon" aria-hidden="true"><UiIcon name="alert" /></span><small>Stoksuz Ürün</small><strong>{summaryQuery.isLoading ? '—' : summaryQuery.data?.outOfStockCount ?? 0}</strong></article><button type="button" className="product-metric-button product-metric-low" onClick={() => setLowStockOpen(true)} aria-haspopup="dialog"><span className="product-metric-icon" aria-hidden="true"><UiIcon name="warehouse" /></span><small>Düşük Stoklu</small><strong>{summaryQuery.isLoading ? '—' : summaryQuery.data?.lowStockCount ?? 0}</strong></button></div>
     <div className="product-toolbar">
@@ -1369,7 +1382,7 @@ export function ProductsPage() {
         <div className="product-catalog-table preferred-product-catalog">
           <div className="product-catalog-head">
             <label className="product-select-all"><input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} aria-label={`${pageProductGroups.length} ürün kartının tümünü seç`} title={`Yalnızca bu sayfadaki ${pageProductGroups.length} kartı seçer`} /><span>Ürün Detayı</span></label>
-            <span>Varyant</span><span>Fiyat</span><span>Stok</span><span>Platform Durumu</span><span>Durum</span><span>İşlem</span>
+            <span>Varyant</span>{catalogSortHeader('price', 'Fiyat')}{catalogSortHeader('stock', 'Stok')}<span>Platform Durumu</span><span>Durum</span><span>İşlem</span>
           </div>
           {pageProductGroups.map(group => (
             <ProductColorRows key={group.id} group={group} selected={group.products.every(product => selectedProductIds.includes(product.id))} onSelect={() => toggleProductGroup(group)} onQuickEdit={mode => setQuickEdit({ productIds: group.products.map(product => product.id), mode })} onImageClick={(url, title) => setLightboxImage({ url, title })} onDelete={() => requestDeleteProductGroup(group)} onDuplicate={() => navigate('/products/new', { state: { duplicateProductId: group.primary.id } })} />
