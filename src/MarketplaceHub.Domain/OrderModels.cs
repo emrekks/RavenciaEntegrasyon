@@ -349,6 +349,17 @@ public static class TrendyolShipmentPackageStatusPolicy
     public static bool IsLegacyOnHoldProjection(string? rawStatus) => Normalize(rawStatus) is
         "AWAITING" or "VERIFIED" or "UNPACKED" or "ATCOLLECTIONPOINT";
 
+    public static bool ShouldRepairLegacyPlaceholderOnHold(
+        string? externalPackageId,
+        string? rawStatus,
+        ShipmentPackageStatus currentStatus,
+        bool hasAuthoritativePackage) =>
+        hasAuthoritativePackage
+        && string.Equals(externalPackageId?.Trim(), "0", StringComparison.Ordinal)
+        && currentStatus == ShipmentPackageStatus.OnHold
+        && IsLegacyOnHoldProjection(rawStatus)
+        && FromRemote(rawStatus) != ShipmentPackageStatus.OnHold;
+
     public static bool HasSameNormalizedStatus(string? left, string? right) =>
         string.Equals(Normalize(left), Normalize(right), StringComparison.Ordinal);
 

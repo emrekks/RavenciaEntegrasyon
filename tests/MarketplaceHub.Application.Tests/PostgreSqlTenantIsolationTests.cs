@@ -1245,6 +1245,183 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task TrendyolOrderSync_RepairsLegacyZeroPackageHoldWhenRealPackageExists()
+    {
+        var tenant = NewTenant("trendyol-zero-package-hold-repair");
+        var connection = NewQuestionConnection(tenant);
+        var orderId = Guid.CreateVersion7();
+        var lineId = Guid.CreateVersion7();
+        var legacyPackageId = Guid.CreateVersion7();
+        var currentPackageId = Guid.CreateVersion7();
+        const string externalOrderId = "11697863851";
+        const string currentPackageNumber = "4234395651";
+        var occurredAt = fixture.Now.AddMinutes(-10);
+        var order = NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, externalOrderId, isReturnClaim: false, fixture.Now);
+        order.DerivedStatus = "ON_HOLD";
+        order.LastRemoteModifiedAt = occurredAt;
+        var line = new OrderLine
+        {
+            Id = lineId,
+            TenantId = tenant.Id,
+            OrderId = orderId,
+            ExternalLineId = "line-1",
+            Sku = "SKU-1",
+            TitleSnapshot = "Test ürün",
+            OrderedQuantity = 1m,
+            UnitPrice = 100m,
+            VatRate = 10m,
+            RawStatus = "Created",
+            Version = 1
+        };
+        var legacyPackage = new ShipmentPackage
+        {
+            Id = legacyPackageId,
+            TenantId = tenant.Id,
+            ConnectionId = connection.Id,
+            OrderId = orderId,
+            ExternalPackageId = "0",
+            GrossAmount = 100m,
+            NetAmount = 100m,
+            Status = ShipmentPackageStatus.OnHold,
+            RawStatus = "Awaiting",
+            StatusOccurredAt = occurredAt,
+            CreatedAt = occurredAt,
+            UpdatedAt = occurredAt,
+            Version = 1
+        };
+        var currentPackage = new ShipmentPackage
+        {
+            Id = currentPackageId,
+            TenantId = tenant.Id,
+            ConnectionId = connection.Id,
+            OrderId = orderId,
+            ExternalPackageId = currentPackageNumber,
+            GrossAmount = 100m,
+            NetAmount = 100m,
+            Status = ShipmentPackageStatus.New,
+            RawStatus = "Created",
+            StatusOccurredAt = occurredAt,
+            CreatedAt = occurredAt,
+            UpdatedAt = occurredAt,
+            Version = 1
+        };
+        var remotePackage = new RemotePackage(
+            currentPackageNumber,
+            null,
+            "Created",
+            occurredAt,
+            null,
+            null,
+            [new RemotePackageAllocation("line-1", 1m, 0m, 0m, 0m, 0m)],
+            GrossAmount: 100m,
+            NetAmount: 100m);
+        var remoteOrder = new RemoteOrder(
+            externalOrderId,
+            externalOrderId,
+            occurredAt.AddMinutes(-1),
+            occurredAt,
+            "TRY",
+            100m,
+            0m,
+            100m,
+            "{}",
+            "{}",
+            "{}",
+            [new RemoteOrderLine("line-1", "SKU-1", null, "Test ürün", 1m, 100m, 10m, "Created")],
+            [remotePackage],
+            "{}");
+        var orderPort = new ReadOnlyOrderTestPort(remotePackage, externalOrderId: externalOrderId, directOrderResult: remoteOrder);
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.Orders.Add(order);
+            seedDb.OrderLines.Add(line);
+            seedDb.ShipmentPackages.AddRange(legacyPackage, currentPackage);
+            seedDb.PackageLineAllocations.AddRange(
+                new PackageLineAllocation
+                {
+                    Id = Guid.CreateVersion7(),
+                    TenantId = tenant.Id,
+                    PackageId = legacyPackageId,
+                    OrderLineId = lineId,
+                    AllocatedQuantity = 1m,
+                    SourceEventId = PackageIngestionSafety.EventId("0", occurredAt)
+                },
+                new PackageLineAllocation
+                {
+                    Id = Guid.CreateVersion7(),
+                    TenantId = tenant.Id,
+                    PackageId = currentPackageId,
+                    OrderLineId = lineId,
+                    AllocatedQuantity = 1m,
+                    SourceEventId = PackageIngestionSafety.EventId(currentPackageNumber, occurredAt)
+                });
+            seedDb.OrderStatusHistory.AddRange(
+                new OrderStatusHistory
+                {
+                    Id = Guid.CreateVersion7(),
+                    TenantId = tenant.Id,
+                    OrderId = orderId,
+                    PackageId = legacyPackageId,
+                    CanonicalStatus = "ON_HOLD",
+                    RawStatus = "Awaiting",
+                    SourceEventId = PackageIngestionSafety.EventId("0", occurredAt),
+                    OccurredAt = occurredAt,
+                    RecordedAt = occurredAt
+                },
+                new OrderStatusHistory
+                {
+                    Id = Guid.CreateVersion7(),
+                    TenantId = tenant.Id,
+                    OrderId = orderId,
+                    PackageId = currentPackageId,
+                    CanonicalStatus = "NEW",
+                    RawStatus = "Created",
+                    SourceEventId = PackageIngestionSafety.EventId(currentPackageNumber, occurredAt),
+                    OccurredAt = occurredAt,
+                    RecordedAt = occurredAt
+                });
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using (var processorDb = fixture.CreateContext())
+            {
+                var processor = new MarketplaceJobProcessor(
+                    processorDb,
+                    null!, null!, null!, null!, orderPort, null!, null!, null!, null!, null!,
+                    new ConfigurationBuilder().Build(), fixture.TimeProvider);
+                var result = await processor.ProcessAsync(
+                    tenant.Id,
+                    connection.Id,
+                    MarketplaceJobTypes.OrderSync,
+                    $$"""{"externalOrderId":"{{externalOrderId}}","full":false,"packageNumber":"{{currentPackageNumber}}"}""",
+                    "trendyol-zero-package-hold-repair",
+                    CancellationToken.None);
+
+                Assert.True(result.Succeeded, result.ErrorSummary);
+                Assert.Equal(1, orderPort.OrderReadCalls);
+            }
+
+            await using var verifyDb = fixture.CreateContext();
+            var persistedOrder = await verifyDb.Orders.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id && row.ExternalOrderId == externalOrderId);
+            var persistedPackages = await verifyDb.ShipmentPackages.AsNoTracking()
+                .Where(row => row.TenantId == tenant.Id && row.OrderId == orderId)
+                .ToDictionaryAsync(row => row.ExternalPackageId);
+            Assert.Equal("NEW", persistedOrder.DerivedStatus);
+            Assert.Equal(ShipmentPackageStatus.PaymentPending, persistedPackages["0"].Status);
+            Assert.Equal(ShipmentPackageStatus.New, persistedPackages[currentPackageNumber].Status);
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
     public async Task SyncPolicies_ReportCursorTelemetryAndConnectionScopedBacklog()
     {
         var tenant = NewTenant("sync-policy-health");

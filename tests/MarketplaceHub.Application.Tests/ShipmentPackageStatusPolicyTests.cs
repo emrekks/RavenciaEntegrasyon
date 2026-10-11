@@ -56,6 +56,42 @@ public sealed class ShipmentPackageStatusPolicyTests
         Assert.True(TrendyolShipmentPackageStatusPolicy.HasSameNormalizedStatus("AtCollectionPoint", "AT_COLLECTION_POINT"));
     }
 
+    [Theory]
+    [InlineData("Awaiting", ShipmentPackageStatus.PaymentPending)]
+    [InlineData("Verified", ShipmentPackageStatus.PaymentPending)]
+    [InlineData("UnPacked", ShipmentPackageStatus.New)]
+    [InlineData("At_Collection_Point", ShipmentPackageStatus.Shipped)]
+    public void TrendyolStatusPolicy_RepairsLegacyZeroIdHoldWhenRealPackageIsPresent(
+        string rawStatus,
+        ShipmentPackageStatus expected)
+    {
+        Assert.True(TrendyolShipmentPackageStatusPolicy.ShouldRepairLegacyPlaceholderOnHold(
+            "0",
+            rawStatus,
+            ShipmentPackageStatus.OnHold,
+            hasAuthoritativePackage: true));
+        Assert.Equal(expected, TrendyolShipmentPackageStatusPolicy.FromRemote(rawStatus));
+    }
+
+    [Theory]
+    [InlineData("0", "Awaiting", false)]
+    [InlineData("4234395651", "Awaiting", true)]
+    [InlineData("0", "Awaiting", true)]
+    [InlineData("0", "Processing", true)]
+    public void TrendyolStatusPolicy_DoesNotRepairUnrelatedPackageStates(
+        string externalPackageId,
+        string rawStatus,
+        bool hasAuthoritativePackage)
+    {
+        var shouldRepair = TrendyolShipmentPackageStatusPolicy.ShouldRepairLegacyPlaceholderOnHold(
+            externalPackageId,
+            rawStatus,
+            ShipmentPackageStatus.OnHold,
+            hasAuthoritativePackage);
+
+        Assert.Equal(externalPackageId == "0" && rawStatus == "Awaiting" && hasAuthoritativePackage, shouldRepair);
+    }
+
     [Fact]
     public void PaymentPending_IsSeparatedFromHoldsAndMayAdvanceWhenTrendyolConfirmsPayment()
     {

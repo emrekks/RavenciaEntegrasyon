@@ -6819,6 +6819,24 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                 foreach (var remoteAllocation in packageObservation.Allocations) if (lines.TryGetValue(remoteAllocation.ExternalLineId, out var line) && safeAllocations.TryGetValue(remoteAllocation.ExternalLineId, out var safe)) { var allocationKey = AllocationKey(package.Id, line.Id, eventId); var allocation = allocationsByKey.GetValueOrDefault(allocationKey); if (allocation is null) { allocation = new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenantId, PackageId = package.Id, OrderLineId = line.Id, SourceEventId = eventId, AllocatedQuantity = safe.ActiveAllocatedQuantity, CancelledQuantity = safe.CancelledQuantity, ShippedQuantity = safe.ShippedQuantity, DeliveredQuantity = safe.DeliveredQuantity, ReturnedQuantity = safe.ReturnedQuantity }; db.PackageLineAllocations.Add(allocation); allocationsByKey[allocationKey] = allocation; telemetryInsertedCount++; } }
             }
         }
+        if (isTrendyol && remote.Packages.Any(package =>
+                !string.IsNullOrWhiteSpace(package.ExternalPackageId)
+                && !string.Equals(package.ExternalPackageId.Trim(), "0", StringComparison.Ordinal)))
+        {
+            foreach (var package in packagesByExternalId.Values)
+            {
+                if (!TrendyolShipmentPackageStatusPolicy.ShouldRepairLegacyPlaceholderOnHold(
+                        package.ExternalPackageId,
+                        package.RawStatus,
+                        package.Status,
+                        hasAuthoritativePackage: true)) continue;
+
+                package.Status = TrendyolShipmentPackageStatusPolicy.FromRemote(package.RawStatus);
+                package.UpdatedAt = now;
+                package.Version++;
+                telemetryUpdatedCount++;
+            }
+        }
         var projectedLineQuantities = PackageLineProjectionPolicy.Recalculate(packagesByExternalId.Values.ToList(), allocationsByKey.Values.ToList());
         foreach (var line in lines.Values)
         {
@@ -6828,11 +6846,11 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             line.DeliveredQuantity = projection.DeliveredQuantity;
             line.ReturnedQuantity = projection.ReturnedQuantity;
         }
-        var persistedStatuses = batch is not null
-            ? packagesByExternalId.Values.Select(x => x.Status).ToList()
-            : await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id).Select(x => x.Status).ToListAsync(cancellationToken);
-        var acceptedStatuses = persistedStatuses.ToList();
-        acceptedStatuses.AddRange(db.ShipmentPackages.Local.Where(x => x.TenantId == tenantId && x.OrderId == order.Id).Select(x => x.Status));
+        var acceptedStatuses = packagesByExternalId.Values
+            .Concat(db.ShipmentPackages.Local.Where(x => x.TenantId == tenantId && x.OrderId == order.Id))
+            .GroupBy(package => package.Id)
+            .Select(group => group.First().Status)
+            .ToList();
         var derivedStatus = isHepsiburada
             ? HepsiburadaOrderLifecycleStatusPolicy.AggregatePackages(acceptedStatuses)
             : ShipmentPackageStatusPolicy.Aggregate(acceptedStatuses);
