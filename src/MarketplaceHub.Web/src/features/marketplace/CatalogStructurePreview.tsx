@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { StatusBadge } from '../../shared/components'
+import { StatusBadge, UiIcon } from '../../shared/components'
 import {
   catalogStructureAttributeStatus,
   catalogStructureCategoryNeedsAttention,
@@ -89,7 +89,7 @@ function CategoryRow({ category, platformLabel, filter }: { category: CatalogStr
     <summary>
       <StatusBadge tone={catalogStructureDecisionTone(category.decision)}>{catalogStructureDecisionLabel(category.decision)}</StatusBadge>
       <span className="structure-row-names"><strong>{category.remoteName}</strong>{category.remotePath && <small>{category.remotePath}</small>}</span>
-      <span aria-hidden="true">→</span>
+      <span className="structure-row-link" aria-hidden="true"><UiIcon name="link" size={16} /></span>
       <strong className="structure-row-panel">{category.panelName || '—'}</strong>
       <span className="structure-row-meta"><span>{number(category.productCount)} ürün</span><span>{category.attributes.length} özellik</span>{newValues > 0 && <span className="is-change">+{number(newValues)} değer</span>}</span>
     </summary>

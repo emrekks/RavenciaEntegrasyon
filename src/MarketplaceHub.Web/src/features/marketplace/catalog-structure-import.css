@@ -29,9 +29,9 @@
 
 .structure-preview-list { display: grid; gap: var(--rv-space-2); }
 .structure-row { border: 1px solid var(--rv-color-border); border-radius: 10px; }
-.structure-row > summary { display: grid; grid-template-columns: 120px minmax(0, 1fr) 40px minmax(0, 1fr) 270px; align-items: center; column-gap: var(--rv-space-3); padding: var(--rv-space-3) var(--rv-space-4); cursor: pointer; }
+.structure-row > summary { display: grid; grid-template-columns: 120px minmax(0, 1fr) 88px minmax(0, 1fr) 270px; align-items: center; column-gap: var(--rv-space-3); padding: var(--rv-space-3) var(--rv-space-4); cursor: pointer; }
 .structure-row > summary > .rv-badge { justify-self: start; white-space: nowrap; }
-.structure-row > summary > [aria-hidden] { justify-self: center; color: var(--rv-color-muted); }
+.structure-row-link { display: inline-flex; justify-self: center; align-items: center; justify-content: center; width: 32px; height: 32px; color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border-radius: 50%; }
 .structure-row[open] > summary { border-bottom: 1px solid var(--rv-color-border); }
 .structure-row > :not(summary) { margin: var(--rv-space-3); }
 .structure-row-names { display: grid; min-width: 0; }
@@ -60,7 +60,7 @@
 
 @media (max-width: 900px) {
   .structure-row > summary { grid-template-columns: 1fr; row-gap: 4px; }
-  .structure-row > summary > [aria-hidden] { display: none; }
+  .structure-row-link { display: none; }
   .structure-row-meta { justify-items: start; }
   .structure-import-attribute-table { table-layout: auto; display: block; overflow-x: auto; }
 }
