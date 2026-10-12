@@ -1856,7 +1856,15 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         // otherwise nothing is sent to the marketplace and nothing is half-done.
         var stockTargets = new List<(ReturnLine Line, InventoryItem Item)>();
         // Stock is chosen per product; the older all-or-nothing flag still means every approved line.
-        var stockLineIds = (command.StockLineIds ?? (command.AddToStock ? returnLineIds : [])).Distinct().ToArray();
+        var stockPlan = new Dictionary<Guid, decimal?>();
+        foreach (var requested in command.StockLines ?? [])
+        {
+            if (requested.Quantity <= 0) return Invalid<ReturnDetailView>("stockLines", "Stoğa eklenecek adet sıfırdan büyük olmalıdır.");
+            stockPlan[requested.ReturnLineId] = requested.Quantity;
+        }
+        foreach (var wholeLineId in command.StockLineIds ?? (command.AddToStock ? returnLineIds : []))
+            stockPlan.TryAdd(wholeLineId, null);
+        var stockLineIds = stockPlan.Keys.ToArray();
         if (stockLineIds.Length > 0)
         {
             if (action != "APPROVE") return Invalid<ReturnDetailView>("addToStock", "Stoğa ekleme yalnız iade kabulünde seçilebilir.");
@@ -1867,6 +1875,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 var variantId = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == approvedLine.OrderLineId).Select(x => x.VariantId).SingleOrDefaultAsync(cancellationToken);
                 var inventoryItem = variantId is null ? null : await db.InventoryItems.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.VariantId == variantId && x.LocationCode == "MAIN", cancellationToken);
                 if (inventoryItem is null) return ServiceResult<ReturnDetailView>.Fail("INVENTORY_MAPPING_REQUIRED", "Seçilen ürünlerden biri yerel varyant ve stok kaydıyla eşleşmiyor; stoğa eklenemez.", 422);
+                if (stockPlan[approvedLine.Id] is { } wantedUnits && wantedUnits > approvedLine.Quantity) return Invalid<ReturnDetailView>("stockLines", "Stoğa eklenecek adet iade satırı adedini aşamaz.");
                 stockTargets.Add((approvedLine, inventoryItem));
             }
         }
@@ -1949,6 +1958,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         {
             var alreadyReceived = await db.ReturnStockDispositions.Where(x => x.TenantId == tenantId && x.ReturnLineId == stockLine.Id).SumAsync(x => x.Quantity, cancellationToken);
             var receivable = stockLine.Quantity - alreadyReceived;
+            if (stockPlan[stockLine.Id] is { } plannedUnits) receivable = Math.Min(receivable, plannedUnits);
             if (receivable <= 0) continue;
             var stockKey = $"{normalizedKey}:stock:{stockLine.Id:N}";
             var stockAt = effect.CompletedAt.Value;

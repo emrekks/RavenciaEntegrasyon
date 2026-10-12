@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
 import { Busy, ErrorBox, Modal } from '../../shared/components'
 import { PlatformMark } from '../../shared/platform-mark'
+import { allocateStock } from './return-stock-allocation'
 import './return-approve-dialog.css'
 
 export type ReturnApproveRow = {
@@ -65,12 +66,15 @@ export function ReturnApproveDialog({ open, claimId, version, marketplaceName, o
   const [selected, setSelected] = useState<string[]>([])
   const [counts, setCounts] = useState<Record<string, number>>({})
   const [stockKeys, setStockKeys] = useState<string[]>([])
+  // How many units of a product go back to stock (defaults to every approved unit).
+  const [stockUnits, setStockUnits] = useState<Record<string, number>>({})
   const groupSignature = groups.map(group => `${group.key}:${group.rows.length}`).join('|')
 
   useEffect(() => {
     setSelected(groups.map(group => group.key))
     setCounts(Object.fromEntries(groups.map(group => [group.key, group.rows.length])))
     setStockKeys([])
+    setStockUnits({})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupSignature, open])
 
@@ -79,17 +83,20 @@ export function ReturnApproveDialog({ open, claimId, version, marketplaceName, o
     .filter(group => selected.includes(group.key))
     .map(group => ({ group, rows: group.rows.slice(0, Math.max(1, Math.min(counts[group.key] ?? group.rows.length, group.rows.length))) }))
   const chosenRows = chosenByGroup.flatMap(entry => entry.rows)
-  const stockRows = chosenByGroup.filter(entry => stockKeys.includes(entry.group.key) && entry.rows.every(row => row.hasInventoryMapping)).flatMap(entry => entry.rows)
-  const stockQuantity = unitCount(stockRows)
+  const stockEntries = chosenByGroup
+    .filter(entry => stockKeys.includes(entry.group.key) && entry.rows.every(row => row.hasInventoryMapping))
+    .map(entry => ({ key: entry.group.key, rows: entry.rows, units: Math.max(1, Math.min(stockUnits[entry.group.key] ?? unitCount(entry.rows), unitCount(entry.rows))) }))
+  const stockRequests = stockEntries.flatMap(entry => allocateStock(entry.rows.map(row => ({ id: row.id, quantity: row.quantity })), entry.units))
+  const stockQuantity = stockEntries.reduce((sum, entry) => sum + entry.units, 0)
 
   const approve = useMutation({
     mutationFn: () => hubApi<{ status: string }>(`/returns/${claimId}/actions`, {
       method: 'POST',
       headers: { 'Idempotency-Key': crypto.randomUUID(), 'If-Match': `"v${version}"` },
-      body: JSON.stringify({ action: 'APPROVE', reasonCode: null, explanation: null, evidenceAssetIds: [], returnLineIds: chosenRows.map(row => row.id), finalizedWith: wholeClaim ? 'Refund' : null, stockLineIds: stockRows.map(row => row.id) })
+      body: JSON.stringify({ action: 'APPROVE', reasonCode: null, explanation: null, evidenceAssetIds: [], returnLineIds: chosenRows.map(row => row.id), finalizedWith: wholeClaim ? 'Refund' : null, stockLines: stockRequests })
     }),
     onSuccess: async () => {
-      const stock = stockRows.length > 0 ? ` Stok ${stockQuantity.toLocaleString('tr-TR')} adet artırıldı.` : ''
+      const stock = stockRequests.length > 0 ? ` Stok ${stockQuantity.toLocaleString('tr-TR')} adet artırıldı.` : ''
       onDone(`İade kabulü ${marketplaceName}’a gönderildi.${stock}`, 'success')
       await client.invalidateQueries({ queryKey: ['return', claimId] })
       await client.invalidateQueries({ queryKey: ['returns'] })
@@ -116,7 +123,7 @@ export function ReturnApproveDialog({ open, claimId, version, marketplaceName, o
     onClose={onClose}
     className="return-approve-modal"
     footer={<>
-      {stockRows.length > 0 && <span className="return-approve-stock-summary">Stoğa Eklenecek: +{stockQuantity.toLocaleString('tr-TR')} adet</span>}
+      {stockRequests.length > 0 && <span className="return-approve-stock-summary">Stoğa Eklenecek: +{stockQuantity.toLocaleString('tr-TR')} adet</span>}
       <button type="button" className="secondary" onClick={onClose} disabled={approve.isPending}>Vazgeç</button>
       <button type="button" disabled={approve.isPending || loading || !canSubmit} onClick={() => approve.mutate()}>{approve.isPending ? 'Gönderiliyor…' : 'Onayla'}</button>
     </>}
@@ -154,6 +161,7 @@ export function ReturnApproveDialog({ open, claimId, version, marketplaceName, o
               <i aria-hidden="true" />
               <span>Stoğa Ekle</span>
             </button>
+            {stockOn && unitCount(picked) > 1 && <select className="return-approve-quantity" aria-label={`${first.title} stoğa eklenecek adet`} value={Math.max(1, Math.min(stockUnits[group.key] ?? unitCount(picked), unitCount(picked)))} onChange={event => setStockUnits(current => ({ ...current, [group.key]: Number(event.target.value) }))}>{Array.from({ length: unitCount(picked) }, (_, index) => <option key={index + 1} value={index + 1}>{index + 1} Adet Stoğa Ekle</option>)}</select>}
           </div>
         </div>
       })}
