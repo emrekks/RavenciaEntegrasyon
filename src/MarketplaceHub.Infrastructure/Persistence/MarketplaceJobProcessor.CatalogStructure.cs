@@ -213,6 +213,7 @@ public sealed partial class MarketplaceJobProcessor
                     });
                 categoryReport.NewValues = made.Count(x => x.Kind == "value");
                 categoryReport.UnmatchedFields = outcome.UnmatchedFields.ToList();
+                categoryReport.Difference = outcome.Difference;
                 if (outcome.Decision.Decision == CategoryReuseDecision.NeedsReview && !outcome.AlreadyMapped)
                     report.Review.Add(new("category", categoryReport.RemoteName, outcome.Decision.Reason));
 
@@ -257,9 +258,14 @@ public sealed partial class MarketplaceJobProcessor
         var candidates = StructureCandidateAttributes(remoteAttributes, usage);
         var remoteKeys = remoteAttributes.Select(x => NormalizeCatalogKey(CanonicalAttributeName(x.Name), 160)).Where(x => x.Length > 0).ToHashSet(StringComparer.Ordinal);
 
-        var (category, decision, alreadyMapped) = await EnsureMappedCategoryForStructure(tenantId, connection, platformLabel, categorySnapshot, categoryItem, remoteKeys, cancellationToken);
+        var remoteNamesByKey = remoteAttributes
+            .GroupBy(x => NormalizeCatalogKey(CanonicalAttributeName(x.Name), 160), StringComparer.Ordinal)
+            .Where(group => group.Key.Length > 0)
+            .ToDictionary(group => group.Key, group => CanonicalAttributeName(group.First().Name), StringComparer.Ordinal);
+        StructureCategoryDifference? difference = null;
+        var (category, decision, alreadyMapped) = await EnsureMappedCategoryForStructure(tenantId, connection, platformLabel, categorySnapshot, categoryItem, remoteKeys, remoteNamesByKey, found => difference = found, cancellationToken);
         var unmatched = UnmatchedProductFields(usage, remoteAttributes);
-        if (category is null) return new(null, decision, alreadyMapped, [], unmatched);
+        if (category is null) return new(null, decision, alreadyMapped, [], unmatched, difference);
 
         var valuesByAttribute = new Dictionary<string, IReadOnlyList<ReferenceItem>>(StringComparer.Ordinal);
         foreach (var remoteAttribute in candidates)
@@ -293,7 +299,7 @@ public sealed partial class MarketplaceJobProcessor
         await EnsureObservedVariantAttributeValues(tenantId, new CategoryAttributeContext(category, categoryItem.ExternalId, optionAttributes), snapshot, cancellationToken);
         await EnsureExactWebColorValueMappings(tenantId, connectionId, context, cancellationToken);
         cache[categoryItem.ExternalId] = context;
-        return new(context, decision, alreadyMapped, attributes.Values.GroupBy(x => x.Definition.Id).Select(group => group.First()).ToList(), unmatched);
+        return new(context, decision, alreadyMapped, attributes.Values.GroupBy(x => x.Definition.Id).Select(group => group.First()).ToList(), unmatched, difference);
     }
 
     private async Task<(Category? Category, CategoryReuseResult Decision, bool AlreadyMapped)> EnsureMappedCategoryForStructure(
@@ -303,6 +309,8 @@ public sealed partial class MarketplaceJobProcessor
         ReferenceSnapshot categorySnapshot,
         ReferenceItem remoteCategory,
         IReadOnlySet<string> remoteAttributeKeys,
+        IReadOnlyDictionary<string, string> remoteNamesByKey,
+        Action<StructureCategoryDifference> onDifference,
         CancellationToken cancellationToken)
     {
         var connectionId = connection.Id;
@@ -337,16 +345,23 @@ public sealed partial class MarketplaceJobProcessor
         {
             var sameLeaf = roots.Where(x => NormalizeCatalogKey(PlatformSuffix.Replace(x.Name, ""), 160) == leafKey).ToList();
             var candidates = new List<CategoryReuseCandidate>();
+            var known = new List<(Category Panel, KnownAttributeSet Set)>();
             foreach (var panelCategory in sameLeaf)
-                foreach (var keys in await KnownAttributeKeySets(tenantId, panelCategory.Id, cancellationToken))
-                    candidates.Add(new(panelCategory.Id, panelCategory.Name, keys));
+                foreach (var set in await KnownAttributeSets(tenantId, panelCategory.Id, cancellationToken))
+                {
+                    candidates.Add(new(panelCategory.Id, panelCategory.Name, set.NamesByKey.Keys.ToHashSet(StringComparer.Ordinal)));
+                    known.Add((panelCategory, set));
+                }
             decision = CategoryReusePolicy.Decide(leaf, platformLabel, remoteAttributeKeys, candidates);
             if (decision.Decision == CategoryReuseDecision.ReuseExisting)
                 category = sameLeaf.First(x => x.Id == decision.CategoryId);
             else if (decision.Decision is CategoryReuseDecision.CreateNew or CategoryReuseDecision.CreateSeparate)
             {
                 if (decision.Decision == CategoryReuseDecision.CreateSeparate)
+                {
                     decision = decision with { PanelName = SeparateCategoryName(roots, leaf, platformLabel, remoteCategory) };
+                    if (known.Count > 0) onDifference(DescribeDifference(known, remoteAttributeKeys, remoteNamesByKey));
+                }
                 category = NewStructureCategory(tenantId, decision.PanelName, pathKey, now);
             }
         }
@@ -403,17 +418,43 @@ public sealed partial class MarketplaceJobProcessor
         return $"{leaf} ({platformLabel} · {remoteCategory.ExternalId})";
     }
 
+    private sealed record KnownAttributeSet(string Source, IReadOnlyDictionary<string, string> NamesByKey);
+
+    private static Dictionary<string, string> NamesByKey(IEnumerable<string> names) => names
+        .Select(name => (Key: NormalizeCatalogKey(CanonicalAttributeName(name), 160), Name: CanonicalAttributeName(name)))
+        .Where(pair => pair.Key.Length > 0)
+        .GroupBy(pair => pair.Key, StringComparer.Ordinal)
+        .ToDictionary(group => group.Key, group => group.First().Name, StringComparer.Ordinal);
+
+    private async Task<string> PlatformLabelAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
+    {
+        var code = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        return code switch { "TRENDYOL" => "Trendyol", "HEPSIBURADA" => "Hepsiburada", "SHOPIFY" => "Shopify", _ => code ?? "Pazar yeri" };
+    }
+
+    // Explains a "separate category" decision against the most similar panel category.
+    private static StructureCategoryDifference DescribeDifference(
+        IReadOnlyList<(Category Panel, KnownAttributeSet Set)> known,
+        IReadOnlySet<string> remoteKeys,
+        IReadOnlyDictionary<string, string> remoteNamesByKey)
+    {
+        var best = known.OrderByDescending(item => item.Set.NamesByKey.Keys.Count(remoteKeys.Contains)).First();
+        var onlyMarketplace = remoteKeys.Where(key => !best.Set.NamesByKey.ContainsKey(key)).Select(key => remoteNamesByKey.GetValueOrDefault(key, key)).OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
+        var onlyPanel = best.Set.NamesByKey.Where(pair => !remoteKeys.Contains(pair.Key)).Select(pair => pair.Value).OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
+        return new(best.Panel.Name, best.Set.Source, best.Set.NamesByKey.Keys.Count(remoteKeys.Contains), onlyMarketplace, onlyPanel);
+    }
+
     // Every attribute set a panel category is known by: its own requirements, plus
     // the full attribute list of each marketplace category already mapped to it.
-    private async Task<List<IReadOnlySet<string>>> KnownAttributeKeySets(Guid tenantId, Guid categoryId, CancellationToken cancellationToken)
+    private async Task<List<KnownAttributeSet>> KnownAttributeSets(Guid tenantId, Guid categoryId, CancellationToken cancellationToken)
     {
-        var sets = new List<IReadOnlySet<string>>();
+        var sets = new List<KnownAttributeSet>();
         var own = await (from requirement in db.CategoryAttributeRequirements.AsNoTracking()
                          join definition in db.AttributeDefinitions.AsNoTracking() on new { requirement.TenantId, Id = requirement.AttributeId } equals new { definition.TenantId, definition.Id }
                          where requirement.TenantId == tenantId && requirement.CategoryId == categoryId && definition.IsActive
                          select definition.Name).ToListAsync(cancellationToken);
-        var ownKeys = own.Select(name => NormalizeCatalogKey(CanonicalAttributeName(name), 160)).Where(x => x.Length > 0).ToHashSet(StringComparer.Ordinal);
-        if (ownKeys.Count > 0) sets.Add(ownKeys);
+        var ownNames = NamesByKey(own);
+        if (ownNames.Count > 0) sets.Add(new("Panel", ownNames));
 
         var mappings = await db.CategoryMappings.AsNoTracking().Where(x => x.TenantId == tenantId && x.LocalId == categoryId).ToListAsync(cancellationToken);
         foreach (var mapping in mappings)
@@ -424,8 +465,8 @@ public sealed partial class MarketplaceJobProcessor
                 .FirstOrDefaultAsync(cancellationToken);
             if (snapshot is null) continue;
             var items = await LoadReferenceItems(tenantId, snapshot, "CATEGORY_ATTRIBUTES", cancellationToken);
-            var keys = items.Select(x => NormalizeCatalogKey(CanonicalAttributeName(x.Name), 160)).Where(x => x.Length > 0).ToHashSet(StringComparer.Ordinal);
-            if (keys.Count > 0) sets.Add(keys);
+            var names = NamesByKey(items.Select(x => x.Name));
+            if (names.Count > 0) sets.Add(new(await PlatformLabelAsync(tenantId, mapping.ConnectionId, cancellationToken), names));
         }
         return sets;
     }
@@ -540,9 +581,11 @@ public sealed partial class MarketplaceJobProcessor
         public Dictionary<string, HashSet<string>> Options { get; } = new(StringComparer.OrdinalIgnoreCase);
     }
 
+    public sealed record StructureCategoryDifference(string ComparedWith, string ComparedSource, int SharedCount, List<string> OnlyInMarketplace, List<string> OnlyInPanel);
+
     private sealed record StructureChange(string Kind, string Name, Guid? AttributeId = null);
 
-    private sealed record StructureCategoryOutcome(CategoryAttributeContext? Context, CategoryReuseResult Decision, bool AlreadyMapped, IReadOnlyList<LocalCategoryAttribute> Attributes, IReadOnlyList<string> UnmatchedFields);
+    private sealed record StructureCategoryOutcome(CategoryAttributeContext? Context, CategoryReuseResult Decision, bool AlreadyMapped, IReadOnlyList<LocalCategoryAttribute> Attributes, IReadOnlyList<string> UnmatchedFields, StructureCategoryDifference? Difference);
 }
 
 public sealed class StructureReport
@@ -585,6 +628,7 @@ public sealed class StructureCategoryReport
     public bool CreatedCategory { get; set; }
     public int NewValues { get; set; }
     public List<string> UnmatchedFields { get; set; } = [];
+    public MarketplaceJobProcessor.StructureCategoryDifference? Difference { get; set; }
     public List<StructureAttributeReport> Attributes { get; set; } = [];
 }
 

@@ -100,6 +100,15 @@ public sealed class CatalogStructureImportTests(PostgreSqlTenantIsolationFixture
             Assert.Equal(3, mappings.Count);
             var shared = categories.Single(x => x.Name == "Bluz");
             Assert.Equal(2, mappings.Count(x => x.LocalId == shared.Id));
+
+            // The report explains why the second Hepsiburada category stayed separate.
+            var separateRun = await db.CatalogStructureRuns.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ConnectionId == hepsiburadaDifferent.Id);
+            var report = JsonSerializer.Deserialize<StructureReport>(separateRun.ReportJson!, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+            var difference = report.Categories.Single().Difference;
+            Assert.NotNull(difference);
+            Assert.Equal(["Kumaş Tipi"], difference!.OnlyInMarketplace);
+            Assert.Empty(difference.OnlyInPanel);
+            Assert.Equal(2, difference.SharedCount);
         }
         finally
         {

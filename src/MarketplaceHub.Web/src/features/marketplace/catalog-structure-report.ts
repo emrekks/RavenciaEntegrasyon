@@ -26,6 +26,7 @@ export type CatalogStructureCategory = {
   createdCategory: boolean
   newValues: number
   unmatchedFields?: string[]
+  difference?: CatalogStructureDifference | null
   attributes: CatalogStructureAttribute[]
 }
 
@@ -37,6 +38,7 @@ export type CatalogStructureReport = {
   categories: CatalogStructureCategory[]
   review: { kind: string; subject: string; reason: string }[]
   warnings: string[]
+  responseFields?: string[]
 }
 
 export type CatalogStructureRun = {
@@ -120,4 +122,69 @@ export function catalogStructureCategoryNeedsAttention(category: CatalogStructur
     || category.decision === 'NeedsReview'
     || category.decision === 'CreateSeparate'
     || category.attributes.some(attribute => attribute.createdDefinition || catalogStructureNewValueCount(attribute) > 0)
+}
+
+export type CatalogStructureDifference = { comparedWith: string; comparedSource: string; sharedCount: number; onlyInMarketplace: string[]; onlyInPanel: string[] }
+
+export type CatalogStructureFilter = 'ALL' | 'CHANGES' | 'NEW' | 'SEPARATE' | 'REVIEW' | 'SYNCED'
+
+export function catalogStructureChangesSomething(category: CatalogStructureCategory) {
+  return (category.decision !== 'AlreadyMapped' && category.decision !== 'NeedsReview')
+    || category.attributes.some(attribute => attribute.createdDefinition || catalogStructureNewValueCount(attribute) > 0)
+}
+
+export function matchesCatalogStructureFilter(category: CatalogStructureCategory, filter: CatalogStructureFilter) {
+  switch (filter) {
+    case 'CHANGES': return catalogStructureChangesSomething(category)
+    case 'NEW': return category.decision === 'CreateNew'
+    case 'SEPARATE': return category.decision === 'CreateSeparate'
+    case 'REVIEW': return category.decision === 'NeedsReview'
+    case 'SYNCED': return !catalogStructureChangesSomething(category) && category.decision !== 'NeedsReview'
+    default: return true
+  }
+}
+
+export function catalogStructureFilterCounts(categories: CatalogStructureCategory[]) {
+  const filters: CatalogStructureFilter[] = ['ALL', 'CHANGES', 'NEW', 'SEPARATE', 'REVIEW', 'SYNCED']
+  return Object.fromEntries(filters.map(filter => [filter, categories.filter(category => matchesCatalogStructureFilter(category, filter)).length])) as Record<CatalogStructureFilter, number>
+}
+
+export function searchCatalogStructureCategories(categories: CatalogStructureCategory[], query: string) {
+  const text = query.trim().toLocaleLowerCase('tr-TR')
+  if (!text) return categories
+  return categories.filter(category => [category.remoteName, category.panelName, category.remotePath, ...category.attributes.flatMap(attribute => [attribute.panelName, attribute.remoteName, ...(attribute.newValues ?? [])])]
+    .some(part => part.toLocaleLowerCase('tr-TR').includes(text)))
+}
+
+// Plain-language reason shown under each category.
+export function catalogStructureDecisionExplanation(category: CatalogStructureCategory, platformLabel: string) {
+  const difference = category.difference
+  switch (category.decision) {
+    case 'CreateNew': return 'Panelde bu adda kategori olmadığı için yeni panel kategorisi açılacak.'
+    case 'ReuseExisting': return 'Aynı adlı panel kategorisiyle özellikleri birebir aynı; mevcut kategoriye bağlanacak.'
+    case 'AlreadyMapped': return 'Bu kategori daha önce eşlenmiş; yalnızca eksik özellik değerleri eklenecek.'
+    case 'NeedsReview': return category.reason || 'Otomatik karar verilemedi; elle incelenmesi gerekiyor.'
+    case 'CreateSeparate':
+      return difference
+        ? `${difference.comparedSource} tarafındaki “${difference.comparedWith}” ile ${difference.sharedCount} ortak özelliği var; özellik kümeleri farklı olduğu için ayrı kategori olarak açılacak.`
+        : category.reason || `${platformLabel} kategorisi ayrı panel kategorisi olarak açılacak.`
+    default: return category.reason
+  }
+}
+
+// What pressing "Panele uygula" will do, as short sentences.
+export function catalogStructureNarrative(report: CatalogStructureReport, platformLabel: string) {
+  const { totals } = report
+  const lines: string[] = []
+  const brandNew = totals.categoriesCreated - totals.categoriesSeparated
+  if (brandNew > 0) lines.push(`${brandNew} yeni panel kategorisi açılacak.`)
+  if (totals.categoriesSeparated > 0) lines.push(`${totals.categoriesSeparated} kategori, özellik kümeleri panelde aynı adlı kategoriden farklı olduğu için “(${platformLabel})” adıyla ayrı açılacak.`)
+  if (totals.categoriesReused > 0) lines.push(`${totals.categoriesReused} kategori, özellikleri aynı olduğu için mevcut panel kategorisine bağlanacak.`)
+  if (totals.categoriesAlreadyMapped > 0) lines.push(`${totals.categoriesAlreadyMapped} kategori zaten eşli.`)
+  if (totals.attributesCreated > 0) lines.push(`${totals.attributesCreated} yeni özellik tanımı oluşturulacak.`)
+  if (totals.valuesCreated > 0) lines.push(`Mevcut özelliklere ${totals.valuesCreated.toLocaleString('tr-TR')} yeni değer eklenecek (yalnızca ürünlerinizde geçenler).`)
+  if (totals.mappingsCreated > 0) lines.push(`${totals.mappingsCreated.toLocaleString('tr-TR')} eşleme kaydı yazılacak.`)
+  if (totals.categoriesNeedReview > 0) lines.push(`${totals.categoriesNeedReview} kategori incelemeye bırakıldı, uygulamada atlanacak.`)
+  if (lines.length === 0) lines.push('Panelde yapılacak bir değişiklik yok.')
+  return lines
 }

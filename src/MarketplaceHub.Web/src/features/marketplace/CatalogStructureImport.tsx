@@ -2,15 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
 import { Busy, ErrorBox, Modal, StatusBadge, UiIcon } from '../../shared/components'
+import { CatalogStructurePreview } from './CatalogStructurePreview'
 import {
   canApplyCatalogStructure,
-  catalogStructureAttributeRoleLabel,
-  catalogStructureAttributeStatus,
-  catalogStructureCategoryNeedsAttention,
-  catalogStructureNewValueCount,
-  catalogStructureDecisionLabel,
-  catalogStructureDecisionTone,
-  catalogStructureSummary,
+  catalogStructureNarrative,
   isCatalogStructureRunActive,
   type CatalogStructureRun
 } from './catalog-structure-report'
@@ -21,6 +16,7 @@ type JobProgress = { job: { progressLabel?: string | null; progressPercent?: num
 export function CatalogStructureImportCard({ connectionId, platformLabel, onNotice }: { connectionId: string; platformLabel: string; onNotice: (message: string) => void }) {
   const client = useQueryClient()
   const [openRunId, setOpenRunId] = useState<string | null>(null)
+  const [confirming, setConfirming] = useState(false)
   const appliedRunSeen = useRef<string | null>(null)
   const runs = useQuery({
     queryKey: ['catalog-structure-runs', connectionId],
@@ -40,6 +36,7 @@ export function CatalogStructureImportCard({ connectionId, platformLabel, onNoti
     mutationFn: (mode: 'PREVIEW' | 'APPLY') => hubApi<CatalogStructureRun>(`/connections/${connectionId}/catalog-structure-runs?mode=${mode}`, { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: '{}' }),
     onSuccess: async (_run, mode) => {
       setOpenRunId(null)
+      setConfirming(false)
       onNotice(mode === 'PREVIEW' ? `${platformLabel} yapı önizlemesi kuyruğa alındı. Panele hiçbir şey yazılmaz.` : `${platformLabel} yapısı panele aktarılmak üzere kuyruğa alındı.`)
       await client.invalidateQueries({ queryKey: ['catalog-structure-runs', connectionId] })
     },
@@ -60,6 +57,8 @@ export function CatalogStructureImportCard({ connectionId, platformLabel, onNoti
   })
   const run = detail.data
   const report = run?.report ?? null
+  const canApply = canApplyCatalogStructure(run, report)
+  const close = () => { setOpenRunId(null); setConfirming(false) }
 
   return <article className="mapping-reference-card structure-import-card">
     <div className="mapping-section-heading"><div><h2><UiIcon name="download" />Platformdan Yapıyı Çek</h2><p>{platformLabel} mağazasındaki ürünlerin kategori, seçenek ve özellik yapısını panele aktarın. Pazar yerine hiçbir şey yazılmaz; önce önizleme gösterilir.</p></div>
@@ -73,35 +72,19 @@ export function CatalogStructureImportCard({ connectionId, platformLabel, onNoti
     </div>}
     <Modal
       open={!!openRunId}
-      title={run?.mode === 'APPLY' ? 'Yapı aktarım raporu' : 'Yapı önizlemesi'}
+      title={run?.mode === 'APPLY' ? `${platformLabel} aktarım raporu` : `${platformLabel} yapı önizlemesi`}
       description={run?.mode === 'APPLY' ? 'Aşağıdakiler panele yazıldı.' : 'Henüz hiçbir şey panele yazılmadı. Onaylarsanız aşağıdakiler uygulanır.'}
-      onClose={() => setOpenRunId(null)}
+      onClose={close}
       className="structure-import-modal"
-      footer={<><button type="button" className="secondary" onClick={() => setOpenRunId(null)}>Kapat</button>{canApplyCatalogStructure(run, report) && <button type="button" disabled={start.isPending || active} onClick={() => start.mutate('APPLY')}>Panele uygula</button>}</>}
+      footer={confirming && report
+        ? <><span className="structure-preview-confirm">Bu işlem panele yazar. Devam edilsin mi?</span><button type="button" className="secondary" onClick={() => setConfirming(false)}>Vazgeç</button><button type="button" disabled={start.isPending || active} onClick={() => start.mutate('APPLY')}>Evet, panele uygula</button></>
+        : <><button type="button" className="secondary" onClick={close}>Kapat</button>{canApply && <button type="button" disabled={start.isPending || active} onClick={() => setConfirming(true)}>Panele uygula</button>}</>}
     >
       {detail.isLoading && <Busy />}
       {detail.isError && <ErrorBox error={detail.error} />}
       {report && <>
-        <dl className="structure-import-totals">{catalogStructureSummary(report.totals, report.mode).map(item => <div key={item.label}><dt>{item.label}</dt><dd>{item.value.toLocaleString('tr-TR')}</dd></div>)}</dl>
-        {report.warnings.map(warning => <p key={warning} className="structure-import-warning" role="alert">{warning}</p>)}
-        {report.totals.productsWithoutCategory > 0 && <p className="structure-import-warning">{report.totals.productsWithoutCategory.toLocaleString('tr-TR')} ürün kategori bilgisi içermediği için kapsam dışı kaldı.</p>}
-        {report.review.length > 0 && <section aria-label="İnceleme gerekenler"><h3>İnceleme gerekenler</h3><ul className="structure-import-review">{report.review.map(item => <li key={`${item.subject}:${item.reason}`}><strong>{item.subject}</strong><span>{item.reason}</span></li>)}</ul></section>}
-        <section aria-label="Kategoriler"><h3>Kategoriler</h3>
-          <p className="structure-import-hint">Değişiklik yapacak kategoriler açık gösterilir; zaten uyumlu olanları başlığına tıklayarak açabilirsiniz.</p>
-          <div className="structure-import-categories">{report.categories.map(category => <details key={category.externalId} open={catalogStructureCategoryNeedsAttention(category)}>
-            <summary className="structure-import-category-head"><strong>{category.remoteName}</strong><span aria-hidden="true">→</span><strong>{category.panelName || '—'}</strong><StatusBadge tone={catalogStructureDecisionTone(category.decision)}>{catalogStructureDecisionLabel(category.decision)}</StatusBadge><small>{category.productCount.toLocaleString('tr-TR')} ürün · {category.attributes.length} özellik</small></summary>
-            <p>{category.reason}</p>
-            {category.attributes.length > 0
-              ? <table className="structure-import-attribute-table"><thead><tr><th>Özellik</th><th>Türü</th><th>Durum</th><th>Eklenecek değerler</th></tr></thead><tbody>{category.attributes.map(attribute => <tr key={`${attribute.remoteName}:${attribute.panelName}`}>
-                <td><strong>{attribute.panelName}</strong>{attribute.remoteName !== attribute.panelName && <small>Pazar yerinde: {attribute.remoteName}</small>}</td>
-                <td>{catalogStructureAttributeRoleLabel(attribute.role)}</td>
-                <td>{catalogStructureAttributeStatus(attribute)}</td>
-                <td>{catalogStructureNewValueCount(attribute) > 0 ? <span className="structure-import-values">{(attribute.newValues ?? []).slice(0, 24).map(value => <span key={value}>{value}</span>)}{catalogStructureNewValueCount(attribute) > 24 && <small>+{catalogStructureNewValueCount(attribute) - 24} değer daha</small>}</span> : <small>{attribute.usedValueCount ? `Ürünlerdeki ${attribute.usedValueCount} değer panelde mevcut` : '—'}</small>}</td>
-              </tr>)}</tbody></table>
-              : <p className="structure-import-hint">Bu kategoride ürünlerin kullandığı özellik bulunamadı.</p>}
-            {(category.unmatchedFields?.length ?? 0) > 0 && <p className="structure-import-hint">Ürünlerde olup kategori özelliğiyle eşleşmeyen alanlar: {category.unmatchedFields!.join(", ")}</p>}
-          </details>)}</div>
-        </section>
+        {confirming && <ul className="structure-preview-confirm-list">{catalogStructureNarrative(report, platformLabel).map(line => <li key={line}>{line}</li>)}</ul>}
+        <CatalogStructurePreview report={report} platformLabel={platformLabel} />
       </>}
     </Modal>
   </article>
