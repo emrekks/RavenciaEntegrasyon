@@ -7,6 +7,7 @@ import {
   catalogStructureAttributeRoleLabel,
   catalogStructureAttributeStatus,
   catalogStructureCategoryNeedsAttention,
+  catalogStructureNewValueCount,
   catalogStructureDecisionLabel,
   catalogStructureDecisionTone,
   catalogStructureSummary,
@@ -95,7 +96,7 @@ export function CatalogStructureImportCard({ connectionId, platformLabel, onNoti
                 <td><strong>{attribute.panelName}</strong>{attribute.remoteName !== attribute.panelName && <small>Pazar yerinde: {attribute.remoteName}</small>}</td>
                 <td>{catalogStructureAttributeRoleLabel(attribute.role)}</td>
                 <td>{catalogStructureAttributeStatus(attribute)}</td>
-                <td>{(attribute.newValues?.length ?? 0) > 0 ? <span className="structure-import-values">{attribute.newValues!.map(value => <span key={value}>{value}</span>)}</span> : <small>{attribute.usedValueCount ? `Ürünlerdeki ${attribute.usedValueCount} değer panelde mevcut` : '—'}</small>}</td>
+                <td>{catalogStructureNewValueCount(attribute) > 0 ? <span className="structure-import-values">{(attribute.newValues ?? []).slice(0, 24).map(value => <span key={value}>{value}</span>)}{catalogStructureNewValueCount(attribute) > 24 && <small>+{catalogStructureNewValueCount(attribute) - 24} değer daha</small>}</span> : <small>{attribute.usedValueCount ? `Ürünlerdeki ${attribute.usedValueCount} değer panelde mevcut` : '—'}</small>}</td>
               </tr>)}</tbody></table>
               : <p className="structure-import-hint">Bu kategoride ürünlerin kullandığı özellik bulunamadı.</p>}
             {(category.unmatchedFields?.length ?? 0) > 0 && <p className="structure-import-hint">Ürünlerde olup kategori özelliğiyle eşleşmeyen alanlar: {category.unmatchedFields!.join(", ")}</p>}

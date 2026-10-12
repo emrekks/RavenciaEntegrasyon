@@ -18,7 +18,7 @@ public sealed class CatalogStructureImportTests(PostgreSqlTenantIsolationFixture
         var trendyol = NewConnection(tenant, "TRENDYOL", "seller-1");
         await SeedAsync(tenant, trendyol);
         await SeedReferencesAsync(tenant, trendyol, "101", "Giyim / Bluz", "Bluz", ["Renk", "Beden", "Kumaş Tipi", "Garanti"], new() { ["Renk"] = ["Mavi", "Kırmızı", "Yeşil"], ["Beden"] = ["S", "M", "L"], ["Kumaş Tipi"] = ["Pamuk", "Keten", "Viskon"], ["Garanti"] = ["12 Ay", "24 Ay"] });
-        var port = new FakeProductPort([Product("p1", "101", "Bluz", ("Renk", "Mavi"), ("Beden", "M"), ("Kumaş Tipi", "Pamuk")), Product("p2", "101", "Bluz", ("Renk", "Kırmızı"), ("Beden", "S"))]);
+        var port = new FakeProductPort([Product("p1", "101", "Bluz", ("Renk", "Mavi"), ("Beden", "M"), ("Kumaş Tipi", "Pamuk")), Product("p2", "101", "Bluz", ("Renk", "Kırmızı"), ("Beden", "S"), ("Kumaş Tipi", "Ipek"))]);
 
         try
         {
@@ -59,6 +59,8 @@ public sealed class CatalogStructureImportTests(PostgreSqlTenantIsolationFixture
             Assert.Contains("Mavi", colorValues);
             Assert.Contains("Kırmızı", colorValues);
             // A used attribute keeps only the values products use; an unused mandatory one is not imported.
+            // A product value missing from the marketplace's list ("Ipek" for Kumaş Tipi) is never created.
+            Assert.DoesNotContain("Ipek", await after.AttributeValues.AsNoTracking().Where(x => x.TenantId == tenant.Id).Select(x => x.Value).ToListAsync());
             Assert.DoesNotContain("Garanti", definitions);
             var fabricValues = await (from value in after.AttributeValues.AsNoTracking()
                                       join definition in after.AttributeDefinitions.AsNoTracking() on value.AttributeId equals definition.Id

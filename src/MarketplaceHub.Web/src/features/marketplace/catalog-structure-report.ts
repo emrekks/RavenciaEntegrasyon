@@ -13,7 +13,7 @@ export type CatalogStructureTotals = {
   mappingsCreated: number
 }
 
-export type CatalogStructureAttribute = { remoteName: string; panelName: string; role: string; createdDefinition: boolean; usedValueCount?: number; newValues?: string[] }
+export type CatalogStructureAttribute = { remoteName: string; panelName: string; role: string; createdDefinition: boolean; usedValueCount?: number; newValueCount?: number; newValues?: string[] }
 
 export type CatalogStructureCategory = {
   externalId: string
@@ -104,8 +104,12 @@ export function catalogStructureAttributeRoleLabel(role: string) {
   return role === 'OPTION' ? 'Ürün seçeneği' : 'Kategori özelliği'
 }
 
+export function catalogStructureNewValueCount(attribute: CatalogStructureAttribute) {
+  return attribute.newValueCount ?? attribute.newValues?.length ?? 0
+}
+
 export function catalogStructureAttributeStatus(attribute: CatalogStructureAttribute) {
-  const newValues = attribute.newValues?.length ?? 0
+  const newValues = catalogStructureNewValueCount(attribute)
   if (attribute.createdDefinition) return `Yeni özellik${newValues > 0 ? ` · ${newValues} yeni değer` : ''}`
   return newValues > 0 ? `Mevcut özellik · ${newValues} yeni değer` : 'Mevcut özellik · yeni değer yok'
 }
@@ -115,5 +119,5 @@ export function catalogStructureCategoryNeedsAttention(category: CatalogStructur
   return category.createdCategory
     || category.decision === 'NeedsReview'
     || category.decision === 'CreateSeparate'
-    || category.attributes.some(attribute => attribute.createdDefinition || (attribute.newValues?.length ?? 0) > 0)
+    || category.attributes.some(attribute => attribute.createdDefinition || catalogStructureNewValueCount(attribute) > 0)
 }

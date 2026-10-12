@@ -208,6 +208,7 @@ public sealed partial class MarketplaceJobProcessor
                         Role = attribute.Role,
                         CreatedDefinition = made.Any(x => x.Kind == "attribute" && x.Name == attribute.Definition.Name),
                         UsedValueCount = attribute.Values.Count,
+                        NewValueCount = made.Where(x => x.Kind == "value" && x.AttributeId == attribute.Definition.Id).Select(x => x.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count(),
                         NewValues = made.Where(x => x.Kind == "value" && x.AttributeId == attribute.Definition.Id).Select(x => x.Name).Distinct(StringComparer.OrdinalIgnoreCase).Take(200).ToList()
                     });
                 categoryReport.NewValues = made.Count(x => x.Kind == "value");
@@ -283,7 +284,13 @@ public sealed partial class MarketplaceJobProcessor
         }
 
         var context = new CategoryAttributeContext(category, categoryItem.ExternalId, attributes);
-        await EnsureObservedVariantAttributeValues(tenantId, context, snapshot, cancellationToken);
+        // Products may carry values the marketplace list does not contain. Only the colour/size
+        // options, where sellers define their own values, take them; every other attribute keeps
+        // to the marketplace's own value list (already filtered to the values products use).
+        var optionAttributes = attributes
+            .Where(pair => VariantOptionAxis(pair.Value.Remote.Name) is not null)
+            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        await EnsureObservedVariantAttributeValues(tenantId, new CategoryAttributeContext(category, categoryItem.ExternalId, optionAttributes), snapshot, cancellationToken);
         await EnsureExactWebColorValueMappings(tenantId, connectionId, context, cancellationToken);
         cache[categoryItem.ExternalId] = context;
         return new(context, decision, alreadyMapped, attributes.Values.GroupBy(x => x.Definition.Id).Select(group => group.First()).ToList(), unmatched);
@@ -586,6 +593,7 @@ public sealed class StructureAttributeReport
     public string Role { get; set; } = "";
     public bool CreatedDefinition { get; set; }
     public int UsedValueCount { get; set; }
+    public int NewValueCount { get; set; }
     public List<string> NewValues { get; set; } = [];
 }
 
