@@ -29,7 +29,7 @@
 
 .structure-preview-list { display: grid; gap: var(--rv-space-2); }
 .structure-row { border: 1px solid var(--rv-color-border); border-radius: 10px; }
-.structure-row > summary { display: grid; grid-template-columns: 140px minmax(0, 1fr) 40px minmax(0, 1fr) 270px; align-items: center; column-gap: var(--rv-space-3); padding: var(--rv-space-3) var(--rv-space-4); cursor: pointer; }
+.structure-row > summary { display: grid; grid-template-columns: 120px minmax(0, 1fr) 40px minmax(0, 1fr) 270px; align-items: center; column-gap: var(--rv-space-3); padding: var(--rv-space-3) var(--rv-space-4); cursor: pointer; }
 .structure-row > summary > .rv-badge { justify-self: start; white-space: nowrap; }
 .structure-row > summary > [aria-hidden] { justify-self: center; color: var(--rv-color-muted); }
 .structure-row[open] > summary { border-bottom: 1px solid var(--rv-color-border); }
