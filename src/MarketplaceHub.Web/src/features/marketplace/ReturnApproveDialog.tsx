@@ -13,6 +13,7 @@ export type ReturnApproveRow = {
   barcode: string | null
   color: string | null
   size: string | null
+  modelCode: string | null
   hasInventoryMapping: boolean
 }
 
@@ -91,12 +92,14 @@ export function ReturnApproveDialog({ open, claimId, version, marketplaceName, r
       </div>
       {rows.map(row => {
         const isSelected = selected.includes(row.id)
-        const facts = [row.sku && `Stok Kodu: ${row.sku}`, row.color && `Renk: ${row.color}`, row.barcode && `Barkod: ${row.barcode}`, row.size && `Beden: ${row.size}`].filter(Boolean).join(' · ')
+        const facts = [['Stok Kodu', row.sku], ['Renk', row.color], ['Beden', row.size], ['Barkod', row.barcode], ['Model Kodu', row.modelCode]]
+          .filter((fact): fact is [string, string] => Boolean(fact[1]))
+          .map(([label, value]) => ({ label, value }))
         return <div className={`return-approve-row${isSelected ? ' is-selected' : ''}`} role="row" key={row.id}>
           <label className="return-approve-info" role="cell">
             <input type="checkbox" checked={isSelected} disabled={requiresFinalization} onChange={() => toggle(row.id)} aria-label={`${row.title} işleme dahil`} />
-            <span className="return-approve-image">{row.imageUrl ? <img src={row.imageUrl} alt="" /> : <i aria-hidden="true">↩</i>}<b>{row.quantity}</b></span>
-            <span className="return-approve-text"><strong>{row.title}</strong><small>{facts}</small></span>
+            <span className="reference-product-media return-approve-image">{row.imageUrl ? <img src={row.imageUrl} alt="" /> : <span className="reference-product-placeholder">↩</span>}<span className="quantity-bubble" role="img" aria-label={`${row.quantity} adet`} title={`${row.quantity} adet`}>{row.quantity}</span></span>
+            <span className="return-approve-text"><strong>{row.title}</strong>{facts.map(fact => <small key={fact.label}>{fact.label}: {fact.value}</small>)}</span>
           </label>
           <span className="return-approve-quantity" role="cell"><span>{row.quantity} Adet</span></span>
         </div>
