@@ -1855,10 +1855,13 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         // "Stoğa ekle": every approved line must already map to a local variant with a MAIN inventory item,
         // otherwise nothing is sent to the marketplace and nothing is half-done.
         var stockTargets = new List<(ReturnLine Line, InventoryItem Item)>();
-        if (command.AddToStock)
+        // Stock is chosen per product; the older all-or-nothing flag still means every approved line.
+        var stockLineIds = (command.StockLineIds ?? (command.AddToStock ? returnLineIds : [])).Distinct().ToArray();
+        if (stockLineIds.Length > 0)
         {
             if (action != "APPROVE") return Invalid<ReturnDetailView>("addToStock", "Stoğa ekleme yalnız iade kabulünde seçilebilir.");
-            var approvedLines = await db.ReturnLines.Where(x => x.TenantId == tenantId && x.ClaimId == claimId && returnLineIds.Contains(x.Id)).ToListAsync(cancellationToken);
+            if (stockLineIds.Except(returnLineIds).Any()) return Invalid<ReturnDetailView>("stockLineIds", "Stoğa eklenecek ürünler onaylanan ürünler arasında olmalıdır.");
+            var approvedLines = await db.ReturnLines.Where(x => x.TenantId == tenantId && x.ClaimId == claimId && stockLineIds.Contains(x.Id)).ToListAsync(cancellationToken);
             foreach (var approvedLine in approvedLines)
             {
                 var variantId = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == approvedLine.OrderLineId).Select(x => x.VariantId).SingleOrDefaultAsync(cancellationToken);
