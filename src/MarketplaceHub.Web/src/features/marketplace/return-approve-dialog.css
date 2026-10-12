@@ -22,8 +22,8 @@
 .return-approve-kind input { width: 16px; height: 16px; min-height: 0; accent-color: var(--rv-color-primary); }
 .return-approve-kind small { flex-basis: 100%; color: var(--rv-color-muted); font-size: 12px; }
 
-.return-approve-order { display: grid; gap: 12px; margin-bottom: 16px; padding: 14px 16px; border: 1px solid var(--rv-color-border-strong); border-radius: 8px; background: var(--rv-color-surface-raised); }
-.return-approve-order-id { display: flex; align-items: center; gap: 12px; }
+.return-approve-order { margin-bottom: 16px; }
+.return-approve-order-id { display: inline-flex; align-items: center; gap: 12px; margin-top: 6px; }
 .return-approve-order-id strong { font-size: 15px; font-weight: 600; color: var(--rv-color-primary); }
 .return-approve-order-logo { display: inline-flex; align-items: center; height: 26px; }
 .return-approve-order-logo img { height: 24px; width: auto; max-width: 110px; object-fit: contain; }

@@ -115,6 +115,7 @@ export function ReturnApproveDialog({ open, claimId, version, marketplaceName, o
   return <Modal
     open={open}
     title="Onaylamak istediğiniz ürünleri seçiniz"
+    description={<span className="return-approve-order-id"><span className="return-approve-order-logo"><PlatformMark code={order.platformCode} name={order.platformName} /></span><strong>{order.orderNumber}</strong></span>}
     onClose={onClose}
     className="return-approve-modal"
     footer={<>
@@ -124,7 +125,6 @@ export function ReturnApproveDialog({ open, claimId, version, marketplaceName, o
     </>}
   >
     <section className="return-approve-order" aria-label="Sipariş bilgileri">
-      <span className="return-approve-order-id"><span className="return-approve-order-logo"><PlatformMark code={order.platformCode} name={order.platformName} /></span><strong>{order.orderNumber}</strong></span>
       <dl>{orderFacts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
     </section>
     {loading ? <Busy text="İade ürünleri yükleniyor…" /> : error ? <ErrorBox error={error} /> : groups.length === 0 ? <p className="return-approve-empty">Bu iadede işlem bekleyen ürün kalmadı.</p> : <div className="return-approve-table" role="table">

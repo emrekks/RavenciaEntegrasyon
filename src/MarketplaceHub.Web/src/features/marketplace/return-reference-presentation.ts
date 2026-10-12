@@ -70,6 +70,11 @@ export function returnReasonPresentation(item: { reasonCode?: string | null; rea
   const normalizedCode = normalizeReason(code)
   const mappedLabel = RETURN_REASON_LABELS[normalizedCode]
 
+  // Hepsiburada sends the reason as a readable title ("Ürünü almaktan vazgeçtim / beğenmedim") and the
+  // customer's own words separately: title in bold, the customer's words as the explanation.
+  if (!mappedLabel && /\s/u.test(code))
+    return { label: code, explanation: text && normalizeReason(text) !== normalizeReason(code) ? text : null }
+
   if (mappedLabel === RETURN_REASON_LABELS.other || (!mappedLabel && text))
     return { label: text || mappedLabel || code.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' ') || 'Belirtilmedi', explanation: null }
 

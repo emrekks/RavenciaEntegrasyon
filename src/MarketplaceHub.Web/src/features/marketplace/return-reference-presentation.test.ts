@@ -40,4 +40,11 @@ describe('return reference presentation', () => {
     expect(returnReasonPresentation({ reasonCode: 'SIZE_TOO_LARGE', reasonText: 'Ürün beklediğimden bol oldu' }))
       .toEqual({ label: 'Bedeni / boyutu büyük geldi', explanation: 'Ürün beklediğimden bol oldu' })
   })
+
+  it('shows the readable Hepsiburada reason title in bold with the customer words as the explanation', () => {
+    expect(returnReasonPresentation({ reasonCode: 'Ürünü almaktan vazgeçtim / beğenmedim', reasonText: 'Eşime almıştım sürpriz yapacaktım' }))
+      .toEqual({ label: 'Ürünü almaktan vazgeçtim / beğenmedim', explanation: 'Eşime almıştım sürpriz yapacaktım' })
+    expect(returnReasonPresentation({ reasonCode: 'Bedeni / boyutu uymadı', reasonText: 'Bedeni / boyutu uymadı' }))
+      .toEqual({ label: 'Bedeni / boyutu uymadı', explanation: null })
+  })
 })
