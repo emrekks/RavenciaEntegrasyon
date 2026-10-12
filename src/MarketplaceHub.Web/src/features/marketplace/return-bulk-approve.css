@@ -23,3 +23,5 @@
 .return-reference-table .return-select-cell { display: grid; min-width: 0; align-self: stretch; place-items: center; padding-inline: 8px; }
 .return-reference-table .return-select-cell input { width: 16px; height: 16px; min-height: 0; margin: 0; accent-color: var(--rv-color-primary); cursor: pointer; }
 .return-reference-table.has-select > .return-reference-row > .return-row-divider { grid-column: 4 / 6; }
+.return-reference-table.has-select > .return-reference-row > .return-select-cell, .return-reference-table.has-select > .return-reference-head > .return-select-cell { grid-column: 1; }
+.return-reference-table.has-select > .return-reference-row > :not(.return-select-cell):not(.return-row-divider), .return-reference-table.has-select > .return-reference-head > :not(.return-select-cell):not(.return-row-divider) { grid-column: auto; }
