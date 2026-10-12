@@ -98,6 +98,7 @@ export function CatalogStructureImportCard({ connectionId, platformLabel, onNoti
                 <td>{(attribute.newValues?.length ?? 0) > 0 ? <span className="structure-import-values">{attribute.newValues!.map(value => <span key={value}>{value}</span>)}</span> : <small>{attribute.usedValueCount ? `Ürünlerdeki ${attribute.usedValueCount} değer panelde mevcut` : '—'}</small>}</td>
               </tr>)}</tbody></table>
               : <p className="structure-import-hint">Bu kategoride ürünlerin kullandığı özellik bulunamadı.</p>}
+            {(category.unmatchedFields?.length ?? 0) > 0 && <p className="structure-import-hint">Ürünlerde olup kategori özelliğiyle eşleşmeyen alanlar: {category.unmatchedFields!.join(", ")}</p>}
           </details>)}</div>
         </section>
       </>}

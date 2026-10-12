@@ -25,6 +25,7 @@ export type CatalogStructureCategory = {
   reason: string
   createdCategory: boolean
   newValues: number
+  unmatchedFields?: string[]
   attributes: CatalogStructureAttribute[]
 }
 

@@ -210,6 +210,7 @@ public sealed partial class MarketplaceJobProcessor
                         NewValues = made.Where(x => x.Kind == "value" && x.AttributeId == attribute.Definition.Id).Select(x => x.Name).Distinct(StringComparer.OrdinalIgnoreCase).Take(200).ToList()
                     });
                 categoryReport.NewValues = made.Count(x => x.Kind == "value");
+                categoryReport.UnmatchedFields = outcome.UnmatchedFields.ToList();
                 if (outcome.Decision.Decision == CategoryReuseDecision.NeedsReview && !outcome.AlreadyMapped)
                     report.Review.Add(new("category", categoryReport.RemoteName, outcome.Decision.Reason));
 
@@ -255,7 +256,8 @@ public sealed partial class MarketplaceJobProcessor
         var remoteKeys = remoteAttributes.Select(x => NormalizeCatalogKey(CanonicalAttributeName(x.Name), 160)).Where(x => x.Length > 0).ToHashSet(StringComparer.Ordinal);
 
         var (category, decision, alreadyMapped) = await EnsureMappedCategoryForStructure(tenantId, connection, platformLabel, categorySnapshot, categoryItem, remoteKeys, cancellationToken);
-        if (category is null) return new(null, decision, alreadyMapped, []);
+        var unmatched = UnmatchedProductFields(usage, remoteAttributes);
+        if (category is null) return new(null, decision, alreadyMapped, [], unmatched);
 
         var valuesByAttribute = new Dictionary<string, IReadOnlyList<ReferenceItem>>(StringComparer.Ordinal);
         foreach (var remoteAttribute in candidates)
@@ -283,7 +285,7 @@ public sealed partial class MarketplaceJobProcessor
         await EnsureObservedVariantAttributeValues(tenantId, context, snapshot, cancellationToken);
         await EnsureExactWebColorValueMappings(tenantId, connectionId, context, cancellationToken);
         cache[categoryItem.ExternalId] = context;
-        return new(context, decision, alreadyMapped, attributes.Values.GroupBy(x => x.Definition.Id).Select(group => group.First()).ToList());
+        return new(context, decision, alreadyMapped, attributes.Values.GroupBy(x => x.Definition.Id).Select(group => group.First()).ToList(), unmatched);
     }
 
     private async Task<(Category? Category, CategoryReuseResult Decision, bool AlreadyMapped)> EnsureMappedCategoryForStructure(
@@ -354,6 +356,21 @@ public sealed partial class MarketplaceJobProcessor
 
         db.CategoryMappings.Add(new CategoryMapping { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, SnapshotId = categorySnapshot.Id, LocalId = category.Id, ScopeExternalId = categorySnapshot.ScopeExternalId, ExternalId = remoteCategory.ExternalId, Status = "VERIFIED", VerifiedAt = now, Version = 1 });
         return (category, decision, false);
+    }
+
+    // Product fields that match no attribute of the category (by name or id). They show
+    // up in the report so a mismatch between product fields and attribute names is visible.
+    private static List<string> UnmatchedProductFields(StructureUsage usage, IReadOnlyList<ReferenceItem> remoteAttributes)
+    {
+        var known = remoteAttributes
+            .SelectMany(x => new[] { NormalizeCatalogKey(x.Name, 320), NormalizeCatalogKey(x.ExternalId, 320) })
+            .Where(x => x.Length > 0)
+            .ToHashSet(StringComparer.Ordinal);
+        return usage.Options.Keys
+            .Where(key => !known.Contains(NormalizeCatalogKey(key, 320)))
+            .OrderBy(key => key, StringComparer.OrdinalIgnoreCase)
+            .Take(40)
+            .ToList();
     }
 
     private Category NewStructureCategory(Guid tenantId, string name, string pathKey, DateTimeOffset now)
@@ -499,7 +516,7 @@ public sealed partial class MarketplaceJobProcessor
 
     private sealed record StructureChange(string Kind, string Name, Guid? AttributeId = null);
 
-    private sealed record StructureCategoryOutcome(CategoryAttributeContext? Context, CategoryReuseResult Decision, bool AlreadyMapped, IReadOnlyList<LocalCategoryAttribute> Attributes);
+    private sealed record StructureCategoryOutcome(CategoryAttributeContext? Context, CategoryReuseResult Decision, bool AlreadyMapped, IReadOnlyList<LocalCategoryAttribute> Attributes, IReadOnlyList<string> UnmatchedFields);
 }
 
 public sealed class StructureReport
@@ -540,6 +557,7 @@ public sealed class StructureCategoryReport
     public string Reason { get; set; } = "";
     public bool CreatedCategory { get; set; }
     public int NewValues { get; set; }
+    public List<string> UnmatchedFields { get; set; } = [];
     public List<StructureAttributeReport> Attributes { get; set; } = [];
 }
 
