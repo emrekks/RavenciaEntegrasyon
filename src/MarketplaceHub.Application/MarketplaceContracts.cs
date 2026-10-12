@@ -490,7 +490,7 @@ public sealed record ReturnPollWindow(
     string? Status = null,
     DateTimeOffset? StatusModifiedAfter = null,
     DateTimeOffset? StatusModifiedBefore = null);
-public sealed record RemoteReturnLine(string ExternalLineId, string ExternalOrderLineId, decimal Quantity, IReadOnlyList<string>? AlternateExternalOrderLineIds = null);
+public sealed record RemoteReturnLine(string ExternalLineId, string ExternalOrderLineId, decimal Quantity, IReadOnlyList<string>? AlternateExternalOrderLineIds = null, string? RawStatus = null);
 public sealed record RemoteReturnClaim(string ExternalClaimId, string ExternalOrderId, string RawStatus, string? ReasonCode, string? ReasonText, DateTimeOffset? ActionDueAt, DateTimeOffset LastModifiedAt, IReadOnlyList<RemoteReturnLine> Lines, string RawJson, string? CargoProviderName = null, string? CargoTrackingNumber = null, string? CargoTrackingLink = null, DateTimeOffset? OrderCreatedAt = null);
 public sealed record ReturnEvidenceFile(string FileName, string MimeType, byte[] Content);
 public sealed record ReturnActionCommand(string ExternalClaimId, IReadOnlyList<string> ExternalLineItemIds, string Action, string? ReasonCode, string? Explanation, IReadOnlyList<ReturnEvidenceFile> EvidenceFiles, string? FinalizedWith = null);
@@ -839,7 +839,8 @@ public sealed record ReturnLineView(
     string? ImageUrl,
     bool HasInventoryMapping,
     string? OptionSignature = null,
-    string? ModelCode = null);
+    string? ModelCode = null,
+    string? Status = null);
 public sealed record ReturnListView(
     Guid Id,
     string ExternalClaimId,
@@ -871,7 +872,8 @@ public sealed record ReturnListView(
     string? OrderCargoTrackingNumber = null,
     string? ReasonCode = null,
     DateTimeOffset? ApprovedAt = null,
-    string? CargoTrackingLink = null);
+    string? CargoTrackingLink = null,
+    IReadOnlyDictionary<Guid, string>? LineStatuses = null);
 public sealed record ReturnListQuery(
     string? Status = null,
     string? Customer = null,

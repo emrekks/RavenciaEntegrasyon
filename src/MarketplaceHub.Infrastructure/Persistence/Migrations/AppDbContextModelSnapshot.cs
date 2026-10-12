@@ -4678,6 +4678,10 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasPrecision(19, 4)
                         .HasColumnType("numeric(19,4)");
 
+                    b.Property<string>("RawStatus")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
 

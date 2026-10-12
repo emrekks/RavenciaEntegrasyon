@@ -8119,7 +8119,14 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
     private async Task UpsertReturn(Guid tenantId, Guid connectionId, string correlationId, RemoteReturnClaim remote, Dictionary<string, string?> productSnapshots, CancellationToken cancellationToken)
     {
-        var target = MarketplaceReturnStatus.Canonicalize(remote.RawStatus, remote.CargoTrackingLink);
+        var remoteLines = remote.Lines.Count > 0 ? remote.Lines : TrendyolJsonMapper.ReturnLines(remote.RawJson);
+        var claimLevelTarget = MarketplaceReturnStatus.Canonicalize(remote.RawStatus, remote.CargoTrackingLink);
+        var remoteLineStatuses = remoteLines.Select(x => x.RawStatus).ToList();
+        // A claim that mixes accepted lines with lines still waiting for the seller stays actionable.
+        var target = ReturnLineStatusPolicy.Resolve(claimLevelTarget, remoteLineStatuses);
+        var lineStatusOverrides = target != claimLevelTarget;
+        var allLinesKnown = remoteLineStatuses.Count > 0 && remoteLineStatuses.All(x => !string.IsNullOrWhiteSpace(x));
+        if (lineStatusOverrides) remote = remote with { RawStatus = "WaitingInAction" };
         if (!ReturnClaimStoragePolicy.ShouldPersist(target))
         {
             await RemoveCancelledReturnClaim(tenantId, connectionId, remote.ExternalClaimId, cancellationToken);
@@ -8167,8 +8174,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         {
             var claimChanged = false;
             var remoteIsFresh = remote.LastModifiedAt >= claim.LastRemoteModifiedAt;
-            var partialLineDecisionPending = string.Equals(claim.RawStatus, "PARTIAL_LINE_DECISION_PENDING", StringComparison.Ordinal);
-            if (remoteIsFresh && !partialLineDecisionPending && ReturnClaimStateMachine.CanTransition(claim.Status, target))
+            var partialLineDecisionPending = string.Equals(claim.RawStatus, "PARTIAL_LINE_DECISION_PENDING", StringComparison.Ordinal) && !allLinesKnown;
+            if (remoteIsFresh && !partialLineDecisionPending && (lineStatusOverrides || ReturnClaimStateMachine.CanTransition(claim.Status, target)))
             {
                 claim.Status = target;
                 claim.RawStatus = remote.RawStatus;
@@ -8191,7 +8198,6 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (remoteCargoTrackingLink is not null && !string.Equals(claim.CargoTrackingLink, remoteCargoTrackingLink, StringComparison.Ordinal)) { claim.CargoTrackingLink = remoteCargoTrackingLink; claimChanged = true; }
             if (claimChanged) { claim.UpdatedAt = now; claim.Version++; telemetryUpdatedCount++; }
         }
-        var remoteLines = remote.Lines.Count > 0 ? remote.Lines : TrendyolJsonMapper.ReturnLines(remote.RawJson);
         foreach (var remoteLine in remoteLines)
         {
             var candidateIds = new[] { remoteLine.ExternalOrderLineId }
@@ -8207,7 +8213,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             }
             if (orderLine is null) continue;
             var line = await db.ReturnLines.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ClaimId == claim.Id && x.ExternalLineId == remoteLine.ExternalLineId, cancellationToken);
-            if (line is null) db.ReturnLines.Add(new ReturnLine { Id = Guid.CreateVersion7(), TenantId = tenantId, ClaimId = claim.Id, OrderLineId = orderLine.Id, ExternalLineId = remoteLine.ExternalLineId, Quantity = remoteLine.Quantity }); else line.Quantity = remoteLine.Quantity;
+            if (line is null) db.ReturnLines.Add(new ReturnLine { Id = Guid.CreateVersion7(), TenantId = tenantId, ClaimId = claim.Id, OrderLineId = orderLine.Id, ExternalLineId = remoteLine.ExternalLineId, Quantity = remoteLine.Quantity, RawStatus = remoteLine.RawStatus }); else { line.Quantity = remoteLine.Quantity; if (!string.IsNullOrWhiteSpace(remoteLine.RawStatus)) line.RawStatus = remoteLine.RawStatus; }
         }
         var decision = await db.ReturnDecisions.Where(x => x.TenantId == tenantId && x.ClaimId == claim.Id && (x.Status == "PENDING" || x.Status == "SUBMITTED")).OrderByDescending(x => x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
         if (decision is not null)

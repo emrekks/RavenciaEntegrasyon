@@ -37,6 +37,22 @@ public static class MarketplaceReturnStatus
 
 public enum ReturnStockDispositionKind { Pass, Quarantine, Damaged, NotReceived }
 
+public static class ReturnLineStatusPolicy
+{
+    // A line without a known status is treated as actionable so older rows keep working.
+    public static bool IsActionable(string? rawStatus) =>
+        string.IsNullOrWhiteSpace(rawStatus) || MarketplaceReturnStatus.Canonicalize(rawStatus) == ReturnClaimStatus.ActionRequired;
+
+    // Per-line statuses decide the claim only while some line still waits for the seller; otherwise the
+    // claim-level status the marketplace reported stands.
+    public static ReturnClaimStatus Resolve(ReturnClaimStatus claimLevel, IReadOnlyCollection<string?> lineStatuses)
+    {
+        var known = lineStatuses.Where(x => !string.IsNullOrWhiteSpace(x)).ToList();
+        if (known.Count == 0 || known.Count != lineStatuses.Count) return claimLevel;
+        return known.Any(x => MarketplaceReturnStatus.Canonicalize(x) == ReturnClaimStatus.ActionRequired) ? ReturnClaimStatus.ActionRequired : claimLevel;
+    }
+}
+
 public static class ReturnClaimStateMachine
 {
     private static readonly IReadOnlyDictionary<ReturnClaimStatus, ReturnClaimStatus[]> Allowed =
@@ -110,6 +126,9 @@ public sealed class ReturnLine
     public Guid OrderLineId { get; set; }
     public required string ExternalLineId { get; set; }
     public decimal Quantity { get; set; }
+    // The marketplace's own per-line status (Trendyol claimItemStatus). One claim can mix lines that
+    // are already accepted with lines that still wait for the seller.
+    public string? RawStatus { get; set; }
 }
 
 public sealed class ReturnDecision

@@ -655,7 +655,7 @@ public static class TrendyolJsonMapper
             var quantity = Decimal(entry.Item, "quantity", "returnedQuantity");
             if (quantity <= 0) quantity = 1;
             if (lineId.Length > 0 && entry.ExternalOrderLineId.Length > 0)
-                lines.Add(new(lineId, entry.ExternalOrderLineId, quantity, entry.AlternateExternalOrderLineIds));
+                lines.Add(new(lineId, entry.ExternalOrderLineId, quantity, entry.AlternateExternalOrderLineIds, ItemStatus(entry.Item)));
         }
         return lines
             .GroupBy(x => $"{x.ExternalLineId}:{x.ExternalOrderLineId}", StringComparer.Ordinal)
@@ -866,6 +866,12 @@ public static class TrendyolJsonMapper
             if (property.Value.ValueKind is JsonValueKind.Object or JsonValueKind.Array)
                 WalkClaimLineEntries(property.Value, currentOrderLine, rows);
         }
+    }
+    private static string? ItemStatus(JsonElement item)
+    {
+        if (!item.TryGetProperty("claimItemStatus", out var status)) return null;
+        var text = status.ValueKind == JsonValueKind.Object ? Text(status, "name") : status.ValueKind == JsonValueKind.String ? status.GetString() : null;
+        return string.IsNullOrWhiteSpace(text) ? null : text.Trim();
     }
     private static string ClaimStatus(JsonElement claim) { if (claim.TryGetProperty("claimItemStatus", out var value)) return value.ValueKind == JsonValueKind.Object ? Text(value, "name") : value.ToString(); foreach (var item in ClaimItems(claim)) if (item.TryGetProperty("claimItemStatus", out var status)) return status.ValueKind == JsonValueKind.Object ? Text(status, "name") : status.ToString(); return ""; }
     private static bool IsWaitingInAction(string status) => string.Equals(status, "WaitingInAction", StringComparison.OrdinalIgnoreCase)

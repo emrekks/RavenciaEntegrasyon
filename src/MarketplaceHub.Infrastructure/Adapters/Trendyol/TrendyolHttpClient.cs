@@ -795,8 +795,13 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
         {
             var primary = group.OrderByDescending(x => x.LastModifiedAt).First();
             var cargo = group.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x.CargoTrackingNumber) || !string.IsNullOrWhiteSpace(x.CargoProviderName));
+            var mergedLines = group.SelectMany(x => x.Lines)
+                .GroupBy(x => x.ExternalLineId, StringComparer.Ordinal)
+                .Select(lines => lines.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x.RawStatus)) ?? lines.First())
+                .ToList();
             return primary with
             {
+                Lines = mergedLines,
                 CargoProviderName = primary.CargoProviderName ?? cargo?.CargoProviderName,
                 CargoTrackingNumber = primary.CargoTrackingNumber ?? cargo?.CargoTrackingNumber,
                 CargoTrackingLink = primary.CargoTrackingLink ?? cargo?.CargoTrackingLink

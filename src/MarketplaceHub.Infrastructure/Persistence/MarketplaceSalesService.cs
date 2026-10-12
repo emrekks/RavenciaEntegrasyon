@@ -1572,7 +1572,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 order?.OrderedAt, order?.NetAmount ?? 0, order?.Currency ?? "TRY", claim.CargoProviderName, claim.CargoTrackingNumber, image, claimLines.Count, firstLine?.Barcode ?? firstVariant?.Barcode,
                 lineViews, package?.ExternalPackageId, order is null ? "FATURA_BEKLIYOR" : ReturnInvoiceLabel(invoice, package?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown, order.CustomerSnapshotJson, package is null ? [] : [package.RawStatus], packageDeliveryConfirmed), order?.GrossAmount ?? 0, order?.DiscountAmount ?? 0,
                 order is not null && Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson).IsMicroExport,
-                claimConnection?.Id ?? connection?.Id, platformCode, claimConnection?.DisplayName ?? connection?.DisplayName ?? "Trendyol", outboundPackage?.CargoProviderExternalId, outboundPackage?.CargoTrackingNumber, claim.ReasonCode, approvedAt, claim.CargoTrackingLink);
+                claimConnection?.Id ?? connection?.Id, platformCode, claimConnection?.DisplayName ?? connection?.DisplayName ?? "Trendyol", outboundPackage?.CargoProviderExternalId, outboundPackage?.CargoTrackingNumber, claim.ReasonCode, approvedAt, claim.CargoTrackingLink,
+                claimLines.Where(x => !string.IsNullOrWhiteSpace(x.RawStatus)).GroupBy(x => x.OrderLineId).ToDictionary(x => x.Key, x => Wire(MarketplaceReturnStatus.Canonicalize(x.First().RawStatus))));
         }).ToList();
         var hasMore = rows.Count > limit;
         var pageRows = rows.Take(limit).ToList();
@@ -1606,7 +1607,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 "REQUESTED" => query.Where(x => x.Status == ReturnClaimStatus.Requested),
                 "SHIPPING" => query.Where(x => x.Status == ReturnClaimStatus.AwaitingShipment || x.Status == ReturnClaimStatus.InTransit),
                 "ACTION_REQUIRED" => query.Where(x => x.Status == ReturnClaimStatus.ActionRequired),
-                "APPROVED" => query.Where(x => x.Status == ReturnClaimStatus.Approved || x.Status == ReturnClaimStatus.Completed),
+                "APPROVED" => query.Where(x => x.Status == ReturnClaimStatus.Approved || x.Status == ReturnClaimStatus.Completed
+                    || (x.Status == ReturnClaimStatus.ActionRequired && db.ReturnLines.Any(line => line.TenantId == x.TenantId && line.ClaimId == x.Id && line.RawStatus != null && line.RawStatus.ToUpper() == "ACCEPTED"))),
                 "REJECTED" => query.Where(x => x.Status == ReturnClaimStatus.Rejected || x.Status == ReturnClaimStatus.Cancelled),
                 "DISPUTED" => query.Where(x => x.Status == ReturnClaimStatus.Disputed),
                 // The UI's Analysis tab is reserved for explicitly submitted
@@ -1741,7 +1743,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 imageUrl,
                 variant is not null && inventoryVariants.Contains(variant.Id),
                 variant?.OptionSignature ?? sourceSnapshot?.OptionSignature,
-                variant?.ModelCode ?? sourceSnapshot?.ModelCode);
+                variant?.ModelCode ?? sourceSnapshot?.ModelCode,
+                string.IsNullOrWhiteSpace(line.RawStatus) ? null : Wire(MarketplaceReturnStatus.Canonicalize(line.RawStatus)));
         }).ToList();
         var package = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id).OrderByDescending(x => x.StatusOccurredAt).FirstOrDefaultAsync(cancellationToken);
         var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
@@ -1820,12 +1823,18 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         if (preApprovalConfirm && !awaitingPreApproval) return ServiceResult<ReturnDetailView>.Fail("HEPSIBURADA_PREAPPROVAL_ACTION_NOT_ALLOWED", "İnceleme için geri gönderim yalnız Hepsiburada AwaitingPreApproval durumunda kullanılabilir.", 409);
         if (claim.Status != ReturnClaimStatus.ActionRequired && !(awaitingPreApproval && claim.Status == ReturnClaimStatus.Requested)) return ServiceResult<ReturnDetailView>.Fail("RETURN_ACTION_NOT_ALLOWED", "İade aksiyonu yalnız sağlayıcının aksiyon beklediği durumda kullanılabilir.", 409);
 
-        var claimLineIds = await db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.ClaimId == claimId).Select(x => x.Id).ToListAsync(cancellationToken);
+        var claimLines = await db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.ClaimId == claimId).Select(x => new { x.Id, x.RawStatus }).ToListAsync(cancellationToken);
+        var claimLineIds = claimLines.Select(x => x.Id).ToList();
         if (claimLineIds.Count == 0) return Invalid<ReturnDetailView>("returnLineIds", "İade işleminde en az bir ürün satırı bulunmalıdır.");
-        var returnLineIds = command.ReturnLineIds?.Distinct().ToArray() ?? claimLineIds.ToArray();
+        // Lines the marketplace already settled (for example one accepted on Trendyol) are not sent again.
+        var actionableLineIds = isHepsiburada ? claimLineIds : claimLines.Where(x => ReturnLineStatusPolicy.IsActionable(x.RawStatus)).Select(x => x.Id).ToList();
+        if (actionableLineIds.Count == 0) return ServiceResult<ReturnDetailView>.Fail("RETURN_ACTION_NOT_ALLOWED", "Bu iadenin işlem bekleyen ürün satırı kalmadı.", 409);
+        var returnLineIds = command.ReturnLineIds?.Distinct().ToArray() ?? actionableLineIds.ToArray();
         if (returnLineIds.Length == 0 || returnLineIds.Except(claimLineIds).Any()) return Invalid<ReturnDetailView>("returnLineIds", "İşlem yapılacak ürün satırları bu iadeye ait olmalıdır.");
+        returnLineIds = returnLineIds.Intersect(actionableLineIds).ToArray();
+        if (returnLineIds.Length == 0) return ServiceResult<ReturnDetailView>.Fail("RETURN_ACTION_NOT_ALLOWED", "Seçilen ürün satırları pazaryerinde zaten sonuçlanmış.", 409);
         if (isHepsiburada && returnLineIds.Length != claimLineIds.Count) return Invalid<ReturnDetailView>("returnLineIds", "Hepsiburada talep kabul/red işlemi talebin tüm ürün satırlarına uygulanır; kısmi satır seçimi desteklenmez.");
-        var partialLineDecision = returnLineIds.Length < claimLineIds.Count;
+        var partialLineDecision = returnLineIds.Length < actionableLineIds.Count;
         var finalizedWith = command.FinalizedWith?.Trim();
         if (isHepsiburada && action == "APPROVE" && finalizedWith is not ("Refund" or "Change")) return Invalid<ReturnDetailView>("finalizedWith", "Hepsiburada talep kabulünde iade veya ürün değişimi seçilmelidir.");
         if ((!isHepsiburada || action != "APPROVE") && !string.IsNullOrWhiteSpace(finalizedWith)) return Invalid<ReturnDetailView>("finalizedWith", "Kabul türü yalnız Hepsiburada talebini kabul ederken gönderilebilir.");
@@ -1905,7 +1914,12 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         decision.ExternalOperationId = result.Value?.ExternalOperationId;
         decision.ErrorCode = null;
         effect.CompletedAt = timeProvider.GetUtcNow();
-        claim.Status = ReturnClaimDecisionPolicy.StatusAfterLineDecision(claim.Status, action, returnLineIds.Length, claimLineIds.Count);
+        claim.Status = ReturnClaimDecisionPolicy.StatusAfterLineDecision(claim.Status, action, returnLineIds.Length, actionableLineIds.Count);
+        if (!isHepsiburada && action is "APPROVE" or "REJECT")
+        {
+            var settledStatus = action == "APPROVE" ? "Accepted" : "Rejected";
+            foreach (var settled in await db.ReturnLines.Where(x => x.TenantId == tenantId && x.ClaimId == claimId && returnLineIds.Contains(x.Id)).ToListAsync(cancellationToken)) settled.RawStatus = settledStatus;
+        }
         claim.RawStatus = partialLineDecision ? "PARTIAL_LINE_DECISION_PENDING" : result.Value?.Status ?? (action switch
         {
             "APPROVE" => "ACCEPTED",

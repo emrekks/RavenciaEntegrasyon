@@ -166,7 +166,7 @@ internal static class MarketplaceModelConfiguration
         });
         builder.Entity<ReturnLine>(entity =>
         {
-            entity.ToTable("return_lines", "sales", table => table.HasCheckConstraint("ck_return_line_quantity", "\"Quantity\" > 0")); entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id }); entity.Property(x => x.ExternalLineId).HasMaxLength(256); entity.Property(x => x.Quantity).HasPrecision(19, 4); entity.HasIndex(x => new { x.TenantId, x.ClaimId, x.ExternalLineId }).IsUnique(); entity.HasOne<ReturnClaim>().WithMany().HasForeignKey(x => new { x.TenantId, x.ClaimId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade); entity.HasOne<OrderLine>().WithMany().HasForeignKey(x => new { x.TenantId, x.OrderLineId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
+            entity.ToTable("return_lines", "sales", table => table.HasCheckConstraint("ck_return_line_quantity", "\"Quantity\" > 0")); entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id }); entity.Property(x => x.ExternalLineId).HasMaxLength(256); entity.Property(x => x.RawStatus).HasMaxLength(64); entity.Property(x => x.Quantity).HasPrecision(19, 4); entity.HasIndex(x => new { x.TenantId, x.ClaimId, x.ExternalLineId }).IsUnique(); entity.HasOne<ReturnClaim>().WithMany().HasForeignKey(x => new { x.TenantId, x.ClaimId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade); entity.HasOne<OrderLine>().WithMany().HasForeignKey(x => new { x.TenantId, x.OrderLineId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
         });
         builder.Entity<ReturnDecision>(entity =>
         {
