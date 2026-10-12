@@ -47,6 +47,19 @@ describe('DateRangePicker presets', () => {
     expect(onChange).toHaveBeenCalledWith({ from: '2026-01-01', to: '2026-10-11' })
   })
 
+  it('disables days after today and stops forward month navigation', () => {
+    const onChange = vi.fn()
+    act(() => root.render(<DateRangePicker from="" to="" onChange={onChange} />))
+    act(() => container.querySelector<HTMLButtonElement>('.date-range-picker-trigger')!.click())
+
+    const days = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.date-range-picker-grid button'))
+    expect(days.find(button => button.getAttribute('aria-label') === '11 Ekim 2026')!.disabled).toBe(false)
+    expect(days.find(button => button.getAttribute('aria-label') === '12 Ekim 2026')!.disabled).toBe(true)
+    act(() => days.find(button => button.getAttribute('aria-label') === '12 Ekim 2026')!.click())
+    expect(onChange).not.toHaveBeenCalled()
+    expect(document.body.querySelector<HTMLButtonElement>('button[aria-label="Sonraki ay"]')!.disabled).toBe(true)
+  })
+
   it('opens above the trigger when the viewport has more space there', () => {
     act(() => root.render(<DateRangePicker from="" to="" onChange={() => undefined} />))
     const picker = container.querySelector<HTMLDivElement>('.date-range-picker')!

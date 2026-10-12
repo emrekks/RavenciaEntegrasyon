@@ -51,14 +51,15 @@ export function DateRangePicker({ from, to, onChange, label = 'Tarih aralığı'
     document.addEventListener('keydown', closeOnEscape)
     return () => { document.removeEventListener('pointerdown', closeOnOutside); document.removeEventListener('keydown', closeOnEscape) }
   }, [open])
-  const renderMonth = (visibleMonth: Date) => {
+  const nextMonthBlocked = new Date(month.getFullYear(), month.getMonth() + 2, 1) > monthStart(today)
+  const renderMonth =(visibleMonth: Date) => {
     const monthStartWeekday = (visibleMonth.getDay() + 6) % 7
     const daysInMonth = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1, 0).getDate()
     const cells = Array.from({ length: Math.ceil((monthStartWeekday + daysInMonth) / 7) * 7 }, (_, index) => index - monthStartWeekday + 1)
     const monthLabel = new Intl.DateTimeFormat('tr-TR', { month: 'long', year: 'numeric' }).format(visibleMonth)
     return <section className="date-range-picker-month" aria-label={monthLabel} key={`${visibleMonth.getFullYear()}-${visibleMonth.getMonth()}`}>
       <strong>{monthLabel}</strong>
-      <div className="date-range-picker-grid" role="grid">{['Pt', 'Sa', 'Ça', 'Pe', 'Cu', 'Ct', 'Pa'].map(day => <span role="columnheader" key={day}>{day}</span>)}{cells.map((day, index) => day < 1 || day > daysInMonth ? <span key={`empty-${index}`} aria-hidden="true" /> : (() => { const date = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), day); const value = dateKey(date); const selected = value === from || value === to; const inRange = Boolean(from && to && value > from && value < to); return <button type="button" role="gridcell" aria-label={new Intl.DateTimeFormat('tr-TR', { dateStyle: 'long' }).format(date)} aria-selected={selected} className={`${selected ? 'is-selected' : ''}${inRange ? ' is-in-range' : ''}`} key={value} onClick={() => { const range = selectDateRangeDay({ from, to }, value); onChange(range); if (range.from && range.to) setOpen(false) }}>{day}</button> })())}</div>
+      <div className="date-range-picker-grid" role="grid">{['Pt', 'Sa', 'Ça', 'Pe', 'Cu', 'Ct', 'Pa'].map(day => <span role="columnheader" key={day}>{day}</span>)}{cells.map((day, index) => day < 1 || day > daysInMonth ? <span key={`empty-${index}`} aria-hidden="true" /> : (() => { const date = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), day); const value = dateKey(date); const selected = value === from || value === to; const inRange = Boolean(from && to && value > from && value < to); const future = value > today; return <button type="button" role="gridcell" aria-label={new Intl.DateTimeFormat('tr-TR', { dateStyle: 'long' }).format(date)} aria-selected={selected} disabled={future} className={`${selected ? 'is-selected' : ''}${inRange ? ' is-in-range' : ''}`} key={value} onClick={() => { const range = selectDateRangeDay({ from, to }, value); onChange(range); if (range.from && range.to) setOpen(false) }}>{day}</button> })())}</div>
     </section>
   }
   return <div className={`date-range-picker${className ? ` ${className}` : ''}`} ref={root}>
@@ -68,7 +69,7 @@ export function DateRangePicker({ from, to, onChange, label = 'Tarih aralığı'
       <div className="date-range-picker-layout">
         <nav className="date-range-picker-presets" aria-label="Hazır tarih aralıkları">{presetRanges.map(preset => <button type="button" key={preset.label} onClick={() => { onChange(preset.range); setOpen(false) }}>{preset.label}</button>)}</nav>
         <div className="date-range-picker-calendars">
-          <header><button type="button" className="secondary" aria-label="Önceki ay" onClick={() => setMonth(value => new Date(value.getFullYear(), value.getMonth() - 1, 1))}><UiIcon name="chevronLeft" /></button><button type="button" className="secondary" aria-label="Sonraki ay" onClick={() => setMonth(value => new Date(value.getFullYear(), value.getMonth() + 1, 1))}><UiIcon name="chevronRight" /></button></header>
+          <header><button type="button" className="secondary" aria-label="Önceki ay" onClick={() => setMonth(value => new Date(value.getFullYear(), value.getMonth() - 1, 1))}><UiIcon name="chevronLeft" /></button><button type="button" className="secondary" aria-label="Sonraki ay" disabled={nextMonthBlocked} onClick={() => setMonth(value => new Date(value.getFullYear(), value.getMonth() + 1, 1))}><UiIcon name="chevronRight" /></button></header>
           <div className="date-range-picker-months">{renderMonth(month)}{renderMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}</div>
           <footer><small>{from && !to ? 'Bitiş gününü seçin' : 'Başlangıç ve bitiş gününü seçin'}</small><button type="button" className="secondary" onClick={() => onChange({ from: '', to: '' })}>Temizle</button></footer>
         </div>

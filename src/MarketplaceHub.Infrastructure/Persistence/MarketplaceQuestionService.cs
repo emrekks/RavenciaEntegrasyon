@@ -34,8 +34,8 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         }
         if (!string.IsNullOrWhiteSpace(query.PlatformCode)) rows = rows.Where(row => row.Connection.PlatformCode == query.PlatformCode.Trim().ToUpperInvariant());
         if (query.ConnectionId is { } connectionId) rows = rows.Where(row => row.Connection.Id == connectionId);
-        if (query.DateFrom is { } from) rows = rows.Where(row => row.Question.CreatedAt >= from);
-        if (query.DateTo is { } to) rows = rows.Where(row => row.Question.CreatedAt <= to);
+        if (query.DateFrom?.ToUniversalTime() is { } from) rows = rows.Where(row => row.Question.CreatedAt >= from);
+        if (query.DateTo?.ToUniversalTime() is { } to) rows = rows.Where(row => row.Question.CreatedAt <= to);
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
             var term = query.Search.Trim();

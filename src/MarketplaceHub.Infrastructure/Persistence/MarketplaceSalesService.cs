@@ -391,8 +391,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         if (!string.IsNullOrWhiteSpace(cargo) && cargo != "ALL")
             query = query.Where(x => db.ShipmentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.CargoProviderExternalId == cargo));
 
-        if (options.DateFrom is { } dateFrom) query = query.Where(x => x.OrderedAt >= dateFrom);
-        if (options.DateTo is { } dateTo) query = query.Where(x => x.OrderedAt <= dateTo);
+        if (options.DateFrom?.ToUniversalTime() is { } dateFrom) query = query.Where(x => x.OrderedAt >= dateFrom);
+        if (options.DateTo?.ToUniversalTime() is { } dateTo) query = query.Where(x => x.OrderedAt <= dateTo);
     }
 
     // Status counters are package-based because a marketplace order may be
@@ -1581,8 +1581,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             query = query.Where(x => db.ReturnLines.Any(returnLine => returnLine.TenantId == x.TenantId && returnLine.ClaimId == x.Id && db.OrderLines.Any(line => line.TenantId == x.TenantId && line.Id == returnLine.OrderLineId && ((line.Barcode != null && line.Barcode.Contains(barcode)) || line.Sku.Contains(barcode)))));
         var reason = options.Reason?.Trim();
         if (!string.IsNullOrWhiteSpace(reason)) query = query.Where(x => x.ReasonCode == reason || (x.ReasonText != null && x.ReasonText.Contains(reason)));
-        if (options.DateFrom is { } dateFrom) query = query.Where(x => db.Orders.Any(order => order.TenantId == x.TenantId && order.Id == x.OrderId && order.OrderedAt >= dateFrom));
-        if (options.DateTo is { } dateTo) query = query.Where(x => db.Orders.Any(order => order.TenantId == x.TenantId && order.Id == x.OrderId && order.OrderedAt <= dateTo));
+        if (options.DateFrom?.ToUniversalTime() is { } dateFrom) query = query.Where(x => db.Orders.Any(order => order.TenantId == x.TenantId && order.Id == x.OrderId && order.OrderedAt >= dateFrom));
+        if (options.DateTo?.ToUniversalTime() is { } dateTo) query = query.Where(x => db.Orders.Any(order => order.TenantId == x.TenantId && order.Id == x.OrderId && order.OrderedAt <= dateTo));
     }
 
     public async Task<ServiceResult<ReturnDetailView>> ReturnAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
