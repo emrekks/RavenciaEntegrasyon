@@ -174,6 +174,91 @@ internal static class HepsiburadaJsonMapper
             item.GetRawText());
     }
 
+
+    // all-products-of-merchant: the portal documents the endpoint without a response
+    // example, so field discovery is deliberately tolerant. Category and attribute
+    // values are searched under every key Hepsiburada's catalog models use.
+    private static readonly string[] StructureAttributeKeys =
+        ["baseAttributes", "variantTypeAttributes", "variantAttributes", "productAttributes", "attributes", "properties", "Attributes", "Properties"];
+
+    public static AdapterPageResult<RemoteCatalogProduct> CatalogStructurePage(JsonElement root, int page, int limit)
+    {
+        var data = Unwrap(root);
+        var items = data.ValueKind == JsonValueKind.Array ? data : Find(data, "content", "items", "products", "productList", "listings", "data");
+        if (items.ValueKind != JsonValueKind.Array) throw new JsonException("Hepsiburada mağaza ürün yanıtında ürün listesi yok.");
+        var total = Integer(root, "totalElements", "totalCount", "total") ?? Integer(data, "totalElements", "totalCount", "total");
+        var products = items.EnumerateArray().Where(item => item.ValueKind == JsonValueKind.Object).Select(CatalogStructureProduct).ToArray();
+        var totalPages = Integer(root, "totalPages") ?? Integer(data, "totalPages");
+        var hasMore = totalPages is { } pages ? page + 1 < pages : total is { } count ? (long)(page + 1) * limit < count : products.Length >= limit;
+        return new(products, hasMore ? checked(page + 1).ToString(CultureInfo.InvariantCulture) : null, hasMore, total);
+    }
+
+    public static RemoteCatalogProduct CatalogStructureProduct(JsonElement item)
+    {
+        var merchantSku = Text(item, "merchantSku", "MerchantSku", "sellerSku");
+        var hbSku = Text(item, "hbSku", "HbSku", "hepsiburadaSku");
+        var identity = hbSku ?? merchantSku ?? Text(item, "barcode", "Barcode", "productId", "id") ?? Guid.CreateVersion7().ToString("N");
+        var category = Find(item, "category", "Category");
+        var categoryId = Text(item, "categoryId", "CategoryId")
+            ?? (category.ValueKind == JsonValueKind.Object ? Text(category, "categoryId", "id", "Id") : null);
+        var categoryName = Text(item, "categoryName", "CategoryName")
+            ?? (category.ValueKind == JsonValueKind.Object ? Text(category, "name", "categoryName", "Name") : category.ValueKind == JsonValueKind.String ? category.GetString() : null);
+        var variant = new RemoteCatalogVariant(
+            identity,
+            merchantSku ?? identity,
+            Text(item, "barcode", "Barcode"),
+            Text(item, "VaryantGroupID", "variantGroupId", "modelCode", "ModelCode"),
+            StructureOptions(item),
+            false,
+            null, null, null, null, null,
+            item.GetRawText());
+        return new(
+            identity,
+            Text(item, "VaryantGroupID", "variantGroupId", "productId"),
+            Text(item, "productName", "ProductName", "UrunAdi", "name", "title") ?? identity,
+            "",
+            null,
+            Text(item, "brand", "brandName", "Marka"),
+            categoryId,
+            categoryName,
+            [],
+            [variant],
+            item.GetRawText());
+    }
+
+    private static IReadOnlyDictionary<string, string> StructureOptions(JsonElement item)
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var key in StructureAttributeKeys)
+        {
+            if (!TryFind(item, out var source, key)) continue;
+            if (source.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var property in source.EnumerateObject())
+                    if (StructureValue(property.Value) is { } text) result.TryAdd(property.Name, text);
+            }
+            else if (source.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var entry in source.EnumerateArray().Where(entry => entry.ValueKind == JsonValueKind.Object))
+                {
+                    var name = Text(entry, "name", "Name", "key", "Key", "attributeName", "id", "attributeId");
+                    var valueElement = Find(entry, "value", "Value", "values", "Values", "attributeValue", "valueName");
+                    if (!string.IsNullOrWhiteSpace(name) && StructureValue(valueElement) is { } text) result.TryAdd(name, text);
+                }
+            }
+        }
+        return result;
+    }
+
+    private static string? StructureValue(JsonElement value) => value.ValueKind switch
+    {
+        JsonValueKind.String => string.IsNullOrWhiteSpace(value.GetString()) ? null : value.GetString()!.Trim(),
+        JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False => value.ToString(),
+        JsonValueKind.Array => string.Join(", ", value.EnumerateArray().Select(StructureValue).Where(text => text is not null)) is { Length: > 0 } joined ? joined : null,
+        JsonValueKind.Object => Text(value, "value", "Value", "name", "Name"),
+        _ => null
+    };
+
     public static AdapterPageResult<RemoteProductMatch> PendingProductMatches(JsonElement root, int page, int limit)
     {
         var (items, totalCount) = ListingPage(root);

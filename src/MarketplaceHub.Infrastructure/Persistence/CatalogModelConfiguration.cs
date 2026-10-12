@@ -191,6 +191,14 @@ internal static class CatalogModelConfiguration
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
         });
+        builder.Entity<CatalogStructureRun>(entity =>
+        {
+            entity.ToTable("catalog_structure_runs", "catalog"); entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id });
+            entity.Property(x => x.Mode).HasMaxLength(16); entity.Property(x => x.Status).HasMaxLength(16); entity.Property(x => x.ErrorSummary).HasMaxLength(1000); entity.Property(x => x.ReportJson).HasColumnType("jsonb"); entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.CreatedAt });
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
+        });
         builder.Entity<ImportSession>(entity =>
         {
             entity.ToTable("import_sessions", "catalog"); entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id }); entity.Property(x => x.SourceType).HasConversion(value => value.ToString().ToUpperInvariant(), value => Enum.Parse<ImportSourceType>(value, true)).HasMaxLength(24); entity.Property(x => x.Status).HasConversion(value => ImportStatusWire(value), value => ParseImportStatus(value)).HasMaxLength(32); entity.Property(x => x.Version).IsConcurrencyToken(); entity.HasIndex(x => new { x.TenantId, x.Status });

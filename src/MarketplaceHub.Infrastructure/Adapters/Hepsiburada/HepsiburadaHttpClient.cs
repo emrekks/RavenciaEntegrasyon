@@ -251,10 +251,29 @@ public sealed partial class HepsiburadaHttpClient(
         }
     }
 
+    private async Task<AdapterResult<AdapterPageResult<RemoteCatalogProduct>>> ListCatalogStructureAsync(HepsiburadaRequestContext account, AdapterPageRequest page, CancellationToken cancellationToken)
+    {
+        if (account.CatalogBaseAddress is null) return await Unsupported<AdapterPageResult<RemoteCatalogProduct>>("Hepsiburada katalog base URL'si yapılandırılmamış.");
+        var (pageNumber, limit) = ReferencePage(page, 500);
+        var response = await SendAsync(account, account.CatalogBaseAddress, HttpMethod.Get, MerchantProducts(account, pageNumber, limit), cancellationToken);
+        if (!response.IsSuccess) return AdapterResult<AdapterPageResult<RemoteCatalogProduct>>.Failure(response.Error!, response.RateLimit);
+        try
+        {
+            return AdapterResult<AdapterPageResult<RemoteCatalogProduct>>.Success(HepsiburadaJsonMapper.CatalogStructurePage(response.Value!.RootElement, pageNumber, limit), response.RateLimit);
+        }
+        catch (JsonException)
+        {
+            return Failure<AdapterPageResult<RemoteCatalogProduct>>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_MERCHANT_PRODUCTS_CONTRACT_INVALID", "Hepsiburada mağaza ürün yanıtı beklenen sözleşmeyle eşleşmiyor.", HttpStatusCode.BadGateway);
+        }
+    }
+
+    internal static string MerchantProducts(HepsiburadaRequestContext context, int page, int size) => $"api/products/all-products-of-merchant/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}?page={page.ToString(CultureInfo.InvariantCulture)}&size={size.ToString(CultureInfo.InvariantCulture)}";
+
     public async Task<AdapterResult<AdapterPageResult<RemoteCatalogProduct>>> ListCatalogAsync(AdapterContext context, AdapterPageRequest page, ProductReadFilter filter, CancellationToken cancellationToken)
     {
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return Failure<AdapterPageResult<RemoteCatalogProduct>>(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIAL_INVALID", "Hepsiburada bağlantı bilgileri bulunamadı.", HttpStatusCode.Unauthorized);
+        if (filter.CatalogStructure) return await ListCatalogStructureAsync(account, page, cancellationToken);
         var (offset, limit) = Page(page, settings.PageSize);
         var productLookup = !string.IsNullOrWhiteSpace(filter.ProductMainId) ? filter.ProductMainId : filter.Barcode;
         var lookupQueries = ListingLookupQueries(productLookup);

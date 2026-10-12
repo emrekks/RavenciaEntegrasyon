@@ -33,3 +33,18 @@ public sealed class ProductImportStagingRecord
     public DateTimeOffset? FinalizedAt { get; set; }
     public string? ErrorSummary { get; set; }
 }
+
+public sealed class CatalogStructureRun
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid ConnectionId { get; set; }
+    public Guid? JobId { get; set; }
+    public required string Mode { get; set; }
+    public required string Status { get; set; }
+    public string? ReportJson { get; set; }
+    public string? ErrorSummary { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? CompletedAt { get; set; }
+    public long Version { get; set; } = 1;
+}

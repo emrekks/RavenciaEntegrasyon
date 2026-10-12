@@ -113,6 +113,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<DashboardSyncStatusProjection> DashboardSyncStatusProjections => Set<DashboardSyncStatusProjection>();
     public DbSet<ProductImportSession> ProductImportSessions => Set<ProductImportSession>();
     public DbSet<ProductImportStagingRecord> ProductImportStagingRecords => Set<ProductImportStagingRecord>();
+    public DbSet<CatalogStructureRun> CatalogStructureRuns => Set<CatalogStructureRun>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

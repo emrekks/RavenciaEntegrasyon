@@ -55,6 +55,7 @@ public static class MarketplaceJobTypes
     public const string HepsiburadaReturnSync = "HEPSIBURADA_RETURN_SYNC";
     public const string HepsiburadaOrderInvoiceReconciliation = "HEPSIBURADA_ORDER_INVOICE_RECONCILIATION";
     public const string QuestionSync = "MARKETPLACE_QUESTION_SYNC";
+    public const string CatalogStructureImport = "CATALOG_STRUCTURE_IMPORT";
 
     public static bool IsMarketplaceProcessorJob(string? jobType) => jobType is
         ConnectionTest or ShopifyConnectionTest or HepsiburadaConnectionTest
@@ -71,7 +72,7 @@ public static class MarketplaceJobTypes
         or ReturnSync or HepsiburadaReturnSync or ReturnStatusSync or ReturnReconciliation or ReturnAction
         or StockReconciliation
         or WebhookIngest or ShopifyWebhookIngest or HepsiburadaWebhookIngest
-        or QuestionSync;
+        or QuestionSync or CatalogStructureImport;
 
     public static string ForPlatform(string? platformCode, string jobType) => platformCode?.Trim().ToUpperInvariant() switch
     {
@@ -393,7 +394,7 @@ public sealed record RemoteCatalogVariant(
     IReadOnlyList<string>? ImageUrls = null,
     IReadOnlyList<RemoteInventoryLevel>? InventoryLevels = null);
 public sealed record RemotePublicationStatus(string Barcode, string Status, string? ExternalProductId, string? ExternalVariantId, string? RejectionCode, string RawJson);
-public sealed record ProductReadFilter(DateTimeOffset? ModifiedAfter, string? Barcode = null, string? ProductMainId = null, string? ContentId = null, string? ProductUrl = null, bool IncludePendingApproval = false);
+public sealed record ProductReadFilter(DateTimeOffset? ModifiedAfter, string? Barcode = null, string? ProductMainId = null, string? ContentId = null, string? ProductUrl = null, bool IncludePendingApproval = false, bool CatalogStructure = false);
 public sealed record StockPushLine(Guid VariantId, string Barcode, decimal Quantity, long ProjectionVersion);
 public sealed record PricePushLine(Guid VariantId, string Barcode, decimal ListPrice, decimal SalePrice, string Currency, long PriceVersion);
 public sealed record PriceInventoryPushLine(Guid VariantId, Guid OfferId, string Barcode, decimal Quantity, decimal ListPrice, decimal SalePrice, string Currency, long ProjectionVersion, long PriceVersion, string PriceHash, string? MerchantSku = null, string? HepsiburadaSku = null);
@@ -920,6 +921,9 @@ public interface IMarketplaceSalesService
     Task<ServiceResult<CreateOrderPackageResult>> CreateOrderPackageInstantAsync(Guid tenantId, Guid orderId, long expectedVersion, OrderPackageCreateRequest command, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueOrderSyncAsync(Guid tenantId, Guid connectionId, string? externalOrderId, bool full, string correlationId, CancellationToken cancellationToken, string? packageNumber = null);
     Task<ServiceResult<Guid>> EnqueueReferenceSyncAsync(Guid tenantId, Guid connectionId, string resourceType, string? parentExternalId, string correlationId, CancellationToken cancellationToken);
+    Task<ServiceResult<CatalogStructureRunView>> EnqueueCatalogStructureAsync(Guid tenantId, Guid connectionId, string mode, string correlationId, CancellationToken cancellationToken);
+    Task<ServiceResult<CatalogStructureRunView>> CatalogStructureRunAsync(Guid tenantId, Guid runId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<CatalogStructureRunView>> CatalogStructureRunsAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueProductSyncAsync(Guid tenantId, Guid connectionId, bool full, bool newOnly, bool existingOnly, bool mappingOnly, bool optionsOnly, bool includeArchived, bool includeDrafts, bool includePendingApproval, bool updateExistingProducts, bool updateExistingPricesAndStock, string? productLookup, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueShipmentActionAsync(Guid tenantId, Guid packageId, long expectedVersion, ShipmentActionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<ShipmentView>> ProcessShipmentInstantAsync(Guid tenantId, Guid packageId, long expectedVersion, string idempotencyKey, string correlationId, CancellationToken cancellationToken);

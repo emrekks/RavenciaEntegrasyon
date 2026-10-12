@@ -56,6 +56,16 @@ public sealed class CategoryReusePolicyTests
     }
 
     [Fact]
+    public void TreatsRepeatedEntriesOfOneCategoryAsASingleMatch()
+    {
+        var id = Guid.NewGuid();
+        var result = CategoryReusePolicy.Decide("Bluz", "Hepsiburada", Keys("RENK"), [new(id, "Bluz", Keys("RENK")), new(id, "Bluz", Keys("RENK", "BEDEN"))]);
+
+        Assert.Equal(CategoryReuseDecision.ReuseExisting, result.Decision);
+        Assert.Equal(id, result.CategoryId);
+    }
+
+    [Fact]
     public void PicksTheMatchingCandidateAmongSeveral()
     {
         var match = Guid.NewGuid();

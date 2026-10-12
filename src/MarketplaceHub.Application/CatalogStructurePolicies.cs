@@ -30,7 +30,13 @@ public static class CategoryReusePolicy
         if (remoteAttributeKeys.Count == 0)
             return new(CategoryReuseDecision.NeedsReview, null, leafName, "Pazar yeri kategorisinin özellikleri alınamadı; aynı adlı panel kategorisiyle karşılaştırılamıyor.");
 
-        var equal = sameLeafCandidates.Where(candidate => candidate.AttributeKeys.SetEquals(remoteAttributeKeys)).ToList();
+        // A panel category can carry several known attribute sets (one per linked
+        // marketplace); it matches when any of them is identical.
+        var equal = sameLeafCandidates
+            .Where(candidate => candidate.AttributeKeys.SetEquals(remoteAttributeKeys))
+            .GroupBy(candidate => candidate.CategoryId)
+            .Select(group => group.First())
+            .ToList();
         if (equal.Count == 1)
             return new(CategoryReuseDecision.ReuseExisting, equal[0].CategoryId, equal[0].Name, "Kategori özellikleri birebir aynı.");
         if (equal.Count > 1)
@@ -40,3 +46,14 @@ public static class CategoryReusePolicy
         return new(CategoryReuseDecision.CreateSeparate, null, suffixed, "Aynı adlı panel kategorisinin özellikleri farklı; ayrı kategori açılacak.");
     }
 }
+
+public sealed record CatalogStructureRunView(
+    Guid Id,
+    Guid ConnectionId,
+    Guid? JobId,
+    string Mode,
+    string Status,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? CompletedAt,
+    string? ErrorSummary,
+    System.Text.Json.JsonElement? Report);

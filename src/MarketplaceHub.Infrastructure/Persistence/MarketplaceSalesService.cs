@@ -1090,6 +1090,67 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         return await EnqueueRead(tenantId, connectionId, MarketplaceCapabilities.ProductRead, type, JsonSerializer.Serialize(new { connectionId, full, newOnly, existingOnly, mappingOnly, optionsOnly, includeArchived, includeDrafts, includePendingApproval, updateExistingProducts, updateExistingPricesAndStock, productLookup }), correlationId, cancellationToken);
     }
 
+    public async Task<ServiceResult<CatalogStructureRunView>> EnqueueCatalogStructureAsync(Guid tenantId, Guid connectionId, string mode, string correlationId, CancellationToken cancellationToken)
+    {
+        var normalizedMode = mode?.Trim().ToUpperInvariant();
+        if (normalizedMode is not ("PREVIEW" or "APPLY"))
+            return ServiceResult<CatalogStructureRunView>.Fail("CATALOG_STRUCTURE_MODE_INVALID", "mode PREVIEW veya APPLY olmalıdır.", 422);
+        var platform = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        if (platform is not ("TRENDYOL" or "HEPSIBURADA"))
+            return ServiceResult<CatalogStructureRunView>.Fail("CATALOG_STRUCTURE_UNSUPPORTED", "Platformdan yapı çekme şu anda yalnızca Trendyol ve Hepsiburada bağlantılarında kullanılabilir.", 422);
+        if (await db.CatalogStructureRuns.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && (x.Status == "QUEUED" || x.Status == "RUNNING"), cancellationToken))
+            return ServiceResult<CatalogStructureRunView>.Fail("CATALOG_STRUCTURE_ALREADY_RUNNING", "Bu bağlantıda yapı çekme işlemi zaten çalışıyor.", 409);
+        if (normalizedMode == "APPLY")
+        {
+            // Applying is only allowed after a fresh, completed preview of the same connection.
+            var threshold = timeProvider.GetUtcNow().AddHours(-24);
+            var hasPreview = await db.CatalogStructureRuns.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Mode == "PREVIEW" && x.Status == "COMPLETED" && x.CompletedAt >= threshold, cancellationToken);
+            if (!hasPreview)
+                return ServiceResult<CatalogStructureRunView>.Fail("CATALOG_STRUCTURE_PREVIEW_REQUIRED", "Uygulamadan önce son 24 saat içinde tamamlanmış bir önizleme gerekir.", 409);
+        }
+
+        var run = new CatalogStructureRun { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, Mode = normalizedMode, Status = "QUEUED", CreatedAt = timeProvider.GetUtcNow(), Version = 1 };
+        db.CatalogStructureRuns.Add(run);
+        await db.SaveChangesAsync(cancellationToken);
+        var queued = await EnqueueRead(tenantId, connectionId, MarketplaceCapabilities.ProductRead, MarketplaceJobTypes.CatalogStructureImport, JsonSerializer.Serialize(new { connectionId, runId = run.Id, mode = normalizedMode }), correlationId, cancellationToken);
+        if (!queued.Succeeded)
+        {
+            db.CatalogStructureRuns.Remove(run);
+            await db.SaveChangesAsync(cancellationToken);
+            return ServiceResult<CatalogStructureRunView>.Fail(queued.Error!.Code, queued.Error.Message, queued.Error.Status);
+        }
+        run.JobId = queued.Value;
+        await db.SaveChangesAsync(cancellationToken);
+        return ServiceResult<CatalogStructureRunView>.Ok(ToView(run, includeReport: false));
+    }
+
+    public async Task<ServiceResult<CatalogStructureRunView>> CatalogStructureRunAsync(Guid tenantId, Guid runId, CancellationToken cancellationToken)
+    {
+        var run = await db.CatalogStructureRuns.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == runId, cancellationToken);
+        return run is null ? NotFound<CatalogStructureRunView>() : ServiceResult<CatalogStructureRunView>.Ok(ToView(run, includeReport: true));
+    }
+
+    public async Task<IReadOnlyList<CatalogStructureRunView>> CatalogStructureRunsAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
+    {
+        var runs = await db.CatalogStructureRuns.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId)
+            .OrderByDescending(x => x.CreatedAt)
+            .Take(20)
+            .ToListAsync(cancellationToken);
+        return runs.Select(run => ToView(run, includeReport: false)).ToList();
+    }
+
+    private static CatalogStructureRunView ToView(CatalogStructureRun run, bool includeReport)
+    {
+        JsonElement? report = null;
+        if (includeReport && !string.IsNullOrWhiteSpace(run.ReportJson))
+        {
+            using var document = JsonDocument.Parse(run.ReportJson);
+            report = document.RootElement.Clone();
+        }
+        return new(run.Id, run.ConnectionId, run.JobId, run.Mode, run.Status, run.CreatedAt, run.CompletedAt, run.ErrorSummary, report);
+    }
+
     public Task<ServiceResult<Guid>> EnqueueReferenceSyncAsync(Guid tenantId, Guid connectionId, string resourceType, string? parentExternalId, string correlationId, CancellationToken cancellationToken)
     {
         var normalized = resourceType.Trim().ToUpperInvariant();
@@ -2225,7 +2286,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         MarketplaceJobTypes.HepsiburadaOrderRecoverySync => 2,
         MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync => 6,
         MarketplaceJobTypes.ReturnSync or MarketplaceJobTypes.HepsiburadaReturnSync or MarketplaceJobTypes.ReturnAction => 2,
-        MarketplaceJobTypes.ProductSync or MarketplaceJobTypes.ShopifyProductSync or MarketplaceJobTypes.HepsiburadaProductSync or MarketplaceJobTypes.ReferenceSync or MarketplaceJobTypes.HepsiburadaReferenceSync => 5,
+        MarketplaceJobTypes.ProductSync or MarketplaceJobTypes.ShopifyProductSync or MarketplaceJobTypes.HepsiburadaProductSync or MarketplaceJobTypes.ReferenceSync or MarketplaceJobTypes.HepsiburadaReferenceSync or MarketplaceJobTypes.CatalogStructureImport => 5,
         _ => 3
     };
     private Task<bool> Supported(Guid tenantId, Guid connectionId, string code, CancellationToken cancellationToken) => db.PlatformCapabilities.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == code && x.SupportLevel == CapabilitySupportLevel.Supported, cancellationToken);

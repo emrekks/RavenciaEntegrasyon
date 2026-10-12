@@ -15,7 +15,7 @@ using Npgsql;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort connections, IReferenceDataPort references, IProductPort products, IInventoryPricePort inventoryPrice, IOrderPort orders, IHepsiburadaInvoiceStatusPort hepsiburadaInvoiceStatus, IOrderPackageReadPort orderPackages, IReturnPort returns, IMarketplaceQuestionService questions, IPrivateFileStorage files, IConfiguration configuration, TimeProvider timeProvider, IInvoicingBillingService? invoiceBilling = null) : IMarketplaceJobProcessor
+public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnectionPort connections, IReferenceDataPort references, IProductPort products, IInventoryPricePort inventoryPrice, IOrderPort orders, IHepsiburadaInvoiceStatusPort hepsiburadaInvoiceStatus, IOrderPackageReadPort orderPackages, IReturnPort returns, IMarketplaceQuestionService questions, IPrivateFileStorage files, IConfiguration configuration, TimeProvider timeProvider, IInvoicingBillingService? invoiceBilling = null) : IMarketplaceJobProcessor
 {
     // The payload deadline is the authoritative approval bound. The worker currently
     // applies exponential backoff, but this ceiling also keeps retry accounting from
@@ -105,6 +105,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
                     MarketplaceJobTypes.ReturnReconciliation => await ReconcileReturns(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                     MarketplaceJobTypes.StockReconciliation => await ReconcileStock(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                     MarketplaceJobTypes.QuestionSync => await SyncQuestions(tenantId, connectionId.Value, payloadJson, cancellationToken),
+                    MarketplaceJobTypes.CatalogStructureImport => await ImportCatalogStructure(tenantId, connectionId.Value, payloadJson, correlationId, jobId, cancellationToken),
                     MarketplaceJobTypes.WebhookIngest or MarketplaceJobTypes.ShopifyWebhookIngest or MarketplaceJobTypes.HepsiburadaWebhookIngest => await IngestWebhook(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                     MarketplaceJobTypes.ShipmentAction => await ShipmentAction(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                     MarketplaceJobTypes.ReturnAction => await ReturnAction(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
@@ -3987,7 +3988,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
 
     private Task<int> UpdateProductSyncProgressAsync(Guid tenantId, Guid jobId, int current, int? total, int? percent, string label, CancellationToken cancellationToken, bool keepExistingTotal = false)
     {
-        var query = db.IntegrationJobs.Where(x => x.TenantId == tenantId && x.Id == jobId && (x.JobType == MarketplaceJobTypes.ProductSync || x.JobType == MarketplaceJobTypes.ShopifyProductSync || x.JobType == MarketplaceJobTypes.HepsiburadaProductSync));
+        var query = db.IntegrationJobs.Where(x => x.TenantId == tenantId && x.Id == jobId && (x.JobType == MarketplaceJobTypes.ProductSync || x.JobType == MarketplaceJobTypes.ShopifyProductSync || x.JobType == MarketplaceJobTypes.HepsiburadaProductSync || x.JobType == MarketplaceJobTypes.CatalogStructureImport));
         return keepExistingTotal
             ? query.ExecuteUpdateAsync(setters => setters.SetProperty(x => x.ProgressCurrent, current).SetProperty(x => x.ProgressPercent, percent).SetProperty(x => x.ProgressLabel, label).SetProperty(x => x.ProgressReceived, current).SetProperty(x => x.ProgressProcessed, telemetryImportProcessedCount).SetProperty(x => x.ProgressSkipped, telemetryImportSkippedCount).SetProperty(x => x.ProgressFailed, telemetryImportFailedCount), cancellationToken)
             : query.ExecuteUpdateAsync(setters => setters.SetProperty(x => x.ProgressCurrent, current).SetProperty(x => x.ProgressTotal, total).SetProperty(x => x.ProgressPercent, percent).SetProperty(x => x.ProgressLabel, label).SetProperty(x => x.ProgressReceived, current).SetProperty(x => x.ProgressProcessed, telemetryImportProcessedCount).SetProperty(x => x.ProgressSkipped, telemetryImportSkippedCount).SetProperty(x => x.ProgressFailed, telemetryImportFailedCount), cancellationToken);
@@ -4262,7 +4263,8 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
         ReferenceItem remoteAttribute,
         IReadOnlyList<ReferenceItem> values,
         IDictionary<string, AttributeDefinition> importedAttributeLibrary,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string codePrefix = "TRD")
     {
         var optionAxis = VariantOptionAxis(remoteAttribute.Name);
         var canonicalName = IsWebColorOptionKey(remoteAttribute.Name) ? "Renk" : optionAxis switch
@@ -4271,7 +4273,7 @@ public sealed class MarketplaceJobProcessor(AppDbContext db, IConnectionPort con
             "SIZE" => "Beden",
             _ => Short(remoteAttribute.Name, 160)
         };
-        var code = Short($"TRD_{remoteCategory.ExternalId}_{remoteAttribute.ExternalId}", 96);
+        var code = Short($"{codePrefix}_{remoteCategory.ExternalId}_{remoteAttribute.ExternalId}", 96);
         var dataType = values.Count > 0
             ? (remoteAttribute.AllowsMultipleValues == true ? AttributeDataType.MultiSelect : AttributeDataType.SingleSelect)
             : AttributeDataType.Text;

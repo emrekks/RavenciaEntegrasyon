@@ -385,6 +385,57 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.UseTpcMappingStrategy();
                 });
 
+            modelBuilder.Entity("MarketplaceHub.Domain.CatalogStructureRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ErrorSummary")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<Guid?>("JobId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Mode")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("ReportJson")
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("TenantId", "Id");
+
+                    b.HasIndex("TenantId", "ConnectionId", "CreatedAt");
+
+                    b.ToTable("catalog_structure_runs", "catalog");
+                });
+
             modelBuilder.Entity("MarketplaceHub.Domain.Category", b =>
                 {
                     b.Property<Guid>("Id")
@@ -5738,6 +5789,22 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("MarketplaceHub.Domain.CargoProviderMapping", b =>
                 {
+                    b.HasOne("MarketplaceHub.Domain.PlatformConnection", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ConnectionId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.CatalogStructureRun", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("MarketplaceHub.Domain.PlatformConnection", null)
                         .WithMany()
                         .HasForeignKey("TenantId", "ConnectionId")
