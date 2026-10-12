@@ -264,7 +264,7 @@ internal static class HepsiburadaJsonMapper
                 {
                     var name = Text(entry, "name", "Name", "key", "Key", "attributeName", "id", "attributeId");
                     var valueElement = Find(entry, "value", "Value", "values", "Values", "attributeValue", "valueName");
-                    if (!string.IsNullOrWhiteSpace(name) && StructureValue(valueElement) is { } text) result.TryAdd(name, text);
+                    if (!string.IsNullOrWhiteSpace(name) && !StructureProductFields.Contains(name) && StructureValue(valueElement) is { } text) result.TryAdd(name, text);
                 }
             }
         }

@@ -106,6 +106,18 @@ public sealed class HepsiburadaCatalogStructureTests
     }
 
     [Fact]
+    public void DropsUploadFieldsFromListShapedAttributesToo()
+    {
+        using var document = JsonDocument.Parse("""
+        { "data": [ { "merchantSku": "A", "categoryId": 1, "attributes": [ { "name": "Barcode", "value": "869" }, { "name": "price", "value": "10" }, { "name": "renk_variant_property", "value": "Mavi" } ] } ] }
+        """);
+
+        var options = HepsiburadaJsonMapper.CatalogStructurePage(document.RootElement, 0, 500).Items[0].Variants[0].Options;
+
+        Assert.Equal(["renk_variant_property"], options.Keys.ToArray());
+    }
+
+    [Fact]
     public void RejectsAResponseWithoutAProductList()
     {
         using var document = JsonDocument.Parse("""{ "success": false, "message": "yetki yok" }""");
