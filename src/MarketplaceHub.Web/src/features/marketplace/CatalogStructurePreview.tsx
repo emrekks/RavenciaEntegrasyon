@@ -23,7 +23,7 @@ const filterLabels: [CatalogStructureFilter, string][] = [
   ['NEW', 'Yeni'],
   ['SEPARATE', 'Ayrı tutulan'],
   ['REVIEW', 'İnceleme'],
-  ['SYNCED', 'Zaten uyumlu']
+  ['SYNCED', 'Eşleşmiş']
 ]
 
 const visibleValueLimit = 12

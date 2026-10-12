@@ -68,7 +68,7 @@ export function catalogStructureDecisionLabel(decision: string) {
     case 'CreateNew': return 'Yeni panel kategorisi'
     case 'ReuseExisting': return 'Mevcut kategoriye bağlanacak'
     case 'CreateSeparate': return 'Ayrı kategori (özellikler farklı)'
-    case 'AlreadyMapped': return 'Zaten eşli'
+    case 'AlreadyMapped': return 'Eşleşmiş'
     case 'NeedsReview': return 'İnceleme gerekli'
     default: return decision
   }
@@ -182,7 +182,7 @@ export function catalogStructureNarrative(report: CatalogStructureReport, platfo
   if (brandNew > 0) lines.push(`${brandNew} yeni panel kategorisi açılacak.`)
   if (totals.categoriesSeparated > 0) lines.push(`${totals.categoriesSeparated} kategori, özellik kümeleri panelde aynı adlı kategoriden farklı olduğu için “(${platformLabel})” adıyla ayrı açılacak.`)
   if (totals.categoriesReused > 0) lines.push(`${totals.categoriesReused} kategori, özellikleri aynı olduğu için mevcut panel kategorisine bağlanacak.`)
-  if (totals.categoriesAlreadyMapped > 0) lines.push(`${totals.categoriesAlreadyMapped} kategori zaten eşli.`)
+  if (totals.categoriesAlreadyMapped > 0) lines.push(`${totals.categoriesAlreadyMapped} kategori zaten eşleşmiş.`)
   if (totals.attributesCreated > 0) lines.push(`${totals.attributesCreated} yeni özellik tanımı oluşturulacak.`)
   if (totals.valuesCreated > 0) lines.push(`Mevcut özelliklere ${totals.valuesCreated.toLocaleString('tr-TR')} yeni değer eklenecek (yalnızca ürünlerinizde geçenler).`)
   if (totals.mappingsCreated > 0) lines.push(`${totals.mappingsCreated.toLocaleString('tr-TR')} eşleme kaydı yazılacak.`)
