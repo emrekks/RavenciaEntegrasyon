@@ -29,7 +29,7 @@
 
 .structure-preview-list { display: grid; gap: var(--rv-space-2); }
 .structure-row { border: 1px solid var(--rv-color-border); border-radius: 10px; }
-.structure-row > summary { display: grid; grid-template-columns: 190px minmax(0, 1.2fr) 20px minmax(0, 1fr) 270px; align-items: center; column-gap: var(--rv-space-3); padding: var(--rv-space-3) var(--rv-space-4); cursor: pointer; }
+.structure-row > summary { display: grid; grid-template-columns: 140px minmax(0, 1fr) 40px minmax(0, 1fr) 270px; align-items: center; column-gap: var(--rv-space-3); padding: var(--rv-space-3) var(--rv-space-4); cursor: pointer; }
 .structure-row > summary > .rv-badge { justify-self: start; white-space: nowrap; }
 .structure-row > summary > [aria-hidden] { justify-self: center; color: var(--rv-color-muted); }
 .structure-row[open] > summary { border-bottom: 1px solid var(--rv-color-border); }
@@ -37,7 +37,7 @@
 .structure-row-names { display: grid; min-width: 0; }
 .structure-row-names small { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); }
 .structure-row-meta { display: grid; grid-template-columns: 88px 88px 86px; justify-items: end; column-gap: var(--rv-space-2); color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); white-space: nowrap; }
-.structure-row-meta .is-change { color: var(--rv-color-accent); font-weight: 700; }
+.structure-row-meta .is-change { color: var(--rv-color-accent); font-weight: 500; }
 .structure-row-explanation { margin-block: var(--rv-space-3) 0; }
 .structure-row-difference { display: grid; gap: 4px; padding: var(--rv-space-3); background: var(--rv-color-surface-soft); border-radius: 8px; font-size: var(--rv-font-size-sm); }
 .structure-row-difference p { margin: 0; }
@@ -51,7 +51,7 @@
 .structure-import-attribute-table th { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); font-weight: 600; }
 .structure-import-attribute-table small { display: block; color: var(--rv-color-muted); }
 .structure-import-values { display: flex; flex-wrap: wrap; gap: 6px; }
-.structure-import-values span { padding: 2px 8px; background: var(--rv-color-primary-soft); border-radius: 6px; }
+.structure-import-values span { padding: 2px 8px; background: var(--rv-color-primary-soft); border-radius: 6px; font-weight: 400; }
 
 .structure-preview-technical { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); }
 .structure-preview-code { overflow-wrap: anywhere; font-family: var(--rv-font-mono, monospace); }
@@ -85,3 +85,5 @@
   box-sizing: border-box;
   white-space: nowrap;
 }
+
+.structure-row-panel { font-weight: 600; }

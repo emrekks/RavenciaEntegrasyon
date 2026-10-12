@@ -65,9 +65,9 @@ export function isCatalogStructureRunActive(run: Pick<CatalogStructureRun, 'stat
 
 export function catalogStructureDecisionLabel(decision: string) {
   switch (decision) {
-    case 'CreateNew': return 'Yeni panel kategorisi'
-    case 'ReuseExisting': return 'Mevcut kategoriye bağlanacak'
-    case 'CreateSeparate': return 'Ayrı kategori (özellikler farklı)'
+    case 'CreateNew': return 'Yeni kategori'
+    case 'ReuseExisting': return 'Bağlanacak'
+    case 'CreateSeparate': return 'Ayrı kategori'
     case 'AlreadyMapped': return 'Eşleşmiş'
     case 'NeedsReview': return 'İnceleme gerekli'
     default: return decision
