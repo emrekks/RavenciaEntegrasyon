@@ -39,8 +39,8 @@ type Props = {
   rows: ReturnApproveRow[]
   loading: boolean
   error: unknown
-  // Hepsiburada decides the whole claim at once and asks whether it ends in a refund or an exchange.
-  requiresFinalization?: boolean
+  // Hepsiburada decides the whole claim at once: every product is approved together as a refund.
+  wholeClaim?: boolean
   onClose: () => void
   onDone: (message: string, kind: 'success' | 'info' | 'error') => void
 }
@@ -59,20 +59,18 @@ const unitCount = (rows: ReturnApproveRow[]) => rows.reduce((sum, row) => sum + 
 
 // The approval dialog: order summary on top, then one framed row per product with a unit dropdown
 // and its own "put back in stock" switch, and a single confirmation.
-export function ReturnApproveDialog({ open, claimId, version, marketplaceName, order, rows, loading, error, requiresFinalization = false, onClose, onDone }: Props) {
+export function ReturnApproveDialog({ open, claimId, version, marketplaceName, order, rows, loading, error, wholeClaim = false, onClose, onDone }: Props) {
   const client = useQueryClient()
   const groups = useMemo(() => groupByProduct(rows), [rows])
   const [selected, setSelected] = useState<string[]>([])
   const [counts, setCounts] = useState<Record<string, number>>({})
   const [stockKeys, setStockKeys] = useState<string[]>([])
-  const [finalizedWith, setFinalizedWith] = useState<'Refund' | 'Change' | null>(null)
   const groupSignature = groups.map(group => `${group.key}:${group.rows.length}`).join('|')
 
   useEffect(() => {
     setSelected(groups.map(group => group.key))
     setCounts(Object.fromEntries(groups.map(group => [group.key, group.rows.length])))
     setStockKeys([])
-    setFinalizedWith(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupSignature, open])
 
@@ -88,7 +86,7 @@ export function ReturnApproveDialog({ open, claimId, version, marketplaceName, o
     mutationFn: () => hubApi<{ status: string }>(`/returns/${claimId}/actions`, {
       method: 'POST',
       headers: { 'Idempotency-Key': crypto.randomUUID(), 'If-Match': `"v${version}"` },
-      body: JSON.stringify({ action: 'APPROVE', reasonCode: null, explanation: null, evidenceAssetIds: [], returnLineIds: chosenRows.map(row => row.id), finalizedWith: requiresFinalization ? finalizedWith : null, stockLineIds: stockRows.map(row => row.id) })
+      body: JSON.stringify({ action: 'APPROVE', reasonCode: null, explanation: null, evidenceAssetIds: [], returnLineIds: chosenRows.map(row => row.id), finalizedWith: wholeClaim ? 'Refund' : null, stockLineIds: stockRows.map(row => row.id) })
     }),
     onSuccess: async () => {
       const stock = stockRows.length > 0 ? ` Stok ${stockQuantity.toLocaleString('tr-TR')} adet artırıldı.` : ''
@@ -100,26 +98,26 @@ export function ReturnApproveDialog({ open, claimId, version, marketplaceName, o
     onError: reason => onDone(reason instanceof Error ? reason.message : 'İade kararı başlatılamadı.', 'error')
   })
 
-  const canSubmit = chosenRows.length > 0 && (!requiresFinalization || finalizedWith !== null)
+  const canSubmit = chosenRows.length > 0
   const toggle = (key: string) => setSelected(current => current.includes(key) ? current.filter(value => value !== key) : [...current, key])
   const toggleStock = (key: string) => setStockKeys(current => current.includes(key) ? current.filter(value => value !== key) : [...current, key])
   const allSelected = groups.length > 0 && selected.length === groups.length
   const orderFacts = [
     ['Müşteri', order.customer],
-    ['Sipariş tarihi', order.orderedAt ? new Date(order.orderedAt).toLocaleString('tr-TR') : null],
+    ['Sipariş Tarihi', order.orderedAt ? new Date(order.orderedAt).toLocaleString('tr-TR') : null],
     ['Paket No', order.packageNumber],
-    ['İade kodu', order.claimCode],
-    ['İade sebebi', order.reason]
+    ['İade Kodu', order.claimCode],
+    ['İade Sebebi', order.reason]
   ].filter((fact): fact is [string, string] => Boolean(fact[1]))
 
   return <Modal
     open={open}
-    title="Onaylamak istediğiniz ürünleri seçiniz"
+    title="Onaylamak İstediğiniz Ürünleri Seçiniz"
     description={<span className="return-approve-order-id"><span className="return-approve-order-logo"><PlatformMark code={order.platformCode} name={order.platformName} /></span><strong>{order.orderNumber}</strong></span>}
     onClose={onClose}
     className="return-approve-modal"
     footer={<>
-      {stockRows.length > 0 && <span className="return-approve-stock-summary">Stoğa eklenecek: +{stockQuantity.toLocaleString('tr-TR')} adet</span>}
+      {stockRows.length > 0 && <span className="return-approve-stock-summary">Stoğa Eklenecek: +{stockQuantity.toLocaleString('tr-TR')} adet</span>}
       <button type="button" className="secondary" onClick={onClose} disabled={approve.isPending}>Vazgeç</button>
       <button type="button" disabled={approve.isPending || loading || !canSubmit} onClick={() => approve.mutate()}>{approve.isPending ? 'Gönderiliyor…' : 'Onayla'}</button>
     </>}
@@ -129,8 +127,8 @@ export function ReturnApproveDialog({ open, claimId, version, marketplaceName, o
     </section>
     {loading ? <Busy text="İade ürünleri yükleniyor…" /> : error ? <ErrorBox error={error} /> : groups.length === 0 ? <p className="return-approve-empty">Bu iadede işlem bekleyen ürün kalmadı.</p> : <div className="return-approve-table" role="table">
       <div className="return-approve-head" role="row">
-        <span role="columnheader"><label className="return-approve-check"><input type="checkbox" checked={allSelected} disabled={requiresFinalization} onChange={() => setSelected(allSelected ? [] : groups.map(group => group.key))} aria-label="Tüm ürünleri seç" /><span>Bilgiler</span></label></span>
-        <span role="columnheader">Adet ve stok</span>
+        <span role="columnheader"><label className="return-approve-check"><input type="checkbox" checked={allSelected} disabled={wholeClaim} onChange={() => setSelected(allSelected ? [] : groups.map(group => group.key))} aria-label="Tüm ürünleri seç" /><span>Bilgiler</span></label></span>
+        <span role="columnheader">Adet ve Stok</span>
       </div>
       {groups.map(group => {
         const first = group.rows[0]!
@@ -139,12 +137,12 @@ export function ReturnApproveDialog({ open, claimId, version, marketplaceName, o
         const picked = group.rows.slice(0, count)
         const mapped = picked.every(row => row.hasInventoryMapping)
         const stockOn = isSelected && stockKeys.includes(group.key) && mapped
-        const canPickCount = group.rows.length > 1 && !requiresFinalization
+        const canPickCount = group.rows.length > 1 && !wholeClaim
         const facts = [['Stok Kodu', first.sku], ['Renk', first.color], ['Beden', first.size], ['Barkod', first.barcode], ['Model Kodu', first.modelCode]]
           .filter((fact): fact is [string, string] => Boolean(fact[1]))
         return <div className="return-approve-row" role="row" key={group.key}>
           <label className="return-approve-info" role="cell">
-            <input type="checkbox" checked={isSelected} disabled={requiresFinalization} onChange={() => toggle(group.key)} aria-label={`${first.title} işleme dahil`} />
+            <input type="checkbox" checked={isSelected} disabled={wholeClaim} onChange={() => toggle(group.key)} aria-label={`${first.title} işleme dahil`} />
             <span className="reference-product-media return-approve-image">{first.imageUrl ? <img src={first.imageUrl} alt="" /> : <span className="reference-product-placeholder">↩</span>}<span className="quantity-bubble" role="img" aria-label={`${unitCount(group.rows)} adet`} title={`${unitCount(group.rows)} adet`}>{unitCount(group.rows)}</span></span>
             <span className="return-approve-text"><strong>{first.title}</strong>{facts.map(([label, value]) => <small key={label}>{label}: {value}</small>)}</span>
           </label>
@@ -154,12 +152,11 @@ export function ReturnApproveDialog({ open, claimId, version, marketplaceName, o
               : <span className="return-approve-quantity">{unitCount(picked)} Adet</span>}
             <button type="button" role="switch" aria-checked={stockOn} disabled={!isSelected || !mapped} className={`return-approve-switch${stockOn ? ' is-on' : ''}`} onClick={() => toggleStock(group.key)} title={mapped ? undefined : 'Bu ürün yerel stok kaydıyla eşleşmiyor.'}>
               <i aria-hidden="true" />
-              <span>Stoğa ekle</span>
+              <span>Stoğa Ekle</span>
             </button>
           </div>
         </div>
       })}
     </div>}
-    {requiresFinalization && rows.length > 0 && <fieldset className="return-approve-kind"><legend>Kabul türü</legend><label><input type="radio" name="return-approve-kind" checked={finalizedWith === 'Refund'} onChange={() => setFinalizedWith('Refund')} /><span>İade</span></label><label><input type="radio" name="return-approve-kind" checked={finalizedWith === 'Change'} onChange={() => setFinalizedWith('Change')} /><span>Ürün değişimi</span></label><small>{marketplaceName} talebi tüm ürünler için birlikte kabul eder; kısmi ürün seçimi desteklenmez.</small></fieldset>}
   </Modal>
 }
