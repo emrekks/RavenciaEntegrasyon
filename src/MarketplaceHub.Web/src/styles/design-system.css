@@ -12437,9 +12437,10 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
   padding: 40px 24px;
 }
 
-/* Table headers read as Title Case instead of shouting uppercase. */
-.app-shell.stitch-shell main :is(.invoice-reference-head, .order-reference-head, .return-reference-head),
-.app-shell.stitch-shell main :is(.invoice-reference-head, .order-reference-head, .return-reference-head) * {
+/* Table headers: Title Case labels that all share one color and weight. */
+.app-shell.stitch-shell main :is(.invoice-reference-head, .order-reference-head, .return-reference-head) :is(strong, .order-column-filter-label) {
+  color: var(--rv-color-ink);
+  font-weight: 800;
   text-transform: capitalize;
   letter-spacing: 0;
 }
