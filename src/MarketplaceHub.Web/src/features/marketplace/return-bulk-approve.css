@@ -19,5 +19,7 @@
 .return-bulk-bar label { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; cursor: pointer; }
 .return-bulk-bar input { width: 16px; height: 16px; min-height: 0; accent-color: var(--rv-color-primary); }
 .return-bulk-bar button { margin-left: auto; height: 34px; min-height: 34px; padding: 0 14px; }
-.return-row-select { display: inline-flex; align-items: center; margin-bottom: 8px; cursor: pointer; }
-.return-row-select input { width: 16px; height: 16px; min-height: 0; accent-color: var(--rv-color-primary); }
+.return-reference-table.has-select > .return-reference-head, .return-reference-table.has-select > .return-reference-row { grid-template-columns: 36px minmax(170px, .95fr) minmax(110px, .62fr) minmax(300px, 1.8fr) minmax(92px, .55fr) minmax(132px, .75fr) minmax(170px, .95fr) minmax(160px, .9fr) minmax(150px, .8fr); }
+.return-reference-table .return-select-cell { display: grid; min-width: 0; align-self: stretch; place-items: center; padding-inline: 8px; }
+.return-reference-table .return-select-cell input { width: 16px; height: 16px; min-height: 0; margin: 0; accent-color: var(--rv-color-primary); cursor: pointer; }
+.return-reference-table.has-select > .return-reference-row > .return-row-divider { grid-column: 4 / 6; }
