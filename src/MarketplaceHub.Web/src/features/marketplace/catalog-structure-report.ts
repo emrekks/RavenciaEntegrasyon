@@ -201,3 +201,29 @@ export function catalogStructureVisibleAttributes(category: CatalogStructureCate
   if (category.decision === 'CreateNew' || category.decision === 'CreateSeparate' || category.decision === 'ReuseExisting') return category.attributes
   return category.attributes.filter(catalogStructureAttributeChanged)
 }
+
+export function catalogStructureRunStats(report: CatalogStructureReport) {
+  const applied = report.mode === 'APPLY'
+  return [
+    { label: 'Kategori', value: report.totals.categories },
+    { label: applied ? 'Eklenen özellik' : 'Yeni özellik', value: report.totals.attributesCreated },
+    { label: applied ? 'Eklenen değer' : 'Yeni değer', value: report.totals.valuesCreated },
+    { label: applied ? 'Yazılan eşleme' : 'Yeni eşleme', value: report.totals.mappingsCreated }
+  ]
+}
+
+export function catalogStructureRunStatusLabel(run: Pick<CatalogStructureRun, 'mode' | 'status'>) {
+  const noun = run.mode === 'APPLY' ? 'Aktarım' : 'Önizleme'
+  switch (run.status) {
+    case 'COMPLETED': return run.mode === 'APPLY' ? 'Aktarım tamamlandı' : 'Önizleme hazır'
+    case 'FAILED': return `${noun} başarısız`
+    case 'RUNNING': return `${noun} çalışıyor`
+    default: return `${noun} sırada`
+  }
+}
+
+export function formatCatalogStructureRunTime(value: string | null | undefined) {
+  if (!value) return ''
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleString('tr-TR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
+}

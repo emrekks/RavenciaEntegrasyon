@@ -2,10 +2,14 @@ import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
 import { Busy, ErrorBox, Modal, StatusBadge, UiIcon } from '../../shared/components'
+import { PlatformMark } from '../../shared/platform-mark'
 import { CatalogStructurePreview } from './CatalogStructurePreview'
 import {
   canApplyCatalogStructure,
   catalogStructureNarrative,
+  catalogStructureRunStats,
+  catalogStructureRunStatusLabel,
+  formatCatalogStructureRunTime,
   isCatalogStructureRunActive,
   type CatalogStructureRun
 } from './catalog-structure-report'
@@ -71,6 +75,11 @@ export function CatalogStructureImportButton({ platformCode, connectionId, platf
     queryFn: () => hubApi<CatalogStructureRun>(`/catalog-structure-runs/${openRunId}`),
     enabled: !!openRunId
   })
+  const latestDetail = useQuery({
+    queryKey: ['catalog-structure-run', latest?.id],
+    queryFn: () => hubApi<CatalogStructureRun>(`/catalog-structure-runs/${latest!.id}`),
+    enabled: launcherOpen && latest?.status === 'COMPLETED'
+  })
   const run = detail.data
   const report = run?.report ?? null
   const canApply = canApplyCatalogStructure(run, report)
@@ -85,28 +94,52 @@ export function CatalogStructureImportButton({ platformCode, connectionId, platf
     <Modal
       open={launcherOpen}
       title="Platformdan Yapıyı Çek"
-      description="Pazar yerindeki ürünlerin kategori, seçenek ve özellik yapısını panele aktarın. Pazar yerine hiçbir şey yazılmaz; önce önizleme gösterilir."
+      description="Pazar yerindeki ürünlerden kategori, seçenek ve özellik yapısını panele aktarın."
       onClose={() => setLauncherOpen(false)}
       className="structure-launcher-modal"
-      footer={<button type="button" className="secondary" onClick={() => setLauncherOpen(false)}>Kapat</button>}
+      footer={<>
+        <button type="button" className="secondary structure-launcher-close" onClick={() => setLauncherOpen(false)}>Kapat</button>
+        {latest?.status === 'COMPLETED' && <button type="button" className="secondary" onClick={() => openPreview(latest.id)}>{latest.mode === 'PREVIEW' ? 'Önizlemeyi aç' : 'Raporu aç'}</button>}
+        <button type="button" disabled={!connectionId || active || start.isPending} onClick={() => start.mutate('PREVIEW')}>{active ? 'Çalışıyor…' : latest ? 'Yeni önizleme' : 'Önizleme başlat'}</button>
+      </>}
     >
-      <div className="structure-platform-tabs" role="tablist" aria-label="Pazar yeri">
-        {platforms.map(item => <button key={item.code} type="button" role="tab" aria-selected={item.code === platformCode} className={item.code === platformCode ? 'active' : undefined} disabled={!item.available} title={item.available ? `${item.label} ürünlerini tara` : `${item.label} için aktif bağlantı yok`} onClick={() => onSelectPlatform(item.code)}>{item.label}</button>)}
-      </div>
-      {!connectionId
-        ? <p className="structure-import-hint">{platformLabel} bağlantısı hazırlanıyor…</p>
-        : <div className="structure-launcher-body">
-          <div className="structure-launcher-actions">
-            <button type="button" disabled={active || start.isPending} onClick={() => start.mutate('PREVIEW')}>{active ? 'Çalışıyor…' : 'Önizleme başlat'}</button>
-            {runs.isLoading && <Busy />}
+      <div className="structure-launcher">
+        <section aria-label="Pazar yeri">
+          <h3>Pazar yeri</h3>
+          <div className="structure-platform-tabs" role="tablist" aria-label="Pazar yeri">
+            {platforms.map(item => <button key={item.code} type="button" role="tab" aria-selected={item.code === platformCode} className={item.code === platformCode ? 'active' : undefined} disabled={!item.available} title={item.available ? `${item.label} ürünlerini tara` : `${item.label} için aktif bağlantı yok`} onClick={() => onSelectPlatform(item.code)}>
+              <span className="structure-platform-logo"><PlatformMark code={item.code} name={item.label} /></span>
+              <small>{item.available ? 'Aktif bağlantı' : 'Bağlantı yok'}</small>
+            </button>)}
           </div>
-          {latest && <div className="structure-import-status" role="status">
-            <StatusBadge tone={latest.status === 'FAILED' ? 'danger' : latest.status === 'COMPLETED' ? 'success' : 'info'}>{latest.mode === 'PREVIEW' ? 'Önizleme' : 'Uygulama'} · {latest.status === 'COMPLETED' ? 'tamamlandı' : latest.status === 'FAILED' ? 'başarısız' : latest.status === 'RUNNING' ? 'çalışıyor' : 'sırada'}</StatusBadge>
-            {active && <span>{progress.data?.job.progressLabel ?? 'İşlem sırada…'}{progress.data?.job.progressPercent != null ? ` · %${progress.data.job.progressPercent}` : ''}</span>}
-            {latest.status === 'FAILED' && <span className="structure-import-error">{latest.errorSummary ?? 'İşlem tamamlanamadı.'}</span>}
-            {latest.status === 'COMPLETED' && <button type="button" className="secondary" onClick={() => openPreview(latest.id)}>{latest.mode === 'PREVIEW' ? 'Önizlemeyi aç' : 'Raporu aç'}</button>}
-          </div>}
-        </div>}
+        </section>
+
+        <ol className="structure-steps" aria-label="Nasıl çalışır">
+          <li><b>1</b><div><strong>Önizleme</strong><span>Ürünleriniz okunur. Panele ve pazar yerine hiçbir şey yazılmaz.</span></div></li>
+          <li><b>2</b><div><strong>İnceleme</strong><span>Hangi kategori, özellik ve değerin ekleneceğini görür, değişiklikleri filtrelersiniz.</span></div></li>
+          <li><b>3</b><div><strong>Uygulama</strong><span>Onayınızla tek işlemde panele yazılır; hata olursa hiçbir şey değişmez.</span></div></li>
+        </ol>
+
+        <section aria-label="Son işlem">
+          <h3>Son işlem · {platformLabel}</h3>
+          {!connectionId
+            ? <p className="structure-import-hint">{platformLabel} bağlantısı hazırlanıyor…</p>
+            : runs.isLoading ? <Busy />
+            : !latest ? <p className="structure-run-empty">Henüz önizleme çalıştırılmadı.</p>
+            : <div className="structure-run-card" role="status">
+              <div className="structure-run-head">
+                <StatusBadge tone={latest.status === 'FAILED' ? 'danger' : latest.status === 'COMPLETED' ? 'success' : 'info'}>{catalogStructureRunStatusLabel(latest)}</StatusBadge>
+                <small>{formatCatalogStructureRunTime(latest.completedAt ?? latest.createdAt)}</small>
+              </div>
+              {active && <div className="structure-run-progress">
+                <div className="structure-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress.data?.job.progressPercent ?? undefined}><span style={{ width: `${progress.data?.job.progressPercent ?? 8}%` }} /></div>
+                <small>{progress.data?.job.progressLabel ?? 'İşlem sırada…'}{progress.data?.job.progressPercent != null ? ` · %${progress.data.job.progressPercent}` : ''}</small>
+              </div>}
+              {latest.status === 'FAILED' && <p className="structure-import-error">{latest.errorSummary ?? 'İşlem tamamlanamadı.'}</p>}
+              {latest.status === 'COMPLETED' && latestDetail.data?.report && <dl className="structure-run-stats">{catalogStructureRunStats(latestDetail.data.report).map(item => <div key={item.label}><dt>{item.label}</dt><dd>{item.value.toLocaleString('tr-TR')}</dd></div>)}</dl>}
+            </div>}
+        </section>
+      </div>
     </Modal>
 
     <Modal

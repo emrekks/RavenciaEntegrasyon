@@ -88,15 +88,46 @@
 
 .structure-row-panel { font-weight: 600; }
 
-/* Header launcher button and its small dialog. */
-.app-shell.stitch-shell main .structure-header-button { display: inline-flex; align-items: center; gap: 8px; height: 34px; min-height: 34px; padding-block: 0; margin-left: auto; margin-right: var(--rv-space-3); white-space: nowrap; flex: none; box-sizing: border-box; }
+/* Page header: the launcher button sits next to the backup actions, all three at 34px. */
+.app-shell.stitch-shell main section.mapping-page .mapping-reference-heading { align-items: flex-end; }
+.app-shell.stitch-shell main section.mapping-page .mapping-reference-heading .structure-header-button { display: inline-flex; align-items: center; gap: 8px; height: 34px; min-height: 34px; padding: 0 14px; margin: 0 0 0 auto; white-space: nowrap; flex: none; box-sizing: border-box; font-weight: 500; border-color: var(--rv-color-border-strong, var(--rv-color-border)); border-radius: 8px; }
+.app-shell.stitch-shell main section.mapping-page .mapping-reference-heading-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.app-shell.stitch-shell main section.mapping-page .mapping-reference-heading-actions > span { display: block; height: auto; padding: 0; color: var(--rv-color-muted); background: none; border: 0; border-radius: 0; font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.app-shell.stitch-shell main section.mapping-page .mapping-transfer-actions { display: flex; gap: 8px; }
+.app-shell.stitch-shell main section.mapping-page .mapping-transfer-actions > button, .app-shell.stitch-shell main section.mapping-page .mapping-transfer-actions > label { display: inline-flex; align-items: center; justify-content: center; height: 34px; min-height: 34px; padding: 0 14px; box-sizing: border-box; font-weight: 500; border-color: var(--rv-color-border-strong, var(--rv-color-border)); border-radius: 8px; }
 .structure-header-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--rv-color-primary); animation: structure-pulse 1.2s ease-in-out infinite; }
 @keyframes structure-pulse { 50% { opacity: .35; } }
-.rv-overlay .structure-launcher-modal { width: min(560px, 100%); }
-.structure-platform-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: var(--rv-space-4); }
-.app-shell.stitch-shell main .structure-platform-tabs button { height: 34px; min-height: 34px; padding: 0 16px; white-space: nowrap; color: var(--rv-color-ink); background: transparent; border: 1px solid var(--rv-color-border); border-radius: 8px; }
+
+/* Launcher dialog. */
+.rv-overlay .structure-launcher-modal { width: min(640px, 100%); }
+.structure-launcher { display: grid; gap: var(--rv-space-5); }
+.structure-launcher h3 { margin: 0 0 var(--rv-space-2); color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); font-weight: 500; }
+.structure-platform-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--rv-space-3); }
+.app-shell.stitch-shell main .structure-platform-tabs button { display: grid; justify-items: start; gap: 4px; height: auto; min-height: 72px; padding: 14px 16px; color: var(--rv-color-ink); text-align: left; background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 10px; }
 .app-shell.stitch-shell main .structure-platform-tabs button.active { background: var(--rv-color-primary-soft); border-color: var(--rv-color-primary); }
 .app-shell.stitch-shell main .structure-platform-tabs button:disabled { opacity: .5; cursor: not-allowed; }
-.structure-launcher-body { display: grid; gap: var(--rv-space-4); }
-.structure-launcher-actions { display: flex; align-items: center; gap: var(--rv-space-3); }
-.app-shell.stitch-shell main .structure-launcher-actions button, .app-shell.stitch-shell main .structure-launcher-modal footer button, .app-shell.stitch-shell main .structure-launcher-modal .structure-import-status > button { height: 34px; min-height: 34px; padding-block: 0; white-space: nowrap; box-sizing: border-box; }
+.structure-platform-logo { display: inline-flex; align-items: center; height: 26px; }
+.structure-platform-logo img { height: 22px; width: auto; max-width: 140px; object-fit: contain; }
+.structure-platform-tabs small { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); }
+
+.structure-steps { display: grid; gap: var(--rv-space-3); margin: 0; padding: 0; list-style: none; }
+.structure-steps li { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: var(--rv-space-3); align-items: start; }
+.structure-steps b { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border-radius: 50%; font-size: var(--rv-font-size-sm); font-weight: 600; }
+.structure-steps div { display: grid; gap: 2px; }
+.structure-steps strong { font-weight: 500; }
+.structure-steps span { color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); }
+
+.structure-run-card { display: grid; gap: var(--rv-space-3); padding: var(--rv-space-4); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 10px; }
+.structure-run-empty { margin: 0; padding: var(--rv-space-4); color: var(--rv-color-muted); border: 1px dashed var(--rv-color-border); border-radius: 10px; }
+.structure-run-head { display: flex; align-items: center; justify-content: space-between; gap: var(--rv-space-3); }
+.structure-run-head small, .structure-run-progress small { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); }
+.structure-run-progress { display: grid; gap: 6px; }
+.structure-progress { height: 6px; overflow: hidden; background: var(--rv-color-border); border-radius: 999px; }
+.structure-progress span { display: block; height: 100%; background: var(--rv-color-primary); border-radius: inherit; transition: width .4s ease; }
+.structure-run-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--rv-space-3); margin: 0; }
+.structure-run-stats dt { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); }
+.structure-run-stats dd { margin: 0; font-size: 18px; font-weight: 600; }
+
+.app-shell.stitch-shell main .structure-launcher-modal footer button { height: 34px; min-height: 34px; padding-block: 0; white-space: nowrap; box-sizing: border-box; }
+.structure-launcher-close { margin-right: auto; }
+@media (max-width: 560px) { .structure-run-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .structure-platform-tabs { grid-template-columns: 1fr; } }

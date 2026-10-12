@@ -3,6 +3,9 @@ import {
   catalogStructureDecisionExplanation,
   catalogStructureFilterCounts,
   catalogStructureNarrative,
+  catalogStructureRunStats,
+  catalogStructureRunStatusLabel,
+  formatCatalogStructureRunTime,
   matchesCatalogStructureFilter,
   catalogStructureVisibleAttributes,
   searchCatalogStructureCategories,
@@ -78,5 +81,24 @@ describe('visible attributes per filter', () => {
   it('keeps every attribute of a category that is itself new', () => {
     expect(catalogStructureVisibleAttributes(category({ decision: 'CreateSeparate', attributes: [changed, unchanged] }), 'CHANGES')).toHaveLength(2)
     expect(catalogStructureVisibleAttributes(category({ decision: 'CreateNew', attributes: [unchanged] }), 'CHANGES')).toHaveLength(1)
+  })
+})
+
+describe('launcher run summary', () => {
+  it('summarises a finished run with preview or applied wording', () => {
+    const preview = catalogStructureRunStats(report({ categories: 24, attributesCreated: 9, valuesCreated: 123, mappingsCreated: 821 }))
+    expect(preview.map(item => item.label)).toEqual(['Kategori', 'Yeni özellik', 'Yeni değer', 'Yeni eşleme'])
+    expect(preview.map(item => item.value)).toEqual([24, 9, 123, 821])
+    expect(catalogStructureRunStats({ ...report({}), mode: 'APPLY' })[2].label).toBe('Eklenen değer')
+  })
+
+  it('words run statuses and formats times', () => {
+    expect(catalogStructureRunStatusLabel({ mode: 'PREVIEW', status: 'COMPLETED' })).toBe('Önizleme hazır')
+    expect(catalogStructureRunStatusLabel({ mode: 'APPLY', status: 'COMPLETED' })).toBe('Aktarım tamamlandı')
+    expect(catalogStructureRunStatusLabel({ mode: 'PREVIEW', status: 'RUNNING' })).toBe('Önizleme çalışıyor')
+    expect(catalogStructureRunStatusLabel({ mode: 'APPLY', status: 'FAILED' })).toBe('Aktarım başarısız')
+    expect(formatCatalogStructureRunTime(null)).toBe('')
+    expect(formatCatalogStructureRunTime('not a date')).toBe('')
+    expect(formatCatalogStructureRunTime('2026-10-12T17:34:00Z')).toContain('Ekim')
   })
 })
