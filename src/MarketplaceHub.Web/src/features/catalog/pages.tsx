@@ -1131,9 +1131,9 @@ export function ProductsPage() {
   }
   async function importProductsFromPlatforms() {
     if (productImporting) return
-    if (!productImportConnectionIds.length) { showProductToast('Ürün çekmek için en az bir aktif marketplace bağlantısı seçin.', 'error'); return }
-    if (productImportMethod === 'SINGLE' && productImportConnectionIds.length !== 1) { showProductToast('Tekil çekimde yalnızca bir bağlantı seçin.', 'error'); return }
-    if (productImportMethod === 'SINGLE' && !productImportLookup.trim()) { showProductToast(`Tekil çekim için ${singleLookupLabel} girin.`, 'error'); return }
+    if (!productImportConnectionIds.length) { showProductToast('Aktarım için en az bir aktif pazar yeri bağlantısı seçin.', 'error'); return }
+    if (productImportMethod === 'SINGLE' && productImportConnectionIds.length !== 1) { showProductToast('Tek ürün aktarımında yalnızca bir bağlantı seçilebilir.', 'error'); return }
+    if (productImportMethod === 'SINGLE' && !productImportLookup.trim()) { showProductToast(`Tek ürün aktarımı için ${singleLookupLabel} girin.`, 'error'); return }
     setProductImporting(true)
     try {
       const full = productImportMode === 'FULL'
@@ -1153,12 +1153,12 @@ export function ProductsPage() {
         return hubApi<AcceptedJob>(`/connections/${connectionId}/product-sync-jobs?${query.toString()}`, { method: 'POST', headers: { 'Idempotency-Key': key() }, body: '{}' })
       }))
       setTrackedProductImportJobIds(queuedProductSyncJobs.map(job => job.jobId))
-      const modeLabel = productImportMethod === 'SINGLE' ? 'tekil ürün' : full ? 'tam katalog' : productImportMode === 'NEW_ONLY' ? 'ekli olmayan ürün' : productImportMode === 'MAPPING_ONLY' ? 'ürün eşleme' : 'ekli ürün güncelleme'
+      const modeLabel = productImportMethod === 'SINGLE' ? 'tek ürün' : full ? 'tam katalog' : productImportMode === 'NEW_ONLY' ? 'yeni ürün' : productImportMode === 'MAPPING_ONLY' ? 'ürün eşleme' : 'mevcut ürün güncelleme'
       const contentLabel = productImportMethod === 'BULK' && (full || existingOnly) ? selectedImportHasHepsiburada
         ? selectedImportOnlyHepsiburada ? ' · Hepsiburada ürün içeriği korunacak' : productImportUpdateExistingProducts ? ' · Hepsiburada içeriği korunacak, desteklenen platform içerikleri güncellenecek' : ' · mevcut ürün içerikleri korunacak'
         : productImportUpdateExistingProducts ? ' · mevcut ürün bilgileri güncellenecek' : ' · mevcut ürün bilgileri korunacak' : ''
        const priceStockLabel = productImportMethod === 'BULK' && existingOnly && !selectedImportOnlyHepsiburada ? productImportUpdateExistingPricesAndStock ? ' · mevcut fiyat ve stoklar güncellenecek' : ' · mevcut fiyat ve stoklar korunacak' : ''
-       showProductToast(`${productImportConnectionIds.length} bağlantı için ${modeLabel} çekimi kuyruğa alındı${productImportIncludeArchived ? selectedImportHasShopify ? ' · arşiv ve taslak ürünler dahil' : ' · arşiv ürünleri dahil' : ''}${includePendingApproval ? ' · onay bekleyen ürünler dahil' : ''}${contentLabel}${priceStockLabel}.`, 'info')
+       showProductToast(`${productImportConnectionIds.length} bağlantı için ${modeLabel} aktarımı kuyruğa alındı${productImportIncludeArchived ? selectedImportHasShopify ? ' · arşiv ve taslak ürünler dahil' : ' · arşiv ürünleri dahil' : ''}${includePendingApproval ? ' · onay bekleyen ürünler dahil' : ''}${contentLabel}${priceStockLabel}.`, 'info')
       void productSyncJobsQuery.refetch()
       void client.invalidateQueries({ queryKey: ['jobs'] })
     } catch (err) {
@@ -1321,7 +1321,7 @@ export function ProductsPage() {
     return <button type="button" className={`product-sort-header${active ? ' is-active' : ''}`} onClick={() => toggleCatalogSort(field)} aria-label={`${label} sıralaması${active ? `, ${directionLabel}` : ''}`} aria-pressed={active}>{label}{active && <svg className={`product-sort-arrow ${direction}`} viewBox="0 0 16 16" aria-hidden="true"><path d={direction === 'desc' ? 'M8 2v12m-5-5 5 5 5-5' : 'M8 14V2m-5 5 5-5 5 5'} /></svg>}</button>
   }
 
-  return <Page className="products-page" title="Ürünler" eyebrow="Katalog" action={<div className="products-page-actions page-heading-actions"><button type="button" className="button-link product-import-trigger" onClick={openProductImport}><UiIcon name="download" /> Platformdan Ürün Çek</button><Link className="button-link product-create-trigger" to="/products/new"><UiIcon name="plus" /> Yeni Ürün Ekle</Link></div>}>
+  return <Page className="products-page" title="Ürünler" eyebrow="Katalog" action={<div className="products-page-actions page-heading-actions"><button type="button" className="button-link product-import-trigger" onClick={openProductImport}><UiIcon name="download" /> Platformdan Ürün Aktar</button><Link className="button-link product-create-trigger" to="/products/new"><UiIcon name="plus" /> Yeni Ürün Ekle</Link></div>}>
     <div className="product-metrics metrics"><article className="product-metric-total"><span className="product-metric-icon" aria-hidden="true"><UiIcon name="bag" /></span><small>Toplam Ürün</small><strong>{summaryQuery.isLoading ? '—' : summaryQuery.data?.totalCount ?? 0}</strong></article><article className="product-metric-active"><span className="product-metric-icon" aria-hidden="true"><UiIcon name="circleCheck" /></span><small>Aktif Ürün</small><strong>{summaryQuery.isLoading ? '—' : summaryQuery.data?.activeCount ?? 0}</strong></article><article className="product-metric-empty"><span className="product-metric-icon" aria-hidden="true"><UiIcon name="alert" /></span><small>Stoksuz Ürün</small><strong>{summaryQuery.isLoading ? '—' : summaryQuery.data?.outOfStockCount ?? 0}</strong></article><button type="button" className="product-metric-button product-metric-low" onClick={() => setLowStockOpen(true)} aria-haspopup="dialog"><span className="product-metric-icon" aria-hidden="true"><UiIcon name="warehouse" /></span><small>Düşük Stoklu</small><strong>{summaryQuery.isLoading ? '—' : summaryQuery.data?.lowStockCount ?? 0}</strong></button></div>
     <div className="product-toolbar">
       <div className="bulk-menu-shell" ref={bulkMenuRef}>
@@ -1401,77 +1401,77 @@ export function ProductsPage() {
         <section className="workspace-modal product-import-modal" role="dialog" aria-modal="true" aria-labelledby="product-import-title" onMouseDown={event => event.stopPropagation()}>
           <header>
             <div>
-              <p className="eyebrow">PLATFORM KATALOĞU</p>
-              <h2 id="product-import-title">Ürünleri platformdan çek</h2>
-              <p>Seçtiğiniz aktif marketplace bağlantılarındaki ürünleri yerel kataloğa salt-okunur olarak alın.</p>
+              <p className="eyebrow">KATALOG AKTARIMI</p>
+              <h2 id="product-import-title">Platformdan ürün aktarımı</h2>
+              <p>Bağlı pazar yerlerindeki ürünleri panel kataloğunuza aktarın. İşlem salt okunurdur; pazar yerlerine hiçbir veri gönderilmez.</p>
             </div>
             <button type="button" className="modal-close" onClick={() => setProductImportOpen(false)} disabled={productImporting} aria-label="Pencereyi kapat"><UiIcon name="close" /></button>
           </header>
           <div className="product-import-body">
             <fieldset>
-              <legend>Platform bağlantıları</legend>
+              <legend>Pazar yeri bağlantıları</legend>
               {connections.length ? <div className="product-import-connections">{connections.map(connection => {
                 const selected = productImportConnectionIds.includes(connection.id)
                 return <label key={connection.id} className={`product-import-connection${selected ? ' selected' : ''}`} title={`${connection.platformCode} · ${connection.externalStoreId}`}>
                   <input type="checkbox" checked={selected} onChange={() => setProductImportConnectionIds(ids => selected ? ids.filter(id => id !== connection.id) : productImportMethod === 'SINGLE' ? [connection.id] : [...ids, connection.id])} />
                   <span><strong>{connection.displayName}</strong><small>Mağaza {shortStoreId(connection.externalStoreId)}</small></span><em className="product-import-chip">{statusLabel(connection.status)}</em>
                 </label>
-              })}</div> : <p className="product-import-empty">Ürün çekmeye uygun aktif veya doğrulanmış marketplace bağlantısı bulunamadı.</p>}
+              })}</div> : <p className="product-import-empty">Aktarıma uygun, aktif veya doğrulanmış bir pazar yeri bağlantısı bulunamadı.</p>}
             </fieldset>
             <div className="product-import-tabs" role="tablist" aria-label="Ürün aktarım türü">
-              <button type="button" role="tab" aria-selected={productImportMethod === 'BULK'} className={'product-import-tab' + (productImportMethod === 'BULK' ? ' selected' : '')} title="Seçtiğiniz bağlantıların kataloğunu toplu olarak tarar." onClick={() => setProductImportMethod('BULK')}>Toplu ürün aktarımı</button>
+              <button type="button" role="tab" aria-selected={productImportMethod === 'BULK'} className={'product-import-tab' + (productImportMethod === 'BULK' ? ' selected' : '')} title="Seçtiğiniz bağlantıların kataloğunu toplu olarak tarar." onClick={() => setProductImportMethod('BULK')}>Toplu aktarım</button>
               <button type="button" role="tab" aria-selected={productImportMethod === 'SINGLE'} className={'product-import-tab' + (productImportMethod === 'SINGLE' ? ' selected' : '')} title={`${singleLookupLabel} ile yalnızca tek ürün aktarır.`} onClick={() => { setProductImportMethod('SINGLE'); setProductImportConnectionIds(ids => ids.slice(0, 1)) }}>Tek ürün aktarımı</button>
             </div>
             {productImportMethod === 'SINGLE' ? <fieldset>
-              <legend>Tek ürün aktarımı</legend>
+              <legend>Aktarılacak ürün</legend>
               <label className="product-import-mode product-import-lookup-field selected" title={`${singleLookupLabel} ile yalnızca istediğiniz ürünü aktarın.`}>
                 <span><strong>{singleLookupLabel}</strong><input className="product-import-lookup-input" value={productImportLookup} onChange={event => setProductImportLookup(event.target.value)} placeholder={selectedImportHasShopify ? 'Shopify: ürün linki veya barkod / stok kodu' : selectedImportHasHepsiburada ? 'Hepsiburada: ürün ID’si' : 'Trendyol: ürün linki veya model kodu'} /></span>
               </label>
             </fieldset> : <fieldset>
-              <legend>Ürün çekim seçenekleri</legend>
+              <legend>Aktarım kapsamı</legend>
               <div className="product-import-scan-grid">
                 <label className={'product-import-mode' + (productImportMode === 'FULL' ? ' selected' : '')} title={selectedImportHasHepsiburada ? 'Tüm ürünleri baştan okur; yerel ürün içeriğini korur.' : 'Tüm ürünleri baştan okur ve mevcut eşleşmeleri günceller.'}>
                   <input type="radio" name="product-import-mode" value="FULL" checked={productImportMode === 'FULL'} onChange={() => setProductImportMode('FULL')} />
-                  <span><strong>Tam katalog taraması</strong><small>{selectedImportHasHepsiburada ? 'Hepsiburada kayıtlarını okur; yerel ürün içeriğini değiştirmez.' : 'Tüm ürünleri okur ve yerel kayıtları günceller.'}</small></span>
+                  <span><strong>Tam katalog taraması</strong><small>{selectedImportHasHepsiburada ? 'Tüm Hepsiburada ürünlerini okur; panelde var olan ürün içeriği değişmez.' : 'Pazar yerindeki tüm ürünleri okur ve panel kayıtlarını günceller.'}</small></span>
                 </label>
                 <label className={'product-import-mode' + (productImportMode === 'NEW_ONLY' ? ' selected' : '')} title={`Panelde bulunmayan ${selectedImportIdentityLabel} değerlerini ve mevcut ürünlere eklenen yeni varyantları aktarır.`}>
                   <input type="radio" name="product-import-mode" value="NEW_ONLY" checked={productImportMode === 'NEW_ONLY'} onChange={() => setProductImportMode('NEW_ONLY')} />
-                  <span><strong>Yeni ürünleri aktar</strong><small>Panelde bulunmayan ürünleri ekler.</small></span>
+                  <span><strong>Yeni ürünleri aktar</strong><small>Yalnızca panelde henüz bulunmayan ürünleri ekler.</small></span>
                 </label>
                 {!selectedImportOnlyHepsiburada && <label className={'product-import-mode' + (productImportMode === 'EXISTING_ONLY' ? ' selected' : '')} title={`Panelde kayıtlı ${selectedImportIdentityLabel} değerlerini günceller; yeni değerleri eklemez.`}>
                   <input type="radio" name="product-import-mode" value="EXISTING_ONLY" checked={productImportMode === 'EXISTING_ONLY'} onChange={() => setProductImportMode('EXISTING_ONLY')} />
-                  <span><strong>Mevcut ürünleri güncelle</strong><small>Kayıtlı ürünlerin bilgilerini yeniler.</small></span>
+                  <span><strong>Mevcut ürünleri güncelle</strong><small>Panelde kayıtlı ürünlerin bilgilerini pazar yerindeki haline göre yeniler.</small></span>
                 </label>}
                 <label className={'product-import-mode' + (productImportMode === 'MAPPING_ONLY' ? ' selected' : '')} title="Yalnızca mevcut panel ürünleriyle platform ürünleri arasında bağlantı kurar; ürün içeriğini, fiyatı ve stoğu değiştirmez.">
                   <input type="radio" name="product-import-mode" value="MAPPING_ONLY" checked={productImportMode === 'MAPPING_ONLY'} onChange={() => setProductImportMode('MAPPING_ONLY')} />
-                  <span><strong>Ürün eşleme</strong><small>Sadece mevcut ürünleri platform karşılıklarına bağlar.</small></span>
+                  <span><strong>Ürün eşleme</strong><small>Panel ürünlerini pazar yerindeki karşılıklarıyla eşler; içerik, fiyat ve stok değişmez.</small></span>
                 </label>
               </div>
             </fieldset>}
             {productImportOptions.showOptionsSection && <fieldset>
-              <legend>Seçenekler</legend>
+              <legend>Gelişmiş seçenekler</legend>
               <div className="product-import-options-grid">
               {productImportOptions.showUpdateExisting && <label className={'product-import-mode product-import-update-existing-option' + (productImportUpdateExistingProducts ? ' selected' : '')} title="Açıkken platformdaki ürün bilgileri mevcut ürünlerin üzerine yazılır; kapalıyken yerel içerik korunur. Hepsiburada bağlantılarında içerik her zaman korunur.">
                 <input type="checkbox" checked={productImportUpdateExistingProducts} onChange={event => setProductImportUpdateExistingProducts(event.target.checked)} />
-                <span><strong>Mevcut ürün bilgilerini güncelle</strong><small>{productImportUpdateExistingProducts ? 'Açık: ad, açıklama, kategori, marka, varyant ve görseller güncellenir.' : 'Kapalı: mevcut ürün içeriği ve görseller korunur.'}</small></span>
+                <span><strong>Mevcut ürün bilgilerini güncelle</strong><small>{productImportUpdateExistingProducts ? 'Açık: ad, açıklama, kategori, marka, varyant ve görseller pazar yerine göre güncellenir.' : 'Kapalı: panelde var olan ürün içeriği ve görseller korunur.'}</small></span>
               </label>}
               {productImportOptions.showUpdateExisting && <label className={'product-import-mode product-import-update-existing-option' + (productImportUpdateExistingPricesAndStock ? ' selected' : '')} title="Açıkken seçili platformdaki mevcut ürünlerin fiyat ve stok değerleri panele aktarılır. Kapalıyken yerel fiyat ve stok korunur.">
                 <input type="checkbox" checked={productImportUpdateExistingPricesAndStock} onChange={event => setProductImportUpdateExistingPricesAndStock(event.target.checked)} />
-                <span><strong>Fiyat ve stokları güncelle</strong><small>{productImportUpdateExistingPricesAndStock ? 'Açık: seçili platformdaki fiyat ve stok değerleri panele aktarılır.' : 'Kapalı: mevcut ürünlerin yerel fiyat ve stok değerleri korunur.'}</small></span>
+                <span><strong>Fiyat ve stokları güncelle</strong><small>{productImportUpdateExistingPricesAndStock ? 'Açık: fiyat ve stok değerleri pazar yerinden panele alınır.' : 'Kapalı: panelde var olan fiyat ve stok değerleri korunur.'}</small></span>
               </label>}
-              {productImportOptions.showHepsiburadaReadOnlyNote && <div className="product-import-options-note"><span><strong>Hepsiburada içerik koruması</strong><small>Ürün bilgileri ve durumları okunur; mevcut Ravencia ürün içeriği değiştirilmez.</small></span></div>}
+              {productImportOptions.showHepsiburadaReadOnlyNote && <div className="product-import-options-note"><span><strong>Hepsiburada içerik koruması</strong><small>Hepsiburada ürünleri yalnızca okunur; panelde var olan ürün içeriğinin üzerine yazılmaz.</small></span></div>}
               {productImportOptions.showArchived && <label className={'product-import-mode' + (productImportIncludeArchived ? ' selected' : '')} title={selectedImportHasShopify ? 'Shopify aktif, arşivlenmiş ve taslak ürünleri birlikte kapsar.' : 'Aktif ve arşivlenmiş varyantların birlikte aktarılıp aktarılmayacağını belirler.'}>
                 <input type="checkbox" checked={productImportIncludeArchived} onChange={event => setProductImportIncludeArchived(event.target.checked)} />
-                <span><strong>{selectedImportHasShopify ? 'Arşiv ve taslak ürünlerini dahil et' : 'Arşiv ürünlerini dahil et'}</strong><small>{productImportIncludeArchived ? selectedImportHasShopify ? 'Açık: aktif, arşivlenmiş ve taslak ürünler birlikte getirilir.' : 'Açık: aktif ve arşivlenmiş varyantlar birlikte getirilir.' : selectedImportHasShopify ? 'Kapalı: yalnızca yayınlanmış aktif ürünler alınır.' : 'Kapalı: yalnızca aktif varyantlar panele aktarılır.'}</small></span>
+                <span><strong>{selectedImportHasShopify ? 'Arşiv ve taslak ürünlerini dahil et' : 'Arşiv ürünlerini dahil et'}</strong><small>{productImportIncludeArchived ? selectedImportHasShopify ? 'Açık: aktif, arşivlenmiş ve taslak ürünler birlikte aktarılır.' : 'Açık: aktif ve arşivlenmiş varyantlar birlikte aktarılır.' : selectedImportHasShopify ? 'Kapalı: yalnızca yayında olan aktif ürünler aktarılır.' : 'Kapalı: yalnızca aktif varyantlar aktarılır.'}</small></span>
               </label>}
               {productImportOptions.showPendingApproval && <label className={'product-import-mode' + (productImportIncludePendingApproval ? ' selected' : '')} title="Trendyol onay sürecinde bekleyen ürünleri de aktarım kapsamına alır.">
                 <input type="checkbox" checked={productImportIncludePendingApproval} onChange={event => setProductImportIncludePendingApproval(event.target.checked)} />
-                <span><strong>Onay bekleyen ürünleri dahil et</strong><small>{productImportIncludePendingApproval ? 'Açık: Trendyol onay sürecinde bekleyen ürünler de eklenir veya eşlenir.' : 'Kapalı: yalnızca onaylı Trendyol ürünleri işlenir.'}</small></span>
+                <span><strong>Onay bekleyen ürünleri dahil et</strong><small>{productImportIncludePendingApproval ? 'Açık: onay sürecindeki Trendyol ürünleri de aktarılır veya eşlenir.' : 'Kapalı: yalnızca onaylı Trendyol ürünleri işlenir.'}</small></span>
               </label>}
               </div>
             </fieldset>}
             {activeProductSyncJobs.length > 0 && <section className="product-import-progress" aria-live="polite">
-              <div className="product-import-progress-heading"><strong>Devam eden aktarmalar</strong><small>{activeProductSyncJobs.length} işlem</small></div>
+              <div className="product-import-progress-heading"><strong>Devam eden aktarımlar</strong><small>{activeProductSyncJobs.length} işlem</small></div>
               {activeProductSyncJobs.map(job => {
                 const received = Math.max(0, job.progressReceived)
                 const total = job.progressTotal != null && job.progressTotal >= received ? job.progressTotal : null
@@ -1490,7 +1490,7 @@ export function ProductsPage() {
           <footer>
             <span className="product-import-summary">{productImportConnectionIds.length ? `${productImportConnectionIds.length} bağlantı seçili · ${productImportMethod === 'SINGLE' ? 'Tek ürün aktarımı' : productImportModeLabels[productImportMode] ?? ''}` : 'Bağlantı seçilmedi'}</span>
             <button type="button" className="secondary" onClick={() => setProductImportOpen(false)} disabled={productImporting}>Vazgeç</button>
-            <button type="button" onClick={() => void importProductsFromPlatforms()} disabled={productImporting || !productImportConnectionIds.length}>{productImporting ? 'Kuyruğa alınıyor…' : 'Ürünleri panele çek'}</button>
+            <button type="button" onClick={() => void importProductsFromPlatforms()} disabled={productImporting || !productImportConnectionIds.length}>{productImporting ? 'Kuyruğa alınıyor…' : 'Aktarımı başlat'}</button>
           </footer>
         </section>
       </div>
