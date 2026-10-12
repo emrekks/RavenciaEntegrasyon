@@ -34,7 +34,7 @@ describe('catalog structure preview', () => {
     expect(all.filter(item => matchesCatalogStructureFilter(item, 'CHANGES')).map(item => item.externalId)).toEqual(['a', 'b', 'e'])
   })
 
-  it('counts an older report's category-level new values as a change', () => {
+  it('counts category-level new values of older reports as a change', () => {
     const older = category({ externalId: 'o', decision: 'AlreadyMapped', newValues: 4, attributes: [] })
     expect(matchesCatalogStructureFilter(older, 'CHANGES')).toBe(true)
     expect(matchesCatalogStructureFilter(older, 'SYNCED')).toBe(false)

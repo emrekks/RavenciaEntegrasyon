@@ -92,6 +92,7 @@ function CategoryRow({ category, platformLabel }: { category: CatalogStructureCa
       <span className="structure-row-meta"><span>{number(category.productCount)} ürün</span><span>{category.attributes.length} özellik</span>{newValues > 0 && <span className="is-change">+{number(newValues)} değer</span>}</span>
     </summary>
     <p className="structure-row-explanation">{catalogStructureDecisionExplanation(category, platformLabel)}</p>
+    {category.newValues > 0 && category.attributes.every(attribute => catalogStructureNewValueCount(attribute) === 0) && <p className="structure-import-warning" role="note">Bu kategoride {number(category.newValues)} yeni değer var ama bu rapor eski sürümle üretildiği için hangi özelliklere ekleneceği kayıtlı değil. Ayrıntıyı görmek için önizlemeyi yeniden başlatın.</p>}
     {difference && <div className="structure-row-difference">
       {difference.onlyInMarketplace.length > 0 && <p><strong>Yalnızca {platformLabel} kategorisinde olan:</strong> {difference.onlyInMarketplace.join(', ')}</p>}
       {difference.onlyInPanel.length > 0 && <p><strong>Yalnızca {difference.comparedSource === 'Panel' ? 'panel' : difference.comparedSource} kategorisinde olan:</strong> {difference.onlyInPanel.join(', ')}</p>}
@@ -101,7 +102,7 @@ function CategoryRow({ category, platformLabel }: { category: CatalogStructureCa
         const count = catalogStructureNewValueCount(attribute)
         return <tr key={`${attribute.remoteName}:${attribute.panelName}`}>
           <td><strong>{attribute.panelName}</strong>{attribute.remoteName !== attribute.panelName && <small>Pazar yerinde: {attribute.remoteName}</small>}</td>
-          <td>{catalogStructureAttributeStatus(attribute)}</td>
+          <td>{attribute.createdDefinition || count > 0 ? catalogStructureAttributeStatus(attribute) : <span className="structure-import-none">—</span>}</td>
           <td>{count > 0
             ? <span className="structure-import-values">{(attribute.newValues ?? []).slice(0, visibleValueLimit).map(value => <span key={value}>{value}</span>)}{count > visibleValueLimit && <small>+{number(count - visibleValueLimit)} değer daha</small>}</span>
             : <span className="structure-import-none" title={attribute.usedValueCount ? `Ürünlerdeki  değer panelde zaten mevcut` : undefined}>—</span>}</td>
