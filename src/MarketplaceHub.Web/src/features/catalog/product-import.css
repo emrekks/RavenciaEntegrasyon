@@ -8,7 +8,7 @@
 .app-shell.stitch-shell main .product-import-connection { grid-template-columns: 18px minmax(0, 1fr) auto; min-height: 64px; padding: 14px 16px; }
 .app-shell.stitch-shell main .product-import-connection strong, .app-shell.stitch-shell main .product-import-mode strong { font-weight: 600; }
 .app-shell.stitch-shell main .product-import-connection small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.product-import-chip { padding: 2px 8px; color: var(--rv-color-accent); font-size: 11px; font-style: normal; font-weight: 600; white-space: nowrap; background: color-mix(in srgb, var(--rv-color-accent) 14%, transparent); border-radius: 6px; }
+.product-import-chip { padding: 4px 8px; color: var(--rv-color-ink); font-size: 12px; font-style: normal; font-weight: 650; line-height: 1.2; white-space: nowrap; background: var(--rv-good-bg); border-radius: 6px; }
 
 .app-shell.stitch-shell main .product-import-tabs { gap: 4px; padding: 4px; }
 .app-shell.stitch-shell main .product-import-tab { height: 38px; padding: 0 16px; font-weight: 500; border-radius: 8px; }

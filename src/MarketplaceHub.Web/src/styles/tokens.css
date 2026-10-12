@@ -14,6 +14,8 @@
   --rv-color-primary-soft: #302443;
   --rv-color-accent: #4adea0;
   --rv-color-accent-soft: #1c332c;
+  --rv-good-bg: color-mix(in srgb, var(--rv-color-accent) 20%, var(--rv-color-surface-raised));
+  --rv-good-border: color-mix(in srgb, var(--rv-color-accent) 48%, var(--rv-color-border));
   --rv-color-warning: #f6c16b;
   --rv-color-warning-soft: #382f22;
   --rv-color-danger: #fb858b;
