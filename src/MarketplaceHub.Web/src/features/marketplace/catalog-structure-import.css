@@ -9,3 +9,13 @@
 .structure-import-category-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--rv-space-2); }
 .structure-import-attributes { display: flex; flex-wrap: wrap; gap: 6px; }
 .structure-import-attributes span { padding: 2px 8px; background: var(--rv-color-surface-soft); border-radius: 6px; font-size: var(--rv-font-size-xs); }
+.structure-import-categories { display: grid; gap: var(--rv-space-2); }
+.structure-import-categories details { display: grid; gap: var(--rv-space-2); padding: var(--rv-space-3); border: 1px solid var(--rv-color-border); border-radius: 8px; }
+.structure-import-categories summary { cursor: pointer; }
+.structure-import-hint { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); }
+.structure-import-attribute-table { width: 100%; border-collapse: collapse; font-size: var(--rv-font-size-sm); }
+.structure-import-attribute-table th, .structure-import-attribute-table td { padding: 8px 10px; text-align: left; vertical-align: top; border-top: 1px solid var(--rv-color-border); }
+.structure-import-attribute-table th { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); font-weight: 600; }
+.structure-import-attribute-table small { display: block; color: var(--rv-color-muted); }
+.structure-import-values { display: flex; flex-wrap: wrap; gap: 6px; }
+.structure-import-values span { padding: 2px 8px; background: var(--rv-color-primary-soft); border-radius: 6px; }

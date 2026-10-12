@@ -146,7 +146,7 @@ public sealed partial class MarketplaceJobProcessor
                     AttributeMapping => "attributeMapping",
                     AttributeValueMapping => "valueMapping",
                     _ => ""
-                }, entry.Entity is Category category ? category.Name : entry.Entity is AttributeDefinition definition ? definition.Name : entry.Entity is AttributeValue value ? value.Value : ""));
+                }, entry.Entity is Category category ? category.Name : entry.Entity is AttributeDefinition definition ? definition.Name : entry.Entity is AttributeValue value ? value.Value : "", entry.Entity is AttributeValue attributeValue ? attributeValue.AttributeId : null));
         }
 
         // Progress writes enlist in the transaction and would be rolled back with a
@@ -206,7 +206,8 @@ public sealed partial class MarketplaceJobProcessor
                         PanelName = attribute.Definition.Name,
                         Role = attribute.Role,
                         CreatedDefinition = made.Any(x => x.Kind == "attribute" && x.Name == attribute.Definition.Name),
-                        ValueCount = attribute.Values.Count
+                        UsedValueCount = attribute.Values.Count,
+                        NewValues = made.Where(x => x.Kind == "value" && x.AttributeId == attribute.Definition.Id).Select(x => x.Name).Distinct(StringComparer.OrdinalIgnoreCase).Take(200).ToList()
                     });
                 categoryReport.NewValues = made.Count(x => x.Kind == "value");
                 if (outcome.Decision.Decision == CategoryReuseDecision.NeedsReview && !outcome.AlreadyMapped)
@@ -463,7 +464,7 @@ public sealed partial class MarketplaceJobProcessor
         public Dictionary<string, HashSet<string>> Options { get; } = new(StringComparer.OrdinalIgnoreCase);
     }
 
-    private sealed record StructureChange(string Kind, string Name);
+    private sealed record StructureChange(string Kind, string Name, Guid? AttributeId = null);
 
     private sealed record StructureCategoryOutcome(CategoryAttributeContext? Context, CategoryReuseResult Decision, bool AlreadyMapped, IReadOnlyList<LocalCategoryAttribute> Attributes);
 }
@@ -515,7 +516,8 @@ public sealed class StructureAttributeReport
     public string PanelName { get; set; } = "";
     public string Role { get; set; } = "";
     public bool CreatedDefinition { get; set; }
-    public int ValueCount { get; set; }
+    public int UsedValueCount { get; set; }
+    public List<string> NewValues { get; set; } = [];
 }
 
 public sealed record StructureReviewItem(string Kind, string Subject, string Reason);

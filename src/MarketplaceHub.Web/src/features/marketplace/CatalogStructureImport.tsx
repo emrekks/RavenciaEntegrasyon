@@ -4,6 +4,9 @@ import { hubApi } from '../../shared/api'
 import { Busy, ErrorBox, Modal, StatusBadge, UiIcon } from '../../shared/components'
 import {
   canApplyCatalogStructure,
+  catalogStructureAttributeRoleLabel,
+  catalogStructureAttributeStatus,
+  catalogStructureCategoryNeedsAttention,
   catalogStructureDecisionLabel,
   catalogStructureDecisionTone,
   catalogStructureSummary,
@@ -83,11 +86,19 @@ export function CatalogStructureImportCard({ connectionId, platformLabel, onNoti
         {report.totals.productsWithoutCategory > 0 && <p className="structure-import-warning">{report.totals.productsWithoutCategory.toLocaleString('tr-TR')} ürün kategori bilgisi içermediği için kapsam dışı kaldı.</p>}
         {report.review.length > 0 && <section aria-label="İnceleme gerekenler"><h3>İnceleme gerekenler</h3><ul className="structure-import-review">{report.review.map(item => <li key={`${item.subject}:${item.reason}`}><strong>{item.subject}</strong><span>{item.reason}</span></li>)}</ul></section>}
         <section aria-label="Kategoriler"><h3>Kategoriler</h3>
-          <ul className="structure-import-categories">{report.categories.map(category => <li key={category.externalId}>
-            <div className="structure-import-category-head"><strong>{category.remoteName}</strong><span aria-hidden="true">→</span><strong>{category.panelName || '—'}</strong><StatusBadge tone={catalogStructureDecisionTone(category.decision)}>{catalogStructureDecisionLabel(category.decision)}</StatusBadge><small>{category.productCount.toLocaleString('tr-TR')} ürün</small></div>
+          <p className="structure-import-hint">Değişiklik yapacak kategoriler açık gösterilir; zaten uyumlu olanları başlığına tıklayarak açabilirsiniz.</p>
+          <div className="structure-import-categories">{report.categories.map(category => <details key={category.externalId} open={catalogStructureCategoryNeedsAttention(category)}>
+            <summary className="structure-import-category-head"><strong>{category.remoteName}</strong><span aria-hidden="true">→</span><strong>{category.panelName || '—'}</strong><StatusBadge tone={catalogStructureDecisionTone(category.decision)}>{catalogStructureDecisionLabel(category.decision)}</StatusBadge><small>{category.productCount.toLocaleString('tr-TR')} ürün · {category.attributes.length} özellik</small></summary>
             <p>{category.reason}</p>
-            {category.attributes.length > 0 && <div className="structure-import-attributes">{category.attributes.map(attribute => <span key={`${attribute.remoteName}:${attribute.panelName}`} title={attribute.role === 'OPTION' ? 'Ürün seçeneği' : 'Kategori özelliği'}>{attribute.panelName}{attribute.createdDefinition ? ' (yeni)' : ''}</span>)}</div>}
-          </li>)}</ul>
+            {category.attributes.length > 0
+              ? <table className="structure-import-attribute-table"><thead><tr><th>Özellik</th><th>Türü</th><th>Durum</th><th>Eklenecek değerler</th></tr></thead><tbody>{category.attributes.map(attribute => <tr key={`${attribute.remoteName}:${attribute.panelName}`}>
+                <td><strong>{attribute.panelName}</strong>{attribute.remoteName !== attribute.panelName && <small>Pazar yerinde: {attribute.remoteName}</small>}</td>
+                <td>{catalogStructureAttributeRoleLabel(attribute.role)}</td>
+                <td>{catalogStructureAttributeStatus(attribute)}</td>
+                <td>{(attribute.newValues?.length ?? 0) > 0 ? <span className="structure-import-values">{attribute.newValues!.map(value => <span key={value}>{value}</span>)}</span> : <small>{attribute.usedValueCount ? `Ürünlerdeki ${attribute.usedValueCount} değer panelde mevcut` : '—'}</small>}</td>
+              </tr>)}</tbody></table>
+              : <p className="structure-import-hint">Bu kategoride ürünlerin kullandığı özellik bulunamadı.</p>}
+          </details>)}</div>
         </section>
       </>}
     </Modal>

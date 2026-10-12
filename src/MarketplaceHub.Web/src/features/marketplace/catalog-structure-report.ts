@@ -13,7 +13,7 @@ export type CatalogStructureTotals = {
   mappingsCreated: number
 }
 
-export type CatalogStructureAttribute = { remoteName: string; panelName: string; role: string; createdDefinition: boolean; valueCount: number }
+export type CatalogStructureAttribute = { remoteName: string; panelName: string; role: string; createdDefinition: boolean; usedValueCount?: number; newValues?: string[] }
 
 export type CatalogStructureCategory = {
   externalId: string
@@ -97,4 +97,22 @@ export function canApplyCatalogStructure(run: Pick<CatalogStructureRun, 'mode' |
   if (!run || run.mode !== 'PREVIEW' || run.status !== 'COMPLETED' || !report) return false
   const writes = report.totals.categoriesCreated + report.totals.categoriesReused + report.totals.attributesCreated + report.totals.valuesCreated + report.totals.mappingsCreated
   return writes > 0
+}
+
+export function catalogStructureAttributeRoleLabel(role: string) {
+  return role === 'OPTION' ? 'Ürün seçeneği' : 'Kategori özelliği'
+}
+
+export function catalogStructureAttributeStatus(attribute: CatalogStructureAttribute) {
+  const newValues = attribute.newValues?.length ?? 0
+  if (attribute.createdDefinition) return `Yeni özellik${newValues > 0 ? ` · ${newValues} yeni değer` : ''}`
+  return newValues > 0 ? `Mevcut özellik · ${newValues} yeni değer` : 'Mevcut özellik · yeni değer yok'
+}
+
+// Open the categories that will change something; collapse the ones that are already in sync.
+export function catalogStructureCategoryNeedsAttention(category: CatalogStructureCategory) {
+  return category.createdCategory
+    || category.decision === 'NeedsReview'
+    || category.decision === 'CreateSeparate'
+    || category.attributes.some(attribute => attribute.createdDefinition || (attribute.newValues?.length ?? 0) > 0)
 }
