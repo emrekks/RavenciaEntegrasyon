@@ -129,7 +129,9 @@ export type CatalogStructureDifference = { comparedWith: string; comparedSource:
 export type CatalogStructureFilter = 'ALL' | 'CHANGES' | 'NEW' | 'SEPARATE' | 'REVIEW' | 'SYNCED'
 
 export function catalogStructureChangesSomething(category: CatalogStructureCategory) {
+  // Reports from before per-attribute details only carry the category-level new value count.
   return (category.decision !== 'AlreadyMapped' && category.decision !== 'NeedsReview')
+    || category.newValues > 0
     || category.attributes.some(attribute => attribute.createdDefinition || catalogStructureNewValueCount(attribute) > 0)
 }
 

@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
 import { StatusBadge } from '../../shared/components'
 import {
-  catalogStructureAttributeRoleLabel,
   catalogStructureAttributeStatus,
   catalogStructureCategoryNeedsAttention,
   catalogStructureDecisionExplanation,
@@ -33,9 +32,11 @@ function number(value: number) {
 }
 
 export function CatalogStructurePreview({ report, platformLabel }: { report: CatalogStructureReport; platformLabel: string }) {
-  const [filter, setFilter] = useState<CatalogStructureFilter>('CHANGES')
-  const [query, setQuery] = useState('')
   const counts = useMemo(() => catalogStructureFilterCounts(report.categories), [report.categories])
+  // Start on what changes; fall back to everything when nothing does.
+  const [chosenFilter, setFilter] = useState<CatalogStructureFilter | null>(null)
+  const filter: CatalogStructureFilter = chosenFilter ?? (counts.CHANGES > 0 ? 'CHANGES' : 'ALL')
+  const [query, setQuery] = useState('')
   const visible = useMemo(() => searchCatalogStructureCategories(report.categories, query).filter(category => matchesCatalogStructureFilter(category, filter)), [report.categories, query, filter])
   const { totals } = report
   const applied = report.mode === 'APPLY'
@@ -96,15 +97,14 @@ function CategoryRow({ category, platformLabel }: { category: CatalogStructureCa
       {difference.onlyInPanel.length > 0 && <p><strong>Yalnızca {difference.comparedSource === 'Panel' ? 'panel' : difference.comparedSource} kategorisinde olan:</strong> {difference.onlyInPanel.join(', ')}</p>}
     </div>}
     {category.attributes.length > 0
-      ? <table className="structure-import-attribute-table"><thead><tr><th>Özellik</th><th>Türü</th><th>Durum</th><th>Eklenecek değerler</th></tr></thead><tbody>{category.attributes.map(attribute => {
+      ? <table className="structure-import-attribute-table"><thead><tr><th>Özellik</th><th>Durum</th><th>Eklenecek değerler</th></tr></thead><tbody>{category.attributes.map(attribute => {
         const count = catalogStructureNewValueCount(attribute)
         return <tr key={`${attribute.remoteName}:${attribute.panelName}`}>
           <td><strong>{attribute.panelName}</strong>{attribute.remoteName !== attribute.panelName && <small>Pazar yerinde: {attribute.remoteName}</small>}</td>
-          <td>{catalogStructureAttributeRoleLabel(attribute.role)}</td>
           <td>{catalogStructureAttributeStatus(attribute)}</td>
           <td>{count > 0
             ? <span className="structure-import-values">{(attribute.newValues ?? []).slice(0, visibleValueLimit).map(value => <span key={value}>{value}</span>)}{count > visibleValueLimit && <small>+{number(count - visibleValueLimit)} değer daha</small>}</span>
-            : <small>{attribute.usedValueCount ? `Ürünlerdeki ${attribute.usedValueCount} değer panelde mevcut` : '—'}</small>}</td>
+            : <span className="structure-import-none" title={attribute.usedValueCount ? `Ürünlerdeki  değer panelde zaten mevcut` : undefined}>—</span>}</td>
         </tr>
       })}</tbody></table>
       : <p className="structure-import-hint">Bu kategoride ürünlerin kullandığı özellik bulunamadı.</p>}

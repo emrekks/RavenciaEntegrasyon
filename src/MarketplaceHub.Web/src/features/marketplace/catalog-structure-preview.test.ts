@@ -34,6 +34,12 @@ describe('catalog structure preview', () => {
     expect(all.filter(item => matchesCatalogStructureFilter(item, 'CHANGES')).map(item => item.externalId)).toEqual(['a', 'b', 'e'])
   })
 
+  it('counts an older report's category-level new values as a change', () => {
+    const older = category({ externalId: 'o', decision: 'AlreadyMapped', newValues: 4, attributes: [] })
+    expect(matchesCatalogStructureFilter(older, 'CHANGES')).toBe(true)
+    expect(matchesCatalogStructureFilter(older, 'SYNCED')).toBe(false)
+  })
+
   it('searches names, attributes and new values with Turkish casing', () => {
     expect(searchCatalogStructureCategories(all, 'ELBİSE').map(item => item.externalId)).toEqual(['b'])
     expect(searchCatalogStructureCategories(all, 'yeşil').map(item => item.externalId)).toEqual(['e'])
