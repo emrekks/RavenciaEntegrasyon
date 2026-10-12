@@ -17,6 +17,11 @@ import './catalog-structure-import.css'
 
 type JobProgress = { job: { progressLabel?: string | null; progressPercent?: number | null } }
 
+// Cloud with a down arrow: pulling the catalog structure from a marketplace.
+function PlatformPullIcon() {
+  return <svg className="ui-icon structure-pull-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" focusable="false" aria-hidden="true"><path d="M12 13v8l-4-4" /><path d="m12 21 4-4" /><path d="M4.393 15.269A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.436 8.284" /></svg>
+}
+
 export type CatalogStructurePlatform = { code: string; label: string; available: boolean }
 
 type Props = {
@@ -88,7 +93,7 @@ export function CatalogStructureImportButton({ platformCode, connectionId, platf
 
   return <>
     <button type="button" className="secondary structure-header-button" onClick={() => setLauncherOpen(true)} aria-haspopup="dialog" title="Pazar yerindeki ürünlerden kategori, seçenek ve özellik yapısını panele aktarın">
-      <UiIcon name="sync" size={16} />Platformdan Yapıyı Çek{active && <span className="structure-header-dot" aria-label="İşlem sürüyor" />}
+      <PlatformPullIcon />Platformdan Yapıyı Çek{active && <span className="structure-header-dot" aria-label="İşlem sürüyor" />}
     </button>
 
     <Modal
