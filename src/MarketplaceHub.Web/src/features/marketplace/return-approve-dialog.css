@@ -20,3 +20,8 @@
 .return-approve-stock { display: inline-flex; align-items: center; gap: 8px; margin-right: auto; font-size: 14px; cursor: pointer; }
 .return-approve-stock.is-disabled { color: var(--rv-color-muted); cursor: not-allowed; }
 .return-approve-empty { margin: 0; color: var(--rv-color-muted); }
+.return-approve-kind { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; margin: 16px 0 0; padding: 12px 16px; border: 1px solid var(--rv-color-border-strong); border-radius: 8px; }
+.return-approve-kind legend { padding: 0 6px; font-size: 14px; font-weight: 600; }
+.return-approve-kind label { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
+.return-approve-kind input { width: 16px; height: 16px; min-height: 0; accent-color: var(--rv-color-primary); }
+.return-approve-kind small { flex-basis: 100%; color: var(--rv-color-muted); font-size: 12px; }
