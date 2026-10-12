@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
-import { Busy, ErrorBox, Modal, StatusBadge, UiIcon } from '../../shared/components'
+import { Busy, ErrorBox, Modal, StatusBadge } from '../../shared/components'
 import { PlatformMark } from '../../shared/platform-mark'
 import { CatalogStructurePreview } from './CatalogStructurePreview'
 import {
