@@ -12127,7 +12127,7 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .date-range-picker-label { color: var(--rv-color-muted); font-size: 12px; font-weight: 700; }
 .date-range-picker-trigger { display: flex; min-width: 0; min-height: var(--rv-control-height-md); align-items: center; gap: 9px; padding: 0 11px; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); text-align: left; }
 .date-range-picker-trigger > span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.date-range-picker-trigger > .ui-icon { flex: 0 0 auto; color: var(--rv-color-primary); }
+.date-range-picker-trigger > .ui-icon { flex: 0 0 auto; color: var(--rv-color-ink); }
 .date-range-picker-popover { position: absolute; z-index: var(--rv-z-dropdown); top: calc(100% + 7px); left: 0; width: min(310px, calc(100vw - 32px)); padding: 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-lg); box-shadow: var(--rv-shadow-lg); }
 .date-range-picker-popover > header, .date-range-picker-popover > footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .date-range-picker-popover > header { margin-bottom: 10px; }

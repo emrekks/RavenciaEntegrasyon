@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
 import { Busy, ErrorBox, Modal, StatusBadge, UiIcon } from '../../shared/components'
+import { PlatformMark } from '../../shared/platform-mark'
 import { CatalogStructurePreview } from './CatalogStructurePreview'
 import {
   canApplyCatalogStructure,
@@ -87,7 +88,7 @@ export function CatalogStructureImportButton({ platformCode, connectionId, platf
 
   return <>
     <button type="button" className="secondary structure-header-button" onClick={() => setLauncherOpen(true)} aria-haspopup="dialog" title="Pazar yerindeki ürünlerden kategori, seçenek ve özellik yapısını panele aktarın">
-      <UiIcon name="download" size={16} />Platformdan Yapıyı Çek{active && <span className="structure-header-dot" aria-label="İşlem sürüyor" />}
+      <UiIcon name="sync" size={16} />Platformdan Yapıyı Çek{active && <span className="structure-header-dot" aria-label="İşlem sürüyor" />}
     </button>
 
     <Modal
@@ -107,7 +108,7 @@ export function CatalogStructureImportButton({ platformCode, connectionId, platf
           <h3>Pazar yeri</h3>
           <div className="structure-platform-tabs" role="tablist" aria-label="Pazar yeri">
             {platforms.map(item => <button key={item.code} type="button" role="tab" aria-selected={item.code === platformCode} className={item.code === platformCode ? 'active' : undefined} disabled={!item.available} title={item.available ? `${item.label} ürünlerini tara` : `${item.label} için aktif bağlantı yok`} onClick={() => onSelectPlatform(item.code)}>
-              <strong>{item.label}</strong>
+              <span className="structure-platform-logo"><PlatformMark code={item.code} name={item.label} /></span>
               <small>{item.available ? 'Aktif bağlantı' : 'Bağlantı yok'}</small>
             </button>)}
           </div>

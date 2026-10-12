@@ -8,6 +8,7 @@ import { sanitizeRichText } from '../../shared/security/sanitizeHtml'
 import { productStatusLabel, productStatusTone, statusLabel } from '../../shared/status-labels'
 import { platformLogoClass, platformLogoSource } from '../../shared/platform-logos'
 import './publication-status-tooltip.css'
+import './product-import.css'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { appendNotification } from '../../shared/notifications'
 import { toggleProductAttributeValue } from './attribute-selection'
@@ -1411,9 +1412,9 @@ export function ProductsPage() {
               <legend>Platform bağlantıları</legend>
               {connections.length ? <div className="product-import-connections">{connections.map(connection => {
                 const selected = productImportConnectionIds.includes(connection.id)
-                return <label key={connection.id} className={`product-import-connection${selected ? ' selected' : ''}`}>
+                return <label key={connection.id} className={`product-import-connection${selected ? ' selected' : ''}`} title={`${connection.platformCode} · ${connection.externalStoreId}`}>
                   <input type="checkbox" checked={selected} onChange={() => setProductImportConnectionIds(ids => selected ? ids.filter(id => id !== connection.id) : productImportMethod === 'SINGLE' ? [connection.id] : [...ids, connection.id])} />
-                  <span><strong>{connection.displayName}</strong><small>{connection.platformCode} · {connection.externalStoreId} · {statusLabel(connection.status)}</small></span>
+                  <span><strong>{connection.displayName}</strong><small>Mağaza {shortStoreId(connection.externalStoreId)}</small></span><em className="product-import-chip">{statusLabel(connection.status)}</em>
                 </label>
               })}</div> : <p className="product-import-empty">Ürün çekmeye uygun aktif veya doğrulanmış marketplace bağlantısı bulunamadı.</p>}
             </fieldset>
@@ -1487,6 +1488,7 @@ export function ProductsPage() {
             </section>}
           </div>
           <footer>
+            <span className="product-import-summary">{productImportConnectionIds.length ? `${productImportConnectionIds.length} bağlantı seçili · ${productImportMethod === 'SINGLE' ? 'Tek ürün aktarımı' : productImportModeLabels[productImportMode] ?? ''}` : 'Bağlantı seçilmedi'}</span>
             <button type="button" className="secondary" onClick={() => setProductImportOpen(false)} disabled={productImporting}>Vazgeç</button>
             <button type="button" onClick={() => void importProductsFromPlatforms()} disabled={productImporting || !productImportConnectionIds.length}>{productImporting ? 'Kuyruğa alınıyor…' : 'Ürünleri panele çek'}</button>
           </footer>
@@ -1499,6 +1501,8 @@ export function ProductsPage() {
   </Page>
 }
 
+const productImportModeLabels: Record<string, string> = { FULL: 'Tam katalog taraması', NEW_ONLY: 'Yeni ürünleri aktar', EXISTING_ONLY: 'Mevcut ürünleri güncelle', MAPPING_ONLY: 'Ürün eşleme' }
+function shortStoreId(id: string) { return id.length > 14 ? `${id.slice(0, 8)}…${id.slice(-4)}` : id }
 type CategoryRequirement = { attributeId: string; isRequired: boolean; allowsCustomValue: boolean; displayOrder: number; role: 'ATTRIBUTE' | 'OPTION'; isWebColor?: boolean; attribute: Attribute }
 function isOptionRequirement(requirement: CategoryRequirement) {
   return requirement.role === 'OPTION' || isOptionAttribute(requirement.attribute)
