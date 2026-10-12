@@ -12427,3 +12427,4 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 }
 .app-shell.stitch-shell main .mapping-saved-table .mapping-row-actions .mapping-feature-button { height: 34px; min-height: 34px; box-sizing: border-box; }
 .app-shell.stitch-shell main .mapping-saved-table .mapping-row-actions .mapping-delete-button { width: 34px; height: 34px; min-width: 34px; min-height: 34px; box-sizing: border-box; padding: 0; }
+.app-shell.stitch-shell main .mapping-saved-table :is(.mapping-table-status, .trendyol-badge) { height: 34px; min-height: 34px; box-sizing: border-box; }
