@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import { createPortal } from 'react-dom'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, loadAllPages, type CursorPage } from '../../shared/api'
+import { PlatformMark } from '../../shared/platform-mark'
 import { Callout, Pagination, UiIcon, type UiIconName } from '../../shared/components'
 import { sanitizeRichText } from '../../shared/security/sanitizeHtml'
 import { productStatusLabel, productStatusTone, statusLabel } from '../../shared/status-labels'
@@ -1414,7 +1415,7 @@ export function ProductsPage() {
                 const selected = productImportConnectionIds.includes(connection.id)
                 return <label key={connection.id} className={`product-import-connection${selected ? ' selected' : ''}`} title={`${connection.platformCode} · ${connection.externalStoreId}`}>
                   <input type="checkbox" checked={selected} onChange={() => setProductImportConnectionIds(ids => selected ? ids.filter(id => id !== connection.id) : productImportMethod === 'SINGLE' ? [connection.id] : [...ids, connection.id])} />
-                  <span><strong>{connection.displayName}</strong><small>Mağaza {shortStoreId(connection.externalStoreId)}</small></span><em className="product-import-chip">{statusLabel(connection.status)}</em>
+                  <span><span className="product-import-connection-logo"><PlatformMark code={connection.platformCode} name={connection.displayName} /></span><small>Mağaza {shortStoreId(connection.externalStoreId)}</small></span><em className="product-import-chip">{statusLabel(connection.status)}</em>
                 </label>
               })}</div> : <p className="product-import-empty">Aktarıma uygun, aktif veya doğrulanmış bir pazar yeri bağlantısı bulunamadı.</p>}
             </fieldset>

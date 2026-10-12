@@ -93,12 +93,12 @@ export function CatalogStructureImportButton({ platformCode, connectionId, platf
 
   return <>
     <button type="button" className="secondary structure-header-button" onClick={() => setLauncherOpen(true)} aria-haspopup="dialog" title="Pazar yerindeki ürünlerden kategori, seçenek ve özellik yapısını panele aktarın">
-      <PlatformPullIcon />Platformdan Yapıyı Çek{active && <span className="structure-header-dot" aria-label="İşlem sürüyor" />}
+      <PlatformPullIcon />Platformdan Aktar{active && <span className="structure-header-dot" aria-label="İşlem sürüyor" />}
     </button>
 
     <Modal
       open={launcherOpen}
-      title="Platformdan Yapıyı Çek"
+      title="Platformdan Aktar"
       description="Pazar yerindeki ürünlerden kategori, seçenek ve özellik yapısını panele aktarın."
       onClose={() => setLauncherOpen(false)}
       className="structure-launcher-modal"

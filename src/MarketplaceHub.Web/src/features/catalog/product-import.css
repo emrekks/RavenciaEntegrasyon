@@ -27,3 +27,9 @@
   .app-shell.stitch-shell main .product-import-body, .app-shell.stitch-shell main .product-import-modal > header, .app-shell.stitch-shell main .product-import-modal > footer { padding-inline: 16px; }
   .product-import-summary { display: none; }
 }
+
+/* Cards hover to a neutral grey like the returns list; the purple stays for selected cards. */
+.app-shell.stitch-shell main .product-import-connection:not(.selected):hover, .app-shell.stitch-shell main .product-import-mode:not(.selected):hover { background: var(--rv-color-surface-raised); border-color: var(--rv-color-border-strong); }
+.app-shell.stitch-shell main .product-import-connection > span { display: grid; gap: 6px; min-width: 0; }
+.app-shell.stitch-shell main .product-import-connection-logo { display: flex; align-items: center; height: 28px; }
+.app-shell.stitch-shell main .product-import-connection-logo img { width: auto; height: 26px; max-width: 150px; object-position: left center; }
