@@ -12436,3 +12436,10 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
   min-height: 260px;
   padding: 40px 24px;
 }
+
+/* Table headers read as Title Case instead of shouting uppercase. */
+.app-shell.stitch-shell main :is(.invoice-reference-head, .order-reference-head, .return-reference-head),
+.app-shell.stitch-shell main :is(.invoice-reference-head, .order-reference-head, .return-reference-head) * {
+  text-transform: capitalize;
+  letter-spacing: 0;
+}
