@@ -113,7 +113,7 @@ export function catalogStructureNewValueCount(attribute: CatalogStructureAttribu
 export function catalogStructureAttributeStatus(attribute: CatalogStructureAttribute) {
   const newValues = catalogStructureNewValueCount(attribute)
   if (attribute.createdDefinition) return `Yeni özellik${newValues > 0 ? ` · ${newValues} yeni değer` : ''}`
-  return newValues > 0 ? `Mevcut özellik · ${newValues} yeni değer` : 'Mevcut özellik · yeni değer yok'
+  return newValues > 0 ? `Mevcut özellik · ${newValues} yeni değer` : 'Mevcut özellik'
 }
 
 // Open the categories that will change something; collapse the ones that are already in sync.
@@ -189,4 +189,16 @@ export function catalogStructureNarrative(report: CatalogStructureReport, platfo
   if (totals.categoriesNeedReview > 0) lines.push(`${totals.categoriesNeedReview} kategori incelemeye bırakıldı, uygulamada atlanacak.`)
   if (lines.length === 0) lines.push('Panelde yapılacak bir değişiklik yok.')
   return lines
+}
+
+export function catalogStructureAttributeChanged(attribute: CatalogStructureAttribute) {
+  return attribute.createdDefinition || catalogStructureNewValueCount(attribute) > 0
+}
+
+// The "Değişenler" view lists only what changes; a category that is itself new keeps all its
+// attributes because every one of them gets linked. Every other view lists all attributes.
+export function catalogStructureVisibleAttributes(category: CatalogStructureCategory, filter: CatalogStructureFilter) {
+  if (filter !== 'CHANGES') return category.attributes
+  if (category.decision === 'CreateNew' || category.decision === 'CreateSeparate' || category.decision === 'ReuseExisting') return category.attributes
+  return category.attributes.filter(catalogStructureAttributeChanged)
 }

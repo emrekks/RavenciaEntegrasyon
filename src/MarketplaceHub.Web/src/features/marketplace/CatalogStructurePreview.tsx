@@ -9,6 +9,7 @@ import {
   catalogStructureFilterCounts,
   catalogStructureNarrative,
   catalogStructureNewValueCount,
+  catalogStructureVisibleAttributes,
   matchesCatalogStructureFilter,
   searchCatalogStructureCategories,
   type CatalogStructureCategory,
@@ -70,7 +71,7 @@ export function CatalogStructurePreview({ report, platformLabel }: { report: Cat
 
     {visible.length === 0
       ? <p className="structure-import-hint">Bu filtreyle eşleşen kategori yok.</p>
-      : <div className="structure-preview-list">{visible.map(category => <CategoryRow key={category.externalId} category={category} platformLabel={platformLabel} />)}</div>}
+      : <div className="structure-preview-list">{visible.map(category => <CategoryRow key={category.externalId} category={category} platformLabel={platformLabel} filter={filter} />)}</div>}
 
     {(report.responseFields?.length ?? 0) > 0 && <details className="structure-preview-technical">
       <summary>Teknik ayrıntılar</summary>
@@ -80,7 +81,8 @@ export function CatalogStructurePreview({ report, platformLabel }: { report: Cat
   </div>
 }
 
-function CategoryRow({ category, platformLabel }: { category: CatalogStructureCategory; platformLabel: string }) {
+function CategoryRow({ category, platformLabel, filter }: { category: CatalogStructureCategory; platformLabel: string; filter: CatalogStructureFilter }) {
+  const attributes = catalogStructureVisibleAttributes(category, filter)
   const newValues = category.attributes.reduce((sum, attribute) => sum + catalogStructureNewValueCount(attribute), 0)
   const difference = category.difference
   return <details className="structure-row" open={catalogStructureCategoryNeedsAttention(category) && category.decision === 'NeedsReview'}>
@@ -97,18 +99,18 @@ function CategoryRow({ category, platformLabel }: { category: CatalogStructureCa
       {difference.onlyInMarketplace.length > 0 && <p><strong>Yalnızca {platformLabel} kategorisinde olan:</strong> {difference.onlyInMarketplace.join(', ')}</p>}
       {difference.onlyInPanel.length > 0 && <p><strong>Yalnızca {difference.comparedSource === 'Panel' ? 'panel' : difference.comparedSource} kategorisinde olan:</strong> {difference.onlyInPanel.join(', ')}</p>}
     </div>}
-    {category.attributes.length > 0
-      ? <table className="structure-import-attribute-table"><thead><tr><th>Özellik</th><th>Durum</th><th>Eklenecek değerler</th></tr></thead><tbody>{category.attributes.map(attribute => {
+    {attributes.length > 0
+      ? <table className="structure-import-attribute-table"><thead><tr><th>Özellik</th><th>Durum</th><th>Eklenecek değerler</th></tr></thead><tbody>{attributes.map(attribute => {
         const count = catalogStructureNewValueCount(attribute)
         return <tr key={`${attribute.remoteName}:${attribute.panelName}`}>
           <td><strong>{attribute.panelName}</strong>{attribute.remoteName !== attribute.panelName && <small>Pazar yerinde: {attribute.remoteName}</small>}</td>
-          <td>{attribute.createdDefinition || count > 0 ? catalogStructureAttributeStatus(attribute) : <span className="structure-import-none">—</span>}</td>
+          <td>{catalogStructureAttributeStatus(attribute)}</td>
           <td>{count > 0
             ? <span className="structure-import-values">{(attribute.newValues ?? []).slice(0, visibleValueLimit).map(value => <span key={value}>{value}</span>)}{count > visibleValueLimit && <small>+{number(count - visibleValueLimit)} değer daha</small>}</span>
-            : <span className="structure-import-none" title={attribute.usedValueCount ? `Ürünlerdeki  değer panelde zaten mevcut` : undefined}>—</span>}</td>
+            : <span className="structure-import-none" title={attribute.usedValueCount ? `Ürünlerdeki ${attribute.usedValueCount} değer panelde zaten mevcut` : undefined}>Eklenecek değer yok</span>}</td>
         </tr>
       })}</tbody></table>
-      : <p className="structure-import-hint">Bu kategoride ürünlerin kullandığı özellik bulunamadı.</p>}
+      : <p className="structure-import-hint">{category.attributes.length > 0 ? 'Bu kategoride değişen özellik yok.' : 'Bu kategoride ürünlerin kullandığı özellik bulunamadı.'}</p>}
     {(category.unmatchedFields?.length ?? 0) > 0 && <p className="structure-import-hint">Ürünlerde olup kategori özelliğiyle eşleşmeyen alanlar: {category.unmatchedFields!.join(', ')}</p>}
   </details>
 }

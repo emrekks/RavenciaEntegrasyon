@@ -4,6 +4,7 @@ import {
   catalogStructureFilterCounts,
   catalogStructureNarrative,
   matchesCatalogStructureFilter,
+  catalogStructureVisibleAttributes,
   searchCatalogStructureCategories,
   type CatalogStructureCategory,
   type CatalogStructureReport
@@ -60,5 +61,22 @@ describe('catalog structure preview', () => {
     expect(lines.some(line => line.includes('(Hepsiburada)'))).toBe(true)
     expect(lines.some(line => line.includes('123 yeni değer'))).toBe(true)
     expect(catalogStructureNarrative(report({}), 'Trendyol')).toEqual(['Panelde yapılacak bir değişiklik yok.'])
+  })
+})
+
+describe('visible attributes per filter', () => {
+  const changed = { remoteName: 'Renk', panelName: 'Renk', role: 'OPTION', createdDefinition: false, newValueCount: 2, newValues: ['Mavi', 'Yeşil'] }
+  const unchanged = { remoteName: 'Cep', panelName: 'Cep', role: 'ATTRIBUTE', createdDefinition: false, newValueCount: 0, newValues: [] }
+
+  it('lists only what changes in the changes view and everything elsewhere', () => {
+    const mapped = category({ decision: 'AlreadyMapped', attributes: [changed, unchanged] })
+    expect(catalogStructureVisibleAttributes(mapped, 'CHANGES').map(item => item.panelName)).toEqual(['Renk'])
+    expect(catalogStructureVisibleAttributes(mapped, 'ALL')).toHaveLength(2)
+    expect(catalogStructureVisibleAttributes(mapped, 'SYNCED')).toHaveLength(2)
+  })
+
+  it('keeps every attribute of a category that is itself new', () => {
+    expect(catalogStructureVisibleAttributes(category({ decision: 'CreateSeparate', attributes: [changed, unchanged] }), 'CHANGES')).toHaveLength(2)
+    expect(catalogStructureVisibleAttributes(category({ decision: 'CreateNew', attributes: [unchanged] }), 'CHANGES')).toHaveLength(1)
   })
 })

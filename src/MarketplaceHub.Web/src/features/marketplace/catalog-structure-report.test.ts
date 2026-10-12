@@ -46,8 +46,8 @@ describe('catalog structure attribute presentation', () => {
   it('describes whether an attribute is new and how many values it adds', () => {
     expect(catalogStructureAttributeStatus(attribute({ createdDefinition: true, newValues: ['Pamuk', 'Keten'] }))).toBe('Yeni özellik · 2 yeni değer')
     expect(catalogStructureAttributeStatus(attribute({ newValues: ['Mavi'] }))).toBe('Mevcut özellik · 1 yeni değer')
-    expect(catalogStructureAttributeStatus(attribute())).toBe('Mevcut özellik · yeni değer yok')
-    expect(catalogStructureAttributeStatus({ remoteName: 'x', panelName: 'x', role: 'ATTRIBUTE', createdDefinition: false })).toBe('Mevcut özellik · yeni değer yok')
+    expect(catalogStructureAttributeStatus(attribute())).toBe('Mevcut özellik')
+    expect(catalogStructureAttributeStatus({ remoteName: 'x', panelName: 'x', role: 'ATTRIBUTE', createdDefinition: false })).toBe('Mevcut özellik')
   })
 
   it('names the attribute role', () => {
