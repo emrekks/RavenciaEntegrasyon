@@ -1,6 +1,6 @@
-using Xunit;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping;
+using Xunit;
 
 namespace MarketplaceHub.Application.Tests;
 
