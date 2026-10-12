@@ -335,14 +335,47 @@ public sealed partial class MarketplaceJobProcessor
                 category = sameLeaf.First(x => x.Id == decision.CategoryId);
             else if (decision.Decision is CategoryReuseDecision.CreateNew or CategoryReuseDecision.CreateSeparate)
             {
-                category = new Category { Id = Guid.CreateVersion7(), TenantId = tenantId, Name = Short(decision.PanelName, 160), NormalizedName = pathKey, Path = Short(decision.PanelName, 160), Depth = 0, IsLeaf = true, IsActive = true, CreatedAt = now, UpdatedAt = now, Version = 1 };
-                db.Categories.Add(category);
+                if (decision.Decision == CategoryReuseDecision.CreateSeparate)
+                    decision = decision with { PanelName = SeparateCategoryName(roots, leaf, platformLabel, remoteCategory) };
+                category = NewStructureCategory(tenantId, decision.PanelName, pathKey, now);
             }
+        }
+
+        // A panel category links to a single marketplace category per connection. When
+        // this connection already points it at another remote category, open a separate one.
+        if (category is not null && decision.Decision == CategoryReuseDecision.ReuseExisting
+            && await db.CategoryMappings.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == categorySnapshot.ScopeExternalId && x.LocalId == category.Id, cancellationToken))
+        {
+            var separateName = SeparateCategoryName(roots, leaf, platformLabel, remoteCategory);
+            decision = new(CategoryReuseDecision.CreateSeparate, null, separateName, "Bu bağlantıda aynı panel kategorisine başka bir pazar yeri kategorisi zaten eşli; ayrı kategori açılacak.");
+            category = NewStructureCategory(tenantId, separateName, pathKey, now);
         }
         if (category is null) return (null, decision, false);
 
         db.CategoryMappings.Add(new CategoryMapping { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, SnapshotId = categorySnapshot.Id, LocalId = category.Id, ScopeExternalId = categorySnapshot.ScopeExternalId, ExternalId = remoteCategory.ExternalId, Status = "VERIFIED", VerifiedAt = now, Version = 1 });
         return (category, decision, false);
+    }
+
+    private Category NewStructureCategory(Guid tenantId, string name, string pathKey, DateTimeOffset now)
+    {
+        var category = new Category { Id = Guid.CreateVersion7(), TenantId = tenantId, Name = Short(name, 160), NormalizedName = pathKey, Path = Short(name, 160), Depth = 0, IsLeaf = true, IsActive = true, CreatedAt = now, UpdatedAt = now, Version = 1 };
+        db.Categories.Add(category);
+        return category;
+    }
+
+    // "Bluz (Hepsiburada)"; when that name is taken, add the parent category, then the id.
+    private static string SeparateCategoryName(IReadOnlyList<Category> roots, string leaf, string platformLabel, ReferenceItem remoteCategory)
+    {
+        bool Taken(string name) => roots.Any(x => string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase));
+        var name = $"{leaf} ({platformLabel})";
+        if (!Taken(name)) return name;
+        var segments = (remoteCategory.Path ?? "").Split(['>', '/'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (segments.Length > 1)
+        {
+            name = $"{leaf} ({platformLabel} · {segments[^2]})";
+            if (!Taken(name)) return name;
+        }
+        return $"{leaf} ({platformLabel} · {remoteCategory.ExternalId})";
     }
 
     // Every attribute set a panel category is known by: its own requirements, plus

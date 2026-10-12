@@ -105,6 +105,31 @@ public sealed class CatalogStructureImportTests(PostgreSqlTenantIsolationFixture
         }
     }
 
+    [PostgreSqlFact]
+    public async Task TwoCategoriesWithTheSameLeafOnOneConnection_GetSeparatePanelCategories()
+    {
+        var tenant = NewTenant("structure-same-leaf");
+        var hepsiburada = NewConnection(tenant, "HEPSIBURADA", "merchant-1");
+        await SeedAsync(tenant, hepsiburada);
+        await SeedReferencesAsync(tenant, hepsiburada, "9001", "Kadın > Bluz", "Bluz", ["Renk", "Beden"], new() { ["Renk"] = ["Mavi"], ["Beden"] = ["M"] });
+        await SeedReferencesAsync(tenant, hepsiburada, "9002", "Kadın > Büyük Beden > Bluz", "Bluz", ["Renk", "Beden"], new() { ["Renk"] = ["Mavi"], ["Beden"] = ["M"] });
+
+        try
+        {
+            await ApplyAsync(tenant, hepsiburada, new FakeProductPort([Product("h1", "9001", "Bluz", ("Renk", "Mavi"), ("Beden", "M")), Product("h2", "9002", "Bluz", ("Renk", "Mavi"), ("Beden", "M"))]));
+
+            await using var db = fixture.CreateContext();
+            var categories = await db.Categories.AsNoTracking().Where(x => x.TenantId == tenant.Id).OrderBy(x => x.Name).Select(x => x.Name).ToListAsync();
+            Assert.Equal(2, categories.Count);
+            Assert.Equal(2, categories.Distinct().Count());
+            Assert.Equal(2, await db.CategoryMappings.AsNoTracking().CountAsync(x => x.TenantId == tenant.Id));
+        }
+        finally
+        {
+            await DeleteTenantAsync(tenant.Id);
+        }
+    }
+
     private async Task ApplyAsync(Tenant tenant, PlatformConnection connection, FakeProductPort port)
     {
         var runId = await NewRunAsync(tenant, connection, "APPLY");
@@ -152,9 +177,11 @@ public sealed class CatalogStructureImportTests(PostgreSqlTenantIsolationFixture
         ReferenceSnapshot Snapshot(string type, string scope) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ResourceType = type, ScopeExternalId = scope, SourceVersion = "test", ContentHash = Guid.NewGuid().ToString("N"), FetchedAt = now, IsCurrent = true };
         ReferenceItem Item(ReferenceSnapshot snapshot, string type, string id, string itemName, string itemPath, bool leaf = true, bool? required = null) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, SnapshotId = snapshot.Id, ResourceType = type, ExternalId = id, Name = itemName, NormalizedName = itemName.ToUpperInvariant(), Path = itemPath, IsLeaf = leaf, IsActive = true, IsRequired = required, PayloadHash = Guid.NewGuid().ToString("N") };
 
-        var categories = Snapshot("CATEGORIES", "");
+        // A connection has one current category list; extra categories join it.
+        var categories = await db.ReferenceSnapshots.FirstOrDefaultAsync(x => x.TenantId == tenant.Id && x.ConnectionId == connection.Id && x.ResourceType == "CATEGORIES");
+        if (categories is null) { categories = Snapshot("CATEGORIES", ""); db.ReferenceSnapshots.Add(categories); }
         var attributeSnapshot = Snapshot("CATEGORY_ATTRIBUTES", categoryId);
-        db.ReferenceSnapshots.AddRange(categories, attributeSnapshot);
+        db.ReferenceSnapshots.Add(attributeSnapshot);
         db.ReferenceItems.Add(Item(categories, "CATEGORIES", categoryId, name, path));
         var attributeIndex = 0;
         foreach (var attribute in attributes)
