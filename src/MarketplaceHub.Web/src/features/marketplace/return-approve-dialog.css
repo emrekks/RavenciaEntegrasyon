@@ -17,8 +17,8 @@
 .return-approve-text small { color: var(--rv-color-muted); font-size: 12px; line-height: 1.5; }
 .return-approve-empty { margin: 0; color: var(--rv-color-muted); }
 
-.return-approve-order { margin-bottom: 16px; }
-.return-approve-order-id { display: inline-flex; align-items: center; gap: 12px; margin-top: 6px; }
+.return-approve-order { display: grid; gap: 12px; margin-bottom: 16px; }
+.return-approve-order-id { display: inline-flex; align-items: center; gap: 12px; }
 .return-approve-order-id strong { font-size: 15px; font-weight: 600; color: var(--rv-color-primary); }
 .return-approve-order-logo { display: inline-flex; align-items: center; height: 26px; }
 .return-approve-order-logo img { height: 24px; width: auto; max-width: 110px; object-fit: contain; }
@@ -35,3 +35,4 @@
 .return-approve-switch.is-on > i { background: var(--rv-color-primary); }
 .return-approve-switch.is-on > i::after { transform: translateX(16px); }
 .return-approve-stock-summary { margin-right: auto; color: var(--rv-color-muted); font-size: 14px; }
+.return-reference-reason-content > small.return-reason-note { display: grid; gap: 2px; }
