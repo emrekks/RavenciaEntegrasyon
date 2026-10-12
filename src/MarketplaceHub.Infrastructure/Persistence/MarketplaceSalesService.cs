@@ -1852,6 +1852,22 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         if (isHepsiburada && !stage && !await Supported(tenantId, claim.ConnectionId, MarketplaceCapabilities.ReturnWrite, cancellationToken)) return ServiceResult<ReturnDetailView>.Fail("CAPABILITY_EVIDENCE_REQUIRED", "Hepsiburada talep yazması için aynı mağaza ve ortamda doğrulanmış SIT yetenek kanıtı gerekir.", 422);
         if (!await ExternalWritePolicyEnabledAsync(tenantId, claim.ConnectionId, MarketplaceExternalWritePolicies.Return, cancellationToken)) return ServiceResult<ReturnDetailView>.Fail("EXTERNAL_WRITE_POLICY_DISABLED", "İade dış yazma akışı kapalı.", 422);
 
+        // "Stoğa ekle": every approved line must already map to a local variant with a MAIN inventory item,
+        // otherwise nothing is sent to the marketplace and nothing is half-done.
+        var stockTargets = new List<(ReturnLine Line, InventoryItem Item)>();
+        if (command.AddToStock)
+        {
+            if (action != "APPROVE") return Invalid<ReturnDetailView>("addToStock", "Stoğa ekleme yalnız iade kabulünde seçilebilir.");
+            var approvedLines = await db.ReturnLines.Where(x => x.TenantId == tenantId && x.ClaimId == claimId && returnLineIds.Contains(x.Id)).ToListAsync(cancellationToken);
+            foreach (var approvedLine in approvedLines)
+            {
+                var variantId = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == approvedLine.OrderLineId).Select(x => x.VariantId).SingleOrDefaultAsync(cancellationToken);
+                var inventoryItem = variantId is null ? null : await db.InventoryItems.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.VariantId == variantId && x.LocationCode == "MAIN", cancellationToken);
+                if (inventoryItem is null) return ServiceResult<ReturnDetailView>.Fail("INVENTORY_MAPPING_REQUIRED", "Seçilen ürünlerden biri yerel varyant ve stok kaydıyla eşleşmiyor; stoğa eklenemez.", 422);
+                stockTargets.Add((approvedLine, inventoryItem));
+            }
+        }
+
         var now = timeProvider.GetUtcNow();
         var decision = new ReturnDecision
         {
@@ -1926,6 +1942,18 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             "REJECT" => "REJECTED",
             _ => "PREAPPROVAL_CONFIRM_SUBMITTED"
         });
+        foreach (var (stockLine, stockItem) in stockTargets)
+        {
+            var alreadyReceived = await db.ReturnStockDispositions.Where(x => x.TenantId == tenantId && x.ReturnLineId == stockLine.Id).SumAsync(x => x.Quantity, cancellationToken);
+            var receivable = stockLine.Quantity - alreadyReceived;
+            if (receivable <= 0) continue;
+            var stockKey = $"{normalizedKey}:stock:{stockLine.Id:N}";
+            var stockAt = effect.CompletedAt.Value;
+            db.ReturnStockDispositions.Add(new ReturnStockDisposition { Id = Guid.CreateVersion7(), TenantId = tenantId, ClaimId = claimId, ReturnLineId = stockLine.Id, InventoryItemId = stockItem.Id, Disposition = ReturnStockDispositionKind.Pass, Quantity = receivable, IdempotencyKey = stockKey, Reason = "İade kabulünde stoğa eklendi", ActorUserId = userId, CreatedAt = stockAt });
+            stockItem.OnHand += receivable; stockItem.Available = Math.Max(0, stockItem.OnHand - stockItem.Reserved); stockItem.ProjectionVersion++; stockItem.Version++;
+            db.StockLedgerEntries.Add(new StockLedgerEntry { Id = Guid.CreateVersion7(), TenantId = tenantId, InventoryItemId = stockItem.Id, MovementType = "RETURN_PASS", QuantityDelta = receivable, SourceType = "RETURN_CLAIM", SourceId = claim.ExternalClaimId, SourceEventId = stockKey, IdempotencyKey = stockKey, OccurredAt = stockAt, RecordedAt = stockAt, ActorUserId = userId, CorrelationId = correlationId });
+        }
+        if (stockTargets.Count > 0) db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = userId, Action = "RETURN_STOCK_DISPOSITION", TargetType = "ReturnClaim", TargetId = claimId.ToString("D"), Reason = "İade kabulünde stoğa eklendi", CorrelationId = correlationId, CreatedAt = effect.CompletedAt.Value });
         claim.UpdatedAt = effect.CompletedAt.Value;
         claim.Version++;
         await db.SaveChangesAsync(cancellationToken);
