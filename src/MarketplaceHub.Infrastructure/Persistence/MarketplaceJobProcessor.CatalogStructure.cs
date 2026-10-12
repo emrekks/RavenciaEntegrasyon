@@ -268,8 +268,8 @@ public sealed partial class MarketplaceJobProcessor
             if (valueSnapshot is null) continue;
             var values = await LoadReferenceItems(tenantId, valueSnapshot, "ATTRIBUTE_VALUES", cancellationToken);
             // Only the values products really use are imported; marketplace value lists can hold thousands.
-            if (ObservedAttributeValueKeys(snapshot, remoteAttribute) is { } usedValues)
-                values = values.Where(value => usedValues.Contains(NormalizeCatalogKey(value.Name, 320))).ToList();
+            var usedValues = ObservedAttributeValueKeys(snapshot, remoteAttribute);
+            values = usedValues is null ? [] : values.Where(value => usedValues.Contains(NormalizeCatalogKey(value.Name, 320))).ToList();
             if (values.Count > 0 || IsRealColorOptionKey(remoteAttribute.Name))
                 valuesByAttribute[remoteAttribute.ExternalId] = values;
         }
@@ -436,15 +436,17 @@ public sealed partial class MarketplaceJobProcessor
             .OrderBy(x => x.SortOrder).ThenBy(x => x.Name)
             .ToListAsync(cancellationToken);
 
-    // Attributes worth importing: the ones products actually use and the colour/size
-    // option axes. Mandatory attributes no product fills are left out on purpose.
+    // Attributes worth importing: only the ones products actually use (by name, by id, or as the
+    // same colour/size axis). Mandatory or option attributes no product fills are left out; their
+    // marketplace value lists can hold thousands of entries.
     private static List<ReferenceItem> StructureCandidateAttributes(IReadOnlyList<ReferenceItem> remoteAttributes, StructureUsage usage)
     {
         var observedNames = usage.Options.Keys.Select(key => NormalizeCatalogKey(key, 320)).Where(x => x.Length > 0).ToHashSet(StringComparer.Ordinal);
+        var observedAxes = usage.Options.Keys.Select(VariantOptionAxis).Where(axis => axis is not null).ToHashSet(StringComparer.Ordinal);
         return remoteAttributes
             .Where(x => observedNames.Contains(NormalizeCatalogKey(x.Name, 320))
                 || observedNames.Contains(NormalizeCatalogKey(x.ExternalId, 320))
-                || VariantOptionAxis(x.Name) is not null)
+                || VariantOptionAxis(x.Name) is { } axis && observedAxes.Contains(axis))
             .ToList();
     }
 

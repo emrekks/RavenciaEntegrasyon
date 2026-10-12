@@ -108,6 +108,31 @@ public sealed class CatalogStructureImportTests(PostgreSqlTenantIsolationFixture
     }
 
     [PostgreSqlFact]
+    public async Task OptionAxisNoProductUses_IsNotImportedWithItsWholeValueList()
+    {
+        var tenant = NewTenant("structure-unused-axis");
+        var hepsiburada = NewConnection(tenant, "HEPSIBURADA", "merchant-1");
+        await SeedAsync(tenant, hepsiburada);
+        var sizes = Enumerable.Range(1, 300).Select(index => $"Beden {index}").ToArray();
+        await SeedReferencesAsync(tenant, hepsiburada, "9001", "Kadın > Bluz", "Bluz", ["Renk", "Beden"], new() { ["Renk"] = ["Mavi", "Kırmızı"], ["Beden"] = sizes });
+
+        try
+        {
+            await ApplyAsync(tenant, hepsiburada, new FakeProductPort([Product("h1", "9001", "Bluz", ("Renk", "Mavi"))]));
+
+            await using var db = fixture.CreateContext();
+            var definitions = await db.AttributeDefinitions.AsNoTracking().Where(x => x.TenantId == tenant.Id).Select(x => x.Name).ToListAsync();
+            Assert.Contains("Renk", definitions);
+            Assert.DoesNotContain("Beden", definitions);
+            Assert.Equal(["Mavi"], await db.AttributeValues.AsNoTracking().Where(x => x.TenantId == tenant.Id).Select(x => x.Value).ToListAsync());
+        }
+        finally
+        {
+            await DeleteTenantAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
     public async Task TwoCategoriesWithTheSameLeafOnOneConnection_GetSeparatePanelCategories()
     {
         var tenant = NewTenant("structure-same-leaf");
