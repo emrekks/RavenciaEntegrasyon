@@ -262,8 +262,8 @@ public sealed partial class MarketplaceJobProcessor
             var valueSnapshot = await EnsureReferenceSnapshot(tenantId, connectionId, "ATTRIBUTE_VALUES", $"{categoryItem.ExternalId}/{remoteAttribute.ExternalId}", correlationId, cancellationToken);
             if (valueSnapshot is null) continue;
             var values = await LoadReferenceItems(tenantId, valueSnapshot, "ATTRIBUTE_VALUES", cancellationToken);
-            if (ObservedVariantValueAxis(remoteAttribute.Name) is { } axis
-                && ObservedOptionValueKeys(snapshot).TryGetValue(axis, out var usedValues))
+            // Only the values products really use are imported; marketplace value lists can hold thousands.
+            if (ObservedAttributeValueKeys(snapshot, remoteAttribute) is { } usedValues)
                 values = values.Where(value => usedValues.Contains(NormalizeCatalogKey(value.Name, 320))).ToList();
             if (values.Count > 0 || IsRealColorOptionKey(remoteAttribute.Name))
                 valuesByAttribute[remoteAttribute.ExternalId] = values;
@@ -377,14 +377,13 @@ public sealed partial class MarketplaceJobProcessor
             .OrderBy(x => x.SortOrder).ThenBy(x => x.Name)
             .ToListAsync(cancellationToken);
 
-    // Attributes worth importing: mandatory ones, the ones products actually use,
-    // and the colour/size option axes.
+    // Attributes worth importing: the ones products actually use and the colour/size
+    // option axes. Mandatory attributes no product fills are left out on purpose.
     private static List<ReferenceItem> StructureCandidateAttributes(IReadOnlyList<ReferenceItem> remoteAttributes, StructureUsage usage)
     {
         var observedNames = usage.Options.Keys.Select(key => NormalizeCatalogKey(key, 320)).Where(x => x.Length > 0).ToHashSet(StringComparer.Ordinal);
         return remoteAttributes
-            .Where(x => x.IsRequired == true
-                || observedNames.Contains(NormalizeCatalogKey(x.Name, 320))
+            .Where(x => observedNames.Contains(NormalizeCatalogKey(x.Name, 320))
                 || observedNames.Contains(NormalizeCatalogKey(x.ExternalId, 320))
                 || VariantOptionAxis(x.Name) is not null)
             .ToList();
@@ -410,6 +409,19 @@ public sealed partial class MarketplaceJobProcessor
             }
         }
         return new RemoteCatalogProduct($"structure:{usage.CategoryId}", null, usage.Name ?? "", "", null, null, usage.CategoryId, usage.Name, [], variants, "{}");
+    }
+
+    private static HashSet<string>? ObservedAttributeValueKeys(RemoteCatalogProduct snapshot, ReferenceItem remoteAttribute)
+    {
+        if (ObservedVariantValueAxis(remoteAttribute.Name) is { } axis && ObservedOptionValueKeys(snapshot).TryGetValue(axis, out var axisValues)) return axisValues;
+        var key = NormalizeCatalogKey(remoteAttribute.Name, 320);
+        var values = snapshot.Variants
+            .SelectMany(x => x.Options)
+            .Where(pair => NormalizeCatalogKey(pair.Key, 320) == key)
+            .Select(pair => NormalizeCatalogKey(pair.Value, 320))
+            .Where(value => value.Length > 0)
+            .ToHashSet(StringComparer.Ordinal);
+        return values.Count > 0 ? values : null;
     }
 
     private static Dictionary<string, HashSet<string>> ObservedOptionValueKeys(RemoteCatalogProduct snapshot) => snapshot.Variants

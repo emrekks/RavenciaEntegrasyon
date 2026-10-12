@@ -17,8 +17,8 @@ public sealed class CatalogStructureImportTests(PostgreSqlTenantIsolationFixture
         var tenant = NewTenant("structure-apply");
         var trendyol = NewConnection(tenant, "TRENDYOL", "seller-1");
         await SeedAsync(tenant, trendyol);
-        await SeedReferencesAsync(tenant, trendyol, "101", "Giyim / Bluz", "Bluz", ["Renk", "Beden"], new() { ["Renk"] = ["Mavi", "Kırmızı", "Yeşil"], ["Beden"] = ["S", "M", "L"] });
-        var port = new FakeProductPort([Product("p1", "101", "Bluz", ("Renk", "Mavi"), ("Beden", "M")), Product("p2", "101", "Bluz", ("Renk", "Kırmızı"), ("Beden", "S"))]);
+        await SeedReferencesAsync(tenant, trendyol, "101", "Giyim / Bluz", "Bluz", ["Renk", "Beden", "Kumaş Tipi", "Garanti"], new() { ["Renk"] = ["Mavi", "Kırmızı", "Yeşil"], ["Beden"] = ["S", "M", "L"], ["Kumaş Tipi"] = ["Pamuk", "Keten", "Viskon"], ["Garanti"] = ["12 Ay", "24 Ay"] });
+        var port = new FakeProductPort([Product("p1", "101", "Bluz", ("Renk", "Mavi"), ("Beden", "M"), ("Kumaş Tipi", "Pamuk")), Product("p2", "101", "Bluz", ("Renk", "Kırmızı"), ("Beden", "S"))]);
 
         try
         {
@@ -58,6 +58,13 @@ public sealed class CatalogStructureImportTests(PostgreSqlTenantIsolationFixture
                                      select value.Value).ToListAsync();
             Assert.Contains("Mavi", colorValues);
             Assert.Contains("Kırmızı", colorValues);
+            // A used attribute keeps only the values products use; an unused mandatory one is not imported.
+            Assert.DoesNotContain("Garanti", definitions);
+            var fabricValues = await (from value in after.AttributeValues.AsNoTracking()
+                                      join definition in after.AttributeDefinitions.AsNoTracking() on value.AttributeId equals definition.Id
+                                      where value.TenantId == tenant.Id && definition.Name == "Kumaş Tipi"
+                                      select value.Value).ToListAsync();
+            Assert.Equal(["Pamuk"], fabricValues);
         }
         finally
         {
