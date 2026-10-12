@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
 import { Busy, ErrorBox, Modal } from '../../shared/components'
@@ -7,6 +7,7 @@ import './return-approve-dialog.css'
 
 export type ReturnApproveRow = {
   id: string
+  orderLineId: string
   title: string
   imageUrl: string | null
   quantity: number
@@ -44,31 +45,50 @@ type Props = {
   onDone: (message: string, kind: 'success' | 'info' | 'error') => void
 }
 
-// The approval dialog: order summary on top, then one framed row per product with its own
-// "put back in stock" switch, and a single confirmation.
+// One product with every return line (claim item) the marketplace opened for it. A product returned
+// three times has three lines, and the dropdown picks how many of them are approved.
+type ProductGroup = { key: string; rows: ReturnApproveRow[] }
+
+function groupByProduct(rows: ReturnApproveRow[]): ProductGroup[] {
+  const groups = new Map<string, ReturnApproveRow[]>()
+  for (const row of rows) groups.set(row.orderLineId || row.id, [...(groups.get(row.orderLineId || row.id) ?? []), row])
+  return Array.from(groups, ([key, items]) => ({ key, rows: items }))
+}
+
+const unitCount = (rows: ReturnApproveRow[]) => rows.reduce((sum, row) => sum + row.quantity, 0)
+
+// The approval dialog: order summary on top, then one framed row per product with a unit dropdown
+// and its own "put back in stock" switch, and a single confirmation.
 export function ReturnApproveDialog({ open, claimId, version, marketplaceName, order, rows, loading, error, requiresFinalization = false, onClose, onDone }: Props) {
   const client = useQueryClient()
+  const groups = useMemo(() => groupByProduct(rows), [rows])
   const [selected, setSelected] = useState<string[]>([])
-  const [stockIds, setStockIds] = useState<string[]>([])
+  const [counts, setCounts] = useState<Record<string, number>>({})
+  const [stockKeys, setStockKeys] = useState<string[]>([])
   const [finalizedWith, setFinalizedWith] = useState<'Refund' | 'Change' | null>(null)
-  const rowKey = rows.map(row => row.id).join('|')
+  const groupSignature = groups.map(group => `${group.key}:${group.rows.length}`).join('|')
 
   useEffect(() => {
-    setSelected(rows.map(row => row.id))
-    setStockIds([])
+    setSelected(groups.map(group => group.key))
+    setCounts(Object.fromEntries(groups.map(group => [group.key, group.rows.length])))
+    setStockKeys([])
     setFinalizedWith(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rowKey, open])
+  }, [groupSignature, open])
 
-  const chosen = rows.filter(row => selected.includes(row.id))
-  const stockRows = chosen.filter(row => stockIds.includes(row.id) && row.hasInventoryMapping)
-  const stockQuantity = stockRows.reduce((sum, row) => sum + row.quantity, 0)
+  // The lines that will actually be approved: the first N of each selected product.
+  const chosenByGroup = groups
+    .filter(group => selected.includes(group.key))
+    .map(group => ({ group, rows: group.rows.slice(0, Math.max(1, Math.min(counts[group.key] ?? group.rows.length, group.rows.length))) }))
+  const chosenRows = chosenByGroup.flatMap(entry => entry.rows)
+  const stockRows = chosenByGroup.filter(entry => stockKeys.includes(entry.group.key) && entry.rows.every(row => row.hasInventoryMapping)).flatMap(entry => entry.rows)
+  const stockQuantity = unitCount(stockRows)
 
   const approve = useMutation({
     mutationFn: () => hubApi<{ status: string }>(`/returns/${claimId}/actions`, {
       method: 'POST',
       headers: { 'Idempotency-Key': crypto.randomUUID(), 'If-Match': `"v${version}"` },
-      body: JSON.stringify({ action: 'APPROVE', reasonCode: null, explanation: null, evidenceAssetIds: [], returnLineIds: chosen.map(row => row.id), finalizedWith: requiresFinalization ? finalizedWith : null, stockLineIds: stockRows.map(row => row.id) })
+      body: JSON.stringify({ action: 'APPROVE', reasonCode: null, explanation: null, evidenceAssetIds: [], returnLineIds: chosenRows.map(row => row.id), finalizedWith: requiresFinalization ? finalizedWith : null, stockLineIds: stockRows.map(row => row.id) })
     }),
     onSuccess: async () => {
       const stock = stockRows.length > 0 ? ` Stok ${stockQuantity.toLocaleString('tr-TR')} adet artırıldı.` : ''
@@ -80,10 +100,10 @@ export function ReturnApproveDialog({ open, claimId, version, marketplaceName, o
     onError: reason => onDone(reason instanceof Error ? reason.message : 'İade kararı başlatılamadı.', 'error')
   })
 
-  const canSubmit = chosen.length > 0 && (!requiresFinalization || finalizedWith !== null)
-  const toggle = (id: string) => setSelected(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id])
-  const toggleStock = (id: string) => setStockIds(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id])
-  const allSelected = rows.length > 0 && selected.length === rows.length
+  const canSubmit = chosenRows.length > 0 && (!requiresFinalization || finalizedWith !== null)
+  const toggle = (key: string) => setSelected(current => current.includes(key) ? current.filter(value => value !== key) : [...current, key])
+  const toggleStock = (key: string) => setStockKeys(current => current.includes(key) ? current.filter(value => value !== key) : [...current, key])
+  const allSelected = groups.length > 0 && selected.length === groups.length
   const orderFacts = [
     ['Müşteri', order.customer],
     ['Sipariş tarihi', order.orderedAt ? new Date(order.orderedAt).toLocaleString('tr-TR') : null],
@@ -107,25 +127,32 @@ export function ReturnApproveDialog({ open, claimId, version, marketplaceName, o
       <span className="return-approve-order-id"><span className="return-approve-order-logo"><PlatformMark code={order.platformCode} name={order.platformName} /></span><strong>{order.orderNumber}</strong></span>
       <dl>{orderFacts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
     </section>
-    {loading ? <Busy text="İade ürünleri yükleniyor…" /> : error ? <ErrorBox error={error} /> : rows.length === 0 ? <p className="return-approve-empty">Bu iadede işlem bekleyen ürün kalmadı.</p> : <div className="return-approve-table" role="table">
+    {loading ? <Busy text="İade ürünleri yükleniyor…" /> : error ? <ErrorBox error={error} /> : groups.length === 0 ? <p className="return-approve-empty">Bu iadede işlem bekleyen ürün kalmadı.</p> : <div className="return-approve-table" role="table">
       <div className="return-approve-head" role="row">
-        <span role="columnheader"><label className="return-approve-check"><input type="checkbox" checked={allSelected} disabled={requiresFinalization} onChange={() => setSelected(allSelected ? [] : rows.map(row => row.id))} aria-label="Tüm ürünleri seç" /><span>Bilgiler</span></label></span>
+        <span role="columnheader"><label className="return-approve-check"><input type="checkbox" checked={allSelected} disabled={requiresFinalization} onChange={() => setSelected(allSelected ? [] : groups.map(group => group.key))} aria-label="Tüm ürünleri seç" /><span>Bilgiler</span></label></span>
         <span role="columnheader">Adet ve stok</span>
       </div>
-      {rows.map(row => {
-        const isSelected = selected.includes(row.id)
-        const stockOn = isSelected && stockIds.includes(row.id) && row.hasInventoryMapping
-        const facts = [['Stok Kodu', row.sku], ['Renk', row.color], ['Beden', row.size], ['Barkod', row.barcode], ['Model Kodu', row.modelCode]]
+      {groups.map(group => {
+        const first = group.rows[0]!
+        const isSelected = selected.includes(group.key)
+        const count = Math.max(1, Math.min(counts[group.key] ?? group.rows.length, group.rows.length))
+        const picked = group.rows.slice(0, count)
+        const mapped = picked.every(row => row.hasInventoryMapping)
+        const stockOn = isSelected && stockKeys.includes(group.key) && mapped
+        const canPickCount = group.rows.length > 1 && !requiresFinalization
+        const facts = [['Stok Kodu', first.sku], ['Renk', first.color], ['Beden', first.size], ['Barkod', first.barcode], ['Model Kodu', first.modelCode]]
           .filter((fact): fact is [string, string] => Boolean(fact[1]))
-        return <div className="return-approve-row" role="row" key={row.id}>
+        return <div className="return-approve-row" role="row" key={group.key}>
           <label className="return-approve-info" role="cell">
-            <input type="checkbox" checked={isSelected} disabled={requiresFinalization} onChange={() => toggle(row.id)} aria-label={`${row.title} işleme dahil`} />
-            <span className="reference-product-media return-approve-image">{row.imageUrl ? <img src={row.imageUrl} alt="" /> : <span className="reference-product-placeholder">↩</span>}<span className="quantity-bubble" role="img" aria-label={`${row.quantity} adet`} title={`${row.quantity} adet`}>{row.quantity}</span></span>
-            <span className="return-approve-text"><strong>{row.title}</strong>{facts.map(([label, value]) => <small key={label}>{label}: {value}</small>)}</span>
+            <input type="checkbox" checked={isSelected} disabled={requiresFinalization} onChange={() => toggle(group.key)} aria-label={`${first.title} işleme dahil`} />
+            <span className="reference-product-media return-approve-image">{first.imageUrl ? <img src={first.imageUrl} alt="" /> : <span className="reference-product-placeholder">↩</span>}<span className="quantity-bubble" role="img" aria-label={`${unitCount(group.rows)} adet`} title={`${unitCount(group.rows)} adet`}>{unitCount(group.rows)}</span></span>
+            <span className="return-approve-text"><strong>{first.title}</strong>{facts.map(([label, value]) => <small key={label}>{label}: {value}</small>)}</span>
           </label>
           <div className="return-approve-side" role="cell">
-            <span className="return-approve-quantity">{row.quantity} Adet</span>
-            <button type="button" role="switch" aria-checked={stockOn} disabled={!isSelected || !row.hasInventoryMapping} className={`return-approve-switch${stockOn ? ' is-on' : ''}`} onClick={() => toggleStock(row.id)} title={row.hasInventoryMapping ? undefined : 'Bu ürün yerel stok kaydıyla eşleşmiyor.'}>
+            {canPickCount
+              ? <select className="return-approve-quantity" aria-label={`${first.title} onaylanacak adet`} value={count} disabled={!isSelected} onChange={event => setCounts(current => ({ ...current, [group.key]: Number(event.target.value) }))}>{group.rows.map((_, index) => <option key={index + 1} value={index + 1}>{index + 1} Adet</option>)}</select>
+              : <span className="return-approve-quantity">{unitCount(picked)} Adet</span>}
+            <button type="button" role="switch" aria-checked={stockOn} disabled={!isSelected || !mapped} className={`return-approve-switch${stockOn ? ' is-on' : ''}`} onClick={() => toggleStock(group.key)} title={mapped ? undefined : 'Bu ürün yerel stok kaydıyla eşleşmiyor.'}>
               <i aria-hidden="true" />
               <span>Stoğa ekle</span>
             </button>
