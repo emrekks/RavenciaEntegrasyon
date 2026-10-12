@@ -28,6 +28,7 @@ using Xunit.Abstractions;
 
 namespace MarketplaceHub.Application.Tests;
 
+[Collection("postgres-integration")]
 public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixture fixture, ITestOutputHelper output) : IClassFixture<PostgreSqlTenantIsolationFixture>
 {
     [PostgreSqlFact]

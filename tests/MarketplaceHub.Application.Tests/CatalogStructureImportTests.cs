@@ -8,6 +8,7 @@ using Xunit;
 
 namespace MarketplaceHub.Application.Tests;
 
+[Collection("postgres-integration")]
 public sealed class CatalogStructureImportTests(PostgreSqlTenantIsolationFixture fixture) : IClassFixture<PostgreSqlTenantIsolationFixture>
 {
     [PostgreSqlFact]
@@ -173,6 +174,7 @@ public sealed class CatalogStructureImportTests(PostgreSqlTenantIsolationFixture
     private async Task DeleteTenantAsync(Guid tenantId)
     {
         await using var db = fixture.CreateContext();
+        await db.IntegrationOutboxEvents.Where(x => x.TenantId == tenantId).ExecuteDeleteAsync();
         await db.AttributeValueMappings.Where(x => x.TenantId == tenantId).ExecuteDeleteAsync();
         await db.AttributeMappings.Where(x => x.TenantId == tenantId).ExecuteDeleteAsync();
         await db.CategoryMappings.Where(x => x.TenantId == tenantId).ExecuteDeleteAsync();
