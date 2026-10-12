@@ -92,14 +92,14 @@ function CategoryRow({ category, platformLabel }: { category: CatalogStructureCa
     </summary>
     <p className="structure-row-explanation">{catalogStructureDecisionExplanation(category, platformLabel)}</p>
     {difference && <div className="structure-row-difference">
-      {difference.onlyInMarketplace.length > 0 && <p><strong>{platformLabel}’a özel:</strong> {difference.onlyInMarketplace.join(', ')}</p>}
-      {difference.onlyInPanel.length > 0 && <p><strong>{difference.comparedSource}’da olup burada olmayan:</strong> {difference.onlyInPanel.join(', ')}</p>}
+      {difference.onlyInMarketplace.length > 0 && <p><strong>Yalnızca {platformLabel} kategorisinde olan:</strong> {difference.onlyInMarketplace.join(', ')}</p>}
+      {difference.onlyInPanel.length > 0 && <p><strong>Yalnızca {difference.comparedSource === 'Panel' ? 'panel' : difference.comparedSource} kategorisinde olan:</strong> {difference.onlyInPanel.join(', ')}</p>}
     </div>}
     {category.attributes.length > 0
       ? <table className="structure-import-attribute-table"><thead><tr><th>Özellik</th><th>Türü</th><th>Durum</th><th>Eklenecek değerler</th></tr></thead><tbody>{category.attributes.map(attribute => {
         const count = catalogStructureNewValueCount(attribute)
         return <tr key={`${attribute.remoteName}:${attribute.panelName}`}>
-          <td><strong>{attribute.panelName}</strong>{attribute.remoteName !== attribute.panelName && <small>{platformLabel}’da: {attribute.remoteName}</small>}</td>
+          <td><strong>{attribute.panelName}</strong>{attribute.remoteName !== attribute.panelName && <small>Pazar yerinde: {attribute.remoteName}</small>}</td>
           <td>{catalogStructureAttributeRoleLabel(attribute.role)}</td>
           <td>{catalogStructureAttributeStatus(attribute)}</td>
           <td>{count > 0
