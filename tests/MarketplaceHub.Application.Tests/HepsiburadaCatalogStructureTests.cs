@@ -74,6 +74,38 @@ public sealed class HepsiburadaCatalogStructureTests
     }
 
     [Fact]
+    public void ReadsVariantAttributesAsCategoryAttributesButNotBaseProductFields()
+    {
+        using var document = JsonDocument.Parse("""
+        {
+          "success": true,
+          "data": {
+            "baseAttributes": [ { "id": "merchantSku", "name": "Satıcı Stok Kodu", "mandatory": true, "type": "string" } ],
+            "attributes": [ { "id": "kol_tipi", "name": "Kol Tipi", "mandatory": false, "type": "enum", "multiValue": false } ],
+            "variantAttributes": [ { "id": "renk_variant_property", "name": "Renk", "mandatory": true, "type": "enum" }, { "id": "beden_variant_property", "name": "Beden", "mandatory": true, "type": "enum" } ]
+          }
+        }
+        """);
+
+        var page = HepsiburadaJsonMapper.References("CATEGORY_ATTRIBUTES", document.RootElement, "101", 0, 100);
+
+        Assert.Equal(["kol_tipi", "renk_variant_property", "beden_variant_property"], page.Items.Select(x => x.ExternalId).ToArray());
+        Assert.Contains(page.Items, x => x.Name == "Renk" && x.IsRequired == true);
+    }
+
+    [Fact]
+    public void DropsHepsiburadaUploadFieldsFromProductAttributes()
+    {
+        using var document = JsonDocument.Parse("""
+        { "data": [ { "merchantSku": "A", "categoryId": 1, "attributes": { "Barcode": "869", "price": "10", "UrunAdi": "Bluz", "renk_variant_property": "Mavi", "beden_variant_property": "M", "kol_tipi": "Uzun" } } ] }
+        """);
+
+        var options = HepsiburadaJsonMapper.CatalogStructurePage(document.RootElement, 0, 500).Items[0].Variants[0].Options;
+
+        Assert.Equal(["renk_variant_property", "beden_variant_property", "kol_tipi"], options.Keys.ToArray());
+    }
+
+    [Fact]
     public void RejectsAResponseWithoutAProductList()
     {
         using var document = JsonDocument.Parse("""{ "success": false, "message": "yetki yok" }""");

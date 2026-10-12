@@ -16,10 +16,31 @@ internal static class HepsiburadaJsonMapper
         return (items.EnumerateArray().ToArray(), total);
     }
 
+    private static JsonElement? CategoryAttributeLists(string resourceType, JsonElement data)
+    {
+        if (resourceType != "CATEGORY_ATTRIBUTES" || data.ValueKind != JsonValueKind.Object) return null;
+        var combined = new List<string>();
+        foreach (var key in new[] { "attributes", "variantAttributes", "variantTypeAttributes" })
+            if (TryFind(data, out var group, key) && group.ValueKind == JsonValueKind.Array)
+                combined.AddRange(group.EnumerateArray().Select(item => item.GetRawText()));
+        if (combined.Count == 0) return null;
+        using var document = JsonDocument.Parse("[" + string.Join(",", combined) + "]");
+        return document.RootElement.Clone();
+    }
+
+    // Product fields of Hepsiburada's upload model that appear next to the attributes.
+    private static readonly HashSet<string> StructureProductFields = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Barcode", "GarantiSuresi", "Image1", "Image2", "Image3", "Image4", "Image5", "kg", "Marka", "merchantSku",
+        "price", "stock", "tax_vat_rate", "UrunAciklamasi", "UrunAdi", "VaryantGroupID", "Video1"
+    };
+
     public static AdapterPageResult<RemoteReferenceItem> References(string resourceType, JsonElement root, string? parentExternalId, int page, int limit)
     {
         var data = Unwrap(root);
-        var itemArray = Find(data, "items", "categories", "attributes", "categoryAttributes", "attributeValues", "attributeValueList", "enumValues", "options", "values", "content", "data", "results", "result", "records", "rows");
+        // Hepsiburada returns a category's attributes in several lists. The variant list holds
+        // Renk/Beden; baseAttributes are product fields (barcode, price, ...), not attributes.
+        var itemArray = CategoryAttributeLists(resourceType, data) ?? Find(data, "items", "categories", "attributes", "categoryAttributes", "attributeValues", "attributeValueList", "enumValues", "options", "values", "content", "data", "results", "result", "records", "rows");
         if (itemArray.ValueKind == JsonValueKind.Undefined && data.ValueKind == JsonValueKind.Array) itemArray = data;
         var isSingleValue = resourceType == "ATTRIBUTE_VALUES"
             && data.ValueKind == JsonValueKind.Object
@@ -235,7 +256,7 @@ internal static class HepsiburadaJsonMapper
             if (source.ValueKind == JsonValueKind.Object)
             {
                 foreach (var property in source.EnumerateObject())
-                    if (StructureValue(property.Value) is { } text) result.TryAdd(property.Name, text);
+                    if (!StructureProductFields.Contains(property.Name) && StructureValue(property.Value) is { } text) result.TryAdd(property.Name, text);
             }
             else if (source.ValueKind == JsonValueKind.Array)
             {

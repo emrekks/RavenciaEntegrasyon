@@ -105,6 +105,7 @@ public sealed partial class MarketplaceJobProcessor
             cursor = result.Value.NextCursor;
         }
         cancellationToken.ThrowIfCancellationRequested();
+        report.ResponseFields = (sampleKeys ?? []).ToList();
         if (report.Totals.Products > 0 && usage.Count == 0)
             report.Warnings.Add($"{platformLabel} ürün yanıtında kategori bilgisi bulunamadı. Yanıttaki alanlar: {string.Join(", ", sampleKeys ?? [])}");
 
@@ -496,15 +497,31 @@ public sealed partial class MarketplaceJobProcessor
             ? Short(remoteCategory.Name, 160)
             : CategoryLeafName(remoteCategory.Name, remoteCategory.Path);
 
+    // Field names only (never values): top-level keys plus the keys one level inside
+    // objects and arrays of objects, e.g. "variants[]: sku, attributes". Shown in the report
+    // so a mismatch between a marketplace response and the mapper is visible.
     private static string[] TopLevelKeys(string rawJson)
     {
         try
         {
             using var document = JsonDocument.Parse(rawJson);
-            return document.RootElement.ValueKind == JsonValueKind.Object ? document.RootElement.EnumerateObject().Select(x => x.Name).Take(40).ToArray() : [];
+            if (document.RootElement.ValueKind != JsonValueKind.Object) return [];
+            var fields = new List<string>();
+            foreach (var property in document.RootElement.EnumerateObject().Take(60))
+            {
+                var inner = property.Value.ValueKind == JsonValueKind.Object ? property.Value
+                    : property.Value.ValueKind == JsonValueKind.Array && property.Value.GetArrayLength() > 0 && property.Value[0].ValueKind == JsonValueKind.Object ? property.Value[0]
+                    : default;
+                var suffix = property.Value.ValueKind == JsonValueKind.Array ? "[]" : property.Value.ValueKind == JsonValueKind.Object ? "{}" : "";
+                fields.Add(inner.ValueKind == JsonValueKind.Object
+                    ? $"{property.Name}{suffix}: {string.Join(", ", inner.EnumerateObject().Select(x => x.Name).Take(20))}"
+                    : property.Name);
+            }
+            return fields.ToArray();
         }
         catch (JsonException) { return []; }
     }
+
 
     private sealed class StructureUsage(string categoryId, string? name)
     {
@@ -528,6 +545,7 @@ public sealed class StructureReport
     public List<StructureCategoryReport> Categories { get; set; } = [];
     public List<StructureReviewItem> Review { get; set; } = [];
     public List<string> Warnings { get; set; } = [];
+    public List<string> ResponseFields { get; set; } = [];
 }
 
 public sealed class StructureTotals
