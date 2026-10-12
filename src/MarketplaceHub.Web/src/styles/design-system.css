@@ -12231,27 +12231,31 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
   flex: 0 0 24px;
 }
 
-/* Keep each invoice/shipment badge on the cell's vertical midline; explanatory text hangs below it (date, error, delivery note stack under the badge). */
+/* Center each invoice/shipment badge; keep explanatory dates in the row below. */
 .app-shell.stitch-shell main .invoice-reference-shipment,
 .app-shell.stitch-shell main .invoice-reference-status {
-  grid-template: 1fr 34px 1fr / minmax(0, 1fr);
-  grid-auto-rows: max-content;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: max-content max-content;
+  align-content: center;
+  justify-items: stretch;
   row-gap: var(--rv-space-2);
+  text-align: center;
 }
 .app-shell.stitch-shell main .invoice-reference-shipment > :is(.badge, .rv-badge),
 .app-shell.stitch-shell main .invoice-reference-status > :is(.badge, .rv-badge, .invoice-status, .invoice-status-label) {
-  grid-row: 2;
+  grid-row: 1;
   align-self: center;
   justify-self: center;
+  margin-inline: auto;
 }
 .app-shell.stitch-shell main .invoice-reference-shipment > small,
 .app-shell.stitch-shell main .invoice-reference-status > small {
+  grid-column: 1;
+  justify-self: center;
   align-self: start;
   width: 100%;
+  text-align: center;
 }
-.app-shell.stitch-shell main :is(.invoice-reference-shipment, .invoice-reference-status) > small:nth-of-type(1) { grid-row: 3; }
-.app-shell.stitch-shell main :is(.invoice-reference-shipment, .invoice-reference-status) > small:nth-of-type(2) { grid-row: 4; }
-.app-shell.stitch-shell main :is(.invoice-reference-shipment, .invoice-reference-status) > small:nth-of-type(3) { grid-row: 5; }
 
 /* Product metric glyphs share the dashboard's unboxed, larger icon treatment. */
 .app-shell.stitch-shell main .product-metrics .product-metric-icon {
@@ -12370,6 +12374,13 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 }
 :root[data-theme="light"] .app-shell.stitch-shell main .order-label-action.is-printed:hover:not(:disabled) {
   background: color-mix(in srgb, var(--rv-color-primary) 82%, var(--rv-color-surface));
+}
+
+/* Vertically center invoice badges when the row has no secondary status text. */
+.app-shell.stitch-shell main .invoice-reference-shipment:not(:has(> small)),
+.app-shell.stitch-shell main .invoice-reference-status:not(:has(> small)) {
+  grid-template-rows: minmax(0, 1fr);
+  align-content: stretch;
 }
 
 .app-shell.stitch-shell main .invoice-reference-head .invoice-reference-platform-heading > strong {
