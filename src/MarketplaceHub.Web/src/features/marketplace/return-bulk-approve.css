@@ -1,0 +1,23 @@
+.return-bulk-modal { width: min(820px, calc(100vw - 32px)); }
+.return-bulk-note { margin: 0 0 14px; color: var(--rv-color-muted); font-size: 14px; }
+.return-bulk-note.is-error { color: var(--rv-color-danger); }
+.return-bulk-list { display: grid; border: 1px solid var(--rv-color-border-strong); border-radius: 8px; overflow: hidden; }
+.return-bulk-head, .return-bulk-row { display: grid; grid-template-columns: minmax(180px, 1.3fr) minmax(120px, 1fr) 90px minmax(120px, 1.2fr); }
+.return-bulk-head { background: var(--rv-color-surface-raised); border-bottom: 1px solid var(--rv-color-border-strong); font-size: 14px; font-weight: 600; }
+.return-bulk-head > span, .return-bulk-row > span { display: flex; align-items: center; min-width: 0; padding: 10px 14px; font-size: 14px; overflow-wrap: anywhere; }
+.return-bulk-row + .return-bulk-row { border-top: 1px solid var(--rv-color-border); }
+.return-bulk-row:hover { background: var(--rv-color-surface-raised); }
+.return-bulk-order { gap: 10px; }
+.return-bulk-order strong { color: var(--rv-color-primary); font-weight: 600; }
+.return-bulk-logo { display: inline-flex; align-items: center; height: 24px; }
+.return-bulk-logo img { height: 22px; width: auto; max-width: 90px; object-fit: contain; }
+.return-bulk-status { color: var(--rv-color-muted); }
+.return-bulk-status.is-ok { color: var(--rv-color-accent); }
+.return-bulk-status.is-error { color: var(--rv-color-danger); }
+.return-bulk-stock { margin-right: auto; }
+.return-bulk-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; margin: 0 0 14px; padding: 10px 14px; border: 1px solid var(--rv-color-border-strong); border-radius: 8px; background: var(--rv-color-surface-raised); }
+.return-bulk-bar label { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; cursor: pointer; }
+.return-bulk-bar input { width: 16px; height: 16px; min-height: 0; accent-color: var(--rv-color-primary); }
+.return-bulk-bar button { margin-left: auto; height: 34px; min-height: 34px; padding: 0 14px; }
+.return-row-select { display: inline-flex; align-items: center; margin-bottom: 8px; cursor: pointer; }
+.return-row-select input { width: 16px; height: 16px; min-height: 0; accent-color: var(--rv-color-primary); }
