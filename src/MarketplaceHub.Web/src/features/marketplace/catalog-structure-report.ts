@@ -110,10 +110,9 @@ export function catalogStructureNewValueCount(attribute: CatalogStructureAttribu
   return attribute.newValueCount ?? attribute.newValues?.length ?? 0
 }
 
+// The new values themselves sit in the next column, so the status only says new or existing.
 export function catalogStructureAttributeStatus(attribute: CatalogStructureAttribute) {
-  const newValues = catalogStructureNewValueCount(attribute)
-  if (attribute.createdDefinition) return `Yeni özellik${newValues > 0 ? ` · ${newValues} yeni değer` : ''}`
-  return newValues > 0 ? `Mevcut özellik · ${newValues} yeni değer` : 'Mevcut özellik'
+  return attribute.createdDefinition ? 'Yeni özellik' : 'Mevcut özellik'
 }
 
 // Open the categories that will change something; collapse the ones that are already in sync.

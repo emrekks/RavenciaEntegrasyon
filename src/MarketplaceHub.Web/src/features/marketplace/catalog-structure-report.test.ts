@@ -44,8 +44,8 @@ describe('catalog structure attribute presentation', () => {
   const attribute = (overrides: Partial<CatalogStructureAttribute> = {}): CatalogStructureAttribute => ({ remoteName: 'Renk', panelName: 'Renk', role: 'OPTION', createdDefinition: false, usedValueCount: 3, newValues: [], ...overrides })
 
   it('describes whether an attribute is new and how many values it adds', () => {
-    expect(catalogStructureAttributeStatus(attribute({ createdDefinition: true, newValues: ['Pamuk', 'Keten'] }))).toBe('Yeni özellik · 2 yeni değer')
-    expect(catalogStructureAttributeStatus(attribute({ newValues: ['Mavi'] }))).toBe('Mevcut özellik · 1 yeni değer')
+    expect(catalogStructureAttributeStatus(attribute({ createdDefinition: true, newValues: ['Pamuk', 'Keten'] }))).toBe('Yeni özellik')
+    expect(catalogStructureAttributeStatus(attribute({ newValues: ['Mavi'] }))).toBe('Mevcut özellik')
     expect(catalogStructureAttributeStatus(attribute())).toBe('Mevcut özellik')
     expect(catalogStructureAttributeStatus({ remoteName: 'x', panelName: 'x', role: 'ATTRIBUTE', createdDefinition: false })).toBe('Mevcut özellik')
   })

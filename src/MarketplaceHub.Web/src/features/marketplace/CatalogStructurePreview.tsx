@@ -73,11 +73,6 @@ export function CatalogStructurePreview({ report, platformLabel }: { report: Cat
       ? <p className="structure-import-hint">Bu filtreyle eşleşen kategori yok.</p>
       : <div className="structure-preview-list">{visible.map(category => <CategoryRow key={category.externalId} category={category} platformLabel={platformLabel} filter={filter} />)}</div>}
 
-    {(report.responseFields?.length ?? 0) > 0 && <details className="structure-preview-technical">
-      <summary>Teknik ayrıntılar</summary>
-      <p className="structure-import-hint">{platformLabel} ürün yanıtındaki alanlar (yalnızca alan adları):</p>
-      <p className="structure-preview-code">{report.responseFields!.join(' · ')}</p>
-    </details>}
   </div>
 }
 

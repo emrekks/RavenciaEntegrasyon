@@ -87,3 +87,16 @@
 }
 
 .structure-row-panel { font-weight: 600; }
+
+/* Header launcher button and its small dialog. */
+.app-shell.stitch-shell main .structure-header-button { display: inline-flex; align-items: center; gap: 8px; height: 34px; min-height: 34px; padding-block: 0; margin-left: auto; margin-right: var(--rv-space-3); white-space: nowrap; flex: none; box-sizing: border-box; }
+.structure-header-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--rv-color-primary); animation: structure-pulse 1.2s ease-in-out infinite; }
+@keyframes structure-pulse { 50% { opacity: .35; } }
+.rv-overlay .structure-launcher-modal { width: min(560px, 100%); }
+.structure-platform-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: var(--rv-space-4); }
+.app-shell.stitch-shell main .structure-platform-tabs button { height: 34px; min-height: 34px; padding: 0 16px; white-space: nowrap; color: var(--rv-color-ink); background: transparent; border: 1px solid var(--rv-color-border); border-radius: 8px; }
+.app-shell.stitch-shell main .structure-platform-tabs button.active { background: var(--rv-color-primary-soft); border-color: var(--rv-color-primary); }
+.app-shell.stitch-shell main .structure-platform-tabs button:disabled { opacity: .5; cursor: not-allowed; }
+.structure-launcher-body { display: grid; gap: var(--rv-space-4); }
+.structure-launcher-actions { display: flex; align-items: center; gap: var(--rv-space-3); }
+.app-shell.stitch-shell main .structure-launcher-actions button, .app-shell.stitch-shell main .structure-launcher-modal footer button, .app-shell.stitch-shell main .structure-launcher-modal .structure-import-status > button { height: 34px; min-height: 34px; padding-block: 0; white-space: nowrap; box-sizing: border-box; }
