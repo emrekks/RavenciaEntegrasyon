@@ -1535,9 +1535,13 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         if (!IntegrationRuntimePolicy.AllowsAutomaticInvoiceMarketplaceDeliveryQueue(
                 configuration.GetValue<bool>("FeatureFlags:ExternalWrites"),
                 configuration.GetValue<bool>("FeatureFlags:InvoiceMarketplaceDeliveryWrites"))) return;
-        if (!await db.PlatformCapabilities.AsNoTracking().AnyAsync(capability => capability.TenantId == tenantId
-            && capability.ConnectionId == marketplaceConnectionId && capability.Code == InvoicingCapabilities.InvoiceDeliver
-            && capability.SupportLevel == CapabilitySupportLevel.Supported && capability.VerifiedAt != null, cancellationToken)) return;
+        var marketplacePlatform = await db.PlatformConnections.AsNoTracking().Where(connection => connection.TenantId == tenantId && connection.Id == marketplaceConnectionId)
+            .Select(connection => connection.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        // Hepsiburada's adapter reads the package before and after the write, so it does not depend on a hand-entered capability record.
+        if (!string.Equals(marketplacePlatform, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
+            && !await db.PlatformCapabilities.AsNoTracking().AnyAsync(capability => capability.TenantId == tenantId
+                && capability.ConnectionId == marketplaceConnectionId && capability.Code == InvoicingCapabilities.InvoiceDeliver
+                && capability.SupportLevel == CapabilitySupportLevel.Supported && capability.VerifiedAt != null, cancellationToken)) return;
         await EnqueueAutomaticJob(tenantId, marketplaceConnectionId, invoice.Id, InvoicingJobTypes.MarketplaceDelivery, "after-document", correlationId, cancellationToken);
     }
 
@@ -1611,6 +1615,31 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                                 select new { invoice.Id, PackageId = package.Id, ConnectionId = package.ConnectionId, StateVersion = state.Version }).ToListAsync(cancellationToken);
 
         var bucket = now.ToUnixTimeSeconds() / 300;
+        var neverQueued = await (from invoice in db.Invoices.AsNoTracking()
+                                 join package in db.ShipmentPackages.AsNoTracking()
+                                     on new { invoice.TenantId, Id = invoice.PackageId!.Value } equals new { package.TenantId, package.Id }
+                                 join connection in db.PlatformConnections.AsNoTracking()
+                                     on new { package.TenantId, Id = package.ConnectionId } equals new { connection.TenantId, connection.Id }
+                                 where invoice.TenantId == tenantId
+                                     && invoice.SequencePurpose == "SALE"
+                                     && invoice.PackageId != null
+                                     && invoice.Status == InvoiceStatus.Accepted
+                                     && invoice.UpdatedAt <= now.AddMinutes(-2)
+                                     && connection.Status == "ACTIVE"
+                                     && connection.Environment == "PRODUCTION"
+                                     && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "HEPSIBURADA" || connection.PlatformCode == "SHOPIFY")
+                                     && !db.MarketplaceDeliveryStates.Any(state => state.TenantId == invoice.TenantId && state.InvoiceId == invoice.Id)
+                                     && db.InvoiceDocuments.Any(document => document.TenantId == invoice.TenantId && document.InvoiceId == invoice.Id && document.PermanentUrl != null)
+                                 select new { InvoiceId = invoice.Id, ConnectionId = package.ConnectionId }).ToListAsync(cancellationToken);
+        foreach (var undelivered in neverQueued)
+        {
+            var payload = $"\"{undelivered.InvoiceId}\"";
+            var activeDelivery = await db.IntegrationJobs.AsNoTracking().AnyAsync(job => job.TenantId == tenantId && job.JobType == InvoicingJobTypes.MarketplaceDelivery
+                && job.PayloadJson.Contains(payload) && (job.Status == JobStatus.Pending || job.Status == JobStatus.Leased || job.Status == JobStatus.RetryScheduled), cancellationToken);
+            if (activeDelivery) continue;
+            await EnqueueAutomaticJob(tenantId, undelivered.ConnectionId, undelivered.InvoiceId, InvoicingJobTypes.MarketplaceDelivery, $"never-queued:{bucket}", "scheduler-delivery-recovery", cancellationToken);
+        }
+
         foreach (var candidate in candidates)
         {
             var payload = JsonSerializer.Serialize(new { invoiceId = candidate.Id, packageId = candidate.PackageId });

@@ -236,20 +236,17 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             {
                 "FATURA_KESILDI" => query.Where(x => fullyDeliveredInvoiceOrderIds.Contains(x.Id)),
                 "FATURA_KONTROLDE" => query.Where(x =>
-                    db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null
-                        && i.SequencePurpose == "SALE"
-                        && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
-                        && (i.Status == InvoiceStatus.Submitted || i.Status == InvoiceStatus.Accepted || i.Status == InvoiceStatus.MarketplacePending))
+                    fullyDeliveredInvoiceOrderIds.Contains(x.Id)
                     || completedInvoiceOrderIdsMissingDelivery.Contains(x.Id)
                     || db.ShipmentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id
                         && (package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Received || package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Invoiced))),
                 "FATURA_PLATFORMA_AKTARILMADI" => query.Where(x => db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null
                     && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
-                    && (i.Status == InvoiceStatus.Accepted || i.Status == InvoiceStatus.MarketplacePending || i.Status == InvoiceStatus.MarketplaceFailed))),
+                    && (i.Status == InvoiceStatus.MarketplaceFailed || ((i.Status == InvoiceStatus.Accepted || i.Status == InvoiceStatus.MarketplacePending) && i.LastErrorCode != null)))),
                 "FATURA_REDDEDILDI" => query.Where(x =>
                     db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null
                         && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
-                        && (i.Status == InvoiceStatus.Rejected || i.Status == InvoiceStatus.ValidationFailed || i.Status == InvoiceStatus.ManualReview))
+                        && (i.Status == InvoiceStatus.Rejected || i.Status == InvoiceStatus.ValidationFailed || i.Status == InvoiceStatus.ManualReview || i.Status == InvoiceStatus.UnknownResult))
                     || db.ShipmentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Rejected)),
                 "FATURA_IPTAL" => query.Where(x => db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null
                     && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
@@ -262,7 +259,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                     || x.CustomerSnapshotJson.Contains("NOTINVOICED") || x.CustomerSnapshotJson.Contains("NOT_INVOICED")),
                 "FATURA_ISLENIYOR" => query.Where(x => db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null
                     && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
-                    && (i.Status == InvoiceStatus.Draft || i.Status == InvoiceStatus.Validating || i.Status == InvoiceStatus.Ready || i.Status == InvoiceStatus.Submitting || i.Status == InvoiceStatus.UnknownResult))),
+                    && (i.Status == InvoiceStatus.Draft || i.Status == InvoiceStatus.Validating || i.Status == InvoiceStatus.Ready || i.Status == InvoiceStatus.Submitting || i.Status == InvoiceStatus.Submitted
+                        || ((i.Status == InvoiceStatus.Accepted || i.Status == InvoiceStatus.MarketplacePending) && i.LastErrorCode == null)))),
                 _ => query.Where(_ => false)
             };
         }
@@ -2439,13 +2437,13 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         // as an in-progress marketplace delivery.
         if (invoiceStatus is { } status)
         {
-            if (status is InvoiceStatus.Rejected or InvoiceStatus.ValidationFailed or InvoiceStatus.ManualReview) return "FATURA_REDDEDILDI";
+            if (status is InvoiceStatus.Rejected or InvoiceStatus.ValidationFailed or InvoiceStatus.ManualReview or InvoiceStatus.UnknownResult) return "FATURA_REDDEDILDI";
             if (status == InvoiceStatus.MarketplaceFailed) return "FATURA_PLATFORMA_AKTARILMADI";
-            if (status is InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending or InvoiceStatus.Submitted) return "FATURA_PLATFORMA_BEKLIYOR";
+            if (status is InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending or InvoiceStatus.Submitted) return "FATURA_ISLENIYOR";
             if (status is InvoiceStatus.Cancelled or InvoiceStatus.CancelledLocal) return "FATURA_IPTAL";
             if (status == InvoiceStatus.Completed)
-                return marketplaceDeliveryConfirmed ? "FATURA_KESILDI" : "FATURA_KONTROLDE";
-            if (status is InvoiceStatus.Submitting or InvoiceStatus.UnknownResult or InvoiceStatus.Submitted)
+                return "FATURA_KONTROLDE";
+            if (status is InvoiceStatus.Submitting or InvoiceStatus.Submitted)
                 return "FATURA_ISLENIYOR";
             if (!string.IsNullOrWhiteSpace(invoiceNumber) && status is not (InvoiceStatus.Draft or InvoiceStatus.Validating or InvoiceStatus.Ready))
                 return "FATURA_KONTROLDE";
@@ -2478,18 +2476,16 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     {
         if (invoiceStatus is { } status)
         {
-            if (status is InvoiceStatus.Rejected or InvoiceStatus.ValidationFailed or InvoiceStatus.ManualReview or InvoiceStatus.MarketplaceFailed)
+            if (status is InvoiceStatus.Rejected or InvoiceStatus.ValidationFailed or InvoiceStatus.ManualReview or InvoiceStatus.MarketplaceFailed or InvoiceStatus.UnknownResult)
                 return status == InvoiceStatus.MarketplaceFailed ? "FATURA_PLATFORMA_AKTARILMADI" : "FATURA_REDDEDILDI";
             if (status is InvoiceStatus.Cancelled or InvoiceStatus.CancelledLocal)
                 return "FATURA_IPTAL";
-            if (status is InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending or InvoiceStatus.Submitted)
-                return "FATURA_PLATFORMA_BEKLIYOR";
-            if (status is InvoiceStatus.Submitting or InvoiceStatus.UnknownResult)
+            if (status is InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending or InvoiceStatus.Submitted or InvoiceStatus.Submitting)
                 return "FATURA_ISLENIYOR";
             // The marketplace observation is authoritative for the delivery
             // leg. A local invoice number only proves that our fiscal provider
             // created a document; it does not prove Trendyol accepted it.
-            if (status == InvoiceStatus.Completed) return marketplaceDeliveryConfirmed ? "FATURA_KESILDI" : "FATURA_KONTROLDE";
+            if (status == InvoiceStatus.Completed) return "FATURA_KONTROLDE";
             if (marketplaceStatus == MarketplaceInvoiceStatus.Rejected) return "FATURA_REDDEDILDI";
             if (marketplaceStatus == MarketplaceInvoiceStatus.Received) return "FATURA_KONTROLDE";
             return InvoiceLabel(invoiceStatus, invoiceNumber, customerJson, packageRawStatuses, marketplaceDeliveryConfirmed);
@@ -2521,7 +2517,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         if (string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase))
         {
             if (invoiceStatus == InvoiceStatus.Draft) return "FATURA_BEKLIYOR";
-            if (invoiceStatus == InvoiceStatus.Completed) return "FATURA_YUKLENDI";
+            if (invoiceStatus == InvoiceStatus.Completed) return "FATURA_KONTROLDE";
             if (label == "FATURA_BILINMIYOR") return "FATURA_BEKLIYOR";
         }
         return label;

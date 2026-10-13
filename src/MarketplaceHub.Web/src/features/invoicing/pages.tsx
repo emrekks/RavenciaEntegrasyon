@@ -135,9 +135,20 @@ function invoiceFailureReason(code: string | null) {
     EFATURAM_CARRIER_CATALOG_MISS: 'Kargo firmasının fatura bilgisi sağlayıcıya tanımlı değil.',
     HEPSIBURADA_INVOICE_DELIVERY_REPEATED_500: 'Fatura oluşturuldu; Hepsiburada belge iletiminde tekrarlanan sunucu hatası verdi.',
     INVOICE_DELIVERY_ENVIRONMENT_MISMATCH: 'Fatura sağlayıcısı ve pazaryeri farklı ortamlarda. Platform iletimi engellendi.',
-    REMOTE_INVOICE_REJECTED: 'Pazaryeri faturayı reddetti.'
+    REMOTE_INVOICE_REJECTED: 'Pazaryeri faturayı reddetti.',
+    INVOICE_SUBMISSION_OUTCOME_UNKNOWN: 'Sağlayıcıya gönderim sonucu alınamadı. Faturanın portalda oluşup oluşmadığını kontrol edin; oluşmadıysa yeniden gönderebilirsiniz.',
+    INVOICE_SUBMISSION_CANCELLED: 'Gönderim sırasında bağlantı kesildi. Faturanın portalda oluşup oluşmadığını kontrol edin.',
+    INVOICE_SUBMISSION_TRANSPORT_UNKNOWN: 'Sağlayıcıdan yanıt alınamadı. Faturanın portalda oluşup oluşmadığını kontrol edin.',
+    REMOTE_INVOICE_NOT_PRESENT: 'Pazaryeri iletilen faturayı göstermedi; iletim yeniden denenecek.',
+    PLATFORM_INVOICE_ALREADY_PRESENT: 'Pazaryerinde bu pakete ait bir fatura zaten görünüyor; üzerine yazılmadı. Pazaryeri panelinde kontrol edin.',
+    MARKETPLACE_INVOICE_IDENTITY_MISMATCH: 'Pazaryeri bir fatura gösteriyor ama bu faturayla eşleştirilemedi. Pazaryeri panelinde kontrol edin.',
+    DELIVERY_RETRY_PAYLOAD_CHANGED: 'Önceki iletim sonucu belirsiz kaldı ve fatura bilgisi değişti. Pazaryeri panelinde kontrol edin.',
+    HEPSIBURADA_INVOICE_DELIVERY_READBACK_MISSING: 'Hepsiburada isteği aldı ama faturayı henüz göstermiyor. Birkaç dakika içinde yeniden kontrol edilir.',
+    HEPSIBURADA_REMOTE_ERROR: 'Hepsiburada fatura iletimini kabul etmedi.',
+    PLATFORM_INVOICE_STATUS_NOT_CLEAR: 'Pazaryeri fatura durumunu net bildirmedi. Pazaryeri panelinde kontrol edin.',
+    OPERATOR_CONFIRMED_NO_REMOTE_INVOICE: 'Portalda fatura olmadığı onaylandı; yeniden gönderilebilir.'
   }
-  return labels[code ?? ''] ?? (code ? `Fatura oluşturulamadı: ${code}` : 'Fatura oluşturulamadı. Detayları açın.')
+  return labels[code ?? ''] ?? (code ? `İşlem tamamlanamadı: ${code}` : 'Ayrıntılar için faturayı açın.')
 }
 function invoiceFailureGuidance(code: string | null) {
   const labels: Record<string, string> = {
@@ -242,7 +253,7 @@ function InvoiceReferenceActionsMenu({ item, canCreateInvoice, canSyncOrder, del
   const canRetryInvoice = Boolean(item.platformCode !== 'SHOPIFY' && item.invoiceId && isInvoiceFailureStatus(item.invoiceStatus) && isInvoiceCreationActionVisible(item))
   const invoiceActionAvailable = canCreateInvoice || canRetryInvoice
   const invoiceActionLabel = canRetryInvoice
-    ? item.invoiceStatus === 'FATURA_PLATFORMA_AKTARILMADI' ? 'Platforma İletimi Tekrar Dene' : 'Faturayı Tekrar Dene'
+    ? item.invoiceStatus === 'FATURA_PLATFORMA_AKTARILMADI' ? 'Platforma Tekrar Gönder' : 'Tekrar Dene'
     : 'Fatura Oluştur'
   const manualDeliveryDisabled = deliveryPending || !canSendManual || !item.manualInvoiceIssuedAt
   const manualDeliveryTitle = deliveryPending
@@ -504,7 +515,7 @@ export function InvoicesPage() {
           <div className="invoice-reference-buyer"><strong>{invoiceCustomerDisplayName(item)}</strong><InvoiceProductSummary item={item} /></div>
           <div className="invoice-reference-products"><div className="cargo-provider-display invoice-cargo-provider"><CargoProviderIcon value={item.cargoProviderName ?? 'Kargo bilgisi yok'} fallbackText /></div><small>{item.cargoTrackingNumber ?? 'Takip numarası yok'}</small></div>
           <div className="invoice-reference-shipment"><Badge value={item.shipmentStatus} />{item.deliveredAt && invoiceWorkspaceStatus(item).value !== 'FATURA_KONTROLDE' && <small>{`Teslim: ${new Date(item.deliveredAt).toLocaleDateString('tr-TR')}`}</small>}</div>
-          <div className="invoice-reference-status">{(() => { const invoiceState = invoiceWorkspaceStatus(item); return <InvoiceStatusBadge status={invoiceState.value} tone={invoiceState.tone} /> })()}{item.marketplaceInvoiceReadErrorCode && <small className="invoice-marketplace-read-error" title={item.marketplaceInvoiceReadErrorSummary ?? undefined}>{item.marketplaceInvoiceReadErrorCode === 'REMOTE_PACKAGE_NOT_FOUND' ? 'Paket bilgisi pazaryerinden alınamadı; kayıtlı fatura durumu gösteriliyor.' : 'Pazaryeri fatura durumu yenilenemedi.'}</small>}{item.invoiceDueAt && <small className={new Date(item.invoiceDueAt).getTime() - Date.now() <= 86_400_000 ? 'deadline critical' : ''}>Son Tarih: {new Date(item.invoiceDueAt).toLocaleDateString('tr-TR')}</small>}</div>
+          <div className="invoice-reference-status">{(() => { const invoiceState = invoiceWorkspaceStatus(item); return <span className="invoice-status-reason" title={['FATURA_REDDEDILDI', 'FATURA_PLATFORMA_AKTARILMADI'].includes(invoiceState.value) ? invoiceFailureReason(item.invoiceErrorCode ?? null) : undefined}><InvoiceStatusBadge status={invoiceState.value} tone={invoiceState.tone} /></span> })()}{item.marketplaceInvoiceReadErrorCode && <small className="invoice-marketplace-read-error" title={item.marketplaceInvoiceReadErrorSummary ?? undefined}>{item.marketplaceInvoiceReadErrorCode === 'REMOTE_PACKAGE_NOT_FOUND' ? 'Paket bilgisi pazaryerinden alınamadı; kayıtlı fatura durumu gösteriliyor.' : 'Pazaryeri fatura durumu yenilenemedi.'}</small>}{item.invoiceDueAt && <small className={new Date(item.invoiceDueAt).getTime() - Date.now() <= 86_400_000 ? 'deadline critical' : ''}>Son Tarih: {new Date(item.invoiceDueAt).toLocaleDateString('tr-TR')}</small>}</div>
           <div className="invoice-reference-amount"><strong>{item.amount.toLocaleString('tr-TR', { style: 'currency', currency: item.currency })}</strong><small>{item.isDueSoon ? 'Öncelikli Takip' : 'Sipariş Toplamı'}</small></div>
           <div className="invoice-reference-actions">
             <InvoiceReferenceActionsMenu

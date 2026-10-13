@@ -87,7 +87,7 @@ public sealed class MarketplaceSalesInvoiceLabelTests
             [],
             marketplaceDeliveryConfirmed: true);
 
-        Assert.Equal("FATURA_KESILDI", label);
+        Assert.Equal("FATURA_KONTROLDE", label);
     }
 
     [Fact]
@@ -119,7 +119,7 @@ public sealed class MarketplaceSalesInvoiceLabelTests
 
         var label = MarketplaceSalesService.InvoiceLabelForPlatform(invoice, MarketplaceInvoiceStatus.Unknown, "{}", [], "SHOPIFY");
 
-        Assert.Equal("FATURA_YUKLENDI", label);
+        Assert.Equal("FATURA_KONTROLDE", label);
     }
 
     [Fact]

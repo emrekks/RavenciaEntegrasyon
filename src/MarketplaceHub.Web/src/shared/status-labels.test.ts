@@ -2,11 +2,18 @@ import { describe, expect, it } from 'vitest'
 import { invoiceStatusLabel, invoiceStatusTone, statusLabel } from './status-labels'
 
 describe('invoice status labels', () => {
-  it('keeps review and marketplace delivery failures distinct from rejected invoices', () => {
-    expect(invoiceStatusLabel('MANUAL_REVIEW')).toBe('İnceleme gerekli')
-    expect(invoiceStatusLabel('MARKETPLACE_FAILED')).toBe('Pazaryeri aktarımı başarısız')
-    expect(invoiceStatusLabel('REJECTED')).toBe('Fatura reddedildi')
-    expect(invoiceStatusTone('MANUAL_REVIEW')).toBe('warning')
+  it('groups invoice states into creating, delivering and failed labels', () => {
+    expect(invoiceStatusLabel('FATURA_BEKLIYOR')).toBe('Fatura Bekliyor')
+    expect(invoiceStatusLabel('FATURA_ISLENIYOR')).toBe('Fatura İletiliyor')
+    expect(invoiceStatusLabel('FATURA_PLATFORMA_BEKLIYOR')).toBe('Fatura İletiliyor')
+    expect(invoiceStatusLabel('FATURA_PLATFORMA_AKTARILMADI')).toBe('Fatura İletilemedi')
+    expect(invoiceStatusLabel('MARKETPLACE_FAILED')).toBe('Fatura İletilemedi')
+    expect(invoiceStatusLabel('MANUAL_REVIEW')).toBe('Fatura Oluşturulamadı')
+    expect(invoiceStatusLabel('REJECTED')).toBe('Fatura Oluşturulamadı')
+    expect(invoiceStatusLabel('FATURA_KESILDI')).toBe('Faturası Mevcut')
+    expect(invoiceStatusTone('FATURA_PLATFORMA_AKTARILMADI')).toBe('danger')
+    expect(invoiceStatusTone('FATURA_REDDEDILDI')).toBe('danger')
+    expect(invoiceStatusTone('FATURA_ISLENIYOR')).toBe('info')
   })
 
   it('shows a marketplace invoice awaiting reconciliation as issued and successful', () => {

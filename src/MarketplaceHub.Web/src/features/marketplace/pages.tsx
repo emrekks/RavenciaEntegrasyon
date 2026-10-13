@@ -1378,7 +1378,7 @@ export function OrdersPage() {
   const ordersLoading = ordersQuery.isPending; const ordersError = ordersQuery.error
   const cargos = Array.from(new Set(all.flatMap(item => [orderDisplayShipment(item)?.cargoProviderName ?? item.cargoProviderName].filter((value): value is string => !!value))))
   const platformOptions = marketplacePlatformOptions(connections.data?.items ?? [], allOrders.map(item => ({ platformCode: item.platformCode, displayName: item.platformDisplayName })))
-  const invoiceStatuses = [['FATURA_BEKLIYOR', 'Fatura bekliyor'], ['FATURA_YUKLENDI', 'Faturası yüklendi'], ['FATURA_ISLENIYOR', 'Fatura işleniyor'], ['FATURA_PLATFORMA_BEKLIYOR', 'Platforma gönderilmeyi bekliyor'], ['FATURA_PLATFORMA_AKTARILMADI', 'Platforma aktarılmadı'], ['FATURA_KONTROLDE', 'Kontrolde'], ['FATURA_KESILDI', 'Fatura kesildi'], ['FATURA_REDDEDILDI', 'Reddedildi'], ['FATURA_IPTAL', 'İptal edildi']] as const
+  const invoiceStatuses = [['FATURA_BEKLIYOR', 'Fatura Bekliyor'], ['FATURA_ISLENIYOR', 'Fatura İletiliyor'], ['FATURA_PLATFORMA_AKTARILMADI', 'Fatura İletilemedi'], ['FATURA_KONTROLDE', 'Faturası Mevcut'], ['FATURA_REDDEDILDI', 'Fatura Oluşturulamadı'], ['FATURA_IPTAL', 'Fatura İptal']] as const
   const isLabelPrinted = (item: Order) => (['a4', 'sticker'] as ShippingLabelFormat[]).some(format => printedLabels.has(printedShippingLabelKey(item.id, format)))
   const applyFilterValue = <K extends keyof OrderFilters>(key: K, value: OrderFilters[K]) => { const next = { ...filterForm, [key]: value }; setFilterForm(next); setFilters(next); setPage(1) }
   const resetFilters = () => { const next = { ...initialOrderFilters }; setFilterForm(next); setFilters(next); setSelectedPlatforms([]); setPage(1); setColumnFilterOpen(null); setSearchParams(current => { const params = new URLSearchParams(current); params.delete('search'); params.delete('status'); return params }, { replace: true }) }
@@ -1785,7 +1785,7 @@ export function ReturnsPage() {
   // A split card belongs only to the tab of its own group.
   const items = visibleReturnClaims(splitMixedReturnClaims(query.data?.items ?? [])).filter(item => !item.rowKey || appliedFilters.status === 'ALL' || returnGroup(item.status) === appliedFilters.status).filter(item => matchesReturnReferenceSearch(item, appliedFilters.search))
   const countItems = visibleReturnClaims(splitMixedReturnClaims(appliedFilters.status === 'ALL' ? query.data?.items ?? [] : countsQuery.data?.items ?? [])).filter(item => matchesReturnReferenceSearch(item, appliedFilters.search))
-  const invoiceStatuses = [['FATURA_BEKLIYOR', 'Fatura bekliyor'], ['FATURA_ISLENIYOR', 'Fatura işleniyor'], ['FATURA_PLATFORMA_BEKLIYOR', 'Platforma gönderilmeyi bekliyor'], ['FATURA_PLATFORMA_AKTARILMADI', 'Platforma aktarılmadı'], ['FATURA_KONTROLDE', 'Kontrolde'], ['FATURA_KESILDI', 'Fatura kesildi'], ['FATURA_REDDEDILDI', 'Reddedildi'], ['FATURA_IPTAL', 'İptal edildi']] as const
+  const invoiceStatuses = [['FATURA_BEKLIYOR', 'Fatura Bekliyor'], ['FATURA_ISLENIYOR', 'Fatura İletiliyor'], ['FATURA_PLATFORMA_AKTARILMADI', 'Fatura İletilemedi'], ['FATURA_KONTROLDE', 'Faturası Mevcut'], ['FATURA_REDDEDILDI', 'Fatura Oluşturulamadı'], ['FATURA_IPTAL', 'Fatura İptal']] as const
   const reasonOptions = new Map<string, string>()
   for (const item of items) {
     const value = item.reasonCode?.trim() || item.reasonText?.trim()
