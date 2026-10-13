@@ -3,6 +3,7 @@ import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
 import { Modal } from '../../shared/components'
 import { PlatformMark } from '../../shared/platform-mark'
+import { integrationNotificationTarget, isExternalWriteMessage, type NotificationTarget } from '../../shared/notifications'
 import { allocateStock, totalUnits } from './return-stock-allocation'
 import './return-bulk-approve.css'
 
@@ -20,6 +21,7 @@ export type BulkDecisionLine = {
 
 export type BulkDecisionItem = {
   id: string
+  connectionId: string | null
   version: number
   orderNumber: string
   customerName: string
@@ -42,7 +44,7 @@ type Props = {
   mode: 'APPROVE' | 'REJECT'
   items: BulkDecisionItem[]
   onClose: () => void
-  onDone: (message: string, kind: 'success' | 'info' | 'error', details?: Array<{ label: string; value: string; tone?: 'success' | 'error' }>) => void
+  onDone: (message: string, kind: 'success' | 'info' | 'error', details?: Array<{ label: string; value: string; tone?: 'success' | 'error' }>, target?: NotificationTarget | null) => void
 }
 
 const isActionable = (line: DetailLine) => !line.status || line.status.toUpperCase() === 'ACTION_REQUIRED'
@@ -128,11 +130,21 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
       [
         ...items.map(item => {
           const result = results.find(entry => entry.id === item.id)
-          return { label: item.orderNumber, value: `${item.customerName} · ${result?.ok ? (approving ? 'Onaylandı' : 'Reddedildi') : result?.message ?? 'Gönderilmedi'}`, tone: result?.ok ? 'success' as const : 'error' as const }
+          return { label: item.orderNumber, value: `${item.customerName} · ${item.platformName} · ${result?.ok ? (approving ? 'Onaylandı' : 'Reddedildi') : result?.message ?? 'Gönderilmedi'}`, tone: result?.ok ? 'success' as const : 'error' as const }
         }),
         ...(approving && stockTotal > 0 ? [{ label: 'Stok', value: `+${stockTotal.toLocaleString('tr-TR')} adet stoğa eklendi` }] : []),
         ...(!approving ? [{ label: 'Ret Nedeni', value: usableReasons.find(reason => reason.id === reasonId)?.name ?? reasonId }] : [])
-      ])
+      ], bulkTarget(results))
+  }
+
+  // Failures from a closed write switch lead to that integration; everything else to the matching returns tab.
+  function bulkTarget(results: Outcome[]): NotificationTarget {
+    const writeFailures = items.filter(item => results.some(result => result.id === item.id && !result.ok && isExternalWriteMessage(result.message)))
+    if (writeFailures.length > 0) {
+      const connections = new Set(writeFailures.map(item => item.connectionId))
+      return connections.size === 1 ? integrationNotificationTarget(writeFailures[0]!.connectionId, writeFailures[0]!.platformName) : { href: '/integrations', label: 'Entegrasyonlara Git' }
+    }
+    return approving ? { href: '/returns?status=APPROVED', label: 'Onaylanan İadelere Git' } : { href: '/returns?status=REJECTED', label: 'Reddedilen İadelere Git' }
   }
 
   const toggleStock = (key: string) => setStockKeys(current => current.includes(key) ? current.filter(value => value !== key) : [...current, key])

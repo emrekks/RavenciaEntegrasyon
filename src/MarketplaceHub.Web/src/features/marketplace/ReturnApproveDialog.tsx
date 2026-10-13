@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
 import { Busy, ErrorBox, Modal } from '../../shared/components'
 import { PlatformMark } from '../../shared/platform-mark'
+import { integrationNotificationTarget, isExternalWriteMessage, type NotificationTarget } from '../../shared/notifications'
 import { allocateStock } from './return-stock-allocation'
 import './return-approve-dialog.css'
 
@@ -21,6 +22,7 @@ export type ReturnApproveRow = {
 }
 
 export type ReturnApproveOrderInfo = {
+  connectionId: string | null
   platformCode: string
   platformName: string
   orderNumber: string
@@ -43,7 +45,7 @@ type Props = {
   // Hepsiburada decides the whole claim at once: every product is approved together as a refund.
   wholeClaim?: boolean
   onClose: () => void
-  onDone: (message: string, kind: 'success' | 'info' | 'error', details?: Array<{ label: string; value: string; tone?: 'success' | 'error' }>) => void
+  onDone: (message: string, kind: 'success' | 'info' | 'error', details?: Array<{ label: string; value: string; tone?: 'success' | 'error' }>, target?: NotificationTarget | null) => void
 }
 
 // One product with every return line (claim item) the marketplace opened for it. A product returned
@@ -97,16 +99,23 @@ export function ReturnApproveDialog({ open, claimId, version, marketplaceName, o
     }),
     onSuccess: async () => {
       const stock = stockRequests.length > 0 ? ` Stok ${stockQuantity.toLocaleString('tr-TR')} adet artırıldı.` : ''
-      onDone(`İade kabulü ${marketplaceName}’a gönderildi.${stock}`, 'success', [
+      onDone(`${order.orderNumber} siparişinin iade kabulü ${marketplaceName}’a gönderildi.${stock}`, 'success', [
         { label: 'Sipariş', value: `${order.orderNumber} · ${order.customer}`, tone: 'success' },
         ...chosenRows.map(row => ({ label: 'Ürün', value: `${row.title} (${row.quantity} adet)` })),
         ...(stockRequests.length > 0 ? [{ label: 'Stok', value: `+${stockQuantity.toLocaleString('tr-TR')} adet stoğa eklendi` }] : [])
-      ])
+      ], { href: `/returns?status=APPROVED&search=${encodeURIComponent(order.orderNumber.replace(/^#/, ''))}`, label: 'İadeyi Gör' })
       await client.invalidateQueries({ queryKey: ['return', claimId] })
       await client.invalidateQueries({ queryKey: ['returns'] })
       onClose()
     },
-    onError: reason => onDone(reason instanceof Error ? reason.message : 'İade kararı başlatılamadı.', 'error')
+    onError: reason => {
+      const message = reason instanceof Error ? reason.message : 'İade kararı başlatılamadı.'
+      onDone(`${order.orderNumber} siparişinin iade kabulü gönderilemedi: ${message}`, 'error', [
+        { label: 'Sipariş', value: `${order.orderNumber} · ${order.customer}` },
+        { label: 'Entegrasyon', value: order.platformName },
+        { label: 'Neden', value: message, tone: 'error' }
+      ], isExternalWriteMessage(message) ? integrationNotificationTarget(order.connectionId, order.platformName) : { href: `/returns?search=${encodeURIComponent(order.orderNumber.replace(/^#/, ''))}`, label: 'İadeyi Gör' })
+    }
   })
 
   const canSubmit = chosenRows.length > 0

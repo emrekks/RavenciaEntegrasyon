@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { ToneIcon, UiIcon } from '../shared/components'
 import './notification-panel.css'
+import { describeNotification } from '../shared/notification-describe'
 import { clearNotificationHistory, markAllNotificationsRead, markNotificationRead, type AppNotification } from '../shared/notifications'
 
 type Filter = 'ALL' | 'UNREAD' | 'ERROR'
 
-const KIND_LABEL: Record<AppNotification['kind'], string> = { success: 'Başarılı', error: 'Hata', info: 'Bilgi' }
 
 // The first sentence is the summary; anything after " · " is the technical detail.
 function notificationPresentation(notification: AppNotification) {
@@ -55,9 +55,9 @@ function NotificationItem({ notification, expanded, onToggle, onOpen }: ItemProp
       </div>
       <p>{presentation.summary}</p>
       {expanded && <dl className="rv-notification-detail">
+        {describeNotification(notification).map(fact => <div key={fact.label}><dt>{fact.label}</dt><dd className={fact.tone ? `is-${fact.tone}` : undefined}>{fact.value}</dd></div>)}
         <div><dt>Mesaj</dt><dd>{notification.message}</dd></div>
         {notification.details?.map((detail, index) => <div key={`${detail.label}:${index}`}><dt>{detail.label}</dt><dd className={detail.tone ? `is-${detail.tone}` : undefined}>{detail.value}</dd></div>)}
-        <div><dt>Durum</dt><dd><span className="rv-notification-history-result">{KIND_LABEL[notification.kind]}</span></dd></div>
         <div><dt>Zaman</dt><dd>{new Date(notification.createdAt).toLocaleString('tr-TR')}</dd></div>
       </dl>}
       <div className="rv-notification-foot">

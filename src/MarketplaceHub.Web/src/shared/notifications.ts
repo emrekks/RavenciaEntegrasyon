@@ -71,6 +71,15 @@ export function shouldRecordNotification(message: string, kind: AppNotification[
   return kind === 'success' && consequential.test(text)
 }
 
+// Failures caused by a closed external-write switch are fixed on the integration, not on the page that failed.
+export function isExternalWriteMessage(message: string): boolean {
+  return /(dış yazma|yazma anahtar|yazma kapı|yetenek kanıtı|external_write)/iu.test(message)
+}
+
+export function integrationNotificationTarget(connectionId: string | null | undefined, platformName: string): NotificationTarget {
+  return connectionId ? { href: `/integrations/${connectionId}`, label: `${platformName} Entegrasyonuna Git` } : { href: '/integrations', label: 'Entegrasyonlara Git' }
+}
+
 export function readNotificationHistory(): AppNotification[] {
   try {
     const raw = localStorage.getItem(notificationStorageKey)
