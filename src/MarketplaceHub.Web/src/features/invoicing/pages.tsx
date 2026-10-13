@@ -188,6 +188,7 @@ function invoiceDeliveryTone(status: string | null | undefined): 'good' | 'warn'
   return 'neutral'
 }
 function actionLabel(action: string) { return ({ SUBMIT: 'E-Faturam’a gönder', STAGE_CAPABILITY_PROBE: 'Stage mali canary çalıştır', RECONCILE: 'Durumu uzlaştır', DELIVER: 'Trendyol’a fatura linkini ilet', CANCEL: 'E-Arşiv iptal isteği', VALIDATE: 'Yerel doğrula' } as Record<string, string>)[action] ?? action }
+function normalizeAddressText(value: string) { return value.toLocaleLowerCase('tr-TR').replace(/s+/g, ' ').trim() }
 function addressLines(value: string | null | undefined) {
   if (!value) return []
   try {
@@ -203,7 +204,16 @@ function addressLines(value: string | null | undefined) {
       if (typeof node !== 'object' || node === null) return
       if (Array.isArray(node)) { node.forEach(visit); return }
       const record = node as Record<string, unknown>
-      Object.entries(record).forEach(([key, item]) => { const label = labels[key.toLocaleLowerCase('en-US')]; if (label && typeof item === 'string' && item.trim() && !values.some(line => line.value === item.trim())) values.push({ label, value: item.trim() }) })
+      Object.entries(record).forEach(([key, item]) => {
+        const label = labels[key.toLocaleLowerCase('en-US')]
+        if (!label || typeof item !== 'string' || !item.trim()) return
+        const value = item.trim()
+        // The same street text often arrives twice, once as a line and once inside the full address; show it once.
+        const normalized = normalizeAddressText(value)
+        const streetLabel = ['Adres', 'Adres satırı', 'Cadde / sokak'].includes(label)
+        if (values.some(line => line.value === value || (streetLabel && ['Adres', 'Adres satırı', 'Cadde / sokak'].includes(line.label) && (normalizeAddressText(line.value).includes(normalized) || normalized.includes(normalizeAddressText(line.value)))))) return
+        values.push({ label, value })
+      })
       Object.values(record).forEach(child => { if (typeof child === 'object') visit(child) })
     }
     visit(parsed)
