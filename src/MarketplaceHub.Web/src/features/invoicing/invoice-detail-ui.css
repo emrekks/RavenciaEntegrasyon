@@ -11,3 +11,5 @@
 }
 .invoice-detail-addresses article > span { overflow-wrap: anywhere; line-height: 1.5; }
 .invoice-detail-addresses article > span > strong { color: var(--rv-color-muted); font-weight: 750; }
+
+.invoice-detail-header-actions { display: inline-flex; align-items: center; gap: 8px; flex: none; }
