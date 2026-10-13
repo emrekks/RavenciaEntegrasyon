@@ -7085,20 +7085,19 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     remoteInvoiceNumber))
                     return;
 
-                var orderNumber = deliveryState is not null
-                    && deliveryState.Status == "UNKNOWN"
-                    && deliveryState.ErrorCode == InvoiceDeliveryRecoveryPolicy.HepsiburadaAcceptedButReadbackMissingErrorCode
-                    ? await db.Orders.AsNoTracking().Where(x => x.TenantId == package.TenantId && x.Id == package.OrderId).Select(x => x.OrderNumber).SingleOrDefaultAsync(cancellationToken)
-                    : null;
-                var sameAttemptProof = OneTimeInvoiceDeliveryPolicy.IsAuthorizedStageDocument(orderNumber, invoice.Id)
-                    && deliveryState is not null
-                    && InvoiceDeliveryRecoveryPolicy.ConfirmsAcceptedHepsiburadaAttemptReadback(
-                        isAuthorizedStageDocument: true,
-                        deliveryState.Status,
-                        deliveryState.ErrorCode,
-                        incomingStatus,
-                        observedAt,
-                        deliveryState.UpdatedAt);
+                // The send was preceded by a read that found the package empty, and Hepsiburada has reported an invoice after that write.
+                // The platform cannot say which invoice it holds, so the write we just made is the only explanation; later rewrites (REVOKED) reset this.
+                var acceptedAttemptAt = deliveryState is null || incomingStatus != MarketplaceInvoiceStatus.Invoiced
+                    || deliveryState.Status is not ("UNKNOWN" or "REVIEW_REQUIRED")
+                    ? (DateTimeOffset?)null
+                    : await db.MarketplaceDeliveries.AsNoTracking()
+                        .Where(x => x.TenantId == invoice.TenantId && x.InvoiceId == invoice.Id && x.PackageId == package.Id
+                            && x.ErrorCode == InvoiceDeliveryRecoveryPolicy.HepsiburadaAcceptedButReadbackMissingErrorCode)
+                        .OrderByDescending(x => x.CreatedAt).Select(x => (DateTimeOffset?)x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
+                var revokedAfterAttempt = acceptedAttemptAt is { } attemptAt && await db.MarketplaceDeliveries.AsNoTracking()
+                    .AnyAsync(x => x.TenantId == invoice.TenantId && x.InvoiceId == invoice.Id && x.PackageId == package.Id && x.Status == "REVOKED" && x.CreatedAt > attemptAt, cancellationToken);
+                var sameAttemptProof = deliveryState is not null && acceptedAttemptAt is { } acceptedAt && !revokedAfterAttempt
+                    && observedAt is { } readAt && readAt > acceptedAt;
 
                 if (sameAttemptProof && deliveryState is not null)
                 {
