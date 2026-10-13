@@ -509,7 +509,7 @@ export function InvoicesPage() {
     {shopifyStatusItem && <ShopifyInvoiceStatusModal item={shopifyStatusItem} onClose={() => setShopifyStatusItem(null)} onFeedback={setMessage} />}
     {manualUploadItem && <InvoiceWorkspaceUploadModal item={manualUploadItem} onClose={() => setManualUploadItem(null)} onFeedback={setMessage} />}
     {manualStatusBatch && <InvoiceWorkspaceBulkStatusModal items={manualStatusBatch} onClose={() => setManualStatusBatch(null)} onFeedback={setMessage} />}
-    {previewTargets && <InvoiceWorkspacePreviewModal targets={previewTargets} onClose={() => setPreviewTargets(null)} onComplete={() => { void Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['invoice'] })]) }} />}
+    {previewTargets && <InvoiceWorkspacePreviewModal targets={previewTargets} onClose={() => setPreviewTargets(null)} onNotice={(text, kind) => setMessage(text, kind)} onComplete={() => { void Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['invoice'] })]) }} />}
   </section>
 }
 

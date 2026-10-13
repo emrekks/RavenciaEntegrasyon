@@ -120,6 +120,7 @@ public static class DependencyInjection
         services.AddScoped<IInvoiceMarketplacePort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
         services.AddScoped<IInvoicingBillingService, InvoicingBillingService>();
         services.AddScoped<IInvoicingJobProcessor, InvoicingJobProcessor>();
+        services.AddScoped<IInvoiceInlineRunner, InvoiceInlineRunner>();
         services.AddScoped<IInvoicingReconciliationService, InvoicingReconciliationService>();
         services.AddSingleton<IPrivateFileStorage>(new PrivateFileStorage(filesRoot));
         services.Configure<BootstrapOptions>(configuration.GetSection("Bootstrap"));

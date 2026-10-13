@@ -74,13 +74,22 @@ public static class InvoicingEndpoints
             var result = await service.PreviewWorkspaceInvoicesAsync(tenant.TenantId, request, http.RequestAborted);
             return result.Succeeded ? Results.Ok(result.Value) : Problem(http, result.Error!);
         });
-        api.MapPost("/invoice-workspace/confirm", async (InvoiceWorkspacePreviewConfirmRequest request, HttpContext http, IInvoicingBillingService service) =>
+        api.MapPost("/invoice-workspace/confirm", async (InvoiceWorkspacePreviewConfirmRequest request, HttpContext http, IInvoicingBillingService service, IInvoiceInlineRunner inline) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
             if (RequireIdempotency(http) is { } failure) return failure;
             var result = await service.ConfirmWorkspaceInvoicesAsync(tenant.TenantId, request,
                 http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted);
-            return result.Succeeded ? Results.Accepted(value: result.Value) : Problem(http, result.Error!);
+            if (!result.Succeeded) return Problem(http, result.Error!);
+            // These are immediate writes: run the queued job now and answer with its real outcome instead of leaving it for the worker.
+            var items = new List<InvoiceWorkspaceConfirmItemResult>();
+            foreach (var item in result.Value!.Items)
+            {
+                if (item.Status != "QUEUED" || item.JobId is not { } jobId || item.InvoiceId is not { } invoiceId) { items.Add(item); continue; }
+                var outcome = await inline.RunAsync(tenant.TenantId, invoiceId, jobId, http.RequestAborted);
+                items.Add(item with { Status = outcome.Status == "IN_PROGRESS" ? "QUEUED" : outcome.Status, Message = outcome.Message });
+            }
+            return Results.Ok(new InvoiceWorkspaceConfirmResult(items));
         });
         api.MapPost("/invoices", async (CreateInvoiceCommand command, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Created(await service.CreateDraftAsync(tenant.TenantId, command, http.Request.Headers["Idempotency-Key"].ToString(), http.RequestAborted), "/api/v1/invoices") : MissingContext(http));
         api.MapGet("/invoices/{id:guid}", async (Guid id, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant ? WithEtag(http, await service.GetAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http));

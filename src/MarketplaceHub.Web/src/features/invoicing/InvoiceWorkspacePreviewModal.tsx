@@ -54,11 +54,11 @@ function actionLabel(action: string | null) {
         : action === 'WAIT' ? 'Mevcut İşlem Sonuçlanıyor' : action === 'NONE' ? 'İşlem Tamamlandı' : 'İnceleme Gerekiyor'
 }
 
-export function InvoiceWorkspacePreviewModal({ targets, onClose, onComplete }: { targets: InvoicePreviewTarget[]; onClose: () => void; onComplete: () => void }) {
+export function InvoiceWorkspacePreviewModal({ targets, onClose, onComplete, onNotice }: { targets: InvoicePreviewTarget[]; onClose: () => void; onComplete: () => void; onNotice: (message: string, kind: 'success' | 'error' | 'info') => void }) {
   const [previews, setPreviews] = useState<PreviewItem[]>([])
   const [results, setResults] = useState<ConfirmResult | null>(null)
   const [loading, setLoading] = useState(false)
-  const [submitting, setSubmitting] = useState(false)
+  const submitting = false
   const [error, setError] = useState<unknown>(null)
   const [includeInternetSalesInfo, setIncludeInternetSalesInfo] = useState(false)
   const targetPayload = useMemo(() => JSON.stringify(targets), [targets])
@@ -73,26 +73,32 @@ export function InvoiceWorkspacePreviewModal({ targets, onClose, onComplete }: {
     return () => { active = false }
   }, [targetPayload, includeInternetSalesInfo])
 
-  async function confirm() {
-    setSubmitting(true); setError(null)
-    try {
-      const eligible = previews.filter(item => item.canConfirm)
-      const response = await hubApi<ConfirmResult>('/invoice-workspace/confirm', {
-        method: 'POST',
-        headers: { 'Idempotency-Key': `invoice-workspace-confirm:${crypto.randomUUID()}` },
-        body: JSON.stringify({ items: eligible.map(item => ({ orderId: item.orderId, packageId: item.packageId, providerConnectionId: item.providerConnectionId, previewDigest: item.previewDigest })), includeInternetSalesInfo })
+  // The write goes out immediately: the dialog closes right away and the outcome arrives as a notification.
+  function confirm() {
+    const eligible = previews.filter(item => item.canConfirm)
+    const body = JSON.stringify({ items: eligible.map(item => ({ orderId: item.orderId, packageId: item.packageId, providerConnectionId: item.providerConnectionId, previewDigest: item.previewDigest })), includeInternetSalesInfo })
+    const labels = new Map(eligible.map(item => [item.packageId, `#${item.orderNumber}`]))
+    onClose()
+    onNotice(eligible.length > 1 ? `${eligible.length} fatura işleniyor…` : `${labels.get(eligible[0]?.packageId ?? '') ?? 'Fatura'} için fatura işleniyor…`, 'info')
+    void hubApi<ConfirmResult>('/invoice-workspace/confirm', { method: 'POST', headers: { 'Idempotency-Key': `invoice-workspace-confirm:${crypto.randomUUID()}` }, body })
+      .then(response => {
+        for (const result of response.items) {
+          const label = labels.get(result.packageId) ?? 'Sipariş'
+          const failed = ['FAILED', 'BLOCKED', 'VALIDATION_FAILED', 'PREVIEW_STALE', 'CONFLICT'].includes(result.status)
+          if (failed) onNotice(`${label} faturası oluşturulamadı: ${result.message}`, 'error')
+          else if (result.status === 'COMPLETED') onNotice(`${label} ${result.message}`, 'success')
+          else onNotice(`${label}: ${result.message}`, 'info')
+        }
       })
-      setResults(response)
-      onComplete()
-    } catch (reason) { setError(reason) }
-    finally { setSubmitting(false) }
+      .catch(reason => onNotice(`Fatura işlemi başlatılamadı: ${reason instanceof Error ? reason.message : 'Bilinmeyen hata'}`, 'error'))
+      .finally(onComplete)
   }
 
   const eligibleCount = previews.filter(item => item.canConfirm).length
   const internetSalesInfoLocked = previews.length > 0 && previews.every(item => item.existingInvoiceId !== null && item.nextAction !== 'SUBMIT_RETRY')
   return <div className="invoice-detail-backdrop invoice-workspace-preview-backdrop" role="presentation" onMouseDown={onClose}>
     <section className="workspace-modal invoice-detail-modal invoice-workspace-preview-modal" role="dialog" aria-modal="true" aria-labelledby="invoice-workspace-preview-title" onMouseDown={event => event.stopPropagation()}>
-      <header className="invoice-detail-header"><div><p className="eyebrow">Salt okunur fatura kontrolü</p><h2 id="invoice-workspace-preview-title">Fatura oluşturma önizlemesi</h2><p>Bilgileri kontrol edip onayladığınızda işlem kuyruğa alınır.</p></div><button type="button" className="modal-close" onClick={onClose} aria-label="Önizlemeyi kapat"><UiIcon name="close" /></button></header>
+      <header className="invoice-detail-header"><div><p className="eyebrow">Salt okunur fatura kontrolü</p><h2 id="invoice-workspace-preview-title">Fatura oluşturma önizlemesi</h2><p>Bilgileri kontrol edin; onayladığınızda fatura hemen kesilir ve sonuç bildirim olarak gelir.</p></div><button type="button" className="modal-close" onClick={onClose} aria-label="Önizlemeyi kapat"><UiIcon name="close" /></button></header>
       <div className="invoice-detail-body">
         {loading ? <Busy text="Sipariş ve fatura verileri okunuyor…" /> : error && !previews.length ? <ErrorBox error={error} /> : <>
           {error && <ErrorBox error={error} />}
@@ -110,7 +116,7 @@ export function InvoiceWorkspacePreviewModal({ targets, onClose, onComplete }: {
           {results && <section className="invoice-workspace-preview-results" aria-live="polite"><h3>İşlem sonuçları</h3>{results.items.map(result => <p key={result.packageId}><strong>{result.status} · {result.action}</strong><span>{result.message}</span></p>)}</section>}
         </>}
       </div>
-      <footer className="invoice-detail-footer"><label className="invoice-workspace-internet-sales-toggle" title={internetSalesInfoLocked ? 'Bu kayıtta mali fatura daha önce oluşturulmuş; seçenek mevcut faturayı değiştirmez.' : 'Kapalıysa e-Arşiv faturasına web sitesi, ödeme ve aracı hizmet bilgileri eklenmez. Kargo bilgisi bundan etkilenmez.'}><input type="checkbox" checked={includeInternetSalesInfo} disabled={loading || submitting || Boolean(results) || internetSalesInfoLocked} onChange={event => setIncludeInternetSalesInfo(event.target.checked)} /><span>İnternet Satış Bilgilerini Doldur</span></label><button type="button" className="secondary" onClick={onClose}>{results ? 'Kapat' : 'Vazgeç'}</button>{!results && <button type="button" disabled={loading || submitting || eligibleCount === 0} onClick={() => void confirm()}>{submitting ? 'İşlem kuyruğa alınıyor…' : eligibleCount > 1 ? `Onayla ve sıraya al (${eligibleCount})` : previews[0]?.nextAction === 'DELIVERY_ONLY' ? 'Platforma iletimi sıraya al' : 'Onayla ve sıraya al'}</button>}</footer>
+      <footer className="invoice-detail-footer"><label className="invoice-workspace-internet-sales-toggle" title={internetSalesInfoLocked ? 'Bu kayıtta mali fatura daha önce oluşturulmuş; seçenek mevcut faturayı değiştirmez.' : 'Kapalıysa e-Arşiv faturasına web sitesi, ödeme ve aracı hizmet bilgileri eklenmez. Kargo bilgisi bundan etkilenmez.'}><input type="checkbox" checked={includeInternetSalesInfo} disabled={loading || submitting || Boolean(results) || internetSalesInfoLocked} onChange={event => setIncludeInternetSalesInfo(event.target.checked)} /><span>İnternet Satış Bilgilerini Doldur</span></label><button type="button" className="secondary" onClick={onClose}>{results ? 'Kapat' : 'Vazgeç'}</button>{!results && <button type="button" disabled={loading || submitting || eligibleCount === 0} onClick={confirm}>{submitting ? 'İşlem kuyruğa alınıyor…' : eligibleCount > 1 ? `Onayla ve Faturayı Kes (${eligibleCount})` : previews[0]?.nextAction === 'DELIVERY_ONLY' ? 'Platforma İletimi Başlat' : 'Onayla ve Faturayı Kes'}</button>}</footer>
     </section>
   </div>
 }

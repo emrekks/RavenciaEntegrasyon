@@ -340,7 +340,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         TimeoutException or HttpRequestException or IOException or System.Data.Common.DbException =>
             JobExecutionResult.Retry("TRANSIENT_EXECUTION_FAILURE", "Geçici altyapı hatası nedeniyle işlem yeniden denenecek."),
         JsonException or ArgumentException or InvalidOperationException =>
-            JobExecutionResult.Blocked("INVALID_JOB_STATE", "İşlem verisi veya mevcut durum doğrulaması başarısız oldu."),
+            JobExecutionResult.Blocked("INVALID_JOB_STATE", $"İşlem verisi veya mevcut durum doğrulaması başarısız oldu. ({exception.GetType().Name}: {exception.Message.ReplaceLineEndings(" ")})"),
         _ => JobExecutionResult.Retry("UNHANDLED_EXECUTION_FAILURE", "Beklenmeyen işlem hatası otomatik deneme sınırı içinde yeniden denenecek.")
     };
 
