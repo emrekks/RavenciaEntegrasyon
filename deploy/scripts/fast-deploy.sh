@@ -33,8 +33,11 @@ read_env() {
 external_writes_enabled="$(sudo -n awk -F= '$1 == "MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED" { sub(/^[^=]*=/, ""); print; found=1; exit } END { if (!found) print "true" }' "$environment_file")"
 if [[ "$disable_external_writes" == true ]]; then external_writes_enabled=false; fi
 [[ "$external_writes_enabled" == true || "$external_writes_enabled" == false ]] || { echo "MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED must be true or false." >&2; exit 1; }
-invoice_marketplace_delivery_writes_enabled=false
+# Marketplace invoice delivery follows the per-connection external write switch; production.env can still force it off.
+invoice_marketplace_delivery_writes_enabled="$(sudo -n awk -F= '$1 == "MARKETPLACEHUB_INVOICE_MARKETPLACE_DELIVERY_WRITES_ENABLED" { sub(/^[^=]*=/, ""); print; found=1; exit } END { if (!found) print "true" }' "$environment_file")"
 if [[ "$enable_invoice_marketplace_delivery" == true ]]; then invoice_marketplace_delivery_writes_enabled=true; fi
+if [[ "$disable_external_writes" == true ]]; then invoice_marketplace_delivery_writes_enabled=false; fi
+[[ "$invoice_marketplace_delivery_writes_enabled" == true || "$invoice_marketplace_delivery_writes_enabled" == false ]] || { echo "MARKETPLACEHUB_INVOICE_MARKETPLACE_DELIVERY_WRITES_ENABLED must be true or false." >&2; exit 1; }
 
 cd "$repository_root"
 if [[ -n "${DEPLOY_REVISION:-}" ]]; then
