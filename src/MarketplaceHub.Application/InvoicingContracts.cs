@@ -387,7 +387,8 @@ public sealed record InvoiceWorkspacePageQuery(
     string? InvoiceAction = null,
     DateTimeOffset? From = null,
     DateTimeOffset? To = null,
-    bool ProviderHasCredential = false);
+    bool ProviderHasCredential = false,
+    string? Sort = null);
 public sealed record InvoiceWorkspacePageView(
     IReadOnlyList<InvoiceWorkspaceItemView> Items,
     int TotalCount,

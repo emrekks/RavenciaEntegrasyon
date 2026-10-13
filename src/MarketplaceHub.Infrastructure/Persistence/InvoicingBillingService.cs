@@ -372,6 +372,8 @@ public sealed partial class InvoicingBillingService(
         var cargoProviders = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var invoiceStatuses = new HashSet<string>(StringComparer.Ordinal);
         var offset = (requestedPage - 1) * pageSize;
+        var sortKey = request.Sort?.Trim().ToUpperInvariant();
+        var sortedPool = sortKey is null or "" or "DELIVERY_DESC" ? null : new List<WorkspaceCandidate>();
         WorkspaceScanCursor? cursor = null;
 
         while (true)
@@ -401,6 +403,7 @@ public sealed partial class InvoicingBillingService(
 
                 if (!MatchesWorkspacePageRequest(candidate, normalizedTab, request, searchKey, from, to, isHidden)) continue;
                 var resultIndex = filteredCount++;
+                if (sortedPool is not null) { sortedPool.Add(candidate); continue; }
                 if (resultIndex >= offset && pageCandidates.Count < pageSize) pageCandidates.Add(candidate);
                 lastPageCandidates.Enqueue(candidate);
                 if (lastPageCandidates.Count > pageSize) lastPageCandidates.Dequeue();
@@ -412,7 +415,11 @@ public sealed partial class InvoicingBillingService(
 
         var totalPages = Math.Max(1, (int)Math.Ceiling(filteredCount / (double)pageSize));
         var pageNumber = Math.Min(requestedPage, totalPages);
-        if (pageNumber != requestedPage)
+        if (sortedPool is not null)
+        {
+            pageCandidates = OrderWorkspaceCandidates(sortedPool, sortKey!).Skip((pageNumber - 1) * pageSize).Take(pageSize).ToList();
+        }
+        else if (pageNumber != requestedPage)
         {
             var lastPageSize = filteredCount % pageSize;
             if (lastPageSize == 0 && filteredCount > 0) lastPageSize = pageSize;
@@ -421,6 +428,22 @@ public sealed partial class InvoicingBillingService(
         var items = await MaterializeWorkspacePageAsync(tenantId, pageCandidates, cancellationToken);
         return new(items, filteredCount, pageNumber, pageSize, totalPages, selectedUninvoiced, selectedInvoiced, selectedDueSoon, hiddenPackageIds.Count, selectedTotal, hasPendingMarketplaceInvoices,
             shipmentStatuses.Order(StringComparer.Ordinal).ToArray(), cargoProviders.Order(StringComparer.OrdinalIgnoreCase).ToArray(), invoiceStatuses.Order(StringComparer.Ordinal).ToArray());
+    }
+
+    // Ties always fall back to the shipment date and package id so pages stay stable between requests.
+    private static IEnumerable<WorkspaceCandidate> OrderWorkspaceCandidates(List<WorkspaceCandidate> candidates, string sort)
+    {
+        var byDelivery = candidates.OrderByDescending(candidate => candidate.Package.StatusOccurredAt).ThenBy(candidate => candidate.Package.Id);
+        return sort switch
+        {
+            "DELIVERY_ASC" => candidates.OrderBy(candidate => candidate.Package.StatusOccurredAt).ThenBy(candidate => candidate.Package.Id),
+            "ORDER_DESC" => candidates.OrderByDescending(candidate => candidate.Order.OrderedAt).ThenBy(candidate => candidate.Package.Id),
+            "ORDER_ASC" => candidates.OrderBy(candidate => candidate.Order.OrderedAt).ThenBy(candidate => candidate.Package.Id),
+            "DUE_ASC" => candidates.OrderBy(candidate => candidate.InvoiceDueAt == null).ThenBy(candidate => candidate.InvoiceDueAt).ThenBy(candidate => candidate.Package.Id),
+            "AMOUNT_DESC" => candidates.OrderByDescending(candidate => candidate.Amount).ThenBy(candidate => candidate.Package.Id),
+            "AMOUNT_ASC" => candidates.OrderBy(candidate => candidate.Amount).ThenBy(candidate => candidate.Package.Id),
+            _ => byDelivery
+        };
     }
 
     private async Task<IReadOnlyList<WorkspaceCandidate>> ReadWorkspaceCandidateBatchAsync(
