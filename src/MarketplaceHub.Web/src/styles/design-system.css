@@ -11934,9 +11934,9 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .return-reference-filters.has-approved-sort { grid-template-columns: minmax(160px, 1.1fr) minmax(230px, 1fr) minmax(205px, .95fr) auto; }
 @media (max-width: 900px) {
   .return-reference-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .return-reference-filters > input[aria-label="İadelerde ara"] { grid-column: 1 / -1; }
+  .return-reference-filters > .return-search { grid-column: 1 / -1; }
   .return-reference-filters.has-approved-sort { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .return-reference-filters.has-approved-sort > input[aria-label="İadelerde ara"] { grid-column: 1 / -1; }
+  .return-reference-filters.has-approved-sort > .return-search { grid-column: 1 / -1; }
   .return-reference-filters.has-approved-sort .return-approved-sort { min-width: 0; }
   .return-reference-filters.has-approved-sort .return-filter-actions { grid-column: auto; justify-self: end; }
 }
@@ -12413,3 +12413,13 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 :root[data-theme="light"] .rv-table tbody tr:hover {
   background: var(--rv-hover-solid); border-color: var(--rv-color-border); box-shadow: none;
 }
+
+/* Filter bars: a caption is never smaller or lighter than the value under it (13px caption, 13px value). */
+.app-shell.stitch-shell main :is(.orders-control-bar, .invoice-reference-filters, .return-reference-filters, .rv-questions-filters, .jobs-reference-filter-panel) :is(label, .orders-control-label, .platform-multi-select-label, .date-range-picker-label, .invoice-sort-caption) {
+  color: var(--rv-color-muted); font-size: 13px; font-weight: 600;
+}
+.app-shell.stitch-shell main :is(.orders-control-bar, .invoice-reference-filters, .return-reference-filters, .rv-questions-filters, .jobs-reference-filter-panel) :is(input, select, .platform-multi-select-trigger, .date-range-picker-trigger, .invoice-sort-trigger) {
+  font-size: 13px; font-weight: 500;
+}
+.app-shell.stitch-shell main .return-reference-filters > .return-search { display: grid; gap: var(--rv-space-1); min-width: 0; }
+.app-shell.stitch-shell main .invoice-reference-filters > label:not(.invoice-reference-search):not(.invoice-reference-sort) { font-size: 13px; }
