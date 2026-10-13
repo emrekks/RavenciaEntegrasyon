@@ -217,7 +217,7 @@ function InvoiceDetailLineImage({ url, title }: { url: string; title: string }) 
   </>
 }
 
-function InvoiceReferenceActionsMenu({ item, canCreateInvoice, canSyncOrder, deliveryPending, hidden, onCreateInvoice, onSyncOrder, onToggleHidden, onConfirmNoRemoteInvoice, onAddManualInvoice, onSendManualInvoice }: {
+function InvoiceReferenceActionsMenu({ item, canCreateInvoice, canSyncOrder, deliveryPending, hidden, onCreateInvoice, onSyncOrder, onToggleHidden, onConfirmNoRemoteInvoice, onReplaceCancelledInvoice, onAddManualInvoice, onSendManualInvoice }: {
   item: InvoiceWorkspace
   canCreateInvoice: boolean
   canSyncOrder: boolean
@@ -227,6 +227,7 @@ function InvoiceReferenceActionsMenu({ item, canCreateInvoice, canSyncOrder, del
   onSyncOrder: () => void
   onToggleHidden: () => void
   onConfirmNoRemoteInvoice: () => void
+  onReplaceCancelledInvoice: () => void
   onAddManualInvoice: () => void
   onSendManualInvoice: () => void
 }) {
@@ -292,7 +293,8 @@ function InvoiceReferenceActionsMenu({ item, canCreateInvoice, canSyncOrder, del
       {item.platformCode === 'SHOPIFY'
         ? <button type="button" role="menuitem" onClick={() => { setOpen(false); onToggleHidden() }}>{hidden ? 'Gizlemeden Çıkar' : 'Siparişi Gizle'}</button>
         : item.platformCode !== 'TRENDYOL' && <button type="button" role="menuitem" disabled={!canSyncOrder} title={!canSyncOrder ? 'Pazaryeri sipariş bilgileri bulunamadı veya bağlantı etkin değil.' : undefined} onClick={() => { setOpen(false); onSyncOrder() }}>Sipariş Durumunu Güncelle</button>}
-      {item.platformCode !== 'SHOPIFY' && !['FATURA_BEKLIYOR', 'FATURA_KESILDI', 'FATURA_KONTROLDE', 'FATURA_YUKLENDI', 'FATURA_IPTAL', 'COMPLETED', ''].includes(item.invoiceStatus ?? '') && <button type="button" role="menuitem" title="Gönderim sonucu kaybolmuş ve sağlayıcı portalında fatura görünmüyorsa yeniden gönderimi açar." onClick={() => { setOpen(false); onConfirmNoRemoteInvoice() }}>Sağlayıcıda Fatura Yok, Yeniden Gönder</button>}
+      {item.platformCode !== 'SHOPIFY' && ['FATURA_ISLENIYOR', 'FATURA_REDDEDILDI'].includes(item.invoiceStatus ?? '') && <button type="button" role="menuitem" title="Gönderim sonucu kaybolmuş ve sağlayıcı portalında fatura görünmüyorsa yeniden gönderimi açar." onClick={() => { setOpen(false); onConfirmNoRemoteInvoice() }}>Sağlayıcıda Fatura Yok, Yeniden Gönder</button>}
+      {item.platformCode !== 'SHOPIFY' && item.invoiceId && ['FATURA_PLATFORMA_AKTARILMADI', 'FATURA_KONTROLDE'].includes(item.invoiceStatus ?? '') && <button type="button" role="menuitem" title="Faturayı E-Faturam portalında iptal ettiyseniz bu kaydı kapatır ve yeni fatura kesmenize izin verir." onClick={() => { setOpen(false); onReplaceCancelledInvoice() }}>Portalda İptal Ettim, Yeni Fatura Kes</button>}
       <button type="button" role="menuitem" onClick={() => { setOpen(false); onAddManualInvoice() }}>{hasManualDocument ? 'Manuel Faturayı Değiştir' : 'Manuel Fatura Ekle'}</button>
       <button type="button" role="menuitem" disabled={manualDeliveryDisabled} title={manualDeliveryDisabled ? manualDeliveryTitle : undefined} onClick={() => { setOpen(false); onSendManualInvoice() }}>{deliveryPending ? 'Kuyruğa Alınıyor…' : 'Manuel Faturayı Pazaryerine Gönder'}</button>
     </div>, document.body)}
@@ -329,6 +331,14 @@ export function InvoicesPage() {
     queryKey: ['invoice-workspace-page', pageNumber, pageSize, tab, search, selectedPlatforms, shipmentStatusFilter, cargoFilter, invoiceStatusFilter, invoiceActionFilter, dateFrom, dateTo, Boolean(provider?.hasCredential)],
     queryFn: () => hubApi<InvoiceWorkspacePage>(`/invoice-workspace/page?${pageQuery.toString()}`),
     refetchInterval: 30_000
+  })
+  const replaceInvoice = useMutation({
+    mutationFn: async (item: InvoiceWorkspace) => hubApi<{ replaced: boolean }>(`/invoice-workspace/orders/${item.orderId}/replace-cancelled-invoice`, { method: 'POST' }),
+    onSuccess: async (_result, item) => {
+      setMessage(`#${item.orderNumber} için eski fatura iptal olarak kapatıldı. Yeni fatura kesebilirsiniz.`, 'success')
+      await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] })])
+    },
+    onError: error => setMessage(error instanceof Error ? error.message : 'Eski fatura kapatılamadı.', 'error')
   })
   const noRemoteInvoice = useMutation({
     mutationFn: async (item: InvoiceWorkspace) => hubApi<{ confirmed: boolean }>(`/invoice-workspace/orders/${item.orderId}/confirm-no-remote-invoice`, { method: 'POST' }),
@@ -497,6 +507,9 @@ export function InvoicesPage() {
               onCreateInvoice={() => openInvoicePreview([item])}
               onSyncOrder={() => orderStatusSync.mutate(item)}
               onToggleHidden={() => visibility.mutate({ packageIds: [item.packageId], hidden: tab !== 'HIDDEN' })}
+              onReplaceCancelledInvoice={() => { if (window.confirm(`#${item.orderNumber} için ${item.invoiceNumber ?? 'mevcut'} numaralı faturayı E-Faturam portalında iptal ettiniz mi?
+
+Onaylarsanız bu fatura panelde iptal olarak kapanır ve aynı siparişe yeni fatura kesebilirsiniz. Portalda iptal edilmemiş bir fatura için bunu yapmayın.`)) replaceInvoice.mutate(item) }}
               onConfirmNoRemoteInvoice={() => { if (window.confirm(`#${item.orderNumber} için E-Faturam portalında fatura olmadığını doğruladınız mı?
 
 Onaylarsanız bu fatura yeniden gönderilebilir hâle gelir. Portalda fatura varsa mükerrer fatura oluşur.`)) noRemoteInvoice.mutate(item) }}

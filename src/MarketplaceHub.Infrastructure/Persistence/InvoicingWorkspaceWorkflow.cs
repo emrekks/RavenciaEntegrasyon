@@ -365,6 +365,32 @@ public sealed partial class InvoicingBillingService
         return ServiceResult<InvoiceWorkspacePreviewItem>.Ok(view);
     }
 
+    // The operator cancelled the issued invoice in the provider portal. The record is kept for audit but leaves the sale slot, so a new invoice can be issued.
+    public async Task<ServiceResult<bool>> ReplaceCancelledInvoiceAsync(Guid tenantId, Guid orderId, string correlationId, CancellationToken cancellationToken)
+    {
+        var invoice = await db.Invoices.Where(item => item.TenantId == tenantId && item.OrderId == orderId && item.SequencePurpose == "SALE" && item.OriginalInvoiceId == null)
+            .OrderByDescending(item => item.CreatedAt).FirstOrDefaultAsync(cancellationToken);
+        if (invoice is null) return NotFound<bool>();
+        if (invoice.Status is InvoiceStatus.Draft or InvoiceStatus.Validating or InvoiceStatus.Ready or InvoiceStatus.Submitting or InvoiceStatus.CancellationPending)
+            return ServiceResult<bool>.Fail("INVOICE_STATE_INVALID", "Bu faturanın gönderimi tamamlanmadı; önce sonucunu netleştirin.", 409);
+        if (string.IsNullOrWhiteSpace(invoice.ExternalReference) && string.IsNullOrWhiteSpace(invoice.InvoiceNumber))
+            return ServiceResult<bool>.Fail("INVOICE_NOT_ISSUED", "Bu fatura sağlayıcıda oluşturulmamış; yeniden gönderim işlemini kullanın.", 409);
+        var needle = invoice.Id.ToString();
+        var now = timeProvider.GetUtcNow();
+        var activeJob = await db.IntegrationJobs.AsNoTracking().AnyAsync(job => job.TenantId == tenantId && job.PayloadJson.Contains(needle)
+            && (job.Status == JobStatus.Pending || job.Status == JobStatus.Leased || job.Status == JobStatus.RetryScheduled), cancellationToken);
+        if (activeJob) return ServiceResult<bool>.Fail("INVOICE_JOB_STILL_RUNNING", "Bu fatura için işlem hâlâ sürüyor. Birkaç dakika bekleyip tekrar deneyin.", 409);
+        invoice.SequencePurpose = "REPLACED";
+        invoice.OrderFiscalGuarded = false;
+        invoice.Status = InvoiceStatus.Cancelled;
+        invoice.LastErrorCode = "OPERATOR_CONFIRMED_CANCELLED_AT_PROVIDER";
+        invoice.UpdatedAt = now;
+        invoice.Version++;
+        db.AuditLogs.Add(new AuditLog { TenantId = tenantId, Action = "INVOICE_REPLACED_AFTER_PROVIDER_CANCELLATION", TargetType = "Invoice", TargetId = invoice.Id.ToString("D"), Reason = $"operator-cancelled-in-provider-portal:{invoice.InvoiceNumber}", CorrelationId = correlationId, CreatedAt = now });
+        await db.SaveChangesAsync(cancellationToken);
+        return ServiceResult<bool>.Ok(true);
+    }
+
     // The operator checked the provider portal and saw no invoice for a submission whose result was lost; only then may it be sent again.
     public async Task<ServiceResult<bool>> ConfirmNoRemoteInvoiceAsync(Guid tenantId, Guid orderId, string correlationId, CancellationToken cancellationToken)
     {

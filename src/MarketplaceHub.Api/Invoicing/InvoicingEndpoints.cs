@@ -74,6 +74,12 @@ public static class InvoicingEndpoints
             var result = await service.ConfirmNoRemoteInvoiceAsync(tenant.TenantId, orderId, http.TraceIdentifier, http.RequestAborted);
             return result.Succeeded ? Results.Ok(new { confirmed = true }) : Problem(http, result.Error!);
         });
+        api.MapPost("/invoice-workspace/orders/{orderId:guid}/replace-cancelled-invoice", async (Guid orderId, HttpContext http, IInvoicingBillingService service) =>
+        {
+            if (Tenant(http) is not { } tenant) return Unauthorized(http);
+            var result = await service.ReplaceCancelledInvoiceAsync(tenant.TenantId, orderId, http.TraceIdentifier, http.RequestAborted);
+            return result.Succeeded ? Results.Ok(new { replaced = true }) : Problem(http, result.Error!);
+        });
         api.MapPost("/invoice-workspace/preview", async (InvoiceWorkspacePreviewRequest request, HttpContext http, IInvoicingBillingService service) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
