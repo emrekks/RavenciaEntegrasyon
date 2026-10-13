@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { hubApi } from '../../shared/api'
 import { Busy, ErrorBox, UiIcon } from '../../shared/components'
+import { productImageFallbackUrls } from '../marketplace/product-image-lookups'
 
 export type InvoicePreviewTarget = { orderId: string; packageId: string; providerConnectionId: string }
 type PreviewLine = { description: string; sku: string | null; quantity: number; unit: string; vatRate: number; unitPrice: number; discountAmount: number; vatAmount: number; total: number }
@@ -31,17 +32,24 @@ function addressLines(json: string) {
     return [...new Set(output)].slice(0, 6)
   } catch { return [] }
 }
+function PreviewLineImage({ sku, name }: { sku: string | null; name: string }) {
+  const sources = useMemo(() => productImageFallbackUrls([sku], null, name), [sku, name])
+  const [index, setIndex] = useState(0)
+  useEffect(() => setIndex(0), [sources])
+  const src = sources[index]
+  return <span className="invoice-workspace-preview-thumb">{src ? <img src={src} alt={`${name} görseli`} loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setIndex(current => current + 1)} /> : <UiIcon name="image" size={18} />}</span>
+}
 function actionLabel(action: string | null) {
-  return action === 'DELIVERY_ONLY' ? 'Yalnız platforma iletim'
-    : action === 'SUBMIT_RETRY' ? 'Kesin reddedilmiş mali isteği tekrar sıraya al'
-      : action === 'CREATE_AND_SUBMIT' ? 'Mali faturayı oluştur ve platforma ilet'
-        : action === 'WAIT' ? 'Mevcut işlem sonuçlanıyor' : action === 'NONE' ? 'İşlem tamamlandı' : 'İnceleme gerekiyor'
+  return action === 'DELIVERY_ONLY' ? 'Yalnız Platforma İletim'
+    : action === 'SUBMIT_RETRY' ? 'Reddedilen Mali İsteği Tekrar Sıraya Al'
+      : action === 'CREATE_AND_SUBMIT' ? 'Mali Faturayı Oluştur ve Platforma İlet'
+        : action === 'WAIT' ? 'Mevcut İşlem Sonuçlanıyor' : action === 'NONE' ? 'İşlem Tamamlandı' : 'İnceleme Gerekiyor'
 }
 
 export function InvoiceWorkspacePreviewModal({ targets, onClose, onComplete }: { targets: InvoicePreviewTarget[]; onClose: () => void; onComplete: () => void }) {
   const [previews, setPreviews] = useState<PreviewItem[]>([])
   const [results, setResults] = useState<ConfirmResult | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<unknown>(null)
   const [includeInternetSalesInfo, setIncludeInternetSalesInfo] = useState(true)
@@ -80,18 +88,13 @@ export function InvoiceWorkspacePreviewModal({ targets, onClose, onComplete }: {
       <div className="invoice-detail-body">
         {loading ? <Busy text="Sipariş ve fatura verileri okunuyor…" /> : error && !previews.length ? <ErrorBox error={error} /> : <>
           {error && <ErrorBox error={error} />}
-          <label className="invoice-workspace-internet-sales-toggle">
-            <input type="checkbox" checked={includeInternetSalesInfo} disabled={loading || submitting || Boolean(results) || internetSalesInfoLocked} onChange={event => setIncludeInternetSalesInfo(event.target.checked)} />
-            <span><strong>İnternet satış bilgilerini doldur</strong><small>Kapalıysa e-Arşiv faturasına web sitesi, ödeme ve aracı hizmet bilgileri eklenmez. Kargo bilgisi bundan etkilenmez.</small></span>
-          </label>
-          {internetSalesInfoLocked && <p className="invoice-workspace-internet-sales-note">Bu kayıtta mali fatura daha önce oluşturulmuş. Seçenek mevcut faturayı veya yalnızca platforma iletim tekrarını değiştirmez.</p>}
           {previews.map(item => {
             const address = addressLines(item.invoiceAddressJson)
             return <article className="invoice-workspace-preview-card" key={item.orderId}>
-              <div className="invoice-workspace-preview-heading"><div><strong>{item.platformName} · #{item.orderNumber}</strong><span>{item.environment} · {item.customerType} · {item.invoiceType}</span></div><span className={`badge ${item.canConfirm ? 'good' : 'warn'}`}><i aria-hidden="true" />{actionLabel(item.nextAction)}</span></div>
+              <div className="invoice-workspace-preview-heading"><div><strong>{item.platformName} · #{item.orderNumber}</strong><span>{item.environment} · {item.customerType} · {item.invoiceType}</span></div><span className={`badge ${item.canConfirm ? 'good' : 'neutral'}`}><i aria-hidden="true" />{actionLabel(item.nextAction)}</span></div>
               <p className="invoice-workspace-preview-targets">Tek mali fatura · {(item.targetPackageNumbers?.length ?? 0)} hedef paket{(item.targetPackageNumbers?.length ?? 0) === 1 ? '' : 'e'} iletilecek: {item.targetPackageNumbers?.join(', ') || 'Paket numarası yok'}</p>
               <dl className="invoice-workspace-preview-facts"><div><dt>Alıcı / unvan</dt><dd>{item.customerName || '—'}</dd></div><div><dt>TC / vergi no</dt><dd>{item.taxIdentityNumber || '—'}</dd></div><div><dt>Fatura adresi</dt><dd>{address.length ? address.join(', ') : 'Adres bilgisi yok'}</dd></div><div><dt>Fatura türü</dt><dd>{item.invoiceType}</dd></div>{item.deliveryPackageNumber && <div><dt>Gönderi paketi</dt><dd>{item.deliveryPackageNumber}</dd></div>}{item.deliveryCarrierName && <div><dt>Kargo firması</dt><dd>{item.deliveryCarrierName}</dd></div>}{item.deliverySentAt && <div><dt>Gönderim tarihi</dt><dd>{new Date(item.deliverySentAt).toLocaleDateString('tr-TR')}</dd></div>}</dl>
-              <div className="invoice-workspace-preview-lines" role="table" aria-label={`Sipariş ${item.orderNumber} fatura kalemleri`}><div role="row" className="invoice-workspace-preview-line invoice-workspace-preview-line-head"><strong>Ürün</strong><strong>Miktar</strong><strong>Birim fiyat</strong><strong>İndirim</strong><strong>KDV</strong><strong>Toplam</strong></div>{item.lines.map((line, index) => <div role="row" className="invoice-workspace-preview-line" key={`${line.sku ?? line.description}-${index}`}><span><strong>{line.description}</strong><small>{line.sku || 'SKU yok'} · %{line.vatRate} KDV</small></span><span>{line.quantity} {line.unit}</span><span>{money(line.unitPrice, item.currency)}</span><span>{money(line.discountAmount, item.currency)}</span><span>{money(line.vatAmount, item.currency)}</span><strong>{money(line.total, item.currency)}</strong></div>)}</div>
+              <div className="invoice-workspace-preview-lines" role="table" aria-label={`Sipariş ${item.orderNumber} fatura kalemleri`}><div role="row" className="invoice-workspace-preview-line invoice-workspace-preview-line-head"><strong>Ürün</strong><strong>Miktar</strong><strong>Birim fiyat</strong><strong>İndirim</strong><strong>KDV</strong><strong>Toplam</strong></div>{item.lines.map((line, index) => <div role="row" className="invoice-workspace-preview-line" key={`${line.sku ?? line.description}-${index}`}><span className="invoice-workspace-preview-product"><PreviewLineImage sku={line.sku} name={line.description} /><span><strong>{line.description}</strong><small>{line.sku || 'SKU yok'} · %{line.vatRate} KDV</small></span></span><span>{line.quantity} {line.unit}</span><span>{money(line.unitPrice, item.currency)}</span><span>{money(line.discountAmount, item.currency)}</span><span>{money(line.vatAmount, item.currency)}</span><strong>{money(line.total, item.currency)}</strong></div>)}</div>
               <div className="invoice-workspace-preview-total"><span>Ara toplam <strong>{money(item.taxExclusiveTotal, item.currency)}</strong></span><span>KDV <strong>{money(item.taxTotal, item.currency)}</strong></span><span>İndirim <strong>{money(item.discountTotal, item.currency)}</strong></span><span>Fatura toplamı <strong>{money(item.payableTotal, item.currency)}</strong></span></div>
               {item.blockedReason && <p className="invoice-workspace-preview-blocked" role="status">{item.blockedReason}</p>}
             </article>
@@ -99,7 +102,7 @@ export function InvoiceWorkspacePreviewModal({ targets, onClose, onComplete }: {
           {results && <section className="invoice-workspace-preview-results" aria-live="polite"><h3>İşlem sonuçları</h3>{results.items.map(result => <p key={result.packageId}><strong>{result.status} · {result.action}</strong><span>{result.message}</span></p>)}</section>}
         </>}
       </div>
-      <footer className="invoice-detail-footer"><button type="button" className="secondary" onClick={onClose}>{results ? 'Kapat' : 'Vazgeç'}</button>{!results && <button type="button" disabled={loading || submitting || eligibleCount === 0} onClick={() => void confirm()}>{submitting ? 'İşlem kuyruğa alınıyor…' : eligibleCount > 1 ? `Onayla ve sıraya al (${eligibleCount})` : previews[0]?.nextAction === 'DELIVERY_ONLY' ? 'Platforma iletimi sıraya al' : 'Onayla ve sıraya al'}</button>}</footer>
+      <footer className="invoice-detail-footer"><label className="invoice-workspace-internet-sales-toggle" title={internetSalesInfoLocked ? 'Bu kayıtta mali fatura daha önce oluşturulmuş; seçenek mevcut faturayı değiştirmez.' : 'Kapalıysa e-Arşiv faturasına web sitesi, ödeme ve aracı hizmet bilgileri eklenmez. Kargo bilgisi bundan etkilenmez.'}><input type="checkbox" checked={includeInternetSalesInfo} disabled={loading || submitting || Boolean(results) || internetSalesInfoLocked} onChange={event => setIncludeInternetSalesInfo(event.target.checked)} /><span>İnternet Satış Bilgilerini Doldur</span></label><button type="button" className="secondary" onClick={onClose}>{results ? 'Kapat' : 'Vazgeç'}</button>{!results && <button type="button" disabled={loading || submitting || eligibleCount === 0} onClick={() => void confirm()}>{submitting ? 'İşlem kuyruğa alınıyor…' : eligibleCount > 1 ? `Onayla ve sıraya al (${eligibleCount})` : previews[0]?.nextAction === 'DELIVERY_ONLY' ? 'Platforma iletimi sıraya al' : 'Onayla ve sıraya al'}</button>}</footer>
     </section>
   </div>
 }
