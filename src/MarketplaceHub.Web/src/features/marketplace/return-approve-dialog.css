@@ -67,3 +67,6 @@
 .return-ref-fields dd.is-empty { color: var(--rv-color-muted); font-weight: 400; }
 .return-ref-fields dd.is-system { color: var(--rv-color-accent); font-weight: 600; }
 @media (max-width: 720px) { .return-detail-summary.is-plain { grid-template-columns: repeat(2, minmax(0, 1fr)); } .return-ref-fields { grid-template-columns: 1fr; } .return-ref-line-head { grid-template-columns: 72px minmax(0, 1fr); } .return-ref-line-image { width: 72px; height: 108px; } }
+
+.product-title-link { color: inherit; text-decoration: none; }
+.product-title-link:hover { text-decoration: underline; text-underline-offset: 2px; }

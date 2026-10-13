@@ -147,7 +147,7 @@ export function QuestionsPage() {
           const badge = questionStatus(row.status)
           const deadline = row.status === 'WAITING_FOR_ANSWER' ? questionDeadline(row.expiresAt, now) : null
           const previousMessages = visibleQuestionConversation(row.conversations ?? [], row.questionText)
-          const productHref = row.kind === 'PRODUCT' ? row.productUrl || marketplaceProductSearchUrl(row.platformCode, row.productBarcode, row.productSku, row.productModelCode, row.productName) : null
+          const productHref = row.kind === 'PRODUCT' || row.platformCode === 'HEPSIBURADA' ? row.productUrl || marketplaceProductSearchUrl(row.platformCode, row.productBarcode, row.productSku, row.productModelCode, row.productName) : null
           return <article className="rv-question-card" key={row.id}>
             <header className="rv-question-card-header">
               <div className="rv-question-product"><QuestionProductImage src={row.productImageUrl} connectionId={row.connectionId} sku={row.productSku} barcode={row.productBarcode} modelCode={row.productModelCode} productName={row.productName || 'Ürün'} /><div><strong>{productHref ? <a className="rv-question-product-link" href={productHref} target="_blank" rel="noopener noreferrer">{row.productName || 'Ürün'}</a> : row.productName || (row.kind === 'ORDER' ? 'Sipariş sorusu' : 'Ürün bilgisi yok')}</strong><small>{[row.productSku && `SKU ${row.productSku}`, row.productModelCode && `Model ${row.productModelCode}`, row.productBarcode && `Barkod ${row.productBarcode}`].filter(Boolean).join(' · ') || 'Ürün kodu bilgisi yok'}</small></div></div>
@@ -169,7 +169,7 @@ export function QuestionsPage() {
         const draft = answerDrafts[row.id] ?? ''
         const minLength = row.platformCode === 'TRENDYOL' ? 10 : 1
         const length = draft.trim().length
-        const productHref = row.kind === 'PRODUCT' ? row.productUrl || marketplaceProductSearchUrl(row.platformCode, row.productBarcode, row.productSku, row.productModelCode, row.productName) : null
+        const productHref = row.kind === 'PRODUCT' || row.platformCode === 'HEPSIBURADA' ? row.productUrl || marketplaceProductSearchUrl(row.platformCode, row.productBarcode, row.productSku, row.productModelCode, row.productName) : null
         const deadline = questionDeadline(row.expiresAt, now)
         const send = () => { if (length >= minLength && length <= 2000 && !sendAnswer.isPending) sendAnswer.mutate({ id: row.id, version: row.version, text: draft }) }
         return <Modal open title="Soru Detayı" className="rv-question-answer-modal" onClose={() => setAnswerTarget(null)} footer={<div className="rv-answer-composer" aria-label={`#${row.externalQuestionId} için cevap`}>
