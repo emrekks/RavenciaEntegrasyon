@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
+import { createPortal } from 'react-dom'
 import { UiIcon } from '../../shared/components'
 
 // Picks any number of panel values for one marketplace value.
@@ -13,9 +14,28 @@ export function PanelValueMultiSelect({ label, options, selectedIds, assignedEls
 }) {
   const [open, setOpen] = useState(false)
   const root = useRef<HTMLDivElement>(null)
+  const menu = useRef<HTMLDivElement>(null)
+  const [place, setPlace] = useState<CSSProperties | null>(null)
+  useLayoutEffect(() => {
+    if (!open || !root.current) { setPlace(null); return }
+    const bounds = root.current.getBoundingClientRect()
+    const below = window.innerHeight - bounds.bottom - 16
+    const above = bounds.top - 16
+    const openAbove = below < 200 && above > below
+    const maxHeight = Math.max(140, Math.min(280, openAbove ? above : below))
+    setPlace({ left: bounds.left, width: bounds.width, maxHeight, ...(openAbove ? { bottom: window.innerHeight - bounds.top + 6 } : { top: bounds.bottom + 6 }) })
+  }, [open])
   useEffect(() => {
     if (!open) return
-    const close = (event: PointerEvent) => { if (!root.current?.contains(event.target as Node)) setOpen(false) }
+    const closeOnScroll = (event: Event) => { if (!menu.current?.contains(event.target as Node)) setOpen(false) }
+    window.addEventListener('scroll', closeOnScroll, true)
+    const closeOnResize = () => setOpen(false)
+    window.addEventListener('resize', closeOnResize)
+    return () => { window.removeEventListener('scroll', closeOnScroll, true); window.removeEventListener('resize', closeOnResize) }
+  }, [open])
+  useEffect(() => {
+    if (!open) return
+    const close = (event: PointerEvent) => { if (!root.current?.contains(event.target as Node) && !menu.current?.contains(event.target as Node)) setOpen(false) }
     const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false) }
     document.addEventListener('pointerdown', close)
     document.addEventListener('keydown', closeOnEscape)
@@ -33,7 +53,7 @@ export function PanelValueMultiSelect({ label, options, selectedIds, assignedEls
       {selected.length > 1 && <b>{selected.length}</b>}
       <UiIcon name="chevronDown" size={16} />
     </button>
-    {open && <div className="panel-value-multi-menu" role="listbox" aria-multiselectable="true" aria-label={`${label} panel değerleri`}>
+    {open && place && createPortal(<div ref={menu} className="panel-value-multi-menu" style={place} role="listbox" aria-multiselectable="true" aria-label={`${label} panel değerleri`}>
       <p className="panel-value-multi-hint">{unmatchedCount ? `${unmatchedCount} panel değeri henüz eşleşmedi` : 'Tüm panel değerleri eşleşti'}</p>
       {sorted.map(option => {
         const state = stateOf(option.id)
@@ -44,6 +64,6 @@ export function PanelValueMultiSelect({ label, options, selectedIds, assignedEls
           <em>{state === 'unmatched' ? 'Eşleşmedi' : state === 'elsewhere' ? assignedElsewhere[option.id] : 'Eşleşti'}</em>
         </button>
       })}
-    </div>}
+    </div>, document.body)}
   </div>
 }
