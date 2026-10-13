@@ -41,7 +41,8 @@
 /* Return detail dialog: header stays put, the body scrolls, everything shares one left edge. */
 .return-detail-modal { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; }
 .return-detail-modal > header { align-items: center; }
-.return-detail-modal .return-detail-content { align-content: start; padding: 20px 24px 24px; gap: 20px; }
+.return-detail-modal .return-detail-content { align-content: start; padding: 20px 24px 16px; gap: 20px; }
+.return-detail-modal .return-ref-line:last-child { padding-bottom: 0; }
 .return-detail-content .return-detail-products { margin-inline: 0; gap: 0; }
 .return-detail-summary.is-plain { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px 24px; padding: 0 0 20px; background: none; border: 0; border-bottom: 1px solid var(--rv-color-border); }
 .return-detail-summary.is-plain > div { display: grid; align-content: start; justify-items: start; gap: 4px; padding: 0; background: none; border: 0; border-radius: 0; }

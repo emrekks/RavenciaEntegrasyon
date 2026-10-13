@@ -39,13 +39,13 @@ export function InvoiceSortSelect({ value, onChange }: { value: string; onChange
     <button type="button" className="invoice-sort-trigger" aria-haspopup="listbox" aria-expanded={open} aria-labelledby={`${listId}-label ${listId}-value`} onClick={() => setOpen(item => !item)}>
       {/* every label is laid out invisibly so the control is as wide as the longest one */}
       <span className="invoice-sort-sizer" aria-hidden="true">{invoiceSortOptions.map(option => <span key={option.value}>{option.label}</span>)}</span>
-      <span className="invoice-sort-current" id={`${listId}-value`}><DirectionIcon direction={current.direction} />{current.label}</span>
-      <UiIcon name="chevronDown" size={16} />
+      <span className="invoice-sort-current" id={`${listId}-value`}>{current.label}</span>
+      <span className="invoice-sort-icons"><DirectionIcon direction={current.direction} /><UiIcon name="chevronDown" size={16} /></span>
     </button>
     {open && <ul className="invoice-sort-list" role="listbox" id={listId} aria-labelledby={`${listId}-label`}>
       {invoiceSortOptions.map(option => <li key={option.value} role="option" aria-selected={option.value === value}>
         <button type="button" className={option.value === value ? 'is-selected' : undefined} onClick={() => { onChange(option.value); setOpen(false) }}>
-          <DirectionIcon direction={option.direction} /><span>{option.label}</span>{option.value === value && <UiIcon name="check" size={16} />}
+          <span>{option.label}</span><DirectionIcon direction={option.direction} />
         </button>
       </li>)}
     </ul>}
