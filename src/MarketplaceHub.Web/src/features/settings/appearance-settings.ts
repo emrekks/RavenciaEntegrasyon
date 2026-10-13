@@ -139,7 +139,14 @@ function normalizePalette(value: unknown, fallback: AppearancePalette): Appearan
 function normalizeColors(value: unknown): AppearanceColors {
   if (!value || typeof value !== 'object') return { dark: { ...defaultDarkPalette }, light: { ...defaultLightPalette } }
   const candidate = value as Partial<AppearanceColors>
-  return { dark: normalizePalette(candidate.dark, defaultDarkPalette), light: normalizePalette(candidate.light, defaultLightPalette) }
+  return { dark: normalizePalette(candidate.dark, defaultDarkPalette), light: migrateFormerLightDefault(normalizePalette(candidate.light, defaultLightPalette)) }
+}
+
+// Accounts that saved an earlier default of the light palette (never edited by hand) follow the current default.
+const formerLightBackgrounds = new Set(['#d4d9e2', '#cbd0db'])
+const formerLightSurfaces = new Set(['#e5e8ee', '#d9dde6'])
+function migrateFormerLightDefault(palette: AppearancePalette): AppearancePalette {
+  return formerLightBackgrounds.has(palette.bg.toLowerCase()) && formerLightSurfaces.has(palette.surface.toLowerCase()) ? { ...defaultLightPalette } : palette
 }
 
 function normalizeColorThemes(value: unknown): AppearanceColorThemeProfile[] {

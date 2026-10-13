@@ -12327,7 +12327,7 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .app-shell.stitch-shell main .order-label-action.is-printed { opacity: .44; background: color-mix(in srgb, var(--rv-color-primary) 22%, var(--rv-color-surface)); }
 .app-shell.stitch-shell main .order-label-action.is-printed:hover:not(:disabled) { opacity: .52; background: color-mix(in srgb, var(--rv-color-primary) 28%, var(--rv-color-surface)); }
 
-.app-shell.stitch-shell main .return-reference-table :is(.badge, .invoice-status-label) { height: 34px; color: #fff; }
+.app-shell.stitch-shell main .return-reference-table :is(.badge, .invoice-status-label) { height: 34px; color: var(--rv-color-ink); }
 .app-shell.stitch-shell main .return-reference-table .return-reference-status > button.return-detail-trigger:not(.return-print-label) { width: fit-content; height: 34px; min-height: 34px; box-sizing: border-box; padding-inline: var(--rv-space-2); }
 @media (max-width: 760px) {
   .date-range-picker-layout { grid-template-columns: minmax(0, 1fr); }
