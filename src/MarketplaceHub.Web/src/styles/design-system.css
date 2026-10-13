@@ -12302,22 +12302,22 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 /* Keep range selection in one anchored popover across page filters. */
 .date-range-picker-popover {
   position: fixed;
-  width: min(640px, calc(100vw - 32px));
+  width: min(500px, calc(100vw - 32px));
   max-height: calc(100vh - 32px);
   overflow: auto;
-  padding: 14px;
+  padding: 10px;
 }
-.date-range-picker-layout { display: grid; grid-template-columns: 128px minmax(0, 1fr); gap: 12px; }
-.date-range-picker-presets { display: grid; align-content: start; gap: 3px; padding-right: 14px; border-right: 1px solid var(--rv-color-border); }
-.date-range-picker-presets > button { min-height: 32px; padding: 5px 8px; color: var(--rv-color-ink); background: transparent; border: 0; border-radius: var(--rv-radius-sm); text-align: left; }
+.date-range-picker-layout { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 8px; }
+.date-range-picker-presets { display: grid; align-content: start; gap: 3px; padding-right: 8px; border-right: 1px solid var(--rv-color-border); }
+.date-range-picker-presets > button { min-height: 28px; padding: 3px 8px; font-size: 12px; color: var(--rv-color-ink); background: transparent; border: 0; border-radius: var(--rv-radius-sm); text-align: left; }
 .date-range-picker-presets > button:hover { background: color-mix(in srgb, var(--rv-color-ink) 7%, transparent); }
 .date-range-picker-calendars > header { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
-.date-range-picker-calendars > header > button { min-width: 34px; min-height: 34px; padding: 4px; }
-.date-range-picker-months { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-.date-range-picker-month > strong { display: block; margin-bottom: 5px; text-align: center; text-transform: capitalize; }
+.date-range-picker-calendars > header > button { min-width: 28px; min-height: 28px; padding: 4px; }
+.date-range-picker-months { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.date-range-picker-month > strong { display: block; margin-bottom: 3px; font-size: 12px; text-align: center; text-transform: capitalize; }
 .date-range-picker-month .date-range-picker-grid { gap: 2px; }
-.date-range-picker-month .date-range-picker-grid > span { min-height: 26px; }
-.date-range-picker-month .date-range-picker-grid > button { min-height: 32px; }
+.date-range-picker-month .date-range-picker-grid > span { min-height: 20px; }
+.date-range-picker-month .date-range-picker-grid > button { min-height: 26px; font-size: 12px; font-weight: 500; }
 .date-range-picker-calendars > footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; color: var(--rv-color-muted); font-size: 11px; }
 .date-range-picker-calendars > footer > button { min-height: 30px; padding: 0 9px; }
 .invoice-reference-date-filter, .return-reference-date-range { min-width: 0; }
