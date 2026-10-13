@@ -30,19 +30,42 @@ function notificationPresentation(notification: AppNotification) {
   const parts = notification.message.split(' · ').map(part => part.trim()).filter(Boolean)
   const summary = parts.shift() ?? notification.message
   const text = notification.message.toLocaleLowerCase('tr-TR')
-  const title = text.includes('kuyruğa alındı') ? 'İşlem kuyruğa alındı'
-    : text.includes('iptal') ? 'İşlem iptal edildi'
-      : text.includes('silindi') ? 'Katalog temizliği tamamlandı'
-        : text.includes('seçildi') ? 'Katalog seçimi tamamlandı'
-          : notification.kind === 'error' ? 'İşlem başarısız'
-            : notification.kind === 'success' ? 'İşlem tamamlandı'
-              : 'İşlem bilgisi'
+  const title = text.includes('iade kabulü') || text.includes('iade reddi') ? (text.includes('iade kabulü') ? 'İade Kabulü Gönderildi' : 'İade Reddi Gönderildi')
+    : text.includes('kuyruğa alındı') ? 'İşlem Kuyruğa Alındı'
+    : text.includes('iptal') ? 'İşlem İptal Edildi'
+      : text.includes('silindi') ? 'Katalog Temizliği Tamamlandı'
+        : text.includes('seçildi') ? 'Katalog Seçimi Tamamlandı'
+          : notification.kind === 'error' ? 'İşlem Başarısız'
+            : notification.kind === 'success' ? 'İşlem Tamamlandı'
+              : 'İşlem Bilgisi'
   return { title, summary, result: parts.join(' · ') || (notification.kind === 'info' ? 'Sonuç bekleniyor' : notification.kind === 'success' ? 'Başarıyla tamamlandı' : 'İnceleme gerekli') }
+}
+
+function notificationTime(iso: string) {
+  const created = new Date(iso)
+  const minutes = Math.floor((Date.now() - created.getTime()) / 60000)
+  if (minutes < 1) return 'Az önce'
+  if (minutes < 60) return `${minutes} dk önce`
+  const sameDay = created.toDateString() === new Date().toDateString()
+  return sameDay
+    ? created.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+    : created.toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
 function NotificationHistoryItem({ notification }: { notification: AppNotification }) {
   const presentation = notificationPresentation(notification)
-  return <article className={`rv-notification-history-item is-${notification.kind} ${notification.read ? 'is-read' : 'is-unread'}`}><div className="rv-notification-history-copy"><strong>{presentation.title}</strong><p>{presentation.summary}</p><div className="rv-notification-history-meta"><span>Sonuç: {presentation.result}</span><time dateTime={notification.createdAt}>{new Date(notification.createdAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</time></div></div>{notification.read ? <span className="rv-notification-read-state"><UiIcon name="circleCheck" size={16} /> Okundu</span> : <button type="button" className="rv-notification-mark-read" onClick={() => markNotificationRead(notification.id)} aria-label="Okundu olarak işaretle" title="Okundu olarak işaretle"><UiIcon name="circleCheck" size={18} /></button>}</article>
+  const icon = notification.kind === 'error' ? 'alert' : notification.kind === 'info' ? 'info' : 'circleCheck'
+  // A finished success needs no extra "result" line; only pending or failing items carry one.
+  const result = notification.kind === 'success' ? null : presentation.result
+  return <article className={`rv-notification-history-item is-${notification.kind} ${notification.read ? 'is-read' : 'is-unread'}`}>
+    <span className="rv-notification-icon" aria-hidden="true"><UiIcon name={icon} size={18} /></span>
+    <div className="rv-notification-history-copy">
+      <div className="rv-notification-history-top"><strong>{presentation.title}</strong><time dateTime={notification.createdAt} title={new Date(notification.createdAt).toLocaleString('tr-TR')}>{notificationTime(notification.createdAt)}</time></div>
+      <p>{presentation.summary}</p>
+      {result && <span className="rv-notification-history-result">{result}</span>}
+    </div>
+    {notification.read ? <span className="rv-notification-read-state">Okundu</span> : <button type="button" className="rv-notification-mark-read" onClick={() => markNotificationRead(notification.id)} aria-label="Okundu olarak işaretle" title="Okundu olarak işaretle"><UiIcon name="circleCheck" size={18} /></button>}
+  </article>
 }
 
 function Shell({ me }: { me: Me }) {
@@ -168,7 +191,7 @@ function Shell({ me }: { me: Me }) {
     </aside>
     <main>
       <header className="rv-topbar"><div className="rv-topbar-leading"><button className="rv-mobile-menu-toggle rv-icon-button" type="button" aria-label="Ana menüyü aç" aria-expanded={mobileMenuOpen} onClick={() => setMobileMenuOpen(true)}><UiIcon name="menu" size={22} /></button><div className="rv-breadcrumb"><UiIcon name="layers" size={16} /><span>Operasyon Merkezi</span><UiIcon name="chevronRight" size={14} /><strong>{pageName}</strong></div></div><div className="rv-topbar-actions"><div ref={notificationRef} className="rv-topbar-notifications"><button type="button" className="rv-topbar-notification-trigger" aria-label="Bildirim geçmişini aç" aria-expanded={notificationsOpen} aria-controls="rv-notification-history" onClick={() => setNotificationsOpen(value => !value)}><UiIcon name="bell" size={18} />{unreadNotificationCount > 0 && <span className="rv-topbar-notification-count" aria-label={`${unreadNotificationCount} okunmamış bildirim`}>{unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}</span>}</button></div><button type="button" className="rv-topbar-theme" aria-label={visualTheme === 'light' ? 'Koyu temaya geç' : 'Açık temaya geç'} title={visualTheme === 'light' ? 'Koyu temaya geç' : 'Açık temaya geç'} aria-pressed={visualTheme === 'dark'} onClick={() => setVisualThemePreference(visualTheme === 'light' ? 'dark' : 'light')}><UiIcon name={visualTheme === 'light' ? 'moon' : 'sun'} size={18} /><span>{visualTheme === 'light' ? 'Koyu tema' : 'Açık tema'}</span></button><button className="rv-topbar-search rv-topbar-search-icon" type="button" aria-label="Hızlı aramayı aç" aria-keyshortcuts="Control+k Meta+k" onClick={() => setQuickSearchOpen(true)}><UiIcon name="search" size={20} /></button></div></header>
-      {notificationsOpen && createPortal(<div ref={notificationHistoryRef} id="rv-notification-history" className="rv-notification-history" role="dialog" aria-label="Bildirim geçmişi" style={notificationHistoryPosition}><div className="rv-notification-history-heading"><strong>Bildirim geçmişi</strong><div className="rv-notification-history-actions"><button type="button" className="rv-notification-mark-all" onClick={() => markAllNotificationsRead()} disabled={unreadNotificationCount === 0} title="Tüm bildirimleri okundu olarak işaretle">Tümünü okundu yap</button><button type="button" className="rv-notification-clear" onClick={() => { clearNotificationHistory(); setNotifications([]) }} disabled={!notifications.length}>Temizle</button></div></div>{notifications.length ? <div className="rv-notification-history-list">{notifications.map(notification => <NotificationHistoryItem key={notification.id} notification={notification} />)}</div> : <p className="rv-notification-history-empty">Henüz kaydedilmiş bildirim yok.</p>}</div>, document.body)}
+      {notificationsOpen && createPortal(<div ref={notificationHistoryRef} id="rv-notification-history" className="rv-notification-history" role="dialog" aria-label="Bildirim geçmişi" style={notificationHistoryPosition}><div className="rv-notification-history-heading"><span className="rv-notification-history-title"><strong>Bildirimler</strong>{unreadNotificationCount > 0 && <b aria-label={`${unreadNotificationCount} okunmamış bildirim`}>{unreadNotificationCount}</b>}</span><div className="rv-notification-history-actions"><button type="button" className="rv-notification-mark-all" onClick={() => markAllNotificationsRead()} disabled={unreadNotificationCount === 0} title="Tüm bildirimleri okundu olarak işaretle">Tümünü Okundu Yap</button><button type="button" className="rv-notification-clear" onClick={() => { clearNotificationHistory(); setNotifications([]) }} disabled={!notifications.length}>Temizle</button></div></div>{notifications.length ? <div className="rv-notification-history-list">{notifications.map(notification => <NotificationHistoryItem key={notification.id} notification={notification} />)}</div> : <p className="rv-notification-history-empty">Henüz kaydedilmiş bildirim yok.</p>}</div>, document.body)}
       <Modal open={quickSearchOpen} title="Hızlı arama" description="Bir sayfa veya işlem seçin." onClose={() => setQuickSearchOpen(false)}><div className="rv-command-list" role="listbox" aria-label="Hızlı arama sonuçları">{quickSearchItems.map(itemOption => <Link key={itemOption.to} className="rv-command-item" to={itemOption.to} onClick={() => setQuickSearchOpen(false)}><UiIcon name={itemOption.icon} size={20} /><span><strong>{itemOption.label}</strong><small>{itemOption.description}</small></span><UiIcon name="chevronRight" size={16} /></Link>)}</div></Modal>
       <Drawer open={mobileMenuOpen} title="Ravencia" description="Operasyon merkezi" onClose={() => setMobileMenuOpen(false)}><nav className="rv-mobile-navigation" aria-label="Mobil ana menü">{navigation}{item('/settings', 'settings', 'Sistem Ayarları', true)}<button className="rv-button rv-button-secondary" type="button" onClick={() => void logout()}>Oturumu kapat</button></nav></Drawer>
       <Suspense fallback={<DelayedStatus title="Ekran hazırlanıyor" />}><Routes><Route path="/dashboard" element={<Dashboard />} /><Route path="/products" element={<ProductsPage />} /><Route path="/products/new" element={<NewProductPage />} /><Route path="/products/:id" element={<ProductDetailPage />} /><Route path="/catalog/categories" element={<CategoriesPage />} /><Route path="/catalog/brands" element={<BrandsPage />} /><Route path="/catalog/attributes" element={<AttributesPage />} /><Route path="/imports" element={<ImportsPage />} /><Route path="/imports/:id" element={<ImportDetailPage />} /><Route path="/integrations" element={<IntegrationsPage />} /><Route path="/integrations/:id" element={<IntegrationDetailPage />} /><Route path="/mappings/categories" element={<MappingPage />} /><Route path="/mappings/attributes" element={<AttributeMappingPage />} /><Route path="/mappings/product-matches" element={<Navigate to="/mappings/categories" replace />} /><Route path="/questions" element={<QuestionsPage />} /><Route path="/orders" element={<OrdersPage />} /><Route path="/orders/:id" element={<Navigate to="/orders" replace />} /><Route path="/returns" element={<ReturnsPage />} /><Route path="/returns/:id" element={<ReturnDetailPage />} /><Route path="/shipments" element={<ShipmentsPage />} /><Route path="/shipments/:id" element={<ShipmentDetailPage />} /><Route path="/invoices" element={<InvoicesPage />} /><Route path="/invoices/:id" element={<InvoiceDetailPage />} /><Route path="/jobs" element={<JobsPage me={me} />} /><Route path="/settings/security" element={<Navigate to="/settings?tab=security" replace />} /><Route path="/settings/appearance" element={<AppearanceSettingsPage />} /><Route path="/settings" element={<Security />} /><Route path="*" element={<Navigate to="/dashboard" replace />} /></Routes></Suspense>
