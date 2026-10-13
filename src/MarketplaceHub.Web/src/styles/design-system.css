@@ -11955,7 +11955,7 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .rv-questions-filter-grid select { max-width: 100%; }
 .rv-question-product img, .rv-question-product-placeholder { height: auto; aspect-ratio: 2 / 3; }
 .rv-question-template-list > header > span { border-radius: 6px; }
-@media (max-width: 1200px) { .rv-questions-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .rv-questions-search { grid-column: 1 / -1; } }
+@media (max-width: 1200px) { .rv-questions-filter-grid { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); } .rv-questions-search { grid-column: 1 / -1; } }
 @media (max-width: 700px) { .rv-questions-filter-grid { grid-template-columns: minmax(0, 1fr); } .rv-questions-search { grid-column: auto; } }
 
 /* Make publication blockers easier to read and leave space above the alert. */
@@ -12426,3 +12426,5 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 h1, h2, h3, h4, .dashboard-summary-card-head > span:first-child, :is(.orders-control-bar, .invoice-reference-filters, .return-reference-filters, .rv-questions-filters, .jobs-reference-filter-panel, .appearance-settings-grid) label,
 .date-range-picker-label, .platform-multi-select-label, .invoice-sort-caption, .orders-control-label, .return-search > span, .invoice-upload-field > span, .appearance-theme-field > span, .mapping-side-field > span { text-transform: capitalize; }
 .app-shell.stitch-shell main .invoice-reference-filters > .invoice-reference-search > span:first-child { color: var(--rv-color-muted); font-size: 13px; font-weight: 600; }
+.rv-questions-panel { display: grid; gap: 14px; min-width: 0; padding: 16px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); box-shadow: var(--rv-shadow-sm); }
+.app-shell.stitch-shell main .rv-questions-page .rv-questions-panel .rv-questions-filters { padding: 0; background: none; border: 0; box-shadow: none; }
