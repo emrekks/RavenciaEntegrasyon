@@ -5,7 +5,7 @@ import { hubApi } from '../../shared/api'
 export type AppearanceFontFamily = 'inter' | 'system' | 'segoe' | 'arial'
 export type AppearanceFontSize = 'compact' | 'small' | 'normal' | 'large' | 'extra-large' | 'huge'
 export type AppearanceThemeMode = 'dark'
-export type AppearanceColorTheme = 'dark'
+export type AppearanceColorTheme = 'dark' | 'light'
 export type AppearanceColorToken = 'bg' | 'sidebar' | 'surface' | 'surfaceRaised' | 'surfaceSoft' | 'border' | 'borderStrong' | 'ink' | 'muted' | 'subtle' | 'primary' | 'primaryHover' | 'primarySoft' | 'accent' | 'accentSoft' | 'warning' | 'warningSoft' | 'danger' | 'dangerSoft' | 'info'
 
 export type AppearancePalette = Record<AppearanceColorToken, string>
@@ -23,7 +23,7 @@ export type AppearanceSettings = {
   fontFamily: AppearanceFontFamily
   fontSize: AppearanceFontSize
   themeMode: AppearanceThemeMode
-  colors: { dark: AppearancePalette }
+  colors: AppearanceColors
   colorThemes: AppearanceColorThemeProfile[]
 }
 
@@ -36,8 +36,11 @@ const defaultDarkPalette: AppearancePalette = {
   bg: '#101014', sidebar: '#18181f', surface: '#18181f', surfaceRaised: '#202028', surfaceSoft: '#272730', border: '#303039', borderStrong: '#41414d', ink: '#f4f4f7', muted: '#aaaab9', subtle: '#858595', primary: '#8b5cf6', primaryHover: '#7c3aed', primarySoft: '#302443', accent: '#4adea0', accentSoft: '#1c332c', warning: '#f6c16b', warningSoft: '#382f22', danger: '#fb858b', dangerSoft: '#3c252b', info: '#83b4ff'
 }
 
+// Soft by design: no pure white anywhere, so large light areas stay easy on the eyes. It is only the starting
+// point; the palette is editable in Settings and saved with the account.
 export const defaultLightPalette: AppearancePalette = {
-  bg: '#f5f7fb', sidebar: '#ffffff', surface: '#ffffff', surfaceRaised: '#f8faff', surfaceSoft: '#eef2f9', border: '#dbe1ee', borderStrong: '#b6c1d6', ink: '#192033', muted: '#5e6a82', subtle: '#7b879f', primary: '#6950df', primaryHover: '#563bc7', primarySoft: '#eee9ff', accent: '#118b76', accentSoft: '#dff7ef', warning: '#a66713', warningSoft: '#fff1d9', danger: '#b63f60', dangerSoft: '#ffe6ed', info: '#356ac5'
+  bg: '#e8eaee', sidebar: '#f0f1f4', surface: '#f3f4f7', surfaceRaised: '#eceef2', surfaceSoft: '#e1e4ea', border: '#d0d5de', borderStrong: '#aab2c2', ink: '#1b2232', muted: '#556077', subtle: '#77829a',
+  primary: '#6a52e0', primaryHover: '#5841c9', primarySoft: '#e6e1fa', accent: '#12806b', accentSoft: '#d6ece4', warning: '#98600f', warningSoft: '#f3e4c6', danger: '#ab3a58', dangerSoft: '#f3dce3', info: '#3562b4'
 }
 
 export const defaultAppearanceColorTheme: AppearanceColorThemeProfile = {
@@ -52,7 +55,8 @@ export const defaultAppearanceSettings: AppearanceSettings = {
   fontSize: 'small',
   themeMode: 'dark',
   colors: {
-    dark: { ...defaultDarkPalette }
+    dark: { ...defaultDarkPalette },
+    light: { ...defaultLightPalette }
   },
   colorThemes: [{ ...defaultAppearanceColorTheme, palette: { ...defaultAppearanceColorTheme.palette } }]
 }
@@ -133,10 +137,9 @@ function normalizePalette(value: unknown, fallback: AppearancePalette): Appearan
 }
 
 function normalizeColors(value: unknown): AppearanceColors {
-  if (!value || typeof value !== 'object') return { dark: { ...defaultDarkPalette } }
+  if (!value || typeof value !== 'object') return { dark: { ...defaultDarkPalette }, light: { ...defaultLightPalette } }
   const candidate = value as Partial<AppearanceColors>
-  const dark = normalizePalette(candidate.dark, defaultDarkPalette)
-  return { dark }
+  return { dark: normalizePalette(candidate.dark, defaultDarkPalette), light: normalizePalette(candidate.light, defaultLightPalette) }
 }
 
 function normalizeColorThemes(value: unknown): AppearanceColorThemeProfile[] {

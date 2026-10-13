@@ -103,7 +103,7 @@ function Shell({ me }: { me: Me }) {
     const applyTheme = () => {
       document.documentElement.dataset.theme = visualTheme
       document.documentElement.dataset.themeMode = visualTheme
-      const palette = visualTheme === 'light' ? defaultLightPalette : appearanceSettings.settings.colors.dark
+      const palette = appearanceSettings.settings.colors[visualTheme]
       appearanceColorTokenOptions.forEach(({ key }) => document.documentElement.style.setProperty(appearanceColorCssVariable(key), palette[key]))
     }
     applyTheme()
@@ -926,8 +926,9 @@ function AppearanceSettingsPage() {
   const [themeMenuOpen, setThemeMenuOpen] = useState(false)
   const [selectedThemeId, setSelectedThemeId] = useState(defaultAppearanceColorTheme.id)
   const [themeToDelete, setThemeToDelete] = useState<AppearanceColorThemeProfile | null>(null)
-  const colorTheme = 'dark' as const
   const [visualTheme, setVisualTheme] = useState<VisualTheme>(readVisualThemePreference)
+  // The colour editor works on the palette of the theme being previewed.
+  const colorTheme = visualTheme
   const savedAppearance = useRef(appearance.settings)
 
   useEffect(() => {
@@ -953,7 +954,7 @@ function AppearanceSettingsPage() {
       root.dataset.themeMode = visualTheme
       root.style.setProperty('--rv-font-ui', appearanceFontFamilyCss[appearance.draft.fontFamily])
       root.style.setProperty('--rv-font-scale', String(appearanceFontScale[appearance.draft.fontSize]))
-      const palette = visualTheme === 'light' ? defaultLightPalette : appearance.draft.colors.dark
+      const palette = appearance.draft.colors[visualTheme]
       appearanceColorTokenOptions.forEach(({ key }) => root.style.setProperty(appearanceColorCssVariable(key), palette[key]))
     }
     applyPreview()
@@ -967,7 +968,7 @@ function AppearanceSettingsPage() {
     root.dataset.themeMode = savedTheme
     root.style.setProperty('--rv-font-ui', appearanceFontFamilyCss[saved.fontFamily])
     root.style.setProperty('--rv-font-scale', String(appearanceFontScale[saved.fontSize]))
-    const palette = savedTheme === 'light' ? defaultLightPalette : saved.colors.dark
+    const palette = saved.colors[savedTheme]
     appearanceColorTokenOptions.forEach(({ key }) => root.style.setProperty(appearanceColorCssVariable(key), palette[key]))
   }, [])
 
@@ -987,20 +988,25 @@ function AppearanceSettingsPage() {
   function applyColorTheme(theme: typeof appearance.draft.colorThemes[number]) {
     setVisualThemePreference('dark')
     setSelectedThemeId(theme.id)
-    appearance.setDraft({ ...appearance.draft, themeMode: 'dark', colors: { dark: { ...theme.palette } } })
+    appearance.setDraft({ ...appearance.draft, themeMode: 'dark', colors: { ...appearance.draft.colors, dark: { ...theme.palette } } })
     setMessage(`${theme.name} önizlemeye uygulandı. Kalıcı yapmak için değişiklikleri kaydedin.`)
   }
 
   function applyDefaultAppearance() {
     const defaults: AppearanceSettings = {
       ...defaultAppearanceSettings,
-      colors: { dark: { ...defaultAppearanceSettings.colors.dark } },
+      colors: { dark: { ...defaultAppearanceSettings.colors.dark }, light: { ...defaultAppearanceSettings.colors.light } },
       colorThemes: appearance.draft.colorThemes.map(theme => ({ ...theme, palette: { ...theme.palette } }))
     }
     setVisualThemePreference('dark')
     setSelectedThemeId(defaultAppearanceColorTheme.id)
     appearance.setDraft(defaults)
     setMessage('Varsayılan görünüm önizlemeye uygulandı. Kalıcı yapmak için değişiklikleri kaydedin.')
+  }
+
+  function resetLightPalette() {
+    appearance.setDraft({ ...appearance.draft, colors: { ...appearance.draft.colors, light: { ...defaultLightPalette } } })
+    setMessage('Açık tema renkleri varsayılana döndürüldü. Kalıcı yapmak için değişiklikleri kaydedin.')
   }
 
   function applyLightTheme() {
@@ -1039,7 +1045,7 @@ function AppearanceSettingsPage() {
     const nextDraft = { ...appearance.draft, colorThemes: nextThemes }
     if (selectedThemeId === theme.id) {
       setSelectedThemeId(defaultAppearanceColorTheme.id)
-      nextDraft.colors = { dark: { ...defaultAppearanceColorTheme.palette } }
+      nextDraft.colors = { ...nextDraft.colors, dark: { ...defaultAppearanceColorTheme.palette } }
     }
     setBusy(true)
     setMessage('')
@@ -1066,7 +1072,7 @@ function AppearanceSettingsPage() {
   const previewStyle: CSSProperties = {
     fontFamily: appearanceFontFamilyCss[appearance.draft.fontFamily],
     fontSize: 'var(--rv-font-size-md)',
-    ...Object.fromEntries(appearanceColorTokenOptions.map(({ key }) => [appearanceColorCssVariable(key), (visualTheme === 'light' ? defaultLightPalette : appearance.draft.colors[colorTheme])[key]]))
+    ...Object.fromEntries(appearanceColorTokenOptions.map(({ key }) => [appearanceColorCssVariable(key), appearance.draft.colors[colorTheme][key]]))
   }
 
   const palette = appearance.draft.colors[colorTheme]
@@ -1089,8 +1095,8 @@ function AppearanceSettingsPage() {
         <div className="appearance-theme-field"><span>Tema</span><div className="appearance-theme-picker" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setThemeMenuOpen(false) }}><button type="button" className="appearance-theme-trigger" aria-label="Arayüz teması" aria-haspopup="listbox" aria-expanded={themeMenuOpen} onClick={() => setThemeMenuOpen(value => !value)} onKeyDown={event => { if (event.key === 'Escape') setThemeMenuOpen(false) }}><span>{activeSelectableTheme ? `${activeSelectableTheme.label} — ${activeSelectableTheme.description}` : 'Tema seçin'}</span><UiIcon name="chevronDown" /></button>{themeMenuOpen && <div className="appearance-theme-menu" role="listbox" aria-label="Arayüz teması seçenekleri">{selectableThemes.map(theme => <button type="button" role="option" aria-selected={theme.id === activeSelectableTheme?.id} key={theme.id} onMouseDown={event => event.preventDefault()} onClick={() => { if (theme.mode === 'light') applyLightTheme(); else if (theme.profile) applyColorTheme(theme.profile); setThemeMenuOpen(false) }}><span className="appearance-theme-menu-copy"><strong>{theme.label}</strong><small>{theme.description}</small></span></button>)}</div>}</div></div>
       </div>
       <section className="appearance-color-editor">
-        <div className="appearance-color-editor-heading"><div><h2>Renk paleti</h2><p>Değişiklikler kaydetmeden önce anlık önizlenir. Hazır paletleri saklayabilir, daha sonra yeniden uygulayabilirsiniz.</p></div><div className="appearance-color-actions"><strong className="appearance-color-theme-label">{activeThemeLabel}</strong></div></div>
-        <div className="appearance-color-themes" aria-label="Kayıtlı renk temaları"><div className="appearance-color-themes-heading"><div><h3>Kayıtlı temalar</h3><p>Varsayılan tema korunur ve silinemez.</p></div><div className="appearance-color-theme-create"><input value={newThemeName} maxLength={60} placeholder="Yeni tema adı" aria-label="Yeni tema adı" onChange={event => setNewThemeName(event.target.value)} /><button type="button" className="rv-button rv-button-primary rv-button-sm" disabled={busy || !newThemeName.trim()} onClick={() => void saveColorTheme()}>Renk temasını kaydet</button></div></div><div className="appearance-color-theme-list">{appearance.draft.colorThemes.map(theme => <article className={`appearance-color-theme-card ${selectedThemeId === theme.id ? 'is-selected' : ''}`} key={theme.id}><button type="button" className="appearance-color-theme-select" onClick={() => applyColorTheme(theme)}><span className="appearance-color-theme-swatches" aria-hidden="true">{[theme.palette.bg, theme.palette.surface, theme.palette.primary, theme.palette.accent].map(color => <i key={color} style={{ backgroundColor: color }} />)}</span><span><strong>{theme.name}</strong><small>{theme.builtIn ? 'Varsayılan tema' : 'Kayıtlı özel tema'}</small></span></button>{theme.builtIn ? <span className="appearance-color-theme-protected">Korunuyor</span> : <button type="button" className="appearance-color-theme-delete" disabled={busy} onClick={() => setThemeToDelete(theme)} aria-label={`${theme.name} temasını sil`}>Sil</button>}</article>)}</div></div>
+        <div className="appearance-color-editor-heading"><div><h2>Renk paleti</h2><p>{visualTheme === 'light' ? 'Açık tema renklerini düzenleyin. Varsayılan palet parlamayan, gözü yormayan yumuşak tonlardadır.' : 'Değişiklikler kaydetmeden önce anlık önizlenir. Hazır paletleri saklayabilir, daha sonra yeniden uygulayabilirsiniz.'}</p></div><div className="appearance-color-actions"><strong className="appearance-color-theme-label">{activeThemeLabel}</strong>{visualTheme === 'light' && <button type="button" className="secondary" onClick={resetLightPalette}>Varsayılana Döndür</button>}</div></div>
+        {visualTheme === 'dark' && <div className="appearance-color-themes" aria-label="Kayıtlı renk temaları"><div className="appearance-color-themes-heading"><div><h3>Kayıtlı temalar</h3><p>Varsayılan tema korunur ve silinemez.</p></div><div className="appearance-color-theme-create"><input value={newThemeName} maxLength={60} placeholder="Yeni tema adı" aria-label="Yeni tema adı" onChange={event => setNewThemeName(event.target.value)} /><button type="button" className="rv-button rv-button-primary rv-button-sm" disabled={busy || !newThemeName.trim()} onClick={() => void saveColorTheme()}>Renk temasını kaydet</button></div></div><div className="appearance-color-theme-list">{appearance.draft.colorThemes.map(theme => <article className={`appearance-color-theme-card ${selectedThemeId === theme.id ? 'is-selected' : ''}`} key={theme.id}><button type="button" className="appearance-color-theme-select" onClick={() => applyColorTheme(theme)}><span className="appearance-color-theme-swatches" aria-hidden="true">{[theme.palette.bg, theme.palette.surface, theme.palette.primary, theme.palette.accent].map(color => <i key={color} style={{ backgroundColor: color }} />)}</span><span><strong>{theme.name}</strong><small>{theme.builtIn ? 'Varsayılan tema' : 'Kayıtlı özel tema'}</small></span></button>{theme.builtIn ? <span className="appearance-color-theme-protected">Korunuyor</span> : <button type="button" className="appearance-color-theme-delete" disabled={busy} onClick={() => setThemeToDelete(theme)} aria-label={`${theme.name} temasını sil`}>Sil</button>}</article>)}</div></div>}
         <div className="appearance-color-grid">{appearanceColorTokenOptions.map(({ key, label, description }) => <label className="appearance-color-field" key={key}><span><b>{label}</b><small>{description}</small></span><span className="appearance-color-control"><input type="color" value={palette[key]} style={{ backgroundColor: palette[key] }} onChange={event => updateColor(key, event.target.value)} aria-label={`${label} rengi`} /><code>{palette[key].toUpperCase()}</code></span></label>)}</div>
       </section>
       <div className="appearance-preview" style={previewStyle}><small>Önizleme</small><strong>Ravencia MarketplaceHub</strong><p>Bu ayar sipariş, iade, ürün ve diğer çalışma ekranlarındaki metinleri etkiler.</p></div>

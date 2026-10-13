@@ -40,6 +40,30 @@ public static class SettingsEndpoints
         ["dangerSoft"] = "#3c252b",
         ["info"] = "#83b4ff"
     };
+    // Soft light palette: no pure white, a slightly tinted grey ground so large light areas do not glare.
+    private static readonly IReadOnlyDictionary<string, string> DefaultLightAppearanceColors = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["bg"] = "#e8eaee",
+        ["sidebar"] = "#f0f1f4",
+        ["surface"] = "#f3f4f7",
+        ["surfaceRaised"] = "#eceef2",
+        ["surfaceSoft"] = "#e1e4ea",
+        ["border"] = "#d0d5de",
+        ["borderStrong"] = "#aab2c2",
+        ["ink"] = "#1b2232",
+        ["muted"] = "#556077",
+        ["subtle"] = "#77829a",
+        ["primary"] = "#6a52e0",
+        ["primaryHover"] = "#5841c9",
+        ["primarySoft"] = "#e6e1fa",
+        ["accent"] = "#12806b",
+        ["accentSoft"] = "#d6ece4",
+        ["warning"] = "#98600f",
+        ["warningSoft"] = "#f3e4c6",
+        ["danger"] = "#ab3a58",
+        ["dangerSoft"] = "#f3dce3",
+        ["info"] = "#3562b4"
+    };
     private static readonly string[] AppearanceColorTokens = ["bg", "sidebar", "surface", "surfaceRaised", "surfaceSoft", "border", "borderStrong", "ink", "muted", "subtle", "primary", "primaryHover", "primarySoft", "accent", "accentSoft", "warning", "warningSoft", "danger", "dangerSoft", "info"];
 
     public static IEndpointRouteBuilder MapSettingsEndpoints(this IEndpointRouteBuilder endpoints)
@@ -190,7 +214,8 @@ public static class SettingsEndpoints
     {
         var colors = value is { ValueKind: JsonValueKind.Object } && value.Value.TryGetProperty("colors", out var property) && property.ValueKind == JsonValueKind.Object ? property : (JsonElement?)null;
         var dark = NormalizeAppearancePalette(colors, "dark", DefaultDarkAppearanceColors);
-        return new { dark };
+        var light = NormalizeAppearancePalette(colors, "light", DefaultLightAppearanceColors);
+        return new { dark, light };
     }
 
     private static Dictionary<string, string> NormalizeAppearancePalette(JsonElement? colors, string theme, IReadOnlyDictionary<string, string> defaults)
@@ -218,13 +243,15 @@ public static class SettingsEndpoints
             return true;
         }
 
-        if (colorsElement.ValueKind != JsonValueKind.Object || !TryNormalizeAppearancePalette(colorsElement, "dark", DefaultDarkAppearanceColors, out var dark))
+        if (colorsElement.ValueKind != JsonValueKind.Object
+            || !TryNormalizeAppearancePalette(colorsElement, "dark", DefaultDarkAppearanceColors, out var dark)
+            || !TryNormalizeAppearancePalette(colorsElement, "light", DefaultLightAppearanceColors, out var light))
         {
             colors = new { };
             return false;
         }
 
-        colors = new { dark };
+        colors = new { dark, light };
         return true;
     }
 

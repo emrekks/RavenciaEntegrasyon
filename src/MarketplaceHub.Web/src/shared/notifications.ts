@@ -82,6 +82,8 @@ export function readNotificationHistory(): AppNotification[] {
       const value = item as Record<string, unknown>
       if (typeof value.id !== 'string' || typeof value.message !== 'string' || typeof value.createdAt !== 'string'
         || (value.kind !== 'success' && value.kind !== 'error' && value.kind !== 'info')) return []
+      // History saved before the recording policy existed may hold routine messages; drop them on read.
+      if (!shouldRecordNotification(value.message, normalizeNotificationKind(value.message, value.kind as AppNotification['kind']))) return []
       const inferred = typeof value.href === 'string' ? null : inferNotificationTarget(value.message)
       return [{
         id: value.id,
