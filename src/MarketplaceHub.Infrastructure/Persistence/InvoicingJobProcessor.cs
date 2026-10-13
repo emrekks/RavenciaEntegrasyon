@@ -1008,6 +1008,13 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         if (state?.Status == "FAILED" && oneTimeAuthorization is not null
             && OneTimeInvoiceDeliveryPolicy.IsAuthorizedStageDocument(order?.OrderNumber, invoice.Id))
             state.RequestHash = requestHash;
+        // REVOKED means a read-back proved the platform does not hold the invoice, so sending again cannot duplicate it and the payload may be rebuilt.
+        if (state?.Status == "REVOKED" && !string.Equals(state.RequestHash, requestHash, StringComparison.Ordinal))
+        {
+            state.RequestHash = requestHash;
+            state.UpdatedAt = timeProvider.GetUtcNow();
+            await db.SaveChangesAsync(cancellationToken);
+        }
         if (state is not null && !string.Equals(state.RequestHash, requestHash, StringComparison.Ordinal))
             throw new JobProcessingException(JobExecutionResult.ManualReview("DELIVERY_RETRY_PAYLOAD_CHANGED", "Önceki belirsiz teslim denemesinden sonra fatura bağlantısı payloadı değişti."));
 
