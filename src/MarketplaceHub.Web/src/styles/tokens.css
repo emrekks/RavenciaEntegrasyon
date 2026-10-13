@@ -92,9 +92,9 @@
 :root[data-theme="light"] {
   color-scheme: light;
   --rv-color-bg: #cbd0db;
-  --rv-color-surface: #d9dde6;
-  --rv-color-surface-raised: #dfe3eb;
-  --rv-color-surface-soft: #cdd2dc;
+  --rv-color-surface: #dfe3ea;
+  --rv-color-surface-raised: #e6e9ef;
+  --rv-color-surface-soft: #d1d6e0;
   --rv-color-border: #b0b8c8;
   --rv-color-border-strong: #8b95aa;
   --rv-color-ink: #2f3a4f;
@@ -110,5 +110,5 @@
   --rv-color-danger: #a2344f;
   --rv-color-danger-soft: #eacdd5;
   --rv-color-info: #2f5aa8;
-  --rv-color-sidebar: #e4e7ee;
+  --rv-color-sidebar: #dfe3ea;
 }
