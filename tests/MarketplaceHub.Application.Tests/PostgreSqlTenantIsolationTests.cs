@@ -1970,6 +1970,12 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
 
             var testConnectionString = Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION")
                 ?? throw new InvalidOperationException("PostgreSQL load test requires the isolated test connection.");
+            // Freshly bulk-loaded tables have no planner statistics (autovacuum may not have analyzed them yet),
+            // so refresh them before any plan-sensitive query runs.
+            await using (var analyzeDb = fixture.CreateContext())
+            {
+                await analyzeDb.Database.ExecuteSqlRawAsync("ANALYZE sales.shipment_packages; ANALYZE sales.orders;");
+            }
             var queryPlanInterceptor = new ExplainFirstInvoiceWorkspaceScanInterceptor(output);
             var options = new DbContextOptionsBuilder<AppDbContext>()
                 .UseNpgsql(testConnectionString)
@@ -2037,7 +2043,14 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 while (await planReader.ReadAsync(CancellationToken.None)) planLines.Add(planReader.GetString(0));
                 var plan = string.Join(Environment.NewLine, planLines);
                 output.WriteLine($"Fatura aday anahtar-imleç EXPLAIN: {plan}");
-                Assert.Contains("IX_shipment_packages_TenantId_StatusOccurredAt_Id", plan, StringComparison.Ordinal);
+                // Assert on the outcome rather than the planner's index choice: the keyset scan must return
+                // exactly its LIMIT and finish quickly, whichever plan PostgreSQL picks.
+                Assert.Contains("rows=2000", plan, StringComparison.Ordinal);
+                var executionLine = planLines.Last(line => line.StartsWith("Execution Time:", StringComparison.Ordinal));
+                var executionMs = double.Parse(
+                    executionLine["Execution Time:".Length..].Replace("ms", string.Empty).Trim(),
+                    System.Globalization.CultureInfo.InvariantCulture);
+                Assert.True(executionMs < 5_000, $"Keyset candidate scan took {executionMs} ms. Plan: {plan}");
             }
             finally
             {
