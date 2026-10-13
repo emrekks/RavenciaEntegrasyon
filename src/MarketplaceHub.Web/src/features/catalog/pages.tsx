@@ -1756,14 +1756,12 @@ function productAttributePayload(requirement: CategoryRequirement, selectedIds: 
 
 function CategoryAttributeValueDropdown({
   attributeName,
-  dataType,
   required,
   values,
   selectedValues,
   onToggleValue
 }: {
   attributeName: string
-  dataType: string
   required: boolean
   values: Array<{ id: string; value: string }>
   selectedValues: string[]
@@ -1773,7 +1771,7 @@ function CategoryAttributeValueDropdown({
   const [search, setSearch] = useState('')
   const [alignMenuRight, setAlignMenuRight] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
-  const isSingle = dataType === 'SINGLE_SELECT'
+  const isSingle = true // a category attribute takes one value
   const selected = values.filter(value => selectedValues.includes(value.id))
   const normalizedSearch = search.trim().toLocaleLowerCase('tr-TR')
   const filteredValues = values.filter(value => !normalizedSearch || value.value.toLocaleLowerCase('tr-TR').includes(normalizedSearch))
@@ -1949,7 +1947,7 @@ function CategoryAttributeMappingPanel({
               </div>
             </div>
             {item.attribute.values.length ? (
-              <CategoryAttributeValueDropdown attributeName={displayName} dataType={item.attribute.dataType} required={item.isRequired} values={item.attribute.values} selectedValues={selectedValues} onToggleValue={valueId => onToggleValue(item.attributeId, valueId)} />
+              <CategoryAttributeValueDropdown attributeName={displayName} required={item.isRequired} values={item.attribute.values} selectedValues={selectedValues} onToggleValue={valueId => onToggleValue(item.attributeId, valueId)} />
             ) : item.attribute.dataType === 'BOOLEAN' ? (
               <select aria-label={`${displayName} değeri`} value={attributeTextValues[item.attributeId] ?? ''} onChange={event => onTextChange(item.attributeId, event.target.value)}>
                 <option value="">Değer seçin</option>
@@ -2405,7 +2403,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       const message = 'Bir ürün en fazla 2 seçenek grubuyla varyantlanabilir.'; setNotice(message); showFeedback(message, 'error'); return
     }
     setAttributeSelections(current => {
-      const next = toggleProductAttributeValue(current, attributeId, valueId, Boolean(requirement && !isOptionRequirement(requirement) && requirement.attribute.dataType === 'SINGLE_SELECT'))
+      const next = toggleProductAttributeValue(current, attributeId, valueId, Boolean(requirement && !isOptionRequirement(requirement)))
       const nextValues = next[attributeId] ?? []
       if (requirement && isOptionRequirement(requirement)) {
         setVariantAttributeIds(currentAxes => nextValues.length ? currentAxes.includes(attributeId) ? currentAxes : [...currentAxes, attributeId] : currentAxes.filter(id => id !== attributeId))
