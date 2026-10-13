@@ -61,7 +61,7 @@ function NotificationItem({ notification, expanded, onToggle, onOpen }: ItemProp
         <div><dt>Zaman</dt><dd>{new Date(notification.createdAt).toLocaleString('tr-TR')}</dd></div>
       </dl>}
       <div className="rv-notification-foot">
-        {notification.href && <button type="button" className="rv-notification-go" onClick={() => onOpen(notification.href!)}>{notification.actionLabel ?? 'Sayfaya Git'}<span aria-hidden="true">→</span></button>}
+        {notification.href && <button type="button" className="rv-notification-go" onClick={() => onOpen(notification.href!)}>{notification.actionLabel ?? 'Sayfaya Git'}</button>}
         <button type="button" className="rv-notification-more" aria-expanded={expanded} onClick={onToggle}>{expanded ? 'Ayrıntıyı Gizle' : 'Ayrıntı'}</button>
         {unread && <button type="button" className="rv-notification-mark-read" onClick={() => markNotificationRead(notification.id)} aria-label="Okundu olarak işaretle" title="Okundu olarak işaretle"><UiIcon name="circleCheck" size={18} /></button>}
       </div>
