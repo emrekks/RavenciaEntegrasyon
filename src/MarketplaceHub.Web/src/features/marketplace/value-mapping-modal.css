@@ -1,0 +1,3 @@
+/* The value mapping dialog stacks its title block above the action row, so the text never gets squeezed beside the buttons. */
+.mapping-values-modal .value-mapping-editor .value-mapping-heading { flex-direction: column; align-items: stretch; gap: 12px; }
+.mapping-values-modal .value-mapping-editor .value-mapping-heading-actions { width: 100%; justify-content: flex-start; }
