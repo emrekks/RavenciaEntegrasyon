@@ -1551,7 +1551,10 @@ public sealed partial class InvoicingBillingService(
                 if (evidence.Count != 1 || !CapabilityEvidencePolicy.IsVerifiedWriteCapability(evidence[0], connection, capability)) return false;
             }
         }
-        if (string.Equals(connection.PlatformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase))
+        // Hepsiburada invoice delivery is gated by the connection's external write switch like the other marketplaces; the adapter itself
+        // reads the package before and after the write, so it needs no separate hand-entered capability evidence.
+        if (string.Equals(connection.PlatformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(capability, InvoicingCapabilities.InvoiceDeliver, StringComparison.Ordinal))
         {
             var evidence = await db.PlatformCapabilities.AsNoTracking().AnyAsync(x =>
                 x.TenantId == tenantId
@@ -1568,6 +1571,16 @@ public sealed partial class InvoicingBillingService(
         var enabled = ConnectionWritesEnabled(connection.SettingsJson);
         var manual = new AdapterContext(tenantId, connectionId, "runtime-gate", "runtime-gate", timeProvider.GetUtcNow());
         return IntegrationRuntimePolicy.AllowsManualWrite(connection, manual, configuration.GetValue<bool>("FeatureFlags:ExternalWrites"), enabled);
+    }
+    private async Task<string> DeliveryBlockedReasonAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
+    {
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
+        if (connection is null) return "Pazaryeri bağlantısı bulunamadı.";
+        if (!configuration.GetValue<bool>("FeatureFlags:InvoiceMarketplaceDeliveryWrites")) return "Sunucuda pazaryerine fatura iletme anahtarı kapalı.";
+        if (!configuration.GetValue<bool>("FeatureFlags:ExternalWrites")) return "Sunucudaki genel dış yazma anahtarı kapalı.";
+        if (!IntegrationRuntimePolicy.IsActive(connection)) return $"{connection.DisplayName} bağlantısı aktif değil.";
+        if (!ConnectionWritesEnabled(connection.SettingsJson)) return $"{connection.DisplayName} bağlantısında dış yazma kapalı. Entegrasyonlar sayfasından dış yazma anahtarını açın.";
+        return "Bu pazaryeri için fatura iletme izni doğrulanamadı.";
     }
     private async Task<bool> ReadGate(Guid tenantId, Guid connectionId, string capability, CancellationToken cancellationToken)
     {

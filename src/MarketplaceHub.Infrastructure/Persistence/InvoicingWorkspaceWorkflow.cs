@@ -312,7 +312,7 @@ public sealed partial class InvoicingBillingService
                      && !await WriteGates(tenantId, marketplace.Id, InvoicingCapabilities.InvoiceDeliver, cancellationToken))
             {
                 canCreate = false;
-                blockedReason = "Bu pazaryeri için ayrı fatura iletme izni kapalı veya doğrulanmamış.";
+                blockedReason = await DeliveryBlockedReasonAsync(tenantId, marketplace.Id, cancellationToken);
             }
         }
 
