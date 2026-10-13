@@ -130,6 +130,11 @@ public sealed partial class InvoicingBillingService
 
                 if (invoice is null)
                 {
+                    // An invoice that was replaced earlier still carries this order's draft key; free it so a new draft can be created.
+                    var orderDraftKey = $"invoice-workspace-order:{confirmation.OrderId:N}";
+                    var replacedWithKey = await db.Invoices.Where(item => item.TenantId == tenantId && item.IdempotencyKey == orderDraftKey && item.SequencePurpose == "REPLACED").ToListAsync(cancellationToken);
+                    foreach (var replaced in replacedWithKey) replaced.IdempotencyKey = $"replaced:{replaced.Id:N}";
+                    if (replacedWithKey.Count > 0) await db.SaveChangesAsync(cancellationToken);
                     var created = await CreateDraftAsync(tenantId,
                         new(confirmation.OrderId, confirmation.PackageId, confirmation.ProviderConnectionId, null, request.IncludeInternetSalesInfo),
                         $"invoice-workspace-order:{confirmation.OrderId:N}", cancellationToken);
@@ -381,6 +386,7 @@ public sealed partial class InvoicingBillingService
             && (job.Status == JobStatus.Pending || job.Status == JobStatus.Leased || job.Status == JobStatus.RetryScheduled), cancellationToken);
         if (activeJob) return ServiceResult<bool>.Fail("INVOICE_JOB_STILL_RUNNING", "Bu fatura için işlem hâlâ sürüyor. Birkaç dakika bekleyip tekrar deneyin.", 409);
         invoice.SequencePurpose = "REPLACED";
+        invoice.IdempotencyKey = $"replaced:{invoice.Id:N}";
         invoice.OrderFiscalGuarded = false;
         invoice.Status = InvoiceStatus.Cancelled;
         invoice.LastErrorCode = "OPERATOR_CONFIRMED_CANCELLED_AT_PROVIDER";
