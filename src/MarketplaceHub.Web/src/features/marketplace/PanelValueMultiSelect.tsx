@@ -3,12 +3,14 @@ import { createPortal } from 'react-dom'
 import { UiIcon } from '../../shared/components'
 
 // Picks any number of panel values for one marketplace value.
-export function PanelValueMultiSelect({ label, options, selectedIds, assignedElsewhere, disabled, onToggle }: {
+export function PanelValueMultiSelect({ label, options, selectedIds, assignedElsewhere, allowReuse = false, disabled, onToggle }: {
   label: string
   options: ReadonlyArray<{ id: string; value: string }>
   selectedIds: readonly string[]
   /** panel value id -> name of the marketplace value it is already matched to, for values matched somewhere else */
   assignedElsewhere: Readonly<Record<string, string>>
+  /** platforms that allow reuse (Hepsiburada) can still pick a value that is matched elsewhere */
+  allowReuse?: boolean
   disabled?: boolean
   onToggle: (id: string) => void
 }) {
@@ -58,10 +60,10 @@ export function PanelValueMultiSelect({ label, options, selectedIds, assignedEls
       {sorted.map(option => {
         const state = stateOf(option.id)
         const isSelected = state === 'here'
-        return <button type="button" role="option" aria-selected={isSelected} className={`${isSelected ? 'active ' : ''}is-${state}`} key={option.id} onClick={() => onToggle(option.id)}>
+        return <button type="button" role="option" aria-selected={isSelected} className={`${isSelected ? 'active ' : ''}is-${state}`} key={option.id} disabled={state === 'elsewhere' && !allowReuse} title={state === 'elsewhere' ? `Zaten ${assignedElsewhere[option.id]} değerine eşli` : undefined} onClick={() => onToggle(option.id)}>
           <i aria-hidden="true">{isSelected ? <UiIcon name="check" size={14} /> : null}</i>
           <span>{option.value}</span>
-          <em>{state === 'unmatched' ? 'Eşleşmedi' : state === 'elsewhere' ? assignedElsewhere[option.id] : 'Eşleşti'}</em>
+          <em>{state === 'unmatched' ? 'Eşleşmedi' : state === 'elsewhere' ? `Eşli: ${assignedElsewhere[option.id]}` : 'Eşleşti'}</em>
         </button>
       })}
     </div>, document.body)}
