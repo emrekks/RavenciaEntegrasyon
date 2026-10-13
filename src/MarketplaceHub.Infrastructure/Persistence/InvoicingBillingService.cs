@@ -630,7 +630,7 @@ public sealed partial class InvoicingBillingService(
 
     internal static bool IsWorkspaceInvoiceUninvoiced(string invoiceStatus, bool canCreateInvoice, bool marketplaceInvoicePresent = false) =>
         !marketplaceInvoicePresent && (canCreateInvoice
-            || invoiceStatus is "FATURA_REDDEDILDI" or "FATURA_ISLENIYOR" or "FATURA_KONTROLDE" or "FATURA_PLATFORMA_AKTARILMADI");
+            || invoiceStatus is "FATURA_REDDEDILDI" or "FATURA_ISLENIYOR" or "FATURA_PLATFORMA_BEKLIYOR" or "FATURA_KONTROLDE" or "FATURA_PLATFORMA_AKTARILMADI");
 
     private static bool HasMarketplaceInvoiceObservation(WorkspaceCandidate candidate) =>
         candidate.Package.MarketplaceInvoiceStatus is MarketplaceInvoiceStatus.Invoiced or MarketplaceInvoiceStatus.Received;
@@ -911,14 +911,16 @@ public sealed partial class InvoicingBillingService(
                 invoice?.HasConfirmedMarketplaceDelivery == true);
         }
 
-        if (invoice.Status is InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending or InvoiceStatus.MarketplaceFailed)
+        if (invoice.Status is InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending or InvoiceStatus.MarketplaceFailed or InvoiceStatus.Submitted)
         {
             if (invoice.HasConfirmedMarketplaceDelivery) return "FATURA_KESILDI";
-            return "FATURA_PLATFORMA_AKTARILMADI";
+            // The invoice exists at the provider. It is only a delivery problem once the platform leg failed or needs review; until then it is simply waiting to be sent.
+            var deliveryProblem = invoice.Status == InvoiceStatus.MarketplaceFailed
+                || InvoiceMarketplaceRetryPolicy.IsDeliveryReview(invoice.Status, invoice.LastErrorCode)
+                || InvoiceMarketplaceRetryPolicy.CanRetryDelivery(invoice.Status, invoice.LastErrorCode);
+            return deliveryProblem ? "FATURA_PLATFORMA_AKTARILMADI" : "FATURA_PLATFORMA_BEKLIYOR";
         }
-        if (InvoiceMarketplaceRetryPolicy.IsDeliveryReview(invoice.Status, invoice.LastErrorCode))
-            return "FATURA_PLATFORMA_AKTARILMADI";
-        if (invoice.Status is InvoiceStatus.Submitting or InvoiceStatus.UnknownResult or InvoiceStatus.Submitted)
+        if (invoice.Status is InvoiceStatus.Submitting or InvoiceStatus.UnknownResult)
             return "FATURA_ISLENIYOR";
         if (invoice.Status == InvoiceStatus.Completed)
             return invoice.HasConfirmedMarketplaceDelivery ? "FATURA_KESILDI" : "FATURA_KONTROLDE";

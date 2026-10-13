@@ -86,6 +86,7 @@ const statusLabels: Record<string, string> = {
   MARKETPLACE_PENDING: 'Pazaryerine aktarılıyor',
   MARKETPLACE_FAILED: 'Pazaryeri aktarımı başarısız',
   FATURA_PLATFORMA_AKTARILMADI: 'Fatura oluşturuldu, platforma aktarılmadı',
+  FATURA_PLATFORMA_BEKLIYOR: 'Platforma gönderilmeyi bekliyor',
   UNAPPROVED: 'Onaylanmadı',
   UNDELIVERED: 'Teslim edilemedi',
   UNVERIFIED: 'Durumu doğrulanmadı',
@@ -117,6 +118,7 @@ export function invoiceStatusLabel(value: string | null | undefined) {
   if (normalized === 'MANUAL_REVIEW') return 'İnceleme gerekli'
   if (normalized === 'MARKETPLACE_FAILED') return 'Pazaryeri aktarımı başarısız'
   if (normalized === 'FATURA_PLATFORMA_AKTARILMADI') return 'Fatura oluşturuldu, platforma aktarılmadı'
+  if (normalized === 'FATURA_PLATFORMA_BEKLIYOR') return 'Platforma Gönderilmeyi Bekliyor'
   if (normalized === 'VALIDATION_FAILED') return 'Fatura doğrulaması başarısız'
   if (['FATURA_REDDEDILDI', 'REJECTED'].includes(normalized)) return 'Fatura reddedildi'
   if (['FATURA_IPTAL', 'CANCELLED', 'CANCELLED_LOCAL'].includes(normalized)) return 'Fatura İptal'
@@ -136,7 +138,7 @@ export function invoiceStatusTone(value: string | null | undefined): InvoiceStat
   if (['FATURA_ISLENIYOR', 'PROCESSING', 'SUBMITTING', 'SUBMITTED', 'MARKETPLACE_PENDING', 'READY'].includes(normalized)) return 'info'
   if (normalized === 'MANUAL_REVIEW') return 'warning'
   if (['FATURA_REDDEDILDI', 'REJECTED', 'VALIDATION_FAILED', 'MARKETPLACE_FAILED'].includes(normalized)) return 'danger'
-  if (normalized === 'FATURA_PLATFORMA_AKTARILMADI') return 'warning'
+  if (['FATURA_PLATFORMA_AKTARILMADI', 'FATURA_PLATFORMA_BEKLIYOR'].includes(normalized)) return 'warning'
   if (['FATURA_IPTAL', 'CANCELLED', 'CANCELLED_LOCAL'].includes(normalized)) return 'neutral'
   if (['FATURA_YUKLENDI', 'FATURA_KESILDI', 'FATURA_KONTROLDE', 'COMPLETED', 'ACCEPTED'].includes(normalized)) return 'success'
   return 'neutral'

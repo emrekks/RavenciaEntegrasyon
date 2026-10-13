@@ -254,12 +254,15 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 "FATURA_IPTAL" => query.Where(x => db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null
                     && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
                     && (i.Status == InvoiceStatus.Cancelled || i.Status == InvoiceStatus.CancelledLocal))),
+                "FATURA_PLATFORMA_BEKLIYOR" => query.Where(x => db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null && i.SequencePurpose == "SALE"
+                    && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
+                    && (i.Status == InvoiceStatus.Submitted || i.Status == InvoiceStatus.Accepted || i.Status == InvoiceStatus.MarketplacePending))),
                 "FATURA_BEKLIYOR" => query.Where(x =>
                     db.ShipmentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.NotInvoiced)
                     || x.CustomerSnapshotJson.Contains("NOTINVOICED") || x.CustomerSnapshotJson.Contains("NOT_INVOICED")),
                 "FATURA_ISLENIYOR" => query.Where(x => db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null
                     && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
-                    && (i.Status == InvoiceStatus.Draft || i.Status == InvoiceStatus.Validating || i.Status == InvoiceStatus.Ready || i.Status == InvoiceStatus.Submitting || i.Status == InvoiceStatus.UnknownResult || i.Status == InvoiceStatus.Submitted))),
+                    && (i.Status == InvoiceStatus.Draft || i.Status == InvoiceStatus.Validating || i.Status == InvoiceStatus.Ready || i.Status == InvoiceStatus.Submitting || i.Status == InvoiceStatus.UnknownResult))),
                 _ => query.Where(_ => false)
             };
         }
@@ -2437,8 +2440,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         if (invoiceStatus is { } status)
         {
             if (status is InvoiceStatus.Rejected or InvoiceStatus.ValidationFailed or InvoiceStatus.ManualReview) return "FATURA_REDDEDILDI";
-            if (status is InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending or InvoiceStatus.MarketplaceFailed)
-                return "FATURA_PLATFORMA_AKTARILMADI";
+            if (status == InvoiceStatus.MarketplaceFailed) return "FATURA_PLATFORMA_AKTARILMADI";
+            if (status is InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending or InvoiceStatus.Submitted) return "FATURA_PLATFORMA_BEKLIYOR";
             if (status is InvoiceStatus.Cancelled or InvoiceStatus.CancelledLocal) return "FATURA_IPTAL";
             if (status == InvoiceStatus.Completed)
                 return marketplaceDeliveryConfirmed ? "FATURA_KESILDI" : "FATURA_KONTROLDE";
@@ -2479,9 +2482,9 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 return status == InvoiceStatus.MarketplaceFailed ? "FATURA_PLATFORMA_AKTARILMADI" : "FATURA_REDDEDILDI";
             if (status is InvoiceStatus.Cancelled or InvoiceStatus.CancelledLocal)
                 return "FATURA_IPTAL";
-            if (status is InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending)
-                return "FATURA_PLATFORMA_AKTARILMADI";
-            if (status is InvoiceStatus.Submitting or InvoiceStatus.UnknownResult or InvoiceStatus.Submitted)
+            if (status is InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending or InvoiceStatus.Submitted)
+                return "FATURA_PLATFORMA_BEKLIYOR";
+            if (status is InvoiceStatus.Submitting or InvoiceStatus.UnknownResult)
                 return "FATURA_ISLENIYOR";
             // The marketplace observation is authoritative for the delivery
             // leg. A local invoice number only proves that our fiscal provider

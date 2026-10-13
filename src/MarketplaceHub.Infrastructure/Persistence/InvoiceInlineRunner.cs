@@ -6,7 +6,7 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed class InvoiceInlineRunner(AppDbContext db, IJobLeaseService leases, IInvoicingJobProcessor processor, TimeProvider timeProvider) : IInvoiceInlineRunner
 {
-    private static readonly TimeSpan Budget = TimeSpan.FromSeconds(40);
+    private static readonly TimeSpan Budget = TimeSpan.FromSeconds(45);
     private static readonly TimeSpan MaxWait = TimeSpan.FromSeconds(6);
     private const int MaxSteps = 6;
     private static readonly string[] FollowUpJobTypes = [InvoicingJobTypes.InvoiceReconcile, InvoicingJobTypes.InvoiceDocumentFetch, InvoicingJobTypes.MarketplaceDelivery];
@@ -31,6 +31,9 @@ public sealed class InvoiceInlineRunner(AppDbContext db, IJobLeaseService leases
             { result = JobExecutionResult.Blocked("INVALID_JOB_STATE", $"İşlem verisi veya mevcut durum doğrulaması başarısız oldu. ({exception.GetType().Name}: {exception.Message.ReplaceLineEndings(" ")})"); }
             catch (Exception) { result = JobExecutionResult.Retry("INLINE_EXECUTION_FAILED", "Geçici bir hata oluştu; işlem otomatik olarak yeniden denenecek."); }
             await leases.CompleteAsync(leased.Id, leased.LeaseToken, result, cancellationToken);
+            // The provider usually accepts an e-archive invoice within seconds; poll the read-only status check here instead of leaving it for the worker's slow retry.
+            if (result.Kind == JobCompletionKind.Retry && result.ErrorCode == "INVOICE_REMOTE_PENDING" && leased.JobType == InvoicingJobTypes.InvoiceReconcile)
+                result = await PollPendingAsync(leased, result, deadline, cancellationToken);
             if (!result.Succeeded) return await DescribeAsync(tenantId, invoiceId, result, cancellationToken);
             if (timeProvider.GetUtcNow() >= deadline) break;
 
@@ -39,6 +42,19 @@ public sealed class InvoiceInlineRunner(AppDbContext db, IJobLeaseService leases
             jobId = next.Value;
         }
         return await DescribeAsync(tenantId, invoiceId, null, cancellationToken);
+    }
+
+    private async Task<JobExecutionResult> PollPendingAsync(LeasedJob job, JobExecutionResult pending, DateTimeOffset deadline, CancellationToken cancellationToken)
+    {
+        var result = pending;
+        while (result.Kind == JobCompletionKind.Retry && result.ErrorCode == "INVOICE_REMOTE_PENDING" && timeProvider.GetUtcNow().AddSeconds(6) < deadline)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(4), cancellationToken);
+            try { result = await processor.ProcessAsync(job.TenantId, job.ConnectionId, job.JobType, job.PayloadJson, job.CorrelationId, cancellationToken); }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception) { return pending; }
+        }
+        return result;
     }
 
     private async Task<Guid?> NextJobAsync(Guid tenantId, Guid invoiceId, DateTimeOffset deadline, CancellationToken cancellationToken)

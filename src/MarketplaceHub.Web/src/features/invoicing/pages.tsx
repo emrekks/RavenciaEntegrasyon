@@ -162,6 +162,7 @@ function invoiceWorkspaceStatus(item: Pick<InvoiceWorkspace, 'invoiceId' | 'invo
   if (['INVOICED', 'RECEIVED'].includes(item.platformInvoiceStatus?.trim().toUpperCase() ?? '')) return { value: 'FATURA_KONTROLDE', tone: 'success' as const }
   if (!item.invoiceId || item.canCreateInvoice || item.invoiceStatus === 'FATURA_BEKLIYOR') return { value: 'FATURA_BEKLIYOR', tone: 'warning' as const }
   if (isInvoiceFailureStatus(item.invoiceStatus)) return { value: item.invoiceStatus, tone: 'danger' as const }
+  if (item.invoiceStatus === 'FATURA_PLATFORMA_BEKLIYOR') return { value: item.invoiceStatus, tone: 'warning' as const }
   if (['FATURA_YUKLENDI', 'FATURA_KESILDI', 'COMPLETED'].includes(item.invoiceStatus)) return { value: item.invoiceStatus, tone: 'success' as const }
   return { value: item.invoiceStatus || 'FATURA_BILINMIYOR', tone: 'info' as const }
 }
