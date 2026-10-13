@@ -1497,7 +1497,7 @@ export function ProductsPage() {
         </section>
       </div>
     )}
-    {productToast && <NoticeToast key={`${productToast.kind}:${productToast.message}`} kind={productToast.kind === 'info' ? 'pending' : productToast.kind} message={productToast.message} onClose={() => setProductToast(null)} durationMs={4000} />}
+    {productToast && <NoticeToast key={`${productToast.kind}:${productToast.message}`} kind={productToast.kind} message={productToast.message} onClose={() => setProductToast(null)} durationMs={4000} />}
     {lowStockOpen && <LowStockDetailsModal products={lowStockQuery.data?.items ?? []} loading={lowStockQuery.isLoading} error={lowStockQuery.error} onClose={() => setLowStockOpen(false)} onImageClick={(url, title) => setLightboxImage({ url, title })} />}
     {lightboxImage && <ImageLightboxModal image={lightboxImage} onClose={() => setLightboxImage(null)} />}
   </Page>

@@ -26,7 +26,7 @@ const samples: Array<{ kind: NoticeToastKind; label: string; message: string }> 
 export function NotificationTestPanel() {
   const [shown, setShown] = useState<{ kind: NoticeToastKind; message: string; id: number } | null>(null)
   useEffect(() => {
-    if (!shown) return
+    if (!shown || shown.kind === 'pending') return
     const timeout = window.setTimeout(() => setShown(null), toastDurationMs)
     return () => window.clearTimeout(timeout)
   }, [shown])

@@ -54,7 +54,7 @@ function actionLabel(action: string | null) {
         : action === 'WAIT' ? 'Mevcut İşlem Sonuçlanıyor' : action === 'NONE' ? 'İşlem Tamamlandı' : 'İnceleme Gerekiyor'
 }
 
-export function InvoiceWorkspacePreviewModal({ targets, onClose, onComplete, onNotice }: { targets: InvoicePreviewTarget[]; onClose: () => void; onComplete: () => void; onNotice: (message: string, kind: 'success' | 'error' | 'info') => void }) {
+export function InvoiceWorkspacePreviewModal({ targets, onClose, onComplete, onNotice }: { targets: InvoicePreviewTarget[]; onClose: () => void; onComplete: () => void; onNotice: (message: string, kind: 'success' | 'error' | 'info' | 'pending') => void }) {
   const [previews, setPreviews] = useState<PreviewItem[]>([])
   const [results, setResults] = useState<ConfirmResult | null>(null)
   const [loading, setLoading] = useState(false)
@@ -79,18 +79,21 @@ export function InvoiceWorkspacePreviewModal({ targets, onClose, onComplete, onN
     const body = JSON.stringify({ items: eligible.map(item => ({ orderId: item.orderId, packageId: item.packageId, providerConnectionId: item.providerConnectionId, previewDigest: item.previewDigest })), includeInternetSalesInfo })
     const labels = new Map(eligible.map(item => [item.packageId, `#${item.orderNumber}`]))
     onClose()
-    onNotice(eligible.length > 1 ? `${eligible.length} fatura işleniyor…` : `${labels.get(eligible[0]?.packageId ?? '') ?? 'Fatura'} için fatura işleniyor…`, 'info')
+    onNotice(eligible.length === 1 ? `${labels.get(eligible[0].packageId)} nolu siparişin faturası oluşturuluyor ve pazaryerine iletiliyor…` : `${eligible.length} siparişin faturası oluşturuluyor ve pazaryerine iletiliyor…`, 'pending')
     void hubApi<ConfirmResult>('/invoice-workspace/confirm', { method: 'POST', headers: { 'Idempotency-Key': `invoice-workspace-confirm:${crypto.randomUUID()}` }, body })
       .then(response => {
+        let succeeded = 0
+        let failedCount = 0
         for (const result of response.items) {
-          const label = labels.get(result.packageId) ?? 'Sipariş'
+          const label = labels.get(result.packageId) ?? '#?'
           const failed = ['FAILED', 'BLOCKED', 'VALIDATION_FAILED', 'PREVIEW_STALE', 'CONFLICT'].includes(result.status)
-          if (failed) onNotice(`${label} faturası oluşturulamadı: ${result.message}`, 'error')
-          else if (result.status === 'COMPLETED') onNotice(`${label} ${result.message}`, 'success')
-          else onNotice(`${label}: ${result.message}`, 'info')
+          if (failed) { failedCount++; onNotice(`${label} nolu siparişin faturası oluşturulamadı: ${result.message}`, 'error') }
+          else if (result.status === 'COMPLETED') { succeeded++; onNotice(/^Fatura (kesildi|E-Faturam)/u.test(result.message) ? `${label} nolu siparişin faturası ${result.message.replace(/^Fatura /u, '')}` : `${label} nolu sipariş: ${result.message}`, 'success') }
+          else onNotice(`${label} nolu siparişin faturası: ${result.message}`, 'info')
         }
+        if (response.items.length > 1) onNotice(`${response.items.length} siparişin faturası işlendi: ${succeeded} başarılı, ${failedCount} başarısız${response.items.length - succeeded - failedCount > 0 ? `, ${response.items.length - succeeded - failedCount} devam ediyor` : ''}.`, failedCount > 0 ? 'error' : succeeded > 0 ? 'success' : 'info')
       })
-      .catch(reason => onNotice(`Fatura işlemi başlatılamadı: ${reason instanceof Error ? reason.message : 'Bilinmeyen hata'}`, 'error'))
+      .catch(reason => onNotice(`${eligible.length === 1 ? `${labels.get(eligible[0].packageId)} nolu siparişin faturası` : 'Faturalar'} oluşturulamadı: ${reason instanceof Error ? reason.message : 'Bilinmeyen hata'}`, 'error'))
       .finally(onComplete)
   }
 

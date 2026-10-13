@@ -25,7 +25,7 @@ type InvoiceWorkspace = { orderId: string; packageId: string; orderNumber: strin
 type InvoiceWorkspacePage = { items: InvoiceWorkspace[]; totalCount: number; pageNumber: number; pageSize: number; totalPages: number; uninvoicedCount: number; invoicedCount: number; dueSoonCount: number; hiddenCount: number; totalPackageCount: number; hasPendingMarketplaceInvoices: boolean; shipmentStatuses: string[]; cargoProviders: string[]; invoiceStatuses: string[] }
 type InvoiceDetail = Invoice & { orderId: string; packageId: string | null; providerConnectionId: string; sequencePurpose: string; ettnUuid: string | null; taxExclusiveTotal: number; discountTotal: number; taxTotal: number; note: string; issuedAt: string | null; lastErrorCode: string | null; lines: Array<{ id: string; lineSequence: number; description: string; sku: string | null; unit: string; quantity: number; unitPrice: number; discountAmount: number; vatRate: number; vatAmount: number; lineTotal: number }>; documents: Array<{ id: string; documentType: string; sha256: string; createdAt: string }>; attempts: Array<{ attemptNumber: number; outcome: string; errorCode: string | null; startedAt: string; completedAt: string | null }>; deliveries: Array<{ id: string; deliveryType: string; status: string; externalReference: string | null; errorCode: string | null; createdAt: string }>; allowedActions: string[]; requiresSensitiveConfirmation: boolean }
 type Connection = { id: string; platformCode: string; displayName: string; status: string; environment: string; hasCredential: boolean }
-type InvoiceNoticeKind = 'success' | 'error' | 'info'
+type InvoiceNoticeKind = 'success' | 'error' | 'info' | 'pending'
 const invoiceCreationDisabledHelp = 'Fatura oluşturmak için Entegrasyonlar > bu bağlantı ayarlarından “Fatura oluşturma” seçeneğini açın.'
 
 function idempotency() { return crypto.randomUUID() }
@@ -334,9 +334,9 @@ export function InvoicesPage() {
   const initialTab = resolveInvoiceTab(requestedTab)
   const client = useQueryClient(); const [search, setSearch] = useState(''); const [sortOrder, setSortOrder] = useState('ORDER_DESC'); const [tab, setTab] = useState(initialTab); const [selectedPlatforms, setSelectedPlatforms] = useState<string[] | null>(null); const [shipmentStatusFilter, setShipmentStatusFilter] = useState('ALL'); const [cargoFilter, setCargoFilter] = useState('ALL'); const [invoiceStatusFilter, setInvoiceStatusFilter] = useState('ALL'); const [invoiceActionFilter, setInvoiceActionFilter] = useState<'ALL' | 'CREATABLE' | 'NOT_CREATABLE'>('ALL'); const [dateFrom, setDateFrom] = useState(''); const [dateTo, setDateTo] = useState(''); const [columnFilterOpen, setColumnFilterOpen] = useState<'cargo' | 'shipment' | 'invoice' | 'action' | null>(null); const [message, setMessageState] = useState(''); const [messageKind, setMessageKind] = useState<InvoiceNoticeKind>('info'); const [pageSize, setPageSize] = useState(20); const [pageNumber, setPageNumber] = useState(1); const [selectedItem, setSelectedItem] = useState<InvoiceWorkspace | null>(null); const [shopifyStatusItem, setShopifyStatusItem] = useState<InvoiceWorkspace | null>(null); const [manualStatusBatch, setManualStatusBatch] = useState<InvoiceWorkspace[] | null>(null); const [manualUploadItem, setManualUploadItem] = useState<InvoiceWorkspace | null>(null); const [selectedPackages, setSelectedPackages] = useState<Set<string>>(() => new Set())
   useEffect(() => { setTab(initialTab) }, [initialTab])
-  function setMessage(value: string, kind: InvoiceNoticeKind = 'info') { setMessageState(value); setMessageKind(kind); if (value) appendNotification(value, kind) }
+  function setMessage(value: string, kind: InvoiceNoticeKind = 'info') { setMessageState(value); setMessageKind(kind); if (value && kind !== 'pending') appendNotification(value, kind) }
   useEffect(() => {
-    if (!message) return
+    if (!message || messageKind === 'pending') return
     const timeout = window.setTimeout(() => setMessageState(''), messageKind === 'info' ? 7000 : 5500)
     return () => window.clearTimeout(timeout)
   }, [message, messageKind])
@@ -362,7 +362,7 @@ export function InvoicesPage() {
   const confirmDelivered = useMutation({
     mutationFn: async (item: InvoiceWorkspace) => hubApi<{ confirmed: boolean }>(`/invoice-workspace/orders/${item.orderId}/confirm-marketplace-delivered`, { method: 'POST' }),
     onSuccess: async (_result, item) => {
-      setMessage(`#${item.orderNumber} faturası pazaryerinde doğrulandı ve tamamlandı olarak işaretlendi.`, 'success')
+      setMessage(`#${item.orderNumber} nolu siparişin faturası pazaryerinde doğrulandı ve tamamlandı olarak işaretlendi.`, 'success')
       await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] })])
     },
     onError: error => setMessage(error instanceof Error ? error.message : 'Fatura tamamlandı olarak işaretlenemedi.', 'error')
@@ -370,7 +370,7 @@ export function InvoicesPage() {
   const replaceInvoice = useMutation({
     mutationFn: async (item: InvoiceWorkspace) => hubApi<{ replaced: boolean }>(`/invoice-workspace/orders/${item.orderId}/replace-cancelled-invoice`, { method: 'POST' }),
     onSuccess: async (_result, item) => {
-      setMessage(`#${item.orderNumber} için eski fatura iptal olarak kapatıldı. Yeni fatura kesebilirsiniz.`, 'success')
+      setMessage(`#${item.orderNumber} nolu siparişin eski faturası iptal olarak kapatıldı. Yeni fatura kesebilirsiniz.`, 'success')
       await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] })])
     },
     onError: error => setMessage(error instanceof Error ? error.message : 'Eski fatura kapatılamadı.', 'error')
@@ -378,7 +378,7 @@ export function InvoicesPage() {
   const noRemoteInvoice = useMutation({
     mutationFn: async (item: InvoiceWorkspace) => hubApi<{ confirmed: boolean }>(`/invoice-workspace/orders/${item.orderId}/confirm-no-remote-invoice`, { method: 'POST' }),
     onSuccess: async (_result, item) => {
-      setMessage(`#${item.orderNumber} için yeniden gönderim açıldı. Faturayı tekrar oluşturabilirsiniz.`, 'success')
+      setMessage(`#${item.orderNumber} nolu siparişin faturası için yeniden gönderim açıldı. Faturayı tekrar oluşturabilirsiniz.`, 'success')
       await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] })])
     },
     onError: error => setMessage(error instanceof Error ? error.message : 'Yeniden gönderim açılamadı.', 'error')
@@ -494,7 +494,7 @@ export function InvoicesPage() {
       <div><p className="eyebrow">Mali belgeler</p><h1>Faturalar</h1><p className="lede">Faturaları paket, teslimat ve ödeme bilgileriyle tek çalışma alanında takip edin.</p></div>
       <div className="invoices-reference-heading-actions"><span className="invoice-safety-status"><i aria-hidden="true" /> Manuel işlem güvenli</span><Badge value="DUPLICATE SAFE" /></div>
     </div>
-    {message && <NoticeToast key={`${messageKind}:${message}`} kind={messageKind} message={message} onClose={() => setMessageState('')} durationMs={messageKind === 'info' ? 7000 : 5500} />}
+    {message && <NoticeToast key={`${messageKind}:${message}`} kind={messageKind} message={message} onClose={() => setMessageState('')} durationMs={messageKind === 'pending' ? undefined : messageKind === 'info' ? 7000 : 5500} />}
     <div className="invoice-reference-metrics">
       <article className="invoice-metric-pending"><small>Fatura bekleyen</small><strong>{counts.unInvoiced}</strong><span>paket bazlı işlem</span></article>
       <article className="invoice-metric-due"><small>Süresi yaklaşan</small><strong>{counts.dueSoon}</strong><span>teslimden 5 gün geçen</span></article>
@@ -649,7 +649,7 @@ function InvoiceWorkspaceUploadModal({ item, onClose, onFeedback }: { item: Invo
 
 export function InvoiceDetailPage() {
   const { id = '' } = useParams(); const [searchParams] = useSearchParams(); const client = useQueryClient(); const [notice, setNoticeState] = useState(''); const [noticeKind, setNoticeKind] = useState<InvoiceNoticeKind>('info'); const [password, setPassword] = useState(''); const [confirmed, setConfirmed] = useState(false); const [uploadFile, setUploadFile] = useState<File | null>(null)
-  function setNotice(value: string, kind: InvoiceNoticeKind = 'info') { setNoticeState(value); setNoticeKind(kind); if (value) appendNotification(value, kind) }
+  function setNotice(value: string, kind: InvoiceNoticeKind = 'info') { setNoticeState(value); setNoticeKind(kind); if (value && kind !== 'pending') appendNotification(value, kind) }
   useEffect(() => {
     if (!notice) return
     const timeout = window.setTimeout(() => setNoticeState(''), noticeKind === 'info' ? 7000 : 5500)
