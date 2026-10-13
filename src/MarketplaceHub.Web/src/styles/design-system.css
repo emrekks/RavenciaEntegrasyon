@@ -12425,3 +12425,4 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 /* Headings and captions always start every word with a capital (the page language is Turkish, so İ and ı follow along). */
 h1, h2, h3, h4, .dashboard-summary-card-head > span:first-child, :is(.orders-control-bar, .invoice-reference-filters, .return-reference-filters, .rv-questions-filters, .jobs-reference-filter-panel, .appearance-settings-grid) label,
 .date-range-picker-label, .platform-multi-select-label, .invoice-sort-caption, .orders-control-label, .return-search > span, .invoice-upload-field > span, .appearance-theme-field > span, .mapping-side-field > span { text-transform: capitalize; }
+.app-shell.stitch-shell main .invoice-reference-filters > .invoice-reference-search > span:first-child { color: var(--rv-color-muted); font-size: 13px; font-weight: 600; }
