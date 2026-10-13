@@ -179,7 +179,7 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
                     var remoteValues = new List<long>();
                     foreach (var value in values)
                     {
-                        var externalValue = await ExternalValueAsync(tenantId, connectionId, categoryMapping.ExternalId, mapping.ExternalId, value.ValueId!.Value, cancellationToken);
+                        var externalValue = await ExternalValueAsync(tenantId, connectionId, categoryMapping.ExternalId, mapping.ExternalId, value.ValueId!.Value, $"{remote.Name}: {mappedLocalValues.FirstOrDefault(item => item.Id == value.ValueId!.Value)?.Value ?? "seçili değer"}", cancellationToken);
                         if (externalValue.Error is not null) return ServiceResult<ProductPublicationDraft>.Fail(externalValue.Error.Code, externalValue.Error.Message, externalValue.Error.Status, externalValue.Error.FieldErrors);
                         remoteValues.Add(externalValue.Value);
                     }
@@ -196,7 +196,7 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
                     }
                     else
                     {
-                        var externalValue = await ExternalValueAsync(tenantId, connectionId, categoryMapping.ExternalId, mapping.ExternalId, valueId, cancellationToken);
+                        var externalValue = await ExternalValueAsync(tenantId, connectionId, categoryMapping.ExternalId, mapping.ExternalId, valueId, $"{remote.Name}: {mappedLocalValues.FirstOrDefault(item => item.Id == valueId)?.Value ?? "seçili değer"}", cancellationToken);
                         if (externalValue.Error is not null) return ServiceResult<ProductPublicationDraft>.Fail(externalValue.Error.Code, externalValue.Error.Message, externalValue.Error.Status, externalValue.Error.FieldErrors);
                         attribute["attributeValueId"] = externalValue.Value;
                     }
@@ -226,7 +226,7 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
                 var hasCustomColorValue = TrendyolColorValuePolicy.TrySetCustomPanelColorValue(optionPayload, optionRemote.Name, option.ValueLabel);
                 if (!hasCustomColorValue && localValue is not null)
                 {
-                    var externalValue = await ExternalValueAsync(tenantId, connectionId, categoryMapping.ExternalId, optionMapping.ExternalId, localValue.Id, cancellationToken);
+                    var externalValue = await ExternalValueAsync(tenantId, connectionId, categoryMapping.ExternalId, optionMapping.ExternalId, localValue.Id, $"{option.Label}: {option.ValueLabel}", cancellationToken);
                     if (externalValue.Error is not null) return ServiceResult<ProductPublicationDraft>.Fail(externalValue.Error.Code, externalValue.Error.Message, externalValue.Error.Status, externalValue.Error.FieldErrors);
                     optionPayload["attributeValueId"] = externalValue.Value;
                 }
@@ -242,13 +242,16 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
                 var webColorMapping = optionMappings.FirstOrDefault(item => IsWebColorOptionName(remoteAttributes.SingleOrDefault(remoteItem => remoteItem.ExternalId == item.ExternalId)?.Name));
                 if (localValue is not null && webColorMapping is not null && webColorMapping.ExternalId != optionMapping.ExternalId && long.TryParse(webColorMapping.ExternalId, NumberStyles.None, CultureInfo.InvariantCulture, out var webColorRemoteId) && emittedRemoteAttributeIds.Add(webColorRemoteId))
                 {
-                    var webColorValue = await ExternalValueAsync(tenantId, connectionId, categoryMapping.ExternalId, webColorMapping.ExternalId, localValue.Id, cancellationToken);
+                    var webColorValue = await ExternalValueAsync(tenantId, connectionId, categoryMapping.ExternalId, webColorMapping.ExternalId, localValue.Id, $"Web Color: {option.ValueLabel}", cancellationToken);
                     if (webColorValue.Error is not null) return ServiceResult<ProductPublicationDraft>.Fail(webColorValue.Error.Code, webColorValue.Error.Message, webColorValue.Error.Status, webColorValue.Error.FieldErrors);
                     payloadAttributes.Add(new Dictionary<string, object?> { ["attributeId"] = webColorRemoteId, ["attributeValueId"] = webColorValue.Value });
                 }
             }
             if (requiredExternalIds.Any(id => !long.TryParse(id, NumberStyles.None, CultureInfo.InvariantCulture, out var requiredRemoteId) || !emittedRemoteAttributeIds.Contains(requiredRemoteId)))
-                return Fail("REQUIRED_ATTRIBUTE_MISSING", $"'{variant.Sku}' için Trendyol kategorisinin zorunlu özelliklerinden en az biri eksik.");
+            {
+                var missingRequired = requiredExternalIds.Where(id => !long.TryParse(id, NumberStyles.None, CultureInfo.InvariantCulture, out var requiredRemoteId) || !emittedRemoteAttributeIds.Contains(requiredRemoteId)).Select(id => remoteAttributes.FirstOrDefault(item => item.ExternalId == id)?.Name ?? id).Distinct().ToList();
+                return Fail("REQUIRED_ATTRIBUTE_MISSING", $"'{variant.Sku}' için Trendyol'un zorunlu özellikleri eksik: {string.Join(", ", missingRequired)}. Ürünün kategori özelliklerinde bu alanlara değer seçin ve değerlerini eşleyin.");
+            }
 
             var publishable = Math.Max(0, inventories[variant.Id].Available - offer.SafetyStock);
             var item = new Dictionary<string, object?>
@@ -279,11 +282,11 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
         return ServiceResult<ProductPublicationDraft>.Ok(new(profile.Id, categoryMapping.ExternalId, brandMapping.ExternalId, payloadHash, payloadJson, draftVariants));
     }
 
-    private async Task<ServiceResult<long>> ExternalValueAsync(Guid tenantId, Guid connectionId, string categoryExternalId, string attributeExternalId, Guid localValueId, CancellationToken cancellationToken)
+    private async Task<ServiceResult<long>> ExternalValueAsync(Guid tenantId, Guid connectionId, string categoryExternalId, string attributeExternalId, Guid localValueId, string label, CancellationToken cancellationToken)
     {
         var scope = $"{categoryExternalId}/{attributeExternalId}";
         var mapping = await db.AttributeValueMappings.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == localValueId && x.ScopeExternalId == scope && x.Status == "VERIFIED", cancellationToken);
-        if (mapping is null || !long.TryParse(mapping.ExternalId, NumberStyles.None, CultureInfo.InvariantCulture, out var value)) return ServiceResult<long>.Fail("ATTRIBUTE_VALUE_MAPPING_REQUIRED", "Özellik değeri için sayısal ve doğrulanmış Trendyol eşlemesi gerekir.", 422);
+        if (mapping is null || !long.TryParse(mapping.ExternalId, NumberStyles.None, CultureInfo.InvariantCulture, out var value)) return ServiceResult<long>.Fail("ATTRIBUTE_VALUE_MAPPING_REQUIRED", $"'{label}' için doğrulanmış Trendyol değer eşlemesi yok. Eşleştirme Ayarları'ndan bu panel değerini bir Trendyol değeriyle eşleyin.", 422);
         return ServiceResult<long>.Ok(value);
     }
 

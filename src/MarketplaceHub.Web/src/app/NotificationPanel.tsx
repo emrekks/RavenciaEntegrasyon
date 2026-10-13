@@ -12,7 +12,7 @@ function notificationPresentation(notification: AppNotification) {
   const parts = notification.message.split(' · ').map(part => part.trim()).filter(Boolean)
   const summary = parts.shift() ?? notification.message
   const text = notification.message.toLocaleLowerCase('tr-TR')
-  const title = /iade kabul/u.test(text) ? (notification.kind === 'error' ? 'İade Kabul Kararı İletilemedi' : 'İade Kabul Kararı İletildi')
+  const title = /yayın uyarısı/u.test(text) ? 'Yayın Uyarısı' : /iade kabul/u.test(text) ? (notification.kind === 'error' ? 'İade Kabul Kararı İletilemedi' : 'İade Kabul Kararı İletildi')
     : /iade (?:ret\b|reddi)/u.test(text) ? (notification.kind === 'error' ? 'İade Ret Kararı İletilemedi' : 'İade Ret Kararı İletildi')
       : text.includes('kuyruğa alındı') ? 'İşlem Kuyruğa Alındı'
         : text.includes('iptal') ? 'İşlem İptal Edildi'

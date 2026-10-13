@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import { NoticeToast } from '../../shared/components/NoticeToast'
-import { appendNotification } from '../../shared/notifications'
+import { appendNotification, normalizeNotificationKind } from '../../shared/notifications'
 
 export const OPERATION_FEEDBACK_TOAST_DURATION_MS = 3500
 
@@ -25,9 +25,11 @@ export function OperationFeedbackToast({ feedback, onClose }: { feedback: Operat
 
   if (!feedback) return null
 
+  const kind = normalizeNotificationKind(feedback.message, feedback.kind)
   return <NoticeToast
-    key={`${feedback.kind}:${feedback.message}`}
-    kind={feedback.persistent ? 'pending' : feedback.kind}
+    key={`${kind}:${feedback.message}`}
+    kind={feedback.persistent ? 'pending' : kind}
+    title={/yayın uyarısı/iu.test(feedback.message) ? 'Yayın Uyarısı' : undefined}
     message={feedback.message}
     onClose={onClose}
     durationMs={feedback.persistent ? undefined : OPERATION_FEEDBACK_TOAST_DURATION_MS}

@@ -1,13 +1,17 @@
-/* One card per marketplace: identity and publish switch on top, the tick below, the two prices side by side. */
-.marketplace-pricing-modal .marketplace-pricing-bar { display: grid; grid-template-columns: minmax(0, 1fr); align-items: stretch; gap: 12px; padding: 14px 16px; }
-.marketplace-pricing-modal .marketplace-pricing-bar-heading { grid-column: auto; padding-bottom: 12px; }
-.marketplace-pricing-modal .marketplace-pricing-bar-heading > .marketplace-pricing-toggle { margin-left: auto; min-height: 36px; padding: 0 14px; white-space: nowrap; }
-.marketplace-pricing-modal .marketplace-pricing-custom { display: flex; align-items: center; gap: 10px; color: var(--rv-color-ink); font-size: 13px; font-weight: 500; cursor: pointer; }
-.marketplace-pricing-modal .marketplace-pricing-custom > input { width: 16px; height: 16px; min-height: 0; flex: none; margin: 0; padding: 0; accent-color: var(--rv-color-primary); }
-.marketplace-pricing-modal .marketplace-pricing-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.marketplace-pricing-modal .marketplace-pricing-fields > label { display: grid; gap: 6px; color: var(--rv-color-muted); font-size: 13px; font-weight: 600; }
-.marketplace-pricing-modal .marketplace-pricing-fields input:disabled { opacity: .6; cursor: not-allowed; }
-@media (max-width: 520px) { .marketplace-pricing-modal .marketplace-pricing-fields { grid-template-columns: minmax(0, 1fr); } }
+/* One card per marketplace: identity and publish switch on top, the tick below, the two prices side by side.
+   The selectors are as specific as the older grid-area rules of the product page so they actually win. */
+.app-shell.stitch-shell main .marketplace-pricing-modal .marketplace-pricing-bar { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: none; align-items: stretch; gap: 14px; padding: 14px 16px; }
+.app-shell.stitch-shell main .marketplace-pricing-modal .marketplace-pricing-bar > .marketplace-pricing-bar-heading { display: flex; grid-area: auto; grid-column: 1; align-items: center; gap: 12px; padding: 0 0 14px; }
+.app-shell.stitch-shell main .marketplace-pricing-modal .marketplace-pricing-bar > .marketplace-pricing-bar-heading > span:nth-child(2) { display: grid; min-width: 0; flex: 1; gap: 2px; }
+.app-shell.stitch-shell main .marketplace-pricing-modal .marketplace-pricing-bar > .marketplace-pricing-bar-heading strong { font-size: 15px; font-weight: 600; }
+.app-shell.stitch-shell main .marketplace-pricing-modal .marketplace-pricing-bar > .marketplace-pricing-bar-heading small { font-size: 12px; }
+.app-shell.stitch-shell main .marketplace-pricing-modal .marketplace-pricing-bar > .marketplace-pricing-bar-heading > .marketplace-pricing-toggle { grid-area: auto; flex: none; margin-left: auto; min-height: 36px; padding: 0 14px; white-space: nowrap; }
+.app-shell.stitch-shell main .marketplace-pricing-modal .marketplace-pricing-bar > .marketplace-pricing-custom { display: flex; grid-area: auto; grid-column: 1; align-items: center; gap: 10px; color: var(--rv-color-ink); font-size: 13px; font-weight: 500; cursor: pointer; }
+.app-shell.stitch-shell main .marketplace-pricing-modal .marketplace-pricing-bar > .marketplace-pricing-custom > input { width: 16px; height: 16px; min-height: 0; flex: none; margin: 0; padding: 0; accent-color: var(--rv-color-primary); }
+.app-shell.stitch-shell main .marketplace-pricing-modal .marketplace-pricing-bar > .marketplace-pricing-fields { display: grid; grid-area: auto; grid-column: 1; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.app-shell.stitch-shell main .marketplace-pricing-modal .marketplace-pricing-bar > .marketplace-pricing-fields > label { display: grid; grid-area: auto; gap: 6px; color: var(--rv-color-muted); font-size: 13px; font-weight: 600; }
+.app-shell.stitch-shell main .marketplace-pricing-modal .marketplace-pricing-bar > .marketplace-pricing-fields input:disabled { opacity: .6; cursor: not-allowed; }
+@media (max-width: 520px) { .app-shell.stitch-shell main .marketplace-pricing-modal .marketplace-pricing-bar > .marketplace-pricing-fields { grid-template-columns: minmax(0, 1fr); } }
 
 /* Captions of the product form start every word with a capital, like every other heading. */
 .product-step-grid label, .product-identifiers-grid label, .product-description-field > span, .marketplace-pricing-modal :is(label, .marketplace-pricing-bar-heading strong) { text-transform: capitalize; }
