@@ -8,3 +8,6 @@
 .marketplace-pricing-modal .marketplace-pricing-fields > label { display: grid; gap: 6px; color: var(--rv-color-muted); font-size: 13px; font-weight: 600; }
 .marketplace-pricing-modal .marketplace-pricing-fields input:disabled { opacity: .6; cursor: not-allowed; }
 @media (max-width: 520px) { .marketplace-pricing-modal .marketplace-pricing-fields { grid-template-columns: minmax(0, 1fr); } }
+
+/* Captions of the product form start every word with a capital, like every other heading. */
+.product-step-grid label, .product-identifiers-grid label, .product-description-field > span, .marketplace-pricing-modal :is(label, .marketplace-pricing-bar-heading strong) { text-transform: capitalize; }
