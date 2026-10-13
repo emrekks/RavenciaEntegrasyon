@@ -32,6 +32,10 @@ function relativeTime(iso: string) {
   return created.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
 }
 
+function dayDate(iso: string) {
+  return new Date(iso).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', weekday: 'long' })
+}
+
 function dayLabel(iso: string) {
   const created = new Date(iso)
   const today = new Date()
@@ -65,7 +69,6 @@ function NotificationItem({ notification, expanded, onToggle, onOpen }: ItemProp
         {unread && <button type="button" className="rv-notification-mark-read" onClick={() => markNotificationRead(notification.id)} aria-label="Okundu olarak işaretle" title="Okundu olarak işaretle"><UiIcon name="circleCheck" size={18} /></button>}
       </div>
     </div>
-    {unread && <i className="rv-notification-unread-dot" aria-label="Okunmamış" />}
   </article>
 }
 
@@ -81,6 +84,7 @@ export function NotificationPanel({ notifications, onNavigate, onCleared }: Pane
     const label = dayLabel(notification.createdAt)
     return map.set(label, [...(map.get(label) ?? []), notification])
   }, new Map<string, AppNotification[]>()))
+  const dayKind = (label: string) => label === 'Bugün' ? 'is-today' : label === 'Dün' ? 'is-yesterday' : 'is-older'
   const filters: Array<[Filter, string, number]> = [['ALL', 'Tümü', notifications.length], ['UNREAD', 'Okunmamış', unread.length], ['ERROR', 'Hatalar', errors.length]]
 
   const open = (notification: AppNotification) => (href: string) => {
@@ -102,8 +106,8 @@ export function NotificationPanel({ notifications, onNavigate, onCleared }: Pane
     {visible.length === 0
       ? <p className="rv-notification-history-empty">{notifications.length === 0 ? 'Henüz kaydedilmiş bildirim yok.' : filter === 'UNREAD' ? 'Okunmamış bildirim yok.' : 'Hata bildirimi yok.'}</p>
       : <div className="rv-notification-history-list">
-        {groups.map(([label, items]) => <section key={label} aria-label={label}>
-          <h4 className="rv-notification-group">{label}</h4>
+        {groups.map(([label, items]) => <section key={label} className={`rv-notification-day ${dayKind(label)}`} aria-label={label}>
+          <h4 className="rv-notification-group"><span>{label}</span><small>{dayDate(items[0].createdAt)}</small><b>{items.length}</b></h4>
           {items.map(notification => <NotificationItem key={notification.id} notification={notification} expanded={expandedId === notification.id} onToggle={() => setExpandedId(current => current === notification.id ? null : notification.id)} onOpen={open(notification)} />)}
         </section>)}
       </div>}

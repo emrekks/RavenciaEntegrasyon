@@ -2707,7 +2707,7 @@ function WebColorValueMappingEditor({ connectionId, categoryScope, attribute, ex
 const autoQueuedHepsiburadaValueSyncs = new Set<string>()
 
 function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, externalAttributeId, platformLabel = 'Trendyol', customPanelColorValues = false, marketplaceAllowsFreeText = false, autoSyncMissingValues = false, allowReusablePanelValues = false, required = false }: { connectionId: string; categoryScope: string; attribute: LocalAttribute; externalAttributeId: string; platformLabel?: string; customPanelColorValues?: boolean; marketplaceAllowsFreeText?: boolean; autoSyncMissingValues?: boolean; allowReusablePanelValues?: boolean; required?: boolean }) {
-  const client = useQueryClient(); const [notice, setNotice] = useState(''); const [selections, setSelections] = useState<Record<string, string[]>>({}); const [selectionsReady, setSelectionsReady] = useState(false); const [initializedValueScope, setInitializedValueScope] = useState(''); const [saving, setSaving] = useState(false); const [autoMapping, setAutoMapping] = useState(false); const [quickValueOpen, setQuickValueOpen] = useState(false); const [quickValueDraft, setQuickValueDraft] = useState(''); const [quickValueSaving, setQuickValueSaving] = useState(false); const [editingQuickValue, setEditingQuickValue] = useState<{ id: string; value: string } | null>(null); const [syncJobId, setSyncJobId] = useState<string | null>(null); const handledSyncJobs = useRef(new Set<string>()); const valueScope = `${categoryScope}/${externalAttributeId}`
+  const client = useQueryClient(); const [notice, setNotice] = useState(''); const [selections, setSelections] = useState<Record<string, string[]>>({}); const [unmatchedOpen, setUnmatchedOpen] = useState(false); const [selectionsReady, setSelectionsReady] = useState(false); const [initializedValueScope, setInitializedValueScope] = useState(''); const [saving, setSaving] = useState(false); const [autoMapping, setAutoMapping] = useState(false); const [quickValueOpen, setQuickValueOpen] = useState(false); const [quickValueDraft, setQuickValueDraft] = useState(''); const [quickValueSaving, setQuickValueSaving] = useState(false); const [editingQuickValue, setEditingQuickValue] = useState<{ id: string; value: string } | null>(null); const [syncJobId, setSyncJobId] = useState<string | null>(null); const handledSyncJobs = useRef(new Set<string>()); const valueScope = `${categoryScope}/${externalAttributeId}`
   const referenceKey = ['reference-attribute-values', connectionId, valueScope] as const
   const references = useQuery({ queryKey: referenceKey, queryFn: () => hubApi<ReferenceData>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(externalAttributeId)}/values?connectionId=${encodeURIComponent(connectionId)}`), retry: false, enabled: !customPanelColorValues && !marketplaceAllowsFreeText })
   const mappings = useQuery({ queryKey: ['attribute-value-mappings', connectionId, valueScope], queryFn: () => hubApi<CatalogMapping[]>(`/mappings/attribute-values?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(valueScope)}`), retry: false, enabled: !customPanelColorValues && !marketplaceAllowsFreeText })
@@ -2941,11 +2941,22 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
       </div>
     </div>
     {notice && <MessageToast message={notice} onClose={() => setNotice('')} />}
-    {!!localValues.length && !!remoteValues.length && <div className={`value-mapping-unmatched ${unmatchedPanelValues.length ? 'has-unmatched' : 'is-complete'}`} role="status">
-      {unmatchedPanelValues.length
-        ? <><strong>{unmatchedPanelValues.length} panel değeri henüz eşleşmedi:</strong>{unmatchedPanelValues.map(item => <span key={item.id}>{item.value}</span>)}</>
-        : <strong>Tüm panel değerleri bir {platformLabel} değeriyle eşleşti.</strong>}
-    </div>}
+    {!!localValues.length && !!remoteValues.length && (() => {
+      const total = localValues.length
+      const matched = total - unmatchedPanelValues.length
+      const shown = unmatchedOpen ? unmatchedPanelValues : unmatchedPanelValues.slice(0, 6)
+      return <div className={`value-mapping-unmatched ${unmatchedPanelValues.length ? 'has-unmatched' : 'is-complete'}`} role="status">
+        <div className="value-mapping-unmatched-head">
+          <strong>{unmatchedPanelValues.length ? `${unmatchedPanelValues.length} panel değeri henüz eşleşmedi` : `Tüm panel değerleri bir ${platformLabel} değeriyle eşleşti`}</strong>
+          <small>{matched} / {total} eşleşti</small>
+        </div>
+        <i className="value-mapping-unmatched-bar" aria-hidden="true"><b style={{ width: `${Math.round((matched / Math.max(total, 1)) * 100)}%` }} /></i>
+        {unmatchedPanelValues.length > 0 && <div className={`value-mapping-unmatched-chips${unmatchedOpen ? ' is-open' : ''}`}>
+          {shown.map(item => <span key={item.id}>{item.value}</span>)}
+          {unmatchedPanelValues.length > 6 && <button type="button" onClick={() => setUnmatchedOpen(current => !current)}>{unmatchedOpen ? 'Daha az göster' : `+${unmatchedPanelValues.length - 6} daha göster`}</button>}
+        </div>}
+      </div>
+    })()}
     <div className="value-mapping-rows">
       {!remoteValues.length && <div className="unknown"><strong>Bu özellik için seçilebilir değer bulunamadı</strong><p>{platformLabel} referans listesi başarıyla okundu ancak kategori özelliği sabit seçenek döndürmedi.</p></div>}
       {remoteValues.map(remoteValue => {
