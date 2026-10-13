@@ -140,6 +140,13 @@ public sealed partial class InvoicingBillingService
                         continue;
                     }
                     invoice = await db.Invoices.SingleAsync(item => item.TenantId == tenantId && item.Id == created.Value!.Id, cancellationToken);
+                    // The fiscal document must carry exactly the amounts the user just reviewed.
+                    if (invoice.TaxExclusiveTotal != preview.TaxExclusiveTotal || invoice.DiscountTotal != preview.DiscountTotal || invoice.TaxTotal != preview.TaxTotal || invoice.PayableTotal != preview.PayableTotal)
+                    {
+                        await transaction.RollbackAsync(cancellationToken);
+                        results.Add(new(confirmation.PackageId, null, null, "BLOCKED", "REFRESH_PREVIEW", "Oluşturulan fatura tutarları önizlemeyle eşleşmedi; fatura kesilmedi. Önizlemeyi yenileyip tekrar deneyin."));
+                        continue;
+                    }
                 }
 
                 if (invoice.Status is InvoiceStatus.Draft or InvoiceStatus.ValidationFailed)

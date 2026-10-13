@@ -16,21 +16,28 @@ type PreviewItem = {
 type ConfirmResult = { items: Array<{ packageId: string; invoiceId: string | null; jobId: string | null; status: string; action: string; message: string }> }
 
 function money(value: number, currency: string) { return value.toLocaleString('tr-TR', { style: 'currency', currency }) }
-const identifier = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const identifier = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\s*[,;:-]?\s*/gi
+// Mirrors the fiscal payload: one street text (by the same field priority), then district, city, country and postal code.
 export function addressLines(json: string) {
   try {
     const root = JSON.parse(json) as unknown
-    const output: string[] = []
-    const visit = (value: unknown) => {
-      if (Array.isArray(value)) { value.forEach(visit); return }
-      if (typeof value !== 'object' || value === null) return
-      for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-        if (typeof child === 'string' && child.trim() && /address|street|city|district|province|postal|zip|neighborhood|country|full/i.test(key) && !/(^|[a-z])id$/i.test(key) && !identifier.test(child.trim())) output.push(child.trim())
-        else if (typeof child === 'object') visit(child)
+    const find = (names: string[]): string | null => {
+      const queue: unknown[] = [root]
+      while (queue.length) {
+        const node = queue.shift()
+        if (Array.isArray(node)) { queue.push(...node); continue }
+        if (typeof node !== 'object' || node === null) continue
+        const record = node as Record<string, unknown>
+        for (const name of names) {
+          const value = Object.entries(record).find(([key, child]) => key.toLowerCase() === name.toLowerCase() && typeof child === 'string' && child.trim())?.[1]
+          if (typeof value === 'string') { const text = value.replace(identifier, '').trim(); if (text) return text }
+        }
+        queue.push(...Object.values(record).filter(child => typeof child === 'object' && child !== null))
       }
+      return null
     }
-    visit(root)
-    return [...new Set(output)].slice(0, 6)
+    const lines = [find(['fullAddress', 'address1', 'addressText', 'address']), find(['district']), find(['city']), find(['countryCode', 'country']), find(['postalCode'])]
+    return [...new Set(lines.filter((value): value is string => Boolean(value)))]
   } catch { return [] }
 }
 function PreviewLineImage({ sku, name }: { sku: string | null; name: string }) {

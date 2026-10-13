@@ -109,7 +109,7 @@ public static class TrendyolEFaturamCanonicalPayload
                 RequiredText(root, "Id"), invoiceType, RequiredText(root, "Currency"), RequiredText(root, "Note"), RequiredText(order, "OrderNumber"),
                 DateOnly.FromDateTime(orderedAt.Date), DateTimeOffset.Parse(RequiredText(root, "IssuedAt")),
                 new(taxId, Text(address, "countryCode") is { Length: > 0 } country ? country : "TR", Text(address, "city"), Text(address, "district"),
-                    Text(address, "fullAddress", "address1", "addressText", "address"), NullText(address, "postalCode"), NullText(address, "phone"),
+                    WithoutMarketplaceIds(Text(address, "fullAddress", "address1", "addressText", "address")), NullText(address, "postalCode"), NullText(address, "phone"),
                     NullText(address, "email") ?? NullText(customer.RootElement, "customerEmail"), recipientName,
                     recipientSurname, NullText(address, "taxOffice") ?? NullText(addressRoot, "taxOffice") ?? NullText(customer.RootElement, "taxOffice")),
                 lines, payment, delivery);
@@ -341,6 +341,9 @@ public static class TrendyolEFaturamCanonicalPayload
         }
         return "";
     }
+    private static readonly System.Text.RegularExpressions.Regex MarketplaceId = new(@"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\s*[,;:-]?\s*", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+    // Marketplace feeds sometimes prefix the street text with the address record id; it must not reach the fiscal document.
+    private static string WithoutMarketplaceIds(string value) => MarketplaceId.Replace(value, string.Empty).Trim();
     private static string Text(JsonElement parent, params string[] names)
     {
         foreach (var name in names)

@@ -205,6 +205,8 @@ public static class TrendyolEFaturamInvoicePayload
     private static decimal Money(decimal value) => decimal.Round(value, 2, MidpointRounding.AwayFromZero);
     private static long Kurus(decimal value) => decimal.ToInt64(Money(value) * 100m);
     private static decimal KurusDecimal(decimal value) => decimal.Round(value * 100m, 4, MidpointRounding.AwayFromZero);
+    // Invoices carry Turkey's civil time (UTC+3, no daylight saving since 2016) so the printed date and hour match Istanbul.
+    private static readonly TimeSpan TurkeyOffset = TimeSpan.FromHours(3);
     private static string ProviderDateTime(DateTimeOffset value) =>
-        value.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture);
+        value.ToOffset(TurkeyOffset).ToString("yyyy-MM-dd'T'HH:mm:ss.fffzzz", CultureInfo.InvariantCulture);
 }
