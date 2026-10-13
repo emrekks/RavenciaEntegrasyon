@@ -125,8 +125,8 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
     const failCount = results.length - okCount
     const noun = approving ? 'onaylandı' : 'reddedildi'
     onDone(failCount === 0
-      ? `${okCount} iade ${approving ? 'kabulü' : 'reddi'} pazar yerine gönderildi.${approving && stockTotal > 0 ? ` Stok ${stockTotal.toLocaleString('tr-TR')} adet artırıldı.` : ''}`
-      : `${okCount} iade ${noun}, ${failCount} iade ${approving ? 'onaylanamadı' : 'reddedilemedi'}. Ayrıntılar toplu işlem penceresinde.`, failCount === 0 ? 'success' : 'error',
+      ? `${okCount} iadenin ${approving ? 'kabul' : 'ret'} kararı pazar yerine iletildi.${approving && stockTotal > 0 ? ` Stok ${stockTotal.toLocaleString('tr-TR')} adet artırıldı.` : ''}`
+      : `Toplu ${approving ? 'iade kabulünde' : 'iade retinde'} ${okCount} iade ${noun}, ${failCount} iade tamamlanamadı. Ayrıntılar bildirimde listelendi.`, failCount === 0 ? 'success' : 'error',
       [
         ...items.map(item => {
           const result = results.find(entry => entry.id === item.id)

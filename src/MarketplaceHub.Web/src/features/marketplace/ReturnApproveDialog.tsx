@@ -99,7 +99,7 @@ export function ReturnApproveDialog({ open, claimId, version, marketplaceName, o
     }),
     onSuccess: async () => {
       const stock = stockRequests.length > 0 ? ` Stok ${stockQuantity.toLocaleString('tr-TR')} adet artırıldı.` : ''
-      onDone(`${order.orderNumber} siparişinin iade kabulü ${marketplaceName}’a gönderildi.${stock}`, 'success', [
+      onDone(`${order.orderNumber} siparişinin iade kabul kararı ${marketplaceName}’a iletildi.${stock}`, 'success', [
         { label: 'Sipariş', value: `${order.orderNumber} · ${order.customer}`, tone: 'success' },
         ...chosenRows.map(row => ({ label: 'Ürün', value: `${row.title} (${row.quantity} adet)` })),
         ...(stockRequests.length > 0 ? [{ label: 'Stok', value: `+${stockQuantity.toLocaleString('tr-TR')} adet stoğa eklendi` }] : [])
@@ -110,7 +110,7 @@ export function ReturnApproveDialog({ open, claimId, version, marketplaceName, o
     },
     onError: reason => {
       const message = reason instanceof Error ? reason.message : 'İade kararı başlatılamadı.'
-      onDone(`${order.orderNumber} siparişinin iade kabulü gönderilemedi: ${message}`, 'error', [
+      onDone(`${order.orderNumber} siparişinin iade kabul kararı ${marketplaceName}’a iletilemedi: ${message}`, 'error', [
         { label: 'Sipariş', value: `${order.orderNumber} · ${order.customer}` },
         { label: 'Entegrasyon', value: order.platformName },
         { label: 'Neden', value: message, tone: 'error' }

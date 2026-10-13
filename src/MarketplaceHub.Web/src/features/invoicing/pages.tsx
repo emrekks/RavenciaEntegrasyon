@@ -217,13 +217,15 @@ function InvoiceDetailLineImage({ url, title }: { url: string; title: string }) 
   </>
 }
 
-function InvoiceReferenceActionsMenu({ item, canCreateInvoice, canSyncOrder, deliveryPending, onCreateInvoice, onSyncOrder, onAddManualInvoice, onSendManualInvoice }: {
+function InvoiceReferenceActionsMenu({ item, canCreateInvoice, canSyncOrder, deliveryPending, hidden, onCreateInvoice, onSyncOrder, onToggleHidden, onAddManualInvoice, onSendManualInvoice }: {
   item: InvoiceWorkspace
   canCreateInvoice: boolean
   canSyncOrder: boolean
   deliveryPending: boolean
+  hidden: boolean
   onCreateInvoice: () => void
   onSyncOrder: () => void
+  onToggleHidden: () => void
   onAddManualInvoice: () => void
   onSendManualInvoice: () => void
 }) {
@@ -286,7 +288,9 @@ function InvoiceReferenceActionsMenu({ item, canCreateInvoice, canSyncOrder, del
     </button>
     {open && createPortal(<div ref={menuRef} className="invoice-reference-actions-popover" role="menu" aria-label={`${displayInvoiceOrderNumber(item.orderNumber)} sipariş işlemleri`} style={{ left: position.left, top: position.top }}>
       <button type="button" role="menuitem" disabled={!invoiceActionAvailable} title={!invoiceActionAvailable ? 'Bu sipariş için fatura oluşturma şu anda uygun değil.' : undefined} onClick={() => { setOpen(false); onCreateInvoice() }}>{invoiceActionLabel}</button>
-      <button type="button" role="menuitem" disabled={!canSyncOrder} title={!canSyncOrder ? 'Pazaryeri sipariş bilgileri bulunamadı veya bağlantı etkin değil.' : undefined} onClick={() => { setOpen(false); onSyncOrder() }}>Sipariş Durumunu Güncelle</button>
+      {item.platformCode === 'SHOPIFY'
+        ? <button type="button" role="menuitem" onClick={() => { setOpen(false); onToggleHidden() }}>{hidden ? 'Gizlemeden Çıkar' : 'Siparişi Gizle'}</button>
+        : item.platformCode !== 'TRENDYOL' && <button type="button" role="menuitem" disabled={!canSyncOrder} title={!canSyncOrder ? 'Pazaryeri sipariş bilgileri bulunamadı veya bağlantı etkin değil.' : undefined} onClick={() => { setOpen(false); onSyncOrder() }}>Sipariş Durumunu Güncelle</button>}
       <button type="button" role="menuitem" onClick={() => { setOpen(false); onAddManualInvoice() }}>{hasManualDocument ? 'Manuel Faturayı Değiştir' : 'Manuel Fatura Ekle'}</button>
       <button type="button" role="menuitem" disabled={manualDeliveryDisabled} title={manualDeliveryDisabled ? manualDeliveryTitle : undefined} onClick={() => { setOpen(false); onSendManualInvoice() }}>{deliveryPending ? 'Kuyruğa Alınıyor…' : 'Manuel Faturayı Pazaryerine Gönder'}</button>
     </div>, document.body)}
@@ -479,8 +483,10 @@ export function InvoicesPage() {
                 : !item.invoiceId && isInvoiceCreationActionVisible(item))}
               canSyncOrder={Boolean(item.marketplaceConnectionId && item.externalOrderId?.trim() && connections.data?.items.some(connection => connection.id === item.marketplaceConnectionId && ['ACTIVE', 'VERIFIED'].includes(connection.status)))}
               deliveryPending={manualInvoiceDelivery.isPending}
+              hidden={tab === 'HIDDEN'}
               onCreateInvoice={() => openInvoicePreview([item])}
               onSyncOrder={() => orderStatusSync.mutate(item)}
+              onToggleHidden={() => visibility.mutate({ packageIds: [item.packageId], hidden: tab !== 'HIDDEN' })}
               onAddManualInvoice={() => setManualUploadItem(item)}
               onSendManualInvoice={() => manualInvoiceDelivery.mutate(item)}
             />

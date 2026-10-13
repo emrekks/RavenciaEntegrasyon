@@ -1691,12 +1691,12 @@ function ReturnDecisionActions({ item, onNotice, onComplete, selectedLineIds: co
       const message = payload.action === 'PREAPPROVAL_CONFIRM'
         ? `${displayOrderNumber(item.orderNumber)} siparişi için inceleme geri gönderim talebi ${marketplaceName}’a iletildi.${response}`
         : result.status === 'APPROVED'
-        ? `${displayOrderNumber(item.orderNumber)} siparişinin iade kabulü ${marketplaceName}’a gönderildi.${response}`
+        ? `${displayOrderNumber(item.orderNumber)} siparişinin iade kabul kararı ${marketplaceName}’a iletildi.${response}`
         : result.status === 'REJECTED'
-          ? `${displayOrderNumber(item.orderNumber)} siparişinin iade reddi ${marketplaceName}’a gönderildi.${response}`
+          ? `${displayOrderNumber(item.orderNumber)} siparişinin iade ret kararı ${marketplaceName}’a iletildi.${response}`
           : result.rawStatus
-            ? `${displayOrderNumber(item.orderNumber)} siparişinin iade kararı ${marketplaceName}’a gönderildi; sonuç henüz kesinleşmedi.${response}`
-            : `${displayOrderNumber(item.orderNumber)} siparişinin iade kararı gönderildi ancak ${marketplaceName}’dan geri dönüş alınamadı.`
+            ? `${displayOrderNumber(item.orderNumber)} siparişinin iade kararı ${marketplaceName}’a iletildi; sonuç henüz kesinleşmedi.${response}`
+            : `${displayOrderNumber(item.orderNumber)} siparişinin iade kararı iletildi ancak ${marketplaceName}’dan yanıt alınamadı.`
       const kind = payload.action === 'PREAPPROVAL_CONFIRM' ? 'info' : result.status === 'REJECTED' ? 'error' : result.status === 'APPROVED' ? returnPlatformStatusKind(result.rawStatus) : 'info'
       notifyReturn(onNotice, message, kind, [{ label: 'Sipariş', value: `${displayOrderNumber(item.orderNumber)} · ${item.customerName}`, tone: kind === 'error' ? 'error' : undefined }, { label: 'Pazar Yeri', value: marketplaceName }], { href: `/returns?search=${encodeURIComponent(item.orderNumber.replace(/^#/, ''))}`, label: 'İadeyi Gör' })
       await client.invalidateQueries({ queryKey: ['return', item.id] })
@@ -1705,7 +1705,7 @@ function ReturnDecisionActions({ item, onNotice, onComplete, selectedLineIds: co
     },
     onError: error => {
       const reason = error instanceof Error ? error.message : 'İade kararı başlatılamadı.'
-      notifyReturn(onNotice, `${displayOrderNumber(item.orderNumber)} siparişinin iade kararı gönderilemedi: ${reason}`, 'error', [{ label: 'Sipariş', value: `${displayOrderNumber(item.orderNumber)} · ${item.customerName}` }, { label: 'Pazar Yeri', value: marketplaceName }, { label: 'Neden', value: reason, tone: 'error' }], isExternalWriteMessage(reason) ? integrationNotificationTarget(item.connectionId, marketplaceName) : { href: `/returns?search=${encodeURIComponent(item.orderNumber.replace(/^#/, ''))}`, label: 'İadeyi Gör' })
+      notifyReturn(onNotice, `${displayOrderNumber(item.orderNumber)} siparişinin iade kararı ${marketplaceName}’a iletilemedi: ${reason}`, 'error', [{ label: 'Sipariş', value: `${displayOrderNumber(item.orderNumber)} · ${item.customerName}` }, { label: 'Pazar Yeri', value: marketplaceName }, { label: 'Neden', value: reason, tone: 'error' }], isExternalWriteMessage(reason) ? integrationNotificationTarget(item.connectionId, marketplaceName) : { href: `/returns?search=${encodeURIComponent(item.orderNumber.replace(/^#/, ''))}`, label: 'İadeyi Gör' })
     }
   })
   async function uploadFile(file: File) {

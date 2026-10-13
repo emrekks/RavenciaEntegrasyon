@@ -12,8 +12,8 @@ function notificationPresentation(notification: AppNotification) {
   const parts = notification.message.split(' · ').map(part => part.trim()).filter(Boolean)
   const summary = parts.shift() ?? notification.message
   const text = notification.message.toLocaleLowerCase('tr-TR')
-  const title = text.includes('iade kabulü') ? 'İade Kabulü Gönderildi'
-    : text.includes('iade reddi') ? 'İade Reddi Gönderildi'
+  const title = /iade kabul/u.test(text) ? (notification.kind === 'error' ? 'İade Kabul Kararı İletilemedi' : 'İade Kabul Kararı İletildi')
+    : /iade (?:ret\b|reddi)/u.test(text) ? (notification.kind === 'error' ? 'İade Ret Kararı İletilemedi' : 'İade Ret Kararı İletildi')
       : text.includes('kuyruğa alındı') ? 'İşlem Kuyruğa Alındı'
         : text.includes('iptal') ? 'İşlem İptal Edildi'
           : text.includes('silindi') ? 'Katalog Temizliği Tamamlandı'
@@ -56,7 +56,6 @@ function NotificationItem({ notification, expanded, onToggle, onOpen }: ItemProp
       <p>{presentation.summary}</p>
       {expanded && <dl className="rv-notification-detail">
         {describeNotification(notification).map(fact => <div key={fact.label}><dt>{fact.label}</dt><dd className={fact.tone ? `is-${fact.tone}` : undefined}>{fact.value}</dd></div>)}
-        <div><dt>Mesaj</dt><dd>{notification.message}</dd></div>
         {notification.details?.map((detail, index) => <div key={`${detail.label}:${index}`}><dt>{detail.label}</dt><dd className={detail.tone ? `is-${detail.tone}` : undefined}>{detail.value}</dd></div>)}
         <div><dt>Zaman</dt><dd>{new Date(notification.createdAt).toLocaleString('tr-TR')}</dd></div>
       </dl>}

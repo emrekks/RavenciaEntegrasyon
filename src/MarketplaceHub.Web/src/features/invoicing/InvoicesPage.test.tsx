@@ -10,7 +10,7 @@ const invoiceFixtures = [
   { id: 'inv-3', orderId: 'order-3', packageId: 'trendyol-package-3', orderNumber: 'TY-1003', customerName: 'Zeynep Demir', orderedAt: '2026-10-04T12:00:00Z', shipmentStatus: 'NEW', deliveredAt: null, invoiceDueAt: null, isDueSoon: true, currency: 'TRY', amount: 499, productCount: 1, primaryImageUrl: null, cargoProviderName: 'Aras', cargoTrackingNumber: 'TRK-3', invoiceId: null, invoiceStatus: 'FATURA_BEKLIYOR', invoiceNumber: null, canCreateInvoice: true, shipmentAddressJson: null, invoiceAddressJson: null, lines: [], invoiceErrorCode: null, invoiceDeliveryStatus: null, invoiceDeliveryReference: null, invoiceDocumentAvailable: false, marketplaceInvoiceUrl: null, platformInvoiceStatus: 'NOT_INVOICED', allowedActions: ['CHECK_PLATFORM'], platformCode: 'TRENDYOL', platformDisplayName: 'Trendyol', invoiceCreationEnabled: true, marketplaceConnectionId: 'trendyol-connection', externalOrderId: 'external-ty-1003', externalPackageNumber: 'package-ty-3' },
 ]
 
-const apiState = vi.hoisted(() => ({ uploads: [] as Array<{ path: string; fileName: string | null }>, statusUpdates: [] as Array<{ path: string; status: string; packageIds: string[] }>, pageRequests: [] as string[], orderSyncRequests: [] as Array<{ path: string; body: unknown }> }))
+const apiState = vi.hoisted(() => ({ uploads: [] as Array<{ path: string; fileName: string | null }>, statusUpdates: [] as Array<{ path: string; status: string; packageIds: string[] }>, pageRequests: [] as string[], orderSyncRequests: [] as Array<{ path: string; body: unknown }>, hiddenRequests: [] as Array<{ packageIds: string[]; hidden: boolean }> }))
 
 vi.mock('../../shared/api', () => ({
   hubApi: vi.fn(async (path: string, init?: RequestInit) => {
@@ -21,6 +21,11 @@ vi.mock('../../shared/api', () => ({
     if (path === '/invoice-workspace/manual-status') {
       const body = JSON.parse(String(init?.body)) as { status: string; packageIds: string[] }
       apiState.statusUpdates.push({ path, status: body.status, packageIds: body.packageIds })
+      return { updatedCount: body.packageIds.length }
+    }
+    if (path === '/invoice-workspace/hidden') {
+      const body = JSON.parse(String(init?.body)) as { packageIds: string[]; hidden: boolean }
+      apiState.hiddenRequests.push(body)
       return { updatedCount: body.packageIds.length }
     }
     if (path.endsWith('/order-sync-jobs')) {
@@ -53,6 +58,7 @@ beforeEach(async () => {
   apiState.statusUpdates = []
   apiState.pageRequests = []
   apiState.orderSyncRequests = []
+  apiState.hiddenRequests = []
   container = document.createElement('div')
   document.body.append(container)
   client = new QueryClient({ defaultOptions: { queries: { retry: false, refetchInterval: false }, mutations: { retry: false } } })
@@ -153,21 +159,24 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     const send = actionButtons.find(item => item.textContent?.includes('Manuel Faturayı Pazaryerine Gönder'))
     expect(create).not.toBeUndefined()
     expect(create?.disabled).toBe(true)
-    expect(sync).not.toBeUndefined()
+    // Trendyol keeps the order status on the marketplace, so the row offers no status action.
+    expect(sync).toBeUndefined()
     expect(manual?.disabled).toBe(false)
     expect(send?.disabled).toBe(true)
     expect(container.querySelector('[role="dialog"]')).toBeNull()
   })
 
-  it('queues a read-only refresh of the marketplace order using its order and package identifiers', async () => {
+  it('lets a Shopify order be hidden from its row menu instead of offering a status update', async () => {
     const row = Array.from(container.querySelectorAll<HTMLElement>('.invoice-reference-row'))
-      .find(item => item.textContent?.includes('TY-1003'))!
+      .find(item => item.textContent?.includes('SH-1001'))!
     act(() => row.querySelector<HTMLButtonElement>('.invoice-reference-actions-trigger')!.click())
     await settle()
-    act(() => Array.from(document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')).find(item => item.textContent?.includes('Sipariş Durumunu Güncelle'))!.click())
+    const items = Array.from(document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'))
+    expect(items.some(item => item.textContent?.includes('Sipariş Durumunu Güncelle'))).toBe(false)
+    act(() => items.find(item => item.textContent?.includes('Siparişi Gizle'))!.click())
     await settle()
-    expect(apiState.orderSyncRequests).toEqual([{ path: '/connections/trendyol-connection/order-sync-jobs', body: { externalOrderId: 'external-ty-1003', full: false, packageNumber: 'package-ty-3' } }])
-    expect(container.textContent).toContain('Pazaryerindeki sipariş durumu yenileme kuyruğuna alındı.')
+    expect(apiState.hiddenRequests).toEqual([{ packageIds: ['shopify-package-1'], hidden: true }])
+    expect(apiState.orderSyncRequests).toEqual([])
   })
 
   it('opens manual invoice upload from the row actions menu without sending it', async () => {

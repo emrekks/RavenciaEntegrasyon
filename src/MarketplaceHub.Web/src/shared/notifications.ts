@@ -20,7 +20,7 @@ export function inferNotificationTarget(message: string): NotificationTarget | n
   if (/(dış yazma|yazma anahtar|bağlantı doğrulan|bağlantı test|api anahtar|kimlik doğrulama)/u.test(text)) return { href: '/integrations', label: 'Entegrasyonlara Git' }
   if (/iade/u.test(text)) {
     if (/(onaylanamadı|reddedilemedi|başarısız|hata|alınamadı)/u.test(text)) return { href: '/returns?status=ACTION_REQUIRED', label: 'Bekleyen İadelere Git' }
-    if (/(reddi|reddedildi)/u.test(text)) return { href: '/returns?status=REJECTED', label: 'Reddedilen İadelere Git' }
+    if (/(reddi|reddedildi|ret kararı)/u.test(text)) return { href: '/returns?status=REJECTED', label: 'Reddedilen İadelere Git' }
     if (/(kabul|onaylandı)/u.test(text)) return { href: '/returns?status=APPROVED', label: 'Onaylanan İadelere Git' }
     return { href: '/returns', label: 'İadelere Git' }
   }

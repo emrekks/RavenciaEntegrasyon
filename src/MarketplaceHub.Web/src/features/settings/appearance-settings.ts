@@ -39,8 +39,8 @@ const defaultDarkPalette: AppearancePalette = {
 // Soft by design: no pure white anywhere, so large light areas stay easy on the eyes. It is only the starting
 // point; the palette is editable in Settings and saved with the account.
 export const defaultLightPalette: AppearancePalette = {
-  bg: '#d9dde5', sidebar: '#e3e6ec', surface: '#e9ecf1', surfaceRaised: '#e1e5ec', surfaceSoft: '#d6dae3', border: '#c3c9d6', borderStrong: '#9ba5b8', ink: '#1b2232', muted: '#4b566c', subtle: '#6b778f',
-  primary: '#6a52e0', primaryHover: '#5841c9', primarySoft: '#dcd6f6', accent: '#0f7864', accentSoft: '#cfe6dd', warning: '#8a560d', warningSoft: '#ecdcb8', danger: '#a2344f', dangerSoft: '#ecd0d8', info: '#2f5aa8'
+  bg: '#d4d9e2', sidebar: '#dde1e8', surface: '#e5e8ee', surfaceRaised: '#ebeef3', surfaceSoft: '#d9dde6', border: '#bfc6d3', borderStrong: '#96a0b4', ink: '#1b2232', muted: '#4b566c', subtle: '#69758d',
+  primary: '#5b44d2', primaryHover: '#4b36bb', primarySoft: '#d8d2f4', accent: '#0f7864', accentSoft: '#cde4db', warning: '#8a560d', warningSoft: '#eadab5', danger: '#a2344f', dangerSoft: '#eacdd5', info: '#2f5aa8'
 }
 
 export const defaultAppearanceColorTheme: AppearanceColorThemeProfile = {

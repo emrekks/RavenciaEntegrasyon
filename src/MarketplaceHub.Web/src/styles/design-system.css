@@ -11994,8 +11994,8 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
   overflow: visible;
 }
 .app-shell.stitch-shell main .return-order-products .quantity-bubble {
-  top: 4px;
-  right: 4px;
+  top: -7px;
+  right: -7px;
   z-index: 2;
   box-sizing: border-box;
   pointer-events: none;
@@ -12329,7 +12329,7 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 }
 .app-shell.stitch-shell main .mapping-saved-table .mapping-row-actions .mapping-feature-button { height: 34px; min-height: 34px; box-sizing: border-box; }
 .app-shell.stitch-shell main .mapping-saved-table .mapping-row-actions .mapping-delete-button { width: 34px; height: 34px; min-width: 34px; min-height: 34px; box-sizing: border-box; padding: 0; }
-.app-shell.stitch-shell main .mapping-reference-card :is(.mapping-table-status, .trendyol-badge) { height: 34px; min-height: 34px; box-sizing: border-box; color: #fff; border: 0; font-weight: 500; }
+.app-shell.stitch-shell main .mapping-reference-card :is(.mapping-table-status, .trendyol-badge) { height: 34px; min-height: 34px; box-sizing: border-box; color: var(--rv-color-ink); border: 0; font-weight: 500; }
 
 /* Empty state under a kept table header: even breathing room on every side. */
 .app-shell.stitch-shell main :is(.invoice-reference-table > .invoice-reference-state, .return-reference-empty, .order-filter-empty) {
