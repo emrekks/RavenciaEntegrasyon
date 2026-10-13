@@ -16,7 +16,8 @@ type PreviewItem = {
 type ConfirmResult = { items: Array<{ packageId: string; invoiceId: string | null; jobId: string | null; status: string; action: string; message: string }> }
 
 function money(value: number, currency: string) { return value.toLocaleString('tr-TR', { style: 'currency', currency }) }
-function addressLines(json: string) {
+const identifier = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+export function addressLines(json: string) {
   try {
     const root = JSON.parse(json) as unknown
     const output: string[] = []
@@ -24,7 +25,7 @@ function addressLines(json: string) {
       if (Array.isArray(value)) { value.forEach(visit); return }
       if (typeof value !== 'object' || value === null) return
       for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-        if (typeof child === 'string' && child.trim() && /address|street|city|district|province|postal|zip|neighborhood|country|full/i.test(key)) output.push(child.trim())
+        if (typeof child === 'string' && child.trim() && /address|street|city|district|province|postal|zip|neighborhood|country|full/i.test(key) && !/(^|[a-z])id$/i.test(key) && !identifier.test(child.trim())) output.push(child.trim())
         else if (typeof child === 'object') visit(child)
       }
     }
@@ -52,7 +53,7 @@ export function InvoiceWorkspacePreviewModal({ targets, onClose, onComplete }: {
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<unknown>(null)
-  const [includeInternetSalesInfo, setIncludeInternetSalesInfo] = useState(true)
+  const [includeInternetSalesInfo, setIncludeInternetSalesInfo] = useState(false)
   const targetPayload = useMemo(() => JSON.stringify(targets), [targets])
 
   useEffect(() => {
@@ -92,7 +93,7 @@ export function InvoiceWorkspacePreviewModal({ targets, onClose, onComplete }: {
             const address = addressLines(item.invoiceAddressJson)
             return <article className="invoice-workspace-preview-card" key={item.orderId}>
               <div className="invoice-workspace-preview-heading"><div><strong>{item.platformName} · #{item.orderNumber}</strong><span>{item.environment} · {item.customerType} · {item.invoiceType}</span></div><span className={`badge ${item.canConfirm ? 'good' : 'neutral'}`}><i aria-hidden="true" />{actionLabel(item.nextAction)}</span></div>
-              <p className="invoice-workspace-preview-targets">Tek mali fatura · {(item.targetPackageNumbers?.length ?? 0)} hedef paket{(item.targetPackageNumbers?.length ?? 0) === 1 ? '' : 'e'} iletilecek: {item.targetPackageNumbers?.join(', ') || 'Paket numarası yok'}</p>
+              <div className="invoice-workspace-preview-targets"><span className="invoice-workspace-preview-targets-label">Tek mali fatura kesilir ve {(item.targetPackageNumbers?.length ?? 0) || 1} pakete iletilir</span>{(item.targetPackageNumbers?.length ? item.targetPackageNumbers : []).map(number => <span className="invoice-workspace-preview-package" key={number}><UiIcon name="box" size={14} />{number}</span>)}{!item.targetPackageNumbers?.length && <span className="invoice-workspace-preview-package">Paket numarası yok</span>}</div>
               <dl className="invoice-workspace-preview-facts"><div><dt>Alıcı / unvan</dt><dd>{item.customerName || '—'}</dd></div><div><dt>TC / vergi no</dt><dd>{item.taxIdentityNumber || '—'}</dd></div><div><dt>Fatura adresi</dt><dd>{address.length ? address.join(', ') : 'Adres bilgisi yok'}</dd></div><div><dt>Fatura türü</dt><dd>{item.invoiceType}</dd></div>{item.deliveryPackageNumber && <div><dt>Gönderi paketi</dt><dd>{item.deliveryPackageNumber}</dd></div>}{item.deliveryCarrierName && <div><dt>Kargo firması</dt><dd className="invoice-workspace-preview-carrier"><CargoProviderIcon value={item.deliveryCarrierName} fallbackText /></dd></div>}{item.deliverySentAt && <div><dt>Gönderim tarihi</dt><dd>{new Date(item.deliverySentAt).toLocaleDateString('tr-TR')}</dd></div>}</dl>
               <div className="invoice-workspace-preview-lines" role="table" aria-label={`Sipariş ${item.orderNumber} fatura kalemleri`}><div role="row" className="invoice-workspace-preview-line invoice-workspace-preview-line-head"><strong>Ürün</strong><strong>Miktar</strong><strong>Birim fiyat</strong><strong>İndirim</strong><strong>KDV</strong><strong>Toplam</strong></div>{item.lines.map((line, index) => <div role="row" className="invoice-workspace-preview-line" key={`${line.sku ?? line.description}-${index}`}><span className="invoice-workspace-preview-product"><PreviewLineImage sku={line.sku} name={line.description} /><span><strong>{line.description}</strong><small>{line.sku || 'SKU yok'} · %{line.vatRate} KDV</small></span></span><span>{line.quantity} {line.unit}</span><span>{money(line.unitPrice, item.currency)}</span><span>{money(line.discountAmount, item.currency)}</span><span>{money(line.vatAmount, item.currency)}</span><strong>{money(line.total, item.currency)}</strong></div>)}</div>
               <div className="invoice-workspace-preview-total"><span>Ara toplam <strong>{money(item.taxExclusiveTotal, item.currency)}</strong></span><span>KDV <strong>{money(item.taxTotal, item.currency)}</strong></span><span>İndirim <strong>{money(item.discountTotal, item.currency)}</strong></span><span>Fatura toplamı <strong>{money(item.payableTotal, item.currency)}</strong></span></div>
