@@ -1,4 +1,5 @@
-import type { CSSProperties } from 'react'
+import { useEffect, useRef, type CSSProperties } from 'react'
+import { normalizeNotificationKind } from '../notifications'
 import { ToneIcon } from './ToneIcon'
 import { UiIcon } from './UiIcon'
 import './notice-toast.css'
@@ -42,4 +43,17 @@ export function NoticeToast({ kind, message, title, onClose, durationMs, classNa
     {onClose && <button type="button" className="app-toast-close" onClick={onClose} aria-label="Bildirimi kapat"><UiIcon name="close" size={16} /></button>}
     {(durationMs || kind === 'pending') && <span className="app-toast-track" aria-hidden="true"><span className="app-toast-progress" /></span>}
   </div>
+}
+
+// A plain message: the tone comes from its wording, the same way the notification history reads it.
+export function MessageToast({ message, onClose }: { message: string; onClose: () => void }) {
+  const kind = normalizeNotificationKind(message, 'success')
+  const durationMs = kind === 'info' ? 7000 : 5500
+  const onCloseRef = useRef(onClose)
+  useEffect(() => { onCloseRef.current = onClose })
+  useEffect(() => {
+    const timeout = window.setTimeout(() => onCloseRef.current(), durationMs)
+    return () => window.clearTimeout(timeout)
+  }, [message, durationMs])
+  return <NoticeToast key={`${kind}:${message}`} kind={kind} message={message} onClose={onClose} durationMs={durationMs} />
 }
