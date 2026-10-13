@@ -2013,7 +2013,7 @@
   .product-delete-modal > footer { flex-wrap: wrap; }
   .product-publish-layout { display: block; width: 100%; min-width: 0; }
   .product-publish-main { display: grid; width: 100%; min-width: 0; gap: var(--rv-space-4); }
-  .product-publish-step .publish-platform-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
+  .product-publish-step .publish-platform-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
   .publish-platform-card, .scheduled-publish-panel, .publish-checklist-panel { overflow: hidden; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); box-shadow: var(--rv-shadow-sm); }
   .publish-platform-card.selected { border-color: var(--rv-color-primary); box-shadow: 0 0 0 1px var(--rv-color-primary); }
   .publish-platform-card-head { display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; width: 100%; align-items: center; gap: var(--rv-space-3); padding: var(--rv-space-4); color: var(--rv-color-ink); background: transparent; border: 0; text-align: left; }
