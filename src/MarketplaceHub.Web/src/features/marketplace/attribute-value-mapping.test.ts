@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { attributeValueMappingNeedsSave, hasDirectReferenceValue, planDirectReferenceValues, planMissingReferencePanelValues, planReferencePanelMappings, updatePanelValueReferenceSelection, valueMappingRowClassName } from './attribute-value-mapping'
+import { attributeValueMappingNeedsSave, hasDirectReferenceValue, planDirectReferenceValues, planMissingReferencePanelValues, planReferencePanelMappings, togglePanelValueReferenceSelection, updatePanelValueReferenceSelection, valueMappingRowClassName } from './attribute-value-mapping'
 
 describe('attribute value reference mappings', () => {
   it('matches labels despite whitespace around season separators', () => {
@@ -50,7 +50,7 @@ describe('attribute value reference mappings', () => {
         { externalId: 'summer-duplicate', name: ' Yaz ' },
         { externalId: 'autumn', name: 'Sonbahar' }
       ],
-      { winter: 'winter' }
+      { winter: ['winter'] }
     )).toEqual(['Yaz', 'Sonbahar'])
   })
 
@@ -76,31 +76,27 @@ describe('attribute value reference mappings', () => {
   })
 
   it('stores marketplace values as keys for their selected panel values', () => {
-    expect(planReferencePanelMappings({ dress: 'panel-dress', shirt: 'panel-shirt' })).toEqual([
+    expect(planReferencePanelMappings({ dress: ['panel-dress'], shirt: ['panel-shirt', 'panel-top'] })).toEqual([
       { localId: 'panel-dress', externalId: 'dress' },
-      { localId: 'panel-shirt', externalId: 'shirt' }
+      { localId: 'panel-shirt', externalId: 'shirt' },
+      { localId: 'panel-top', externalId: 'shirt' }
     ])
   })
 
-  it('allows Hepsiburada selections to reuse the same panel value and supports clearing a selection', () => {
-    expect(updatePanelValueReferenceSelection(
-      { dress: 'panel-dress' },
-      'shirt',
-      'panel-dress',
-      true
-    )).toEqual({ dress: 'panel-dress', shirt: 'panel-dress' })
-    expect(updatePanelValueReferenceSelection(
-      { dress: 'panel-dress', shirt: 'panel-dress' },
-      'shirt',
-      ''
-    )).toEqual({ dress: 'panel-dress' })
+  it('lets one marketplace value take several panel values and toggles them one by one', () => {
+    const first = togglePanelValueReferenceSelection({}, 'women', 'woman')
+    const second = togglePanelValueReferenceSelection(first, 'women', 'girl')
+    expect(second).toEqual({ women: ['woman', 'girl'] })
+    expect(togglePanelValueReferenceSelection(second, 'women', 'woman')).toEqual({ women: ['girl'] })
+    expect(togglePanelValueReferenceSelection({ women: ['girl'] }, 'women', 'girl')).toEqual({})
   })
 
-  it('keeps selections exclusive on platforms that do not allow reuse', () => {
-    expect(updatePanelValueReferenceSelection(
-      { dress: 'panel-dress' },
-      'shirt',
-      'panel-dress'
-    )).toEqual({ shirt: 'panel-dress' })
+  it('allows Hepsiburada selections to reuse the same panel value and supports clearing a selection', () => {
+    expect(updatePanelValueReferenceSelection({ dress: ['panel-dress'] }, 'shirt', ['panel-dress'], true)).toEqual({ dress: ['panel-dress'], shirt: ['panel-dress'] })
+    expect(updatePanelValueReferenceSelection({ dress: ['panel-dress'], shirt: ['panel-dress'] }, 'shirt', [])).toEqual({ dress: ['panel-dress'] })
+  })
+
+  it('keeps a panel value on one marketplace value on platforms that do not allow reuse', () => {
+    expect(updatePanelValueReferenceSelection({ dress: ['panel-dress', 'panel-gown'] }, 'shirt', ['panel-dress'])).toEqual({ dress: ['panel-gown'], shirt: ['panel-dress'] })
   })
 })

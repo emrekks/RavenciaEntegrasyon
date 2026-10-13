@@ -80,11 +80,7 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         var scope = snapshot.ScopeExternalId;
         var externalId = command.ExternalId.Trim();
         var mapping = await Query(mappingType).SingleOrDefaultAsync(x => x.TenantId == tenantId && x.LocalId == localId && x.ConnectionId == command.ConnectionId && x.ScopeExternalId == scope && x.ExternalId == externalId, cancellationToken);
-        if (mapping is null && mappingType == "attribute-values")
-        {
-            mapping = await Query(mappingType).SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == command.ConnectionId && x.ScopeExternalId == scope && x.ExternalId == externalId, cancellationToken);
-        }
-        else if (mapping is null && expectedVersion is not null)
+        if (mapping is null && mappingType != "attribute-values" && expectedVersion is not null)
         {
             var legacyMapping = await Query(mappingType).SingleOrDefaultAsync(x => x.TenantId == tenantId && x.LocalId == localId && x.ConnectionId == command.ConnectionId && x.ScopeExternalId == scope, cancellationToken);
             if (legacyMapping is not null && legacyMapping.Version == expectedVersion) mapping = legacyMapping;

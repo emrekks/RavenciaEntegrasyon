@@ -4407,7 +4407,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var valueMapping = db.AttributeValueMappings.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == value.Id && x.ScopeExternalId == valueScope && x.ExternalId == remoteValue.ExternalId)
                 ?? await db.AttributeValueMappings.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == value.Id && x.ScopeExternalId == valueScope && x.ExternalId == remoteValue.ExternalId, cancellationToken);
             valueMapping ??= db.AttributeValueMappings.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == valueScope && x.ExternalId == remoteValue.ExternalId)
-                ?? await db.AttributeValueMappings.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == valueScope && x.ExternalId == remoteValue.ExternalId, cancellationToken);
+                ?? await db.AttributeValueMappings.OrderBy(x => x.LocalId).FirstOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == valueScope && x.ExternalId == remoteValue.ExternalId, cancellationToken);
             if (valueMapping is null)
                 db.AttributeValueMappings.Add(new AttributeValueMapping { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, SnapshotId = valueSnapshot.Id, LocalId = value.Id, ScopeExternalId = valueScope, ExternalId = remoteValue.ExternalId, Status = "VERIFIED", VerifiedAt = timeProvider.GetUtcNow(), Version = 1 });
             else

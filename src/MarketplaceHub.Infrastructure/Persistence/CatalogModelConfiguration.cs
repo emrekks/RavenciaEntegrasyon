@@ -291,7 +291,7 @@ internal static class CatalogModelConfiguration
         builder.Entity<AttributeValueMapping>(entity =>
         {
             entity.ToTable("attribute_value_mappings", "catalog"); entity.Property(x => x.ScopeExternalId).HasMaxLength(512); entity.Property(x => x.ExternalId).HasMaxLength(256); entity.Property(x => x.Status).HasMaxLength(24); entity.Property(x => x.Version).IsConcurrencyToken();
-            entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ScopeExternalId, x.ExternalId }).IsUnique().HasDatabaseName("UX_attribute_value_mappings_remote_scope");
+            entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ScopeExternalId, x.LocalId, x.ExternalId }).IsUnique().HasDatabaseName("UX_attribute_value_mappings_local_remote_scope");
         });
     }
 
