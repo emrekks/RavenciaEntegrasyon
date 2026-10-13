@@ -576,7 +576,7 @@ public sealed record RemoteMarketplaceQuestion(
     string Id, string Kind, string Status, string Text, string? ProductName, string? ProductImageUrl,
     string? ProductSku, string? ProductBarcode, string? ProductModelCode, string? CustomerName,
     string? OrderNumber, DateTimeOffset CreatedAt, DateTimeOffset? ExpiresAt,
-    DateTimeOffset LastModifiedAt, IReadOnlyList<RemoteQuestionConversation> Conversations);
+    DateTimeOffset LastModifiedAt, IReadOnlyList<RemoteQuestionConversation> Conversations, string? ProductUrl = null);
 public sealed record MarketplaceQuestionPage(IReadOnlyList<RemoteMarketplaceQuestion> Items, int Page, int TotalPages, long TotalElements);
 public sealed record RemoteQuestionAnswerResult(bool Accepted, bool IsVerified, string? AnswerId);
 public interface IQuestionPort
@@ -586,7 +586,7 @@ public interface IQuestionPort
     Task<AdapterResult<RemoteQuestionAnswerResult>> AnswerQuestionAsync(AdapterContext context, string questionId, string kind, string answer, CancellationToken cancellationToken);
 }
 
-public sealed record MarketplaceQuestionView(Guid Id, Guid ConnectionId, string PlatformCode, string StoreName, string ExternalQuestionId, string Kind, string Status, string QuestionText, string? ProductName, string? ProductImageUrl, string? ProductSku, string? ProductBarcode, string? ProductModelCode, string? CustomerName, string? ExternalOrderNumber, IReadOnlyList<RemoteQuestionConversation> Conversations, DateTimeOffset CreatedAt, DateTimeOffset? ExpiresAt, DateTimeOffset LastRemoteModifiedAt, DateTimeOffset LastSyncedAt, long Version);
+public sealed record MarketplaceQuestionView(Guid Id, Guid ConnectionId, string PlatformCode, string StoreName, string ExternalQuestionId, string Kind, string Status, string QuestionText, string? ProductName, string? ProductImageUrl, string? ProductSku, string? ProductBarcode, string? ProductModelCode, string? CustomerName, string? ExternalOrderNumber, IReadOnlyList<RemoteQuestionConversation> Conversations, DateTimeOffset CreatedAt, DateTimeOffset? ExpiresAt, DateTimeOffset LastRemoteModifiedAt, DateTimeOffset LastSyncedAt, long Version, string? ProductUrl = null);
 public sealed record MarketplaceQuestionTemplateView(Guid Id, string Title, string Text, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, long Version);
 public sealed record SaveQuestionTemplateCommand(string Title, string Text);
 public sealed record AnswerQuestionCommand(string Text, long Version);

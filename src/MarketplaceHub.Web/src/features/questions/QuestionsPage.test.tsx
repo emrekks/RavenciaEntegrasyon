@@ -79,6 +79,12 @@ function button(label: string) {
   return found
 }
 
+function replyButton() {
+  const found = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(item => item.textContent?.trim() === 'Cevapla')
+  if (!found) throw new Error('Could not find the reply button')
+  return found
+}
+
 function select(element: HTMLSelectElement, value: string) {
   act(() => { element.value = value; element.dispatchEvent(new Event('change', { bubbles: true })) })
 }
@@ -200,7 +206,9 @@ describe('QuestionsPage workspace flows', () => {
     expect(container.querySelector('.rv-question-card')?.textContent).toContain('Sipariş #HB-12345')
     expect(container.querySelector('.rv-question-card')?.textContent).toContain('Ürün boyu kaç santimetredir?')
     expect(container.querySelector<HTMLButtonElement>('.rv-question-actions button')).toBeNull()
-    input(container.querySelector<HTMLTextAreaElement>('.rv-question-inline-compose textarea')!, 'x')
+    act(() => replyButton().click())
+    expect(container.querySelector('.rv-question-answer-modal')?.textContent).toContain('Soru Detayı')
+    input(container.querySelector<HTMLTextAreaElement>('.rv-question-answer-modal textarea')!, 'x')
     expect(button('Gönder').disabled).toBe(false)
 
     act(() => button('Ürün Soruları').click())
@@ -248,8 +256,9 @@ describe('QuestionsPage workspace flows', () => {
     expect(container.querySelector('.rv-question-card')?.textContent).toContain('Ret nedeni: Yanıt eksik bilgi içeriyor.')
     expect(Array.from(container.querySelectorAll('.rv-question-thread-message p')).map(message => message.textContent)).toEqual(['Ürün boyu kaç santimetredir?', 'Ölçüleri kontrol ediyorum.'])
 
+    act(() => replyButton().click())
     act(() => button('Ölçü bilgisi').click())
-    const editor = container.querySelector<HTMLTextAreaElement>('.rv-question-inline-compose textarea')!
+    const editor = container.querySelector<HTMLTextAreaElement>('.rv-question-answer-modal textarea')!
     expect(editor.value).toBe('Ürün ölçülerini ürün sayfasında bulabilirsiniz.')
     expect(editor.maxLength).toBe(2000)
     input(editor, 'kısa')
@@ -258,29 +267,31 @@ describe('QuestionsPage workspace flows', () => {
     expect(button('Gönder').disabled).toBe(true)
     input(editor, 'Ürün uzunluğu 65 cm. Ölçü bilgisi ürün sayfasında da yer alıyor.')
     expect(button('Gönder').disabled).toBe(false)
-    expect(container.querySelector('.rv-question-inline-compose .rv-question-compose-footer')?.textContent).toContain('10–2000 karakter')
+    expect(container.querySelector('.rv-answer-bar-meta')?.textContent).toContain('10–2000 karakter')
     act(() => button('Gönder').click())
     await settle()
     expect(apiState.calls.some(call => call.path.endsWith('/answer') && call.method === 'POST')).toBe(true)
     expect(container.querySelector('[role="dialog"]')).toBeNull()
-    expect(container.querySelector('.rv-question-inline-compose')).toBeNull()
     expect(container.querySelector('.rv-question-actions')?.textContent).toContain('Cevap gönderildi · doğrulanıyor')
     expect(container.querySelector('.rv-question-card')?.textContent).toContain('Ürün uzunluğu 65 cm.')
   })
 
-  it('shows a reply composer directly below each waiting question and sends it with that row version', async () => {
+  it('opens the answer dialog with the question and a message bar, and sends it with that row version', async () => {
     await renderPage()
     expect(container.querySelector('.rv-question-card .rv-question-content')?.textContent).toContain('Ürün boyu kaç santimetredir?')
-    expect(container.querySelector('.rv-question-inline-compose')).not.toBeNull()
-    expect(Array.from(container.querySelectorAll('button')).some(item => item.textContent?.trim() === 'Cevap yaz')).toBe(false)
-    const editor = container.querySelector<HTMLTextAreaElement>('.rv-question-inline-compose textarea')!
+    expect(container.querySelector('.rv-question-answer-modal')).toBeNull()
+    act(() => replyButton().click())
+    const dialog = container.querySelector('.rv-question-answer-modal')
+    expect(dialog?.textContent).toContain('Ürün boyu kaç santimetredir?')
+    expect(dialog?.querySelector('footer textarea')).not.toBeNull()
+    const editor = container.querySelector<HTMLTextAreaElement>('.rv-question-answer-modal textarea')!
     input(editor, 'Ürün uzunluğu 65 cm olarak ölçülmüştür.')
     act(() => button('Gönder').click())
     await settle()
     const answerRequest = apiState.calls.find(call => call.path === '/questions/q-product/answer')
     expect(answerRequest?.method).toBe('POST')
     expect(JSON.parse(answerRequest?.body ?? '{}')).toEqual({ text: 'Ürün uzunluğu 65 cm olarak ölçülmüştür.', version: 2 })
-    expect(container.querySelector('.rv-question-inline-compose')).toBeNull()
+    expect(container.querySelector('.rv-question-answer-modal')).toBeNull()
   })
 
   it('shows the question date for answered questions instead of an expired reply deadline', async () => {
@@ -310,6 +321,12 @@ describe('QuestionsPage workspace flows', () => {
     await settle()
     expect(new URL(container.querySelector<HTMLImageElement>('.rv-question-product img')!.getAttribute('src')!, 'https://panel.ravencia.test').searchParams.get('barcode')).toBe('MZ001Y8')
     expect(apiState.calls.some(call => call.path.startsWith('/products?'))).toBe(false)
+  })
+
+  it('links a product question to the product page the marketplace reported', async () => {
+    apiState.detail = { ...createQuestion(), productUrl: 'https://www.trendyol.com/ravencia/kadin-bluz-p-123456' }
+    await renderPage()
+    expect(container.querySelector<HTMLAnchorElement>('.rv-question-product-link')?.getAttribute('href')).toBe('https://www.trendyol.com/ravencia/kadin-bluz-p-123456')
   })
 
   it('links a product question to its marketplace product search', async () => {
@@ -345,7 +362,8 @@ describe('QuestionsPage workspace flows', () => {
     expect(apiState.calls.some(call => call.path === '/questions/sync' && call.method === 'POST' && JSON.parse(call.body ?? '{}').kind === 'PRODUCT')).toBe(true)
 
     apiState.answerFailure = true
-    input(container.querySelector<HTMLTextAreaElement>('.rv-question-inline-compose textarea')!, 'Ürün uzunluğu 65 cm. Ayrıntılar sayfada yazıyor.')
+    act(() => replyButton().click())
+    input(container.querySelector<HTMLTextAreaElement>('.rv-question-answer-modal textarea')!, 'Ürün uzunluğu 65 cm. Ayrıntılar sayfada yazıyor.')
     act(() => button('Gönder').click())
     await settle()
     expect(container.querySelector('[role="alert"]')?.textContent).toBe('Pazaryeri cevabı kabul etmedi.')

@@ -3040,6 +3040,10 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
 
+                    b.Property<string>("ProductUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
                     b.Property<string>("QuestionText")
                         .IsRequired()
                         .HasMaxLength(4096)

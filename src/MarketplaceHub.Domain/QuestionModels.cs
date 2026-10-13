@@ -14,6 +14,7 @@ public sealed class MarketplaceQuestion
     public string? ProductSku { get; set; }
     public string? ProductBarcode { get; set; }
     public string? ProductModelCode { get; set; }
+    public string? ProductUrl { get; set; }
     public string? CustomerName { get; set; }
     public string? ExternalOrderNumber { get; set; }
     public string? HistoryJson { get; set; }
