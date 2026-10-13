@@ -32,7 +32,7 @@ export function NotificationTestPanel() {
     return () => window.clearTimeout(timeout)
   }, [shown])
   return <section className="appearance-notification-test">
-    <div className="appearance-color-editor-heading"><div><h2>Bildirimler</h2><p>Sağ altta çıkan bildirimlerin seçili temadaki görünümünü deneyin.</p></div></div>
+    <div className="appearance-color-editor-heading"><div><h2>Bildirimler</h2><p>Sağ üstte çıkan bildirimlerin seçili temadaki görünümünü deneyin.</p></div></div>
     <div className="appearance-notification-test-actions" role="group" aria-label="Bildirim önizleme">
       {samples.map(sample => <button key={sample.kind} type="button" className="secondary" onClick={() => setShown({ kind: sample.kind, message: sample.message, id: Date.now() })}>{sample.label}</button>)}
     </div>

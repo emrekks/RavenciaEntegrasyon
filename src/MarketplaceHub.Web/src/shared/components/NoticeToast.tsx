@@ -13,7 +13,7 @@ const defaultTitles: Record<NoticeToastKind, string> = {
   pending: 'İşlem Sürüyor'
 }
 
-// The single bottom-right notification of the panel. Tone shows only in the icon tile and the countdown bar,
+// The single top-right notification of the panel. Tone shows only in the icon tile and the countdown bar,
 // the card itself always follows the active theme.
 export function NoticeToast({ kind, message, title, onClose, durationMs, className }: {
   kind: NoticeToastKind
