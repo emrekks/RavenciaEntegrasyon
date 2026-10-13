@@ -1,5 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, type CSSProperties } from 'react'
-import { ToneIcon, UiIcon } from '../../shared/components'
+import { useEffect, useLayoutEffect, useRef } from 'react'
+import { NoticeToast } from '../../shared/components/NoticeToast'
 import { appendNotification } from '../../shared/notifications'
 
 export const OPERATION_FEEDBACK_TOAST_DURATION_MS = 3500
@@ -25,27 +25,11 @@ export function OperationFeedbackToast({ feedback, onClose }: { feedback: Operat
 
   if (!feedback) return null
 
-  const title = feedback.kind === 'success'
-    ? 'İşlem başarılı'
-    : feedback.kind === 'error'
-      ? 'İşlem başarısız'
-      : feedback.persistent ? 'İşlem sürüyor' : 'Bilgi'
-  const pendingClass = feedback.persistent ? ' is-pending' : ''
-
-  return <div
+  return <NoticeToast
     key={`${feedback.kind}:${feedback.message}`}
-    className={`rv-toast rv-toast-${feedback.kind === 'error' ? 'danger' : feedback.kind} operation-feedback-toast ${feedback.kind}${pendingClass}`}
-    style={{ '--operation-feedback-toast-duration': `${OPERATION_FEEDBACK_TOAST_DURATION_MS}ms` } as CSSProperties}
-    role={feedback.kind === 'error' ? 'alert' : 'status'}
-    aria-live={feedback.kind === 'error' ? 'assertive' : 'polite'}
-    aria-busy={feedback.persistent || undefined}
-  >
-    <span className="rv-toast-icon" aria-hidden="true"><ToneIcon kind={feedback.kind} /></span>
-    <div className="rv-toast-content">
-      <strong>{title}</strong>
-      <p>{feedback.message}</p>
-    </div>
-    <button type="button" onClick={onClose} aria-label="Durum raporunu kapat"><UiIcon name="close" /></button>
-    <span className="operation-feedback-toast-progress" aria-hidden="true" />
-  </div>
+    kind={feedback.persistent ? 'pending' : feedback.kind}
+    message={feedback.message}
+    onClose={onClose}
+    durationMs={feedback.persistent ? undefined : OPERATION_FEEDBACK_TOAST_DURATION_MS}
+  />
 }

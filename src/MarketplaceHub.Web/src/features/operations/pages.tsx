@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, type Me } from '../../shared/api'
-import { Pagination, Tabs, Toast, UiIcon, type UiIconName } from '../../shared/components'
+import { Pagination, Tabs, UiIcon, type UiIconName } from '../../shared/components'
+import { NoticeToast } from '../../shared/components/NoticeToast'
+import { appendNotification } from '../../shared/notifications'
 import { statusLabel } from '../../shared/status-labels'
 import { marketplaceQuestionSyncChange, marketplaceQuestionSyncPresentation } from './marketplace-question-sync'
 import { catalogStructureImportChange, catalogStructureImportPresentation } from './catalog-structure-import'
@@ -410,7 +412,8 @@ export function JobsPage({ me }: { me: Me }) {
   const [feedback, setFeedback] = useState<{ message: string; tone: 'success' | 'danger' | 'info' } | null>(null)
   useEffect(() => {
     if (!feedback) return
-    const timeout = window.setTimeout(() => setFeedback(null), feedback.tone === 'danger' ? 5500 : 5500)
+    appendNotification(feedback.message, feedback.tone === 'danger' ? 'error' : feedback.tone)
+    const timeout = window.setTimeout(() => setFeedback(null), 5500)
     return () => window.clearTimeout(timeout)
   }, [feedback])
   const elevated = ['OWNER', 'ADMINISTRATOR'].includes((me.role ?? '').toUpperCase())
@@ -548,6 +551,6 @@ export function JobsPage({ me }: { me: Me }) {
       </>}
     </div>
      {selectedId && <JobDetailDrawer selected={selected} detail={detail} selectedIsRunning={Boolean(selectedIsRunning)} elevated={elevated} retryable={retryable} cancellable={cancellable} action={action} oneTimeInvoiceDelivery={oneTimeInvoiceDelivery} onClose={() => setSelectedId(null)} />}
-     {feedback && <Toast tone={feedback.tone}>{feedback.message}</Toast>}
+     {feedback && <NoticeToast key={`${feedback.tone}:${feedback.message}`} kind={feedback.tone === 'danger' ? 'error' : feedback.tone} message={feedback.message} onClose={() => setFeedback(null)} durationMs={5500} />}
   </section>
 }

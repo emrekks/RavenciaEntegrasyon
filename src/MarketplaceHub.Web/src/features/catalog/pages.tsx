@@ -4,7 +4,8 @@ import { createPortal } from 'react-dom'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, loadAllPages, type CursorPage } from '../../shared/api'
 import { PlatformMark } from '../../shared/platform-mark'
-import { Callout, Pagination, ToneIcon, UiIcon, type UiIconName } from '../../shared/components'
+import { Callout, Pagination, UiIcon, type UiIconName } from '../../shared/components'
+import { NoticeToast } from '../../shared/components/NoticeToast'
 import { sanitizeRichText } from '../../shared/security/sanitizeHtml'
 import { productStatusLabel, productStatusTone, statusLabel } from '../../shared/status-labels'
 import { platformLogoClass, platformLogoSource } from '../../shared/platform-logos'
@@ -1496,7 +1497,7 @@ export function ProductsPage() {
         </section>
       </div>
     )}
-    {productToast && <div className={`rv-toast rv-toast-${productToast.kind === 'error' ? 'danger' : productToast.kind} product-operation-toast ${productToast.kind}`} role={productToast.kind === 'error' ? 'alert' : 'status'} aria-live={productToast.kind === 'error' ? 'assertive' : 'polite'}><span className="rv-toast-icon operation-feedback-icon" aria-hidden="true"><ToneIcon kind={productToast.kind} /></span><div className="rv-toast-content"><strong>{productToast.kind === 'success' ? 'Güncellendi' : productToast.kind === 'info' ? 'İşlem sürüyor' : 'Başarısız'}</strong><p>{productToast.message}</p></div><button type="button" onClick={() => setProductToast(null)} aria-label="Durum bildirimini kapat"><UiIcon name="close" /></button></div>}
+    {productToast && <NoticeToast key={`${productToast.kind}:${productToast.message}`} kind={productToast.kind === 'info' ? 'pending' : productToast.kind} message={productToast.message} onClose={() => setProductToast(null)} durationMs={4000} />}
     {lowStockOpen && <LowStockDetailsModal products={lowStockQuery.data?.items ?? []} loading={lowStockQuery.isLoading} error={lowStockQuery.error} onClose={() => setLowStockOpen(false)} onImageClick={(url, title) => setLightboxImage({ url, title })} />}
     {lightboxImage && <ImageLightboxModal image={lightboxImage} onClose={() => setLightboxImage(null)} />}
   </Page>

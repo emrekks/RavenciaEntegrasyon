@@ -27,14 +27,14 @@ describe('operation feedback toast lifecycle', () => {
     const pending: OperationFeedback = { message: 'Ürün değişiklikleri kaydediliyor…', kind: 'info', persistent: true }
     act(() => root?.render(<OperationFeedbackToast feedback={pending} onClose={onClose} />))
 
-    expect(host.querySelector('.operation-feedback-toast.is-pending')?.getAttribute('aria-busy')).toBe('true')
+    expect(host.querySelector('.app-toast-pending')?.getAttribute('aria-busy')).toBe('true')
     act(() => { vi.advanceTimersByTime(OPERATION_FEEDBACK_TOAST_DURATION_MS * 3) })
     expect(onClose).not.toHaveBeenCalled()
-    expect(host.querySelector('.operation-feedback-toast.is-pending')).not.toBeNull()
+    expect(host.querySelector('.app-toast-pending')).not.toBeNull()
 
     const completed: OperationFeedback = { message: 'Ürün güncellendi.', kind: 'success' }
     act(() => root?.render(<OperationFeedbackToast feedback={completed} onClose={onClose} />))
-    expect(host.querySelector('.operation-feedback-toast.is-pending')).toBeNull()
+    expect(host.querySelector('.app-toast-pending')).toBeNull()
 
     act(() => { vi.advanceTimersByTime(OPERATION_FEEDBACK_TOAST_DURATION_MS - 1) })
     expect(onClose).not.toHaveBeenCalled()
