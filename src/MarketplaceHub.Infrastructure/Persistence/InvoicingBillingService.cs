@@ -742,6 +742,15 @@ public sealed partial class InvoicingBillingService(
             ? new HashSet<Guid>()
             : (await db.InvoiceDocuments.AsNoTracking().Where(document => document.TenantId == tenantId && invoiceIds.Contains(document.InvoiceId))
                 .Select(document => document.InvoiceId).Distinct().ToListAsync(cancellationToken)).ToHashSet();
+        var deliveredLinks = invoiceIds.Length == 0
+            ? new Dictionary<Guid, string>()
+            : (await db.InvoiceDocuments.AsNoTracking()
+                .Where(document => document.TenantId == tenantId && invoiceIds.Contains(document.InvoiceId) && document.PermanentUrl != null)
+                .OrderByDescending(document => document.CreatedAt)
+                .Select(document => new { document.InvoiceId, document.PermanentUrl })
+                .ToListAsync(cancellationToken))
+                .GroupBy(document => document.InvoiceId)
+                .ToDictionary(group => group.Key, group => group.First().PermanentUrl!);
         var manualInvoiceDocuments = await db.ManualOrderInvoiceDocuments.AsNoTracking()
             .Where(document => document.TenantId == tenantId && orderIds.Contains(document.OrderId) && document.Status == "ACTIVE")
             .OrderByDescending(document => document.CreatedAt)
@@ -826,6 +835,10 @@ public sealed partial class InvoicingBillingService(
                 ?? deliveryAttempt?.Status
                 ?? (candidate.Package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Invoiced ? "REMOTE_PRESENT_UNMATCHED" : "NOT_SENT");
             var currentPlatformInvoiceUrl = packageDetailsForItem?.MarketplaceInvoiceUrl ?? candidate.Package.MarketplaceInvoiceUrl;
+            // Hepsiburada does not return the invoice link, but once our own delivery is confirmed the platform holds exactly the link we sent.
+            if (string.IsNullOrWhiteSpace(currentPlatformInvoiceUrl) && candidate.Invoice is not null && deliveryState?.Status == "CONFIRMED"
+                && deliveredLinks.TryGetValue(candidate.Invoice.Id, out var deliveredLink))
+                currentPlatformInvoiceUrl = deliveredLink;
             var allowedActions = InvoiceWorkspaceActionPolicy.Resolve(
                 candidate.Connection.PlatformCode,
                 candidate.Package.MarketplaceInvoiceStatus,
