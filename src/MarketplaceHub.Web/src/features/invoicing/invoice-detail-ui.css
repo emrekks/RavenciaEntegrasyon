@@ -13,3 +13,6 @@
 .invoice-detail-addresses article > span > strong { color: var(--rv-color-muted); font-weight: 750; }
 
 .invoice-detail-header-actions { display: inline-flex; align-items: center; gap: 8px; flex: none; }
+
+.invoice-detail-cargo { display: flex; align-items: center; min-height: 28px; margin-bottom: 4px; }
+.invoice-detail-cargo .cargo-provider-icon { max-height: 28px; width: auto; max-width: 120px; object-fit: contain; }
