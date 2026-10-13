@@ -1,0 +1,18 @@
+/* Publish checks on a marketplace card: one clear block per kind, tinted by how serious it is. */
+.publish-platform-card .publish-platform-warning {
+  --issue-tone: var(--rv-color-warning);
+  position: relative; gap: 12px; align-items: flex-start;
+  margin: 16px 16px 0; padding: 14px 16px;
+  color: var(--rv-color-ink);
+  background: color-mix(in srgb, var(--issue-tone) 8%, var(--rv-color-surface));
+  border: 1px solid color-mix(in srgb, var(--issue-tone) 38%, var(--rv-color-border));
+  border-radius: 10px;
+}
+.publish-platform-card .publish-platform-warning[aria-label$="yayın öncesi eksikler"] { --issue-tone: var(--rv-color-danger); }
+.publish-platform-card .publish-platform-warning:last-child { margin-bottom: 16px; }
+.publish-platform-card .publish-platform-warning > svg { box-sizing: content-box; width: 16px; height: 16px; flex: none; margin: 0; padding: 8px; color: var(--issue-tone); background: color-mix(in srgb, var(--issue-tone) 16%, transparent); border-radius: 8px; }
+.publish-platform-card .publish-platform-warning strong { display: block; color: var(--rv-color-ink); font-size: 14px; font-weight: 600; line-height: 1.35; }
+.publish-platform-card .publish-platform-warning p { margin: 4px 0 0; color: var(--rv-color-muted); font-size: 13px; line-height: 1.5; }
+.publish-platform-card .publish-platform-warning ul { display: grid; gap: 8px; margin: 10px 0 0; color: var(--rv-color-muted); font-size: 13px; line-height: 1.5; }
+.publish-platform-card .publish-platform-warning li { display: block; }
+.publish-platform-card .publish-platform-warning li b { display: inline-block; margin-right: 6px; padding: 1px 8px; color: var(--issue-tone); background: color-mix(in srgb, var(--issue-tone) 14%, transparent); border-radius: 6px; font-size: 12px; font-weight: 600; }

@@ -2755,6 +2755,10 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
   for (const item of mappings.data ?? []) mappingsByExternal.set(item.externalId, [...(mappingsByExternal.get(item.externalId) ?? []), item])
   const mappingFor = (externalId: string, localId: string) => mappingsByExternal.get(externalId)?.find(item => item.localId === localId)
   const sameIds = (left: readonly string[], right: readonly string[]) => left.length === right.length && left.every(id => right.includes(id))
+  const remoteNameByExternal = new Map(allRemoteValues.map(item => [item.externalId, item.name]))
+  const assignedPanelValues: Record<string, string> = {}
+  for (const [externalId, localIds] of Object.entries(selections)) for (const localId of localIds) assignedPanelValues[localId] = remoteNameByExternal.get(externalId) ?? externalId
+  const unmatchedPanelValues = localValues.filter(item => !assignedPanelValues[item.id])
   const mappedExternalIds = new Set((mappings.data ?? []).map(item => item.externalId))
   const remoteValues = allRemoteValues.filter(item => item.isActive || mappedExternalIds.has(item.externalId)).slice().sort((left, right) => left.name.localeCompare(right.name, 'tr-TR', { sensitivity: 'base', numeric: true }))
   const activeRemoteValues = allRemoteValues.filter(item => item.isActive)
@@ -2937,6 +2941,11 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
       </div>
     </div>
     {notice && <MessageToast message={notice} onClose={() => setNotice('')} />}
+    {!!localValues.length && !!remoteValues.length && <div className={`value-mapping-unmatched ${unmatchedPanelValues.length ? 'has-unmatched' : 'is-complete'}`} role="status">
+      {unmatchedPanelValues.length
+        ? <><strong>{unmatchedPanelValues.length} panel değeri henüz eşleşmedi:</strong>{unmatchedPanelValues.map(item => <span key={item.id}>{item.value}</span>)}</>
+        : <strong>Tüm panel değerleri bir {platformLabel} değeriyle eşleşti.</strong>}
+    </div>}
     <div className="value-mapping-rows">
       {!remoteValues.length && <div className="unknown"><strong>Bu özellik için seçilebilir değer bulunamadı</strong><p>{platformLabel} referans listesi başarıyla okundu ancak kategori özelliği sabit seçenek döndürmedi.</p></div>}
       {remoteValues.map(remoteValue => {
@@ -2944,7 +2953,7 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
         return <div key={remoteValue.externalId} className={valueMappingRowClassName(selectedPanelIds.length > 0, required)}>
           <span>{remoteValue.name}</span>
           <b className="value-mapping-row-link" aria-hidden="true" title="Eşleştir"><UiIcon name="link" /></b>
-          <PanelValueMultiSelect label={remoteValue.name} options={localValues} selectedIds={selectedPanelIds} disabled={!localValues.length} onToggle={localId => setSelections(current => togglePanelValueReferenceSelection(current, remoteValue.externalId, localId, allowReusablePanelValues))} />
+          <PanelValueMultiSelect label={remoteValue.name} options={localValues} selectedIds={selectedPanelIds} assignedElsewhere={Object.fromEntries(Object.entries(assignedPanelValues).filter(([localId]) => !selectedPanelIds.includes(localId)))} disabled={!localValues.length} onToggle={localId => setSelections(current => togglePanelValueReferenceSelection(current, remoteValue.externalId, localId, allowReusablePanelValues))} />
         </div>
       })}
       {!!localValues.length && !remoteValues.length && <div className="unknown"><strong>Bu özellik için seçilebilir değer bulunamadı</strong><p>{platformLabel} referans listesi başarıyla okundu ancak kategori özelliği sabit seçenek döndürmedi.</p></div>}

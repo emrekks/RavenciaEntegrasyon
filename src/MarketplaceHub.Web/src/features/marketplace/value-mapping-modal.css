@@ -13,3 +13,19 @@
 .panel-value-multi-menu > button:hover { background: color-mix(in srgb, var(--rv-color-ink) 8%, transparent); }
 .panel-value-multi-menu > button > i { display: grid; width: 18px; height: 18px; flex: none; place-items: center; color: #fff; border: 1px solid var(--rv-color-border-strong); border-radius: 5px; }
 .panel-value-multi-menu > button.active > i { background: var(--rv-color-primary); border-color: var(--rv-color-primary); }
+.panel-value-multi-hint { margin: 2px 6px 6px; color: var(--rv-color-muted); font-size: 12px; font-weight: 600; }
+.panel-value-multi-menu > button > span { min-width: 0; flex: 1; }
+.panel-value-multi-menu > button > em { max-width: 45%; flex: none; overflow: hidden; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-style: normal; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.panel-value-multi-menu > button.is-unmatched > em { color: var(--rv-color-warning); background: var(--rv-color-warning-soft); }
+.panel-value-multi-menu > button.is-here > em { color: var(--rv-color-accent); background: var(--rv-color-accent-soft); }
+.panel-value-multi-menu > button.is-elsewhere > em { color: var(--rv-color-muted); background: color-mix(in srgb, var(--rv-color-ink) 8%, transparent); }
+.value-mapping-unmatched { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid var(--rv-color-border); border-radius: 10px; font-size: 13px; }
+.value-mapping-unmatched.has-unmatched { color: var(--rv-color-warning); background: var(--rv-color-warning-soft); border-color: color-mix(in srgb, var(--rv-color-warning) 40%, var(--rv-color-border)); }
+.value-mapping-unmatched.is-complete { color: var(--rv-color-accent); background: var(--rv-color-accent-soft); border-color: color-mix(in srgb, var(--rv-color-accent) 40%, var(--rv-color-border)); }
+.value-mapping-unmatched > strong { font-weight: 600; }
+.value-mapping-unmatched > span { padding: 2px 10px; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border-radius: 12px; font-weight: 500; }
+
+/* The backup tools of the mapping page sit in one quiet group instead of a loud pill above two buttons. */
+.mapping-reference-heading .mapping-reference-heading-actions { display: flex; flex-wrap: nowrap; align-items: center; justify-content: flex-end; gap: 8px; padding: 4px 4px 4px 14px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 10px; }
+.mapping-reference-heading .mapping-reference-heading-actions > span { min-height: 0; padding: 0; color: var(--rv-color-muted); background: none; border: 0; border-radius: 0; font-size: 13px; font-weight: 600; letter-spacing: 0; text-transform: none; white-space: nowrap; }
+.mapping-reference-heading .mapping-transfer-actions { flex-wrap: nowrap; }
