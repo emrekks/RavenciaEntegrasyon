@@ -91,7 +91,7 @@
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --rv-color-bg: #cbd0db;
+  --rv-color-bg: #d8dce5;
   --rv-color-surface: #dfe3ea;
   --rv-color-surface-raised: #e6e9ef;
   --rv-color-surface-soft: #d1d6e0;

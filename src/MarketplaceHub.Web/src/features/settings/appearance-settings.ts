@@ -39,7 +39,7 @@ const defaultDarkPalette: AppearancePalette = {
 // Soft by design: no pure white anywhere, so large light areas stay easy on the eyes. It is only the starting
 // point; the palette is editable in Settings and saved with the account.
 export const defaultLightPalette: AppearancePalette = {
-  bg: '#cbd0db', sidebar: '#dfe3ea', surface: '#dfe3ea', surfaceRaised: '#e6e9ef', surfaceSoft: '#d1d6e0', border: '#b0b8c8', borderStrong: '#8b95aa', ink: '#2f3a4f', muted: '#525e77', subtle: '#69758d',
+  bg: '#d8dce5', sidebar: '#dfe3ea', surface: '#dfe3ea', surfaceRaised: '#e6e9ef', surfaceSoft: '#d1d6e0', border: '#b0b8c8', borderStrong: '#8b95aa', ink: '#2f3a4f', muted: '#525e77', subtle: '#69758d',
   primary: '#5b44d2', primaryHover: '#4b36bb', primarySoft: '#d8d2f4', accent: '#0f7864', accentSoft: '#cde4db', warning: '#8a560d', warningSoft: '#eadab5', danger: '#a2344f', dangerSoft: '#eacdd5', info: '#2f5aa8'
 }
 
