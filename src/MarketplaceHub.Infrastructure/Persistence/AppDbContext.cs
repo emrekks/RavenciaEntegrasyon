@@ -238,7 +238,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             throw new InvalidOperationException("Invoice party snapshots are immutable.");
         if (ChangeTracker.Entries<InvoiceDocument>().Any(x => x.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Invoice documents are immutable.");
-        if (ChangeTracker.Entries<InvoiceSubmissionAttempt>().Any(x => x.State is EntityState.Modified or EntityState.Deleted))
+        // An attempt is written as STARTED before the provider call and completed exactly once with its outcome; after that it is immutable.
+        if (ChangeTracker.Entries<InvoiceSubmissionAttempt>().Any(x => x.State == EntityState.Deleted
+            || (x.State == EntityState.Modified && !string.Equals(x.OriginalValues.GetValue<string>(nameof(InvoiceSubmissionAttempt.Outcome)), "STARTED", StringComparison.Ordinal))))
             throw new InvalidOperationException("Invoice submission attempts are append-only.");
         if (ChangeTracker.Entries<MarketplaceDelivery>().Any(x => x.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Marketplace delivery attempts are append-only.");
