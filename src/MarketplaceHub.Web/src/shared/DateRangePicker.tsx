@@ -28,15 +28,15 @@ export function DateRangePicker({ from, to, onChange, label = 'Tarih aralığı'
     if (bounds) {
       const viewportWidth = window.innerWidth || 1024
       const viewportHeight = window.innerHeight || 768
-      const width = Math.min(640, viewportWidth - 32)
+      const width = Math.min(500, viewportWidth - 32)
       const left = Math.max(16, Math.min(bounds.left, viewportWidth - width - 16))
-      const desiredHeight = Math.min(430, viewportHeight - 32)
+      const desiredHeight = Math.min(330, viewportHeight - 32)
       const spaceBelow = viewportHeight - bounds.bottom - 16
       const spaceAbove = bounds.top - 16
       const openAbove = spaceBelow < desiredHeight && spaceAbove > spaceBelow
       const top = openAbove
         ? Math.max(16, bounds.top - desiredHeight - 7)
-        : Math.max(16, Math.min(bounds.bottom + 7, viewportHeight - desiredHeight - 16))
+        : bounds.bottom + 7
       const availableHeight = openAbove ? spaceAbove - 7 : viewportHeight - top - 16
       setPopoverPosition({ left, top, maxHeight: Math.max(220, Math.min(desiredHeight, availableHeight)) })
     }
