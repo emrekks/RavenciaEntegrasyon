@@ -12359,7 +12359,7 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 }
 
 /* Invoice filter bar: one row from the search field to the right, one caption weight and one value weight. */
-.app-shell.stitch-shell main .invoice-reference-filters { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr) minmax(0, 1.2fr) max-content auto; gap: 12px; align-items: end; }
+.app-shell.stitch-shell main .invoice-reference-filters { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr) minmax(0, 1.2fr) max-content minmax(0, .5fr); gap: 12px; align-items: end; }
 .app-shell.stitch-shell main .invoice-reference-filters > label:not(.invoice-reference-search) { font-weight: 600; font-size: 12px; }
 .app-shell.stitch-shell main .invoice-reference-search > span:first-child,
 .app-shell.stitch-shell main .invoice-reference-filters .platform-multi-select-label,
