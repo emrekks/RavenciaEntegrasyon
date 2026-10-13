@@ -370,6 +370,81 @@ public sealed partial class InvoicingBillingService
         return ServiceResult<InvoiceWorkspacePreviewItem>.Ok(view);
     }
 
+    // The operator saw this invoice on the platform's own seller panel; the platform cannot report which invoice a package holds, so this is the proof.
+    public async Task<ServiceResult<bool>> ConfirmMarketplaceDeliveredAsync(Guid tenantId, Guid orderId, string correlationId, CancellationToken cancellationToken)
+    {
+        var invoice = await db.Invoices.Where(item => item.TenantId == tenantId && item.OrderId == orderId && item.SequencePurpose == "SALE" && item.OriginalInvoiceId == null)
+            .OrderByDescending(item => item.CreatedAt).FirstOrDefaultAsync(cancellationToken);
+        if (invoice is null) return NotFound<bool>();
+        if (invoice.Status is not (InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending or InvoiceStatus.MarketplaceFailed or InvoiceStatus.ManualReview) || string.IsNullOrWhiteSpace(invoice.InvoiceNumber))
+            return ServiceResult<bool>.Fail("INVOICE_STATE_INVALID", "Bu fatura için platform teslimi doğrulanamaz; fatura sağlayıcıda kabul edilmiş ve numaralı olmalıdır.", 409);
+        var needle = invoice.Id.ToString();
+        if (await db.IntegrationJobs.AsNoTracking().AnyAsync(job => job.TenantId == tenantId && job.PayloadJson.Contains(needle)
+            && (job.Status == JobStatus.Pending || job.Status == JobStatus.Leased || job.Status == JobStatus.RetryScheduled), cancellationToken))
+            return ServiceResult<bool>.Fail("INVOICE_JOB_STILL_RUNNING", "Bu fatura için işlem hâlâ sürüyor. Birkaç dakika bekleyip tekrar deneyin.", 409);
+        var packages = await db.ShipmentPackages.Where(item => item.TenantId == tenantId && (invoice.PackageId == null
+                ? item.OrderId == invoice.OrderId && item.Status != ShipmentPackageStatus.Cancelled
+                : item.Id == invoice.PackageId.Value)).ToListAsync(cancellationToken);
+        if (packages.Count == 0) return ServiceResult<bool>.Fail("INVOICE_PACKAGE_NOT_ELIGIBLE", "Faturaya bağlı etkin paket bulunamadı.", 409);
+        var now = timeProvider.GetUtcNow();
+        foreach (var package in packages)
+        {
+            var state = await db.MarketplaceDeliveryStates.SingleOrDefaultAsync(item => item.TenantId == tenantId && item.InvoiceId == invoice.Id && item.PackageId == package.Id, cancellationToken);
+            if (state is null)
+            {
+                state = new MarketplaceDeliveryState
+                {
+                    Id = Guid.CreateVersion7(),
+                    TenantId = tenantId,
+                    InvoiceId = invoice.Id,
+                    ConnectionId = package.ConnectionId,
+                    PackageId = package.Id,
+                    ExternalIdempotencyKey = $"operator-confirmed:{invoice.Id:N}:{package.Id:N}",
+                    RequestHash = Hash($"operator-confirmed:{invoice.Id:N}:{package.Id:N}:{invoice.InvoiceNumber}"),
+                    DeliveryType = "LINK",
+                    Status = "UNKNOWN",
+                    ExternalReference = package.ExternalPackageId,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                    Version = 1
+                };
+                db.MarketplaceDeliveryStates.Add(state);
+            }
+            var sequence = state.AttemptNumber + 1;
+            db.MarketplaceDeliveries.Add(new MarketplaceDelivery
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenantId,
+                InvoiceId = invoice.Id,
+                ConnectionId = state.ConnectionId,
+                PackageId = package.Id,
+                AttemptNumber = sequence,
+                IdempotencyKey = $"delivery-operator-confirmed:{state.Id:N}:{sequence}",
+                ExternalIdempotencyKey = state.ExternalIdempotencyKey,
+                RequestHash = state.RequestHash,
+                DeliveryType = state.DeliveryType,
+                Status = "CONFIRMED",
+                ExternalReference = package.ExternalPackageId,
+                CreatedAt = now,
+                CompletedAt = now
+            });
+            state.AttemptNumber = sequence;
+            state.Status = "CONFIRMED";
+            state.ErrorCode = null;
+            state.ExternalReference = package.ExternalPackageId;
+            state.UpdatedAt = now;
+            state.CompletedAt = now;
+            state.Version++;
+        }
+        invoice.Status = InvoiceStatus.Completed;
+        invoice.LastErrorCode = null;
+        invoice.UpdatedAt = now;
+        invoice.Version++;
+        db.AuditLogs.Add(new AuditLog { TenantId = tenantId, Action = "INVOICE_MARKETPLACE_DELIVERY_OPERATOR_CONFIRMED", TargetType = "Invoice", TargetId = invoice.Id.ToString("D"), Reason = $"operator-saw-invoice-on-platform:{invoice.InvoiceNumber}", CorrelationId = correlationId, CreatedAt = now });
+        await db.SaveChangesAsync(cancellationToken);
+        return ServiceResult<bool>.Ok(true);
+    }
+
     // The operator cancelled the issued invoice in the provider portal. The record is kept for audit but leaves the sale slot, so a new invoice can be issued.
     public async Task<ServiceResult<bool>> ReplaceCancelledInvoiceAsync(Guid tenantId, Guid orderId, string correlationId, CancellationToken cancellationToken)
     {
