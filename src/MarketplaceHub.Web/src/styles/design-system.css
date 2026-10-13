@@ -10600,8 +10600,10 @@ small,
 
 /* Invoice actions remain legible without taking over the narrow invoice lane. */
 .app-shell.stitch-shell main .invoice-status-label {
-  min-height: 26px;
-  padding: 4px 7px;
+  min-height: 34px;
+  height: 34px;
+  box-sizing: border-box;
+  padding: 4px 10px;
   font-size: 12px;
   line-height: 1.25;
 }
@@ -12357,15 +12359,14 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 }
 
 /* Invoice filter bar: one row from the search field to the right, one caption weight and one value weight. */
-.app-shell.stitch-shell main .invoice-reference-filters { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr) minmax(0, 1.2fr) minmax(0, 1fr) auto; gap: 12px; align-items: end; }
+.app-shell.stitch-shell main .invoice-reference-filters { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr) minmax(0, 1.2fr) max-content auto; gap: 12px; align-items: end; }
 .app-shell.stitch-shell main .invoice-reference-filters > label:not(.invoice-reference-search) { font-weight: 600; font-size: 12px; }
 .app-shell.stitch-shell main .invoice-reference-search > span:first-child,
 .app-shell.stitch-shell main .invoice-reference-filters .platform-multi-select-label,
-.app-shell.stitch-shell main .invoice-reference-filters .date-range-picker-label,
-.app-shell.stitch-shell main .invoice-reference-sort > span { color: var(--rv-color-muted); font-size: 12px; font-weight: 600; }
+.app-shell.stitch-shell main .invoice-reference-filters .date-range-picker-label { color: var(--rv-color-muted); font-size: 12px; font-weight: 600; }
 .app-shell.stitch-shell main .invoice-reference-search input,
 .app-shell.stitch-shell main .invoice-reference-filters .platform-multi-select-trigger,
-.app-shell.stitch-shell main .invoice-reference-filters .date-range-picker-trigger,
-.app-shell.stitch-shell main .invoice-reference-sort select { font-size: 14px; font-weight: 500; }
+.app-shell.stitch-shell main .invoice-reference-filters .date-range-picker-trigger { font-size: 14px; font-weight: 500; }
 @media (max-width: 1100px) { .app-shell.stitch-shell main .invoice-reference-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 700px) { .app-shell.stitch-shell main .invoice-reference-filters { grid-template-columns: minmax(0, 1fr); } }
+.invoice-reference-status .invoice-status-reason { display: flex; justify-content: center; width: 100%; }
