@@ -142,10 +142,9 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     act(() => row.querySelector<HTMLButtonElement>('.invoice-reference-details-trigger')!.click())
     await settle()
     const refresh = container.querySelector<HTMLButtonElement>('.invoice-detail-platform-refresh')
-    expect(refresh?.getAttribute('aria-label')).toBe('Pazaryeri fatura bilgisini yenile')
-    expect(refresh?.querySelector('.ui-icon-refresh')).not.toBeNull()
+    expect(refresh?.textContent).toBe('Platformdan Bilgileri Güncelle')
+    expect(refresh?.querySelector('.ui-icon')).toBeNull()
     expect(refresh?.closest('.invoice-detail-header')).not.toBeNull()
-    expect(refresh?.title).toBe('Pazaryeri bilgisini yenile')
   })
 
   it('shows every invoice operation and locks actions that are unavailable for the Trendyol order', () => {

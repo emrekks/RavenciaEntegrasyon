@@ -1,12 +1,18 @@
-.app-shell.stitch-shell main .invoice-detail-platform-refresh {
+.app-shell.stitch-shell main .invoice-detail-header-actions .invoice-detail-platform-refresh {
   box-sizing: border-box;
-  height: 44px;
-  min-height: 44px;
-  color: var(--rv-color-ink);
-  background: var(--rv-color-surface);
-  border-color: var(--rv-color-border-strong);
+  width: auto;
+  height: 36px;
+  min-height: 36px;
+  padding: 0 10px;
+  color: var(--rv-color-muted);
+  background: transparent;
+  border-color: transparent;
+  font-size: var(--rv-font-size-sm);
+  font-weight: 500;
+  white-space: nowrap;
 }
-.app-shell.stitch-shell main .invoice-detail-platform-refresh:hover:not(:disabled) {
+.app-shell.stitch-shell main .invoice-detail-header-actions .invoice-detail-platform-refresh:hover:not(:disabled) {
+  color: var(--rv-color-ink);
   background: var(--rv-color-surface-soft);
 }
 .invoice-detail-addresses article > span { overflow-wrap: anywhere; line-height: 1.5; }
