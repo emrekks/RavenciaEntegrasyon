@@ -69,6 +69,6 @@ describe('DateRangePicker presets', () => {
     act(() => container.querySelector<HTMLButtonElement>('.date-range-picker-trigger')!.click())
     const popover = document.body.querySelector<HTMLElement>('.date-range-picker-popover')!
     expect(Number.parseFloat(popover.style.top)).toBeLessThan(600)
-    expect(popover.style.maxHeight).toBe('430px')
+    expect(popover.style.maxHeight).toBe('330px')
   })
 })
