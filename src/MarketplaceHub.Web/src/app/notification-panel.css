@@ -58,9 +58,12 @@
 .rv-notification-mark-read .ui-icon { width: 18px; height: 18px; }
 
 .rv-notification-detail { display: grid; gap: 8px; margin: 10px 0 0; padding: 10px 12px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 8px; }
-.rv-notification-detail > div { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 10px; align-items: baseline; }
+.rv-notification-detail > div { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 10px; align-items: baseline; }
 .rv-notification-detail dt { color: var(--rv-color-muted); font-size: 12px; }
 .rv-notification-detail dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
 
 .rv-notification-history-empty { margin: 0; padding: 44px 16px; color: var(--rv-color-muted); font-size: 14px; text-align: center; }
 .rv-notification-history button:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }
+.rv-notification-detail dd.is-success { color: var(--rv-color-accent); }
+.rv-notification-detail dd.is-error { color: var(--rv-color-danger); }
+.rv-notification-icon .rv-tone-icon { width: 20px; height: 20px; }

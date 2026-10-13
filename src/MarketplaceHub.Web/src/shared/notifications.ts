@@ -1,4 +1,5 @@
 export type NotificationTarget = { href: string; label: string }
+export type NotificationDetail = { label: string; value: string; tone?: 'success' | 'error' }
 
 export type AppNotification = {
   id: string
@@ -9,6 +10,8 @@ export type AppNotification = {
   // Where the notification leads: the page that explains or fixes what it reports.
   href?: string
   actionLabel?: string
+  // Which records the notification is about, for example one line per return with its outcome.
+  details?: NotificationDetail[]
 }
 
 // Most notifications are plain sentences, so the destination is derived from what they talk about.
@@ -39,6 +42,35 @@ export function normalizeNotificationKind(message: string, kind: AppNotification
   return kind
 }
 
+function readNotificationDetails(value: unknown): NotificationDetail[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const details = value.flatMap(item => {
+    if (!item || typeof item !== 'object') return []
+    const entry = item as Record<string, unknown>
+    if (typeof entry.label !== 'string' || typeof entry.value !== 'string') return []
+    return [{ label: entry.label.slice(0, 60), value: entry.value.slice(0, 240), tone: entry.tone === 'success' || entry.tone === 'error' ? entry.tone : undefined } satisfies NotificationDetail]
+  }).slice(0, 40)
+  return details.length > 0 ? details : undefined
+}
+
+// What deserves a place in the history, decided once for every producer.
+//   Recorded:  failures of real operations, and successes that change something outside the screen
+//              (decisions sent to a marketplace, invoices, labels, stock, publishing, destructive cleanups,
+//              security changes) so they can be looked up after the toast is gone.
+//   Toast only: form validation, local preview/selection/copy feedback, "queued" and progress messages
+//              (their outcome is what matters) and routine saves.
+const validationOrLocal = /(boş olamaz|en az bir|seçin\b|yazın|doldurun|girin\b|geçersiz veya|önizleme|kopyalandı|seçildi|seçimi|ayarları hesabınıza kaydedildi|eşleştirmesi kaydedildi|değer güncellendi|değer kaldırıldı)/u
+const progressOnly = /(kuyruğa alındı|kuyruğa alınıyor|kuyrukta|eşitleniyor|güncelleniyor|yükleniyor|işleniyor|hazırlanıyor|sonucu\s+(?:henüz\s+)?(?:bekleniyor|kesinleşmedi)|read-back ile doğrulanacak)/u
+const consequential = /(a gönderildi|pazar yerine gönderildi|iade (?:kabul|ret|red)|fatura|etiket|kargo|paket|stok|stoğa|yayın|sonlandırıldı|oturum|temizlik tamamlandı|ürün oluşturuldu|silindi|dış yazma|yazma anahtar|eşitleme(?:si)? tamamlandı|aktarım tamamlandı)/u
+
+export function shouldRecordNotification(message: string, kind: AppNotification['kind']): boolean {
+  const text = message.toLocaleLowerCase('tr-TR')
+  if (validationOrLocal.test(text)) return false
+  if (kind === 'error') return true
+  if (progressOnly.test(text)) return false
+  return kind === 'success' && consequential.test(text)
+}
+
 export function readNotificationHistory(): AppNotification[] {
   try {
     const raw = localStorage.getItem(notificationStorageKey)
@@ -58,7 +90,8 @@ export function readNotificationHistory(): AppNotification[] {
         createdAt: value.createdAt,
         read: value.read === true,
         href: typeof value.href === 'string' ? value.href : inferred?.href,
-        actionLabel: typeof value.actionLabel === 'string' ? value.actionLabel : inferred?.label
+        actionLabel: typeof value.actionLabel === 'string' ? value.actionLabel : inferred?.label,
+        details: readNotificationDetails(value.details)
       }]
     }).slice(0, 20)
   } catch {
@@ -66,9 +99,10 @@ export function readNotificationHistory(): AppNotification[] {
   }
 }
 
-export function appendNotification(message: string, kind: AppNotification['kind'] = 'info', target?: NotificationTarget | null) {
+export function appendNotification(message: string, kind: AppNotification['kind'] = 'info', target?: NotificationTarget | null, details?: NotificationDetail[]) {
+  if (!shouldRecordNotification(message, normalizeNotificationKind(message, kind))) return null
   const destination = target === undefined ? inferNotificationTarget(message) : target
-  const notification: AppNotification = { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, message, kind: normalizeNotificationKind(message, kind), createdAt: new Date().toISOString(), read: false, href: destination?.href, actionLabel: destination?.label }
+  const notification: AppNotification = { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, message, kind: normalizeNotificationKind(message, kind), createdAt: new Date().toISOString(), read: false, href: destination?.href, actionLabel: destination?.label, details: details && details.length > 0 ? details.slice(0, 40) : undefined }
   const history = [notification, ...readNotificationHistory()].slice(0, 20)
   try {
     localStorage.setItem(notificationStorageKey, JSON.stringify(history))

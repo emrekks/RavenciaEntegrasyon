@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, type CSSProperties } from 'react'
-import { UiIcon } from '../../shared/components'
+import { ToneIcon, UiIcon } from '../../shared/components'
 import { appendNotification } from '../../shared/notifications'
 
 export const OPERATION_FEEDBACK_TOAST_DURATION_MS = 3500
@@ -40,7 +40,7 @@ export function OperationFeedbackToast({ feedback, onClose }: { feedback: Operat
     aria-live={feedback.kind === 'error' ? 'assertive' : 'polite'}
     aria-busy={feedback.persistent || undefined}
   >
-    <span className="rv-toast-icon" aria-hidden="true" />
+    <span className="rv-toast-icon" aria-hidden="true"><ToneIcon kind={feedback.kind} /></span>
     <div className="rv-toast-content">
       <strong>{title}</strong>
       <p>{feedback.message}</p>

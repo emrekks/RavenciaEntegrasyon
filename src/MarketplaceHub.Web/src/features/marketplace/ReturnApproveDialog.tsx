@@ -43,7 +43,7 @@ type Props = {
   // Hepsiburada decides the whole claim at once: every product is approved together as a refund.
   wholeClaim?: boolean
   onClose: () => void
-  onDone: (message: string, kind: 'success' | 'info' | 'error') => void
+  onDone: (message: string, kind: 'success' | 'info' | 'error', details?: Array<{ label: string; value: string; tone?: 'success' | 'error' }>) => void
 }
 
 // One product with every return line (claim item) the marketplace opened for it. A product returned
@@ -97,7 +97,11 @@ export function ReturnApproveDialog({ open, claimId, version, marketplaceName, o
     }),
     onSuccess: async () => {
       const stock = stockRequests.length > 0 ? ` Stok ${stockQuantity.toLocaleString('tr-TR')} adet artırıldı.` : ''
-      onDone(`İade kabulü ${marketplaceName}’a gönderildi.${stock}`, 'success')
+      onDone(`İade kabulü ${marketplaceName}’a gönderildi.${stock}`, 'success', [
+        { label: 'Sipariş', value: `${order.orderNumber} · ${order.customer}`, tone: 'success' },
+        ...chosenRows.map(row => ({ label: 'Ürün', value: `${row.title} (${row.quantity} adet)` })),
+        ...(stockRequests.length > 0 ? [{ label: 'Stok', value: `+${stockQuantity.toLocaleString('tr-TR')} adet stoğa eklendi` }] : [])
+      ])
       await client.invalidateQueries({ queryKey: ['return', claimId] })
       await client.invalidateQueries({ queryKey: ['returns'] })
       onClose()

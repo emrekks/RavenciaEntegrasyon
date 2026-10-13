@@ -1,12 +1,11 @@
 import { useState } from 'react'
-import { UiIcon } from '../shared/components'
+import { ToneIcon, UiIcon } from '../shared/components'
 import './notification-panel.css'
 import { clearNotificationHistory, markAllNotificationsRead, markNotificationRead, type AppNotification } from '../shared/notifications'
 
 type Filter = 'ALL' | 'UNREAD' | 'ERROR'
 
 const KIND_LABEL: Record<AppNotification['kind'], string> = { success: 'Başarılı', error: 'Hata', info: 'Bilgi' }
-const KIND_ICON = { success: 'circleCheck', error: 'alert', info: 'info' } as const
 
 // The first sentence is the summary; anything after " · " is the technical detail.
 function notificationPresentation(notification: AppNotification) {
@@ -48,7 +47,7 @@ function NotificationItem({ notification, expanded, onToggle, onOpen }: ItemProp
   const presentation = notificationPresentation(notification)
   const unread = !notification.read
   return <article className={`rv-notification-history-item is-${notification.kind} ${unread ? 'is-unread' : 'is-read'}${expanded ? ' is-expanded' : ''}`}>
-    <span className="rv-notification-icon" aria-hidden="true"><UiIcon name={KIND_ICON[notification.kind]} size={20} /></span>
+    <span className="rv-notification-icon" aria-hidden="true"><ToneIcon kind={notification.kind} size={20} /></span>
     <div className="rv-notification-history-copy">
       <div className="rv-notification-history-top">
         <strong>{presentation.title}</strong>
@@ -57,6 +56,7 @@ function NotificationItem({ notification, expanded, onToggle, onOpen }: ItemProp
       <p>{presentation.summary}</p>
       {expanded && <dl className="rv-notification-detail">
         <div><dt>Mesaj</dt><dd>{notification.message}</dd></div>
+        {notification.details?.map((detail, index) => <div key={`${detail.label}:${index}`}><dt>{detail.label}</dt><dd className={detail.tone ? `is-${detail.tone}` : undefined}>{detail.value}</dd></div>)}
         <div><dt>Durum</dt><dd><span className="rv-notification-history-result">{KIND_LABEL[notification.kind]}</span></dd></div>
         <div><dt>Zaman</dt><dd>{new Date(notification.createdAt).toLocaleString('tr-TR')}</dd></div>
       </dl>}

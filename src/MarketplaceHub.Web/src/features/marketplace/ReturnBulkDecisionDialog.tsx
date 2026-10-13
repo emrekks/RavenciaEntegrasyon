@@ -42,7 +42,7 @@ type Props = {
   mode: 'APPROVE' | 'REJECT'
   items: BulkDecisionItem[]
   onClose: () => void
-  onDone: (message: string, kind: 'success' | 'info' | 'error') => void
+  onDone: (message: string, kind: 'success' | 'info' | 'error', details?: Array<{ label: string; value: string; tone?: 'success' | 'error' }>) => void
 }
 
 const isActionable = (line: DetailLine) => !line.status || line.status.toUpperCase() === 'ACTION_REQUIRED'
@@ -124,7 +124,15 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
     const noun = approving ? 'onaylandı' : 'reddedildi'
     onDone(failCount === 0
       ? `${okCount} iade ${approving ? 'kabulü' : 'reddi'} pazar yerine gönderildi.${approving && stockTotal > 0 ? ` Stok ${stockTotal.toLocaleString('tr-TR')} adet artırıldı.` : ''}`
-      : `${okCount} iade ${noun}, ${failCount} iade ${approving ? 'onaylanamadı' : 'reddedilemedi'}. Ayrıntılar toplu işlem penceresinde.`, failCount === 0 ? 'success' : 'error')
+      : `${okCount} iade ${noun}, ${failCount} iade ${approving ? 'onaylanamadı' : 'reddedilemedi'}. Ayrıntılar toplu işlem penceresinde.`, failCount === 0 ? 'success' : 'error',
+      [
+        ...items.map(item => {
+          const result = results.find(entry => entry.id === item.id)
+          return { label: item.orderNumber, value: `${item.customerName} · ${result?.ok ? (approving ? 'Onaylandı' : 'Reddedildi') : result?.message ?? 'Gönderilmedi'}`, tone: result?.ok ? 'success' as const : 'error' as const }
+        }),
+        ...(approving && stockTotal > 0 ? [{ label: 'Stok', value: `+${stockTotal.toLocaleString('tr-TR')} adet stoğa eklendi` }] : []),
+        ...(!approving ? [{ label: 'Ret Nedeni', value: usableReasons.find(reason => reason.id === reasonId)?.name ?? reasonId }] : [])
+      ])
   }
 
   const toggleStock = (key: string) => setStockKeys(current => current.includes(key) ? current.filter(value => value !== key) : [...current, key])

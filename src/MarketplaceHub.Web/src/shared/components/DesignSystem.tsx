@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from 'react'
+import { ToneIcon } from './ToneIcon'
 import { UiIcon } from './UiIcon'
 import { appendNotification } from '../notifications'
 
@@ -194,7 +195,7 @@ export function Toast({ children, tone = 'info' }: { children: ReactNode; tone?:
     return () => window.clearTimeout(timeout)
   }, [message, tone])
   if (!visible) return null
-  return <div className={`rv-toast rv-toast-${tone}`} role={tone === 'danger' ? 'alert' : 'status'} aria-live={tone === 'danger' ? 'assertive' : 'polite'}><span className="rv-toast-icon" aria-hidden="true" /><div className="rv-toast-content">{children}</div></div>
+  return <div className={`rv-toast rv-toast-${tone}`} role={tone === 'danger' ? 'alert' : 'status'} aria-live={tone === 'danger' ? 'assertive' : 'polite'}><span className="rv-toast-icon" aria-hidden="true"><ToneIcon kind={tone === 'danger' ? 'error' : tone === 'success' ? 'success' : 'info'} /></span><div className="rv-toast-content">{children}</div></div>
 }
 export function PageHeader({ eyebrow, title, description, actions }: { eyebrow?: string; title: string; description?: string; actions?: ReactNode }) { return <header className="rv-page-header"><div>{eyebrow ? <p className="rv-eyebrow">{eyebrow}</p> : null}<h1>{title}</h1>{description ? <p>{description}</p> : null}</div>{actions ? <div className="rv-page-actions">{actions}</div> : null}</header> }
 export function EmptyState({ children }: { children: ReactNode }) { return <div className="rv-empty-state"><span className="rv-empty-state-icon" aria-hidden="true"><UiIcon name="box" /></span><strong>Henüz kayıt yok</strong><p>{children}</p></div> }
