@@ -11685,13 +11685,13 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .rv-questions-tabs { min-width: 0; overflow-x: auto; margin-bottom: 0; }
 .rv-questions-filters, .rv-questions-results, .rv-question-template-editor, .rv-question-template-list { min-width: 0; padding: 16px; border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); background: var(--rv-color-surface); box-shadow: var(--rv-shadow-sm); }
 .rv-questions-filters { gap: var(--rv-space-2); }
-.rv-questions-status-tabs { width: fit-content; max-width: 100%; margin-bottom: 0; }
+.rv-questions-status-tabs { width: fit-content; max-width: 100%; height: 44px; box-sizing: border-box; margin-bottom: 0; }
 .rv-questions-status-tabs button { white-space: nowrap; }
 .rv-question-platform-fixed { display: grid; min-width: 0; align-content: end; justify-items: start; gap: 6px; color: var(--rv-color-muted); font-size: 12px; }
 .rv-question-platform-fixed .rv-badge { min-height: 40px; box-sizing: border-box; padding: 0 12px; }
 .rv-questions-filter-grid { display: grid; width: 100%; grid-template-columns: minmax(140px, .85fr) minmax(160px, 1fr) minmax(150px, .85fr) minmax(150px, .85fr) minmax(220px, 1.35fr); align-items: end; gap: 12px; }
 .rv-questions-filter-grid label, .rv-question-template-editor label { display: grid; gap: 6px; min-width: 0; color: var(--rv-color-muted); font-size: 12px; font-weight: 700; }
-.rv-questions-filter-grid input, .rv-questions-filter-grid select, .rv-question-template-editor input, .rv-question-template-editor textarea, .rv-question-compose textarea, .rv-question-inline-compose textarea { width: 100%; min-width: 0; min-height: 42px; box-sizing: border-box; padding: 8px 11px; border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); background: var(--rv-color-surface-raised); color: var(--rv-color-ink); font: inherit; }
+.rv-questions-filter-grid input, .rv-questions-filter-grid select, .rv-question-template-editor input, .rv-question-template-editor textarea, .rv-question-compose textarea, .rv-question-inline-compose textarea { width: 100%; min-width: 0; min-height: 44px; box-sizing: border-box; padding: 8px 11px; border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); background: var(--rv-color-surface-raised); color: var(--rv-color-ink); font: inherit; }
 .rv-question-template-editor textarea, .rv-question-compose textarea { min-height: 100px; resize: vertical; }
 .rv-questions-notice { display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 10px 13px; border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); background: var(--rv-color-surface); color: var(--rv-color-ink); }
 .rv-questions-notice button { border: 0; background: none; color: inherit; font-size: 20px; cursor: pointer; }
@@ -11834,7 +11834,7 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .app-shell.stitch-shell main .rv-questions-page .rv-question-template-editor,
 .app-shell.stitch-shell main .rv-questions-page .rv-question-template-list { color: var(--rv-color-ink); background: var(--rv-color-surface); border-color: var(--rv-color-border); }
 .app-shell.stitch-shell main .rv-questions-page .rv-questions-filter-grid input,
-.app-shell.stitch-shell main .rv-questions-page .rv-questions-filter-grid select { min-height: 42px; padding-inline: 11px; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border-color: var(--rv-color-border-strong); }
+.app-shell.stitch-shell main .rv-questions-page .rv-questions-filter-grid select { min-height: 44px; padding-inline: 11px; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border-color: var(--rv-color-border-strong); }
 .app-shell.stitch-shell main .rv-questions-page .rv-questions-results .rv-empty-state { background: var(--rv-color-surface-raised); border-color: var(--rv-color-border-strong); }
 
 /* Shopify invoice batches use the same table cells and modal language as the
