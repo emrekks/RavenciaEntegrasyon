@@ -12372,3 +12372,44 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 /* Sidebar labels read a little heavier; the open page is heavier still. */
 .app-shell.stitch-shell > aside :is(nav, .settings-nav) a .nav-label, .app-shell.stitch-shell > aside .logout-link .nav-label { font-weight: 500; }
 .app-shell.stitch-shell > aside nav a.active .nav-label { font-weight: 600; }
+
+/* Light theme interaction language. Hovers are quiet tonal changes, colour is kept for the active state and focus:
+   list-like items get a faint ink tint, outlined controls darken their border, cards and rows settle on the raised tone. */
+:root[data-theme="light"] {
+  --rv-hover-fill: color-mix(in srgb, var(--rv-color-ink) 6%, transparent);
+  --rv-hover-solid: color-mix(in srgb, var(--rv-color-ink) 6%, var(--rv-color-surface));
+}
+:root[data-theme="light"] .app-shell.stitch-shell > aside :is(nav, .settings-nav) a:hover:not(.active),
+:root[data-theme="light"] .app-shell.stitch-shell > aside .logout-link:hover:not(.active),
+:root[data-theme="light"] .app-shell.stitch-shell main .bulk-action-menu > button:hover:not(:disabled),
+:root[data-theme="light"] .platform-multi-select-option:hover,
+:root[data-theme="light"] .product-platform-filter-all:hover,
+:root[data-theme="light"] .product-platform-filter-option:hover,
+:root[data-theme="light"] .row-menu > div button:hover,
+:root[data-theme="light"] .order-column-filter-popover button:hover,
+:root[data-theme="light"] .integration-filter-menu button:hover,
+:root[data-theme="light"] .jobs-reference-range-menu button:hover,
+:root[data-theme="light"] .reference-menu-popover :is(a, button):hover:not(:disabled),
+:root[data-theme="light"] .panel-category-picker [role="option"]:hover,
+:root[data-theme="light"] .appearance-theme-menu > button:hover,
+:root[data-theme="light"] .date-range-picker-grid > button:hover,
+:root[data-theme="light"] .product-import-tab:hover,
+:root[data-theme="light"] :is(.rv-tabs, .settings-tabs, .jobs-reference-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) > :is(button, a):not(.active, .is-active, [aria-selected="true"]):hover {
+  color: var(--rv-color-ink); background: var(--rv-hover-fill); border-color: transparent; box-shadow: none;
+}
+:root[data-theme="light"] .app-shell.stitch-shell main :where(input, select, textarea):hover:not(:disabled),
+:root[data-theme="light"] .app-shell.stitch-shell main :is(.platform-multi-select-trigger, .product-platform-filter-trigger, .panel-category-picker-trigger, .appearance-theme-trigger, .publish-tracking-action, .dashboard-report-download, .invoice-dropzone, .variant-platform-pricing-variant-item, .return-detail-product.is-selectable, :is(.product-image-button, .clickable-thumb)):hover:not(:disabled),
+:root[data-theme="light"] .dashboard .dashboard-channel-footer > a:hover {
+  color: var(--rv-color-ink); background: var(--rv-hover-solid); border-color: var(--rv-color-border-strong); box-shadow: none;
+}
+:root[data-theme="light"] .app-shell.stitch-shell main :where(input, select, textarea):hover:not(:disabled) { background: var(--rv-color-surface); }
+:root[data-theme="light"] .app-shell.stitch-shell main :is(button.secondary, .button-link.secondary, .rv-button-secondary, .rv-button-ghost):hover:not(:disabled) {
+  color: var(--rv-color-ink); background: var(--rv-hover-solid); border-color: var(--rv-color-border-strong);
+}
+:root[data-theme="light"] .dashboard-operational-card:hover, :root[data-theme="light"] .product-metric-button:hover {
+  background: var(--rv-color-surface-raised); border-color: var(--rv-color-border-strong); box-shadow: var(--rv-shadow-sm); transform: none;
+}
+:root[data-theme="light"] .app-shell.stitch-shell main :is(.order-reference-table > .order-reference-row, .return-reference-table > .return-reference-row, .order-reference-row, .return-reference-row):hover,
+:root[data-theme="light"] .rv-table tbody tr:hover {
+  background: var(--rv-hover-solid); border-color: var(--rv-color-border); box-shadow: none;
+}

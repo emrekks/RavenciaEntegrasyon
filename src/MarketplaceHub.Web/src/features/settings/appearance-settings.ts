@@ -39,8 +39,8 @@ const defaultDarkPalette: AppearancePalette = {
 // Soft by design: no pure white anywhere, so large light areas stay easy on the eyes. It is only the starting
 // point; the palette is editable in Settings and saved with the account.
 export const defaultLightPalette: AppearancePalette = {
-  bg: '#d8dce5', sidebar: '#dfe3ea', surface: '#dfe3ea', surfaceRaised: '#e6e9ef', surfaceSoft: '#d1d6e0', border: '#b0b8c8', borderStrong: '#8b95aa', ink: '#2f3a4f', muted: '#525e77', subtle: '#69758d',
-  primary: '#5b44d2', primaryHover: '#4b36bb', primarySoft: '#d8d2f4', accent: '#0f7864', accentSoft: '#cde4db', warning: '#8a560d', warningSoft: '#eadab5', danger: '#a2344f', dangerSoft: '#eacdd5', info: '#2f5aa8'
+  bg: '#e1e4eb', sidebar: '#eaedf2', surface: '#eaedf2', surfaceRaised: '#f0f2f6', surfaceSoft: '#dfe3ea', border: '#c9d0dc', borderStrong: '#a4aec0', ink: '#2f3a4f', muted: '#525e77', subtle: '#69758d',
+  primary: '#5b44d2', primaryHover: '#4b36bb', primarySoft: '#e0dcf6', accent: '#0f7864', accentSoft: '#d3e8df', warning: '#8a560d', warningSoft: '#efe1c0', danger: '#a2344f', dangerSoft: '#efd5dc', info: '#2f5aa8'
 }
 
 export const defaultAppearanceColorTheme: AppearanceColorThemeProfile = {
@@ -143,8 +143,8 @@ function normalizeColors(value: unknown): AppearanceColors {
 }
 
 // Accounts that saved an earlier default of the light palette (never edited by hand) follow the current default.
-const formerLightBackgrounds = new Set(['#d4d9e2', '#cbd0db'])
-const formerLightSurfaces = new Set(['#e5e8ee', '#d9dde6'])
+const formerLightBackgrounds = new Set(['#d4d9e2', '#cbd0db', '#d8dce5'])
+const formerLightSurfaces = new Set(['#e5e8ee', '#d9dde6', '#dfe3ea'])
 function migrateFormerLightDefault(palette: AppearancePalette): AppearancePalette {
   return formerLightBackgrounds.has(palette.bg.toLowerCase()) && formerLightSurfaces.has(palette.surface.toLowerCase()) ? { ...defaultLightPalette } : palette
 }
