@@ -1,7 +1,7 @@
 /* One notification design for the whole panel; every colour comes from the theme tokens. */
 .app-toast {
   --app-toast-tone: var(--rv-color-primary);
-  position: fixed; top: calc(var(--rv-topbar-height, 64px) + 12px); right: 20px; z-index: var(--rv-z-toast);
+  position: fixed; top: 14px; right: 14px; z-index: var(--rv-z-toast);
   display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: start; gap: 12px;
   box-sizing: border-box; width: min(400px, calc(100vw - 32px)); margin: 0; padding: 14px 12px 16px 14px; overflow: hidden;
   color: var(--rv-color-ink); background: var(--rv-color-surface-raised);
@@ -48,7 +48,7 @@
 @keyframes app-toast-countdown { to { transform: scaleX(0); } }
 @keyframes app-toast-slide { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
 @keyframes app-toast-spin { to { transform: rotate(360deg); } }
-@media (max-width: 600px) { .app-toast { top: calc(var(--rv-topbar-height, 64px) + 8px); right: 16px; width: calc(100vw - 32px); } }
+@media (max-width: 600px) { .app-toast { top: 10px; right: 10px; width: calc(100vw - 20px); } }
 @media (prefers-reduced-motion: reduce) {
   .app-toast, .app-toast *, .app-toast-icon { animation: none !important; }
   .app-toast-icon circle, .app-toast-icon .rv-tone-icon path { stroke-dashoffset: 0; }
