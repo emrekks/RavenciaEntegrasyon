@@ -68,6 +68,12 @@ public static class InvoicingEndpoints
         api.MapPost("/invoice-workspace/manual-documents", CreateManualOrderInvoiceDocumentAsync).DisableAntiforgery();
         api.MapPost("/invoice-workspace/manual-documents/{id:guid}/delivery-jobs", QueueManualOrderInvoiceDeliveryAsync);
         api.MapGet("/invoice-workspace/manual-documents/{id:guid}/content", OpenManualOrderInvoiceDocumentAsync);
+        api.MapPost("/invoice-workspace/orders/{orderId:guid}/confirm-no-remote-invoice", async (Guid orderId, HttpContext http, IInvoicingBillingService service) =>
+        {
+            if (Tenant(http) is not { } tenant) return Unauthorized(http);
+            var result = await service.ConfirmNoRemoteInvoiceAsync(tenant.TenantId, orderId, http.TraceIdentifier, http.RequestAborted);
+            return result.Succeeded ? Results.Ok(new { confirmed = true }) : Problem(http, result.Error!);
+        });
         api.MapPost("/invoice-workspace/preview", async (InvoiceWorkspacePreviewRequest request, HttpContext http, IInvoicingBillingService service) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);

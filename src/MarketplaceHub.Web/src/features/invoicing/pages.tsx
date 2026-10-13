@@ -217,7 +217,7 @@ function InvoiceDetailLineImage({ url, title }: { url: string; title: string }) 
   </>
 }
 
-function InvoiceReferenceActionsMenu({ item, canCreateInvoice, canSyncOrder, deliveryPending, hidden, onCreateInvoice, onSyncOrder, onToggleHidden, onAddManualInvoice, onSendManualInvoice }: {
+function InvoiceReferenceActionsMenu({ item, canCreateInvoice, canSyncOrder, deliveryPending, hidden, onCreateInvoice, onSyncOrder, onToggleHidden, onConfirmNoRemoteInvoice, onAddManualInvoice, onSendManualInvoice }: {
   item: InvoiceWorkspace
   canCreateInvoice: boolean
   canSyncOrder: boolean
@@ -226,6 +226,7 @@ function InvoiceReferenceActionsMenu({ item, canCreateInvoice, canSyncOrder, del
   onCreateInvoice: () => void
   onSyncOrder: () => void
   onToggleHidden: () => void
+  onConfirmNoRemoteInvoice: () => void
   onAddManualInvoice: () => void
   onSendManualInvoice: () => void
 }) {
@@ -291,6 +292,7 @@ function InvoiceReferenceActionsMenu({ item, canCreateInvoice, canSyncOrder, del
       {item.platformCode === 'SHOPIFY'
         ? <button type="button" role="menuitem" onClick={() => { setOpen(false); onToggleHidden() }}>{hidden ? 'Gizlemeden Çıkar' : 'Siparişi Gizle'}</button>
         : item.platformCode !== 'TRENDYOL' && <button type="button" role="menuitem" disabled={!canSyncOrder} title={!canSyncOrder ? 'Pazaryeri sipariş bilgileri bulunamadı veya bağlantı etkin değil.' : undefined} onClick={() => { setOpen(false); onSyncOrder() }}>Sipariş Durumunu Güncelle</button>}
+      {item.invoiceId && item.platformCode !== 'SHOPIFY' && ['FATURA_ISLENIYOR', 'FATURA_REDDEDILDI'].includes(item.invoiceStatus) && <button type="button" role="menuitem" title="Gönderim sonucu kaybolmuş ve sağlayıcı portalında fatura görünmüyorsa yeniden gönderimi açar." onClick={() => { setOpen(false); onConfirmNoRemoteInvoice() }}>Sağlayıcıda Fatura Yok, Yeniden Gönder</button>}
       <button type="button" role="menuitem" onClick={() => { setOpen(false); onAddManualInvoice() }}>{hasManualDocument ? 'Manuel Faturayı Değiştir' : 'Manuel Fatura Ekle'}</button>
       <button type="button" role="menuitem" disabled={manualDeliveryDisabled} title={manualDeliveryDisabled ? manualDeliveryTitle : undefined} onClick={() => { setOpen(false); onSendManualInvoice() }}>{deliveryPending ? 'Kuyruğa Alınıyor…' : 'Manuel Faturayı Pazaryerine Gönder'}</button>
     </div>, document.body)}
@@ -327,6 +329,14 @@ export function InvoicesPage() {
     queryKey: ['invoice-workspace-page', pageNumber, pageSize, tab, search, selectedPlatforms, shipmentStatusFilter, cargoFilter, invoiceStatusFilter, invoiceActionFilter, dateFrom, dateTo, Boolean(provider?.hasCredential)],
     queryFn: () => hubApi<InvoiceWorkspacePage>(`/invoice-workspace/page?${pageQuery.toString()}`),
     refetchInterval: 30_000
+  })
+  const noRemoteInvoice = useMutation({
+    mutationFn: async (item: InvoiceWorkspace) => hubApi<{ confirmed: boolean }>(`/invoice-workspace/orders/${item.orderId}/confirm-no-remote-invoice`, { method: 'POST' }),
+    onSuccess: async (_result, item) => {
+      setMessage(`#${item.orderNumber} için yeniden gönderim açıldı. Faturayı tekrar oluşturabilirsiniz.`, 'success')
+      await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] })])
+    },
+    onError: error => setMessage(error instanceof Error ? error.message : 'Yeniden gönderim açılamadı.', 'error')
   })
   const visibility = useMutation({
     mutationFn: async ({ packageIds, hidden }: { packageIds: string[]; hidden: boolean }) => hubApi<{ updatedCount: number }>('/invoice-workspace/hidden', { method: 'PUT', headers: { 'Idempotency-Key': idempotency() }, body: JSON.stringify({ packageIds, hidden }) }),
@@ -487,6 +497,9 @@ export function InvoicesPage() {
               onCreateInvoice={() => openInvoicePreview([item])}
               onSyncOrder={() => orderStatusSync.mutate(item)}
               onToggleHidden={() => visibility.mutate({ packageIds: [item.packageId], hidden: tab !== 'HIDDEN' })}
+              onConfirmNoRemoteInvoice={() => { if (window.confirm(`#${item.orderNumber} için E-Faturam portalında fatura olmadığını doğruladınız mı?
+
+Onaylarsanız bu fatura yeniden gönderilebilir hâle gelir. Portalda fatura varsa mükerrer fatura oluşur.`)) noRemoteInvoice.mutate(item) }}
               onAddManualInvoice={() => setManualUploadItem(item)}
               onSendManualInvoice={() => manualInvoiceDelivery.mutate(item)}
             />

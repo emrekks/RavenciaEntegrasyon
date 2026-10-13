@@ -1522,7 +1522,9 @@ public sealed partial class InvoicingBillingService(
         string.IsNullOrWhiteSpace(externalReference)
         && (CanRetryLocalPayloadFailure(status, lastErrorCode, externalReference)
             || (status == InvoiceStatus.Submitting && lastErrorCode is "EFATURAM_AUTHENTICATION_FAILED" or "EFATURAM_ACCESS_TOKEN_REJECTED" or "EFATURAM_INVOICE_CREATE_PRIVILEGE_MISSING" or MarketplaceInvoiceCreationPolicy.DisabledErrorCode)
-            || (status == InvoiceStatus.ManualReview && lastErrorCode is "MARKETPLACE_INVOICE_PRECHECK_FAILED" or "PLATFORM_INVOICE_STATUS_NOT_CLEAR"));
+            || (status == InvoiceStatus.ManualReview && lastErrorCode is "MARKETPLACE_INVOICE_PRECHECK_FAILED" or "PLATFORM_INVOICE_STATUS_NOT_CLEAR" or OperatorConfirmedNoRemoteInvoiceCode));
+
+    internal const string OperatorConfirmedNoRemoteInvoiceCode = "OPERATOR_CONFIRMED_NO_REMOTE_INVOICE";
 
     private async Task<bool> IsMarketplaceInvoiceCreationDisabledAsync(Guid tenantId, Guid orderId, CancellationToken cancellationToken)
     {

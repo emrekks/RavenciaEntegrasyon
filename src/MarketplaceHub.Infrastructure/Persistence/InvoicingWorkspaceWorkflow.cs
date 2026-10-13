@@ -365,6 +365,40 @@ public sealed partial class InvoicingBillingService
         return ServiceResult<InvoiceWorkspacePreviewItem>.Ok(view);
     }
 
+    // The operator checked the provider portal and saw no invoice for a submission whose result was lost; only then may it be sent again.
+    public async Task<ServiceResult<bool>> ConfirmNoRemoteInvoiceAsync(Guid tenantId, Guid orderId, string correlationId, CancellationToken cancellationToken)
+    {
+        var invoice = await db.Invoices.Where(item => item.TenantId == tenantId && item.OrderId == orderId && item.SequencePurpose == "SALE")
+            .OrderByDescending(item => item.CreatedAt).FirstOrDefaultAsync(cancellationToken);
+        if (invoice is null) return NotFound<bool>();
+        if (invoice.Status is not (InvoiceStatus.Submitting or InvoiceStatus.UnknownResult or InvoiceStatus.ManualReview))
+            return ServiceResult<bool>.Fail("INVOICE_STATE_INVALID", "Bu faturanın gönderim sonucu belirsiz değil; yeniden gönderim açılamaz.", 409);
+        if (!string.IsNullOrWhiteSpace(invoice.ExternalReference) || !string.IsNullOrWhiteSpace(invoice.EttnUuid) || !string.IsNullOrWhiteSpace(invoice.InvoiceNumber))
+            return ServiceResult<bool>.Fail("INVOICE_REMOTE_REFERENCE_EXISTS", "Faturanın sağlayıcıda kaydı var; yeniden gönderilemez. Durumu uzlaştırın.", 409);
+        var attempts = await db.InvoiceSubmissionAttempts.Where(item => item.TenantId == tenantId && item.InvoiceId == invoice.Id).ToListAsync(cancellationToken);
+        if (attempts.Any(item => item.Outcome == "SUCCEEDED"))
+            return ServiceResult<bool>.Fail("INVOICE_REMOTE_REFERENCE_EXISTS", "Bu fatura için başarılı bir gönderim kaydı var; yeniden gönderilemez.", 409);
+        var now = timeProvider.GetUtcNow();
+        var needle = invoice.Id.ToString();
+        var activeJob = await db.IntegrationJobs.AsNoTracking().AnyAsync(job => job.TenantId == tenantId && job.PayloadJson.Contains(needle)
+            && (job.Status == JobStatus.Pending || job.Status == JobStatus.Leased || job.Status == JobStatus.RetryScheduled), cancellationToken);
+        if (activeJob || invoice.UpdatedAt > now.AddMinutes(-2))
+            return ServiceResult<bool>.Fail("INVOICE_SUBMISSION_STILL_RUNNING", "Bu fatura için işlem hâlâ sürüyor olabilir. Birkaç dakika bekleyip tekrar deneyin.", 409);
+        foreach (var attempt in attempts.Where(item => item.Outcome == "STARTED"))
+        {
+            attempt.Outcome = "FAILED";
+            attempt.ErrorCode = OperatorConfirmedNoRemoteInvoiceCode;
+            attempt.CompletedAt = now;
+        }
+        invoice.Status = InvoiceStatus.ManualReview;
+        invoice.LastErrorCode = OperatorConfirmedNoRemoteInvoiceCode;
+        invoice.UpdatedAt = now;
+        invoice.Version++;
+        db.AuditLogs.Add(new AuditLog { TenantId = tenantId, Action = "EFATURAM_NO_REMOTE_INVOICE_CONFIRMED", TargetType = "Invoice", TargetId = invoice.Id.ToString("D"), Reason = "operator-checked-provider-portal", CorrelationId = correlationId, CreatedAt = now });
+        await db.SaveChangesAsync(cancellationToken);
+        return ServiceResult<bool>.Ok(true);
+    }
+
     private static string ReadTaxIdentity(string customerJson, string addressJson)
     {
         foreach (var json in new[] { addressJson, customerJson })
