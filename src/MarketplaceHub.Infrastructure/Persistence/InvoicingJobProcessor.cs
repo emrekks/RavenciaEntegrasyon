@@ -137,6 +137,8 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         }
         using (frozenReceiver)
         {
+            // The invoice date is the moment it is actually sent: nothing has reached the provider yet, so a date left over from an earlier failed try is replaced.
+            if (string.IsNullOrWhiteSpace(invoice.ExternalReference)) { invoice.IssuedAt = timeProvider.GetUtcNow(); invoice.UpdatedAt = invoice.IssuedAt.Value; }
             var snapshotRoot = frozenReceiver?.RootElement ?? default;
             var orderNumber = SnapshotText(snapshotRoot, "OrderNumber", order.OrderNumber);
             var orderedAt = SnapshotDate(snapshotRoot, "OrderedAt", order.OrderedAt);

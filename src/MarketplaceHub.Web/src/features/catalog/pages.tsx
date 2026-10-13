@@ -1967,6 +1967,12 @@ function CategoryAttributeMappingPanel({
   </section>
 }
 
+// Platform codes are stored upper-case; show the brand names the way they are written.
+function publishPlatformName(code: string) {
+  const names: Record<string, string> = { TRENDYOL: 'Trendyol', HEPSIBURADA: 'Hepsiburada', SHOPIFY: 'Shopify', N11: 'n11', PAZARAMA: 'Pazarama', PTTAVM: 'PttAVM', TRENDYOL_EFATURAM: 'E-Faturam' }
+  const normalized = code.trim().toLocaleUpperCase('tr-TR')
+  return names[normalized] ?? code.charAt(0).toLocaleUpperCase('tr-TR') + code.slice(1).toLocaleLowerCase('tr-TR')
+}
 function PublishPlatformCard({ card, selected, productId, categoryId, productChecks, selectedAttributes, onSelect, onDeselect }: {
   card: { code: string; name: string; initial: string; tone: string; connection: MarketplaceConnection; mode: 'PUBLISH' | 'READ_ONLY' }
   selected: boolean
@@ -2120,10 +2126,11 @@ function PublishPlatformCard({ card, selected, productId, categoryId, productChe
     </button>
     <dl className="publish-platform-facts">
       <div><dt>Mağaza</dt><dd>{card.connection.externalStoreId || '—'}</dd></div>
-      <div><dt>Platform</dt><dd>{card.connection.platformCode}</dd></div>
+      <div><dt>Platform</dt><dd>{publishPlatformName(card.connection.platformCode)}</dd></div>
       <div><dt>Bağlantı</dt><dd><span className="publish-platform-status active"><i aria-hidden="true" />Aktif bağlantı</span></dd></div>
-      {productId && <div className="publish-platform-fact-publication" aria-live="polite"><dt>Yayın durumu</dt><dd><span className={`publish-platform-status status-${displayedPublicationTone}`} data-tooltip={hasRequiredPublicationBlock ? publicationBlockTooltip : undefined} tabIndex={hasRequiredPublicationBlock ? 0 : undefined} aria-describedby={hasRequiredPublicationBlock ? `${issueListId}-required` : undefined}><i aria-hidden="true" />{displayedPublicationLabel}</span>{publication.data?.profileId && publication.data.actualStatus && publication.data.actualStatus !== 'UNKNOWN' && <button type="button" className="publish-tracking-action" aria-label={`${card.name} yayın durumunu güncelle`} title="Platformdaki mevcut durumu yeniden sorgula" disabled={refreshPublication.isPending || isPublicationStatusJobRunning(publication.data.lastJobStatus)} onClick={() => refreshPublication.mutate()}><UiIcon name="refresh" /></button>}</dd>{publicationNote && <small>{publicationNote}</small>}</div>}
+      {productId && <div className="publish-platform-fact-publication" aria-live="polite"><dt>Yayın durumu</dt><dd><span className={`publish-platform-status status-${displayedPublicationTone}`} data-tooltip={hasRequiredPublicationBlock ? publicationBlockTooltip : undefined} title={hasRequiredPublicationBlock ? publicationBlockTooltip : undefined} tabIndex={hasRequiredPublicationBlock ? 0 : undefined} aria-describedby={hasRequiredPublicationBlock ? `${issueListId}-required` : undefined}><i aria-hidden="true" />{displayedPublicationLabel}</span>{publication.data?.profileId && publication.data.actualStatus && publication.data.actualStatus !== 'UNKNOWN' && <button type="button" className="publish-tracking-action" aria-label={`${card.name} yayın durumunu güncelle`} title="Platformdaki mevcut durumu yeniden sorgula" disabled={refreshPublication.isPending || isPublicationStatusJobRunning(publication.data.lastJobStatus)} onClick={() => refreshPublication.mutate()}><UiIcon name="refresh" /></button>}</dd>{publicationNote && <small>{publicationNote}</small>}</div>}
     </dl>
+    {hasRequiredPublicationBlock && <div className="publish-platform-warning" role="note" aria-label={`${card.name} için yayın öncesi eksikler`}><UiIcon name="alert" /><div><strong>{blockedIssues.length === 1 ? 'Yayın için 1 eksik var' : `Yayın için ${blockedIssues.length} eksik var`}</strong><ul>{blockedIssues.slice(0, 6).map(issue => <li key={`${issue.attribute}:${issue.detail}`}><b>{issue.attribute}</b> {issue.detail}</li>)}{blockedIssues.length > 6 && <li>Ve {blockedIssues.length - 6} eksik daha.</li>}</ul></div></div>}
     {card.mode === 'READ_ONLY' && <div className="publish-platform-warning" role="note"><UiIcon name="alert" /><div><strong>Shopify dış yazması kapalı</strong><p>Ürün yayınını açmak için Entegrasyonlar bölümünde Shopify dış yazma anahtarını etkinleştirin; bağlantı testinde write_products, write_inventory, read_publications ve write_publications izinleri doğrulanmalıdır.</p></div></div>}
     {shopifyCapabilityCheckPending && <div id={`${issueListId}-shopify-pending`} className="publish-platform-warning" role="status" aria-label="Shopify yayın izinleri kontrol ediliyor"><UiIcon name="alert" /><div><strong>Shopify izinleri kontrol ediliyor</strong><p>Ürün, stok ve Online Store yayın izinleri doğrulanıyor.</p></div></div>}
     {productId && publication.data?.lastJobId && <PublicationJobProgress jobId={publication.data.lastJobId} productId={productId} connectionId={card.connection.id} />}

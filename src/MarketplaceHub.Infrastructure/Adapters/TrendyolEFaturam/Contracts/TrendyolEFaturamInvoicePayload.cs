@@ -205,7 +205,9 @@ public static class TrendyolEFaturamInvoicePayload
     private static decimal Money(decimal value) => decimal.Round(value, 2, MidpointRounding.AwayFromZero);
     private static long Kurus(decimal value) => decimal.ToInt64(Money(value) * 100m);
     private static decimal KurusDecimal(decimal value) => decimal.Round(value * 100m, 4, MidpointRounding.AwayFromZero);
-    // The gateway only reads absolute instants written with a trailing Z; an offset such as +03:00 makes it answer "Failed to read request".
+    // The gateway only reads values with a trailing Z (an offset such as +03:00 gets "Failed to read request") and prints the clock digits
+    // as written without converting them, so the Turkey clock (UTC+3, no daylight saving) is written in that shape to print Istanbul time.
+    private static readonly TimeSpan TurkeyOffset = TimeSpan.FromHours(3);
     private static string ProviderDateTime(DateTimeOffset value) =>
-        value.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture);
+        value.ToOffset(TurkeyOffset).ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture);
 }
