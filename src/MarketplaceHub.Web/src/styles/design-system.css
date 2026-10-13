@@ -11607,6 +11607,8 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .invoice-workspace-preview-line > * + * { justify-content: flex-end; border-left: 1px solid var(--rv-color-border); text-align: right; }
 .invoice-workspace-preview-line-head { border-top: 0; background: var(--rv-color-surface-raised); color: var(--rv-color-ink); font-size: 13px; }
 .invoice-workspace-preview-line-head > * { font-weight: 600; padding-block: 10px; }
+.invoice-workspace-preview-carrier { display: flex; align-items: center; gap: 10px; }
+.invoice-workspace-preview-carrier .cargo-provider-icon { height: 26px; width: auto; max-width: 84px; object-fit: contain; }
 .invoice-workspace-preview-product { gap: 12px; }
 .invoice-workspace-preview-product > span:last-child { display: grid; gap: 3px; min-width: 0; }
 .invoice-workspace-preview-thumb { flex: none; display: grid; place-items: center; width: 52px; height: 68px; overflow: hidden; border: 1px solid var(--rv-color-border); border-radius: 6px; background: var(--rv-color-surface-soft); color: var(--rv-color-subtle); }

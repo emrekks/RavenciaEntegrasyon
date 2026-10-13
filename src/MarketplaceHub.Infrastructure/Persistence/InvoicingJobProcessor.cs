@@ -58,7 +58,8 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         if (result.IsSuccess)
         {
             connection.LastSuccessAt = now;
-            if (connection.Status == "DRAFT") connection.Status = "VERIFIED";
+            // A passing test makes the provider ready to use. Creating an invoice stays a separate, confirmed action gated by the write switch.
+            if (connection.Status is "DRAFT" or "VERIFIED") connection.Status = "ACTIVE";
             var capability = await db.PlatformCapabilities.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == InvoicingCapabilities.ConnectionTest, cancellationToken);
             if (capability is not null)
             {

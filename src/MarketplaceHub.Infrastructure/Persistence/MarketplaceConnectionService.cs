@@ -171,10 +171,11 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         var currentSettings = connection.PlatformCode == "TRENDYOL" ? ReadSettings(connection) : null;
         var hepsiburadaSettings = connection.PlatformCode == "HEPSIBURADA" ? ReadHepsiburadaSettings(connection) : null;
         var shopifySettings = connection.PlatformCode == "SHOPIFY" ? ReadShopifySettings(connection) : null;
-        var currentExternalWrites = currentSettings?.ExternalWritesEnabled ?? hepsiburadaSettings?.ExternalWritesEnabled ?? shopifySettings?.ExternalWritesEnabled ?? false;
+        var efaturamSettings = connection.PlatformCode == "TRENDYOL_EFATURAM" ? ReadEfaturamSettings(connection) : null;
+        var currentExternalWrites = currentSettings?.ExternalWritesEnabled ?? hepsiburadaSettings?.ExternalWritesEnabled ?? shopifySettings?.ExternalWritesEnabled ?? efaturamSettings?.ExternalWritesEnabled ?? false;
         var requestedUserAgent = string.IsNullOrWhiteSpace(command.UserAgentIdentity) ? null : command.UserAgentIdentity.Trim();
         var externalWritesRequested = (command.ExternalWritesEnabled ?? currentExternalWrites)
-            && (currentSettings is not null || hepsiburadaSettings is not null || shopifySettings is not null);
+            && (currentSettings is not null || hepsiburadaSettings is not null || shopifySettings is not null || efaturamSettings is not null);
         if (command.ExternalWritesEnabled == true && !configuration.GetValue<bool>("FeatureFlags:ExternalWrites"))
             return ServiceResult<ConnectionView>.Fail("EXTERNAL_WRITES_DISABLED", "Global dış yazma anahtarı kapalı olduğu için dış yazma açılamaz.", 422);
         var requestedExternalWrites = externalWritesRequested && configuration.GetValue<bool>("FeatureFlags:ExternalWrites");
@@ -185,6 +186,13 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             var connectionTest = await db.PlatformCapabilities.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == id && x.Code == MarketplaceCapabilities.ConnectionTest && x.Environment == connection.Environment && x.StoreScope == connection.ExternalStoreId, cancellationToken);
             if (connection.LastSuccessAt is null || connectionTest?.SupportLevel != CapabilitySupportLevel.Supported)
                 return ServiceResult<ConnectionView>.Fail("CONNECTION_TEST_REQUIRED", "Dış yazmayı açmadan önce başarılı bağlantı testi ve destek kanıtı gerekir.", 422);
+        }
+        if (connection.PlatformCode == "TRENDYOL_EFATURAM" && requestedExternalWrites && !currentExternalWrites)
+        {
+            if (!await HasCredential(tenantId, id, cancellationToken))
+                return ServiceResult<ConnectionView>.Fail("CREDENTIAL_REQUIRED", "Dış yazmayı açmadan önce E-Faturam kimlik bilgisi kaydedilmelidir.", 422);
+            if (connection.LastSuccessAt is null || !IntegrationRuntimePolicy.IsActive(connection))
+                return ServiceResult<ConnectionView>.Fail("CONNECTION_TEST_REQUIRED", "Dış yazmayı açmadan önce başarılı bağlantı testi gerekir.", 422);
         }
         if (connection.PlatformCode == "SHOPIFY" && requestedExternalWrites && !currentExternalWrites)
         {
@@ -213,7 +221,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             connection.SettingsJson = JsonSerializer.Serialize(new ConnectionSettings(requestedUserAgent ?? current.UserAgentIdentity, requestedExternalWrites, command.InvoiceCreationEnabled ?? invoiceCreationEnabled));
         }
         else if (connection.PlatformCode == "TRENDYOL_EFATURAM")
-            connection.SettingsJson = JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings(ReadEfaturamSettings(connection).ExternalWritesEnabled));
+            connection.SettingsJson = JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings(requestedExternalWrites));
         else if (connection.PlatformCode == "HEPSIBURADA")
             connection.SettingsJson = JsonSerializer.Serialize(new HepsiburadaConnectionSettings(requestedExternalWrites));
         else if (connection.PlatformCode == "SHOPIFY")
