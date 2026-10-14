@@ -118,6 +118,21 @@ public sealed class TrendyolResilienceHandlerTests
     }
 
     [Fact]
+    public async Task PackageRead_SharesTheOrderQuotaButNotTheStreamSpacing()
+    {
+        var options = Options.Create(new TrendyolOptions { MaxConcurrency = 1, OrderRequestMinimumInterval = TimeSpan.FromSeconds(5) });
+        var shared = new RecordingSharedLimiter();
+        using var downstream = new SequenceHandler(HttpStatusCode.OK);
+        using var resilience = new TrendyolResilienceHandler(options, TimeProvider.System, new TrendyolResilienceState(options), shared) { InnerHandler = downstream };
+        using var client = new HttpClient(resilience);
+
+        using var response = await client.GetAsync("https://unit.test/integration/order/sellers/seller-42/v2/orders?shipmentPackageIds=1");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(["trendyol:global:unit.test:anonymous", "trendyol:orders:unit.test:seller-42"], shared.Keys);
+    }
+
+    [Fact]
     public async Task SharedLimiterFailure_FallsBackToTheInProcessLimiter()
     {
         var options = Options.Create(new TrendyolOptions { MaxConcurrency = 1, RequestsPerInterval = 100, RequestInterval = TimeSpan.FromMilliseconds(1) });

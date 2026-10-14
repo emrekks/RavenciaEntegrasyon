@@ -137,6 +137,9 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
     {
         var globalBucket = GlobalRateBucketFor(request);
         var orderBucket = RateBucketFor(request);
+        // Trendyol recommends at least 5 s between getShipmentPackagesStream calls; the 30/min
+        // quota covers both order endpoints, but the spacing only applies to the stream.
+        var spacing = IsOrderStream(request) ? options.OrderRequestMinimumInterval : TimeSpan.Zero;
         if (sharedLimiter is not null)
         {
             try
@@ -145,8 +148,8 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
                 if (orderBucket is not null)
                 {
                     await SharedRateLimits.WaitAsync(sharedLimiter, $"trendyol:{orderBucket}", SharedRateLimits.ForWindow(options.OrderRequestsPerInterval, options.OrderRequestInterval), timeProvider, cancellationToken);
-                    if (options.OrderRequestMinimumInterval > TimeSpan.Zero)
-                        await SharedRateLimits.WaitAsync(sharedLimiter, $"trendyol:{orderBucket}:spacing", SharedRateLimits.ForSpacing(options.OrderRequestMinimumInterval), timeProvider, cancellationToken);
+                    if (spacing > TimeSpan.Zero)
+                        await SharedRateLimits.WaitAsync(sharedLimiter, $"trendyol:{orderBucket}:spacing", SharedRateLimits.ForSpacing(spacing), timeProvider, cancellationToken);
                 }
                 return;
             }
@@ -157,8 +160,11 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
         }
         await WaitForRateWindowAsync(globalBucket, options.RequestsPerInterval, options.RequestInterval, cancellationToken);
         if (orderBucket is not null)
-            await WaitForRateWindowAsync(orderBucket, options.OrderRequestsPerInterval, options.OrderRequestInterval, cancellationToken, options.OrderRequestMinimumInterval);
+            await WaitForRateWindowAsync(orderBucket, options.OrderRequestsPerInterval, options.OrderRequestInterval, cancellationToken, spacing);
     }
+
+    internal static bool IsOrderStream(HttpRequestMessage request) =>
+        request.RequestUri?.AbsolutePath.Contains("/orders/stream", StringComparison.OrdinalIgnoreCase) == true;
 
     private async Task WaitForRateWindowAsync(string bucket, int configuredLimit, TimeSpan configuredInterval, CancellationToken cancellationToken, TimeSpan? minimumSpacing = null)
     {
