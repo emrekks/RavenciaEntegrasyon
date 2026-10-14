@@ -95,7 +95,9 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
             && string.Equals(result.ErrorCode, "PRODUCT_APPROVAL_PENDING", StringComparison.Ordinal)
             && requested.HasValue
             && requested.Value > TimeSpan.Zero)
-            return requested.Value;
+            // Approvals usually land within minutes, so poll every minute for the first
+            // attempts and fall back to the processor's slower cadence afterwards.
+            return job.AttemptCount < 10 && requested.Value > TimeSpan.FromMinutes(1) ? TimeSpan.FromMinutes(1) : requested.Value;
 
         var policyDelay = JobRetryPolicy.DelayAfterAttempt(job.AttemptCount, job.Id);
         if (requested is null || requested <= TimeSpan.Zero) return policyDelay;
