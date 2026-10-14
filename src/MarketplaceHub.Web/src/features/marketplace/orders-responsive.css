@@ -291,3 +291,10 @@
   .app-shell.stitch-shell main .orders-page .order-reference-actions .order-label-action { min-height: 42px; font-size: 14px; }
   .app-shell.stitch-shell main .orders-page .order-reference-actions .row-menu-trigger { width: auto; min-height: 42px; }
 }
+
+/* Filter popovers on phones: cells in the right-hand column (the odd filters, as the platform
+   filter takes the first left cell) open from their right edge so the popover stays on screen. */
+@media (max-width: 1100px) {
+  .app-shell.stitch-shell main :is(.order-reference-head, .return-reference-head, .invoice-reference-head) .order-column-filter-popover { width: min(320px, calc(100vw - 32px)); max-width: calc(100vw - 32px); }
+  .app-shell.stitch-shell main :is(.order-reference-head, .return-reference-head, .invoice-reference-head) > :nth-child(odd of .order-column-filter) .order-column-filter-popover { left: auto; right: 0; }
+}
