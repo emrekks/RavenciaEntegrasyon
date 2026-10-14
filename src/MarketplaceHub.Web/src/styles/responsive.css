@@ -303,3 +303,10 @@ html body .mfs-sort-sheet [role="listbox"] > button.is-selected { color: var(--r
   html body .app-shell.stitch-shell main :is(.order-reference-row, .return-reference-row, .invoice-reference-row) .order-number { gap: 0; }
   html body .app-shell.stitch-shell main :is(.order-reference-row, .return-reference-row, .invoice-reference-row) .order-number-copy { display: none; }
 }
+
+/* Phone top bar: slides away while scrolling down and slides back when scrolling up. */
+@media (max-width: 760px) {
+  html body .rv-topbar { transition: transform .26s cubic-bezier(.4, 0, .2, 1); will-change: transform; }
+  html body .rv-topbar.is-hidden { transform: translateY(-100%); }
+}
+@media (max-width: 760px) and (prefers-reduced-motion: reduce) { html body .rv-topbar { transition: none; } }
