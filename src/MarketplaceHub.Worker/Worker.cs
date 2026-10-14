@@ -48,21 +48,34 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
 
         if (schedulerEnabled) await RecoverAtStartupAsync(stoppingToken);
         else TouchHealthFile();
-        var loops = new List<Task>
-        {
-            RunLeaseLaneAsync("hot", hotPriorityCeiling, 0, stoppingToken, reapExpiredLeases: true, excludedJobTypes: HepsiburadaOrderJobTypes),
-            RunLeaseLaneAsync("returns-read", null, null, stoppingToken, includedJobTypes: ReturnReadJobTypes),
-            RunLeaseLaneAsync("product-catalog", null, null, stoppingToken, includedJobTypes: ProductCatalogSyncJobTypes),
-            RunLeaseLaneAsync("hepsiburada-status", hotPriorityCeiling, 0, stoppingToken, MarketplaceJobTypes.HepsiburadaOrderStatusSync),
-            RunLeaseLaneAsync("hepsiburada-orders", hotPriorityCeiling, 0, stoppingToken, includedJobTypes: HepsiburadaOrderJobTypes),
-            RunLeaseLaneAsync("initial-data-sync", -1, -1, stoppingToken),
-            RunLeaseLaneAsync("background", null, hotPriorityCeiling + 1, stoppingToken),
-            RunHealthWatchdogAsync(stoppingToken),
-            RunLeaseReaperAsync(stoppingToken)
-        };
+        // Each lane runs Worker:LaneSlots:<lane> concurrent loops. Slots of one lane lease
+        // independently (FOR UPDATE SKIP LOCKED); jobs that collide on the same connection
+        // lock group are deferred without consuming an attempt.
+        // Return reads and product-catalog syncs have dedicated lanes and are kept out of the
+        // shared hot/background lanes so long reads cannot occupy their slots.
+        var loops = new List<Task>();
+        loops.AddRange(Lane("hot", 3, slot => RunLeaseLaneAsync(slot, hotPriorityCeiling, 0, stoppingToken, excludedJobTypes: [.. HepsiburadaOrderJobTypes, .. ReturnReadJobTypes])));
+        loops.AddRange(Lane("returns-read", 1, slot => RunLeaseLaneAsync(slot, null, null, stoppingToken, includedJobTypes: ReturnReadJobTypes)));
+        loops.AddRange(Lane("product-catalog", 1, slot => RunLeaseLaneAsync(slot, null, null, stoppingToken, includedJobTypes: ProductCatalogSyncJobTypes)));
+        loops.AddRange(Lane("hepsiburada-status", 1, slot => RunLeaseLaneAsync(slot, hotPriorityCeiling, 0, stoppingToken, MarketplaceJobTypes.HepsiburadaOrderStatusSync)));
+        loops.AddRange(Lane("hepsiburada-orders", 1, slot => RunLeaseLaneAsync(slot, hotPriorityCeiling, 0, stoppingToken, includedJobTypes: HepsiburadaOrderJobTypes)));
+        loops.AddRange(Lane("initial-data-sync", 1, slot => RunLeaseLaneAsync(slot, -1, -1, stoppingToken)));
+        loops.AddRange(Lane("background", 2, slot => RunLeaseLaneAsync(slot, null, hotPriorityCeiling + 1, stoppingToken, excludedJobTypes: [.. ProductCatalogSyncJobTypes, .. ReturnReadJobTypes])));
+        loops.Add(RunHealthWatchdogAsync(stoppingToken));
+        loops.Add(RunLeaseReaperAsync(stoppingToken));
         if (schedulerEnabled) loops.Add(RunSchedulerAsync(stoppingToken));
         await Task.WhenAll(loops);
     }
+
+    private IEnumerable<Task> Lane(string lane, int defaultSlots, Func<string, Task> run)
+    {
+        var slots = LaneSlots(configuration, lane, defaultSlots);
+        logger.LogInformation("Worker lane {Lane} starting with {Slots} slot(s)", lane, slots);
+        return Enumerable.Range(1, slots).Select(slot => run(slots == 1 ? lane : $"{lane}#{slot}")).ToArray();
+    }
+
+    internal static int LaneSlots(IConfiguration configuration, string lane, int defaultSlots) =>
+        Math.Clamp(configuration.GetValue($"Worker:LaneSlots:{lane}", defaultSlots), 1, 8);
 
     private async Task ExecuteSingleJobAsync(CancellationToken stoppingToken)
     {
