@@ -363,3 +363,33 @@ html body .order-detail-actions-list > button:hover:not(:disabled) { background:
   .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-row > .order-reference-grid > .order-reference-products { display: grid; grid-template-rows: none; grid-auto-rows: auto; align-content: start; align-self: start; row-gap: 12px; height: auto; min-height: 0; overflow: visible; }
   .app-shell.stitch-shell main .orders-page .order-reference-products > article { grid-row: auto; height: auto; min-height: 0; }
 }
+
+/* Phone order list, like the marketplace app: order number and date on one line, buyer, remaining
+   time, then the products with a chevron. Carrier, invoice and actions live in the order detail
+   that opens when a card is tapped. Phones only. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-row > .order-reference-grid > :is(.order-reference-cargo, .order-reference-invoice, .order-reference-actions) { display: none; }
+  .app-shell.stitch-shell main .orders-page .order-reference-meta > .order-number { order: 1; margin-right: auto; }
+  .app-shell.stitch-shell main .orders-page .order-reference-meta > small:nth-of-type(1) { order: 2; flex: 0 0 auto; margin-left: auto; font-size: 12px; }
+  .app-shell.stitch-shell main .orders-page .order-reference-meta > small:nth-of-type(n+2):not(.order-reference-delivery-note) { display: none; }
+  .app-shell.stitch-shell main .orders-page .order-reference-meta > .order-reference-delivery { order: 3; }
+  .app-shell.stitch-shell main .orders-page .order-reference-products small:has(.sku-value) { display: block; }
+  .app-shell.stitch-shell main .orders-page .order-reference-products > article { grid-template-columns: 56px minmax(0, 1fr) 16px; align-items: start; }
+  .app-shell.stitch-shell main .orders-page .order-reference-products > article::after { content: ""; align-self: center; justify-self: end; width: 8px; height: 8px; border-right: 2px solid var(--rv-color-muted); border-bottom: 2px solid var(--rv-color-muted); transform: rotate(-45deg); }
+}
+
+/* Order detail in the same spirit: flat full-width sections separated by a small gap, label left and value right. */
+@media (max-width: 760px) {
+  html body .order-detail-body { gap: 8px; padding: 0 0 24px; background: color-mix(in srgb, var(--rv-color-ink) 5%, var(--rv-color-surface)); }
+  html body .order-detail-card { gap: 4px; padding: 14px 16px; border: 0; border-radius: 0; }
+  html body .order-detail-card-head { margin-bottom: 6px; }
+  html body .order-detail-card-head h3 { font-size: 16px; }
+  html body .order-detail-facts > div { min-height: 36px; padding: 6px 0; border-top: 0; }
+  html body .order-detail-deadline { margin: 0 -16px 4px; padding: 10px 16px; border-radius: 0; }
+  html body .order-detail-products { gap: 16px; padding-top: 4px; }
+  html body .order-detail-actions { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  html body .order-detail-actions > .order-detail-primary { grid-column: 1 / -1; grid-row: 1; }
+  html body .order-detail-actions > .order-detail-secondary { grid-column: 1 / -1; grid-row: 2; }
+  html body .order-detail-actions:has(.order-detail-quick) > .order-detail-secondary { grid-column: 1; }
+  html body .order-detail-actions > .order-detail-quick { grid-column: 2; grid-row: 2; }
+}

@@ -772,6 +772,8 @@ function OrderReferenceRow({ item, selected, onSelect, openMenu, onMenuChange, o
     { key: 'invoice-info', label: 'Fatura Bilgileri', run: onInvoiceDetails },
     ...(invoiceNeedsAction ? [{ key: 'invoice-upload', label: 'Fatura Yükle', disabled: !invoiceCreationEnabled && !item.invoiceId, run: onInvoiceUpload }] : [])
   ]
+  const detailQuickAction = detailActions.find(action => action.key === 'process')
+  const detailMenuActions = detailActions.filter(action => action !== detailQuickAction)
   const detailSheet = detailOpen ? createPortal(<div className="order-detail-backdrop" role="presentation" onMouseDown={() => setDetailOpen(false)} onClick={event => event.stopPropagation()}>
     <section className="order-detail-sheet" role="dialog" aria-modal="true" aria-label={`Sipariş ${item.orderNumber} detayı`} onMouseDown={event => event.stopPropagation()}>
       <header><button type="button" className="order-detail-back" aria-label="Detayı kapat" onClick={() => setDetailOpen(false)}><UiIcon name="arrowLeft" size={20} /></button><h2>Sipariş Detayı</h2></header>
@@ -808,8 +810,9 @@ function OrderReferenceRow({ item, selected, onSelect, openMenu, onMenuChange, o
         </section>
       </div>
       <footer className="order-detail-actions">
-        {detailActionsOpen && detailActions.length > 0 && <div className="order-detail-actions-list" role="menu">{detailActions.map(action => <button type="button" role="menuitem" key={action.key} disabled={action.disabled} onClick={closeDetailThen(action.run)}>{action.label}</button>)}</div>}
-        {detailActions.length > 0 && <button type="button" className="order-detail-secondary" aria-haspopup="menu" aria-expanded={detailActionsOpen} onClick={() => setDetailActionsOpen(open => !open)}>İşlemler<UiIcon name="chevronDown" /></button>}
+        {detailActionsOpen && detailMenuActions.length > 0 && <div className="order-detail-actions-list" role="menu">{detailMenuActions.map(action => <button type="button" role="menuitem" key={action.key} disabled={action.disabled} onClick={closeDetailThen(action.run)}>{action.label}</button>)}</div>}
+        {detailMenuActions.length > 0 && <button type="button" className="order-detail-secondary" aria-haspopup="menu" aria-expanded={detailActionsOpen} onClick={() => setDetailActionsOpen(open => !open)}>İşlemler<UiIcon name="chevronDown" /></button>}
+        {detailQuickAction && <button type="button" className="order-detail-secondary order-detail-quick" disabled={detailQuickAction.disabled} onClick={closeDetailThen(detailQuickAction.run)}>{detailQuickAction.label}</button>}
         {detailPrimaryAction}
       </footer>
     </section>
