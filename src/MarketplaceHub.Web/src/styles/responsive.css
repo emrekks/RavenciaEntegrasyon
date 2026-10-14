@@ -1,0 +1,147 @@
+/* Phone and tablet layout for screens in the main bundle (dashboard, shell). Loaded by main.tsx
+   as its own file with media="(max-width: 1100px)", so desktop never applies it and the main
+   CSS budget is untouched. Feature pages keep their own *-responsive.css next to the page. */
+
+/* Page grids: a column may shrink below its widest content. Without this a single wide toolbar or
+   form row makes the whole page wider than the phone and it scrolls sideways. */
+@media (max-width: 1100px) {
+  .app-shell.stitch-shell main .content { grid-template-columns: minmax(0, 1fr); }
+  .app-shell.stitch-shell main .content > * { min-width: 0; }
+}
+
+/* Pagination: the record count and the page controls wrap instead of overflowing. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main :has(> .rv-pagination) { flex-wrap: wrap; align-items: stretch; row-gap: 8px; }
+  /* width rather than flex-basis: some wrappers stack in a column, where a 100% basis is a height */
+  .app-shell.stitch-shell main .rv-pagination { flex: none; width: 100%; max-width: 100%; justify-content: space-between; min-width: 0; margin-inline: 0; }
+}
+
+/* Popups on phones are bottom sheets: full width, rising from the bottom edge with rounded top
+   corners. Short dialogs stay short; long ones grow to 94% of the screen and scroll inside.
+   Footer buttons share the width and are easy to tap. html body raises the selectors above the
+   feature-specific popup sizes. */
+@media (max-width: 760px) {
+  html body :is(.rv-overlay, .workspace-modal-backdrop) { place-items: end center; padding: 0; }
+  html body :is(.rv-overlay > .rv-modal, .workspace-modal-backdrop > .workspace-modal) {
+    width: 100%;
+    max-width: none;
+    max-height: 94dvh;
+    margin: 0;
+    border-width: 1px 0 0;
+    border-radius: 16px 16px 0 0;
+  }
+  html body :is(.rv-modal, .workspace-modal) > header { padding: 14px 16px; }
+  html body :is(.rv-modal, .workspace-modal) > footer { flex-wrap: wrap; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); }
+  html body :is(.rv-modal, .workspace-modal) > footer > button { flex: 1 1 0; min-height: 44px; }
+  html body .rv-drawer { width: 100%; max-width: none; }
+}
+
+/* Dashboard: metrics two to a row instead of one, so the operational summary fits on a screen. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .dashboard .dashboard-operational-grid,
+  .app-shell.stitch-shell main .dashboard .dashboard-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+
+  /* Icon on the left of the count and label, centred on them. */
+  .app-shell.stitch-shell main .dashboard .dashboard-operational-card {
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-rows: auto;
+    align-items: center;
+    gap: 10px;
+    min-height: 0;
+    padding: 14px 12px;
+  }
+  .app-shell.stitch-shell main .dashboard .dashboard-operational-card > .dashboard-metric-icon { width: 30px; height: 30px; flex-basis: 30px; }
+  .app-shell.stitch-shell main .dashboard .dashboard-operational-card > .dashboard-metric-icon .ui-icon { width: 30px; height: 30px; }
+  .app-shell.stitch-shell main .dashboard .dashboard-operational-card > .ui-icon { display: none; }
+  .app-shell.stitch-shell main .dashboard .dashboard-operational-copy strong { font-size: 22px; line-height: 1.15; }
+  .app-shell.stitch-shell main .dashboard .dashboard-operational-copy > span { font-size: 13px; line-height: 1.3; }
+  /* The per-platform hover tooltip has no hover on touch screens. */
+  .app-shell.stitch-shell main .dashboard .dashboard-operational-platform-tooltip { display: none; }
+
+  .app-shell.stitch-shell main .dashboard .dashboard-summary-card { min-height: 0; padding: 14px; }
+  .app-shell.stitch-shell main .dashboard .dashboard-summary-card-head { font-size: 13px; }
+  .app-shell.stitch-shell main .dashboard .dashboard-summary-value-row { flex-wrap: wrap; gap: 4px 8px; }
+  .app-shell.stitch-shell main .dashboard .dashboard-summary-value-row > strong { font-size: 18px; line-height: 1.2; overflow-wrap: anywhere; }
+  /* The sparkline sits under the value instead of beside it. */
+  .app-shell.stitch-shell main .dashboard .dashboard-summary-card > svg { position: static; inset: auto; display: block; width: 100%; height: 30px; margin-top: 8px; transform: none; }
+}
+
+/* Tablets: three operational metrics and two performance cards to a row. */
+@media (min-width: 761px) and (max-width: 1100px) {
+  .app-shell.stitch-shell main .dashboard .dashboard-operational-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .app-shell.stitch-shell main .dashboard .dashboard-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Marketplace and cargo logos are dark artwork that vanishes on the dark cards. Without a badge,
+   the dark theme lightens them (invert, then turn the hue back so the orange stays orange); the
+   light theme shows them as they are. */
+@media (max-width: 1100px) {
+  :root:not([data-theme="light"]) .app-shell.stitch-shell main :is(.order-reference-row, .return-reference-row, .invoice-reference-row, .rv-question-card) :is(.order-platform-logo, .cargo-provider-icon) {
+    filter: invert(1) hue-rotate(180deg);
+  }
+}
+
+/* Page size control: a compact "[20] / sayfa" at the right of the list heading instead of a label,
+   a stretched select and a lone word spread across the row. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main :has(> .invoice-reference-page-size) { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+  .app-shell.stitch-shell main .invoice-reference-page-size { flex: 0 0 auto; justify-content: flex-end; gap: 6px; width: auto; font-size: 0; }
+  .app-shell.stitch-shell main .invoice-reference-page-size > select { width: auto; min-width: 72px; min-height: 36px; font-size: 14px; }
+  .app-shell.stitch-shell main .invoice-reference-page-size > span { display: none; }
+  .app-shell.stitch-shell main .invoice-reference-page-size::after { content: "/ sayfa"; color: var(--rv-color-muted); font-size: 13px; }
+}
+/* Settings on phones: description above its buttons (side by side they squeezed the text into a
+   narrow column), forms in one column, sticky save bars with stacked full-width buttons. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .security-authenticator-card { flex-direction: column; align-items: stretch; gap: 14px; }
+  .app-shell.stitch-shell main .security-authenticator-card > button { width: 100%; min-height: 44px; }
+  .app-shell.stitch-shell main .security-sessions-card .panel-title { flex-direction: column; align-items: stretch; gap: 12px; }
+  .app-shell.stitch-shell main .security-sessions-card .session-bulk-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .app-shell.stitch-shell main .security-sessions-card .session-bulk-actions > button { width: 100%; min-height: 44px; }
+  .app-shell.stitch-shell main .shipping-settings-grid { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .app-shell.stitch-shell main .shipping-settings-grid > * { grid-column: auto; min-width: 0; }
+  .app-shell.stitch-shell main .settings-sticky-actions { flex-direction: column; align-items: stretch; gap: 10px; }
+  .app-shell.stitch-shell main .settings-sticky-actions > :is(button, .rv-button) { width: 100%; min-height: 44px; }
+}
+/* Page heading buttons on phones sit two to a row instead of one per row, so the page starts
+   sooner; an odd one out takes the full row. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .page-heading > .page-heading-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+  }
+  .app-shell.stitch-shell main .page-heading > .page-heading-actions > * {
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    padding-inline: 10px;
+    white-space: normal;
+    text-align: center;
+    line-height: 1.25;
+  }
+  .app-shell.stitch-shell main .page-heading > .page-heading-actions > :last-child:nth-child(odd) { grid-column: 1 / -1; }
+}
+/* Revenue chart on phones: the 652px drawing used to shrink to the screen, taking its 13px axis
+   labels down to about 6px and crowding the dates. It keeps a 600px width instead and scrolls
+   sideways inside its card, the date axis moving with it. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .dashboard .dashboard-performance-chart { overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; }
+  .app-shell.stitch-shell main .dashboard .dashboard-performance-chart > svg,
+  .app-shell.stitch-shell main .dashboard .dashboard-performance-chart > .dashboard-performance-x-axis { min-width: 600px; }
+  .app-shell.stitch-shell main .dashboard .dashboard-performance-chart > svg { height: auto; }
+}
+/* Shipping label window on phones: the 100mm sticker preview (378px) plus its padding pushed the
+   window past the screen, hiding the close button and half of Yazdır. On screen only, the preview
+   is scaled to fit and the footer puts its note above the two buttons; printing is unaffected
+   because these rules are screen-only. Popup grids may also shrink below their content. */
+@media screen and (max-width: 760px) {
+  html body :is(.rv-overlay, .workspace-modal-backdrop) { grid-template-columns: minmax(0, 1fr); }
+  html body .shipping-label-modal { grid-template-columns: minmax(0, 1fr); }
+  html body .shipping-label-modal .shipping-label-preview-wrap { padding: 12px; overflow: hidden; justify-items: center; }
+  html body .shipping-label-modal.format-sticker .shipping-label-print-surface { zoom: 0.82; }
+  html body .shipping-label-modal.format-a4 .shipping-label-print-surface { zoom: 0.42; }
+  html body .shipping-label-modal > footer.shipping-label-modal-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  html body .shipping-label-modal > footer.shipping-label-modal-actions > :first-child { grid-column: 1 / -1; }
+}

@@ -1,4 +1,4 @@
-﻿namespace MarketplaceHub.Application;
+namespace MarketplaceHub.Application;
 
 public sealed record ServiceError(string Code, string Message, int Status, IReadOnlyDictionary<string, string[]>? FieldErrors = null);
 public sealed record ServiceResult<T>(T? Value, ServiceError? Error)
@@ -8,7 +8,7 @@ public sealed record ServiceResult<T>(T? Value, ServiceError? Error)
     public static ServiceResult<T> Fail(string code, string message, int status, IReadOnlyDictionary<string, string[]>? fields = null) => new(default, new(code, message, status, fields));
 }
 
-public sealed record PageResult<T>(IReadOnlyList<T> Items, string? NextCursor, bool HasMore);
+public sealed record PageResult<T>(IReadOnlyList<T> Items, string? NextCursor, bool HasMore, int? TotalCount = null);
 public sealed record CategoryView(Guid Id, Guid? ParentId, string Name, string Path, int Depth, bool IsLeaf, bool IsActive, long Version);
 public sealed record BrandView(Guid Id, string Name, bool IsActive, long Version);
 public sealed record AttributeValueView(Guid Id, string Value, int SortOrder, bool IsActive);
@@ -26,6 +26,7 @@ public sealed record ProductVariantView(
     decimal? Height = null,
     decimal? Length = null,
     decimal? Desi = null,
+    decimal? CostPrice = null,
     decimal OnHand = 0,
     decimal Available = 0,
     long? InventoryVersion = null,
@@ -40,10 +41,37 @@ public sealed record ProductVariantView(
     string? VatInclusion = null,
     string? RoundingMode = null,
     decimal? SafetyStock = null,
-    IReadOnlyList<string>? MediaUrls = null);
+    IReadOnlyList<string>? MediaUrls = null,
+    IReadOnlyDictionary<string, string>? Options = null,
+    IReadOnlyList<ProductVariantPlatformStatusView>? PlatformStatuses = null,
+    decimal? DefaultListPrice = null,
+    decimal? DefaultSalePrice = null,
+    IReadOnlyList<ProductAttributeAssignmentView>? Attributes = null);
 public sealed record ProductAttributeAssignmentView(Guid AttributeId, Guid? ValueId, string? TextValue, decimal? NumberValue, bool? BooleanValue, int SortOrder);
 public sealed record ProductOptionValueView(Guid Id, string Label);
 public sealed record ProductOptionView(Guid Id, string Label, IReadOnlyList<ProductOptionValueView> Values);
+public sealed record ProductVariantPlatformStatusView(
+    string Platform,
+    string PlatformCode,
+    bool IsLinked,
+    string Status = "UNLINKED",
+    Guid? ConnectionId = null,
+    Guid? OfferId = null,
+    decimal? ListPrice = null,
+    decimal? SalePrice = null,
+    string? Currency = null,
+    decimal? VatRate = null,
+    string? VatInclusion = null,
+    string? RoundingMode = null,
+    decimal? SafetyStock = null,
+    long? OfferVersion = null);
+public sealed record ProductPlatformStatusView(
+    string Platform,
+    string Status,
+    int MatchedVariantCount = 0,
+    int VariantCount = 0,
+    bool IsChecking = false,
+    string PlatformCode = "TRENDYOL");
 public sealed record ProductView(
     Guid Id,
     string Title,
@@ -62,7 +90,24 @@ public sealed record ProductView(
     IReadOnlyList<string>? ActivePlatforms = null,
     IReadOnlyList<ProductAttributeAssignmentView>? Attributes = null,
     IReadOnlyList<ProductOptionView>? Options = null,
-    IReadOnlyList<string>? MediaUrls = null);
+    IReadOnlyList<string>? MediaUrls = null,
+    IReadOnlyList<string>? FamilyMediaUrls = null,
+    IReadOnlyList<ProductPlatformStatusView>? PlatformStatuses = null,
+    string? CategoryPath = null,
+    IReadOnlyList<ProductFamilyMediaView>? FamilyMediaItems = null,
+    bool HasCustomMediaOrder = false,
+    decimal? DefaultListPrice = null,
+    decimal? DefaultSalePrice = null)
+{
+    public IReadOnlyList<string>? FamilyOrderedMediaUrls { get; init; }
+}
+public sealed record ProductFamilyMediaView(string Url, IReadOnlyList<Guid> MediaIds, IReadOnlyList<string> SourceProductTitles);
+public sealed record ProductSummaryView(
+    int TotalCount,
+    int ActiveCount,
+    int OutOfStockCount,
+    int LowStockCount,
+    IReadOnlyList<string> Platforms);
 public sealed record ListingProfileView(Guid Id, Guid ProductId, Guid ConnectionId, string? TitleOverride, string? DescriptionOverride, string? ExternalCategoryId, string? ExternalBrandId, int? DeliveryTimeDays, bool Enabled, string DesiredStatus, string ActualStatus, long Version);
 public sealed record PublicationLineView(Guid VariantId, string Sku, string? Barcode, string DesiredStatus, string ActualStatus, string? RejectionCode);
 public sealed record PublicationStatusView(Guid ProductId, Guid ConnectionId, Guid? ProfileId, string? DesiredStatus, string? ActualStatus, string? LastRejectionCode, Guid? LastJobId, string? LastJobStatus, IReadOnlyList<PublicationLineView> Lines);
@@ -72,15 +117,19 @@ public sealed record UpdateCategoryCommand(string Name, Guid? ParentId, bool IsA
 public sealed record CreateBrandCommand(string Name);
 public sealed record UpdateBrandCommand(string Name, bool IsActive);
 public sealed record CreateAttributeValueCommand(string Value, int SortOrder);
+public sealed record UpdateAttributeValueCommand(string Value, int SortOrder);
+public sealed record ReorderAttributeValuesCommand(IReadOnlyList<Guid> ValueIds);
 public sealed record CreateAttributeCommand(string Code, string Name, string DataType, string? SelectionMode, string? Unit, IReadOnlyList<CreateAttributeValueCommand> Values);
 public sealed record AttributeRequirementCommand(Guid AttributeId, bool IsRequired, bool AllowsCustomValue, int DisplayOrder, string Role = "ATTRIBUTE");
-public sealed record CategoryAttributeRequirementView(Guid AttributeId, bool IsRequired, bool AllowsCustomValue, int DisplayOrder, AttributeView Attribute, string Role = "ATTRIBUTE");
-public sealed record CreateVariantCommand(string Sku, string? Barcode, string? ModelCode, IReadOnlyDictionary<string, string>? Options = null, decimal? Weight = null, decimal? Width = null, decimal? Height = null, decimal? Length = null, decimal? Desi = null, IReadOnlyList<ProductAttributeCommand>? Attributes = null);
-public sealed record UpdateVariantCommand(Guid Id, string Sku, string? Barcode, string? ModelCode);
+public sealed record CategoryAttributeRequirementView(Guid AttributeId, bool IsRequired, bool AllowsCustomValue, int DisplayOrder, AttributeView Attribute, string Role = "ATTRIBUTE", bool IsWebColor = false);
+public sealed record CreateVariantCommand(string Sku, string? Barcode, string? ModelCode, IReadOnlyDictionary<string, string>? Options = null, decimal? Weight = null, decimal? Width = null, decimal? Height = null, decimal? Length = null, decimal? Desi = null, IReadOnlyList<ProductAttributeCommand>? Attributes = null, int SortOrder = 0, decimal? CostPrice = null, decimal? DefaultListPrice = null, decimal? DefaultSalePrice = null);
+public sealed record UpdateVariantCommand(Guid Id, string Sku, string? Barcode, string? ModelCode, int SortOrder = 0, IReadOnlyDictionary<string, string>? Options = null, IReadOnlyList<ProductAttributeCommand>? Attributes = null, decimal? CostPrice = null, decimal? DefaultListPrice = null, decimal? DefaultSalePrice = null);
 public sealed record ProductAttributeCommand(Guid AttributeId, Guid? ValueId, string? TextValue, decimal? NumberValue, bool? BooleanValue, int SortOrder);
-public sealed record CreateProductCommand(string Title, string Description, Guid? BrandId, Guid? CategoryId, IReadOnlyList<CreateVariantCommand> Variants, IReadOnlyList<ProductAttributeCommand>? Attributes = null, string? Status = null);
+public sealed record CreateProductCommand(string Title, string Description, Guid? BrandId, Guid? CategoryId, IReadOnlyList<CreateVariantCommand> Variants, IReadOnlyList<ProductAttributeCommand>? Attributes = null, string? Status = null, decimal? DefaultListPrice = null, decimal? DefaultSalePrice = null);
+public sealed record BulkProductStatusCommand(IReadOnlyList<Guid> ProductIds, string Status);
+public sealed record BulkProductDeleteCommand(IReadOnlyList<Guid> ProductIds);
 // Variant ekleme append-only'dir: envanter veya dış listeye bağlı mevcut satış satırları sessizce silinmez.
-public sealed record UpdateProductCommand(string Title, string Description, Guid? BrandId, Guid? CategoryId, IReadOnlyList<ProductAttributeCommand>? Attributes = null, IReadOnlyList<CreateVariantCommand>? VariantsToCreate = null, IReadOnlyList<UpdateVariantCommand>? VariantUpdates = null, string? Status = null);
+public sealed record UpdateProductCommand(string Title, string Description, Guid? BrandId, Guid? CategoryId, IReadOnlyList<ProductAttributeCommand>? Attributes = null, IReadOnlyList<CreateVariantCommand>? VariantsToCreate = null, IReadOnlyList<UpdateVariantCommand>? VariantUpdates = null, string? Status = null, decimal? DefaultListPrice = null, decimal? DefaultSalePrice = null, IReadOnlyList<Guid>? VariantIdsToDelete = null);
 public sealed record UpsertListingProfileCommand(string? TitleOverride, string? DescriptionOverride, string? ExternalCategoryId, string? ExternalBrandId, int? DeliveryTimeDays, bool Enabled);
 
 public interface ICatalogService
@@ -97,11 +146,19 @@ public interface ICatalogService
     Task<ServiceResult<AttributeView>> CreateAttributeAsync(Guid tenantId, CreateAttributeCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<AttributeView>> DeactivateAttributeAsync(Guid tenantId, Guid attributeId, long expectedVersion, CancellationToken cancellationToken);
     Task<ServiceResult<AttributeView>> AddAttributeValuesAsync(Guid tenantId, Guid attributeId, IReadOnlyList<CreateAttributeValueCommand> values, CancellationToken cancellationToken);
+    Task<ServiceResult<AttributeView>> UpdateAttributeValueAsync(Guid tenantId, Guid attributeId, Guid valueId, long expectedVersion, UpdateAttributeValueCommand command, CancellationToken cancellationToken);
+    Task<ServiceResult<AttributeView>> ReorderAttributeValuesAsync(Guid tenantId, Guid attributeId, long expectedVersion, ReorderAttributeValuesCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<AttributeView>> DeactivateAttributeValueAsync(Guid tenantId, Guid attributeId, Guid valueId, CancellationToken cancellationToken);
+    Task<ServiceResult<IReadOnlyList<Guid>>> UsedAttributeValueIdsAsync(Guid tenantId, Guid attributeId, CancellationToken cancellationToken);
     Task<ServiceResult<IReadOnlyList<CategoryAttributeRequirementView>>> GetRequirementsAsync(Guid tenantId, Guid categoryId, CancellationToken cancellationToken);
     Task<ServiceResult<IReadOnlyList<AttributeRequirementCommand>>> ReplaceRequirementsAsync(Guid tenantId, Guid categoryId, long expectedVersion, IReadOnlyList<AttributeRequirementCommand> requirements, CancellationToken cancellationToken);
-    Task<PageResult<ProductView>> ListProductsAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken);
+    Task<PageResult<ProductView>> ListProductsAsync(Guid tenantId, int limit, string? after, string? status, string? search, string? platform, string? stock, CancellationToken cancellationToken);
+    Task<ProductSummaryView> ProductSummaryAsync(Guid tenantId, CancellationToken cancellationToken);
+    Task<ServiceResult<int>> BulkSetStatusAsync(Guid tenantId, BulkProductStatusCommand command, CancellationToken cancellationToken);
+    Task<ServiceResult<int>> DeleteProductAsync(Guid tenantId, Guid id, long expectedVersion, CancellationToken cancellationToken);
+    Task<ServiceResult<int>> BulkDeleteProductsAsync(Guid tenantId, BulkProductDeleteCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<ProductView>> CreateProductAsync(Guid tenantId, CreateProductCommand command, CancellationToken cancellationToken);
+    Task<ServiceResult<ProductView>> DuplicateProductAsync(Guid tenantId, Guid productId, CancellationToken cancellationToken);
     Task<ServiceResult<ProductView>> GetProductAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
     Task<ServiceResult<ProductView>> UpdateProductAsync(Guid tenantId, Guid id, long expectedVersion, UpdateProductCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<ProductView>> ArchiveProductAsync(Guid tenantId, Guid id, long expectedVersion, CancellationToken cancellationToken);
@@ -110,6 +167,7 @@ public interface ICatalogService
     Task<ServiceResult<Guid>> EnqueuePublicationAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueProductUpdateAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueProductArchiveAsync(Guid tenantId, Guid productId, Guid connectionId, bool archived, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
+    Task<ServiceResult<Guid>> RequestPublicationStatusRefreshAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken);
     Task<ServiceResult<PublicationStatusView>> GetPublicationStatusAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken);
 }
 
@@ -135,7 +193,7 @@ public interface IImportService
     Task<ServiceResult<string>> BuildErrorsCsvAsync(Guid tenantId, Guid sessionId, CancellationToken cancellationToken);
 }
 
-public sealed record InventoryItemView(Guid Id, Guid VariantId, string Sku, string LocationCode, decimal OnHand, decimal Reserved, decimal Available, long ProjectionVersion, DateTimeOffset? ReconciledAt, long Version);
+public sealed record InventoryItemView(Guid Id, Guid VariantId, string Sku, string LocationCode, decimal OnHand, decimal Reserved, decimal Available, long ProjectionVersion, DateTimeOffset? ReconciledAt, long Version, decimal? ObservedRemoteQuantity = null, DateTimeOffset? ObservedRemoteAt = null);
 public sealed record LedgerEntryView(Guid Id, string MovementType, decimal QuantityDelta, string SourceType, string SourceId, DateTimeOffset OccurredAt, string CorrelationId);
 public sealed record StockAdjustmentCommand(decimal QuantityDelta, string Reason, string SourceEventId);
 public sealed record ChannelOfferView(Guid Id, Guid ConnectionId, Guid VariantId, decimal ListPrice, decimal SalePrice, string Currency, decimal VatRate, string VatInclusion, string RoundingMode, decimal SafetyStock, string Status, long PriceVersion, long Version);
@@ -152,6 +210,7 @@ public interface IInventoryService
     Task<ServiceResult<ChannelOfferView>> UpdateOfferAsync(Guid tenantId, Guid userId, Guid id, long expectedVersion, UpdateChannelOfferCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> ValidateExternalSyncAsync(Guid tenantId, string operation, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueuePriceInventorySyncAsync(Guid tenantId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
+    Task<ServiceResult<Guid>> EnqueueProductPriceInventorySyncAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
 }
 
 public interface IImportJobProcessor
@@ -161,14 +220,44 @@ public interface IImportJobProcessor
 
 public sealed record ReferenceItemView(string ExternalId, string? ParentExternalId, string Name, string Path, int Depth, bool IsLeaf, bool IsActive, bool? IsRequired, bool? AllowsCustomValue, bool? AllowsMultipleValues);
 public sealed record ReferenceDataView(Guid SnapshotId, string ResourceType, DateTimeOffset FetchedAt, IReadOnlyList<ReferenceItemView> Items);
-public sealed record CatalogMappingView(Guid Id, Guid ConnectionId, Guid SnapshotId, Guid LocalId, string ScopeExternalId, string ExternalId, string Status, DateTimeOffset? VerifiedAt, long Version);
-public sealed record UpsertCatalogMappingCommand(Guid ConnectionId, Guid SnapshotId, string ExternalId, string Status, string Role = "ATTRIBUTE");
+// Source: MANUAL or TEMPLATE for attribute and value mappings (filled from another category's
+// decision), null for category and brand mappings.
+public sealed record CatalogMappingView(Guid Id, Guid ConnectionId, Guid SnapshotId, Guid LocalId, string ScopeExternalId, string ExternalId, string Status, DateTimeOffset? VerifiedAt, long Version, int? MissingRequiredAttributeCount = null, string? Source = null);
+// UpdateTemplate: also use this decision for the connection's other categories (the default);
+// false keeps it to this category only.
+public sealed record UpsertCatalogMappingCommand(Guid ConnectionId, Guid SnapshotId, string ExternalId, string Status, string Role = "ATTRIBUTE", bool UpdateTemplate = true);
+
+public sealed record MappingTemplateFillView(int Attributes, int Values);
+
+// Names a panel attribute and its values carry on the other marketplace connections (from their
+// templates), used as extra hints when suggesting matches on another marketplace.
+public sealed record MarketplaceNameHintsView(IReadOnlyList<string> AttributeNames, IReadOnlyDictionary<Guid, IReadOnlyList<string>> ValueNames);
+
+// A value sent for a marketplace attribute whenever the product has none (e.g. Menşei = TR).
+public sealed record ConnectionAttributeDefaultView(string ExternalAttributeId, string AttributeName, string? ExternalValueId, string? ValueName, string? CustomValue, DateTimeOffset UpdatedAt, long Version);
+public sealed record UpsertConnectionAttributeDefaultCommand(string AttributeName, string? ExternalValueId, string? ValueName, string? CustomValue);
+
+// Value mappings to review. SameCategory: one panel value mapped to several marketplace values in
+// one category (only one can be sent). CrossCategory: one panel value mapped to different
+// marketplace values in different categories of the same marketplace attribute.
+public sealed record MappingConflictOptionView(string ExternalId, string Name, long Version, DateTimeOffset? VerifiedAt, int Categories);
+public sealed record MappingConflictView(string ScopeExternalId, string CategoryName, string AttributeName, Guid LocalValueId, string LocalValueName, IReadOnlyList<MappingConflictOptionView> Options, string? TemplateExternalId);
+public sealed record MappingConflictsView(IReadOnlyList<MappingConflictView> SameCategory, IReadOnlyList<MappingConflictView> CrossCategory);
 
 public interface IReferenceDataService
 {
+    Task<ServiceResult<MappingConflictsView>> ListMappingConflictsAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken);
+    Task<ServiceResult<MarketplaceNameHintsView>> MarketplaceNameHintsAsync(Guid tenantId, Guid localAttributeId, Guid targetConnectionId, CancellationToken cancellationToken);
+    // For every panel attribute: the marketplace attribute names it is mapped to on the other connections.
+    Task<ServiceResult<IReadOnlyDictionary<Guid, IReadOnlyList<string>>>> AttributeNameHintsAsync(Guid tenantId, Guid targetConnectionId, CancellationToken cancellationToken);
+    Task<ServiceResult<IReadOnlyList<ConnectionAttributeDefaultView>>> ListAttributeDefaultsAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken);
+    Task<ServiceResult<ConnectionAttributeDefaultView>> UpsertAttributeDefaultAsync(Guid tenantId, Guid connectionId, string externalAttributeId, UpsertConnectionAttributeDefaultCommand command, CancellationToken cancellationToken);
+    Task<ServiceResult<bool>> DeleteAttributeDefaultAsync(Guid tenantId, Guid connectionId, string externalAttributeId, CancellationToken cancellationToken);
+    // Fills a mapped marketplace category from the decisions made for the connection's other categories.
+    Task<ServiceResult<MappingTemplateFillView>> FillFromTemplatesAsync(Guid tenantId, Guid connectionId, string categoryExternalId, CancellationToken cancellationToken);
     Task<ServiceResult<ReferenceDataView>> ListAsync(Guid tenantId, Guid connectionId, string resourceType, string? parentExternalId, CancellationToken cancellationToken);
     Task<ServiceResult<IReadOnlyList<CatalogMappingView>>> ListMappingsAsync(Guid tenantId, string mappingType, Guid connectionId, string? scopeExternalId, CancellationToken cancellationToken);
-    Task<ServiceResult<CatalogMappingView?>> GetMappingAsync(Guid tenantId, string mappingType, Guid localId, Guid connectionId, string? scopeExternalId, CancellationToken cancellationToken);
+    Task<ServiceResult<CatalogMappingView?>> GetMappingAsync(Guid tenantId, string mappingType, Guid localId, Guid connectionId, string? scopeExternalId, string? externalId, CancellationToken cancellationToken);
     Task<ServiceResult<CatalogMappingView>> UpsertMappingAsync(Guid tenantId, string mappingType, Guid localId, long? expectedVersion, UpsertCatalogMappingCommand command, CancellationToken cancellationToken);
-    Task<ServiceResult<bool>> DeleteMappingAsync(Guid tenantId, string mappingType, Guid localId, Guid connectionId, string? scopeExternalId, long expectedVersion, CancellationToken cancellationToken);
+    Task<ServiceResult<bool>> DeleteMappingAsync(Guid tenantId, string mappingType, Guid localId, Guid connectionId, string? scopeExternalId, string? externalId, long expectedVersion, CancellationToken cancellationToken);
 }

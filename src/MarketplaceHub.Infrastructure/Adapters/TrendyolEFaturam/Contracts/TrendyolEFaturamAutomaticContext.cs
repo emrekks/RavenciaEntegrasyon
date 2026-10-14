@@ -22,7 +22,10 @@ public static class TrendyolCarrierCatalog
         new("HOROZMP", "Horoz Kargo Marketplace", "4630097122"),
         new("CEVAMP", "CEVA Marketplace", "8450298557"),
         new("YKMP", "Yurtiçi Kargo Marketplace", "3130557669"),
-        new("ARASMP", "Aras Kargo Marketplace", "0720039666")
+        new("ARASMP", "Aras Kargo Marketplace", "0720039666"),
+        // HepsiJet is operated by D-Fast. Its VKN is published in the Ministry of
+        // Transport's TIO operator list; Hepsiburada sends the provider name as HepsiJet.
+        new("HEPSIJET", "D FAST DAĞITIM HİZMETLERİ VE LOJİSTİK ANONİM ŞİRKETİ", "2650701090")
     ];
 
     private static readonly IReadOnlyDictionary<string, EfaturamCarrierIdentity> Index = BuildIndex();
@@ -54,6 +57,9 @@ public static class TrendyolCarrierCatalog
         Add(result, "DHL eCommerce", Items.Single(x => x.Code == "DHLECOMMP"));
         Add(result, "CEVA", Items.Single(x => x.Code == "CEVAMP"));
         Add(result, "Ceva Tedarik", Items.Single(x => x.Code == "CEVATEDARIK"));
+        Add(result, "HepsiJet", Items.Single(x => x.Code == "HEPSIJET"));
+        Add(result, "HepsiJET", Items.Single(x => x.Code == "HEPSIJET"));
+        Add(result, "HepsiJet Kargo", Items.Single(x => x.Code == "HEPSIJET"));
         return result;
     }
 

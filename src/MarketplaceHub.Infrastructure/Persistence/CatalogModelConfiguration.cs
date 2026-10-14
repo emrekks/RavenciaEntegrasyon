@@ -19,6 +19,7 @@ internal static class CatalogModelConfiguration
         {
             entity.ToTable("products", "catalog"); entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id });
             entity.Property(x => x.Title).HasMaxLength(320); entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(24);
+            entity.Property(x => x.DefaultListPrice).HasPrecision(19, 4); entity.Property(x => x.DefaultSalePrice).HasPrecision(19, 4);
             entity.Property(x => x.Version).IsConcurrencyToken(); entity.HasIndex(x => new { x.TenantId, x.Status, x.UpdatedAt });
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<Category>().WithMany().HasForeignKey(x => new { x.TenantId, x.CategoryId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
@@ -56,6 +57,7 @@ internal static class CatalogModelConfiguration
         builder.Entity<CategoryAttributeRequirement>(entity =>
         {
             entity.ToTable("category_attribute_requirements", "catalog"); entity.HasKey(x => x.Id); entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.Property(x => x.IsPanelScoped).HasDefaultValue(false);
             entity.Property(x => x.Role).HasMaxLength(24).HasDefaultValue("ATTRIBUTE");
             entity.HasIndex(x => new { x.TenantId, x.CategoryId, x.AttributeId }).IsUnique();
             entity.HasOne<Category>().WithMany().HasForeignKey(x => new { x.TenantId, x.CategoryId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
@@ -64,10 +66,11 @@ internal static class CatalogModelConfiguration
         builder.Entity<ProductVariant>(entity =>
         {
             entity.ToTable("product_variants", "catalog"); entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id });
+            entity.Property(x => x.SortOrder).HasDefaultValue(0);
             entity.Property(x => x.Sku).HasMaxLength(160); entity.Property(x => x.SkuNormalized).HasMaxLength(160); entity.Property(x => x.Barcode).HasMaxLength(160); entity.Property(x => x.BarcodeNormalized).HasMaxLength(160);
             entity.Property(x => x.OptionSignature).HasMaxLength(512); entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(24); entity.Property(x => x.Version).IsConcurrencyToken();
-            entity.Property(x => x.Weight).HasPrecision(19, 4); entity.Property(x => x.Width).HasPrecision(19, 4); entity.Property(x => x.Height).HasPrecision(19, 4); entity.Property(x => x.Length).HasPrecision(19, 4); entity.Property(x => x.Desi).HasPrecision(19, 4);
-            entity.HasIndex(x => new { x.TenantId, x.SkuNormalized }).IsUnique(); entity.HasIndex(x => new { x.TenantId, x.BarcodeNormalized }).IsUnique();
+            entity.Property(x => x.Weight).HasPrecision(19, 4); entity.Property(x => x.Width).HasPrecision(19, 4); entity.Property(x => x.Height).HasPrecision(19, 4); entity.Property(x => x.Length).HasPrecision(19, 4); entity.Property(x => x.Desi).HasPrecision(19, 4); entity.Property(x => x.CostPrice).HasPrecision(19, 4); entity.Property(x => x.DefaultListPrice).HasPrecision(19, 4); entity.Property(x => x.DefaultSalePrice).HasPrecision(19, 4);
+            entity.HasIndex(x => new { x.TenantId, x.ProductId, x.SortOrder }); entity.HasIndex(x => new { x.TenantId, x.SkuNormalized }).IsUnique(); entity.HasIndex(x => new { x.TenantId, x.BarcodeNormalized }).IsUnique();
             entity.HasOne<Product>().WithMany().HasForeignKey(x => new { x.TenantId, x.ProductId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
         });
         builder.Entity<ProductAttributeAssignment>(entity =>
@@ -114,7 +117,7 @@ internal static class CatalogModelConfiguration
         {
             entity.ToTable("platform_connections", "integration"); entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id });
             entity.Property(x => x.PlatformCode).HasMaxLength(64); entity.Property(x => x.Environment).HasMaxLength(24); entity.Property(x => x.DisplayName).HasMaxLength(160); entity.Property(x => x.ExternalStoreId).HasMaxLength(256); entity.Property(x => x.Status).HasMaxLength(24); entity.Property(x => x.ApiVersion).HasMaxLength(64);
-            entity.HasIndex(x => x.PublicId).IsUnique(); entity.HasIndex(x => new { x.TenantId, x.PlatformCode, x.Environment, x.ExternalStoreId }).IsUnique(); entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.HasIndex(x => x.PublicId).IsUnique(); entity.HasIndex(x => new { x.TenantId, x.PlatformCode, x.Environment, x.ExternalStoreId }).IsUnique().HasFilter("\"Status\" <> 'DELETED'"); entity.Property(x => x.Version).IsConcurrencyToken();
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
         });
         builder.Entity<ReferenceSnapshot>(entity =>
@@ -131,7 +134,7 @@ internal static class CatalogModelConfiguration
         });
         builder.Entity<CatalogMapping>().UseTpcMappingStrategy();
         ConfigureMapping<CategoryMapping>(builder, "category_mappings"); ConfigureMapping<BrandMapping>(builder, "brand_mappings");
-        ConfigureMapping<AttributeMapping>(builder, "attribute_mappings"); ConfigureMapping<AttributeValueMapping>(builder, "attribute_value_mappings");
+        ConfigureAttributeMapping(builder); ConfigureAttributeValueMapping(builder);
         builder.Entity<MarketplaceProductLink>(entity =>
         {
             entity.ToTable("marketplace_product_links", "catalog"); entity.HasKey(x => x.Id); entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ExternalId }).IsUnique(); entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ProductId }).IsUnique(); entity.Property(x => x.LastImportedPayloadHash).HasMaxLength(128); entity.Property(x => x.SyncStatus).HasMaxLength(32).HasDefaultValue("SYNCED"); entity.Property(x => x.DirtyFieldsJson).HasColumnType("jsonb"); entity.Property(x => x.LastError).HasMaxLength(1024); entity.Property(x => x.Version).IsConcurrencyToken();
@@ -171,6 +174,31 @@ internal static class CatalogModelConfiguration
 
     private static void ConfigureImports(ModelBuilder builder)
     {
+        builder.Entity<ProductImportSession>(entity =>
+        {
+            entity.ToTable("product_import_sessions", "catalog"); entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id });
+            entity.Property(x => x.Phase).HasMaxLength(24); entity.Property(x => x.NextCursor).HasMaxLength(2048); entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.HasIndex(x => new { x.TenantId, x.JobId }).IsUnique(); entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.Phase });
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<ProductImportStagingRecord>(entity =>
+        {
+            entity.ToTable("product_import_staging_records", "catalog"); entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id });
+            entity.Property(x => x.ModelKey).HasMaxLength(256); entity.Property(x => x.ExternalProductId).HasMaxLength(256); entity.Property(x => x.SnapshotHash).HasMaxLength(128); entity.Property(x => x.SnapshotJson).HasColumnType("jsonb"); entity.Property(x => x.State).HasMaxLength(16); entity.Property(x => x.ErrorSummary).HasMaxLength(2_000);
+            entity.HasIndex(x => new { x.TenantId, x.JobId, x.State, x.ReceivedOrder }); entity.HasIndex(x => new { x.TenantId, x.JobId, x.ModelKey, x.State });
+            entity.HasIndex(x => new { x.TenantId, x.JobId, x.ExternalProductId, x.SnapshotHash }).IsUnique();
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<CatalogStructureRun>(entity =>
+        {
+            entity.ToTable("catalog_structure_runs", "catalog"); entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id });
+            entity.Property(x => x.Mode).HasMaxLength(16); entity.Property(x => x.Status).HasMaxLength(16); entity.Property(x => x.ErrorSummary).HasMaxLength(1000); entity.Property(x => x.ReportJson).HasColumnType("jsonb"); entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.CreatedAt });
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
+        });
         builder.Entity<ImportSession>(entity =>
         {
             entity.ToTable("import_sessions", "catalog"); entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id }); entity.Property(x => x.SourceType).HasConversion(value => value.ToString().ToUpperInvariant(), value => Enum.Parse<ImportSourceType>(value, true)).HasMaxLength(24); entity.Property(x => x.Status).HasConversion(value => ImportStatusWire(value), value => ParseImportStatus(value)).HasMaxLength(32); entity.Property(x => x.Version).IsConcurrencyToken(); entity.HasIndex(x => new { x.TenantId, x.Status });
@@ -217,7 +245,7 @@ internal static class CatalogModelConfiguration
         });
         builder.Entity<InventoryItem>(entity =>
         {
-            entity.ToTable("inventory_items", "inventory", table => table.HasCheckConstraint("ck_inventory_items_projection", "\"Reserved\" >= 0 AND \"Available\" = greatest(0,\"OnHand\"-\"Reserved\")")); entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id }); entity.Property(x => x.LocationCode).HasMaxLength(64); entity.Property(x => x.OnHand).HasPrecision(19, 4); entity.Property(x => x.Reserved).HasPrecision(19, 4); entity.Property(x => x.Available).HasPrecision(19, 4); entity.Property(x => x.Version).IsConcurrencyToken(); entity.HasIndex(x => new { x.TenantId, x.VariantId, x.LocationCode }).IsUnique(); entity.HasIndex(x => new { x.TenantId, x.Available }); entity.HasOne<ProductVariant>().WithMany().HasForeignKey(x => new { x.TenantId, x.VariantId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
+            entity.ToTable("inventory_items", "inventory", table => table.HasCheckConstraint("ck_inventory_items_projection", "\"Reserved\" >= 0 AND \"Available\" = greatest(0,\"OnHand\"-\"Reserved\")")); entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id }); entity.Property(x => x.LocationCode).HasMaxLength(64); entity.Property(x => x.OnHand).HasPrecision(19, 4); entity.Property(x => x.Reserved).HasPrecision(19, 4); entity.Property(x => x.Available).HasPrecision(19, 4); entity.Property(x => x.ObservedRemoteQuantity).HasPrecision(19, 4); entity.Property(x => x.Version).IsConcurrencyToken(); entity.HasIndex(x => new { x.TenantId, x.VariantId, x.LocationCode }).IsUnique(); entity.HasIndex(x => new { x.TenantId, x.Available }); entity.HasIndex(x => new { x.TenantId, x.ObservedRemoteAt }); entity.HasOne<ProductVariant>().WithMany().HasForeignKey(x => new { x.TenantId, x.VariantId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
         });
         builder.Entity<StockLedgerEntry>(entity =>
         {
@@ -231,6 +259,10 @@ internal static class CatalogModelConfiguration
         {
             entity.ToTable("channel_offers", "inventory", table => { table.HasCheckConstraint("ck_channel_offer_prices", "\"ListPrice\" >= \"SalePrice\" AND \"ListPrice\" >= 0 AND \"SalePrice\" >= 0"); table.HasCheckConstraint("ck_channel_offer_currency", "char_length(\"Currency\")=3"); }); entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id }); entity.Property(x => x.ListPrice).HasPrecision(19, 4); entity.Property(x => x.SalePrice).HasPrecision(19, 4); entity.Property(x => x.Currency).HasColumnType("char(3)"); entity.Property(x => x.VatRate).HasPrecision(7, 4); entity.Property(x => x.SafetyStock).HasPrecision(19, 4); entity.Property(x => x.Version).IsConcurrencyToken(); entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.VariantId }).IsUnique(); entity.HasOne<ProductVariant>().WithMany().HasForeignKey(x => new { x.TenantId, x.VariantId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
         });
+        builder.Entity<ChannelInventoryObservation>(entity =>
+        {
+            entity.ToTable("channel_inventory_observations", "inventory"); entity.HasKey(x => x.Id); entity.Property(x => x.ExternalLocationId).HasMaxLength(256); entity.Property(x => x.Quantity).HasPrecision(19, 4); entity.Property(x => x.Version).IsConcurrencyToken(); entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.VariantId, x.ExternalLocationId }).IsUnique(); entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ObservedAt }); entity.HasOne<ProductVariant>().WithMany().HasForeignKey(x => new { x.TenantId, x.VariantId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict); entity.HasOne<InventoryLocation>().WithMany().HasForeignKey(x => new { x.TenantId, x.LocationId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
+        });
         builder.Entity<ChannelPriceHistory>(entity =>
         {
             entity.ToTable("channel_price_history", "inventory"); entity.HasKey(x => x.Id); entity.Property(x => x.ListPrice).HasPrecision(19, 4); entity.Property(x => x.SalePrice).HasPrecision(19, 4); entity.Property(x => x.Currency).HasColumnType("char(3)"); entity.HasIndex(x => new { x.TenantId, x.OfferId, x.PriceVersion }).IsUnique(); entity.HasOne<ChannelOffer>().WithMany().HasForeignKey(x => new { x.TenantId, x.OfferId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
@@ -242,6 +274,52 @@ internal static class CatalogModelConfiguration
         builder.Entity<TMapping>(entity =>
         {
             entity.ToTable(tableName, "catalog"); entity.Property(x => x.ScopeExternalId).HasMaxLength(512); entity.Property(x => x.ExternalId).HasMaxLength(256); entity.Property(x => x.Status).HasMaxLength(24); entity.Property(x => x.Version).IsConcurrencyToken(); entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.LocalId, x.ScopeExternalId }).IsUnique();
+        });
+    }
+
+    private static void ConfigureAttributeMapping(ModelBuilder builder)
+    {
+        builder.Entity<AttributeMapping>(entity =>
+        {
+            entity.ToTable("attribute_mappings", "catalog"); entity.Property(x => x.ScopeExternalId).HasMaxLength(512); entity.Property(x => x.ExternalId).HasMaxLength(256); entity.Property(x => x.Status).HasMaxLength(24); entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.Property(x => x.Source).HasMaxLength(16).HasDefaultValue(MappingSources.Manual);
+            entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.LocalId, x.ScopeExternalId, x.ExternalId }).IsUnique().HasDatabaseName("UX_attribute_mappings_local_remote_scope");
+        });
+        builder.Entity<AttributeMappingTemplate>(entity =>
+        {
+            entity.ToTable("attribute_mapping_templates", "catalog"); entity.HasKey(x => x.Id);
+            entity.Property(x => x.ExternalAttributeId).HasMaxLength(256); entity.Property(x => x.Role).HasMaxLength(24); entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ExternalAttributeId, x.LocalAttributeId }).IsUnique();
+        });
+        builder.Entity<AttributeValueMappingTemplate>(entity =>
+        {
+            entity.ToTable("attribute_value_mapping_templates", "catalog"); entity.HasKey(x => x.Id);
+            entity.Property(x => x.ExternalAttributeId).HasMaxLength(256); entity.Property(x => x.ExternalValueId).HasMaxLength(256); entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ExternalAttributeId, x.LocalValueId }).IsUnique();
+        });
+        builder.Entity<ConnectionAttributeDefault>(entity =>
+        {
+            entity.ToTable("connection_attribute_defaults", "catalog"); entity.HasKey(x => x.Id);
+            entity.Property(x => x.ExternalAttributeId).HasMaxLength(256); entity.Property(x => x.AttributeName).HasMaxLength(256);
+            entity.Property(x => x.ExternalValueId).HasMaxLength(256); entity.Property(x => x.ValueName).HasMaxLength(320); entity.Property(x => x.CustomValue).HasMaxLength(320);
+            entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ExternalAttributeId }).IsUnique();
+        });
+        builder.Entity<MappingTemplateDismissal>(entity =>
+        {
+            entity.ToTable("mapping_template_dismissals", "catalog"); entity.HasKey(x => x.Id);
+            entity.Property(x => x.Kind).HasMaxLength(16); entity.Property(x => x.ScopeExternalId).HasMaxLength(512);
+            entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.Kind, x.ScopeExternalId, x.LocalId }).IsUnique();
+        });
+    }
+
+    private static void ConfigureAttributeValueMapping(ModelBuilder builder)
+    {
+        builder.Entity<AttributeValueMapping>(entity =>
+        {
+            entity.ToTable("attribute_value_mappings", "catalog"); entity.Property(x => x.ScopeExternalId).HasMaxLength(512); entity.Property(x => x.ExternalId).HasMaxLength(256); entity.Property(x => x.Status).HasMaxLength(24); entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.Property(x => x.Source).HasMaxLength(16).HasDefaultValue(MappingSources.Manual);
+            entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ScopeExternalId, x.LocalId, x.ExternalId }).IsUnique().HasDatabaseName("UX_attribute_value_mappings_local_remote_scope");
         });
     }
 

@@ -7,14 +7,16 @@ using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
 internal sealed record PublicationVariantDraft(Guid VariantId, string Sku, string Barcode);
 internal sealed record ProductPublicationDraft(Guid ProfileId, string ExternalCategoryId, string ExternalBrandId, string PayloadHash, string PayloadJson, IReadOnlyList<PublicationVariantDraft> Variants);
 
-internal sealed class ProductPublicationComposer(AppDbContext db)
+internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration configuration)
 {
+    internal const int MaximumPublicationImageCount = 8;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -30,6 +32,10 @@ internal sealed class ProductPublicationComposer(AppDbContext db)
         var profile = await db.ChannelListingProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId, cancellationToken);
         if (profile is null) return Fail("LISTING_PROFILE_REQUIRED", "Yayın öncesi bağlantıya ait listing profile oluşturulmalıdır.");
         if (!profile.Enabled) return Fail("LISTING_PROFILE_DISABLED", "Listing profile etkinleştirilmeden yayın işi oluşturulamaz.");
+        if (await db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "HEPSIBURADA", cancellationToken))
+            return await new HepsiburadaProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken);
+        if (ProductApprovalReconciliationPolicy.RequiresContentSplitReview(profile.LastRejectionCode))
+            return Fail("PRODUCT_APPROVAL_CONTENT_SPLIT", "Trendyol varyantları birden fazla içerik kimliğine ayırdı. Yanlış ilana yazmamak için ürün içeriği güncellemesi durduruldu; varyant durumları ayrı ayrı izlenebilir.", status: 409);
 
         var categoryMapping = product.CategoryId is Guid categoryId
             ? await db.CategoryMappings.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == categoryId && x.Status == "VERIFIED")
@@ -53,12 +59,20 @@ internal sealed class ProductPublicationComposer(AppDbContext db)
         var attributeMappings = await db.AttributeMappings.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == categoryMapping.ExternalId && x.SnapshotId == attributeSnapshot.Id && x.Status == "VERIFIED").ToListAsync(cancellationToken);
         if (attributeMappings.GroupBy(x => x.ExternalId, StringComparer.Ordinal).Any(group => group.Count() > 1)) return Fail("ATTRIBUTE_MAPPING_AMBIGUOUS", "Aynı Trendyol özelliğine birden fazla yerel özellik eşlenmiş.", status: 409);
         var mappingByExternalId = attributeMappings.ToDictionary(x => x.ExternalId, StringComparer.Ordinal);
-        var mappingByLocalId = attributeMappings.ToDictionary(x => x.LocalId);
-        var requiredLocalIds = new HashSet<Guid>();
-        foreach (var remote in remoteAttributes.Where(x => x.IsRequired == true))
+        var mappingByLocalId = attributeMappings
+            .GroupBy(x => x.LocalId)
+            .ToDictionary(group => group.Key, group => (IReadOnlyList<AttributeMapping>)group.OrderBy(x => x.ExternalId).ToList());
+        var requiredExternalIds = new HashSet<string>(remoteAttributes.Where(x => x.IsRequired == true).Select(x => x.ExternalId), StringComparer.Ordinal);
+        var missingRequiredExternalIds = RequiredAttributeMappingPolicy.FindMissingExternalIds(
+            attributeSnapshot.Id,
+            requiredExternalIds.Select(externalId => new RequiredAttributeMappingReference(attributeSnapshot.Id, externalId)),
+            attributeMappings.Select(x => new RequiredAttributeMappingReference(x.SnapshotId, x.ExternalId)));
+        // Connection defaults (e.g. Menşei = TR) cover the attributes a product leaves empty, so a
+        // required attribute with a usable default needs no panel attribute mapping.
+        var attributeDefaults = await ResolveAttributeDefaultsAsync(tenantId, connectionId, categoryMapping.ExternalId, remoteAttributes, cancellationToken);
+        foreach (var remote in remoteAttributes.Where(x => missingRequiredExternalIds.Contains(x.ExternalId) && !attributeDefaults.ContainsKey(x.ExternalId)))
         {
-            if (!mappingByExternalId.TryGetValue(remote.ExternalId, out var requiredMapping)) return Fail("REQUIRED_ATTRIBUTE_MAPPING_REQUIRED", $"Zorunlu Trendyol özelliği '{remote.Name}' eşlenmemiş.");
-            requiredLocalIds.Add(requiredMapping.LocalId);
+            return Fail("REQUIRED_ATTRIBUTE_MAPPING_REQUIRED", $"Zorunlu Trendyol özelliği '{remote.Name}' eşlenmemiş.");
         }
 
         var assignments = await db.ProductAttributeAssignments.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId).OrderBy(x => x.SortOrder).ThenBy(x => x.Id).ToListAsync(cancellationToken);
@@ -66,18 +80,27 @@ internal sealed class ProductPublicationComposer(AppDbContext db)
         var mappedLocalValues = await db.AttributeValues.AsNoTracking().Where(x => x.TenantId == tenantId && mappingByLocalId.Keys.Contains(x.AttributeId) && x.IsActive).ToListAsync(cancellationToken);
         foreach (var assignment in assignments)
         {
-            if (!mappingByLocalId.TryGetValue(assignment.AttributeId, out var attributeMapping)) return Fail("ATTRIBUTE_MAPPING_REQUIRED", "Üründe kullanılan her özellik seçili Trendyol kategorisinin güncel snapshot'ında eşlenmelidir.");
+            if (!mappingByLocalId.TryGetValue(assignment.AttributeId, out var localMappings)) return Fail("ATTRIBUTE_MAPPING_REQUIRED", "Üründe kullanılan her özellik seçili Trendyol kategorisinin güncel snapshot'ında eşlenmelidir.");
+            var attributeMapping = SelectMappingForLocal(localMappings, remoteAttributes);
             var remote = remoteAttributes.SingleOrDefault(x => x.ExternalId == attributeMapping.ExternalId);
             if (remote is null) return Fail("ATTRIBUTE_MAPPING_REQUIRED", "Özellik eşlemesi güncel kategori snapshot'ında bulunamadı.");
+            if (TrendyolColorValuePolicy.UsesCustomPanelColorValue(remote.Name))
+            {
+                if (assignment.ValueId is Guid colorValueId && !mappedLocalValues.Any(value => value.AttributeId == assignment.AttributeId && value.Id == colorValueId))
+                    return Fail("ATTRIBUTE_VALUE_INVALID", $"'{remote.Name}' için seçilen panel renk değeri bulunamadı.");
+                if (assignment.ValueId is null && string.IsNullOrWhiteSpace(CustomValue(assignment)))
+                    return Fail("ATTRIBUTE_CUSTOM_VALUE_REQUIRED", $"'{remote.Name}' için boş olmayan renk değeri gerekir.");
+                continue;
+            }
             if (assignment.ValueId is not Guid valueId)
             {
                 if (remote.AllowsCustomValue != true) return Fail("ATTRIBUTE_VALUE_MAPPING_REQUIRED", $"'{remote.Name}' serbest değer kabul etmiyor; doğrulanmış değer eşlemesi gereklidir.");
                 continue;
             }
             var valueScope = $"{categoryMapping.ExternalId}/{attributeMapping.ExternalId}";
-            var valueMapping = await db.AttributeValueMappings.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == valueId && x.ScopeExternalId == valueScope && x.Status == "VERIFIED", cancellationToken);
-            if (valueMapping is null || !await db.ReferenceSnapshots.AsNoTracking().AnyAsync(snapshot => snapshot.TenantId == tenantId && snapshot.ConnectionId == connectionId && snapshot.Id == valueMapping.SnapshotId && snapshot.ResourceType == "ATTRIBUTE_VALUES" && snapshot.ScopeExternalId == valueScope && snapshot.IsCurrent, cancellationToken)) return Fail("ATTRIBUTE_VALUE_MAPPING_REQUIRED", $"'{remote.Name}' değeri güncel Trendyol değer snapshot'ında eşlenmemiş.");
-            if (!await db.ReferenceItems.AsNoTracking().AnyAsync(item => item.TenantId == tenantId && item.SnapshotId == valueMapping.SnapshotId && item.ResourceType == "ATTRIBUTE_VALUES" && item.ExternalId == valueMapping.ExternalId && item.IsActive, cancellationToken)) return Fail("ATTRIBUTE_VALUE_MAPPING_REQUIRED", $"'{remote.Name}' değer eşlemesi snapshot içinde bulunamadı.");
+            var valueMappings = await VerifiedValueMappingsAsync(tenantId, connectionId, valueScope, valueId, cancellationToken);
+            if (valueMappings.InCurrentSnapshot == 0) return Fail("ATTRIBUTE_VALUE_MAPPING_REQUIRED", $"'{remote.Name}' değeri güncel Trendyol değer snapshot'ında eşlenmemiş.");
+            if (valueMappings.Usable.Count == 0) return Fail("ATTRIBUTE_VALUE_MAPPING_REQUIRED", $"'{remote.Name}' değer eşlemesi snapshot içinde bulunamadı.");
         }
 
         var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId && x.Status != ProductStatus.Archived).OrderBy(x => x.Id).ToListAsync(cancellationToken);
@@ -104,7 +127,7 @@ internal sealed class ProductPublicationComposer(AppDbContext db)
                            join asset in db.FileAssets.AsNoTracking() on productMedia.FileAssetId equals asset.Id
                            where productMedia.TenantId == tenantId && productMedia.ProductId == productId && productMedia.Status == "ACTIVE" && asset.TenantId == tenantId && asset.Status == "ACTIVE" && asset.ArchivedAt == null && (asset.Classification == "PRODUCT_MEDIA_URL" || asset.Classification == "PRODUCT_MEDIA")
                            orderby productMedia.SortOrder, productMedia.Id
-                           select new { productMedia.VariantId, productMedia.SortOrder, asset.Classification, asset.RelativePath }).ToListAsync(cancellationToken);
+                           select new { productMedia.VariantId, productMedia.SortOrder, asset.Id, asset.Classification, asset.RelativePath }).ToListAsync(cancellationToken);
 
         var title = (profile.TitleOverride ?? product.Title).Trim();
         var description = (profile.DescriptionOverride ?? product.Description).Trim();
@@ -127,23 +150,29 @@ internal sealed class ProductPublicationComposer(AppDbContext db)
             var relevantMedia = assignedMedia.Count > 0
                 ? assignedMedia
                 : media.Where(x => x.VariantId is null).ToList();
-            var localMedia = relevantMedia.Where(x => x.Classification == "PRODUCT_MEDIA").ToList();
             var relevantUrls = relevantMedia.Where(x => x.Classification == "PRODUCT_MEDIA_URL").Select(x => x.RelativePath.Trim()).ToList();
             if (relevantUrls.Any(url => !IsPublicHttpsUrl(url))) return Fail("PRODUCT_MEDIA_PUBLIC_URL_INVALID", $"'{variant.Sku}' için kayıtlı tüm PRODUCT_MEDIA_URL değerleri geçerli HTTPS adresi olmalıdır.");
-            var imageUrls = relevantUrls.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            if (imageUrls.Count == 0 && localMedia.Count > 0) return Fail("PRODUCT_MEDIA_PUBLIC_URL_REQUIRED", $"'{variant.Sku}' için yerel katalog görseli bulundu; Trendyol yayını için en az bir herkese açık HTTPS görsel adresi ekleyin.");
+            var imageUrls = SelectPublicationImageUrls(relevantMedia
+                .Select(item => item.Classification == "PRODUCT_MEDIA_URL"
+                    ? item.RelativePath.Trim()
+                    : BuildPublicProductMediaUrl(configuration["Marketplace:PublicBaseUrl"], item.Id))
+                .Where(url => !string.IsNullOrWhiteSpace(url))
+                .Select(url => url!));
+            if (imageUrls.Count == 0 && relevantMedia.Count > 0) return Fail("PRODUCT_MEDIA_PUBLIC_URL_REQUIRED", $"'{variant.Sku}' için yerel görseller HTTPS üzerinden sunulamıyor. Marketplace:PublicBaseUrl ayarını yapılandırın.");
             if (imageUrls.Count == 0) return Fail("PRODUCT_MEDIA_PUBLIC_URL_REQUIRED", $"'{variant.Sku}' için en az bir geçerli HTTPS görsel adresi gerekir.");
-            if (imageUrls.Count > 8) return Fail("PRODUCT_MEDIA_LIMIT_EXCEEDED", $"'{variant.Sku}' için en fazla 8 farklı görsel URL'si yayınlanabilir.");
 
             var effectiveAssignments = assignments.Where(x => x.VariantId is null || x.VariantId == variant.Id).GroupBy(x => x.AttributeId).ToList();
             var payloadAttributes = new List<Dictionary<string, object?>>();
             var emittedRemoteAttributeIds = new HashSet<long>();
             foreach (var group in effectiveAssignments)
             {
-                var mapping = mappingByLocalId[group.Key];
+                var localMappings = mappingByLocalId[group.Key];
+                var mapping = SelectMappingForLocal(localMappings, remoteAttributes);
                 var remote = remoteAttributes.Single(x => x.ExternalId == mapping.ExternalId);
                 if (!long.TryParse(mapping.ExternalId, NumberStyles.None, CultureInfo.InvariantCulture, out var remoteAttributeId)) return Fail("MAPPING_IDENTIFIER_INVALID", "Trendyol özellik kimlikleri sayısal olmalıdır.");
                 var values = group.ToList();
+                var customColorValue = TrendyolColorValuePolicy.UsesCustomPanelColorValue(remote.Name);
+                if (customColorValue && values.Count > 1) return Fail("ATTRIBUTE_ASSIGNMENT_AMBIGUOUS", $"'{remote.Name}' için aynı varyantta tek renk değeri gönderilebilir.");
                 if (values.Count > 1 && remote.AllowsMultipleValues != true) return Fail("ATTRIBUTE_ASSIGNMENT_AMBIGUOUS", $"'{remote.Name}' birden fazla değer kabul etmiyor.");
                 if (values.Count > 1 && values.Any(x => x.ValueId is null)) return Fail("ATTRIBUTE_ASSIGNMENT_AMBIGUOUS", $"'{remote.Name}' çoklu kullanımında yalnız eşlenmiş seçim değerleri kullanılabilir.");
 
@@ -153,7 +182,7 @@ internal sealed class ProductPublicationComposer(AppDbContext db)
                     var remoteValues = new List<long>();
                     foreach (var value in values)
                     {
-                        var externalValue = await ExternalValueAsync(tenantId, connectionId, categoryMapping.ExternalId, mapping.ExternalId, value.ValueId!.Value, cancellationToken);
+                        var externalValue = await ExternalValueAsync(tenantId, connectionId, categoryMapping.ExternalId, mapping.ExternalId, value.ValueId!.Value, $"{remote.Name}: {mappedLocalValues.FirstOrDefault(item => item.Id == value.ValueId!.Value)?.Value ?? "seçili değer"}", cancellationToken);
                         if (externalValue.Error is not null) return ServiceResult<ProductPublicationDraft>.Fail(externalValue.Error.Code, externalValue.Error.Message, externalValue.Error.Status, externalValue.Error.FieldErrors);
                         remoteValues.Add(externalValue.Value);
                     }
@@ -161,15 +190,26 @@ internal sealed class ProductPublicationComposer(AppDbContext db)
                 }
                 else if (values[0].ValueId is Guid valueId)
                 {
-                    var externalValue = await ExternalValueAsync(tenantId, connectionId, categoryMapping.ExternalId, mapping.ExternalId, valueId, cancellationToken);
-                    if (externalValue.Error is not null) return ServiceResult<ProductPublicationDraft>.Fail(externalValue.Error.Code, externalValue.Error.Message, externalValue.Error.Status, externalValue.Error.FieldErrors);
-                    attribute["attributeValueId"] = externalValue.Value;
+                    if (customColorValue)
+                    {
+                        var colorValue = mappedLocalValues.SingleOrDefault(value => value.AttributeId == group.Key && value.Id == valueId);
+                        if (colorValue is null) return Fail("ATTRIBUTE_VALUE_INVALID", $"'{remote.Name}' için seçilen panel renk değeri bulunamadı.");
+                        if (!TrendyolColorValuePolicy.TrySetCustomPanelColorValue(attribute, remote.Name, colorValue.Value))
+                            return Fail("ATTRIBUTE_VALUE_INVALID", $"'{remote.Name}' için renk değeri özel alana dönüştürülemedi.");
+                    }
+                    else
+                    {
+                        var externalValue = await ExternalValueAsync(tenantId, connectionId, categoryMapping.ExternalId, mapping.ExternalId, valueId, $"{remote.Name}: {mappedLocalValues.FirstOrDefault(item => item.Id == valueId)?.Value ?? "seçili değer"}", cancellationToken);
+                        if (externalValue.Error is not null) return ServiceResult<ProductPublicationDraft>.Fail(externalValue.Error.Code, externalValue.Error.Message, externalValue.Error.Status, externalValue.Error.FieldErrors);
+                        attribute["attributeValueId"] = externalValue.Value;
+                    }
                 }
                 else
                 {
                     var customValue = CustomValue(values[0]);
                     if (string.IsNullOrWhiteSpace(customValue)) return Fail("ATTRIBUTE_CUSTOM_VALUE_REQUIRED", $"'{remote.Name}' için boş olmayan serbest değer gerekir.");
-                    attribute["customAttributeValue"] = customValue;
+                    if (!TrendyolColorValuePolicy.TrySetCustomPanelColorValue(attribute, remote.Name, customValue))
+                        attribute["customAttributeValue"] = customValue;
                 }
                 payloadAttributes.Add(attribute);
                 emittedRemoteAttributeIds.Add(remoteAttributeId);
@@ -178,34 +218,48 @@ internal sealed class ProductPublicationComposer(AppDbContext db)
             foreach (var option in optionRows.Where(x => x.VariantId == variant.Id).OrderBy(x => x.Label, StringComparer.OrdinalIgnoreCase))
             {
                 var localAttribute = mappedLocalAttributes.FirstOrDefault(x => NormalizeLabel(x.Name) == NormalizeLabel(option.Label));
-                if (localAttribute is null || !mappingByLocalId.TryGetValue(localAttribute.Id, out var optionMapping))
+                if (localAttribute is null || !mappingByLocalId.TryGetValue(localAttribute.Id, out var optionMappings))
                     return Fail("OPTION_MAPPING_REQUIRED", $"'{option.Label}' seçeneği için güncel Trendyol özellik eşlemesi bulunamadı.");
+                var optionMapping = SelectMappingForLocal(optionMappings, remoteAttributes);
                 if (!long.TryParse(optionMapping.ExternalId, NumberStyles.None, CultureInfo.InvariantCulture, out var optionRemoteId)) return Fail("MAPPING_IDENTIFIER_INVALID", "Trendyol seçenek kimlikleri sayısal olmalıdır.");
-                if (!emittedRemoteAttributeIds.Add(optionRemoteId)) continue;
                 var optionRemote = remoteAttributes.SingleOrDefault(x => x.ExternalId == optionMapping.ExternalId);
                 if (optionRemote is null) return Fail("OPTION_MAPPING_REQUIRED", $"'{option.Label}' seçeneği güncel kategori snapshot'ında bulunamadı.");
                 var localValue = mappedLocalValues.FirstOrDefault(x => x.AttributeId == localAttribute.Id && NormalizeLabel(x.Value) == NormalizeLabel(option.ValueLabel));
                 var optionPayload = new Dictionary<string, object?> { ["attributeId"] = optionRemoteId };
-                if (localValue is not null)
+                var hasCustomColorValue = TrendyolColorValuePolicy.TrySetCustomPanelColorValue(optionPayload, optionRemote.Name, option.ValueLabel);
+                if (!hasCustomColorValue && localValue is not null)
                 {
-                    var externalValue = await ExternalValueAsync(tenantId, connectionId, categoryMapping.ExternalId, optionMapping.ExternalId, localValue.Id, cancellationToken);
+                    var externalValue = await ExternalValueAsync(tenantId, connectionId, categoryMapping.ExternalId, optionMapping.ExternalId, localValue.Id, $"{option.Label}: {option.ValueLabel}", cancellationToken);
                     if (externalValue.Error is not null) return ServiceResult<ProductPublicationDraft>.Fail(externalValue.Error.Code, externalValue.Error.Message, externalValue.Error.Status, externalValue.Error.FieldErrors);
                     optionPayload["attributeValueId"] = externalValue.Value;
                 }
-                else if (optionRemote.AllowsCustomValue == true)
+                else if (!hasCustomColorValue && optionRemote.AllowsCustomValue == true)
                 {
                     optionPayload["customAttributeValue"] = option.ValueLabel.Trim();
                 }
-                else
+                else if (!hasCustomColorValue)
                 {
                     return Fail("OPTION_VALUE_MAPPING_REQUIRED", $"'{option.Label}: {option.ValueLabel}' seçeneği için doğrulanmış Trendyol değer eşlemesi bulunamadı.");
                 }
-                payloadAttributes.Add(optionPayload);
+                if (emittedRemoteAttributeIds.Add(optionRemoteId)) payloadAttributes.Add(optionPayload);
+                var webColorMapping = optionMappings.FirstOrDefault(item => IsWebColorOptionName(remoteAttributes.SingleOrDefault(remoteItem => remoteItem.ExternalId == item.ExternalId)?.Name));
+                if (localValue is not null && webColorMapping is not null && webColorMapping.ExternalId != optionMapping.ExternalId && long.TryParse(webColorMapping.ExternalId, NumberStyles.None, CultureInfo.InvariantCulture, out var webColorRemoteId) && emittedRemoteAttributeIds.Add(webColorRemoteId))
+                {
+                    var webColorValue = await ExternalValueAsync(tenantId, connectionId, categoryMapping.ExternalId, webColorMapping.ExternalId, localValue.Id, $"Web Color: {option.ValueLabel}", cancellationToken);
+                    if (webColorValue.Error is not null) return ServiceResult<ProductPublicationDraft>.Fail(webColorValue.Error.Code, webColorValue.Error.Message, webColorValue.Error.Status, webColorValue.Error.FieldErrors);
+                    payloadAttributes.Add(new Dictionary<string, object?> { ["attributeId"] = webColorRemoteId, ["attributeValueId"] = webColorValue.Value });
+                }
             }
-            if (requiredLocalIds.Any(id => !mappingByLocalId.TryGetValue(id, out var requiredMapping)
-                || !long.TryParse(requiredMapping.ExternalId, NumberStyles.None, CultureInfo.InvariantCulture, out var requiredRemoteId)
-                || !emittedRemoteAttributeIds.Contains(requiredRemoteId)))
-                return Fail("REQUIRED_ATTRIBUTE_MISSING", $"'{variant.Sku}' için Trendyol kategorisinin zorunlu özelliklerinden en az biri eksik.");
+            // Defaults only fill attributes the product and its variant options left empty.
+            foreach (var (_, defaultAttribute) in attributeDefaults.OrderBy(entry => entry.Key, StringComparer.Ordinal))
+            {
+                if (emittedRemoteAttributeIds.Add((long)defaultAttribute["attributeId"]!)) payloadAttributes.Add(new Dictionary<string, object?>(defaultAttribute));
+            }
+            if (requiredExternalIds.Any(id => !long.TryParse(id, NumberStyles.None, CultureInfo.InvariantCulture, out var requiredRemoteId) || !emittedRemoteAttributeIds.Contains(requiredRemoteId)))
+            {
+                var missingRequired = requiredExternalIds.Where(id => !long.TryParse(id, NumberStyles.None, CultureInfo.InvariantCulture, out var requiredRemoteId) || !emittedRemoteAttributeIds.Contains(requiredRemoteId)).Select(id => remoteAttributes.FirstOrDefault(item => item.ExternalId == id)?.Name ?? id).Distinct().ToList();
+                return Fail("REQUIRED_ATTRIBUTE_MISSING", $"'{variant.Sku}' için Trendyol'un zorunlu özellikleri eksik: {string.Join(", ", missingRequired)}. Ürünün kategori özelliklerinde bu alanlara değer seçin ve değerlerini eşleyin.");
+            }
 
             var publishable = Math.Max(0, inventories[variant.Id].Available - offer.SafetyStock);
             var item = new Dictionary<string, object?>
@@ -218,6 +272,7 @@ internal sealed class ProductPublicationComposer(AppDbContext db)
                 ["categoryId"] = externalCategoryId,
                 ["quantity"] = checked((int)Math.Min(int.MaxValue, Math.Floor(publishable))),
                 ["stockCode"] = variant.Sku.Trim(),
+                ["dimensionalWeight"] = variant.Desi ?? 1m,
                 ["origin"] = string.IsNullOrWhiteSpace(profile.Origin) ? null : profile.Origin.Trim().ToUpperInvariant(),
                 ["listPrice"] = offer.ListPrice,
                 ["salePrice"] = offer.SalePrice,
@@ -235,12 +290,95 @@ internal sealed class ProductPublicationComposer(AppDbContext db)
         return ServiceResult<ProductPublicationDraft>.Ok(new(profile.Id, categoryMapping.ExternalId, brandMapping.ExternalId, payloadHash, payloadJson, draftVariants));
     }
 
-    private async Task<ServiceResult<long>> ExternalValueAsync(Guid tenantId, Guid connectionId, string categoryExternalId, string attributeExternalId, Guid localValueId, CancellationToken cancellationToken)
+    // Connection defaults this category can use, as ready payload entries keyed by attribute id. A
+    // list default counts only while its value is active in the category's current value snapshot;
+    // a free-text default only where the attribute accepts free text.
+    private async Task<Dictionary<string, Dictionary<string, object?>>> ResolveAttributeDefaultsAsync(Guid tenantId, Guid connectionId, string categoryExternalId, IReadOnlyList<ReferenceItem> remoteAttributes, CancellationToken cancellationToken)
+    {
+        var resolved = new Dictionary<string, Dictionary<string, object?>>(StringComparer.Ordinal);
+        var defaults = await db.ConnectionAttributeDefaults.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId)
+            .ToListAsync(cancellationToken);
+        foreach (var attributeDefault in defaults)
+        {
+            var remote = remoteAttributes.FirstOrDefault(x => x.ExternalId == attributeDefault.ExternalAttributeId);
+            if (remote is null || !long.TryParse(attributeDefault.ExternalAttributeId, NumberStyles.None, CultureInfo.InvariantCulture, out var attributeId)) continue;
+            if (!string.IsNullOrWhiteSpace(attributeDefault.ExternalValueId))
+            {
+                if (!long.TryParse(attributeDefault.ExternalValueId, NumberStyles.None, CultureInfo.InvariantCulture, out var valueId)) continue;
+                var scope = $"{categoryExternalId}/{attributeDefault.ExternalAttributeId}";
+                var offered = await (from snapshot in db.ReferenceSnapshots.AsNoTracking()
+                                     join item in db.ReferenceItems.AsNoTracking() on snapshot.Id equals item.SnapshotId
+                                     where snapshot.TenantId == tenantId && snapshot.ConnectionId == connectionId && snapshot.ResourceType == "ATTRIBUTE_VALUES"
+                                         && snapshot.ScopeExternalId == scope && snapshot.IsCurrent
+                                         && item.TenantId == tenantId && item.ResourceType == "ATTRIBUTE_VALUES" && item.ExternalId == attributeDefault.ExternalValueId && item.IsActive
+                                     select item.Id).AnyAsync(cancellationToken);
+                if (offered) resolved[attributeDefault.ExternalAttributeId] = new() { ["attributeId"] = attributeId, ["attributeValueId"] = valueId };
+            }
+            else if (!string.IsNullOrWhiteSpace(attributeDefault.CustomValue) && remote.AllowsCustomValue == true)
+            {
+                resolved[attributeDefault.ExternalAttributeId] = new() { ["attributeId"] = attributeId, ["customAttributeValue"] = attributeDefault.CustomValue.Trim() };
+            }
+        }
+        return resolved;
+    }
+
+    private async Task<ServiceResult<long>> ExternalValueAsync(Guid tenantId, Guid connectionId, string categoryExternalId, string attributeExternalId, Guid localValueId, string label, CancellationToken cancellationToken)
     {
         var scope = $"{categoryExternalId}/{attributeExternalId}";
-        var mapping = await db.AttributeValueMappings.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == localValueId && x.ScopeExternalId == scope && x.Status == "VERIFIED", cancellationToken);
-        if (mapping is null || !long.TryParse(mapping.ExternalId, NumberStyles.None, CultureInfo.InvariantCulture, out var value)) return ServiceResult<long>.Fail("ATTRIBUTE_VALUE_MAPPING_REQUIRED", "Özellik değeri için sayısal ve doğrulanmış Trendyol eşlemesi gerekir.", 422);
-        return ServiceResult<long>.Ok(value);
+        var mappings = await VerifiedValueMappingsAsync(tenantId, connectionId, scope, localValueId, cancellationToken);
+        // Prefer mappings that are valid in the current snapshot, the same ones the readiness check accepts.
+        return ChooseExternalValue(mappings.Usable.Count > 0 ? mappings.Usable : mappings.All) is { } value
+            ? ServiceResult<long>.Ok(value)
+            : ServiceResult<long>.Fail("ATTRIBUTE_VALUE_MAPPING_REQUIRED", $"'{label}' için doğrulanmış Trendyol değer eşlemesi yok. Eşleştirme Ayarları'ndan bu panel değerini bir Trendyol değeriyle eşleyin.", 422);
+    }
+
+    private sealed record ValueMappingCandidates(IReadOnlyList<AttributeValueMapping> All, int InCurrentSnapshot, IReadOnlyList<AttributeValueMapping> Usable);
+
+    // Verified mappings of one panel value in one scope, plus the ones that are in the current
+    // value snapshot and point at an active Trendyol value.
+    private async Task<ValueMappingCandidates> VerifiedValueMappingsAsync(Guid tenantId, Guid connectionId, string scope, Guid localValueId, CancellationToken cancellationToken)
+    {
+        var all = await db.AttributeValueMappings.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == localValueId && x.ScopeExternalId == scope && x.Status == "VERIFIED")
+            .ToListAsync(cancellationToken);
+        if (all.Count == 0) return new(all, 0, []);
+        var currentSnapshotIds = await db.ReferenceSnapshots.AsNoTracking()
+            .Where(snapshot => snapshot.TenantId == tenantId && snapshot.ConnectionId == connectionId && snapshot.ResourceType == "ATTRIBUTE_VALUES" && snapshot.ScopeExternalId == scope && snapshot.IsCurrent)
+            .Select(snapshot => snapshot.Id)
+            .ToListAsync(cancellationToken);
+        var current = all.Where(mapping => currentSnapshotIds.Contains(mapping.SnapshotId)).ToList();
+        if (current.Count == 0) return new(all, 0, []);
+        var snapshotIds = current.Select(mapping => mapping.SnapshotId).Distinct().ToArray();
+        var externalIds = current.Select(mapping => mapping.ExternalId).Distinct().ToArray();
+        var active = (await db.ReferenceItems.AsNoTracking()
+                .Where(item => item.TenantId == tenantId && snapshotIds.Contains(item.SnapshotId) && item.ResourceType == "ATTRIBUTE_VALUES" && externalIds.Contains(item.ExternalId) && item.IsActive)
+                .Select(item => new { item.SnapshotId, item.ExternalId })
+                .ToListAsync(cancellationToken))
+            .Select(item => (item.SnapshotId, item.ExternalId))
+            .ToHashSet();
+        return new(all, current.Count, current.Where(mapping => active.Contains((mapping.SnapshotId, mapping.ExternalId))).ToList());
+    }
+
+    // One panel value may be mapped to several Trendyol values in the same scope (for example a
+    // value name Trendyol lists twice). Only one can be sent, so the most recently verified mapping
+    // — the user's latest choice — wins; ids are time-ordered (UUIDv7) and break ties. Before, the
+    // single-row lookup threw and the publish job ended in manual review.
+    internal static long? ChooseExternalValue(IEnumerable<AttributeValueMapping> mappings) => mappings
+        .OrderByDescending(mapping => mapping.VerifiedAt ?? DateTimeOffset.MinValue)
+        .ThenByDescending(mapping => mapping.Id)
+        .Select(mapping => long.TryParse(mapping.ExternalId, NumberStyles.None, CultureInfo.InvariantCulture, out var value) ? value : (long?)null)
+        .FirstOrDefault(value => value is not null);
+
+    private static AttributeMapping SelectMappingForLocal(IReadOnlyList<AttributeMapping> mappings, IReadOnlyList<ReferenceItem> remoteAttributes) => mappings
+        .OrderBy(mapping => IsWebColorOptionName(remoteAttributes.FirstOrDefault(item => item.ExternalId == mapping.ExternalId)?.Name) ? 1 : 0)
+        .ThenBy(mapping => mapping.ExternalId, StringComparer.Ordinal)
+        .First();
+
+    private static bool IsWebColorOptionName(string? value)
+    {
+        var normalized = value?.Trim().ToUpperInvariant().Replace(" ", "", StringComparison.Ordinal).Replace("-", "", StringComparison.Ordinal);
+        return normalized is "WEBCOLOR" or "WEBCOLOUR" or "WEBRENK";
     }
 
     private static string? CustomValue(ProductAttributeAssignment value) => value.TextValue?.Trim()
@@ -251,11 +389,25 @@ internal sealed class ProductPublicationComposer(AppDbContext db)
 
     private static bool IsValidBarcode(string value) => value.All(character => char.IsLetterOrDigit(character) || character is '.' or '-' or '_');
 
-    internal static bool IsPublicHttpsUrl(string value)
+    public static bool IsPublicHttpsUrl(string value)
     {
         if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps || string.IsNullOrWhiteSpace(uri.Host) || !string.IsNullOrEmpty(uri.UserInfo) || uri.IsLoopback || !IsPublicHost(uri.Host)) return false;
         return !IPAddress.TryParse(uri.Host, out var address) || IsPublicAddress(address);
     }
+
+    internal static string? BuildPublicProductMediaUrl(string? publicBaseUrl, Guid assetId)
+    {
+        if (!IsPublicHttpsUrl(publicBaseUrl ?? "") || !Uri.TryCreate(publicBaseUrl, UriKind.Absolute, out var baseUri)
+            || baseUri.AbsolutePath != "/" || !string.IsNullOrEmpty(baseUri.Query) || !string.IsNullOrEmpty(baseUri.Fragment)) return null;
+        var url = new Uri(baseUri, $"/api/v1/public/product-media/{assetId:D}/content").AbsoluteUri;
+        return url.Length <= 512 ? url : null;
+    }
+
+    internal static IReadOnlyList<string> SelectPublicationImageUrls(IEnumerable<string> imageUrls) => imageUrls
+        .Where(url => !string.IsNullOrWhiteSpace(url))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .Take(MaximumPublicationImageCount)
+        .ToArray();
 
     private static bool IsPublicHost(string host)
     {

@@ -5,12 +5,19 @@ using MarketplaceHub.Infrastructure.Persistence;
 using MarketplaceHub.Worker;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
+using Serilog.Events;
 using Serilog.Formatting.Compact;
 
 var builder = Host.CreateApplicationBuilder(args);
+AddWorkerAppSettings(builder);
 DependencyInjection.ApplyFileBackedSecrets(builder.Configuration);
-builder.Services.AddSerilog(configuration => configuration.WriteTo.Console(new RenderedCompactJsonFormatter()));
+// Every SQL statement logged at Information filled the container's 50 MB log budget in ~20 minutes,
+// so incident logs were gone before anyone could read them. Failed commands are still logged as errors.
+builder.Services.AddSerilog(configuration => configuration
+    .MinimumLevel.Override("Microsoft.EntityFrameworkCore.Database.Command", LogEventLevel.Warning)
+    .WriteTo.Console(new RenderedCompactJsonFormatter()));
 builder.Services.AddMarketplaceInfrastructure(builder.Configuration);
+builder.Services.Configure<HostOptions>(options => options.ShutdownTimeout = TimeSpan.FromSeconds(40));
 builder.Services.AddHostedService<Worker>();
 var host = builder.Build();
 
@@ -46,3 +53,23 @@ if (args is ["efaturam-connection-test", var publicIdText]
 }
 
 await host.RunAsync();
+
+// In containers the content root is /app (shared with the API) while the worker binaries,
+// including its own appsettings.json, live in /app/worker. Load that file right after the
+// content-root JSON files so worker settings apply but environment variables still win.
+static void AddWorkerAppSettings(HostApplicationBuilder builder)
+{
+    var workerDirectory = AppContext.BaseDirectory;
+    var contentRoot = Path.GetFullPath(builder.Environment.ContentRootPath);
+    if (string.Equals(Path.TrimEndingDirectorySeparator(Path.GetFullPath(workerDirectory)), Path.TrimEndingDirectorySeparator(contentRoot), StringComparison.OrdinalIgnoreCase)) return;
+    var sources = builder.Configuration.Sources;
+    var insertAt = 0;
+    for (var index = 0; index < sources.Count; index++)
+        if (sources[index] is Microsoft.Extensions.Configuration.Json.JsonConfigurationSource) insertAt = index + 1;
+    var fileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(workerDirectory);
+    foreach (var fileName in new[] { "appsettings.json", $"appsettings.{builder.Environment.EnvironmentName}.json" })
+    {
+        if (!File.Exists(Path.Combine(workerDirectory, fileName))) continue;
+        sources.Insert(insertAt++, new Microsoft.Extensions.Configuration.Json.JsonConfigurationSource { FileProvider = fileProvider, Path = fileName, Optional = true, ReloadOnChange = false });
+    }
+}

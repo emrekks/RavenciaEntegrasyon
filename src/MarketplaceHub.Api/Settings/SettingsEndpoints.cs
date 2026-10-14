@@ -1,0 +1,309 @@
+using System.Text.Json;
+using MarketplaceHub.Application;
+using MarketplaceHub.Domain;
+using MarketplaceHub.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
+
+namespace MarketplaceHub.Api.Settings;
+
+public static class SettingsEndpoints
+{
+    private const string ShippingLabelKey = "shipping-label";
+    private const string AppearanceKey = "appearance";
+    private const int MaximumJsonCharacters = 262_144;
+    private const int MaximumAppearanceColorThemes = 24;
+    private const string DefaultAppearanceColorThemeId = "default-dark";
+    private const string DefaultAppearanceColorThemeName = "Ravencia — Grafit";
+    private static readonly HashSet<string> AppearanceFontFamilies = new(StringComparer.OrdinalIgnoreCase) { "inter", "system", "segoe", "arial" };
+    private static readonly HashSet<string> AppearanceFontSizes = new(StringComparer.OrdinalIgnoreCase) { "compact", "small", "normal", "large", "extra-large", "huge" };
+    private static readonly HashSet<string> AppearanceThemeModes = new(StringComparer.OrdinalIgnoreCase) { "dark" };
+    private static readonly IReadOnlyDictionary<string, string> DefaultDarkAppearanceColors = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["bg"] = "#101014",
+        ["sidebar"] = "#18181f",
+        ["surface"] = "#18181f",
+        ["surfaceRaised"] = "#202028",
+        ["surfaceSoft"] = "#272730",
+        ["border"] = "#303039",
+        ["borderStrong"] = "#41414d",
+        ["ink"] = "#f4f4f7",
+        ["muted"] = "#aaaab9",
+        ["subtle"] = "#858595",
+        ["primary"] = "#8b5cf6",
+        ["primaryHover"] = "#7c3aed",
+        ["primarySoft"] = "#302443",
+        ["accent"] = "#4adea0",
+        ["accentSoft"] = "#1c332c",
+        ["warning"] = "#f6c16b",
+        ["warningSoft"] = "#382f22",
+        ["danger"] = "#fb858b",
+        ["dangerSoft"] = "#3c252b",
+        ["info"] = "#83b4ff"
+    };
+    // Soft light palette: no pure white, a slightly tinted grey ground so large light areas do not glare.
+    private static readonly IReadOnlyDictionary<string, string> DefaultLightAppearanceColors = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["bg"] = "#d4d9e2",
+        ["sidebar"] = "#dde1e8",
+        ["surface"] = "#e5e8ee",
+        ["surfaceRaised"] = "#ebeef3",
+        ["surfaceSoft"] = "#d9dde6",
+        ["border"] = "#bfc6d3",
+        ["borderStrong"] = "#96a0b4",
+        ["ink"] = "#1b2232",
+        ["muted"] = "#4b566c",
+        ["subtle"] = "#69758d",
+        ["primary"] = "#5b44d2",
+        ["primaryHover"] = "#4b36bb",
+        ["primarySoft"] = "#d8d2f4",
+        ["accent"] = "#0f7864",
+        ["accentSoft"] = "#cde4db",
+        ["warning"] = "#8a560d",
+        ["warningSoft"] = "#eadab5",
+        ["danger"] = "#a2344f",
+        ["dangerSoft"] = "#eacdd5",
+        ["info"] = "#2f5aa8"
+    };
+    private static readonly string[] AppearanceColorTokens = ["bg", "sidebar", "surface", "surfaceRaised", "surfaceSoft", "border", "borderStrong", "ink", "muted", "subtle", "primary", "primaryHover", "primarySoft", "accent", "accentSoft", "warning", "warningSoft", "danger", "dangerSoft", "info"];
+
+    public static IEndpointRouteBuilder MapSettingsEndpoints(this IEndpointRouteBuilder endpoints)
+    {
+        var api = endpoints.MapGroup("/api/v1/settings");
+        api.MapGet("/shipping-label", GetShippingLabelSettingsAsync);
+        api.MapPut("/shipping-label", SaveShippingLabelSettingsAsync);
+        api.MapGet("/appearance", GetAppearanceSettingsAsync);
+        api.MapPut("/appearance", SaveAppearanceSettingsAsync);
+        return endpoints;
+    }
+
+    private static async Task<IResult> GetShippingLabelSettingsAsync(HttpContext http, AppDbContext db)
+    {
+        if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        var setting = await db.TenantSettings.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Key == ShippingLabelKey, http.RequestAborted);
+        var settings = ParseObject(setting?.ValueJson);
+        return Results.Ok(new { settings, version = setting?.Version ?? 0 });
+    }
+
+    private static async Task<IResult> SaveShippingLabelSettingsAsync(JsonElement settings, HttpContext http, AppDbContext db, TimeProvider timeProvider)
+    {
+        if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        if (settings.ValueKind != JsonValueKind.Object) return Problem(http, new("SHIPPING_LABEL_SETTINGS_INVALID", "Kargo etiketi ayarları JSON nesnesi olmalıdır.", 400));
+        var valueJson = settings.GetRawText();
+        if (valueJson.Length > MaximumJsonCharacters) return Problem(http, new("SHIPPING_LABEL_SETTINGS_TOO_LARGE", "Kargo etiketi ayarları çok büyük.", 413));
+
+        var setting = await db.TenantSettings.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Key == ShippingLabelKey, http.RequestAborted);
+        if (setting is null)
+        {
+            setting = new TenantSetting { TenantId = tenant.TenantId, Key = ShippingLabelKey, ValueJson = valueJson, UpdatedAt = timeProvider.GetUtcNow(), Version = 1 };
+            db.TenantSettings.Add(setting);
+        }
+        else
+        {
+            setting.ValueJson = valueJson;
+            setting.UpdatedAt = timeProvider.GetUtcNow();
+            setting.Version++;
+        }
+
+        await db.SaveChangesAsync(http.RequestAborted);
+        return Results.Ok(new { settings = ParseObject(valueJson), version = setting.Version });
+    }
+
+    private static async Task<IResult> GetAppearanceSettingsAsync(HttpContext http, AppDbContext db)
+    {
+        if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        var setting = await db.TenantSettings.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Key == AppearanceKey, http.RequestAborted);
+        var settings = NormalizeAppearance(ParseObject(setting?.ValueJson));
+        return Results.Ok(new { settings, version = setting?.Version ?? 0 });
+    }
+
+    private static async Task<IResult> SaveAppearanceSettingsAsync(JsonElement settings, HttpContext http, AppDbContext db, TimeProvider timeProvider)
+    {
+        if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        if (settings.ValueKind != JsonValueKind.Object) return Problem(http, new("APPEARANCE_SETTINGS_INVALID", "Görünüm ayarları JSON nesnesi olmalıdır.", 400));
+        if (!TryNormalizeAppearance(settings, out var normalized)) return Problem(http, new("APPEARANCE_SETTINGS_INVALID", "Geçerli bir font tipi, yazı boyutu ve tema seçin.", 400));
+
+        var valueJson = JsonSerializer.Serialize(normalized);
+        var setting = await db.TenantSettings.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Key == AppearanceKey, http.RequestAborted);
+        if (setting is null)
+        {
+            setting = new TenantSetting { TenantId = tenant.TenantId, Key = AppearanceKey, ValueJson = valueJson, UpdatedAt = timeProvider.GetUtcNow(), Version = 1 };
+            db.TenantSettings.Add(setting);
+        }
+        else
+        {
+            setting.ValueJson = valueJson;
+            setting.UpdatedAt = timeProvider.GetUtcNow();
+            setting.Version++;
+        }
+
+        await db.SaveChangesAsync(http.RequestAborted);
+        return Results.Ok(new { settings = normalized, version = setting.Version });
+    }
+
+    private static object NormalizeAppearance(JsonElement? value)
+    {
+        var fontFamily = value is { ValueKind: JsonValueKind.Object } ? ReadString(value.Value, "fontFamily") : null;
+        var fontSize = value is { ValueKind: JsonValueKind.Object } ? ReadString(value.Value, "fontSize") : null;
+        var themeMode = value is { ValueKind: JsonValueKind.Object } ? ReadString(value.Value, "themeMode") : null;
+        var colors = NormalizeAppearanceColors(value);
+        var colorThemes = NormalizeAppearanceColorThemes(value);
+        return new
+        {
+            fontFamily = AppearanceFontFamilies.Contains(fontFamily ?? string.Empty) ? fontFamily!.ToLowerInvariant() : "inter",
+            fontSize = AppearanceFontSizes.Contains(fontSize ?? string.Empty) ? fontSize!.ToLowerInvariant() : "normal",
+            themeMode = "dark",
+            colors,
+            colorThemes
+        };
+    }
+
+    private static bool TryNormalizeAppearance(JsonElement value, out object normalized)
+    {
+        var fontFamily = ReadString(value, "fontFamily");
+        var fontSize = ReadString(value, "fontSize");
+        var themeMode = ReadString(value, "themeMode") ?? "dark";
+        if (fontFamily is null || fontSize is null || !AppearanceFontFamilies.Contains(fontFamily) || !AppearanceFontSizes.Contains(fontSize) || !AppearanceThemeModes.Contains(themeMode))
+        {
+            normalized = new { };
+            return false;
+        }
+
+        if (!TryNormalizeAppearanceColors(value, out var colors))
+        {
+            normalized = new { };
+            return false;
+        }
+
+        normalized = new { fontFamily = fontFamily.ToLowerInvariant(), fontSize = fontSize.ToLowerInvariant(), themeMode = "dark", colors, colorThemes = NormalizeAppearanceColorThemes(value) };
+        return true;
+    }
+
+    private static List<object> NormalizeAppearanceColorThemes(JsonElement? value)
+    {
+        var themes = new List<object>
+        {
+            new { id = DefaultAppearanceColorThemeId, name = DefaultAppearanceColorThemeName, builtIn = true, palette = DefaultDarkAppearanceColors }
+        };
+        if (value is not { ValueKind: JsonValueKind.Object } || !value.Value.TryGetProperty("colorThemes", out var themesElement) || themesElement.ValueKind != JsonValueKind.Array)
+        {
+            return themes;
+        }
+
+        var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { DefaultAppearanceColorThemeId };
+        foreach (var item in themesElement.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object) continue;
+            var id = ReadString(item, "id");
+            var name = ReadString(item, "name");
+            if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(name)) continue;
+            id = id.Trim();
+            name = name.Trim();
+            if (id.Length > 80 || name.Length > 60 || !ids.Add(id)) continue;
+
+            var palette = item.TryGetProperty("palette", out var paletteElement) && paletteElement.ValueKind == JsonValueKind.Object
+                ? NormalizeAppearancePaletteObject(paletteElement, DefaultDarkAppearanceColors)
+                : DefaultDarkAppearanceColors.ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.Ordinal);
+            themes.Add(new { id, name, builtIn = false, palette });
+            if (themes.Count >= MaximumAppearanceColorThemes) break;
+        }
+
+        return themes;
+    }
+
+    private static object NormalizeAppearanceColors(JsonElement? value)
+    {
+        var colors = value is { ValueKind: JsonValueKind.Object } && value.Value.TryGetProperty("colors", out var property) && property.ValueKind == JsonValueKind.Object ? property : (JsonElement?)null;
+        var dark = NormalizeAppearancePalette(colors, "dark", DefaultDarkAppearanceColors);
+        var light = NormalizeAppearancePalette(colors, "light", DefaultLightAppearanceColors);
+        return new { dark, light };
+    }
+
+    private static Dictionary<string, string> NormalizeAppearancePalette(JsonElement? colors, string theme, IReadOnlyDictionary<string, string> defaults)
+    {
+        var palette = colors is { ValueKind: JsonValueKind.Object } && colors.Value.TryGetProperty(theme, out var property) && property.ValueKind == JsonValueKind.Object ? property : (JsonElement?)null;
+        return NormalizeAppearancePaletteObject(palette, defaults);
+    }
+
+    private static Dictionary<string, string> NormalizeAppearancePaletteObject(JsonElement? palette, IReadOnlyDictionary<string, string> defaults)
+    {
+        var normalized = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var token in AppearanceColorTokens)
+        {
+            var candidate = palette is { ValueKind: JsonValueKind.Object } ? ReadString(palette.Value, token) : null;
+            normalized[token] = candidate is not null && IsHexColor(candidate) ? candidate.ToLowerInvariant() : defaults[token];
+        }
+        return normalized;
+    }
+
+    private static bool TryNormalizeAppearanceColors(JsonElement value, out object colors)
+    {
+        if (!value.TryGetProperty("colors", out var colorsElement))
+        {
+            colors = NormalizeAppearanceColors(null);
+            return true;
+        }
+
+        if (colorsElement.ValueKind != JsonValueKind.Object
+            || !TryNormalizeAppearancePalette(colorsElement, "dark", DefaultDarkAppearanceColors, out var dark)
+            || !TryNormalizeAppearancePalette(colorsElement, "light", DefaultLightAppearanceColors, out var light))
+        {
+            colors = new { };
+            return false;
+        }
+
+        colors = new { dark, light };
+        return true;
+    }
+
+    private static bool TryNormalizeAppearancePalette(JsonElement colors, string theme, IReadOnlyDictionary<string, string> defaults, out Dictionary<string, string> normalized)
+    {
+        normalized = new Dictionary<string, string>(StringComparer.Ordinal);
+        var palette = colors.TryGetProperty(theme, out var property) && property.ValueKind == JsonValueKind.Object ? property : (JsonElement?)null;
+        foreach (var token in AppearanceColorTokens)
+        {
+            var candidate = palette is { ValueKind: JsonValueKind.Object } ? ReadString(palette.Value, token) : null;
+            if (candidate is not null && !IsHexColor(candidate)) return false;
+            normalized[token] = candidate?.ToLowerInvariant() ?? defaults[token];
+        }
+        return true;
+    }
+
+    private static bool IsHexColor(string value)
+    {
+        return value.Length == 7 && value[0] == '#' && value.Skip(1).All(Uri.IsHexDigit);
+    }
+
+    private static string? ReadString(JsonElement value, string propertyName)
+    {
+        return value.TryGetProperty(propertyName, out var property) && property.ValueKind == JsonValueKind.String
+            ? property.GetString()?.Trim()
+            : null;
+    }
+
+    private static JsonElement? ParseObject(string? valueJson)
+    {
+        if (string.IsNullOrWhiteSpace(valueJson)) return null;
+        try
+        {
+            using var document = JsonDocument.Parse(valueJson);
+            return document.RootElement.ValueKind == JsonValueKind.Object ? document.RootElement.Clone() : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static TenantContext? Tenant(HttpContext http) => http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
+    private static IResult Unauthorized(HttpContext http) => Problem(http, new("AUTHENTICATION_REQUIRED", "Aktif tenant oturumu gereklidir.", 401));
+    private static IResult Problem(HttpContext http, ServiceError error) => Results.Json(new
+    {
+        type = $"https://marketplacehub.invalid/problems/{error.Code.ToLowerInvariant().Replace('_', '-')}",
+        title = error.Message,
+        status = error.Status,
+        code = error.Code,
+        correlationId = http.TraceIdentifier,
+        retryable = error.Status is 429 or >= 500,
+        fieldErrors = error.FieldErrors
+    }, statusCode: error.Status, contentType: "application/problem+json");
+}

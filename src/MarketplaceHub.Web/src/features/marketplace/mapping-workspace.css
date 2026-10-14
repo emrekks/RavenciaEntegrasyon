@@ -1,0 +1,349 @@
+/* Category attribute workspace (step 4) and the value mapping editor header.
+   One context bar says which panel category maps to which marketplace category; the actions
+   below it are grouped by what they do, so the screen reads top-down: where, what to run, review. */
+
+.mapping-step .mapping-workspace-context {
+  display: grid;
+  grid-template-columns: minmax(200px, 320px) auto minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--rv-space-3) var(--rv-space-4);
+  margin-bottom: var(--rv-space-3);
+  padding: var(--rv-space-4);
+  background: var(--rv-color-surface-raised);
+  border: 1px solid var(--rv-color-border);
+  border-radius: var(--rv-radius-lg);
+}
+
+.mapping-step .mapping-workspace-field { display: grid; min-width: 0; gap: 6px; margin: 0; }
+.mapping-step .mapping-workspace-field > span { color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); font-weight: 500; }
+.mapping-step .mapping-workspace-field > select { width: 100%; min-width: 0; }
+.mapping-step .mapping-workspace-field > strong {
+  display: flex;
+  align-items: center;
+  min-height: var(--rv-control-height-md);
+  overflow: hidden;
+  color: var(--rv-color-ink);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mapping-step .mapping-workspace-arrow {
+  width: var(--rv-icon-size-md);
+  height: var(--rv-icon-size-md);
+  margin-bottom: 12px;
+  color: var(--rv-color-subtle);
+}
+
+.mapping-step .mapping-workspace-context > .mapping-table-status { align-self: center; margin-top: 22px; white-space: nowrap; }
+
+.mapping-step .mapping-workspace-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: var(--rv-space-3) 0;
+  margin-bottom: var(--rv-space-3);
+  padding: var(--rv-space-3) 0;
+  border-block: 1px solid var(--rv-color-border);
+}
+
+.mapping-step .mapping-workspace-action-group {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding-inline: var(--rv-space-4);
+  border-inline-start: 1px solid var(--rv-color-border);
+}
+
+.mapping-step .mapping-workspace-action-group:first-child { padding-inline-start: 0; border-inline-start: 0; }
+
+.mapping-step .mapping-workspace-action-group > span { color: var(--rv-color-subtle); font-size: 12px; font-weight: 500; }
+
+.mapping-step .mapping-workspace-action-group > div { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+
+.mapping-step .mapping-workspace-action-group button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: var(--rv-font-size-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.mapping-step .mapping-workspace-action-group button svg { width: var(--rv-icon-size-sm); height: var(--rv-icon-size-sm); flex: 0 0 auto; }
+
+/* Closed panels sit side by side as wide as the page allows; an open panel takes the full row so
+   its content stays readable. */
+.mapping-step .mapping-workspace-panels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
+  align-items: start;
+  gap: var(--rv-space-3);
+  margin-bottom: var(--rv-space-4);
+}
+.mapping-step .mapping-workspace-panels > details { min-width: 0; margin: 0; border-radius: var(--rv-radius-md); }
+.mapping-step .mapping-workspace-panels > details[open] { grid-column: 1 / -1; }
+
+/* Panel heading: title, count badge, one short line, chevron on the right. */
+.mapping-step .mapping-workspace-panels > details > summary {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 4px 10px;
+  min-height: 52px;
+  padding: 10px 16px;
+  list-style: none;
+  cursor: pointer;
+}
+.mapping-step .mapping-workspace-panels > details > summary::-webkit-details-marker { display: none; }
+.mapping-step .mapping-workspace-panels > details > summary::after {
+  width: 8px;
+  height: 8px;
+  margin-inline: auto;
+  content: "";
+  border-right: 2px solid var(--rv-color-subtle);
+  border-bottom: 2px solid var(--rv-color-subtle);
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform var(--rv-duration-fast) var(--rv-ease-standard);
+}
+.mapping-step .mapping-workspace-panels > details[open] > summary::after { transform: translateY(2px) rotate(-135deg); }
+.mapping-step .mapping-workspace-panels .panel-summary-title { color: var(--rv-color-ink); font-weight: 600; white-space: nowrap; }
+.mapping-step .mapping-workspace-panels .panel-summary-count {
+  min-width: 24px;
+  padding: 1px 8px;
+  color: var(--rv-color-muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  background: var(--rv-color-surface-soft);
+  border-radius: 999px;
+}
+.mapping-step .mapping-workspace-panels .panel-summary-count.is-warning { color: var(--rv-color-warning); background: var(--rv-color-warning-soft); }
+.mapping-step .mapping-workspace-panels > details > summary small { overflow: hidden; color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); text-overflow: ellipsis; white-space: nowrap; }
+
+@media (max-width: 760px) {
+  .mapping-step .mapping-workspace-panels > details > summary small { grid-column: 1 / -1; grid-row: 2; white-space: normal; }
+}
+
+/* Value mapping editor: one command bar. Groups are split by thin dividers, every control (the
+   share switch included) is the same 34px ghost button, and the bar wraps on narrow dialogs. */
+.value-mapping-editor .value-mapping-commandbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 0;
+  padding: 5px;
+  background: var(--rv-color-surface-raised);
+  border: 1px solid var(--rv-color-border);
+  border-radius: 10px;
+}
+.value-mapping-editor .value-mapping-command-group { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; padding-inline: 4px; }
+.value-mapping-editor .value-mapping-command-group + .value-mapping-command-group { margin-inline-start: 4px; padding-inline-start: 8px; border-inline-start: 1px solid var(--rv-color-border); }
+.value-mapping-editor .value-mapping-command-group.is-end { margin-inline-start: auto; }
+
+.value-mapping-editor .value-mapping-commandbar .value-mapping-command-group > button.secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 0 10px;
+  color: var(--rv-color-ink);
+  font-size: var(--rv-font-size-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--rv-radius-md);
+  box-shadow: none;
+}
+.value-mapping-editor .value-mapping-commandbar .value-mapping-command-group > button.secondary:hover:not(:disabled) { background: var(--rv-color-surface-soft); border-color: var(--rv-color-border); }
+.value-mapping-editor .value-mapping-commandbar .value-mapping-command-group > button.secondary:disabled { color: var(--rv-color-subtle); opacity: .6; }
+.value-mapping-editor .value-mapping-commandbar .value-mapping-command-group > button.secondary:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 1px; }
+.value-mapping-editor .value-mapping-commandbar button > svg { width: var(--rv-icon-size-sm); height: var(--rv-icon-size-sm); flex: 0 0 auto; color: var(--rv-color-muted); }
+.value-mapping-editor .value-mapping-command-count {
+  padding: 0 7px;
+  color: var(--rv-color-primary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 20px;
+  background: var(--rv-color-primary-soft);
+  border-radius: 999px;
+}
+
+/* Save bar: stays at the bottom of the dialog while the list scrolls. */
+.value-mapping-editor .value-mapping-savebar {
+  position: sticky;
+  bottom: 12px;
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  padding: 10px 10px 10px 16px;
+  background: color-mix(in srgb, var(--rv-color-surface-raised) 94%, transparent);
+  border: 1px solid var(--rv-color-border-strong);
+  border-radius: 12px;
+  box-shadow: var(--rv-shadow-md);
+  backdrop-filter: blur(8px);
+}
+.value-mapping-editor .value-mapping-savebar > span { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); }
+.value-mapping-editor .value-mapping-savebar > span strong { color: var(--rv-color-warning); font-weight: 600; }
+.value-mapping-editor .value-mapping-savebar > span em { color: var(--rv-color-subtle); font-style: normal; }
+.value-mapping-editor .value-mapping-savebar > button { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 18px; white-space: nowrap; }
+.value-mapping-editor .value-mapping-savebar > button > svg { width: var(--rv-icon-size-sm); height: var(--rv-icon-size-sm); }
+
+.value-mapping-editor .value-mapping-share-switch > i {
+  position: relative;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 18px;
+  background: var(--rv-color-surface-soft);
+  border: 1px solid var(--rv-color-border-strong);
+  border-radius: 999px;
+  transition: background var(--rv-duration-fast) var(--rv-ease-standard), border-color var(--rv-duration-fast) var(--rv-ease-standard);
+}
+.value-mapping-editor .value-mapping-share-switch > i::after {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  content: "";
+  background: var(--rv-color-subtle);
+  border-radius: 50%;
+  transition: transform var(--rv-duration-fast) var(--rv-ease-standard), background var(--rv-duration-fast) var(--rv-ease-standard);
+}
+.value-mapping-editor .value-mapping-share-switch.is-on > i { background: var(--rv-color-primary); border-color: var(--rv-color-primary); }
+.value-mapping-editor .value-mapping-share-switch.is-on > i::after { background: #fff; transform: translateX(12px); }
+.value-mapping-editor .value-mapping-share-switch:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .value-mapping-editor .value-mapping-share-switch > i,
+  .value-mapping-editor .value-mapping-share-switch > i::after { transition: none; }
+}
+
+/* Suggestions waiting for approval: aligned columns instead of a loose line per item. */
+.value-mapping-editor .value-mapping-suggestions { gap: 10px; padding: 12px 14px; }
+.value-mapping-editor .value-mapping-suggestions-head button { min-height: 32px; padding: 0 12px; font-size: var(--rv-font-size-sm); }
+.value-mapping-editor .value-mapping-suggestions ul { gap: 0; }
+.value-mapping-editor .value-mapping-suggestions li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1fr) 88px auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-top: 1px solid var(--rv-color-border);
+}
+.value-mapping-editor .value-mapping-suggestions li > span,
+.value-mapping-editor .value-mapping-suggestions li > strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.value-mapping-editor .value-mapping-suggestions li > b { color: var(--rv-color-subtle); text-align: center; }
+.value-mapping-editor .value-mapping-suggestions li > small {
+  justify-self: start;
+  padding: 1px 8px;
+  color: var(--rv-color-warning);
+  font-size: 12px;
+  background: var(--rv-color-warning-soft);
+  border-radius: 999px;
+}
+.value-mapping-editor .value-mapping-suggestions li > button { min-height: 30px; padding: 0 12px; font-size: var(--rv-font-size-sm); }
+
+@media (max-width: 760px) {
+  .mapping-step .mapping-workspace-context { grid-template-columns: minmax(0, 1fr); align-items: stretch; }
+  .mapping-step .mapping-workspace-arrow { display: none; }
+  .mapping-step .mapping-workspace-context > .mapping-table-status { justify-self: start; margin-top: 0; }
+  .mapping-step .mapping-workspace-action-group { flex: 1 1 100%; padding-inline: 0; border-inline-start: 0; }
+
+  .value-mapping-editor .value-mapping-suggestions li { grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1fr); }
+  .value-mapping-editor .value-mapping-suggestions li > small { grid-column: 1; }
+}
+
+
+/* Saved category mappings on phones: each row is a card (panel category and status on top, the
+   marketplace path below, platform and actions at the bottom) instead of a 760px table. */
+@media (max-width: 760px) {
+  .mapping-saved-card .mapping-saved-table { overflow: visible; background: transparent; border: 0; }
+  .mapping-saved-card .mapping-saved-table table,
+  .mapping-saved-card .mapping-saved-table tbody { display: block; width: 100%; min-width: 0; }
+  .mapping-saved-card .mapping-saved-table thead { display: none; }
+  .mapping-saved-card .mapping-saved-table tbody > tr {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "panel panel status"
+      "target target target"
+      "platform actions actions";
+    align-items: center;
+    gap: 6px 10px;
+    margin-bottom: 10px;
+    padding: 12px;
+    background: var(--rv-color-surface);
+    border: 1px solid var(--rv-color-border-strong);
+    border-radius: 12px;
+  }
+  .mapping-saved-card .mapping-saved-table tbody > tr > td { width: auto; min-width: 0; max-width: none; padding: 0; border: 0; }
+  .mapping-saved-card .mapping-saved-table tbody > tr > td:nth-child(1) { grid-area: panel; font-weight: 600; }
+  .mapping-saved-card .mapping-saved-table tbody > tr > td:nth-child(2) { grid-area: platform; }
+  .mapping-saved-card .mapping-saved-table tbody > tr > td:nth-child(3) { grid-area: target; color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); }
+  .mapping-saved-card .mapping-saved-table tbody > tr > td:nth-child(3)::before { content: "→ "; color: var(--rv-color-subtle); }
+  .mapping-saved-card .mapping-saved-table tbody > tr > td:nth-child(4) { grid-area: status; justify-self: end; }
+  .mapping-saved-card .mapping-saved-table tbody > tr > td:nth-child(5) { grid-area: actions; justify-self: end; }
+  .mapping-saved-card .mapping-saved-table tbody > tr > td[colspan] { grid-column: 1 / -1; }
+  .mapping-saved-card .mapping-row-actions { display: flex; gap: 6px; }
+  .mapping-saved-card .mapping-row-actions > button { min-height: 40px; }
+  .mapping-saved-card .mapping-saved-header-tools { flex-wrap: wrap; }
+
+  /* The category library remove button is easier to hit at 36px. */
+  .mapping-page .category-library-remove { width: 36px; min-width: 36px; height: 36px; }
+}
+/* Mapping page on phones: the option and attribute library cards and their create form stack in
+   one column (the form had three fixed columns, 600px in all, and widened the page). */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .mapping-page .mapping-reference-card,
+  .app-shell.stitch-shell main .mapping-page .panel-attribute-library,
+  .app-shell.stitch-shell main .mapping-page .panel-attribute-create { grid-template-columns: minmax(0, 1fr); }
+  .app-shell.stitch-shell main .mapping-page .mapping-reference-card > *,
+  .app-shell.stitch-shell main .mapping-page .panel-attribute-library > *,
+  .app-shell.stitch-shell main .mapping-page .panel-attribute-create > * { min-width: 0; }
+}
+/* Category attribute window on phones: less nested padding, the marketplace path may wrap, and
+   the action buttons sit two to a row at full width. */
+@media (max-width: 760px) {
+  .mapping-advanced-modal .mapping-advanced-modal-body { padding: 12px; }
+  .mapping-advanced-modal .mapping-popup-content > .mapping-step { padding: 12px; }
+  .mapping-step .mapping-workspace-context { gap: 10px; padding: 12px; }
+  .mapping-step .mapping-workspace-field > strong { min-height: 0; white-space: normal; }
+  .mapping-step .mapping-workspace-actions { gap: 12px 0; }
+  .mapping-step .mapping-workspace-action-group > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mapping-step .mapping-workspace-action-group button { justify-content: center; min-height: 40px; padding: 4px 8px; white-space: normal; text-align: center; }
+}
+/* Value mapping window on phones: the window title already names the attribute, so the inner
+   heading goes; the commands become a two-column button grid (switch across the full row); the
+   save bar is one compact row. */
+@media (max-width: 760px) {
+  .mapping-values-modal .rv-modal-body { padding: 12px; }
+  .mapping-values-modal .value-mapping-editor { padding: 0; }
+  .mapping-values-modal .value-mapping-editor > .value-mapping-heading { display: none; }
+  .value-mapping-editor .value-mapping-commandbar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
+  .value-mapping-editor .value-mapping-command-group { display: contents; }
+  .value-mapping-editor .value-mapping-commandbar .value-mapping-command-group > button.secondary { justify-content: flex-start; min-width: 0; white-space: normal; text-align: left; }
+  .value-mapping-editor .value-mapping-commandbar .value-mapping-share-switch { grid-column: 1 / -1; }
+  .value-mapping-editor .value-mapping-savebar { flex-wrap: nowrap; gap: 10px; padding: 8px 8px 8px 12px; bottom: 8px; }
+  .value-mapping-editor .value-mapping-savebar > span { display: grid; gap: 0; font-size: 12px; line-height: 1.35; }
+  .value-mapping-editor .value-mapping-savebar > button { flex: 0 0 auto; min-height: 44px; padding: 0 14px; }
+  .value-mapping-editor .value-mapping-rows { grid-template-columns: minmax(0, 1fr); }
+}
+/* Mapping settings heading on phones: the title block's desktop flex-basis (360px) turned into a
+   360px height in the stacked layout and left a large empty gap. The tools follow as a tidy grid:
+   platform import across the row, the backup label and export/import side by side below. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main section.mapping-page .mapping-reference-heading { align-items: stretch; gap: 14px; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-reference-heading > div:first-child:first-of-type { flex: none; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-header-tools { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; width: 100%; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-header-tools > .structure-header-button { width: 100%; min-height: 44px; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-header-tools > .mapping-reference-heading-actions { display: grid; justify-self: stretch; align-items: stretch; gap: 6px; width: 100%; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-reference-heading-actions > span { justify-content: flex-start; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-transfer-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-transfer-actions > * { width: 100%; min-height: 44px; }
+}

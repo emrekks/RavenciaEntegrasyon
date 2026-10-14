@@ -1,0 +1,80 @@
+import { describe, expect, it } from 'vitest'
+import { productPlatformDisplayLabel, productPlatformDisplayState } from './product-platform-status'
+
+describe('product platform list status', () => {
+  it('shows imported and fully matched variants as linked without claiming publication', () => {
+    const state = productPlatformDisplayState(['LINKED'], false, 35)
+
+    expect(state).toBe('linked')
+    expect(productPlatformDisplayLabel('Ravencia Canlı', ['LINKED'], 35, 35, state))
+      .toBe('Ravencia Canlı bağlantısı var (35/35 varyant)')
+  })
+
+  it('shows partial marketplace matching as linked with its coverage', () => {
+    const state = productPlatformDisplayState(['PARTIAL_LINKED'], false, 2)
+
+    expect(state).toBe('linked')
+    expect(productPlatformDisplayLabel('Trendyol', ['PARTIAL_LINKED'], 2, 4, state))
+      .toBe('Trendyol bağlantısı var (2/4 varyant)')
+  })
+
+  it('recognizes explicit mapping status when counts are unavailable', () => {
+    const state = productPlatformDisplayState(['MAPPED'], false)
+
+    expect(state).toBe('linked')
+    expect(productPlatformDisplayLabel('Trendyol', ['MAPPED'], 0, 0, state))
+      .toBe('Trendyol bağlantısı var')
+  })
+
+  it('shows Hepsiburada imports as linked after the matched variant data refreshes', () => {
+    const state = productPlatformDisplayState(['IMPORT_ACCEPTED'], false, 2)
+
+    expect(state).toBe('linked')
+    expect(productPlatformDisplayLabel('Hepsiburada', ['IMPORT_ACCEPTED'], 2, 2, state))
+      .toBe('Hepsiburada bağlantısı var (2/2 varyant)')
+  })
+
+  it('shows Hepsiburada import processing states as in progress', () => {
+    expect(productPlatformDisplayState(['IMPORT_SUBMITTED'], false)).toBe('processing')
+    expect(productPlatformDisplayState(['IMPORT_IN_PROGRESS'], false)).toBe('processing')
+  })
+
+  it('shows a confirmed live listing as active', () => {
+    const state = productPlatformDisplayState(['LIVE'], false)
+
+    expect(state).toBe('active')
+    expect(productPlatformDisplayLabel('Trendyol', ['LIVE'], 35, 35, state))
+      .toBe('Trendyol üzerinde tüm varyantlar yayında (35/35)')
+  })
+
+  it('shows partial publication only when the marketplace reports live variants', () => {
+    const state = productPlatformDisplayState(['LIVE', 'UNKNOWN'], false)
+
+    expect(state).toBe('partial')
+    expect(productPlatformDisplayLabel('Trendyol', ['LIVE', 'UNKNOWN'], 1, 2, state))
+      .toBe('Trendyol üzerinde ürün kısmen yayında (1/2)')
+  })
+
+  it('does not let a rejected sibling hide a confirmed live listing', () => {
+    const statuses = ['LIVE', 'CREATE_REJECTED']
+    const state = productPlatformDisplayState(statuses, false)
+
+    expect(state).toBe('partial')
+    expect(productPlatformDisplayLabel('Trendyol', statuses, 35, 70, state))
+      .toBe('Trendyol üzerinde ürün kısmen yayında (35/70)')
+  })
+
+  it('keeps a split-content product visibly partially live when only some variants are approved', () => {
+    const state = productPlatformDisplayState(['PARTIAL_LIVE'], false)
+
+    expect(state).toBe('partial')
+    expect(productPlatformDisplayLabel('Trendyol', ['PARTIAL_LIVE'], 17, 35, state))
+      .toBe('Trendyol üzerinde ürün kısmen yayında (17/35)')
+  })
+
+  it('keeps unmatched variants neutral until publication is confirmed', () => {
+    expect(productPlatformDisplayState(['UNLINKED'], false)).toBe('inactive')
+    expect(productPlatformDisplayState(['BATCH_IN_PROGRESS'], false)).toBe('processing')
+    expect(productPlatformDisplayState(['CREATE_REJECTED'], false)).toBe('error')
+  })
+})

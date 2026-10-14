@@ -1,3 +1,4 @@
+using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Security;
@@ -7,24 +8,63 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimeProvider timeProvider) : IJobLeaseService
 {
-    public async Task<LeasedJob?> TryLeaseAsync(TimeSpan leaseDuration, int? maximumPriority, CancellationToken cancellationToken)
+    private static readonly TimeSpan MaximumDeferralAge = TimeSpan.FromHours(24);
+    private static readonly string[] LockGroupJobTypes = [.. MarketplaceJobTypes.ProcessorJobTypes];
+    private static readonly string[] LockGroups = [.. MarketplaceJobTypes.ProcessorJobTypes.Select(MarketplaceSyncExecutionLock.GroupFor)];
+
+    public async Task<LeasedJob?> TryLeaseAsync(TimeSpan leaseDuration, int? maximumPriority, int? minimumPriority, CancellationToken cancellationToken, string? onlyJobType = null, Guid? onlyJobId = null, string[]? includedJobTypes = null, string[]? excludedJobTypes = null)
     {
         var now = timeProvider.GetUtcNow();
+        includedJobTypes ??= [];
+        excludedJobTypes ??= [];
         await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken);
-        await db.IntegrationJobs
-            .Where(x => (x.Status == JobStatus.Pending || x.Status == JobStatus.RetryScheduled) && x.AttemptCount >= x.MaxAttempts)
-            .ExecuteUpdateAsync(update => update
-                .SetProperty(x => x.Status, JobStatus.Dead)
-                .SetProperty(x => x.CompletedAt, now)
-                .SetProperty(x => x.LastErrorCode, x => x.LastErrorCode ?? "MAX_ATTEMPTS_EXHAUSTED")
-                .SetProperty(x => x.Version, x => x.Version + 1), cancellationToken);
-        var job = maximumPriority is null
-            ? await db.IntegrationJobs
-                .FromSqlInterpolated($"SELECT * FROM integration.jobs WHERE \"Status\" IN ('PENDING', 'RETRY_SCHEDULED') AND \"AttemptCount\" < \"MaxAttempts\" AND \"AvailableAt\" <= {now} ORDER BY \"Priority\" ASC, \"AvailableAt\" ASC, \"CreatedAt\" ASC FOR UPDATE SKIP LOCKED LIMIT 1")
-                .SingleOrDefaultAsync(cancellationToken)
-            : await db.IntegrationJobs
-                .FromSqlInterpolated($"SELECT * FROM integration.jobs WHERE \"Status\" IN ('PENDING', 'RETRY_SCHEDULED') AND \"AttemptCount\" < \"MaxAttempts\" AND \"AvailableAt\" <= {now} AND \"Priority\" <= {maximumPriority.Value} ORDER BY \"Priority\" ASC, \"AvailableAt\" ASC, \"CreatedAt\" ASC FOR UPDATE SKIP LOCKED LIMIT 1")
-                .SingleOrDefaultAsync(cancellationToken);
+        // A job whose connection already runs a job of the same execution-lock group is skipped
+        // here instead of being leased and then deferred, so the slot takes the next job at once.
+        // Two slots leasing at the same instant can still collide; the processor's advisory lock
+        // remains the final guard and defers the loser without consuming an attempt.
+        var job = await db.IntegrationJobs.FromSqlInterpolated($"""
+            SELECT candidate.* FROM integration.jobs candidate
+            WHERE candidate."Status" IN ('PENDING', 'RETRY_SCHEDULED')
+              AND candidate."AttemptCount" < candidate."MaxAttempts"
+              AND candidate."AvailableAt" <= {now}
+              AND ({minimumPriority}::int IS NULL OR candidate."Priority" >= {minimumPriority}::int)
+              AND ({maximumPriority}::int IS NULL OR candidate."Priority" <= {maximumPriority}::int)
+              AND ({onlyJobType}::text IS NULL OR candidate."JobType" = {onlyJobType}::text)
+              AND (cardinality({includedJobTypes}::text[]) = 0 OR candidate."JobType" = ANY({includedJobTypes}::text[]))
+              AND NOT (candidate."JobType" = ANY({excludedJobTypes}::text[]))
+              AND ({onlyJobId}::uuid IS NULL OR candidate."Id" = {onlyJobId}::uuid)
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM unnest({LockGroupJobTypes}::text[], {LockGroups}::text[]) AS candidate_group(job_type, lock_group)
+                  JOIN unnest({LockGroupJobTypes}::text[], {LockGroups}::text[]) AS running_group(job_type, lock_group)
+                    ON running_group.lock_group = candidate_group.lock_group
+                  JOIN integration.jobs running
+                    ON running."JobType" = running_group.job_type
+                  WHERE candidate_group.job_type = candidate."JobType"
+                    AND candidate."ConnectionId" IS NOT NULL
+                    AND running."ConnectionId" = candidate."ConnectionId"
+                    AND running."Status" = 'LEASED'
+                    AND running."LeaseExpiresAt" > {now})
+              -- A connection + lock group that hit a marketplace quota waits until its backoff ends.
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM unnest({LockGroupJobTypes}::text[], {LockGroups}::text[]) AS backoff_group(job_type, lock_group)
+                  JOIN integration.connection_backoffs backoff
+                    ON backoff."LockGroup" = backoff_group.lock_group
+                  WHERE backoff_group.job_type = candidate."JobType"
+                    AND backoff."ConnectionId" = candidate."ConnectionId"
+                    AND backoff."Until" > {now})
+            ORDER BY candidate."Priority" ASC,
+              -- Fairness: within one priority, the tenant with fewer running jobs goes first, so a
+              -- tenant with hundreds of queued jobs cannot keep every slot to itself.
+              (SELECT count(*) FROM integration.jobs tenant_running
+               WHERE tenant_running."Status" = 'LEASED'
+                 AND tenant_running."TenantId" = candidate."TenantId"
+                 AND tenant_running."LeaseExpiresAt" > {now}) ASC,
+              candidate."AvailableAt" ASC, candidate."CreatedAt" ASC
+            FOR UPDATE OF candidate SKIP LOCKED
+            LIMIT 1
+            """).SingleOrDefaultAsync(cancellationToken);
         if (job is null) { await transaction.CommitAsync(cancellationToken); return null; }
         var token = TokenHasher.NewToken();
         job.Status = JobStatus.Leased;
@@ -39,12 +79,74 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         return new LeasedJob(job.Id, job.TenantId, job.ConnectionId, job.JobType, job.PayloadJson, job.CorrelationId, token);
     }
 
+    private async Task RecordConnectionBackoffAsync(Guid connectionId, string jobType, DateTimeOffset now, JobExecutionResult result, CancellationToken cancellationToken)
+    {
+        var wait = result.RetryAfter is { } retryAfter && retryAfter > TimeSpan.Zero ? retryAfter : TimeSpan.FromSeconds(30);
+        if (wait > TimeSpan.FromMinutes(15)) wait = TimeSpan.FromMinutes(15);
+        var until = now.Add(wait);
+        var lockGroup = MarketplaceSyncExecutionLock.GroupFor(jobType);
+        var reason = result.ErrorCode is { Length: > 128 } code ? code[..128] : result.ErrorCode;
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO integration.connection_backoffs ("ConnectionId", "LockGroup", "Until", "Reason")
+            VALUES ({connectionId}, {lockGroup}, {until}, {reason})
+            ON CONFLICT ("ConnectionId", "LockGroup") DO UPDATE
+            SET "Until" = GREATEST(integration.connection_backoffs."Until", EXCLUDED."Until"), "Reason" = EXCLUDED."Reason"
+            """, cancellationToken);
+    }
+
+    public async Task<bool> ReleaseAsync(Guid jobId, string leaseToken, CancellationToken cancellationToken)
+    {
+        var job = await db.IntegrationJobs.SingleOrDefaultAsync(x => x.Id == jobId, cancellationToken);
+        if (job is null || job.Status != JobStatus.Leased || job.LeaseTokenHash is null || !hasher.Verify(leaseToken, job.LeaseTokenHash)) return false;
+        var now = timeProvider.GetUtcNow();
+        if (job.LeaseExpiresAt <= now) return false;
+
+        // The interrupted run is refunded: its attempt row is dropped so the next lease
+        // re-runs the job under the same attempt number.
+        var attempt = await db.JobAttempts.SingleOrDefaultAsync(x => x.JobId == jobId && x.AttemptNumber == job.AttemptCount, cancellationToken);
+        if (attempt is not null) db.JobAttempts.Remove(attempt);
+        job.AttemptCount = Math.Max(0, job.AttemptCount - 1);
+        job.Status = JobStatus.RetryScheduled;
+        job.AvailableAt = now;
+        job.LastErrorCode = "WORKER_SHUTDOWN";
+        job.LastErrorSummary = "Worker yeniden başlatıldı; iş kuyruğa geri bırakıldı.";
+        job.LeaseTokenHash = null;
+        job.LeaseExpiresAt = null;
+        job.HeartbeatAt = null;
+        job.Version++;
+        AddOutboxEvent(job, now);
+        await db.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
     public async Task<bool> CompleteAsync(Guid jobId, string leaseToken, JobExecutionResult result, CancellationToken cancellationToken)
     {
         var job = await db.IntegrationJobs.SingleOrDefaultAsync(x => x.Id == jobId, cancellationToken);
         if (job is null || job.Status != JobStatus.Leased || job.LeaseTokenHash is null || !hasher.Verify(leaseToken, job.LeaseTokenHash)) return false;
         var now = timeProvider.GetUtcNow();
         if (job.LeaseExpiresAt <= now) return false;
+        if (result.BackOffConnection && job.ConnectionId is { } backoffConnectionId)
+            await RecordConnectionBackoffAsync(backoffConnectionId, job.JobType, now, result, cancellationToken);
+
+        // A deferred job never ran, so its attempt is refunded. Jobs deferred for over a day fall
+        // back to normal attempt accounting so a permanently busy lock cannot loop forever.
+        if (result.Kind == JobCompletionKind.Retry && result.RefundAttempt && now - job.CreatedAt < MaximumDeferralAge)
+        {
+            var deferredAttempt = await db.JobAttempts.SingleOrDefaultAsync(x => x.JobId == jobId && x.AttemptNumber == job.AttemptCount, cancellationToken);
+            if (deferredAttempt is not null) db.JobAttempts.Remove(deferredAttempt);
+            job.AttemptCount = Math.Max(0, job.AttemptCount - 1);
+            job.Status = JobStatus.RetryScheduled;
+            job.AvailableAt = now.Add(result.RetryAfter is { } delay && delay > TimeSpan.Zero ? delay : TimeSpan.FromSeconds(30));
+            job.LastErrorCode = result.ErrorCode;
+            job.LastErrorSummary = result.ErrorSummary;
+            job.LeaseTokenHash = null;
+            job.LeaseExpiresAt = null;
+            job.HeartbeatAt = null;
+            job.Version++;
+            AddOutboxEvent(job, now);
+            await db.SaveChangesAsync(cancellationToken);
+            return true;
+        }
 
         var kind = result.Kind;
         if (kind == JobCompletionKind.Retry && job.AttemptCount >= job.MaxAttempts) kind = JobCompletionKind.Dead;
@@ -80,6 +182,7 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
             job.LastErrorSummary ??= "Maksimum otomatik deneme sayısına ulaşıldı.";
         }
 
+        AddOutboxEvent(job, now);
         await db.SaveChangesAsync(cancellationToken);
         return true;
     }
@@ -87,6 +190,9 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
     private static TimeSpan EffectiveRetryDelay(IntegrationJob job, JobExecutionResult result)
     {
         var requested = result.RetryAfter;
+        if (job.JobType is InvoicingJobTypes.MarketplaceDelivery or InvoicingJobTypes.ManualOrderInvoiceDelivery)
+            return InvoiceDeliveryRetryPolicy.DelayAfterAttempt(job.AttemptCount, requested);
+
         // Product approval is a bounded, read-only reconciliation poll. Its processor
         // deliberately asks for five minutes; applying the generic terminal one-hour
         // backoff would prevent the seven-day acceptance window from being observed.
@@ -95,7 +201,9 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
             && string.Equals(result.ErrorCode, "PRODUCT_APPROVAL_PENDING", StringComparison.Ordinal)
             && requested.HasValue
             && requested.Value > TimeSpan.Zero)
-            return requested.Value;
+            // Approvals usually land within minutes, so poll every minute for the first
+            // attempts and fall back to the processor's slower cadence afterwards.
+            return job.AttemptCount < 10 && requested.Value > TimeSpan.FromMinutes(1) ? TimeSpan.FromMinutes(1) : requested.Value;
 
         var policyDelay = JobRetryPolicy.DelayAfterAttempt(job.AttemptCount, job.Id);
         if (requested is null || requested <= TimeSpan.Zero) return policyDelay;
@@ -110,13 +218,40 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         var now = timeProvider.GetUtcNow();
         if (job is null || job.Status != JobStatus.Leased || job.LeaseTokenHash is null || job.LeaseExpiresAt <= now || !hasher.Verify(leaseToken, job.LeaseTokenHash)) return false;
         job.HeartbeatAt = now; job.LeaseExpiresAt = now.Add(extension);
-        await db.SaveChangesAsync(cancellationToken); return true;
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            return true;
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // An operator may have cancelled the job while this heartbeat was in flight.
+            // Treat the stale lease as lost so the worker cancels its local execution.
+            return false;
+        }
     }
 
     public async Task<int> ReapExpiredAsync(CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
+        var hasReapableJobs = await db.IntegrationJobs.AsNoTracking().AnyAsync(x =>
+            x.Status == JobStatus.Leased && x.LeaseExpiresAt < now
+            || (x.Status == JobStatus.Pending || x.Status == JobStatus.RetryScheduled) && x.AttemptCount >= x.MaxAttempts,
+            cancellationToken);
+        if (!hasReapableJobs) return 0;
+
         await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken);
+        var exhausted = await db.IntegrationJobs
+            .Where(x => (x.Status == JobStatus.Pending || x.Status == JobStatus.RetryScheduled) && x.AttemptCount >= x.MaxAttempts)
+            .ToListAsync(cancellationToken);
+        foreach (var job in exhausted)
+        {
+            job.Status = JobStatus.Dead;
+            job.CompletedAt = now;
+            job.LastErrorCode ??= "MAX_ATTEMPTS_EXHAUSTED";
+            job.Version++;
+            AddOutboxEvent(job, now);
+        }
         var expired = await db.IntegrationJobs
             .FromSqlInterpolated($"SELECT * FROM integration.jobs WHERE \"Status\" = 'LEASED' AND \"LeaseExpiresAt\" < {now} ORDER BY \"LeaseExpiresAt\" ASC FOR UPDATE SKIP LOCKED")
             .ToListAsync(cancellationToken);
@@ -127,9 +262,35 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
             job.LastErrorCode = "LEASE_EXPIRED"; job.LeaseTokenHash = null; job.LeaseExpiresAt = null; job.HeartbeatAt = null; job.Version++;
             if (job.AttemptCount >= job.MaxAttempts) { job.Status = JobStatus.Dead; job.CompletedAt = now; }
             else { job.Status = JobStatus.RetryScheduled; job.AvailableAt = now.Add(JobRetryPolicy.DelayAfterAttempt(job.AttemptCount, job.Id)); }
+            AddOutboxEvent(job, now);
+        }
+        if (expired.Count == 0 && exhausted.Count == 0)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return 0;
         }
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return expired.Count;
+        return expired.Count + exhausted.Count;
     }
+
+    private void AddOutboxEvent(IntegrationJob job, DateTimeOffset now)
+    {
+        var metadata = IntegrationJobMetadataPolicy.Apply(job);
+        db.IntegrationOutboxEvents.Add(new IntegrationOutboxEvent
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = job.TenantId,
+            ResourceType = metadata.ResourceType,
+            OperationType = metadata.OperationType,
+            AggregateType = "IntegrationJob",
+            AggregateId = job.Id,
+            AggregateVersion = job.Version,
+            PayloadJson = JsonSerializer.Serialize(new { jobId = job.Id, jobType = job.JobType, status = JobStatusText(job.Status), version = job.Version }),
+            CreatedAt = now,
+            NextAttemptAt = now
+        });
+    }
+
+    private static string JobStatusText(JobStatus status) => status == JobStatus.RetryScheduled ? "RETRY_SCHEDULED" : status == JobStatus.ManualReview ? "MANUAL_REVIEW" : status.ToString().ToUpperInvariant();
 }

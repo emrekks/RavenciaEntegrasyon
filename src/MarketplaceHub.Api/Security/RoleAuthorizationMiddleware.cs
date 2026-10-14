@@ -12,7 +12,11 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
     public async Task InvokeAsync(HttpContext context)
     {
         var path = context.Request.Path;
-        if (!path.StartsWithSegments("/api/v1") || path.StartsWithSegments("/api/v1/auth") || HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method))
+        if (!path.StartsWithSegments("/api/v1")
+            || path.StartsWithSegments("/api/v1/auth")
+            || path.StartsWithSegments("/api/v1/hooks")
+            || HttpMethods.IsGet(context.Request.Method)
+            || HttpMethods.IsHead(context.Request.Method))
         {
             await next(context);
             return;
@@ -43,6 +47,7 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
     {
         if (path.StartsWithSegments("/api/v1/billing")) return AccountingRoles;
         if (path.StartsWithSegments("/api/v1/invoices")) return InvoiceRoles;
+        if (path.StartsWithSegments("/api/v1/questions") || path.StartsWithSegments("/api/v1/question-templates")) return OperationalRoles;
         if (path.StartsWithSegments("/api/v1/connections") && path.Value?.Contains("/capabilities/", StringComparison.OrdinalIgnoreCase) == true && path.Value.EndsWith("/evidence", StringComparison.OrdinalIgnoreCase)) return ElevatedRoles;
         if (path.StartsWithSegments("/api/v1/connections") && path.Value?.EndsWith("/credential", StringComparison.OrdinalIgnoreCase) == true) return ElevatedRoles;
         if (path.StartsWithSegments("/api/v1/shipments") && path.Value?.EndsWith("/label-capability-probes", StringComparison.OrdinalIgnoreCase) == true) return ElevatedRoles;

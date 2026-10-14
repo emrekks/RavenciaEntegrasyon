@@ -1,3 +1,8 @@
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
+using MarketplaceHub.Domain;
+
 namespace MarketplaceHub.Application;
 
 public static class SynchronizationCadence
@@ -48,7 +53,60 @@ public static class SynchronizationWindowPolicy
     }
 }
 
+public static class TrendyolOrderHistoryPolicy
+{
+    public const int StreamInitialLookbackMonths = 3;
+    public const int LegacyEndpointMaxHistoryDays = 30;
+
+    public static DateTimeOffset StreamInitialStart(DateTimeOffset anchor) =>
+        anchor.AddMonths(-StreamInitialLookbackMonths);
+
+    public static DateTimeOffset LegacyEndpointInitialStart(DateTimeOffset anchor) =>
+        anchor.AddDays(-LegacyEndpointMaxHistoryDays);
+}
+
+public static class HepsiburadaOrderHistoryPolicy
+{
+    public const int DefaultInitialLookbackMonths = 1;
+
+    public static DateTimeOffset InitialWindowStart(DateTimeOffset anchor) =>
+        anchor.AddMonths(-DefaultInitialLookbackMonths);
+
+    public static bool ShouldImportPaidOrder(string? lifecycleStatus, DateTimeOffset orderedAt, DateTimeOffset anchor)
+    {
+        // The paid-order feed returns Open/Unpacked rows. The package status
+        // feeds cover only the last month, so an older package-less order
+        // cannot be verified even when its line has just become Unpacked.
+        var status = lifecycleStatus?.Trim();
+        return orderedAt >= InitialWindowStart(anchor)
+            && (string.Equals(status, "OPEN", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(status, "UNPACKED", StringComparison.OrdinalIgnoreCase));
+    }
+
+    public static bool ShouldImportPaidOrder(RemoteOrder order, DateTimeOffset anchor) =>
+        ShouldImportPaidOrder(order.LifecycleStatus, order.OrderedAt, anchor)
+        && (order.Packages.Count > 0 || order.Lines.Count > 0 &&
+            !order.Lines.All(line => string.Equals(line.RawStatus?.Trim(), "ClaimCreated", StringComparison.OrdinalIgnoreCase)));
+
+    public static DateTimeOffset ClampWindowStart(DateTimeOffset anchor, DateTimeOffset candidate)
+    {
+        var oldest = InitialWindowStart(anchor);
+        if (candidate > anchor) return anchor;
+        return candidate < oldest ? oldest : candidate;
+    }
+}
+
 public enum MarketplaceSyncHealth { Healthy, Delayed, Degraded, Offline }
+
+public static class HepsiburadaReturnHistoryPolicy
+{
+    public static readonly TimeSpan InitialLookback = TimeSpan.FromDays(30);
+
+    public static DateTimeOffset InitialStatusChangeStart(DateTimeOffset anchor) => anchor - InitialLookback;
+
+    public static bool IsOrderWithinReturnHistory(DateTimeOffset? orderCreatedAt, DateTimeOffset anchor) =>
+        orderCreatedAt is { } orderedAt && orderedAt >= InitialStatusChangeStart(anchor) && orderedAt <= anchor;
+}
 
 public static class MarketplaceSyncHealthPolicy
 {
@@ -57,15 +115,25 @@ public static class MarketplaceSyncHealthPolicy
         DateTimeOffset now,
         TimeSpan delayedAfter,
         TimeSpan degradedAfter,
-        TimeSpan offlineAfter)
+        TimeSpan offlineAfter,
+        int consecutiveFailureCount = 0,
+        int lastFailedCount = 0,
+        TimeSpan? expectedCadence = null)
     {
         if (delayedAfter <= TimeSpan.Zero || degradedAfter <= delayedAfter || offlineAfter <= degradedAfter)
             throw new ArgumentException("Sync health thresholds must be strictly increasing.");
+        if (consecutiveFailureCount < 0 || lastFailedCount < 0)
+            throw new ArgumentOutOfRangeException(nameof(consecutiveFailureCount), "Sync failure counts cannot be negative.");
+        if (expectedCadence < TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(expectedCadence), "Expected sync cadence cannot be negative.");
         if (lastSuccessAt is null) return MarketplaceSyncHealth.Offline;
         var age = now - lastSuccessAt.Value;
-        if (age < delayedAfter) return MarketplaceSyncHealth.Healthy;
-        if (age < degradedAfter) return MarketplaceSyncHealth.Delayed;
-        return age < offlineAfter ? MarketplaceSyncHealth.Degraded : MarketplaceSyncHealth.Offline;
+        var cadence = expectedCadence ?? TimeSpan.Zero;
+        if (age >= cadence + offlineAfter) return MarketplaceSyncHealth.Offline;
+        if (consecutiveFailureCount > 0 || lastFailedCount > 0) return MarketplaceSyncHealth.Degraded;
+        if (age < cadence + delayedAfter) return MarketplaceSyncHealth.Healthy;
+        if (age < cadence + degradedAfter) return MarketplaceSyncHealth.Delayed;
+        return MarketplaceSyncHealth.Degraded;
     }
 
     public static (string Status, double? Days) RecoveryGap(
@@ -85,13 +153,152 @@ public static class MarketplaceSyncHealthPolicy
     }
 }
 
+public enum MarketplaceCursorProgressStatus { Unknown, NoData, Current, Stalled }
+
+public static class MarketplaceCursorProgressPolicy
+{
+    public static MarketplaceCursorProgressStatus Classify(
+        DateTimeOffset? lastSuccessAt,
+        DateTimeOffset? lastCursorAdvancedAt,
+        DateTimeOffset? cursorStagnantSince,
+        int lastReceivedCount,
+        DateTimeOffset now,
+        TimeSpan expectedCadence,
+        TimeSpan minimumStallAfter)
+    {
+        if (lastReceivedCount < 0) throw new ArgumentOutOfRangeException(nameof(lastReceivedCount));
+        if (expectedCadence < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(expectedCadence));
+        if (minimumStallAfter <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(minimumStallAfter));
+        if (lastSuccessAt is null) return MarketplaceCursorProgressStatus.Unknown;
+        if (lastReceivedCount == 0) return MarketplaceCursorProgressStatus.NoData;
+        if (cursorStagnantSince is null)
+            return lastCursorAdvancedAt is null ? MarketplaceCursorProgressStatus.Unknown : MarketplaceCursorProgressStatus.Current;
+
+        var threeCyclesTicks = expectedCadence.Ticks > TimeSpan.MaxValue.Ticks / 3
+            ? TimeSpan.MaxValue.Ticks
+            : expectedCadence.Ticks * 3;
+        var threeCycles = TimeSpan.FromTicks(threeCyclesTicks);
+        var staleAfter = threeCycles > minimumStallAfter ? threeCycles : minimumStallAfter;
+        return now - cursorStagnantSince.Value > staleAfter
+            ? MarketplaceCursorProgressStatus.Stalled
+            : MarketplaceCursorProgressStatus.Current;
+    }
+}
+
 public static class OrderInventoryReservationPolicy
 {
     public static decimal DesiredQuantity(decimal orderedQuantity, decimal cancelledQuantity)
+        => DesiredQuantity(orderedQuantity, cancelledQuantity, 0m, true);
+
+    public static decimal DesiredQuantity(
+        decimal orderedQuantity,
+        decimal cancelledQuantity,
+        decimal shippedQuantity,
+        bool reservationEnabled)
     {
-        if (orderedQuantity < 0 || cancelledQuantity < 0) throw new ArgumentOutOfRangeException(nameof(orderedQuantity));
-        return Math.Max(0, orderedQuantity - Math.Min(orderedQuantity, cancelledQuantity));
+        if (orderedQuantity < 0 || cancelledQuantity < 0 || shippedQuantity < 0)
+            throw new ArgumentOutOfRangeException(nameof(orderedQuantity));
+        if (!reservationEnabled) return 0m;
+
+        var afterCancellation = Math.Max(0m, orderedQuantity - Math.Min(orderedQuantity, cancelledQuantity));
+        var consumed = Math.Min(afterCancellation, shippedQuantity);
+        return Math.Max(0m, afterCancellation - consumed);
     }
+
+    public static bool IsReservationEnabled(ConnectionInventoryPolicy? policy, string? rawStatus)
+    {
+        // Reservations are opt-in. Without an explicit connection policy,
+        // order synchronization must not create reserved stock implicitly.
+        if (policy is null) return false;
+        if (string.Equals(policy.ReservationMode?.Trim(), "NONE", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(policy.ReservationMode?.Trim(), "DISABLED", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var status = rawStatus?.Trim() ?? string.Empty;
+        if (ContainsStatus(policy.ReleaseOnStatuses, status)) return false;
+        return string.IsNullOrWhiteSpace(policy.ReserveOnStatuses)
+            || ContainsStatus(policy.ReserveOnStatuses, status);
+    }
+
+    private static bool ContainsStatus(string? configuredStatuses, string rawStatus)
+    {
+        if (string.IsNullOrWhiteSpace(configuredStatuses) || string.IsNullOrWhiteSpace(rawStatus)) return false;
+        return configuredStatuses
+            .Split([',', ';', '|'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Any(status => string.Equals(status, rawStatus, StringComparison.OrdinalIgnoreCase));
+    }
+}
+
+public static class OrderInventoryStockPolicy
+{
+    public static decimal TargetCommittedQuantity(decimal orderedQuantity, decimal cancelledQuantity, decimal shippedQuantity)
+    {
+        if (orderedQuantity < 0 || cancelledQuantity < 0 || shippedQuantity < 0)
+            throw new ArgumentOutOfRangeException(nameof(orderedQuantity));
+
+        var ordered = orderedQuantity;
+        var active = Math.Max(0m, ordered - Math.Min(ordered, cancelledQuantity));
+        var shipped = Math.Min(ordered, shippedQuantity);
+        return Math.Max(active, shipped);
+    }
+
+    // Shipments recorded before order-time stock deduction already reduced
+    // physical stock. Treat them as the opening baseline, not as a new debit.
+    public static decimal InitialBaselineQuantity(decimal legacyShippedQuantity, decimal observedShippedQuantity)
+    {
+        if (legacyShippedQuantity < 0 || observedShippedQuantity < 0)
+            throw new ArgumentOutOfRangeException(nameof(legacyShippedQuantity));
+        return Math.Max(legacyShippedQuantity, observedShippedQuantity);
+    }
+
+    // Ledger deltas use the stock direction: negative means stock was consumed,
+    // positive means it was restored. The baseline is not a new stock movement.
+    public static decimal OnHandDelta(decimal baselineQuantity, decimal receivedLedgerDelta, decimal targetCommittedQuantity)
+    {
+        if (baselineQuantity < 0 || targetCommittedQuantity < 0)
+            throw new ArgumentOutOfRangeException(nameof(baselineQuantity));
+        var currentlyCommitted = Math.Max(0m, baselineQuantity - receivedLedgerDelta);
+        return currentlyCommitted - targetCommittedQuantity;
+    }
+
+    public static decimal LimitToAvailableStock(decimal onHand, decimal available, decimal sourceReservation, decimal requestedDelta, bool negativeStockAllowed)
+    {
+        if (available < 0 || sourceReservation < 0)
+            throw new ArgumentOutOfRangeException(nameof(available));
+        if (requestedDelta >= 0 || negativeStockAllowed) return requestedDelta;
+        var consumable = Math.Max(0m, Math.Min(onHand, available + sourceReservation));
+        return Math.Max(requestedDelta, -consumable);
+    }
+}
+
+public static class InventoryAuthorityPolicy
+{
+    public const string Central = "CENTRAL";
+    public const string RemoteObservation = "REMOTE_OBSERVATION";
+    public const string RemoteAuthoritative = "REMOTE_AUTHORITATIVE";
+
+    public static string Normalize(string? value) => value?.Trim().ToUpperInvariant() switch
+    {
+        RemoteObservation => RemoteObservation,
+        RemoteAuthoritative => RemoteAuthoritative,
+        _ => Central
+    };
+
+    // Remote-authoritative mode is an explicit compatibility escape hatch. It
+    // is never inferred from a missing/unknown policy, so catalog imports cannot
+    // silently replace local physical stock.
+    public static bool ShouldApplyRemoteQuantityToOnHand(string? authorityMode) =>
+        Normalize(authorityMode) == RemoteAuthoritative;
+
+    // An untouched inventory row created by the catalog importer has no local
+    // physical-stock decision behind it yet. Seed that first projection from
+    // the catalog snapshot; later imports still follow the configured
+    // authority mode and cannot silently overwrite local stock.
+    public static bool ShouldSeedInitialOnHand(InventoryItem inventory) =>
+        inventory.OnHand == 0m
+        && inventory.Reserved == 0m
+        && inventory.Version == 1
+        && inventory.ProjectionVersion == 1;
 }
 
 public static class ProductImportMergePolicy
@@ -102,6 +309,27 @@ public static class ProductImportMergePolicy
     public static bool PreserveLocalChanges(long productVersion, long lastImportedProductVersion, string? dirtyFieldsJson) =>
         PreserveLocalChanges(productVersion, lastImportedProductVersion)
         || !string.IsNullOrWhiteSpace(dirtyFieldsJson) && !string.Equals(dirtyFieldsJson.Trim(), "[]", StringComparison.Ordinal);
+}
+
+public static class ProductImportScanPolicy
+{
+    // An inactive-product mapping is a backfill. It must not inherit the
+    // incremental cursor because older archived/draft products may never
+    // appear in a modified-since page again.
+    public static bool RequiresFullCatalogForMapping(bool mappingOnly, bool includeArchived, bool includeDrafts) =>
+        mappingOnly && (includeArchived || includeDrafts);
+}
+
+public static class ProductImportConcurrencyPolicy
+{
+    public static bool IsProductImportJob(string jobType) =>
+        string.Equals(jobType, "TRENDYOL_PRODUCT_SYNC", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(jobType, "SHOPIFY_PRODUCT_SYNC", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(jobType, "HEPSIBURADA_PRODUCT_SYNC", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(jobType, "CATALOG_STRUCTURE_IMPORT", StringComparison.OrdinalIgnoreCase);
+
+    public static bool RejectsModeCollision(string requestedJobType, string activeJobType) =>
+        IsProductImportJob(requestedJobType) && IsProductImportJob(activeJobType);
 }
 
 public static class ProductUpdatePollingPolicy
@@ -134,4 +362,32 @@ public static class StockProjectionOutboxPolicy
 {
     public static string DedupKey(Guid connectionId, Guid variantId, long projectionVersion) =>
         $"stock-projection:{connectionId:N}:{variantId:N}:v{projectionVersion}";
+}
+
+public static class PriceInventoryOutboxPolicy
+{
+    public static bool IsCurrent(PriceInventoryPushLine line, long projectionVersion, long priceVersion) =>
+        line.ProjectionVersion == projectionVersion && line.PriceVersion == priceVersion;
+
+    public static string DedupKey(Guid connectionId, IEnumerable<PriceInventoryPushLine> lines)
+    {
+        ArgumentNullException.ThrowIfNull(lines);
+
+        var revision = string.Join("\n", lines
+            .OrderBy(line => line.OfferId)
+            .ThenBy(line => line.VariantId)
+            .Select(line => string.Join('|',
+                line.VariantId.ToString("N"),
+                line.OfferId.ToString("N"),
+                line.Barcode,
+                line.Quantity.ToString("0.####", CultureInfo.InvariantCulture),
+                line.ListPrice.ToString("0.####", CultureInfo.InvariantCulture),
+                line.SalePrice.ToString("0.####", CultureInfo.InvariantCulture),
+                line.Currency,
+                line.ProjectionVersion.ToString(CultureInfo.InvariantCulture),
+                line.PriceVersion.ToString(CultureInfo.InvariantCulture),
+                line.PriceHash)));
+        var revisionHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(revision)));
+        return $"price-inventory:{connectionId:N}:revision:{revisionHash}";
+    }
 }

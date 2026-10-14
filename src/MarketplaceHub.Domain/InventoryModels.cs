@@ -63,6 +63,8 @@ public sealed class InventoryItem
     public decimal OnHand { get; set; }
     public decimal Reserved { get; set; }
     public decimal Available { get; set; }
+    public decimal? ObservedRemoteQuantity { get; set; }
+    public DateTimeOffset? ObservedRemoteAt { get; set; }
     public long ProjectionVersion { get; set; } = 1;
     public DateTimeOffset? ReconciledAt { get; set; }
     public long Version { get; set; } = 1;
@@ -116,6 +118,19 @@ public sealed class ChannelOffer
     public long PriceVersion { get; set; } = 1;
     public string? LastPriceHash { get; set; }
     public long? LastStockProjectionVersion { get; set; }
+    public long Version { get; set; } = 1;
+}
+
+public sealed class ChannelInventoryObservation
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid ConnectionId { get; set; }
+    public Guid VariantId { get; set; }
+    public Guid? LocationId { get; set; }
+    public required string ExternalLocationId { get; set; }
+    public decimal Quantity { get; set; }
+    public DateTimeOffset ObservedAt { get; set; }
     public long Version { get; set; } = 1;
 }
 

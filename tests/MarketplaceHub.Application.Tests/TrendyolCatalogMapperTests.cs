@@ -1,0 +1,729 @@
+using MarketplaceHub.Application;
+using MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping;
+using MarketplaceHub.Infrastructure.Persistence;
+using Xunit;
+
+namespace MarketplaceHub.Application.Tests;
+
+public sealed class TrendyolCatalogMapperTests
+{
+    [Fact]
+    public void ShipmentPackageLookup_MapsCargoForTheRequestedPackageOnly()
+    {
+        const string json = """
+        {
+          "content": [
+            {
+              "shipmentPackageId": 4052072376,
+              "orderNumber": "11476852228",
+              "customerFirstName": "Leyla",
+              "status": "Delivered",
+              "lastModifiedDate": 1786454029672,
+              "cargoTrackingNumber": 62755229958101,
+              "cargoProviderName": "hepsiJET",
+              "shipmentAddress": { "firstName": "Leyla", "city": "Istanbul" },
+              "lines": []
+            },
+            {
+              "shipmentPackageId": 4052072377,
+              "orderNumber": "11476852229",
+              "status": "Delivered",
+              "lastModifiedDate": 1786454029672,
+              "cargoTrackingNumber": 7340037147068871,
+              "cargoProviderName": "PTT",
+              "lines": []
+            }
+          ],
+          "page": 0,
+          "totalPages": 1
+        }
+        """;
+
+        var package = TrendyolJsonMapper.ShipmentPackage(json, "4052072376");
+
+        Assert.NotNull(package);
+        Assert.Equal("11476852228", package.ExternalOrderId);
+        Assert.Equal("4052072376", package.Package.ExternalPackageId);
+        Assert.Equal("hepsiJET", package.Package.CargoProviderExternalId);
+        Assert.Equal("62755229958101", package.Package.CargoTrackingNumber);
+        Assert.NotNull(package.OrderSnapshot);
+        Assert.Contains("Leyla", package.OrderSnapshot.CustomerSnapshotJson);
+        Assert.Contains("Istanbul", package.OrderSnapshot.ShipmentAddressSnapshotJson);
+        Assert.Null(TrendyolJsonMapper.ShipmentPackage(json, "not-a-package"));
+    }
+
+    [Fact]
+    public void ShipmentPackageSelection_PrefersCargoFromFallbackReadWhenPreferredReadOmitsIt()
+    {
+        static RemoteOrderPackage Package(string? provider, string? trackingNumber) => new(
+            "order-1",
+            new RemotePackage("package-1", null, "Delivered", DateTimeOffset.UnixEpoch, provider, trackingNumber, []));
+
+        var orderV2 = Package(null, null);
+        var fallback = Package("hepsiJET", "62755229958101");
+        var orderV2WithCargo = Package("PTT", "7340037147068871");
+
+        Assert.Same(fallback, TrendyolJsonMapper.PreferShipmentPackageWithCargo(orderV2, fallback));
+        Assert.Same(orderV2WithCargo, TrendyolJsonMapper.PreferShipmentPackageWithCargo(orderV2WithCargo, fallback));
+    }
+
+    [Fact]
+    public void ShipmentPackageSelection_MergesInvoiceObservationFromTheOtherRead()
+    {
+        static RemoteOrderPackage Package(string? provider, string? trackingNumber, RemotePackageInvoiceObservation? invoice) => new(
+            "order-1",
+            new RemotePackage("package-1", null, "Delivered", DateTimeOffset.UnixEpoch, provider, trackingNumber, [], Invoice: invoice));
+
+        var v2 = Package(null, null, new("Invoiced", "INV-42", null, DateTimeOffset.UnixEpoch.AddHours(2)));
+        var fallback = Package("hepsiJET", "62755229958101", new("NotInvoiced", null, null, DateTimeOffset.UnixEpoch.AddHours(1)));
+
+        var merged = TrendyolJsonMapper.PreferShipmentPackageWithCargo(v2, fallback);
+
+        Assert.NotNull(merged);
+        Assert.Equal("hepsiJET", merged.Package.CargoProviderExternalId);
+        Assert.Equal("62755229958101", merged.Package.CargoTrackingNumber);
+        Assert.Equal("Invoiced", merged.Package.Invoice?.RawStatus);
+        Assert.Equal("INV-42", merged.Package.Invoice?.InvoiceNumber);
+    }
+
+    [Fact]
+    public void ReturnClaimProjection_IsMarkedAsNonAuthoritativeUntilOrderReadback()
+    {
+        const string payload = """
+        {
+          "orderNumber": "11376153333",
+          "claimId": "claim-1",
+          "orderDate": 1782998302000,
+          "claimDate": 1783069920000,
+          "orderOutboundPackageId": "3968176322"
+        }
+        """;
+
+        var projection = TrendyolJsonMapper.OrderFromReturnClaim(payload);
+
+        Assert.NotNull(projection);
+        Assert.Equal(DateTimeOffset.UnixEpoch, projection.LastModifiedAt);
+        Assert.True(TrendyolJsonMapper.IsReturnClaimReadModelSnapshot(projection.CustomerSnapshotJson));
+        Assert.True(TrendyolJsonMapper.IsReturnClaimReadModelSnapshot("""{"claimId":"claim-1","claimDate":"2026-07-03T09:12:00Z","orderOutboundPackageId":"3968176322"}"""));
+        Assert.False(TrendyolJsonMapper.IsReturnClaimReadModelSnapshot("""{"customerFirstName":"Ada","customerLastName":"Yılmaz"}"""));
+    }
+
+    [Fact]
+    public void PendingApprovalProductResponse_MapsFlatVariantAsPendingCatalogRow()
+    {
+        const string json = """
+        {
+          "content": [
+            {
+              "productMainId": "MODEL-PENDING-1",
+              "status": "pendingApproval",
+              "title": "Onay bekleyen ürün",
+              "description": "Açıklama",
+              "brand": { "id": 17, "name": "Ravencia" },
+              "category": { "id": 28, "name": "Triko" },
+              "barcode": "869000000701",
+              "stockCode": "MODEL-PENDING-1-M",
+              "quantity": 4,
+              "listPrice": 599,
+              "salePrice": 499,
+              "media": [{ "url": "https://cdn.example.test/pending.jpg" }],
+              "attributes": [
+                { "attributeName": "Renk", "attributeValue": "Bordo" },
+                { "attributeName": "Beden", "attributeValue": "M" }
+              ]
+            }
+          ],
+          "page": 0,
+          "size": 100,
+          "totalPages": 1,
+          "totalElements": 1
+        }
+        """;
+
+        var result = TrendyolJsonMapper.PendingApprovalCatalogProducts(json);
+
+        var product = Assert.Single(result.Items);
+        Assert.True(product.IsPendingApproval);
+        Assert.Equal("MODEL-PENDING-1", product.ExternalProductId);
+        Assert.Equal("MODEL-PENDING-1", product.ProductMainId);
+        var variant = Assert.Single(product.Variants);
+        Assert.Equal("869000000701", variant.ExternalVariantId);
+        Assert.Equal("MODEL-PENDING-1-M", variant.Sku);
+        Assert.Equal("Bordo", variant.Options["Renk"]);
+        Assert.Equal("M", variant.Options["Beden"]);
+        Assert.Equal(4m, variant.StockQuantity);
+        Assert.Equal(499m, variant.SalePrice);
+    }
+
+    [Fact]
+    public void ReturnClaim_ReadsScalarCargoProvider()
+    {
+        const string json = """
+        {
+          "content": [
+            {
+              "claimId": "claim-ptt-1",
+              "orderNumber": "11587375142",
+              "claimItemStatus": { "name": "WaitingInAction" },
+              "cargoProvider": "PTT",
+              "cargoSenderNumber": "PTT-123456789",
+              "lastModifiedDate": 1789890000000,
+              "items": []
+            }
+          ],
+          "page": 0,
+          "totalPages": 1
+        }
+        """;
+
+        var claim = Assert.Single(TrendyolJsonMapper.Returns(json).Items);
+
+        Assert.Equal("PTT", claim.CargoProviderName);
+        Assert.Equal("PTT-123456789", claim.CargoTrackingNumber);
+    }
+
+    [Fact]
+    public void WaitingInActionReturn_UsesDocumentedFortyEightHourAutoAcceptanceWindow()
+    {
+        const string json = """
+        {
+          "content": [{
+            "claimId": "claim-waiting-action-1",
+            "orderNumber": "11587375142",
+            "claimItemStatus": { "name": "WaitingInAction" },
+            "lastModifiedDate": 1789890000000,
+            "items": []
+          }],
+          "page": 0,
+          "totalPages": 1
+        }
+        """;
+
+        var claim = Assert.Single(TrendyolJsonMapper.Returns(json).Items);
+
+        Assert.Equal(claim.LastModifiedAt.AddHours(48), claim.ActionDueAt);
+    }
+
+    [Fact]
+    public void WaitingInActionReturn_PrefersProviderAutoAcceptanceDate()
+    {
+        const string json = """
+        {
+          "content": [{
+            "claimId": "claim-waiting-action-due-1",
+            "orderNumber": "11587375142",
+            "claimItemStatus": { "name": "WaitingInAction" },
+            "lastModifiedDate": 1789890000000,
+            "autoApproveDate": 1789980000000,
+            "items": []
+          }],
+          "page": 0,
+          "totalPages": 1
+        }
+        """;
+
+        var claim = Assert.Single(TrendyolJsonMapper.Returns(json).Items);
+
+        Assert.Equal(DateTimeOffset.FromUnixTimeMilliseconds(1789980000000), claim.ActionDueAt);
+    }
+
+    [Fact]
+    public void ReturnClaim_UsesSevenDayClaimDateDeadlineWhenPlatformOmitsAutoApproveDate()
+    {
+        const string json = """
+        {
+          "content": [{
+            "claimId": "claim-rejected-with-deadline-1",
+            "orderNumber": "11587375142",
+            "claimItemStatus": { "name": "Rejected" },
+            "claimDate": 1789980000000,
+            "lastModifiedDate": 1790152800000,
+            "items": []
+          }],
+          "page": 0,
+          "totalPages": 1
+        }
+        """;
+
+        var claim = Assert.Single(TrendyolJsonMapper.Returns(json).Items);
+
+        Assert.Equal(DateTimeOffset.FromUnixTimeMilliseconds(1789980000000).AddDays(7), claim.ActionDueAt);
+    }
+
+    [Fact]
+    public void ReturnClaim_ReadsRejectedReturnPackageCargo()
+    {
+        const string json = """
+        {
+          "content": [
+            {
+              "claimId": "claim-rejected-package-1",
+              "orderNumber": "11593067976",
+              "claimItemStatus": { "name": "Accepted" },
+              "rejectedPackageInfo": {
+                "cargoProviderName": "PTT Kargo Marketplace",
+                "cargoTrackingNumber": 7340037147068871,
+                "cargoTrackingLink": "https://tracking.example.test/7340037147068871"
+              },
+              "lastModifiedDate": 1789890000000,
+              "items": []
+            }
+          ],
+          "page": 0,
+          "totalPages": 1
+        }
+        """;
+
+        var claim = Assert.Single(TrendyolJsonMapper.Returns(json).Items);
+
+        Assert.Equal("PTT Kargo Marketplace", claim.CargoProviderName);
+        Assert.Equal("7340037147068871", claim.CargoTrackingNumber);
+        Assert.Equal("https://tracking.example.test/7340037147068871", claim.CargoTrackingLink);
+    }
+
+    [Fact]
+    public void RejectedReturnClaim_PrefersRejectedPackageCargoOverRootAndExchangeCargo()
+    {
+        const string json = """
+        {
+          "content": [
+            {
+              "claimId": "claim-rejected-reship-1",
+              "orderNumber": "11633780933",
+              "claimItemStatus": { "name": "Rejected" },
+              "cargoProviderName": "PTT Kargo",
+              "cargoTrackingNumber": "7340037640876324",
+              "rejectedPackageInfo": {
+                "cargoProviderName": "Trendyol Express",
+                "cargoTrackingNumber": "7330037747126806",
+                "cargoTrackingLink": "https://tracking.example.test/7330037747126806"
+              },
+              "replacementOutboundpackageinfo": {
+                "cargoProviderName": "Yurtiçi Kargo",
+                "cargoTrackingNumber": "YURTICI-EXCHANGE-1",
+                "cargoTrackingLink": "https://tracking.example.test/exchange"
+              },
+              "items": []
+            }
+          ],
+          "page": 0,
+          "totalPages": 1
+        }
+        """;
+
+        var claim = Assert.Single(TrendyolJsonMapper.Returns(json).Items);
+
+        Assert.Equal("Trendyol Express", claim.CargoProviderName);
+        Assert.Equal("7330037747126806", claim.CargoTrackingNumber);
+        Assert.Equal("https://tracking.example.test/7330037747126806", claim.CargoTrackingLink);
+    }
+
+    [Fact]
+    public void ReturnClaim_ReadsNestedReturnPackageCargoProviderObject()
+    {
+        const string json = """
+        {
+          "content": [
+            {
+              "claimId": "claim-return-package-1",
+              "orderNumber": "11593067976",
+              "claimItemStatus": { "name": "Accepted" },
+              "returnPackageInfo": {
+                "cargoProvider": { "name": "PTT Kargo" },
+                "cargoTrackingNumber": "7340037147068871"
+              },
+              "lastModifiedDate": 1789890000000,
+              "items": []
+            }
+          ],
+          "page": 0,
+          "totalPages": 1
+        }
+        """;
+
+        var claim = Assert.Single(TrendyolJsonMapper.Returns(json).Items);
+
+        Assert.Equal("PTT Kargo", claim.CargoProviderName);
+        Assert.Equal("7340037147068871", claim.CargoTrackingNumber);
+    }
+
+    [Fact]
+    public void CatalogImportOrdering_CompletesEachModelBeforeMovingToTheNextOne()
+    {
+        static RemoteCatalogProduct Product(string externalId, string modelId, string sku) => new(
+            externalId,
+            modelId,
+            modelId,
+            "",
+            null,
+            null,
+            null,
+            null,
+            [],
+            [new RemoteCatalogVariant(sku, sku, null, modelId, new Dictionary<string, string>(), false, null, null, null, null, null, "{}")],
+            "{}");
+
+        var groups = CatalogImportOrdering.GroupByModel(new[]
+        {
+            Product("content-2", "model-a", "model-a-red"),
+            Product("content-9", "model-b", "model-b-small"),
+            Product("content-3", "model-a", "model-a-blue")
+        }).ToList();
+
+        Assert.Equal(2, groups.Count);
+        Assert.Equal(new[] { "content-2", "content-3" }, groups[0].Select(x => x.ExternalProductId));
+        Assert.Equal(new[] { "content-9" }, groups[1].Select(x => x.ExternalProductId));
+    }
+
+    [Fact]
+    public void ApprovedProductResponse_PreservesParentVariantsPricesStockAndOptions()
+    {
+        const string json = """
+        {
+          "totalPages": 1,
+          "page": 0,
+          "size": 100,
+          "nextPageToken": null,
+          "content": [
+            {
+              "contentId": 800001,
+              "productMainId": "PRODUCT-001",
+              "title": "Test tişört",
+              "description": "Açıklama",
+              "brand": { "id": 42, "name": "Ravencia" },
+              "category": { "id": 99, "name": "Giyim" },
+              "images": [
+                { "url": "https://cdn.example.test/products/test-front.jpg" },
+                { "url": "https://cdn.example.test/products/test-back.jpg" }
+              ],
+              "attributes": [
+                { "attributeName": "Cinsiyet", "attributeValue": "Unisex" }
+              ],
+              "variants": [
+                {
+                  "variantId": 810001,
+                  "barcode": "869000000001",
+                  "stockCode": "SKU-001-S",
+                  "attributes": [
+                    { "attributeName": "Beden", "attributeValue": "S" },
+                    { "attributeName": "Renk", "attributeValue": "Siyah" }
+                  ],
+                  "stock": { "quantity": 7 },
+                  "price": { "currency": "TRY", "salePrice": 149.90, "listPrice": 199.90 },
+                  "vatRate": 20,
+                  "archived": false
+                },
+                {
+                  "variantId": 810002,
+                  "barcode": "869000000002",
+                  "stockCode": "SKU-001-M",
+                  "attributes": [
+                    { "attributeName": "Beden", "attributeValue": "M" },
+                    { "attributeName": "Renk", "attributeValue": "Siyah" }
+                  ],
+                  "stock": { "quantity": 3 },
+                  "price": { "currency": "TRY", "salePrice": 159.90, "listPrice": 209.90 },
+                  "vatRate": 20,
+                  "archived": false
+                }
+              ]
+            }
+          ]
+        }
+        """;
+
+        var result = TrendyolJsonMapper.CatalogProducts(json);
+
+        var product = Assert.Single(result.Items);
+        Assert.Equal("800001", product.ExternalProductId);
+        Assert.Equal("PRODUCT-001", product.ProductMainId);
+        Assert.Equal(2, product.Variants.Count);
+        Assert.Equal(new[] { "https://cdn.example.test/products/test-front.jpg", "https://cdn.example.test/products/test-back.jpg" }, product.ImageUrls);
+        Assert.Equal("Ravencia", product.BrandName);
+        Assert.Equal("Giyim", product.CategoryName);
+
+        var small = Assert.Single(product.Variants, variant => variant.Sku == "SKU-001-S");
+        Assert.Equal("869000000001", small.Barcode);
+        Assert.Equal("S", small.Options["Beden"]);
+        Assert.Equal("Siyah", small.Options["Renk"]);
+        Assert.Equal("Unisex", small.Options["Cinsiyet"]);
+        Assert.Equal(7m, small.StockQuantity);
+        Assert.Equal(149.90m, small.SalePrice);
+        Assert.Equal(199.90m, small.ListPrice);
+        Assert.Equal("TRY", small.Currency);
+    }
+
+    [Fact]
+    public void CatalogProductResponse_MapsVariantImagesAndPreservesOrderedUniqueUrls()
+    {
+        const string json = """
+        {
+          "content": [
+            {
+              "contentId": 800002,
+              "productMainId": "PRODUCT-002",
+              "title": "Görselli ürün",
+              "images": [
+                { "url": "https://cdn.example.test/shared.jpg" },
+                { "url": "https://cdn.example.test/product.jpg" },
+                { "url": "https://cdn.example.test/shared.jpg" }
+              ],
+              "variants": [
+                {
+                  "variantId": 820001,
+                  "stockCode": "SKU-002-S",
+                  "images": [
+                    "https://cdn.example.test/shared.jpg",
+                    { "url": "https://cdn.example.test/variant-s-front.jpg" },
+                    { "imageUrl": "https://cdn.example.test/variant-s-back.jpg" }
+                  ]
+                },
+                {
+                  "variantId": 820002,
+                  "stockCode": "SKU-002-M",
+                  "imageUrl": "https://cdn.example.test/variant-m-front.jpg"
+                }
+              ]
+            }
+          ]
+        }
+        """;
+
+        var result = TrendyolJsonMapper.CatalogProducts(json);
+        var product = Assert.Single(result.Items);
+        var small = Assert.Single(product.Variants, variant => variant.Sku == "SKU-002-S");
+        var medium = Assert.Single(product.Variants, variant => variant.Sku == "SKU-002-M");
+
+        Assert.Equal(
+            new[]
+            {
+                "https://cdn.example.test/shared.jpg",
+                "https://cdn.example.test/product.jpg",
+                "https://cdn.example.test/variant-s-front.jpg",
+                "https://cdn.example.test/variant-s-back.jpg",
+                "https://cdn.example.test/variant-m-front.jpg"
+            },
+            product.ImageUrls);
+        Assert.Equal(
+            new[]
+            {
+                "https://cdn.example.test/shared.jpg",
+                "https://cdn.example.test/variant-s-front.jpg",
+                "https://cdn.example.test/variant-s-back.jpg"
+            },
+            small.ImageUrls);
+        Assert.Equal(new[] { "https://cdn.example.test/variant-m-front.jpg" }, medium.ImageUrls);
+    }
+
+    [Fact]
+    public void ApprovedProductResponse_UsesOneRepresentativeImagePerColorAcrossSizeVariants()
+    {
+        const string json = """
+        {
+          "content": [{
+            "contentId": 800004,
+            "productMainId": "PRODUCT-004",
+            "title": "Haki kazak",
+            "images": [
+              { "url": "https://cdn.example.test/haki-front.jpg" },
+              { "url": "https://cdn.example.test/haki-back.jpg" }
+            ],
+            "attributes": [
+              { "attributeName": "Renk", "attributeValue": "Haki" }
+            ],
+            "variants": [
+              {
+                "variantId": 840001,
+                "barcode": "869000000041",
+                "stockCode": "SKU-004-S",
+                "attributes": [{ "attributeName": "Beden", "attributeValue": "S" }]
+              },
+              {
+                "variantId": 840002,
+                "barcode": "869000000042",
+                "stockCode": "SKU-004-M",
+                "attributes": [{ "attributeName": "Beden", "attributeValue": "M" }]
+              }
+            ]
+          }]
+        }
+        """;
+
+        var product = Assert.Single(TrendyolJsonMapper.CatalogProducts(json).Items);
+        var small = Assert.Single(product.Variants, variant => variant.Sku == "SKU-004-S");
+        var medium = Assert.Single(product.Variants, variant => variant.Sku == "SKU-004-M");
+        Assert.Equal("Haki", small.Options["Renk"]);
+        Assert.Equal(new[] { "https://cdn.example.test/haki-front.jpg", "https://cdn.example.test/haki-back.jpg" }, small.ImageUrls);
+        Assert.Empty(medium.ImageUrls!);
+        Assert.Equal(new[] { "https://cdn.example.test/haki-front.jpg", "https://cdn.example.test/haki-back.jpg" }, product.ImageUrls);
+    }
+
+    [Fact]
+    public void CatalogProductResponse_AssociatesTopLevelColorImagesWithMatchingVariants()
+    {
+        const string json = """
+        {
+          "content": [{
+            "contentId": 800003,
+            "title": "Renkli ürün",
+            "images": [
+              { "variantId": 830001, "link": "https://cdn.example.test/red.jpg" },
+              { "variantId": 830002, "url": "https://cdn.example.test/blue.jpg" }
+            ],
+            "variants": [
+              { "variantId": 830001, "stockCode": "SKU-003-RED" },
+              { "variantId": 830002, "stockCode": "SKU-003-BLUE" }
+            ]
+          }]
+        }
+        """;
+
+        var product = Assert.Single(TrendyolJsonMapper.CatalogProducts(json).Items);
+
+        Assert.Equal(new[] { "https://cdn.example.test/red.jpg" }, Assert.Single(product.Variants, x => x.Sku == "SKU-003-RED").ImageUrls);
+        Assert.Equal(new[] { "https://cdn.example.test/blue.jpg" }, Assert.Single(product.Variants, x => x.Sku == "SKU-003-BLUE").ImageUrls);
+    }
+
+    [Fact]
+    public void CatalogProductResponse_SkipsAdditionalSizesForTheSameColorAndKeepsNextColor()
+    {
+        const string json = """
+        {
+          "content": [{
+            "contentId": 800005,
+            "productMainId": "PRODUCT-005",
+            "title": "Renk ve bedenli ürün",
+            "variants": [
+              {
+                "variantId": 850001,
+                "stockCode": "SKU-005-BLACK-S",
+                "attributes": [{ "attributeName": "Renk", "attributeValue": "Siyah" }, { "attributeName": "Beden", "attributeValue": "S" }],
+                "images": ["https://cdn.example.test/black-front.jpg", "https://cdn.example.test/black-back.jpg"]
+              },
+              {
+                "variantId": 850002,
+                "stockCode": "SKU-005-BLACK-M",
+                "attributes": [{ "attributeName": "Renk", "attributeValue": "Siyah" }, { "attributeName": "Beden", "attributeValue": "M" }],
+                "images": ["https://cdn.example.test/black-front-m.jpg"]
+              },
+              {
+                "variantId": 850003,
+                "stockCode": "SKU-005-BLUE-S",
+                "attributes": [{ "attributeName": "Renk", "attributeValue": "Mavi" }, { "attributeName": "Beden", "attributeValue": "S" }],
+                "images": ["https://cdn.example.test/blue-front.jpg"]
+              }
+            ]
+          }]
+        }
+        """;
+
+        var product = Assert.Single(TrendyolJsonMapper.CatalogProducts(json).Items);
+
+        Assert.Equal(new[] { "https://cdn.example.test/black-front.jpg", "https://cdn.example.test/black-back.jpg", "https://cdn.example.test/blue-front.jpg" }, product.ImageUrls);
+        Assert.Equal(new[] { "https://cdn.example.test/black-front.jpg", "https://cdn.example.test/black-back.jpg" }, Assert.Single(product.Variants, x => x.Sku == "SKU-005-BLACK-S").ImageUrls);
+        Assert.Empty(Assert.Single(product.Variants, x => x.Sku == "SKU-005-BLACK-M").ImageUrls!);
+        Assert.Equal(new[] { "https://cdn.example.test/blue-front.jpg" }, Assert.Single(product.Variants, x => x.Sku == "SKU-005-BLUE-S").ImageUrls);
+    }
+
+    [Fact]
+    public void CatalogProductResponse_ReadsCatalogOptionAliasesAndKeepsTheirOrder()
+    {
+        const string json = """
+        {
+          "content": [{
+            "contentId": 800006,
+            "productMainId": "PRODUCT-006",
+            "title": "Takım",
+            "variants": [{
+              "variantId": 860001,
+              "stockCode": "SKU-006",
+              "variantAttributes": [
+                { "name": "Renk", "value": "Siyah" },
+                { "optionName": "Beden", "optionValue": "M" }
+              ]
+            }]
+          }]
+        }
+        """;
+
+        var variant = Assert.Single(Assert.Single(TrendyolJsonMapper.CatalogProducts(json).Items).Variants);
+
+        Assert.Equal("Siyah", variant.Options["Renk"]);
+        Assert.Equal("M", variant.Options["Beden"]);
+        Assert.Equal("Renk: Siyah | Beden: M", string.Join(" | ", variant.Options.Select(x => $"{x.Key}: {x.Value}")));
+    }
+
+    [Fact]
+    public void CatalogProductResponse_PrefersLocalColorOverWebColorWhenGroupingVariantImages()
+    {
+        const string json = """
+        {
+          "content": [{
+            "contentId": 800007,
+            "productMainId": "PRODUCT-007",
+            "title": "Çok renkli takım",
+            "variants": [
+              {
+                "variantId": 870001,
+                "stockCode": "SKU-007-RABBIT",
+                "attributes": [
+                  { "attributeName": "Web Color", "attributeValue": "Çok Renkli" },
+                  { "attributeName": "Renk", "attributeValue": "Tavşanlı Çok Renkli" },
+                  { "attributeName": "Beden", "attributeValue": "S" }
+                ],
+                "images": ["https://cdn.example.test/rabbit.jpg"]
+              },
+              {
+                "variantId": 870002,
+                "stockCode": "SKU-007-FLOWER",
+                "attributes": [
+                  { "attributeName": "Web Color", "attributeValue": "Çok Renkli" },
+                  { "attributeName": "Renk", "attributeValue": "Çiçekli Çok Renkli" },
+                  { "attributeName": "Beden", "attributeValue": "S" }
+                ],
+                "images": ["https://cdn.example.test/flower.jpg"]
+              }
+            ]
+          }]
+        }
+        """;
+
+        var product = Assert.Single(TrendyolJsonMapper.CatalogProducts(json).Items);
+        var rabbit = Assert.Single(product.Variants, variant => variant.Sku == "SKU-007-RABBIT");
+        var flower = Assert.Single(product.Variants, variant => variant.Sku == "SKU-007-FLOWER");
+
+        Assert.Equal("Tavşanlı Çok Renkli", rabbit.Options["Renk"]);
+        Assert.Equal("Çok Renkli", rabbit.Options["Web Color"]);
+        Assert.Equal(new[] { "https://cdn.example.test/rabbit.jpg" }, rabbit.ImageUrls);
+        Assert.Equal(new[] { "https://cdn.example.test/flower.jpg" }, flower.ImageUrls);
+        Assert.Equal(new[] { "https://cdn.example.test/rabbit.jpg", "https://cdn.example.test/flower.jpg" }, product.ImageUrls);
+    }
+
+    [Fact]
+    public void CatalogProductResponse_PrefersVariantColorOverDuplicateCategoryColor()
+    {
+        const string json = """
+        {
+          "content": [{
+            "contentId": 800008,
+            "productMainId": "MZ005",
+            "title": "Kadın İndigo Şerit Desen Bluz",
+            "attributes": [
+              { "attributeId": 47, "attributeName": "Renk", "attributeValue": "İndigo" },
+              { "attributeId": 348, "attributeName": "Renk", "attributeValueId": 7003, "attributeValue": "Lacivert" }
+            ],
+            "variants": [{
+              "variantId": 8000081,
+              "stockCode": "MZ005S26",
+              "attributes": [{ "attributeName": "Beden", "attributeValue": "XL" }]
+            }]
+          }]
+        }
+        """;
+
+        var variant = Assert.Single(Assert.Single(TrendyolJsonMapper.CatalogProducts(json).Items).Variants);
+
+        Assert.Equal("İndigo", variant.Options["Renk"]);
+        Assert.Equal("XL", variant.Options["Beden"]);
+    }
+}

@@ -37,6 +37,48 @@ public static class IntegrationRuntimePolicy
         IsManualStage(connection, context)
         || (IsProduction(connection) && IsActive(connection) && globalWritesEnabled && connectionWritesEnabled);
 
+    public static bool AllowsExternalWrite(PlatformConnection connection, AdapterContext context, bool globalWritesEnabled, bool connectionWritesEnabled) =>
+        context.Operation == IntegrationOperation.Automatic
+            ? IsProduction(connection) && IsActive(connection) && globalWritesEnabled && connectionWritesEnabled
+            : AllowsManualWrite(connection, context, globalWritesEnabled, connectionWritesEnabled);
+
+    public static bool AllowsOneTimeHepsiburadaInvoiceDelivery(PlatformConnection connection, AdapterContext context, string? orderNumber) =>
+        context.IsOneTimeInvoiceDeliveryAuthorized
+        && context.Operation == IntegrationOperation.Manual
+        && context.ConnectionId == connection.Id
+        && string.Equals(connection.PlatformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
+        && IsProduction(connection)
+        && IsActive(connection)
+        && !string.IsNullOrWhiteSpace(orderNumber)
+        && string.Equals(context.OneTimeInvoiceDeliveryOrderNumber, orderNumber, StringComparison.Ordinal);
+
+    public static bool AllowsAutomaticInvoiceMarketplaceDelivery(PlatformConnection connection, AdapterContext context, bool invoiceMarketplaceDeliveryWritesEnabled) =>
+        invoiceMarketplaceDeliveryWritesEnabled
+        && context.IsAutomaticInvoiceMarketplaceDelivery
+        && context.Operation == IntegrationOperation.Automatic
+        && context.ConnectionId == connection.Id
+        && IsProduction(connection)
+        && IsActive(connection)
+        && (string.Equals(connection.PlatformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(connection.PlatformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(connection.PlatformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase));
+
+    public static bool AllowsAutomaticInvoiceMarketplaceDeliveryQueue(bool globalWritesEnabled, bool invoiceMarketplaceDeliveryWritesEnabled) =>
+        globalWritesEnabled && invoiceMarketplaceDeliveryWritesEnabled;
+
+    public static bool AllowsExplicitManualInvoiceMarketplaceDelivery(
+        PlatformConnection connection,
+        AdapterContext context,
+        bool globalWritesEnabled,
+        bool connectionWritesEnabled) =>
+        context.IsExplicitManualInvoiceDelivery
+        && context.Operation == IntegrationOperation.Manual
+        && context.ConnectionId == connection.Id
+        && (string.Equals(connection.PlatformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(connection.PlatformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(connection.PlatformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase))
+        && AllowsExternalWrite(connection, context, globalWritesEnabled, connectionWritesEnabled);
+
     public static bool RequiresSensitiveConfirmation(PlatformConnection connection) => !IsStage(connection);
 
     public static bool TryResolveBaseAddress(string environment, Uri stageBaseAddress, Uri productionBaseAddress, out Uri baseAddress)
@@ -50,6 +92,16 @@ public static class IntegrationRuntimePolicy
         if (string.Equals(environment, "PRODUCTION", StringComparison.OrdinalIgnoreCase)) { baseAddress = productionBaseAddress; return true; }
         return false;
     }
+}
+
+public static class ManualInvoiceDeliveryPolicy
+{
+    public static bool RequiresReadOnlyInspection(string? previousStatus) =>
+        previousStatus is "STARTED" or "UNKNOWN" or "MANUAL_REVIEW";
+
+    public static bool CanSubmitAfterPrecheck(string? previousStatus, MarketplaceInvoiceStatus currentMarketplaceStatus) =>
+        !RequiresReadOnlyInspection(previousStatus)
+        && currentMarketplaceStatus == MarketplaceInvoiceStatus.NotInvoiced;
 }
 
 public enum IntegrationOperation { Manual, Automatic }

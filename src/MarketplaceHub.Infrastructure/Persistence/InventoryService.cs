@@ -17,7 +17,7 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
                     join variant in db.ProductVariants.AsNoTracking() on new { item.TenantId, Id = item.VariantId } equals new { variant.TenantId, variant.Id }
                     where item.TenantId == tenantId && (afterId == Guid.Empty || item.Id.CompareTo(afterId) > 0)
                     orderby item.Id
-                    select new InventoryItemView(item.Id, item.VariantId, variant.Sku, item.LocationCode, item.OnHand, item.Reserved, item.Available, item.ProjectionVersion, item.ReconciledAt, item.Version);
+                    select new InventoryItemView(item.Id, item.VariantId, variant.Sku, item.LocationCode, item.OnHand, item.Reserved, item.Available, item.ProjectionVersion, item.ReconciledAt, item.Version, item.ObservedRemoteQuantity, item.ObservedRemoteAt);
         var rows = await query.Take(limit + 1).ToListAsync(cancellationToken);
         return Page(rows, limit, x => x.Id);
     }
@@ -27,7 +27,12 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
         var afterId = Decode(after);
         var itemIds = db.InventoryItems.Where(x => x.TenantId == tenantId && x.VariantId == variantId).Select(x => x.Id);
         var rows = await db.StockLedgerEntries.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && itemIds.Contains(x.InventoryItemId) && (afterId == Guid.Empty || x.Id.CompareTo(afterId) > 0))
+            // Opening balances and shipment-progress markers are reconciliation
+            // metadata, not new physical stock movements shown in this ledger.
+            .Where(x => x.TenantId == tenantId
+                && x.MovementType != "ORDER_STOCK_BASELINE"
+                && x.MovementType != "ORDER_SHIPMENT_PROGRESS"
+                && itemIds.Contains(x.InventoryItemId) && (afterId == Guid.Empty || x.Id.CompareTo(afterId) > 0))
             .OrderBy(x => x.Id).Take(limit + 1)
             .Select(x => new LedgerEntryView(x.Id, x.MovementType, x.QuantityDelta, x.SourceType, x.SourceId, x.OccurredAt, x.CorrelationId))
             .ToListAsync(cancellationToken);
@@ -169,16 +174,42 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "TRENDYOL" && x.Status == "ACTIVE", cancellationToken);
         if (connection is null) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Fiyat-stok gönderimi için ACTIVE Trendyol bağlantısı gerekir.", 422);
         if (!IntegrationRuntimePolicy.IsSupportedEnvironment(connection)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Fiyat-stok gönderimi yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
-        if (IntegrationRuntimePolicy.IsProduction(connection) && !WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
+        if (!WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
+        var pricePolicy = await db.ConnectionSyncPolicies.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == MarketplaceExternalWritePolicies.Price, cancellationToken);
+        if (pricePolicy is not null && !pricePolicy.Enabled) return ServiceResult<Guid>.Fail("EXTERNAL_WRITE_POLICY_DISABLED", "Fiyat dış yazma akışı kapalı.", 422);
         var build = await new PriceInventoryComposer(db).BuildAsync(tenantId, connectionId, cancellationToken);
         if (!build.Succeeded) return ServiceResult<Guid>.Fail(build.Error!.Code, build.Error.Message, build.Error.Status, build.Error.FieldErrors);
-        var draft = build.Value!; var dedup = $"price-inventory:{connectionId:N}:{draft.PayloadHash}";
+        var draft = build.Value!; var dedup = PriceInventoryOutboxPolicy.DedupKey(connectionId, draft.Lines);
         var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.PriceInventorySync && x.JobDedupKey == dedup, cancellationToken);
         if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);
         var id = Guid.CreateVersion7(); var now = timeProvider.GetUtcNow();
-        var payload = JsonSerializer.Serialize(new PriceInventoryJobPayload(id, connectionId, "SUBMIT", draft.PayloadHash, draft.PayloadJson, draft.Lines, null, null));
-        db.IntegrationJobs.Add(new IntegrationJob { Id = id, TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.PriceInventorySync, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{dedup}:{Hash(idempotencyKey.Trim())}", Priority = 1, Status = JobStatus.Pending, AvailableAt = now, MaxAttempts = 10, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
+        var payload = JsonSerializer.Serialize(new PriceInventoryJobPayload(id, connectionId, "SUBMIT", draft.PayloadHash, draft.PayloadJson, draft.Lines, null, null, null));
+        var writeDelay = pricePolicy is null ? 0 : Math.Clamp(pricePolicy.IntervalSeconds, 0, 86_400);
+        db.IntegrationJobs.Add(new IntegrationJob { Id = id, TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.PriceInventorySync, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{dedup}:{Hash(idempotencyKey.Trim())}", Priority = JobPriorityPolicy.For(MarketplaceJobTypes.PriceInventorySync, userInitiated: true), Status = JobStatus.Pending, AvailableAt = now.AddSeconds(writeDelay), MaxAttempts = 10, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
         await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(id);
+    }
+
+    public async Task<ServiceResult<Guid>> EnqueueProductPriceInventorySyncAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
+    {
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "TRENDYOL" && x.Status == "ACTIVE", cancellationToken);
+        if (connection is null) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Ürüne özel fiyat-stok gönderimi için ACTIVE Trendyol bağlantısı gerekir.", 422);
+        if (!IntegrationRuntimePolicy.IsSupportedEnvironment(connection)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Fiyat-stok gönderimi yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
+        if (!WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
+        var pricePolicy = await db.ConnectionSyncPolicies.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == MarketplaceExternalWritePolicies.Price, cancellationToken);
+        if (pricePolicy is not null && !pricePolicy.Enabled) return ServiceResult<Guid>.Fail("EXTERNAL_WRITE_POLICY_DISABLED", "Fiyat dış yazma akışı kapalı.", 422);
+        var build = await new PriceInventoryComposer(db).BuildAsync(tenantId, connectionId, cancellationToken, productId: productId);
+        if (!build.Succeeded) return ServiceResult<Guid>.Fail(build.Error!.Code, build.Error.Message, build.Error.Status, build.Error.FieldErrors);
+        var draft = build.Value!;
+        var dedup = PriceInventoryOutboxPolicy.DedupKey(connectionId, draft.Lines);
+        var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.PriceInventorySync && x.JobDedupKey == dedup, cancellationToken);
+        if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);
+        var id = Guid.CreateVersion7();
+        var now = timeProvider.GetUtcNow();
+        var payload = JsonSerializer.Serialize(new PriceInventoryJobPayload(id, connectionId, "SUBMIT", draft.PayloadHash, draft.PayloadJson, draft.Lines, null, null, null, productId));
+        var writeDelay = pricePolicy is null ? 0 : Math.Clamp(pricePolicy.IntervalSeconds, 0, 86_400);
+        db.IntegrationJobs.Add(new IntegrationJob { Id = id, TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.PriceInventorySync, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{dedup}:{Hash(idempotencyKey.Trim())}", Priority = JobPriorityPolicy.For(MarketplaceJobTypes.PriceInventorySync, userInitiated: true), Status = JobStatus.Pending, AvailableAt = now.AddSeconds(writeDelay), MaxAttempts = 10, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
+        await db.SaveChangesAsync(cancellationToken);
+        return ServiceResult<Guid>.Ok(id);
     }
 
     private bool WritesEnabled(string settingsJson)
@@ -197,7 +228,7 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
 
     private Guid Decode(string? cursor) => cursors.TryDecode(cursor, out var id) ? id : throw new ArgumentException("Cursor geçersiz veya süresi dolmuş.", nameof(cursor));
     private PageResult<T> Page<T>(List<T> rows, int limit, Func<T, Guid> id) { var hasMore = rows.Count > limit; var items = rows.Take(limit).ToList(); return new(items, hasMore ? cursors.Encode(id(items[^1])) : null, hasMore); }
-    private static InventoryItemView Map(InventoryItem value, string sku) => new(value.Id, value.VariantId, sku, value.LocationCode, value.OnHand, value.Reserved, value.Available, value.ProjectionVersion, value.ReconciledAt, value.Version);
+    private static InventoryItemView Map(InventoryItem value, string sku) => new(value.Id, value.VariantId, sku, value.LocationCode, value.OnHand, value.Reserved, value.Available, value.ProjectionVersion, value.ReconciledAt, value.Version, value.ObservedRemoteQuantity, value.ObservedRemoteAt);
     private static ChannelOfferView Map(ChannelOffer value) => new(value.Id, value.ConnectionId, value.VariantId, value.ListPrice, value.SalePrice, value.Currency, value.VatRate, value.VatInclusion, value.RoundingMode, value.SafetyStock, value.Status, value.PriceVersion, value.Version);
     private static ServiceResult<T> Invalid<T>(string field, string message) => ServiceResult<T>.Fail("VALIDATION_FAILED", message, 422, new Dictionary<string, string[]> { [field] = [message] });
     private static ServiceResult<T> NotFound<T>() => ServiceResult<T>.Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", 404);

@@ -3,16 +3,29 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0.302@sha256:ed034a8bf0b24ded0cbbac07e17825
 WORKDIR /src
 COPY global.json Directory.Build.props Directory.Packages.props MarketplaceHub.sln ./
 COPY src/MarketplaceHub.Api/MarketplaceHub.Api.csproj src/MarketplaceHub.Api/
+COPY src/MarketplaceHub.Api/packages.lock.json src/MarketplaceHub.Api/
 COPY src/MarketplaceHub.Application/MarketplaceHub.Application.csproj src/MarketplaceHub.Application/
+COPY src/MarketplaceHub.Application/packages.lock.json src/MarketplaceHub.Application/
 COPY src/MarketplaceHub.Domain/MarketplaceHub.Domain.csproj src/MarketplaceHub.Domain/
+COPY src/MarketplaceHub.Domain/packages.lock.json src/MarketplaceHub.Domain/
 COPY src/MarketplaceHub.Infrastructure/MarketplaceHub.Infrastructure.csproj src/MarketplaceHub.Infrastructure/
+COPY src/MarketplaceHub.Infrastructure/packages.lock.json src/MarketplaceHub.Infrastructure/
 COPY src/MarketplaceHub.Worker/MarketplaceHub.Worker.csproj src/MarketplaceHub.Worker/
+COPY src/MarketplaceHub.Worker/packages.lock.json src/MarketplaceHub.Worker/
 COPY tests/MarketplaceHub.Application.Tests/MarketplaceHub.Application.Tests.csproj tests/MarketplaceHub.Application.Tests/
 COPY tests/MarketplaceHub.Application.Tests/packages.lock.json tests/MarketplaceHub.Application.Tests/
 RUN dotnet restore MarketplaceHub.sln --locked-mode
-COPY src/ src/
+COPY src/MarketplaceHub.Api/ src/MarketplaceHub.Api/
+COPY src/MarketplaceHub.Application/ src/MarketplaceHub.Application/
+COPY src/MarketplaceHub.Domain/ src/MarketplaceHub.Domain/
+COPY src/MarketplaceHub.Infrastructure/ src/MarketplaceHub.Infrastructure/
+COPY src/MarketplaceHub.Worker/ src/MarketplaceHub.Worker/
 RUN dotnet publish src/MarketplaceHub.Api/MarketplaceHub.Api.csproj -c Release --no-restore -o /out/api \
  && dotnet publish src/MarketplaceHub.Worker/MarketplaceHub.Worker.csproj -c Release --no-restore -o /out/worker
+
+FROM build AS validation
+COPY tests/ tests/
+ENTRYPOINT ["dotnet", "test", "MarketplaceHub.sln", "--no-restore", "--configuration", "Release"]
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0.10@sha256:1fa23fc4872d95fd71c2833ebe65d7e84a43b2d51a31d119516852f13d9505a7
 WORKDIR /app

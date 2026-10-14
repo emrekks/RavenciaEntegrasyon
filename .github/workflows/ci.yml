@@ -1,0 +1,234 @@
+name: Validate
+
+on:
+  pull_request:
+  push:
+    branches: [main, "codex/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Superseded branch runs are cancelled; main runs always finish because Deploy follows them.
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  # A backend or frontend check is skipped only when the exact same content
+  # (git tree hashes) already passed it, so a CSS-only push does not rerun the
+  # backend and an earlier failing backend commit can never be skipped.
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      backend_hash: ${{ steps.hash.outputs.backend }}
+      frontend_hash: ${{ steps.hash.outputs.frontend }}
+      backend_needed: ${{ steps.backend-marker.outputs.cache-hit != 'true' }}
+      frontend_needed: ${{ steps.frontend-marker.outputs.cache-hit != 'true' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Hash validated inputs
+        id: hash
+        run: |
+          set -Eeuo pipefail
+          backend="$(git ls-tree -r HEAD -- src tests global.json Directory.Build.props Directory.Packages.props MarketplaceHub.sln .editorconfig .config .github/workflows/ci.yml \
+            | awk -F'\t' '$2 !~ /^src\/MarketplaceHub\.Web\//' | sha256sum | cut -d' ' -f1)"
+          frontend="$(git ls-tree -r HEAD -- src/MarketplaceHub.Web .github/workflows/ci.yml | sha256sum | cut -d' ' -f1)"
+          echo "backend=$backend" >> "$GITHUB_OUTPUT"
+          echo "frontend=$frontend" >> "$GITHUB_OUTPUT"
+
+      - name: Look up backend marker
+        id: backend-marker
+        uses: actions/cache/restore@v6
+        with:
+          path: .ci-marker
+          key: validated-backend-${{ steps.hash.outputs.backend }}
+          lookup-only: true
+
+      - name: Look up frontend marker
+        id: frontend-marker
+        uses: actions/cache/restore@v6
+        with:
+          path: .ci-marker
+          key: validated-frontend-${{ steps.hash.outputs.frontend }}
+          lookup-only: true
+
+  ops:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Validate deployment shell scripts
+        run: |
+          bash -n deploy/backup/*.sh deploy/scripts/*.sh
+          shellcheck deploy/backup/*.sh deploy/scripts/*.sh
+
+      - name: Validate merged Compose manifests
+        env:
+          MARKETPLACEHUB_APP_IMAGE: marketplacehub-app:ci-validation
+          MARKETPLACEHUB_EDGE_IMAGE: marketplacehub-edge:ci-validation
+          MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED: "false"
+          MARKETPLACEHUB_ALLOWED_HOSTS: panel.example.invalid
+          MARKETPLACEHUB_SITE_ADDRESS: https://panel.example.invalid
+        run: |
+          set -Eeuo pipefail
+          mkdir -p deploy/secrets
+          placeholder_files=()
+          cleanup_compose_placeholders() {
+            if ((${#placeholder_files[@]})); then
+              rm -f -- "${placeholder_files[@]}"
+            fi
+            rmdir deploy/secrets 2>/dev/null || true
+          }
+          trap cleanup_compose_placeholders EXIT
+          for name in postgres_password.txt app_db_connection.txt credential_key.txt dp_certificate.pfx dp_certificate_password.txt; do
+            path="deploy/secrets/$name"
+            [[ ! -e "$path" ]] || { echo "Refusing to replace an existing secret file in CI validation." >&2; exit 1; }
+            : > "$path"
+            placeholder_files+=("$path")
+          done
+          compose=(docker compose -f deploy/compose/compose.yaml -f deploy/compose/compose.production.yaml)
+          "${compose[@]}" config --quiet
+          "${compose[@]}" --profile validation config --quiet
+          "${compose[@]}" --profile operations config --quiet
+
+  backend-format:
+    needs: plan
+    if: needs.plan.outputs.backend_needed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.302
+
+      - name: Restore backend
+        run: dotnet restore MarketplaceHub.sln --locked-mode
+
+      - name: Verify .NET format
+        run: dotnet format MarketplaceHub.sln --verify-no-changes --no-restore --verbosity diagnostic
+
+  backend:
+    needs: plan
+    if: needs.plan.outputs.backend_needed == 'true'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_DB: marketplacehub_test
+          POSTGRES_USER: marketplacehub
+          POSTGRES_PASSWORD: development-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U marketplacehub -d marketplacehub_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.302
+
+      - name: Restore backend
+        run: dotnet restore MarketplaceHub.sln --locked-mode
+
+      - name: Restore .NET tools
+        run: dotnet tool restore
+
+      - name: Build backend
+        run: dotnet build MarketplaceHub.sln --no-restore --configuration Release
+
+      - name: Test backend
+        env:
+          MARKETPLACEHUB_TEST_CONNECTION: "Host=localhost;Port=5432;Database=marketplacehub_test;Username=marketplacehub;Password=development-only"
+          FeatureFlags__ExternalWrites: "false"
+        run: dotnet test MarketplaceHub.sln --no-build --configuration Release
+
+      - name: Verify EF model has no pending migration
+        run: dotnet tool run dotnet-ef migrations has-pending-model-changes --project src/MarketplaceHub.Infrastructure/MarketplaceHub.Infrastructure.csproj --startup-project src/MarketplaceHub.Api/MarketplaceHub.Api.csproj --no-build --configuration Release
+
+      - name: Audit NuGet dependencies
+        run: dotnet list MarketplaceHub.sln package --vulnerable --include-transitive
+
+  frontend:
+    needs: plan
+    if: needs.plan.outputs.frontend_needed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24.18.1
+          cache: npm
+          cache-dependency-path: src/MarketplaceHub.Web/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: src/MarketplaceHub.Web
+        run: npm ci --ignore-scripts
+
+      - name: Typecheck frontend
+        working-directory: src/MarketplaceHub.Web
+        run: npm run typecheck
+
+      - name: Test frontend
+        working-directory: src/MarketplaceHub.Web
+        run: npm test
+
+      - name: Build frontend
+        working-directory: src/MarketplaceHub.Web
+        run: npm run build
+
+      - name: Check frontend bundle budget
+        working-directory: src/MarketplaceHub.Web
+        run: npm run check:bundle
+
+      - name: Audit npm dependencies
+        working-directory: src/MarketplaceHub.Web
+        run: npm audit --omit=dev --audit-level=high
+
+  # Single required result for the Deploy workflow: skipped jobs count as passed,
+  # failed or cancelled ones do not. Markers are written only for content that passed.
+  gate:
+    needs: [plan, ops, backend-format, backend, frontend]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prepare markers
+        run: |
+          mkdir -p .ci-marker
+          echo ok > .ci-marker/validated
+
+      - name: Remember passed backend
+        if: needs.backend.result == 'success' && needs.backend-format.result == 'success'
+        uses: actions/cache/save@v6
+        with:
+          path: .ci-marker
+          key: validated-backend-${{ needs.plan.outputs.backend_hash }}
+
+      - name: Remember passed frontend
+        if: needs.frontend.result == 'success'
+        uses: actions/cache/save@v6
+        with:
+          path: .ci-marker
+          key: validated-frontend-${{ needs.plan.outputs.frontend_hash }}
+
+      - name: Require every job to pass or be skipped
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: |
+          echo "At least one validation job failed or was cancelled." >&2
+          exit 1

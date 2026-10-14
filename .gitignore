@@ -12,6 +12,7 @@ tmp/
 .local/
 secrets/
 data/
+/local-data/
 *.user
 *.log
 

@@ -1,4 +1,7 @@
 .git
+.codex-deploy-backups/
+.codex-live-patch/
+.codex-release-*/
 .env
 .env.*
 !.env.example
@@ -9,7 +12,9 @@
 **/TestResults
 data
 deploy/secrets
+deploy/backups/
 tmp
+transfer/
 docs
 output
 **/playwright-report

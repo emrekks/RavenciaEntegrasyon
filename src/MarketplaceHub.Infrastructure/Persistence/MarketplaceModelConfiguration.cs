@@ -10,6 +10,7 @@ internal static class MarketplaceModelConfiguration
         ConfigureConnectionEvidence(builder);
         ConfigureOrders(builder);
         ConfigureShipments(builder);
+        ConfigureMarketplaceInvoiceReferenceHistory(builder);
         ConfigureReturns(builder);
     }
 
@@ -45,7 +46,7 @@ internal static class MarketplaceModelConfiguration
         });
         builder.Entity<ConnectionSyncPolicy>(entity =>
         {
-            entity.ToTable("connection_sync_policies", "integration", table => table.HasCheckConstraint("ck_connection_sync_policy_intervals", "\"IntervalSeconds\" > 0 AND \"OverlapSeconds\" >= 0 AND \"JitterSeconds\" >= 0")); entity.HasKey(x => x.Id);
+            entity.ToTable("connection_sync_policies", "integration", table => table.HasCheckConstraint("ck_connection_sync_policy_intervals", "\"IntervalSeconds\" >= 0 AND \"OverlapSeconds\" >= 0 AND \"JitterSeconds\" >= 0")); entity.HasKey(x => x.Id);
             entity.Property(x => x.ResourceType).HasMaxLength(64); entity.Property(x => x.Version).IsConcurrencyToken();
             entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ResourceType }).IsUnique();
             entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
@@ -72,7 +73,7 @@ internal static class MarketplaceModelConfiguration
             entity.ToTable("orders", "sales", table => { table.HasCheckConstraint("ck_order_amounts", "\"GrossAmount\" >= 0 AND \"DiscountAmount\" >= 0 AND \"NetAmount\" >= 0"); table.HasCheckConstraint("ck_order_currency", "char_length(\"Currency\")=3"); });
             entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id });
             entity.Property(x => x.ExternalOrderId).HasMaxLength(256); entity.Property(x => x.OrderNumber).HasMaxLength(160); entity.Property(x => x.Currency).HasColumnType("char(3)"); entity.Property(x => x.GrossAmount).HasPrecision(19, 4); entity.Property(x => x.DiscountAmount).HasPrecision(19, 4); entity.Property(x => x.NetAmount).HasPrecision(19, 4); entity.Property(x => x.DerivedStatus).HasMaxLength(48); entity.Property(x => x.Version).IsConcurrencyToken();
-            entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ExternalOrderId }).IsUnique(); entity.HasIndex(x => new { x.TenantId, x.OrderedAt, x.Id });
+            entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ExternalOrderId }).IsUnique(); entity.HasIndex(x => new { x.TenantId, x.OrderedAt, x.Id }); entity.HasIndex(x => new { x.TenantId, x.ShipmentDueAt, x.OrderedAt, x.Id });
             entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
         });
         builder.Entity<OrderLine>(entity =>
@@ -93,8 +94,9 @@ internal static class MarketplaceModelConfiguration
         builder.Entity<ShipmentPackage>(entity =>
         {
             entity.ToTable("shipment_packages", "sales"); entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id });
-            entity.Property(x => x.ExternalPackageId).HasMaxLength(256); entity.Property(x => x.OriginExternalPackageId).HasMaxLength(256); entity.Property(x => x.CargoProviderExternalId).HasMaxLength(256); entity.Property(x => x.CargoTrackingNumber).HasMaxLength(256); entity.Property(x => x.GrossAmount).HasPrecision(19, 4); entity.Property(x => x.DiscountAmount).HasPrecision(19, 4); entity.Property(x => x.NetAmount).HasPrecision(19, 4); entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(32); entity.Property(x => x.RawStatus).HasMaxLength(96); entity.Property(x => x.RemoteVersion).HasMaxLength(128); entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.Property(x => x.ExternalPackageId).HasMaxLength(256); entity.Property(x => x.OriginExternalPackageId).HasMaxLength(256); entity.Property(x => x.CreatedBy).HasMaxLength(64); entity.Property(x => x.CargoProviderExternalId).HasMaxLength(256); entity.Property(x => x.CargoTrackingNumber).HasMaxLength(256); entity.Property(x => x.GrossAmount).HasPrecision(19, 4); entity.Property(x => x.DiscountAmount).HasPrecision(19, 4); entity.Property(x => x.NetAmount).HasPrecision(19, 4); entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(32); entity.Property(x => x.RawStatus).HasMaxLength(96); entity.Property(x => x.MarketplaceInvoiceStatus).HasConversion<string>().HasMaxLength(32); entity.Property(x => x.ManualInvoiceStatus).HasMaxLength(16); entity.Property(x => x.MarketplaceInvoiceRawStatus).HasMaxLength(96); entity.Property(x => x.MarketplaceInvoiceNumber).HasMaxLength(256); entity.Property(x => x.MarketplaceInvoiceUrl).HasMaxLength(2048); entity.Property(x => x.RemoteVersion).HasMaxLength(128); entity.Property(x => x.Version).IsConcurrencyToken();
             entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ExternalPackageId }).IsUnique(); entity.HasIndex(x => new { x.TenantId, x.Status, x.StatusOccurredAt });
+            entity.HasIndex(x => new { x.TenantId, x.StatusOccurredAt, x.Id }).HasDatabaseName("IX_shipment_packages_TenantId_StatusOccurredAt_Id");
             entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<Order>().WithMany().HasForeignKey(x => new { x.TenantId, x.OrderId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
         });
@@ -137,17 +139,34 @@ internal static class MarketplaceModelConfiguration
         });
     }
 
+    private static void ConfigureMarketplaceInvoiceReferenceHistory(ModelBuilder builder)
+    {
+        builder.Entity<MarketplaceInvoiceReferenceHistory>(entity =>
+        {
+            entity.ToTable("marketplace_invoice_reference_history", "sales", table =>
+                table.HasCheckConstraint("ck_marketplace_invoice_reference_history_has_reference", "\"InvoiceNumber\" IS NOT NULL OR \"InvoiceUrl\" IS NOT NULL"));
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.InvoiceNumber).HasMaxLength(256);
+            entity.Property(x => x.InvoiceUrl).HasMaxLength(2048);
+            entity.Property(x => x.ChangeReason).HasMaxLength(64);
+            entity.HasIndex(x => new { x.TenantId, x.PackageId, x.ChangedAt });
+            entity.HasOne<Order>().WithMany().HasForeignKey(x => new { x.TenantId, x.OrderId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ShipmentPackage>().WithMany().HasForeignKey(x => new { x.TenantId, x.PackageId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
+        });
+    }
+
     private static void ConfigureReturns(ModelBuilder builder)
     {
         builder.Entity<ReturnClaim>(entity =>
         {
-            entity.ToTable("return_claims", "sales"); entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id }); entity.Property(x => x.ExternalClaimId).HasMaxLength(256); entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(32); entity.Property(x => x.RawStatus).HasMaxLength(96); entity.Property(x => x.ReasonCode).HasMaxLength(96); entity.Property(x => x.ReasonText).HasMaxLength(1024); entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.ToTable("return_claims", "sales"); entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id }); entity.Property(x => x.ExternalClaimId).HasMaxLength(256); entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(32); entity.Property(x => x.RawStatus).HasMaxLength(96); entity.Property(x => x.CargoProviderName).HasMaxLength(128); entity.Property(x => x.CargoTrackingNumber).HasMaxLength(256); entity.Property(x => x.CargoTrackingLink).HasMaxLength(2048); entity.Property(x => x.ReasonCode).HasMaxLength(96); entity.Property(x => x.ReasonText).HasMaxLength(1024); entity.Property(x => x.Version).IsConcurrencyToken();
             entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ExternalClaimId }).IsUnique(); entity.HasIndex(x => new { x.TenantId, x.Status, x.ActionDueAt });
             entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict); entity.HasOne<Order>().WithMany().HasForeignKey(x => new { x.TenantId, x.OrderId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
         });
         builder.Entity<ReturnLine>(entity =>
         {
-            entity.ToTable("return_lines", "sales", table => table.HasCheckConstraint("ck_return_line_quantity", "\"Quantity\" > 0")); entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id }); entity.Property(x => x.ExternalLineId).HasMaxLength(256); entity.Property(x => x.Quantity).HasPrecision(19, 4); entity.HasIndex(x => new { x.TenantId, x.ClaimId, x.ExternalLineId }).IsUnique(); entity.HasOne<ReturnClaim>().WithMany().HasForeignKey(x => new { x.TenantId, x.ClaimId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade); entity.HasOne<OrderLine>().WithMany().HasForeignKey(x => new { x.TenantId, x.OrderLineId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
+            entity.ToTable("return_lines", "sales", table => table.HasCheckConstraint("ck_return_line_quantity", "\"Quantity\" > 0")); entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id }); entity.Property(x => x.ExternalLineId).HasMaxLength(256); entity.Property(x => x.RawStatus).HasMaxLength(64); entity.Property(x => x.Quantity).HasPrecision(19, 4); entity.HasIndex(x => new { x.TenantId, x.ClaimId, x.ExternalLineId }).IsUnique(); entity.HasOne<ReturnClaim>().WithMany().HasForeignKey(x => new { x.TenantId, x.ClaimId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade); entity.HasOne<OrderLine>().WithMany().HasForeignKey(x => new { x.TenantId, x.OrderLineId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
         });
         builder.Entity<ReturnDecision>(entity =>
         {
@@ -160,6 +179,35 @@ internal static class MarketplaceModelConfiguration
         builder.Entity<ReturnStockDisposition>(entity =>
         {
             entity.ToTable("return_stock_dispositions", "sales", table => table.HasCheckConstraint("ck_return_stock_disposition_quantity", "\"Quantity\" > 0")); entity.HasKey(x => x.Id); entity.Property(x => x.Disposition).HasConversion<string>().HasMaxLength(24); entity.Property(x => x.Quantity).HasPrecision(19, 4); entity.Property(x => x.IdempotencyKey).HasMaxLength(256); entity.Property(x => x.Reason).HasMaxLength(512); entity.HasIndex(x => new { x.TenantId, x.IdempotencyKey }).IsUnique(); entity.HasOne<ReturnClaim>().WithMany().HasForeignKey(x => new { x.TenantId, x.ClaimId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict); entity.HasOne<ReturnLine>().WithMany().HasForeignKey(x => new { x.TenantId, x.ReturnLineId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict); entity.HasOne<InventoryItem>().WithMany().HasForeignKey(x => new { x.TenantId, x.InventoryItemId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
+        });
+    }
+}
+
+internal static class QuestionModelConfiguration
+{
+    public static void ConfigureQuestionModels(this ModelBuilder builder)
+    {
+        builder.Entity<MarketplaceQuestion>(entity =>
+        {
+            entity.ToTable("marketplace_questions", "sales"); entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id }).HasName("AK_questions_tenant_id");
+            entity.Property(x => x.ExternalQuestionId).HasMaxLength(256); entity.Property(x => x.Kind).HasMaxLength(16); entity.Property(x => x.Status).HasMaxLength(48);
+            entity.Property(x => x.QuestionText).HasMaxLength(4096); entity.Property(x => x.ProductName).HasMaxLength(1024); entity.Property(x => x.ProductImageUrl).HasMaxLength(2048);
+            entity.Property(x => x.ProductSku).HasMaxLength(256); entity.Property(x => x.ProductBarcode).HasMaxLength(256); entity.Property(x => x.ProductModelCode).HasMaxLength(256); entity.Property(x => x.ProductUrl).HasMaxLength(2048);
+            entity.Property(x => x.CustomerName).HasMaxLength(256); entity.Property(x => x.ExternalOrderNumber).HasMaxLength(256); entity.Property(x => x.HistoryJson).HasColumnType("jsonb"); entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.Property(x => x.PendingAnswerText).HasMaxLength(2000); entity.Property(x => x.AnswerSubmissionStatus).HasMaxLength(32); entity.Property(x => x.AnswerSubmissionKey).HasMaxLength(256);
+            entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ExternalQuestionId }).IsUnique().HasDatabaseName("IX_questions_tenant_connection_external"); entity.HasIndex(x => new { x.TenantId, x.Kind, x.Status, x.CreatedAt }).HasDatabaseName("IX_questions_tenant_kind_status_created"); entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.AnswerSubmissionKey }).IsUnique().HasFilter("\"AnswerSubmissionKey\" IS NOT NULL").HasDatabaseName("IX_questions_tenant_connection_submission");
+            entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict).HasConstraintName("FK_questions_connection");
+        });
+        builder.Entity<MarketplaceQuestionTemplate>(entity =>
+        {
+            entity.ToTable("marketplace_question_templates", "sales"); entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id }).HasName("AK_question_templates_tenant_id");
+            entity.Property(x => x.Title).HasMaxLength(120); entity.Property(x => x.Text).HasMaxLength(2000); entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.HasIndex(x => new { x.TenantId, x.Title }).IsUnique().HasDatabaseName("IX_question_templates_tenant_title");
+        });
+        builder.Entity<MarketplaceQuestionSyncState>(entity =>
+        {
+            entity.ToTable("marketplace_question_sync_states", "integration"); entity.HasKey(x => new { x.TenantId, x.ConnectionId }); entity.Property(x => x.LastError).HasMaxLength(512); entity.Property(x => x.ProgressStatus).HasMaxLength(24); entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade).HasConstraintName("FK_question_sync_states_connection");
         });
     }
 }

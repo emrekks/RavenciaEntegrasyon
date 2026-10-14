@@ -69,6 +69,123 @@ public sealed class MandatorySynchronizationScenariosTests
     }
 
     [Fact]
+    public void TrendyolCargoInfoReconciliationIsThrottledAndUsesAThreeMonthLookback()
+    {
+        var now = DateTimeOffset.Parse("2026-10-03T12:00:00Z");
+        var interval = TimeSpan.FromHours(6);
+
+        Assert.True(OpenOrderLifecyclePolicy.ShouldRunTrendyolCargoInfoReconciliation(null, now, interval));
+        Assert.False(OpenOrderLifecyclePolicy.ShouldRunTrendyolCargoInfoReconciliation(now.AddHours(-5), now, interval));
+        Assert.True(OpenOrderLifecyclePolicy.ShouldRunTrendyolCargoInfoReconciliation(now.AddHours(-6), now, interval));
+        Assert.Equal(now.AddDays(-90), OpenOrderLifecyclePolicy.TrendyolCargoInfoLookbackCutoff(now));
+    }
+
+    [Theory]
+    [InlineData("TRENDYOL", 5, 1, 1)]
+    [InlineData("SHOPIFY", 5, 1, 5)]
+    [InlineData("HEPSIBURADA", 5, 0, 5)]
+    [InlineData("TRENDYOL", 5, 0, 1)]
+    public void Trendyol_lifecycle_uses_small_bounded_batches(
+        string platformCode,
+        int defaultBatchSize,
+        int trendyolBatchSize,
+        int expected) =>
+        Assert.Equal(expected, OpenOrderLifecyclePolicy.LifecycleBatchSize(platformCode, defaultBatchSize, trendyolBatchSize));
+
+    [Fact]
+    public void HepsiburadaUndeliveredOrderDoesNotShowShipmentDeadlineWarning()
+    {
+        var now = DateTimeOffset.Parse("2026-10-01T12:00:00Z");
+
+        Assert.False(OpenOrderLifecyclePolicy.ShouldShowShipmentDeadlineWarning(
+            "HEPSIBURADA",
+            "ON_HOLD",
+            now.AddDays(-133),
+            now));
+    }
+
+    [Fact]
+    public void ShipmentDeadlineWarningRemainsForActionableOrders()
+    {
+        var now = DateTimeOffset.Parse("2026-10-01T12:00:00Z");
+
+        Assert.True(OpenOrderLifecyclePolicy.ShouldShowShipmentDeadlineWarning(
+            "HEPSIBURADA",
+            "NEW",
+            now.AddHours(12),
+            now));
+        Assert.True(OpenOrderLifecyclePolicy.ShouldShowShipmentDeadlineWarning(
+            "TRENDYOL",
+            "ON_HOLD",
+            now.AddDays(-1),
+            now));
+        Assert.False(OpenOrderLifecyclePolicy.ShouldShowShipmentDeadlineWarning(
+            "HEPSIBURADA",
+            "DELIVERED",
+            now.AddDays(-1),
+            now));
+    }
+
+    [Fact]
+    public void HepsiburadaClaimOnlyOrderWithoutPackageIsNotPresentedAsShipmentOverdue()
+    {
+        var now = DateTimeOffset.Parse("2026-10-01T12:00:00Z");
+
+        Assert.True(OpenOrderLifecyclePolicy.IsHepsiburadaClaimOnlyWithoutPackage(
+            "HEPSIBURADA", 0, ["ClaimCreated", " claimcreated "]));
+        Assert.False(OpenOrderLifecyclePolicy.ShouldShowShipmentDeadlineWarning(
+            "HEPSIBURADA", "NEW", now.AddDays(-133), now, claimOnlyWithoutPackage: true));
+        Assert.False(OpenOrderLifecyclePolicy.IsHepsiburadaClaimOnlyWithoutPackage(
+            "HEPSIBURADA", 1, ["ClaimCreated"]));
+        Assert.False(OpenOrderLifecyclePolicy.IsHepsiburadaClaimOnlyWithoutPackage(
+            "HEPSIBURADA", 0, ["ClaimCreated", "Open"]));
+        Assert.False(OpenOrderLifecyclePolicy.IsHepsiburadaClaimOnlyWithoutPackage(
+            "HEPSIBURADA", 0, ["ClaimCreated"], lifecycleStatus: "Delivered"));
+    }
+
+    [Theory]
+    [InlineData("HEPSIBURADA", "NEW", true)]
+    [InlineData("hepsiburada", " new ", true)]
+    [InlineData("HEPSIBURADA", "ON_HOLD", true)]
+    [InlineData("hepsiburada", " on_hold ", true)]
+    [InlineData("HEPSIBURADA", "UNVERIFIED", false)]
+    [InlineData("TRENDYOL", "NEW", false)]
+    [InlineData("TRENDYOL", "UNVERIFIED", false)]
+    [InlineData("HEPSIBURADA", "SHIPPED", false)]
+    [InlineData("HEPSIBURADA", "DELIVERED", false)]
+    public void HepsiburadaLifecyclePollsUnpackagedActionableOrders(string platformCode, string status, bool expected) =>
+        Assert.Equal(expected, OpenOrderLifecyclePolicy.ShouldPollWithoutPackage(platformCode, status));
+
+    [Theory]
+    [InlineData("Open", ShipmentPackageStatus.New)]
+    [InlineData("Unpacked", ShipmentPackageStatus.New)]
+    [InlineData("Packaged", ShipmentPackageStatus.ReadyToShip)]
+    [InlineData("InTransit", ShipmentPackageStatus.Shipped)]
+    [InlineData("Delivered", ShipmentPackageStatus.Delivered)]
+    [InlineData("Undelivered", ShipmentPackageStatus.OnHold)]
+    [InlineData("CancelledByCustomer", ShipmentPackageStatus.Cancelled)]
+    public void HepsiburadaOrderLifecycleMapsDocumentedStatuses(string remoteStatus, ShipmentPackageStatus expected) =>
+        Assert.Equal(expected, HepsiburadaOrderLifecycleStatusPolicy.FromRemote(remoteStatus));
+
+    [Fact]
+    public void HepsiburadaOrderLifecycleLeavesUnknownStatusesForPackageEvidence() =>
+        Assert.Null(HepsiburadaOrderLifecycleStatusPolicy.FromRemote("FutureProviderStatus"));
+
+    [Fact]
+    public void HepsiburadaOrderLifecycleAdvancesPackageDerivedStatusesWithoutRegressing()
+    {
+        Assert.Equal(ShipmentPackageStatus.Delivered, HepsiburadaOrderLifecycleStatusPolicy.Reconcile("NEW", "Delivered"));
+        var existingPackageAggregate = ShipmentPackageStatusPolicy.Aggregate([ShipmentPackageStatus.OnHold]);
+        Assert.Equal(
+            ShipmentPackageStatus.Delivered,
+            HepsiburadaOrderLifecycleStatusPolicy.Reconcile(existingPackageAggregate.ToString().ToUpperInvariant(), "Delivered", ["ClaimCreated"]));
+        Assert.Null(HepsiburadaOrderLifecycleStatusPolicy.Reconcile("NEW", "ClaimCreated"));
+        Assert.Null(HepsiburadaOrderLifecycleStatusPolicy.Reconcile("SHIPPED", "Open"));
+        Assert.Equal(ShipmentPackageStatus.Cancelled, HepsiburadaOrderLifecycleStatusPolicy.Reconcile("READY_TO_SHIP", "CancelledByMerchant"));
+        Assert.Null(HepsiburadaOrderLifecycleStatusPolicy.Reconcile("DELIVERED", "CancelledByMerchant"));
+    }
+
+    [Fact]
     public void Scenario08_NewReturnAfterFortyFiveDays_UsesThreeMinuteHotReturnCadence()
     {
         Assert.Equal(TimeSpan.FromMinutes(3), SynchronizationCadence.HotReturns);
@@ -181,6 +298,24 @@ public sealed class MandatorySynchronizationScenariosTests
         Assert.True(ProductImportMergePolicy.PreserveLocalChanges(10, 10, "[\"title\"]"));
         Assert.False(ProductImportMergePolicy.PreserveLocalChanges(10, 10, "[]"));
         Assert.False(ProductImportMergePolicy.PreserveLocalChanges(10, 10, null));
+    }
+
+    [Fact]
+    public void ProductImportScanPolicy_BackfillsInactiveProductsWhenMappingIsSelected()
+    {
+        Assert.True(ProductImportScanPolicy.RequiresFullCatalogForMapping(true, true, false));
+        Assert.True(ProductImportScanPolicy.RequiresFullCatalogForMapping(true, false, true));
+        Assert.False(ProductImportScanPolicy.RequiresFullCatalogForMapping(true, false, false));
+        Assert.False(ProductImportScanPolicy.RequiresFullCatalogForMapping(false, true, true));
+    }
+
+    [Fact]
+    public void ProductImportConcurrencyPolicy_RejectsModeCollisions()
+    {
+        Assert.True(ProductImportConcurrencyPolicy.RejectsModeCollision("TRENDYOL_PRODUCT_SYNC", "TRENDYOL_PRODUCT_SYNC"));
+        Assert.True(ProductImportConcurrencyPolicy.RejectsModeCollision("SHOPIFY_PRODUCT_SYNC", "SHOPIFY_PRODUCT_SYNC"));
+        Assert.True(ProductImportConcurrencyPolicy.RejectsModeCollision("HEPSIBURADA_PRODUCT_SYNC", "HEPSIBURADA_PRODUCT_SYNC"));
+        Assert.False(ProductImportConcurrencyPolicy.RejectsModeCollision("TRENDYOL_ORDER_SYNC", "TRENDYOL_PRODUCT_SYNC"));
     }
 
     [Fact]

@@ -60,7 +60,9 @@ public sealed class ImportJobProcessor(
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 total++;
-                var safeJson = JsonSerializer.Serialize(row.Values);
+                var rawJson = JsonSerializer.Serialize(row.Values);
+                var safeValues = SanitizeImportedValues(row.Values);
+                var safeJson = JsonSerializer.Serialize(safeValues);
                 var rowHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(safeJson)));
                 var staging = new ImportStagingRecord
                 {
@@ -68,13 +70,13 @@ public sealed class ImportJobProcessor(
                     TenantId = tenantId,
                     SessionId = sessionId,
                     RowNumber = row.RowNumber,
-                    ExternalRecordId = Value(row.Values, "externalId"),
-                    RawJson = safeJson,
+                    ExternalRecordId = Value(safeValues, "externalId"),
+                    RawJson = rawJson,
                     SafeValuesJson = safeJson,
                     ValidationErrorsJson = JsonSerializer.Serialize(row.Errors),
                     RowHash = rowHash,
-                    SkuNormalized = Normalize(Value(row.Values, "sku")),
-                    BarcodeNormalized = Normalize(Value(row.Values, "barcode")),
+                    SkuNormalized = Normalize(Value(safeValues, "sku")),
+                    BarcodeNormalized = Normalize(Value(safeValues, "barcode")),
                     ReviewStatus = row.Errors.Count == 0 ? "PENDING" : "INVALID"
                 };
                 db.ImportStagingRecords.Add(staging);
@@ -92,7 +94,7 @@ public sealed class ImportJobProcessor(
                     VariantId = match.VariantId,
                     MatchRule = match.Rule,
                     Status = "REVIEW_REQUIRED",
-                    SafeSummary = SafeSummary(row.Values)
+                    SafeSummary = SafeSummary(safeValues)
                 });
                 reviews++;
             }
@@ -301,6 +303,12 @@ public sealed class ImportJobProcessor(
     private static decimal ParseNonNegative(string? value) => decimal.TryParse(value, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var parsed) ? Math.Max(0, decimal.Round(parsed, 4)) : 0;
     private static string? Normalize(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim().ToUpperInvariant();
     private static string? Value(IReadOnlyDictionary<string, string> values, string key) => values.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value) ? value.Trim() : null;
+    private static IReadOnlyDictionary<string, string> SanitizeImportedValues(IReadOnlyDictionary<string, string> values)
+    {
+        var safeValues = new Dictionary<string, string>(values, StringComparer.OrdinalIgnoreCase);
+        if (safeValues.TryGetValue("description", out var description)) safeValues["description"] = ImportedHtmlSanitizer.Sanitize(description);
+        return safeValues;
+    }
     private static string SafeSummary(IReadOnlyDictionary<string, string> values) => JsonSerializer.Serialize(new { title = Value(values, "title"), sku = Value(values, "sku"), barcode = Value(values, "barcode") });
     private sealed record MatchResult(string Rule, Guid? ProductId, Guid? VariantId);
 }

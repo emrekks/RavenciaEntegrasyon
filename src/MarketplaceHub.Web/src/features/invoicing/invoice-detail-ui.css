@@ -1,0 +1,24 @@
+.app-shell.stitch-shell main .invoice-detail-header-actions .invoice-detail-platform-refresh {
+  box-sizing: border-box;
+  width: auto;
+  height: 36px;
+  min-height: 36px;
+  padding: 0 10px;
+  color: var(--rv-color-muted);
+  background: transparent;
+  border-color: transparent;
+  font-size: var(--rv-font-size-sm);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.app-shell.stitch-shell main .invoice-detail-header-actions .invoice-detail-platform-refresh:hover:not(:disabled) {
+  color: var(--rv-color-ink);
+  background: var(--rv-color-surface-soft);
+}
+.invoice-detail-addresses article > span { overflow-wrap: anywhere; line-height: 1.5; }
+.invoice-detail-addresses article > span > strong { color: var(--rv-color-muted); font-weight: 750; }
+
+.invoice-detail-header-actions { display: inline-flex; align-items: center; gap: 8px; flex: none; }
+
+.invoice-detail-cargo { display: flex; align-items: center; min-height: 28px; margin-bottom: 4px; }
+.invoice-detail-cargo .cargo-provider-icon { max-height: 28px; width: auto; max-width: 120px; object-fit: contain; }

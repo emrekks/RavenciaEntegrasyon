@@ -9,6 +9,9 @@ public sealed class IntegrationJob
     public Guid TenantId { get; set; }
     public Guid? ConnectionId { get; set; }
     public required string JobType { get; set; }
+    public string ResourceType { get; set; } = "jobs";
+    public string OperationType { get; set; } = "execute";
+    public string TriggerType { get; set; } = "system";
     public required string PayloadJson { get; set; }
     public int PayloadVersion { get; set; }
     public required string PayloadHash { get; set; }
@@ -28,6 +31,14 @@ public sealed class IntegrationJob
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? StartedAt { get; set; }
     public DateTimeOffset? CompletedAt { get; set; }
+    public int ProgressCurrent { get; set; }
+    public int? ProgressTotal { get; set; }
+    public int? ProgressPercent { get; set; }
+    public string? ProgressLabel { get; set; }
+    public int ProgressReceived { get; set; }
+    public int ProgressProcessed { get; set; }
+    public int ProgressSkipped { get; set; }
+    public int ProgressFailed { get; set; }
     public long Version { get; set; }
 }
 
@@ -123,6 +134,7 @@ public sealed class ApiIdempotencyRecord
     public required string RequestHash { get; set; }
     public required string State { get; set; }
     public int? ResponseStatus { get; set; }
+    public string? ResponseBody { get; set; }
     public Guid? ResourceId { get; set; }
     public Guid? JobId { get; set; }
     public DateTimeOffset CreatedAt { get; set; }

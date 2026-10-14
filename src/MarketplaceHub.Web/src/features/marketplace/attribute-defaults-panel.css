@@ -1,0 +1,114 @@
+/* Connection-wide defaults: saved values on the left, the form for a new one on the right. */
+.attribute-defaults-panel {
+  margin-block: 10px;
+  background: var(--rv-color-surface);
+  border: 1px solid var(--rv-color-border);
+  border-radius: 10px;
+}
+
+.attribute-defaults-panel[open] > summary { border-bottom: 1px solid var(--rv-color-border); }
+
+.attribute-defaults-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+  gap: 0;
+}
+
+.attribute-defaults-section { display: grid; align-content: start; gap: 10px; min-width: 0; padding: 14px 16px; }
+.attribute-defaults-section + .attribute-defaults-section { border-inline-start: 1px solid var(--rv-color-border); }
+.attribute-defaults-section > h4 { margin: 0; color: var(--rv-color-ink); font-size: var(--rv-font-size-sm); font-weight: 600; }
+
+.attribute-defaults-list { display: grid; margin: 0; padding: 0; list-style: none; border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
+.attribute-defaults-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 30px;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  padding: 4px 6px 4px 12px;
+  font-size: var(--rv-font-size-sm);
+}
+.attribute-defaults-list li + li { border-top: 1px solid var(--rv-color-border); }
+.attribute-defaults-list li > span { overflow: hidden; color: var(--rv-color-muted); text-overflow: ellipsis; white-space: nowrap; }
+.attribute-defaults-list li > strong {
+  max-width: 220px;
+  padding: 2px 10px;
+  overflow: hidden;
+  color: var(--rv-color-ink);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: var(--rv-color-accent-soft);
+  border: 1px solid color-mix(in srgb, var(--rv-color-accent) 35%, transparent);
+  border-radius: 999px;
+}
+
+.attribute-defaults-panel .attribute-defaults-remove {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0;
+  color: var(--rv-color-subtle);
+  background: transparent;
+  border-color: transparent;
+}
+.attribute-defaults-panel .attribute-defaults-remove:hover:not(:disabled) { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); }
+.attribute-defaults-panel .attribute-defaults-remove svg { width: 16px; height: 16px; }
+
+.attribute-defaults-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+.attribute-defaults-form label { display: grid; gap: 6px; min-width: 0; margin: 0; }
+.attribute-defaults-form label > span { color: var(--rv-color-muted); font-size: 12px; font-weight: 500; }
+.attribute-defaults-form select,
+.attribute-defaults-form input {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 7px 10px;
+  color: inherit;
+  font: inherit;
+  font-size: var(--rv-font-size-sm);
+  background: var(--rv-color-surface-raised);
+  border: 1px solid var(--rv-color-border);
+  border-radius: var(--rv-radius-md);
+}
+
+.attribute-defaults-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 168px;
+  padding: 8px;
+  overflow-y: auto;
+  background: var(--rv-color-surface-raised);
+  border: 1px solid var(--rv-color-border);
+  border-radius: var(--rv-radius-md);
+}
+.attribute-defaults-panel .attribute-defaults-values button {
+  min-height: 0;
+  padding: 4px 10px;
+  color: inherit;
+  font: inherit;
+  font-size: var(--rv-font-size-sm);
+  background: var(--rv-color-surface);
+  border: 1px solid var(--rv-color-border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.attribute-defaults-panel .attribute-defaults-values button.is-chosen {
+  color: var(--rv-color-primary);
+  font-weight: 600;
+  background: var(--rv-color-primary-soft);
+  border-color: var(--rv-color-primary);
+}
+
+.attribute-defaults-state { margin: 0; color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); }
+.attribute-defaults-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.attribute-defaults-actions button { min-height: 36px; padding: 0 14px; font-size: var(--rv-font-size-sm); }
+
+@media (max-width: 760px) {
+  .attribute-defaults-body { grid-template-columns: minmax(0, 1fr); }
+  .attribute-defaults-section + .attribute-defaults-section { border-inline-start: 0; border-top: 1px solid var(--rv-color-border); }
+}

@@ -1,8 +1,10 @@
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
-using Npgsql;
+using System.Text.Json;
+using MarketplaceHub.Application;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
@@ -48,7 +50,10 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
             // Reuse EF Core's configured connection instead of rebuilding a new
             // NpgsqlConnection from ConnectionString. Npgsql intentionally omits
             // the password when exposing a connection string in some states.
-            await connection.OpenAsync(cancellationToken);
+            // A processor may acquire a second lane lock while its outer job
+            // already holds this same connection open. Opening it twice throws
+            // before PostgreSQL can evaluate the second advisory lock.
+            if (closeConnectionOnDispose) await connection.OpenAsync(cancellationToken);
             await using var command = connection.CreateCommand();
             command.CommandText = "SELECT pg_try_advisory_lock(@key)";
             command.Parameters.AddWithValue("key", key);
@@ -76,6 +81,13 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
         // changes for the same connection, while their read-back can safely
         // merge with the order projection when the sync lane is active.
         if (type.Contains("SHIPMENT_ACTION", StringComparison.Ordinal)) return "shipment-actions";
+        // Historical cargo lookups can scan many pages; keep them out of the
+        // lifecycle lane so a slow metadata repair cannot hold up status polling.
+        if (type == MarketplaceJobTypes.TrendyolOrderCargoInfoReconciliation) return "order-cargo-info";
+        // Trendyol invoice reconciliation only reads package data and merges
+        // invoice fields. Keeping it out of the full order-read lane prevents
+        // a long order scan from starving invoice status refreshes.
+        if (type == MarketplaceJobTypes.OrderInvoiceReconciliation) return "order-invoices";
         if (type.Contains("ORDER", StringComparison.Ordinal) || type.Contains("SHIPMENT", StringComparison.Ordinal)) return "orders";
         if (type.Contains("RETURN", StringComparison.Ordinal) || type.Contains("CLAIM", StringComparison.Ordinal)) return "returns";
         if (type.Contains("STOCK", StringComparison.Ordinal) || type.Contains("INVENTORY", StringComparison.Ordinal) || type.Contains("PRICE", StringComparison.Ordinal)) return "stock";
@@ -83,6 +95,47 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
         if (type.Contains("REFERENCE", StringComparison.Ordinal) || type.Contains("CATEGORY", StringComparison.Ordinal) || type.Contains("BRAND", StringComparison.Ordinal)) return "references";
         return "connection";
     }
+
+    internal static JobExecutionResult ContentionResult(string jobType, string payloadJson)
+    {
+        if (jobType is MarketplaceJobTypes.OrderInvoiceReconciliation
+            or MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation
+            or MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation)
+            return JobExecutionResult.Deferred("ORDER_INVOICE_RECONCILIATION_BUSY",
+                "Fatura durumu kontrolü, sipariş okuma işlemi tamamlanınca yeniden denenecek.", TimeSpan.FromMinutes(3));
+
+        if (jobType is MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync)
+        {
+            try
+            {
+                using var payload = JsonDocument.Parse(payloadJson);
+                if (payload.RootElement.ValueKind == JsonValueKind.Object
+                    && payload.RootElement.TryGetProperty("externalOrderId", out var id)
+                    && id.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(id.GetString()))
+                    return JobExecutionResult.Deferred("TARGETED_ORDER_SYNC_BUSY",
+                        "Tekil sipariş yenilemesi mevcut sipariş işleminin tamamlanmasını bekliyor.", TimeSpan.FromSeconds(30));
+            }
+            catch (JsonException) { }
+        }
+        // Only recurring read syncs may coalesce: the job already holding the lock performs the
+        // same read. Writes, actions, webhooks, imports and targeted requests carry their own work
+        // and must wait for the lock instead of being reported as done.
+        return IsCoalescableRead(jobType)
+            ? JobExecutionResult.Success()
+            : JobExecutionResult.Deferred("CONNECTION_OPERATION_BUSY",
+                "Bu bağlantıda aynı türde başka bir işlem sürüyor; işlem tamamlanınca otomatik çalıştırılacak.", TimeSpan.FromSeconds(30));
+    }
+
+    internal static bool IsCoalescableRead(string jobType) => jobType is
+        MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync
+        or MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync or MarketplaceJobTypes.HepsiburadaOrderRecoverySync
+        or MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.ShopifyOrderStatusSync or MarketplaceJobTypes.HepsiburadaOrderStatusSync
+        or MarketplaceJobTypes.TrendyolOrderCargoInfoReconciliation
+        or MarketplaceJobTypes.OrderReconciliation or MarketplaceJobTypes.ShopifyOrderReconciliation
+        or MarketplaceJobTypes.ReturnSync or MarketplaceJobTypes.HepsiburadaReturnSync or MarketplaceJobTypes.ReturnStatusSync or MarketplaceJobTypes.ReturnReconciliation
+        or MarketplaceJobTypes.StockReconciliation
+        or MarketplaceJobTypes.ProductSync or MarketplaceJobTypes.ShopifyProductSync or MarketplaceJobTypes.HepsiburadaProductSync
+        or MarketplaceJobTypes.QuestionSync;
 
     private static long LockKey(Guid connectionId, string group)
     {

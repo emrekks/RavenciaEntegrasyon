@@ -1,11 +1,41 @@
+using MarketplaceHub.Domain;
+
 namespace MarketplaceHub.Application;
 
 public static class CapabilityEvidencePolicy
 {
+    public static CapabilitySupportLevel ParseSupportLevel(string? supportLevel) =>
+        (supportLevel ?? string.Empty).Trim().Replace("_", string.Empty, StringComparison.Ordinal).ToUpperInvariant() switch
+        {
+            "SUPPORTED" => CapabilitySupportLevel.Supported,
+            "NOTSUPPORTED" => CapabilitySupportLevel.NotSupported,
+            "TEMPORARILYUNAVAILABLE" => CapabilitySupportLevel.TemporarilyUnavailable,
+            _ => CapabilitySupportLevel.Unknown
+        };
+
+    public static void ApplyEvidence(PlatformCapability capability, CapabilityEvidence evidence)
+    {
+        capability.SupportLevel = ParseSupportLevel(evidence.SupportLevel);
+        capability.ApiVersion = evidence.ApiVersion;
+        capability.Environment = evidence.Environment;
+        capability.StoreScope = evidence.StoreScope;
+        capability.SourceUrl = evidence.SourceUrl;
+        capability.SourceVersion = evidence.SourceVersion;
+        capability.RequiredScope = evidence.RequiredScope;
+        capability.ConstraintsJson = evidence.ConstraintsJson;
+        capability.EvidenceNote = evidence.EvidenceNote;
+        capability.FixtureChecksum = evidence.FixtureChecksum;
+        capability.VerifiedAt = evidence.VerifiedAt;
+        capability.Version++;
+    }
+
     public static string OfficialDocumentationHost(string platformCode) => platformCode.Trim().ToUpperInvariant() switch
     {
         "TRENDYOL" => "developers.trendyol.com",
         "TRENDYOL_EFATURAM" => "developers.trendyolefaturam.com",
+        "HEPSIBURADA" => "developers.hepsiburada.com",
+        "SHOPIFY" => "shopify.dev",
+        "N11" => "developer.n11.com",
         _ => throw new ArgumentOutOfRangeException(nameof(platformCode), "Unsupported platform capability evidence scope.")
     };
 
@@ -13,4 +43,27 @@ public static class CapabilityEvidencePolicy
         MarketplaceCapabilities.ProductWrite or MarketplaceCapabilities.InventoryWrite or MarketplaceCapabilities.PriceWrite
         or MarketplaceCapabilities.ShipmentWrite or MarketplaceCapabilities.LabelWrite or MarketplaceCapabilities.ReturnWrite
         or InvoicingCapabilities.InvoiceSubmit or InvoicingCapabilities.InvoiceCancel or InvoicingCapabilities.InvoiceDeliver;
+
+    public static bool IsVerifiedWriteCapability(PlatformCapability? capability, PlatformConnection connection, string capabilityCode)
+    {
+        if (capability is null
+            || capability.TenantId != connection.TenantId
+            || capability.ConnectionId != connection.Id
+            || !string.Equals(capability.Code, capabilityCode, StringComparison.OrdinalIgnoreCase)
+            || capability.SupportLevel != CapabilitySupportLevel.Supported
+            || !string.Equals(capability.ApiVersion, connection.ApiVersion, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(capability.Environment, connection.Environment, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(capability.StoreScope, connection.ExternalStoreId, StringComparison.Ordinal)
+            || capability.VerifiedAt is null
+            || !Uri.TryCreate(capability.SourceUrl, UriKind.Absolute, out var source)
+            || source.Scheme != Uri.UriSchemeHttps
+            || !source.Host.Equals(OfficialDocumentationHost(connection.PlatformCode), StringComparison.OrdinalIgnoreCase)) return false;
+
+        if (string.Equals(connection.PlatformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase)
+            || !RequiresStageFixtureChecksum(capabilityCode)
+            || string.Equals(connection.PlatformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
+                && capabilityCode.Trim().ToUpperInvariant() is MarketplaceCapabilities.PriceWrite or MarketplaceCapabilities.InventoryWrite or MarketplaceCapabilities.ShipmentWrite or MarketplaceCapabilities.ReturnWrite) return true;
+        var checksum = capability.FixtureChecksum;
+        return checksum is { Length: 64 } && checksum.All(Uri.IsHexDigit);
+    }
 }

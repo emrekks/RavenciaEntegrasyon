@@ -13,7 +13,97 @@ public enum ShipmentPackageStatus
     Undelivered,
     ReturnInTransit,
     Returned,
-    ManualReview
+    ManualReview,
+    PaymentPending
+}
+
+public enum MarketplaceInvoiceStatus
+{
+    Unknown,
+    NotInvoiced,
+    Received,
+    Invoiced,
+    Rejected
+}
+
+public static class MarketplaceInvoiceStatePolicy
+{
+    public static MarketplaceInvoiceStatus FromRemote(string? rawStatus, string? packageRawStatus = null, string? invoiceNumber = null, string? invoiceUrl = null)
+    {
+        var normalized = rawStatus?.Trim().ToUpperInvariant().Replace('-', '_').Replace(' ', '_');
+        if (normalized is "INVOICED" or "INVOICE" or "COMPLETED") return MarketplaceInvoiceStatus.Invoiced;
+        if (normalized is "RECEIVED" or "PROCESSING" or "PENDING") return MarketplaceInvoiceStatus.Received;
+        if (normalized is "REJECTED" or "FAILED") return MarketplaceInvoiceStatus.Rejected;
+        if (normalized is "NOTINVOICED" or "NOT_INVOICED" or "UNINVOICED" or "WAITING" or "WAITING_FOR_INVOICE"
+            or "DELETED" or "REMOVED" or "INVOICE_DELETED" or "INVOICE_REMOVED" or "NO_INVOICE" or "NO_INVOICE_UPLOADED"
+            or "NOT_UPLOADED" or "INVOICE_NOT_UPLOADED")
+            return MarketplaceInvoiceStatus.NotInvoiced;
+        // Older Trendyol payloads sometimes exposed only the package status.
+        // Preserve this as positive evidence, while never treating a generic
+        // delivered/shipped status, an invoice number, or a URL as proof that
+        // an invoice exists. Trendyol's invoiceStatus is the only authoritative
+        // positive signal; links and numbers can be present in partial payloads.
+        return packageRawStatus?.Trim().ToUpperInvariant() == "INVOICED"
+            ? MarketplaceInvoiceStatus.Invoiced
+            : MarketplaceInvoiceStatus.Unknown;
+    }
+
+    public static bool ShouldApply(
+        MarketplaceInvoiceStatus current,
+        DateTimeOffset? currentSourceUpdatedAt,
+        DateTimeOffset? currentObservedAt,
+        MarketplaceInvoiceStatus incoming,
+        DateTimeOffset? incomingSourceUpdatedAt,
+        DateTimeOffset incomingObservedAt)
+    {
+        if (incoming == MarketplaceInvoiceStatus.Unknown) return false;
+        if (currentSourceUpdatedAt is { } currentSource && incomingSourceUpdatedAt is { } incomingSource && incomingSource < currentSource)
+            return false;
+        if (current == incoming)
+            return incomingSourceUpdatedAt > currentSourceUpdatedAt || incomingObservedAt > currentObservedAt;
+        if (incomingSourceUpdatedAt is not null && currentSourceUpdatedAt is null) return true;
+        return currentObservedAt is null || incomingObservedAt >= currentObservedAt;
+    }
+
+    public static bool ShouldApplyReferenceUpdate(
+        DateTimeOffset? currentSourceUpdatedAt,
+        DateTimeOffset? currentObservedAt,
+        DateTimeOffset? incomingSourceUpdatedAt,
+        DateTimeOffset incomingObservedAt)
+    {
+        if (currentSourceUpdatedAt is { } currentSource
+            && incomingSourceUpdatedAt is { } incomingSource)
+        {
+            if (incomingSource < currentSource) return false;
+            if (incomingSource > currentSource) return true;
+        }
+        if (incomingSourceUpdatedAt is not null && currentSourceUpdatedAt is null) return true;
+        return currentObservedAt is null || incomingObservedAt >= currentObservedAt;
+    }
+
+    public static string? PreferNonEmptyReference(string? current, string? incoming) =>
+        string.IsNullOrWhiteSpace(incoming) ? current : incoming.Trim();
+
+    public static (string? InvoiceNumber, string? InvoiceUrl) MergeReferences(
+        string? currentInvoiceNumber,
+        string? currentInvoiceUrl,
+        string? incomingInvoiceNumber,
+        string? incomingInvoiceUrl,
+        bool referencesAreAuthoritative)
+    {
+        // Some marketplace reads only report a status and omit reference
+        // fields. Keep known values in that case; when both reference fields
+        // are present in the provider snapshot, null means the reference was
+        // removed and the persisted history keeps the previous value.
+        if (!referencesAreAuthoritative)
+            return (PreferNonEmptyReference(currentInvoiceNumber, incomingInvoiceNumber),
+                PreferNonEmptyReference(currentInvoiceUrl, incomingInvoiceUrl));
+
+        return (NormalizeReference(incomingInvoiceNumber), NormalizeReference(incomingInvoiceUrl));
+    }
+
+    private static string? NormalizeReference(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
 
 public static class ShipmentPackageStateMachine
@@ -23,7 +113,8 @@ public static class ShipmentPackageStateMachine
         {
             [ShipmentPackageStatus.New] = [ShipmentPackageStatus.Processing, ShipmentPackageStatus.OnHold, ShipmentPackageStatus.PartiallyCancelled, ShipmentPackageStatus.Cancelled],
             [ShipmentPackageStatus.Processing] = [ShipmentPackageStatus.ReadyToShip, ShipmentPackageStatus.OnHold, ShipmentPackageStatus.PartiallyCancelled, ShipmentPackageStatus.Cancelled],
-            [ShipmentPackageStatus.OnHold] = [ShipmentPackageStatus.New, ShipmentPackageStatus.Processing, ShipmentPackageStatus.ReadyToShip, ShipmentPackageStatus.Cancelled],
+            [ShipmentPackageStatus.OnHold] = [ShipmentPackageStatus.New, ShipmentPackageStatus.Processing, ShipmentPackageStatus.ReadyToShip, ShipmentPackageStatus.PaymentPending, ShipmentPackageStatus.Cancelled],
+            [ShipmentPackageStatus.PaymentPending] = [ShipmentPackageStatus.New, ShipmentPackageStatus.Processing, ShipmentPackageStatus.ReadyToShip, ShipmentPackageStatus.Shipped, ShipmentPackageStatus.Cancelled, ShipmentPackageStatus.ManualReview],
             [ShipmentPackageStatus.ReadyToShip] = [ShipmentPackageStatus.Shipped, ShipmentPackageStatus.OnHold, ShipmentPackageStatus.PartiallyCancelled, ShipmentPackageStatus.Cancelled],
             [ShipmentPackageStatus.Shipped] = [ShipmentPackageStatus.Delivered, ShipmentPackageStatus.Undelivered, ShipmentPackageStatus.ReturnInTransit],
             [ShipmentPackageStatus.Undelivered] = [ShipmentPackageStatus.Delivered, ShipmentPackageStatus.ReturnInTransit, ShipmentPackageStatus.ManualReview],
@@ -32,14 +123,248 @@ public static class ShipmentPackageStateMachine
             [ShipmentPackageStatus.PartiallyCancelled] = [ShipmentPackageStatus.Processing, ShipmentPackageStatus.ReadyToShip, ShipmentPackageStatus.Shipped, ShipmentPackageStatus.Cancelled]
         };
 
-    public static bool CanTransition(ShipmentPackageStatus current, ShipmentPackageStatus next) =>
-        current == next || Allowed.TryGetValue(current, out var allowed) && allowed.Contains(next);
+    public static bool CanTransition(ShipmentPackageStatus current, ShipmentPackageStatus next)
+    {
+        if (current == next) return true;
+        if (Allowed.TryGetValue(current, out var allowed) && allowed.Contains(next)) return true;
+
+        // Marketplace snapshots are authoritative and can skip intermediate
+        // workflow states (for example NEW -> SHIPPED). Accept a monotonic
+        // forward projection while keeping local terminal states immutable.
+        if (current is ShipmentPackageStatus.Cancelled or ShipmentPackageStatus.Returned) return false;
+        if (current == ShipmentPackageStatus.ManualReview) return next != ShipmentPackageStatus.ManualReview;
+        if (next is ShipmentPackageStatus.New or ShipmentPackageStatus.ManualReview or ShipmentPackageStatus.Cancelled) return false;
+
+        return ProgressRank(next) > ProgressRank(current);
+    }
+
+    private static int ProgressRank(ShipmentPackageStatus status) => status switch
+    {
+        ShipmentPackageStatus.New => 10,
+        ShipmentPackageStatus.PartiallyCancelled => 20,
+        ShipmentPackageStatus.Processing => 30,
+        ShipmentPackageStatus.OnHold => 40,
+        ShipmentPackageStatus.ReadyToShip => 50,
+        ShipmentPackageStatus.Shipped => 60,
+        ShipmentPackageStatus.Undelivered => 70,
+        ShipmentPackageStatus.Delivered => 80,
+        ShipmentPackageStatus.ReturnInTransit => 90,
+        ShipmentPackageStatus.Returned => 100,
+        ShipmentPackageStatus.PaymentPending => 5,
+        ShipmentPackageStatus.Cancelled => 0,
+        _ => 110
+    };
 }
 
 public static class OpenOrderLifecyclePolicy
 {
+    public const int TrendyolCargoInfoLookbackDays = 90;
+
+    public static int LifecycleBatchSize(string? platformCode, int defaultBatchSize, int trendyolBatchSize) =>
+        Math.Clamp(string.Equals(platformCode?.Trim(), "TRENDYOL", StringComparison.OrdinalIgnoreCase)
+            ? trendyolBatchSize
+            : defaultBatchSize, 1, 100);
+
+    public static DateTimeOffset HepsiburadaPackageStatusHistoryCutoff(DateTimeOffset now) => now.AddMonths(-1);
+
+    public static DateTimeOffset HepsiburadaUnpackagedOrderVerificationCutoff(DateTimeOffset now) => HepsiburadaPackageStatusHistoryCutoff(now);
+
+    public static DateTimeOffset TrendyolCargoInfoLookbackCutoff(DateTimeOffset now) => now.AddDays(-TrendyolCargoInfoLookbackDays);
+
+    public static bool ShouldRunTrendyolCargoInfoReconciliation(DateTimeOffset? lastAttemptAt, DateTimeOffset now, TimeSpan interval) =>
+        lastAttemptAt is null || lastAttemptAt.Value <= now - interval;
+
+    public static bool IsHepsiburadaOrderUnverifiedWithoutPackage(
+        string? platformCode,
+        string? derivedStatus,
+        int packageCount,
+        DateTimeOffset orderedAt,
+        DateTimeOffset now)
+    {
+        if (!string.Equals(platformCode?.Trim(), "HEPSIBURADA", StringComparison.OrdinalIgnoreCase) || packageCount != 0)
+            return false;
+
+        var status = derivedStatus?.Trim().ToUpperInvariant();
+        return status == "UNVERIFIED"
+            || status == "NEW" && orderedAt < HepsiburadaUnpackagedOrderVerificationCutoff(now);
+    }
+
     public static bool ShouldPoll(ShipmentPackageStatus status) =>
         status is not ShipmentPackageStatus.Delivered and not ShipmentPackageStatus.Cancelled and not ShipmentPackageStatus.Returned;
+
+    public static bool ShouldShowShipmentDeadlineWarning(
+        string? platformCode,
+        string? derivedStatus,
+        DateTimeOffset? dueAt,
+        DateTimeOffset now,
+        bool claimOnlyWithoutPackage = false)
+    {
+        var platform = platformCode?.Trim().ToUpperInvariant();
+        var status = derivedStatus?.Trim().ToUpperInvariant();
+        var terminal = status is "DELIVERED" or "CANCELLED" or "RETURNED";
+        var undeliveredHepsiburadaOrder = platform == "HEPSIBURADA" && status == "ON_HOLD";
+        return !terminal
+            && !undeliveredHepsiburadaOrder
+            && !claimOnlyWithoutPackage
+            && dueAt is { } deadline
+            && deadline <= now.AddHours(24);
+    }
+
+    public static bool IsHepsiburadaClaimOnlyWithoutPackage(
+        string? platformCode,
+        int packageCount,
+        IEnumerable<string?> lineStatuses,
+        string? lifecycleStatus = null)
+    {
+        if (!string.Equals(platformCode?.Trim(), "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
+            || packageCount != 0
+            || !string.IsNullOrWhiteSpace(lifecycleStatus))
+            return false;
+
+        var statuses = lineStatuses.ToArray();
+        return statuses.Length > 0 && statuses.All(status =>
+            string.Equals(status?.Trim(), "ClaimCreated", StringComparison.OrdinalIgnoreCase));
+    }
+
+    public static bool ShouldPollWithoutPackage(string? platformCode, string? derivedStatus) =>
+        string.Equals(platformCode?.Trim(), "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
+        && derivedStatus?.Trim().ToUpperInvariant() is "NEW" or "ON_HOLD";
+}
+
+public static class HepsiburadaOrderLifecycleStatusPolicy
+{
+    public static ShipmentPackageStatus? FromRemote(string? rawStatus) => (rawStatus ?? string.Empty).Trim().ToUpperInvariant() switch
+    {
+        "OPEN" or "UNPACKED" => ShipmentPackageStatus.New,
+        "PROCESSING" => ShipmentPackageStatus.Processing,
+        "PACKAGED" or "INVOICED" or "READY_TO_SHIP" or "READYTOSHIP" => ShipmentPackageStatus.ReadyToShip,
+        "SHIPPED" or "IN_TRANSIT" or "INTRANSIT" => ShipmentPackageStatus.Shipped,
+        "DELIVERED" => ShipmentPackageStatus.Delivered,
+        "UNDELIVERED" => ShipmentPackageStatus.OnHold,
+        "CANCELLED" or "CANCELED" or "CANCELLEDBYMERCHANT" or "CANCELLEDBYCUSTOMER" or "CANCELLEDBYSAP" => ShipmentPackageStatus.Cancelled,
+        "RETURNED" => ShipmentPackageStatus.Returned,
+        _ => null
+    };
+
+    public static ShipmentPackageStatus AggregatePackages(IEnumerable<ShipmentPackageStatus> statuses)
+    {
+        var values = statuses.ToArray();
+        if (values.Contains(ShipmentPackageStatus.ManualReview)) return ShipmentPackageStatus.ManualReview;
+        if (values.Contains(ShipmentPackageStatus.Undelivered)) return ShipmentPackageStatus.OnHold;
+        return ShipmentPackageStatusPolicy.Aggregate(values);
+    }
+
+    public static ShipmentPackageStatus? Reconcile(
+        string? currentCanonicalStatus,
+        string? remoteStatus,
+        IEnumerable<string?>? knownLineStatuses = null)
+    {
+        var incoming = FromRemote(remoteStatus);
+        var hasClaimCreatedLine = knownLineStatuses?.Any(status =>
+            string.Equals(status?.Trim(), "ClaimCreated", StringComparison.OrdinalIgnoreCase)) == true;
+        if (incoming is null) return null;
+        if (!Enum.TryParse<ShipmentPackageStatus>((currentCanonicalStatus ?? string.Empty).Replace("_", string.Empty, StringComparison.Ordinal), true, out var current))
+            return incoming;
+        // Previous versions incorrectly projected a ClaimCreated line (a
+        // return/claim state) as an order hold. When the order itself is still
+        // Open, repair that stale projection; package status remains the source
+        // of truth for delivery and undelivered lifecycle states.
+        if (current == ShipmentPackageStatus.OnHold && incoming == ShipmentPackageStatus.New && hasClaimCreatedLine)
+            return ShipmentPackageStatus.New;
+        if (incoming == ShipmentPackageStatus.Cancelled)
+            return current is ShipmentPackageStatus.New or ShipmentPackageStatus.Processing or ShipmentPackageStatus.OnHold or ShipmentPackageStatus.ReadyToShip or ShipmentPackageStatus.PartiallyCancelled
+                ? incoming
+                : null;
+        return ShipmentPackageStatusPolicy.Rank(incoming.Value) >= ShipmentPackageStatusPolicy.Rank(current) ? incoming : null;
+    }
+}
+
+public static class ShipmentPackageStatusPolicy
+{
+    public static ShipmentPackageStatus FromRemote(string? rawStatus) => (rawStatus ?? string.Empty).Trim().ToUpperInvariant() switch
+    {
+        "CREATED" => ShipmentPackageStatus.New,
+        "OPEN" => ShipmentPackageStatus.ReadyToShip,
+        "PICKING" => ShipmentPackageStatus.Processing,
+        "INVOICED" or "PACKAGED" or "READY_TO_SHIP" or "READYTOSHIP" => ShipmentPackageStatus.ReadyToShip,
+        "SHIPPED" or "IN_TRANSIT" or "INTRANSIT" => ShipmentPackageStatus.Shipped,
+        "DELIVERED" => ShipmentPackageStatus.Delivered,
+        "PARTIALLY_CANCELLED" or "PARTIALLYCANCELLED" => ShipmentPackageStatus.PartiallyCancelled,
+        "CANCELLED" or "CANCELED" or "UNSUPPLIED" => ShipmentPackageStatus.Cancelled,
+        "UNDELIVERED" => ShipmentPackageStatus.Undelivered,
+        "RETURN_IN_TRANSIT" or "RETURNINTRANSIT" => ShipmentPackageStatus.ReturnInTransit,
+        "RETURNED" => ShipmentPackageStatus.Returned,
+        "AWAITING" or "UNPACKED" or "AT_COLLECTION_POINT" => ShipmentPackageStatus.OnHold,
+        _ => ShipmentPackageStatus.ManualReview
+    };
+
+    public static ShipmentPackageStatus Aggregate(IEnumerable<ShipmentPackageStatus> statuses)
+    {
+        var values = statuses.ToArray();
+        if (values.Length == 0) return ShipmentPackageStatus.New;
+        if (values.Contains(ShipmentPackageStatus.ManualReview)) return ShipmentPackageStatus.ManualReview;
+
+        // An order remains operational while any package still needs work. A
+        // cancelled split package must not hide another package that is being
+        // shipped or delivered.
+        var operational = values.Where(status => status is not ShipmentPackageStatus.Cancelled and not ShipmentPackageStatus.Returned);
+        if (operational.Any()) return operational.OrderByDescending(Rank).First();
+        if (values.Contains(ShipmentPackageStatus.Returned)) return ShipmentPackageStatus.Returned;
+        return ShipmentPackageStatus.Cancelled;
+    }
+
+    public static int Rank(ShipmentPackageStatus status) => status switch
+    {
+        ShipmentPackageStatus.New => 10,
+        ShipmentPackageStatus.PartiallyCancelled => 20,
+        ShipmentPackageStatus.Processing => 30,
+        ShipmentPackageStatus.OnHold => 40,
+        ShipmentPackageStatus.ReadyToShip => 50,
+        ShipmentPackageStatus.Shipped => 60,
+        ShipmentPackageStatus.Undelivered => 70,
+        ShipmentPackageStatus.Delivered => 80,
+        ShipmentPackageStatus.ReturnInTransit => 90,
+        ShipmentPackageStatus.Returned => 100,
+        ShipmentPackageStatus.PaymentPending => 5,
+        ShipmentPackageStatus.Cancelled => 0,
+        _ => 110
+    };
+}
+
+public static class TrendyolShipmentPackageStatusPolicy
+{
+    public static ShipmentPackageStatus FromRemote(string? rawStatus) => Normalize(rawStatus) switch
+    {
+        // Trendyol documents AWAITING/VERIFIED as payment states. They are
+        // not shipment holds, and must stay out of order processing until the
+        // platform advances the package to Created.
+        "AWAITING" or "VERIFIED" => ShipmentPackageStatus.PaymentPending,
+        // UNPACKED denotes a split package; AT_COLLECTION_POINT means the
+        // parcel has reached a pickup point and is already in transit.
+        "UNPACKED" => ShipmentPackageStatus.New,
+        "ATCOLLECTIONPOINT" => ShipmentPackageStatus.Shipped,
+        _ => ShipmentPackageStatusPolicy.FromRemote(rawStatus)
+    };
+
+    public static bool IsLegacyOnHoldProjection(string? rawStatus) => Normalize(rawStatus) is
+        "AWAITING" or "VERIFIED" or "UNPACKED" or "ATCOLLECTIONPOINT";
+
+    public static bool ShouldRepairLegacyPlaceholderOnHold(
+        string? externalPackageId,
+        string? rawStatus,
+        ShipmentPackageStatus currentStatus,
+        bool hasAuthoritativePackage) =>
+        hasAuthoritativePackage
+        && string.Equals(externalPackageId?.Trim(), "0", StringComparison.Ordinal)
+        && currentStatus == ShipmentPackageStatus.OnHold
+        && IsLegacyOnHoldProjection(rawStatus)
+        && FromRemote(rawStatus) != ShipmentPackageStatus.OnHold;
+
+    public static bool HasSameNormalizedStatus(string? left, string? right) =>
+        string.Equals(Normalize(left), Normalize(right), StringComparison.Ordinal);
+
+    private static string Normalize(string? rawStatus) =>
+        (rawStatus ?? string.Empty).Trim().ToUpperInvariant().Replace("_", string.Empty, StringComparison.Ordinal).Replace("-", string.Empty, StringComparison.Ordinal).Replace(" ", string.Empty, StringComparison.Ordinal);
 }
 
 public sealed class Order
@@ -54,6 +379,7 @@ public sealed class Order
     public decimal DiscountAmount { get; set; }
     public decimal NetAmount { get; set; }
     public DateTimeOffset OrderedAt { get; set; }
+    public DateTimeOffset? ShipmentDueAt { get; set; }
     public DateTimeOffset LastRemoteModifiedAt { get; set; }
     public required string CustomerSnapshotJson { get; set; }
     public required string ShipmentAddressSnapshotJson { get; set; }
@@ -106,6 +432,7 @@ public sealed class ShipmentPackage
     public Guid OrderId { get; set; }
     public required string ExternalPackageId { get; set; }
     public string? OriginExternalPackageId { get; set; }
+    public string? CreatedBy { get; set; }
     public string? CargoProviderExternalId { get; set; }
     public string? CargoTrackingNumber { get; set; }
     public decimal GrossAmount { get; set; }
@@ -114,10 +441,41 @@ public sealed class ShipmentPackage
     public ShipmentPackageStatus Status { get; set; }
     public required string RawStatus { get; set; }
     public DateTimeOffset StatusOccurredAt { get; set; }
+    public MarketplaceInvoiceStatus MarketplaceInvoiceStatus { get; set; }
+    public string? ManualInvoiceStatus { get; set; }
+    public string? MarketplaceInvoiceRawStatus { get; set; }
+    public string? MarketplaceInvoiceNumber { get; set; }
+    public string? MarketplaceInvoiceUrl { get; set; }
+    public DateTimeOffset? MarketplaceInvoiceSourceUpdatedAt { get; set; }
+    public DateTimeOffset? MarketplaceInvoiceObservedAt { get; set; }
     public string? RemoteVersion { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public long Version { get; set; } = 1;
+}
+
+/// <summary>Append-only history of replaced or removed marketplace invoice references.</summary>
+public sealed class MarketplaceInvoiceReferenceHistory
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid OrderId { get; set; }
+    public Guid PackageId { get; set; }
+    public Guid ConnectionId { get; set; }
+    public string? InvoiceNumber { get; set; }
+    public string? InvoiceUrl { get; set; }
+    public required string ChangeReason { get; set; }
+    public DateTimeOffset ChangedAt { get; set; }
+}
+
+public static class ShipmentPackageClassification
+{
+    // Trendyol's originPackageIds is also populated for split/cancel package
+    // flows. Only an explicit creator marker can classify a package as a
+    // resend/replacement; originPackageIds alone is not sufficient.
+    public static bool IsResend(string? createdBy, string? originExternalPackageId) =>
+        !string.IsNullOrWhiteSpace(originExternalPackageId)
+        && createdBy?.Trim().ToUpperInvariant() is "TRANSFER" or "RESEND" or "REPLACEMENT";
 }
 
 public sealed class PackageLineAllocation
@@ -152,4 +510,17 @@ public static class OrderQuantityInvariant
     public static bool IsValid(decimal ordered, decimal activeAllocated, decimal cancelled, decimal shipped, decimal delivered, decimal returned) =>
         ordered >= 0 && activeAllocated >= 0 && cancelled >= 0 && shipped >= 0 && delivered >= 0 && returned >= 0 &&
         ordered == activeAllocated + cancelled && shipped <= activeAllocated && delivered <= shipped && returned <= delivered;
+}
+
+public static class OrderLinePresentationPolicy
+{
+    public static decimal ActiveQuantity(decimal ordered, decimal cancelled) =>
+        Math.Max(0m, ordered - Math.Max(0m, cancelled));
+
+    public static bool HasActiveQuantity(decimal ordered, decimal cancelled) =>
+        ActiveQuantity(ordered, cancelled) > 0m;
+
+    public static bool ShouldShowInOrderList(string orderStatus, decimal ordered, decimal cancelled) =>
+        string.Equals(orderStatus, "CANCELLED", StringComparison.OrdinalIgnoreCase)
+        || HasActiveQuantity(ordered, cancelled);
 }

@@ -1,0 +1,6512 @@
+using MarketplaceHub.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
+
+#nullable disable
+
+namespace MarketplaceHub.Infrastructure.Persistence.Migrations;
+
+[DbContext(typeof(AppDbContext))]
+[Migration("20261005193000_AddMarketplaceQuestions")]
+public partial class AddMarketplaceQuestions : Migration
+{
+    protected override void Up(MigrationBuilder migrationBuilder)
+    {
+        migrationBuilder.CreateTable(
+            name: "marketplace_question_templates",
+            schema: "sales",
+            columns: table => new
+            {
+                Id = table.Column<Guid>(type: "uuid", nullable: false),
+                TenantId = table.Column<Guid>(type: "uuid", nullable: false),
+                Title = table.Column<string>(type: "character varying(120)", maxLength: 120, nullable: false),
+                Text = table.Column<string>(type: "character varying(2000)", maxLength: 2000, nullable: false),
+                CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                UpdatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                Version = table.Column<long>(type: "bigint", nullable: false)
+            },
+            constraints: table =>
+            {
+                table.PrimaryKey("PK_marketplace_question_templates", x => x.Id);
+                table.UniqueConstraint("AK_question_templates_tenant_id", x => new { x.TenantId, x.Id });
+            });
+
+        migrationBuilder.CreateTable(
+            name: "marketplace_questions",
+            schema: "sales",
+            columns: table => new
+            {
+                Id = table.Column<Guid>(type: "uuid", nullable: false),
+                TenantId = table.Column<Guid>(type: "uuid", nullable: false),
+                ConnectionId = table.Column<Guid>(type: "uuid", nullable: false),
+                ExternalQuestionId = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: false),
+                Kind = table.Column<string>(type: "character varying(16)", maxLength: 16, nullable: false),
+                Status = table.Column<string>(type: "character varying(48)", maxLength: 48, nullable: false),
+                QuestionText = table.Column<string>(type: "character varying(4096)", maxLength: 4096, nullable: false),
+                ProductName = table.Column<string>(type: "character varying(1024)", maxLength: 1024, nullable: true),
+                ProductImageUrl = table.Column<string>(type: "character varying(2048)", maxLength: 2048, nullable: true),
+                ProductSku = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: true),
+                ProductBarcode = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: true),
+                ProductModelCode = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: true),
+                CustomerName = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: true),
+                ExternalOrderNumber = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: true),
+                HistoryJson = table.Column<string>(type: "jsonb", nullable: true),
+                PendingAnswerText = table.Column<string>(type: "character varying(2000)", maxLength: 2000, nullable: true),
+                AnswerSubmissionStatus = table.Column<string>(type: "character varying(32)", maxLength: 32, nullable: true),
+                AnswerSubmissionKey = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: true),
+                CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                ExpiresAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                LastRemoteModifiedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                LastSyncedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                Version = table.Column<long>(type: "bigint", nullable: false)
+            },
+            constraints: table =>
+            {
+                table.PrimaryKey("PK_marketplace_questions", x => x.Id);
+                table.UniqueConstraint("AK_questions_tenant_id", x => new { x.TenantId, x.Id });
+                table.ForeignKey(name: "FK_questions_connection", columns: x => new { x.TenantId, x.ConnectionId }, principalSchema: "integration", principalTable: "platform_connections", principalColumns: new[] { "TenantId", "Id" }, onDelete: ReferentialAction.Restrict);
+            });
+
+        migrationBuilder.CreateTable(
+            name: "marketplace_question_sync_states",
+            schema: "integration",
+            columns: table => new
+            {
+                TenantId = table.Column<Guid>(type: "uuid", nullable: false),
+                ConnectionId = table.Column<Guid>(type: "uuid", nullable: false),
+                HistoryImported = table.Column<bool>(type: "boolean", nullable: false),
+                HistoryStartedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                ProgressStatus = table.Column<string>(type: "character varying(24)", maxLength: 24, nullable: false),
+                ImportedCount = table.Column<int>(type: "integer", nullable: false),
+                HistoryStatusIndex = table.Column<int>(type: "integer", nullable: false),
+                HistoryKindIndex = table.Column<int>(type: "integer", nullable: false),
+                HistoryWindowIndex = table.Column<int>(type: "integer", nullable: false),
+                HistoryPageIndex = table.Column<int>(type: "integer", nullable: false),
+                LastRunStartedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                LastSuccessAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                LastError = table.Column<string>(type: "character varying(512)", maxLength: 512, nullable: true),
+                Version = table.Column<long>(type: "bigint", nullable: false)
+            },
+            constraints: table =>
+            {
+                table.PrimaryKey("PK_marketplace_question_sync_states", x => new { x.TenantId, x.ConnectionId });
+                table.ForeignKey(name: "FK_question_sync_states_connection", columns: x => new { x.TenantId, x.ConnectionId }, principalSchema: "integration", principalTable: "platform_connections", principalColumns: new[] { "TenantId", "Id" }, onDelete: ReferentialAction.Cascade);
+            });
+
+        migrationBuilder.CreateIndex(name: "IX_question_templates_tenant_title", schema: "sales", table: "marketplace_question_templates", columns: new[] { "TenantId", "Title" }, unique: true);
+        migrationBuilder.CreateIndex(name: "IX_questions_tenant_connection_external", schema: "sales", table: "marketplace_questions", columns: new[] { "TenantId", "ConnectionId", "ExternalQuestionId" }, unique: true);
+        migrationBuilder.CreateIndex(name: "IX_questions_tenant_kind_status_created", schema: "sales", table: "marketplace_questions", columns: new[] { "TenantId", "Kind", "Status", "CreatedAt" });
+        migrationBuilder.CreateIndex(name: "IX_questions_tenant_connection_submission", schema: "sales", table: "marketplace_questions", columns: new[] { "TenantId", "ConnectionId", "AnswerSubmissionKey" }, unique: true, filter: "\"AnswerSubmissionKey\" IS NOT NULL");
+    }
+
+    protected override void Down(MigrationBuilder migrationBuilder)
+    {
+        migrationBuilder.DropTable(name: "marketplace_question_sync_states", schema: "integration");
+        migrationBuilder.DropTable(name: "marketplace_questions", schema: "sales");
+        migrationBuilder.DropTable(name: "marketplace_question_templates", schema: "sales");
+    }
+
+    protected override void BuildTargetModel(ModelBuilder modelBuilder)
+        {
+#pragma warning disable 612, 618
+            modelBuilder
+                .HasAnnotation("ProductVersion", "10.0.10")
+                .HasAnnotation("Relational:MaxIdentifierLength", 63);
+
+            NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ApiIdempotencyRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<Guid?>("JobId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("RequestHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<Guid?>("ResourceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ResponseBody")
+                        .HasColumnType("text");
+
+                    b.Property<int?>("ResponseStatus")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("RouteTemplate")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresAt");
+
+                    b.HasIndex("TenantId", "RouteTemplate", "IdempotencyKey")
+                        .IsUnique();
+
+                    b.ToTable("api_idempotency_records", "ops");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.AttributeDefinition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(96)
+                        .HasColumnType("character varying(96)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DataType")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<string>("SelectionMode")
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Unit")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Code")
+                        .IsUnique();
+
+                    b.ToTable("attribute_definitions", "catalog", t =>
+                        {
+                            t.HasCheckConstraint("ck_attribute_definition_data_type", "\"DataType\" IN ('TEXT','NUMBER','SINGLE_SELECT','MULTI_SELECT','BOOLEAN')");
+                        });
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.AttributeValue", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AttributeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("NormalizedValue")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "AttributeId", "NormalizedValue")
+                        .IsUnique();
+
+                    b.ToTable("attribute_values", "catalog");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.AuditLog", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(96)
+                        .HasColumnType("character varying(96)");
+
+                    b.Property<Guid?>("ActorUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CorrelationId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<string>("TargetId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("TargetType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("audit_logs", "ops");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.BootstrapState", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ConfigurationFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<Guid>("OwnerUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Key");
+
+                    b.HasIndex("OwnerUserId");
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("bootstrap_state", "iam");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.Brand", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "NormalizedName")
+                        .IsUnique();
+
+                    b.ToTable("brands", "catalog");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.CargoProviderMapping", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ExternalProviderId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("ExternalProviderName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("LocalProviderCode")
+                        .IsRequired()
+                        .HasMaxLength(96)
+                        .HasColumnType("character varying(96)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("VerifiedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ConnectionId", "ExternalProviderId")
+                        .IsUnique();
+
+                    b.ToTable("cargo_provider_mappings", "sales");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.CatalogMapping", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ExternalId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<Guid>("LocalId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ScopeExternalId")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<Guid>("SnapshotId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("VerifiedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.ToTable((string)null);
+
+                    b.UseTpcMappingStrategy();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.Category", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Depth")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsLeaf")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<Guid?>("ParentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ParentId", "NormalizedName")
+                        .IsUnique();
+
+                    b.ToTable("categories", "catalog");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.CategoryAttributeRequirement", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("AllowsCustomValue")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("AttributeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CategoryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("DisplayOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsPanelScoped")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<bool>("IsRequired")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)")
+                        .HasDefaultValue("ATTRIBUTE");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "AttributeId");
+
+                    b.HasIndex("TenantId", "CategoryId", "AttributeId")
+                        .IsUnique();
+
+                    b.ToTable("category_attribute_requirements", "catalog");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ChannelInventoryObservation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ExternalLocationId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<Guid?>("LocationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("ObservedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("Quantity")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("VariantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "LocationId");
+
+                    b.HasIndex("TenantId", "VariantId");
+
+                    b.HasIndex("TenantId", "ConnectionId", "ObservedAt");
+
+                    b.HasIndex("TenantId", "ConnectionId", "VariantId", "ExternalLocationId")
+                        .IsUnique();
+
+                    b.ToTable("channel_inventory_observations", "inventory");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ChannelListingAttribute", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AttributeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CustomValue")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ExternalAttributeId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ExternalValueId")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("ProfileId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ProfileId", "AttributeId")
+                        .IsUnique();
+
+                    b.ToTable("channel_listing_attributes", "catalog");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ChannelListingProfile", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ActualStatus")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("CargoProfile")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("DeliveryTimeDays")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("DescriptionOverride")
+                        .HasColumnType("text");
+
+                    b.Property<string>("DesiredStatus")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("ExternalBrandId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ExternalCategoryId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("LastRejectionCode")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Origin")
+                        .HasColumnType("text");
+
+                    b.Property<string>("PackageContent")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("TitleOverride")
+                        .HasColumnType("text");
+
+                    b.Property<decimal?>("VatOverride")
+                        .HasPrecision(7, 4)
+                        .HasColumnType("numeric(7,4)");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Warranty")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ProductId");
+
+                    b.HasIndex("TenantId", "ConnectionId", "ProductId")
+                        .IsUnique();
+
+                    b.ToTable("channel_listing_profiles", "catalog");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ChannelListingVariant", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ActualStatus")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("DesiredStatus")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ExternalBarcode")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ExternalSku")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("ProfileId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("RejectionCode")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("VariantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ProfileId", "VariantId")
+                        .IsUnique();
+
+                    b.ToTable("channel_listing_variants", "catalog");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ChannelMediaOrder", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("MediaId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProfileId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ProfileId", "MediaId", "SortOrder")
+                        .IsUnique();
+
+                    b.ToTable("channel_media_order", "catalog");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ChannelOffer", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasColumnType("char(3)");
+
+                    b.Property<string>("LastPriceHash")
+                        .HasColumnType("text");
+
+                    b.Property<long?>("LastStockProjectionVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<decimal>("ListPrice")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<long>("PriceVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("RoundingMode")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("SafetyStock")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<decimal>("SalePrice")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("VariantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("VatInclusion")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("VatRate")
+                        .HasPrecision(7, 4)
+                        .HasColumnType("numeric(7,4)");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "VariantId");
+
+                    b.HasIndex("TenantId", "ConnectionId", "VariantId")
+                        .IsUnique();
+
+                    b.ToTable("channel_offers", "inventory", t =>
+                        {
+                            t.HasCheckConstraint("ck_channel_offer_currency", "char_length(\"Currency\")=3");
+
+                            t.HasCheckConstraint("ck_channel_offer_prices", "\"ListPrice\" >= \"SalePrice\" AND \"ListPrice\" >= 0 AND \"SalePrice\" >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ChannelPriceHistory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ActorSource")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasColumnType("char(3)");
+
+                    b.Property<DateTimeOffset>("EffectiveAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("ListPrice")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<Guid>("OfferId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("PriceVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("SalePrice")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "OfferId", "PriceVersion")
+                        .IsUnique();
+
+                    b.ToTable("channel_price_history", "inventory");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ConnectionInventoryPolicy", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AuthorityMode")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("DefaultSafetyStock")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<bool>("NegativeStockAllowed")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("ReleaseOnStatuses")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ReservationMode")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ReserveOnStatuses")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ConnectionId")
+                        .IsUnique();
+
+                    b.ToTable("connection_inventory_policies", "inventory");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ConnectionLocationMapping", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ExternalLocationId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<Guid>("LocationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "LocationId");
+
+                    b.HasIndex("TenantId", "ConnectionId", "ExternalLocationId")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "ConnectionId", "LocationId")
+                        .IsUnique();
+
+                    b.ToTable("connection_location_mappings", "inventory");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ConnectionSyncPolicy", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("IntervalSeconds")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("JitterSeconds")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("OverlapSeconds")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ResourceType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ConnectionId", "ResourceType")
+                        .IsUnique();
+
+                    b.ToTable("connection_sync_policies", "integration", t =>
+                        {
+                            t.HasCheckConstraint("ck_connection_sync_policy_intervals", "\"IntervalSeconds\" >= 0 AND \"OverlapSeconds\" >= 0 AND \"JitterSeconds\" >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.DashboardLowStockProjection", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("PrimaryImageUrl")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<decimal>("TotalStock")
+                        .HasColumnType("numeric");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("TenantId", "ProductId");
+
+                    b.HasIndex("TenantId", "TotalStock");
+
+                    b.ToTable("low_stock", "dashboard");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.DashboardRevenueDaily", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("Day")
+                        .HasColumnType("date");
+
+                    b.Property<string>("PlatformName")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<string>("Currency")
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("numeric");
+
+                    b.Property<int>("OrderCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("TenantId", "Day", "PlatformName", "Currency");
+
+                    b.HasIndex("TenantId", "Day");
+
+                    b.ToTable("revenue_daily", "dashboard");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.DashboardSnapshot", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("ActiveConnections")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("DeadJobCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("DueSoonInvoices")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("LastVerifiedSynchronizationAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("LateOrders")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("LowStockProducts")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ManualReviewJobCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("MonthOrders")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("MonthProductQuantity")
+                        .HasColumnType("numeric");
+
+                    b.Property<DateTimeOffset?>("OldestQueuedJobAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("OldestStockObservationAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PendingByPlatformJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<int>("PendingOrders")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PendingReturns")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("RecentJobCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
+                    b.Property<int>("RecentRateLimitJobCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
+                    b.Property<int>("TodayOrders")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("TodayProductQuantity")
+                        .HasColumnType("numeric");
+
+                    b.Property<int>("UninvoicedInvoices")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("TenantId");
+
+                    b.ToTable("snapshot", "dashboard");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.DashboardSyncStatusProjection", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ResourceType")
+                        .HasMaxLength(48)
+                        .HasColumnType("character varying(48)");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(96)
+                        .HasColumnType("character varying(96)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTimeOffset?>("LastAttemptAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastErrorCode")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTimeOffset?>("LastSuccessAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("TenantId", "ResourceType");
+
+                    b.ToTable("sync_status", "dashboard");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ExternalEffectRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EffectType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "EffectType", "IdempotencyKey")
+                        .IsUnique();
+
+                    b.ToTable("external_effect_records", "integration");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ExternalIdentifierAlias", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ExternalId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("LocalId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ConnectionId", "EntityType", "ExternalId")
+                        .IsUnique();
+
+                    b.ToTable("external_identifier_aliases", "catalog");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.FeatureFlag", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Key");
+
+                    b.ToTable("feature_flags", "ops");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.FieldProvenance", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("AppliedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FieldName")
+                        .IsRequired()
+                        .HasMaxLength(96)
+                        .HasColumnType("character varying(96)");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("SessionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("StagingRecordId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ValueHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<Guid?>("VariantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "SessionId", "ProductId", "VariantId", "FieldName", "StagingRecordId")
+                        .IsUnique();
+
+                    b.ToTable("field_provenance", "catalog");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.FileAsset", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("ArchivedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Classification")
+                        .IsRequired()
+                        .HasMaxLength(48)
+                        .HasColumnType("character varying(48)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("MimeType")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("OriginalNameSafe")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("RelativePath")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "RelativePath")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "Sha256", "Classification");
+
+                    b.ToTable("file_assets", "ops");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ImportColumnMapping", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProfileId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SourceColumn")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("TargetField")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ProfileId", "SourceColumn")
+                        .IsUnique();
+
+                    b.ToTable("import_column_mappings", "catalog");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ImportColumnProfile", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("import_column_profiles", "catalog");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ImportDecision", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ActorUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CandidateId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("DecidedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Decision")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid?>("LinkProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("LinkVariantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "CandidateId")
+                        .IsUnique();
+
+                    b.ToTable("import_decisions", "catalog");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ImportMatchCandidate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("MatchRule")
+                        .IsRequired()
+                        .HasMaxLength(48)
+                        .HasColumnType("character varying(48)");
+
+                    b.Property<Guid?>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SafeSummary")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("SessionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("StagingRecordId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("VariantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "SessionId", "StagingRecordId", "VariantId");
+
+                    b.ToTable("import_match_candidates", "catalog");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ImportSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ColumnProfileId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("ErrorRows")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ReviewRows")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("SourceAssetId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SourceType")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("TotalRows")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("ValidRows")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("VariantGroupKey")
+                        .HasColumnType("text");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Status");
+
+                    b.ToTable("import_sessions", "catalog");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ImportStagingRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BarcodeNormalized")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ExternalRecordId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("RawJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ReviewStatus")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("RowHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<int>("RowNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SafeValuesJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("SessionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SkuNormalized")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ValidationErrorsJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("TenantId", "Id");
+
+                    b.HasIndex("TenantId", "SessionId", "ExternalRecordId")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "SessionId", "RowNumber")
+                        .IsUnique();
+
+                    b.ToTable("import_staging_records", "catalog");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.InboxMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ExternalMessageId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("PayloadHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("ProcessedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("ReceivedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Source", "ExternalMessageId")
+                        .IsUnique();
+
+                    b.ToTable("inbox_messages", "integration");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.IntegrationJob", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("AvailableAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CorrelationId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("EffectIdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<DateTimeOffset?>("HeartbeatAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("JobDedupKey")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("JobType")
+                        .IsRequired()
+                        .HasMaxLength(96)
+                        .HasColumnType("character varying(96)");
+
+                    b.Property<string>("LastErrorCode")
+                        .HasColumnType("text");
+
+                    b.Property<string>("LastErrorSummary")
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("LeaseExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LeaseTokenHash")
+                        .HasColumnType("text");
+
+                    b.Property<int>("MaxAttempts")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(6);
+
+                    b.Property<string>("OperationType")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasDefaultValue("execute");
+
+                    b.Property<string>("PayloadHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("PayloadJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("PayloadVersion")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ProgressCurrent")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ProgressFailed")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ProgressLabel")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<int?>("ProgressPercent")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ProgressProcessed")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ProgressReceived")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ProgressSkipped")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("ProgressTotal")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ResourceType")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(48)
+                        .HasColumnType("character varying(48)")
+                        .HasDefaultValue("jobs");
+
+                    b.Property<DateTimeOffset?>("StartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("TriggerType")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasDefaultValue("system");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "JobType", "JobDedupKey")
+                        .IsUnique();
+
+                    b.HasIndex("Status", "Priority", "AvailableAt", "CreatedAt");
+
+                    b.ToTable("jobs", "integration", t =>
+                        {
+                            t.HasCheckConstraint("ck_job_attempt_bounds", "\"AttemptCount\" >= 0 AND \"MaxAttempts\" > 0 AND \"AttemptCount\" <= \"MaxAttempts\"");
+                        });
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.IntegrationOutboxEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("AggregateId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AggregateType")
+                        .IsRequired()
+                        .HasMaxLength(96)
+                        .HasColumnType("character varying(96)");
+
+                    b.Property<long?>("AggregateVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<int>("DispatchAttempts")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("LastDispatchError")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<DateTimeOffset>("NextAttemptAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("OperationType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("PayloadJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTimeOffset?>("PublishedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ResourceType")
+                        .IsRequired()
+                        .HasMaxLength(48)
+                        .HasColumnType("character varying(48)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "CreatedAt");
+
+                    b.HasIndex("PublishedAt", "NextAttemptAt", "CreatedAt");
+
+                    b.ToTable("outbox_events", "integration");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.InventoryItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Available")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<string>("LocationCode")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset?>("ObservedRemoteAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal?>("ObservedRemoteQuantity")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<decimal>("OnHand")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<long>("ProjectionVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("ReconciledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("Reserved")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("VariantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Available");
+
+                    b.HasIndex("TenantId", "ObservedRemoteAt");
+
+                    b.HasIndex("TenantId", "VariantId", "LocationCode")
+                        .IsUnique();
+
+                    b.ToTable("inventory_items", "inventory", t =>
+                        {
+                            t.HasCheckConstraint("ck_inventory_items_projection", "\"Reserved\" >= 0 AND \"Available\" = greatest(0,\"OnHand\"-\"Reserved\")");
+                        });
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.InventoryLocation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Code")
+                        .IsUnique();
+
+                    b.ToTable("inventory_locations", "inventory");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.Invoice", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<decimal>("DiscountTotal")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<DateTimeOffset?>("DueAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EttnUuid")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("ExternalReference")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("InvoiceNumber")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("InvoicePolicyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("InvoiceType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset?>("IssuedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastErrorCode")
+                        .HasMaxLength(96)
+                        .HasColumnType("character varying(96)");
+
+                    b.Property<Guid>("LegalEntityProfileId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Note")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("OriginalInvoiceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("PackageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("PayableTotal")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<Guid>("ProviderConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long?>("SequenceNumber")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("SequencePurpose")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<decimal>("TaxExclusiveTotal")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<decimal>("TaxTotal")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "IdempotencyKey")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "InvoicePolicyId");
+
+                    b.HasIndex("TenantId", "LegalEntityProfileId");
+
+                    b.HasIndex("TenantId", "OriginalInvoiceId");
+
+                    b.HasIndex("TenantId", "PackageId");
+
+                    b.HasIndex("TenantId", "ProviderConnectionId");
+
+                    b.HasIndex("TenantId", "OrderId", "Status");
+
+                    b.ToTable("invoices", "billing", t =>
+                        {
+                            t.HasCheckConstraint("ck_invoice_totals_nonnegative", "\"TaxExclusiveTotal\" >= 0 AND \"DiscountTotal\" >= 0 AND \"TaxTotal\" >= 0 AND \"PayableTotal\" >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.InvoiceDocument", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DocumentType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("ExternalDocumentId")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<Guid>("FileAssetId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("InvoiceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("PermanentUrl")
+                        .HasMaxLength(4096)
+                        .HasColumnType("character varying(4096)");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "FileAssetId");
+
+                    b.HasIndex("TenantId", "InvoiceId", "DocumentType", "Sha256")
+                        .IsUnique();
+
+                    b.ToTable("invoice_documents", "billing");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.InvoiceLine", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DescriptionSnapshot")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
+                    b.Property<decimal>("DiscountAmount")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<Guid>("InvoiceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("LineSequence")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("LineTotal")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<Guid?>("OrderLineId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Quantity")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<string>("SkuSnapshot")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("UnitPrice")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<string>("UnitSnapshot")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<decimal>("VatAmount")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<decimal>("VatRate")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("numeric(9,4)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "OrderLineId");
+
+                    b.HasIndex("TenantId", "InvoiceId", "LineSequence")
+                        .IsUnique();
+
+                    b.ToTable("invoice_lines", "billing", t =>
+                        {
+                            t.HasCheckConstraint("ck_invoice_line_values", "\"LineSequence\" > 0 AND \"Quantity\" > 0 AND \"UnitPrice\" >= 0 AND \"DiscountAmount\" >= 0 AND \"VatRate\" >= 0 AND \"VatAmount\" >= 0 AND \"LineTotal\" >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.InvoicePartySnapshot", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("InvoiceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ProtectedContent")
+                        .IsRequired()
+                        .HasMaxLength(16384)
+                        .HasColumnType("character varying(16384)");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "InvoiceId", "Role")
+                        .IsUnique();
+
+                    b.ToTable("invoice_party_snapshots", "billing");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.InvoicePolicy", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AdjustmentRule")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<bool>("AutoSubmit")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DueRule")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("PackageScope")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("ProviderConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("RoundingRule")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("TriggerState")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ProviderConnectionId")
+                        .IsUnique();
+
+                    b.ToTable("invoice_policies", "billing");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.InvoiceSubmissionAttempt", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AttemptNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ErrorClass")
+                        .HasMaxLength(48)
+                        .HasColumnType("character varying(48)");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(96)
+                        .HasColumnType("character varying(96)");
+
+                    b.Property<string>("ExternalReference")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<Guid>("InvoiceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("RemoteRequestId")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("RequestHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "InvoiceId", "AttemptNumber")
+                        .IsUnique();
+
+                    b.ToTable("invoice_submission_attempts", "billing");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.JobAttempt", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AttemptNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ErrorCode")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ErrorSummary")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("Succeeded")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("JobId", "AttemptNumber")
+                        .IsUnique();
+
+                    b.ToTable("job_attempts", "integration");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.LegalEntityProfile", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AddressSnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ContactSnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("MaskedTaxId")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("ProtectedTaxId")
+                        .IsRequired()
+                        .HasMaxLength(4096)
+                        .HasColumnType("character varying(4096)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Title", "Status")
+                        .IsUnique();
+
+                    b.ToTable("legal_entity_profiles", "billing");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.MarketplaceDelivery", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AttemptNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DeliveryType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(96)
+                        .HasColumnType("character varying(96)");
+
+                    b.Property<string>("ExternalIdempotencyKey")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("ExternalReference")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<Guid>("InvoiceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("PackageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("RequestHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ConnectionId");
+
+                    b.HasIndex("TenantId", "IdempotencyKey")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "PackageId");
+
+                    b.HasIndex("TenantId", "InvoiceId", "AttemptNumber")
+                        .IsUnique();
+
+                    b.ToTable("marketplace_deliveries", "billing");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.MarketplaceDeliveryState", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AttemptNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DeliveryType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(96)
+                        .HasColumnType("character varying(96)");
+
+                    b.Property<string>("ExternalIdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("ExternalReference")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<Guid>("InvoiceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("PackageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("RequestHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ConnectionId");
+
+                    b.HasIndex("TenantId", "ExternalIdempotencyKey")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "InvoiceId")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "PackageId");
+
+                    b.ToTable("marketplace_delivery_states", "billing");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.MarketplaceListingState", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ActualStatus")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DesiredStatus")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("LastRejectionCode")
+                        .HasColumnType("text");
+
+                    b.Property<string>("PayloadHash")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("VariantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ConnectionId", "VariantId")
+                        .IsUnique();
+
+                    b.ToTable("marketplace_listing_states", "catalog");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.MarketplaceProductLink", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DirtyFieldsJson")
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("ExternalId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
+                    b.Property<DateTimeOffset?>("LastImportedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastImportedPayloadHash")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<long>("LastImportedProductVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("LastPublishedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("LastPublishedProductVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SyncStatus")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasDefaultValue("SYNCED");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ProductId");
+
+                    b.HasIndex("TenantId", "ConnectionId", "ExternalId")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "ConnectionId", "ProductId")
+                        .IsUnique();
+
+                    b.ToTable("marketplace_product_links", "catalog");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.MarketplaceVariantLink", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ExternalId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("VariantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "VariantId");
+
+                    b.HasIndex("TenantId", "ConnectionId", "ExternalId")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "ConnectionId", "VariantId")
+                        .IsUnique();
+
+                    b.ToTable("marketplace_variant_links", "catalog");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.OperationalIssue", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("DedupeKey")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("FirstSeenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("OccurrenceCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<string>("Summary")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "DedupeKey")
+                        .IsUnique();
+
+                    b.ToTable("operational_issues", "ops");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.Order", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasColumnType("char(3)");
+
+                    b.Property<string>("CustomerSnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("DerivedStatus")
+                        .IsRequired()
+                        .HasMaxLength(48)
+                        .HasColumnType("character varying(48)");
+
+                    b.Property<decimal>("DiscountAmount")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<string>("ExternalOrderId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<decimal>("GrossAmount")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<string>("InvoiceAddressSnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("LastRemoteModifiedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("NetAmount")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<string>("OrderNumber")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<DateTimeOffset>("OrderedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ShipmentAddressSnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("ShipmentDueAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ConnectionId", "ExternalOrderId")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "OrderedAt", "Id");
+
+                    b.HasIndex("TenantId", "ShipmentDueAt", "OrderedAt", "Id");
+
+                    b.ToTable("orders", "sales", t =>
+                        {
+                            t.HasCheckConstraint("ck_order_amounts", "\"GrossAmount\" >= 0 AND \"DiscountAmount\" >= 0 AND \"NetAmount\" >= 0");
+
+                            t.HasCheckConstraint("ck_order_currency", "char_length(\"Currency\")=3");
+                        });
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.OrderFinancialAllocation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AllocationType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasColumnType("char(3)");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("OrderLineId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SourceKey")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "OrderLineId");
+
+                    b.HasIndex("TenantId", "OrderId", "SourceKey")
+                        .IsUnique();
+
+                    b.ToTable("order_financial_allocations", "sales");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.OrderLine", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Barcode")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<decimal>("CancelledQuantity")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<decimal>("DeliveredQuantity")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<string>("ExternalLineId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("OrderedQuantity")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<string>("RawStatus")
+                        .IsRequired()
+                        .HasMaxLength(96)
+                        .HasColumnType("character varying(96)");
+
+                    b.Property<decimal>("ReturnedQuantity")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<decimal>("ShippedQuantity")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<string>("Sku")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<string>("SourceSnapshotJson")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("TitleSnapshot")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<decimal>("UnitPrice")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<Guid?>("VariantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("VatRate")
+                        .HasPrecision(7, 4)
+                        .HasColumnType("numeric(7,4)");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "OrderId", "ExternalLineId")
+                        .IsUnique();
+
+                    b.ToTable("order_lines", "sales", t =>
+                        {
+                            t.HasCheckConstraint("ck_order_line_quantities", "\"OrderedQuantity\" >= 0 AND \"CancelledQuantity\" >= 0 AND \"ShippedQuantity\" >= 0 AND \"DeliveredQuantity\" >= 0 AND \"ReturnedQuantity\" >= 0 AND \"ShippedQuantity\" <= \"OrderedQuantity\" AND \"DeliveredQuantity\" <= \"ShippedQuantity\" AND \"ReturnedQuantity\" <= \"DeliveredQuantity\"");
+                        });
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.OrderStatusHistory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CanonicalStatus")
+                        .IsRequired()
+                        .HasMaxLength(48)
+                        .HasColumnType("character varying(48)");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("PackageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("RawStatus")
+                        .IsRequired()
+                        .HasMaxLength(96)
+                        .HasColumnType("character varying(96)");
+
+                    b.Property<DateTimeOffset>("RecordedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SourceEventId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "PackageId");
+
+                    b.HasIndex("TenantId", "OrderId", "OccurredAt");
+
+                    b.HasIndex("TenantId", "OrderId", "SourceEventId")
+                        .IsUnique();
+
+                    b.ToTable("order_status_history", "sales");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.PackageLineAllocation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("AllocatedQuantity")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<decimal>("CancelledQuantity")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<decimal>("DeliveredQuantity")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<Guid>("OrderLineId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PackageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("ReturnedQuantity")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<decimal>("ShippedQuantity")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<string>("SourceEventId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "OrderLineId");
+
+                    b.HasIndex("TenantId", "PackageId", "OrderLineId", "SourceEventId")
+                        .IsUnique();
+
+                    b.ToTable("package_line_allocations", "sales", t =>
+                        {
+                            t.HasCheckConstraint("ck_package_allocation_quantities", "\"AllocatedQuantity\" >= 0 AND \"CancelledQuantity\" >= 0 AND \"ShippedQuantity\" >= 0 AND \"DeliveredQuantity\" >= 0 AND \"ReturnedQuantity\" >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.PlatformCapability", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ApiVersion")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(96)
+                        .HasColumnType("character varying(96)");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ConstraintsJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Environment")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<string>("EvidenceNote")
+                        .HasColumnType("text");
+
+                    b.Property<string>("FixtureChecksum")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("RequiredScope")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("SourceUrl")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
+                    b.Property<string>("SourceVersion")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("StoreScope")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("SupportLevel")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("VerifiedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ConnectionId", "Code", "ApiVersion", "Environment", "StoreScope")
+                        .IsUnique();
+
+                    b.ToTable("platform_capabilities", "integration");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.PlatformConnection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ApiVersion")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<string>("Environment")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<string>("ExternalStoreId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("LastErrorCode")
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("LastSuccessAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("LastTestedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PlatformCode")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SettingsJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "PlatformCode", "Environment", "ExternalStoreId")
+                        .IsUnique()
+                        .HasFilter("\"Status\" <> 'DELETED'");
+
+                    b.ToTable("platform_connections", "integration");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.PlatformCredential", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CredentialType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("MaskedHint")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<string>("ProtectedPayload")
+                        .IsRequired()
+                        .HasMaxLength(8192)
+                        .HasColumnType("character varying(8192)");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ConnectionId", "RevokedAt");
+
+                    b.ToTable("platform_credentials", "integration");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.Product", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("ArchivedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("BrandId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("CategoryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal?>("DefaultListPrice")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<decimal?>("DefaultSalePrice")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<long>("SourcePolicyVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "BrandId");
+
+                    b.HasIndex("TenantId", "CategoryId");
+
+                    b.HasIndex("TenantId", "Status", "UpdatedAt");
+
+                    b.ToTable("products", "catalog");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ProductAttributeAssignment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AttributeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool?>("BooleanValue")
+                        .HasColumnType("boolean");
+
+                    b.Property<decimal?>("NumberValue")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("TextValue")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("ValueId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("VariantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "AttributeId");
+
+                    b.HasIndex("TenantId", "ValueId");
+
+                    b.HasIndex("TenantId", "VariantId");
+
+                    b.HasIndex("TenantId", "ProductId", "VariantId", "AttributeId", "ValueId")
+                        .IsUnique();
+
+                    b.ToTable("product_attribute_assignments", "catalog", t =>
+                        {
+                            t.HasCheckConstraint("ck_product_attribute_assignments_exactly_one_value", "num_nonnulls(\"ValueId\",\"TextValue\",\"NumberValue\",\"BooleanValue\")=1");
+                        });
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ProductImportSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("NextCursor")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.Property<int>("PageNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Phase")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<int>("ReceivedProducts")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("TotalProducts")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("TenantId", "Id");
+
+                    b.HasIndex("TenantId", "JobId")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "ConnectionId", "Phase");
+
+                    b.ToTable("product_import_sessions", "catalog");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ProductImportStagingRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ErrorSummary")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("ExternalProductId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<DateTimeOffset?>("FinalizedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ModelKey")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<int>("ReceivedOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SnapshotHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("SnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("TenantId", "Id");
+
+                    b.HasIndex("TenantId", "ConnectionId");
+
+                    b.HasIndex("TenantId", "JobId", "ExternalProductId", "SnapshotHash")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "JobId", "ModelKey", "State");
+
+                    b.HasIndex("TenantId", "JobId", "State", "ReceivedOrder");
+
+                    b.ToTable("product_import_staging_records", "catalog");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ProductMedia", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AltText")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("FileAssetId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("MediaRole")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("VariantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FileAssetId");
+
+                    b.HasIndex("TenantId", "VariantId");
+
+                    b.HasIndex("TenantId", "ProductId", "VariantId", "SortOrder")
+                        .IsUnique();
+
+                    b.ToTable("product_media", "catalog");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ProductOption", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<string>("NormalizedKey")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ProductId", "NormalizedKey")
+                        .IsUnique();
+
+                    b.ToTable("product_options", "catalog");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ProductOptionValue", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<string>("NormalizedKey")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<Guid>("OptionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "OptionId", "NormalizedKey")
+                        .IsUnique();
+
+                    b.ToTable("product_option_values", "catalog");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ProductVariant", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Barcode")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<string>("BarcodeNormalized")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<decimal?>("CostPrice")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<decimal?>("DefaultListPrice")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<decimal?>("DefaultSalePrice")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal?>("Desi")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<decimal?>("Height")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<decimal?>("Length")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<string>("ModelCode")
+                        .HasColumnType("text");
+
+                    b.Property<string>("OptionSignature")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Sku")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<string>("SkuNormalized")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<int>("SortOrder")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.Property<decimal?>("Weight")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<decimal?>("Width")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "BarcodeNormalized")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "SkuNormalized")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "ProductId", "SortOrder");
+
+                    b.ToTable("product_variants", "catalog");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ReconciliationDifference", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("EntityKey")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("FieldName")
+                        .IsRequired()
+                        .HasMaxLength(96)
+                        .HasColumnType("character varying(96)");
+
+                    b.Property<string>("LocalValueHash")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("RemoteValueHash")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Resolution")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid>("RunId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "RunId", "EntityType", "EntityKey", "FieldName")
+                        .IsUnique();
+
+                    b.ToTable("reconciliation_differences", "integration");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ReconciliationRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("ComparedCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("DifferenceCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .HasMaxLength(96)
+                        .HasColumnType("character varying(96)");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ConnectionId", "StartedAt");
+
+                    b.ToTable("reconciliation_runs", "integration");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.RecoveryCode", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BatchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CodeDigest")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("InvalidatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("UsedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "CodeDigest")
+                        .IsUnique();
+
+                    b.ToTable("recovery_codes", "iam");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ReferenceItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool?>("AllowsCustomValue")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool?>("AllowsMultipleValues")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Depth")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ExternalId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsLeaf")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool?>("IsRequired")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)");
+
+                    b.Property<string>("ParentExternalId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
+                    b.Property<string>("PayloadHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("ResourceType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("SnapshotId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "SnapshotId", "ParentExternalId");
+
+                    b.HasIndex("TenantId", "SnapshotId", "ResourceType", "ExternalId")
+                        .IsUnique();
+
+                    b.ToTable("reference_items", "integration");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ReferenceSnapshot", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("AssetId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTimeOffset>("FetchedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsCurrent")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("ItemCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ResourceType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("ScopeExternalId")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<string>("SourceVersion")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ConnectionId", "ResourceType", "ScopeExternalId", "ContentHash")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "ConnectionId", "ResourceType", "ScopeExternalId", "IsCurrent")
+                        .HasDatabaseName("IX_reference_snapshots_TenantId_ConnectionId_ResourceType_Sco~1");
+
+                    b.ToTable("reference_snapshots", "integration");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ReturnClaim", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("ActionDueAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CargoProviderName")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("CargoTrackingNumber")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ExternalClaimId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<DateTimeOffset>("LastRemoteModifiedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("RawStatus")
+                        .IsRequired()
+                        .HasMaxLength(96)
+                        .HasColumnType("character varying(96)");
+
+                    b.Property<string>("ReasonCode")
+                        .HasMaxLength(96)
+                        .HasColumnType("character varying(96)");
+
+                    b.Property<string>("ReasonText")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "OrderId");
+
+                    b.HasIndex("TenantId", "ConnectionId", "ExternalClaimId")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "Status", "ActionDueAt");
+
+                    b.ToTable("return_claims", "sales");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ReturnDecision", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(48)
+                        .HasColumnType("character varying(48)");
+
+                    b.Property<Guid>("ActorUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ClaimId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(96)
+                        .HasColumnType("character varying(96)");
+
+                    b.Property<string>("Explanation")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.Property<string>("ExternalOperationId")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("ReasonCode")
+                        .HasMaxLength(96)
+                        .HasColumnType("character varying(96)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ClaimId");
+
+                    b.HasIndex("TenantId", "IdempotencyKey")
+                        .IsUnique();
+
+                    b.ToTable("return_decisions", "sales");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ReturnEvidence", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Checksum")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<Guid>("ClaimId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("DecisionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("EvidenceKind")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("FileAssetId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FileAssetId");
+
+                    b.HasIndex("TenantId", "ClaimId");
+
+                    b.HasIndex("TenantId", "DecisionId", "FileAssetId")
+                        .IsUnique();
+
+                    b.ToTable("return_evidence", "sales");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ReturnLine", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ClaimId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ExternalLineId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<Guid>("OrderLineId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Quantity")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "OrderLineId");
+
+                    b.HasIndex("TenantId", "ClaimId", "ExternalLineId")
+                        .IsUnique();
+
+                    b.ToTable("return_lines", "sales", t =>
+                        {
+                            t.HasCheckConstraint("ck_return_line_quantity", "\"Quantity\" > 0");
+                        });
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ReturnStockDisposition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ActorUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ClaimId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Disposition")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<Guid>("InventoryItemId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Quantity")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<Guid>("ReturnLineId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ClaimId");
+
+                    b.HasIndex("TenantId", "IdempotencyKey")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "InventoryItemId");
+
+                    b.HasIndex("TenantId", "ReturnLineId");
+
+                    b.ToTable("return_stock_dispositions", "sales", t =>
+                        {
+                            t.HasCheckConstraint("ck_return_stock_disposition_quantity", "\"Quantity\" > 0");
+                        });
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ShipmentDocument", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Checksum")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DocumentKind")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<int>("DocumentVersion")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("FileAssetId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Format")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid>("PackageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FileAssetId");
+
+                    b.HasIndex("TenantId", "PackageId", "DocumentKind", "DocumentVersion")
+                        .IsUnique();
+
+                    b.ToTable("shipment_documents", "sales");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ShipmentDocumentAttempt", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("DocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(96)
+                        .HasColumnType("character varying(96)");
+
+                    b.Property<string>("ExternalOperationId")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<Guid>("PackageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "DocumentId");
+
+                    b.HasIndex("TenantId", "IdempotencyKey")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "PackageId");
+
+                    b.ToTable("shipment_document_attempts", "sales");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ShipmentPackage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CargoProviderExternalId")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("CargoTrackingNumber")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<decimal>("DiscountAmount")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<string>("ExternalPackageId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<decimal>("GrossAmount")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<string>("MarketplaceInvoiceNumber")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<DateTimeOffset?>("MarketplaceInvoiceObservedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("MarketplaceInvoiceRawStatus")
+                        .HasMaxLength(96)
+                        .HasColumnType("character varying(96)");
+
+                    b.Property<DateTimeOffset?>("MarketplaceInvoiceSourceUpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("MarketplaceInvoiceStatus")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("MarketplaceInvoiceUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.Property<decimal>("NetAmount")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("OriginExternalPackageId")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("RawStatus")
+                        .IsRequired()
+                        .HasMaxLength(96)
+                        .HasColumnType("character varying(96)");
+
+                    b.Property<string>("RemoteVersion")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTimeOffset>("StatusOccurredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "OrderId");
+
+                    b.HasIndex("TenantId", "ConnectionId", "ExternalPackageId")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "Status", "StatusOccurredAt");
+
+                    b.ToTable("shipment_packages", "sales");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.StockLedgerEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ActorUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CorrelationId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<Guid>("InventoryItemId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("MovementType")
+                        .IsRequired()
+                        .HasMaxLength(48)
+                        .HasColumnType("character varying(48)");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("QuantityDelta")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<DateTimeOffset>("RecordedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SourceEventId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("SourceId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("SourceType")
+                        .IsRequired()
+                        .HasMaxLength(48)
+                        .HasColumnType("character varying(48)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "IdempotencyKey")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "InventoryItemId", "OccurredAt", "Id");
+
+                    b.ToTable("stock_ledger_entries", "inventory");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.StockReservation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("InventoryItemId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Quantity")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<DateTimeOffset?>("ReleasedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SourceId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("SourceType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "InventoryItemId");
+
+                    b.HasIndex("TenantId", "Status", "ExpiresAt");
+
+                    b.HasIndex("TenantId", "SourceType", "SourceId", "InventoryItemId")
+                        .IsUnique();
+
+                    b.ToTable("stock_reservations", "inventory", t =>
+                        {
+                            t.HasCheckConstraint("ck_stock_reservation_quantity", "\"Quantity\" > 0");
+                        });
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.SyncCursor", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("ConsecutiveFailureCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("LastAttemptAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("LastChangedCount")
+                        .HasColumnType("integer");
+
+                    b.Property<long?>("LastDurationMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
+                    b.Property<DateTimeOffset?>("LastErrorAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("LastFailedCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("LastInsertedCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("LastModifiedWatermark")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("LastRateLimitCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("LastReceivedCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("LastRequestCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("LastRetryCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("LastSkippedCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("LastSuccessAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("LastUpdatedCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("OpaqueCursor")
+                        .HasMaxLength(4096)
+                        .HasColumnType("character varying(4096)");
+
+                    b.Property<string>("ResourceType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ConnectionId", "ResourceType")
+                        .IsUnique();
+
+                    b.ToTable("sync_cursors", "integration");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.Tenant", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<string>("Timezone")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.ToTable("tenants", "iam");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.TenantMembership", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("TenantId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("tenant_memberships", "iam");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.TenantSetting", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Key")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ValueJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("TenantId", "Key");
+
+                    b.ToTable("tenant_settings", "iam");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.UserSecurity", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("EnrollmentExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("LastAcceptedTimeStep")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("PendingEnrollmentExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PendingProtectedTotpSecret")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.Property<string>("ProtectedTotpSecret")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.Property<Guid?>("RecoveryBatchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("TotpState")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("user_security", "iam");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.UserSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("AbsoluteExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("IssuedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("ReauthenticatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("SessionVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "State");
+
+                    b.ToTable("user_sessions", "iam");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.VariantOptionValue", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("OptionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("OptionValueId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("VariantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "OptionValueId");
+
+                    b.HasIndex("TenantId", "VariantId", "OptionId")
+                        .IsUnique();
+
+                    b.ToTable("variant_option_values", "catalog");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.WebhookSubscription", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AuthenticationType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ExternalSubscriptionId")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<DateTimeOffset?>("LastReceivedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ProtectedVerifierSecret")
+                        .IsRequired()
+                        .HasMaxLength(8192)
+                        .HasColumnType("character varying(8192)");
+
+                    b.Property<string>("RouteTokenHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("VerifiedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "RouteTokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "ConnectionId", "Status");
+
+                    b.ToTable("webhook_subscriptions", "integration");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Infrastructure.Identity.ApplicationUser", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AccessFailedCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<bool>("EmailConfirmed")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("ForcePasswordChange")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset?>("LastLoginAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("LockoutEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset?>("LockoutEnd")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("NormalizedEmail")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("NormalizedUserName")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("PasswordHash")
+                        .HasColumnType("text");
+
+                    b.Property<string>("PhoneNumber")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("PhoneNumberConfirmed")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("SecurityStamp")
+                        .HasColumnType("text");
+
+                    b.Property<long>("SessionVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<bool>("TwoFactorEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UserName")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NormalizedEmail")
+                        .HasDatabaseName("EmailIndex");
+
+                    b.HasIndex("NormalizedUserName")
+                        .IsUnique()
+                        .HasDatabaseName("UserNameIndex");
+
+                    b.ToTable("users", "iam");
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole<System.Guid>", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("NormalizedName")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NormalizedName")
+                        .IsUnique()
+                        .HasDatabaseName("RoleNameIndex");
+
+                    b.ToTable("roles", "iam");
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<System.Guid>", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ClaimType")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ClaimValue")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("RoleId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RoleId");
+
+                    b.ToTable("role_claims", "iam");
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserClaim<System.Guid>", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ClaimType")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ClaimValue")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("user_claims", "iam");
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserLogin<System.Guid>", b =>
+                {
+                    b.Property<string>("LoginProvider")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ProviderKey")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ProviderDisplayName")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("LoginProvider", "ProviderKey");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("user_logins", "iam");
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserRole<System.Guid>", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("RoleId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("UserId", "RoleId");
+
+                    b.HasIndex("RoleId");
+
+                    b.ToTable("user_roles", "iam");
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserToken<System.Guid>", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("LoginProvider")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Value")
+                        .HasColumnType("text");
+
+                    b.HasKey("UserId", "LoginProvider", "Name");
+
+                    b.ToTable("user_tokens", "iam");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.AttributeMapping", b =>
+                {
+                    b.HasBaseType("MarketplaceHub.Domain.CatalogMapping");
+
+                    b.HasIndex("TenantId", "ConnectionId", "LocalId", "ScopeExternalId", "ExternalId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_attribute_mappings_local_remote_scope");
+
+                    b.ToTable("attribute_mappings", "catalog");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.AttributeValueMapping", b =>
+                {
+                    b.HasBaseType("MarketplaceHub.Domain.CatalogMapping");
+
+                    b.HasIndex("TenantId", "ConnectionId", "ScopeExternalId", "ExternalId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_attribute_value_mappings_remote_scope");
+
+                    b.ToTable("attribute_value_mappings", "catalog");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.BrandMapping", b =>
+                {
+                    b.HasBaseType("MarketplaceHub.Domain.CatalogMapping");
+
+                    b.HasIndex("TenantId", "ConnectionId", "LocalId", "ScopeExternalId")
+                        .IsUnique();
+
+                    b.ToTable("brand_mappings", "catalog");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.CategoryMapping", b =>
+                {
+                    b.HasBaseType("MarketplaceHub.Domain.CatalogMapping");
+
+                    b.HasIndex("TenantId", "ConnectionId", "LocalId", "ScopeExternalId")
+                        .IsUnique();
+
+                    b.ToTable("category_mappings", "catalog");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ApiIdempotencyRecord", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.AttributeDefinition", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.AttributeValue", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.AttributeDefinition", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "AttributeId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.BootstrapState", b =>
+                {
+                    b.HasOne("MarketplaceHub.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.Brand", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.CargoProviderMapping", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.PlatformConnection", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ConnectionId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.Category", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.Category", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ParentId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.CategoryAttributeRequirement", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.AttributeDefinition", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "AttributeId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.Category", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "CategoryId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ChannelInventoryObservation", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.InventoryLocation", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "LocationId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("MarketplaceHub.Domain.ProductVariant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "VariantId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ChannelListingAttribute", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.ChannelListingProfile", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ProfileId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ChannelListingProfile", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Product", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ProductId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ChannelListingVariant", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.ChannelListingProfile", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ProfileId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ChannelMediaOrder", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.ChannelListingProfile", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ProfileId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ChannelOffer", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.ProductVariant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "VariantId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ChannelPriceHistory", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.ChannelOffer", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "OfferId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ConnectionLocationMapping", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.InventoryLocation", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "LocationId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ConnectionSyncPolicy", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.PlatformConnection", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ConnectionId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.DashboardLowStockProjection", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.DashboardRevenueDaily", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.DashboardSnapshot", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.DashboardSyncStatusProjection", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ExternalEffectRecord", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.FileAsset", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ImportColumnMapping", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.ImportColumnProfile", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ProfileId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ImportDecision", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.ImportMatchCandidate", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "CandidateId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ImportStagingRecord", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.ImportSession", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "SessionId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.InboxMessage", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.IntegrationJob", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.IntegrationOutboxEvent", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.InventoryItem", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.ProductVariant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "VariantId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.Invoice", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.InvoicePolicy", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "InvoicePolicyId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.LegalEntityProfile", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "LegalEntityProfileId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.Order", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "OrderId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.Invoice", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "OriginalInvoiceId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("MarketplaceHub.Domain.ShipmentPackage", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "PackageId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("MarketplaceHub.Domain.PlatformConnection", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ProviderConnectionId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.InvoiceDocument", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.FileAsset", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "FileAssetId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.Invoice", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "InvoiceId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.InvoiceLine", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Invoice", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "InvoiceId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.OrderLine", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "OrderLineId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.InvoicePartySnapshot", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Invoice", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "InvoiceId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.InvoicePolicy", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.PlatformConnection", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ProviderConnectionId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.InvoiceSubmissionAttempt", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Invoice", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "InvoiceId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.JobAttempt", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.IntegrationJob", null)
+                        .WithMany()
+                        .HasForeignKey("JobId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.LegalEntityProfile", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.MarketplaceDelivery", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.PlatformConnection", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ConnectionId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.Invoice", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "InvoiceId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.ShipmentPackage", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "PackageId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.MarketplaceDeliveryState", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.PlatformConnection", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ConnectionId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.Invoice", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "InvoiceId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.ShipmentPackage", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "PackageId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.MarketplaceProductLink", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Product", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ProductId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.MarketplaceVariantLink", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.ProductVariant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "VariantId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.Order", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.PlatformConnection", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ConnectionId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.OrderFinancialAllocation", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Order", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "OrderId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.OrderLine", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "OrderLineId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.OrderLine", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Order", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "OrderId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.OrderStatusHistory", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Order", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "OrderId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.ShipmentPackage", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "PackageId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.PackageLineAllocation", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.OrderLine", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "OrderLineId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.ShipmentPackage", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "PackageId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.PlatformCapability", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.PlatformConnection", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ConnectionId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.PlatformConnection", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.PlatformCredential", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.PlatformConnection", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ConnectionId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.Product", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.Brand", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "BrandId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("MarketplaceHub.Domain.Category", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "CategoryId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ProductAttributeAssignment", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.AttributeDefinition", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "AttributeId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.Product", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ProductId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.AttributeValue", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ValueId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("MarketplaceHub.Domain.ProductVariant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "VariantId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade);
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ProductImportSession", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.PlatformConnection", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ConnectionId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ProductImportStagingRecord", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.PlatformConnection", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ConnectionId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ProductMedia", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.FileAsset", null)
+                        .WithMany()
+                        .HasForeignKey("FileAssetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.Product", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ProductId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.ProductVariant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "VariantId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade);
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ProductOption", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Product", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ProductId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ProductOptionValue", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.ProductOption", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "OptionId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ProductVariant", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Product", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ProductId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ReconciliationDifference", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.ReconciliationRun", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "RunId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ReconciliationRun", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.PlatformConnection", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ConnectionId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.RecoveryCode", b =>
+                {
+                    b.HasOne("MarketplaceHub.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ReferenceItem", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.ReferenceSnapshot", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "SnapshotId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ReferenceSnapshot", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.PlatformConnection", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ConnectionId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ReturnClaim", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.PlatformConnection", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ConnectionId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.Order", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "OrderId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ReturnDecision", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.ReturnClaim", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ClaimId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ReturnEvidence", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.FileAsset", null)
+                        .WithMany()
+                        .HasForeignKey("FileAssetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.ReturnClaim", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ClaimId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.ReturnDecision", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "DecisionId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ReturnLine", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.ReturnClaim", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ClaimId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.OrderLine", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "OrderLineId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ReturnStockDisposition", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.ReturnClaim", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ClaimId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.InventoryItem", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "InventoryItemId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.ReturnLine", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ReturnLineId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ShipmentDocument", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.FileAsset", null)
+                        .WithMany()
+                        .HasForeignKey("FileAssetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.ShipmentPackage", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "PackageId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ShipmentDocumentAttempt", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.ShipmentDocument", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "DocumentId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("MarketplaceHub.Domain.ShipmentPackage", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "PackageId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ShipmentPackage", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.PlatformConnection", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ConnectionId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.Order", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "OrderId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.StockLedgerEntry", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.InventoryItem", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "InventoryItemId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.StockReservation", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.InventoryItem", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "InventoryItemId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.SyncCursor", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.PlatformConnection", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ConnectionId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.TenantMembership", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.TenantSetting", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.UserSecurity", b =>
+                {
+                    b.HasOne("MarketplaceHub.Infrastructure.Identity.ApplicationUser", null)
+                        .WithOne()
+                        .HasForeignKey("MarketplaceHub.Domain.UserSecurity", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.UserSession", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("MarketplaceHub.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.VariantOptionValue", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.ProductOptionValue", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "OptionValueId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.ProductVariant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "VariantId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.WebhookSubscription", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.PlatformConnection", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ConnectionId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<System.Guid>", b =>
+                {
+                    b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole<System.Guid>", null)
+                        .WithMany()
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserClaim<System.Guid>", b =>
+                {
+                    b.HasOne("MarketplaceHub.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserLogin<System.Guid>", b =>
+                {
+                    b.HasOne("MarketplaceHub.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserRole<System.Guid>", b =>
+                {
+                    b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole<System.Guid>", null)
+                        .WithMany()
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserToken<System.Guid>", b =>
+                {
+                    b.HasOne("MarketplaceHub.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.MarketplaceQuestion", b =>
+                {
+                    b.Property<Guid>("Id").ValueGeneratedOnAdd().HasColumnType("uuid");
+                    b.Property<string>("AnswerSubmissionKey").HasMaxLength(256).HasColumnType("character varying(256)");
+                    b.Property<string>("AnswerSubmissionStatus").HasMaxLength(32).HasColumnType("character varying(32)");
+                    b.Property<DateTimeOffset>("CreatedAt").HasColumnType("timestamp with time zone");
+                    b.Property<Guid>("ConnectionId").HasColumnType("uuid");
+                    b.Property<string>("CustomerName").HasMaxLength(256).HasColumnType("character varying(256)");
+                    b.Property<DateTimeOffset?>("ExpiresAt").HasColumnType("timestamp with time zone");
+                    b.Property<string>("ExternalOrderNumber").HasMaxLength(256).HasColumnType("character varying(256)");
+                    b.Property<string>("ExternalQuestionId").IsRequired().HasMaxLength(256).HasColumnType("character varying(256)");
+                    b.Property<string>("HistoryJson").HasColumnType("jsonb");
+                    b.Property<string>("Kind").IsRequired().HasMaxLength(16).HasColumnType("character varying(16)");
+                    b.Property<DateTimeOffset>("LastRemoteModifiedAt").HasColumnType("timestamp with time zone");
+                    b.Property<DateTimeOffset>("LastSyncedAt").HasColumnType("timestamp with time zone");
+                    b.Property<string>("PendingAnswerText").HasMaxLength(2000).HasColumnType("character varying(2000)");
+                    b.Property<string>("ProductBarcode").HasMaxLength(256).HasColumnType("character varying(256)");
+                    b.Property<string>("ProductImageUrl").HasMaxLength(2048).HasColumnType("character varying(2048)");
+                    b.Property<string>("ProductModelCode").HasMaxLength(256).HasColumnType("character varying(256)");
+                    b.Property<string>("ProductName").HasMaxLength(1024).HasColumnType("character varying(1024)");
+                    b.Property<string>("ProductSku").HasMaxLength(256).HasColumnType("character varying(256)");
+                    b.Property<string>("QuestionText").IsRequired().HasMaxLength(4096).HasColumnType("character varying(4096)");
+                    b.Property<string>("Status").IsRequired().HasMaxLength(48).HasColumnType("character varying(48)");
+                    b.Property<Guid>("TenantId").HasColumnType("uuid");
+                    b.Property<long>("Version").IsConcurrencyToken().HasColumnType("bigint");
+                    b.HasKey("Id");
+                    b.HasAlternateKey("TenantId", "Id").HasName("AK_questions_tenant_id");
+                    b.HasIndex("TenantId", "ConnectionId", "AnswerSubmissionKey").IsUnique().HasDatabaseName("IX_questions_tenant_connection_submission").HasFilter("\"AnswerSubmissionKey\" IS NOT NULL");
+                    b.HasIndex("TenantId", "ConnectionId", "ExternalQuestionId").IsUnique().HasDatabaseName("IX_questions_tenant_connection_external");
+                    b.HasIndex("TenantId", "Kind", "Status", "CreatedAt").HasDatabaseName("IX_questions_tenant_kind_status_created");
+                    b.ToTable("marketplace_questions", "sales");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.MarketplaceQuestionSyncState", b =>
+                {
+                    b.Property<Guid>("TenantId").HasColumnType("uuid");
+                    b.Property<Guid>("ConnectionId").HasColumnType("uuid");
+                    b.Property<int>("HistoryKindIndex").HasColumnType("integer");
+                    b.Property<int>("HistoryPageIndex").HasColumnType("integer");
+                    b.Property<int>("HistoryStatusIndex").HasColumnType("integer");
+                    b.Property<int>("HistoryWindowIndex").HasColumnType("integer");
+                    b.Property<bool>("HistoryImported").HasColumnType("boolean");
+                    b.Property<DateTimeOffset?>("HistoryStartedAt").HasColumnType("timestamp with time zone");
+                    b.Property<int>("ImportedCount").HasColumnType("integer");
+                    b.Property<string>("LastError").HasMaxLength(512).HasColumnType("character varying(512)");
+                    b.Property<DateTimeOffset?>("LastRunStartedAt").HasColumnType("timestamp with time zone");
+                    b.Property<DateTimeOffset?>("LastSuccessAt").HasColumnType("timestamp with time zone");
+                    b.Property<string>("ProgressStatus").IsRequired().HasMaxLength(24).HasColumnType("character varying(24)");
+                    b.Property<long>("Version").IsConcurrencyToken().HasColumnType("bigint");
+                    b.HasKey("TenantId", "ConnectionId");
+                    b.ToTable("marketplace_question_sync_states", "integration");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.MarketplaceQuestionTemplate", b =>
+                {
+                    b.Property<Guid>("Id").ValueGeneratedOnAdd().HasColumnType("uuid");
+                    b.Property<DateTimeOffset>("CreatedAt").HasColumnType("timestamp with time zone");
+                    b.Property<string>("Text").IsRequired().HasMaxLength(2000).HasColumnType("character varying(2000)");
+                    b.Property<Guid>("TenantId").HasColumnType("uuid");
+                    b.Property<string>("Title").IsRequired().HasMaxLength(120).HasColumnType("character varying(120)");
+                    b.Property<DateTimeOffset>("UpdatedAt").HasColumnType("timestamp with time zone");
+                    b.Property<long>("Version").IsConcurrencyToken().HasColumnType("bigint");
+                    b.HasKey("Id");
+                    b.HasAlternateKey("TenantId", "Id").HasName("AK_question_templates_tenant_id");
+                    b.HasIndex("TenantId", "Title").IsUnique().HasDatabaseName("IX_question_templates_tenant_title");
+                    b.ToTable("marketplace_question_templates", "sales");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.MarketplaceQuestion", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.PlatformConnection", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ConnectionId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_questions_connection")
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.MarketplaceQuestionSyncState", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.PlatformConnection", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ConnectionId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("FK_question_sync_states_connection")
+                        .IsRequired();
+                });
+#pragma warning restore 612, 618
+        }
+}

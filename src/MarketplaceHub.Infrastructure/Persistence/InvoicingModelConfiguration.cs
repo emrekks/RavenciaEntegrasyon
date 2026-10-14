@@ -52,6 +52,8 @@ internal static class InvoicingModelConfiguration
             entity.Property(x => x.TaxTotal).HasPrecision(19, 4);
             entity.Property(x => x.PayableTotal).HasPrecision(19, 4);
             entity.Property(x => x.Note).HasMaxLength(512);
+            entity.Property(x => x.IncludeInternetSalesInfo).HasDefaultValue(true);
+            entity.Property(x => x.OrderFiscalGuarded).HasDefaultValue(false);
             entity.Property(x => x.IdempotencyKey).HasMaxLength(256);
             entity.Property(x => x.ExternalReference).HasMaxLength(256);
             entity.Property(x => x.InvoiceNumber).HasMaxLength(64);
@@ -60,6 +62,14 @@ internal static class InvoicingModelConfiguration
             entity.Property(x => x.Version).IsConcurrencyToken();
             entity.HasIndex(x => new { x.TenantId, x.IdempotencyKey }).IsUnique();
             entity.HasIndex(x => new { x.TenantId, x.OrderId, x.Status });
+            entity.HasIndex(x => new { x.TenantId, x.OrderId })
+                .IsUnique()
+                .HasDatabaseName("IX_invoices_TenantId_OrderId_ActiveSaleFiscal")
+                .HasFilter("\"OrderFiscalGuarded\" = TRUE AND \"OriginalInvoiceId\" IS NULL AND \"SequencePurpose\" = 'SALE'");
+            entity.HasIndex(x => new { x.TenantId, x.PackageId })
+                .IsUnique()
+                .HasDatabaseName("IX_invoices_TenantId_PackageId_ActiveSaleFiscal")
+                .HasFilter("\"PackageId\" IS NOT NULL AND \"OriginalInvoiceId\" IS NULL AND \"SequencePurpose\" = 'SALE'");
             entity.HasOne<Order>().WithMany().HasForeignKey(x => new { x.TenantId, x.OrderId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<ShipmentPackage>().WithMany().HasForeignKey(x => new { x.TenantId, x.PackageId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ProviderConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
@@ -110,6 +120,45 @@ internal static class InvoicingModelConfiguration
             entity.HasOne<FileAsset>().WithMany().HasForeignKey(x => new { x.TenantId, x.FileAssetId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
         });
 
+        builder.Entity<ManualOrderInvoiceDocument>(entity =>
+        {
+            entity.ToTable("manual_order_invoice_documents", "billing");
+            entity.HasKey(x => x.Id);
+            entity.HasAlternateKey(x => new { x.TenantId, x.Id });
+            entity.Property(x => x.InvoiceNumber).HasMaxLength(64);
+            entity.Property(x => x.IdempotencyKey).HasMaxLength(256);
+            entity.Property(x => x.DocumentType).HasMaxLength(16);
+            entity.Property(x => x.DocumentUrl).HasMaxLength(4096);
+            entity.Property(x => x.Sha256).HasMaxLength(128);
+            entity.Property(x => x.Status).HasMaxLength(24);
+            entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.HasIndex(x => new { x.TenantId, x.OrderId, x.Status }).IsUnique()
+                .HasDatabaseName("IX_manual_order_invoice_documents_TenantId_OrderId_Active")
+                .HasFilter("\"Status\" = 'ACTIVE'");
+            entity.HasIndex(x => new { x.TenantId, x.IdempotencyKey }).IsUnique();
+            entity.HasOne<Order>().WithMany().HasForeignKey(x => new { x.TenantId, x.OrderId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ShipmentPackage>().WithMany().HasForeignKey(x => new { x.TenantId, x.PackageId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<FileAsset>().WithMany().HasForeignKey(x => new { x.TenantId, x.FileAssetId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<ManualOrderInvoiceDeliveryState>(entity =>
+        {
+            entity.ToTable("manual_order_invoice_delivery_states", "billing");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.IdempotencyKey).HasMaxLength(256);
+            entity.Property(x => x.RequestHash).HasMaxLength(128);
+            entity.Property(x => x.Status).HasMaxLength(32);
+            entity.Property(x => x.ExternalReference).HasMaxLength(512);
+            entity.Property(x => x.ErrorCode).HasMaxLength(96);
+            entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.HasIndex(x => new { x.TenantId, x.DocumentId, x.PackageId }).IsUnique();
+            entity.HasIndex(x => new { x.TenantId, x.IdempotencyKey }).IsUnique();
+            entity.HasOne<ManualOrderInvoiceDocument>().WithMany().HasForeignKey(x => new { x.TenantId, x.DocumentId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ShipmentPackage>().WithMany().HasForeignKey(x => new { x.TenantId, x.PackageId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
+        });
+
         builder.Entity<InvoiceSubmissionAttempt>(entity =>
         {
             entity.ToTable("invoice_submission_attempts", "billing");
@@ -129,13 +178,34 @@ internal static class InvoicingModelConfiguration
             entity.ToTable("marketplace_deliveries", "billing");
             entity.HasKey(x => x.Id);
             entity.Property(x => x.IdempotencyKey).HasMaxLength(256);
+            entity.Property(x => x.ExternalIdempotencyKey).HasMaxLength(256);
             entity.Property(x => x.RequestHash).HasMaxLength(128);
             entity.Property(x => x.DeliveryType).HasMaxLength(32);
             entity.Property(x => x.Status).HasMaxLength(40);
             entity.Property(x => x.ExternalReference).HasMaxLength(256);
             entity.Property(x => x.ErrorCode).HasMaxLength(96);
             entity.HasIndex(x => new { x.TenantId, x.IdempotencyKey }).IsUnique();
-            entity.HasIndex(x => new { x.TenantId, x.InvoiceId, x.AttemptNumber }).IsUnique();
+            entity.HasIndex(x => new { x.TenantId, x.InvoiceId, x.PackageId, x.AttemptNumber }).IsUnique()
+                .HasDatabaseName("IX_marketplace_deliveries_TenantId_InvoiceId_PackageId_AttemptNumber");
+            entity.HasOne<Invoice>().WithMany().HasForeignKey(x => new { x.TenantId, x.InvoiceId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ShipmentPackage>().WithMany().HasForeignKey(x => new { x.TenantId, x.PackageId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<MarketplaceDeliveryState>(entity =>
+        {
+            entity.ToTable("marketplace_delivery_states", "billing");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.ExternalIdempotencyKey).HasMaxLength(256);
+            entity.Property(x => x.RequestHash).HasMaxLength(128);
+            entity.Property(x => x.DeliveryType).HasMaxLength(32);
+            entity.Property(x => x.Status).HasMaxLength(40);
+            entity.Property(x => x.ExternalReference).HasMaxLength(256);
+            entity.Property(x => x.ErrorCode).HasMaxLength(96);
+            entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.HasIndex(x => new { x.TenantId, x.InvoiceId, x.PackageId }).IsUnique()
+                .HasDatabaseName("IX_marketplace_delivery_states_TenantId_InvoiceId_PackageId");
+            entity.HasIndex(x => new { x.TenantId, x.ExternalIdempotencyKey }).IsUnique();
             entity.HasOne<Invoice>().WithMany().HasForeignKey(x => new { x.TenantId, x.InvoiceId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<ShipmentPackage>().WithMany().HasForeignKey(x => new { x.TenantId, x.PackageId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);

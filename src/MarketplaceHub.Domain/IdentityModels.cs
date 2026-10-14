@@ -17,6 +17,15 @@ public sealed class Tenant
     public long Version { get; set; }
 }
 
+public sealed class TenantSetting
+{
+    public Guid TenantId { get; set; }
+    public required string Key { get; set; }
+    public required string ValueJson { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+    public long Version { get; set; }
+}
+
 public sealed class TenantMembership
 {
     public Guid Id { get; set; }
@@ -35,6 +44,10 @@ public sealed class UserSecurity
     public TotpState TotpState { get; set; }
     public string? ProtectedTotpSecret { get; set; }
     public DateTimeOffset? EnrollmentExpiresAt { get; set; }
+    // A replacement enrollment must not overwrite an already enabled factor
+    // until the new code is confirmed. These fields hold only the candidate.
+    public string? PendingProtectedTotpSecret { get; set; }
+    public DateTimeOffset? PendingEnrollmentExpiresAt { get; set; }
     public long? LastAcceptedTimeStep { get; set; }
     public Guid? RecoveryBatchId { get; set; }
     public long Version { get; set; }

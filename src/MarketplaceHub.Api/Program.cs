@@ -1,10 +1,12 @@
 using System.Threading.RateLimiting;
 using MarketplaceHub.Api.Catalog;
-using MarketplaceHub.Api.Marketplace;
+using MarketplaceHub.Api.Dashboard;
 using MarketplaceHub.Api.Invoicing;
+using MarketplaceHub.Api.Marketplace;
 using MarketplaceHub.Api.Operations;
-using MarketplaceHub.Api.Security;
 using MarketplaceHub.Api.Realtime;
+using MarketplaceHub.Api.Security;
+using MarketplaceHub.Api.Settings;
 using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure;
 using MarketplaceHub.Infrastructure.Bootstrap;
@@ -39,6 +41,7 @@ var builder = WebApplication.CreateBuilder(args);
 DependencyInjection.ApplyFileBackedSecrets(builder.Configuration);
 builder.Host.UseSerilog((_, configuration) => configuration
     .MinimumLevel.Override("Microsoft.AspNetCore.Hosting.Diagnostics", LogEventLevel.Warning)
+    .MinimumLevel.Override("Microsoft.EntityFrameworkCore.Database.Command", LogEventLevel.Warning)
     .WriteTo.Console(new RenderedCompactJsonFormatter()));
 builder.Services.AddMarketplaceInfrastructure(builder.Configuration);
 builder.Services.AddScoped<BreakGlassService>();
@@ -54,7 +57,10 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     options.KnownIPNetworks.Add(System.Net.IPNetwork.Parse("172.30.10.0/24"));
 });
 builder.Services.AddSingleton<PostgresHealthCheck>();
-builder.Services.AddHealthChecks().AddCheck<PostgresHealthCheck>("postgres", tags: ["ready"]);
+builder.Services.AddSingleton<JobQueueHealthCheck>();
+builder.Services.AddHealthChecks()
+    .AddCheck<PostgresHealthCheck>("postgres", tags: ["ready"])
+    .AddCheck<JobQueueHealthCheck>("job-queue", tags: ["ready", "queues"]);
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -67,6 +73,12 @@ builder.Services.AddRateLimiter(options =>
 });
 
 var app = builder.Build();
+var isAdministrativeCommand = args.Any(argument => argument is "migrate" or "bootstrap" or "healthcheck");
+if (!isAdministrativeCommand && builder.Environment.IsDevelopment() && string.Equals(builder.Configuration["MARKETPLACEHUB_ENVIRONMENT"], "PILOT_LOCAL", StringComparison.OrdinalIgnoreCase))
+{
+    await using var seedScope = app.Services.CreateAsyncScope();
+    await seedScope.ServiceProvider.GetRequiredService<LocalDevelopmentSeedService>().EnsureAsync(CancellationToken.None);
+}
 if (args is ["migrate"]) { await using var scope = app.Services.CreateAsyncScope(); await scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.MigrateAsync(); return; }
 if (args is ["bootstrap"]) { await using var scope = app.Services.CreateAsyncScope(); await scope.ServiceProvider.GetRequiredService<BootstrapService>().RunAsync(CancellationToken.None); return; }
 if (args is ["identity", "reset-mfa", var email, var reason]) { await using var scope = app.Services.CreateAsyncScope(); await scope.ServiceProvider.GetRequiredService<BreakGlassService>().ResetMfaAsync(email, reason, CancellationToken.None); return; }
@@ -88,12 +100,26 @@ app.UseMiddleware<IdempotencyMiddleware>();
 app.UseRateLimiter();
 app.MapAuthEndpoints();
 app.MapCatalogEndpoints();
+app.MapDashboardEndpoints();
 app.MapJobEndpoints();
 app.MapMarketplaceEndpoints();
+app.MapQuestionEndpoints();
 app.MapInvoicingEndpoints();
+app.MapSettingsEndpoints();
 app.MapHub<OperationsHub>("/hubs/operations");
 app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
+// Monitoring endpoint: a stuck queue (Degraded) is reported as 503 here, while /health/ready stays 200.
+app.MapHealthChecks("/health/queues", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("queues"),
+    ResultStatusCodes =
+    {
+        [Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Healthy] = StatusCodes.Status200OK,
+        [Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Degraded] = StatusCodes.Status503ServiceUnavailable,
+        [Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Unhealthy] = StatusCodes.Status503ServiceUnavailable
+    }
+});
 app.Run();
 
 public partial class Program;

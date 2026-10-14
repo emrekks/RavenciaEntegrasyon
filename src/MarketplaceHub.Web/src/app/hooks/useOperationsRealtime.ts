@@ -1,0 +1,64 @@
+import { useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr'
+import { RecentOperationEventIds } from '../operations-event-deduplication'
+
+export function useOperationsRealtime(enabled: boolean) {
+  const client = useQueryClient()
+  useEffect(() => {
+    if (!enabled) return
+    const connection = new HubConnectionBuilder()
+      .withUrl('/hubs/operations')
+      .withAutomaticReconnect([0, 1000, 3000, 10_000])
+      .configureLogging(LogLevel.Warning)
+      .build()
+    const seenEvents = new RecentOperationEventIds()
+    const pendingResources = new Set<string>()
+    let flushTimer: number | null = null
+    const flush = () => {
+      flushTimer = null
+      const resources = [...pendingResources]
+      pendingResources.clear()
+      const queryKeysByResource: Record<string, string[][]> = {
+        orders: [['orders'], ['invoice-workspace'], ['invoice-workspace-page'], ['invoice-workspace-summary'], ['dashboard-bootstrap'], ['dashboard-revenue-series']],
+        returns: [['returns'], ['dashboard-bootstrap']],
+        products: [['products'], ['dashboard-bootstrap']],
+        inventory: [['inventory'], ['dashboard-bootstrap']],
+        invoices: [['invoices'], ['invoice-workspace'], ['invoice-workspace-page'], ['invoice-workspace-summary'], ['dashboard-bootstrap']],
+        connections: [['connections'], ['invoice-workspace-page'], ['invoice-workspace-summary'], ['dashboard-bootstrap']],
+        jobs: [['jobs']]
+      }
+      for (const resource of resources) {
+        for (const queryKey of queryKeysByResource[resource.toLowerCase()] ?? []) void client.invalidateQueries({ queryKey })
+      }
+    }
+    connection.on('operationsChanged', ({ resources, events }: { resources?: string[]; events?: { eventId?: string }[] }) => {
+      if (!seenEvents.shouldProcess((events ?? []).map(event => event.eventId))) return
+      for (const resource of resources ?? []) pendingResources.add(resource)
+      if (flushTimer === null) flushTimer = window.setTimeout(flush, 250)
+    })
+    connection.onreconnected(() => {
+      for (const queryKey of [['orders'], ['returns'], ['products'], ['inventory'], ['invoices'], ['invoice-workspace-page'], ['invoice-workspace-summary'], ['connections'], ['jobs'], ['dashboard-bootstrap'], ['dashboard-revenue-series']]) void client.invalidateQueries({ queryKey })
+    })
+    let stopped = false
+    let retryTimer: number | null = null
+    const start = async () => {
+      if (stopped || connection.state !== 'Disconnected') return
+      try {
+        await connection.start()
+      } catch {
+        if (!stopped) retryTimer = window.setTimeout(() => { retryTimer = null; void start() }, 3000)
+      }
+    }
+    connection.onclose(() => {
+      if (!stopped && retryTimer === null) retryTimer = window.setTimeout(() => { retryTimer = null; void start() }, 3000)
+    })
+    void start()
+    return () => {
+      stopped = true
+      if (retryTimer !== null) window.clearTimeout(retryTimer)
+      if (flushTimer !== null) window.clearTimeout(flushTimer)
+      void connection.stop()
+    }
+  }, [client, enabled])
+}

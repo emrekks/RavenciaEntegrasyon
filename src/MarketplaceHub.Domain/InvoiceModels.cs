@@ -33,11 +33,11 @@ public static class InvoiceStateMachine
             [InvoiceStatus.Ready] = [InvoiceStatus.Submitting],
             [InvoiceStatus.Submitting] = [InvoiceStatus.Submitted, InvoiceStatus.Rejected, InvoiceStatus.UnknownResult],
             [InvoiceStatus.UnknownResult] = [InvoiceStatus.Submitted, InvoiceStatus.Rejected, InvoiceStatus.ManualReview],
-            [InvoiceStatus.Submitted] = [InvoiceStatus.Accepted, InvoiceStatus.Rejected, InvoiceStatus.MarketplacePending],
-            [InvoiceStatus.Accepted] = [InvoiceStatus.MarketplacePending, InvoiceStatus.CancellationPending],
-            [InvoiceStatus.MarketplacePending] = [InvoiceStatus.Completed, InvoiceStatus.MarketplaceFailed],
+            [InvoiceStatus.Submitted] = [InvoiceStatus.Accepted, InvoiceStatus.Rejected, InvoiceStatus.MarketplacePending, InvoiceStatus.Completed, InvoiceStatus.MarketplaceFailed],
+            [InvoiceStatus.Accepted] = [InvoiceStatus.MarketplacePending, InvoiceStatus.CancellationPending, InvoiceStatus.Completed, InvoiceStatus.MarketplaceFailed],
+            [InvoiceStatus.MarketplacePending] = [InvoiceStatus.Completed, InvoiceStatus.MarketplaceFailed, InvoiceStatus.ManualReview],
             [InvoiceStatus.MarketplaceFailed] = [InvoiceStatus.MarketplacePending, InvoiceStatus.ManualReview],
-            [InvoiceStatus.Completed] = [InvoiceStatus.CancellationPending, InvoiceStatus.AdjustmentRequired],
+            [InvoiceStatus.Completed] = [InvoiceStatus.CancellationPending, InvoiceStatus.AdjustmentRequired, InvoiceStatus.MarketplaceFailed, InvoiceStatus.ManualReview],
             [InvoiceStatus.CancellationPending] = [InvoiceStatus.Cancelled, InvoiceStatus.CancellationRejected],
             [InvoiceStatus.ManualReview] = [InvoiceStatus.Submitting]
         };
@@ -83,6 +83,9 @@ public sealed class Invoice
     public Guid TenantId { get; set; }
     public Guid OrderId { get; set; }
     public Guid? PackageId { get; set; }
+    // New sale invoices claim one durable fiscal slot for the whole order.
+    // Legacy duplicates stay unguarded and are blocked by application review.
+    public bool OrderFiscalGuarded { get; set; }
     public Guid ProviderConnectionId { get; set; }
     public Guid LegalEntityProfileId { get; set; }
     public Guid InvoicePolicyId { get; set; }
@@ -96,6 +99,7 @@ public sealed class Invoice
     public decimal TaxTotal { get; set; }
     public decimal PayableTotal { get; set; }
     public required string Note { get; set; }
+    public bool IncludeInternetSalesInfo { get; set; } = true;
     public required string IdempotencyKey { get; set; }
     public string? ExternalReference { get; set; }
     public string? InvoiceNumber { get; set; }
@@ -151,6 +155,50 @@ public sealed class InvoiceDocument
     public DateTimeOffset CreatedAt { get; set; }
 }
 
+/// <summary>
+/// A document supplied by the operator for an order. It deliberately has no
+/// dependency on a fiscal provider connection or a fiscal Invoice row.
+/// Uploading it is local-only; delivery is a separate, explicit action.
+/// </summary>
+public sealed class ManualOrderInvoiceDocument
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid OrderId { get; set; }
+    public Guid? PackageId { get; set; }
+    public Guid ConnectionId { get; set; }
+    public string? InvoiceNumber { get; set; }
+    public DateTimeOffset? IssuedAt { get; set; }
+    public required string IdempotencyKey { get; set; }
+    public required string DocumentType { get; set; }
+    public required string DocumentUrl { get; set; }
+    public Guid? FileAssetId { get; set; }
+    public string? Sha256 { get; set; }
+    public required string Status { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+    public long Version { get; set; } = 1;
+}
+
+public sealed class ManualOrderInvoiceDeliveryState
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid DocumentId { get; set; }
+    public Guid ConnectionId { get; set; }
+    public Guid PackageId { get; set; }
+    public required string IdempotencyKey { get; set; }
+    public required string RequestHash { get; set; }
+    public required string Status { get; set; }
+    public int AttemptCount { get; set; }
+    public string? ExternalReference { get; set; }
+    public string? ErrorCode { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+    public DateTimeOffset? CompletedAt { get; set; }
+    public long Version { get; set; } = 1;
+}
+
 public sealed class InvoiceSubmissionAttempt
 {
     public Guid Id { get; set; }
@@ -176,6 +224,7 @@ public sealed class MarketplaceDelivery
     public Guid? PackageId { get; set; }
     public int AttemptNumber { get; set; }
     public required string IdempotencyKey { get; set; }
+    public string? ExternalIdempotencyKey { get; set; }
     public required string RequestHash { get; set; }
     public required string DeliveryType { get; set; }
     public required string Status { get; set; }
@@ -183,4 +232,24 @@ public sealed class MarketplaceDelivery
     public string? ErrorCode { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? CompletedAt { get; set; }
+}
+
+public sealed class MarketplaceDeliveryState
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid InvoiceId { get; set; }
+    public Guid ConnectionId { get; set; }
+    public Guid? PackageId { get; set; }
+    public int AttemptNumber { get; set; }
+    public required string ExternalIdempotencyKey { get; set; }
+    public required string RequestHash { get; set; }
+    public required string DeliveryType { get; set; }
+    public required string Status { get; set; }
+    public string? ExternalReference { get; set; }
+    public string? ErrorCode { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+    public DateTimeOffset? CompletedAt { get; set; }
+    public long Version { get; set; } = 1;
 }

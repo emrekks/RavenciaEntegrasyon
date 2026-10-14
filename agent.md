@@ -1,5 +1,11 @@
 # Ravencia çalışma kuralları
 
+## Kullanıcı yayın sözleşmesi
+
+Kullanıcı bir değişiklik yapılmasını istediğinde, kullanıcı özellikle “pushlama”, “sunucuya aktarma”, “canlıya alma” veya benzeri bir istisna belirtmediği sürece değişiklik tamamlanmış sayılmaz: değişiklik doğrulanır, commit'lenir, uzak repository'ye gönderilir, sunucuda canlıya alınır ve sağlık kontrolü yapılır. Bu kural sonraki tüm geliştirme talepleri için varsayılandır; kullanıcı ayrıca söylemek zorunda değildir.
+
+Canlı sunucu SSH anahtarı kullanıcının Windows Masaüstü'ndeki `İş\ravencia.pem` dosyasıdır (`%USERPROFILE%\Desktop\İş\ravencia.pem`). Dağıtımlarda bu anahtar yolunu kullan; anahtarın içeriğini hiçbir zaman yazdırma, kopyalama, commit etme veya sohbete gönderme.
+
 Bu proje üzerinde kod, stil, yapılandırma, migration veya deployment dosyalarında değişiklik yapan her işlem aşağıdaki yayın akışıyla tamamlanır.
 
 ## Zorunlu yayın akışı

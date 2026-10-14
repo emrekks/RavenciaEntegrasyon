@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using MarketplaceHub.Application;
 
 namespace MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping;
@@ -10,34 +11,91 @@ public static class TrendyolJsonMapper
     {
         using var document = JsonDocument.Parse(json); var root = document.RootElement;
         var rows = new List<RemoteOrder>();
+        var issues = new List<AdapterPageIssue>();
         foreach (var package in Content(root))
         {
             var externalPackageId = Text(package, "id", "shipmentPackageId", "packageId"); var orderNumber = Text(package, "orderNumber");
-            if (string.IsNullOrWhiteSpace(externalPackageId) || string.IsNullOrWhiteSpace(orderNumber)) continue;
-            var lines = new List<RemoteOrderLine>(); var allocations = new List<RemotePackageAllocation>();
-            if (package.TryGetProperty("lines", out var lineArray) && lineArray.ValueKind == JsonValueKind.Array)
+            if (string.IsNullOrWhiteSpace(externalPackageId) || string.IsNullOrWhiteSpace(orderNumber))
             {
-                foreach (var line in lineArray.EnumerateArray())
-                {
-                    var externalLineId = Text(line, "lineId", "id"); if (string.IsNullOrWhiteSpace(externalLineId)) continue;
-                    var quantity = Decimal(line, "quantity"); var rawStatus = Text(line, "orderLineItemStatusName");
-                    lines.Add(new(externalLineId, Text(line, "stockCode", "merchantSku"), NullText(line, "barcode"), Text(line, "productName"), quantity, Decimal(line, "lineItemPrice", "lineUnitPrice", "lineGrossAmount", "price", "amount"), Decimal(line, "vatRate", "vatBaseAmount"), rawStatus, line.GetRawText()));
-                    allocations.Add(new(externalLineId, quantity, 0, 0, 0, 0));
-                }
+                var identity = string.IsNullOrWhiteSpace(externalPackageId) ? orderNumber : externalPackageId;
+                issues.Add(new("ORDER_PACKAGE_INVALID", identity ?? "unknown", "Sipariş paketi içeri alınmadı: paket kimliği ve sipariş numarası zorunludur."));
+                continue;
             }
-            var gross = Decimal(package, "packageGrossAmount", "grossAmount", "packageTotalPrice");
-            var discount = Decimal(package, "packageTotalDiscount");
-            if (discount == 0) discount = Decimal(package, "packageSellerDiscount", "totalDiscount") + Decimal(package, "packageTyDiscount", "totalTyDiscount");
-            var net = Decimal(package, "packageTotalPrice", "totalPrice");
-            // Trendyol's Yeni tab is driven by the top-level package status.
-            // For newly created packages shipmentPackageStatus may already be
-            // ReadyToShip while status is still Created; the latter is the
-            // authoritative workflow state for the order projection.
-            var rawStatusPackage = Text(package, "status", "shipmentPackageStatus"); var modified = Instant(package, "lastModifiedDate") ?? Instant(package, "orderDate") ?? DateTimeOffset.UnixEpoch; var ordered = Instant(package, "orderDate") ?? modified;
-            var remotePackage = new RemotePackage(externalPackageId, FirstArrayText(package, "originPackageIds"), rawStatusPackage, modified, NullText(package, "cargoProviderName", "cargoProviderCode", "cargoProviderId", "cargoProvider"), NullText(package, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber"), allocations, gross, discount, net);
-            rows.Add(new(orderNumber, orderNumber, ordered, modified, Text(package, "currencyCode"), gross, discount, net,
-                CustomerSnapshot(package),
-                ObjectSnapshot(package, "shipmentAddress"), ObjectSnapshot(package, "invoiceAddress"), lines, [remotePackage], package.GetRawText()));
+            try
+            {
+                var lines = new List<RemoteOrderLine>(); var allocations = new List<RemotePackageAllocation>();
+                if (package.TryGetProperty("lines", out var lineArray) && lineArray.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var line in lineArray.EnumerateArray())
+                    {
+                        var externalLineId = "";
+                        try
+                        {
+                            if (line.ValueKind != JsonValueKind.Object)
+                                throw new JsonException("Order line is not an object.");
+                            externalLineId = Text(line, "lineId", "id");
+                            if (string.IsNullOrWhiteSpace(externalLineId))
+                                throw new JsonException("Order line has no line ID.");
+                            if (!TryDecimal(line, out var quantity, "quantity") || quantity <= 0)
+                                throw new JsonException($"Order line {externalLineId} has no valid positive quantity.");
+                            if (!TryDecimal(line, out var unitPrice, "lineItemPrice", "lineUnitPrice", "lineGrossAmount", "price", "amount") || unitPrice < 0)
+                                throw new JsonException($"Order line {externalLineId} has no valid unit price.");
+                            if (!TryDecimal(line, out var vatRate, "vatRate", "vatBaseAmount") || vatRate < 0)
+                                throw new JsonException($"Order line {externalLineId} has no valid VAT value.");
+                            var barcode = NullText(line, "barcode");
+                            var sku = Text(line, "stockCode", "merchantSku");
+                            if (string.IsNullOrWhiteSpace(sku)) sku = barcode ?? "";
+                            var title = Text(line, "productName", "title");
+                            if (string.IsNullOrWhiteSpace(sku) || string.IsNullOrWhiteSpace(title))
+                                throw new JsonException($"Order line {externalLineId} has no SKU/barcode or product name.");
+                            var rawStatus = Text(line, "orderLineItemStatusName");
+                            lines.Add(new(externalLineId, sku, barcode, title, quantity, unitPrice, vatRate, rawStatus, line.GetRawText()));
+                            allocations.Add(new(externalLineId, quantity, 0, 0, 0, 0));
+                        }
+                        catch (JsonException exception)
+                        {
+                            // Keep the order and shipment package even when one product line is incomplete.
+                            issues.Add(new(
+                                "ORDER_PACKAGE_LINE_INVALID",
+                                string.IsNullOrWhiteSpace(externalLineId) ? externalPackageId : $"{externalPackageId}:{externalLineId}",
+                                $"Sipariş paketi {externalPackageId} alındı ancak ürün satırı eşlenemedi: {exception.Message}"));
+                        }
+                    }
+                }
+                if (lines.Count == 0
+                    && (!package.TryGetProperty("lines", out var rawLines)
+                        || rawLines.ValueKind != JsonValueKind.Array
+                        || rawLines.GetArrayLength() == 0))
+                    issues.Add(new("ORDER_PACKAGE_LINES_MISSING", externalPackageId, $"Sipariş paketi {externalPackageId} alındı ancak eşlenebilir ürün satırı bulunamadı."));
+                var gross = Decimal(package, "packageGrossAmount", "grossAmount", "packageTotalPrice");
+                var discount = Decimal(package, "packageTotalDiscount");
+                if (discount == 0) discount = Decimal(package, "packageSellerDiscount", "totalDiscount") + Decimal(package, "packageTyDiscount", "totalTyDiscount");
+                var net = Decimal(package, "packageTotalPrice", "totalPrice");
+                // Trendyol's Yeni tab is driven by the top-level package status.
+                // For newly created packages shipmentPackageStatus may already be
+                // ReadyToShip while status is still Created; the latter is the
+                // authoritative workflow state for the order projection.
+                var rawStatusPackage = Text(package, "status", "shipmentPackageStatus"); var modified = Instant(package, "lastModifiedDate") ?? Instant(package, "orderDate") ?? DateTimeOffset.UnixEpoch; var ordered = Instant(package, "orderDate") ?? modified;
+                var invoice = new RemotePackageInvoiceObservation(
+                    NullText(package, "invoiceStatus"),
+                    NullText(package, "invoiceNumber", "invoiceNo", "invoiceSerialNumber"),
+                    NullText(package, "invoiceLink", "invoiceUrl", "invoiceDocumentUrl"),
+                    FlexibleInstant(package, "invoiceUpdatedAt") ?? modified,
+                    ReferencesAreAuthoritative: HasAnyProperty(package, "invoiceNumber", "invoiceNo", "invoiceSerialNumber")
+                        && HasAnyProperty(package, "invoiceLink", "invoiceUrl", "invoiceDocumentUrl"));
+                var remotePackage = new RemotePackage(externalPackageId, FirstArrayText(package, "originPackageIds"), rawStatusPackage, modified, OrderCargoProvider(package), ScalarText(package, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber", "trackingInfoCode"), allocations, gross, discount, net, invoice, NormalizeCreatedBy(NullText(package, "createdBy")));
+                var dueAt = FlexibleInstant(package, "agreedDeliveryDate", "estimatedDeliveryEndDate", "lastDeliveryDate", "deliveryDate", "estimatedDeliveryStartDate", "packageLastModifiedDate", "packageDeliveryDate", "packageEstimatedDeliveryDate", "dueDate", "shipmentDueDate", "deliveryDueAt");
+                rows.Add(new(orderNumber, orderNumber, ordered, modified, Text(package, "currencyCode"), gross, discount, net,
+                    CustomerSnapshot(package),
+                    ObjectSnapshot(package, "shipmentAddress"), ObjectSnapshot(package, "invoiceAddress"), lines, [remotePackage], package.GetRawText(), dueAt));
+            }
+            catch (JsonException exception)
+            {
+                // A malformed package must not block every other package in
+                // the page. It is not projected; the issue is carried with
+                // the successful page for the worker to record.
+                issues.Add(new("ORDER_PACKAGE_INVALID", externalPackageId, $"Sipariş paketi {externalPackageId} içeri alınmadı: {exception.Message}"));
+            }
         }
         var next = NullText(root, "nextCursor");
         var hasMore = Bool(root, "hasMore");
@@ -51,8 +109,154 @@ public static class TrendyolJsonMapper
                 hasMore = true;
             }
         }
-        return new(rows, next, hasMore);
+        return new(rows, next, hasMore, null, issues);
     }
+
+    public static RemoteOrder? MergeOrderPackages(IEnumerable<RemoteOrder> candidates, string externalOrderId)
+    {
+        var matches = candidates
+            .Where(x => string.Equals(x.ExternalOrderId, externalOrderId, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(x.OrderNumber, externalOrderId, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (matches.Count == 0) return null;
+
+        var latest = matches.OrderByDescending(x => x.LastModifiedAt).First();
+        var packageCandidates = matches
+            .SelectMany(match => match.Packages.Select(package => new { Match = match, Package = package }))
+            .GroupBy(x => x.Package.ExternalPackageId, StringComparer.Ordinal)
+            .Select(group => group
+                .OrderByDescending(x => x.Package.OccurredAt)
+                .ThenByDescending(x => x.Match.LastModifiedAt)
+                .First())
+            .ToList();
+        var packages = packageCandidates.Select(x => x.Package).ToList();
+        var replacedPackageIds = packages
+            .Where(package => !string.IsNullOrWhiteSpace(package.OriginExternalPackageId)
+                && packages.Any(candidate => string.Equals(candidate.ExternalPackageId, package.OriginExternalPackageId, StringComparison.Ordinal)))
+            .Select(package => package.OriginExternalPackageId!)
+            .ToHashSet(StringComparer.Ordinal);
+        var currentPackageCandidates = packageCandidates
+            .Where(candidate => !replacedPackageIds.Contains(candidate.Package.ExternalPackageId))
+            .ToList();
+        var lines = currentPackageCandidates
+            .SelectMany(candidate => candidate.Match.Lines.Select(line => new { candidate, line }))
+            .GroupBy(x => x.line.ExternalLineId, StringComparer.Ordinal)
+            .Select(group =>
+            {
+                var metadata = group
+                    .OrderByDescending(x => x.candidate.Package.OccurredAt)
+                    .ThenByDescending(x => x.candidate.Match.LastModifiedAt)
+                    .Select(x => x.line)
+                    .First();
+                var quantity = group.Sum(x => x.candidate.Package.Allocations
+                    .Where(allocation => string.Equals(allocation.ExternalLineId, x.line.ExternalLineId, StringComparison.Ordinal))
+                    .Select(allocation => allocation.AllocatedQuantity)
+                    .DefaultIfEmpty(x.line.Quantity)
+                    .Sum());
+                return metadata with { Quantity = quantity };
+            })
+            .ToList();
+
+        return latest with
+        {
+            LastModifiedAt = matches.Max(x => x.LastModifiedAt),
+            GrossAmount = packages.Sum(x => x.GrossAmount),
+            DiscountAmount = packages.Sum(x => x.DiscountAmount),
+            NetAmount = packages.Sum(x => x.NetAmount),
+            Lines = lines,
+            Packages = packages
+        };
+    }
+
+    public static RemoteOrderPackage? ShipmentPackage(string json, string externalPackageId)
+    {
+        if (string.IsNullOrWhiteSpace(externalPackageId)) return null;
+        var order = Orders(json).Items.FirstOrDefault(candidate =>
+            candidate.Packages.Any(package => string.Equals(package.ExternalPackageId, externalPackageId, StringComparison.Ordinal)));
+        if (order is null) return null;
+        var package = order.Packages.FirstOrDefault(candidate =>
+            string.Equals(candidate.ExternalPackageId, externalPackageId, StringComparison.Ordinal));
+        return package is null ? null : new(order.ExternalOrderId, package, order);
+    }
+
+    public static RemoteOrderPackage? PreferShipmentPackageWithCargo(RemoteOrderPackage? preferredRead, RemoteOrderPackage? fallbackRead)
+    {
+        var preferred = HasCargo(preferredRead) ? preferredRead : HasCargo(fallbackRead) ? fallbackRead : fallbackRead ?? preferredRead;
+        var secondary = ReferenceEquals(preferred, preferredRead) ? fallbackRead : preferredRead;
+        if (preferred is null || secondary is null) return preferred;
+
+        var cargoProvider = string.IsNullOrWhiteSpace(preferred.Package.CargoProviderExternalId)
+            ? secondary.Package.CargoProviderExternalId
+            : preferred.Package.CargoProviderExternalId;
+        var cargoTrackingNumber = string.IsNullOrWhiteSpace(preferred.Package.CargoTrackingNumber)
+            ? secondary.Package.CargoTrackingNumber
+            : preferred.Package.CargoTrackingNumber;
+        var invoice = PreferInvoiceObservation(preferred.Package.Invoice, secondary.Package.Invoice);
+        var orderSnapshot = PreferOrderSnapshot(preferred.OrderSnapshot, secondary.OrderSnapshot);
+        if (cargoProvider == preferred.Package.CargoProviderExternalId
+            && cargoTrackingNumber == preferred.Package.CargoTrackingNumber
+            && invoice == preferred.Package.Invoice
+            && orderSnapshot == preferred.OrderSnapshot) return preferred;
+
+        return preferred with
+        {
+            Package = preferred.Package with
+            {
+                CargoProviderExternalId = cargoProvider,
+                CargoTrackingNumber = cargoTrackingNumber,
+                Invoice = invoice
+            },
+            OrderSnapshot = orderSnapshot
+        };
+    }
+
+    private static bool HasCargo(RemoteOrderPackage? package) =>
+        !string.IsNullOrWhiteSpace(package?.Package.CargoProviderExternalId)
+        || !string.IsNullOrWhiteSpace(package?.Package.CargoTrackingNumber);
+
+    private static RemotePackageInvoiceObservation? PreferInvoiceObservation(
+        RemotePackageInvoiceObservation? first,
+        RemotePackageInvoiceObservation? second)
+    {
+        if (first is null) return second;
+        if (second is null) return first;
+        var firstHasObservation = HasInvoiceObservation(first);
+        var secondHasObservation = HasInvoiceObservation(second);
+        var preferSecond = !firstHasObservation && secondHasObservation
+            || firstHasObservation && secondHasObservation
+                && second.SourceUpdatedAt is { } secondUpdatedAt
+                && (first.SourceUpdatedAt is null || secondUpdatedAt > first.SourceUpdatedAt.Value);
+        var preferred = preferSecond ? second : first;
+        var other = ReferenceEquals(preferred, first) ? second : first;
+        return preferred with
+        {
+            RawStatus = FirstText(preferred.RawStatus, other.RawStatus),
+            // References belong to the selected observation. Backfilling a
+            // missing field from an older payload makes a removed/replaced
+            // platform link look current.
+            InvoiceNumber = preferred.InvoiceNumber,
+            InvoiceUrl = preferred.InvoiceUrl,
+            SourceUpdatedAt = preferred.SourceUpdatedAt ?? other.SourceUpdatedAt
+        };
+    }
+
+    private static string? FirstText(string? preferred, string? other) =>
+        string.IsNullOrWhiteSpace(preferred) ? other : preferred;
+
+    private static bool HasInvoiceObservation(RemotePackageInvoiceObservation? invoice) => invoice is not null
+        && (!string.IsNullOrWhiteSpace(invoice.RawStatus)
+            || !string.IsNullOrWhiteSpace(invoice.InvoiceNumber)
+            || !string.IsNullOrWhiteSpace(invoice.InvoiceUrl)
+            || invoice.ReferencesAreAuthoritative);
+
+    private static bool HasAnyProperty(JsonElement value, params string[] names) =>
+        value.ValueKind == JsonValueKind.Object
+        && value.EnumerateObject().Any(property => names.Contains(property.Name, StringComparer.OrdinalIgnoreCase));
+
+    private static RemoteOrder? PreferOrderSnapshot(RemoteOrder? first, RemoteOrder? second) =>
+        first is null ? second
+            : second is null || first.LastModifiedAt >= second.LastModifiedAt ? first
+            : second;
 
     public static AdapterPageResult<RemoteProduct> Products(string json)
     {
@@ -74,15 +278,20 @@ public static class TrendyolJsonMapper
             next = $"p:{currentPage + 1}";
         else if (!string.IsNullOrWhiteSpace(token))
             next = $"t:{token}";
-        return new(rows, next, !string.IsNullOrWhiteSpace(next));
+        var total = NullableLong(root, "totalElements", "totalCount", "totalResults");
+        return new(rows, next, !string.IsNullOrWhiteSpace(next), total is > int.MaxValue ? int.MaxValue : (int?)total);
     }
 
-    public static AdapterPageResult<RemoteCatalogProduct> CatalogProducts(string json)
+    public static AdapterPageResult<RemoteCatalogProduct> CatalogProducts(string json) => CatalogProducts(json, isPendingApproval: false);
+
+    public static AdapterPageResult<RemoteCatalogProduct> PendingApprovalCatalogProducts(string json) => CatalogProducts(json, isPendingApproval: true);
+
+    private static AdapterPageResult<RemoteCatalogProduct> CatalogProducts(string json, bool isPendingApproval)
     {
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
         var rows = Content(root)
-            .Select(ProductSnapshot)
+            .Select(product => ProductSnapshot(product, isPendingApproval))
             .Where(x => !string.IsNullOrWhiteSpace(x.ExternalProductId))
             .ToList();
         var currentPage = Long(root, "page");
@@ -94,7 +303,8 @@ public static class TrendyolJsonMapper
             next = $"p:{currentPage + 1}";
         else if (!string.IsNullOrWhiteSpace(token))
             next = $"t:{token}";
-        return new(rows, next, !string.IsNullOrWhiteSpace(next));
+        var total = NullableLong(root, "totalElements", "totalCount", "totalResults");
+        return new(rows, next, !string.IsNullOrWhiteSpace(next), total is > int.MaxValue ? int.MaxValue : (int?)total);
     }
 
     public static RemoteCatalogProduct ProductSnapshot(string json)
@@ -103,7 +313,7 @@ public static class TrendyolJsonMapper
         return ProductSnapshot(document.RootElement);
     }
 
-    private static RemoteCatalogProduct ProductSnapshot(JsonElement product)
+    private static RemoteCatalogProduct ProductSnapshot(JsonElement product, bool isPendingApproval = false)
     {
         var productId = Text(product, "contentId", "id", "productMainId");
         var productMainId = NullText(product, "productMainId", "contentId");
@@ -112,7 +322,13 @@ public static class TrendyolJsonMapper
         var brand = NamedReference(product, "brand");
         var category = NamedReference(product, "category");
         var images = ImageUrls(product);
+        // Trendyol v2 places the slicer attribute (most commonly Renk) on the
+        // content object, while the size/stock attributes stay on each
+        // variant. Carry the content attributes down so every local variant
+        // keeps the complete option signature.
+        var contentOptions = Options(product);
         var variants = new List<RemoteCatalogVariant>();
+        var seenColorGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (product.TryGetProperty("variants", out var variantArray) && variantArray.ValueKind == JsonValueKind.Array)
         {
             foreach (var variant in variantArray.EnumerateArray())
@@ -121,17 +337,56 @@ public static class TrendyolJsonMapper
                 var barcode = NullText(variant, "barcode");
                 var sku = NullText(variant, "stockCode", "merchantSku", "sku") ?? barcode ?? variantId;
                 if (string.IsNullOrWhiteSpace(variantId) || string.IsNullOrWhiteSpace(sku)) continue;
+                var variantOptions = MergeOptions(contentOptions, Options(variant));
+                var explicitVariantImages = VariantImageUrls(variant);
+                var linkedVariantImages = LinkedImageUrls(product, variant);
+                var hasImagePayload = explicitVariantImages is not null || linkedVariantImages.Count > 0;
+                List<string>? variantImages = hasImagePayload
+                    ? (explicitVariantImages ?? []).Concat(linkedVariantImages)
+                        .Where(url => !string.IsNullOrWhiteSpace(url)).Select(url => url.Trim())
+                        .Distinct(StringComparer.OrdinalIgnoreCase).ToList()
+                    : null;
+                // In the official response, content.images belongs to the
+                // content-level slicer (for example one colour) and is shared
+                // by all size variants in that content. Keep the complete
+                // image set from the first size of each colour; copying that
+                // set to every size makes the local gallery fill with
+                // duplicate black/blue/etc. images.
+                var colorValue = ColorOptionValue(variantOptions);
+                if (colorValue is not null)
+                {
+                    var firstVariantForColor = seenColorGroups.Add(colorValue);
+                    if (!firstVariantForColor)
+                    {
+                        // An empty, non-null payload is intentional here. The
+                        // importer uses it to archive stale media previously
+                        // assigned to duplicate size variants.
+                        variantImages = hasImagePayload || images.Count > 0 ? [] : null;
+                    }
+                    else
+                    {
+                        variantImages = (variantImages ?? []).ToList();
+                        if (variantImages.Count == 0 && images.Count > 0)
+                        {
+                            variantImages = images.ToList();
+                            hasImagePayload = true;
+                        }
+                    }
+                }
                 variants.Add(new(
                     variantId,
                     sku,
                     barcode,
                     NullText(variant, "modelCode", "productMainId") ?? productMainId,
-                    Options(variant),
+                    variantOptions,
                     Bool(variant, "archived"),
-                    DecimalNullable(variant, "salePrice") ?? DecimalNullable(variant, "price", "salePrice"),
-                    DecimalNullable(variant, "listPrice") ?? DecimalNullable(variant, "price", "listPrice"),
+                    DecimalNullable(variant, "salePrice") ?? NestedDecimalNullable(variant, "price", "salePrice"),
+                    DecimalNullable(variant, "listPrice") ?? NestedDecimalNullable(variant, "price", "listPrice"),
                     DecimalNullable(variant, "vatRate"),
-                    variant.GetRawText()));
+                    DecimalNullable(variant, "quantity") ?? NestedDecimalNullable(variant, "stock", "quantity"),
+                    NestedText(variant, "price", "currency"),
+                    variant.GetRawText(),
+                    variantImages));
             }
         }
         if (variants.Count == 0)
@@ -140,9 +395,16 @@ public static class TrendyolJsonMapper
             var sku = NullText(product, "stockCode", "merchantSku", "sku") ?? barcode;
             var variantId = NullText(product, "variantId", "id", "barcode", "stockCode");
             if (!string.IsNullOrWhiteSpace(variantId) && !string.IsNullOrWhiteSpace(sku))
-                variants.Add(new(variantId!, sku!, barcode, NullText(product, "modelCode", "productMainId") ?? productMainId, Options(product), Bool(product, "archived"), DecimalNullable(product, "salePrice"), DecimalNullable(product, "listPrice"), DecimalNullable(product, "vatRate"), product.GetRawText()));
+                variants.Add(new(variantId!, sku!, barcode, NullText(product, "modelCode", "productMainId") ?? productMainId, contentOptions, Bool(product, "archived"), DecimalNullable(product, "salePrice") ?? NestedDecimalNullable(product, "price", "salePrice"), DecimalNullable(product, "listPrice") ?? NestedDecimalNullable(product, "price", "listPrice"), DecimalNullable(product, "vatRate"), DecimalNullable(product, "quantity") ?? NestedDecimalNullable(product, "stock", "quantity"), NestedText(product, "price", "currency"), product.GetRawText(), VariantImageUrls(product)));
         }
-        return new(productId, productMainId, title, description, brand.Id, brand.Name, category.Id, category.Name, images, variants, product.GetRawText());
+        var productImages = images;
+        var allImages = productImages
+            .Concat(variants.SelectMany(variant => variant.ImageUrls ?? []))
+            .Where(url => !string.IsNullOrWhiteSpace(url))
+            .Select(url => url.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        return new(productId, productMainId, title, description, brand.Id, brand.Name, category.Id, category.Name, allImages, variants, product.GetRawText(), IsPendingApproval: isPendingApproval);
     }
 
     private static (string? Id, string? Name) NamedReference(JsonElement value, string propertyName)
@@ -153,24 +415,144 @@ public static class TrendyolJsonMapper
 
     private static IReadOnlyList<string> ImageUrls(JsonElement product)
     {
-        if (!product.TryGetProperty("images", out var images) || images.ValueKind != JsonValueKind.Array) return [];
-        return images.EnumerateArray()
-            .Select(image => image.ValueKind == JsonValueKind.Object ? NullText(image, "url", "imageUrl") : image.ToString())
+        var urls = new List<string>();
+        foreach (var propertyName in new[] { "images", "imageUrls", "media", "colorImages", "colorImageUrls" })
+            if (product.TryGetProperty(propertyName, out var images)) urls.AddRange(ImageValues(images));
+        return urls.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private static IReadOnlyList<string> LinkedImageUrls(JsonElement product, JsonElement variant)
+    {
+        var identifiers = new[] { "variantId", "id", "barcode", "stockCode", "merchantSku", "sku" }
+            .Select(name => NullText(variant, name))
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!.Trim())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (identifiers.Count == 0) return [];
+        var urls = new List<string>();
+        foreach (var propertyName in new[] { "images", "imageUrls", "media", "colorImages", "colorImageUrls" })
+        {
+            if (!product.TryGetProperty(propertyName, out var images) || images.ValueKind != JsonValueKind.Array) continue;
+            urls.AddRange(images.EnumerateArray()
+                .Where(image => image.ValueKind == JsonValueKind.Object && ImageReferenceMatches(image, identifiers))
+                .SelectMany(ImageValues));
+        }
+        return urls.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private static bool ImageReferenceMatches(JsonElement image, IReadOnlySet<string> identifiers)
+    {
+        foreach (var name in new[] { "variantId", "barcode", "stockCode", "merchantSku", "sku" })
+        {
+            var value = NullText(image, name);
+            if (!string.IsNullOrWhiteSpace(value) && identifiers.Contains(value.Trim())) return true;
+        }
+        if (!image.TryGetProperty("variantIds", out var values) || values.ValueKind != JsonValueKind.Array) return false;
+        return values.EnumerateArray().Any(value => value.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined or JsonValueKind.Object or JsonValueKind.Array) && identifiers.Contains(value.ToString().Trim()));
+    }
+
+    private static IReadOnlyList<string>? VariantImageUrls(JsonElement variant)
+    {
+        var foundProperty = false;
+        foreach (var propertyName in new[] { "images", "imageUrls", "media", "imageUrl", "image", "colorImages", "colorImageUrls", "variantImages" })
+        {
+            if (!variant.TryGetProperty(propertyName, out var value)) continue;
+            foundProperty = true;
+            var urls = ImageValues(value);
+            if (urls.Count > 0) return urls;
+        }
+
+        return foundProperty ? [] : null;
+    }
+
+    private static IReadOnlyList<string> ImageValues(JsonElement images)
+    {
+        if (images.ValueKind == JsonValueKind.Object)
+        {
+            var direct = NullText(images, "url", "imageUrl", "src", "link");
+            if (!string.IsNullOrWhiteSpace(direct)) return [direct.Trim()];
+            foreach (var propertyName in new[] { "images", "imageUrls", "media", "colorImages", "colorImageUrls", "variantImages" })
+            {
+                if (images.TryGetProperty(propertyName, out var nested))
+                    return ImageValues(nested);
+            }
+        }
+
+        IEnumerable<JsonElement> values = images.ValueKind == JsonValueKind.Array
+            ? images.EnumerateArray()
+            : [images];
+        return values
+            .Select(image => image.ValueKind == JsonValueKind.Object ? NullText(image, "url", "imageUrl", "src", "link") : image.ValueKind == JsonValueKind.String ? image.GetString() : null)
             .Where(url => !string.IsNullOrWhiteSpace(url))
             .Select(url => url!.Trim())
             .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Take(8)
             .ToList();
     }
 
     private static IReadOnlyDictionary<string, string> Options(JsonElement value)
     {
-        if (!value.TryGetProperty("attributes", out var attributes) || attributes.ValueKind != JsonValueKind.Array) return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        return attributes.EnumerateArray()
-            .Select(attribute => (Key: NullText(attribute, "attributeName", "name"), Value: NullText(attribute, "attributeValue", "value")))
-            .Where(x => !string.IsNullOrWhiteSpace(x.Key) && !string.IsNullOrWhiteSpace(x.Value))
-            .GroupBy(x => x.Key!, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(x => x.Key, x => x.Last().Value!, StringComparer.OrdinalIgnoreCase);
+        // Catalog responses have used both the approved-products names and the
+        // catalog names for the same fields. Keep the source order: it is the
+        // marketplace's variant order and is later used for the gallery.
+        var entries = new List<(string Key, string Value, bool HasValueId)>();
+        foreach (var propertyName in new[] { "attributes", "variantAttributes", "options", "optionValues" })
+        {
+            if (!value.TryGetProperty(propertyName, out var attributes) || attributes.ValueKind != JsonValueKind.Array) continue;
+            foreach (var attribute in attributes.EnumerateArray())
+            {
+                var key = attribute.ValueKind == JsonValueKind.Object
+                    ? NullText(attribute, "attributeName", "attribute_name", "optionName", "name", "label")
+                    : null;
+                var optionValue = attribute.ValueKind == JsonValueKind.Object
+                    ? NullText(attribute, "attributeValue", "attribute_value", "optionValue", "value", "text")
+                    : null;
+                var hasValueId = attribute.ValueKind == JsonValueKind.Object
+                    && !string.IsNullOrWhiteSpace(NullText(attribute, "attributeValueId", "attribute_value_id", "optionValueId"));
+                if (!string.IsNullOrWhiteSpace(key) && !string.IsNullOrWhiteSpace(optionValue)) entries.Add((key.Trim(), optionValue.Trim(), hasValueId));
+            }
+        }
+
+        return entries
+            .GroupBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => IsVariantColorOptionKey(group.Key) && group.Any(entry => entry.HasValueId)
+                    ? group.FirstOrDefault(entry => !entry.HasValueId).Value ?? group.Last().Value
+                    : group.Last().Value,
+                StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static bool IsVariantColorOptionKey(string value)
+    {
+        var normalized = value.Replace(" ", "", StringComparison.Ordinal).Trim().ToUpperInvariant();
+        return normalized is "RENK" or "COLOR" or "COLOUR";
+    }
+
+    private static IReadOnlyDictionary<string, string> MergeOptions(IReadOnlyDictionary<string, string> parent, IReadOnlyDictionary<string, string> variant)
+    {
+        var merged = new Dictionary<string, string>(parent, StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in variant) merged[pair.Key] = pair.Value;
+        return merged;
+    }
+
+    private static bool HasColorOption(IReadOnlyDictionary<string, string> options) => options.Keys.Any(IsColorOptionKey);
+
+    private static string? ColorOptionValue(IReadOnlyDictionary<string, string> options) => options
+        .Where(pair => IsColorOptionKey(pair.Key) && !string.IsNullOrWhiteSpace(pair.Value))
+        .OrderBy(pair => IsWebColorOptionKey(pair.Key) ? 1 : 0)
+        .Select(pair => pair.Value.Trim().ToUpperInvariant())
+        .FirstOrDefault();
+
+    private static bool IsWebColorOptionKey(string value)
+    {
+        var normalized = value.Replace(" ", "", StringComparison.Ordinal).Trim().ToUpperInvariant();
+        return normalized is "WEBCOLOR" or "WEBCOLOUR" or "WEBRENK";
+    }
+
+    private static bool IsColorOptionKey(string value)
+    {
+        var normalized = value.Replace(" ", "", StringComparison.Ordinal).Trim().ToUpperInvariant();
+        return normalized is "RENK" or "WEBCOLOR" or "COLOR" or "COLOUR";
     }
 
     public static RemoteProduct Product(string json, string barcode)
@@ -246,7 +628,13 @@ public static class TrendyolJsonMapper
         {
             var claimId = Text(claim, "claimId", "id"); var orderNumber = Text(claim, "orderNumber"); if (claimId.Length == 0 || orderNumber.Length == 0) continue;
             var lines = ReturnLines(claim);
-            var status = ClaimStatus(claim); rows.Add(new(claimId, orderNumber, status, ClaimReasonCode(claim), ClaimReasonText(claim), FlexibleInstant(claim, "autoApproveDate", "actionDueDate", "dueDate"), Instant(claim, "lastModifiedDate") ?? DateTimeOffset.UnixEpoch, lines, claim.GetRawText(), NullText(claim, "cargoTrackingLink", "trackingLink")));
+            var status = ClaimStatus(claim);
+            var lastModifiedAt = Instant(claim, "lastModifiedDate");
+            var claimDate = FlexibleInstant(claim, "claimDate", "createdDate", "requestDate");
+            var actionDueAt = FlexibleInstant(claim, "autoApproveDate", "actionDueDate", "dueDate")
+                ?? (IsWaitingInAction(status) && lastModifiedAt is { } waitingInActionAt ? (DateTimeOffset?)waitingInActionAt.AddHours(48) : null)
+                ?? (claimDate is { } requestedAt ? (DateTimeOffset?)requestedAt.AddDays(7) : null);
+            rows.Add(new(claimId, orderNumber, status, ClaimReasonCode(claim), ClaimReasonText(claim), actionDueAt, lastModifiedAt ?? DateTimeOffset.UnixEpoch, lines, claim.GetRawText(), ReturnCargoProvider(claim), ReturnCargoField(claim, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber"), ReturnCargoField(claim, "cargoTrackingLink", "trackingLink")));
         }
         var page = Long(root, "page"); var totalPages = Long(root, "totalPages"); var hasMore = totalPages > 0 && page + 1 < totalPages;
         return new(rows, hasMore ? (page + 1).ToString(CultureInfo.InvariantCulture) : null, hasMore);
@@ -267,7 +655,7 @@ public static class TrendyolJsonMapper
             var quantity = Decimal(entry.Item, "quantity", "returnedQuantity");
             if (quantity <= 0) quantity = 1;
             if (lineId.Length > 0 && entry.ExternalOrderLineId.Length > 0)
-                lines.Add(new(lineId, entry.ExternalOrderLineId, quantity, entry.AlternateExternalOrderLineIds));
+                lines.Add(new(lineId, entry.ExternalOrderLineId, quantity, entry.AlternateExternalOrderLineIds, ItemStatus(entry.Item)));
         }
         return lines
             .GroupBy(x => $"{x.ExternalLineId}:{x.ExternalOrderLineId}", StringComparer.Ordinal)
@@ -287,7 +675,12 @@ public static class TrendyolJsonMapper
         if (string.IsNullOrWhiteSpace(orderNumber)) return null;
 
         var ordered = Instant(claim, "orderDate") ?? Instant(claim, "claimDate") ?? DateTimeOffset.UnixEpoch;
-        var modified = Instant(claim, "lastModifiedDate") ?? Instant(claim, "claimDate") ?? ordered;
+        var packageOccurredAt = Instant(claim, "lastModifiedDate") ?? Instant(claim, "claimDate") ?? ordered;
+        // This is a partial order projection reconstructed from a return claim.
+        // Its claim timestamp can be newer than the original order timestamp,
+        // but it must not prevent a later authoritative order/package read from
+        // replacing the incomplete customer, address, and invoice snapshots.
+        var modified = DateTimeOffset.UnixEpoch;
         var lines = new List<RemoteOrderLine>();
         foreach (var entry in ClaimLineEntries(claim))
         {
@@ -300,11 +693,43 @@ public static class TrendyolJsonMapper
         var packageId = Text(claim, "orderOutboundPackageId", "orderShipmentPackageId");
         if (string.IsNullOrWhiteSpace(packageId)) packageId = $"return-claim:{Text(claim, "claimId", "id")}";
         var allocations = lines.Select(x => new RemotePackageAllocation(x.ExternalLineId, x.Quantity, 0, x.Quantity, x.Quantity, 0)).ToList();
-        var package = new RemotePackage(packageId, null, "Delivered", modified,
+        var package = new RemotePackage(packageId, null, "Delivered", packageOccurredAt,
             NullText(claim, "cargoProviderName", "cargoProviderCode", "cargoProvider"),
-            NullText(claim, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber"), allocations, gross, 0, gross);
+            NullText(claim, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber"), allocations, gross, 0, gross, CreatedBy: NormalizeCreatedBy(NullText(claim, "createdBy")));
         return new(orderNumber, orderNumber, ordered, modified, NullText(claim, "currencyCode") ?? "TRY", gross, 0, gross,
-            CustomerSnapshot(claim), ObjectSnapshot(claim, "shipmentAddress"), ObjectSnapshot(claim, "invoiceAddress"), lines, [package], claim.GetRawText());
+            ReturnClaimCustomerSnapshot(claim), ObjectSnapshot(claim, "shipmentAddress"), ObjectSnapshot(claim, "invoiceAddress"), lines, [package], claim.GetRawText());
+    }
+
+    public static bool IsReturnClaimReadModelSnapshot(string? customerSnapshotJson)
+    {
+        if (string.IsNullOrWhiteSpace(customerSnapshotJson)) return false;
+        try
+        {
+            using var document = JsonDocument.Parse(customerSnapshotJson);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) return false;
+            if (root.TryGetProperty("_ravenciaReadModelSource", out var source)
+                && string.Equals(source.GetString(), "RETURN_CLAIM", StringComparison.Ordinal)) return true;
+
+            // Older reconstructed rows were stored before the explicit marker
+            // existed. These claim-only identity fields let reconciliation
+            // repair them without treating a claim timestamp as order truth.
+            return root.TryGetProperty("claimId", out _)
+                && root.TryGetProperty("claimDate", out _)
+                && (root.TryGetProperty("orderOutboundPackageId", out _)
+                    || root.TryGetProperty("orderShipmentPackageId", out _));
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static string ReturnClaimCustomerSnapshot(JsonElement claim)
+    {
+        var snapshot = JsonNode.Parse(CustomerSnapshot(claim)) as JsonObject ?? new JsonObject();
+        snapshot["_ravenciaReadModelSource"] = "RETURN_CLAIM";
+        return snapshot.ToJsonString();
     }
 
     private static void AddReturnOrderLine(List<RemoteOrderLine> lines, string externalLineId, JsonElement orderLine, decimal quantity)
@@ -316,6 +741,8 @@ public static class TrendyolJsonMapper
             Text(orderLine, "productName", "title"), quantity, Decimal(orderLine, "price", "lineUnitPrice", "amount"),
             Decimal(orderLine, "vatRate"), "Delivered", orderLine.GetRawText()));
     }
+
+    private static string? NormalizeCreatedBy(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim().ToLowerInvariant();
 
     public static IReadOnlyList<ReturnIssueReason> ReturnIssueReasons(string json)
     {
@@ -440,9 +867,25 @@ public static class TrendyolJsonMapper
                 WalkClaimLineEntries(property.Value, currentOrderLine, rows);
         }
     }
+    private static string? ItemStatus(JsonElement item)
+    {
+        if (!item.TryGetProperty("claimItemStatus", out var status)) return null;
+        var text = status.ValueKind == JsonValueKind.Object ? Text(status, "name") : status.ValueKind == JsonValueKind.String ? status.GetString() : null;
+        return string.IsNullOrWhiteSpace(text) ? null : text.Trim();
+    }
     private static string ClaimStatus(JsonElement claim) { if (claim.TryGetProperty("claimItemStatus", out var value)) return value.ValueKind == JsonValueKind.Object ? Text(value, "name") : value.ToString(); foreach (var item in ClaimItems(claim)) if (item.TryGetProperty("claimItemStatus", out var status)) return status.ValueKind == JsonValueKind.Object ? Text(status, "name") : status.ToString(); return ""; }
+    private static bool IsWaitingInAction(string status) => string.Equals(status, "WaitingInAction", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(status, "WAITING_IN_ACTION", StringComparison.OrdinalIgnoreCase);
     private static string? ClaimReasonCode(JsonElement claim) => NestedReason(claim, "code");
-    private static string? ClaimReasonText(JsonElement claim) => NestedReason(claim, "name");
+    private static string? ClaimReasonText(JsonElement claim)
+    {
+        foreach (var item in ClaimItems(claim))
+        {
+            var customerNote = NullText(item, "customerNote");
+            if (!string.IsNullOrWhiteSpace(customerNote)) return customerNote.Trim();
+        }
+        return NestedReason(claim, "name");
+    }
     private static string? NestedReason(JsonElement claim, string field) { foreach (var item in ClaimItems(claim)) if (item.TryGetProperty("customerClaimItemReason", out var reason)) return NullText(reason, field); return null; }
     private static string Snapshot(JsonElement value, params string[] fields) { var map = new Dictionary<string, JsonElement>(); foreach (var field in fields) if (value.TryGetProperty(field, out var item)) map[field] = item.Clone(); return JsonSerializer.Serialize(map); }
     private static string ObjectSnapshot(JsonElement value, string field) { if (value.TryGetProperty(field, out var item) && item.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined)) return item.GetRawText(); return "{}"; }
@@ -470,7 +913,64 @@ public static class TrendyolJsonMapper
     private static string? FirstArrayText(JsonElement value, string field) => value.TryGetProperty(field, out var array) && array.ValueKind == JsonValueKind.Array && array.GetArrayLength() > 0 ? array[0].ToString() : null;
     private static string Text(JsonElement value, params string[] names) => NullText(value, names) ?? "";
     private static string? NullText(JsonElement value, params string[] names) { foreach (var name in names) if (value.TryGetProperty(name, out var item) && item.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined)) return item.ToString(); return null; }
-    private static decimal Decimal(JsonElement value, params string[] names) { foreach (var name in names) if (value.TryGetProperty(name, out var item) && (item.TryGetDecimal(out var result) || decimal.TryParse(item.ToString(), CultureInfo.InvariantCulture, out result))) return result; return 0; }
+    private static string? NestedText(JsonElement value, string objectName, params string[] names) => value.TryGetProperty(objectName, out var nested) && nested.ValueKind == JsonValueKind.Object ? NullText(nested, names) : null;
+    private static string? ReturnCargoProvider(JsonElement claim) =>
+        ReturnCargoField(claim, "cargoProviderName", "cargoProviderCode", "cargoProvider");
+    private static string? OrderCargoProvider(JsonElement package)
+    {
+        var nestedProvider = NestedText(package, "cargoProvider", "name", "shortName", "code", "label");
+        return !string.IsNullOrWhiteSpace(nestedProvider)
+            ? nestedProvider
+            : ScalarText(package, "cargoProviderName", "cargoProviderCode", "cargoProviderId", "cargoProvider");
+    }
+    private static string? ReturnCargoField(JsonElement claim, params string[] names)
+    {
+        // Trendyol puts a rejected return shipment back to the customer in
+        // rejectedPackageInfo. replacementOutboundpackageinfo is for exchange
+        // shipments and must not replace the rejected return's cargo details.
+        var rejectedCargo = NestedCargoText(claim, "rejectedPackageInfo", names);
+        if (!string.IsNullOrWhiteSpace(rejectedCargo)) return rejectedCargo;
+
+        var rootValue = ScalarText(claim, names);
+        if (!string.IsNullOrWhiteSpace(rootValue)) return rootValue;
+
+        return NestedCargoText(claim, "returnPackageInfo", names);
+    }
+    private static string? NestedCargoText(JsonElement value, string objectName, params string[] names)
+    {
+        if (!value.TryGetProperty(objectName, out var nested)) return null;
+        if (nested.ValueKind == JsonValueKind.Object) return ScalarText(nested, names);
+        if (nested.ValueKind != JsonValueKind.Array) return null;
+        foreach (var item in nested.EnumerateArray())
+        {
+            var result = item.ValueKind == JsonValueKind.Object ? ScalarText(item, names) : null;
+            if (!string.IsNullOrWhiteSpace(result)) return result;
+        }
+        return null;
+    }
+    private static string? ScalarText(JsonElement value, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (!value.TryGetProperty(name, out var item)) continue;
+            if (item.ValueKind is JsonValueKind.String or JsonValueKind.Number) return item.ToString();
+            if (item.ValueKind == JsonValueKind.Object && string.Equals(name, "cargoProvider", StringComparison.OrdinalIgnoreCase))
+            {
+                var provider = NullText(item, "name", "code", "label");
+                if (!string.IsNullOrWhiteSpace(provider)) return provider;
+            }
+        }
+        return null;
+    }
+    private static decimal Decimal(JsonElement value, params string[] names) => TryDecimal(value, out var result, names) ? result : 0;
+    private static bool TryDecimal(JsonElement value, out decimal result, params string[] names)
+    {
+        foreach (var name in names)
+            if (value.TryGetProperty(name, out var item) && item.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined) && (item.TryGetDecimal(out result) || decimal.TryParse(item.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out result))) return true;
+        result = 0;
+        return false;
+    }
+    private static decimal? NestedDecimalNullable(JsonElement value, string objectName, params string[] names) => value.TryGetProperty(objectName, out var nested) && nested.ValueKind == JsonValueKind.Object ? DecimalNullable(nested, names) : null;
     private static decimal? DecimalNullable(JsonElement value, params string[] names)
     {
         foreach (var name in names)
@@ -486,6 +986,12 @@ public static class TrendyolJsonMapper
         return null;
     }
     private static long Long(JsonElement value, string name) => value.TryGetProperty(name, out var item) && item.TryGetInt64(out var result) ? result : 0;
+    private static long? NullableLong(JsonElement value, params string[] names)
+    {
+        foreach (var name in names)
+            if (value.TryGetProperty(name, out var item) && item.TryGetInt64(out var result)) return result;
+        return null;
+    }
     private static bool Bool(JsonElement value, string name)
     {
         if (!value.TryGetProperty(name, out var item)) return false;

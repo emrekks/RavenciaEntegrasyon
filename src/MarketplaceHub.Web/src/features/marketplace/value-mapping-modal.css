@@ -1,0 +1,150 @@
+/* The value mapping dialog stacks its title block above the action row, so the text never gets squeezed beside the buttons. */
+.mapping-values-modal .value-mapping-editor .value-mapping-heading { flex-direction: column; align-items: stretch; gap: 12px; }
+.mapping-values-modal .value-mapping-editor .value-mapping-heading-actions { width: 100%; justify-content: flex-start; }
+
+/* One marketplace value can take several panel values: a compact multi select instead of a plain select. */
+.panel-value-multi { position: relative; min-width: 0; }
+.panel-value-multi-trigger { display: flex; width: 100%; min-height: 40px; align-items: center; gap: 8px; padding: 0 12px; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: 8px; font-size: 13px; font-weight: 500; text-align: left; }
+.panel-value-multi-trigger > span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.panel-value-multi-trigger.is-empty > span { color: var(--rv-color-muted); }
+.panel-value-multi-trigger > b { display: grid; min-width: 20px; height: 20px; place-items: center; color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border-radius: 10px; font-size: 11px; }
+.panel-value-multi-menu { position: fixed; z-index: calc(var(--rv-z-modal) + 10); box-sizing: border-box; display: grid; align-content: start; gap: 2px; overflow: auto; padding: 6px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: 10px; box-shadow: 0 14px 32px rgb(0 0 0 / .3); }
+.panel-value-multi-menu > button { display: flex; width: 100%; min-height: 34px; align-items: center; justify-content: flex-start; gap: 10px; padding: 0 8px; color: var(--rv-color-ink); background: transparent; border: 0; border-radius: 6px; font-size: 13px; font-weight: 500; text-align: left; }
+.panel-value-multi-menu > button:hover { background: color-mix(in srgb, var(--rv-color-ink) 8%, transparent); }
+.panel-value-multi-menu > button > i { display: grid; width: 18px; height: 18px; flex: none; place-items: center; color: #fff; border: 1px solid var(--rv-color-border-strong); border-radius: 5px; }
+.panel-value-multi-menu > button.active > i { background: var(--rv-color-primary); border-color: var(--rv-color-primary); }
+.panel-value-multi-hint { margin: 2px 6px 6px; color: var(--rv-color-muted); font-size: 12px; font-weight: 600; }
+.panel-value-multi-menu > button > span { min-width: 0; flex: 1; }
+.panel-value-multi-menu > button > em { max-width: 45%; flex: none; overflow: hidden; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-style: normal; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.panel-value-multi-menu > button.is-unmatched > em { color: var(--rv-color-warning); background: var(--rv-color-warning-soft); }
+.panel-value-multi-menu > button.is-here > em { color: var(--rv-color-accent); background: var(--rv-color-accent-soft); }
+.panel-value-multi-menu > button.is-elsewhere > em { color: var(--rv-color-muted); background: color-mix(in srgb, var(--rv-color-ink) 8%, transparent); }
+
+/* The backup tools of the mapping page sit in one quiet group instead of a loud pill above two buttons. */
+.mapping-reference-heading .mapping-reference-heading-actions { display: flex; flex-direction: row; flex-wrap: nowrap; align-items: center; justify-content: flex-end; gap: 10px; padding: 0; background: none; border: 0; border-radius: 0; }
+.mapping-reference-heading .mapping-reference-heading-actions > span { min-height: 0; padding: 0; color: var(--rv-color-primary); background: none; border: 0; border-radius: 0; font-size: 13px; font-weight: 600; letter-spacing: 0; text-transform: none; white-space: nowrap; }
+.mapping-reference-heading .mapping-transfer-actions { flex-wrap: nowrap; }
+.panel-value-multi-menu > button:disabled { opacity: .55; cursor: not-allowed; }
+.panel-value-multi-menu > button:disabled:hover { background: transparent; }
+.value-mapping-unmatched { --unmatched-tone: var(--rv-color-info); display: grid; gap: 10px; padding: 12px 14px; background: color-mix(in srgb, var(--unmatched-tone) 7%, var(--rv-color-surface)); border: 1px solid color-mix(in srgb, var(--unmatched-tone) 35%, var(--rv-color-border)); border-radius: 10px; }
+.value-mapping-unmatched.is-complete { --unmatched-tone: var(--rv-color-accent); }
+.value-mapping-unmatched-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.value-mapping-unmatched-head > strong { color: var(--rv-color-ink); font-size: 14px; font-weight: 600; }
+.value-mapping-unmatched-head > small { color: var(--rv-color-muted); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.value-mapping-unmatched-bar { display: block; height: 6px; overflow: hidden; background: color-mix(in srgb, var(--unmatched-tone) 18%, transparent); border-radius: 3px; }
+.value-mapping-unmatched-bar > b { display: block; height: 100%; background: var(--unmatched-tone); border-radius: 3px; transition: width .3s ease; }
+.value-mapping-unmatched-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.value-mapping-unmatched-chips.is-open { max-height: 132px; overflow: auto; padding-right: 4px; }
+.value-mapping-unmatched-chips > span { padding: 3px 10px; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 12px; font-size: 12px; font-weight: 500; }
+.value-mapping-unmatched-chips > button { padding: 3px 10px; color: var(--unmatched-tone); background: transparent; border: 1px dashed color-mix(in srgb, var(--unmatched-tone) 55%, transparent); border-radius: 12px; font-size: 12px; font-weight: 600; }
+
+/* Compact sizes: a category can have hundreds of marketplace values, so every row stays slim. */
+.mapping-values-modal .value-mapping-rows { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 6px; }
+.mapping-values-modal .value-mapping-row { grid-template-columns: minmax(80px, .8fr) 18px minmax(120px, 1.2fr); gap: 8px; padding: 6px 10px; border-radius: 8px; }
+.mapping-values-modal .value-mapping-row > span { font-size: 13px; font-weight: 600; }
+.mapping-values-modal .value-mapping-row-link, .mapping-values-modal .value-mapping-row-link .ui-icon { width: 14px; height: 14px; }
+.mapping-values-modal .panel-value-multi-trigger { min-height: 34px; padding: 0 10px; font-size: 13px; }
+.mapping-values-modal .value-mapping-unmatched { gap: 8px; padding: 10px 12px; }
+.mapping-values-modal .value-mapping-unmatched-head > strong { font-size: 13px; }
+.mapping-values-modal .value-mapping-unmatched-bar { height: 4px; }
+.mapping-values-modal .value-mapping-unmatched-chips > span, .mapping-values-modal .value-mapping-unmatched-chips > button { padding: 1px 8px; font-size: 11px; line-height: 1.5; }
+.mapping-values-modal .value-mapping-heading-actions > button { min-height: 32px; padding-inline: 10px; font-size: 12px; }
+
+/* Template-filled rows and the share-with-other-categories switch */
+.value-mapping-editor .value-mapping-template-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-inline-start: 6px;
+  padding: 1px 6px;
+  color: var(--rv-color-primary);
+  font-size: var(--rv-font-size-xs);
+  font-style: normal;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--rv-color-primary) 10%, transparent);
+  border-radius: 999px;
+  vertical-align: middle;
+}
+
+.value-mapping-editor .value-mapping-share {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--rv-color-muted);
+  font-size: var(--rv-font-size-sm);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.value-mapping-editor .value-mapping-share input { margin: 0; accent-color: var(--rv-color-primary); }
+.value-mapping-editor .value-mapping-used-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin: 6px 0 0;
+  color: var(--rv-color-muted);
+  font-size: var(--rv-font-size-sm);
+}
+
+.value-mapping-editor .value-mapping-used-filter button {
+  padding: 0;
+  color: var(--rv-color-primary);
+  font: inherit;
+  font-weight: 600;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+/* Confidence-based suggestions waiting for approval */
+.value-mapping-editor .value-mapping-suggestions {
+  display: grid;
+  gap: 8px;
+  margin-block: 8px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--rv-color-primary) 5%, var(--rv-color-surface));
+  border: 1px solid color-mix(in srgb, var(--rv-color-primary) 25%, var(--rv-color-border));
+  border-radius: 8px;
+}
+
+.value-mapping-editor .value-mapping-suggestions-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.value-mapping-editor .value-mapping-suggestions-head strong { margin-inline-end: auto; }
+.value-mapping-editor .value-mapping-suggestions ul { display: grid; gap: 4px; max-height: 220px; margin: 0; padding: 0; overflow-y: auto; list-style: none; }
+.value-mapping-editor .value-mapping-suggestions li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: var(--rv-font-size-sm); }
+.value-mapping-editor .value-mapping-suggestions li b { color: var(--rv-color-muted); font-weight: 400; }
+.value-mapping-editor .value-mapping-suggestions li small { color: var(--rv-color-muted); font-variant-numeric: tabular-nums; }
+.value-mapping-editor .value-mapping-suggestions button { padding: 2px 8px; font-size: var(--rv-font-size-sm); }
+/* Category suggestions under the marketplace category picker */
+.mapping-reference-card .category-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin-top: var(--rv-space-3);
+  padding: 10px 12px;
+  color: var(--rv-color-muted);
+  font-size: var(--rv-font-size-sm);
+  background: var(--rv-color-surface-raised);
+  border: 1px dashed color-mix(in srgb, var(--rv-color-primary) 35%, var(--rv-color-border));
+  border-radius: var(--rv-radius-md);
+}
+
+.mapping-reference-card .category-suggestions > span { margin-inline-end: 4px; font-weight: 500; }
+
+.mapping-reference-card .category-suggestions button {
+  max-width: 100%;
+  padding: 3px 10px;
+  overflow: hidden;
+  color: var(--rv-color-ink);
+  font: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--rv-color-primary) 6%, var(--rv-color-surface));
+  border: 1px solid color-mix(in srgb, var(--rv-color-primary) 25%, var(--rv-color-border));
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.mapping-reference-card .category-suggestions button:hover,
+.mapping-reference-card .category-suggestions button.active { border-color: var(--rv-color-primary); }
+.mapping-reference-card .category-suggestions button.active { color: var(--rv-color-primary); font-weight: 600; }
+.mapping-reference-card .category-suggestions button:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }

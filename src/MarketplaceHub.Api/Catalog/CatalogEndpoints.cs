@@ -6,6 +6,7 @@ using MarketplaceHub.Api.Security;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Api.Catalog;
@@ -21,6 +22,8 @@ public static class CatalogEndpoints
             try { return await next(context); }
             catch (ArgumentException exception) { return Problem(context.HttpContext, new("INVALID_CURSOR", exception.Message, 400)); }
         });
+
+        api.MapHepsiburadaProductMatchEndpoints();
 
         api.MapGet("/catalog/categories", async (HttpContext http, ICatalogService service, int? limit, string? after) =>
             Tenant(http) is { } tenant ? Results.Ok(await service.ListCategoriesAsync(tenant.TenantId, PageSize(limit), after, http.RequestAborted)) : Unauthorized(http));
@@ -48,6 +51,12 @@ public static class CatalogEndpoints
             Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? Result(await service.DeactivateAttributeAsync(tenant.TenantId, id, version, http.RequestAborted), Results.Ok) : failure!) : Unauthorized(http));
         api.MapPost("/catalog/attributes/{id:guid}/values", async (Guid id, IReadOnlyList<CreateAttributeValueCommand> command, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.AddAttributeValuesAsync(tenant.TenantId, id, command, http.RequestAborted), Results.Ok) : MissingContext(http));
+        api.MapPut("/catalog/attributes/{id:guid}/values/{valueId:guid}", async (Guid id, Guid valueId, UpdateAttributeValueCommand command, HttpContext http, ICatalogService service) =>
+            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.UpdateAttributeValueAsync(tenant.TenantId, id, valueId, version, command, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http));
+        api.MapPut("/catalog/attributes/{id:guid}/values/order", async (Guid id, ReorderAttributeValuesCommand command, HttpContext http, ICatalogService service) =>
+            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.ReorderAttributeValuesAsync(tenant.TenantId, id, version, command, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http));
+        api.MapGet("/catalog/attributes/{id:guid}/used-values", async (Guid id, HttpContext http, ICatalogService service) =>
+            Tenant(http) is { } tenant ? Result(await service.UsedAttributeValueIdsAsync(tenant.TenantId, id, http.RequestAborted), Results.Ok) : Unauthorized(http));
         api.MapDelete("/catalog/attributes/{id:guid}/values/{valueId:guid}", async (Guid id, Guid valueId, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant ? Result(await service.DeactivateAttributeValueAsync(tenant.TenantId, id, valueId, http.RequestAborted), Results.Ok) : Unauthorized(http));
         api.MapGet("/catalog/categories/{id:guid}/attribute-requirements", async (Guid id, HttpContext http, ICatalogService service) =>
@@ -55,14 +64,34 @@ public static class CatalogEndpoints
         api.MapPut("/catalog/categories/{id:guid}/attribute-requirements", async (Guid id, IReadOnlyList<AttributeRequirementCommand> command, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? Result(await service.ReplaceRequirementsAsync(tenant.TenantId, id, version, command, http.RequestAborted), Results.Ok) : failure!) : Unauthorized(http));
 
-        api.MapGet("/products", async (HttpContext http, ICatalogService service, int? limit, string? after, string? status) =>
-            Tenant(http) is { } tenant ? Results.Ok(await service.ListProductsAsync(tenant.TenantId, PageSize(limit), after, status, http.RequestAborted)) : Unauthorized(http));
+        api.MapGet("/products", async (HttpContext http, ICatalogService service, int? limit, string? after, string? status, string? search, string? platform, string? stock) =>
+            Tenant(http) is { } tenant ? Results.Ok(await service.ListProductsAsync(tenant.TenantId, PageSize(limit), after, status, search, platform, stock, http.RequestAborted)) : Unauthorized(http));
+        api.MapGet("/products/summary", async (HttpContext http, ICatalogService service) =>
+            Tenant(http) is { } tenant ? Results.Ok(await service.ProductSummaryAsync(tenant.TenantId, http.RequestAborted)) : Unauthorized(http));
+        api.MapPost("/products/bulk-status", async (BulkProductStatusCommand command, HttpContext http, ICatalogService service) =>
+            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.BulkSetStatusAsync(tenant.TenantId, command, http.RequestAborted), Results.Ok) : MissingContext(http));
+        api.MapPost("/products/bulk-delete", async (BulkProductDeleteCommand command, HttpContext http, ICatalogService service) =>
+            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.BulkDeleteProductsAsync(tenant.TenantId, command, http.RequestAborted), count => Results.Ok(new { deletedCount = count })) : MissingContext(http));
         api.MapGet("/products/{id:guid}", async (Guid id, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant ? WithEtag(http, await service.GetProductAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http));
+        api.MapPost("/products/{id:guid}/duplicate", async (Guid id, HttpContext http, ICatalogService service) =>
+        {
+            if (Tenant(http) is not { } tenant) return Unauthorized(http);
+            var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
+            return Result(await service.DuplicateProductAsync(tenant.TenantId, id, http.RequestAborted), product => Results.Created($"/api/v1/products/{product.Id:D}", product));
+        });
         api.MapPost("/products", async (CreateProductCommand command, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Created(await service.CreateProductAsync(tenant.TenantId, command, http.RequestAborted), "/api/v1/products") : MissingContext(http));
         api.MapPatch("/products/{id:guid}", async (Guid id, UpdateProductCommand command, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.UpdateProductAsync(tenant.TenantId, id, version, command, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http));
+        api.MapDelete("/products/{id:guid}", async (Guid id, HttpContext http, ICatalogService service) =>
+        {
+            if (Tenant(http) is not { } tenant) return Unauthorized(http);
+            var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
+            return TryIfMatch(http, out var version, out var failure)
+                ? Result(await service.DeleteProductAsync(tenant.TenantId, id, version, http.RequestAborted), count => Results.Ok(new { deletedCount = count }))
+                : failure!;
+        });
         api.MapPost("/products/{id:guid}/archive", async (Guid id, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant ? (RequireIdempotency(http) is { } keyFailure ? keyFailure : TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.ArchiveProductAsync(tenant.TenantId, id, version, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http));
         api.MapGet("/products/{id:guid}/listing-profiles/{connectionId:guid}", async (Guid id, Guid connectionId, HttpContext http, ICatalogService service) =>
@@ -91,13 +120,56 @@ public static class CatalogEndpoints
             var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
             return Accepted(await service.EnqueueProductArchiveAsync(tenant.TenantId, id, command.ConnectionId, command.Archived, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted));
         });
-        api.MapGet("/products/{id:guid}/publication-status/{connectionId:guid}", async (Guid id, Guid connectionId, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant ? Result(await service.GetPublicationStatusAsync(tenant.TenantId, id, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http));
-        api.MapGet("/files/product-media/{assetId:guid}/content", async (Guid assetId, HttpContext http, AppDbContext db, IPrivateFileStorage storage) =>
+        api.MapPost("/products/{id:guid}/publication-status/{connectionId:guid}/refresh", async (Guid id, Guid connectionId, HttpContext http, ICatalogService service) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
-            var asset = await db.FileAssets.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Id == assetId && x.Classification == "PRODUCT_MEDIA" && x.Status == "ACTIVE" && x.ArchivedAt == null, http.RequestAborted);
+            var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
+            return Accepted(await service.RequestPublicationStatusRefreshAsync(tenant.TenantId, id, connectionId, http.RequestAborted));
+        });
+        api.MapGet("/products/{id:guid}/publication-status/{connectionId:guid}", async (Guid id, Guid connectionId, HttpContext http, ICatalogService service) =>
+            Tenant(http) is { } tenant ? Result(await service.GetPublicationStatusAsync(tenant.TenantId, id, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http));
+        api.MapGet("/public/product-media/{assetId:guid}/content", async (Guid assetId, HttpContext http, AppDbContext db, IPrivateFileStorage storage) =>
+        {
+            var asset = await (from media in db.ProductMedia.AsNoTracking()
+                               join product in db.Products.AsNoTracking() on new { media.TenantId, media.ProductId } equals new { product.TenantId, ProductId = product.Id }
+                               join file in db.FileAssets.AsNoTracking() on new { media.TenantId, FileAssetId = media.FileAssetId } equals new { file.TenantId, FileAssetId = file.Id }
+                               where media.FileAssetId == assetId && media.Status == "ACTIVE" && product.Status != ProductStatus.Archived
+                                   && file.Classification == "PRODUCT_MEDIA" && file.Status == "ACTIVE" && file.ArchivedAt == null
+                               select new { file.TenantId, file.RelativePath, file.MimeType }).FirstOrDefaultAsync(http.RequestAborted);
+            if (asset is null || asset.MimeType is not ("image/jpeg" or "image/png")) return Results.NotFound();
+            try
+            {
+                var content = await storage.OpenReadAsync(asset.TenantId, asset.RelativePath, http.RequestAborted);
+                http.Response.Headers.CacheControl = "public, max-age=300";
+                return Results.File(content, asset.MimeType, enableRangeProcessing: false);
+            }
+            catch (FileNotFoundException) { return Results.NotFound(); }
+        });
+        api.MapGet("/files/product-media/{assetId:guid}/content", async (Guid assetId, HttpContext http, AppDbContext db, IPrivateFileStorage storage, IHttpClientFactory clients) =>
+        {
+            if (Tenant(http) is not { } tenant) return Unauthorized(http);
+            var asset = await db.FileAssets.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Id == assetId && (x.Classification == "PRODUCT_MEDIA" || x.Classification == "PRODUCT_MEDIA_URL") && x.Status == "ACTIVE" && x.ArchivedAt == null, http.RequestAborted);
             if (asset is null) return Results.NotFound();
+            if (asset.Classification == "PRODUCT_MEDIA_URL")
+            {
+                if (!Uri.TryCreate(asset.RelativePath, UriKind.Absolute, out var remoteUri) || remoteUri.Scheme != Uri.UriSchemeHttps || remoteUri.IsLoopback || string.Equals(remoteUri.Host, "localhost", StringComparison.OrdinalIgnoreCase)) return Results.NotFound();
+                try
+                {
+                    var client = clients.CreateClient();
+                    client.Timeout = TimeSpan.FromSeconds(12);
+                    client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (compatible; RavenciaMediaProxy/1.0)");
+                    using var response = await client.GetAsync(remoteUri, HttpCompletionOption.ResponseHeadersRead, http.RequestAborted);
+                    if (!response.IsSuccessStatusCode) return Results.NotFound();
+                    var contentType = response.Content.Headers.ContentType?.MediaType;
+                    if (string.IsNullOrWhiteSpace(contentType) || !contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)) return Results.NotFound();
+                    var bytes = await response.Content.ReadAsByteArrayAsync(http.RequestAborted);
+                    if (bytes.Length == 0 || bytes.Length > MaxUploadBytes) return Results.NotFound();
+                    http.Response.Headers.CacheControl = "private, max-age=900";
+                    return Results.Bytes(bytes, contentType);
+                }
+                catch (HttpRequestException) { return Results.NotFound(); }
+                catch (TaskCanceledException) { return Results.NotFound(); }
+            }
             try
             {
                 var content = await storage.OpenReadAsync(tenant.TenantId, asset.RelativePath, http.RequestAborted);
@@ -108,6 +180,10 @@ public static class CatalogEndpoints
         });
         api.MapPost("/files/product-media", UploadProductMediaAsync).DisableAntiforgery();
         api.MapPost("/files/product-media-url", RegisterProductMediaUrlAsync);
+        api.MapPut("/files/product-media-reconcile", ReconcileProductMediaAsync);
+        api.MapPut("/files/product-media-family-reorder", ReorderProductFamilyMediaAsync);
+        api.MapDelete("/files/product-media-item", DeleteProductMediaItemAsync);
+        api.MapDelete("/files/product-media-items", DeleteProductMediaItemsAsync);
         api.MapDelete("/files/product-media", ClearProductMediaAsync);
         api.MapDelete("/files/product-media-variant", ClearProductVariantMediaAsync);
 
@@ -156,6 +232,8 @@ public static class CatalogEndpoints
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.ValidateExternalSyncAsync(tenant.TenantId, "PRICE_SYNC", http.RequestAborted)) : MissingContext(http));
         api.MapPost("/connections/{connectionId:guid}/price-inventory-sync-jobs", async (Guid connectionId, HttpContext http, IInventoryService service) =>
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueuePriceInventorySyncAsync(tenant.TenantId, connectionId, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted)) : MissingContext(http));
+        api.MapPost("/products/{productId:guid}/connections/{connectionId:guid}/price-inventory-sync-jobs", async (Guid productId, Guid connectionId, HttpContext http, IInventoryService service) =>
+            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueueProductPriceInventorySyncAsync(tenant.TenantId, productId, connectionId, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted)) : MissingContext(http));
 
         MapReferenceEndpoints(api);
         return endpoints;
@@ -167,20 +245,35 @@ public static class CatalogEndpoints
         api.MapGet("/reference-data/categories/{externalId}/attributes", (string externalId, Guid connectionId, HttpContext http, IReferenceDataService service) => Reference(http, service, connectionId, "CATEGORY_ATTRIBUTES", externalId));
         api.MapGet("/reference-data/categories/{categoryId}/attributes/{attributeId}/values", (string categoryId, string attributeId, Guid connectionId, HttpContext http, IReferenceDataService service) => Reference(http, service, connectionId, "ATTRIBUTE_VALUES", $"{categoryId}/{attributeId}"));
         api.MapGet("/reference-data/brands", (Guid connectionId, HttpContext http, IReferenceDataService service) => Reference(http, service, connectionId, "BRANDS", null));
+        api.MapGet("/connections/{connectionId:guid}/attribute-defaults", async (Guid connectionId, HttpContext http, IReferenceDataService service) =>
+            Tenant(http) is { } tenant ? Result(await service.ListAttributeDefaultsAsync(tenant.TenantId, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http));
+        api.MapPut("/connections/{connectionId:guid}/attribute-defaults/{externalAttributeId}", async (Guid connectionId, string externalAttributeId, UpsertConnectionAttributeDefaultCommand command, HttpContext http, IReferenceDataService service) =>
+            Tenant(http) is { } tenant ? Result(await service.UpsertAttributeDefaultAsync(tenant.TenantId, connectionId, externalAttributeId, command, http.RequestAborted), Results.Ok) : Unauthorized(http));
+        api.MapDelete("/connections/{connectionId:guid}/attribute-defaults/{externalAttributeId}", async (Guid connectionId, string externalAttributeId, HttpContext http, IReferenceDataService service) =>
+            Tenant(http) is { } tenant ? Result(await service.DeleteAttributeDefaultAsync(tenant.TenantId, connectionId, externalAttributeId, http.RequestAborted), Results.Ok) : Unauthorized(http));
+        api.MapGet("/mappings/name-hints", async (Guid attributeId, Guid connectionId, HttpContext http, IReferenceDataService service) =>
+            Tenant(http) is { } tenant ? Result(await service.MarketplaceNameHintsAsync(tenant.TenantId, attributeId, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http));
+        api.MapGet("/mappings/attribute-name-hints", async (Guid connectionId, HttpContext http, IReferenceDataService service) =>
+            Tenant(http) is { } tenant ? Result(await service.AttributeNameHintsAsync(tenant.TenantId, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http));
+        api.MapGet("/mappings/conflicts", async (Guid connectionId, HttpContext http, IReferenceDataService service) =>
+            Tenant(http) is { } tenant ? Result(await service.ListMappingConflictsAsync(tenant.TenantId, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http));
+        // Idempotent by nature: a second call finds nothing left to fill.
+        api.MapPost("/mappings/templates/fill", async (Guid connectionId, string categoryExternalId, HttpContext http, IReferenceDataService service) =>
+            Tenant(http) is { } tenant ? Result(await service.FillFromTemplatesAsync(tenant.TenantId, connectionId, categoryExternalId, http.RequestAborted), Results.Ok) : Unauthorized(http));
         foreach (var type in new[] { "categories", "brands", "attributes", "attribute-values" })
         {
             var routeType = type;
             api.MapGet($"/mappings/{routeType}", async (Guid connectionId, string? scopeExternalId, HttpContext http, IReferenceDataService service) =>
                 Tenant(http) is { } tenant ? Result(await service.ListMappingsAsync(tenant.TenantId, routeType, connectionId, scopeExternalId, http.RequestAborted), Results.Ok) : Unauthorized(http));
-            api.MapGet($"/mappings/{routeType}/{{localId:guid}}", async (Guid localId, Guid connectionId, string? scopeExternalId, HttpContext http, IReferenceDataService service) =>
-                Tenant(http) is { } tenant ? Result(await service.GetMappingAsync(tenant.TenantId, routeType, localId, connectionId, scopeExternalId, http.RequestAborted), Results.Ok) : Unauthorized(http));
+            api.MapGet($"/mappings/{routeType}/{{localId:guid}}", async (Guid localId, Guid connectionId, string? scopeExternalId, string? externalId, HttpContext http, IReferenceDataService service) =>
+                Tenant(http) is { } tenant ? Result(await service.GetMappingAsync(tenant.TenantId, routeType, localId, connectionId, scopeExternalId, externalId, http.RequestAborted), Results.Ok) : Unauthorized(http));
             api.MapPut($"/mappings/{routeType}/{{localId:guid}}", async (Guid localId, UpsertCatalogMappingCommand command, HttpContext http, IReferenceDataService service) =>
             {
                 if (Tenant(http) is not { } tenant) return Unauthorized(http); var expected = OptionalIfMatch(http, out var malformed); if (malformed is not null) return malformed;
                 return WithEtag(http, await service.UpsertMappingAsync(tenant.TenantId, routeType, localId, expected, command, http.RequestAborted), x => x.Version);
             });
-            api.MapDelete($"/mappings/{routeType}/{{localId:guid}}", async (Guid localId, Guid connectionId, string? scopeExternalId, HttpContext http, IReferenceDataService service) =>
-                Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? Result(await service.DeleteMappingAsync(tenant.TenantId, routeType, localId, connectionId, scopeExternalId, version, http.RequestAborted), Results.Ok) : failure!) : Unauthorized(http));
+            api.MapDelete($"/mappings/{routeType}/{{localId:guid}}", async (Guid localId, Guid connectionId, string? scopeExternalId, string? externalId, HttpContext http, IReferenceDataService service) =>
+                Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? Result(await service.DeleteMappingAsync(tenant.TenantId, routeType, localId, connectionId, scopeExternalId, externalId, version, http.RequestAborted), Results.Ok) : failure!) : Unauthorized(http));
         }
     }
 
@@ -213,8 +306,451 @@ public static class CatalogEndpoints
         if (!validMagic) return Problem(http, new("VALIDATION_FAILED", "Dosya imzası MIME türüyle eşleşmiyor.", 422));
         var hash = Convert.ToHexString(SHA256.HashData(bytes)); var asset = await db.FileAssets.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Classification == "PRODUCT_MEDIA" && x.Sha256 == hash && x.ArchivedAt == null, http.RequestAborted);
         if (asset is null) { buffer.Position = 0; var id = Guid.CreateVersion7(); var stored = await storage.SaveAsync(tenant.TenantId, $"{id:N}{(file.ContentType == "image/jpeg" ? ".jpg" : ".png")}", file.ContentType, buffer, MaxUploadBytes, http.RequestAborted); asset = new FileAsset { Id = id, TenantId = tenant.TenantId, Classification = "PRODUCT_MEDIA", RelativePath = stored, OriginalNameSafe = Path.GetFileName(file.FileName), MimeType = file.ContentType, SizeBytes = bytes.Length, Sha256 = hash, Status = "ACTIVE", CreatedAt = timeProvider.GetUtcNow() }; db.FileAssets.Add(asset); }
-        var media = new ProductMedia { Id = Guid.CreateVersion7(), TenantId = tenant.TenantId, ProductId = productId, VariantId = variantId, FileAssetId = asset.Id, MediaRole = string.IsNullOrWhiteSpace(form["mediaRole"]) ? "GALLERY" : form["mediaRole"].ToString().Trim(), SortOrder = int.TryParse(form["sortOrder"], out var sort) ? sort : 0, AltText = string.IsNullOrWhiteSpace(form["altText"]) ? null : form["altText"].ToString().Trim(), Status = "ACTIVE" }; db.ProductMedia.Add(media); await db.SaveChangesAsync(http.RequestAborted);
+        var sortOrder = 0;
+        if (form.ContainsKey("sortOrder") && (!int.TryParse(form["sortOrder"], out sortOrder) || sortOrder is < 0 or > 999))
+            return Problem(http, new("PRODUCT_MEDIA_SORT_INVALID", "sortOrder 0-999 arasında olmalıdır.", 422));
+        var isCustomProductGallery = variantId is null && await db.ProductMedia.AnyAsync(x => x.TenantId == tenant.TenantId && x.ProductId == productId && x.VariantId == null && x.Status == "ACTIVE" && x.MediaRole.StartsWith("ORDERED_"), http.RequestAborted);
+        var mediaRole = isCustomProductGallery ? sortOrder == 0 ? "ORDERED_PRIMARY" : "ORDERED_GALLERY" : string.IsNullOrWhiteSpace(form["mediaRole"]) ? "GALLERY" : form["mediaRole"].ToString().Trim();
+        var media = await db.ProductMedia.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.ProductId == productId && x.VariantId == variantId && x.SortOrder == sortOrder, http.RequestAborted);
+        if (media is null) { media = new ProductMedia { Id = Guid.CreateVersion7(), TenantId = tenant.TenantId, ProductId = productId, VariantId = variantId, FileAssetId = asset.Id, MediaRole = mediaRole, SortOrder = sortOrder, AltText = string.IsNullOrWhiteSpace(form["altText"]) ? null : form["altText"].ToString().Trim(), Status = "ACTIVE" }; db.ProductMedia.Add(media); }
+        else { media.FileAssetId = asset.Id; media.MediaRole = mediaRole; media.AltText = string.IsNullOrWhiteSpace(form["altText"]) ? null : form["altText"].ToString().Trim(); media.Status = "ACTIVE"; }
+        await db.SaveChangesAsync(http.RequestAborted);
         return Results.Created($"/api/v1/products/{productId:D}", new { media.Id, media.ProductId, media.VariantId, media.FileAssetId, media.MediaRole, media.SortOrder, media.AltText, media.Status });
+    }
+
+    private static async Task<IResult> ReconcileProductMediaAsync([FromBody] ReconcileProductMediaCommand command, HttpContext http, AppDbContext db, TimeProvider timeProvider)
+    {
+        if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
+        var items = command.Items ?? [];
+        if (items.Count > 100 || items.Any(item => item.SortOrder is < 0 or > 999) || items.Select(item => item.SortOrder).Distinct().Count() != items.Count)
+            return Problem(http, new("PRODUCT_MEDIA_RECONCILE_INVALID", "Görsel sayısı en fazla 100 olabilir; sıralar 0-999 arasında ve benzersiz olmalıdır.", 422));
+
+        var product = await db.Products.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Id == command.ProductId, http.RequestAborted);
+        if (product is null) return Problem(http, new("RESOURCE_NOT_FOUND", "Ürün bulunamadı.", 404));
+        if (command.VariantId is Guid variantId && !await db.ProductVariants.AnyAsync(x => x.TenantId == tenant.TenantId && x.ProductId == command.ProductId && x.Id == variantId, http.RequestAborted))
+            return Problem(http, new("RESOURCE_NOT_FOUND", "Ürün varyantı bulunamadı.", 404));
+
+        var references = new List<(Guid? AssetId, string? Url, int SortOrder)>();
+        var externalUrls = new HashSet<string>(StringComparer.Ordinal);
+        var storedAssetIds = new HashSet<Guid>();
+        foreach (var item in items)
+        {
+            if (TryGetStoredProductMediaAssetId(item.Url, out var assetId))
+            {
+                storedAssetIds.Add(assetId);
+                references.Add((assetId, null, item.SortOrder));
+                continue;
+            }
+            if (!TryNormalizePublicProductMediaUrl(item.Url, out var url, out var issue))
+                return Problem(http, new("PRODUCT_MEDIA_URL_INVALID", issue!, 422, new Dictionary<string, string[]> { ["url"] = [issue!] }));
+            externalUrls.Add(url!);
+            references.Add((null, url, item.SortOrder));
+        }
+
+        var assets = await db.FileAssets
+            .Where(asset => asset.TenantId == tenant.TenantId && (storedAssetIds.Contains(asset.Id) || externalUrls.Contains(asset.RelativePath)))
+            .ToListAsync(http.RequestAborted);
+        var activeTenantMediaAssetIds = storedAssetIds.Count == 0
+            ? new HashSet<Guid>()
+            : (await db.ProductMedia.AsNoTracking()
+                .Where(media => media.TenantId == tenant.TenantId && storedAssetIds.Contains(media.FileAssetId) && media.Status == "ACTIVE")
+                .Select(media => media.FileAssetId)
+                .Distinct()
+                .ToListAsync(http.RequestAborted)).ToHashSet();
+        var assetsById = assets.ToDictionary(asset => asset.Id);
+        var assetsByUrl = assets.Where(asset => externalUrls.Contains(asset.RelativePath)).ToDictionary(asset => asset.RelativePath, StringComparer.Ordinal);
+        var desiredAssets = new List<FileAsset>(references.Count);
+        var now = timeProvider.GetUtcNow();
+        foreach (var reference in references)
+        {
+            if (reference.AssetId is Guid storedId)
+            {
+                if (!activeTenantMediaAssetIds.Contains(storedId) || !assetsById.TryGetValue(storedId, out var storedAsset) || storedAsset.Status != "ACTIVE" || storedAsset.Classification != "PRODUCT_MEDIA")
+                    return Problem(http, new("PRODUCT_MEDIA_NOT_FOUND", "Kayıtlı görsellerden biri bulunamadı veya artık kullanılamıyor.", 404));
+                desiredAssets.Add(storedAsset);
+                continue;
+            }
+
+            var url = reference.Url!;
+            if (!assetsByUrl.TryGetValue(url, out var remoteAsset))
+            {
+                var uri = new Uri(url, UriKind.Absolute);
+                var fileName = Path.GetFileName(uri.AbsolutePath);
+                remoteAsset = new FileAsset { Id = Guid.CreateVersion7(), TenantId = tenant.TenantId, Classification = "PRODUCT_MEDIA_URL", RelativePath = url, OriginalNameSafe = string.IsNullOrWhiteSpace(fileName) ? null : fileName[..Math.Min(fileName.Length, 256)], MimeType = "image/remote", SizeBytes = 0, Sha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(url))), Status = "ACTIVE", CreatedAt = now };
+                db.FileAssets.Add(remoteAsset);
+                assetsByUrl[url] = remoteAsset;
+            }
+            else if (remoteAsset.Classification != "PRODUCT_MEDIA_URL")
+                return Problem(http, new("PRODUCT_MEDIA_URL_CONFLICT", "Bu URL farklı bir dosya sınıfında kayıtlı.", 409));
+            else { remoteAsset.Status = "ACTIVE"; remoteAsset.ArchivedAt = null; }
+            desiredAssets.Add(remoteAsset);
+        }
+
+        await using var transaction = await db.Database.BeginTransactionAsync(http.RequestAborted);
+        var scopedMedia = await db.ProductMedia
+            .Where(media => media.TenantId == tenant.TenantId && media.ProductId == command.ProductId && media.VariantId == command.VariantId)
+            .OrderBy(media => media.SortOrder)
+            .ToListAsync(http.RequestAborted);
+        var desiredOrder = desiredAssets
+            .Select((asset, index) => new
+            {
+                AssetId = asset.Id,
+                SortOrder = references[index].SortOrder,
+                MediaRole = command.VariantId is null
+                    ? references[index].SortOrder == 0 ? "ORDERED_PRIMARY" : "ORDERED_GALLERY"
+                    : references[index].SortOrder == 0 ? "PRIMARY" : "GALLERY"
+            })
+            .OrderBy(item => item.SortOrder)
+            .ToArray();
+        var activeScopedMedia = scopedMedia.Where(media => media.Status == "ACTIVE").OrderBy(media => media.SortOrder).ToArray();
+        var safeAltText = SafeAltText(command.AltText);
+        if (activeScopedMedia.Length == desiredOrder.Length && activeScopedMedia.Select((media, index) =>
+                media.SortOrder == desiredOrder[index].SortOrder
+                && media.FileAssetId == desiredOrder[index].AssetId
+                && media.MediaRole == desiredOrder[index].MediaRole
+                && media.AltText == safeAltText).All(isSame => isSame))
+        {
+            await transaction.CommitAsync(http.RequestAborted);
+            return Results.Ok(new { productId = product.Id, variantId = command.VariantId, mediaCount = activeScopedMedia.Length });
+        }
+        var occupiedSortOrders = scopedMedia.Select(media => media.SortOrder).ToHashSet();
+        var temporarySortOrders = new HashSet<int>();
+        var nextTemporarySortOrder = -1;
+        int TemporarySortOrder()
+        {
+            while (occupiedSortOrders.Contains(nextTemporarySortOrder) || !temporarySortOrders.Add(nextTemporarySortOrder))
+            {
+                if (nextTemporarySortOrder == int.MinValue) throw new InvalidOperationException("Geçici görsel sıralama alanı bulunamadı.");
+                nextTemporarySortOrder--;
+            }
+            var value = nextTemporarySortOrder;
+            if (nextTemporarySortOrder != int.MinValue) nextTemporarySortOrder--;
+            return value;
+        }
+
+        foreach (var media in scopedMedia)
+        {
+            var temporarySortOrder = TemporarySortOrder();
+            var updatedCount = await db.ProductMedia
+                .Where(item => item.TenantId == tenant.TenantId && item.Id == media.Id)
+                .ExecuteUpdateAsync(update => update.SetProperty(item => item.SortOrder, temporarySortOrder), http.RequestAborted);
+            if (updatedCount != 1) return Problem(http, new("PRODUCT_MEDIA_CHANGED", "Görsel sırası eşzamanlı olarak değişti. Sayfayı yenileyip tekrar deneyin.", 409));
+            media.SortOrder = temporarySortOrder;
+            var sortOrderEntry = db.Entry(media).Property(item => item.SortOrder);
+            sortOrderEntry.OriginalValue = temporarySortOrder;
+            sortOrderEntry.IsModified = false;
+        }
+
+        var availableMedia = scopedMedia.ToList();
+        var desiredMedia = new List<ProductMedia>(references.Count);
+        foreach (var (asset, index) in desiredAssets.Select((asset, index) => (asset, index)))
+        {
+            var media = availableMedia.FirstOrDefault(candidate => candidate.FileAssetId == asset.Id) ?? availableMedia.FirstOrDefault();
+            if (media is not null) availableMedia.Remove(media);
+            else
+            {
+                media = new ProductMedia { Id = Guid.CreateVersion7(), TenantId = tenant.TenantId, ProductId = command.ProductId, VariantId = command.VariantId, FileAssetId = asset.Id, MediaRole = "GALLERY", SortOrder = TemporarySortOrder(), Status = "ACTIVE" };
+                db.ProductMedia.Add(media);
+            }
+            media.FileAssetId = asset.Id;
+            media.MediaRole = command.VariantId is null
+                ? references[index].SortOrder == 0 ? "ORDERED_PRIMARY" : "ORDERED_GALLERY"
+                : MediaRole(references[index].SortOrder == 0 ? "PRIMARY" : "GALLERY");
+            media.SortOrder = references[index].SortOrder;
+            db.Entry(media).Property(item => item.SortOrder).IsModified = true;
+            media.AltText = safeAltText;
+            media.Status = "ACTIVE";
+            desiredMedia.Add(media);
+        }
+        foreach (var media in availableMedia) media.Status = "ARCHIVED";
+        product.UpdatedAt = now;
+        product.Version++;
+        await db.SaveChangesAsync(http.RequestAborted);
+        await transaction.CommitAsync(http.RequestAborted);
+        return Results.Ok(new { productId = product.Id, variantId = command.VariantId, mediaCount = desiredMedia.Count });
+    }
+
+    private static Task<IResult> ReorderProductFamilyMediaAsync([FromBody] ReorderProductFamilyMediaCommand command, HttpContext http, AppDbContext db, TimeProvider timeProvider) =>
+        command.UrlsInOrder is null
+            ? ReorderProductFamilyMediaLegacyAsync(command, http, db, timeProvider)
+            : ReorderProductFamilyMediaByUrlAsync(command, http, db, timeProvider);
+
+    private static async Task<IResult> ReorderProductFamilyMediaByUrlAsync(ReorderProductFamilyMediaCommand command, HttpContext http, AppDbContext db, TimeProvider timeProvider)
+    {
+        if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
+        var requestedUrls = command.UrlsInOrder ?? [];
+        if (requestedUrls.Count > 1000 || requestedUrls.Any(url => string.IsNullOrWhiteSpace(url) || url.Length > 2048))
+            return Problem(http, new("PRODUCT_MEDIA_REORDER_INVALID", "En fazla 1000 adet geçerli ürün görseli sıralanabilir.", 422));
+        var requestedKeys = requestedUrls.Select(CatalogImageIdentity.Key).ToArray();
+        if (requestedKeys.Distinct(StringComparer.OrdinalIgnoreCase).Count() != requestedKeys.Length)
+            return Problem(http, new("PRODUCT_MEDIA_REORDER_INVALID", "Görsel sıralama isteğinde aynı görsel birden fazla kez bulunamaz.", 422));
+
+        var sourceProduct = await db.Products.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Id == command.ProductId, http.RequestAborted);
+        if (sourceProduct is null) return Problem(http, new("RESOURCE_NOT_FOUND", "Ürün bulunamadı.", 404));
+        var modelCode = await db.ProductVariants.AsNoTracking()
+            .Where(x => x.TenantId == tenant.TenantId && x.ProductId == sourceProduct.Id && x.ModelCode != null && x.ModelCode != "")
+            .OrderBy(x => x.SortOrder).ThenBy(x => x.Id)
+            .Select(x => x.ModelCode)
+            .FirstOrDefaultAsync(http.RequestAborted);
+        var familyProductIds = string.IsNullOrWhiteSpace(modelCode)
+            ? new List<Guid> { sourceProduct.Id }
+            : await db.ProductVariants.AsNoTracking()
+                .Where(variant => variant.TenantId == tenant.TenantId
+                    && variant.ModelCode != null
+                    && variant.ModelCode.ToUpper() == modelCode.ToUpper()
+                    && (!db.MarketplaceProductLinks.Any(link => link.TenantId == tenant.TenantId && link.ProductId == variant.ProductId)
+                        || db.MarketplaceProductLinks.Any(link => link.TenantId == tenant.TenantId && link.ProductId == variant.ProductId
+                            && db.PlatformConnections.Any(connection => connection.TenantId == tenant.TenantId && connection.Id == link.ConnectionId
+                                && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")))))
+                .Select(variant => variant.ProductId)
+                .Distinct()
+                .ToListAsync(http.RequestAborted);
+        if (!familyProductIds.Contains(sourceProduct.Id)) familyProductIds.Add(sourceProduct.Id);
+
+        var media = await db.ProductMedia
+            .Where(item => item.TenantId == tenant.TenantId && familyProductIds.Contains(item.ProductId))
+            .ToListAsync(http.RequestAborted);
+        var assetIds = media.Select(item => item.FileAssetId).Distinct().ToArray();
+        var assetsById = await db.FileAssets.AsNoTracking()
+            .Where(asset => asset.TenantId == tenant.TenantId && assetIds.Contains(asset.Id))
+            .ToDictionaryAsync(asset => asset.Id, http.RequestAborted);
+        var visibleMedia = media
+            .Where(item => item.Status == "ACTIVE"
+                && assetsById.TryGetValue(item.FileAssetId, out var asset)
+                && asset.Status == "ACTIVE"
+                && asset.Classification is "PRODUCT_MEDIA" or "PRODUCT_MEDIA_URL")
+            .Select(item =>
+            {
+                var asset = assetsById[item.FileAssetId];
+                var url = asset.Classification == "PRODUCT_MEDIA_URL"
+                    ? asset.RelativePath
+                    : $"/api/v1/files/product-media/{asset.Id:D}/content";
+                return new ProductFamilyMediaRow(item, url, CatalogImageIdentity.Key(url));
+            })
+            .ToArray();
+        // The editor combines a product gallery with variant-level color images.
+        // Order every active scope by the same visible URL list; selecting only
+        // product-gallery rows here makes valid variant URLs look stale.
+        var selectedRows = visibleMedia
+            .OrderBy(item => item.Media.SortOrder).ThenBy(item => item.Media.ProductId).ThenBy(item => item.Media.Id)
+            .ToArray();
+        var familyGroups = selectedRows
+            .GroupBy(item => item.ImageKey, StringComparer.OrdinalIgnoreCase)
+            .Select(group => new ProductFamilyImageGroup(group.Key, group.First().Url, group.ToArray(), group.Min(item => item.Media.SortOrder), group.Min(item => item.Media.ProductId), group.Min(item => item.Media.Id)))
+            .OrderBy(group => group.SortOrder).ThenBy(group => group.FirstProductId).ThenBy(group => group.FirstMediaId)
+            .ToArray();
+        var groupKeys = familyGroups.Select(group => group.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (requestedKeys.Any(key => !groupKeys.Contains(key)))
+            return Problem(http, new("PRODUCT_MEDIA_REORDER_STALE", "Görsel listesi değişmiş. Sayfayı yenileyip sıralamayı tekrar yapın.", 409));
+        var orderedGroups = ProductFamilyMediaOrdering.OrderByRequestedKeys(familyGroups, requestedKeys, group => group.Key);
+        if (orderedGroups.Count == 0) return Results.Ok(new { changedProductCount = 0, changedGalleryCount = 0 });
+
+        var stride = (long)selectedRows.Length + 1;
+        if ((long)orderedGroups.Count * stride + (long)media.Count * 2 + 1 > int.MaxValue)
+            return Problem(http, new("PRODUCT_MEDIA_REORDER_INVALID", "Ürün görsel ailesi sıralanamayacak kadar büyük.", 422));
+        var orderByImageKey = orderedGroups.Select((group, index) => (group.Key, Index: index))
+            .ToDictionary(item => item.Key, item => item.Index, StringComparer.OrdinalIgnoreCase);
+        var selectedByProduct = selectedRows.GroupBy(item => item.Media.ProductId).ToDictionary(group => group.Key, group => group.ToArray());
+        var visibleByMediaId = selectedRows.ToDictionary(item => item.Media.Id);
+        var planned = new Dictionary<Guid, (int SortOrder, string MediaRole)>();
+        void Plan(ProductMedia item, long sortOrder, string? mediaRole = null) => planned[item.Id] = ((int)sortOrder, mediaRole ?? item.MediaRole);
+
+        foreach (var productId in selectedByProduct.Keys)
+        {
+            var productMedia = media.Where(item => item.ProductId == productId).ToArray();
+            foreach (var scope in productMedia.GroupBy(item => item.VariantId))
+            {
+                var scopeRows = scope.ToArray();
+                var activeRows = scopeRows.Where(item => item.Status == "ACTIVE")
+                    .OrderBy(item => item.SortOrder).ThenBy(item => item.Id).ToArray();
+                var orderedVisibleRows = activeRows
+                    .Select(item => visibleByMediaId.GetValueOrDefault(item.Id))
+                    .Where(item => item is not null)
+                    .Select(item => item!)
+                    .OrderBy(item => orderByImageKey[item.ImageKey])
+                    .ThenBy(item => item.Media.SortOrder).ThenBy(item => item.Media.Id)
+                    .ToArray();
+                if (orderedVisibleRows.Length == 0) continue;
+
+                var selectedIds = orderedVisibleRows.Select(item => item.Media.Id).ToHashSet();
+                var occurrenceByImage = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                for (var index = 0; index < orderedVisibleRows.Length; index++)
+                {
+                    var row = orderedVisibleRows[index];
+                    occurrenceByImage.TryGetValue(row.ImageKey, out var occurrence);
+                    occurrenceByImage[row.ImageKey] = occurrence + 1;
+                    var rank = (long)orderByImageKey[row.ImageKey] * stride + occurrence;
+                    var role = index == 0 ? "ORDERED_PRIMARY" : "ORDERED_GALLERY";
+                    Plan(row.Media, rank, role);
+                }
+                var hiddenActive = activeRows.Where(item => !selectedIds.Contains(item.Id))
+                    .OrderBy(item => item.SortOrder).ThenBy(item => item.Id).ToArray();
+                var archivedGallery = scopeRows.Where(item => item.Status != "ACTIVE")
+                    .OrderBy(item => item.SortOrder).ThenBy(item => item.Id).ToArray();
+                var hiddenStart = (long)orderedGroups.Count * stride;
+                for (var index = 0; index < hiddenActive.Length; index++)
+                    Plan(hiddenActive[index], hiddenStart + index, scope.Key is null ? "ORDERED_GALLERY" : null);
+                for (var index = 0; index < archivedGallery.Length; index++)
+                    Plan(archivedGallery[index], hiddenStart + hiddenActive.Length + index);
+            }
+        }
+
+        var plannedIds = planned.Keys.ToHashSet();
+        var changedScopes = media
+            .Where(item => plannedIds.Contains(item.Id))
+            .GroupBy(item => (item.ProductId, item.VariantId))
+            .Where(scope => scope.Any(item => item.SortOrder != planned[item.Id].SortOrder || item.MediaRole != planned[item.Id].MediaRole))
+            .ToArray();
+        if (changedScopes.Length == 0) return Results.Ok(new { changedProductCount = 0, changedGalleryCount = 0 });
+
+        await using var transaction = await db.Database.BeginTransactionAsync(http.RequestAborted);
+        foreach (var scope in changedScopes)
+        {
+            var occupied = scope.Select(item => item.SortOrder).ToHashSet();
+            var temporary = -1;
+            foreach (var item in scope.OrderBy(item => item.SortOrder).ThenBy(item => item.Id))
+            {
+                while (occupied.Contains(temporary))
+                {
+                    if (temporary == int.MinValue) return Problem(http, new("PRODUCT_MEDIA_REORDER_INVALID", "Geçici görsel sıralama alanı bulunamadı.", 422));
+                    temporary--;
+                }
+                item.SortOrder = temporary;
+                occupied.Add(temporary);
+                if (temporary > int.MinValue) temporary--;
+            }
+        }
+        await db.SaveChangesAsync(http.RequestAborted);
+
+        foreach (var scope in changedScopes)
+            foreach (var item in scope)
+            {
+                item.SortOrder = planned[item.Id].SortOrder;
+                item.MediaRole = planned[item.Id].MediaRole;
+            }
+        var changedProductIds = changedScopes.Select(scope => scope.Key.ProductId).Distinct().ToHashSet();
+        var siblingProducts = await db.Products
+            .Where(product => product.TenantId == tenant.TenantId && changedProductIds.Contains(product.Id))
+            .ToListAsync(http.RequestAborted);
+        var now = timeProvider.GetUtcNow();
+        foreach (var product in siblingProducts) { product.UpdatedAt = now; product.Version++; }
+        await db.SaveChangesAsync(http.RequestAborted);
+        await transaction.CommitAsync(http.RequestAborted);
+        return Results.Ok(new { changedProductCount = changedProductIds.Count, changedGalleryCount = changedScopes.Length });
+    }
+
+    private static async Task<IResult> ReorderProductFamilyMediaLegacyAsync(ReorderProductFamilyMediaCommand command, HttpContext http, AppDbContext db, TimeProvider timeProvider)
+    {
+        if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
+        if (command.SourceIndex is not int sourceIndex || command.TargetIndex is not int targetIndex || sourceIndex is < 0 or > 999 || targetIndex is < 0 or > 999)
+            return Problem(http, new("PRODUCT_MEDIA_REORDER_INVALID", "Görsel sıralama konumları 0-999 arasında olmalıdır.", 422));
+
+        var sourceProduct = await db.Products.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Id == command.ProductId, http.RequestAborted);
+        if (sourceProduct is null) return Problem(http, new("RESOURCE_NOT_FOUND", "Ürün bulunamadı.", 404));
+        var modelCode = await db.ProductVariants.AsNoTracking()
+            .Where(x => x.TenantId == tenant.TenantId && x.ProductId == sourceProduct.Id && x.ModelCode != null && x.ModelCode != "")
+            .Select(x => x.ModelCode)
+            .FirstOrDefaultAsync(http.RequestAborted);
+        if (string.IsNullOrWhiteSpace(modelCode)) return Results.Ok(new { changedProductCount = 0, changedGalleryCount = 0 });
+
+        var familyProductIds = await db.ProductVariants.AsNoTracking()
+            .Where(variant => variant.TenantId == tenant.TenantId
+                && variant.ModelCode != null
+                && variant.ModelCode.ToUpper() == modelCode.ToUpper()
+                && (!db.MarketplaceProductLinks.Any(link => link.TenantId == tenant.TenantId && link.ProductId == variant.ProductId)
+                    || db.MarketplaceProductLinks.Any(link => link.TenantId == tenant.TenantId && link.ProductId == variant.ProductId
+                        && db.PlatformConnections.Any(connection => connection.TenantId == tenant.TenantId && connection.Id == link.ConnectionId
+                            && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")))))
+            .Select(variant => variant.ProductId)
+            .Distinct()
+            .ToListAsync(http.RequestAborted);
+        familyProductIds.Remove(sourceProduct.Id);
+        if (familyProductIds.Count == 0) return Results.Ok(new { changedProductCount = 0, changedGalleryCount = 0 });
+
+        await using var transaction = await db.Database.BeginTransactionAsync(http.RequestAborted);
+        var siblingProducts = await db.Products
+            .Where(product => product.TenantId == tenant.TenantId && familyProductIds.Contains(product.Id))
+            .ToListAsync(http.RequestAborted);
+        var siblingMedia = await db.ProductMedia
+            .Where(media => media.TenantId == tenant.TenantId && familyProductIds.Contains(media.ProductId))
+            .ToListAsync(http.RequestAborted);
+
+        var galleryScopes = new List<(Guid ProductId, Guid? VariantId, List<ProductMedia> All, List<ProductMedia> Active)>();
+        foreach (var productGroup in siblingMedia.GroupBy(media => media.ProductId))
+        {
+            var productGallery = productGroup.Where(media => media.VariantId is null).ToList();
+            var activeProductGallery = productGallery.Where(media => media.Status == "ACTIVE")
+                .OrderBy(media => media.SortOrder).ThenBy(media => media.Id).ToList();
+            if (activeProductGallery.Count > 0)
+            {
+                galleryScopes.Add((productGroup.Key, null, productGallery, activeProductGallery));
+                continue;
+            }
+
+            foreach (var variantGroup in productGroup.Where(media => media.VariantId is not null).GroupBy(media => media.VariantId))
+            {
+                var all = variantGroup.ToList();
+                var active = all.Where(media => media.Status == "ACTIVE")
+                    .OrderBy(media => media.SortOrder).ThenBy(media => media.Id).ToList();
+                if (active.Count > 0) galleryScopes.Add((productGroup.Key, variantGroup.Key, all, active));
+            }
+        }
+
+        var changedScopes = new List<(Guid ProductId, Guid? VariantId, List<ProductMedia> All, List<ProductMedia> Active, List<ProductMedia> Archived)>();
+        foreach (var scope in galleryScopes)
+        {
+            var originalOrder = scope.Active.ToArray();
+            if (!ProductFamilyMediaOrdering.Move(scope.Active, sourceIndex, targetIndex)
+                || originalOrder.SequenceEqual(scope.Active)) continue;
+            var archived = scope.All.Where(media => media.Status != "ACTIVE")
+                .OrderBy(media => media.SortOrder).ThenBy(media => media.Id).ToList();
+            changedScopes.Add((scope.ProductId, scope.VariantId, scope.All, scope.Active, archived));
+        }
+
+        if (changedScopes.Count == 0)
+        {
+            await transaction.CommitAsync(http.RequestAborted);
+            return Results.Ok(new { changedProductCount = 0, changedGalleryCount = 0 });
+        }
+
+        foreach (var scope in changedScopes)
+        {
+            var occupied = scope.All.Select(media => media.SortOrder).ToHashSet();
+            var temporary = int.MinValue;
+            foreach (var media in scope.All.OrderBy(media => media.SortOrder).ThenBy(media => media.Id))
+            {
+                while (occupied.Contains(temporary)) temporary++;
+                media.SortOrder = temporary;
+                occupied.Add(temporary++);
+            }
+        }
+        await db.SaveChangesAsync(http.RequestAborted);
+
+        foreach (var scope in changedScopes)
+        {
+            for (var index = 0; index < scope.Active.Count; index++)
+            {
+                scope.Active[index].SortOrder = index;
+                scope.Active[index].MediaRole = scope.VariantId is null
+                    ? index == 0 ? "ORDERED_PRIMARY" : "ORDERED_GALLERY"
+                    : index == 0 ? "PRIMARY" : "GALLERY";
+            }
+            for (var index = 0; index < scope.Archived.Count; index++)
+                scope.Archived[index].SortOrder = scope.Active.Count + index;
+        }
+        var changedProductIds = changedScopes.Select(scope => scope.ProductId).Distinct().ToHashSet();
+        var now = timeProvider.GetUtcNow();
+        foreach (var product in siblingProducts.Where(product => changedProductIds.Contains(product.Id)))
+        {
+            product.UpdatedAt = now;
+            product.Version++;
+        }
+        await db.SaveChangesAsync(http.RequestAborted);
+        await transaction.CommitAsync(http.RequestAborted);
+        return Results.Ok(new { changedProductCount = changedProductIds.Count, changedGalleryCount = changedScopes.Count });
     }
 
     private static async Task<IResult> RegisterProductMediaUrlAsync(RegisterProductMediaUrl command, HttpContext http, AppDbContext db, TimeProvider timeProvider)
@@ -293,6 +829,105 @@ public static class CatalogEndpoints
         return Results.NoContent();
     }
 
+    private static async Task<IResult> DeleteProductMediaItemsAsync([FromBody] DeleteProductMediaItemsCommand command, HttpContext http, AppDbContext db, TimeProvider timeProvider)
+    {
+        if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
+        var mediaIds = command.MediaIds?.Distinct().ToArray() ?? [];
+        if (mediaIds.Length is 0 or > 100) return Problem(http, new("PRODUCT_MEDIA_DELETE_LIMIT", "Bir işlemde 1-100 görsel bağlantısı kaldırılabilir.", 422));
+
+        var media = await db.ProductMedia.Where(item => item.TenantId == tenant.TenantId && mediaIds.Contains(item.Id) && item.Status == "ACTIVE").ToListAsync(http.RequestAborted);
+        if (media.Count != mediaIds.Length) return Problem(http, new("PRODUCT_MEDIA_NOT_FOUND", "Görsel bağlantılarından biri bulunamadı veya daha önce kaldırıldı.", 404));
+        var productIds = media.Select(item => item.ProductId).Distinct().ToArray();
+        var products = await db.Products.Where(product => product.TenantId == tenant.TenantId && productIds.Contains(product.Id)).ToListAsync(http.RequestAborted);
+        if (products.Count != productIds.Length) return Problem(http, new("PRODUCT_MEDIA_NOT_FOUND", "Görselin kaynak ürünü bulunamadı.", 404));
+
+        foreach (var item in media) item.Status = "ARCHIVED";
+        var now = timeProvider.GetUtcNow();
+        foreach (var product in products) { product.UpdatedAt = now; product.Version++; }
+        await db.SaveChangesAsync(http.RequestAborted);
+        return Results.Ok(new { deletedCount = media.Count });
+    }
+
+    private static async Task<IResult> DeleteProductMediaItemAsync([FromBody] DeleteProductMediaItemCommand command, HttpContext http, AppDbContext db, TimeProvider timeProvider)
+    {
+        if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        if (RequireIdempotency(http) is { } keyFailure) return keyFailure;
+        if (!TryIfMatch(http, out var expectedVersion, out var versionFailure)) return versionFailure!;
+
+        var product = await db.Products.SingleOrDefaultAsync(item => item.TenantId == tenant.TenantId && item.Id == command.ProductId, http.RequestAborted);
+        if (product is null) return Problem(http, new("RESOURCE_NOT_FOUND", "Ürün bulunamadı.", 404));
+        if (product.Version != expectedVersion)
+        {
+            http.Response.Headers.ETag = $"\"v{product.Version}\"";
+            return Problem(http, new("PRECONDITION_FAILED", "Ürün başka bir işlemle değişti. Sayfayı yenileyip tekrar deneyin.", 412));
+        }
+
+        Guid assetId;
+        if (TryGetStoredProductMediaAssetId(command.Url, out var storedAssetId))
+        {
+            assetId = storedAssetId;
+        }
+        else
+        {
+            if (!TryNormalizePublicProductMediaUrl(command.Url, out var normalizedUrl, out var issue))
+                return Problem(http, new("PRODUCT_MEDIA_URL_INVALID", issue!, 422));
+            var remoteAsset = await db.FileAssets.AsNoTracking().SingleOrDefaultAsync(asset =>
+                asset.TenantId == tenant.TenantId && asset.RelativePath == normalizedUrl && asset.Classification == "PRODUCT_MEDIA_URL" && asset.Status == "ACTIVE",
+                http.RequestAborted);
+            if (remoteAsset is null) return Problem(http, new("PRODUCT_MEDIA_NOT_FOUND", "Görsel üründe artık etkin değil.", 404));
+            assetId = remoteAsset.Id;
+        }
+
+        var asset = await db.FileAssets.AsNoTracking().SingleOrDefaultAsync(item =>
+            item.TenantId == tenant.TenantId && item.Id == assetId && item.Status == "ACTIVE" && (item.Classification == "PRODUCT_MEDIA" || item.Classification == "PRODUCT_MEDIA_URL"),
+            http.RequestAborted);
+        if (asset is null) return Problem(http, new("PRODUCT_MEDIA_NOT_FOUND", "Görsel üründe artık etkin değil.", 404));
+
+        var modelCode = await db.ProductVariants.AsNoTracking()
+            .Where(variant => variant.TenantId == tenant.TenantId && variant.ProductId == product.Id && variant.ModelCode != null && variant.ModelCode != "")
+            .OrderBy(variant => variant.SortOrder).ThenBy(variant => variant.Id)
+            .Select(variant => variant.ModelCode)
+            .FirstOrDefaultAsync(http.RequestAborted);
+        var familyProductIds = string.IsNullOrWhiteSpace(modelCode)
+            ? new List<Guid> { product.Id }
+            : await db.ProductVariants.AsNoTracking()
+                .Where(variant => variant.TenantId == tenant.TenantId
+                    && variant.ModelCode != null
+                    && variant.ModelCode.ToUpper() == modelCode.ToUpper()
+                    && (!db.MarketplaceProductLinks.Any(link => link.TenantId == tenant.TenantId && link.ProductId == variant.ProductId)
+                        || db.MarketplaceProductLinks.Any(link => link.TenantId == tenant.TenantId && link.ProductId == variant.ProductId
+                            && db.PlatformConnections.Any(connection => connection.TenantId == tenant.TenantId && connection.Id == link.ConnectionId
+                                && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")))))
+                .Select(variant => variant.ProductId)
+                .Distinct()
+                .ToListAsync(http.RequestAborted);
+        if (!familyProductIds.Contains(product.Id)) familyProductIds.Add(product.Id);
+
+        await using var transaction = await db.Database.BeginTransactionAsync(http.RequestAborted);
+        var media = await db.ProductMedia
+            .Where(item => item.TenantId == tenant.TenantId && familyProductIds.Contains(item.ProductId) && item.FileAssetId == assetId && item.Status == "ACTIVE")
+            .ToListAsync(http.RequestAborted);
+        if (media.Count == 0) return Problem(http, new("PRODUCT_MEDIA_NOT_FOUND", "Görsel ürün ailesinde artık etkin değil.", 404));
+
+        foreach (var item in media) item.Status = "ARCHIVED";
+        var affectedProductIds = media.Select(item => item.ProductId).Distinct().ToArray();
+        var affectedProducts = await db.Products
+            .Where(item => item.TenantId == tenant.TenantId && affectedProductIds.Contains(item.Id))
+            .ToListAsync(http.RequestAborted);
+        var now = timeProvider.GetUtcNow();
+        foreach (var affectedProduct in affectedProducts)
+        {
+            affectedProduct.UpdatedAt = now;
+            affectedProduct.Version++;
+        }
+        await db.SaveChangesAsync(http.RequestAborted);
+        await transaction.CommitAsync(http.RequestAborted);
+        var version = affectedProducts.SingleOrDefault(item => item.Id == product.Id)?.Version ?? product.Version;
+        http.Response.Headers.ETag = $"\"v{version}\"";
+        return Results.Ok(new { deletedCount = media.Count, version, productVersions = affectedProducts.ToDictionary(item => item.Id.ToString("D"), item => item.Version) });
+    }
+
     private static bool IsPublicAddress(IPAddress address)
     {
         if (IPAddress.IsLoopback(address) || address.Equals(IPAddress.Any) || address.Equals(IPAddress.IPv6Any) || address.Equals(IPAddress.None) || address.Equals(IPAddress.IPv6None)) return false;
@@ -312,6 +947,39 @@ public static class CatalogEndpoints
             && !normalized.EndsWith(".local", StringComparison.OrdinalIgnoreCase)
             && !normalized.EndsWith(".internal", StringComparison.OrdinalIgnoreCase)
             && !normalized.EndsWith(".lan", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool TryGetStoredProductMediaAssetId(string? value, out Guid assetId)
+    {
+        assetId = Guid.Empty;
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        var parts = value.Trim().Split('/', StringSplitOptions.None);
+        return parts.Length == 7
+            && parts[0].Length == 0
+            && parts[1] == "api"
+            && parts[2] == "v1"
+            && parts[3] == "files"
+            && parts[4] == "product-media"
+            && parts[6] == "content"
+            && Guid.TryParseExact(parts[5], "D", out assetId);
+    }
+
+    private static bool TryNormalizePublicProductMediaUrl(string? value, out string? normalized, out string? issue)
+    {
+        normalized = null;
+        issue = null;
+        if (!Uri.TryCreate(value?.Trim(), UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps || string.IsNullOrWhiteSpace(uri.Host) || !string.IsNullOrEmpty(uri.UserInfo) || uri.AbsoluteUri.Length > 512)
+        {
+            issue = "Kalıcı, kullanıcı bilgisi içermeyen ve en fazla 512 karakterlik HTTPS görsel URL'si gereklidir.";
+            return false;
+        }
+        if (uri.IsLoopback || !IsPublicHost(uri.Host) || IPAddress.TryParse(uri.Host, out var address) && !IsPublicAddress(address))
+        {
+            issue = "Yerel, özel ağ veya loopback görsel adresi kullanılamaz.";
+            return false;
+        }
+        normalized = uri.AbsoluteUri;
+        return true;
     }
 
     private static string MediaRole(string? value)
@@ -343,4 +1011,11 @@ public static class CatalogEndpoints
     public sealed record PublicationRequest(Guid ConnectionId);
     public sealed record ProductArchiveRequest(Guid ConnectionId, bool Archived);
     public sealed record RegisterProductMediaUrl(Guid ProductId, Guid? VariantId, string Url, string? MediaRole, int SortOrder, string? AltText);
+    public sealed record ReconcileProductMediaCommand(Guid ProductId, Guid? VariantId, IReadOnlyList<ReconcileProductMediaItem>? Items, string? AltText);
+    public sealed record ReconcileProductMediaItem(string Url, int SortOrder);
+    public sealed record ReorderProductFamilyMediaCommand(Guid ProductId, IReadOnlyList<string>? UrlsInOrder = null, int? SourceIndex = null, int? TargetIndex = null);
+    private sealed record ProductFamilyMediaRow(ProductMedia Media, string Url, string ImageKey);
+    private sealed record ProductFamilyImageGroup(string Key, string Url, ProductFamilyMediaRow[] Rows, int SortOrder, Guid FirstProductId, Guid FirstMediaId);
+    public sealed record DeleteProductMediaItemsCommand(IReadOnlyList<Guid>? MediaIds);
+    public sealed record DeleteProductMediaItemCommand(Guid ProductId, string? Url);
 }

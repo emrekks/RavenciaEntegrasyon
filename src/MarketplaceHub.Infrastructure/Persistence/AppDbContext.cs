@@ -1,3 +1,4 @@
+using System.Text.Json;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
@@ -11,12 +12,14 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     : IdentityDbContext<ApplicationUser, IdentityRole<Guid>, Guid>(options)
 {
     public DbSet<Tenant> Tenants => Set<Tenant>();
+    public DbSet<TenantSetting> TenantSettings => Set<TenantSetting>();
     public DbSet<TenantMembership> TenantMemberships => Set<TenantMembership>();
     public DbSet<UserSecurity> UserSecurities => Set<UserSecurity>();
     public DbSet<RecoveryCode> RecoveryCodes => Set<RecoveryCode>();
     public DbSet<UserSession> UserSessions => Set<UserSession>();
     public DbSet<BootstrapState> BootstrapStates => Set<BootstrapState>();
     public DbSet<IntegrationJob> IntegrationJobs => Set<IntegrationJob>();
+    public DbSet<IntegrationOutboxEvent> IntegrationOutboxEvents => Set<IntegrationOutboxEvent>();
     public DbSet<JobAttempt> JobAttempts => Set<JobAttempt>();
     public DbSet<InboxMessage> InboxMessages => Set<InboxMessage>();
     public DbSet<ExternalEffectRecord> ExternalEffectRecords => Set<ExternalEffectRecord>();
@@ -44,6 +47,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<BrandMapping> BrandMappings => Set<BrandMapping>();
     public DbSet<AttributeMapping> AttributeMappings => Set<AttributeMapping>();
     public DbSet<AttributeValueMapping> AttributeValueMappings => Set<AttributeValueMapping>();
+    public DbSet<AttributeMappingTemplate> AttributeMappingTemplates => Set<AttributeMappingTemplate>();
+    public DbSet<AttributeValueMappingTemplate> AttributeValueMappingTemplates => Set<AttributeValueMappingTemplate>();
+    public DbSet<MappingTemplateDismissal> MappingTemplateDismissals => Set<MappingTemplateDismissal>();
+    public DbSet<ConnectionAttributeDefault> ConnectionAttributeDefaults => Set<ConnectionAttributeDefault>();
     public DbSet<MarketplaceProductLink> MarketplaceProductLinks => Set<MarketplaceProductLink>();
     public DbSet<MarketplaceVariantLink> MarketplaceVariantLinks => Set<MarketplaceVariantLink>();
     public DbSet<MarketplaceListingState> MarketplaceListingStates => Set<MarketplaceListingState>();
@@ -66,6 +73,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<StockLedgerEntry> StockLedgerEntries => Set<StockLedgerEntry>();
     public DbSet<StockReservation> StockReservations => Set<StockReservation>();
     public DbSet<ChannelOffer> ChannelOffers => Set<ChannelOffer>();
+    public DbSet<ChannelInventoryObservation> ChannelInventoryObservations => Set<ChannelInventoryObservation>();
     public DbSet<ChannelPriceHistory> ChannelPriceHistory => Set<ChannelPriceHistory>();
     public DbSet<PlatformCredential> PlatformCredentials => Set<PlatformCredential>();
     public DbSet<PlatformCapability> PlatformCapabilities => Set<PlatformCapability>();
@@ -78,6 +86,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<OrderLine> OrderLines => Set<OrderLine>();
     public DbSet<OrderFinancialAllocation> OrderFinancialAllocations => Set<OrderFinancialAllocation>();
     public DbSet<ShipmentPackage> ShipmentPackages => Set<ShipmentPackage>();
+    public DbSet<MarketplaceInvoiceReferenceHistory> MarketplaceInvoiceReferenceHistories => Set<MarketplaceInvoiceReferenceHistory>();
     public DbSet<PackageLineAllocation> PackageLineAllocations => Set<PackageLineAllocation>();
     public DbSet<OrderStatusHistory> OrderStatusHistory => Set<OrderStatusHistory>();
     public DbSet<ShipmentDocument> ShipmentDocuments => Set<ShipmentDocument>();
@@ -88,14 +97,27 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<ReturnDecision> ReturnDecisions => Set<ReturnDecision>();
     public DbSet<ReturnEvidence> ReturnEvidence => Set<ReturnEvidence>();
     public DbSet<ReturnStockDisposition> ReturnStockDispositions => Set<ReturnStockDisposition>();
+    public DbSet<MarketplaceQuestion> MarketplaceQuestions => Set<MarketplaceQuestion>();
+    public DbSet<MarketplaceQuestionTemplate> MarketplaceQuestionTemplates => Set<MarketplaceQuestionTemplate>();
+    public DbSet<MarketplaceQuestionSyncState> MarketplaceQuestionSyncStates => Set<MarketplaceQuestionSyncState>();
     public DbSet<LegalEntityProfile> LegalEntityProfiles => Set<LegalEntityProfile>();
     public DbSet<InvoicePolicy> InvoicePolicies => Set<InvoicePolicy>();
     public DbSet<Invoice> Invoices => Set<Invoice>();
     public DbSet<InvoiceLine> InvoiceLines => Set<InvoiceLine>();
     public DbSet<InvoicePartySnapshot> InvoicePartySnapshots => Set<InvoicePartySnapshot>();
     public DbSet<InvoiceDocument> InvoiceDocuments => Set<InvoiceDocument>();
+    public DbSet<ManualOrderInvoiceDocument> ManualOrderInvoiceDocuments => Set<ManualOrderInvoiceDocument>();
+    public DbSet<ManualOrderInvoiceDeliveryState> ManualOrderInvoiceDeliveryStates => Set<ManualOrderInvoiceDeliveryState>();
     public DbSet<InvoiceSubmissionAttempt> InvoiceSubmissionAttempts => Set<InvoiceSubmissionAttempt>();
     public DbSet<MarketplaceDelivery> MarketplaceDeliveries => Set<MarketplaceDelivery>();
+    public DbSet<MarketplaceDeliveryState> MarketplaceDeliveryStates => Set<MarketplaceDeliveryState>();
+    public DbSet<DashboardSnapshot> DashboardSnapshots => Set<DashboardSnapshot>();
+    public DbSet<DashboardRevenueDaily> DashboardRevenueDaily => Set<DashboardRevenueDaily>();
+    public DbSet<DashboardLowStockProjection> DashboardLowStockProjections => Set<DashboardLowStockProjection>();
+    public DbSet<DashboardSyncStatusProjection> DashboardSyncStatusProjections => Set<DashboardSyncStatusProjection>();
+    public DbSet<ProductImportSession> ProductImportSessions => Set<ProductImportSession>();
+    public DbSet<ProductImportStagingRecord> ProductImportStagingRecords => Set<ProductImportStagingRecord>();
+    public DbSet<CatalogStructureRun> CatalogStructureRuns => Set<CatalogStructureRun>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -103,13 +125,107 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         ConfigureIdentity(builder);
         ConfigureIntegration(builder);
         ConfigureOperations(builder);
+        ConfigureDashboard(builder);
         builder.ConfigureCatalogModels();
         builder.ConfigureMarketplaceModels();
         builder.ConfigureInvoicingModels();
+        builder.ConfigureQuestionModels();
     }
 
-    public override int SaveChanges(bool acceptAllChangesOnSuccess) { GuardAppendOnlyAudit(); return base.SaveChanges(acceptAllChangesOnSuccess); }
-    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default) { GuardAppendOnlyAudit(); return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken); }
+    public override int SaveChanges(bool acceptAllChangesOnSuccess) { TrackSyncCursorProgress(); ApplyIntegrationJobMetadata(); AppendDataChangeOutboxEvents(); GuardAppendOnlyAudit(); return base.SaveChanges(acceptAllChangesOnSuccess); }
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default) { TrackSyncCursorProgress(); ApplyIntegrationJobMetadata(); AppendDataChangeOutboxEvents(); GuardAppendOnlyAudit(); return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken); }
+
+    private void TrackSyncCursorProgress()
+    {
+        var now = DateTimeOffset.UtcNow;
+        foreach (var entry in ChangeTracker.Entries<SyncCursor>().Where(x => x.State is EntityState.Added or EntityState.Modified))
+        {
+            if (entry.State == EntityState.Added)
+            {
+                if (entry.Entity.LastCursorAdvancedAt is null
+                    && (!string.IsNullOrWhiteSpace(entry.Entity.OpaqueCursor) || entry.Entity.LastModifiedWatermark is not null))
+                {
+                    entry.Entity.LastCursorAdvancedAt = now;
+                }
+
+                continue;
+            }
+
+            SyncCursorProgressTracker.TrackModification(
+                entry.Entity,
+                entry.Property(x => x.OpaqueCursor).OriginalValue,
+                entry.Property(x => x.LastModifiedWatermark).OriginalValue,
+                entry.Property(x => x.LastSuccessAt).OriginalValue,
+                now);
+        }
+    }
+
+    private void ApplyIntegrationJobMetadata()
+    {
+        foreach (var entry in ChangeTracker.Entries<IntegrationJob>().Where(x => x.State == EntityState.Added))
+        {
+            if (entry.Entity.ResourceType != "jobs") continue;
+            var metadata = IntegrationJobMetadataPolicy.FromJobType(entry.Entity.JobType);
+            entry.Entity.ResourceType = metadata.ResourceType;
+            entry.Entity.OperationType = metadata.OperationType;
+            entry.Entity.TriggerType = metadata.TriggerType;
+        }
+    }
+
+    private void AppendDataChangeOutboxEvents()
+    {
+        var existing = ChangeTracker.Entries<IntegrationOutboxEvent>()
+            .Where(x => x.State == EntityState.Added)
+            .Select(x => (x.Entity.ResourceType, x.Entity.AggregateType, x.Entity.AggregateId))
+            .ToHashSet();
+        // Adding an outbox event updates ChangeTracker. Materialize the source
+        // entries first so the enumeration is not invalidated by that append.
+        foreach (var entry in ChangeTracker.Entries().Where(x => x.State is EntityState.Added or EntityState.Modified).ToList())
+        {
+            var change = OutboxChange(entry.Entity);
+            if (change is null || !existing.Add((change.Value.ResourceType, change.Value.AggregateType, change.Value.AggregateId))) continue;
+            var now = DateTimeOffset.UtcNow;
+            IntegrationOutboxEvents.Add(new IntegrationOutboxEvent
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = change.Value.TenantId,
+                ResourceType = change.Value.ResourceType,
+                OperationType = entry.State == EntityState.Added ? "created" : "updated",
+                AggregateType = change.Value.AggregateType,
+                AggregateId = change.Value.AggregateId,
+                AggregateVersion = change.Value.Version,
+                PayloadJson = JsonSerializer.Serialize(new { aggregateType = change.Value.AggregateType, aggregateId = change.Value.AggregateId, version = change.Value.Version }),
+                CreatedAt = now,
+                NextAttemptAt = now
+            });
+        }
+    }
+
+    private static (Guid TenantId, string ResourceType, string AggregateType, Guid AggregateId, long? Version)? OutboxChange(object entity) => entity switch
+    {
+        Order value => (value.TenantId, "orders", "Order", value.Id, value.Version),
+        OrderLine value => (value.TenantId, "orders", "Order", value.OrderId, value.Version),
+        ShipmentPackage value => (value.TenantId, "orders", "ShipmentPackage", value.Id, value.Version),
+        PackageLineAllocation value => (value.TenantId, "orders", "ShipmentPackage", value.PackageId, null),
+        Product value => (value.TenantId, "products", "Product", value.Id, value.Version),
+        ProductVariant value => (value.TenantId, "products", "Product", value.ProductId, value.Version),
+        ProductMedia value => (value.TenantId, "products", "Product", value.ProductId, null),
+        InventoryItem value => (value.TenantId, "inventory", "InventoryItem", value.Id, value.Version),
+        StockLedgerEntry value => (value.TenantId, "inventory", "InventoryItem", value.InventoryItemId, null),
+        StockReservation value => (value.TenantId, "inventory", "InventoryItem", value.InventoryItemId, value.Version),
+        ReturnClaim value => (value.TenantId, "returns", "ReturnClaim", value.Id, value.Version),
+        ReturnLine value => (value.TenantId, "returns", "ReturnClaim", value.ClaimId, null),
+        Invoice value => (value.TenantId, "invoices", "Invoice", value.Id, value.Version),
+        InvoiceLine value => (value.TenantId, "invoices", "Invoice", value.InvoiceId, null),
+        InvoiceDocument value => (value.TenantId, "invoices", "Invoice", value.InvoiceId, null),
+        ManualOrderInvoiceDocument value => (value.TenantId, "invoices", "ManualOrderInvoiceDocument", value.Id, value.Version),
+        ManualOrderInvoiceDeliveryState value => (value.TenantId, "invoices", "ManualOrderInvoiceDocument", value.DocumentId, value.Version),
+        MarketplaceInvoiceReferenceHistory value => (value.TenantId, "invoices", "MarketplaceInvoiceReferenceHistory", value.Id, null),
+        MarketplaceDelivery value => (value.TenantId, "invoices", "Invoice", value.InvoiceId, null),
+        MarketplaceDeliveryState value => (value.TenantId, "invoices", "Invoice", value.InvoiceId, value.Version),
+        PlatformConnection value => (value.TenantId, "connections", "PlatformConnection", value.Id, value.Version),
+        _ => null
+    };
 
     private void GuardAppendOnlyAudit()
     {
@@ -117,18 +233,23 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             throw new InvalidOperationException("Audit log is append-only.");
         if (ChangeTracker.Entries<OrderStatusHistory>().Any(x => x.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Order status history is append-only.");
-        if (ChangeTracker.Entries<ReturnDecision>().Any(x => x.State is EntityState.Modified or EntityState.Deleted))
-            throw new InvalidOperationException("Return decisions are append-only.");
+        // ReturnDecision is the mutable lifecycle snapshot for a queued external
+        // action. Its evidence and audit records remain immutable; the decision
+        // itself must transition through its processing states.
         if (ChangeTracker.Entries<InvoiceLine>().Any(x => x.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Invoice lines are immutable snapshots.");
         if (ChangeTracker.Entries<InvoicePartySnapshot>().Any(x => x.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Invoice party snapshots are immutable.");
         if (ChangeTracker.Entries<InvoiceDocument>().Any(x => x.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Invoice documents are immutable.");
-        if (ChangeTracker.Entries<InvoiceSubmissionAttempt>().Any(x => x.State is EntityState.Modified or EntityState.Deleted))
+        // An attempt is written as STARTED before the provider call and completed exactly once with its outcome; after that it is immutable.
+        if (ChangeTracker.Entries<InvoiceSubmissionAttempt>().Any(x => x.State == EntityState.Deleted
+            || (x.State == EntityState.Modified && !string.Equals(x.OriginalValues.GetValue<string>(nameof(InvoiceSubmissionAttempt.Outcome)), "STARTED", StringComparison.Ordinal))))
             throw new InvalidOperationException("Invoice submission attempts are append-only.");
         if (ChangeTracker.Entries<MarketplaceDelivery>().Any(x => x.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Marketplace delivery attempts are append-only.");
+        if (ChangeTracker.Entries<MarketplaceInvoiceReferenceHistory>().Any(x => x.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("Marketplace invoice reference history is append-only.");
     }
 
     private static void ConfigureIdentity(ModelBuilder builder)
@@ -149,6 +270,14 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.Property(x => x.DisplayName).HasMaxLength(160); entity.Property(x => x.Timezone).HasMaxLength(64);
             entity.Property(x => x.Status).HasConversion(RecordStatusConverter).HasMaxLength(24); entity.Property(x => x.Version).IsConcurrencyToken();
         });
+        builder.Entity<TenantSetting>(entity =>
+        {
+            entity.ToTable("tenant_settings", "iam"); entity.HasKey(x => new { x.TenantId, x.Key });
+            entity.Property(x => x.Key).HasMaxLength(128);
+            entity.Property(x => x.ValueJson).HasColumnType("jsonb");
+            entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        });
         builder.Entity<TenantMembership>(entity =>
         {
             entity.ToTable("tenant_memberships", "iam"); entity.HasKey(x => x.Id);
@@ -161,7 +290,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         builder.Entity<UserSecurity>(entity =>
         {
             entity.ToTable("user_security", "iam"); entity.HasKey(x => x.UserId);
-            entity.Property(x => x.TotpState).HasConversion(TotpStateConverter).HasMaxLength(24); entity.Property(x => x.ProtectedTotpSecret).HasMaxLength(2048);
+            entity.Property(x => x.TotpState).HasConversion(TotpStateConverter).HasMaxLength(24); entity.Property(x => x.ProtectedTotpSecret).HasMaxLength(2048); entity.Property(x => x.PendingProtectedTotpSecret).HasMaxLength(2048);
             entity.Property(x => x.Version).IsConcurrencyToken();
             entity.HasOne<ApplicationUser>().WithOne().HasForeignKey<UserSecurity>(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
@@ -193,9 +322,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         builder.Entity<IntegrationJob>(entity =>
         {
             entity.ToTable("jobs", "integration", table => table.HasCheckConstraint("ck_job_attempt_bounds", "\"AttemptCount\" >= 0 AND \"MaxAttempts\" > 0 AND \"AttemptCount\" <= \"MaxAttempts\"")); entity.HasKey(x => x.Id);
-            entity.Property(x => x.JobType).HasMaxLength(96); entity.Property(x => x.JobDedupKey).HasMaxLength(256);
+            entity.Property(x => x.JobType).HasMaxLength(96); entity.Property(x => x.ResourceType).HasMaxLength(48).HasDefaultValue("jobs"); entity.Property(x => x.OperationType).HasMaxLength(64).HasDefaultValue("execute"); entity.Property(x => x.TriggerType).HasMaxLength(32).HasDefaultValue("system"); entity.Property(x => x.JobDedupKey).HasMaxLength(256);
             entity.Property(x => x.EffectIdempotencyKey).HasMaxLength(256); entity.Property(x => x.PayloadHash).HasMaxLength(128);
             entity.Property(x => x.Status).HasConversion(JobStatusConverter).HasMaxLength(24); entity.Property(x => x.CreatedAt).HasDefaultValueSql("now()").ValueGeneratedOnAdd(); entity.Property(x => x.MaxAttempts).HasDefaultValue(JobRetryPolicy.DefaultMaxAttempts); entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.Property(x => x.ProgressLabel).HasMaxLength(256);
             entity.HasIndex(x => new { x.TenantId, x.JobType, x.JobDedupKey }).IsUnique();
             entity.HasIndex(x => new { x.Status, x.Priority, x.AvailableAt, x.CreatedAt });
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
@@ -219,6 +349,19 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.HasIndex(x => new { x.TenantId, x.EffectType, x.IdempotencyKey }).IsUnique();
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
         });
+        builder.Entity<IntegrationOutboxEvent>(entity =>
+        {
+            entity.ToTable("outbox_events", "integration"); entity.HasKey(x => x.Id);
+            entity.Property(x => x.ResourceType).HasMaxLength(48);
+            entity.Property(x => x.OperationType).HasMaxLength(64);
+            entity.Property(x => x.AggregateType).HasMaxLength(96);
+            entity.Property(x => x.PayloadJson).HasColumnType("jsonb");
+            entity.Property(x => x.LastDispatchError).HasMaxLength(512);
+            entity.Property(x => x.CreatedAt).HasDefaultValueSql("now()").ValueGeneratedOnAdd();
+            entity.HasIndex(x => new { x.PublishedAt, x.NextAttemptAt, x.CreatedAt });
+            entity.HasIndex(x => new { x.TenantId, x.CreatedAt });
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+        });
     }
 
     private static void ConfigureOperations(ModelBuilder builder)
@@ -231,7 +374,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         builder.Entity<OperationalIssue>(entity =>
         {
             entity.ToTable("operational_issues", "ops"); entity.HasKey(x => x.Id);
-            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(24); entity.HasIndex(x => x.DedupeKey).IsUnique();
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(24); entity.HasIndex(x => new { x.TenantId, x.DedupeKey }).IsUnique();
         });
         builder.Entity<FeatureFlag>(entity =>
         {
@@ -250,8 +393,41 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         {
             entity.ToTable("api_idempotency_records", "ops"); entity.HasKey(x => x.Id);
             entity.Property(x => x.RouteTemplate).HasMaxLength(256); entity.Property(x => x.IdempotencyKey).HasMaxLength(256);
-            entity.Property(x => x.RequestHash).HasMaxLength(128); entity.Property(x => x.State).HasMaxLength(24);
+            entity.Property(x => x.RequestHash).HasMaxLength(128); entity.Property(x => x.State).HasMaxLength(24); entity.Property(x => x.ResponseBody).HasColumnType("text");
             entity.HasIndex(x => new { x.TenantId, x.RouteTemplate, x.IdempotencyKey }).IsUnique(); entity.HasIndex(x => x.ExpiresAt);
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+        });
+    }
+
+    private static void ConfigureDashboard(ModelBuilder builder)
+    {
+        builder.Entity<DashboardSnapshot>(entity =>
+        {
+            entity.ToTable("snapshot", "dashboard"); entity.HasKey(x => x.TenantId);
+            entity.Property(x => x.PendingByPlatformJson).HasColumnType("jsonb");
+            entity.Property(x => x.RecentJobCount).HasDefaultValue(0);
+            entity.Property(x => x.RecentRateLimitJobCount).HasDefaultValue(0);
+            entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<DashboardRevenueDaily>(entity =>
+        {
+            entity.ToTable("revenue_daily", "dashboard"); entity.HasKey(x => new { x.TenantId, x.Day, x.PlatformName, x.Currency });
+            entity.Property(x => x.Day).HasColumnType("date"); entity.Property(x => x.PlatformName).HasMaxLength(160); entity.Property(x => x.Currency).HasMaxLength(3);
+            entity.HasIndex(x => new { x.TenantId, x.Day });
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<DashboardLowStockProjection>(entity =>
+        {
+            entity.ToTable("low_stock", "dashboard"); entity.HasKey(x => new { x.TenantId, x.ProductId });
+            entity.Property(x => x.Title).HasMaxLength(512); entity.Property(x => x.PrimaryImageUrl).HasMaxLength(1024);
+            entity.HasIndex(x => new { x.TenantId, x.TotalStock });
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<DashboardSyncStatusProjection>(entity =>
+        {
+            entity.ToTable("sync_status", "dashboard"); entity.HasKey(x => new { x.TenantId, x.ResourceType });
+            entity.Property(x => x.ResourceType).HasMaxLength(48); entity.Property(x => x.DisplayName).HasMaxLength(96); entity.Property(x => x.Kind).HasMaxLength(32); entity.Property(x => x.Status).HasMaxLength(32); entity.Property(x => x.LastErrorCode).HasMaxLength(128); entity.Property(x => x.Version).IsConcurrencyToken();
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
         });
     }

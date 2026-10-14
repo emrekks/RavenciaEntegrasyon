@@ -49,9 +49,19 @@ public static class AuthEndpoints
         await users.ResetAccessFailedCountAsync(user);
         var security = await db.UserSecurities.SingleAsync(x => x.UserId == user.Id, context.RequestAborted);
         var state = user.ForcePasswordChange ? SessionState.PasswordChangeRequired : security.TotpState == TotpState.Enabled ? SessionState.MfaChallenge : SessionState.Active;
-        var membership = state == SessionState.Active ? await db.TenantMemberships.SingleAsync(x => x.UserId == user.Id && x.Status == RecordStatus.Active, context.RequestAborted) : null;
+        var memberships = await ActiveTenantMemberships(db, user.Id).OrderBy(x => x.CreatedAt).ToListAsync(context.RequestAborted);
+        var membership = request.TenantId is Guid requestedTenant
+            ? memberships.SingleOrDefault(x => x.TenantId == requestedTenant)
+            : memberships.Count == 1 ? memberships[0] : null;
+        if (membership is null)
+        {
+            if (memberships.Count == 0) return Results.Problem(statusCode: 403, title: "Kullanıcı için aktif çalışma alanı bulunamadı.", extensions: new Dictionary<string, object?> { ["code"] = "TENANT_NOT_AVAILABLE" });
+            var tenantIds = memberships.Select(x => x.TenantId).ToArray();
+            var tenants = await db.Tenants.AsNoTracking().Where(x => x.Status == RecordStatus.Active && tenantIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, context.RequestAborted);
+            return Results.Conflict(new { code = "TENANT_SELECTION_REQUIRED", tenants = memberships.Select(x => new { id = x.TenantId, displayName = tenants.GetValueOrDefault(x.TenantId)?.DisplayName ?? x.TenantId.ToString("D") }) });
+        }
         var raw = TokenHasher.NewToken(); var now = time.GetUtcNow();
-        db.UserSessions.Add(new UserSession { Id = Guid.NewGuid(), UserId = user.Id, TenantId = membership?.TenantId, State = state, TokenHash = hasher.Hash(raw), SessionVersion = user.SessionVersion, IssuedAt = now, ReauthenticatedAt = now, LastSeenAt = now, ExpiresAt = now.AddMinutes(30), AbsoluteExpiresAt = now.AddHours(12) });
+        db.UserSessions.Add(new UserSession { Id = Guid.NewGuid(), UserId = user.Id, TenantId = membership.TenantId, State = state, TokenHash = hasher.Hash(raw), SessionVersion = user.SessionVersion, IssuedAt = now, ReauthenticatedAt = now, LastSeenAt = now, ExpiresAt = now.AddMinutes(30), AbsoluteExpiresAt = now.AddHours(12) });
         user.LastLoginAt = now; await db.SaveChangesAsync(context.RequestAborted);
         SetSessionCookie(context.Response, raw, now.AddHours(12));
         return Results.Ok(new { state = SessionStateWire(state) });
@@ -69,13 +79,20 @@ public static class AuthEndpoints
         var session = RequireSession(context, SessionState.PasswordChangeRequired, SessionState.Active); if (session is null) return Forbidden();
         if (request.NewPassword.Length is < 15 or > 64 || WeakPasswords.Contains(request.NewPassword)) return Results.Problem(statusCode: 400, title: "Password does not meet policy");
         var user = await users.FindByIdAsync(session.UserId.ToString()); if (user is null) return Forbidden();
+        if (session.TenantId is Guid currentTenantId && !await HasActiveTenantMembershipAsync(db, user.Id, currentTenantId, context.RequestAborted))
+            return Results.Problem(statusCode: 403, title: "Aktif çalışma alanı bulunamadı.");
         var result = await users.ChangePasswordAsync(user, request.CurrentPassword, request.NewPassword);
         if (!result.Succeeded) return Results.ValidationProblem(result.Errors.ToDictionary(x => x.Code, x => new[] { x.Description }));
         user.ForcePasswordChange = false; user.SessionVersion++;
         await db.UserSessions.Where(x => x.UserId == user.Id && x.Id != session.Id && x.State != SessionState.Revoked).ExecuteUpdateAsync(x => x.SetProperty(s => s.State, SessionState.Revoked).SetProperty(s => s.RevokedAt, time.GetUtcNow()), context.RequestAborted);
         var security = await db.UserSecurities.SingleAsync(x => x.UserId == user.Id, context.RequestAborted);
         session.SessionVersion = user.SessionVersion; session.ReauthenticatedAt = time.GetUtcNow(); session.State = security.TotpState == TotpState.Enabled ? SessionState.MfaChallenge : SessionState.Active;
-        session.TenantId = session.State == SessionState.Active ? (await db.TenantMemberships.SingleAsync(x => x.UserId == user.Id, context.RequestAborted)).TenantId : null;
+        if (session.TenantId is null)
+        {
+            var membership = await ActiveTenantMemberships(db, user.Id).OrderBy(x => x.CreatedAt).FirstOrDefaultAsync(context.RequestAborted);
+            if (membership is null) return Results.Problem(statusCode: 403, title: "Aktif çalışma alanı bulunamadı.");
+            session.TenantId = membership.TenantId;
+        }
         var raw = TokenHasher.NewToken(); session.TokenHash = hasher.Hash(raw); await db.SaveChangesAsync(context.RequestAborted); SetSessionCookie(context.Response, raw, session.AbsoluteExpiresAt);
         return Results.Ok(new { state = SessionStateWire(session.State) });
     }
@@ -97,7 +114,8 @@ public static class AuthEndpoints
     {
         var session = CurrentSession(context); if (session is null) return Results.Unauthorized();
         var user = await db.Users.AsNoTracking().SingleAsync(x => x.Id == session.UserId, context.RequestAborted);
-        return Results.Ok(new { user.Id, user.Email, user.DisplayName, role = context.User.FindFirstValue(ClaimTypes.Role), state = SessionStateWire(session.State), tenantId = session.State == SessionState.Active ? session.TenantId : null });
+        Guid? activeTenantId = session.State == SessionState.Active && Guid.TryParse(context.User.FindFirstValue("tenant_id"), out var tenantId) ? tenantId : null;
+        return Results.Ok(new { user.Id, user.Email, user.DisplayName, role = context.User.FindFirstValue(ClaimTypes.Role), state = SessionStateWire(session.State), tenantId = activeTenantId });
     }
 
     private static async Task<IResult> SecurityStatusAsync(HttpContext context, AppDbContext db)
@@ -122,7 +140,23 @@ public static class AuthEndpoints
         var session = RequireRecentActive(context, time); if (session is null) return Forbidden();
         var security = await db.UserSecurities.SingleAsync(x => x.UserId == session.UserId, context.RequestAborted);
         var secret = totp.NewSecret(); var base32 = Base32(secret); var expires = time.GetUtcNow().AddMinutes(10);
-        security.TotpState = TotpState.Pending; security.ProtectedTotpSecret = protection.CreateProtector("MarketplaceHub.Totp.v1").Protect(Convert.ToBase64String(secret)); security.EnrollmentExpiresAt = expires; security.LastAcceptedTimeStep = null;
+        var protectedSecret = protection.CreateProtector("MarketplaceHub.Totp.v1").Protect(Convert.ToBase64String(secret));
+        if (security.TotpState == TotpState.Enabled)
+        {
+            // Keep the currently enforced factor active while a replacement is
+            // being scanned. Abandoning setup must never downgrade MFA.
+            security.PendingProtectedTotpSecret = protectedSecret;
+            security.PendingEnrollmentExpiresAt = expires;
+        }
+        else
+        {
+            security.TotpState = TotpState.Pending;
+            security.ProtectedTotpSecret = null;
+            security.EnrollmentExpiresAt = null;
+            security.PendingProtectedTotpSecret = protectedSecret;
+            security.PendingEnrollmentExpiresAt = expires;
+        }
+        security.Version++;
         await db.SaveChangesAsync(context.RequestAborted);
         var user = await db.Users.AsNoTracking().SingleAsync(x => x.Id == session.UserId, context.RequestAborted);
         var uri = $"otpauth://totp/MarketplaceHub:{Uri.EscapeDataString(user.Email ?? user.Id.ToString())}?secret={base32}&issuer=MarketplaceHub&digits=6&period=30";
@@ -134,11 +168,13 @@ public static class AuthEndpoints
     {
         var session = RequireSession(context, SessionState.Active); if (session is null) return Forbidden();
         var security = await db.UserSecurities.SingleAsync(x => x.UserId == session.UserId, context.RequestAborted);
-        if (security.TotpState != TotpState.Pending || security.EnrollmentExpiresAt <= time.GetUtcNow() || security.ProtectedTotpSecret is null) return Results.Problem(statusCode: 409, title: "MFA enrollment is not pending");
-        var secret = Convert.FromBase64String(protection.CreateProtector("MarketplaceHub.Totp.v1").Unprotect(security.ProtectedTotpSecret));
+        var pendingSecret = security.PendingProtectedTotpSecret ?? (security.TotpState == TotpState.Pending ? security.ProtectedTotpSecret : null);
+        var pendingExpiresAt = security.PendingEnrollmentExpiresAt ?? (security.TotpState == TotpState.Pending ? security.EnrollmentExpiresAt : null);
+        if (pendingExpiresAt <= time.GetUtcNow() || pendingSecret is null) return Results.Problem(statusCode: 409, title: "MFA enrollment is not pending");
+        var secret = Convert.FromBase64String(protection.CreateProtector("MarketplaceHub.Totp.v1").Unprotect(pendingSecret));
         if (!totp.TryValidate(secret, request.Code, null, out var step)) return Results.Problem(statusCode: 400, title: "Invalid verification code");
         await using var transaction = await db.Database.BeginTransactionAsync(context.RequestAborted);
-        security.TotpState = TotpState.Enabled; security.EnrollmentExpiresAt = null; security.LastAcceptedTimeStep = step; security.Version++;
+        security.TotpState = TotpState.Enabled; security.ProtectedTotpSecret = pendingSecret; security.EnrollmentExpiresAt = null; security.PendingProtectedTotpSecret = null; security.PendingEnrollmentExpiresAt = null; security.LastAcceptedTimeStep = step; security.Version++;
         session.ReauthenticatedAt = time.GetUtcNow();
         var codes = ReplaceRecoveryCodes(db, security, hasher, time.GetUtcNow()); await db.SaveChangesAsync(context.RequestAborted); await transaction.CommitAsync(context.RequestAborted);
         return Results.Ok(new { recoveryCodes = codes });
@@ -147,6 +183,8 @@ public static class AuthEndpoints
     private static async Task<IResult> MfaChallengeAsync(CodeRequest request, HttpContext context, AppDbContext db, IDataProtectionProvider protection, TotpService totp, TokenHasher hasher, TimeProvider time)
     {
         var session = RequireSession(context, SessionState.MfaChallenge); if (session is null) return Forbidden();
+        if (session.TenantId is Guid currentTenantId && !await HasActiveTenantMembershipAsync(db, session.UserId, currentTenantId, context.RequestAborted))
+            return Results.Problem(statusCode: 403, title: "Aktif çalışma alanı bulunamadı.");
         var security = await db.UserSecurities.SingleAsync(x => x.UserId == session.UserId, context.RequestAborted);
         var accepted = false;
         if (request.RecoveryCode is { Length: > 0 })
@@ -167,7 +205,13 @@ public static class AuthEndpoints
             }
         }
         if (!accepted) return Results.Problem(statusCode: 400, title: "Invalid MFA challenge");
-        session.State = SessionState.Active; session.ReauthenticatedAt = time.GetUtcNow(); session.TenantId = (await db.TenantMemberships.SingleAsync(x => x.UserId == session.UserId, context.RequestAborted)).TenantId;
+        if (session.TenantId is null)
+        {
+            var membership = await ActiveTenantMemberships(db, session.UserId).OrderBy(x => x.CreatedAt).FirstOrDefaultAsync(context.RequestAborted);
+            if (membership is null) return Results.Problem(statusCode: 403, title: "Aktif çalışma alanı bulunamadı.");
+            session.TenantId = membership.TenantId;
+        }
+        session.State = SessionState.Active; session.ReauthenticatedAt = time.GetUtcNow();
         await db.SaveChangesAsync(context.RequestAborted); return Results.Ok(new { state = SessionStateWire(session.State) });
     }
 
@@ -179,7 +223,7 @@ public static class AuthEndpoints
         if (security.TotpState == TotpState.Enabled && !await ValidateSecondFactorAsync(request, session.UserId, security, context, db, protection, totp, hasher, time))
             return Results.Problem(statusCode: 401, title: "Second factor verification failed");
         session.ReauthenticatedAt = time.GetUtcNow();
-        security.TotpState = TotpState.Disabled; security.ProtectedTotpSecret = null; security.LastAcceptedTimeStep = null; security.RecoveryBatchId = null;
+        security.TotpState = TotpState.Disabled; security.ProtectedTotpSecret = null; security.EnrollmentExpiresAt = null; security.PendingProtectedTotpSecret = null; security.PendingEnrollmentExpiresAt = null; security.LastAcceptedTimeStep = null; security.RecoveryBatchId = null; security.Version++;
         await db.RecoveryCodes.Where(x => x.UserId == user.Id && x.InvalidatedAt == null).ExecuteUpdateAsync(x => x.SetProperty(c => c.InvalidatedAt, time.GetUtcNow()), context.RequestAborted);
         user.SessionVersion++; session.SessionVersion = user.SessionVersion;
         await db.UserSessions.Where(x => x.UserId == user.Id && x.Id != session.Id && x.State != SessionState.Revoked).ExecuteUpdateAsync(x => x.SetProperty(s => s.State, SessionState.Revoked).SetProperty(s => s.RevokedAt, time.GetUtcNow()), context.RequestAborted);
@@ -262,6 +306,12 @@ public static class AuthEndpoints
     private static UserSession? RequireSession(HttpContext context, params SessionState[] allowed) => CurrentSession(context) is { } session && allowed.Contains(session.State) ? session : null;
     private static UserSession? RequireRecentActive(HttpContext context, TimeProvider time) => RequireSession(context, SessionState.Active) is { ReauthenticatedAt: { } verified } session && verified >= time.GetUtcNow().AddMinutes(-10) ? session : null;
     private static IResult Forbidden() => Results.Problem(statusCode: 403, title: "Session state does not permit this operation");
+    private static IQueryable<TenantMembership> ActiveTenantMemberships(AppDbContext db, Guid userId) =>
+        db.TenantMemberships.AsNoTracking()
+            .Where(x => x.UserId == userId && x.Status == RecordStatus.Active)
+            .Join(db.Tenants.AsNoTracking().Where(x => x.Status == RecordStatus.Active), membership => membership.TenantId, tenant => tenant.Id, (membership, _) => membership);
+    private static Task<bool> HasActiveTenantMembershipAsync(AppDbContext db, Guid userId, Guid tenantId, CancellationToken cancellationToken) =>
+        ActiveTenantMemberships(db, userId).AnyAsync(x => x.TenantId == tenantId, cancellationToken);
     private static string NormalizeRecovery(string code) => code.Replace("-", "", StringComparison.Ordinal).Trim().ToUpperInvariant();
     private static void SetSessionCookie(HttpResponse response, string token, DateTimeOffset expires) => response.Cookies.Append(SessionAuthMiddleware.CookieName(response.HttpContext), token, new CookieOptions { HttpOnly = true, Secure = SecureCookie(response.HttpContext), SameSite = SameSiteMode.Lax, Path = "/", Expires = expires });
     private static bool SecureCookie(HttpContext context) => !string.Equals(context.RequestServices.GetRequiredService<IConfiguration>()["MARKETPLACEHUB_ENVIRONMENT"], "PILOT_LOCAL", StringComparison.OrdinalIgnoreCase) || context.Request.IsHttps;
@@ -269,7 +319,7 @@ public static class AuthEndpoints
     private static string SessionStateWire(SessionState state) => state switch { SessionState.PasswordChangeRequired => "PASSWORD_CHANGE_REQUIRED", SessionState.MfaChallenge => "MFA_CHALLENGE", SessionState.Active => "ACTIVE", _ => "REVOKED" };
     private static readonly HashSet<string> WeakPasswords = new(StringComparer.Ordinal) { "Password123456!", "MarketplaceHub1!" };
 
-    public sealed record LoginRequest(string Email, string Password);
+    public sealed record LoginRequest(string Email, string Password, Guid? TenantId = null);
     public sealed record ChangePasswordRequest(string CurrentPassword, string NewPassword);
     public sealed record CodeRequest(string Code, string? RecoveryCode = null);
     public sealed record ReauthenticateRequest(string Password, string? Code = null, string? RecoveryCode = null);

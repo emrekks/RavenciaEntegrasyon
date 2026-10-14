@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the verified Ravencia backup once per day
+
+[Timer]
+OnCalendar=*-*-* 03:00:00 UTC
+Persistent=true
+RandomizedDelaySec=15m
+Unit=ravencia-backup.service
+
+[Install]
+WantedBy=timers.target

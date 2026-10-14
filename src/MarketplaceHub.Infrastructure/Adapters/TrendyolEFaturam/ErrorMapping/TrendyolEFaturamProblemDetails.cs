@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.ErrorMapping;
 
@@ -111,6 +112,42 @@ internal static class TrendyolEFaturamProblemDetails
         return path.StartsWith("/problem/", StringComparison.OrdinalIgnoreCase) ? $"problem:{path}" : null;
     }
 
+    internal static string? ToOperatorSummary(string? reference)
+    {
+        if (string.IsNullOrWhiteSpace(reference)) return null;
+
+        if (reference.StartsWith("validation:", StringComparison.Ordinal))
+        {
+            var parts = reference.Split(':', 3);
+            if (parts.Length == 3 && SafeSegment(parts[1]) is { } field && SafeSegment(parts[2]) is { } code)
+                return $"E-Faturam doğrulaması: alan {field}, kod {code}.";
+            return null;
+        }
+
+        if (reference.StartsWith("provider:", StringComparison.Ordinal)
+            && SafeSegment(reference["provider:".Length..]) is { } providerCode)
+            return $"E-Faturam yanıt kodu: {providerCode}.";
+
+        if (reference.StartsWith("provider-title:", StringComparison.Ordinal))
+        {
+            var title = SafeWordsFromReference(reference["provider-title:".Length..]);
+            return title is null ? null : $"E-Faturam yanıt başlığı: {title}.";
+        }
+
+        if (reference.StartsWith("provider-detail:", StringComparison.Ordinal))
+        {
+            var detail = reference["provider-detail:".Length..].Trim();
+            if (!IsSafeDisplayText(detail) || detail.Contains('@')
+                || detail.Contains("http", StringComparison.OrdinalIgnoreCase)
+                || detail.Contains("www.", StringComparison.OrdinalIgnoreCase)) return null;
+
+            detail = Regex.Replace(detail, @"(?<!\d)\d{5,}(?!\d)", "[sayı gizlendi]");
+            return $"E-Faturam ayrıntısı: {detail}";
+        }
+
+        return null;
+    }
+
     private static string? SafeSegment(JsonElement parent, string name)
     {
         if (!TryGetProperty(parent, name, out var value) || value.ValueKind != JsonValueKind.String) return null;
@@ -158,6 +195,16 @@ internal static class TrendyolEFaturamProblemDetails
             ? diagnostic
             : null;
     }
+
+    private static string? SafeWordsFromReference(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Length > 80
+            || !value.All(character => char.IsAsciiLetterOrDigit(character) || character is ' ' or '-' or '_' or '.')) return null;
+        return string.Join(' ', value.Split('-', StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    private static bool IsSafeDisplayText(string value) => value.Length is > 0 and <= MaximumReferenceLength
+        && value.All(character => char.IsLetterOrDigit(character) || character is ' ' or '-' or '_' or '.' or ':' or ',' or '[' or ']' or '(' or ')' or '/' or '%');
 
     private static bool IsApplicationMismatchDetail(string? value)
     {

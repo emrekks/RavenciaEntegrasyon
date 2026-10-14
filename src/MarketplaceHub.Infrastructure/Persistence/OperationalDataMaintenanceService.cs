@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvider timeProvider) : IOperationalDataMaintenanceService
+public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvider timeProvider, IDashboardReadService dashboard) : IOperationalDataMaintenanceService
 {
     private static readonly HashSet<string> AllowedScopes = new(StringComparer.Ordinal) { "PRODUCTS", "CATEGORIES", "CATEGORY_ATTRIBUTES", "BRANDS", "OPTIONS", "ORDERS", "RETURNS", "INVOICES" };
     private static readonly HashSet<string> ConnectionDeleteScopes = new(StringComparer.Ordinal) { "PRODUCTS", "ORDERS", "RETURNS", "INVOICES" };
@@ -13,7 +13,7 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
     {
         var scopes = command.Scopes.Select(value => value.Trim().ToUpperInvariant()).Distinct(StringComparer.Ordinal).ToHashSet(StringComparer.Ordinal);
         if (scopes.Count == 0 || scopes.Any(scope => !AllowedScopes.Contains(scope))) return Invalid("Geçerli en az bir veri alanı seçin.");
-        if (!string.Equals(command.Confirmation?.Trim(), "VERİLERİ SİL", StringComparison.Ordinal)) return Invalid("Onay alanına tam olarak VERİLERİ SİL yazın.");
+        if (command.Confirmation?.Trim() is not ("Verileri sil" or "VERİLERİ SİL")) return Invalid("Onay alanına tam olarak Verileri sil yazın.");
 
         var counts = await CountsAsync(tenantId, null, scopes, cancellationToken);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
@@ -36,7 +36,28 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         db.AuditLogs.Add(Audit(tenantId, actorUserId, "OPERATIONAL_DATA_RESET", "Tenant", tenantId.ToString("D"), string.Join(',', scopes.Order()), correlationId));
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        await dashboard.RebuildTenantAsync(tenantId, cancellationToken);
         return ServiceResult<OperationalDataResetView>.Ok(counts);
+    }
+
+    public async Task<ServiceResult<bool>> SetDataVisibilityAsync(Guid tenantId, Guid actorUserId, Guid connectionId, long expectedVersion, bool hidden, string correlationId, CancellationToken cancellationToken)
+    {
+        var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.Status != "DELETED", cancellationToken);
+        if (connection is null) return ServiceResult<bool>.Fail("RESOURCE_NOT_FOUND", "Bağlantı bulunamadı.", 404);
+        if (connection.Version != expectedVersion) return ServiceResult<bool>.Fail("CONCURRENCY_CONFLICT", $"Kayıt sürümü değişti; güncel sürüm v{connection.Version}.", 412);
+        if (hidden)
+        {
+            connection.Status = "HIDDEN";
+        }
+        else if (connection.Status == "HIDDEN")
+        {
+            connection.Status = "DISABLED";
+        }
+        connection.Version++;
+        db.AuditLogs.Add(Audit(tenantId, actorUserId, hidden ? "CONNECTION_DATA_HIDDEN" : "CONNECTION_DATA_SHOWN", "PlatformConnection", connectionId.ToString("D"), hidden ? "platform-data-hidden" : "platform-data-shown", correlationId));
+        await db.SaveChangesAsync(cancellationToken);
+        await dashboard.RebuildTenantAsync(tenantId, cancellationToken);
+        return ServiceResult<bool>.Ok(hidden);
     }
 
     public async Task<ServiceResult<OperationalDataResetView>> DeleteConnectionAsync(Guid tenantId, Guid actorUserId, Guid connectionId, long expectedVersion, DeleteConnectionCommand command, string correlationId, CancellationToken cancellationToken)
@@ -60,7 +81,58 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         db.AuditLogs.Add(Audit(tenantId, actorUserId, "CONNECTION_DEEP_DELETED", "PlatformConnection", connectionId.ToString("D"), $"{connection.PlatformCode}:{connection.ExternalStoreId}", correlationId));
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        await dashboard.RebuildTenantAsync(tenantId, cancellationToken);
         return ServiceResult<OperationalDataResetView>.Ok(counts with { ConnectionDeleted = true });
+    }
+
+    public async Task<ServiceResult<OperationalDataResetView>> ResetConnectionDataAsync(Guid tenantId, Guid actorUserId, Guid connectionId, long expectedVersion, ResetOperationalDataCommand command, string correlationId, CancellationToken cancellationToken)
+    {
+        var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.Status != "DELETED", cancellationToken);
+        if (connection is null) return ServiceResult<OperationalDataResetView>.Fail("RESOURCE_NOT_FOUND", "Bağlantı bulunamadı.", 404);
+        if (connection.Version != expectedVersion) return ServiceResult<OperationalDataResetView>.Fail("CONCURRENCY_CONFLICT", $"Kayıt sürümü değişti; güncel sürüm v{connection.Version}.", 412);
+
+        var scopes = command.Scopes.Select(value => value.Trim().ToUpperInvariant()).Distinct(StringComparer.Ordinal).ToHashSet(StringComparer.Ordinal);
+        var supportedScopes = ConnectionDataResetPolicy.ScopesFor(connection.PlatformCode);
+        if (scopes.Count == 0 || scopes.Any(scope => !supportedScopes.Contains(scope))) return Invalid("Bu bağlantı için geçerli en az bir veri alanı seçin.");
+        if (!string.Equals(command.Confirmation?.Trim(), connection.DisplayName, StringComparison.Ordinal)) return Invalid($"Onay alanına bağlantı adını tam olarak yazın: {connection.DisplayName}");
+
+        var counts = await CountsAsync(tenantId, connectionId, scopes, cancellationToken);
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        if (scopes.Contains("ORDERS"))
+        {
+            await DeleteReturnsAsync(tenantId, connectionId, cancellationToken);
+            await DeleteInvoicesAsync(tenantId, connectionId, cancellationToken);
+            await DeleteOrdersAsync(tenantId, connectionId, cancellationToken);
+            await DeleteConnectionSyncCursorsAsync(tenantId, connectionId, "ORDERS", cancellationToken);
+        }
+        else
+        {
+            if (scopes.Contains("RETURNS"))
+            {
+                await DeleteReturnsAsync(tenantId, connectionId, cancellationToken);
+                await DeleteConnectionSyncCursorsAsync(tenantId, connectionId, "RETURNS", cancellationToken);
+            }
+            if (scopes.Contains("INVOICES"))
+            {
+                await DeleteInvoicesAsync(tenantId, connectionId, cancellationToken);
+                await DeleteConnectionSyncCursorsAsync(tenantId, connectionId, "INVOICES", cancellationToken);
+            }
+        }
+        if (scopes.Contains("CATEGORIES")) await DeleteConnectionCategoryDataAsync(tenantId, connectionId, includeCategories: true, cancellationToken);
+        else if (scopes.Contains("CATEGORY_ATTRIBUTES")) await DeleteConnectionCategoryDataAsync(tenantId, connectionId, includeCategories: false, cancellationToken);
+        if (scopes.Contains("BRANDS")) await DeleteConnectionBrandDataAsync(tenantId, connectionId, cancellationToken);
+        if (scopes.Contains("PRODUCTS"))
+        {
+            await DeleteProductsAsync(tenantId, connectionId, cancellationToken);
+            await DeleteConnectionProductArtifactsAsync(tenantId, connectionId, cancellationToken);
+            await DeleteConnectionSyncCursorsAsync(tenantId, connectionId, "PRODUCTS", cancellationToken);
+        }
+
+        db.AuditLogs.Add(Audit(tenantId, actorUserId, "CONNECTION_DATA_RESET", "PlatformConnection", connectionId.ToString("D"), string.Join(',', scopes.Order()), correlationId));
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        await dashboard.RebuildTenantAsync(tenantId, cancellationToken);
+        return ServiceResult<OperationalDataResetView>.Ok(counts);
     }
 
     private async Task<OperationalDataResetView> CountsAsync(Guid tenantId, Guid? connectionId, HashSet<string> scopes, CancellationToken cancellationToken)
@@ -69,12 +141,51 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         var orders = scopes.Contains("ORDERS") ? await db.Orders.CountAsync(x => x.TenantId == tenantId && (connectionId == null || x.ConnectionId == connectionId), cancellationToken) : 0;
         var returns = scopes.Contains("RETURNS") || scopes.Contains("ORDERS") ? await db.ReturnClaims.CountAsync(x => x.TenantId == tenantId && (connectionId == null || x.ConnectionId == connectionId), cancellationToken) : 0;
         var invoices = scopes.Contains("INVOICES") || scopes.Contains("ORDERS") ? await db.Invoices.CountAsync(x => x.TenantId == tenantId && (connectionId == null || x.ProviderConnectionId == connectionId || db.Orders.Any(order => order.TenantId == tenantId && order.Id == x.OrderId && order.ConnectionId == connectionId)), cancellationToken) : 0;
-        var categories = scopes.Contains("CATEGORIES") ? await db.Categories.CountAsync(x => x.TenantId == tenantId, cancellationToken) : 0;
-        var brands = scopes.Contains("BRANDS") ? await db.Brands.CountAsync(x => x.TenantId == tenantId, cancellationToken) : 0;
+        var categories = scopes.Contains("CATEGORIES") ? connectionId is null ? await db.Categories.CountAsync(x => x.TenantId == tenantId, cancellationToken) : await db.ReferenceItems.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "CATEGORIES", cancellationToken) : 0;
+        var brands = scopes.Contains("BRANDS") ? connectionId is null ? await db.Brands.CountAsync(x => x.TenantId == tenantId, cancellationToken) : await db.ReferenceItems.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "BRANDS", cancellationToken) : 0;
         var options = scopes.Contains("OPTIONS") ? await db.ProductOptions.CountAsync(x => x.TenantId == tenantId, cancellationToken) : 0;
-        var categoryAttributes = scopes.Contains("CATEGORY_ATTRIBUTES") ? await db.AttributeDefinitions.CountAsync(x => x.TenantId == tenantId, cancellationToken) : 0;
+        var categoryAttributes = scopes.Contains("CATEGORY_ATTRIBUTES") || connectionId is not null && scopes.Contains("CATEGORIES") ? connectionId is null ? await db.AttributeDefinitions.CountAsync(x => x.TenantId == tenantId, cancellationToken) : await db.ReferenceItems.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && (x.ResourceType == "CATEGORY_ATTRIBUTES" || x.ResourceType == "ATTRIBUTE_VALUES"), cancellationToken) : 0;
         return new(products, orders, returns, invoices, categories, brands, options, categoryAttributes);
     }
+
+    private Task DeleteConnectionSyncCursorsAsync(Guid tenantId, Guid connectionId, string resourceType, CancellationToken cancellationToken) => db.Database.ExecuteSqlInterpolatedAsync($$"""
+        DELETE FROM integration.sync_cursors WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}} AND "ResourceType"={{resourceType}};
+        """, cancellationToken);
+
+    private Task DeleteConnectionCategoryDataAsync(Guid tenantId, Guid connectionId, bool includeCategories, CancellationToken cancellationToken) => includeCategories
+        ? db.Database.ExecuteSqlInterpolatedAsync($$"""
+            DELETE FROM catalog.category_mappings WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
+            DELETE FROM catalog.attribute_value_mappings WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
+            DELETE FROM catalog.attribute_mappings WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
+            DELETE FROM integration.reference_items i USING integration.reference_snapshots s WHERE i."TenantId"={{tenantId}} AND i."SnapshotId"=s."Id" AND s."TenantId"={{tenantId}} AND s."ConnectionId"={{connectionId}} AND s."ResourceType" IN ('CATEGORIES', 'CATEGORY_ATTRIBUTES', 'ATTRIBUTE_VALUES');
+            DELETE FROM integration.reference_snapshots WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}} AND "ResourceType" IN ('CATEGORIES', 'CATEGORY_ATTRIBUTES', 'ATTRIBUTE_VALUES');
+            DELETE FROM integration.sync_cursors WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}} AND "ResourceType" IN ('CATEGORIES', 'CATEGORY_ATTRIBUTES', 'ATTRIBUTE_VALUES');
+            """, cancellationToken)
+        : db.Database.ExecuteSqlInterpolatedAsync($$"""
+            DELETE FROM catalog.attribute_value_mappings WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
+            DELETE FROM catalog.attribute_mappings WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
+            DELETE FROM integration.reference_items i USING integration.reference_snapshots s WHERE i."TenantId"={{tenantId}} AND i."SnapshotId"=s."Id" AND s."TenantId"={{tenantId}} AND s."ConnectionId"={{connectionId}} AND s."ResourceType" IN ('CATEGORY_ATTRIBUTES', 'ATTRIBUTE_VALUES');
+            DELETE FROM integration.reference_snapshots WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}} AND "ResourceType" IN ('CATEGORY_ATTRIBUTES', 'ATTRIBUTE_VALUES');
+            DELETE FROM integration.sync_cursors WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}} AND "ResourceType" IN ('CATEGORY_ATTRIBUTES', 'ATTRIBUTE_VALUES');
+            """, cancellationToken);
+
+    private Task DeleteConnectionBrandDataAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) => db.Database.ExecuteSqlInterpolatedAsync($$"""
+        DELETE FROM catalog.brand_mappings WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
+        DELETE FROM integration.reference_items i USING integration.reference_snapshots s WHERE i."TenantId"={{tenantId}} AND i."SnapshotId"=s."Id" AND s."TenantId"={{tenantId}} AND s."ConnectionId"={{connectionId}} AND s."ResourceType"='BRANDS';
+        DELETE FROM integration.reference_snapshots WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}} AND "ResourceType"='BRANDS';
+        DELETE FROM integration.sync_cursors WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}} AND "ResourceType"='BRANDS';
+        """, cancellationToken);
+
+    private Task DeleteConnectionProductArtifactsAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) => db.Database.ExecuteSqlInterpolatedAsync($$"""
+        DELETE FROM inventory.channel_price_history h USING inventory.channel_offers o WHERE h."TenantId"={{tenantId}} AND h."OfferId"=o."Id" AND o."TenantId"={{tenantId}} AND o."ConnectionId"={{connectionId}};
+        DELETE FROM inventory.channel_offers WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
+        DELETE FROM inventory.channel_inventory_observations WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
+        DELETE FROM catalog.marketplace_listing_states WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
+        DELETE FROM catalog.marketplace_variant_links WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
+        DELETE FROM catalog.channel_listing_profiles WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
+        DELETE FROM catalog.marketplace_product_links WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
+        DELETE FROM catalog.external_identifier_aliases WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
+        """, cancellationToken);
 
     private Task DeleteReturnsAsync(Guid tenantId, Guid? connectionId, CancellationToken cancellationToken) => db.Database.ExecuteSqlInterpolatedAsync($$"""
         DELETE FROM sales.return_evidence e USING sales.return_claims c WHERE e."TenantId"={{tenantId}} AND c."TenantId"={{tenantId}} AND e."ClaimId"=c."Id" AND (CAST({{connectionId}} AS uuid) IS NULL OR c."ConnectionId"={{connectionId}});
@@ -149,6 +260,7 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         DELETE FROM catalog.field_provenance f WHERE f."TenantId"={{tenantId}} AND (f."ProductId" IN (SELECT "Id" FROM purge_products) OR f."VariantId" IN (SELECT v."Id" FROM catalog.product_variants v JOIN purge_products p ON p."Id"=v."ProductId"));
         DELETE FROM inventory.channel_price_history h USING inventory.channel_offers o, catalog.product_variants v, purge_products p WHERE h."TenantId"={{tenantId}} AND h."OfferId"=o."Id" AND o."VariantId"=v."Id" AND v."ProductId"=p."Id";
         DELETE FROM inventory.channel_offers o USING catalog.product_variants v, purge_products p WHERE o."TenantId"={{tenantId}} AND o."VariantId"=v."Id" AND v."ProductId"=p."Id";
+        DELETE FROM inventory.channel_inventory_observations o USING catalog.product_variants v, purge_products p WHERE o."TenantId"={{tenantId}} AND o."VariantId"=v."Id" AND v."ProductId"=p."Id";
         DELETE FROM inventory.stock_reservations r USING inventory.inventory_items i, catalog.product_variants v, purge_products p WHERE r."TenantId"={{tenantId}} AND r."InventoryItemId"=i."Id" AND i."VariantId"=v."Id" AND v."ProductId"=p."Id";
         DELETE FROM inventory.stock_ledger_entries l USING inventory.inventory_items i, catalog.product_variants v, purge_products p WHERE l."TenantId"={{tenantId}} AND l."InventoryItemId"=i."Id" AND i."VariantId"=v."Id" AND v."ProductId"=p."Id";
         DELETE FROM inventory.inventory_items i USING catalog.product_variants v, purge_products p WHERE i."TenantId"={{tenantId}} AND i."VariantId"=v."Id" AND v."ProductId"=p."Id";
@@ -184,6 +296,7 @@ public sealed class OperationalDataMaintenanceService(AppDbContext db, TimeProvi
         DELETE FROM sales.cargo_provider_mappings WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
         DELETE FROM inventory.channel_price_history h USING inventory.channel_offers o WHERE h."TenantId"={{tenantId}} AND h."OfferId"=o."Id" AND o."ConnectionId"={{connectionId}};
         DELETE FROM inventory.channel_offers WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
+        DELETE FROM inventory.channel_inventory_observations WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
         DELETE FROM inventory.connection_location_mappings WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
         DELETE FROM inventory.connection_inventory_policies WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
         DELETE FROM integration.webhook_subscriptions WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};

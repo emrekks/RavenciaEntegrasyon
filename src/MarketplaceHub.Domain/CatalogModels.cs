@@ -1,4 +1,4 @@
-﻿namespace MarketplaceHub.Domain;
+namespace MarketplaceHub.Domain;
 
 public enum ProductStatus { Draft = 0, Archived = 1, Active = 2 }
 public enum AttributeDataType { Text, Number, SingleSelect, MultiSelect, Boolean }
@@ -11,6 +11,8 @@ public sealed class Product
     public required string Description { get; set; }
     public Guid? BrandId { get; set; }
     public Guid? CategoryId { get; set; }
+    public decimal? DefaultListPrice { get; set; }
+    public decimal? DefaultSalePrice { get; set; }
     public ProductStatus Status { get; set; } = ProductStatus.Active;
     public long SourcePolicyVersion { get; set; } = 1;
     public DateTimeOffset? ArchivedAt { get; set; }
@@ -82,6 +84,7 @@ public sealed class CategoryAttributeRequirement
     public Guid AttributeId { get; set; }
     public bool IsRequired { get; set; }
     public bool AllowsCustomValue { get; set; }
+    public bool IsPanelScoped { get; set; }
     public string Role { get; set; } = "ATTRIBUTE";
     public int DisplayOrder { get; set; }
     public long Version { get; set; } = 1;
@@ -110,6 +113,7 @@ public sealed class ProductVariant
     public Guid Id { get; set; }
     public Guid TenantId { get; set; }
     public Guid ProductId { get; set; }
+    public int SortOrder { get; set; }
     public required string Sku { get; set; }
     public required string SkuNormalized { get; set; }
     public string? Barcode { get; set; }
@@ -122,6 +126,9 @@ public sealed class ProductVariant
     public decimal? Height { get; set; }
     public decimal? Length { get; set; }
     public decimal? Desi { get; set; }
+    public decimal? CostPrice { get; set; }
+    public decimal? DefaultListPrice { get; set; }
+    public decimal? DefaultSalePrice { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public long Version { get; set; } = 1;
@@ -240,8 +247,82 @@ public abstract class CatalogMapping
 
 public sealed class CategoryMapping : CatalogMapping;
 public sealed class BrandMapping : CatalogMapping;
-public sealed class AttributeMapping : CatalogMapping;
-public sealed class AttributeValueMapping : CatalogMapping;
+public sealed class AttributeMapping : CatalogMapping
+{
+    // MANUAL: saved by a user (or by the import); TEMPLATE: filled from the connection-wide template.
+    public string Source { get; set; } = MappingSources.Manual;
+}
+
+public sealed class AttributeValueMapping : CatalogMapping
+{
+    public string Source { get; set; } = MappingSources.Manual;
+}
+
+public static class MappingSources
+{
+    public const string Manual = "MANUAL";
+    public const string Template = "TEMPLATE";
+}
+
+// Connection-wide decision behind the category-scoped attribute mappings: marketplace attribute
+// ExternalAttributeId (e.g. Trendyol "Renk" 47) is panel attribute LocalAttributeId. Trendyol keeps
+// attribute ids stable across categories, so one decision serves every category that lists it.
+public sealed class AttributeMappingTemplate
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid ConnectionId { get; set; }
+    public required string ExternalAttributeId { get; set; }
+    public Guid LocalAttributeId { get; set; }
+    public string Role { get; set; } = "ATTRIBUTE";
+    public DateTimeOffset UpdatedAt { get; set; }
+    public long Version { get; set; } = 1;
+}
+
+// A fixed value a connection sends for a marketplace attribute whenever the product has none, e.g.
+// Trendyol "Menşei" = TR or "Yaş Grubu" = Yetişkin. ExternalValueId for list attributes,
+// CustomValue for free-text ones. Product values always win over the default.
+public sealed class ConnectionAttributeDefault
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid ConnectionId { get; set; }
+    public required string ExternalAttributeId { get; set; }
+    public required string AttributeName { get; set; }
+    public string? ExternalValueId { get; set; }
+    public string? ValueName { get; set; }
+    public string? CustomValue { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+    public long Version { get; set; } = 1;
+}
+
+// A mapping the user removed from one category: the template fill must not bring it back there.
+// Kind is ATTRIBUTE (scope = category, LocalId = panel attribute) or VALUE (scope =
+// "{category}/{attribute}", LocalId = panel value). Saving that mapping again clears it.
+public sealed class MappingTemplateDismissal
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid ConnectionId { get; set; }
+    public required string Kind { get; set; }
+    public required string ScopeExternalId { get; set; }
+    public Guid LocalId { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
+// Connection-wide value decision: in marketplace attribute ExternalAttributeId, panel value
+// LocalValueId is marketplace value ExternalValueId (e.g. Renk 47 / Siyah -> 1001).
+public sealed class AttributeValueMappingTemplate
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid ConnectionId { get; set; }
+    public required string ExternalAttributeId { get; set; }
+    public Guid LocalValueId { get; set; }
+    public required string ExternalValueId { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+    public long Version { get; set; } = 1;
+}
 
 public sealed class MarketplaceProductLink
 {

@@ -1,0 +1,58 @@
+.invoice-workspace-upload-modal {
+  display: grid;
+  gap: 14px;
+}
+
+.invoice-workspace-upload-modal .invoice-upload-field {
+  display: grid;
+  gap: 6px;
+  color: var(--rv-color-text-secondary, #a6a6b3);
+  font-size: 0.82rem;
+}
+
+.invoice-workspace-upload-modal .invoice-upload-field input {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  color: var(--rv-color-text-primary, #f4f4f8);
+  background: var(--rv-color-surface, #18181f);
+  border: 1px solid var(--rv-color-border, #353540);
+  border-radius: 8px;
+  font: inherit;
+}
+
+.invoice-workspace-upload-modal .invoice-upload-field input:focus-visible {
+  outline: 2px solid var(--rv-color-primary, #8b5cf6);
+  outline-offset: 2px;
+}
+
+.invoice-upload-or {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--rv-color-text-muted, #858592);
+  font-size: 0.78rem;
+}
+
+.invoice-upload-or::before,
+.invoice-upload-or::after {
+  height: 1px;
+  flex: 1;
+  background: var(--rv-color-border, #353540);
+  content: '';
+}
+
+.invoice-workspace-upload-modal .invoice-upload-context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 22px;
+  padding: 12px;
+  background: var(--rv-color-surface, #18181f);
+  border: 1px solid var(--rv-color-border, #353540);
+  border-radius: 8px;
+}
+
+.invoice-workspace-upload-modal .invoice-upload-context > div {
+  display: grid;
+  gap: 5px;
+}
