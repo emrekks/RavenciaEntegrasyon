@@ -261,3 +261,14 @@
 }
 .invoice-selection-bar { display: none; }
 @media (max-width: 760px) { .app-shell.stitch-shell main .invoices-page .invoice-selection-bar { display: grid; } }
+
+/* Phones: the "Filtreleme sonuçları" line is not shown. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-workspace > header { display: none; }
+}
+
+/* Continuous separators inside the invoice card (no gap between the cells that carry the rules). */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-row { column-gap: 0; }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-row > :is(.invoice-reference-products, .invoice-reference-shipment, .invoice-reference-status, .invoice-reference-actions) { border-top: 1px solid var(--rv-color-border); }
+}

@@ -616,3 +616,19 @@ html body .order-detail-actions-list > button:hover:not(:disabled) { background:
   html body .order-detail-body > .order-detail-card:last-child { margin-bottom: 0; }
   html body .order-detail-actions { padding-top: 10px; padding-bottom: calc(10px + env(safe-area-inset-bottom)); gap: 8px; }
 }
+
+.orders-sync-label-short { display: none; }
+
+/* Option B: under the title one slim row — wide "Senkronize Et" plus export and import icon buttons. The three-dot menu is gone. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .orders-page > .page-heading { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; padding-bottom: 10px; }
+  .app-shell.stitch-shell main .orders-page .orders-reference-heading-actions { display: grid; width: 100%; grid-template-columns: minmax(0, 1fr) 44px 44px; gap: 8px; }
+  .app-shell.stitch-shell main .orders-page .orders-reference-heading-actions > .orders-sync-action { order: 1; display: inline-flex; width: 100%; min-height: 44px; align-items: center; justify-content: center; gap: 8px; font-size: 14px; }
+  .app-shell.stitch-shell main .orders-page .orders-reference-heading-actions > .orders-export-action { order: 2; }
+  .app-shell.stitch-shell main .orders-page .orders-reference-heading-actions > .orders-import-action { order: 3; }
+  .app-shell.stitch-shell main .orders-page .orders-reference-heading-actions > :is(.orders-export-action, .orders-import-action) { display: inline-grid; width: 44px; min-width: 44px; height: 44px; min-height: 44px; place-items: center; padding: 0; font-size: 0; gap: 0; }
+  .app-shell.stitch-shell main .orders-page .orders-reference-heading-actions > :is(.orders-export-action, .orders-import-action) > svg { width: 18px; height: 18px; }
+  .app-shell.stitch-shell main .orders-page .orders-sync-label-full { display: none; }
+  .app-shell.stitch-shell main .orders-page .orders-sync-label-short { display: inline; }
+  .app-shell.stitch-shell main .orders-page .orders-heading-more { display: none; }
+}

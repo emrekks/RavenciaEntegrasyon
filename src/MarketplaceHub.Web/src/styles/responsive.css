@@ -319,3 +319,21 @@ html body .mfs-sort-sheet [role="listbox"] > button.is-selected { color: var(--r
 .rv-mobile-navigation > .nav-group + .nav-group, .rv-mobile-navigation > .nav-group + a, .rv-mobile-navigation > a + a { margin-top: 0; }
 .rv-mobile-navigation a { min-height: 46px; margin: 0; }
 .rv-mobile-navigation > button { margin-top: 8px; }
+
+/* Heading actions behind a "⋮" button on phones (products, returns, mapping, dashboard). */
+@media (max-width: 760px) {
+  html body .mam { position: relative; display: block; flex: 0 0 auto; }
+  html body .mam > .mam-trigger { display: inline-grid; width: 44px; height: 44px; min-height: 44px; place-items: center; padding: 0; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); }
+  html body .mam > .mam-actions { display: none; position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; width: min(280px, 82vw); gap: 2px; padding: 6px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); box-shadow: var(--rv-shadow-lg); }
+  html body .mam.is-open > .mam-actions { display: grid; }
+  html body .mam > .mam-actions > :is(button, a, label), html body .mam > .mam-actions .dashboard-report-controls > * { display: flex; box-sizing: border-box; width: 100%; min-height: 46px; align-items: center; justify-content: flex-start; gap: 10px; margin: 0; padding: 0 12px; color: var(--rv-color-ink); background: transparent; border: 0; border-radius: var(--rv-radius-sm); box-shadow: none; font-size: 14px; font-weight: 600; text-align: left; text-decoration: none; }
+  html body .mam > .mam-actions > :is(button, a):hover { background: var(--rv-color-surface-soft); }
+  html body .mam > .mam-actions .dashboard-report-controls { display: grid; gap: 2px; width: 100%; }
+  html body .products-page-actions, html body .returns-reference-heading-actions, html body .dashboard-heading-actions, html body .mapping-header-tools { display: flex; width: auto; justify-content: flex-end; }
+  html body .page-heading:has(.mam), html body .mapping-reference-heading:has(.mam) { flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; }
+}
+
+/* Invoice card: the date lines up with the logo. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-order > div:not(.order-reference-platform) > small:first-of-type { align-self: center; margin: 12px 12px 0 0; line-height: 24px; }
+}
