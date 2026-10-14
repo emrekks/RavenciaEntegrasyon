@@ -500,7 +500,6 @@ export function JobsPage({ me }: { me: Me }) {
     <div className="jobs-reference-heading">
       <div>
         <h1>Arka Plan İşlemleri</h1>
-        <p>Pazaryerleri ile sistem arasındaki senkronizasyon kuyruğunu ve hataları izleyin.</p>
       </div>
       <div className="jobs-reference-heading-actions">
         <div className="jobs-reference-range-wrap">
