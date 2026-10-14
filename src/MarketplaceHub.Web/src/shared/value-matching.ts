@@ -39,6 +39,12 @@ export function canonicalKey(value: string) {
 
 const strict = (value: string) => value.trim().toLocaleLowerCase('tr-TR').replace(/\s*\/\s*/g, '/')
 
+// A part of a name only counts as a whole word ("2" in "2 Yaş"), or as a word stem of at least four
+// letters ("Laci" in "Lacivert"). Sizes and codes never match by their digits: "27" is not "2".
+const isWordStem = (part: string) => part.length >= 4 && /\p{L}/u.test(part)
+const startsWithPart = (whole: string, part: string) => whole.startsWith(part) && (whole[part.length] === ' ' || isWordStem(part))
+const containsPart = (whole: string, part: string) => ` ${whole} `.includes(` ${part} `) || (isWordStem(part) && whole.includes(part))
+
 // 100 same name, 95 same once letters/punctuation are folded, 90 synonyms, 70 one starts with the
 // other, 50 one contains the other, 30 they share a word, 0 unrelated.
 export function valueMatchScore(panelLabel: string, remoteName: string) {
@@ -49,8 +55,9 @@ export function valueMatchScore(panelLabel: string, remoteName: string) {
   if (!left || !right) return 0
   if (left === right) return 95
   if (canonicalKey(panelLabel) === canonicalKey(remoteName)) return 90
-  if (left.startsWith(right) || right.startsWith(left)) return 70
-  if (left.includes(right) || right.includes(left)) return 50
+  const [part, whole] = left.length <= right.length ? [left, right] : [right, left]
+  if (startsWithPart(whole, part)) return 70
+  if (containsPart(whole, part)) return 50
   const leftWords = new Set(left.split(' '))
   return right.split(' ').some(word => word.length > 1 && leftWords.has(word)) ? 30 : 0
 }

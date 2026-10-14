@@ -25,4 +25,12 @@ describe('value matching', () => {
     expect(valueMatchScore('Uzun Kol', 'Kol Boyu Uzun')).toBe(30)
     expect(valueMatchScore('Mor', 'Beyaz')).toBe(0)
   })
+
+  it('never matches sizes or short codes by their first digits or letters', () => {
+    expect(valueMatchScore('27', '2')).toBe(0)
+    expect(valueMatchScore('31', '3')).toBe(0)
+    expect(valueMatchScore('XL', 'XXL')).toBe(0)
+    expect(valueMatchScore('2', '2 Yaş')).toBe(70)
+    expect(valueMatchScore('Mor', 'Mordoré')).toBe(0)
+  })
 })
