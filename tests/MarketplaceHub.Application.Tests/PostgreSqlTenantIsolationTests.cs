@@ -2962,6 +2962,48 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task ConnectionDefault_CoversAHepsiburadaRequiredAttributeOnlyWhileItsValueIsOffered()
+    {
+        var tenant = NewTenant("hb-attribute-default");
+        var connection = NewQuestionConnection(tenant);
+        connection.PlatformCode = "HEPSIBURADA";
+        var categoryId = Guid.CreateVersion7();
+        var productId = Guid.CreateVersion7();
+        var categories = NewReferenceSnapshot(tenant.Id, connection.Id, "CATEGORIES", "", fixture.Now, "categories");
+        var attributes = NewReferenceSnapshot(tenant.Id, connection.Id, "CATEGORY_ATTRIBUTES", "123", fixture.Now, "attributes");
+        var origins = NewReferenceSnapshot(tenant.Id, connection.Id, "ATTRIBUTE_VALUES", "123/mensei", fixture.Now, "origins");
+
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.PlatformConnections.Add(connection);
+        db.Categories.Add(new Category { Id = categoryId, TenantId = tenant.Id, Name = "Test kategori", NormalizedName = "TEST KATEGORI", Path = "Test kategori", IsLeaf = true, IsActive = true, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 });
+        db.Products.Add(new Product { Id = productId, TenantId = tenant.Id, Title = "Test ürün", Description = "Varsayılan testi", CategoryId = categoryId, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 });
+        db.ReferenceSnapshots.AddRange(categories, attributes, origins);
+        db.ReferenceItems.AddRange(
+            NewReferenceItem(tenant.Id, connection.Id, categories.Id, "CATEGORIES", "123", "Test kategori", isLeaf: true),
+            NewReferenceItem(tenant.Id, connection.Id, attributes.Id, "CATEGORY_ATTRIBUTES", "mensei", "Menşei", isRequired: true),
+            NewReferenceItem(tenant.Id, connection.Id, origins.Id, "ATTRIBUTE_VALUES", "tr", "Türkiye"));
+        db.CategoryMappings.Add(new CategoryMapping { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, SnapshotId = categories.Id, LocalId = categoryId, ExternalId = "123", Status = "VERIFIED", VerifiedAt = fixture.Now, Version = 1 });
+        db.ChannelListingProfiles.Add(new ChannelListingProfile { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ProductId = productId, Enabled = true, DesiredStatus = "ACTIVE", ActualStatus = "DRAFT", Version = 1 });
+        await db.SaveChangesAsync();
+
+        var referenceData = new ReferenceDataService(db, fixture.TimeProvider);
+        var composer = new HepsiburadaProductPublicationComposer(db, new ConfigurationBuilder().Build());
+        Assert.Equal("REQUIRED_ATTRIBUTE_MAPPING_REQUIRED", (await composer.BuildAsync(tenant.Id, productId, connection.Id, CancellationToken.None)).Error?.Code);
+
+        // A default whose value is not in the category's value list does not count.
+        Assert.True((await referenceData.UpsertAttributeDefaultAsync(tenant.Id, connection.Id, "mensei", new UpsertConnectionAttributeDefaultCommand("Menşei", "cn", "Çin", null), CancellationToken.None)).Succeeded);
+        Assert.Equal("REQUIRED_ATTRIBUTE_MAPPING_REQUIRED", (await composer.BuildAsync(tenant.Id, productId, connection.Id, CancellationToken.None)).Error?.Code);
+
+        Assert.True((await referenceData.UpsertAttributeDefaultAsync(tenant.Id, connection.Id, "mensei", new UpsertConnectionAttributeDefaultCommand("Menşei", "tr", "Türkiye", null), CancellationToken.None)).Succeeded);
+        // The required attribute no longer blocks: the next check is the missing brand.
+        Assert.Equal("BRAND_REQUIRED", (await composer.BuildAsync(tenant.Id, productId, connection.Id, CancellationToken.None)).Error?.Code);
+
+        await transaction.RollbackAsync();
+    }
+
+    [PostgreSqlFact]
     public async Task SavedMappings_KeepTheConnectionWideTemplatesUpToDate()
     {
         var tenant = NewTenant("mapping-templates");

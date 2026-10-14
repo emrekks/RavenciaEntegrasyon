@@ -60,7 +60,10 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
             categorySnapshot.Id,
             remoteAttributes.Where(x => x.IsRequired == true).Select(x => new RequiredAttributeMappingReference(categorySnapshot.Id, x.ExternalId)),
             attributeMappings.Select(x => new RequiredAttributeMappingReference(x.SnapshotId, x.ExternalId)));
-        foreach (var required in remoteAttributes.Where(x => missingRequiredExternalIds.Contains(x.ExternalId)))
+        // Connection defaults (e.g. Menşei = Türkiye) fill the attributes a product leaves empty, so a
+        // required attribute with a usable default needs no panel attribute mapping.
+        var attributeDefaults = await ResolveAttributeDefaultsAsync(tenantId, connectionId, categoryMapping.ExternalId, remoteAttributes, cancellationToken);
+        foreach (var required in remoteAttributes.Where(x => missingRequiredExternalIds.Contains(x.ExternalId) && !attributeDefaults.ContainsKey(x.ExternalId)))
             return Fail("REQUIRED_ATTRIBUTE_MAPPING_REQUIRED", $"Zorunlu Hepsiburada özelliği '{required.Name}' eşlenmemiş.");
 
         var brand = product.BrandId is Guid brandId
@@ -198,6 +201,12 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
                 importAttributes[optionImportKey] = optionValue;
             }
 
+            foreach (var (attributeId, defaultValue) in attributeDefaults)
+            {
+                var defaultKey = AttributeImportKey(attributeId)!;
+                if (emittedKeys.Add(defaultKey)) importAttributes[defaultKey] = defaultValue;
+            }
+
             foreach (var required in remoteAttributes.Where(x => x.IsRequired == true))
                 if (!emittedKeys.Contains(AttributeImportKey(required.ExternalId)!)) return Fail("REQUIRED_ATTRIBUTE_MISSING", $"'{variant.Sku}' için Hepsiburada zorunlu özelliği '{required.Name}' değeri eksik.");
 
@@ -213,6 +222,40 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
         var payloadJson = JsonSerializer.Serialize(itemPayloads);
         var payloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payloadJson)));
         return ServiceResult<ProductPublicationDraft>.Ok(new(profile.Id, categoryMapping.ExternalId, brandName, payloadHash, payloadJson, draftVariants));
+    }
+
+    // Connection defaults this category can use, as the import values keyed by attribute id. A list
+    // default counts only while its value is active in the category's current value snapshot, and is
+    // sent by the name that snapshot holds; a free-text default only where the attribute accepts it.
+    private async Task<Dictionary<string, string>> ResolveAttributeDefaultsAsync(Guid tenantId, Guid connectionId, string categoryExternalId, IReadOnlyList<ReferenceItem> remoteAttributes, CancellationToken cancellationToken)
+    {
+        var resolved = new Dictionary<string, string>(StringComparer.Ordinal);
+        var defaults = await db.ConnectionAttributeDefaults.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId)
+            .ToListAsync(cancellationToken);
+        foreach (var attributeDefault in defaults)
+        {
+            var remote = remoteAttributes.FirstOrDefault(x => x.ExternalId == attributeDefault.ExternalAttributeId);
+            var importKey = AttributeImportKey(attributeDefault.ExternalAttributeId);
+            if (remote is null || importKey is null || ReservedAttributeKeys.Contains(importKey)) continue;
+            if (!string.IsNullOrWhiteSpace(attributeDefault.ExternalValueId))
+            {
+                var scope = $"{categoryExternalId}/{attributeDefault.ExternalAttributeId}";
+                var offeredName = await (from snapshot in db.ReferenceSnapshots.AsNoTracking()
+                                         join item in db.ReferenceItems.AsNoTracking() on snapshot.Id equals item.SnapshotId
+                                         where snapshot.TenantId == tenantId && snapshot.ConnectionId == connectionId && snapshot.ResourceType == "ATTRIBUTE_VALUES"
+                                             && snapshot.ScopeExternalId == scope && snapshot.IsCurrent
+                                             && item.TenantId == tenantId && item.ResourceType == "ATTRIBUTE_VALUES" && item.ExternalId == attributeDefault.ExternalValueId && item.IsActive
+                                         orderby snapshot.FetchedAt descending
+                                         select item.Name).FirstOrDefaultAsync(cancellationToken);
+                if (!string.IsNullOrWhiteSpace(offeredName)) resolved[attributeDefault.ExternalAttributeId] = offeredName.Trim();
+            }
+            else if (!string.IsNullOrWhiteSpace(attributeDefault.CustomValue) && remote.AllowsCustomValue == true)
+            {
+                resolved[attributeDefault.ExternalAttributeId] = attributeDefault.CustomValue.Trim();
+            }
+        }
+        return resolved;
     }
 
     internal async Task<ServiceResult<string>> ResolveAttributeValueAsync(Guid tenantId, Guid connectionId, string categoryId, string attributeId, ProductAttributeAssignment assignment, ReferenceItem remote, IReadOnlyList<AttributeValue> localValues, CancellationToken cancellationToken)
