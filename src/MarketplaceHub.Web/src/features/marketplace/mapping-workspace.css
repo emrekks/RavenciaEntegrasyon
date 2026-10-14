@@ -259,3 +259,41 @@
   .value-mapping-editor .value-mapping-suggestions li > small { grid-column: 1; }
 }
 
+
+/* Saved category mappings on phones: each row is a card (panel category and status on top, the
+   marketplace path below, platform and actions at the bottom) instead of a 760px table. */
+@media (max-width: 760px) {
+  .mapping-saved-card .mapping-saved-table { overflow: visible; background: transparent; border: 0; }
+  .mapping-saved-card .mapping-saved-table table,
+  .mapping-saved-card .mapping-saved-table tbody { display: block; width: 100%; min-width: 0; }
+  .mapping-saved-card .mapping-saved-table thead { display: none; }
+  .mapping-saved-card .mapping-saved-table tbody > tr {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "panel panel status"
+      "target target target"
+      "platform actions actions";
+    align-items: center;
+    gap: 6px 10px;
+    margin-bottom: 10px;
+    padding: 12px;
+    background: var(--rv-color-surface);
+    border: 1px solid var(--rv-color-border-strong);
+    border-radius: 12px;
+  }
+  .mapping-saved-card .mapping-saved-table tbody > tr > td { width: auto; min-width: 0; max-width: none; padding: 0; border: 0; }
+  .mapping-saved-card .mapping-saved-table tbody > tr > td:nth-child(1) { grid-area: panel; font-weight: 600; }
+  .mapping-saved-card .mapping-saved-table tbody > tr > td:nth-child(2) { grid-area: platform; }
+  .mapping-saved-card .mapping-saved-table tbody > tr > td:nth-child(3) { grid-area: target; color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); }
+  .mapping-saved-card .mapping-saved-table tbody > tr > td:nth-child(3)::before { content: "→ "; color: var(--rv-color-subtle); }
+  .mapping-saved-card .mapping-saved-table tbody > tr > td:nth-child(4) { grid-area: status; justify-self: end; }
+  .mapping-saved-card .mapping-saved-table tbody > tr > td:nth-child(5) { grid-area: actions; justify-self: end; }
+  .mapping-saved-card .mapping-saved-table tbody > tr > td[colspan] { grid-column: 1 / -1; }
+  .mapping-saved-card .mapping-row-actions { display: flex; gap: 6px; }
+  .mapping-saved-card .mapping-row-actions > button { min-height: 40px; }
+  .mapping-saved-card .mapping-saved-header-tools { flex-wrap: wrap; }
+
+  /* The category library remove button is easier to hit at 36px. */
+  .mapping-page .category-library-remove { width: 36px; min-width: 36px; height: 36px; }
+}
