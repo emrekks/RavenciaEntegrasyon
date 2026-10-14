@@ -459,3 +459,18 @@ html body .order-detail-actions-list > button:hover:not(:disabled) { background:
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .orders-page .order-reference-meta .order-date-label { display: none; }
 }
+
+/* Phone order card: no left checkbox column — number and buyer both start at the card's left edge,
+   and the selection checkbox sits at the right end of the buyer row after the platform logo. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-row > .order-reference-grid {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      "number number date"
+      "buyer logo select"
+      "delivery delivery delivery"
+      "products products products";
+  }
+  .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-row > .order-reference-grid > .order-select { grid-area: select; align-self: center; justify-self: end; margin: 0; padding: 0; }
+  .app-shell.stitch-shell main .orders-page .order-reference-meta > .order-reference-platform { margin-right: 4px; }
+}
