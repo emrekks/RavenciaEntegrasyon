@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, loadAllPages } from '../../shared/api'
 import { marketplaceProductSearchUrl } from './marketplace-product-link'
 import { Badge, Button, EmptyState, LoadingState, PageHeader, Tabs, UiIcon } from '../../shared/components'
@@ -13,6 +13,7 @@ import { DateRangePicker } from '../../shared/DateRangePicker'
 import { Modal } from '../../shared/components'
 import { MessageToast } from '../../shared/components/NoticeToast'
 import './question-answer-dialog.css'
+import './questions-tabs.css'
 
 type MarketplaceQuestion = {
   id: string; connectionId: string; platformCode: string; storeName: string; externalQuestionId: string; kind: string; status: string
@@ -99,6 +100,20 @@ export function QuestionsPage() {
   filters.set('sort', sort)
   filters.set('page', String(page)); filters.set('limit', '50')
   const questions = useQuery({ queryKey: ['questions', kind, status, platform, connectionId, dateFrom, dateTo, search, sort, page], queryFn: () => hubApi<QuestionListPage>(`/questions?${filters.toString()}`), refetchInterval: 30_000, staleTime: 10_000 })
+  const countQuery = (countKind: string, countStatus: QuestionStatus, scoped: boolean) => {
+    const params = new URLSearchParams({ kind: countKind, status: countStatus, page: '1', limit: '1', sort })
+    if (scoped) {
+      if (platform !== 'ALL') params.set('platform', platform)
+      if (connectionId !== 'ALL') params.set('connectionId', connectionId)
+      if (dateFrom) params.set('dateFrom', new Date(`${dateFrom}T00:00:00`).toISOString())
+      if (dateTo) params.set('dateTo', new Date(`${dateTo}T23:59:59`).toISOString())
+      if (search.trim()) params.set('search', search.trim())
+    }
+    return hubApi<QuestionListPage>(`/questions?${params.toString()}`).then(result => result.totalCount)
+  }
+  const statusCounts = useQueries({ queries: statusFilters.map(item => ({ queryKey: ['questions', 'count', kind, item.value, platform, connectionId, dateFrom, dateTo, search], queryFn: () => countQuery(kind, item.value, true), enabled: tab !== 'TEMPLATES', refetchInterval: 30_000, staleTime: 10_000 })) })
+  const waitingCounts = useQueries({ queries: (['PRODUCT', 'ORDER'] as const).map(countKind => ({ queryKey: ['questions', 'count', 'waiting', countKind], queryFn: () => countQuery(countKind, 'WAITING', false), refetchInterval: 30_000, staleTime: 10_000 })) })
+  const formatCount = (value: number | undefined) => value === undefined ? undefined : value.toLocaleString('tr-TR')
   const templates = useQuery({ queryKey: ['question-templates'], queryFn: () => hubApi<Template[]>('/question-templates'), staleTime: 30_000 })
   const syncStates = useQuery({ queryKey: ['questions', 'sync-state'], queryFn: () => hubApi<SyncState[]>('/questions/sync-state'), refetchInterval: 15_000 })
 
@@ -137,10 +152,10 @@ export function QuestionsPage() {
       {!syncStates.data?.length && <span>Soru geçmişi bağlantılarınızdan arka planda alınır. İlk senkronizasyon sonrası aktarım durumu burada görünür.</span>}
     </section>
     <div className="rv-questions-panel">
-      <Tabs className="rv-questions-tabs" ariaLabel="Soru çalışma alanı" value={tab} onChange={value => { setTab(value as WorkspaceTab); setConnectionId('ALL'); if (value === 'ORDER') setPlatform('HEPSIBURADA'); else if (tab === 'ORDER') setPlatform('ALL') }} items={[{ value: 'PRODUCT', label: 'Ürün Soruları' }, { value: 'ORDER', label: 'Sipariş Soruları' }, { value: 'TEMPLATES', label: 'Hazır Cevaplar' }]} />
+      <Tabs className="rv-questions-tabs" ariaLabel="Soru çalışma alanı" value={tab} onChange={value => { setTab(value as WorkspaceTab); setConnectionId('ALL'); if (value === 'ORDER') setPlatform('HEPSIBURADA'); else if (tab === 'ORDER') setPlatform('ALL') }} items={[{ value: 'PRODUCT', label: 'Ürün Soruları', count: formatCount(waitingCounts[0].data) }, { value: 'ORDER', label: 'Sipariş Soruları', count: formatCount(waitingCounts[1].data) }, { value: 'TEMPLATES', label: 'Hazır Cevaplar', count: formatCount(templates.data?.length) }]} />
       {tab !== 'TEMPLATES' && (
       <section className="rv-filter-bar rv-questions-filters" aria-label="Soru filtreleri">
-        <Tabs className="rv-questions-status-tabs" ariaLabel="Soru durum filtresi" value={status} onChange={value => setStatus(value as QuestionStatus)} items={statusFilters.map(item => ({ value: item.value, label: item.label }))} />
+        <Tabs className="rv-questions-status-tabs" ariaLabel="Soru durum filtresi" value={status} onChange={value => setStatus(value as QuestionStatus)} items={statusFilters.map((item, index) => ({ value: item.value, label: item.label, count: formatCount(statusCounts[index]?.data) }))} />
         <div className="rv-filter-fields rv-questions-filter-grid"><label className="rv-questions-search">Metin ara<input value={search} onChange={event => setSearch(event.target.value)} placeholder="Soru, ürün, SKU veya sipariş no" /></label><label>Mağaza<select value={connectionId} onChange={event => setConnectionId(event.target.value)}><option value="ALL">Tüm mağazalar</option>{connectionNames.filter(item => tab === 'ORDER' || platform === 'ALL' || item.platformCode === platform).filter(item => tab !== 'ORDER' || item.platformCode === 'HEPSIBURADA').map(item => <option value={item.id} key={item.id}>{item.displayName}</option>)}</select></label><DateRangePicker from={dateFrom} to={dateTo} onChange={range => { setDateFrom(range.from); setDateTo(range.to) }} label="Tarih aralığı" /><label>Sıralama<select value={sort} onChange={event => setSort(event.target.value)}><option value="NEWEST">En yeni</option><option value="OLDEST">En eski</option><option value="UPDATED">Son güncellenen</option></select></label></div>
       </section>
       )}

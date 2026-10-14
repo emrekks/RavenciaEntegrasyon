@@ -26,7 +26,7 @@
 .mapping-reference-heading .mapping-transfer-actions { flex-wrap: nowrap; }
 .panel-value-multi-menu > button:disabled { opacity: .55; cursor: not-allowed; }
 .panel-value-multi-menu > button:disabled:hover { background: transparent; }
-.value-mapping-unmatched { --unmatched-tone: var(--rv-color-warning); display: grid; gap: 10px; padding: 12px 14px; background: color-mix(in srgb, var(--unmatched-tone) 7%, var(--rv-color-surface)); border: 1px solid color-mix(in srgb, var(--unmatched-tone) 35%, var(--rv-color-border)); border-radius: 10px; }
+.value-mapping-unmatched { --unmatched-tone: var(--rv-color-info); display: grid; gap: 10px; padding: 12px 14px; background: color-mix(in srgb, var(--unmatched-tone) 7%, var(--rv-color-surface)); border: 1px solid color-mix(in srgb, var(--unmatched-tone) 35%, var(--rv-color-border)); border-radius: 10px; }
 .value-mapping-unmatched.is-complete { --unmatched-tone: var(--rv-color-accent); }
 .value-mapping-unmatched-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .value-mapping-unmatched-head > strong { color: var(--rv-color-ink); font-size: 14px; font-weight: 600; }
@@ -37,3 +37,15 @@
 .value-mapping-unmatched-chips.is-open { max-height: 132px; overflow: auto; padding-right: 4px; }
 .value-mapping-unmatched-chips > span { padding: 3px 10px; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 12px; font-size: 12px; font-weight: 500; }
 .value-mapping-unmatched-chips > button { padding: 3px 10px; color: var(--unmatched-tone); background: transparent; border: 1px dashed color-mix(in srgb, var(--unmatched-tone) 55%, transparent); border-radius: 12px; font-size: 12px; font-weight: 600; }
+
+/* Compact sizes: a category can have hundreds of marketplace values, so every row stays slim. */
+.mapping-values-modal .value-mapping-rows { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 6px; }
+.mapping-values-modal .value-mapping-row { grid-template-columns: minmax(80px, .8fr) 18px minmax(120px, 1.2fr); gap: 8px; padding: 6px 10px; border-radius: 8px; }
+.mapping-values-modal .value-mapping-row > span { font-size: 13px; font-weight: 600; }
+.mapping-values-modal .value-mapping-row-link, .mapping-values-modal .value-mapping-row-link .ui-icon { width: 14px; height: 14px; }
+.mapping-values-modal .panel-value-multi-trigger { min-height: 34px; padding: 0 10px; font-size: 13px; }
+.mapping-values-modal .value-mapping-unmatched { gap: 8px; padding: 10px 12px; }
+.mapping-values-modal .value-mapping-unmatched-head > strong { font-size: 13px; }
+.mapping-values-modal .value-mapping-unmatched-bar { height: 4px; }
+.mapping-values-modal .value-mapping-unmatched-chips > span, .mapping-values-modal .value-mapping-unmatched-chips > button { padding: 1px 8px; font-size: 11px; line-height: 1.5; }
+.mapping-values-modal .value-mapping-heading-actions > button { min-height: 32px; padding-inline: 10px; font-size: 12px; }

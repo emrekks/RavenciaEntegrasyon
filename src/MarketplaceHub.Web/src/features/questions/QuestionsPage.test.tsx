@@ -103,7 +103,7 @@ async function settle() {
 }
 
 function lastQuestionRequest() {
-  const request = [...apiState.calls].reverse().find(item => item.path.startsWith('/questions?'))
+  const request = [...apiState.calls].reverse().find(item => item.path.startsWith('/questions?') && item.path.includes('limit=50'))
   if (!request) throw new Error('No question list request was made')
   return new URLSearchParams(request.path.slice(request.path.indexOf('?') + 1))
 }

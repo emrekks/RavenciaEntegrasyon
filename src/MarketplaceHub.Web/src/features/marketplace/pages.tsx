@@ -13,6 +13,7 @@ import { PlatformMultiSelect } from '../../shared/platform-multi-select'
 import { DateRangePicker } from '../../shared/DateRangePicker'
 import './reference-filters.css'
 import './value-mapping-modal.css'
+import './order-invoice-cell.css'
 import { PanelValueMultiSelect } from './PanelValueMultiSelect'
 import { matchesReturnReferenceFilters } from './return-reference-filters'
 import { returnReasonPresentation } from './return-reference-presentation'
@@ -2435,6 +2436,82 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
   const productRemoteItems = (platformCode === 'TRENDYOL' ? remoteItems.filter(item => !optionExternalIds.has(item.externalId) && item.externalId !== webColorRemote?.externalId && !isWebColorAttributeName(item.name) && (!optionAttributeNames.has(normalizedAttributeKey(item.name)) || isPanelColorAttributeName(item.name))) : remoteItems).slice().sort((left, right) => Number(right.isRequired) - Number(left.isRequired) || left.name.localeCompare(right.name, 'tr'))
   const optionCount = new Set([...optionAttributes.map(item => item.id), ...(specialColorOption ? [specialColorOption.attribute.id] : [])]).size
   const productSync = useMutation({ mutationFn: () => hubApi(`/connections/${connectionId}/product-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, body: '{}' }), onSuccess: () => { onNotice('Ürünler salt-okunur eşitleme kuyruğuna alındı; pazar yerine yazma yapılmaz.') }, onError: reason => onNotice(reason instanceof Error ? reason.message : 'Ürün eşitleme başlatılamadı.') })
+  // Bulk "same name" matching for the whole category: first the headings (attributes and option groups), then every value of the mapped headings.
+  const [bulkBusy, setBulkBusy] = useState<'' | 'HEADINGS' | 'VALUES'>('')
+  async function matchHeadingsByName() {
+    if (!references.data || bulkBusy) return
+    setBulkBusy('HEADINGS'); onNotice('')
+    const snapshotIdNow = references.data.snapshotId
+    let matched = 0; let ambiguous = 0; let failed = 0
+    const put = async (localAttribute: LocalAttribute, remote: ReferenceItem, role: 'ATTRIBUTE' | 'OPTION') => {
+      try {
+        await hubApi<CatalogMapping>(`/mappings/attributes/${localAttribute.id}`, { method: 'PUT', body: JSON.stringify({ connectionId, snapshotId: snapshotIdNow, scopeExternalId: categoryScope, externalId: remote.externalId, status: 'VERIFIED', role }) })
+        matched++
+      } catch { failed++ }
+    }
+    try {
+      const localByName = new Map<string, LocalAttribute[]>()
+      for (const attribute of productAttributes) localByName.set(normalizedAttributeKey(attribute.name), [...(localByName.get(normalizedAttributeKey(attribute.name)) ?? []), attribute])
+      for (const remote of productRemoteItems) {
+        if (productMappingByExternal.has(remote.externalId)) continue
+        const candidates = localByName.get(normalizedAttributeKey(remote.name)) ?? []
+        if (candidates.length > 1) { ambiguous++; continue }
+        if (candidates.length === 1) await put(candidates[0], remote, categoryOptionIds.has(candidates[0].id) || isOptionAttribute(candidates[0]) ? 'OPTION' : 'ATTRIBUTE')
+      }
+      for (const option of optionAttributes.filter(item => !sizeOptionAttributeIds.has(item.id))) {
+        if (optionMappings.some(mapping => mapping.localId === option.id && optionRemoteItems.some(remote => remote.externalId === mapping.externalId))) continue
+        const remotes = optionRemoteItems.filter(remote => normalizedAttributeKey(remote.name) === normalizedAttributeKey(option.name))
+        if (remotes.length > 1) { ambiguous++; continue }
+        if (remotes.length === 1) await put(option, remotes[0], 'OPTION')
+      }
+      await client.invalidateQueries({ queryKey: ['attribute-mappings', connectionId, categoryScope] })
+      await client.invalidateQueries({ queryKey: ['publication-attribute-readiness'] })
+      onNotice(matched
+        ? `${matched} kategori başlığı aynı adlı panel özelliğiyle eşlendi.${ambiguous ? ` Adı birden fazla eşleşen ${ambiguous} başlık atlandı.` : ''}${failed ? ` ${failed} başlık eşlenemedi.` : ''}`
+        : failed ? `Başlık eşlemeleri kaydedilemedi (${failed}).` : `Yeni birebir eşleşen başlık bulunamadı.${ambiguous ? ` Adı birden fazla eşleşen ${ambiguous} başlık atlandı.` : ''}`)
+    } finally { setBulkBusy('') }
+  }
+  async function matchAllValuesByName() {
+    if (!references.data || bulkBusy) return
+    setBulkBusy('VALUES'); onNotice('')
+    let pairs = 0; let headings = 0; let skipped = 0; let unavailable = 0; let failed = 0
+    try {
+      const seen = new Set<string>()
+      for (const mapping of allMappings) {
+        if (mapping.status !== 'VERIFIED' || seen.has(`${mapping.localId}|${mapping.externalId}`)) continue
+        seen.add(`${mapping.localId}|${mapping.externalId}`)
+        const local = allPanelAttributes.find(item => item.id === mapping.localId)
+        const remote = references.data.items.find(item => item.externalId === mapping.externalId && item.isActive)
+        const localValues = (local?.values ?? []).filter(item => item.isActive)
+        if (!local || !remote || !localValues.length) continue
+        if (platformCode === 'TRENDYOL' && usesCustomPanelColorValue(remote.name)) continue
+        const valueScope = `${categoryScope}/${mapping.externalId}`
+        try {
+          const [valueReferences, existing] = await Promise.all([
+            hubApi<ReferenceData>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(mapping.externalId)}/values?connectionId=${encodeURIComponent(connectionId)}`),
+            hubApi<CatalogMapping[]>(`/mappings/attribute-values?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(valueScope)}`)
+          ])
+          const plan = planDirectReferenceValues(localValues, valueReferences.items.filter(item => item.isActive))
+          let touched = false
+          for (const pair of plan.mappings) {
+            const current = existing.find(item => item.localId === pair.localId && item.externalId === pair.externalId)
+            if (!attributeValueMappingNeedsSave(current, pair.localId, pair.externalId, valueReferences.snapshotId)) continue
+            // a panel value goes to one marketplace value (Hepsiburada may reuse it), so never add a second target
+            if (platformCode !== 'HEPSIBURADA' && existing.some(item => item.localId === pair.localId && item.externalId !== pair.externalId)) { skipped++; continue }
+            try {
+              await hubApi<CatalogMapping>(`/mappings/attribute-values/${pair.localId}`, { method: 'PUT', headers: current ? { 'If-Match': `"v${current.version}"` } : {}, body: JSON.stringify({ connectionId, snapshotId: valueReferences.snapshotId, scopeExternalId: valueScope, externalId: pair.externalId, status: 'VERIFIED' }) })
+              pairs++; touched = true
+            } catch { failed++ }
+          }
+          if (touched) headings++
+        } catch { unavailable++ }
+      }
+      await client.invalidateQueries({ queryKey: ['attribute-value-mappings'] })
+      await client.invalidateQueries({ queryKey: ['publication-attribute-readiness'] })
+      const extra = `${skipped ? ` ${skipped} değer başka bir karşılığa bağlı olduğu için atlandı.` : ''}${unavailable ? ` ${unavailable} başlığın değer listesi okunamadı; önce alanları yenileyin.` : ''}${failed ? ` ${failed} değer eşlenemedi.` : ''}`
+      onNotice(pairs ? `${headings} başlıkta ${pairs} değer aynı adlı karşılığıyla eşlendi.${extra}` : `Yeni birebir eşleşen değer bulunamadı.${extra}`)
+    } finally { setBulkBusy('') }
+  }
   if (!connectionId) return <article className="panel mapping-step"><div className="editor-section-title"><span>4</span><div><h2>{platformLabel} kategori ve özellik eşlemeleri</h2><p>Önce 1. adımdaki kategori eşlemesini tamamlayın.</p></div></div><div className="unknown"><strong>Bağlantı seçilmedi</strong><p>Önce aktif {platformLabel} bağlantısını seçin.</p></div></article>
   if (categoryMappings.isLoading) return <article className="panel mapping-step"><div className="editor-section-title"><span>4</span><div><h2>{platformLabel} kategori ve özellik eşlemeleri</h2><p>1. adımdaki eşleşmiş kategoriler hazırlanıyor.</p></div></div><Busy text="Kategori eşlemeleri yükleniyor…" /></article>
   if (!matchedCategories.length) return <article className="panel mapping-step"><div className="editor-section-title"><span>4</span><div><h2>{platformLabel} kategori ve özellik eşlemeleri</h2><p>Yalnız 1. adımda eşleşen kategorilerin özellikleri burada açılır.</p></div></div><div className="unknown"><strong>Kategori eşlemesi bekleniyor</strong><p>Önce 1. adımda en az bir panel kategorisini {platformLabel} kategorisiyle eşleştirin.</p></div></article>
@@ -2443,7 +2520,7 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
     <div className="editor-section-title"><span>4</span><div><h2>Kategori eşleştirmeleri</h2><p>{platformCode === 'TRENDYOL' ? 'Trendyol katalog alanlarını Web Color, Renk ve diğer panel özellikleriyle eşleyin.' : 'Pazar yeri katalog alanlarını panel özellikleri ve değerleriyle eşleyin.'}</p></div></div>
     <div className="mapping-category-toolbar-row">
       <label className="matched-category-select">Eşleşmiş panel kategorisi<select value={attributeCategoryId} onChange={event => setAttributeCategoryId(event.target.value)}>{matchedCategories.map(({ category }) => <option key={category.id} value={category.id}>{category.path}</option>)}</select></label>
-      {!references.isLoading && !mappings.isLoading && !categoryRequirements.isLoading && !references.isError && !mappings.isError && !categoryRequirements.isError && <div className="mapping-section-toolbar"><div className="button-row"><button type="button" className="secondary" disabled={sync.isPending} onClick={() => sync.mutate()}>{sync.isPending ? 'Alanlar yenileniyor…' : 'Kategori alanlarını yenile'}</button>{platformCode === 'TRENDYOL' && optionCount > 0 && <button type="button" disabled={productSync.isPending} onClick={() => productSync.mutate()}>{productSync.isPending ? 'Ürünler eşitleniyor…' : 'Ürün seçeneklerini salt-okunur eşitle'}</button>}</div></div>}
+      {!references.isLoading && !mappings.isLoading && !categoryRequirements.isLoading && !references.isError && !mappings.isError && !categoryRequirements.isError && <div className="mapping-section-toolbar"><div className="button-row"><button type="button" className="secondary" disabled={sync.isPending} onClick={() => sync.mutate()}>{sync.isPending ? 'Alanlar yenileniyor…' : 'Kategori alanlarını yenile'}</button><button type="button" className="secondary" title="Adı aynı olan Trendyol ve panel başlıklarını toplu eşler" disabled={sync.isPending || bulkBusy !== ''} onClick={() => void matchHeadingsByName()}>{bulkBusy === 'HEADINGS' ? 'Başlıklar eşleniyor…' : 'Başlıkları birebir eşle'}</button><button type="button" className="secondary" title="Eşlenmiş tüm başlıklarda adı aynı olan değerleri toplu eşler" disabled={sync.isPending || bulkBusy !== ''} onClick={() => void matchAllValuesByName()}>{bulkBusy === 'VALUES' ? 'Değerler eşleniyor…' : 'Tüm değerleri birebir eşle'}</button>{platformCode === 'TRENDYOL' && optionCount > 0 && <button type="button" disabled={productSync.isPending} onClick={() => productSync.mutate()}>{productSync.isPending ? 'Ürünler eşitleniyor…' : 'Ürün seçeneklerini salt-okunur eşitle'}</button>}</div></div>}
     </div>
     {references.isLoading || mappings.isLoading || categoryRequirements.isLoading ? <Busy text="Kategori özellikleri ve eşlemeler yükleniyor…" /> : references.isError || mappings.isError || categoryRequirements.isError ? <div className="unknown"><strong>Güncel kategori özellik verisi alınamadı</strong><p>Seçili {platformLabel} kategorisinin özellik listesini yeniden eşitleyin.</p><button type="button" disabled={sync.isPending} onClick={() => sync.mutate()}>{sync.isPending ? 'Kuyruğa alınıyor…' : 'Kategori özelliklerini eşitle'}</button></div> : <>
       <section className="mapping-category-attributes-section"><div className="mapping-section-heading"><div><h3>Kategori özellikleri</h3><p>{platformCode === 'TRENDYOL' ? 'Normal Renk alanında panel renkleri doğrudan gönderilir; Web Color değerleri ayrı eşleştirilir.' : 'Kategori özelliklerini ve varsa seçimlik değerlerini pazar yeri referansıyla eşleyin.'}</p></div></div><div className="embedded-attribute-grid mapping-unified-grid mapping-attributes-grid">{specialColorOption && <WebColorMappingCard connectionId={connectionId} categoryScope={categoryScope} snapshotId={references.data!.snapshotId} localAttribute={specialColorOption.attribute} localAttributes={productAttributes} categoryOptionIds={categoryOptionIds} remoteAttribute={specialColorOption.remote} existingMapping={existingWebColorMapping} existingMappings={allMappings} onNotice={onNotice} />}{optionRemoteItems.length > 0 && optionAttributes.filter(item => !sizeOptionAttributeIds.has(item.id)).map(item => <OptionMappingCard key={`option-${item.id}`} connectionId={connectionId} categoryScope={categoryScope} snapshotId={references.data!.snapshotId} localAttribute={item} remoteAttributes={optionRemoteItems} existingMapping={optionMappings.find(mapping => mapping.localId === item.id && optionRemoteItems.some(remote => remote.externalId === mapping.externalId)) ?? null} onNotice={onNotice} />)}{productRemoteItems.map(item => <CategoryAttributeCard key={item.externalId} platformCode={platformCode} platformLabel={platformLabel} connectionId={connectionId} categoryScope={categoryScope} snapshotId={references.data!.snapshotId} localAttributes={productAttributes} categoryOptionIds={categoryOptionIds} remoteAttribute={item} existingMapping={productMappingByExternal.get(item.externalId) ?? null} onNotice={onNotice} />)}</div></section>
@@ -2694,6 +2771,7 @@ function WebColorValueMappingEditor({ connectionId, categoryScope, attribute, ex
         changed++
       }
       await client.invalidateQueries({ queryKey: ['attribute-value-mappings', connectionId, valueScope] })
+      await client.invalidateQueries({ queryKey: ['publication-attribute-readiness'] })
       setNotice(changed ? `${changed} Web Color eşlemesi kaydedildi.` : 'Web Color eşlemelerinde değişiklik yok.')
     } catch (reason) { setNotice(reason instanceof Error ? reason.message : 'Web Color eşlemeleri kaydedilemedi.') } finally { setSaving(false) }
   }
@@ -2813,6 +2891,7 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
         changed++
       }
       await client.invalidateQueries({ queryKey: ['attribute-value-mappings', connectionId, valueScope] })
+      await client.invalidateQueries({ queryKey: ['publication-attribute-readiness'] })
       setNotice(changed ? `${changed} değer eşlemesi kaydedildi.` : 'Değer eşlemelerinde değişiklik yok.')
     } catch (reason) { setNotice(reason instanceof Error ? reason.message : 'Değer eşlemeleri kaydedilemedi.') } finally { setSaving(false) }
   }
@@ -2917,10 +2996,12 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
       }
       setSelections(current => availableDirectMappings.reduce((next, planned) => updatePanelValueReferenceSelection(next, planned.externalId, [...(next[planned.externalId] ?? []), planned.localId], allowReusablePanelValues), current))
       await client.invalidateQueries({ queryKey: ['attribute-value-mappings', connectionId, valueScope] })
+      await client.invalidateQueries({ queryKey: ['publication-attribute-readiness'] })
       const summary = `${mappedCount} panel değeri mevcut ${platformLabel} karşılığıyla eşlendi.`
       setNotice(directPlan.ambiguousCount ? `${summary} Adı birden fazla eşleşen ${directPlan.ambiguousCount} seçenek otomatik eşlenmedi.` : summary)
     } catch (reason) {
       await client.invalidateQueries({ queryKey: ['attribute-value-mappings', connectionId, valueScope] })
+      await client.invalidateQueries({ queryKey: ['publication-attribute-readiness'] })
       setNotice(reason instanceof Error ? `Otomatik eşleme tamamlanamadı: ${reason.message}` : 'Otomatik eşleme tamamlanamadı.')
     } finally { setAutoMapping(false) }
   }
