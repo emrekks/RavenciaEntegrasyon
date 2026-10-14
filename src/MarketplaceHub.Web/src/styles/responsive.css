@@ -320,17 +320,24 @@ html body .mfs-sort-sheet [role="listbox"] > button.is-selected { color: var(--r
 .rv-mobile-navigation a { min-height: 46px; margin: 0; }
 .rv-mobile-navigation > button { margin-top: 8px; }
 
-/* Heading actions behind a "⋮" button on phones (products, returns, mapping, dashboard). */
+/* Heading actions on phones: two equal dark buttons side by side plus one "⋮" for the rest. */
 @media (max-width: 760px) {
-  html body .mam { position: relative; display: block; flex: 0 0 auto; }
-  html body .mam > .mam-trigger { display: inline-grid; width: 44px; height: 44px; min-height: 44px; place-items: center; padding: 0; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); }
-  html body .mam > .mam-actions { display: none; position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; width: min(280px, 82vw); gap: 2px; padding: 6px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); box-shadow: var(--rv-shadow-lg); }
-  html body .mam.is-open > .mam-actions { display: grid; }
-  html body .mam > .mam-actions > :is(button, a, label), html body .mam > .mam-actions .dashboard-report-controls > * { display: flex; box-sizing: border-box; width: 100%; min-height: 46px; align-items: center; justify-content: flex-start; gap: 10px; margin: 0; padding: 0 12px; color: var(--rv-color-ink); background: transparent; border: 0; border-radius: var(--rv-radius-sm); box-shadow: none; font-size: 14px; font-weight: 600; text-align: left; text-decoration: none; }
-  html body .mam > .mam-actions > :is(button, a):hover { background: var(--rv-color-surface-soft); }
-  html body .mam > .mam-actions .dashboard-report-controls { display: grid; gap: 2px; width: 100%; }
-  html body .products-page-actions, html body .returns-reference-heading-actions, html body .dashboard-heading-actions, html body .mapping-header-tools { display: flex; width: auto; justify-content: flex-end; }
-  html body .page-heading:has(.mam), html body .mapping-reference-heading:has(.mam) { flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; }
+  html body .mam { position: relative; display: grid; width: 100%; grid-template-columns: minmax(0, 1fr); gap: 8px; align-items: center; }
+  html body .mam.mam-primary-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  html body .mam.mam-primary-2.has-more { grid-template-columns: repeat(2, minmax(0, 1fr)) 44px; }
+  html body .mam > .mam-primary { display: contents; }
+  html body .mam .mam-primary > * { order: var(--mam-primary-order, 0); display: inline-flex; box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px; align-items: center; justify-content: center; gap: 8px; margin: 0; padding: 0 10px; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); box-shadow: none; font-size: 14px; font-weight: 600; line-height: 1.2; white-space: nowrap; text-decoration: none; }
+  html body .mam .mam-primary > .orders-sync-action .orders-sync-label-full { display: none; }
+  html body .mam .mam-primary > .orders-sync-action .orders-sync-label-short { display: inline; }
+  html body .mam > .mam-trigger { order: 9; display: inline-grid; width: 44px; height: 44px; min-height: 44px; place-items: center; padding: 0; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); }
+  html body .mam > .mam-more { display: none; position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; width: min(280px, 82vw); gap: 2px; padding: 6px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); box-shadow: var(--rv-shadow-lg); }
+  html body .mam.is-open > .mam-more { display: grid; }
+  html body .mam > .mam-more > * { order: 0; display: flex; box-sizing: border-box; width: 100%; min-height: 46px; align-items: center; justify-content: flex-start; gap: 10px; margin: 0; padding: 0 12px; color: var(--rv-color-ink); background: transparent; border: 0; border-radius: var(--rv-radius-sm); box-shadow: none; font-size: 14px; font-weight: 600; text-align: left; text-decoration: none; }
+  html body .mam > .mam-more > :is(button, a):hover { background: var(--rv-color-surface-soft); }
+  /* Page headings: title on top, the action row under it. */
+  html body .page-heading:has(.mam), html body .mapping-reference-heading:has(.mam) { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  html body :is(.products-page-actions, .returns-reference-heading-actions, .orders-reference-heading-actions, .dashboard-heading-actions, .mapping-header-tools, .mapping-transfer-actions) { display: block; width: 100%; }
+  html body .dashboard-report-controls.mam .dashboard-header-period, html body .dashboard-report-controls.mam .dashboard-period-control { width: 100%; }
 }
 
 /* Invoice card: the date lines up with the logo. */
@@ -367,4 +374,19 @@ html body .mfs-sort-sheet [role="listbox"] > button.is-selected { color: var(--r
   html body .app-shell.stitch-shell main :is(.rv-tabs, .order-tabs, .return-reference-tabs, .invoice-reference-tabs, .jobs-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .rv-questions-tabs)::-webkit-scrollbar { display: none; }
   html body .app-shell.stitch-shell main :is(.rv-tabs, .order-tabs, .return-reference-tabs, .invoice-reference-tabs, .jobs-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .rv-questions-tabs) > * { flex: 0 0 auto; }
   html body .app-shell.stitch-shell main { overflow-x: clip; }
+}
+
+/* One compact rhythm on every phone page: small even gaps between the heading, tab strip, search bar and the list. */
+@media (max-width: 760px) {
+  html body .app-shell.stitch-shell main > .content, html body .app-shell.stitch-shell main > section.content { display: grid; align-content: start; gap: 8px; }
+  html body .app-shell.stitch-shell main > .content > * { margin-top: 0; margin-bottom: 0; }
+  html body .app-shell.stitch-shell main .page-heading { margin: 0; padding-bottom: 8px; gap: 8px; }
+  html body .app-shell.stitch-shell main :is(.orders-reference-filter-shell, .returns-reference-filter-shell) { margin: 0; gap: 8px; }
+  html body .app-shell.stitch-shell main :is(.rv-tabs, .order-tabs, .return-reference-tabs, .invoice-reference-tabs, .jobs-reference-tabs, .rv-questions-tabs) { margin: 0; }
+  html body .app-shell.stitch-shell main .mfs:not(.is-open) { margin: 0; padding: 8px; gap: 8px; }
+  /* Products: the toolbar and the list are separate, lightly spaced blocks. */
+  html body .app-shell.stitch-shell main .products-page .product-toolbar.mfs:not(.is-open) { border-bottom: 1px solid var(--rv-color-border); border-radius: 12px; }
+  html body .app-shell.stitch-shell main .products-page .product-catalog-workspace { margin-top: 0; padding: 0; background: transparent; border: 0; border-radius: 0; }
+  html body .app-shell.stitch-shell main .products-page .product-catalog-workspace-head { margin: 0 0 6px; padding: 0 2px; }
+  html body .app-shell.stitch-shell main .products-page .product-metrics { margin: 0; gap: 8px; }
 }

@@ -12625,5 +12625,6 @@ h1, h2, h3, h4, .dashboard-summary-card-head > span:first-child, :is(.orders-con
 .reference-integration-card-hidden .reference-integration-footer { border-top: 1px solid var(--rv-color-border-strong); }
 
 /* Heading action menu: transparent wrapper on wide screens; the phone rules live in responsive.css. */
-.mam, .mam > .mam-actions { display: contents; }
+.mam, .mam > .mam-primary, .mam > .mam-more { display: contents; }
 .mam > .mam-trigger { display: none; }
+.mam :is(.mam-primary, .mam-more) > * { order: var(--mam-order, 0); }
