@@ -217,3 +217,18 @@
   .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-buyer { grid-area: buyer; align-self: start; padding: 4px 0 10px 12px; }
   .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-amount { grid-area: amount; justify-self: end; padding: 0 12px 10px 0; }
 }
+
+/* Date on the first row, order number on the second (swapped). */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-row {
+    grid-template-areas:
+      "select logo date"
+      "buyer buyer number"
+      "buyer buyer amount"
+      "cargo cargo cargo"
+      "shipment shipment status"
+      "actions actions actions";
+  }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-order .invoice-order-number { margin: 0 12px 0 0; }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-order > div:not(.order-reference-platform) > small:first-of-type { margin: 12px 12px 0 0; }
+}

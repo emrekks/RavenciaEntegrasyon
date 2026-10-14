@@ -581,3 +581,14 @@ html body .order-detail-actions-list > button:hover:not(:disabled) { background:
   .app-shell.stitch-shell main .orders-page .order-reference-meta > .order-reference-platform { grid-area: logo; justify-self: start; align-self: center; }
   .app-shell.stitch-shell main .orders-page .order-reference-meta > .order-reference-delivery { margin-top: 8px; }
 }
+
+/* Date on the first row, order number on the second (swapped). */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-row > .order-reference-grid {
+    grid-template-areas:
+      "logo date"
+      "buyer number"
+      "delivery delivery"
+      "products products";
+  }
+}
