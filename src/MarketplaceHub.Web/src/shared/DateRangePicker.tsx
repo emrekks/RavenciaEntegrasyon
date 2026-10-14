@@ -22,10 +22,10 @@ export function DateRangePicker({ from, to, onChange, label = 'Tarih aralığı'
     { label: 'Bu ay', range: (() => { const now = new Date(); return { from: dateKey(new Date(now.getFullYear(), now.getMonth(), 1)), to: today } })() },
     { label: 'Bu sene', range: { from: `${new Date().getFullYear()}-01-01`, to: today } },
   ]
-  function toggleOpen() {
-    if (open) { setOpen(false); return }
+  function computePosition() {
     const bounds = root.current?.getBoundingClientRect()
-    if (bounds) {
+    if (!bounds) return null
+    {
       const viewportWidth = window.innerWidth || 1024
       const viewportHeight = window.innerHeight || 768
       const width = Math.min(500, viewportWidth - 32)
@@ -38,8 +38,13 @@ export function DateRangePicker({ from, to, onChange, label = 'Tarih aralığı'
         ? Math.max(16, bounds.top - desiredHeight - 7)
         : bounds.bottom + 7
       const availableHeight = openAbove ? spaceAbove - 7 : viewportHeight - top - 16
-      setPopoverPosition({ left, top, maxHeight: Math.max(220, Math.min(desiredHeight, availableHeight)) })
+      return { left, top, maxHeight: Math.max(220, Math.min(desiredHeight, availableHeight)) }
     }
+  }
+  function toggleOpen() {
+    if (open) { setOpen(false); return }
+    const position = computePosition()
+    if (position) setPopoverPosition(position)
     setOpen(true)
   }
   useEffect(() => {
@@ -47,9 +52,14 @@ export function DateRangePicker({ from, to, onChange, label = 'Tarih aralığı'
     setMonth(monthStart(from))
     const closeOnOutside = (event: PointerEvent) => { if (!root.current?.contains(event.target as Node) && !popover.current?.contains(event.target as Node)) setOpen(false) }
     const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false) }
+    // The popover is fixed to the viewport, so it follows its field whenever the page scrolls or resizes.
+    let frame = 0
+    const follow = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(() => { const position = computePosition(); if (position) setPopoverPosition(position) }) }
     document.addEventListener('pointerdown', closeOnOutside)
     document.addEventListener('keydown', closeOnEscape)
-    return () => { document.removeEventListener('pointerdown', closeOnOutside); document.removeEventListener('keydown', closeOnEscape) }
+    window.addEventListener('scroll', follow, true)
+    window.addEventListener('resize', follow)
+    return () => { cancelAnimationFrame(frame); document.removeEventListener('pointerdown', closeOnOutside); document.removeEventListener('keydown', closeOnEscape); window.removeEventListener('scroll', follow, true); window.removeEventListener('resize', follow) }
   }, [open])
   const nextMonthBlocked = new Date(month.getFullYear(), month.getMonth() + 2, 1) > monthStart(today)
   const renderMonth =(visibleMonth: Date) => {
