@@ -251,3 +251,10 @@
   html body .app-shell.stitch-shell main .mfs:not(.is-open) > .rv-questions-search { font-size: 0; }
   html body .app-shell.stitch-shell main .mfs:not(.is-open) > .rv-questions-search > input { font-size: 14px; }
 }
+
+/* Notification history on phones: the title keeps its own line space and the two actions sit on the right without crowding it. */
+@media (max-width: 760px) {
+  html body .rv-notification-history-heading { flex-wrap: wrap; gap: 6px 12px; padding: 14px 16px 10px; }
+  html body .rv-notification-history-heading .rv-notification-history-actions { display: flex; flex: 1 1 auto; justify-content: flex-end; gap: 6px; }
+  html body .rv-notification-history-heading .rv-notification-history-actions > button { min-height: 32px; padding: 0 8px; font-size: 13px; white-space: nowrap; }
+}
