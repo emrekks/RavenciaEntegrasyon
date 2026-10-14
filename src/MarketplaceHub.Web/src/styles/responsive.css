@@ -390,3 +390,9 @@ html body .mfs-sort-sheet [role="listbox"] > button.is-selected { color: var(--r
   html body .app-shell.stitch-shell main .products-page .product-catalog-workspace-head { margin: 0 0 6px; padding: 0 2px; }
   html body .app-shell.stitch-shell main .products-page .product-metrics { margin: 0; gap: 8px; }
 }
+
+/* Selected cards repaint immediately (some touch browsers hold the paint until the next scroll). */
+@keyframes rv-select-pop { 0% { transform: scale(.985); } 100% { transform: scale(1); } }
+@media (max-width: 760px) {
+  html body .app-shell.stitch-shell main :is(.order-reference-row, .invoice-reference-row, .product-catalog-item).is-selected { animation: rv-select-pop .18s ease-out; will-change: transform, background-color; }
+}

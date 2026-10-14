@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router'
-import { createPortal } from 'react-dom'
+import { createPortal, flushSync } from 'react-dom'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, loadAllPages, type CursorPage } from '../../shared/api'
 import { PlatformMark } from '../../shared/platform-mark'
@@ -1002,7 +1002,7 @@ function ProductColorRows({ group, selected, onSelect, selectionMode, onEnterSel
   const pressFired = useRef(false)
   const isPhone = () => window.matchMedia('(max-width: 760px)').matches
   const clearPress = () => { if (pressTimer.current) window.clearTimeout(pressTimer.current) }
-  return <article className={`product-catalog-item color-variant-item product-group-card${selected ? ' is-selected' : ''}`} onPointerDown={event => { if (event.pointerType !== 'mouse' && isPhone() && !(event.target as Element).closest('button, a, input, select, textarea, label')) { pressFired.current = false; clearPress(); pressTimer.current = window.setTimeout(() => { pressFired.current = true; onEnterSelection(); onSelect(); navigator.vibrate?.(15) }, 480) } }} onPointerUp={clearPress} onPointerLeave={clearPress} onPointerCancel={clearPress} onContextMenu={event => { if (isPhone()) event.preventDefault() }} onClick={event => { if (!isPhone()) return; if (pressFired.current) { pressFired.current = false; return } if ((event.target as Element).closest('button, a, input, select, textarea, label')) return; if (selectionMode) onSelect() }}>
+  return <article className={`product-catalog-item color-variant-item product-group-card${selected ? ' is-selected' : ''}`} onPointerDown={event => { if (event.pointerType !== 'mouse' && isPhone() && !(event.target as Element).closest('button, a, input, select, textarea, label')) { pressFired.current = false; clearPress(); pressTimer.current = window.setTimeout(() => { pressFired.current = true; flushSync(() => { onEnterSelection(); onSelect() }); navigator.vibrate?.(15) }, 480) } }} onPointerUp={clearPress} onPointerLeave={clearPress} onPointerCancel={clearPress} onContextMenu={event => { if (isPhone()) event.preventDefault() }} onClick={event => { if (!isPhone()) return; if (pressFired.current) { pressFired.current = false; return } if ((event.target as Element).closest('button, a, input, select, textarea, label')) return; if (selectionMode) onSelect() }}>
       <div className="product-catalog-row">
         <input className="product-row-select" type="checkbox" aria-label={`${product.title} ürün grubunu seç`} checked={selected} onChange={onSelect} />
         <ProductCatalogImage url={product.primaryImageUrl} title={product.title} onClick={() => onImageClick(product.primaryImageUrl!, product.title)} />
