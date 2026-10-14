@@ -1934,7 +1934,7 @@ export function MappingPage() {
   return searchParams.get('view') === 'brands' ? <BrandMappingPage /> : <CategoryMappingWorkspace />
 }
 
-const supportedAttributeMappingPlatforms = mappingPlatformDefinitions.filter(platform => platform.code === 'TRENDYOL' || platform.code === 'HEPSIBURADA')
+const supportedAttributeMappingPlatforms = mappingPlatformDefinitions.filter(platform => platform.code === 'TRENDYOL' || platform.code === 'HEPSIBURADA' || platform.code === 'N11')
 
 function CategoryMappingWorkspace() {
   const client = useQueryClient()

@@ -24,7 +24,7 @@ const hepsiburadaReadSyncPolicies = new Set([
 ])
 
 // n11 runs the order reads for now; other flows join phase by phase.
-const n11ReadSyncPolicies = new Set(['ORDERS', 'ORDER_RECOVERY'])
+const n11ReadSyncPolicies = new Set(['ORDERS', 'ORDER_RECOVERY', 'REFERENCE_DATA'])
 
 export function isOrderMarketplacePlatform(platformCode: string) {
   return orderMarketplacePlatformCodes.includes(normalizeMarketplacePlatformCode(platformCode) as typeof orderMarketplacePlatformCodes[number])

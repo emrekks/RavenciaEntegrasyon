@@ -421,7 +421,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
 
     // n11 runs the order reads for now; returns, questions, references and the
     // write flows join as their integration phases go live.
-    internal static bool SupportsN11ScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY";
+    internal static bool SupportsN11ScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "REFERENCE_DATA";
 
     internal static bool DefaultPolicyEnabled(string platformCode, string resourceType) =>
         resourceType == "ORDER_CARGO_INFO"

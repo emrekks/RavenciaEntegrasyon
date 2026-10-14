@@ -55,6 +55,7 @@ public static class MarketplaceJobTypes
     public const string HepsiburadaReturnSync = "HEPSIBURADA_RETURN_SYNC";
     public const string HepsiburadaOrderInvoiceReconciliation = "HEPSIBURADA_ORDER_INVOICE_RECONCILIATION";
     public const string N11ConnectionTest = "N11_CONNECTION_TEST";
+    public const string N11ReferenceSync = "N11_REFERENCE_SYNC";
     public const string N11OrderSync = "N11_ORDER_SYNC";
     public const string N11OrderRecoverySync = "N11_ORDER_RECOVERY_SYNC";
     public const string QuestionSync = "MARKETPLACE_QUESTION_SYNC";
@@ -65,7 +66,7 @@ public static class MarketplaceJobTypes
     public static readonly IReadOnlyList<string> ProcessorJobTypes =
     [
         ConnectionTest, ShopifyConnectionTest, HepsiburadaConnectionTest, N11ConnectionTest,
-        ReferenceSync, HepsiburadaReferenceSync,
+        ReferenceSync, HepsiburadaReferenceSync, N11ReferenceSync,
         ProductSync, ShopifyProductSync, HepsiburadaProductSync,
         ProductCreate, ProductApprovalReconcile, ProductUpdate, ProductArchive,
         PriceInventorySync, StockProjectionDispatch,
@@ -115,6 +116,7 @@ public static class MarketplaceJobTypes
         "N11" => jobType switch
         {
             ConnectionTest => N11ConnectionTest,
+            ReferenceSync => N11ReferenceSync,
             OrderSync => N11OrderSync,
             OrderRecoverySync => N11OrderRecoverySync,
             _ => jobType

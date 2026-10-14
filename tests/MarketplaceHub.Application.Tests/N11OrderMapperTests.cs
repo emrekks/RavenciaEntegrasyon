@@ -141,11 +141,11 @@ public sealed class N11OrderMapperTests
     }
 
     [Fact]
-    public void N11ActivationReadsOrdersOnlyAndOrderJobsUseN11Types()
+    public void N11ActivationReadsCategoriesAndOrdersWithN11JobTypes()
     {
         var plan = MarketplaceHub.Infrastructure.Persistence.MarketplaceConnectionService.CreateInitialDataSyncPlan("N11", Guid.NewGuid(), includeHepsiburadaCatalog: true);
 
-        Assert.Equal(MarketplaceJobTypes.N11OrderRecoverySync, Assert.Single(plan).JobType);
+        Assert.Equal(new[] { MarketplaceJobTypes.N11ReferenceSync, MarketplaceJobTypes.N11OrderRecoverySync }, plan.Select(x => x.JobType).ToArray());
         Assert.Equal(MarketplaceJobTypes.N11OrderSync, MarketplaceJobTypes.ForPlatform("N11", MarketplaceJobTypes.OrderSync));
         Assert.Equal(MarketplaceJobTypes.ReturnSync, MarketplaceJobTypes.ForPlatform("N11", MarketplaceJobTypes.ReturnSync));
         Assert.True(MarketplaceHub.Infrastructure.Persistence.ScheduledJobProducer.SupportsN11ScheduledPolicy("ORDERS"));

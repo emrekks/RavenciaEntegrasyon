@@ -689,6 +689,9 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             jobs.Add(new(MarketplaceJobTypes.ReferenceSync, "brands", JsonSerializer.Serialize(new { connectionId, resourceType = "BRANDS", parentExternalId = (string?)null })));
         }
 
+        if (platform == "N11")
+            jobs.Add(new(MarketplaceJobTypes.N11ReferenceSync, "categories", JsonSerializer.Serialize(new { connectionId, resourceType = "CATEGORIES", parentExternalId = (string?)null })));
+
         if (platform is not ("TRENDYOL" or "SHOPIFY" or "HEPSIBURADA" or "N11")) return jobs;
         var orderType = MarketplaceJobTypes.ForPlatform(platform, MarketplaceJobTypes.OrderRecoverySync);
         jobs.Add(new(orderType, "orders", JsonSerializer.Serialize(new { connectionId, externalOrderId = (string?)null, full = true })));
