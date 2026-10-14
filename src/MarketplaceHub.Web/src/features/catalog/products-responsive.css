@@ -144,3 +144,7 @@
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .products-page .product-toolbar > :not(.order-search) :is(button, select) { padding-inline: 10px; font-size: 14px; }
 }
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .products-page .product-toolbar .product-platform-filter-trigger { gap: 4px; padding-inline: 10px 8px; }
+  .app-shell.stitch-shell main .products-page .product-toolbar .product-platform-filter-trigger-copy strong { font-size: 13px; }
+}
