@@ -12,9 +12,9 @@
   /* Column headers: only the ones with a filter stay, as wrapping chips (wrapping, not scrolling,
      so the filter popovers are never clipped). */
   .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-head {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
     min-width: 0;
     min-height: 0;
     margin: 0 0 10px;
@@ -25,10 +25,13 @@
     box-shadow: none;
   }
   .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-head > * {
-    flex: 0 0 auto;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     gap: 8px;
     width: auto;
-    min-height: 36px;
+    min-height: 42px;
     padding: 0 12px;
     color: var(--rv-color-ink);
     font-size: var(--rv-font-size-sm);
@@ -37,7 +40,7 @@
     text-transform: none;
     background: var(--rv-color-surface-raised);
     border: 1px solid var(--rv-color-border-strong);
-    border-radius: 999px;
+    border-radius: 8px;
   }
   .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-head > :not(.order-select):not(.order-column-filter):not(.order-reference-platform-heading) { display: none; }
 
@@ -214,4 +217,77 @@
 }
 @media (max-width: 760px) {
   .app-shell.stitch-shell main :is(.orders-page, .returns-page) .cargo-provider-display { flex: 0 0 auto; width: auto; max-width: none; }
+}
+/* Column filters on phones and tablets: select-all on its own quiet line, the filters in a tidy
+   two-column grid of 8px-radius cells (the round chips read as tags), each cell tappable as a
+   whole. The marketplace logo sits on its own line above the order number. */
+@media (max-width: 1100px) {
+  .app-shell.stitch-shell main :is(.orders-page .order-reference-table > .order-reference-head, .returns-page .return-reference-table > .return-reference-head, .invoices-page .invoice-reference-table > .invoice-reference-head) {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .app-shell.stitch-shell main :is(.orders-page .order-reference-table > .order-reference-head, .returns-page .return-reference-table > .return-reference-head, .invoices-page .invoice-reference-table > .invoice-reference-head) > * {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 42px;
+    padding: 0 12px;
+    border-radius: 8px;
+  }
+  .app-shell.stitch-shell main :is(.order-reference-head, .return-reference-head, .invoice-reference-head) :is(.order-column-filter-trigger, .platform-multi-select-trigger) {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    width: 100%;
+    height: 100%;
+    padding: 0 12px;
+    background: transparent;
+    border: 0;
+    border-radius: 8px;
+  }
+  .app-shell.stitch-shell main :is(.order-reference-head, .return-reference-head, .invoice-reference-head) :is(.platform-multi-select-field, .platform-multi-select) { position: static; }
+  .app-shell.stitch-shell main :is(.order-reference-head, .return-reference-head, .invoice-reference-head) .platform-multi-select-label { display: none; }
+  .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-head > .order-select { grid-column: 1 / -1; justify-content: flex-start; min-height: 32px; padding: 0 2px; background: transparent; border: 0; }
+
+  .app-shell.stitch-shell main .orders-page .order-reference-meta > .order-reference-platform { flex: 1 0 100%; }
+}
+
+/* Compact order card on phones (after the seller-app reference): logo, number and date on top with
+   package and delivery numbers left to the order detail; colour, size and barcode on one line;
+   the invoice block reduced to its status and menu on one row; label printing and the order menu
+   side by side. The grid's inline 130px first row is dropped. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-row > .order-reference-grid {
+    grid-template-rows: none !important;
+    grid-template-columns: 30px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "select meta meta"
+      "buyer buyer prices"
+      "products products products"
+      "cargo cargo cargo"
+      "invoice invoice invoice"
+      "actions actions actions";
+  }
+  .app-shell.stitch-shell main .orders-page .order-reference-meta > small:nth-of-type(n + 2) { display: none; }
+  .app-shell.stitch-shell main .orders-page .order-reference-meta > .order-reference-delivery { margin-top: 8px; }
+
+  .app-shell.stitch-shell main .orders-page .order-reference-products > article > div { display: block; }
+  .app-shell.stitch-shell main .orders-page .order-reference-products > article > div > strong { display: block; margin-bottom: 4px; }
+  .app-shell.stitch-shell main .orders-page .order-reference-products > article > div > small { display: inline; font-size: 13px; }
+  .app-shell.stitch-shell main .orders-page .order-reference-products > article > div > small + small::before { content: " · "; color: var(--rv-color-subtle); }
+
+  .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-row > .order-reference-grid > .order-reference-cargo { padding-block: 10px; }
+  .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-row > .order-reference-grid > .order-reference-invoice { display: flex; flex-wrap: nowrap; align-items: center; gap: 10px; padding-block: 10px; }
+  .app-shell.stitch-shell main .orders-page .order-reference-invoice > :is(.order-invoice-metric, .order-invoice-payable) { display: none; }
+  .app-shell.stitch-shell main .orders-page .order-reference-invoice > .order-invoice-actions { flex-wrap: nowrap; justify-content: space-between; width: 100%; }
+  .app-shell.stitch-shell main .orders-page .order-reference-invoice .row-menu { flex: 0 1 auto; width: auto; }
+  .app-shell.stitch-shell main .orders-page .order-reference-invoice .row-menu-trigger { width: auto; min-height: 36px; }
+
+  .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-row > .order-reference-grid > .order-reference-actions { grid-template-columns: minmax(0, 1fr) auto; padding-block: 10px; }
+  .app-shell.stitch-shell main .orders-page .order-reference-actions .order-label-action { min-height: 42px; font-size: 14px; }
+  .app-shell.stitch-shell main .orders-page .order-reference-actions .row-menu-trigger { width: auto; min-height: 42px; }
 }

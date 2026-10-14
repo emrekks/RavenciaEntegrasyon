@@ -15,9 +15,9 @@
   }
 
   .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-head {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
     width: auto;
     min-width: 0;
     min-height: 0;
@@ -29,10 +29,13 @@
     box-shadow: none;
   }
   .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-head > * {
-    flex: 0 0 auto;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     gap: 8px;
     width: auto;
-    min-height: 36px;
+    min-height: 42px;
     padding: 0 12px;
     color: var(--rv-color-ink);
     font-size: var(--rv-font-size-sm);
@@ -41,7 +44,7 @@
     text-transform: none;
     background: var(--rv-color-surface-raised);
     border: 1px solid var(--rv-color-border-strong);
-    border-radius: 999px;
+    border-radius: 8px;
   }
   .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-head > :not(.order-column-filter):not(.invoice-reference-platform-heading) { display: none; }
 

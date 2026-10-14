@@ -19,7 +19,7 @@
   .app-shell.stitch-shell main .rv-question-content :is(.rv-question-thread-message, .rv-question-conversation > *) { padding: 10px 12px; font-size: 15px; line-height: 1.55; }
   .app-shell.stitch-shell main .rv-question-meta { font-size: 13px; }
 
-  /* Marketplace logo on the left (light badge, the dark artwork vanished on the card), question
+  /* Marketplace logo on the left (lightened in the dark theme by responsive.css), question
      date and status on the right of the same line. */
   .app-shell.stitch-shell main .rv-question-platform-context { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; }
   .app-shell.stitch-shell main .rv-question-platform-context > div { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px 10px; }
@@ -28,8 +28,5 @@
     width: auto;
     max-width: 72px;
     height: 16px;
-    padding: 4px 8px;
-    background: #f4f4f7;
-    border-radius: 6px;
   }
 }

@@ -27,7 +27,7 @@
     text-transform: none;
     background: var(--rv-color-surface-raised);
     border: 1px solid var(--rv-color-border-strong);
-    border-radius: 999px;
+    border-radius: 8px;
   }
   .app-shell.stitch-shell main .products-page .product-catalog-head > :not(.product-select-all):not(.product-sort-header) { display: none; }
   .app-shell.stitch-shell main .products-page .product-catalog-head > .product-sort-header { display: inline-flex; align-items: center; gap: 4px; }
@@ -147,4 +147,26 @@
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .products-page .product-toolbar .product-platform-filter-trigger { gap: 4px; padding-inline: 10px 8px; }
   .app-shell.stitch-shell main .products-page .product-toolbar .product-platform-filter-trigger-copy strong { font-size: 13px; }
+}
+/* Status pill: the desktop cell gives it no inner padding, so the text touched its edges. */
+@container product-catalog (max-width: 640px) {
+  .app-shell.stitch-shell main .products-page .product-catalog-row > .product-list-status { gap: 6px; padding: 4px 10px; white-space: nowrap; }
+}
+/* Bulk actions menu on phones: it opened from the left edge of its button (the right-hand filter
+   cell) and ran 150px off the screen. It now opens from the right edge, at most the screen wide. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .products-page .bulk-menu-shell > .bulk-action-menu { left: auto; right: 0; width: min(327px, calc(100vw - 32px)); }
+}
+/* Product editor on phones: price, stock and tax fields two to a row; the sticky submit bar as a
+   column grid (its stacked flex layout turned basis rules into heights and squeezed "Hızlı
+   güncelle" to 62px): save and quick update side by side, publish across the row below. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .product-add-page .product-pricing-card .product-step-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .app-shell.stitch-shell main .product-add-page .product-pricing-card .product-step-grid > label { min-width: 0; }
+  .app-shell.stitch-shell main .product-add-page .product-submit-sticky { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 12px; }
+  .app-shell.stitch-shell main .product-add-page .product-submit-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; width: 100%; }
+  .app-shell.stitch-shell main .product-add-page .product-submit-actions > * { min-width: 0; min-height: 44px; }
+  .app-shell.stitch-shell main .product-add-page .product-submit-actions > :last-child { grid-column: 1 / -1; }
+  .app-shell.stitch-shell main .product-add-page .product-submit-actions .platform-update-split { display: flex; }
+  .app-shell.stitch-shell main .product-add-page .product-submit-actions .platform-update-quick { flex: 1 1 auto; min-width: 0; }
 }
