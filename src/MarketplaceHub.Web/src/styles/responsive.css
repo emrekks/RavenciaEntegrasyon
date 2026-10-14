@@ -2,6 +2,19 @@
    as its own file with media="(max-width: 1100px)", so desktop never applies it and the main
    CSS budget is untouched. Feature pages keep their own *-responsive.css next to the page. */
 
+/* Page grids: a column may shrink below its widest content. Without this a single wide toolbar or
+   form row makes the whole page wider than the phone and it scrolls sideways. */
+@media (max-width: 1100px) {
+  .app-shell.stitch-shell main .content { grid-template-columns: minmax(0, 1fr); }
+  .app-shell.stitch-shell main .content > * { min-width: 0; }
+}
+
+/* Pagination: the record count and the page controls wrap instead of overflowing. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main :has(> .rv-pagination) { flex-wrap: wrap; row-gap: 8px; }
+  .app-shell.stitch-shell main .rv-pagination { flex: 1 1 100%; justify-content: space-between; min-width: 0; }
+}
+
 /* Dashboard: metrics two to a row instead of one, so the operational summary fits on a screen. */
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .dashboard .dashboard-operational-grid,

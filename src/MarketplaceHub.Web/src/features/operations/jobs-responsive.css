@@ -2,7 +2,8 @@
    detail button on top, status and attempts below, then the time. The correlation id stays in
    the job detail. */
 @media (max-width: 760px) {
-  .app-shell.stitch-shell main .jobs-page .jobs-reference-canvas { width: auto; min-width: 0; max-width: 100%; }
+  .app-shell.stitch-shell main .jobs-page .jobs-reference-canvas { width: auto; min-width: 0; max-width: 100%; grid-template-columns: minmax(0, 1fr); }
+  .app-shell.stitch-shell main .jobs-page .jobs-reference-canvas > * { min-width: 0; }
   .app-shell.stitch-shell main .jobs-page .jobs-reference-table-scroll { overflow: visible; background: transparent; border: 0; }
   .app-shell.stitch-shell main .jobs-page .jobs-reference-table,
   .app-shell.stitch-shell main .jobs-page .jobs-reference-table > tbody { display: block; width: 100%; min-width: 0; }

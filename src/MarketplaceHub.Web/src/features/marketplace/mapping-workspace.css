@@ -297,3 +297,13 @@
   /* The category library remove button is easier to hit at 36px. */
   .mapping-page .category-library-remove { width: 36px; min-width: 36px; height: 36px; }
 }
+/* Mapping page on phones: the option and attribute library cards and their create form stack in
+   one column (the form had three fixed columns, 600px in all, and widened the page). */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .mapping-page .mapping-reference-card,
+  .app-shell.stitch-shell main .mapping-page .panel-attribute-library,
+  .app-shell.stitch-shell main .mapping-page .panel-attribute-create { grid-template-columns: minmax(0, 1fr); }
+  .app-shell.stitch-shell main .mapping-page .mapping-reference-card > *,
+  .app-shell.stitch-shell main .mapping-page .panel-attribute-library > *,
+  .app-shell.stitch-shell main .mapping-page .panel-attribute-create > * { min-width: 0; }
+}

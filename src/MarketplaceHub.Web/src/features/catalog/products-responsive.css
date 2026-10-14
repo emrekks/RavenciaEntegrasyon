@@ -62,6 +62,7 @@
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
   }
+  .app-shell.stitch-shell main .products-page .product-list-identity > small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .app-shell.stitch-shell main .products-page .product-catalog-row > .product-list-variants { grid-area: variants; display: flex; flex-wrap: wrap; gap: 0 6px; align-self: start; font-size: 13px; }
   .app-shell.stitch-shell main .products-page .product-catalog-row > .product-list-status { grid-area: status; align-self: start; justify-self: end; }
   .app-shell.stitch-shell main .products-page .product-catalog-row > .product-list-platforms {
@@ -103,4 +104,14 @@
   .app-shell.stitch-shell main .products-page .product-toolbar > * { min-width: 0; }
   .app-shell.stitch-shell main .products-page .product-toolbar > .order-search { grid-column: 1 / -1; order: -1; }
   .app-shell.stitch-shell main .products-page .product-toolbar > .bulk-menu-shell { order: 1; }
+}
+/* Product create/edit on phones: grid columns may shrink below their content (they used to grow
+   to the widest toolbar and made the page 523px wide), and section headers wrap their actions. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .product-add-page,
+  .app-shell.stitch-shell main .product-add-page .product-creation-workspace { grid-template-columns: minmax(0, 1fr); }
+  .app-shell.stitch-shell main .product-add-page > *,
+  .app-shell.stitch-shell main .product-add-page .product-creation-workspace > * { min-width: 0; }
+  .app-shell.stitch-shell main .product-add-page .editor-section-title { flex-wrap: wrap; row-gap: 10px; }
+  .app-shell.stitch-shell main .product-add-page .editor-section-title > .product-media-header-actions { flex: 1 1 auto; flex-wrap: wrap; justify-content: flex-end; min-width: 0; }
 }
