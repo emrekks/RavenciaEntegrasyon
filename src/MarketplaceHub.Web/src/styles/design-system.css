@@ -6152,8 +6152,9 @@ small,
 }
 
 .app-shell.stitch-shell main .dashboard-operational-card > .dashboard-metric-icon .ui-icon {
-  width: 36px;
-  height: 36px;
+  /* 40px puts the clock circle's top on the number's top and its bottom on the label's baseline. */
+  width: 40px;
+  height: 40px;
 }
 
 .app-shell.stitch-shell main .dashboard-operational-card > .ui-icon {
