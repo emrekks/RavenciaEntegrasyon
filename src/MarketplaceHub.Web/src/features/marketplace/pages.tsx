@@ -1602,8 +1602,8 @@ export function OrdersPage() {
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
   useEffect(() => {
     if (!headerMenuOpen) return
-    const close = (event: PointerEvent) => { if (!(event.target as Element).closest('.orders-heading-more')) setHeaderMenuOpen(false) }
-    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setHeaderMenuOpen(false) }
+    const close = (event: globalThis.PointerEvent) => { if (!(event.target as Element).closest('.orders-heading-more')) setHeaderMenuOpen(false) }
+    const escape = (event: globalThis.KeyboardEvent) => { if (event.key === 'Escape') setHeaderMenuOpen(false) }
     document.addEventListener('pointerdown', close)
     document.addEventListener('keydown', escape)
     return () => { document.removeEventListener('pointerdown', close); document.removeEventListener('keydown', escape) }

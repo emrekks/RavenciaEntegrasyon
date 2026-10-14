@@ -545,3 +545,20 @@ html body .order-detail-actions-list > button:hover:not(:disabled) { background:
   .app-shell.stitch-shell main .orders-page .orders-control-bar.mfs:not(.is-open) { margin: 0; }
   .app-shell.stitch-shell main .orders-page .order-reference-table { margin-top: 0; }
 }
+
+/* Phone order card: the platform logo sits to the left of the order number on one row (larger),
+   the date stays at the right. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-row > .order-reference-grid {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "logo number date"
+      "buyer buyer buyer"
+      "delivery delivery delivery"
+      "products products products";
+    column-gap: 10px;
+  }
+  .app-shell.stitch-shell main .orders-page .order-reference-meta > .order-reference-platform { grid-area: logo; justify-self: start; align-self: center; margin: 0; }
+  .app-shell.stitch-shell main .orders-page .order-reference-meta .order-platform-logo { max-width: 96px; height: 24px; }
+  .app-shell.stitch-shell main .orders-page .order-reference-meta > .order-number { justify-self: start; }
+}

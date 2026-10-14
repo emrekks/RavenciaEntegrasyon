@@ -173,3 +173,7 @@
   .app-shell.stitch-shell main .returns-page .return-reference-row .order-number-copy { width: 36px; height: 36px; }
   .app-shell.stitch-shell main .returns-page .return-reference-row .return-reason-note { font-size: 13px; }
 }
+/* Returns card: slightly larger platform logo on phones. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .returns-page .return-reference-row .order-platform-logo { max-width: 96px; height: 24px; }
+}
