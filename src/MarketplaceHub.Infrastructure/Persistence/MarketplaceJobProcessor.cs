@@ -4944,8 +4944,20 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     || (preferBarcode && variant.ModelCode != null && rawSkus.Contains(variant.ModelCode))
                     || (!preferBarcode && variant.ModelCode != null && modelCodes.Contains(variant.ModelCode))))
             .ToListAsync(cancellationToken);
-        if (localVariants.Count == 0 && link is null) return false;
+        if (localVariants.Count == 0 && link is null)
+        {
+            if (reportUnmatched)
+                foreach (var remote in remoteVariants)
+                    await RecordIssue(tenantId, $"product-mapping-unmatched:{connectionId}:{Short(remote.ExternalVariantId, 256)}", "PRODUCT_MAPPING_UNMATCHED",
+                        Short($"Pazar yeri varyantı eşleşmedi: stok kodu {remote.Sku}, barkod {remote.Barcode ?? "yok"}, model kodu {remote.ModelCode ?? "yok"} · {snapshot.Title}. Panelde aynı stok kodu, barkod veya model kodu yok.", 1000), cancellationToken);
+            return false;
+        }
 
+        // A marketplace product may group colours that the panel keeps as
+        // separate products, and two marketplace products may land on the same
+        // panel product. For n11 the variant links carry the stock code, so the
+        // variants are still linked when the product-level link cannot be made.
+        var linkProduct = true;
         var candidateProductIds = localVariants.Select(variant => variant.ProductId).Distinct().ToArray();
         Guid? productId = link?.ProductId;
         if (productId is null)
@@ -4958,11 +4970,20 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     .Distinct()
                     .ToListAsync(cancellationToken);
             productId = candidateProductIds.FirstOrDefault(candidate => !conflictingProductIds.Contains(candidate));
-            if (productId == Guid.Empty) return false;
+            if (productId == Guid.Empty)
+            {
+                if (!crossMatchCodes) return false;
+                linkProduct = false;
+                productId = candidateProductIds[0];
+            }
         }
 
         if (!await db.Products.AsNoTracking().AnyAsync(product => product.TenantId == tenantId && product.Id == productId.Value, cancellationToken)) return false;
-        if (link is null && await db.MarketplaceProductLinks.AsNoTracking().AnyAsync(existing => existing.TenantId == tenantId && existing.ConnectionId == connectionId && existing.ProductId == productId.Value && existing.ExternalId != externalProductId, cancellationToken)) return false;
+        if (linkProduct && link is null && await db.MarketplaceProductLinks.AsNoTracking().AnyAsync(existing => existing.TenantId == tenantId && existing.ConnectionId == connectionId && existing.ProductId == productId.Value && existing.ExternalId != externalProductId, cancellationToken))
+        {
+            if (!crossMatchCodes) return false;
+            linkProduct = false;
+        }
 
         var localVariantIds = localVariants.Select(variant => variant.Id).ToArray();
         var externalVariantIds = remoteVariants.Select(variant => Short(variant.ExternalVariantId, 256)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
@@ -5036,6 +5057,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         }
 
         if (matchedVariantCount == 0) return false;
+        if (!linkProduct) return true;
         if (link is null)
         {
             link = new MarketplaceProductLink
