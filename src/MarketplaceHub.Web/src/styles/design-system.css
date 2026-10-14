@@ -12554,17 +12554,19 @@ h1, h2, h3, h4, .dashboard-summary-card-head > span:first-child, :is(.orders-con
 .product-options-card .attribute-builder-list + .attribute-variant-action,
 .product-options-card .unknown + .attribute-variant-action { margin-top: var(--rv-space-4); margin-bottom: var(--rv-space-4); }
 
-/* Mobile menu: as tall and wide as its items need, anchored under the header, instead of a full-height sheet. */
+/* Mobile menu: a half-width panel docked to the left edge (the page stays visible on the right). */
 @media (max-width: 760px) {
+  html body .rv-overlay:has(.rv-mobile-navigation) { place-items: stretch start; padding: 0; }
   html body .rv-drawer:has(.rv-mobile-navigation) {
-    inset: 8px auto auto 8px;
-    width: min(320px, calc(100vw - 16px));
-    max-width: calc(100vw - 16px);
-    height: auto;
-    max-height: calc(100dvh - 16px);
-    grid-template-rows: auto auto;
-    border: 1px solid var(--rv-color-border-strong);
-    border-radius: var(--rv-radius-lg);
+    inset: 0 auto 0 0;
+    width: min(300px, 82vw);
+    max-width: 82vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    grid-template-rows: auto minmax(0, 1fr);
+    border: 0;
+    border-right: 1px solid var(--rv-color-border-strong);
+    border-radius: 0;
     box-shadow: var(--rv-shadow-lg);
   }
 }
