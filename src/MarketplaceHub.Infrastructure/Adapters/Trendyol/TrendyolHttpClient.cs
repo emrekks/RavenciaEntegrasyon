@@ -453,8 +453,8 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
                         if (!mapped.HasMore) break;
                         if (string.IsNullOrWhiteSpace(mapped.NextCursor))
                             return AdapterResult<RemoteOrderPackage>.Failure(TrendyolErrorMapper.Contract(), streamResponse.RateLimit);
+                        // The resilience handler spaces stream pages; no extra sleep is needed here.
                         nextCursor = mapped.NextCursor;
-                        await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
                     }
                     catch (JsonException)
                     {

@@ -2269,7 +2269,6 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 state = state with { NextCursor = null };
                 cursor.OpaqueCursor = null;
                 resetExpiredCursor = true;
-                await Task.Delay(OrderStreamRequestInterval, cancellationToken);
                 continue;
             }
             if (!result.IsSuccess && state.StoreFrontIndex > 0 && state.NextCursor is null && result.Error?.HttpStatus is 400 or 404)
@@ -2283,7 +2282,6 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     cursor.OpaqueCursor = SerializeOrderSyncState(state);
                     cursor.Version++;
                     await db.SaveChangesAsync(cancellationToken);
-                    await Task.Delay(OrderStreamRequestInterval, cancellationToken);
                     continue;
                 }
                 if (state.Mode == OrderSyncMode.Baseline && HasEarlierOrderWindow(state))
@@ -2296,7 +2294,6 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     // window and release the orders lane between windows so
                     // lifecycle/reconciliation jobs can repair current orders.
                     if (cursorResourceType == "ORDERS_RECOVERY") return true;
-                    await Task.Delay(OrderStreamRequestInterval, cancellationToken);
                     continue;
                 }
                 cursor.OpaqueCursor = null;
@@ -2341,7 +2338,6 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             cursor.OpaqueCursor = SerializeOrderSyncState(state);
             cursor.Version++;
             await db.SaveChangesAsync(cancellationToken);
-            await Task.Delay(OrderStreamRequestInterval, cancellationToken);
         } while (!cancellationToken.IsCancellationRequested);
         return true;
     }
@@ -6234,7 +6230,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     // three-month baseline instead of continuing the old incremental cursor.
     private const string OrderSyncStateVersion = "orders-v4";
     private static readonly TimeSpan OrderStreamWindowSpan = TimeSpan.FromDays(14);
-    private static readonly TimeSpan OrderStreamRequestInterval = TimeSpan.FromSeconds(5);
+    // Stream reads are spaced (5 s between starts) and capped (30/min) per seller by
+    // TrendyolResilienceHandler; sleeping here as well only added idle time to every page.
     private const int DefaultOrderSyncOverlapSeconds = 120;
     private enum OrderSyncMode { Baseline, Incremental }
     private sealed record OrderSyncState(string Version, OrderSyncMode Mode, DateTimeOffset AnchorEnd, DateTimeOffset StartAt, int WindowIndex, string? NextCursor, int StoreFrontIndex = 0);
