@@ -3622,7 +3622,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var mappingOnly = ReadBoolean(payloadJson, "mappingOnly");
         var optionsOnly = ReadBoolean(payloadJson, "optionsOnly");
         var includeArchived = ReadBoolean(payloadJson, "includeArchived");
-        var includePendingApproval = !isShopify && !isHepsiburada && ReadBoolean(payloadJson, "includePendingApproval");
+        // n11 listings awaiting approval are real listings that also take price and
+        // stock updates, so they are always part of an n11 import.
+        var includePendingApproval = isN11 || !isShopify && !isHepsiburada && ReadBoolean(payloadJson, "includePendingApproval");
         var updateExistingProducts = ReadBooleanOrDefault(payloadJson, "updateExistingProducts", true);
         var updateExistingPricesAndStock = ReadBoolean(payloadJson, "updateExistingPricesAndStock");
         // Shopify's single inactive-product option intentionally covers both
@@ -5008,11 +5010,20 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (externalLink is not null)
             {
                 if (externalLink.VariantId == candidate.Id) matchedVariantCount++;
+                else if (reportUnmatched)
+                    await RecordIssue(tenantId, $"product-mapping-unmatched:{connectionId}:{externalVariantId}", "PRODUCT_MAPPING_UNMATCHED",
+                        Short($"Pazar yeri varyantı {remote.Sku} daha önce başka bir panel varyantına bağlanmış; şimdiki eşleşme {candidate.Sku}. Bağlantı değiştirilmedi · {snapshot.Title}.", 1000), cancellationToken);
                 claimedVariantIds.Add(externalLink.VariantId);
                 continue;
             }
             var localLink = existingVariantLinks.FirstOrDefault(existing => existing.VariantId == candidate.Id);
-            if (localLink is not null) continue;
+            if (localLink is not null)
+            {
+                if (reportUnmatched)
+                    await RecordIssue(tenantId, $"product-mapping-unmatched:{connectionId}:{externalVariantId}", "PRODUCT_MAPPING_UNMATCHED",
+                        Short($"Pazar yeri varyantı eşleşmedi: stok kodu {remote.Sku}, panel varyantı {candidate.Sku} zaten {localLink.ExternalId} stok koduna bağlı · {snapshot.Title}.", 1000), cancellationToken);
+                continue;
+            }
 
             db.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, VariantId = candidate.Id, ExternalId = externalVariantId, Version = 1 });
             existingVariantLinks.Add(new MarketplaceVariantLink { TenantId = tenantId, ConnectionId = connectionId, VariantId = candidate.Id, ExternalId = externalVariantId, Version = 1 });

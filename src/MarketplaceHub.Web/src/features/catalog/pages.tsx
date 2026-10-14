@@ -951,7 +951,7 @@ function ProductColorRows({ group, selected, onSelect, onQuickEdit, onImageClick
   const platformStatusAggregates = new Map<string, { platform: string; platformCode: string; statuses: string[]; matchedVariantCount: number; variantCount: number; isChecking: boolean }>()
   for (const item of platformStatuses) {
     const platform = item.platform?.trim() || 'Platform'
-    const platformCode = item.platformCode?.trim().toUpperCase() || (platform.toUpperCase().includes('SHOPIFY') ? 'SHOPIFY' : platform.toUpperCase().includes('HEPSIBURADA') ? 'HEPSIBURADA' : platform.toUpperCase().includes('TRENDYOL') ? 'TRENDYOL' : 'UNKNOWN')
+    const platformCode = item.platformCode?.trim().toUpperCase() || (platform.toUpperCase().includes('SHOPIFY') ? 'SHOPIFY' : platform.toUpperCase().includes('HEPSIBURADA') ? 'HEPSIBURADA' : platform.toUpperCase().includes('TRENDYOL') ? 'TRENDYOL' : platform.toUpperCase().includes('N11') ? 'N11' : 'UNKNOWN')
     const key = `${platformCode}:${platform}`
     const current = platformStatusAggregates.get(key)
     if (current) {
@@ -1546,7 +1546,7 @@ const variantBulkEditLabels: Record<VariantBulkEditField, string> = { stock: 'St
 type ProductAttributePayload = ProductAttributeAssignment
 function marketplacePlatformName(platform: VariantPlatformStatus) {
   const code = platform.platformCode.trim().toLocaleUpperCase('tr-TR')
-  return code === 'SHOPIFY' ? 'Shopify' : code === 'HEPSIBURADA' ? 'Hepsiburada' : code === 'TRENDYOL' ? 'Trendyol' : platform.platform
+  return code === 'SHOPIFY' ? 'Shopify' : code === 'HEPSIBURADA' ? 'Hepsiburada' : code === 'TRENDYOL' ? 'Trendyol' : code === 'N11' ? 'N11' : platform.platform
 }
 function marketplacePriceLabel(value: number | null | undefined, currency: string | null | undefined) {
   return value == null ? 'Tanımlı değil' : `${value.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency ?? ''}`.trim()
