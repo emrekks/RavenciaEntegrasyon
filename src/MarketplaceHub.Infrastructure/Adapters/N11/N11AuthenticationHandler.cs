@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Persistence;
 using Microsoft.AspNetCore.DataProtection;
@@ -37,7 +38,10 @@ public sealed class N11AuthenticationHandler(
         }
 
         if (payload is null || string.IsNullOrWhiteSpace(payload.ApiKey) || string.IsNullOrWhiteSpace(payload.ApiSecret)) return null;
-        return new(connection, payload.ApiKey.Trim(), payload.ApiSecret.Trim());
+        // Older records may still carry invisible characters copied from the
+        // seller panel; a value that cannot be cleaned is passed on as is and
+        // rejected by the client with a clear message.
+        return new(connection, N11CredentialFormat.Normalize(payload.ApiKey) ?? payload.ApiKey, N11CredentialFormat.Normalize(payload.ApiSecret) ?? payload.ApiSecret);
     }
 
     private sealed record CredentialPayload(string ApiKey, string ApiSecret);

@@ -87,6 +87,8 @@ public sealed class N11HttpClient(
 
     private async Task<AdapterResult<JsonDocument>> SendAsync(N11RequestContext context, HttpMethod method, string path, CancellationToken cancellationToken, HttpContent? content = null)
     {
+        if (N11CredentialFormat.Normalize(context.AppKey) is null || N11CredentialFormat.Normalize(context.AppSecret) is null)
+            return Failure<JsonDocument>(AdapterErrorClass.Authentication, "N11_CREDENTIAL_FORMAT_INVALID", "Kayıtlı N11 App Key veya App Secret değerinde geçersiz karakter var. Değerleri N11 satıcı panelindeki Hesabım → API Hesapları ekranından yeniden kopyalayıp kaydedin.", HttpStatusCode.UnprocessableEntity);
         var client = clients.CreateClient("N11");
         using var request = new HttpRequestMessage(method, new Uri(settings.BaseAddress, path)) { Content = content };
         ApplyAuthentication(request, context);
