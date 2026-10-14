@@ -592,3 +592,9 @@ html body .order-detail-actions-list > button:hover:not(:disabled) { background:
       "products products";
   }
 }
+
+/* Order detail footer: the primary action on the first row, "İşlemler" and "İşleme Al" side by side below. */
+@media (max-width: 760px) {
+  html body .order-detail-actions:has(.order-detail-quick) > .order-detail-secondary:not(.order-detail-quick) { grid-column: 1; grid-row: 2; }
+  html body .order-detail-actions:has(.order-detail-quick) > .order-detail-quick { grid-column: 2; grid-row: 2; }
+}
