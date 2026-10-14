@@ -9,6 +9,8 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimeProvider timeProvider) : IJobLeaseService
 {
     private static readonly TimeSpan MaximumDeferralAge = TimeSpan.FromHours(24);
+    private static readonly string[] LockGroupJobTypes = [.. MarketplaceJobTypes.ProcessorJobTypes];
+    private static readonly string[] LockGroups = [.. MarketplaceJobTypes.ProcessorJobTypes.Select(MarketplaceSyncExecutionLock.GroupFor)];
 
     public async Task<LeasedJob?> TryLeaseAsync(TimeSpan leaseDuration, int? maximumPriority, int? minimumPriority, CancellationToken cancellationToken, string? onlyJobType = null, Guid? onlyJobId = null, string[]? includedJobTypes = null, string[]? excludedJobTypes = null)
     {
@@ -16,13 +18,37 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         includedJobTypes ??= [];
         excludedJobTypes ??= [];
         await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken);
-        var job = (minimumPriority, maximumPriority) switch
-        {
-            (null, null) => await db.IntegrationJobs.FromSqlInterpolated($"SELECT * FROM integration.jobs WHERE \"Status\" IN ('PENDING', 'RETRY_SCHEDULED') AND \"AttemptCount\" < \"MaxAttempts\" AND \"AvailableAt\" <= {now} AND ({onlyJobType}::text IS NULL OR \"JobType\" = {onlyJobType}::text) AND (cardinality({includedJobTypes}::text[]) = 0 OR \"JobType\" = ANY({includedJobTypes}::text[])) AND NOT (\"JobType\" = ANY({excludedJobTypes}::text[])) AND ({onlyJobId}::uuid IS NULL OR \"Id\" = {onlyJobId}::uuid) ORDER BY \"Priority\" ASC, \"AvailableAt\" ASC, \"CreatedAt\" ASC FOR UPDATE SKIP LOCKED LIMIT 1").SingleOrDefaultAsync(cancellationToken),
-            (null, not null) => await db.IntegrationJobs.FromSqlInterpolated($"SELECT * FROM integration.jobs WHERE \"Status\" IN ('PENDING', 'RETRY_SCHEDULED') AND \"AttemptCount\" < \"MaxAttempts\" AND \"AvailableAt\" <= {now} AND \"Priority\" <= {maximumPriority!.Value} AND ({onlyJobType}::text IS NULL OR \"JobType\" = {onlyJobType}::text) AND (cardinality({includedJobTypes}::text[]) = 0 OR \"JobType\" = ANY({includedJobTypes}::text[])) AND NOT (\"JobType\" = ANY({excludedJobTypes}::text[])) AND ({onlyJobId}::uuid IS NULL OR \"Id\" = {onlyJobId}::uuid) ORDER BY \"Priority\" ASC, \"AvailableAt\" ASC, \"CreatedAt\" ASC FOR UPDATE SKIP LOCKED LIMIT 1").SingleOrDefaultAsync(cancellationToken),
-            (not null, null) => await db.IntegrationJobs.FromSqlInterpolated($"SELECT * FROM integration.jobs WHERE \"Status\" IN ('PENDING', 'RETRY_SCHEDULED') AND \"AttemptCount\" < \"MaxAttempts\" AND \"AvailableAt\" <= {now} AND \"Priority\" >= {minimumPriority!.Value} AND ({onlyJobType}::text IS NULL OR \"JobType\" = {onlyJobType}::text) AND (cardinality({includedJobTypes}::text[]) = 0 OR \"JobType\" = ANY({includedJobTypes}::text[])) AND NOT (\"JobType\" = ANY({excludedJobTypes}::text[])) AND ({onlyJobId}::uuid IS NULL OR \"Id\" = {onlyJobId}::uuid) ORDER BY \"Priority\" ASC, \"AvailableAt\" ASC, \"CreatedAt\" ASC FOR UPDATE SKIP LOCKED LIMIT 1").SingleOrDefaultAsync(cancellationToken),
-            _ => await db.IntegrationJobs.FromSqlInterpolated($"SELECT * FROM integration.jobs WHERE \"Status\" IN ('PENDING', 'RETRY_SCHEDULED') AND \"AttemptCount\" < \"MaxAttempts\" AND \"AvailableAt\" <= {now} AND \"Priority\" BETWEEN {minimumPriority!.Value} AND {maximumPriority!.Value} AND ({onlyJobType}::text IS NULL OR \"JobType\" = {onlyJobType}::text) AND (cardinality({includedJobTypes}::text[]) = 0 OR \"JobType\" = ANY({includedJobTypes}::text[])) AND NOT (\"JobType\" = ANY({excludedJobTypes}::text[])) AND ({onlyJobId}::uuid IS NULL OR \"Id\" = {onlyJobId}::uuid) ORDER BY \"Priority\" ASC, \"AvailableAt\" ASC, \"CreatedAt\" ASC FOR UPDATE SKIP LOCKED LIMIT 1").SingleOrDefaultAsync(cancellationToken)
-        };
+        // A job whose connection already runs a job of the same execution-lock group is skipped
+        // here instead of being leased and then deferred, so the slot takes the next job at once.
+        // Two slots leasing at the same instant can still collide; the processor's advisory lock
+        // remains the final guard and defers the loser without consuming an attempt.
+        var job = await db.IntegrationJobs.FromSqlInterpolated($"""
+            SELECT candidate.* FROM integration.jobs candidate
+            WHERE candidate."Status" IN ('PENDING', 'RETRY_SCHEDULED')
+              AND candidate."AttemptCount" < candidate."MaxAttempts"
+              AND candidate."AvailableAt" <= {now}
+              AND ({minimumPriority}::int IS NULL OR candidate."Priority" >= {minimumPriority}::int)
+              AND ({maximumPriority}::int IS NULL OR candidate."Priority" <= {maximumPriority}::int)
+              AND ({onlyJobType}::text IS NULL OR candidate."JobType" = {onlyJobType}::text)
+              AND (cardinality({includedJobTypes}::text[]) = 0 OR candidate."JobType" = ANY({includedJobTypes}::text[]))
+              AND NOT (candidate."JobType" = ANY({excludedJobTypes}::text[]))
+              AND ({onlyJobId}::uuid IS NULL OR candidate."Id" = {onlyJobId}::uuid)
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM unnest({LockGroupJobTypes}::text[], {LockGroups}::text[]) AS candidate_group(job_type, lock_group)
+                  JOIN unnest({LockGroupJobTypes}::text[], {LockGroups}::text[]) AS running_group(job_type, lock_group)
+                    ON running_group.lock_group = candidate_group.lock_group
+                  JOIN integration.jobs running
+                    ON running."JobType" = running_group.job_type
+                  WHERE candidate_group.job_type = candidate."JobType"
+                    AND candidate."ConnectionId" IS NOT NULL
+                    AND running."ConnectionId" = candidate."ConnectionId"
+                    AND running."Status" = 'LEASED'
+                    AND running."LeaseExpiresAt" > {now})
+            ORDER BY candidate."Priority" ASC, candidate."AvailableAt" ASC, candidate."CreatedAt" ASC
+            FOR UPDATE OF candidate SKIP LOCKED
+            LIMIT 1
+            """).SingleOrDefaultAsync(cancellationToken);
         if (job is null) { await transaction.CommitAsync(cancellationToken); return null; }
         var token = TokenHasher.NewToken();
         job.Status = JobStatus.Leased;

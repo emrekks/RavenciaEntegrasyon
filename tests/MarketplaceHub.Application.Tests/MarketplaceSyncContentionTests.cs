@@ -7,6 +7,22 @@ namespace MarketplaceHub.Application.Tests;
 public sealed class MarketplaceSyncContentionTests
 {
     [Fact]
+    public void ProcessorJobTypes_ListEveryMarketplaceJobConstant()
+    {
+        // The lease query skips jobs whose lock group is busy using this list; a job type missing
+        // from it would silently fall back to lease-then-defer.
+        var constants = typeof(MarketplaceJobTypes).GetFields()
+            .Where(field => field.IsLiteral && field.FieldType == typeof(string) && field.Name != nameof(MarketplaceJobTypes.ActivationBootstrapPrefix))
+            .Select(field => (string)field.GetRawConstantValue()!)
+            .ToHashSet();
+
+        Assert.Equal(constants.Order(), MarketplaceJobTypes.ProcessorJobTypes.Order());
+        Assert.All(constants, jobType => Assert.True(MarketplaceJobTypes.IsMarketplaceProcessorJob(jobType)));
+        Assert.False(MarketplaceJobTypes.IsMarketplaceProcessorJob(InvoicingJobTypes.InvoiceSubmit));
+        Assert.False(MarketplaceJobTypes.IsMarketplaceProcessorJob(null));
+    }
+
+    [Fact]
     public void InvoiceReadsUseSeparateLaneWhileOrderLifecycleStaysSerializedWithOrderRefreshes()
     {
         Assert.Equal("order-invoices", MarketplaceSyncExecutionLock.GroupFor(MarketplaceJobTypes.OrderInvoiceReconciliation));

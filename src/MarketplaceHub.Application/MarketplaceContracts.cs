@@ -57,22 +57,28 @@ public static class MarketplaceJobTypes
     public const string QuestionSync = "MARKETPLACE_QUESTION_SYNC";
     public const string CatalogStructureImport = "CATALOG_STRUCTURE_IMPORT";
 
-    public static bool IsMarketplaceProcessorJob(string? jobType) => jobType is
-        ConnectionTest or ShopifyConnectionTest or HepsiburadaConnectionTest
-        or ReferenceSync or HepsiburadaReferenceSync
-        or ProductSync or ShopifyProductSync or HepsiburadaProductSync
-        or ProductCreate or ProductApprovalReconcile or ProductUpdate or ProductArchive
-        or PriceInventorySync or StockProjectionDispatch
-        or OrderSync or ShopifyOrderSync or HepsiburadaOrderSync
-        or OrderRecoverySync or ShopifyOrderRecoverySync or HepsiburadaOrderRecoverySync
-        or OrderStatusSync or ShopifyOrderStatusSync or HepsiburadaOrderStatusSync or TrendyolOrderCargoInfoReconciliation
-        or OrderReconciliation or ShopifyOrderReconciliation
-        or OrderInvoiceReconciliation or ShopifyOrderInvoiceReconciliation or HepsiburadaOrderInvoiceReconciliation
-        or ShipmentAction or CommonLabel or CapabilityProbe or StageTestOrder
-        or ReturnSync or HepsiburadaReturnSync or ReturnStatusSync or ReturnReconciliation or ReturnAction
-        or StockReconciliation
-        or WebhookIngest or ShopifyWebhookIngest or HepsiburadaWebhookIngest
-        or QuestionSync or CatalogStructureImport;
+    // Every job type executed by the marketplace processor. Each of them runs under the
+    // per-connection execution lock of its lock group.
+    public static readonly IReadOnlyList<string> ProcessorJobTypes =
+    [
+        ConnectionTest, ShopifyConnectionTest, HepsiburadaConnectionTest,
+        ReferenceSync, HepsiburadaReferenceSync,
+        ProductSync, ShopifyProductSync, HepsiburadaProductSync,
+        ProductCreate, ProductApprovalReconcile, ProductUpdate, ProductArchive,
+        PriceInventorySync, StockProjectionDispatch,
+        OrderSync, ShopifyOrderSync, HepsiburadaOrderSync,
+        OrderRecoverySync, ShopifyOrderRecoverySync, HepsiburadaOrderRecoverySync,
+        OrderStatusSync, ShopifyOrderStatusSync, HepsiburadaOrderStatusSync, TrendyolOrderCargoInfoReconciliation,
+        OrderReconciliation, ShopifyOrderReconciliation,
+        OrderInvoiceReconciliation, ShopifyOrderInvoiceReconciliation, HepsiburadaOrderInvoiceReconciliation,
+        ShipmentAction, CommonLabel, CapabilityProbe, StageTestOrder,
+        ReturnSync, HepsiburadaReturnSync, ReturnStatusSync, ReturnReconciliation, ReturnAction,
+        StockReconciliation,
+        WebhookIngest, ShopifyWebhookIngest, HepsiburadaWebhookIngest,
+        QuestionSync, CatalogStructureImport
+    ];
+
+    public static bool IsMarketplaceProcessorJob(string? jobType) => jobType is not null && ProcessorJobTypes.Contains(jobType);
 
     public static string ForPlatform(string? platformCode, string jobType) => platformCode?.Trim().ToUpperInvariant() switch
     {

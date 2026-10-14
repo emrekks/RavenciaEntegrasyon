@@ -935,6 +935,71 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task JobLease_SkipsJobsWhoseConnectionLockGroupIsAlreadyRunning()
+    {
+        var tenant = NewTenant("lease-lock-group");
+        var busyConnectionId = Guid.CreateVersion7();
+        var freeConnectionId = Guid.CreateVersion7();
+        var running = NewJob(tenant.Id);
+        running.JobType = MarketplaceJobTypes.OrderSync;
+        running.ConnectionId = busyConnectionId;
+        running.Status = JobStatus.Leased;
+        running.AttemptCount = 1;
+        running.LeaseTokenHash = "running-lease";
+        running.LeaseExpiresAt = DateTimeOffset.UtcNow.AddMinutes(2);
+        // Same connection and the same "orders" lock group as the running job: must wait.
+        var sameGroup = NewJob(tenant.Id);
+        sameGroup.JobType = MarketplaceJobTypes.OrderStatusSync;
+        sameGroup.ConnectionId = busyConnectionId;
+        sameGroup.Priority = 0;
+        // Same connection, different lock group: may run next to it.
+        var otherGroup = NewJob(tenant.Id);
+        otherGroup.JobType = MarketplaceJobTypes.ReturnSync;
+        otherGroup.ConnectionId = busyConnectionId;
+        otherGroup.Priority = 1;
+        // Same lock group on another connection: may run.
+        var otherConnection = NewJob(tenant.Id);
+        otherConnection.JobType = MarketplaceJobTypes.OrderStatusSync;
+        otherConnection.ConnectionId = freeConnectionId;
+        otherConnection.Priority = 2;
+
+        await using (var setup = fixture.CreateContext())
+        {
+            setup.Tenants.Add(tenant);
+            setup.IntegrationJobs.AddRange(running, sameGroup, otherGroup, otherConnection);
+            await setup.SaveChangesAsync();
+        }
+
+        var jobIds = new[] { running.Id, sameGroup.Id, otherGroup.Id, otherConnection.Id };
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var leaseService = new JobLeaseService(db, fixture.TokenHasher, fixture.TimeProvider);
+
+            var first = await leaseService.TryLeaseAsync(TimeSpan.FromMinutes(2), null, null, CancellationToken.None);
+            var second = await leaseService.TryLeaseAsync(TimeSpan.FromMinutes(2), null, null, CancellationToken.None);
+            var third = await leaseService.TryLeaseAsync(TimeSpan.FromMinutes(2), null, null, CancellationToken.None);
+
+            Assert.Equal(otherGroup.Id, first?.Id);
+            Assert.Equal(otherConnection.Id, second?.Id);
+            Assert.Null(third);
+
+            // Once the running job's lease has expired it no longer holds the group back.
+            await db.IntegrationJobs.Where(x => x.Id == running.Id)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.LeaseExpiresAt, DateTimeOffset.UtcNow.AddMinutes(-1)));
+            var afterExpiry = await leaseService.TryLeaseAsync(TimeSpan.FromMinutes(2), null, null, CancellationToken.None);
+            Assert.Equal(sameGroup.Id, afterExpiry?.Id);
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateContext();
+            await cleanup.JobAttempts.Where(x => jobIds.Contains(x.JobId)).ExecuteDeleteAsync();
+            await cleanup.IntegrationJobs.Where(x => jobIds.Contains(x.Id)).ExecuteDeleteAsync();
+            await cleanup.Tenants.Where(x => x.Id == tenant.Id).ExecuteDeleteAsync();
+        }
+    }
+
+    [PostgreSqlFact]
     public async Task JobLease_HepsiburadaStatusLaneSkipsOtherMarketplaceJobs()
     {
         var tenant = NewTenant("lease-hepsiburada-status-lane");
