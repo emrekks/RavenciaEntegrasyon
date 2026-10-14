@@ -220,6 +220,37 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         return ServiceResult<AttributeView>.Ok(MapAttribute(attribute, existing.Concat(additions)));
     }
 
+    // Values of a panel attribute that products actually use: as a product/variant attribute, or as a
+    // variant option of the same name (e.g. option "Renk" with value "Siyah" for attribute Renk).
+    // The value mapping screen lists these first, so a 120-value attribute shows the 14 in use.
+    public async Task<ServiceResult<IReadOnlyList<Guid>>> UsedAttributeValueIdsAsync(Guid tenantId, Guid attributeId, CancellationToken cancellationToken)
+    {
+        var attribute = await db.AttributeDefinitions.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == attributeId && x.IsActive, cancellationToken);
+        if (attribute is null) return ServiceResult<IReadOnlyList<Guid>>.Fail("ATTRIBUTE_NOT_FOUND", "Özellik bulunamadı.", 404);
+        var assigned = await db.ProductAttributeAssignments.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.AttributeId == attributeId && x.ValueId != null)
+            .Select(x => x.ValueId!.Value)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+        var optionKey = Normalize(attribute.Name);
+        var optionValueKeys = await (from option in db.ProductOptions.AsNoTracking()
+                                     join optionValue in db.ProductOptionValues.AsNoTracking() on new { option.TenantId, OptionId = option.Id } equals new { optionValue.TenantId, optionValue.OptionId }
+                                     where option.TenantId == tenantId && option.NormalizedKey == optionKey
+                                     select optionValue.NormalizedKey)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+        var assignedIds = assigned.ToHashSet();
+        var optionKeys = optionValueKeys.ToHashSet(StringComparer.Ordinal);
+        var used = (await db.AttributeValues.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.AttributeId == attributeId && x.IsActive)
+                .Select(x => new { x.Id, x.NormalizedValue })
+                .ToListAsync(cancellationToken))
+            .Where(value => assignedIds.Contains(value.Id) || optionKeys.Contains(value.NormalizedValue))
+            .Select(value => value.Id)
+            .ToList();
+        return ServiceResult<IReadOnlyList<Guid>>.Ok(used);
+    }
+
     public async Task<ServiceResult<AttributeView>> DeactivateAttributeValueAsync(Guid tenantId, Guid attributeId, Guid valueId, CancellationToken cancellationToken)
     {
         var attribute = await db.AttributeDefinitions.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == attributeId && x.IsActive, cancellationToken);

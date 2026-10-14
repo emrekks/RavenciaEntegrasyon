@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { attributeValueMappingNeedsSave, hasDirectReferenceValue, isTemplateFilledRow, planDirectReferenceValues, planMissingReferencePanelValues, planReferencePanelMappings, togglePanelValueReferenceSelection, updatePanelValueReferenceSelection, valueMappingRowClassName } from './attribute-value-mapping'
+import { attributeValueMappingNeedsSave, hasDirectReferenceValue, isTemplateFilledRow, visiblePanelValues, planDirectReferenceValues, planMissingReferencePanelValues, planReferencePanelMappings, togglePanelValueReferenceSelection, updatePanelValueReferenceSelection, valueMappingRowClassName } from './attribute-value-mapping'
 
 describe('attribute value reference mappings', () => {
   it('matches labels despite whitespace around season separators', () => {
@@ -109,5 +109,21 @@ describe('template filled value rows', () => {
     expect(isTemplateFilledRow(saved, [])).toBe(false)
     expect(isTemplateFilledRow([{ localId: 'siyah', source: 'MANUAL' }], ['siyah'])).toBe(false)
     expect(isTemplateFilledRow([], [])).toBe(false)
+  })
+})
+
+describe('used panel values filter', () => {
+  const values = [{ id: 'siyah' }, { id: 'beyaz' }, { id: 'mor' }, { id: 'turkuaz' }]
+
+  it('lists the values products use and keeps selected ones visible', () => {
+    const result = visiblePanelValues(values, ['siyah', 'beyaz'], ['turkuaz'], false)
+    expect(result.visible.map(value => value.id)).toEqual(['siyah', 'beyaz', 'turkuaz'])
+    expect(result.hiddenCount).toBe(1)
+  })
+
+  it('hides nothing when asked to or when no product uses the attribute', () => {
+    expect(visiblePanelValues(values, ['siyah'], [], true)).toEqual({ visible: values, hiddenCount: 0 })
+    expect(visiblePanelValues(values, [], [], false)).toEqual({ visible: values, hiddenCount: 0 })
+    expect(visiblePanelValues(values, undefined, [], false)).toEqual({ visible: values, hiddenCount: 0 })
   })
 })

@@ -2888,6 +2888,37 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task UsedAttributeValues_ComeFromAttributeAssignmentsAndSameNamedVariantOptions()
+    {
+        var tenant = NewTenant("used-attribute-values");
+        var colourId = Guid.CreateVersion7();
+        var black = new AttributeValue { Id = Guid.CreateVersion7(), TenantId = tenant.Id, AttributeId = colourId, Value = "Siyah", NormalizedValue = "SİYAH", SortOrder = 0, IsActive = true, Version = 1 };
+        var purple = new AttributeValue { Id = Guid.CreateVersion7(), TenantId = tenant.Id, AttributeId = colourId, Value = "Mor", NormalizedValue = "MOR", SortOrder = 1, IsActive = true, Version = 1 };
+        var white = new AttributeValue { Id = Guid.CreateVersion7(), TenantId = tenant.Id, AttributeId = colourId, Value = "Beyaz", NormalizedValue = "BEYAZ", SortOrder = 2, IsActive = true, Version = 1 };
+        var product = new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = $"Used values {Guid.NewGuid():N}", Description = "Used values test", DefaultListPrice = 0m, DefaultSalePrice = 0m, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 };
+        var option = new ProductOption { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = product.Id, Label = "Renk", NormalizedKey = "RENK", SortOrder = 0 };
+
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.AttributeDefinitions.Add(new AttributeDefinition { Id = colourId, TenantId = tenant.Id, Code = $"COLOUR-{Guid.NewGuid():N}", Name = "Renk", DataType = AttributeDataType.Text, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 });
+        db.AttributeValues.AddRange(black, purple, white);
+        db.Products.Add(product);
+        db.ProductOptions.Add(option);
+        // Siyah is a variant option value, Mor a product attribute; Beyaz is not used.
+        db.ProductOptionValues.Add(new ProductOptionValue { Id = Guid.CreateVersion7(), TenantId = tenant.Id, OptionId = option.Id, Label = "Siyah", NormalizedKey = "SİYAH", SortOrder = 0 });
+        db.ProductAttributeAssignments.Add(new ProductAttributeAssignment { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = product.Id, AttributeId = colourId, ValueId = purple.Id, Version = 1 });
+        await db.SaveChangesAsync();
+
+        var service = new CatalogService(db, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider, new MemoryCache(new MemoryCacheOptions()));
+        var used = await service.UsedAttributeValueIdsAsync(tenant.Id, colourId, CancellationToken.None);
+
+        Assert.True(used.Succeeded, used.Error?.Message);
+        Assert.Equal(new[] { black.Id, purple.Id }.Order(), used.Value!.Order());
+        await transaction.RollbackAsync();
+    }
+
+    [PostgreSqlFact]
     public async Task MappingANewCategory_FillsItFromTheTemplatesButRespectsTheUser()
     {
         var tenant = NewTenant("mapping-template-fill");

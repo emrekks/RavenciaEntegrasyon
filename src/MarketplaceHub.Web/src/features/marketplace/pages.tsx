@@ -26,7 +26,7 @@ import { orderStatusTabs, resolveOrderStatusTab } from './order-status-tabs'
 import { onHoldOrderStatusText, overdueShipmentDays } from './order-delivery-presentation'
 import { code128Bars, loadPrintedShippingLabels, markShippingLabelPrinted, printedShippingLabelKey, shippingLabelFields, useShippingLabelSettings, type ShippingLabelBlock, type ShippingLabelField, type ShippingLabelFormat, type ShippingLabelSettings } from '../shipping'
 import { formatPanelColorValue, usesCustomPanelColorValue } from './color-value-format'
-import { attributeValueMappingNeedsSave, isTemplateFilledRow, normalizeReferenceValueLabel, planDirectReferenceValues, planMissingReferencePanelValues, planReferencePanelMappings, togglePanelValueReferenceSelection, updatePanelValueReferenceSelection, valueMappingRowClassName } from './attribute-value-mapping'
+import { attributeValueMappingNeedsSave, isTemplateFilledRow, visiblePanelValues, normalizeReferenceValueLabel, planDirectReferenceValues, planMissingReferencePanelValues, planReferencePanelMappings, togglePanelValueReferenceSelection, updatePanelValueReferenceSelection, valueMappingRowClassName } from './attribute-value-mapping'
 import { isReferenceSyncJobTerminal, shouldAutoSyncHepsiburadaValues } from './reference-value-sync'
 import { activeMappingConnectionsForPlatform, mappingPlatformDefinitions, mappingPlatformLabel, type MappingPlatformCode } from './mapping-platforms'
 import { resolveAttributeMappingRole } from './mapping-attribute-role'
@@ -2785,10 +2785,11 @@ function WebColorValueMappingEditor({ connectionId, categoryScope, attribute, ex
 const autoQueuedHepsiburadaValueSyncs = new Set<string>()
 
 function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, externalAttributeId, platformLabel = 'Trendyol', customPanelColorValues = false, marketplaceAllowsFreeText = false, autoSyncMissingValues = false, allowReusablePanelValues = false, required = false }: { connectionId: string; categoryScope: string; attribute: LocalAttribute; externalAttributeId: string; platformLabel?: string; customPanelColorValues?: boolean; marketplaceAllowsFreeText?: boolean; autoSyncMissingValues?: boolean; allowReusablePanelValues?: boolean; required?: boolean }) {
-  const client = useQueryClient(); const [notice, setNotice] = useState(''); const [selections, setSelections] = useState<Record<string, string[]>>({}); const [unmatchedOpen, setUnmatchedOpen] = useState(false); const [selectionsReady, setSelectionsReady] = useState(false); const [initializedValueScope, setInitializedValueScope] = useState(''); const [saving, setSaving] = useState(false); const [autoMapping, setAutoMapping] = useState(false); const [quickValueOpen, setQuickValueOpen] = useState(false); const [quickValueDraft, setQuickValueDraft] = useState(''); const [quickValueSaving, setQuickValueSaving] = useState(false); const [editingQuickValue, setEditingQuickValue] = useState<{ id: string; value: string } | null>(null); const [syncJobId, setSyncJobId] = useState<string | null>(null); const [shareWithOtherCategories, setShareWithOtherCategories] = useState(true); const handledSyncJobs = useRef(new Set<string>()); const valueScope = `${categoryScope}/${externalAttributeId}`
+  const client = useQueryClient(); const [notice, setNotice] = useState(''); const [selections, setSelections] = useState<Record<string, string[]>>({}); const [unmatchedOpen, setUnmatchedOpen] = useState(false); const [selectionsReady, setSelectionsReady] = useState(false); const [initializedValueScope, setInitializedValueScope] = useState(''); const [saving, setSaving] = useState(false); const [autoMapping, setAutoMapping] = useState(false); const [quickValueOpen, setQuickValueOpen] = useState(false); const [quickValueDraft, setQuickValueDraft] = useState(''); const [quickValueSaving, setQuickValueSaving] = useState(false); const [editingQuickValue, setEditingQuickValue] = useState<{ id: string; value: string } | null>(null); const [syncJobId, setSyncJobId] = useState<string | null>(null); const [shareWithOtherCategories, setShareWithOtherCategories] = useState(true); const [showUnusedValues, setShowUnusedValues] = useState(false); const handledSyncJobs = useRef(new Set<string>()); const valueScope = `${categoryScope}/${externalAttributeId}`
   const referenceKey = ['reference-attribute-values', connectionId, valueScope] as const
   const references = useQuery({ queryKey: referenceKey, queryFn: () => hubApi<ReferenceData>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(externalAttributeId)}/values?connectionId=${encodeURIComponent(connectionId)}`), retry: false, enabled: !customPanelColorValues && !marketplaceAllowsFreeText })
   const mappings = useQuery({ queryKey: ['attribute-value-mappings', connectionId, valueScope], queryFn: () => hubApi<CatalogMapping[]>(`/mappings/attribute-values?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(valueScope)}`), retry: false, enabled: !customPanelColorValues && !marketplaceAllowsFreeText })
+  const usedValues = useQuery({ queryKey: ['attribute-used-values', attribute.id], queryFn: () => hubApi<string[]>(`/catalog/attributes/${attribute.id}/used-values`), retry: false, staleTime: 60_000, enabled: !customPanelColorValues && !marketplaceAllowsFreeText })
   const sync = useMutation({ mutationFn: () => hubApi<{ jobId: string }>(`/connections/${connectionId}/reference-sync-jobs?resourceType=ATTRIBUTE_VALUES&parentExternalId=${encodeURIComponent(valueScope)}`, { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, body: '{}' }), onSuccess: result => { setSyncJobId(result.jobId); setNotice(`${platformLabel} değer listesi salt-okunur olarak eşitleniyor…`) }, onError: reason => setNotice(reason instanceof Error ? reason.message : 'Değer eşitleme başlatılamadı.') })
   const syncJob = useQuery({ queryKey: ['reference-value-sync-job', syncJobId], queryFn: () => hubApi<{ job: { status: string; lastErrorCode: string | null; lastErrorSummary: string | null } }>(`/jobs/${syncJobId}`, { cache: 'no-store' }), enabled: Boolean(syncJobId), refetchInterval: query => query.state.data && isReferenceSyncJobTerminal(query.state.data.job.status) ? false : 1000, refetchIntervalInBackground: true, retry: 1 })
   const syncBusy = sync.isPending || Boolean(syncJobId)
@@ -2836,7 +2837,8 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
   const remoteNameByExternal = new Map(allRemoteValues.map(item => [item.externalId, item.name]))
   const assignedPanelValues: Record<string, string> = {}
   for (const [externalId, localIds] of Object.entries(selections)) for (const localId of localIds) assignedPanelValues[localId] = remoteNameByExternal.get(externalId) ?? externalId
-  const unmatchedPanelValues = localValues.filter(item => !assignedPanelValues[item.id])
+  const usedValueFilter = visiblePanelValues(localValues, usedValues.data, Object.values(selections).flat(), showUnusedValues)
+  const unmatchedPanelValues = usedValueFilter.visible.filter(item => !assignedPanelValues[item.id])
   const mappedExternalIds = new Set((mappings.data ?? []).map(item => item.externalId))
   const remoteValues = allRemoteValues.filter(item => item.isActive || mappedExternalIds.has(item.externalId)).slice().sort((left, right) => left.name.localeCompare(right.name, 'tr-TR', { sensitivity: 'base', numeric: true }))
   const activeRemoteValues = allRemoteValues.filter(item => item.isActive)
@@ -3028,7 +3030,7 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
     </div>
     {notice && <MessageToast message={notice} onClose={() => setNotice('')} />}
     {!!localValues.length && !!remoteValues.length && (() => {
-      const total = localValues.length
+      const total = usedValueFilter.visible.length
       const matched = total - unmatchedPanelValues.length
       const shown = unmatchedOpen ? unmatchedPanelValues : unmatchedPanelValues.slice(0, 6)
       return <div className={`value-mapping-unmatched ${unmatchedPanelValues.length ? 'has-unmatched' : 'is-complete'}`} role="status">
@@ -3036,6 +3038,10 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
           <strong>{unmatchedPanelValues.length ? `${unmatchedPanelValues.length} panel değeri henüz eşleşmedi` : `Tüm panel değerleri bir ${platformLabel} değeriyle eşleşti`}</strong>
           <small>{matched} / {total} eşleşti{templateFilledCount > 0 ? ` · ${templateFilledCount} değer diğer kategorilerden geldi` : ''}</small>
         </div>
+        {(usedValueFilter.hiddenCount > 0 || (showUnusedValues && (usedValues.data?.length ?? 0) > 0)) && <p className="value-mapping-used-filter">
+          {showUnusedValues ? 'Tüm panel değerleri gösteriliyor.' : `Ürünlerde kullanılan ${usedValueFilter.visible.length} değer gösteriliyor.`}
+          <button type="button" onClick={() => setShowUnusedValues(current => !current)}>{showUnusedValues ? 'Yalnızca kullanılanları göster' : `Kullanılmayan ${usedValueFilter.hiddenCount} değeri de göster`}</button>
+        </p>}
         <i className="value-mapping-unmatched-bar" aria-hidden="true"><b style={{ width: `${Math.round((matched / Math.max(total, 1)) * 100)}%` }} /></i>
         {unmatchedPanelValues.length > 0 && <div className={`value-mapping-unmatched-chips${unmatchedOpen ? ' is-open' : ''}`}>
           {shown.map(item => <span key={item.id}>{item.value}</span>)}
@@ -3051,7 +3057,7 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
         return <div key={remoteValue.externalId} className={valueMappingRowClassName(selectedPanelIds.length > 0, required)}>
           <span>{remoteValue.name}{fromTemplate && <em className="value-mapping-template-badge" title="Bu eşleme, aynı özelliği kullanan başka bir kategorideki kararınızdan otomatik geldi. Değiştirip kaydederseniz sizin kararınız olur.">Şablon</em>}</span>
           <b className="value-mapping-row-link" aria-hidden="true" title="Eşleştir"><UiIcon name="link" /></b>
-          <PanelValueMultiSelect label={remoteValue.name} options={localValues} selectedIds={selectedPanelIds} allowReuse={allowReusablePanelValues} assignedElsewhere={Object.fromEntries(Object.entries(assignedPanelValues).filter(([localId]) => !selectedPanelIds.includes(localId)))} disabled={!localValues.length} onToggle={localId => setSelections(current => togglePanelValueReferenceSelection(current, remoteValue.externalId, localId, allowReusablePanelValues))} />
+          <PanelValueMultiSelect label={remoteValue.name} options={usedValueFilter.visible} selectedIds={selectedPanelIds} allowReuse={allowReusablePanelValues} assignedElsewhere={Object.fromEntries(Object.entries(assignedPanelValues).filter(([localId]) => !selectedPanelIds.includes(localId)))} disabled={!localValues.length} onToggle={localId => setSelections(current => togglePanelValueReferenceSelection(current, remoteValue.externalId, localId, allowReusablePanelValues))} />
         </div>
       })}
       {!!localValues.length && !remoteValues.length && <div className="unknown"><strong>Bu özellik için seçilebilir değer bulunamadı</strong><p>{platformLabel} referans listesi başarıyla okundu ancak kategori özelliği sabit seçenek döndürmedi.</p></div>}

@@ -109,6 +109,16 @@ export function attributeValueMappingNeedsSave(
   return Boolean(localId && externalId) && (!existing || existing.localId !== localId || existing.externalId !== externalId || existing.snapshotId !== snapshotId)
 }
 
+// The value mapping screen lists the panel values products use; values already selected stay
+// visible. When no product uses the attribute yet, nothing is hidden.
+export function visiblePanelValues<T extends { id: string }>(values: readonly T[], usedIds: readonly string[] | undefined, selectedIds: readonly string[], showAll: boolean) {
+  const used = new Set(usedIds ?? [])
+  if (showAll || used.size === 0) return { visible: [...values], hiddenCount: 0 }
+  const selected = new Set(selectedIds)
+  const visible = values.filter(value => used.has(value.id) || selected.has(value.id))
+  return { visible, hiddenCount: values.length - visible.length }
+}
+
 // A marketplace value row shows the "Şablon" badge while every saved mapping of it was filled from
 // another category's decision and the user has not changed the selection yet.
 export function isTemplateFilledRow(saved: readonly { localId: string; source?: string | null }[], selectedLocalIds: readonly string[]) {
