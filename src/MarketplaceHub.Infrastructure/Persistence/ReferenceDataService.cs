@@ -99,10 +99,22 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
             if (mappingType == "attribute-values") mapping.LocalId = localId;
         }
         mapping.SnapshotId = command.SnapshotId; mapping.ExternalId = externalId; mapping.Status = command.Status.Trim(); mapping.VerifiedAt = timeProvider.GetUtcNow();
+        // A mapping a user saves is theirs, even if it was filled from the template before; it also
+        // becomes the connection-wide template for the other categories.
+        if (mapping is AttributeValueMapping valueMapping)
+        {
+            valueMapping.Source = MappingSources.Manual;
+            await MappingTemplateStore.RecordValueAsync(db, tenantId, command.ConnectionId, scope, localId, externalId, mapping.VerifiedAt.Value, cancellationToken);
+        }
         if (mappingType == "attributes")
         {
             var role = NormalizeRequirementRole(command.Role);
             if (role is not ("ATTRIBUTE" or "OPTION")) return ServiceResult<CatalogMappingView>.Fail("MAPPING_ROLE_INVALID", "Özellik eşleme rolü ATTRIBUTE veya OPTION olmalıdır.", 422);
+            if (mapping is AttributeMapping attributeMapping)
+            {
+                attributeMapping.Source = MappingSources.Manual;
+                await MappingTemplateStore.RecordAttributeAsync(db, tenantId, command.ConnectionId, externalId, localId, role, mapping.VerifiedAt.Value, cancellationToken);
+            }
 
             var mappedCategoryId = await db.CategoryMappings.AsNoTracking()
                 .Where(x => x.TenantId == tenantId && x.ConnectionId == command.ConnectionId && x.ExternalId == scope && x.Status == "VERIFIED")
@@ -162,6 +174,10 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         if (mapping.Version != expectedVersion) return ServiceResult<bool>.Fail("CONCURRENCY_CONFLICT", $"Kayıt sürümü değişti; güncel sürüm v{mapping.Version}.", 412);
         db.Remove(mapping);
         await db.SaveChangesAsync(cancellationToken);
+        if (mapping is AttributeValueMapping)
+            await MappingTemplateStore.ForgetValueAsync(db, tenantId, connectionId, mapping.ScopeExternalId, mapping.LocalId, mapping.ExternalId, mapping.Id, cancellationToken);
+        else if (mapping is AttributeMapping)
+            await MappingTemplateStore.ForgetAttributeAsync(db, tenantId, connectionId, mapping.ExternalId, mapping.LocalId, mapping.Id, cancellationToken);
         return ServiceResult<bool>.Ok(true);
     }
 

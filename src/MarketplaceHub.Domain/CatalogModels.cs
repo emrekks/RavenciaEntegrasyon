@@ -247,8 +247,51 @@ public abstract class CatalogMapping
 
 public sealed class CategoryMapping : CatalogMapping;
 public sealed class BrandMapping : CatalogMapping;
-public sealed class AttributeMapping : CatalogMapping;
-public sealed class AttributeValueMapping : CatalogMapping;
+public sealed class AttributeMapping : CatalogMapping
+{
+    // MANUAL: saved by a user (or by the import); TEMPLATE: filled from the connection-wide template.
+    public string Source { get; set; } = MappingSources.Manual;
+}
+
+public sealed class AttributeValueMapping : CatalogMapping
+{
+    public string Source { get; set; } = MappingSources.Manual;
+}
+
+public static class MappingSources
+{
+    public const string Manual = "MANUAL";
+    public const string Template = "TEMPLATE";
+}
+
+// Connection-wide decision behind the category-scoped attribute mappings: marketplace attribute
+// ExternalAttributeId (e.g. Trendyol "Renk" 47) is panel attribute LocalAttributeId. Trendyol keeps
+// attribute ids stable across categories, so one decision serves every category that lists it.
+public sealed class AttributeMappingTemplate
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid ConnectionId { get; set; }
+    public required string ExternalAttributeId { get; set; }
+    public Guid LocalAttributeId { get; set; }
+    public string Role { get; set; } = "ATTRIBUTE";
+    public DateTimeOffset UpdatedAt { get; set; }
+    public long Version { get; set; } = 1;
+}
+
+// Connection-wide value decision: in marketplace attribute ExternalAttributeId, panel value
+// LocalValueId is marketplace value ExternalValueId (e.g. Renk 47 / Siyah -> 1001).
+public sealed class AttributeValueMappingTemplate
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid ConnectionId { get; set; }
+    public required string ExternalAttributeId { get; set; }
+    public Guid LocalValueId { get; set; }
+    public required string ExternalValueId { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+    public long Version { get; set; } = 1;
+}
 
 public sealed class MarketplaceProductLink
 {

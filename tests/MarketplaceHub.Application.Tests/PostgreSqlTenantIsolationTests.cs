@@ -2837,6 +2837,57 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task SavedMappings_KeepTheConnectionWideTemplatesUpToDate()
+    {
+        var tenant = NewTenant("mapping-templates");
+        var connection = NewQuestionConnection(tenant);
+        var attributeId = Guid.CreateVersion7();
+        var blackId = Guid.CreateVersion7();
+        var attribute = new AttributeDefinition { Id = attributeId, TenantId = tenant.Id, Code = $"COLOUR-{Guid.NewGuid():N}", Name = "Renk", DataType = AttributeDataType.Text, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 };
+        var black = new AttributeValue { Id = blackId, TenantId = tenant.Id, AttributeId = attributeId, Value = "Siyah", NormalizedValue = "SİYAH", SortOrder = 0, IsActive = true, Version = 1 };
+        // T-shirt (100) and Bluz (200) both list Trendyol attribute 12.
+        var tshirtAttributes = NewReferenceSnapshot(tenant.Id, connection.Id, "CATEGORY_ATTRIBUTES", "100", fixture.Now, "tshirt-attributes");
+        var tshirtColours = NewReferenceSnapshot(tenant.Id, connection.Id, "ATTRIBUTE_VALUES", "100/12", fixture.Now, "tshirt-colours");
+        var blouseColours = NewReferenceSnapshot(tenant.Id, connection.Id, "ATTRIBUTE_VALUES", "200/12", fixture.Now, "blouse-colours");
+
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.PlatformConnections.Add(connection);
+        db.AttributeDefinitions.Add(attribute);
+        db.AttributeValues.Add(black);
+        db.ReferenceSnapshots.AddRange(tshirtAttributes, tshirtColours, blouseColours);
+        db.ReferenceItems.AddRange(
+            NewReferenceItem(tenant.Id, connection.Id, tshirtAttributes.Id, "CATEGORY_ATTRIBUTES", "12", "Renk"),
+            NewReferenceItem(tenant.Id, connection.Id, tshirtColours.Id, "ATTRIBUTE_VALUES", "13", "Siyah"),
+            NewReferenceItem(tenant.Id, connection.Id, blouseColours.Id, "ATTRIBUTE_VALUES", "13", "Siyah"),
+            NewReferenceItem(tenant.Id, connection.Id, blouseColours.Id, "ATTRIBUTE_VALUES", "14", "Siyah Melanj"));
+        await db.SaveChangesAsync();
+        var service = new ReferenceDataService(db, fixture.TimeProvider);
+
+        var attributeSaved = await service.UpsertMappingAsync(tenant.Id, "attributes", attributeId, null, new UpsertCatalogMappingCommand(connection.Id, tshirtAttributes.Id, "12", "VERIFIED"), CancellationToken.None);
+        var tshirtSaved = await service.UpsertMappingAsync(tenant.Id, "attribute-values", blackId, null, new UpsertCatalogMappingCommand(connection.Id, tshirtColours.Id, "13", "VERIFIED"), CancellationToken.None);
+        Assert.True(attributeSaved.Succeeded, attributeSaved.Error?.Message);
+        Assert.True(tshirtSaved.Succeeded, tshirtSaved.Error?.Message);
+        var attributeTemplate = await db.AttributeMappingTemplates.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id);
+        Assert.Equal(("12", attributeId, "ATTRIBUTE"), (attributeTemplate.ExternalAttributeId, attributeTemplate.LocalAttributeId, attributeTemplate.Role));
+        Assert.Equal("13", (await db.AttributeValueMappingTemplates.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id)).ExternalValueId);
+
+        // A later decision in another category becomes the template.
+        var blouseSaved = await service.UpsertMappingAsync(tenant.Id, "attribute-values", blackId, null, new UpsertCatalogMappingCommand(connection.Id, blouseColours.Id, "14", "VERIFIED"), CancellationToken.None);
+        Assert.True(blouseSaved.Succeeded, blouseSaved.Error?.Message);
+        Assert.Equal("14", (await db.AttributeValueMappingTemplates.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id)).ExternalValueId);
+
+        // Removing it falls back to the T-shirt decision; removing that too clears the template.
+        Assert.True((await service.DeleteMappingAsync(tenant.Id, "attribute-values", blackId, connection.Id, "200/12", "14", blouseSaved.Value!.Version, CancellationToken.None)).Succeeded);
+        Assert.Equal("13", (await db.AttributeValueMappingTemplates.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id)).ExternalValueId);
+        Assert.True((await service.DeleteMappingAsync(tenant.Id, "attribute-values", blackId, connection.Id, "100/12", "13", tshirtSaved.Value!.Version, CancellationToken.None)).Succeeded);
+        Assert.False(await db.AttributeValueMappingTemplates.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id));
+
+        await transaction.RollbackAsync();
+    }
+
+    [PostgreSqlFact]
     public async Task ReferenceSync_RevalidatesUnchangedMappingsButKeepsChangedContractsStale()
     {
         var tenant = NewTenant("reference-revalidation");

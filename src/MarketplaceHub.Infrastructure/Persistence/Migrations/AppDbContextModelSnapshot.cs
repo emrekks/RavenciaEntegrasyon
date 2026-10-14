@@ -135,6 +135,46 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("MarketplaceHub.Domain.AttributeMappingTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ExternalAttributeId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<Guid>("LocalAttributeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ConnectionId", "ExternalAttributeId", "LocalAttributeId")
+                        .IsUnique();
+
+                    b.ToTable("attribute_mapping_templates", "catalog");
+                });
+
             modelBuilder.Entity("MarketplaceHub.Domain.AttributeValue", b =>
                 {
                     b.Property<Guid>("Id")
@@ -173,6 +213,46 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("attribute_values", "catalog");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.AttributeValueMappingTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ExternalAttributeId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("ExternalValueId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<Guid>("LocalValueId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ConnectionId", "ExternalAttributeId", "LocalValueId")
+                        .IsUnique();
+
+                    b.ToTable("attribute_value_mapping_templates", "catalog");
                 });
 
             modelBuilder.Entity("MarketplaceHub.Domain.AuditLog", b =>
@@ -5705,6 +5785,13 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                 {
                     b.HasBaseType("MarketplaceHub.Domain.CatalogMapping");
 
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasDefaultValue("MANUAL");
+
                     b.HasIndex("TenantId", "ConnectionId", "LocalId", "ScopeExternalId", "ExternalId")
                         .IsUnique()
                         .HasDatabaseName("UX_attribute_mappings_local_remote_scope");
@@ -5715,6 +5802,13 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("MarketplaceHub.Domain.AttributeValueMapping", b =>
                 {
                     b.HasBaseType("MarketplaceHub.Domain.CatalogMapping");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasDefaultValue("MANUAL");
 
                     b.HasIndex("TenantId", "ConnectionId", "ScopeExternalId", "LocalId", "ExternalId")
                         .IsUnique()
