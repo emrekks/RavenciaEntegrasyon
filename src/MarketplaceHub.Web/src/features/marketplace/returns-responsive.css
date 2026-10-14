@@ -313,3 +313,12 @@
   .app-shell.stitch-shell main .returns-page .return-reference-row > .order-reference-products > article:first-child { padding-top: 0; }
   .app-shell.stitch-shell main .returns-page .return-reference-row > .order-reference-products > article + article { border-top: 1px solid var(--rv-color-border); }
 }
+
+/* Returns, invoice row: one line — the small status icon first, then "Faturalanacak tutar ₺…". */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .returns-page .return-reference-row > .order-reference-invoice { flex-wrap: nowrap; justify-content: flex-start; gap: 8px; }
+  .app-shell.stitch-shell main .returns-page .return-reference-row > .order-reference-invoice .invoice-status-label { order: -1; width: 18px; height: 18px; border-width: 1.5px; }
+  .app-shell.stitch-shell main .returns-page .return-reference-row > .order-reference-invoice .invoice-status-label::after { width: 7px; height: 7px; border-width: 1.5px; background-size: 1.5px 3px, 3px 1.5px; }
+  .app-shell.stitch-shell main .returns-page .return-reference-row > .order-reference-invoice .invoice-status-label.rv-badge-success::after { width: 7px; height: 3.5px; inset: 0 0 2px 0; border: 0; border-left: 1.8px solid var(--rv-color-accent); border-bottom: 1.8px solid var(--rv-color-accent); background: none; }
+  .app-shell.stitch-shell main .returns-page .return-reference-row > .order-reference-invoice .order-invoice-payable { margin: 0; }
+}
