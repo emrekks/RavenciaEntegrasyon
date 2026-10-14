@@ -226,3 +226,17 @@
   /* The footer replaces each page's own reset / apply buttons while on a phone. */
   html body .app-shell.stitch-shell main .mfs :is(.orders-filter-reset, .invoice-reference-filter-reset, .return-filter-actions) { display: none !important; }
 }
+
+/* Column filters (carrier, invoice, reason, status…) live inside the phone filter sheet, so their
+   table-header chips are hidden on phones; the sheet-only fields exist for desktop-free use. */
+@media (min-width: 761px) {
+  .mfs > .mfs-sheet-only { display: none !important; }
+}
+@media (max-width: 760px) {
+  html body .app-shell.stitch-shell main .mfs.is-open > .mfs-sheet-only { display: grid; }
+  html body .app-shell.stitch-shell main .mfs .mfs-field { display: grid; gap: 6px; color: var(--rv-color-muted); font-size: 13px; font-weight: 600; }
+  html body .app-shell.stitch-shell main .mfs .mfs-field > select { width: 100%; min-height: 44px; font-size: 14px; font-weight: 500; }
+  html body .app-shell.stitch-shell main .orders-page .order-reference-head > :is(.order-column-filter, .order-reference-platform-heading),
+  html body .app-shell.stitch-shell main .reference-returns-page .return-reference-head > :is(.order-column-filter, .return-reference-platform-heading) { display: none !important; }
+  html body .app-shell.stitch-shell main .reference-returns-page .return-reference-head:not(:has(.return-select-cell)) { display: none !important; }
+}
