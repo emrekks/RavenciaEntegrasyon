@@ -229,3 +229,21 @@
   .app-shell.stitch-shell main .product-add-page .editor-section-title > div:not(.product-media-header-actions) { flex: 1 1 0; min-width: 0; }
   .app-shell.stitch-shell main .product-add-page .editor-section-title > .product-media-header-actions { flex: 1 1 100%; }
 }
+
+/* Metric cards on phones: icon on the left, label and number stacked beside it, so the card is
+   shorter and the width is used instead of leaving the right half empty. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .products-page .product-metrics > * {
+    grid-template-columns: 34px minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    align-content: center;
+    align-items: center;
+    column-gap: 12px;
+    row-gap: 2px;
+    min-height: 0;
+    padding: 12px 14px;
+  }
+  .app-shell.stitch-shell main .products-page .product-metrics > * > .product-metric-icon { grid-row: 1 / span 2; grid-column: 1; width: 34px; height: 34px; }
+  .app-shell.stitch-shell main .products-page .product-metrics > * > small { grid-column: 2; grid-row: 1; font-size: 13px; line-height: 1.25; }
+  .app-shell.stitch-shell main .products-page .product-metrics > * > strong { grid-column: 2; grid-row: 2; font-size: 22px; line-height: 1.15; }
+}
