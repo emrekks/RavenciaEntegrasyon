@@ -12551,8 +12551,19 @@ h1, h2, h3, h4, .dashboard-summary-card-head > span:first-child, :is(.orders-con
    "create variants" panel follows the groups it summarises. */
 .product-options-card .product-options-toolbar { display: flex; justify-content: flex-end; margin: 0 0 var(--rv-space-3); }
 .product-options-card .product-options-toolbar .product-options-sync-button { min-height: 36px; margin: 0; padding: 0 12px; font-size: 13px; }
-.product-options-card .attribute-builder-list + .attribute-variant-action,
-.product-options-card .unknown + .attribute-variant-action { margin-top: var(--rv-space-4); margin-bottom: var(--rv-space-4); }
+@media (max-width: 760px) {
+  .product-options-card .attribute-builder-list + .attribute-variant-action,
+  .product-options-card .unknown + .attribute-variant-action { margin-top: var(--rv-space-4); margin-bottom: var(--rv-space-4); }
+}
+/* PC keeps the original order: create-variants panel above the groups and the sync button at the top right. */
+@media (min-width: 761px) {
+  .product-options-card { position: relative; display: flex; flex-direction: column; }
+  .product-options-card > * { order: 2; }
+  .product-options-card > .product-options-header { order: 0; padding-right: 160px; }
+  .product-options-card > .attribute-variant-action { order: 1; }
+  .product-options-card > .product-variant-groups-section { order: 3; }
+  .product-options-card > .product-options-toolbar { position: absolute; top: var(--product-card-padding, 20px); right: var(--product-card-padding, 20px); margin: 0; order: 0; }
+}
 
 /* Mobile menu: a half-width panel docked to the left edge (the page stays visible on the right). */
 @media (max-width: 760px) {
@@ -12604,3 +12615,7 @@ h1, h2, h3, h4, .dashboard-summary-card-head > span:first-child, :is(.orders-con
   .integration-settings-modal .integration-detail-summary > article { padding: var(--rv-space-3) 0 0; border-left: 0; border-top: 1px solid var(--rv-color-border); }
   .integration-settings-modal .integration-detail-summary > article:first-child { padding-top: 0; border-top: 0; }
 }
+
+/* The phone filter sheet pieces never show above phone width (responsive.css only loads up to 1100px, so this lives in the main sheet). */
+.mfs > .mfs-header, .mfs > .mfs-open, .mfs > .mfs-footer { display: none; }
+@media (min-width: 761px) { .mfs > .mfs-sheet-only { display: none !important; } }
