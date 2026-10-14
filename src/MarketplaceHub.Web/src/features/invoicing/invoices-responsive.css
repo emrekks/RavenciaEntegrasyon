@@ -280,3 +280,8 @@
   .app-shell.stitch-shell main .invoices-page .invoice-reference-order > div:not(.order-reference-platform) > small:first-of-type { margin-right: 0; }
   .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-amount { padding-right: 12px; }
 }
+
+/* Invoice card header: the logo starts on the same left edge as the customer name below it. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-order > .order-reference-platform { margin: 12px 0 0 12px; align-self: center; }
+}
