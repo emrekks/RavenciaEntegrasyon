@@ -191,3 +191,29 @@
   .app-shell.stitch-shell main .invoices-page .invoice-reference-amount small { color: var(--rv-color-muted); font-size: 12px; }
   .app-shell.stitch-shell main .invoices-page .invoice-reference-products small { font-size: 13px; font-family: var(--rv-font-mono); letter-spacing: .01em; }
 }
+
+/* Invoice card header in the same layout: [checkbox][logo] at the left, the order number at the
+   right; customer name left, date under the number, amount under the date. Phones only. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-row {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "select logo number"
+      "buyer buyer date"
+      "buyer buyer amount"
+      "cargo cargo cargo"
+      "shipment shipment status"
+      "actions actions actions";
+    column-gap: 10px;
+  }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-order,
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-order > div:not(.order-reference-platform) { display: contents; }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-order > .invoice-reference-select { grid-area: select; align-self: center; margin: 12px 0 0 12px; }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-order > .order-reference-platform { grid-area: logo; justify-self: start; align-self: center; margin-top: 12px; }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-order .order-platform-logo { max-width: 96px; height: 24px; }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-order .invoice-order-number { grid-area: number; justify-self: end; align-self: center; margin: 12px 12px 0 0; }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-order > div:not(.order-reference-platform) > small:first-of-type { grid-area: date; justify-self: end; margin: 0 12px 0 0; font-size: 12px; }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-order > div:not(.order-reference-platform) > small:nth-of-type(n+2) { display: none; }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-buyer { grid-area: buyer; align-self: start; padding: 4px 0 10px 12px; }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-amount { grid-area: amount; justify-self: end; padding: 0 12px 10px 0; }
+}

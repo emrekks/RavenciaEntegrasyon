@@ -562,3 +562,22 @@ html body .order-detail-actions-list > button:hover:not(:disabled) { background:
   .app-shell.stitch-shell main .orders-page .order-reference-meta .order-platform-logo { max-width: 96px; height: 24px; }
   .app-shell.stitch-shell main .orders-page .order-reference-meta > .order-number { justify-self: start; }
 }
+
+/* Card header on every phone list: logo at the left, the order number at the right; below it the
+   customer name at the left and the date under the number. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-row > .order-reference-grid {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "logo number"
+      "buyer date"
+      "delivery delivery"
+      "products products";
+    row-gap: 4px;
+  }
+  .app-shell.stitch-shell main .orders-page .order-reference-meta > .order-number { grid-area: number; justify-self: end; }
+  .app-shell.stitch-shell main .orders-page .order-reference-meta > small:nth-of-type(1) { grid-area: date; justify-self: end; align-self: center; max-width: none; text-align: right; }
+  .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-row > .order-reference-grid > .order-reference-buyer { grid-area: buyer; align-self: center; padding: 0; }
+  .app-shell.stitch-shell main .orders-page .order-reference-meta > .order-reference-platform { grid-area: logo; justify-self: start; align-self: center; }
+  .app-shell.stitch-shell main .orders-page .order-reference-meta > .order-reference-delivery { margin-top: 8px; }
+}

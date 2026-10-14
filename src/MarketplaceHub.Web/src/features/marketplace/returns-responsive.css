@@ -177,3 +177,31 @@
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .returns-page .return-reference-row .order-platform-logo { max-width: 96px; height: 24px; }
 }
+
+/* Returns card header in the same layout: logo left, order number right; customer name left and the
+   date under the number; the amount closes the block on the right. Package and shipping numbers
+   stay in the detail window. Phones only. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .returns-page .return-reference-table > .return-reference-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "logo number"
+      "buyer date"
+      "prices prices"
+      "products products"
+      "reason reason"
+      "cargo cargo"
+      "invoice invoice"
+      "status status";
+    row-gap: 4px;
+  }
+  .app-shell.stitch-shell main .returns-page .return-reference-table > .return-reference-row > .order-reference-meta { display: contents; }
+  .app-shell.stitch-shell main .returns-page .return-reference-row .order-reference-meta > .order-reference-platform { grid-area: logo; justify-self: start; align-self: center; padding: 12px 0 0 12px; }
+  .app-shell.stitch-shell main .returns-page .return-reference-row .order-reference-meta > .order-number { grid-area: number; justify-self: end; align-self: center; padding: 12px 12px 0 0; }
+  .app-shell.stitch-shell main .returns-page .return-reference-row .order-reference-meta > small:nth-of-type(1) { grid-area: date; justify-self: end; flex: none; padding: 0 12px 0 0; text-align: right; font-size: 12px; }
+  .app-shell.stitch-shell main .returns-page .return-reference-row .order-reference-meta > small:nth-of-type(1) { font-size: 0; }
+  .app-shell.stitch-shell main .returns-page .return-reference-row .order-reference-meta > small:nth-of-type(1) > * { font-size: 12px; }
+  .app-shell.stitch-shell main .returns-page .return-reference-row .order-reference-meta > small:nth-of-type(n+2) { display: none; }
+  .app-shell.stitch-shell main .returns-page .return-reference-table > .return-reference-row > .order-reference-buyer { grid-area: buyer; align-self: center; padding: 0 0 0 12px; }
+  .app-shell.stitch-shell main .returns-page .return-reference-table > .return-reference-row > .order-reference-prices { grid-area: prices; justify-self: end; padding: 0 12px 8px; }
+}
