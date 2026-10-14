@@ -608,3 +608,11 @@ html body .order-detail-actions-list > button:hover:not(:disabled) { background:
   html body .order-detail-products > article > div > strong { font-size: 14px; line-height: 1.35; }
   html body .order-detail-products > article small { font-size: 12.5px; line-height: 1.45; }
 }
+
+/* Order detail: one scroller only (the body), no extra space under the last card, page behind locked. */
+@media (max-width: 760px) {
+  html body .order-detail-sheet { grid-template-rows: auto minmax(0, 1fr) auto; height: 100dvh; max-height: 100dvh; overflow: hidden; }
+  html body .order-detail-body { min-height: 0; padding: 0; overflow-y: auto; overscroll-behavior: contain; }
+  html body .order-detail-body > .order-detail-card:last-child { margin-bottom: 0; }
+  html body .order-detail-actions { padding-top: 10px; padding-bottom: calc(10px + env(safe-area-inset-bottom)); gap: 8px; }
+}

@@ -763,6 +763,7 @@ function OrderReferenceRow({ item, selected, onSelect, selectionMode, onEnterSel
   const longPressTimer = useRef<number | null>(null)
   const longPressFired = useRef(false)
   const [detailActionsOpen, setDetailActionsOpen] = useState(false)
+  useEffect(() => { if (!detailOpen) return; document.body.classList.add('mobile-filters-open'); return () => document.body.classList.remove('mobile-filters-open') }, [detailOpen])
   const packageNoText = shipment?.externalPackageId ?? (isHepsiburadaUnverifiedWithoutPackage ? 'Paket bilgisi doğrulanmadı' : isHepsiburadaOrder ? 'Henüz paketlenmedi' : 'Bekleniyor')
   const deliveryNoText = shipment?.cargoTrackingNumber ?? item.cargoTrackingNumber ?? (isHepsiburadaUnverifiedWithoutPackage ? 'Gönderi bilgisi doğrulanmadı' : isHepsiburadaOrder ? shipment ? 'Kargoya verildiğinde gelir' : 'Paket oluşturulunca gelir' : 'Takip no bekleniyor')
   const closeDetailThen = (run: () => void) => () => { setDetailOpen(false); setDetailActionsOpen(false); run() }
