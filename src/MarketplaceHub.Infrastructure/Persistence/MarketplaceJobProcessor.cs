@@ -3604,9 +3604,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     private async Task<bool> SyncProducts(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, Guid? jobId, CancellationToken cancellationToken)
     {
         var connection = await db.PlatformConnections.AsNoTracking()
-            .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA"), cancellationToken);
+            .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11"), cancellationToken);
         var isShopify = connection?.PlatformCode == "SHOPIFY";
         var isHepsiburada = connection?.PlatformCode == "HEPSIBURADA";
+        var isN11 = connection?.PlatformCode == "N11";
         // Product import is read-only on the remote platform and writes only to
         // Ravencia's local catalog. Shopify observations never become local
         // price/stock authority.
@@ -3718,11 +3719,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 .Where(identity => !string.IsNullOrWhiteSpace(identity))
                 .ToHashSet(StringComparer.Ordinal)
             : null;
-        var hasCategoryMappings = !isShopify && !isHepsiburada && await db.CategoryMappings.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == "VERIFIED", cancellationToken);
+        var hasCategoryMappings = !isShopify && !isHepsiburada && !isN11 && await db.CategoryMappings.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == "VERIFIED", cancellationToken);
         // The first attribute backfill must revisit the already imported catalog. Keep
         // LastModifiedWatermark null until that full pass is complete so a retry cannot
         // accidentally switch to the incremental window halfway through the backfill.
-        if (!isShopify && !isHepsiburada && !hasCategoryMappings && cursor.OpaqueCursor is null && cursor.LastModifiedWatermark is not null)
+        if (!isShopify && !isHepsiburada && !isN11 && !hasCategoryMappings && cursor.OpaqueCursor is null && cursor.LastModifiedWatermark is not null)
         {
             cursor.LastModifiedWatermark = null;
             cursor.Version++;
@@ -3884,7 +3885,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // catalog rows are being materialized. These calls intentionally happen
         // after remote product paging so a cold reference cache cannot hide
         // product-read progress.
-        brandReferences = isShopify || isHepsiburada || optionsOnly ? null : await EnsureReferenceSnapshot(tenantId, connectionId, "BRANDS", null, correlationId, cancellationToken);
+        brandReferences = isShopify || isHepsiburada || isN11 || optionsOnly ? null : await EnsureReferenceSnapshot(tenantId, connectionId, "BRANDS", null, correlationId, cancellationToken);
         if (jobId is { } categoryReferenceJob)
             await UpdateProductSyncProgressAsync(
                 tenantId,
@@ -3988,7 +3989,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     var categoryContext = categoryReferences is null
                         ? null
                         : await EnsureCategoryAttributeContext(tenantId, connectionId, categoryReferences, snapshot, categoryItems, importedAttributeLibrary, categoryContexts, correlationId, cancellationToken);
-                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, brandReferences?.Id, inventoryPolicy, cancellationToken, saveChanges: false, onlyNewVariants: newOnly && productAlreadyLinked, observeOnly: isShopify || isHepsiburada, preferBarcode: isShopify, onlyExistingVariants: existingOnly && isShopify, updateExistingProducts: updateExistingProducts, updateExistingPricesAndStock: updateExistingPricesAndStock, isHepsiburada: isHepsiburada);
+                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, brandReferences?.Id, inventoryPolicy, cancellationToken, saveChanges: false, onlyNewVariants: newOnly && productAlreadyLinked, observeOnly: isShopify || isHepsiburada || isN11, preferBarcode: isShopify, matchBySku: isN11, onlyExistingVariants: existingOnly && isShopify, updateExistingProducts: updateExistingProducts, updateExistingPricesAndStock: updateExistingPricesAndStock, isHepsiburada: isHepsiburada);
                     existingProductExternalIds?.Add(snapshot.ExternalProductId);
                     if (existingVariantExternalIds is not null)
                         foreach (var variant in snapshot.Variants)
@@ -5107,7 +5108,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         return true;
     }
 
-    private async Task<bool> UpsertCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CategoryAttributeContext? categoryContext, Guid? brandReferenceSnapshotId, ConnectionInventoryPolicy? inventoryPolicy, CancellationToken cancellationToken, bool saveChanges = true, bool onlyNewVariants = false, bool observeOnly = false, bool preferBarcode = false, bool onlyExistingVariants = false, bool updateExistingProducts = true, bool updateExistingPricesAndStock = false, bool isHepsiburada = false)
+    private async Task<bool> UpsertCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CategoryAttributeContext? categoryContext, Guid? brandReferenceSnapshotId, ConnectionInventoryPolicy? inventoryPolicy, CancellationToken cancellationToken, bool saveChanges = true, bool onlyNewVariants = false, bool observeOnly = false, bool preferBarcode = false, bool onlyExistingVariants = false, bool updateExistingProducts = true, bool updateExistingPricesAndStock = false, bool isHepsiburada = false, bool matchBySku = false)
     {
         var now = timeProvider.GetUtcNow();
         var externalProductId = Short(snapshot.ExternalProductId, 256);
@@ -5138,27 +5139,46 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             // as a separate Product row, so existing-only sync may need to link
             // variants across more than one local product.
             var allowCrossProductVariantMatch = preferBarcode && onlyExistingVariants;
+            var observedPlatform = matchBySku ? "N11" : "Shopify";
             var identityCodes = snapshot.Variants
                 .Select(variant => variant.Barcode)
                 .Select(value => NormalizeCatalogKey(value, 160))
                 .Where(value => !string.IsNullOrWhiteSpace(value))
                 .Select(value => value!)
                 .ToHashSet(StringComparer.Ordinal);
-            if (identityCodes.Count > 0)
+            // n11 keys every listing by the seller stock code, which is the
+            // panel SKU; the barcode is only the fallback there.
+            var skuCodes = matchBySku
+                ? snapshot.Variants
+                    .Select(variant => NormalizeCatalogKey(variant.Sku, 160))
+                    .Where(value => !string.IsNullOrWhiteSpace(value))
+                    .Select(value => value!)
+                    .ToHashSet(StringComparer.Ordinal)
+                : [];
+            if (identityCodes.Count > 0 || skuCodes.Count > 0)
             {
-                var identityProductIds = await db.ProductVariants.AsNoTracking()
-                    .Where(x => x.TenantId == tenantId
-                        && x.BarcodeNormalized != null
-                        && identityCodes.Contains(x.BarcodeNormalized))
-                    .Select(x => x.ProductId)
-                    .Distinct()
-                    .Take(2)
-                    .ToListAsync(cancellationToken);
+                var identityProductIds = skuCodes.Count == 0
+                    ? []
+                    : await db.ProductVariants.AsNoTracking()
+                        .Where(x => x.TenantId == tenantId && skuCodes.Contains(x.SkuNormalized))
+                        .Select(x => x.ProductId)
+                        .Distinct()
+                        .Take(2)
+                        .ToListAsync(cancellationToken);
+                if (identityProductIds.Count == 0 && identityCodes.Count > 0)
+                    identityProductIds = await db.ProductVariants.AsNoTracking()
+                        .Where(x => x.TenantId == tenantId
+                            && x.BarcodeNormalized != null
+                            && identityCodes.Contains(x.BarcodeNormalized))
+                        .Select(x => x.ProductId)
+                        .Distinct()
+                        .Take(2)
+                        .ToListAsync(cancellationToken);
                 if (identityProductIds.Count > 1)
                 {
                     if (!allowCrossProductVariantMatch)
                     {
-                        await RecordIssue(tenantId, $"product-sync-barcode-conflict:{connectionId}:{identityCodes.First()}", "PRODUCT_BARCODE_CONFLICT", "Shopify barkodu birden fazla yerel üründe bulundu; otomatik eşleştirme yapılmadı.", cancellationToken);
+                        await RecordIssue(tenantId, $"product-sync-barcode-conflict:{connectionId}:{(skuCodes.Count > 0 ? skuCodes.First() : identityCodes.First())}", "PRODUCT_BARCODE_CONFLICT", $"{observedPlatform} ürününün stok kodu veya barkodu birden fazla yerel üründe bulundu; otomatik eşleştirme yapılmadı.", cancellationToken);
                         return false;
                     }
 
@@ -5173,12 +5193,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     var variantMatchedProduct = await db.Products.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == identityProductIds[0], cancellationToken);
                     if (variantMatchedProduct is not null && link is not null && link.ProductId != variantMatchedProduct.Id)
                     {
-                        await RecordIssue(tenantId, $"product-sync-link-conflict:{connectionId}:{externalProductId}", "PRODUCT_LINK_CONFLICT", "Shopify ürünü aynı bağlantıda başka bir dış ürünle eşleşmiş yerel ürüne bağlanmadı.", cancellationToken);
+                        await RecordIssue(tenantId, $"product-sync-link-conflict:{connectionId}:{externalProductId}", "PRODUCT_LINK_CONFLICT", $"{observedPlatform} ürünü aynı bağlantıda başka bir dış ürünle eşleşmiş yerel ürüne bağlanmadı.", cancellationToken);
                         return false;
                     }
                     if (variantMatchedProduct is not null && await db.MarketplaceProductLinks.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == variantMatchedProduct.Id && x.ExternalId != externalProductId, cancellationToken))
                     {
-                        await RecordIssue(tenantId, $"product-sync-link-conflict:{connectionId}:{externalProductId}", "PRODUCT_LINK_CONFLICT", "Shopify varyant barkodu aynı bağlantıda başka bir dış ürünle eşleşmiş yerel ürüne bağlanmadı.", cancellationToken);
+                        await RecordIssue(tenantId, $"product-sync-link-conflict:{connectionId}:{externalProductId}", "PRODUCT_LINK_CONFLICT", $"{observedPlatform} varyantı aynı bağlantıda başka bir dış ürünle eşleşmiş yerel ürüne bağlanmadı.", cancellationToken);
                         return false;
                     }
                     product = variantMatchedProduct;

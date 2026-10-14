@@ -6,7 +6,7 @@ type ProductImportConnectionLike = {
 const normalizedCode = (value: string) => value.trim().toUpperCase()
 
 export function productImportConnection(item: ProductImportConnectionLike): boolean {
-  return ['TRENDYOL', 'SHOPIFY', 'HEPSIBURADA'].includes(normalizedCode(item.platformCode))
+  return ['TRENDYOL', 'SHOPIFY', 'HEPSIBURADA', 'N11'].includes(normalizedCode(item.platformCode))
     && ['ACTIVE', 'VERIFIED'].includes(normalizedCode(item.status))
 }
 
@@ -15,6 +15,7 @@ export function productImportIdentityLabel(platformCodes: readonly string[]): st
   if (codes.length !== 1) return 'ürün kimliği'
   if (codes[0] === 'SHOPIFY') return 'barkod veya stok kodu'
   if (codes[0] === 'HEPSIBURADA') return 'merchant SKU'
+  if (codes[0] === 'N11') return 'stok kodu'
   return 'model kodu'
 }
 
@@ -22,5 +23,6 @@ export function singleProductLookupLabel(platformCode: string): string {
   const code = normalizedCode(platformCode)
   if (code === 'SHOPIFY') return 'Shopify ürün linki veya barkod / stok kodu'
   if (code === 'HEPSIBURADA') return 'Hepsiburada ürün ID’si'
+  if (code === 'N11') return 'N11 model kodu (productMainId)'
   return 'Trendyol ürün linki veya model kodu'
 }
