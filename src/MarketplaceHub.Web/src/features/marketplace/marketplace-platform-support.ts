@@ -1,4 +1,4 @@
-export const orderMarketplacePlatformCodes = ['TRENDYOL', 'SHOPIFY', 'HEPSIBURADA'] as const
+export const orderMarketplacePlatformCodes = ['TRENDYOL', 'SHOPIFY', 'HEPSIBURADA', 'N11'] as const
 
 export type MarketplacePlatformOption = { value: string; label: string }
 export type MarketplacePlatformOptionSource = { platformCode: string; displayName?: string | null }
@@ -6,7 +6,8 @@ export type MarketplacePlatformOptionSource = { platformCode: string; displayNam
 const marketplacePlatformLabels: Record<typeof orderMarketplacePlatformCodes[number], string> = {
   TRENDYOL: 'Trendyol',
   SHOPIFY: 'Shopify',
-  HEPSIBURADA: 'Hepsiburada'
+  HEPSIBURADA: 'Hepsiburada',
+  N11: 'N11'
 }
 
 const hepsiburadaReadSyncPolicies = new Set([
@@ -21,6 +22,9 @@ const hepsiburadaReadSyncPolicies = new Set([
   'SHIPMENT_WRITE',
   'RETURN_WRITE'
 ])
+
+// n11 runs the order reads for now; other flows join phase by phase.
+const n11ReadSyncPolicies = new Set(['ORDERS', 'ORDER_RECOVERY'])
 
 export function isOrderMarketplacePlatform(platformCode: string) {
   return orderMarketplacePlatformCodes.includes(normalizeMarketplacePlatformCode(platformCode) as typeof orderMarketplacePlatformCodes[number])
@@ -70,11 +74,12 @@ export function isMarketplacePlatformSelected(selectedCodes: string[] | null, pl
 }
 
 export function supportsSyncPolicyManagement(platformCode: string) {
-  return platformCode === 'TRENDYOL' || platformCode === 'SHOPIFY' || platformCode === 'HEPSIBURADA'
+  return platformCode === 'TRENDYOL' || platformCode === 'SHOPIFY' || platformCode === 'HEPSIBURADA' || platformCode === 'N11'
 }
 
 export function supportsSyncPolicy(platformCode: string, resourceType: string) {
   if (!supportsSyncPolicyManagement(platformCode)) return false
+  if (platformCode === 'N11') return n11ReadSyncPolicies.has(resourceType)
   return platformCode !== 'HEPSIBURADA' || hepsiburadaReadSyncPolicies.has(resourceType)
 }
 

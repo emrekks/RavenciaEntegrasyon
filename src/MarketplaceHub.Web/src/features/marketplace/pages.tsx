@@ -914,7 +914,7 @@ function ReferenceConnectionCard({ item, onSaved, onFeedback }: { item: Connecti
   const [deleteConfirmation, setDeleteConfirmation] = useState('')
   const connected = item.status === 'ACTIVE' || item.status === 'VERIFIED'
   const hidden = item.status === 'HIDDEN'
-  const supportsInitialDataSync = item.platformCode === 'TRENDYOL' || item.platformCode === 'SHOPIFY' || item.platformCode === 'HEPSIBURADA'
+  const supportsInitialDataSync = item.platformCode === 'TRENDYOL' || item.platformCode === 'SHOPIFY' || item.platformCode === 'HEPSIBURADA' || item.platformCode === 'N11'
   useEffect(() => {
     if (!settingsOpen) return
     const previousOverflow = document.body.style.overflow

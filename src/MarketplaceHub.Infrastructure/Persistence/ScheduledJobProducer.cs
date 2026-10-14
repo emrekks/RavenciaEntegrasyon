@@ -22,9 +22,9 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                                join connection in db.PlatformConnections.AsNoTracking()
                                    on new { policy.TenantId, Id = policy.ConnectionId } equals new { connection.TenantId, connection.Id }
                                where policy.Enabled && policy.ResourceType != "PRODUCTS" && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")
-                                   && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "SHOPIFY" || connection.PlatformCode == "HEPSIBURADA")
+                                   && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "SHOPIFY" || connection.PlatformCode == "HEPSIBURADA" || connection.PlatformCode == "N11")
                                select new { Policy = policy, Connection = connection }).ToListAsync(cancellationToken))
-            .Where(row => row.Connection.PlatformCode == "TRENDYOL" || row.Connection.PlatformCode == "SHOPIFY" && IsShopifyReadPolicy(row.Policy.ResourceType) || row.Connection.PlatformCode == "HEPSIBURADA" && SupportsHepsiburadaScheduledPolicy(row.Policy.ResourceType))
+            .Where(row => row.Connection.PlatformCode == "TRENDYOL" || row.Connection.PlatformCode == "SHOPIFY" && IsShopifyReadPolicy(row.Policy.ResourceType) || row.Connection.PlatformCode == "HEPSIBURADA" && SupportsHepsiburadaScheduledPolicy(row.Policy.ResourceType) || row.Connection.PlatformCode == "N11" && SupportsN11ScheduledPolicy(row.Policy.ResourceType))
             // Keep the hot order stream ahead of lifecycle and reconciliation
             // scans. The query has no guaranteed row order, so an incidental
             // database order could otherwise enqueue a long lifecycle scan
@@ -61,10 +61,11 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                 .ToListAsync(cancellationToken);
             var executionGroup = MarketplaceSyncExecutionLock.GroupFor(definition.Value.JobType);
             var active = activeJobTypes.Any(jobType => MarketplaceSyncExecutionLock.GroupFor(jobType) == executionGroup);
-            var isHotOrder = definition.Value.JobType is MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync;
+            var isHotOrder = definition.Value.JobType is MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync or MarketplaceJobTypes.N11OrderSync;
             var hotOrderAlreadyQueued = activeJobTypes.Contains(MarketplaceJobTypes.OrderSync, StringComparer.Ordinal)
                 || activeJobTypes.Contains(MarketplaceJobTypes.ShopifyOrderSync, StringComparer.Ordinal)
-                || activeJobTypes.Contains(MarketplaceJobTypes.HepsiburadaOrderSync, StringComparer.Ordinal);
+                || activeJobTypes.Contains(MarketplaceJobTypes.HepsiburadaOrderSync, StringComparer.Ordinal)
+                || activeJobTypes.Contains(MarketplaceJobTypes.N11OrderSync, StringComparer.Ordinal);
             var isOrderLifecycle = definition.Value.JobType is MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.ShopifyOrderStatusSync or MarketplaceJobTypes.HepsiburadaOrderStatusSync;
             var lifecycleAlreadyQueued = activeJobTypes.Contains(MarketplaceJobTypes.OrderStatusSync, StringComparer.Ordinal)
                 || activeJobTypes.Contains(MarketplaceJobTypes.ShopifyOrderStatusSync, StringComparer.Ordinal)
@@ -95,7 +96,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                 && await db.ReferenceSnapshots.AsNoTracking().AnyAsync(x => x.TenantId == row.Policy.TenantId
                     && x.ConnectionId == row.Connection.Id && x.ResourceType == "CATEGORIES" && x.ScopeExternalId == ""
                     && x.IsCurrent && x.FetchedAt > now.AddSeconds(-(interval + jitterSeconds)), cancellationToken)) continue;
-            var hasOrderSnapshots = definition.Value.JobType is not (MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync)
+            var hasOrderSnapshots = definition.Value.JobType is not (MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync or MarketplaceJobTypes.N11OrderSync)
                 || await db.Orders.AsNoTracking().AnyAsync(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id, cancellationToken);
             if (hasOrderSnapshots && latest is not null && latest.Value.AddSeconds(interval + jitterSeconds) > now) continue;
 
@@ -227,7 +228,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
     private async Task EnsureDefaultPoliciesAsync(CancellationToken cancellationToken)
     {
         var operationalConnections = await db.PlatformConnections.AsNoTracking()
-            .Where(x => (x.Status == "ACTIVE" || x.Status == "VERIFIED") && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA"))
+            .Where(x => (x.Status == "ACTIVE" || x.Status == "VERIFIED") && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11"))
             .Select(x => new { x.TenantId, ConnectionId = x.Id, x.PlatformCode })
             .ToListAsync(cancellationToken);
         if (operationalConnections.Count == 0) return;
@@ -256,6 +257,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                 {
                     "SHOPIFY" => SupportsShopifyPolicy(defaults.ResourceType),
                     "HEPSIBURADA" => SupportsHepsiburadaScheduledPolicy(defaults.ResourceType),
+                    "N11" => SupportsN11ScheduledPolicy(defaults.ResourceType),
                     _ => true
                 })
                 .Select(defaults =>
@@ -395,7 +397,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         jobType is MarketplaceJobTypes.OrderRecoverySync
             or MarketplaceJobTypes.TrendyolOrderCargoInfoReconciliation
             or MarketplaceJobTypes.ShopifyOrderRecoverySync
-            or MarketplaceJobTypes.HepsiburadaOrderRecoverySync
+            or MarketplaceJobTypes.HepsiburadaOrderRecoverySync or MarketplaceJobTypes.N11OrderRecoverySync
             or MarketplaceJobTypes.OrderReconciliation
             or MarketplaceJobTypes.ShopifyOrderReconciliation
             or MarketplaceJobTypes.OrderInvoiceReconciliation
@@ -417,10 +419,14 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
     internal static bool SupportsHepsiburadaScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "ORDER_LIFECYCLE" or "ORDER_INVOICE_RECONCILIATION" or "RETURNS" or "REFERENCE_DATA" or "QUESTIONS"
         || MarketplaceExternalWritePolicies.IsPolicy(resourceType);
 
+    // n11 runs the order reads for now; returns, questions, references and the
+    // write flows join as their integration phases go live.
+    internal static bool SupportsN11ScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY";
+
     internal static bool DefaultPolicyEnabled(string platformCode, string resourceType) =>
         resourceType == "ORDER_CARGO_INFO"
             ? platformCode == "TRENDYOL"
-            : !((platformCode is "HEPSIBURADA" or "SHOPIFY") && MarketplaceExternalWritePolicies.IsPolicy(resourceType));
+            : !((platformCode is "HEPSIBURADA" or "SHOPIFY" or "N11") && MarketplaceExternalWritePolicies.IsPolicy(resourceType));
 
     private (string JobType, string DedupPrefix, string PayloadJson)? Definition(string resourceType, Guid connectionId, string platformCode) => resourceType switch
     {

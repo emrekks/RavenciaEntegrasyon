@@ -12,7 +12,7 @@ describe('Hepsiburada marketplace workspace support', () => {
   it('keeps supported platforms available in filters before their data is loaded', () => {
     const options = marketplacePlatformOptions([])
 
-    expect(options.map(option => option.value)).toEqual(['HEPSIBURADA', 'SHOPIFY', 'TRENDYOL'])
+    expect(options.map(option => option.value)).toEqual(['HEPSIBURADA', 'N11', 'SHOPIFY', 'TRENDYOL'])
     expect(options.find(option => option.value === 'HEPSIBURADA')?.label).toBe('Hepsiburada')
   })
 

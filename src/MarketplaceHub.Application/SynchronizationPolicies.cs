@@ -65,6 +65,30 @@ public static class TrendyolOrderHistoryPolicy
         anchor.AddDays(-LegacyEndpointMaxHistoryDays);
 }
 
+// n11 lists shipment packages by last modification in windows of at most 15
+// days and has no data before November 2024. A full scan reads the last three
+// months like Trendyol; incremental reads start at the watermark minus overlap.
+public static class N11OrderHistoryPolicy
+{
+    public const int InitialLookbackMonths = 3;
+    public static readonly TimeSpan MaxWindow = TimeSpan.FromDays(15);
+    public static readonly DateTimeOffset EarliestAvailable = new(2024, 11, 1, 0, 0, 0, TimeSpan.FromHours(3));
+
+    public static DateTimeOffset Start(bool full, DateTimeOffset? watermark, TimeSpan overlap, DateTimeOffset now)
+    {
+        var start = full || watermark is null ? now.AddMonths(-InitialLookbackMonths) : watermark.Value - overlap;
+        return start < EarliestAvailable ? EarliestAvailable : start;
+    }
+
+    public static IReadOnlyList<(DateTimeOffset Start, DateTimeOffset End)> Windows(DateTimeOffset start, DateTimeOffset end)
+    {
+        var windows = new List<(DateTimeOffset, DateTimeOffset)>();
+        for (var cursor = start; cursor < end; cursor += MaxWindow)
+            windows.Add((cursor, cursor + MaxWindow < end ? cursor + MaxWindow : end));
+        return windows;
+    }
+}
+
 public static class HepsiburadaOrderHistoryPolicy
 {
     public const int DefaultInitialLookbackMonths = 1;

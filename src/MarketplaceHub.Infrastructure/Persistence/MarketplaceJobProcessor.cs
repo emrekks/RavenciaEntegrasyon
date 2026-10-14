@@ -92,8 +92,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 {
                     MarketplaceJobTypes.ConnectionTest or MarketplaceJobTypes.ShopifyConnectionTest or MarketplaceJobTypes.HepsiburadaConnectionTest or MarketplaceJobTypes.N11ConnectionTest => await TestConnection(tenantId, connectionId.Value, correlationId, cancellationToken),
                     MarketplaceJobTypes.ReferenceSync or MarketplaceJobTypes.HepsiburadaReferenceSync => await SyncReferences(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
-                    MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync => await SyncOrders(tenantId, connectionId.Value, payloadJson, correlationId, "ORDERS_HOT", allowBaseline: false, cancellationToken),
-                    MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync or MarketplaceJobTypes.HepsiburadaOrderRecoverySync => await SyncOrders(tenantId, connectionId.Value, payloadJson, correlationId, "ORDERS_RECOVERY", allowBaseline: true, cancellationToken),
+                    MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync or MarketplaceJobTypes.N11OrderSync => await SyncOrders(tenantId, connectionId.Value, payloadJson, correlationId, "ORDERS_HOT", allowBaseline: false, cancellationToken),
+                    MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync or MarketplaceJobTypes.HepsiburadaOrderRecoverySync or MarketplaceJobTypes.N11OrderRecoverySync => await SyncOrders(tenantId, connectionId.Value, payloadJson, correlationId, "ORDERS_RECOVERY", allowBaseline: true, cancellationToken),
                     MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.ShopifyOrderStatusSync or MarketplaceJobTypes.HepsiburadaOrderStatusSync => await SyncOpenOrders(tenantId, connectionId.Value, correlationId, cancellationToken),
                     MarketplaceJobTypes.TrendyolOrderCargoInfoReconciliation => connectionState?.PlatformCode == "TRENDYOL"
                         && await ReconcileTrendyolCargoInfo(tenantId, connectionId.Value, correlationId, cancellationToken),
@@ -135,8 +135,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     {
         MarketplaceJobTypes.ConnectionTest or MarketplaceJobTypes.ShopifyConnectionTest or MarketplaceJobTypes.HepsiburadaConnectionTest or MarketplaceJobTypes.N11ConnectionTest => "CONNECTION_TEST",
         MarketplaceJobTypes.ReferenceSync or MarketplaceJobTypes.HepsiburadaReferenceSync => "REFERENCE_DATA",
-        MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync => "ORDERS_HOT",
-        MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync or MarketplaceJobTypes.HepsiburadaOrderRecoverySync => "ORDERS_RECOVERY",
+        MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync or MarketplaceJobTypes.N11OrderSync => "ORDERS_HOT",
+        MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync or MarketplaceJobTypes.HepsiburadaOrderRecoverySync or MarketplaceJobTypes.N11OrderRecoverySync => "ORDERS_RECOVERY",
         MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.ShopifyOrderStatusSync or MarketplaceJobTypes.HepsiburadaOrderStatusSync => "ORDER_LIFECYCLE",
         MarketplaceJobTypes.TrendyolOrderCargoInfoReconciliation => "ORDER_CARGO_INFO_RECONCILIATION",
         MarketplaceJobTypes.OrderReconciliation or MarketplaceJobTypes.ShopifyOrderReconciliation => "ORDER_RECONCILIATION",
@@ -166,10 +166,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         MarketplaceJobTypes.ReferenceSync or MarketplaceJobTypes.HepsiburadaReferenceSync
         or MarketplaceJobTypes.OrderSync
         or MarketplaceJobTypes.ShopifyOrderSync
-        or MarketplaceJobTypes.HepsiburadaOrderSync
+        or MarketplaceJobTypes.HepsiburadaOrderSync or MarketplaceJobTypes.N11OrderSync
         or MarketplaceJobTypes.OrderRecoverySync
         or MarketplaceJobTypes.ShopifyOrderRecoverySync
-        or MarketplaceJobTypes.HepsiburadaOrderRecoverySync
+        or MarketplaceJobTypes.HepsiburadaOrderRecoverySync or MarketplaceJobTypes.N11OrderRecoverySync
         or MarketplaceJobTypes.OrderStatusSync
         or MarketplaceJobTypes.TrendyolOrderCargoInfoReconciliation
         or MarketplaceJobTypes.ShopifyOrderStatusSync
@@ -2143,6 +2143,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             .SingleOrDefaultAsync(cancellationToken);
         if (platform == "SHOPIFY")
             return await SyncShopifyOrders(tenantId, connectionId, payloadJson, correlationId, cursorResourceType, allowBaseline, cancellationToken);
+        if (platform == "N11")
+            return await SyncN11Orders(tenantId, connectionId, payloadJson, correlationId, cursorResourceType, allowBaseline, cancellationToken);
         if (platform == "HEPSIBURADA")
         {
             var ordersSynced = await SyncHepsiburadaOrders(tenantId, connectionId, payloadJson, correlationId, cursorResourceType, allowBaseline, cancellationToken);
@@ -2405,6 +2407,70 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             await db.SaveChangesAsync(cancellationToken);
             break;
         } while (!cancellationToken.IsCancellationRequested);
+        return true;
+    }
+
+    // n11 lists shipment packages by last modification, at most 15 days per
+    // request, so a run walks consecutive windows from the watermark (or three
+    // months back for a full scan) up to now. Status changes of older orders
+    // come back through the same modification filter.
+    private async Task<bool> SyncN11Orders(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, string cursorResourceType, bool allowBaseline, CancellationToken cancellationToken)
+    {
+        string? externalOrderId = null;
+        var full = false;
+        try
+        {
+            using var payload = JsonDocument.Parse(payloadJson);
+            if (payload.RootElement.TryGetProperty("externalOrderId", out var value) && value.ValueKind == JsonValueKind.String) externalOrderId = value.GetString();
+            if (payload.RootElement.TryGetProperty("full", out var fullValue) && fullValue.ValueKind is JsonValueKind.True or JsonValueKind.False) full = fullValue.GetBoolean();
+        }
+        catch (JsonException) { return false; }
+
+        // Stock reservations for n11 orders are projected once the n11 stock
+        // flow is enabled; until then orders are read without touching stock.
+        if (!string.IsNullOrWhiteSpace(externalOrderId))
+        {
+            TrackRequest();
+            var single = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"n11-order-get:{externalOrderId}"), externalOrderId.Trim(), cancellationToken);
+            if (!single.IsSuccess) { TrackResultFailure(single.Error); throw JobProcessingException.FromAdapter(single.Error!); }
+            TrackReceived();
+            await UpsertOrders(tenantId, connectionId, [single.Value!], cancellationToken, projectReservations: false);
+            return true;
+        }
+
+        var cursor = await Cursor(tenantId, connectionId, cursorResourceType, cancellationToken);
+        var now = timeProvider.GetUtcNow();
+        var hasSnapshots = await db.Orders.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken);
+        var baseline = allowBaseline && (full || !hasSnapshots);
+        var overlap = TimeSpan.FromSeconds(DefaultOrderSyncOverlapSeconds);
+        foreach (var (windowStart, windowEnd) in N11OrderHistoryPolicy.Windows(N11OrderHistoryPolicy.Start(baseline, cursor.LastModifiedWatermark ?? (allowBaseline ? null : now.AddDays(-1)), overlap, now), now))
+        {
+            string? page = null;
+            do
+            {
+                TrackRequest();
+                var result = await orders.PollAsync(
+                    Context(tenantId, connectionId, correlationId, $"n11-order-sync:{windowStart.ToUnixTimeMilliseconds()}:{page ?? "0"}"),
+                    new OrderPollWindow(windowStart, windowEnd),
+                    new(page, 100),
+                    cancellationToken);
+                if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
+                foreach (var _ in result.Value!.Items) TrackReceived();
+                foreach (var issue in result.Value.Issues ?? [])
+                    await RecordIssue(tenantId, $"n11-order-contract:{connectionId}:{issue.Identity}:{issue.Code}", issue.Code, issue.Message, cancellationToken);
+                await UpsertOrders(tenantId, connectionId, result.Value.Items, cancellationToken, projectReservations: false);
+                page = result.Value.HasMore ? result.Value.NextCursor : null;
+            } while (page is not null && !cancellationToken.IsCancellationRequested);
+
+            // Each finished window moves the watermark, so an interrupted run
+            // resumes from the last complete window.
+            if (cursor.LastModifiedWatermark is null || windowEnd > cursor.LastModifiedWatermark)
+            {
+                cursor.LastModifiedWatermark = windowEnd;
+                cursor.Version++;
+                await db.SaveChangesAsync(cancellationToken);
+            }
+        }
         return true;
     }
 
@@ -6556,6 +6622,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var isShopify = platformCode == "SHOPIFY";
         var isHepsiburada = platformCode == "HEPSIBURADA";
         var isTrendyol = platformCode == "TRENDYOL";
+        // n11 copies Trendyol's package model (Created, Picking, UnPacked after a split).
+        var usesTrendyolPackageStatuses = isTrendyol || platformCode == "N11";
         var now = timeProvider.GetUtcNow();
         var order = batch?.OrdersByExternalId.GetValueOrDefault(remote.ExternalOrderId)
             ?? await db.Orders.SingleOrDefaultAsync(x => x.TenantId == tenantId
@@ -6627,7 +6695,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var repairCandidates = batch is not null
                 ? (batch.PackagesByOrder.GetValueOrDefault(order.Id)?.Values.Where(x => x.Status == ShipmentPackageStatus.ManualReview).ToList() ?? [])
                 : await db.ShipmentPackages.Where(x => x.TenantId == tenantId && x.OrderId == order.Id && x.Status == ShipmentPackageStatus.ManualReview).ToListAsync(cancellationToken);
-            foreach (var candidate in repairCandidates) { var canonical = isTrendyol ? TrendyolShipmentPackageStatusPolicy.FromRemote(candidate.RawStatus) : ShipmentPackageStatusPolicy.FromRemote(candidate.RawStatus); if (canonical != ShipmentPackageStatus.ManualReview) { candidate.Status = canonical; candidate.UpdatedAt = now; candidate.Version++; } }
+            foreach (var candidate in repairCandidates) { var canonical = usesTrendyolPackageStatuses ? TrendyolShipmentPackageStatusPolicy.FromRemote(candidate.RawStatus) : ShipmentPackageStatusPolicy.FromRemote(candidate.RawStatus); if (canonical != ShipmentPackageStatus.ManualReview) { candidate.Status = canonical; candidate.UpdatedAt = now; candidate.Version++; } }
         }
         // Do not short-circuit empty-line replays: the same remote package can need a safe local canonical projection repair after a previously unknown raw status becomes recognized.
         var orderIsFresh = order is null
@@ -6753,7 +6821,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var externalLineIdsById = lines.Values.ToDictionary(line => line.Id, line => line.ExternalLineId);
         foreach (var remotePackage in remote.Packages)
         {
-            var target = isTrendyol ? TrendyolShipmentPackageStatusPolicy.FromRemote(remotePackage.RawStatus) : ShipmentPackageStatusPolicy.FromRemote(remotePackage.RawStatus); var eventId = PackageIngestionSafety.EventId(remotePackage.ExternalPackageId, remotePackage.OccurredAt); var orderedQuantities = lines.ToDictionary(x => x.Key, x => x.Value.OrderedQuantity, StringComparer.Ordinal);
+            var target = usesTrendyolPackageStatuses ? TrendyolShipmentPackageStatusPolicy.FromRemote(remotePackage.RawStatus) : ShipmentPackageStatusPolicy.FromRemote(remotePackage.RawStatus); var eventId = PackageIngestionSafety.EventId(remotePackage.ExternalPackageId, remotePackage.OccurredAt); var orderedQuantities = lines.ToDictionary(x => x.Key, x => x.Value.OrderedQuantity, StringComparer.Ordinal);
             var package = packagesByExternalId.GetValueOrDefault(remotePackage.ExternalPackageId);
             var legacyTrendyolHoldCorrection = isTrendyol
                 && package is not null

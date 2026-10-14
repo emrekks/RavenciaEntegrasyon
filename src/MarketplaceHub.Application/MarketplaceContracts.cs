@@ -55,6 +55,8 @@ public static class MarketplaceJobTypes
     public const string HepsiburadaReturnSync = "HEPSIBURADA_RETURN_SYNC";
     public const string HepsiburadaOrderInvoiceReconciliation = "HEPSIBURADA_ORDER_INVOICE_RECONCILIATION";
     public const string N11ConnectionTest = "N11_CONNECTION_TEST";
+    public const string N11OrderSync = "N11_ORDER_SYNC";
+    public const string N11OrderRecoverySync = "N11_ORDER_RECOVERY_SYNC";
     public const string QuestionSync = "MARKETPLACE_QUESTION_SYNC";
     public const string CatalogStructureImport = "CATALOG_STRUCTURE_IMPORT";
 
@@ -67,8 +69,8 @@ public static class MarketplaceJobTypes
         ProductSync, ShopifyProductSync, HepsiburadaProductSync,
         ProductCreate, ProductApprovalReconcile, ProductUpdate, ProductArchive,
         PriceInventorySync, StockProjectionDispatch,
-        OrderSync, ShopifyOrderSync, HepsiburadaOrderSync,
-        OrderRecoverySync, ShopifyOrderRecoverySync, HepsiburadaOrderRecoverySync,
+        OrderSync, ShopifyOrderSync, HepsiburadaOrderSync, N11OrderSync,
+        OrderRecoverySync, ShopifyOrderRecoverySync, HepsiburadaOrderRecoverySync, N11OrderRecoverySync,
         OrderStatusSync, ShopifyOrderStatusSync, HepsiburadaOrderStatusSync, TrendyolOrderCargoInfoReconciliation,
         OrderReconciliation, ShopifyOrderReconciliation,
         OrderInvoiceReconciliation, ShopifyOrderInvoiceReconciliation, HepsiburadaOrderInvoiceReconciliation,
@@ -113,6 +115,8 @@ public static class MarketplaceJobTypes
         "N11" => jobType switch
         {
             ConnectionTest => N11ConnectionTest,
+            OrderSync => N11OrderSync,
+            OrderRecoverySync => N11OrderRecoverySync,
             _ => jobType
         },
         _ => jobType
@@ -151,13 +155,14 @@ public static class FullOrderSyncConflictPolicy
     private static bool IsRecoverySyncType(string? jobType) => jobType is
         MarketplaceJobTypes.OrderRecoverySync
         or MarketplaceJobTypes.ShopifyOrderRecoverySync
-        or MarketplaceJobTypes.HepsiburadaOrderRecoverySync;
+        or MarketplaceJobTypes.HepsiburadaOrderRecoverySync or MarketplaceJobTypes.N11OrderRecoverySync;
 
     private static bool IsPromotableOrderSyncType(string? requestedJobType, string? conflictingJobType) => requestedJobType switch
     {
         MarketplaceJobTypes.OrderRecoverySync => conflictingJobType is MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.OrderStatusSync,
         MarketplaceJobTypes.ShopifyOrderRecoverySync => conflictingJobType is MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.ShopifyOrderRecoverySync or MarketplaceJobTypes.ShopifyOrderStatusSync,
         MarketplaceJobTypes.HepsiburadaOrderRecoverySync => conflictingJobType is MarketplaceJobTypes.HepsiburadaOrderSync or MarketplaceJobTypes.HepsiburadaOrderRecoverySync or MarketplaceJobTypes.HepsiburadaOrderStatusSync,
+        MarketplaceJobTypes.N11OrderRecoverySync => conflictingJobType is MarketplaceJobTypes.N11OrderSync or MarketplaceJobTypes.N11OrderRecoverySync,
         _ => false
     };
 }
@@ -252,6 +257,7 @@ public static class TargetedOrderSyncConflictPolicy
         MarketplaceJobTypes.OrderSync => conflictingJobType is MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.OrderReconciliation,
         MarketplaceJobTypes.ShopifyOrderSync => conflictingJobType is MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.ShopifyOrderRecoverySync or MarketplaceJobTypes.ShopifyOrderStatusSync or MarketplaceJobTypes.ShopifyOrderReconciliation,
         MarketplaceJobTypes.HepsiburadaOrderSync => conflictingJobType is MarketplaceJobTypes.HepsiburadaOrderSync or MarketplaceJobTypes.HepsiburadaOrderRecoverySync or MarketplaceJobTypes.HepsiburadaOrderStatusSync,
+        MarketplaceJobTypes.N11OrderSync => conflictingJobType is MarketplaceJobTypes.N11OrderSync or MarketplaceJobTypes.N11OrderRecoverySync,
         _ => false
     };
 
@@ -260,6 +266,7 @@ public static class TargetedOrderSyncConflictPolicy
         MarketplaceJobTypes.OrderSync => conflictingJobType == MarketplaceJobTypes.OrderSync,
         MarketplaceJobTypes.ShopifyOrderSync => conflictingJobType == MarketplaceJobTypes.ShopifyOrderSync,
         MarketplaceJobTypes.HepsiburadaOrderSync => conflictingJobType == MarketplaceJobTypes.HepsiburadaOrderSync,
+        MarketplaceJobTypes.N11OrderSync => conflictingJobType == MarketplaceJobTypes.N11OrderSync,
         _ => false
     };
 }

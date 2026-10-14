@@ -19,7 +19,8 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         MarketplaceJobTypes.ShopifyOrderSync, MarketplaceJobTypes.ShopifyOrderRecoverySync, MarketplaceJobTypes.ShopifyOrderStatusSync,
         MarketplaceJobTypes.ShopifyOrderReconciliation, MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation,
         MarketplaceJobTypes.HepsiburadaOrderSync, MarketplaceJobTypes.HepsiburadaOrderRecoverySync,
-        MarketplaceJobTypes.HepsiburadaOrderStatusSync, MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation
+        MarketplaceJobTypes.HepsiburadaOrderStatusSync, MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation,
+        MarketplaceJobTypes.N11OrderSync, MarketplaceJobTypes.N11OrderRecoverySync
     ];
     private static readonly string[] ReturnReadJobTypes =
         [MarketplaceJobTypes.ReturnSync, MarketplaceJobTypes.HepsiburadaReturnSync, MarketplaceJobTypes.ReturnStatusSync];
