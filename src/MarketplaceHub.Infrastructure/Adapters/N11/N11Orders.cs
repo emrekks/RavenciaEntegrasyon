@@ -6,13 +6,12 @@ using MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping;
 
 namespace MarketplaceHub.Infrastructure.Adapters.N11;
 
-// Order reads (phase 2). Package actions, labels and cargo changes come with
-// the order-action phase; until then they report "not supported".
+// Order reads. Labels, cargo changes and package creation are not offered by
+// n11 and report "not supported"; package actions live in N11PackageActions.
 public sealed partial class N11HttpClient
 {
     internal static readonly TimeSpan MaxOrderWindow = TimeSpan.FromDays(15);
     internal const int OrderPageSize = 100;
-    private const string OrderActionsLater = "N11 sipariş işlemleri (onay, paket bölme, iptal) sonraki entegrasyon aşamasında açılacak.";
 
     // orderByField=true filters by the package's last modification, so status
     // changes of older orders come back in the incremental window as well.
@@ -55,9 +54,6 @@ public sealed partial class N11HttpClient
             return Failure<AdapterPageResult<RemoteOrder>>(AdapterErrorClass.ContractViolation, "N11_ORDER_CONTRACT_INVALID", "N11 sipariş paketi yanıtı beklenen sayfa yapısında değil.", HttpStatusCode.BadGateway);
         }
     }
-
-    public Task<AdapterResult<PackageActionResult>> ExecutePackageActionAsync(AdapterContext context, PackageActionCommand command, CancellationToken cancellationToken) =>
-        Task.FromResult(NotSupported<PackageActionResult>("N11_PACKAGE_ACTION_UNSUPPORTED", OrderActionsLater));
 
     public Task<AdapterResult<IReadOnlyList<RemoteCargoCompany>>> GetChangeableCargoCompaniesAsync(AdapterContext context, string externalPackageId, CancellationToken cancellationToken) =>
         Task.FromResult(NotSupported<IReadOnlyList<RemoteCargoCompany>>("N11_CARGO_CHANGE_UNSUPPORTED", "N11 kargo firması değiştirmeyi API'den desteklemiyor."));

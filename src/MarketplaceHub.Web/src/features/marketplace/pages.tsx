@@ -723,7 +723,7 @@ function OrderReferenceRow({ item, selected, onSelect, selectionMode, onEnterSel
   const invoiceableTotal = Math.max(0, saleTotal - item.discountAmount)
   const isCargoTrackingStage = ['SHIPPED', 'UNDELIVERED'].includes(normalizedOrderStatus)
   const isCargoLabelStage = ['NEW', 'PROCESSING', 'READY_TO_SHIP'].includes(normalizedOrderStatus)
-  const canChangeCargo = item.platformCode !== 'SHOPIFY' && item.platformCode !== 'HEPSIBURADA' && !['PAYMENT_PENDING', 'SHIPPED', 'UNDELIVERED', 'DELIVERED', 'RETURNED'].includes(normalizedOrderStatus)
+  const canChangeCargo = item.platformCode !== 'SHOPIFY' && item.platformCode !== 'HEPSIBURADA' && item.platformCode !== 'N11' && !['PAYMENT_PENDING', 'SHIPPED', 'UNDELIVERED', 'DELIVERED', 'RETURNED'].includes(normalizedOrderStatus)
   const enabledLabelFormats: ShippingLabelFormat[] = [
     ...(labelSettings.showA4Button ? ['a4' as const] : []),
     ...(labelSettings.showStickerButton ? ['sticker' as const] : [])
@@ -1229,7 +1229,8 @@ function IntegrationDetailWorkspace({ id, inline = false }: { id: string; inline
        ]
      : item.platformCode === 'N11'
      ? [
-         { key: 'automatic-external-writes', label: 'Fiyat ve stok', resourceTypes: ['PRICE_WRITE', 'STOCK_WRITE'], description: 'Açıkken paneldeki N11 fiyatı ve stok değişiklikleri N11’e gönderilir. Kapalıyken N11’e fiyat veya stok gönderilmez.' }
+         { key: 'automatic-external-writes', label: 'Fiyat ve stok', resourceTypes: ['PRICE_WRITE', 'STOCK_WRITE'], description: 'Açıkken paneldeki N11 fiyatı ve stok değişiklikleri N11’e gönderilir. Kapalıyken N11’e fiyat veya stok gönderilmez.' },
+         { key: 'manual-external-writes', label: 'Sipariş işlemleri', resourceTypes: ['SHIPMENT_WRITE'], description: 'Açıkken panelden siparişi işleme alma ve paket bölme N11’e gönderilir. Kargo firması değiştirme, etiket ve takip numarası N11 API’sinde yok.' }
        ]
      : item.platformCode === 'HEPSIBURADA'
      ? [

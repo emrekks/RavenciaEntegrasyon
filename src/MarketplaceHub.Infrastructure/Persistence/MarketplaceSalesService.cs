@@ -1186,7 +1186,9 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         }
         var validation = platform == "HEPSIBURADA"
             ? ValidateHepsiburadaShipmentAction(package, action, commandPayload)
-            : ValidateShipmentAction(package, action, commandPayload);
+            : platform == "N11"
+                ? ValidateN11ShipmentAction(package, action, commandPayload)
+                : ValidateShipmentAction(package, action, commandPayload);
         if (validation is not null) return ServiceResult<Guid>.Fail(validation.Code, validation.Message, validation.Status, validation.FieldErrors);
         var stage = await IsStageConnection(tenantId, package.ConnectionId, cancellationToken);
         if (!stage && !await IsProductionConnection(tenantId, package.ConnectionId, cancellationToken)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Shipment işlemi yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
@@ -2114,6 +2116,17 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             return valid ? null : new("SHIPMENT_ACTION_PAYLOAD_INVALID", $"{action} için zorunlu body alanları eksik.", 422);
         }
         catch (JsonException) { return new("SHIPMENT_ACTION_PAYLOAD_INVALID", "Paket aksiyonu body geçerli JSON olmalıdır.", 422); }
+    }
+
+    // n11 offers approving (Picking) and splitting through its API; a package
+    // can only be split after it was approved.
+    private static ServiceError? ValidateN11ShipmentAction(ShipmentPackage package, string action, string payloadJson)
+    {
+        if (action is not ("PICKING" or "SPLIT" or "MULTI_SPLIT"))
+            return new("SHIPMENT_ACTION_UNSUPPORTED", "N11 için yalnız siparişi işleme alma ve paket bölme desteklenir; diğer işlemleri N11 satıcı panelinden yapın.", 422);
+        if (action is "SPLIT" or "MULTI_SPLIT" && package.Status != ShipmentPackageStatus.Processing)
+            return new("SHIPMENT_STATE_CONFLICT", "N11 paketleri yalnız işleme alındıktan sonra bölünebilir.", 409);
+        return ValidateShipmentAction(package, action, payloadJson);
     }
 
     private static ServiceError? ValidateHepsiburadaShipmentAction(ShipmentPackage package, string action, string payloadJson)
