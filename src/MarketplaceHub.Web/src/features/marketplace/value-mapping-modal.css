@@ -128,7 +128,7 @@
   max-width: 100%;
   padding: 3px 10px;
   overflow: hidden;
-  color: var(--rv-color-text);
+  color: var(--rv-color-ink);
   font: inherit;
   text-overflow: ellipsis;
   white-space: nowrap;

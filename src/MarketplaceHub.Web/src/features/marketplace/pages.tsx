@@ -13,6 +13,7 @@ import { PlatformMultiSelect } from '../../shared/platform-multi-select'
 import { DateRangePicker } from '../../shared/DateRangePicker'
 import './reference-filters.css'
 import './value-mapping-modal.css'
+import './mapping-workspace.css'
 import './order-invoice-cell.css'
 import { PanelValueMultiSelect } from './PanelValueMultiSelect'
 import { matchesReturnReferenceFilters } from './return-reference-filters'
@@ -2398,6 +2399,11 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
   const categoryRequirements = useQuery({ queryKey: ['category-requirements', attributeCategoryId, 'attribute-workspace'], queryFn: () => hubApi<CategoryRequirementView[]>(`/catalog/categories/${attributeCategoryId}/attribute-requirements`), enabled: !!attributeCategoryId })
   const categoryMapping = useQuery({ queryKey: ['category-mapping', attributeCategoryId, connectionId, 'embedded'], queryFn: () => hubApi<CatalogMapping | null>(`/mappings/categories/${attributeCategoryId}?connectionId=${encodeURIComponent(connectionId)}`), enabled: !!attributeCategoryId && !!connectionId, retry: false })
   const categoryScope = categoryMapping.data?.externalId ?? ''
+  // Same cache entry as the category mapping card, so the target path rarely costs a request.
+  const categoryReferences = useQuery({ queryKey: ['reference-categories', connectionId], queryFn: () => hubApi<ReferenceData>(`/reference-data/categories?connectionId=${encodeURIComponent(connectionId)}`), enabled: !!connectionId && !!categoryScope, retry: false, staleTime: 5 * 60_000 })
+  const targetCategoryPath = cleanMarketplaceCategoryPath(categoryReferences.data?.items.find(item => item.externalId === categoryScope)?.path ?? '') || (categoryScope ? `Kategori no: ${categoryScope}` : '')
+  const targetCategoryMapping = matchedCategories.find(item => item.category.id === attributeCategoryId)?.mapping
+  const targetCategoryStatus = targetCategoryMapping ? categoryMappingStatus(targetCategoryMapping) : null
   const references = useQuery({ queryKey: ['reference-attributes', connectionId, categoryScope, 'embedded'], queryFn: () => hubApi<ReferenceData>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes?connectionId=${encodeURIComponent(connectionId)}`), enabled: !!connectionId && !!categoryScope, retry: false })
   const sync = useMutation({ mutationFn: () => hubApi(`/connections/${connectionId}/reference-sync-jobs?resourceType=CATEGORY_ATTRIBUTES&parentExternalId=${encodeURIComponent(categoryScope)}`, { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, body: '{}' }), onSuccess: async () => { onNotice(`${platformLabel} kategori özellikleri salt-okunur eşitleme kuyruğuna alındı.`); for (const delay of [500, 1000, 2000, 4000]) { await new Promise(resolve => window.setTimeout(resolve, delay)); await client.invalidateQueries({ queryKey: ['reference-attributes', connectionId, categoryScope, 'embedded'] }) } }, onError: reason => onNotice(reason instanceof Error ? reason.message : 'Kategori özellikleri eşitlenemedi.') })
   const mappings = useQuery({ queryKey: ['attribute-mappings', connectionId, categoryScope], queryFn: () => hubApi<CatalogMapping[]>(`/mappings/attributes?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(categoryScope)}`), enabled: !!connectionId && !!categoryScope, retry: false })
@@ -2552,9 +2558,36 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
   if (!categoryMapping.data) return <article className="panel mapping-step"><div className="editor-section-title"><span>4</span><div><h2>{platformLabel} kategori ve özellik eşlemeleri</h2><p>Ürün özellikleri ve seçenekleri kendi adımlarında tanımladıktan sonra değer karşılıklarını eşleyin.</p></div></div><div className="unknown"><strong>Kategori eşlemesi bekleniyor</strong><p>Önce 1. adımda panel kategorisini {platformLabel} kategorisiyle eşleştirin.</p></div></article>
   return <article className="panel mapping-step">
     <div className="editor-section-title"><span>4</span><div><h2>Kategori eşleştirmeleri</h2><p>{platformCode === 'TRENDYOL' ? 'Trendyol katalog alanlarını Web Color, Renk ve diğer panel özellikleriyle eşleyin.' : 'Pazar yeri katalog alanlarını panel özellikleri ve değerleriyle eşleyin.'}</p></div></div>
-    <div className="mapping-category-toolbar-row">
-      <label className="matched-category-select">Eşleşmiş panel kategorisi<select value={attributeCategoryId} onChange={event => setAttributeCategoryId(event.target.value)}>{matchedCategories.map(({ category }) => <option key={category.id} value={category.id}>{category.path}</option>)}</select></label>
-      {!references.isLoading && !mappings.isLoading && !categoryRequirements.isLoading && !references.isError && !mappings.isError && !categoryRequirements.isError && <div className="mapping-section-toolbar"><div className="button-row"><button type="button" className="secondary" disabled={sync.isPending} onClick={() => sync.mutate()}>{sync.isPending ? 'Alanlar yenileniyor…' : 'Kategori alanlarını yenile'}</button><button type="button" className="secondary" title="Önce adı aynı olan panel başlıklarını, bulunamazsa eş anlamlısını (ör. Materyal ≈ Kumaş Tipi) ya da diğer pazaryerinde eşlendiği adı toplu eşler. Birden fazla aday varsa atlar." disabled={sync.isPending || bulkBusy !== ''} onClick={() => void matchHeadingsByName()}>{bulkBusy === 'HEADINGS' ? 'Başlıklar eşleniyor…' : 'Başlıkları eşle'}</button><button type="button" className="secondary" title="Eşlenmiş tüm başlıklarda adı aynı olan değerleri toplu eşler" disabled={sync.isPending || bulkBusy !== ''} onClick={() => void matchAllValuesByName()}>{bulkBusy === 'VALUES' ? 'Değerler eşleniyor…' : 'Tüm değerleri birebir eşle'}</button><button type="button" className="secondary" title="Aynı Trendyol başlığını kullanan diğer kategorilerde yaptığınız başlık ve değer eşlemelerini bu kategoriye getirir. Elle yaptığınız ve sildiğiniz eşlemelere dokunmaz." disabled={sync.isPending || bulkBusy !== ''} onClick={() => void fillFromOtherCategories()}>{bulkBusy === 'TEMPLATES' ? 'Getiriliyor…' : 'Diğer kategorilerden doldur'}</button>{platformCode === 'TRENDYOL' && optionCount > 0 && <button type="button" disabled={productSync.isPending} onClick={() => productSync.mutate()}>{productSync.isPending ? 'Ürünler eşitleniyor…' : 'Ürün seçeneklerini salt-okunur eşitle'}</button>}</div></div>}
+    <div className="mapping-workspace-context">
+      <label className="mapping-workspace-field">
+        <span>Panel kategorisi</span>
+        <select value={attributeCategoryId} onChange={event => setAttributeCategoryId(event.target.value)}>{matchedCategories.map(({ category }) => <option key={category.id} value={category.id}>{category.path}</option>)}</select>
+      </label>
+      <UiIcon name="arrowRight" className="mapping-workspace-arrow" />
+      <div className="mapping-workspace-field">
+        <span>{platformLabel} kategorisi</span>
+        <strong title={targetCategoryPath}>{targetCategoryPath}</strong>
+      </div>
+      {targetCategoryStatus && <span className={`mapping-table-status ${targetCategoryStatus.className}`} title={targetCategoryStatus.title}>{targetCategoryStatus.label}</span>}
+    </div>
+    {!references.isLoading && !mappings.isLoading && !categoryRequirements.isLoading && !references.isError && !mappings.isError && !categoryRequirements.isError && <div className="mapping-workspace-actions" role="toolbar" aria-label="Kategori eşleme işlemleri">
+      <div className="mapping-workspace-action-group">
+        <span>Otomatik eşleme</span>
+        <div>
+          <button type="button" className="secondary" title="Önce adı aynı olan panel başlıklarını, bulunamazsa eş anlamlısını (ör. Materyal ≈ Kumaş Tipi) ya da diğer pazaryerinde eşlendiği adı toplu eşler. Birden fazla aday varsa atlar." disabled={sync.isPending || bulkBusy !== ''} onClick={() => void matchHeadingsByName()}>{bulkBusy === 'HEADINGS' ? 'Başlıklar eşleniyor…' : 'Başlıkları eşle'}</button>
+          <button type="button" className="secondary" title="Eşlenmiş tüm başlıklarda adı aynı olan değerleri toplu eşler" disabled={sync.isPending || bulkBusy !== ''} onClick={() => void matchAllValuesByName()}>{bulkBusy === 'VALUES' ? 'Değerler eşleniyor…' : 'Tüm değerleri birebir eşle'}</button>
+          <button type="button" className="secondary" title={`Aynı ${platformLabel} başlığını kullanan diğer kategorilerde yaptığınız başlık ve değer eşlemelerini bu kategoriye getirir. Elle yaptığınız ve sildiğiniz eşlemelere dokunmaz.`} disabled={sync.isPending || bulkBusy !== ''} onClick={() => void fillFromOtherCategories()}>{bulkBusy === 'TEMPLATES' ? 'Getiriliyor…' : 'Diğer kategorilerden doldur'}</button>
+        </div>
+      </div>
+      <div className="mapping-workspace-action-group">
+        <span>{platformLabel} verisi</span>
+        <div>
+          <button type="button" className="secondary" title={`Bu kategorinin ${platformLabel} alan listesini salt-okunur olarak yeniden okur.`} disabled={sync.isPending} onClick={() => sync.mutate()}><UiIcon name="refresh" />{sync.isPending ? 'Alanlar yenileniyor…' : 'Kategori alanlarını yenile'}</button>
+          {platformCode === 'TRENDYOL' && optionCount > 0 && <button type="button" className="secondary" title="Trendyol’daki ürünleri salt-okunur okuyarak ürün seçeneklerini günceller; Trendyol’a yazma yapmaz." disabled={productSync.isPending} onClick={() => productSync.mutate()}>{productSync.isPending ? 'Ürünler eşitleniyor…' : 'Ürün seçeneklerini eşitle'}</button>}
+        </div>
+      </div>
+    </div>}
+    <div className="mapping-workspace-panels">
       {(platformCode === 'TRENDYOL' || platformCode === 'HEPSIBURADA') && categoryScope && references.data && <AttributeDefaultsPanel connectionId={connectionId} categoryScope={categoryScope} platformLabel={platformLabel} remoteAttributes={references.data.items} onNotice={onNotice} />}
       {connectionId && <MappingConflictsPanel connectionId={connectionId} platformLabel={platformLabel} onNotice={onNotice} />}
     </div>
@@ -3071,17 +3104,32 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
   return <div className="mapping-step nested value-mapping-editor">
     <div className="value-mapping-heading">
       <div><h3>Değer eşleştirmeleri</h3><p>{platformLabel} değerlerini karşılık gelen panel değerleriyle eşleyin.{allowReusablePanelValues ? ' Aynı panel değeri birden fazla Hepsiburada seçeneği için kullanılabilir.' : ''}</p></div>
-      <div className="value-mapping-heading-actions">
-        <button type="button" className="secondary" disabled={quickValueSaving || autoMapping || saving} onClick={() => setQuickValueOpen(true)}>Hızlı değer oluştur</button>
-        <button type="button" className="secondary" title="Eşlemesi boş pazar yeri değerlerinin adlarıyla panel değerleri oluşturur. Aynı adlı tekrarları tek değer olarak ekler." disabled={!selectionsReady || !missingPanelValues.length || quickValueSaving || autoMapping || saving || syncBusy} onClick={() => void createMissingPanelValues()}>{quickValueSaving ? 'Ekleniyor…' : `Boş değerleri oluştur (${missingPanelValues.length})`}</button>
-        <button type="button" className="secondary" title={`Aynı adlı panel ve ${platformLabel} değerlerini eşler.${directPlan.ambiguousCount ? ` Belirsiz ${directPlan.ambiguousCount} eşleşme atlanır.` : ''}`} disabled={!selectionsReady || autoMapping || saving || syncBusy || quickValueSaving || (directMappingWorkCount === 0 && unsavedExternalIds.size === 0)} onClick={() => void mapDirectMatchingValues()}>{autoMapping ? 'Eşleştiriliyor…' : 'Birebir eşleşenleri eşle'}</button>
-        <button type="button" className="secondary" title={`Eşleşmemiş panel değerleri için ${platformLabel} değeri önerir: aynı ad, Türkçe harf farkı ve eş anlamlılar (ör. Black → Siyah) doğrudan seçilir; zayıf benzerlikler onayınıza sunulur.`} disabled={!selectionsReady || autoMapping || saving || syncBusy || !unmatchedPanelValues.length || !activeRemoteValues.length} onClick={suggestMappings}>Önerileri getir</button>
-        <button type="button" className="secondary value-mapping-refresh-button" title="Seçili pazar yerinin güncel referans değer listesini yenile" disabled={syncBusy || autoMapping || saving} onClick={() => sync.mutate()}>{syncBusy ? 'Yenileniyor…' : `${platformLabel} listesini yenile`}</button>
-        <label className="value-mapping-share" title="Açıkken bu eşlemeler, aynı özelliği listeleyen diğer kategorilere de otomatik uygulanır. Kapalıyken yalnızca bu kategoride kalır.">
-          <input type="checkbox" checked={shareWithOtherCategories} onChange={event => setShareWithOtherCategories(event.target.checked)} />
-          Diğer kategorilerde de kullan
-        </label>
-        <button type="button" disabled={!selectionsReady || saving || syncBusy || autoMapping || quickValueSaving} onClick={() => void saveAll()}>{saving ? 'Kaydediliyor…' : 'Tüm eşlemeleri kaydet'}</button>
+      <button type="button" className="value-mapping-save" disabled={!selectionsReady || saving || syncBusy || autoMapping || quickValueSaving} onClick={() => void saveAll()}><UiIcon name="check" />{saving ? 'Kaydediliyor…' : 'Tüm eşlemeleri kaydet'}</button>
+    </div>
+    <div className="value-mapping-toolbar" role="toolbar" aria-label="Değer eşleme işlemleri">
+      <div className="value-mapping-toolbar-group">
+        <span>Otomatik eşle</span>
+        <div>
+          <button type="button" className="secondary" title={`Aynı adlı panel ve ${platformLabel} değerlerini eşler.${directPlan.ambiguousCount ? ` Belirsiz ${directPlan.ambiguousCount} eşleşme atlanır.` : ''}`} disabled={!selectionsReady || autoMapping || saving || syncBusy || quickValueSaving || (directMappingWorkCount === 0 && unsavedExternalIds.size === 0)} onClick={() => void mapDirectMatchingValues()}>{autoMapping ? 'Eşleştiriliyor…' : 'Birebir eşleşenleri eşle'}</button>
+          <button type="button" className="secondary" title={`Eşleşmemiş panel değerleri için ${platformLabel} değeri önerir: aynı ad, Türkçe harf farkı ve eş anlamlılar (ör. Black → Siyah) doğrudan seçilir; zayıf benzerlikler onayınıza sunulur.`} disabled={!selectionsReady || autoMapping || saving || syncBusy || !unmatchedPanelValues.length || !activeRemoteValues.length} onClick={suggestMappings}>Önerileri getir</button>
+        </div>
+      </div>
+      <div className="value-mapping-toolbar-group">
+        <span>Panel değeri ekle</span>
+        <div>
+          <button type="button" className="secondary" disabled={quickValueSaving || autoMapping || saving} onClick={() => setQuickValueOpen(true)}>Hızlı değer oluştur</button>
+          <button type="button" className="secondary" title="Eşlemesi boş pazar yeri değerlerinin adlarıyla panel değerleri oluşturur. Aynı adlı tekrarları tek değer olarak ekler." disabled={!selectionsReady || !missingPanelValues.length || quickValueSaving || autoMapping || saving || syncBusy} onClick={() => void createMissingPanelValues()}>{quickValueSaving ? 'Ekleniyor…' : `Boş değerleri oluştur (${missingPanelValues.length})`}</button>
+        </div>
+      </div>
+      <div className="value-mapping-toolbar-group is-end">
+        <span>Liste</span>
+        <div>
+          <button type="button" className="secondary" title="Seçili pazar yerinin güncel referans değer listesini yenile" disabled={syncBusy || autoMapping || saving} onClick={() => sync.mutate()}><UiIcon name="refresh" />{syncBusy ? 'Yenileniyor…' : `${platformLabel} listesini yenile`}</button>
+          <label className="value-mapping-share" title="Açıkken bu eşlemeler, aynı özelliği listeleyen diğer kategorilere de otomatik uygulanır. Kapalıyken yalnızca bu kategoride kalır.">
+            <input type="checkbox" checked={shareWithOtherCategories} onChange={event => setShareWithOtherCategories(event.target.checked)} />
+            Diğer kategorilerde de kullan
+          </label>
+        </div>
       </div>
     </div>
     {notice && <MessageToast message={notice} onClose={() => setNotice('')} />}
@@ -3114,7 +3162,7 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
       <ul>
         {suggestionReview.map(item => <li key={`${item.localId}:${item.externalId}`}>
           <span>{item.localLabel}</span><b aria-hidden="true">→</b><strong>{item.remoteName}</strong>
-          <small title="Benzerlik puanı">%{item.score}</small>
+          <small title="Benzerlik puanı">%{item.score} benzer</small>
           <button type="button" onClick={() => approveSuggestions([item])}>Onayla</button>
           <button type="button" className="secondary" onClick={() => setSuggestionReview(current => current.filter(entry => entry !== item))}>Atla</button>
         </li>)}

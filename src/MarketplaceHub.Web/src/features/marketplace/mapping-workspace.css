@@ -1,0 +1,139 @@
+/* Category attribute workspace (step 4) and the value mapping editor header.
+   One context bar says which panel category maps to which marketplace category; the actions
+   below it are grouped by what they do, so the screen reads top-down: where, what to run, review. */
+
+.mapping-step .mapping-workspace-context {
+  display: grid;
+  grid-template-columns: minmax(200px, 320px) auto minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--rv-space-3) var(--rv-space-4);
+  margin-bottom: var(--rv-space-3);
+  padding: var(--rv-space-4);
+  background: var(--rv-color-surface-raised);
+  border: 1px solid var(--rv-color-border);
+  border-radius: var(--rv-radius-lg);
+}
+
+.mapping-step .mapping-workspace-field { display: grid; min-width: 0; gap: 6px; margin: 0; }
+.mapping-step .mapping-workspace-field > span { color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); font-weight: 500; }
+.mapping-step .mapping-workspace-field > select { width: 100%; min-width: 0; }
+.mapping-step .mapping-workspace-field > strong {
+  display: flex;
+  align-items: center;
+  min-height: var(--rv-control-height-md);
+  overflow: hidden;
+  color: var(--rv-color-ink);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mapping-step .mapping-workspace-arrow {
+  width: var(--rv-icon-size-md);
+  height: var(--rv-icon-size-md);
+  margin-bottom: 12px;
+  color: var(--rv-color-subtle);
+}
+
+.mapping-step .mapping-workspace-context > .mapping-table-status { align-self: center; margin-top: 22px; white-space: nowrap; }
+
+.mapping-step .mapping-workspace-actions,
+.value-mapping-editor .value-mapping-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: var(--rv-space-3) 0;
+  margin-bottom: var(--rv-space-3);
+  padding: var(--rv-space-3) 0;
+  border-block: 1px solid var(--rv-color-border);
+}
+
+.mapping-step .mapping-workspace-action-group,
+.value-mapping-editor .value-mapping-toolbar-group {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding-inline: var(--rv-space-4);
+  border-inline-start: 1px solid var(--rv-color-border);
+}
+
+.mapping-step .mapping-workspace-action-group:first-child,
+.value-mapping-editor .value-mapping-toolbar-group:first-child { padding-inline-start: 0; border-inline-start: 0; }
+.value-mapping-editor .value-mapping-toolbar-group.is-end { margin-inline-start: auto; padding-inline-end: 0; }
+
+.mapping-step .mapping-workspace-action-group > span,
+.value-mapping-editor .value-mapping-toolbar-group > span { color: var(--rv-color-subtle); font-size: 12px; font-weight: 500; }
+
+.mapping-step .mapping-workspace-action-group > div,
+.value-mapping-editor .value-mapping-toolbar-group > div { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+
+.mapping-step .mapping-workspace-action-group button,
+.value-mapping-editor .value-mapping-toolbar-group button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: var(--rv-font-size-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.mapping-step .mapping-workspace-action-group button svg,
+.value-mapping-editor .value-mapping-toolbar-group button svg,
+.value-mapping-editor .value-mapping-save svg { width: var(--rv-icon-size-sm); height: var(--rv-icon-size-sm); flex: 0 0 auto; }
+
+.mapping-step .mapping-workspace-panels { display: grid; gap: var(--rv-space-2); margin-bottom: var(--rv-space-4); }
+.mapping-step .mapping-workspace-panels > details { margin: 0; border-radius: var(--rv-radius-md); }
+.mapping-step .mapping-workspace-panels > details > summary { padding: 12px 16px; }
+
+/* Value mapping editor: save is the one primary action, top right. */
+.value-mapping-editor .value-mapping-heading { align-items: center; }
+.value-mapping-editor .value-mapping-save {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 0 16px;
+  white-space: nowrap;
+}
+
+.value-mapping-editor .value-mapping-toolbar { margin-bottom: 0; }
+.value-mapping-editor .value-mapping-toolbar .value-mapping-share { min-height: 34px; margin: 0; color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); }
+
+/* Suggestions waiting for approval: aligned columns instead of a loose line per item. */
+.value-mapping-editor .value-mapping-suggestions { gap: 10px; padding: 12px 14px; }
+.value-mapping-editor .value-mapping-suggestions-head button { min-height: 32px; padding: 0 12px; font-size: var(--rv-font-size-sm); }
+.value-mapping-editor .value-mapping-suggestions ul { gap: 0; }
+.value-mapping-editor .value-mapping-suggestions li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1fr) 88px auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-top: 1px solid var(--rv-color-border);
+}
+.value-mapping-editor .value-mapping-suggestions li > span,
+.value-mapping-editor .value-mapping-suggestions li > strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.value-mapping-editor .value-mapping-suggestions li > b { color: var(--rv-color-subtle); text-align: center; }
+.value-mapping-editor .value-mapping-suggestions li > small {
+  justify-self: start;
+  padding: 1px 8px;
+  color: var(--rv-color-warning);
+  font-size: 12px;
+  background: var(--rv-color-warning-soft);
+  border-radius: 999px;
+}
+.value-mapping-editor .value-mapping-suggestions li > button { min-height: 30px; padding: 0 12px; font-size: var(--rv-font-size-sm); }
+
+@media (max-width: 760px) {
+  .mapping-step .mapping-workspace-context { grid-template-columns: minmax(0, 1fr); align-items: stretch; }
+  .mapping-step .mapping-workspace-arrow { display: none; }
+  .mapping-step .mapping-workspace-context > .mapping-table-status { justify-self: start; margin-top: 0; }
+  .mapping-step .mapping-workspace-action-group,
+  .value-mapping-editor .value-mapping-toolbar-group { flex: 1 1 100%; padding-inline: 0; border-inline-start: 0; }
+  .value-mapping-editor .value-mapping-toolbar-group.is-end { margin-inline-start: 0; }
+  .value-mapping-editor .value-mapping-suggestions li { grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1fr); }
+  .value-mapping-editor .value-mapping-suggestions li > small { grid-column: 1; }
+}
