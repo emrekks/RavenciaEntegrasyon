@@ -405,3 +405,27 @@ html body .order-detail-actions-list > button:hover:not(:disabled) { background:
   .app-shell.stitch-shell main .orders-page .order-reference-products > article > div > small + small::before { content: none; }
   .app-shell.stitch-shell main .orders-page .order-reference-products small:has(.model-code-value) { display: none; }
 }
+
+.order-product-unit-price { display: none; }
+
+/* Phone order list, reference order: number + date, buyer, remaining time, then the products with
+   the unit price among their details. The separate price column is gone. Phones only. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-row > .order-reference-grid {
+    grid-template-columns: 30px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "select platform platform"
+      "select number date"
+      "buyer buyer buyer"
+      "delivery delivery delivery"
+      "products products products";
+  }
+  .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-row > .order-reference-grid > .order-reference-meta { display: contents; }
+  .app-shell.stitch-shell main .orders-page .order-reference-meta > .order-reference-platform { grid-area: platform; align-self: center; }
+  .app-shell.stitch-shell main .orders-page .order-reference-meta > .order-number { grid-area: number; align-self: center; margin: 0; }
+  .app-shell.stitch-shell main .orders-page .order-reference-meta > small:nth-of-type(1) { grid-area: date; align-self: center; margin: 0; }
+  .app-shell.stitch-shell main .orders-page .order-reference-meta > .order-reference-delivery { grid-area: delivery; grid-column: 1 / -1; margin: 4px -12px 8px; padding: 8px 12px; }
+  .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-row > .order-reference-grid > .order-reference-buyer { grid-area: buyer; padding: 8px 0 6px; }
+  .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-row > .order-reference-grid > .order-reference-prices { display: none; }
+  .app-shell.stitch-shell main .orders-page .order-product-unit-price { display: block; }
+}
