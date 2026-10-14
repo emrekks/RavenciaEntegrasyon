@@ -61,8 +61,10 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
                    percentile_cont(0.95) WITHIN GROUP (ORDER BY run.seconds) AS "P95DurationSeconds"
             FROM integration.job_attempts attempt
             JOIN integration.jobs job ON job."Id" = attempt."JobId"
-            CROSS JOIN LATERAL (SELECT CASE WHEN attempt."AttemptNumber" = 1 AND job."AttemptCount" <= 1
-                THEN GREATEST(0, EXTRACT(EPOCH FROM attempt."StartedAt" - job."AvailableAt"))::double precision END AS seconds) wait
+            -- Only first attempts whose job still carries the original AvailableAt: a retry moves it
+            -- past the attempt start, which would otherwise count as a zero wait.
+            CROSS JOIN LATERAL (SELECT CASE WHEN attempt."AttemptNumber" = 1 AND job."AttemptCount" <= 1 AND job."AvailableAt" <= attempt."StartedAt"
+                THEN EXTRACT(EPOCH FROM attempt."StartedAt" - job."AvailableAt")::double precision END AS seconds) wait
             CROSS JOIN LATERAL (SELECT EXTRACT(EPOCH FROM attempt."CompletedAt" - attempt."StartedAt")::double precision AS seconds) run
             WHERE attempt."TenantId" = {tenantId} AND attempt."StartedAt" >= {since}
             GROUP BY job."JobType"
