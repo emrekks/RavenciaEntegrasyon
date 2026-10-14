@@ -305,3 +305,15 @@
   /* Cargo logos keep a 20px height in the cards now that they have no badge. */
   .app-shell.stitch-shell main :is(.order-reference-row, .return-reference-row, .invoice-reference-row) .cargo-provider-icon.cargo-provider-icon { width: auto; max-width: 96px; height: 20px; max-height: none; }
 }
+/* Orders filters on phones, shorter: search on its own row, platform + sort side by side, date range
+   + reset side by side, and the column filter chips in a single scrolling row. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .orders-page .orders-control-bar { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 12px; }
+  .app-shell.stitch-shell main .orders-page .orders-control-bar > .order-search { grid-column: 1 / -1; }
+  .app-shell.stitch-shell main .orders-page .orders-control-bar > .orders-filter-reset { min-height: 40px; align-self: end; }
+  .app-shell.stitch-shell main .orders-page .orders-control-bar :is(input, select, .platform-multi-select-trigger, .date-range-picker-trigger) { min-height: 40px; font-size: 13px; }
+  .app-shell.stitch-shell main .orders-page .orders-control-bar :is(.orders-control-label, .platform-multi-select-label, .date-range-picker-label, label > span:first-child) { font-size: 12px; }
+  .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-head { display: flex; flex-wrap: nowrap; gap: 8px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+  .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-head::-webkit-scrollbar { display: none; }
+  .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-head > * { flex: 0 0 auto; min-width: 0; }
+}
