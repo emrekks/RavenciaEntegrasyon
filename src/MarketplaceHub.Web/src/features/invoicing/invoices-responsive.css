@@ -272,3 +272,11 @@
   .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-row { column-gap: 0; }
   .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-row > :is(.invoice-reference-products, .invoice-reference-shipment, .invoice-reference-status, .invoice-reference-actions) { border-top: 1px solid var(--rv-color-border); }
 }
+
+/* Invoice card header: the cell already has 12px side padding, so no extra right margin — number,
+   date and amount share the same right edge. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-order .invoice-order-number { margin-right: 0; }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-order > div:not(.order-reference-platform) > small:first-of-type { margin-right: 0; }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-amount { padding-right: 12px; }
+}
