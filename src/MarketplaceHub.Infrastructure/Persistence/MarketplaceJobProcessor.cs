@@ -2426,15 +2426,13 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         }
         catch (JsonException) { return false; }
 
-        // Stock reservations for n11 orders are projected once the n11 stock
-        // flow is enabled; until then orders are read without touching stock.
         if (!string.IsNullOrWhiteSpace(externalOrderId))
         {
             TrackRequest();
             var single = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"n11-order-get:{externalOrderId}"), externalOrderId.Trim(), cancellationToken);
             if (!single.IsSuccess) { TrackResultFailure(single.Error); throw JobProcessingException.FromAdapter(single.Error!); }
             TrackReceived();
-            await UpsertOrders(tenantId, connectionId, [single.Value!], cancellationToken, projectReservations: false);
+            await UpsertOrders(tenantId, connectionId, [single.Value!], cancellationToken);
             return true;
         }
 
@@ -2458,7 +2456,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 foreach (var _ in result.Value!.Items) TrackReceived();
                 foreach (var issue in result.Value.Issues ?? [])
                     await RecordIssue(tenantId, $"n11-order-contract:{connectionId}:{issue.Identity}:{issue.Code}", issue.Code, issue.Message, cancellationToken);
-                await UpsertOrders(tenantId, connectionId, result.Value.Items, cancellationToken, projectReservations: false);
+                await UpsertOrders(tenantId, connectionId, result.Value.Items, cancellationToken);
                 page = result.Value.HasMore ? result.Value.NextCursor : null;
             } while (page is not null && !cancellationToken.IsCancellationRequested);
 
