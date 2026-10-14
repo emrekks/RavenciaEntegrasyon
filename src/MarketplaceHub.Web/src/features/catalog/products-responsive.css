@@ -105,9 +105,10 @@
   .app-shell.stitch-shell main .products-page .product-toolbar > .order-search { grid-column: 1 / -1; order: -1; }
   .app-shell.stitch-shell main .products-page .product-toolbar > .bulk-menu-shell { order: 1; }
 }
-/* Product create/edit on phones: grid columns may shrink below their content (they used to grow
-   to the widest toolbar and made the page 523px wide), and section headers wrap their actions. */
-@media (max-width: 760px) {
+/* Product create/edit on phones and tablets: grid columns may shrink below their content (they
+   grew to the widest toolbar: 523px on a phone, 7px too wide on a tablet), and section headers
+   wrap their actions. */
+@media (max-width: 1100px) {
   .app-shell.stitch-shell main .product-add-page,
   .app-shell.stitch-shell main .product-add-page .product-creation-workspace { grid-template-columns: minmax(0, 1fr); }
   .app-shell.stitch-shell main .product-add-page > *,
