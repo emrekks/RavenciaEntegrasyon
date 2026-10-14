@@ -467,6 +467,83 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task UpdateProductAsync_WhenVariantIdsToDeleteAreSent_RemovesThemWithTheirStockAndKeepsTheRest()
+    {
+        var tenant = NewTenant("variant-delete");
+        var product = new Product
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            Title = $"Variant delete {Guid.NewGuid():N}",
+            Description = "Variant delete test",
+            DefaultListPrice = 0m,
+            DefaultSalePrice = 0m,
+            CreatedAt = fixture.Now,
+            UpdatedAt = fixture.Now,
+            Version = 1
+        };
+        ProductVariant NewVariant(int order)
+        {
+            var code = $"DEL-{order}-{Guid.NewGuid():N}";
+            return new ProductVariant
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenant.Id,
+                ProductId = product.Id,
+                SortOrder = order,
+                Sku = code,
+                SkuNormalized = code,
+                OptionSignature = $"Beden={order}",
+                CreatedAt = fixture.Now,
+                UpdatedAt = fixture.Now,
+                Version = 1
+            };
+        }
+        var kept = NewVariant(0);
+        var removed = NewVariant(1);
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.Products.Add(product);
+        db.ProductVariants.AddRange(kept, removed);
+        db.InventoryItems.AddRange(
+            new InventoryItem { Id = Guid.CreateVersion7(), TenantId = tenant.Id, VariantId = kept.Id, LocationCode = "MAIN", OnHand = 5, Available = 5 },
+            new InventoryItem { Id = Guid.CreateVersion7(), TenantId = tenant.Id, VariantId = removed.Id, LocationCode = "MAIN", OnHand = 3, Available = 3 });
+        await db.SaveChangesAsync();
+
+        var service = new CatalogService(
+            db,
+            null!,
+            new ConfigurationBuilder().Build(),
+            fixture.TimeProvider,
+            new MemoryCache(new MemoryCacheOptions()));
+
+        var blocked = await service.UpdateProductAsync(
+            tenant.Id,
+            product.Id,
+            product.Version,
+            new UpdateProductCommand(product.Title, product.Description, null, null, VariantIdsToDelete: [kept.Id, removed.Id]),
+            CancellationToken.None);
+        Assert.False(blocked.Succeeded);
+
+        var updated = await service.UpdateProductAsync(
+            tenant.Id,
+            product.Id,
+            product.Version,
+            new UpdateProductCommand(product.Title, product.Description, null, null, VariantIdsToDelete: [removed.Id]),
+            CancellationToken.None);
+        Assert.True(updated.Succeeded, updated.Error?.Message);
+        Assert.Equal(kept.Id, Assert.Single(updated.Value!.Variants).Id);
+
+        db.ChangeTracker.Clear();
+        Assert.False(await db.ProductVariants.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.Id == removed.Id));
+        Assert.False(await db.InventoryItems.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.VariantId == removed.Id));
+        Assert.True(await db.InventoryItems.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.VariantId == kept.Id));
+
+        await transaction.RollbackAsync();
+    }
+
+    [PostgreSqlFact]
     public async Task ReceiveAsync_WhenSameWebhookArrivesConcurrently_CreatesOneInboxMessageAndOneJob()
     {
         var tenant = NewTenant("webhook");

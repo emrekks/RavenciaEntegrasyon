@@ -129,7 +129,7 @@ public sealed record CreateProductCommand(string Title, string Description, Guid
 public sealed record BulkProductStatusCommand(IReadOnlyList<Guid> ProductIds, string Status);
 public sealed record BulkProductDeleteCommand(IReadOnlyList<Guid> ProductIds);
 // Variant ekleme append-only'dir: envanter veya dış listeye bağlı mevcut satış satırları sessizce silinmez.
-public sealed record UpdateProductCommand(string Title, string Description, Guid? BrandId, Guid? CategoryId, IReadOnlyList<ProductAttributeCommand>? Attributes = null, IReadOnlyList<CreateVariantCommand>? VariantsToCreate = null, IReadOnlyList<UpdateVariantCommand>? VariantUpdates = null, string? Status = null, decimal? DefaultListPrice = null, decimal? DefaultSalePrice = null);
+public sealed record UpdateProductCommand(string Title, string Description, Guid? BrandId, Guid? CategoryId, IReadOnlyList<ProductAttributeCommand>? Attributes = null, IReadOnlyList<CreateVariantCommand>? VariantsToCreate = null, IReadOnlyList<UpdateVariantCommand>? VariantUpdates = null, string? Status = null, decimal? DefaultListPrice = null, decimal? DefaultSalePrice = null, IReadOnlyList<Guid>? VariantIdsToDelete = null);
 public sealed record UpsertListingProfileCommand(string? TitleOverride, string? DescriptionOverride, string? ExternalCategoryId, string? ExternalBrandId, int? DeliveryTimeDays, bool Enabled);
 
 public interface ICatalogService

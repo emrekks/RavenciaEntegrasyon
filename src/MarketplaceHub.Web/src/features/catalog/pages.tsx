@@ -2245,6 +2245,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const pointerDraggedVariantRef = useRef<string | null>(null)
   const pointerDragSourceRef = useRef<HTMLDivElement | null>(null)
   const pointerDragIdRef = useRef<number | null>(null)
+  const [removedVariantIds, setRemovedVariantIds] = useState<string[]>([])
   const [variantPlatformPricing, setVariantPlatformPricing] = useState<{ rowKey: string; platform: VariantPlatformStatus } | null>(null)
   const [variantPlatformPricingDraft, setVariantPlatformPricingDraft] = useState<ChannelPricingDraft>({ listPrice: '', salePrice: '' })
   const [variantPlatformPricingSaving, setVariantPlatformPricingSaving] = useState(false)
@@ -2482,7 +2483,16 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     const attributeIds = resolveVariantSyncAttributeIds(variantAttributeIds, bulkOptionSyncSelection, allIds)
     if (generateVariants(attributeIds, true)) setBulkOptionSyncOpen(false)
   }
-  function clearVariants() { setVariantRows([]); const message = 'Oluşan varyant satırları temizlendi.'; setNotice(message); showFeedback(message, 'success') }
+  function clearVariants() {
+    const persistedIds = new Set(productToEdit.data?.variants.map(variant => variant.id) ?? [])
+    const clearedSavedIds = variantRows.filter(row => persistedIds.has(row.key)).map(row => row.key)
+    setRemovedVariantIds(current => [...new Set([...current, ...clearedSavedIds])])
+    setVariantRows([])
+    const message = clearedSavedIds.length
+      ? `Varyant satırları temizlendi. Kaydedince ${clearedSavedIds.length} kayıtlı varyant panelden silinir; pazaryerlerindeki ilanlara dokunulmaz.`
+      : 'Oluşan varyant satırları temizlendi.'
+    setNotice(message); showFeedback(message, 'success')
+  }
   function updateVariantRow(keyValue: string, field: keyof VariantDraft, value: string) { setVariantRows(rows => rows.map(row => row.key !== keyValue ? row : { ...row, [field]: field === 'stock' || field === 'salePrice' || field === 'listPrice' || field === 'costPrice' ? Number(value || 0) : value })) }
   function updateVariantMedia(keyValue: string, values: string[]) { setVariantRows(rows => rows.map(row => row.key !== keyValue ? row : { ...row, mediaRefs: values })) }
   function reorderVariants(sourceKey: string, targetKey: string) {
@@ -3178,7 +3188,10 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
 
   function rowsForSubmit(requireCompleteCatalog = true) {
     if (requireCompleteCatalog && variantAttributeIds.length && !variantRows.length) throw new Error('Varyant özellikleri seçili. Önce “Ürünleri ekle” ile varyantları oluşturun.')
-    if (editProductId && !variantRows.length) return []
+    if (editProductId && !variantRows.length) {
+      if (removedVariantIds.length) throw new Error('Tüm kayıtlı varyantlar temizlendi. Kaydetmeden önce “Ürünleri ekle” ile yeni varyant satırları oluşturun; ürünün en az bir varyantı kalmalıdır.')
+      return []
+    }
     if (variantRows.length) return variantRows
     const generatedDefaults = automaticBarcodeGeneration ? buildVariantGenerationDefaults({ baseSku: form.baseSku || form.modelCode || form.title, modelCode: form.modelCode, sequence: 1, automaticBarcodes: true, fallbackSalePrice, fallbackListPrice }) : null
     return [{ key: crypto.randomUUID(), optionSignature: 'Tek Ürün', options: {}, attributeValueIds: {}, sku: generatedDefaults?.sku ?? (form.baseSku || form.modelCode || form.title || 'URUN').trim().replace(/\s+/g, '-').toLocaleUpperCase('tr-TR'), barcode: generatedDefaults?.barcode ?? form.barcode, stock: initialStock, salePrice: generatedDefaults?.salePrice ?? fallbackSalePrice, listPrice: generatedDefaults?.listPrice ?? fallbackListPrice, costPrice: fallbackCostPrice, mediaRefs: [] }]
@@ -3318,6 +3331,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           defaultListPrice: Number(form.listPrice || 0),
           defaultSalePrice: Number(form.salePrice || 0),
           ...(shouldPersistAttributes ? { attributes: globalAttributes } : {}),
+          variantIdsToDelete: removedVariantIds.filter(id => existingVariantIds.has(id) && !rows.some(row => row.key === id)),
           variantsToCreate: rows.filter(row => !existingVariantIds.has(row.key)).map(variantPayload),
           variantUpdates: rows.filter(row => existingVariantIds.has(row.key)).map(row => ({
             id: row.key,
@@ -3441,6 +3455,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       const updateSummary = platformUpdate ? ` Seçilen ${platformUpdate.connectionIds.length} platform için ${platformUpdate.includeProductInformation ? 'ürün bilgisi ve fiyat-stok' : 'fiyat-stok'} güncelleme işi kuyruğa alındı.` : ''
       const versionRetrySummary = productVersionRetryUsed ? ' Daha güncel kayıt sürümüyle güvenli şekilde tekrar denendi.' : ''
       const message = `${editProductId ? 'Ürün güncellendi.' : `${completed.join(', ')} kaydedildi.`}${versionRetrySummary}${updateSummary}${warnings.length ? ` Yayın uyarısı: ${warnings.join(' ')}` : ''}`
+      setRemovedVariantIds([])
       setNotice(createOnly ? 'Ürün oluşturuldu. Ürün sayfası açılıyor.' : message)
       await client.invalidateQueries({ queryKey: ['products'] })
       if (editProductId) {

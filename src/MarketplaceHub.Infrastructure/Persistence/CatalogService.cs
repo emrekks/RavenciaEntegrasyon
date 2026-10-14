@@ -967,9 +967,19 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         // whenever status is present; otherwise a save that only changes the
         // product status leaves its variants on their previous status.
         var familyVariantProductIds = await ProductFamilyProductIdsAsync(tenantId, product, cancellationToken);
-        var existingVariants = variantsToCreate.Count > 0 || variantUpdates.Count > 0 || command.Status is not null
+        var variantIdsToDelete = (command.VariantIdsToDelete ?? []).Distinct().ToList();
+        var existingVariants = variantsToCreate.Count > 0 || variantUpdates.Count > 0 || variantIdsToDelete.Count > 0 || command.Status is not null
             ? await db.ProductVariants.Where(x => x.TenantId == tenantId && familyVariantProductIds.Contains(x.ProductId)).ToListAsync(cancellationToken)
             : [];
+        if (variantIdsToDelete.Count > 0)
+        {
+            if (variantIdsToDelete.Any(deleteId => existingVariants.All(existing => existing.Id != deleteId))) return Invalid<ProductView>("variantIdsToDelete", "Silinecek varyant bu ürün ailesinde bulunamadı.");
+            if (variantUpdates.Any(update => variantIdsToDelete.Contains(update.Id))) return Invalid<ProductView>("variantIdsToDelete", "Aynı varyant hem güncellenip hem silinemez.");
+            if (existingVariants.Count(existing => !variantIdsToDelete.Contains(existing.Id)) + variantsToCreate.Count < 1) return Invalid<ProductView>("variantIdsToDelete", "Ürünün en az bir varyantı kalmalıdır; silmeden önce yeni varyant oluşturun.");
+            var deletingInventoryIds = await db.InventoryItems.AsNoTracking().Where(x => x.TenantId == tenantId && variantIdsToDelete.Contains(x.VariantId)).Select(x => x.Id).ToArrayAsync(cancellationToken);
+            if (deletingInventoryIds.Length > 0 && await db.ReturnStockDispositions.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && deletingInventoryIds.Contains(x.InventoryItemId), cancellationToken))
+                return Conflict<ProductView>("VARIANT_DELETE_BLOCKED", "Varyant iade stok hareketine bağlı olduğu için silinemiyor.");
+        }
         foreach (var update in variantUpdates)
         {
             var existing = existingVariants.SingleOrDefault(variant => variant.Id == update.Id);
@@ -1039,9 +1049,9 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             if (optionValidation is not null) return ServiceResult<ProductView>.Fail(optionValidation.Code, optionValidation.Message, optionValidation.Status, optionValidation.FieldErrors);
             var normalizedSkus = variantsToCreate.Select(x => Normalize(x.Sku)).ToArray();
             if (normalizedSkus.Any(string.IsNullOrWhiteSpace) || normalizedSkus.Distinct().Count() != normalizedSkus.Length) return Invalid<ProductView>("variantsToCreate", "SKU boş veya tekrarlı olamaz.");
-            if (await db.ProductVariants.AnyAsync(x => x.TenantId == tenantId && normalizedSkus.Contains(x.SkuNormalized), cancellationToken)) return Conflict<ProductView>("SKU_CONFLICT_REVIEW_REQUIRED", "SKU başka bir varyantla çakışıyor; otomatik birleştirme yapılmadı.");
+            if (await db.ProductVariants.AnyAsync(x => x.TenantId == tenantId && normalizedSkus.Contains(x.SkuNormalized) && !variantIdsToDelete.Contains(x.Id), cancellationToken)) return Conflict<ProductView>("SKU_CONFLICT_REVIEW_REQUIRED", "SKU başka bir varyantla çakışıyor; otomatik birleştirme yapılmadı.");
             var normalizedBarcodes = variantsToCreate.Where(x => !string.IsNullOrWhiteSpace(x.Barcode)).Select(x => Normalize(x.Barcode!)).ToArray();
-            if (normalizedBarcodes.Distinct().Count() != normalizedBarcodes.Length || await db.ProductVariants.AnyAsync(x => x.TenantId == tenantId && x.BarcodeNormalized != null && normalizedBarcodes.Contains(x.BarcodeNormalized), cancellationToken)) return Conflict<ProductView>("BARCODE_CONFLICT_REVIEW_REQUIRED", "Barkod başka bir varyantla çakışıyor; otomatik birleştirme yapılmadı.");
+            if (normalizedBarcodes.Distinct().Count() != normalizedBarcodes.Length || await db.ProductVariants.AnyAsync(x => x.TenantId == tenantId && x.BarcodeNormalized != null && normalizedBarcodes.Contains(x.BarcodeNormalized) && !variantIdsToDelete.Contains(x.Id), cancellationToken)) return Conflict<ProductView>("BARCODE_CONFLICT_REVIEW_REQUIRED", "Barkod başka bir varyantla çakışıyor; otomatik birleştirme yapılmadı.");
 
             var globalAssignments = command.Attributes ?? await db.ProductAttributeAssignments.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == id && x.VariantId == null).Select(x => new ProductAttributeCommand(x.AttributeId, x.ValueId, x.TextValue, x.NumberValue, x.BooleanValue, x.SortOrder)).ToListAsync(cancellationToken);
             if (command.CategoryId is Guid categoryId)
@@ -1068,6 +1078,76 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             await PersistVariantOptionsAsync(tenantId, id, newVariants, variantsToCreate, cancellationToken);
             await EnsureMainInventoryAsync(tenantId, newVariants, cancellationToken);
         }
+        await using var variantPurgeTransaction = variantIdsToDelete.Count > 0 && db.Database.CurrentTransaction is null ? await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken) : null;
+        if (variantIdsToDelete.Count > 0)
+        {
+            var purgeIds = variantIdsToDelete.ToArray();
+            await db.Database.ExecuteSqlInterpolatedAsync($$"""
+                CREATE TEMP TABLE IF NOT EXISTS purge_variant_ids ("Id" uuid PRIMARY KEY) ON COMMIT DROP;
+                TRUNCATE purge_variant_ids;
+                INSERT INTO purge_variant_ids ("Id") SELECT unnest({{purgeIds}});
+
+                -- Sipariş geçmişi korunur; yalnızca silinen varyantla canlı bağlantı kaldırılır.
+                UPDATE sales.order_lines SET "VariantId"=NULL
+                WHERE "TenantId"={{tenantId}} AND "VariantId" IN (SELECT "Id" FROM purge_variant_ids);
+
+                DELETE FROM catalog.import_decisions
+                WHERE "TenantId"={{tenantId}}
+                  AND "CandidateId" IN (SELECT c."Id" FROM catalog.import_match_candidates c WHERE c."TenantId"={{tenantId}} AND c."VariantId" IN (SELECT "Id" FROM purge_variant_ids));
+                DELETE FROM catalog.import_match_candidates c
+                WHERE c."TenantId"={{tenantId}} AND c."VariantId" IN (SELECT "Id" FROM purge_variant_ids);
+                DELETE FROM catalog.field_provenance f
+                WHERE f."TenantId"={{tenantId}} AND f."VariantId" IN (SELECT "Id" FROM purge_variant_ids);
+                DELETE FROM catalog.external_identifier_aliases a
+                WHERE a."TenantId"={{tenantId}} AND a."EntityType"='VARIANT' AND a."LocalId" IN (SELECT "Id" FROM purge_variant_ids);
+
+                DELETE FROM inventory.channel_price_history h
+                USING inventory.channel_offers o, purge_variant_ids v
+                WHERE h."TenantId"={{tenantId}} AND h."OfferId"=o."Id" AND o."VariantId"=v."Id";
+                DELETE FROM inventory.channel_offers o
+                USING purge_variant_ids v
+                WHERE o."TenantId"={{tenantId}} AND o."VariantId"=v."Id";
+                DELETE FROM inventory.channel_inventory_observations o
+                USING purge_variant_ids v
+                WHERE o."TenantId"={{tenantId}} AND o."VariantId"=v."Id";
+                DELETE FROM inventory.stock_reservations r
+                USING inventory.inventory_items i, purge_variant_ids v
+                WHERE r."TenantId"={{tenantId}} AND r."InventoryItemId"=i."Id" AND i."VariantId"=v."Id";
+                DELETE FROM inventory.stock_ledger_entries l
+                USING inventory.inventory_items i, purge_variant_ids v
+                WHERE l."TenantId"={{tenantId}} AND l."InventoryItemId"=i."Id" AND i."VariantId"=v."Id";
+                DELETE FROM inventory.inventory_items i
+                USING purge_variant_ids v
+                WHERE i."TenantId"={{tenantId}} AND i."VariantId"=v."Id";
+
+                DELETE FROM catalog.marketplace_listing_states s
+                USING purge_variant_ids v
+                WHERE s."TenantId"={{tenantId}} AND s."VariantId"=v."Id";
+                DELETE FROM catalog.marketplace_variant_links l
+                USING purge_variant_ids v
+                WHERE l."TenantId"={{tenantId}} AND l."VariantId"=v."Id";
+                DELETE FROM catalog.channel_media_order o
+                USING catalog.product_media m, purge_variant_ids v
+                WHERE o."TenantId"={{tenantId}} AND o."MediaId"=m."Id" AND m."VariantId"=v."Id";
+                DELETE FROM catalog.product_media m
+                USING purge_variant_ids v
+                WHERE m."TenantId"={{tenantId}} AND m."VariantId"=v."Id";
+                DELETE FROM catalog.product_attribute_assignments a
+                USING purge_variant_ids v
+                WHERE a."TenantId"={{tenantId}} AND a."VariantId"=v."Id";
+                DELETE FROM catalog.variant_option_values x
+                USING purge_variant_ids v
+                WHERE x."TenantId"={{tenantId}} AND x."VariantId"=v."Id";
+                DELETE FROM catalog.product_variants pv
+                USING purge_variant_ids v
+                WHERE pv."TenantId"={{tenantId}} AND pv."Id"=v."Id";
+                """, cancellationToken);
+            foreach (var removed in existingVariants.Where(variant => variantIdsToDelete.Contains(variant.Id)).ToList())
+            {
+                db.Entry(removed).State = EntityState.Detached;
+                existingVariants.Remove(removed);
+            }
+        }
         var productStatus = command.Status == "ACTIVE" ? ProductStatus.Active : (command.Status == "ARCHIVED" ? ProductStatus.Archived : ProductStatus.Draft);
         product.Title = command.Title.Trim(); product.Description = command.Description.Trim(); product.CategoryId = command.CategoryId; product.BrandId = command.BrandId;
         if (command.DefaultListPrice is decimal defaultListPrice) product.DefaultListPrice = defaultListPrice;
@@ -1085,7 +1165,9 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             db.ProductAttributeAssignments.AddRange(command.Attributes.Select(x => Assignment(tenantId, id, null, x)));
         }
         await MarkMarketplaceLinksDirtyAsync(tenantId, id, cancellationToken);
-        await db.SaveChangesAsync(cancellationToken); return await GetProductAsync(tenantId, id, cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
+        if (variantPurgeTransaction is not null) await variantPurgeTransaction.CommitAsync(cancellationToken);
+        return await GetProductAsync(tenantId, id, cancellationToken);
     }
 
     public async Task<ServiceResult<ProductView>> ArchiveProductAsync(Guid tenantId, Guid id, long expectedVersion, CancellationToken cancellationToken)
