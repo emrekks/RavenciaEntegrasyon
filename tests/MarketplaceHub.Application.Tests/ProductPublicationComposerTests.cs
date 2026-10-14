@@ -18,6 +18,33 @@ public sealed class ProductPublicationComposerTests
     }
 
     [Fact]
+    public void ValueMapping_WithSeveralTrendyolValues_UsesTheLatestVerifiedOne()
+    {
+        static MarketplaceHub.Domain.AttributeValueMapping Mapping(string externalId, DateTimeOffset? verifiedAt, string id) => new()
+        {
+            Id = Guid.Parse(id),
+            ExternalId = externalId,
+            Status = "VERIFIED",
+            VerifiedAt = verifiedAt
+        };
+        var older = DateTimeOffset.Parse("2026-10-01T10:00:00Z");
+        var newer = DateTimeOffset.Parse("2026-10-10T10:00:00Z");
+
+        Assert.Equal(1015677L, ProductPublicationComposer.ChooseExternalValue([
+            Mapping("1393", older, "01990000-0000-7000-8000-000000000002"),
+            Mapping("1015677", newer, "01990000-0000-7000-8000-000000000001")]));
+        // Same verification time: the later created (time-ordered) mapping wins.
+        Assert.Equal(1393L, ProductPublicationComposer.ChooseExternalValue([
+            Mapping("1015677", newer, "01990000-0000-7000-8000-000000000001"),
+            Mapping("1393", newer, "01990000-0000-7000-8000-000000000002")]));
+        // A non-numeric external id is skipped instead of hiding a usable mapping.
+        Assert.Equal(1393L, ProductPublicationComposer.ChooseExternalValue([
+            Mapping("bad", newer, "01990000-0000-7000-8000-000000000003"),
+            Mapping("1393", older, "01990000-0000-7000-8000-000000000002")]));
+        Assert.Null(ProductPublicationComposer.ChooseExternalValue([]));
+    }
+
+    [Fact]
     public void PublicationImageUrl_AcceptsPublicHttpsAddress()
     {
         Assert.True(ProductPublicationComposer.IsPublicHttpsUrl("https://cdn.example.com/product.jpg"));

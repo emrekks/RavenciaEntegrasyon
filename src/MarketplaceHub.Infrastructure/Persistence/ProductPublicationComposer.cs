@@ -95,9 +95,9 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
                 continue;
             }
             var valueScope = $"{categoryMapping.ExternalId}/{attributeMapping.ExternalId}";
-            var valueMapping = await db.AttributeValueMappings.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == valueId && x.ScopeExternalId == valueScope && x.Status == "VERIFIED", cancellationToken);
-            if (valueMapping is null || !await db.ReferenceSnapshots.AsNoTracking().AnyAsync(snapshot => snapshot.TenantId == tenantId && snapshot.ConnectionId == connectionId && snapshot.Id == valueMapping.SnapshotId && snapshot.ResourceType == "ATTRIBUTE_VALUES" && snapshot.ScopeExternalId == valueScope && snapshot.IsCurrent, cancellationToken)) return Fail("ATTRIBUTE_VALUE_MAPPING_REQUIRED", $"'{remote.Name}' değeri güncel Trendyol değer snapshot'ında eşlenmemiş.");
-            if (!await db.ReferenceItems.AsNoTracking().AnyAsync(item => item.TenantId == tenantId && item.SnapshotId == valueMapping.SnapshotId && item.ResourceType == "ATTRIBUTE_VALUES" && item.ExternalId == valueMapping.ExternalId && item.IsActive, cancellationToken)) return Fail("ATTRIBUTE_VALUE_MAPPING_REQUIRED", $"'{remote.Name}' değer eşlemesi snapshot içinde bulunamadı.");
+            var valueMappings = await VerifiedValueMappingsAsync(tenantId, connectionId, valueScope, valueId, cancellationToken);
+            if (valueMappings.InCurrentSnapshot == 0) return Fail("ATTRIBUTE_VALUE_MAPPING_REQUIRED", $"'{remote.Name}' değeri güncel Trendyol değer snapshot'ında eşlenmemiş.");
+            if (valueMappings.Usable.Count == 0) return Fail("ATTRIBUTE_VALUE_MAPPING_REQUIRED", $"'{remote.Name}' değer eşlemesi snapshot içinde bulunamadı.");
         }
 
         var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId && x.Status != ProductStatus.Archived).OrderBy(x => x.Id).ToListAsync(cancellationToken);
@@ -285,10 +285,49 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
     private async Task<ServiceResult<long>> ExternalValueAsync(Guid tenantId, Guid connectionId, string categoryExternalId, string attributeExternalId, Guid localValueId, string label, CancellationToken cancellationToken)
     {
         var scope = $"{categoryExternalId}/{attributeExternalId}";
-        var mapping = await db.AttributeValueMappings.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == localValueId && x.ScopeExternalId == scope && x.Status == "VERIFIED", cancellationToken);
-        if (mapping is null || !long.TryParse(mapping.ExternalId, NumberStyles.None, CultureInfo.InvariantCulture, out var value)) return ServiceResult<long>.Fail("ATTRIBUTE_VALUE_MAPPING_REQUIRED", $"'{label}' için doğrulanmış Trendyol değer eşlemesi yok. Eşleştirme Ayarları'ndan bu panel değerini bir Trendyol değeriyle eşleyin.", 422);
-        return ServiceResult<long>.Ok(value);
+        var mappings = await VerifiedValueMappingsAsync(tenantId, connectionId, scope, localValueId, cancellationToken);
+        // Prefer mappings that are valid in the current snapshot, the same ones the readiness check accepts.
+        return ChooseExternalValue(mappings.Usable.Count > 0 ? mappings.Usable : mappings.All) is { } value
+            ? ServiceResult<long>.Ok(value)
+            : ServiceResult<long>.Fail("ATTRIBUTE_VALUE_MAPPING_REQUIRED", $"'{label}' için doğrulanmış Trendyol değer eşlemesi yok. Eşleştirme Ayarları'ndan bu panel değerini bir Trendyol değeriyle eşleyin.", 422);
     }
+
+    private sealed record ValueMappingCandidates(IReadOnlyList<AttributeValueMapping> All, int InCurrentSnapshot, IReadOnlyList<AttributeValueMapping> Usable);
+
+    // Verified mappings of one panel value in one scope, plus the ones that are in the current
+    // value snapshot and point at an active Trendyol value.
+    private async Task<ValueMappingCandidates> VerifiedValueMappingsAsync(Guid tenantId, Guid connectionId, string scope, Guid localValueId, CancellationToken cancellationToken)
+    {
+        var all = await db.AttributeValueMappings.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == localValueId && x.ScopeExternalId == scope && x.Status == "VERIFIED")
+            .ToListAsync(cancellationToken);
+        if (all.Count == 0) return new(all, 0, []);
+        var currentSnapshotIds = await db.ReferenceSnapshots.AsNoTracking()
+            .Where(snapshot => snapshot.TenantId == tenantId && snapshot.ConnectionId == connectionId && snapshot.ResourceType == "ATTRIBUTE_VALUES" && snapshot.ScopeExternalId == scope && snapshot.IsCurrent)
+            .Select(snapshot => snapshot.Id)
+            .ToListAsync(cancellationToken);
+        var current = all.Where(mapping => currentSnapshotIds.Contains(mapping.SnapshotId)).ToList();
+        if (current.Count == 0) return new(all, 0, []);
+        var snapshotIds = current.Select(mapping => mapping.SnapshotId).Distinct().ToArray();
+        var externalIds = current.Select(mapping => mapping.ExternalId).Distinct().ToArray();
+        var active = (await db.ReferenceItems.AsNoTracking()
+                .Where(item => item.TenantId == tenantId && snapshotIds.Contains(item.SnapshotId) && item.ResourceType == "ATTRIBUTE_VALUES" && externalIds.Contains(item.ExternalId) && item.IsActive)
+                .Select(item => new { item.SnapshotId, item.ExternalId })
+                .ToListAsync(cancellationToken))
+            .Select(item => (item.SnapshotId, item.ExternalId))
+            .ToHashSet();
+        return new(all, current.Count, current.Where(mapping => active.Contains((mapping.SnapshotId, mapping.ExternalId))).ToList());
+    }
+
+    // One panel value may be mapped to several Trendyol values in the same scope (for example a
+    // value name Trendyol lists twice). Only one can be sent, so the most recently verified mapping
+    // — the user's latest choice — wins; ids are time-ordered (UUIDv7) and break ties. Before, the
+    // single-row lookup threw and the publish job ended in manual review.
+    internal static long? ChooseExternalValue(IEnumerable<AttributeValueMapping> mappings) => mappings
+        .OrderByDescending(mapping => mapping.VerifiedAt ?? DateTimeOffset.MinValue)
+        .ThenByDescending(mapping => mapping.Id)
+        .Select(mapping => long.TryParse(mapping.ExternalId, NumberStyles.None, CultureInfo.InvariantCulture, out var value) ? value : (long?)null)
+        .FirstOrDefault(value => value is not null);
 
     private static AttributeMapping SelectMappingForLocal(IReadOnlyList<AttributeMapping> mappings, IReadOnlyList<ReferenceItem> remoteAttributes) => mappings
         .OrderBy(mapping => IsWebColorOptionName(remoteAttributes.FirstOrDefault(item => item.ExternalId == mapping.ExternalId)?.Name) ? 1 : 0)

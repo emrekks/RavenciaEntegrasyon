@@ -4481,11 +4481,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         {
             if (!remoteByValue.TryGetValue(localValue.NormalizedValue, out var remoteValue)) continue;
 
-            var existing = db.AttributeValueMappings.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == localValue.Id && x.ScopeExternalId == valueScope)
-                ?? await db.AttributeValueMappings.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == localValue.Id && x.ScopeExternalId == valueScope, cancellationToken);
             // A saved custom mapping takes precedence over the exact-name
-            // default and is intentionally never overwritten by a sync.
-            if (existing is not null) continue;
+            // default and is intentionally never overwritten by a sync. A value
+            // may have several mappings in a scope, so this is an existence check.
+            if (db.AttributeValueMappings.Local.Any(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == localValue.Id && x.ScopeExternalId == valueScope)
+                || await db.AttributeValueMappings.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == localValue.Id && x.ScopeExternalId == valueScope, cancellationToken)) continue;
 
             db.AttributeValueMappings.Add(new AttributeValueMapping
             {
@@ -4664,9 +4664,18 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         CancellationToken cancellationToken)
     {
         var valueScope = $"{categoryContext.ExternalCategoryId}/{webColor.Remote.ExternalId}";
-        var mapping = db.AttributeValueMappings.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == localColorValue.Id && x.ScopeExternalId == valueScope && x.Status == "VERIFIED")
-            ?? await db.AttributeValueMappings.AsNoTracking().FirstOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == localColorValue.Id && x.ScopeExternalId == valueScope && x.Status == "VERIFIED", cancellationToken);
-        if (mapping is not null && webColor.Values.Any(value => value.ExternalId == mapping.ExternalId)) return mapping.ExternalId;
+        // Several mappings may exist for one colour; the latest verified one that is still a valid
+        // Web Color value wins (the same rule the publication composer uses).
+        var mapping = db.AttributeValueMappings.Local
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == localColorValue.Id && x.ScopeExternalId == valueScope && x.Status == "VERIFIED")
+            .Concat(await db.AttributeValueMappings.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == localColorValue.Id && x.ScopeExternalId == valueScope && x.Status == "VERIFIED")
+                .ToListAsync(cancellationToken))
+            .Where(candidate => webColor.Values.Any(value => value.ExternalId == candidate.ExternalId))
+            .OrderByDescending(candidate => candidate.VerifiedAt ?? DateTimeOffset.MinValue)
+            .ThenByDescending(candidate => candidate.Id)
+            .FirstOrDefault();
+        if (mapping is not null) return mapping.ExternalId;
 
         var exact = webColor.Values.FirstOrDefault(value => NormalizeCatalogKey(value.Name, 320) == NormalizeCatalogKey(localColorValue.Value, 320));
         if (exact is not null) return exact.ExternalId;
@@ -4775,13 +4784,35 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var valueScope = $"{categoryContext.ExternalCategoryId}/{mapped.Remote.ExternalId}";
         if (remoteValue is not null)
         {
-            var mapping = db.AttributeValueMappings.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == valueScope && x.ExternalId == remoteValue.ExternalId && x.Status == "VERIFIED")
-                ?? await db.AttributeValueMappings.AsNoTracking().FirstOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == valueScope && x.ExternalId == remoteValue.ExternalId && x.Status == "VERIFIED", cancellationToken);
-            if (mapping is not null)
+            // One Trendyol value may be mapped to several panel values. The import picks one
+            // deterministically: the panel value named like the Trendyol value, otherwise the most
+            // recently verified mapping (before, an unordered query picked any of them).
+            var mappings = db.AttributeValueMappings.Local
+                .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == valueScope && x.ExternalId == remoteValue.ExternalId && x.Status == "VERIFIED")
+                .Concat(await db.AttributeValueMappings.AsNoTracking()
+                    .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == valueScope && x.ExternalId == remoteValue.ExternalId && x.Status == "VERIFIED")
+                    .ToListAsync(cancellationToken))
+                .GroupBy(mapping => mapping.LocalId)
+                .Select(group => group.OrderByDescending(mapping => mapping.VerifiedAt ?? DateTimeOffset.MinValue).ThenByDescending(mapping => mapping.Id).First())
+                .ToList();
+            if (mappings.Count > 0)
             {
-                var mappedValue = db.AttributeValues.Local.FirstOrDefault(x => x.TenantId == tenantId && x.Id == mapping.LocalId && x.AttributeId == mapped.Definition.Id && x.IsActive)
-                    ?? await db.AttributeValues.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == mapping.LocalId && x.AttributeId == mapped.Definition.Id && x.IsActive, cancellationToken);
-                if (mappedValue is not null) return mappedValue;
+                var localIds = mappings.Select(mapping => mapping.LocalId).ToArray();
+                var mappedValues = db.AttributeValues.Local
+                    .Where(x => x.TenantId == tenantId && localIds.Contains(x.Id) && x.AttributeId == mapped.Definition.Id && x.IsActive)
+                    .ToList();
+                var trackedIds = mappedValues.Select(x => x.Id).ToHashSet();
+                mappedValues.AddRange(await db.AttributeValues.AsNoTracking()
+                    .Where(x => x.TenantId == tenantId && localIds.Contains(x.Id) && !trackedIds.Contains(x.Id) && x.AttributeId == mapped.Definition.Id && x.IsActive)
+                    .ToListAsync(cancellationToken));
+                var remoteKey = NormalizeCatalogKey(remoteValue.Name, 320);
+                var chosen = mappedValues.FirstOrDefault(value => value.NormalizedValue == remoteKey)
+                    ?? mappings
+                        .OrderByDescending(mapping => mapping.VerifiedAt ?? DateTimeOffset.MinValue)
+                        .ThenByDescending(mapping => mapping.Id)
+                        .Select(mapping => mappedValues.FirstOrDefault(value => value.Id == mapping.LocalId))
+                        .FirstOrDefault(value => value is not null);
+                if (chosen is not null) return chosen;
             }
         }
 
