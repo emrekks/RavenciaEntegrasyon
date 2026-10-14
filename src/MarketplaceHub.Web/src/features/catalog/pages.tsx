@@ -5,6 +5,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { ApiRequestError, hubApi, loadAllPages, type CursorPage } from '../../shared/api'
 import { PlatformMark } from '../../shared/platform-mark'
 import { Pagination, UiIcon, type UiIconName } from '../../shared/components'
+import { MobileFilterShell } from '../../shared/MobileFilterShell'
 import { NoticeToast } from '../../shared/components/NoticeToast'
 import { sanitizeRichText } from '../../shared/security/sanitizeHtml'
 import { productStatusLabel, productStatusTone, statusLabel } from '../../shared/status-labels'
@@ -1341,8 +1342,8 @@ export function ProductsPage() {
 
   return <Page className="products-page" title="Ürünler" eyebrow="Katalog" action={<div className="products-page-actions page-heading-actions"><button type="button" className="button-link product-import-trigger" onClick={openProductImport}><UiIcon name="download" /> Platformdan Ürün Aktar</button><Link className="button-link product-create-trigger" to="/products/new"><UiIcon name="plus" /> Yeni Ürün Ekle</Link></div>}>
     <div className="product-metrics metrics"><article className="product-metric-total"><span className="product-metric-icon" aria-hidden="true"><UiIcon name="bag" /></span><small>Toplam Ürün</small><strong>{summaryQuery.isLoading ? '—' : summaryQuery.data?.totalCount ?? 0}</strong></article><article className="product-metric-active"><span className="product-metric-icon" aria-hidden="true"><UiIcon name="circleCheck" /></span><small>Aktif Ürün</small><strong>{summaryQuery.isLoading ? '—' : summaryQuery.data?.activeCount ?? 0}</strong></article><article className="product-metric-empty"><span className="product-metric-icon" aria-hidden="true"><UiIcon name="alert" /></span><small>Stoksuz Ürün</small><strong>{summaryQuery.isLoading ? '—' : summaryQuery.data?.outOfStockCount ?? 0}</strong></article><button type="button" className="product-metric-button product-metric-low" onClick={() => setLowStockOpen(true)} aria-haspopup="dialog"><span className="product-metric-icon" aria-hidden="true"><UiIcon name="warehouse" /></span><small>Düşük Stoklu</small><strong>{summaryQuery.isLoading ? '—' : summaryQuery.data?.lowStockCount ?? 0}</strong></button></div>
-    <div className="product-toolbar">
-      <div className="bulk-menu-shell" ref={bulkMenuRef}>
+    <MobileFilterShell className="product-toolbar" activeCount={(search.trim() ? 1 : 0) + (status ? 1 : 0) + (platform ? 1 : 0) + (stock ? 1 : 0)} onClear={() => { setSearch(''); setStatus(''); setPlatform(''); setStock('') }}>
+      <div data-mfs-keep className="bulk-menu-shell" ref={bulkMenuRef}>
         <button type="button" className="bulk-action" aria-label={selectedProductIds.length > 0 ? `Toplu İşlemler, ${selectedProductCardCount} kart seçili` : 'Toplu İşlemler'} aria-expanded={bulkOpen} aria-haspopup="menu" aria-controls={bulkOpen ? 'products-bulk-action-menu' : undefined} onClick={() => setBulkOpen(v => !v)}>
           <span className="bulk-action-label">Toplu İşlemler</span>
           {selectedProductIds.length > 0 && <span className="bulk-action-count">{selectedProductCardCount}</span>}
@@ -1372,7 +1373,7 @@ export function ProductsPage() {
           </div>
         )}
       </div>
-      <label className="order-search"><UiIcon name="search" /><input aria-label="Ürün ara" placeholder="SKU veya Barkod Ara..." value={search} onChange={event => setSearch(event.target.value)} /></label>
+      <label className="order-search" data-mfs-search><UiIcon name="search" /><input aria-label="Ürün ara" placeholder="SKU veya Barkod Ara..." value={search} onChange={event => setSearch(event.target.value)} /></label>
       <select aria-label="Ürün durumu" value={status} onChange={event => setStatus(event.target.value)}><option value="">Tüm Durumlar</option><option value="ACTIVE">{productStatusLabel('ACTIVE')}</option><option value="DRAFT">{productStatusLabel('DRAFT')}</option><option value="ARCHIVED">{productStatusLabel('ARCHIVED')}</option></select>
       <div className="product-platform-filter" ref={platformFilterRef}>
         <button type="button" className={`product-platform-filter-trigger${platformFilterOpen ? ' is-open' : ''}${platform ? ' has-selection' : ''}`} aria-label="Platform filtresi" aria-expanded={platformFilterOpen} aria-haspopup="menu" aria-controls={platformFilterOpen ? 'products-platform-filter-menu' : undefined} onClick={() => setPlatformFilterOpen(value => !value)}>
@@ -1389,7 +1390,7 @@ export function ProductsPage() {
         </div>}
       </div>
       <select aria-label="Stok filtresi" value={stock} onChange={event => setStock(event.target.value)}><option value="">Stok Durumu</option><option value="OUT">Stoksuz</option><option value="LOW">Düşük stok</option><option value="OK">Yeterli stok</option></select>
-    </div>
+    </MobileFilterShell>
     {selectedProductIds.length > 0 && hasMoreProductsToSelect && <div className={`product-selection-banner${allProductsSelected ? ' is-all' : ''}`} role="status">
       <div className="product-selection-summary" aria-label={allProductsSelected ? `Tüm ${selectedProductCardCount.toLocaleString('tr-TR')} ürün kartı seçildi.` : `${selectedProductCardCount.toLocaleString('tr-TR')} ürün kartı seçildi.`}><span className="product-selection-count" aria-hidden="true">{selectedProductCardCount.toLocaleString('tr-TR')}</span><div><strong>{allProductsSelected ? 'Tüm ürün kartları seçildi.' : 'ürün kartı seçildi.'}</strong>{allProductsSelected && <span>{selectedProductIds.length.toLocaleString('tr-TR')} katalog kaydı toplu işlemlere dahil.</span>}</div></div>
       {allProductsSelected ? <button type="button" className="secondary" onClick={() => { setSelectedProductIds([]); setSelectedProductCache({}); setAllProductsSelected(false) }}>Seçimi temizle</button> : <button type="button" onClick={() => void selectAllFilteredProducts()} disabled={selectingAllProducts}>{selectingAllProducts ? 'Tüm sayfalar seçiliyor…' : `Tüm ${totalCount.toLocaleString('tr-TR')} kaydı seç`}</button>}

@@ -11,6 +11,7 @@ import { resolveInvoiceTab } from '../../shared/dashboard-operational-links'
 import { PlatformMark } from '../../shared/platform-mark'
 import { PlatformMultiSelect } from '../../shared/platform-multi-select'
 import { DateRangePicker } from '../../shared/DateRangePicker'
+import { MobileFilterShell } from '../../shared/MobileFilterShell'
 import { invoiceProviderForEnvironment, isInvoiceCreationActionVisible, isInvoiceCreationAvailable } from './invoice-creation-availability'
 import { InvoiceSortSelect } from './InvoiceSortSelect'
 import { InvoiceWorkspacePreviewModal, type InvoicePreviewTarget } from './InvoiceWorkspacePreviewModal'
@@ -503,13 +504,13 @@ export function InvoicesPage() {
     </div>
     <div className="invoice-reference-filter-shell">
       <Tabs className="invoice-reference-tabs" ariaLabel="Fatura görünümleri" value={tab} onChange={selectTab} items={tabs.map(([value, label]) => ({ value, label, count: !pageData ? undefined : value === 'ALL' ? counts.all : value === 'UNINVOICED' ? counts.unInvoiced : value === 'INVOICED' ? counts.invoiced : value === 'DUE_SOON' ? counts.dueSoon : counts.hidden }))} />
-      <section className="invoice-reference-filters" aria-label="Fatura filtreleri">
-        <label className="invoice-reference-search"><span>Fatura Ara</span><span className="invoice-reference-search-control"><UiIcon name="search" size={18} /><input aria-label="Fatura Ara" placeholder="Sipariş, müşteri, fatura veya takip no ara…" value={search} onChange={event => setSearch(event.target.value)} /></span></label>
+      <MobileFilterShell as="section" className="invoice-reference-filters" aria-label="Fatura filtreleri" activeCount={(search.trim() ? 1 : 0) + (selectedPlatforms?.length && selectedPlatforms.length < platformOptions.length ? 1 : 0) + (shipmentStatusFilter !== 'ALL' ? 1 : 0) + (cargoFilter !== 'ALL' ? 1 : 0) + (invoiceStatusFilter !== 'ALL' ? 1 : 0) + (invoiceActionFilter !== 'ALL' ? 1 : 0) + (dateFrom || dateTo ? 1 : 0) + (sortOrder !== 'ORDER_DESC' ? 1 : 0)} onClear={() => { setSearch(''); setSelectedPlatforms(null); setShipmentStatusFilter('ALL'); setCargoFilter('ALL'); setInvoiceStatusFilter('ALL'); setInvoiceActionFilter('ALL'); setDateFrom(''); setDateTo(''); setColumnFilterOpen(null); setSortOrder('ORDER_DESC') }}>
+        <label className="invoice-reference-search" data-mfs-search><span>Fatura Ara</span><span className="invoice-reference-search-control"><UiIcon name="search" size={18} /><input aria-label="Fatura Ara" placeholder="Sipariş, müşteri, fatura veya takip no ara…" value={search} onChange={event => setSearch(event.target.value)} /></span></label>
         <PlatformMultiSelect label="Platform" options={platformOptions} selectedCodes={selectedPlatforms} onChange={setSelectedPlatforms} />
         <DateRangePicker className="invoice-reference-date-filter" from={dateFrom} to={dateTo} onChange={range => { setDateFrom(range.from); setDateTo(range.to) }} label="Sipariş Tarihi" />
         <InvoiceSortSelect value={sortOrder} onChange={setSortOrder} />
         {hasInvoiceFilters && <button type="button" className="secondary invoice-reference-filter-reset" onClick={() => { setSearch(''); setSelectedPlatforms(null); setShipmentStatusFilter('ALL'); setCargoFilter('ALL'); setInvoiceStatusFilter('ALL'); setInvoiceActionFilter('ALL'); setDateFrom(''); setDateTo(''); setColumnFilterOpen(null) }}>Filtreleri temizle</button>}
-      </section>
+      </MobileFilterShell>
     </div>
     <section className="invoice-reference-workspace">
       <header><div><h2>{activeTabLabel}</h2><p>Filtreleme sonuçları: {pageData?.totalCount ?? 0} paket</p></div><label className="invoice-reference-page-size">Sayfa başına<select aria-label="Sayfa başına fatura" value={pageSize} onChange={event => setPageSize(Number(event.target.value))}>{[20, 50, 100, 200].map(value => <option key={value} value={value}>{value}</option>)}</select></label></header>

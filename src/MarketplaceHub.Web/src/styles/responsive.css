@@ -181,3 +181,48 @@
   html body .return-detail-backdrop { align-items: center; padding: 16px; }
   html body .return-detail-backdrop > .return-detail-modal { max-height: calc(100dvh - 32px); border-radius: var(--rv-radius-lg); border-width: 1px; }
 }
+
+/* Mobile filter shell: on phones every filter bar collapses to its search field plus one filter
+   button; the button opens all fields as a full-screen "Filtrele" sheet with Temizle / Filtrele.
+   Desktop renders the original bar untouched. */
+.mfs > .mfs-header, .mfs > .mfs-open, .mfs > .mfs-footer { display: none; }
+@media (max-width: 760px) {
+  body.mobile-filters-open { overflow: hidden; }
+
+  /* Closed: [search][filter button], optional kept action (bulk menu) on its own row. */
+  html body .app-shell.stitch-shell main .mfs:not(.is-open) { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 10px; }
+  html body .app-shell.stitch-shell main .mfs:not(.is-open) > :not([data-mfs-search]):not(.mfs-open):not([data-mfs-keep]) { display: none !important; }
+  html body .app-shell.stitch-shell main .mfs:not(.is-open) > [data-mfs-search] { grid-column: 1; order: 1; min-width: 0; margin: 0; }
+  html body .app-shell.stitch-shell main .mfs:not(.is-open) > [data-mfs-search] > span:first-child:not(.order-search-control):not(.invoice-reference-search-control) { display: none; }
+  html body .app-shell.stitch-shell main .mfs:not(.is-open) > [data-mfs-keep] { grid-column: 1 / -1; order: 3; }
+  html body .app-shell.stitch-shell main .mfs:not(.is-open) > .mfs-open {
+    position: relative; display: inline-grid; grid-column: 2; order: 2; width: 44px; height: 44px; min-height: 44px; place-items: center; padding: 0;
+    color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md);
+  }
+  html body .app-shell.stitch-shell main .mfs > .mfs-open > b {
+    position: absolute; top: -6px; right: -6px; display: grid; min-width: 18px; height: 18px; place-items: center; padding: 0 5px;
+    color: #fff; background: var(--rv-color-primary); border-radius: 999px; font-size: 11px; font-weight: 700; line-height: 1;
+  }
+
+  /* Open: full-screen sheet, one field per row. */
+  html body .app-shell.stitch-shell main .mfs.is-open {
+    position: fixed; inset: 0; z-index: calc(var(--rv-z-modal) + 5); display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 14px;
+    margin: 0; padding: 0 16px 96px; overflow-y: auto; background: var(--rv-color-surface); border: 0; border-radius: 0; box-shadow: none;
+  }
+  html body .app-shell.stitch-shell main .mfs.is-open > * { grid-column: 1 / -1; min-width: 0; }
+  html body .app-shell.stitch-shell main .mfs.is-open > .mfs-header {
+    position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 12px; margin: 0 -16px; padding: 12px 16px;
+    background: var(--rv-color-surface); border-bottom: 1px solid var(--rv-color-border);
+  }
+  html body .app-shell.stitch-shell main .mfs.is-open > .mfs-header > strong { font-size: 16px; font-weight: 600; }
+  html body .app-shell.stitch-shell main .mfs.is-open .mfs-back { display: inline-grid; width: 40px; height: 40px; min-height: 40px; place-items: center; padding: 0; color: var(--rv-color-ink); background: transparent; border: 0; }
+  html body .app-shell.stitch-shell main .mfs.is-open > .mfs-open { display: none; }
+  html body .app-shell.stitch-shell main .mfs.is-open > .mfs-footer {
+    position: fixed; right: 0; bottom: 0; left: 0; z-index: 3; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: var(--rv-color-surface); border-top: 1px solid var(--rv-color-border);
+  }
+  html body .app-shell.stitch-shell main .mfs.is-open > .mfs-footer > button { min-height: 46px; font-weight: 600; }
+
+  /* The footer replaces each page's own reset / apply buttons while on a phone. */
+  html body .app-shell.stitch-shell main .mfs :is(.orders-filter-reset, .invoice-reference-filter-reset, .return-filter-actions) { display: none !important; }
+}
