@@ -535,7 +535,7 @@ export function JobsPage({ me }: { me: Me }) {
         </div>
       </div>
       {list.isLoading ? <p className="jobs-reference-state">İşlemler yükleniyor…</p> : list.isError ? <div role="alert" className="jobs-reference-state jobs-reference-state-error">İşlem listesi alınamadı.</div> : <>
-        <div className="jobs-reference-table-scroll"><table className="jobs-reference-table"><thead><tr><th>İşlem Türü</th><th>Durum</th><th>Deneme</th><th>Zaman</th><th>Correlation ID</th><th>Aksiyon</th></tr></thead><tbody>
+        <div className="jobs-reference-table-scroll"><table className="jobs-reference-table"><thead><tr><th>İşlem Türü</th><th>Durum</th><th>Deneme</th><th>Zaman</th><th>Correlation ID</th></tr></thead><tbody>
           {pageJobs.map(job => {
             const presentation = jobPresentation(job.jobType)
             const time = formatJobTime(job.createdAt)
@@ -546,7 +546,6 @@ export function JobsPage({ me }: { me: Me }) {
               <td className="jobs-reference-attempt">{job.attemptCount} / {job.maxAttempts}</td>
               <td><div className="jobs-reference-time"><strong>{time.time}</strong><small>{time.day}</small><small>{job.attemptCount > 0 ? `Son deneme ${jobAttemptDuration(job)}` : 'Çalışma başlamadı'}</small></div></td>
               <td><span className="jobs-reference-correlation">{job.correlationId}</span></td>
-              <td><button type="button" className="jobs-reference-row-action" aria-label={`${presentation.title} ayrıntısını aç`} onClick={event => { event.stopPropagation(); setSelectedId(job.id) }}><UiIcon name="chevronRight" /></button></td>
             </tr>
           })}
           {filtered.length === 0 && <tr><td className="jobs-reference-empty" colSpan={6}>Seçili kategori ve filtrelerle eşleşen kayıt bulunamadı.</td></tr>}
