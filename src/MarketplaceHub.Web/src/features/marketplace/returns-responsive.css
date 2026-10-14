@@ -299,3 +299,17 @@
   .app-shell.stitch-shell main .returns-page .return-reference-workspace > header { margin: 0 0 6px; }
   .app-shell.stitch-shell main .returns-page { gap: 6px; }
 }
+
+/* Multi-product returns on phones/tablets: the desktop row template (one fixed row per product, shared
+   with the price column through a subgrid) made the products overlap. Rows size to their content here,
+   products stack and are separated by a line. */
+@media (max-width: 1180px) {
+  .app-shell.stitch-shell main .returns-page .return-reference-table > .return-reference-row { grid-template-rows: none !important; grid-auto-rows: auto; }
+  .app-shell.stitch-shell main .returns-page .return-reference-row > .return-row-divider { display: none; }
+  .app-shell.stitch-shell main .returns-page .return-reference-row > .order-reference-products {
+    display: grid; grid-template-rows: none; grid-auto-rows: auto; align-content: start; align-self: start; row-gap: 0; height: auto; min-height: 0; overflow: visible;
+  }
+  .app-shell.stitch-shell main .returns-page .return-reference-row > .order-reference-products > article { grid-row: auto; height: auto; min-height: 0; padding: 12px 0; }
+  .app-shell.stitch-shell main .returns-page .return-reference-row > .order-reference-products > article:first-child { padding-top: 0; }
+  .app-shell.stitch-shell main .returns-page .return-reference-row > .order-reference-products > article + article { border-top: 1px solid var(--rv-color-border); }
+}
