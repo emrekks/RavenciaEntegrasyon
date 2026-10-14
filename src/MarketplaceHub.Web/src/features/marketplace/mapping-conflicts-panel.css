@@ -1,0 +1,56 @@
+.mapping-conflicts-panel {
+  margin-block: 10px;
+  background: var(--rv-color-surface);
+  border: 1px solid color-mix(in srgb, var(--rv-color-warning) 45%, var(--rv-color-border));
+  border-radius: 10px;
+}
+
+.mapping-conflicts-panel > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.mapping-conflicts-panel > summary span { font-weight: 600; }
+.mapping-conflicts-panel > summary small { color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); }
+.mapping-conflicts-panel[open] > summary { border-bottom: 1px solid var(--rv-color-border); }
+
+.mapping-conflicts-body { display: grid; gap: 16px; max-height: 420px; padding: 12px 14px; overflow-y: auto; }
+.mapping-conflicts-body h4 { margin: 0 0 2px; font-size: var(--rv-font-size-sm); }
+.mapping-conflicts-body p { margin: 0 0 8px; color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); }
+.mapping-conflicts-body ul { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+
+.mapping-conflict-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+.mapping-conflict-head span { color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); }
+
+.mapping-conflict-options { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.mapping-conflict-options button,
+.mapping-conflict-options span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  color: inherit;
+  font: inherit;
+  font-size: var(--rv-font-size-sm);
+  background: var(--rv-color-surface-raised);
+  border: 1px solid var(--rv-color-border);
+  border-radius: 999px;
+}
+.mapping-conflict-options button { cursor: pointer; }
+.mapping-conflict-options button b { color: var(--rv-color-primary); font-weight: 600; }
+.mapping-conflict-options button:hover:not(:disabled) { border-color: var(--rv-color-primary); }
+.mapping-conflict-options em {
+  padding: 0 6px;
+  color: var(--rv-color-primary);
+  font-size: var(--rv-font-size-xs);
+  font-style: normal;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--rv-color-primary) 10%, transparent);
+  border-radius: 999px;
+}
+.mapping-conflict-options small { color: var(--rv-color-muted); }

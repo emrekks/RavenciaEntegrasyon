@@ -2837,6 +2837,43 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task MappingConflicts_ListSameCategoryDuplicatesAndCrossCategoryDifferences()
+    {
+        var tenant = NewTenant("mapping-conflicts");
+        var connection = NewQuestionConnection(tenant);
+        var colourId = Guid.CreateVersion7();
+        var black = new AttributeValue { Id = Guid.CreateVersion7(), TenantId = tenant.Id, AttributeId = colourId, Value = "Siyah", NormalizedValue = "SİYAH", SortOrder = 0, IsActive = true, Version = 1 };
+        var tshirtColours = NewReferenceSnapshot(tenant.Id, connection.Id, "ATTRIBUTE_VALUES", "100/12", fixture.Now, "tshirt-colours");
+        var blouseColours = NewReferenceSnapshot(tenant.Id, connection.Id, "ATTRIBUTE_VALUES", "200/12", fixture.Now, "blouse-colours");
+        AttributeValueMapping Mapping(ReferenceSnapshot snapshot, string externalId) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, SnapshotId = snapshot.Id, LocalId = black.Id, ScopeExternalId = snapshot.ScopeExternalId, ExternalId = externalId, Status = "VERIFIED", VerifiedAt = fixture.Now, Version = 1 };
+
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.PlatformConnections.Add(connection);
+        db.AttributeDefinitions.Add(new AttributeDefinition { Id = colourId, TenantId = tenant.Id, Code = $"COLOUR-{Guid.NewGuid():N}", Name = "Renk", DataType = AttributeDataType.Text, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 });
+        db.AttributeValues.Add(black);
+        db.ReferenceSnapshots.AddRange(tshirtColours, blouseColours);
+        db.ReferenceItems.AddRange(
+            NewReferenceItem(tenant.Id, connection.Id, tshirtColours.Id, "ATTRIBUTE_VALUES", "13", "Siyah"),
+            NewReferenceItem(tenant.Id, connection.Id, tshirtColours.Id, "ATTRIBUTE_VALUES", "14", "Siyah Melanj"),
+            NewReferenceItem(tenant.Id, connection.Id, blouseColours.Id, "ATTRIBUTE_VALUES", "15", "Gece Siyahı"));
+        // T-shirt maps Siyah to both 13 and 14; Bluz maps it to 15.
+        db.AttributeValueMappings.AddRange(Mapping(tshirtColours, "13"), Mapping(tshirtColours, "14"), Mapping(blouseColours, "15"));
+        await db.SaveChangesAsync();
+
+        var conflicts = await new ReferenceDataService(db, fixture.TimeProvider).ListMappingConflictsAsync(tenant.Id, connection.Id, CancellationToken.None);
+
+        Assert.True(conflicts.Succeeded, conflicts.Error?.Message);
+        var same = Assert.Single(conflicts.Value!.SameCategory);
+        Assert.Equal(("100/12", "Siyah"), (same.ScopeExternalId, same.LocalValueName));
+        Assert.Equal(new[] { "Siyah", "Siyah Melanj" }, same.Options.Select(option => option.Name).Order());
+        var cross = Assert.Single(conflicts.Value.CrossCategory);
+        Assert.Equal(3, cross.Options.Count);
+        await transaction.RollbackAsync();
+    }
+
+    [PostgreSqlFact]
     public async Task ConnectionDefault_CoversARequiredAttributeTheProductLeavesEmpty()
     {
         var tenant = NewTenant("attribute-default");

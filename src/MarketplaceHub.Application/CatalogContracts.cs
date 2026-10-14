@@ -233,8 +233,16 @@ public sealed record MappingTemplateFillView(int Attributes, int Values);
 public sealed record ConnectionAttributeDefaultView(string ExternalAttributeId, string AttributeName, string? ExternalValueId, string? ValueName, string? CustomValue, DateTimeOffset UpdatedAt, long Version);
 public sealed record UpsertConnectionAttributeDefaultCommand(string AttributeName, string? ExternalValueId, string? ValueName, string? CustomValue);
 
+// Value mappings to review. SameCategory: one panel value mapped to several marketplace values in
+// one category (only one can be sent). CrossCategory: one panel value mapped to different
+// marketplace values in different categories of the same marketplace attribute.
+public sealed record MappingConflictOptionView(string ExternalId, string Name, long Version, DateTimeOffset? VerifiedAt, int Categories);
+public sealed record MappingConflictView(string ScopeExternalId, string CategoryName, string AttributeName, Guid LocalValueId, string LocalValueName, IReadOnlyList<MappingConflictOptionView> Options, string? TemplateExternalId);
+public sealed record MappingConflictsView(IReadOnlyList<MappingConflictView> SameCategory, IReadOnlyList<MappingConflictView> CrossCategory);
+
 public interface IReferenceDataService
 {
+    Task<ServiceResult<MappingConflictsView>> ListMappingConflictsAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken);
     Task<ServiceResult<IReadOnlyList<ConnectionAttributeDefaultView>>> ListAttributeDefaultsAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken);
     Task<ServiceResult<ConnectionAttributeDefaultView>> UpsertAttributeDefaultAsync(Guid tenantId, Guid connectionId, string externalAttributeId, UpsertConnectionAttributeDefaultCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<bool>> DeleteAttributeDefaultAsync(Guid tenantId, Guid connectionId, string externalAttributeId, CancellationToken cancellationToken);

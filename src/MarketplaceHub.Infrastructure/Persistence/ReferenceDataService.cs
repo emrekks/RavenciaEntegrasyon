@@ -179,6 +179,71 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         return ServiceResult<CatalogMappingView>.Ok(Map(mapping));
     }
 
+    public async Task<ServiceResult<MappingConflictsView>> ListMappingConflictsAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
+    {
+        if (!await VisibleConnectionAsync(tenantId, connectionId, cancellationToken)) return NotFound<MappingConflictsView>();
+        var mappings = await db.AttributeValueMappings.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == "VERIFIED")
+            .Select(x => new { x.LocalId, x.ScopeExternalId, x.ExternalId, x.Version, x.VerifiedAt })
+            .ToListAsync(cancellationToken);
+        var rows = mappings
+            .Select(x => new { x.LocalId, x.ScopeExternalId, x.ExternalId, x.Version, x.VerifiedAt, Category = x.ScopeExternalId.Split('/')[0], Attribute = MappingTemplateStore.AttributeOfValueScope(x.ScopeExternalId) ?? "" })
+            .Where(x => x.Attribute.Length > 0)
+            .ToList();
+        var sameCategory = rows.GroupBy(x => (x.ScopeExternalId, x.LocalId)).Where(group => group.Select(x => x.ExternalId).Distinct().Count() > 1).ToList();
+        var crossCategory = rows.GroupBy(x => (x.Attribute, x.LocalId)).Where(group => group.Select(x => x.ExternalId).Distinct().Count() > 1 && group.Select(x => x.Category).Distinct().Count() > 1).ToList();
+        if (sameCategory.Count == 0 && crossCategory.Count == 0) return ServiceResult<MappingConflictsView>.Ok(new([], []));
+
+        // Names for display: panel values, categories, attributes and values from the current snapshots.
+        var localIds = sameCategory.Select(group => group.Key.LocalId).Concat(crossCategory.Select(group => group.Key.LocalId)).Distinct().ToArray();
+        var localNames = await db.AttributeValues.AsNoTracking().Where(x => x.TenantId == tenantId && localIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.Value, cancellationToken);
+        var scopes = sameCategory.SelectMany(group => group.Select(x => x.ScopeExternalId)).Concat(crossCategory.SelectMany(group => group.Select(x => x.ScopeExternalId))).Distinct().ToArray();
+        var categories = scopes.Select(scope => scope.Split('/')[0]).Distinct().ToArray();
+        var snapshots = await db.ReferenceSnapshots.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.IsCurrent
+                && ((x.ResourceType == "ATTRIBUTE_VALUES" && scopes.Contains(x.ScopeExternalId)) || (x.ResourceType == "CATEGORY_ATTRIBUTES" && categories.Contains(x.ScopeExternalId)) || (x.ResourceType == "CATEGORIES" && x.ScopeExternalId == "")))
+            .Select(x => new { x.Id, x.ResourceType, x.ScopeExternalId })
+            .ToListAsync(cancellationToken);
+        var snapshotIds = snapshots.Select(x => x.Id).ToArray();
+        var conflictRows = sameCategory.SelectMany(group => group).Concat(crossCategory.SelectMany(group => group)).ToList();
+        var valueIds = conflictRows.Select(x => x.ExternalId).Distinct().ToArray();
+        var attributeIds = conflictRows.Select(x => x.Attribute).Distinct().ToArray();
+        var items = await db.ReferenceItems.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && snapshotIds.Contains(x.SnapshotId)
+                && ((x.ResourceType == "CATEGORIES" && categories.Contains(x.ExternalId))
+                    || (x.ResourceType == "CATEGORY_ATTRIBUTES" && attributeIds.Contains(x.ExternalId))
+                    || (x.ResourceType == "ATTRIBUTE_VALUES" && valueIds.Contains(x.ExternalId))))
+            .Select(x => new { x.SnapshotId, x.ExternalId, x.Name })
+            .ToListAsync(cancellationToken);
+        var snapshotById = snapshots.ToDictionary(x => x.Id);
+        var names = items.GroupBy(x => (snapshotById[x.SnapshotId].ResourceType, snapshotById[x.SnapshotId].ScopeExternalId, x.ExternalId)).ToDictionary(group => group.Key, group => group.First().Name);
+        string Name(string resourceType, string scope, string externalId) => names.TryGetValue((resourceType, scope, externalId), out var name) ? name : externalId;
+        var templates = await db.AttributeValueMappingTemplates.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && localIds.Contains(x.LocalValueId))
+            .ToDictionaryAsync(x => (x.ExternalAttributeId, x.LocalValueId), x => x.ExternalValueId, cancellationToken);
+
+        var same = sameCategory.Select(group =>
+        {
+            var (scope, localId) = group.Key;
+            var category = scope.Split('/')[0];
+            var attribute = MappingTemplateStore.AttributeOfValueScope(scope)!;
+            return new MappingConflictView(scope, Name("CATEGORIES", "", category), Name("CATEGORY_ATTRIBUTES", category, attribute), localId, localNames.GetValueOrDefault(localId, ""),
+                group.OrderByDescending(x => x.VerifiedAt).Select(x => new MappingConflictOptionView(x.ExternalId, Name("ATTRIBUTE_VALUES", scope, x.ExternalId), x.Version, x.VerifiedAt, 1)).ToList(),
+                templates.GetValueOrDefault((attribute, localId)));
+        }).OrderBy(x => x.CategoryName).ThenBy(x => x.AttributeName).ThenBy(x => x.LocalValueName).ToList();
+        var cross = crossCategory.Select(group =>
+        {
+            var (attribute, localId) = group.Key;
+            var sample = group.First();
+            return new MappingConflictView("", "", Name("CATEGORY_ATTRIBUTES", sample.Category, attribute), localId, localNames.GetValueOrDefault(localId, ""),
+                group.GroupBy(x => x.ExternalId).OrderByDescending(values => values.Count())
+                    .Select(values => new MappingConflictOptionView(values.Key, Name("ATTRIBUTE_VALUES", values.First().ScopeExternalId, values.Key), 0, values.Max(x => x.VerifiedAt), values.Select(x => x.Category).Distinct().Count()))
+                    .ToList(),
+                templates.GetValueOrDefault((attribute, localId)));
+        }).OrderBy(x => x.AttributeName).ThenBy(x => x.LocalValueName).ToList();
+        return ServiceResult<MappingConflictsView>.Ok(new(same, cross));
+    }
+
     public async Task<ServiceResult<IReadOnlyList<ConnectionAttributeDefaultView>>> ListAttributeDefaultsAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
     {
         if (!await VisibleConnectionAsync(tenantId, connectionId, cancellationToken)) return NotFound<IReadOnlyList<ConnectionAttributeDefaultView>>();
