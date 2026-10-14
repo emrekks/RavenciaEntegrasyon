@@ -836,7 +836,14 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
 
     private async Task<AdapterResult<string>> SendAsync(TrendyolRequestContext context, HttpMethod method, string endpoint, HttpContent? content, CancellationToken cancellationToken, bool includeStoreFrontCode = true, Action<HttpRequestMessage>? configure = null, string? storeFrontCode = "TR")
     {
-        using var request = TrendyolAuthenticationHandler.Create(context, method, endpoint, content, includeStoreFrontCode, storeFrontCode); configure?.Invoke(request); using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken); linked.CancelAfter(RequestTimeout(trendyolOptions.Value.Timeout));
+        using var request = TrendyolAuthenticationHandler.Create(context, method, endpoint, content, includeStoreFrontCode, storeFrontCode); configure?.Invoke(request); using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        // The request timeout measures the exchange with Trendyol only. Waiting for the seller quota
+        // (order reads are spaced 5 s apart and shared by every job) used to count towards it, so
+        // queued reads were cancelled as REMOTE_TIMEOUT before they were ever sent. The timer starts
+        // when the resilience handler releases the request; a long cap still bounds the quota wait.
+        var timeout = RequestTimeout(trendyolOptions.Value.Timeout);
+        linked.CancelAfter(timeout + MaximumQuotaWait);
+        request.Options.Set(TrendyolResilienceHandler.QuotaAcquiredKey, () => linked.CancelAfter(timeout));
         try
         {
             using var response = await clients.CreateClient("Trendyol").SendAsync(request, HttpCompletionOption.ResponseHeadersRead, linked.Token); var retryAfter = response.Headers.RetryAfter?.Delta; var rate = new RateLimitMetadata(null, response.Headers.RetryAfter?.Date, retryAfter); var remoteRequestId = response.Headers.TryGetValues("x-request-id", out var values) ? values.FirstOrDefault() : null;
@@ -847,9 +854,15 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
             }
             return AdapterResult<string>.Success(await response.Content.ReadAsStringAsync(linked.Token), rate);
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { return AdapterResult<string>.Failure(new(AdapterErrorClass.TransientNetwork, "REMOTE_TIMEOUT", "Platform isteği zaman aşımına uğradı.", null, TimeSpan.FromSeconds(5), null)); }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning("Trendyol {Method} {Path} (storefront {StoreFront}) timed out after the quota wait", method.Method, request.RequestUri?.AbsolutePath, includeStoreFrontCode ? storeFrontCode : "none");
+            return AdapterResult<string>.Failure(new(AdapterErrorClass.TransientNetwork, "REMOTE_TIMEOUT", "Platform isteği zaman aşımına uğradı.", null, TimeSpan.FromSeconds(5), null));
+        }
         catch (HttpRequestException) { return AdapterResult<string>.Failure(new(AdapterErrorClass.TransientNetwork, "REMOTE_NETWORK_ERROR", "Platform ağına güvenli bağlantı kurulamadı.", null, TimeSpan.FromSeconds(5), null)); }
     }
+
+    private static readonly TimeSpan MaximumQuotaWait = TimeSpan.FromMinutes(10);
 
     private static TimeSpan RequestTimeout(TimeSpan configured) => configured > TimeSpan.Zero
         ? TimeSpan.FromSeconds(Math.Clamp(configured.TotalSeconds, 5, 300))

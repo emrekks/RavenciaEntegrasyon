@@ -7,6 +7,10 @@ namespace MarketplaceHub.Infrastructure.Adapters.Trendyol;
 
 public sealed class TrendyolResilienceHandler : DelegatingHandler
 {
+    // Invoked once the request has its quota token, right before it is sent; the caller starts the
+    // network timeout there so time spent queueing for the quota is not counted as a timeout.
+    public static readonly HttpRequestOptionsKey<Action> QuotaAcquiredKey = new("MarketplaceHub.Trendyol.QuotaAcquired");
+
     private readonly TrendyolOptions options;
     private readonly TimeProvider timeProvider;
     private readonly TrendyolResilienceState state;
@@ -24,6 +28,9 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
+        // Wait for the quota before taking a concurrency slot, so reads queued behind the order-read
+        // spacing do not hold the slots that product and stock requests need.
+        await WaitForQuotaAsync(request, cancellationToken);
         await state.Concurrency.WaitAsync(cancellationToken);
         var halfOpen = false;
         var resultRecorded = false;
@@ -31,7 +38,7 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
         try
         {
             if (!TryEnterCircuit(circuitKey, out halfOpen, out var circuitRetryAfter)) return CircuitOpenResponse(circuitRetryAfter);
-            await WaitForQuotaAsync(request, cancellationToken);
+            if (request.Options.TryGetValue(QuotaAcquiredKey, out var onQuotaAcquired)) onQuotaAcquired();
             try
             {
                 var response = await base.SendAsync(request, cancellationToken);

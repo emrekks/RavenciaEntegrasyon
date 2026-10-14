@@ -65,6 +65,34 @@ public sealed class TrendyolResilienceHandlerTests
     }
 
     [Fact]
+    public async Task QuotaAcquiredCallback_RunsAfterTheQuotaWaitAndBeforeSending()
+    {
+        var options = Options.Create(new TrendyolOptions
+        {
+            MaxConcurrency = 2,
+            RequestsPerInterval = 100,
+            RequestInterval = TimeSpan.FromMilliseconds(1),
+            OrderRequestsPerInterval = 100,
+            OrderRequestInterval = TimeSpan.FromMinutes(1),
+            OrderRequestMinimumInterval = TimeSpan.FromMilliseconds(120)
+        });
+        using var downstream = new SequenceHandler(HttpStatusCode.OK, HttpStatusCode.OK);
+        using var resilience = new TrendyolResilienceHandler(options, TimeProvider.System, new TrendyolResilienceState(options)) { InnerHandler = downstream };
+        using var invoker = new HttpMessageInvoker(resilience);
+        using var first = new HttpRequestMessage(HttpMethod.Get, "https://unit.test/integration/order/sellers/seller-42/orders/stream");
+        using var second = new HttpRequestMessage(HttpMethod.Get, "https://unit.test/integration/order/sellers/seller-42/orders/stream");
+        var released = DateTimeOffset.MinValue;
+        second.Options.Set(TrendyolResilienceHandler.QuotaAcquiredKey, () => released = DateTimeOffset.UtcNow);
+
+        using var firstResponse = await invoker.SendAsync(first, CancellationToken.None);
+        var queuedAt = DateTimeOffset.UtcNow;
+        using var secondResponse = await invoker.SendAsync(second, CancellationToken.None);
+
+        // The second read waited for the 120 ms spacing; the timeout clock only starts after that.
+        Assert.True(released - queuedAt >= TimeSpan.FromMilliseconds(90));
+    }
+
+    [Fact]
     public void SharedWindowBucket_NeverExceedsTheSlidingWindowLimit()
     {
         var (capacity, perSecond) = SharedRateLimits.ForWindow(30, TimeSpan.FromMinutes(1));
