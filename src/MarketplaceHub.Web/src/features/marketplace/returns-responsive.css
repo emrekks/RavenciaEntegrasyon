@@ -291,3 +291,11 @@
     width: 10px; height: 5px; margin: auto; inset: 0 0 3px 0; border: 0; border-left: 2px solid var(--rv-color-accent); border-bottom: 2px solid var(--rv-color-accent); border-radius: 0; background: none; transform: rotate(-45deg);
   }
 }
+
+/* Returns on phones: the tab strip sits right above the search (no 20px margin), small even gaps. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .returns-page .returns-reference-filter-shell { gap: 6px; margin: 0; }
+  .app-shell.stitch-shell main .returns-page .returns-reference-filter-shell > .return-reference-tabs { margin: 0; }
+  .app-shell.stitch-shell main .returns-page .return-reference-workspace > header { margin: 0 0 6px; }
+  .app-shell.stitch-shell main .returns-page { gap: 6px; }
+}
