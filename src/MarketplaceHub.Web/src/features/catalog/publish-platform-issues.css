@@ -19,6 +19,7 @@
 /* The missing items of a card are explained by the status badge itself: hover or focus it. */
 .publish-platform-fact-publication > dd { position: relative; }
 .publish-issue-tooltip { position: absolute; z-index: 30; top: calc(100% + 8px); right: 0; display: none; width: min(340px, 86vw); padding: 12px 14px; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid color-mix(in srgb, var(--rv-color-danger) 40%, var(--rv-color-border-strong)); border-radius: 10px; box-shadow: 0 14px 32px rgb(0 0 0 / .32); }
+.publish-issue-tooltip[data-placement="top"] { top: auto; bottom: calc(100% + 8px); }
 .publish-platform-status:hover + .publish-issue-tooltip, .publish-platform-status:focus-visible + .publish-issue-tooltip, .publish-issue-tooltip:hover { display: block; }
 .publish-issue-tooltip > strong { display: block; color: var(--rv-color-danger); font-size: 13px; font-weight: 600; }
 .publish-issue-tooltip > ul { display: grid; gap: 8px; margin: 8px 0 0; padding: 0; color: var(--rv-color-muted); font-size: 13px; line-height: 1.5; list-style: none; }
