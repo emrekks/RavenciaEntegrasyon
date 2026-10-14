@@ -492,7 +492,7 @@ export function InvoicesPage() {
   }
   return <section className="content f3 invoices-page reference-invoices-page">
     <div className="page-heading invoices-reference-heading">
-      <div><p className="eyebrow">Mali belgeler</p><h1>Faturalar</h1><p className="lede">Faturaları paket, teslimat ve ödeme bilgileriyle tek çalışma alanında takip edin.</p></div>
+      <div><p className="eyebrow">Mali belgeler</p><h1>Faturalar</h1></div>
       <div className="invoices-reference-heading-actions"><span className="invoice-safety-status"><i aria-hidden="true" /> Manuel işlem güvenli</span><Badge value="DUPLICATE SAFE" /></div>
     </div>
     {message && <NoticeToast key={`${messageKind}:${message}`} kind={messageKind} message={message} onClose={() => setMessageState('')} durationMs={messageKind === 'pending' ? undefined : messageKind === 'info' ? 7000 : 5500} />}
