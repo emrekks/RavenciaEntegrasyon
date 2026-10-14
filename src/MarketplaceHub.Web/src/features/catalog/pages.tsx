@@ -2206,7 +2206,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const navigate = useNavigate()
   const routeState = location.state as { duplicateProductId?: unknown } | null
   const duplicateProductId = typeof routeState?.duplicateProductId === 'string' ? routeState.duplicateProductId : undefined
-  const [error, setError] = useState<unknown>(); const [, setNotice] = useState(''); const [feedback, setFeedback] = useState<OperationFeedback | null>(null); const [submitting, setSubmitting] = useState(false); const [calculateDesi, setCalculateDesi] = useState(false); const [desiCalculatorOpen, setDesiCalculatorOpen] = useState(false)
+  const [error, setError] = useState<unknown>(); const [, setNotice] = useState(''); const [feedback, setFeedback] = useState<OperationFeedback | null>(null); const [submitting, setSubmitting] = useState(false); const [mediaAutoSaveTick, setMediaAutoSaveTick] = useState(0);const [calculateDesi, setCalculateDesi] = useState(false); const [desiCalculatorOpen, setDesiCalculatorOpen] = useState(false)
   const [form, setForm] = useState({ title: '', description: '', brandId: '', categoryId: '', baseSku: '', barcode: '', modelCode: '', weight: '', width: '', length: '', height: '', desi: '1', listPrice: '699.90', salePrice: '549.90', costPrice: '0', currency: 'TRY', vatRate: '10', vatIncluded: 'INCLUDED', initialStock: '0', safetyStock: '0', mediaUrls: '', status: 'ACTIVE' })
   const [attributeSelections, setAttributeSelections] = useState<Record<string, string[]>>({}); const [attributeTextValues, setAttributeTextValues] = useState<Record<string, string>>({}); const [variantAttributeIds, setVariantAttributeIds] = useState<string[]>([]); const [variantRows, setVariantRows] = useState<VariantDraft[]>([]); const [variantFilterSelections, setVariantFilterSelections] = useState<VariantFilterSelections>({}); const [variantFilterOpen, setVariantFilterOpen] = useState(false); const [draggedVariantKey, setDraggedVariantKey] = useState<string | null>(null); const [dragOverVariantKey, setDragOverVariantKey] = useState<string | null>(null); const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]); const [channelPricing, setChannelPricing] = useState<Record<string, ChannelPricingDraft>>({}); const [variantChannelPricing, setVariantChannelPricing] = useState<Record<string, ChannelPricingDraft>>({})
   const [automaticBarcodeGeneration, setAutomaticBarcodeGeneration] = useState(false)
@@ -3156,11 +3156,21 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   function rowMatchesVariantFilters(row: VariantDraft) {
     return filterVariantsByOptions([row], variantFilterGroups, variantFilterSelections, rowMatchesVariantMediaValue).length > 0
   }
+  // Media assignments made in the modal are persisted right away on the edit page;
+  // the effect runs after variantRows state has committed so the save sees the new refs.
+  useEffect(() => {
+    if (!mediaAutoSaveTick || !editProductId) return
+    const form = document.getElementById('product-creation-form') as HTMLFormElement | null
+    const saveButton = form?.querySelector<HTMLButtonElement>('button[data-submit-intent="save"]')
+    if (form && saveButton && !saveButton.disabled) form.requestSubmit(saveButton)
+  }, [mediaAutoSaveTick])
+
   function applyVariantMediaSelection() {
     if (!variantMediaModal) return
     if (variantMediaModal.mode === 'variant') {
       updateVariantMedia(variantMediaModal.rowKey, variantMediaModal.draftRefs)
       setVariantMediaModal(null)
+      setMediaAutoSaveTick(tick => tick + 1)
       showFeedback(variantMediaModal.draftRefs.length ? `${variantMediaModal.draftRefs.length} varyant görseli seçildi.` : 'Varyant görselleri kaldırıldı.', 'success')
       return
     }
@@ -3181,7 +3191,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       const assignment = assignments.find(item => item.matchingRows.some(matchingRow => matchingRow.key === row.key))
       return assignment ? { ...row, mediaRefs: assignment.refs } : row
     }))
-    setVariantMediaModal(null)
+    setVariantMediaModal(null); setMediaAutoSaveTick(tick => tick + 1)
     const message = `${group.name} görsel eşlemesi kaydedildi: ${assignments.length} değer, ${matchingRowCount} varyant satırı.`
     setNotice(message); showFeedback(message, 'success')
   }
@@ -3520,7 +3530,12 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     const hasPanelColorSource = (productToEdit.data?.options ?? []).some(option => isColorOptionName(option.label) && !isWebColorOptionName(option.label))
       || optionRequirements.some(item => isColorOptionName(item.attribute.name) && !isWebColorOptionName(item.attribute.name))
       || variantRows.some(row => variantOptionEntries(row).some(option => isColorOptionName(option.name) && !isWebColorOptionName(option.name)))
-    const addGroup = (group: VariantMediaGroup) => {
+    const addGroup = (source: VariantMediaGroup) => {
+      // Persisted options and stale attribute selections can still list values whose
+      // variants were deleted; only offer values that some variant row still uses.
+      const group = variantRows.length
+        ? { ...source, values: source.values.filter(value => variantRows.some(row => rowMatchesVariantMediaValue(row, source, value))) }
+        : source
       if (hasPanelColorSource && isWebColorOptionName(group.name)) return
       const canonicalName = isColorOptionName(group.name) ? 'Renk' : group.name.trim()
       const name = canonicalName.toLocaleLowerCase('tr-TR')
@@ -3542,7 +3557,10 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     // category requirements. Prefer these IDs/values so imported variants such
     // as “Beden: Tek Ebat” can be targeted even when the current category no
     // longer exposes the original option requirement.
-    for (const option of productToEdit.data?.options ?? []) {
+    // When every variant was cleared the persisted options are stale; the option
+    // selections above on the page are the source of truth then.
+    const persistedOptions = variantRows.length || !removedVariantIds.length ? productToEdit.data?.options ?? [] : []
+    for (const option of persistedOptions) {
       addGroup({ id: `product-option:${option.id}`, name: option.label, values: option.values.map(value => ({ id: value.id, value: value.label })) })
     }
     for (const item of optionRequirements) {
@@ -3565,7 +3583,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       addGroup({ id: `variant-signature:${group.name.toLocaleLowerCase('tr-TR')}`, name: group.name, values: [...group.values].map(([id, value]) => ({ id, value })) })
     }
     return groups
-  }, [attributeSelections, optionRequirements, productToEdit.data?.options, variantRows])
+  }, [attributeSelections, optionRequirements, productToEdit.data?.options, removedVariantIds.length, variantRows])
   const variantFilterGroups = useMemo(() => bulkMediaGroups.filter(group => (isColorOptionName(group.name) || isSizeOptionName(group.name)) && variantRows.some(row => rowOptionValue(row, group).trim())), [bulkMediaGroups, variantRows])
   const variantBulkEditFilterGroups = variantFilterGroups.filter(group => isColorOptionName(group.name) || isSizeOptionName(group.name))
   const variantBulkEditMatchingRows = filterVariantsByOptions(variantRows, variantBulkEditFilterGroups, variantBulkEditFilterSelections, rowMatchesVariantMediaValue)
