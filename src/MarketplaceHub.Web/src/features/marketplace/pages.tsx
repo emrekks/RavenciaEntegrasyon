@@ -28,7 +28,8 @@ import { code128Bars, loadPrintedShippingLabels, markShippingLabelPrinted, print
 import { formatPanelColorValue, usesCustomPanelColorValue } from './color-value-format'
 import { AttributeDefaultsPanel } from './AttributeDefaultsPanel'
 import { MappingConflictsPanel } from './MappingConflictsPanel'
-import { attributeValueMappingNeedsSave, isTemplateFilledRow, visiblePanelValues, normalizeReferenceValueLabel, planDirectReferenceValues, planMissingReferencePanelValues, planReferencePanelMappings, togglePanelValueReferenceSelection, updatePanelValueReferenceSelection, valueMappingRowClassName } from './attribute-value-mapping'
+import { autoMatchScore, valueMatchScore } from '../../shared/value-matching'
+import { attributeValueMappingNeedsSave, isTemplateFilledRow, suggestValueMappings, type ValueMappingSuggestion, visiblePanelValues, normalizeReferenceValueLabel, planDirectReferenceValues, planMissingReferencePanelValues, planReferencePanelMappings, togglePanelValueReferenceSelection, updatePanelValueReferenceSelection, valueMappingRowClassName } from './attribute-value-mapping'
 import { isReferenceSyncJobTerminal, shouldAutoSyncHepsiburadaValues } from './reference-value-sync'
 import { activeMappingConnectionsForPlatform, mappingPlatformDefinitions, mappingPlatformLabel, type MappingPlatformCode } from './mapping-platforms'
 import { resolveAttributeMappingRole } from './mapping-attribute-role'
@@ -2809,6 +2810,7 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
   const referenceKey = ['reference-attribute-values', connectionId, valueScope] as const
   const references = useQuery({ queryKey: referenceKey, queryFn: () => hubApi<ReferenceData>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(externalAttributeId)}/values?connectionId=${encodeURIComponent(connectionId)}`), retry: false, enabled: !customPanelColorValues && !marketplaceAllowsFreeText })
   const mappings = useQuery({ queryKey: ['attribute-value-mappings', connectionId, valueScope], queryFn: () => hubApi<CatalogMapping[]>(`/mappings/attribute-values?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(valueScope)}`), retry: false, enabled: !customPanelColorValues && !marketplaceAllowsFreeText })
+  const [suggestionReview, setSuggestionReview] = useState<ValueMappingSuggestion[]>([])
   const usedValues = useQuery({ queryKey: ['attribute-used-values', attribute.id], queryFn: () => hubApi<string[]>(`/catalog/attributes/${attribute.id}/used-values`), retry: false, staleTime: 60_000, enabled: !customPanelColorValues && !marketplaceAllowsFreeText })
   const sync = useMutation({ mutationFn: () => hubApi<{ jobId: string }>(`/connections/${connectionId}/reference-sync-jobs?resourceType=ATTRIBUTE_VALUES&parentExternalId=${encodeURIComponent(valueScope)}`, { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, body: '{}' }), onSuccess: result => { setSyncJobId(result.jobId); setNotice(`${platformLabel} değer listesi salt-okunur olarak eşitleniyor…`) }, onError: reason => setNotice(reason instanceof Error ? reason.message : 'Değer eşitleme başlatılamadı.') })
   const syncJob = useQuery({ queryKey: ['reference-value-sync-job', syncJobId], queryFn: () => hubApi<{ job: { status: string; lastErrorCode: string | null; lastErrorSummary: string | null } }>(`/jobs/${syncJobId}`, { cache: 'no-store' }), enabled: Boolean(syncJobId), refetchInterval: query => query.state.data && isReferenceSyncJobTerminal(query.state.data.job.status) ? false : 1000, refetchIntervalInBackground: true, retry: 1 })
@@ -2877,6 +2879,7 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
     setSelections({})
     setSelectionsReady(false)
     setInitializedValueScope('')
+    setSuggestionReview([])
   }, [valueScope])
   useEffect(() => {
     if (!mappings.data || initializedValueScope === valueScope) return
@@ -3028,6 +3031,21 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
       setNotice(reason instanceof Error ? `Otomatik eşleme tamamlanamadı: ${reason.message}` : 'Otomatik eşleme tamamlanamadı.')
     } finally { setAutoMapping(false) }
   }
+  // Confidence-based suggestions for the panel values still unmatched: same names, folded letters
+  // and synonyms are selected at once; weaker matches wait in a list for approval. Nothing is saved
+  // until "Tüm eşlemeleri kaydet".
+  function suggestMappings() {
+    const result = suggestValueMappings(unmatchedPanelValues, activeRemoteValues, valueMatchScore, autoMatchScore)
+    if (result.automatic.length) setSelections(current => result.automatic.reduce((next, item) => togglePanelValueReferenceSelection(next, item.externalId, item.localId, allowReusablePanelValues), current))
+    setSuggestionReview(result.review)
+    setNotice(result.automatic.length || result.review.length
+      ? `${result.automatic.length} eşleme yüksek güvenle seçildi${result.review.length ? `, ${result.review.length} öneri onayınızı bekliyor` : ''}. Kalıcı olması için “Tüm eşlemeleri kaydet” seçin.`
+      : 'Eşleşmemiş değerler için güvenilir bir öneri bulunamadı.')
+  }
+  function approveSuggestions(items: readonly ValueMappingSuggestion[]) {
+    setSelections(current => items.reduce((next, item) => assignedPanelValues[item.localId] ? next : togglePanelValueReferenceSelection(next, item.externalId, item.localId, allowReusablePanelValues), current))
+    setSuggestionReview(current => current.filter(item => !items.includes(item)))
+  }
   const closeQuickValueModal = () => { if (quickValueSaving) return; setQuickValueOpen(false); setEditingQuickValue(null) }
   const quickValueModal = quickValueOpen && createPortal(<div className="panel-attribute-modal value-mapping-quick-value-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) closeQuickValueModal() }}><section className="panel-attribute-modal-card panel-attribute-quick-modal-card" role="dialog" aria-modal="true" aria-labelledby="mapping-quick-value-title" onMouseDown={event => event.stopPropagation()}><header><div><strong id="mapping-quick-value-title">{attribute.name}</strong><small>Panel özelliği · bu başlığa yeni değer ekleyin</small></div><button type="button" aria-label="Değer ekleme penceresini kapat" onClick={closeQuickValueModal} disabled={quickValueSaving}><UiIcon name="close" /></button></header><form className="panel-attribute-add-value panel-attribute-quick-add-value" onSubmit={event => { event.preventDefault(); void addQuickValues() }}><input autoFocus value={quickValueDraft} onChange={event => setQuickValueDraft(event.target.value)} placeholder="Yeni değerleri virgülle yazın" aria-label={`${attribute.name} için yeni değerler`} /><button type="submit" disabled={quickValueSaving || !quickValueDraft.trim()}>{quickValueSaving ? 'Ekleniyor…' : '+ Değer ekle'}</button></form><div className="panel-attribute-value-editor">{localValues.length ? localValues.map(value => <div key={value.id}>{editingQuickValue?.id === value.id ? <input autoFocus value={editingQuickValue.value} aria-label={`${value.value} değerini düzenle`} onChange={event => setEditingQuickValue({ id: value.id, value: event.target.value })} /> : <span>{value.value}</span>}<div>{editingQuickValue?.id === value.id ? <><button type="button" aria-label={`${value.value} değerini kaydet`} disabled={quickValueSaving} onClick={() => void updateQuickValue(value.id, editingQuickValue.value, value.sortOrder)}><UiIcon name="check" /></button><button type="button" aria-label="Değer düzenlemeyi iptal et" disabled={quickValueSaving} onClick={() => setEditingQuickValue(null)}><UiIcon name="close" /></button></> : <><button type="button" aria-label={`${value.value} değerini düzenle`} disabled={quickValueSaving} onClick={() => setEditingQuickValue({ id: value.id, value: value.value })}><UiIcon name="edit" /></button><button type="button" aria-label={`${value.value} değerini sil`} disabled={quickValueSaving} onClick={() => void removeQuickValue(value.id)}><UiIcon name="close" /></button></>}</div></div>) : <span className="panel-value-empty">Henüz değer eklenmedi.</span>}</div><footer><button type="button" className="secondary" onClick={closeQuickValueModal} disabled={quickValueSaving}>Kapat</button></footer></section></div>, document.body)
   if (references.isError) return <div className="unknown"><strong>Güncel özellik değerleri snapshot’ı yok</strong><p>Seçili kategori ve özellik için pazar yerinin salt-okunur değer listesini eşitleyin.</p>{notice && <p role="status">{notice}</p>}{syncJob.isError && <p role="alert">Eşitleme işi durumu okunamadı; işlem takibinden iş kaydını kontrol edin.</p>}<div className="value-mapping-heading-actions"><button type="button" className="secondary" disabled={quickValueSaving} onClick={() => setQuickValueOpen(true)}>Hızlı değer oluştur</button><button type="button" disabled={syncBusy} onClick={() => sync.mutate()}>{syncBusy ? 'Eşitleniyor…' : `${platformLabel} değerlerini eşitle`}</button></div>{quickValueModal}</div>
@@ -3040,6 +3058,7 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
         <button type="button" className="secondary" disabled={quickValueSaving || autoMapping || saving} onClick={() => setQuickValueOpen(true)}>Hızlı değer oluştur</button>
         <button type="button" className="secondary" title="Eşlemesi boş pazar yeri değerlerinin adlarıyla panel değerleri oluşturur. Aynı adlı tekrarları tek değer olarak ekler." disabled={!selectionsReady || !missingPanelValues.length || quickValueSaving || autoMapping || saving || syncBusy} onClick={() => void createMissingPanelValues()}>{quickValueSaving ? 'Ekleniyor…' : `Boş değerleri oluştur (${missingPanelValues.length})`}</button>
         <button type="button" className="secondary" title={`Aynı adlı panel ve ${platformLabel} değerlerini eşler.${directPlan.ambiguousCount ? ` Belirsiz ${directPlan.ambiguousCount} eşleşme atlanır.` : ''}`} disabled={!selectionsReady || autoMapping || saving || syncBusy || quickValueSaving || (directMappingWorkCount === 0 && unsavedExternalIds.size === 0)} onClick={() => void mapDirectMatchingValues()}>{autoMapping ? 'Eşleştiriliyor…' : 'Birebir eşleşenleri eşle'}</button>
+        <button type="button" className="secondary" title={`Eşleşmemiş panel değerleri için ${platformLabel} değeri önerir: aynı ad, Türkçe harf farkı ve eş anlamlılar (ör. Black → Siyah) doğrudan seçilir; zayıf benzerlikler onayınıza sunulur.`} disabled={!selectionsReady || autoMapping || saving || syncBusy || !unmatchedPanelValues.length || !activeRemoteValues.length} onClick={suggestMappings}>Önerileri getir</button>
         <button type="button" className="secondary value-mapping-refresh-button" title="Seçili pazar yerinin güncel referans değer listesini yenile" disabled={syncBusy || autoMapping || saving} onClick={() => sync.mutate()}>{syncBusy ? 'Yenileniyor…' : `${platformLabel} listesini yenile`}</button>
         <label className="value-mapping-share" title="Açıkken bu eşlemeler, aynı özelliği listeleyen diğer kategorilere de otomatik uygulanır. Kapalıyken yalnızca bu kategoride kalır.">
           <input type="checkbox" checked={shareWithOtherCategories} onChange={event => setShareWithOtherCategories(event.target.checked)} />
@@ -3069,6 +3088,21 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
         </div>}
       </div>
     })()}
+    {suggestionReview.length > 0 && <div className="value-mapping-suggestions" role="region" aria-label="Onay bekleyen öneriler">
+      <div className="value-mapping-suggestions-head">
+        <strong>Onay bekleyen öneriler ({suggestionReview.length})</strong>
+        <button type="button" onClick={() => approveSuggestions(suggestionReview)}>Tümünü onayla</button>
+        <button type="button" className="secondary" onClick={() => setSuggestionReview([])}>Listeyi kapat</button>
+      </div>
+      <ul>
+        {suggestionReview.map(item => <li key={`${item.localId}:${item.externalId}`}>
+          <span>{item.localLabel}</span><b aria-hidden="true">→</b><strong>{item.remoteName}</strong>
+          <small title="Benzerlik puanı">%{item.score}</small>
+          <button type="button" onClick={() => approveSuggestions([item])}>Onayla</button>
+          <button type="button" className="secondary" onClick={() => setSuggestionReview(current => current.filter(entry => entry !== item))}>Atla</button>
+        </li>)}
+      </ul>
+    </div>}
     <div className="value-mapping-rows">
       {!remoteValues.length && <div className="unknown"><strong>Bu özellik için seçilebilir değer bulunamadı</strong><p>{platformLabel} referans listesi başarıyla okundu ancak kategori özelliği sabit seçenek döndürmedi.</p></div>}
       {remoteValues.map(remoteValue => {

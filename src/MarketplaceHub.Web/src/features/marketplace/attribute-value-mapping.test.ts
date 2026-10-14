@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { attributeValueMappingNeedsSave, hasDirectReferenceValue, isTemplateFilledRow, visiblePanelValues, planDirectReferenceValues, planMissingReferencePanelValues, planReferencePanelMappings, togglePanelValueReferenceSelection, updatePanelValueReferenceSelection, valueMappingRowClassName } from './attribute-value-mapping'
+import { autoMatchScore, valueMatchScore } from '../../shared/value-matching'
+import { attributeValueMappingNeedsSave, hasDirectReferenceValue, isTemplateFilledRow, suggestValueMappings, visiblePanelValues, planDirectReferenceValues, planMissingReferencePanelValues, planReferencePanelMappings, togglePanelValueReferenceSelection, updatePanelValueReferenceSelection, valueMappingRowClassName } from './attribute-value-mapping'
 
 describe('attribute value reference mappings', () => {
   it('matches labels despite whitespace around season separators', () => {
@@ -125,5 +126,17 @@ describe('used panel values filter', () => {
     expect(visiblePanelValues(values, ['siyah'], [], true)).toEqual({ visible: values, hiddenCount: 0 })
     expect(visiblePanelValues(values, [], [], false)).toEqual({ visible: values, hiddenCount: 0 })
     expect(visiblePanelValues(values, undefined, [], false)).toEqual({ visible: values, hiddenCount: 0 })
+  })
+})
+
+describe('value mapping suggestions with confidence', () => {
+  it('selects confident matches at once and leaves weaker ones for approval', () => {
+    const unmatched = [{ id: 'black', value: 'Black' }, { id: 'laci', value: 'Laci' }, { id: 'mor', value: 'Mor' }]
+    const remote = [{ externalId: '1', name: 'Siyah' }, { externalId: '2', name: 'Lacivert' }, { externalId: '3', name: 'Beyaz' }]
+
+    const result = suggestValueMappings(unmatched, remote, valueMatchScore, autoMatchScore)
+
+    expect(result.automatic.map(item => [item.localId, item.externalId, item.score])).toEqual([['black', '1', 90]])
+    expect(result.review.map(item => [item.localId, item.externalId, item.score])).toEqual([['laci', '2', 70]])
   })
 })

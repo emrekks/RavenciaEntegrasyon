@@ -109,6 +109,34 @@ export function attributeValueMappingNeedsSave(
   return Boolean(localId && externalId) && (!existing || existing.localId !== localId || existing.externalId !== externalId || existing.snapshotId !== snapshotId)
 }
 
+export type ValueMappingSuggestion = { localId: string; localLabel: string; externalId: string; remoteName: string; score: number }
+
+// Best marketplace value for each panel value that has none yet. High-confidence ones (same name,
+// folded letters or synonyms: score >= autoScore) can be selected at once; the rest (score >= 50)
+// wait for the user's approval. Nothing is saved here.
+export function suggestValueMappings(
+  unmatched: readonly { id: string; value: string }[],
+  remoteValues: readonly { externalId: string; name: string }[],
+  score: (panelLabel: string, remoteName: string) => number,
+  autoScore: number
+) {
+  const automatic: ValueMappingSuggestion[] = []
+  const review: ValueMappingSuggestion[] = []
+  for (const local of unmatched) {
+    let best: ValueMappingSuggestion | null = null
+    for (const remote of remoteValues) {
+      const value = score(local.value, remote.name)
+      if (value < 50) continue
+      if (!best || value > best.score || (value === best.score && remote.name.length < best.remoteName.length))
+        best = { localId: local.id, localLabel: local.value, externalId: remote.externalId, remoteName: remote.name, score: value }
+    }
+    if (!best) continue
+    if (best.score >= autoScore) automatic.push(best)
+    else review.push(best)
+  }
+  return { automatic, review: review.sort((left, right) => right.score - left.score || left.localLabel.localeCompare(right.localLabel, 'tr-TR')) }
+}
+
 // The value mapping screen lists the panel values products use; values already selected stay
 // visible. When no product uses the attribute yet, nothing is hidden.
 export function visiblePanelValues<T extends { id: string }>(values: readonly T[], usedIds: readonly string[] | undefined, selectedIds: readonly string[], showAll: boolean) {

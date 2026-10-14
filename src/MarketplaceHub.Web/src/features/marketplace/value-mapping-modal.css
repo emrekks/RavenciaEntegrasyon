@@ -95,3 +95,21 @@
   border: 0;
   cursor: pointer;
 }
+/* Confidence-based suggestions waiting for approval */
+.value-mapping-editor .value-mapping-suggestions {
+  display: grid;
+  gap: 8px;
+  margin-block: 8px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--rv-color-primary) 5%, var(--rv-color-surface));
+  border: 1px solid color-mix(in srgb, var(--rv-color-primary) 25%, var(--rv-color-border));
+  border-radius: 8px;
+}
+
+.value-mapping-editor .value-mapping-suggestions-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.value-mapping-editor .value-mapping-suggestions-head strong { margin-inline-end: auto; }
+.value-mapping-editor .value-mapping-suggestions ul { display: grid; gap: 4px; max-height: 220px; margin: 0; padding: 0; overflow-y: auto; list-style: none; }
+.value-mapping-editor .value-mapping-suggestions li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: var(--rv-font-size-sm); }
+.value-mapping-editor .value-mapping-suggestions li b { color: var(--rv-color-muted); font-weight: 400; }
+.value-mapping-editor .value-mapping-suggestions li small { color: var(--rv-color-muted); font-variant-numeric: tabular-nums; }
+.value-mapping-editor .value-mapping-suggestions button { padding: 2px 8px; font-size: var(--rv-font-size-sm); }
