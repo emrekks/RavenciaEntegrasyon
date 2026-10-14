@@ -30,3 +30,10 @@
     height: 16px;
   }
 }
+/* Questions on phones: status chips two to a row; search and filter button share the same side gaps. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .rv-questions-panel .rv-questions-status-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .app-shell.stitch-shell main .rv-questions-panel .rv-questions-status-tabs > button { justify-content: space-between; width: 100%; min-width: 0; padding: 0 10px 0 12px; }
+  .app-shell.stitch-shell main .rv-questions-panel .rv-questions-filters { gap: 12px; }
+  .app-shell.stitch-shell main .rv-questions-panel .mfs:not(.is-open) { margin: 0; padding: 0; background: none; border: 0; }
+}

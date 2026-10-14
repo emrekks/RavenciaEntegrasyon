@@ -12617,3 +12617,7 @@ h1, h2, h3, h4, .dashboard-summary-card-head > span:first-child, :is(.orders-con
 /* The phone filter sheet pieces never show above phone width (responsive.css only loads up to 1100px, so this lives in the main sheet). */
 .mfs > .mfs-header, .mfs > .mfs-open, .mfs > .mfs-footer, .mfs > .mfs-sort { display: none; }
 @media (min-width: 761px) { .mfs > .mfs-sheet-only { display: none !important; } }
+
+/* Passive / hidden integration cards: a dashed rule closes the status block above the footer. */
+.reference-integration-card-error .reference-integration-footer,
+.reference-integration-card-hidden .reference-integration-footer { border-top: 1px dashed var(--rv-color-border-strong); }

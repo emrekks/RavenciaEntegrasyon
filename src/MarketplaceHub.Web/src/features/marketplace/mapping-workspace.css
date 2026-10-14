@@ -347,3 +347,14 @@
   .app-shell.stitch-shell main section.mapping-page .mapping-transfer-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .app-shell.stitch-shell main section.mapping-page .mapping-transfer-actions > * { width: 100%; min-height: 44px; }
 }
+/* Mapping backup actions on phones: the standard secondary button look, two equal columns. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .mapping-reference-heading-actions { width: 100%; justify-items: stretch; }
+  .app-shell.stitch-shell main .mapping-reference-heading-actions > span { justify-self: start; }
+  .app-shell.stitch-shell main .mapping-transfer-actions { display: grid; width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .app-shell.stitch-shell main .mapping-transfer-actions > :is(button, .mapping-transfer-upload) {
+    display: inline-flex; box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px; align-items: center; justify-content: center; gap: 8px; padding: 0 10px;
+    color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md);
+    font-size: 14px; font-weight: 600; line-height: 1.2; white-space: nowrap;
+  }
+}
