@@ -140,3 +140,16 @@ describe('value mapping suggestions with confidence', () => {
     expect(result.review.map(item => [item.localId, item.externalId, item.score])).toEqual([['laci', '2', 70]])
   })
 })
+
+describe('platform bridge suggestions', () => {
+  it('uses the name a panel value has on another marketplace', () => {
+    const unmatched = [{ id: 'gece', value: 'Gece Mavisi' }]
+    const remote = [{ externalId: 'hb-1', name: 'Lacivert' }, { externalId: 'hb-2', name: 'Mavi' }]
+
+    const withoutBridge = suggestValueMappings(unmatched, remote, valueMatchScore, autoMatchScore)
+    const withBridge = suggestValueMappings(unmatched, remote, valueMatchScore, autoMatchScore, { gece: ['Lacivert'] })
+
+    expect(withoutBridge.automatic).toEqual([])
+    expect(withBridge.automatic.map(item => [item.externalId, item.score])).toEqual([['hb-1', 92]])
+  })
+})

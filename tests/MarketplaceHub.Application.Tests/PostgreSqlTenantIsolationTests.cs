@@ -2837,6 +2837,46 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task NameHints_BridgeTheNamesUsedOnTheOtherMarketplace()
+    {
+        var tenant = NewTenant("name-hints");
+        var trendyol = NewQuestionConnection(tenant);
+        var hepsiburada = NewQuestionConnection(tenant);
+        hepsiburada.PlatformCode = "HEPSIBURADA";
+        var fabricId = Guid.CreateVersion7();
+        var cotton = new AttributeValue { Id = Guid.CreateVersion7(), TenantId = tenant.Id, AttributeId = fabricId, Value = "Pamuklu", NormalizedValue = "PAMUKLU", SortOrder = 0, IsActive = true, Version = 1 };
+        var attributes = NewReferenceSnapshot(tenant.Id, trendyol.Id, "CATEGORY_ATTRIBUTES", "100", fixture.Now, "attributes");
+        var fabrics = NewReferenceSnapshot(tenant.Id, trendyol.Id, "ATTRIBUTE_VALUES", "100/21", fixture.Now, "fabrics");
+
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.PlatformConnections.AddRange(trendyol, hepsiburada);
+        db.AttributeDefinitions.Add(new AttributeDefinition { Id = fabricId, TenantId = tenant.Id, Code = $"FABRIC-{Guid.NewGuid():N}", Name = "Kumaş", DataType = AttributeDataType.Text, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 });
+        db.AttributeValues.Add(cotton);
+        db.ReferenceSnapshots.AddRange(attributes, fabrics);
+        db.ReferenceItems.AddRange(
+            NewReferenceItem(tenant.Id, trendyol.Id, attributes.Id, "CATEGORY_ATTRIBUTES", "21", "Materyal"),
+            NewReferenceItem(tenant.Id, trendyol.Id, fabrics.Id, "ATTRIBUTE_VALUES", "301", "%100 Pamuk"));
+        db.AttributeMappingTemplates.Add(new AttributeMappingTemplate { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = trendyol.Id, ExternalAttributeId = "21", LocalAttributeId = fabricId, UpdatedAt = fixture.Now });
+        db.AttributeValueMappingTemplates.Add(new AttributeValueMappingTemplate { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = trendyol.Id, ExternalAttributeId = "21", LocalValueId = cotton.Id, ExternalValueId = "301", UpdatedAt = fixture.Now });
+        await db.SaveChangesAsync();
+        var service = new ReferenceDataService(db, fixture.TimeProvider);
+
+        var valueHints = await service.MarketplaceNameHintsAsync(tenant.Id, fabricId, hepsiburada.Id, CancellationToken.None);
+        var attributeHints = await service.AttributeNameHintsAsync(tenant.Id, hepsiburada.Id, CancellationToken.None);
+        var ownHints = await service.MarketplaceNameHintsAsync(tenant.Id, fabricId, trendyol.Id, CancellationToken.None);
+
+        Assert.Equal(["Materyal"], valueHints.Value!.AttributeNames);
+        Assert.Equal(["%100 Pamuk"], valueHints.Value.ValueNames[cotton.Id]);
+        Assert.Equal(["Materyal"], attributeHints.Value![fabricId]);
+        // The target connection's own decisions are not offered as hints for itself.
+        Assert.Empty(ownHints.Value!.AttributeNames);
+        Assert.Empty(ownHints.Value.ValueNames);
+        await transaction.RollbackAsync();
+    }
+
+    [PostgreSqlFact]
     public async Task MappingConflicts_ListSameCategoryDuplicatesAndCrossCategoryDifferences()
     {
         var tenant = NewTenant("mapping-conflicts");

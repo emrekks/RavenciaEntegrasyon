@@ -179,6 +179,97 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         return ServiceResult<CatalogMappingView>.Ok(Map(mapping));
     }
 
+    // Platform bridge: on the other connections, which marketplace attribute names the panel
+    // attribute is mapped to (e.g. Kumaş → Trendyol "Materyal") and which value names its values are
+    // mapped to (Siyah → "Siyah"). The target connection is left out.
+    public async Task<ServiceResult<MarketplaceNameHintsView>> MarketplaceNameHintsAsync(Guid tenantId, Guid localAttributeId, Guid targetConnectionId, CancellationToken cancellationToken)
+    {
+        if (!await db.AttributeDefinitions.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == localAttributeId, cancellationToken))
+            return NotFound<MarketplaceNameHintsView>();
+        var attributeTemplates = await db.AttributeMappingTemplates.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId != targetConnectionId && x.LocalAttributeId == localAttributeId)
+            .Select(x => new { x.ConnectionId, x.ExternalAttributeId })
+            .ToListAsync(cancellationToken);
+        // reference_items holds ~10M rows and is indexed by snapshot, so every lookup goes through
+        // one current snapshot (any category of the attribute: Trendyol ids and names are stable).
+        var attributeNames = new List<string>();
+        foreach (var connectionTemplates in attributeTemplates.GroupBy(x => x.ConnectionId))
+        {
+            var snapshotIds = await db.ReferenceSnapshots.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionTemplates.Key && x.ResourceType == "CATEGORY_ATTRIBUTES" && x.IsCurrent)
+                .Select(x => x.Id)
+                .ToListAsync(cancellationToken);
+            var externalIds = connectionTemplates.Select(x => x.ExternalAttributeId).Distinct().ToArray();
+            attributeNames.AddRange(await db.ReferenceItems.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && snapshotIds.Contains(x.SnapshotId) && x.ResourceType == "CATEGORY_ATTRIBUTES" && externalIds.Contains(x.ExternalId))
+                .Select(x => x.Name.Trim())
+                .Distinct()
+                .ToListAsync(cancellationToken));
+        }
+
+        var localValueIds = await db.AttributeValues.AsNoTracking().Where(x => x.TenantId == tenantId && x.AttributeId == localAttributeId && x.IsActive).Select(x => x.Id).ToListAsync(cancellationToken);
+        var valueTemplates = await db.AttributeValueMappingTemplates.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId != targetConnectionId && localValueIds.Contains(x.LocalValueId))
+            .Select(x => new { x.ConnectionId, x.ExternalAttributeId, x.LocalValueId, x.ExternalValueId })
+            .ToListAsync(cancellationToken);
+        var valueNames = new Dictionary<Guid, IReadOnlyList<string>>();
+        foreach (var connectionTemplates in valueTemplates.GroupBy(x => (x.ConnectionId, x.ExternalAttributeId)))
+        {
+            var suffix = "/" + connectionTemplates.Key.ExternalAttributeId;
+            var snapshotIds = await db.ReferenceSnapshots.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionTemplates.Key.ConnectionId && x.ResourceType == "ATTRIBUTE_VALUES" && x.IsCurrent && x.ScopeExternalId.EndsWith(suffix))
+                .OrderByDescending(x => x.ItemCount)
+                .Select(x => x.Id)
+                .Take(3)
+                .ToListAsync(cancellationToken);
+            var externalIds = connectionTemplates.Select(x => x.ExternalValueId).Distinct().ToArray();
+            var names = (await db.ReferenceItems.AsNoTracking()
+                    .Where(x => x.TenantId == tenantId && snapshotIds.Contains(x.SnapshotId) && x.ResourceType == "ATTRIBUTE_VALUES" && externalIds.Contains(x.ExternalId))
+                    .Select(x => new { x.ExternalId, x.Name })
+                    .ToListAsync(cancellationToken))
+                .GroupBy(x => x.ExternalId)
+                .ToDictionary(group => group.Key, group => group.First().Name.Trim());
+            foreach (var template in connectionTemplates)
+            {
+                if (!names.TryGetValue(template.ExternalValueId, out var name) || name.Length == 0) continue;
+                var current = valueNames.TryGetValue(template.LocalValueId, out var existing) ? existing : [];
+                if (!current.Contains(name, StringComparer.OrdinalIgnoreCase)) valueNames[template.LocalValueId] = [.. current, name];
+            }
+        }
+        return ServiceResult<MarketplaceNameHintsView>.Ok(new(attributeNames.Distinct(StringComparer.OrdinalIgnoreCase).ToList(), valueNames));
+    }
+
+    public async Task<ServiceResult<IReadOnlyDictionary<Guid, IReadOnlyList<string>>>> AttributeNameHintsAsync(Guid tenantId, Guid targetConnectionId, CancellationToken cancellationToken)
+    {
+        var templates = await db.AttributeMappingTemplates.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId != targetConnectionId)
+            .Select(x => new { x.ConnectionId, x.ExternalAttributeId, x.LocalAttributeId })
+            .ToListAsync(cancellationToken);
+        var hints = new Dictionary<Guid, IReadOnlyList<string>>();
+        foreach (var connectionTemplates in templates.GroupBy(x => x.ConnectionId))
+        {
+            // Through the current attribute snapshots: reference_items is only indexed by snapshot.
+            var snapshotIds = await db.ReferenceSnapshots.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionTemplates.Key && x.ResourceType == "CATEGORY_ATTRIBUTES" && x.IsCurrent)
+                .Select(x => x.Id)
+                .ToListAsync(cancellationToken);
+            var externalIds = connectionTemplates.Select(x => x.ExternalAttributeId).Distinct().ToArray();
+            var names = (await db.ReferenceItems.AsNoTracking()
+                    .Where(x => x.TenantId == tenantId && snapshotIds.Contains(x.SnapshotId) && x.ResourceType == "CATEGORY_ATTRIBUTES" && externalIds.Contains(x.ExternalId))
+                    .Select(x => new { x.ExternalId, x.Name })
+                    .ToListAsync(cancellationToken))
+                .GroupBy(x => x.ExternalId)
+                .ToDictionary(group => group.Key, group => group.First().Name.Trim());
+            foreach (var template in connectionTemplates)
+            {
+                if (!names.TryGetValue(template.ExternalAttributeId, out var name) || name.Length == 0) continue;
+                var current = hints.TryGetValue(template.LocalAttributeId, out var existing) ? existing : [];
+                if (!current.Contains(name, StringComparer.OrdinalIgnoreCase)) hints[template.LocalAttributeId] = [.. current, name];
+            }
+        }
+        return ServiceResult<IReadOnlyDictionary<Guid, IReadOnlyList<string>>>.Ok(hints);
+    }
+
     public async Task<ServiceResult<MappingConflictsView>> ListMappingConflictsAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
     {
         if (!await VisibleConnectionAsync(tenantId, connectionId, cancellationToken)) return NotFound<MappingConflictsView>();

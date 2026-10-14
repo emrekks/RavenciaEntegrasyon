@@ -251,6 +251,10 @@ public static class CatalogEndpoints
             Tenant(http) is { } tenant ? Result(await service.UpsertAttributeDefaultAsync(tenant.TenantId, connectionId, externalAttributeId, command, http.RequestAborted), Results.Ok) : Unauthorized(http));
         api.MapDelete("/connections/{connectionId:guid}/attribute-defaults/{externalAttributeId}", async (Guid connectionId, string externalAttributeId, HttpContext http, IReferenceDataService service) =>
             Tenant(http) is { } tenant ? Result(await service.DeleteAttributeDefaultAsync(tenant.TenantId, connectionId, externalAttributeId, http.RequestAborted), Results.Ok) : Unauthorized(http));
+        api.MapGet("/mappings/name-hints", async (Guid attributeId, Guid connectionId, HttpContext http, IReferenceDataService service) =>
+            Tenant(http) is { } tenant ? Result(await service.MarketplaceNameHintsAsync(tenant.TenantId, attributeId, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http));
+        api.MapGet("/mappings/attribute-name-hints", async (Guid connectionId, HttpContext http, IReferenceDataService service) =>
+            Tenant(http) is { } tenant ? Result(await service.AttributeNameHintsAsync(tenant.TenantId, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http));
         api.MapGet("/mappings/conflicts", async (Guid connectionId, HttpContext http, IReferenceDataService service) =>
             Tenant(http) is { } tenant ? Result(await service.ListMappingConflictsAsync(tenant.TenantId, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http));
         // Idempotent by nature: a second call finds nothing left to fill.

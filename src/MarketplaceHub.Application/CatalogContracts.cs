@@ -229,6 +229,10 @@ public sealed record UpsertCatalogMappingCommand(Guid ConnectionId, Guid Snapsho
 
 public sealed record MappingTemplateFillView(int Attributes, int Values);
 
+// Names a panel attribute and its values carry on the other marketplace connections (from their
+// templates), used as extra hints when suggesting matches on another marketplace.
+public sealed record MarketplaceNameHintsView(IReadOnlyList<string> AttributeNames, IReadOnlyDictionary<Guid, IReadOnlyList<string>> ValueNames);
+
 // A value sent for a marketplace attribute whenever the product has none (e.g. Menşei = TR).
 public sealed record ConnectionAttributeDefaultView(string ExternalAttributeId, string AttributeName, string? ExternalValueId, string? ValueName, string? CustomValue, DateTimeOffset UpdatedAt, long Version);
 public sealed record UpsertConnectionAttributeDefaultCommand(string AttributeName, string? ExternalValueId, string? ValueName, string? CustomValue);
@@ -243,6 +247,9 @@ public sealed record MappingConflictsView(IReadOnlyList<MappingConflictView> Sam
 public interface IReferenceDataService
 {
     Task<ServiceResult<MappingConflictsView>> ListMappingConflictsAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken);
+    Task<ServiceResult<MarketplaceNameHintsView>> MarketplaceNameHintsAsync(Guid tenantId, Guid localAttributeId, Guid targetConnectionId, CancellationToken cancellationToken);
+    // For every panel attribute: the marketplace attribute names it is mapped to on the other connections.
+    Task<ServiceResult<IReadOnlyDictionary<Guid, IReadOnlyList<string>>>> AttributeNameHintsAsync(Guid tenantId, Guid targetConnectionId, CancellationToken cancellationToken);
     Task<ServiceResult<IReadOnlyList<ConnectionAttributeDefaultView>>> ListAttributeDefaultsAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken);
     Task<ServiceResult<ConnectionAttributeDefaultView>> UpsertAttributeDefaultAsync(Guid tenantId, Guid connectionId, string externalAttributeId, UpsertConnectionAttributeDefaultCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<bool>> DeleteAttributeDefaultAsync(Guid tenantId, Guid connectionId, string externalAttributeId, CancellationToken cancellationToken);

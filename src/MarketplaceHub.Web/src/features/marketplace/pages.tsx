@@ -28,7 +28,7 @@ import { code128Bars, loadPrintedShippingLabels, markShippingLabelPrinted, print
 import { formatPanelColorValue, usesCustomPanelColorValue } from './color-value-format'
 import { AttributeDefaultsPanel } from './AttributeDefaultsPanel'
 import { MappingConflictsPanel } from './MappingConflictsPanel'
-import { autoMatchScore, valueMatchScore } from '../../shared/value-matching'
+import { autoMatchScore, canonicalKey, valueMatchScore } from '../../shared/value-matching'
 import { attributeValueMappingNeedsSave, isTemplateFilledRow, suggestValueMappings, type ValueMappingSuggestion, visiblePanelValues, normalizeReferenceValueLabel, planDirectReferenceValues, planMissingReferencePanelValues, planReferencePanelMappings, togglePanelValueReferenceSelection, updatePanelValueReferenceSelection, valueMappingRowClassName } from './attribute-value-mapping'
 import { isReferenceSyncJobTerminal, shouldAutoSyncHepsiburadaValues } from './reference-value-sync'
 import { activeMappingConnectionsForPlatform, mappingPlatformDefinitions, mappingPlatformLabel, type MappingPlatformCode } from './mapping-platforms'
@@ -2441,6 +2441,7 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
   const productSync = useMutation({ mutationFn: () => hubApi(`/connections/${connectionId}/product-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, body: '{}' }), onSuccess: () => { onNotice('Ürünler salt-okunur eşitleme kuyruğuna alındı; pazar yerine yazma yapılmaz.') }, onError: reason => onNotice(reason instanceof Error ? reason.message : 'Ürün eşitleme başlatılamadı.') })
   // Bulk "same name" matching for the whole category: first the headings (attributes and option groups), then every value of the mapped headings.
   const [bulkBusy, setBulkBusy] = useState<'' | 'HEADINGS' | 'VALUES' | 'TEMPLATES'>('')
+  const attributeNameHints = useQuery({ queryKey: ['attribute-name-hints', connectionId], queryFn: () => hubApi<Record<string, string[]>>(`/mappings/attribute-name-hints?connectionId=${encodeURIComponent(connectionId)}`), retry: false, staleTime: 5 * 60_000, enabled: !!connectionId })
   // Brings over the attribute and value decisions made for the connection's other categories.
   async function fillFromOtherCategories() {
     if (bulkBusy) return
@@ -2461,21 +2462,31 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
     if (!references.data || bulkBusy) return
     setBulkBusy('HEADINGS'); onNotice('')
     const snapshotIdNow = references.data.snapshotId
-    let matched = 0; let ambiguous = 0; let failed = 0
-    const put = async (localAttribute: LocalAttribute, remote: ReferenceItem, role: 'ATTRIBUTE' | 'OPTION') => {
+    let matched = 0; let bridged = 0; let ambiguous = 0; let failed = 0
+    const put = async (localAttribute: LocalAttribute, remote: ReferenceItem, role: 'ATTRIBUTE' | 'OPTION', viaHint = false) => {
       try {
         await hubApi<CatalogMapping>(`/mappings/attributes/${localAttribute.id}`, { method: 'PUT', body: JSON.stringify({ connectionId, snapshotId: snapshotIdNow, scopeExternalId: categoryScope, externalId: remote.externalId, status: 'VERIFIED', role }) })
-        matched++
+        if (viaHint) bridged++; else matched++
       } catch { failed++ }
     }
     try {
       const localByName = new Map<string, LocalAttribute[]>()
       for (const attribute of productAttributes) localByName.set(normalizedAttributeKey(attribute.name), [...(localByName.get(normalizedAttributeKey(attribute.name)) ?? []), attribute])
+      // Second pass for headings without a same-named panel attribute: synonyms (Materyal ≈ Kumaş
+      // Tipi) and the name the panel attribute has on the other marketplace (platform bridge).
+      const hintedByKey = new Map<string, LocalAttribute[]>()
+      for (const attribute of productAttributes) {
+        const keys = new Set([canonicalKey(attribute.name), ...(attributeNameHints.data?.[attribute.id] ?? []).map(canonicalKey)])
+        for (const key of keys) hintedByKey.set(key, [...(hintedByKey.get(key) ?? []), attribute])
+      }
       for (const remote of productRemoteItems) {
         if (productMappingByExternal.has(remote.externalId)) continue
         const candidates = localByName.get(normalizedAttributeKey(remote.name)) ?? []
         if (candidates.length > 1) { ambiguous++; continue }
-        if (candidates.length === 1) await put(candidates[0], remote, categoryOptionIds.has(candidates[0].id) || isOptionAttribute(candidates[0]) ? 'OPTION' : 'ATTRIBUTE')
+        if (candidates.length === 1) { await put(candidates[0], remote, categoryOptionIds.has(candidates[0].id) || isOptionAttribute(candidates[0]) ? 'OPTION' : 'ATTRIBUTE'); continue }
+        const hinted = [...new Set(hintedByKey.get(canonicalKey(remote.name)) ?? [])]
+        if (hinted.length === 1) await put(hinted[0], remote, categoryOptionIds.has(hinted[0].id) || isOptionAttribute(hinted[0]) ? 'OPTION' : 'ATTRIBUTE', true)
+        else if (hinted.length > 1) ambiguous++
       }
       for (const option of optionAttributes.filter(item => !sizeOptionAttributeIds.has(item.id))) {
         if (optionMappings.some(mapping => mapping.localId === option.id && optionRemoteItems.some(remote => remote.externalId === mapping.externalId))) continue
@@ -2485,9 +2496,9 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
       }
       await client.invalidateQueries({ queryKey: ['attribute-mappings', connectionId, categoryScope] })
       await client.invalidateQueries({ queryKey: ['publication-attribute-readiness'] })
-      onNotice(matched
-        ? `${matched} kategori başlığı aynı adlı panel özelliğiyle eşlendi.${ambiguous ? ` Adı birden fazla eşleşen ${ambiguous} başlık atlandı.` : ''}${failed ? ` ${failed} başlık eşlenemedi.` : ''}`
-        : failed ? `Başlık eşlemeleri kaydedilemedi (${failed}).` : `Yeni birebir eşleşen başlık bulunamadı.${ambiguous ? ` Adı birden fazla eşleşen ${ambiguous} başlık atlandı.` : ''}`)
+      onNotice(matched || bridged
+        ? `${matched ? `${matched} başlık aynı adlı panel özelliğiyle` : ''}${matched && bridged ? ', ' : ''}${bridged ? `${bridged} başlık eş anlamlısı ya da diğer pazaryerindeki eşlemesi üzerinden` : ''} eşlendi.${ambiguous ? ` Birden fazla adayı olan ${ambiguous} başlık atlandı.` : ''}${failed ? ` ${failed} başlık eşlenemedi.` : ''}`
+        : failed ? `Başlık eşlemeleri kaydedilemedi (${failed}).` : `Yeni eşleşen başlık bulunamadı.${ambiguous ? ` Birden fazla adayı olan ${ambiguous} başlık atlandı.` : ''}`)
     } finally { setBulkBusy('') }
   }
   async function matchAllValuesByName() {
@@ -2539,7 +2550,7 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
     <div className="editor-section-title"><span>4</span><div><h2>Kategori eşleştirmeleri</h2><p>{platformCode === 'TRENDYOL' ? 'Trendyol katalog alanlarını Web Color, Renk ve diğer panel özellikleriyle eşleyin.' : 'Pazar yeri katalog alanlarını panel özellikleri ve değerleriyle eşleyin.'}</p></div></div>
     <div className="mapping-category-toolbar-row">
       <label className="matched-category-select">Eşleşmiş panel kategorisi<select value={attributeCategoryId} onChange={event => setAttributeCategoryId(event.target.value)}>{matchedCategories.map(({ category }) => <option key={category.id} value={category.id}>{category.path}</option>)}</select></label>
-      {!references.isLoading && !mappings.isLoading && !categoryRequirements.isLoading && !references.isError && !mappings.isError && !categoryRequirements.isError && <div className="mapping-section-toolbar"><div className="button-row"><button type="button" className="secondary" disabled={sync.isPending} onClick={() => sync.mutate()}>{sync.isPending ? 'Alanlar yenileniyor…' : 'Kategori alanlarını yenile'}</button><button type="button" className="secondary" title="Adı aynı olan Trendyol ve panel başlıklarını toplu eşler" disabled={sync.isPending || bulkBusy !== ''} onClick={() => void matchHeadingsByName()}>{bulkBusy === 'HEADINGS' ? 'Başlıklar eşleniyor…' : 'Başlıkları birebir eşle'}</button><button type="button" className="secondary" title="Eşlenmiş tüm başlıklarda adı aynı olan değerleri toplu eşler" disabled={sync.isPending || bulkBusy !== ''} onClick={() => void matchAllValuesByName()}>{bulkBusy === 'VALUES' ? 'Değerler eşleniyor…' : 'Tüm değerleri birebir eşle'}</button><button type="button" className="secondary" title="Aynı Trendyol başlığını kullanan diğer kategorilerde yaptığınız başlık ve değer eşlemelerini bu kategoriye getirir. Elle yaptığınız ve sildiğiniz eşlemelere dokunmaz." disabled={sync.isPending || bulkBusy !== ''} onClick={() => void fillFromOtherCategories()}>{bulkBusy === 'TEMPLATES' ? 'Getiriliyor…' : 'Diğer kategorilerden doldur'}</button>{platformCode === 'TRENDYOL' && optionCount > 0 && <button type="button" disabled={productSync.isPending} onClick={() => productSync.mutate()}>{productSync.isPending ? 'Ürünler eşitleniyor…' : 'Ürün seçeneklerini salt-okunur eşitle'}</button>}</div></div>}
+      {!references.isLoading && !mappings.isLoading && !categoryRequirements.isLoading && !references.isError && !mappings.isError && !categoryRequirements.isError && <div className="mapping-section-toolbar"><div className="button-row"><button type="button" className="secondary" disabled={sync.isPending} onClick={() => sync.mutate()}>{sync.isPending ? 'Alanlar yenileniyor…' : 'Kategori alanlarını yenile'}</button><button type="button" className="secondary" title="Önce adı aynı olan panel başlıklarını, bulunamazsa eş anlamlısını (ör. Materyal ≈ Kumaş Tipi) ya da diğer pazaryerinde eşlendiği adı toplu eşler. Birden fazla aday varsa atlar." disabled={sync.isPending || bulkBusy !== ''} onClick={() => void matchHeadingsByName()}>{bulkBusy === 'HEADINGS' ? 'Başlıklar eşleniyor…' : 'Başlıkları eşle'}</button><button type="button" className="secondary" title="Eşlenmiş tüm başlıklarda adı aynı olan değerleri toplu eşler" disabled={sync.isPending || bulkBusy !== ''} onClick={() => void matchAllValuesByName()}>{bulkBusy === 'VALUES' ? 'Değerler eşleniyor…' : 'Tüm değerleri birebir eşle'}</button><button type="button" className="secondary" title="Aynı Trendyol başlığını kullanan diğer kategorilerde yaptığınız başlık ve değer eşlemelerini bu kategoriye getirir. Elle yaptığınız ve sildiğiniz eşlemelere dokunmaz." disabled={sync.isPending || bulkBusy !== ''} onClick={() => void fillFromOtherCategories()}>{bulkBusy === 'TEMPLATES' ? 'Getiriliyor…' : 'Diğer kategorilerden doldur'}</button>{platformCode === 'TRENDYOL' && optionCount > 0 && <button type="button" disabled={productSync.isPending} onClick={() => productSync.mutate()}>{productSync.isPending ? 'Ürünler eşitleniyor…' : 'Ürün seçeneklerini salt-okunur eşitle'}</button>}</div></div>}
       {platformCode === 'TRENDYOL' && categoryScope && references.data && <AttributeDefaultsPanel connectionId={connectionId} categoryScope={categoryScope} platformLabel={platformLabel} remoteAttributes={references.data.items} onNotice={onNotice} />}
       {connectionId && <MappingConflictsPanel connectionId={connectionId} platformLabel={platformLabel} onNotice={onNotice} />}
     </div>
@@ -2811,6 +2822,8 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
   const references = useQuery({ queryKey: referenceKey, queryFn: () => hubApi<ReferenceData>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(externalAttributeId)}/values?connectionId=${encodeURIComponent(connectionId)}`), retry: false, enabled: !customPanelColorValues && !marketplaceAllowsFreeText })
   const mappings = useQuery({ queryKey: ['attribute-value-mappings', connectionId, valueScope], queryFn: () => hubApi<CatalogMapping[]>(`/mappings/attribute-values?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(valueScope)}`), retry: false, enabled: !customPanelColorValues && !marketplaceAllowsFreeText })
   const [suggestionReview, setSuggestionReview] = useState<ValueMappingSuggestion[]>([])
+  // Names the panel values carry on the other marketplaces: extra hints for the suggestions.
+  const nameHints = useQuery({ queryKey: ['marketplace-name-hints', attribute.id, connectionId], queryFn: () => hubApi<{ attributeNames: string[]; valueNames: Record<string, string[]> }>(`/mappings/name-hints?attributeId=${encodeURIComponent(attribute.id)}&connectionId=${encodeURIComponent(connectionId)}`), retry: false, staleTime: 5 * 60_000, enabled: !customPanelColorValues && !marketplaceAllowsFreeText })
   const usedValues = useQuery({ queryKey: ['attribute-used-values', attribute.id], queryFn: () => hubApi<string[]>(`/catalog/attributes/${attribute.id}/used-values`), retry: false, staleTime: 60_000, enabled: !customPanelColorValues && !marketplaceAllowsFreeText })
   const sync = useMutation({ mutationFn: () => hubApi<{ jobId: string }>(`/connections/${connectionId}/reference-sync-jobs?resourceType=ATTRIBUTE_VALUES&parentExternalId=${encodeURIComponent(valueScope)}`, { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, body: '{}' }), onSuccess: result => { setSyncJobId(result.jobId); setNotice(`${platformLabel} değer listesi salt-okunur olarak eşitleniyor…`) }, onError: reason => setNotice(reason instanceof Error ? reason.message : 'Değer eşitleme başlatılamadı.') })
   const syncJob = useQuery({ queryKey: ['reference-value-sync-job', syncJobId], queryFn: () => hubApi<{ job: { status: string; lastErrorCode: string | null; lastErrorSummary: string | null } }>(`/jobs/${syncJobId}`, { cache: 'no-store' }), enabled: Boolean(syncJobId), refetchInterval: query => query.state.data && isReferenceSyncJobTerminal(query.state.data.job.status) ? false : 1000, refetchIntervalInBackground: true, retry: 1 })
@@ -3035,7 +3048,7 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
   // and synonyms are selected at once; weaker matches wait in a list for approval. Nothing is saved
   // until "Tüm eşlemeleri kaydet".
   function suggestMappings() {
-    const result = suggestValueMappings(unmatchedPanelValues, activeRemoteValues, valueMatchScore, autoMatchScore)
+    const result = suggestValueMappings(unmatchedPanelValues, activeRemoteValues, valueMatchScore, autoMatchScore, nameHints.data?.valueNames ?? {})
     if (result.automatic.length) setSelections(current => result.automatic.reduce((next, item) => togglePanelValueReferenceSelection(next, item.externalId, item.localId, allowReusablePanelValues), current))
     setSuggestionReview(result.review)
     setNotice(result.automatic.length || result.review.length

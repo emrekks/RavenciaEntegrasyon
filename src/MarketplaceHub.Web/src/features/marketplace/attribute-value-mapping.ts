@@ -114,18 +114,25 @@ export type ValueMappingSuggestion = { localId: string; localLabel: string; exte
 // Best marketplace value for each panel value that has none yet. High-confidence ones (same name,
 // folded letters or synonyms: score >= autoScore) can be selected at once; the rest (score >= 50)
 // wait for the user's approval. Nothing is saved here.
+// aliases: the names a panel value carries on other marketplaces (platform bridge). The same name
+// there counts as strong evidence (92, selected at once); weaker alias matches score 5 lower.
+export const bridgedNameScore = 92
+
 export function suggestValueMappings(
   unmatched: readonly { id: string; value: string }[],
   remoteValues: readonly { externalId: string; name: string }[],
   score: (panelLabel: string, remoteName: string) => number,
-  autoScore: number
+  autoScore: number,
+  aliases: Readonly<Record<string, readonly string[]>> = {}
 ) {
   const automatic: ValueMappingSuggestion[] = []
   const review: ValueMappingSuggestion[] = []
   for (const local of unmatched) {
     let best: ValueMappingSuggestion | null = null
     for (const remote of remoteValues) {
-      const value = score(local.value, remote.name)
+      const direct = score(local.value, remote.name)
+      const bridged = Math.max(0, ...(aliases[local.id] ?? []).map(alias => { const value = score(alias, remote.name); return value === 100 ? bridgedNameScore : value - 5 }))
+      const value = Math.max(direct, bridged)
       if (value < 50) continue
       if (!best || value > best.score || (value === best.score && remote.name.length < best.remoteName.length))
         best = { localId: local.id, localLabel: local.value, externalId: remote.externalId, remoteName: remote.name, score: value }
