@@ -1363,17 +1363,32 @@ function ShippingLabelSettingsPanel({ settings, onChange, onSave }: { settings: 
   }
   return <div className="panel shipping-settings-panel shipping-designer-panel">
     <div className="shipping-settings-intro"><span className="security-state enabled">Etiket Tasarımcısı</span><h2>Kargo etiketi düzeni</h2><p>Alanları sağdaki kütüphaneden kâğıda sürükleyin. Seçili alanı taşıyın, boyutlandırın ve özelliklerini anında düzenleyin. Bu ayarlar hesabınıza kaydedilir ve tüm tarayıcılarda aynı uygulanır.</p></div>
-    <div className="shipping-settings-grid shipping-designer-page-settings">
-      <label>Gönderici adı<input value={settings.senderName} maxLength={120} onChange={event => update('senderName', event.target.value)} /></label>
-      <label>Gönderici adresi<textarea value={settings.senderAddress} maxLength={500} rows={3} onChange={event => update('senderAddress', event.target.value)} placeholder="İsteğe bağlı" /></label>
-      <label>A4 sayfa düzeni<select value={settings.a4LabelsPerPage} onChange={event => update('a4LabelsPerPage', Number(event.target.value) as ShippingLabelSettings['a4LabelsPerPage'])}><option value={1}>Sayfada 1 etiket</option><option value={2}>Sayfada 2 etiket</option><option value={4}>Sayfada 4 etiket</option></select></label>
-      <label>Varsayılan çıktı<select value={settings.defaultFormat} onChange={event => update('defaultFormat', event.target.value as ShippingLabelSettings['defaultFormat'])}><option value="a4">Kargo etiketi · A4</option><option value="sticker">Kargo etiketi · Sticker</option></select></label>
-      <label className="shipping-settings-check"><input type="checkbox" checked={settings.showA4Button} onChange={event => update('showA4Button', event.target.checked)} /><span className="shipping-settings-check-indicator"><UiIcon name="check" size={14} /></span><span>A4 yazdırma butonunu göster</span></label>
-      <label className="shipping-settings-check"><input type="checkbox" checked={settings.showStickerButton} onChange={event => update('showStickerButton', event.target.checked)} /><span className="shipping-settings-check-indicator"><UiIcon name="check" size={14} /></span><span>Sticker yazdırma butonunu göster</span></label>
-      <label>Sticker genişliği (mm)<input type="number" min={40} max={300} value={stickerWidthDraft} onChange={event => setStickerWidthDraft(event.target.value)} onBlur={() => commitDimension('stickerWidthMm', stickerWidthDraft, settings.stickerWidthMm)} /></label>
-      <label>Sticker yüksekliği (mm)<input type="number" min={40} max={300} value={stickerHeightDraft} onChange={event => setStickerHeightDraft(event.target.value)} onBlur={() => commitDimension('stickerHeightMm', stickerHeightDraft, settings.stickerHeightMm)} /></label>
-      <label>Bloklar arası boşluk (mm)<input type="number" min={0} max={20} value={settings.sectionGapMm} onChange={event => update('sectionGapMm', Math.min(20, Math.max(0, Number(event.target.value) || 0)))} /></label>
-      <label className="shipping-settings-check"><input type="checkbox" checked={settings.showCustomerPhone} onChange={event => update('showCustomerPhone', event.target.checked)} /><span className="shipping-settings-check-indicator"><UiIcon name="check" size={14} /></span><span>Müşteri iletişim alanını göster</span></label>
+    <div className="shipping-settings-groups">
+      <section className="shipping-settings-group">
+        <header><h3>Gönderici Bilgileri</h3><p>Etiketin üzerinde görünen gönderici.</p></header>
+        <div className="shipping-settings-grid shipping-designer-page-settings">
+        <label>Gönderici adı<input value={settings.senderName} maxLength={120} onChange={event => update('senderName', event.target.value)} /></label>
+        <label>Gönderici adresi<textarea value={settings.senderAddress} maxLength={500} rows={3} onChange={event => update('senderAddress', event.target.value)} placeholder="İsteğe bağlı" /></label>
+        </div>
+      </section>
+      <section className="shipping-settings-group">
+        <header><h3>Yazdırma Tercihleri</h3><p>Varsayılan çıktı ve görünen yazdırma düğmeleri.</p></header>
+        <div className="shipping-settings-grid shipping-designer-page-settings">
+        <label>A4 sayfa düzeni<select value={settings.a4LabelsPerPage} onChange={event => update('a4LabelsPerPage', Number(event.target.value) as ShippingLabelSettings['a4LabelsPerPage'])}><option value={1}>Sayfada 1 etiket</option><option value={2}>Sayfada 2 etiket</option><option value={4}>Sayfada 4 etiket</option></select></label>
+        <label>Varsayılan çıktı<select value={settings.defaultFormat} onChange={event => update('defaultFormat', event.target.value as ShippingLabelSettings['defaultFormat'])}><option value="a4">Kargo etiketi · A4</option><option value="sticker">Kargo etiketi · Sticker</option></select></label>
+        <label className="shipping-settings-check"><input type="checkbox" checked={settings.showA4Button} onChange={event => update('showA4Button', event.target.checked)} /><span className="shipping-settings-check-indicator"><UiIcon name="check" size={14} /></span><span>A4 yazdırma butonunu göster</span></label>
+        <label className="shipping-settings-check"><input type="checkbox" checked={settings.showStickerButton} onChange={event => update('showStickerButton', event.target.checked)} /><span className="shipping-settings-check-indicator"><UiIcon name="check" size={14} /></span><span>Sticker yazdırma butonunu göster</span></label>
+        </div>
+      </section>
+      <section className="shipping-settings-group">
+        <header><h3>Etiket Ölçüleri</h3><p>Sticker boyutu ve alan aralıkları.</p></header>
+        <div className="shipping-settings-grid shipping-designer-page-settings">
+        <label>Sticker genişliği (mm)<input type="number" min={40} max={300} value={stickerWidthDraft} onChange={event => setStickerWidthDraft(event.target.value)} onBlur={() => commitDimension('stickerWidthMm', stickerWidthDraft, settings.stickerWidthMm)} /></label>
+        <label>Sticker yüksekliği (mm)<input type="number" min={40} max={300} value={stickerHeightDraft} onChange={event => setStickerHeightDraft(event.target.value)} onBlur={() => commitDimension('stickerHeightMm', stickerHeightDraft, settings.stickerHeightMm)} /></label>
+        <label>Bloklar arası boşluk (mm)<input type="number" min={0} max={20} value={settings.sectionGapMm} onChange={event => update('sectionGapMm', Math.min(20, Math.max(0, Number(event.target.value) || 0)))} /></label>
+        <label className="shipping-settings-check"><input type="checkbox" checked={settings.showCustomerPhone} onChange={event => update('showCustomerPhone', event.target.checked)} /><span className="shipping-settings-check-indicator"><UiIcon name="check" size={14} /></span><span>Müşteri iletişim alanını göster</span></label>
+        </div>
+      </section>
     </div>
     <section className="shipping-layout-editor shipping-designer" aria-labelledby="shipping-designer-title">
       <header className="shipping-designer-toolbar"><div><span className="shipping-designer-kicker">Kâğıt çalışma alanı</span><h3 id="shipping-designer-title">Etiket tasarımını oluştur</h3></div><div className="shipping-designer-format-tabs" role="tablist"><button type="button" className={format === 'a4' ? 'is-active' : ''} role="tab" aria-selected={format === 'a4'} onClick={() => setFormat('a4')}>A4 <small>{settings.a4LabelsPerPage} etiket</small></button><button type="button" className={format === 'sticker' ? 'is-active' : ''} role="tab" aria-selected={format === 'sticker'} onClick={() => setFormat('sticker')}>Sticker <small>{settings.stickerWidthMm} × {settings.stickerHeightMm} mm</small></button></div><div className="shipping-designer-template-actions"><select aria-label="Kayıtlı şablon seçin" value={selectedTemplateId} onChange={event => applyTemplate(event.target.value)}><option value="">Şablon seçin…</option>{templates.map(template => <option key={template.id} value={template.id}>{template.name}</option>)}</select><button type="button" className="secondary" onClick={() => { setTemplateNameDraft(`${format === 'a4' ? 'A4' : 'Sticker'} şablonu`); setTemplateMessage(''); setTemplateNameOpen(true) }}>Şablon kaydet</button><button type="button" className="secondary" disabled={!selectedTemplateId} onClick={deleteTemplate}>Şablonu sil</button></div><button type="button" className="secondary" onClick={resetLayout}>Varsayılanı yükle</button></header>

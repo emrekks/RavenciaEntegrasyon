@@ -12576,3 +12576,13 @@ h1, h2, h3, h4, .dashboard-summary-card-head > span:first-child, :is(.orders-con
    Data that must show exactly as stored (codes, product images, prices, option values) is excluded. */
 :is(button, [role="tab"], [role="menuitem"], [role="menuitemradio"], [role="option"], summary, legend, option, select, .nav-label, .reference-integration-private-state strong, .attribute-variant-action > div > strong, .editor-section-title h2):not(.technical-text, code, kbd, samp, .product-image-button, .clickable-cell, .order-number-copy, .option-chip, .reference-menu-trigger) { text-transform: capitalize; }
 :is(button, select, option) :is(code, .technical-text, kbd) { text-transform: none; }
+
+/* Label designer settings: three clear groups (sender, printing, sizes) instead of one long field wall. */
+.shipping-settings-groups { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--rv-space-4); align-items: start; }
+.shipping-settings-group { display: grid; gap: var(--rv-space-4); min-width: 0; padding: var(--rv-space-4); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); }
+.shipping-settings-group > header { display: grid; gap: 2px; }
+.shipping-settings-group > header h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.shipping-settings-group > header p { margin: 0; color: var(--rv-color-muted); font-size: 12px; line-height: 1.4; }
+.app-shell.stitch-shell main .shipping-settings-group > .shipping-settings-grid.shipping-designer-page-settings { grid-template-columns: minmax(0, 1fr); row-gap: 12px; }
+@media (max-width: 1180px) { .shipping-settings-groups { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 760px) { .shipping-settings-groups { grid-template-columns: minmax(0, 1fr); } }
