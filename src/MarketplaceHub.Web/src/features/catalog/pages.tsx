@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, loadAllPages, type CursorPage } from '../../shared/api'
 import { PlatformMark } from '../../shared/platform-mark'
-import { Callout, Pagination, UiIcon, type UiIconName } from '../../shared/components'
+import { Pagination, UiIcon, type UiIconName } from '../../shared/components'
 import { NoticeToast } from '../../shared/components/NoticeToast'
 import { sanitizeRichText } from '../../shared/security/sanitizeHtml'
 import { productStatusLabel, productStatusTone, statusLabel } from '../../shared/status-labels'
@@ -12,6 +12,7 @@ import { platformLogoClass, platformLogoSource } from '../../shared/platform-log
 import './publication-status-tooltip.css'
 import './product-import.css'
 import './marketplace-pricing.css'
+import './variant-header-menu.css'
 import './publish-platform-issues.css'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { appendNotification } from '../../shared/notifications'
@@ -244,7 +245,18 @@ async function fetchProductPage(limit: number, filters: ProductListFilters, afte
   if (filters.stock) params.set('stock', filters.stock)
   return hubApi<CursorPage<Product>>(`/products?${params.toString()}`)
 }
-const ErrorBox = ({ error, onDismiss }: { error: unknown; onDismiss?: () => void }) => error ? <Callout tone="danger"><div className="rv-error-box-content"><span>{error instanceof Error ? error.message : 'İşlem tamamlanamadı.'}</span>{onDismiss && <button type="button" className="rv-error-box-dismiss" aria-label="Hata bildirimini kapat" title="Kapat" onClick={onDismiss}><UiIcon name="close" /></button>}</div></Callout> : null
+function ErrorBox({ error, onDismiss }: { error: unknown; onDismiss?: () => void }) {
+  const message = error ? (error instanceof Error ? error.message : 'İşlem tamamlanamadı.') : ''
+  const [hiddenMessage, setHiddenMessage] = useState('')
+  useEffect(() => {
+    if (!message) return
+    appendNotification(message, 'error')
+    const timeout = window.setTimeout(() => setHiddenMessage(message), 8000)
+    return () => window.clearTimeout(timeout)
+  }, [message])
+  if (!message || hiddenMessage === message) return null
+  return <NoticeToast kind="error" message={message} durationMs={8000} onClose={() => { setHiddenMessage(message); onDismiss?.() }} />
+}
 
 function VariantHeaderActionMenu({ anchorRef, children }: { anchorRef: { current: HTMLDivElement | null }; children: ReactNode }) {
   const menuRef = useRef<HTMLDivElement>(null)
