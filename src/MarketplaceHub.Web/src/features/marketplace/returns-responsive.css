@@ -269,3 +269,25 @@
       "status status";
   }
 }
+
+/* Returns, invoice row on phones: the payable amount on the left and, at the right, only a status
+   icon — a green circle with a check when the invoice exists, an orange circle with a clock when it
+   is still waiting. No text label (it stays in the accessible name). */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .returns-page .return-reference-row > .order-reference-invoice .invoice-status-label {
+    position: relative; flex: 0 0 auto; width: 28px; height: 28px; min-width: 0; min-height: 0; padding: 0; overflow: hidden; border-radius: 50%; font-size: 0; line-height: 0; color: transparent;
+    background: color-mix(in srgb, var(--rv-color-warning) 20%, transparent); border: 1.5px solid var(--rv-color-warning);
+  }
+  .app-shell.stitch-shell main .returns-page .return-reference-row > .order-reference-invoice .invoice-status-label > i { display: none; }
+  .app-shell.stitch-shell main .returns-page .return-reference-row > .order-reference-invoice .invoice-status-label::after {
+    content: ""; position: absolute; inset: 0; margin: auto; width: 10px; height: 10px; border: 1.8px solid var(--rv-color-warning); border-radius: 50%;
+    background: linear-gradient(var(--rv-color-warning), var(--rv-color-warning)) 50% 18% / 1.8px 4px no-repeat, linear-gradient(var(--rv-color-warning), var(--rv-color-warning)) 50% 50% / 4px 1.8px no-repeat;
+    background-position: 50% 28%, 62% 50%;
+  }
+  .app-shell.stitch-shell main .returns-page .return-reference-row > .order-reference-invoice .invoice-status-label.rv-badge-success {
+    background: color-mix(in srgb, var(--rv-color-accent) 24%, transparent); border-color: var(--rv-color-accent);
+  }
+  .app-shell.stitch-shell main .returns-page .return-reference-row > .order-reference-invoice .invoice-status-label.rv-badge-success::after {
+    width: 10px; height: 5px; margin: auto; inset: 0 0 3px 0; border: 0; border-left: 2px solid var(--rv-color-accent); border-bottom: 2px solid var(--rv-color-accent); border-radius: 0; background: none; transform: rotate(-45deg);
+  }
+}
