@@ -14,6 +14,7 @@ import { Modal } from '../../shared/components'
 import { MessageToast } from '../../shared/components/NoticeToast'
 import './question-answer-dialog.css'
 import './questions-tabs.css'
+import './questions-responsive.css'
 
 type MarketplaceQuestion = {
   id: string; connectionId: string; platformCode: string; storeName: string; externalQuestionId: string; kind: string; status: string

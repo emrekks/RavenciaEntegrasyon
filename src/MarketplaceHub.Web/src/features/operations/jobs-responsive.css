@@ -38,3 +38,13 @@
   /* The type tooltip needs hover; touch screens show the card instead. */
   .app-shell.stitch-shell main .jobs-page .jobs-reference-type-tooltip { display: none; }
 }
+
+/* Readability pass: the per-job detail button is quiet (outline) so the job name and status lead. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .jobs-page .jobs-reference-row-action {
+    color: var(--rv-color-ink);
+    background: transparent;
+    border: 1px solid var(--rv-color-border-strong);
+    box-shadow: none;
+  }
+}

@@ -130,3 +130,15 @@
   /* The four summary tiles two to a row. */
   .invoice-detail-modal .invoice-detail-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 }
+/* Readability pass on phones: the list panel drops its own padding so cards use the full width,
+   order status sits left and invoice status right, larger tap targets. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-workspace { padding: 0; background: transparent; border: 0; box-shadow: none; }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-workspace > header { padding: 4px 2px 12px; }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-shipment { justify-content: flex-start; }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-status { justify-content: flex-end; }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-order > .invoice-reference-select { width: 20px; height: 20px; }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-row .order-number-copy { width: 36px; height: 36px; }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-buyer small,
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-amount small { font-size: 13px; }
+}

@@ -159,3 +159,14 @@
   }
   .app-shell.stitch-shell main .returns-page .return-reference-row .order-reference-invoice > .order-invoice-metric { display: none; }
 }
+
+/* Readability pass on phones: the list panel drops its own padding so cards use the full width,
+   the invoice block loses its extra divider and no text goes below 13px. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .returns-page .return-reference-workspace { padding: 0; background: transparent; border: 0; box-shadow: none; }
+  .app-shell.stitch-shell main .returns-page .return-reference-workspace > header { padding: 4px 2px 12px; }
+  .app-shell.stitch-shell main .returns-page .return-reference-row .order-reference-invoice small { font-size: 13px; }
+  .app-shell.stitch-shell main .returns-page .return-reference-row .order-reference-invoice > .order-invoice-payable { padding: 0; border: 0; }
+  .app-shell.stitch-shell main .returns-page .return-reference-row .order-number-copy { width: 36px; height: 36px; }
+  .app-shell.stitch-shell main .returns-page .return-reference-row .return-reason-note { font-size: 13px; }
+}

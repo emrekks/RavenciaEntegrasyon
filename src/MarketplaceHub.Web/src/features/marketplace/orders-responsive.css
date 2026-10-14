@@ -189,3 +189,25 @@
   .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-row > .order-reference-grid > .order-reference-actions { grid-template-columns: minmax(0, 1fr); }
   .app-shell.stitch-shell main .orders-page .order-reference-actions .order-label-action { min-height: 44px; font-size: 15px; }
 }
+/* Readability pass on phones: filters one per row so their values are never cut off, filter chips
+   named for what they filter, larger tap targets, the invoice menu across the card and no text
+   below 13px. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .orders-page .orders-control-bar { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .app-shell.stitch-shell main .orders-page .orders-control-bar > * { grid-column: auto; min-width: 0; }
+  .app-shell.stitch-shell main .orders-page .orders-control-bar > .orders-filter-reset { justify-self: stretch; min-height: 44px; }
+
+  .app-shell.stitch-shell main .orders-page .order-reference-head > .order-reference-platform-heading > strong { display: none; }
+  .app-shell.stitch-shell main .orders-page .order-reference-head > .order-reference-platform-heading::before { content: "Platform"; }
+  .app-shell.stitch-shell main .orders-page .order-reference-head > .order-select { display: inline-flex; align-items: center; gap: 8px; }
+  .app-shell.stitch-shell main .orders-page .order-reference-head > .order-select::after { content: "Tümünü seç"; }
+
+  .app-shell.stitch-shell main .orders-page .order-select input[type="checkbox"] { width: 20px; height: 20px; }
+  .app-shell.stitch-shell main .orders-page .order-number-copy { width: 36px; height: 36px; }
+
+  .app-shell.stitch-shell main .orders-page .order-reference-invoice small,
+  .app-shell.stitch-shell main .orders-page .order-reference-invoice .order-invoice-label small { font-size: 13px; }
+  .app-shell.stitch-shell main .orders-page .order-reference-invoice .row-menu { flex: 1 1 100%; }
+  .app-shell.stitch-shell main .orders-page .order-reference-invoice .invoice-document-link { min-height: 36px; font-size: 13px; }
+  .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-row > .order-reference-grid > .order-reference-invoice { gap: 10px; }
+}

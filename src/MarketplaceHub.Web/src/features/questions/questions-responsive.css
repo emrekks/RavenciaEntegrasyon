@@ -1,0 +1,21 @@
+/* Questions on phones: four nested paddings (results panel, card, thread, bubble) left the answer
+   about 230px wide. The results panel drops its frame, the thread its box, and the question date
+   and status share one line under the product instead of stacking beside it. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .rv-questions-results { padding: 0; background: transparent; border: 0; box-shadow: none; }
+  .app-shell.stitch-shell main .rv-questions-results > header { padding: 4px 2px 8px; }
+
+  .app-shell.stitch-shell main .rv-question-card { gap: 12px; padding: 14px; }
+  .app-shell.stitch-shell main .rv-question-card-header { flex-direction: column; align-items: stretch; gap: 10px; }
+  .app-shell.stitch-shell main .rv-question-actions {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .app-shell.stitch-shell main .rv-question-content { gap: 10px; padding: 0; background: transparent; border: 0; }
+  .app-shell.stitch-shell main .rv-question-content :is(.rv-question-thread-message, .rv-question-conversation > *) { padding: 10px 12px; font-size: 15px; line-height: 1.55; }
+  .app-shell.stitch-shell main .rv-question-meta { font-size: 13px; }
+}

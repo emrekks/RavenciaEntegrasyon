@@ -69,3 +69,56 @@
   .app-shell.stitch-shell main .dashboard .dashboard-operational-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .app-shell.stitch-shell main .dashboard .dashboard-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* Marketplace and cargo logos are dark artwork that vanishes on the dark cards; on phones and
+   tablets they sit on a light badge. The doubled class outranks the card size rules. */
+@media (max-width: 1100px) {
+  .app-shell.stitch-shell main :is(.order-reference-row, .return-reference-row, .invoice-reference-row) .order-platform-logo.order-platform-logo {
+    box-sizing: content-box;
+    height: 16px;
+    padding: 4px 8px;
+    background: #f4f4f7;
+    border-radius: 6px;
+  }
+  .app-shell.stitch-shell main :is(.order-reference-row, .return-reference-row, .invoice-reference-row) .cargo-provider-icon.cargo-provider-icon {
+    box-sizing: content-box;
+    max-height: 22px;
+    padding: 4px 8px;
+    background: #f4f4f7;
+    border-radius: 6px;
+  }
+}
+
+/* Settings on phones: description above its buttons (side by side they squeezed the text into a
+   narrow column), forms in one column, sticky save bars with stacked full-width buttons. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .security-authenticator-card { flex-direction: column; align-items: stretch; gap: 14px; }
+  .app-shell.stitch-shell main .security-authenticator-card > button { width: 100%; min-height: 44px; }
+  .app-shell.stitch-shell main .security-sessions-card .panel-title { flex-direction: column; align-items: stretch; gap: 12px; }
+  .app-shell.stitch-shell main .security-sessions-card .session-bulk-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .app-shell.stitch-shell main .security-sessions-card .session-bulk-actions > button { width: 100%; min-height: 44px; }
+  .app-shell.stitch-shell main .shipping-settings-grid { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .app-shell.stitch-shell main .shipping-settings-grid > * { grid-column: auto; min-width: 0; }
+  .app-shell.stitch-shell main .settings-sticky-actions { flex-direction: column; align-items: stretch; gap: 10px; }
+  .app-shell.stitch-shell main .settings-sticky-actions > :is(button, .rv-button) { width: 100%; min-height: 44px; }
+}
+/* Page heading buttons on phones sit two to a row instead of one per row, so the page starts
+   sooner; an odd one out takes the full row. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .page-heading > .page-heading-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+  }
+  .app-shell.stitch-shell main .page-heading > .page-heading-actions > * {
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    padding-inline: 10px;
+    white-space: normal;
+    text-align: center;
+    line-height: 1.25;
+  }
+  .app-shell.stitch-shell main .page-heading > .page-heading-actions > :last-child:nth-child(odd) { grid-column: 1 / -1; }
+}

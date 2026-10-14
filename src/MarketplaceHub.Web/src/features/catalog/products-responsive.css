@@ -116,3 +116,31 @@
   .app-shell.stitch-shell main .product-add-page .editor-section-title { flex-wrap: wrap; row-gap: 10px; }
   .app-shell.stitch-shell main .product-add-page .editor-section-title > .product-media-header-actions { flex: 1 1 auto; flex-wrap: wrap; justify-content: flex-end; min-width: 0; }
 }
+/* Readability pass on phones: metric cards put the icon on top so the label gets the full width
+   on one line, and only "Yeni Ürün Ekle" stays a filled primary button. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .products-page .product-metrics > * {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: start;
+    align-content: start;
+    gap: 6px;
+    padding: 14px;
+    text-align: left;
+  }
+  .app-shell.stitch-shell main .products-page .product-metrics > * > .product-metric-icon { grid-row: auto; width: 32px; height: 32px; }
+  .app-shell.stitch-shell main .products-page .product-metrics > * > .product-metric-icon svg { width: 20px; height: 20px; }
+  .app-shell.stitch-shell main .products-page .product-metrics > * > small { grid-column: auto; font-size: 13px; line-height: 1.3; white-space: nowrap; }
+  .app-shell.stitch-shell main .products-page .product-metrics > * > strong { grid-column: auto; font-size: 22px; line-height: 1.15; }
+
+  .app-shell.stitch-shell main .products-page .products-page-actions > .product-import-trigger {
+    color: var(--rv-color-ink);
+    background: transparent;
+    border: 1px solid var(--rv-color-border-strong);
+    box-shadow: none;
+  }
+}
+/* Filter controls two to a row: a slightly smaller label and padding keep values like
+   "Tüm Platformlar" whole instead of cut off. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .products-page .product-toolbar > :not(.order-search) :is(button, select) { padding-inline: 10px; font-size: 14px; }
+}
