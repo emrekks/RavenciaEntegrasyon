@@ -644,3 +644,9 @@ html body .order-detail-actions-list > button:hover:not(:disabled) { background:
   /* The inline bulk toolbar is replaced by the selection bar while selecting. */
   .app-shell.stitch-shell main .orders-page .orders-bulk-toolbar { display: none; }
 }
+
+/* Selection bar, one row: İptal | İşlemler (N) | Tümünü Seç — the middle button opens the bulk actions. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .orders-page .orders-selection-bar { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "cancel actions all"; align-items: center; gap: 10px; padding: 10px 20px calc(10px + env(safe-area-inset-bottom)); }
+  .app-shell.stitch-shell main .orders-page .orders-selection-bar > .orders-selection-actions { grid-area: actions; width: 100%; min-height: 42px; font-size: 14px; }
+}
