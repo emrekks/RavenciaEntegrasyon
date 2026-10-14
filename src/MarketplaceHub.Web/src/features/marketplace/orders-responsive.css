@@ -354,3 +354,12 @@ html body .order-detail-actions > .order-detail-secondary { grid-column: 1; colo
 html body .order-detail-actions-list { position: absolute; right: 16px; bottom: calc(100% + 6px); left: 16px; display: grid; gap: 2px; padding: 6px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); box-shadow: var(--rv-shadow-lg); }
 html body .order-detail-actions-list > button { min-height: 44px; padding: 0 12px; color: var(--rv-color-ink); background: transparent; border: 0; border-radius: var(--rv-radius-sm); text-align: left; }
 html body .order-detail-actions-list > button:hover:not(:disabled) { background: var(--rv-color-surface-soft); }
+
+/* Orders with several products on phones/tablets: the grid's inline desktop row heights (one fixed
+   row per product line) squeezed the products area, so the product cards overlapped. Rows size to
+   their content here and the products stack with a gap. Desktop is untouched. */
+@media (max-width: 1100px) {
+  .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-row > .order-reference-grid { grid-template-rows: none !important; grid-auto-rows: auto; }
+  .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-row > .order-reference-grid > .order-reference-products { display: grid; grid-template-rows: none; grid-auto-rows: auto; align-content: start; align-self: start; row-gap: 12px; height: auto; min-height: 0; overflow: visible; }
+  .app-shell.stitch-shell main .orders-page .order-reference-products > article { grid-row: auto; height: auto; min-height: 0; }
+}
