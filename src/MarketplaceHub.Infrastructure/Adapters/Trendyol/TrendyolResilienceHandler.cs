@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace MarketplaceHub.Infrastructure.Adapters.Trendyol;
@@ -9,12 +10,16 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
     private readonly TrendyolOptions options;
     private readonly TimeProvider timeProvider;
     private readonly TrendyolResilienceState state;
+    private readonly ISharedRateLimiter? sharedLimiter;
+    private readonly ILogger<TrendyolResilienceHandler>? logger;
 
-    public TrendyolResilienceHandler(IOptions<TrendyolOptions> options, TimeProvider timeProvider, TrendyolResilienceState state)
+    public TrendyolResilienceHandler(IOptions<TrendyolOptions> options, TimeProvider timeProvider, TrendyolResilienceState state, ISharedRateLimiter? sharedLimiter = null, ILogger<TrendyolResilienceHandler>? logger = null)
     {
         this.options = options.Value;
         this.timeProvider = timeProvider;
         this.state = state;
+        this.sharedLimiter = sharedLimiter;
+        this.logger = logger;
     }
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -26,9 +31,7 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
         try
         {
             if (!TryEnterCircuit(circuitKey, out halfOpen, out var circuitRetryAfter)) return CircuitOpenResponse(circuitRetryAfter);
-            await WaitForRateWindowAsync(GlobalRateBucketFor(request), options.RequestsPerInterval, options.RequestInterval, cancellationToken);
-            if (RateBucketFor(request) is { } bucket)
-                await WaitForRateWindowAsync(bucket, options.OrderRequestsPerInterval, options.OrderRequestInterval, cancellationToken, options.OrderRequestMinimumInterval);
+            await WaitForQuotaAsync(request, cancellationToken);
             try
             {
                 var response = await base.SendAsync(request, cancellationToken);
@@ -119,6 +122,35 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
             circuit.HalfOpenRequestActive = false;
             circuit.LastTouchedAt = timeProvider.GetUtcNow();
         }
+    }
+
+    // The seller quota is shared by the API and every worker, so it is counted in PostgreSQL. If the
+    // shared limiter cannot be reached, the in-process windows keep this process within the quota.
+    private async Task WaitForQuotaAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        var globalBucket = GlobalRateBucketFor(request);
+        var orderBucket = RateBucketFor(request);
+        if (sharedLimiter is not null)
+        {
+            try
+            {
+                await SharedRateLimits.WaitAsync(sharedLimiter, $"trendyol:{globalBucket}", SharedRateLimits.ForWindow(options.RequestsPerInterval, options.RequestInterval), timeProvider, cancellationToken);
+                if (orderBucket is not null)
+                {
+                    await SharedRateLimits.WaitAsync(sharedLimiter, $"trendyol:{orderBucket}", SharedRateLimits.ForWindow(options.OrderRequestsPerInterval, options.OrderRequestInterval), timeProvider, cancellationToken);
+                    if (options.OrderRequestMinimumInterval > TimeSpan.Zero)
+                        await SharedRateLimits.WaitAsync(sharedLimiter, $"trendyol:{orderBucket}:spacing", SharedRateLimits.ForSpacing(options.OrderRequestMinimumInterval), timeProvider, cancellationToken);
+                }
+                return;
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                logger?.LogWarning(exception, "Shared Trendyol rate limiter unavailable; using the in-process limiter");
+            }
+        }
+        await WaitForRateWindowAsync(globalBucket, options.RequestsPerInterval, options.RequestInterval, cancellationToken);
+        if (orderBucket is not null)
+            await WaitForRateWindowAsync(orderBucket, options.OrderRequestsPerInterval, options.OrderRequestInterval, cancellationToken, options.OrderRequestMinimumInterval);
     }
 
     private async Task WaitForRateWindowAsync(string bucket, int configuredLimit, TimeSpan configuredInterval, CancellationToken cancellationToken, TimeSpan? minimumSpacing = null)

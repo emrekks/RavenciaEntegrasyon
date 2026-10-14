@@ -1000,6 +1000,28 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task SharedRateLimiter_TakesTokensUntilTheBucketIsEmptyThenReportsTheWait()
+    {
+        var key = $"test:rate:{Guid.NewGuid():N}";
+        await using var connectionSource = fixture.CreateContext();
+        await using var dataSource = Npgsql.NpgsqlDataSource.Create(connectionSource.Database.GetConnectionString()!);
+        var limiter = new MarketplaceHub.Infrastructure.Adapters.PostgresSharedRateLimiter(dataSource);
+        try
+        {
+            // Capacity 2 and a slow refill: two immediate tokens, then a wait of about 10 s.
+            Assert.Equal(TimeSpan.Zero, await limiter.TryTakeAsync(key, 2, 0.1, CancellationToken.None));
+            Assert.Equal(TimeSpan.Zero, await limiter.TryTakeAsync(key, 2, 0.1, CancellationToken.None));
+            var wait = await limiter.TryTakeAsync(key, 2, 0.1, CancellationToken.None);
+            Assert.InRange(wait.TotalSeconds, 8, 10.5);
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateContext();
+            await cleanup.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM integration.rate_limit_buckets WHERE \"Key\" = {key}");
+        }
+    }
+
+    [PostgreSqlFact]
     public async Task JobRetention_RemovesOnlyOldFinishedScheduledJobs()
     {
         var tenant = NewTenant("job-retention");

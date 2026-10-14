@@ -1,4 +1,5 @@
 using System.Net;
+using MarketplaceHub.Infrastructure.Adapters;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol;
 using Microsoft.Extensions.Options;
 using Xunit;
@@ -61,6 +62,60 @@ public sealed class TrendyolResilienceHandlerTests
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
         Assert.Equal(HttpStatusCode.OK, second.StatusCode);
         Assert.True(DateTimeOffset.UtcNow - started >= TimeSpan.FromMilliseconds(55));
+    }
+
+    [Fact]
+    public void SharedWindowBucket_NeverExceedsTheSlidingWindowLimit()
+    {
+        var (capacity, perSecond) = SharedRateLimits.ForWindow(30, TimeSpan.FromMinutes(1));
+
+        Assert.Equal(6, capacity);
+        Assert.True(capacity + perSecond * 60 <= 30.000001);
+        Assert.Equal((1d, 0.2d), SharedRateLimits.ForSpacing(TimeSpan.FromSeconds(5)));
+    }
+
+    [Fact]
+    public async Task SharedLimiter_CountsGlobalOrderAndSpacingBucketsAcrossProcesses()
+    {
+        var options = Options.Create(new TrendyolOptions { MaxConcurrency = 1, OrderRequestMinimumInterval = TimeSpan.FromSeconds(5) });
+        var shared = new RecordingSharedLimiter();
+        using var downstream = new SequenceHandler(HttpStatusCode.OK);
+        using var resilience = new TrendyolResilienceHandler(options, TimeProvider.System, new TrendyolResilienceState(options), shared) { InnerHandler = downstream };
+        using var client = new HttpClient(resilience);
+
+        using var response = await client.GetAsync("https://unit.test/integration/order/sellers/seller-42/orders/stream");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(["trendyol:global:unit.test:anonymous", "trendyol:orders:unit.test:seller-42", "trendyol:orders:unit.test:seller-42:spacing"], shared.Keys);
+    }
+
+    [Fact]
+    public async Task SharedLimiterFailure_FallsBackToTheInProcessLimiter()
+    {
+        var options = Options.Create(new TrendyolOptions { MaxConcurrency = 1, RequestsPerInterval = 100, RequestInterval = TimeSpan.FromMilliseconds(1) });
+        using var downstream = new SequenceHandler(HttpStatusCode.OK);
+        using var resilience = new TrendyolResilienceHandler(options, TimeProvider.System, new TrendyolResilienceState(options), new ThrowingSharedLimiter()) { InnerHandler = downstream };
+        using var client = new HttpClient(resilience);
+
+        using var response = await client.GetAsync("https://unit.test/integration/product/sellers/seller-42/products/approved");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    private sealed class RecordingSharedLimiter : MarketplaceHub.Infrastructure.Adapters.ISharedRateLimiter
+    {
+        public List<string> Keys { get; } = [];
+        public ValueTask<TimeSpan> TryTakeAsync(string key, double capacity, double tokensPerSecond, CancellationToken cancellationToken)
+        {
+            Keys.Add(key);
+            return ValueTask.FromResult(TimeSpan.Zero);
+        }
+    }
+
+    private sealed class ThrowingSharedLimiter : MarketplaceHub.Infrastructure.Adapters.ISharedRateLimiter
+    {
+        public ValueTask<TimeSpan> TryTakeAsync(string key, double capacity, double tokensPerSecond, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("database unavailable");
     }
 
     [Fact]

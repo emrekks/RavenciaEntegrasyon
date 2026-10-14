@@ -1,5 +1,6 @@
 using System.Security.Cryptography.X509Certificates;
 using MarketplaceHub.Application;
+using MarketplaceHub.Infrastructure.Adapters;
 using MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
 using MarketplaceHub.Infrastructure.Adapters.Shopify;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol;
@@ -67,6 +68,7 @@ public static class DependencyInjection
         services.Configure<TrendyolOptions>(configuration.GetSection(TrendyolOptions.SectionName));
         services.Configure<ShopifyOptions>(configuration.GetSection(ShopifyOptions.SectionName));
         services.Configure<HepsiburadaOptions>(configuration.GetSection(HepsiburadaOptions.SectionName));
+        services.AddSingleton<ISharedRateLimiter>(_ => new PostgresSharedRateLimiter(Npgsql.NpgsqlDataSource.Create(connection)));
         services.AddSingleton<TrendyolResilienceState>();
         services.AddTransient<TrendyolResilienceHandler>();
         services.AddHttpClient("Trendyol", client => client.Timeout = Timeout.InfiniteTimeSpan)
