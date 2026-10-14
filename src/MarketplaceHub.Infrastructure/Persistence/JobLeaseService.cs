@@ -45,7 +45,14 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
                     AND running."ConnectionId" = candidate."ConnectionId"
                     AND running."Status" = 'LEASED'
                     AND running."LeaseExpiresAt" > {now})
-            ORDER BY candidate."Priority" ASC, candidate."AvailableAt" ASC, candidate."CreatedAt" ASC
+            ORDER BY candidate."Priority" ASC,
+              -- Fairness: within one priority, the tenant with fewer running jobs goes first, so a
+              -- tenant with hundreds of queued jobs cannot keep every slot to itself.
+              (SELECT count(*) FROM integration.jobs tenant_running
+               WHERE tenant_running."Status" = 'LEASED'
+                 AND tenant_running."TenantId" = candidate."TenantId"
+                 AND tenant_running."LeaseExpiresAt" > {now}) ASC,
+              candidate."AvailableAt" ASC, candidate."CreatedAt" ASC
             FOR UPDATE OF candidate SKIP LOCKED
             LIMIT 1
             """).SingleOrDefaultAsync(cancellationToken);

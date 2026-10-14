@@ -1000,6 +1000,55 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task JobLease_PrefersTheTenantWithFewerRunningJobsWithinOnePriority()
+    {
+        var busyTenant = NewTenant("lease-fair-busy");
+        var quietTenant = NewTenant("lease-fair-quiet");
+        var running = NewJob(busyTenant.Id);
+        running.Status = JobStatus.Leased;
+        running.AttemptCount = 1;
+        running.LeaseTokenHash = "running-lease";
+        running.LeaseExpiresAt = DateTimeOffset.UtcNow.AddMinutes(2);
+        var busyQueued = NewJob(busyTenant.Id);
+        var quietQueued = NewJob(quietTenant.Id);
+        // The busy tenant's job is older; without fairness it would be leased first.
+        quietQueued.AvailableAt = busyQueued.AvailableAt.AddSeconds(5);
+        quietQueued.CreatedAt = busyQueued.CreatedAt.AddSeconds(5);
+        // A higher-priority job still wins regardless of fairness.
+        var urgentBusy = NewJob(busyTenant.Id);
+        urgentBusy.Priority = 0;
+
+        await using (var setup = fixture.CreateContext())
+        {
+            setup.Tenants.AddRange(busyTenant, quietTenant);
+            setup.IntegrationJobs.AddRange(running, busyQueued, quietQueued, urgentBusy);
+            await setup.SaveChangesAsync();
+        }
+
+        var jobIds = new[] { running.Id, busyQueued.Id, quietQueued.Id, urgentBusy.Id };
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var leaseService = new JobLeaseService(db, fixture.TokenHasher, fixture.TimeProvider);
+
+            var first = await leaseService.TryLeaseAsync(TimeSpan.FromMinutes(2), null, null, CancellationToken.None);
+            var second = await leaseService.TryLeaseAsync(TimeSpan.FromMinutes(2), null, null, CancellationToken.None);
+            var third = await leaseService.TryLeaseAsync(TimeSpan.FromMinutes(2), null, null, CancellationToken.None);
+
+            Assert.Equal(urgentBusy.Id, first?.Id);
+            Assert.Equal(quietQueued.Id, second?.Id);
+            Assert.Equal(busyQueued.Id, third?.Id);
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateContext();
+            await cleanup.JobAttempts.Where(x => jobIds.Contains(x.JobId)).ExecuteDeleteAsync();
+            await cleanup.IntegrationJobs.Where(x => jobIds.Contains(x.Id)).ExecuteDeleteAsync();
+            await cleanup.Tenants.Where(x => x.Id == busyTenant.Id || x.Id == quietTenant.Id).ExecuteDeleteAsync();
+        }
+    }
+
+    [PostgreSqlFact]
     public async Task JobLease_HepsiburadaStatusLaneSkipsOtherMarketplaceJobs()
     {
         var tenant = NewTenant("lease-hepsiburada-status-lane");
