@@ -230,8 +230,8 @@ public static class CatalogEndpoints
             Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.UpdateOfferAsync(tenant.TenantId, tenant.UserId, id, version, command, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http));
         api.MapPost("/channel-offers/price-sync-jobs", async (HttpContext http, IInventoryService service) =>
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.ValidateExternalSyncAsync(tenant.TenantId, "PRICE_SYNC", http.RequestAborted)) : MissingContext(http));
-        api.MapPost("/connections/{connectionId:guid}/price-inventory-sync-jobs", async (Guid connectionId, HttpContext http, IInventoryService service) =>
-            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueuePriceInventorySyncAsync(tenant.TenantId, connectionId, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted)) : MissingContext(http));
+        api.MapPost("/connections/{connectionId:guid}/price-inventory-sync-jobs", async (Guid connectionId, string? stockCode, HttpContext http, IInventoryService service) =>
+            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueuePriceInventorySyncAsync(tenant.TenantId, connectionId, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted, stockCode)) : MissingContext(http));
         api.MapPost("/products/{productId:guid}/connections/{connectionId:guid}/price-inventory-sync-jobs", async (Guid productId, Guid connectionId, HttpContext http, IInventoryService service) =>
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueueProductPriceInventorySyncAsync(tenant.TenantId, productId, connectionId, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted)) : MissingContext(http));
 

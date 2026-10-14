@@ -55,9 +55,6 @@ public sealed partial class N11HttpClient : IProductPort
     public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedDeliveryAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => ProductWriteUnsupported();
     public Task<AdapterResult<RemoteOperationRef>> ArchiveAsync(AdapterContext context, string payloadJson, CancellationToken cancellationToken) => ProductWriteUnsupported();
 
-    public Task<AdapterResult<RemoteOperationStatus>> GetOperationAsync(AdapterContext context, string externalOperationId, CancellationToken cancellationToken) =>
-        Task.FromResult(NotSupported<RemoteOperationStatus>("N11_PRODUCT_WRITE_UNSUPPORTED", ProductWritesLater));
-
     public Task<AdapterResult<RemotePublicationStatus>> GetPublicationStatusAsync(AdapterContext context, string barcode, CancellationToken cancellationToken) =>
         Task.FromResult(NotSupported<RemotePublicationStatus>("N11_PRODUCT_WRITE_UNSUPPORTED", ProductWritesLater));
 

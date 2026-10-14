@@ -1,0 +1,8 @@
+/* N11 controlled price-stock send on the connection settings page. */
+.app-shell.stitch-shell main .n11-price-stock-send form { display: grid; gap: 12px; max-width: 560px; }
+.app-shell.stitch-shell main .n11-price-stock-send label { display: grid; gap: 6px; font-weight: 600; }
+.app-shell.stitch-shell main .n11-price-stock-send-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .n11-price-stock-send-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .app-shell.stitch-shell main .n11-price-stock-send-actions > button { min-width: 0; }
+}

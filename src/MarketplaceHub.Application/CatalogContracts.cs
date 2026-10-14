@@ -209,7 +209,7 @@ public interface IInventoryService
     Task<ServiceResult<ChannelOfferView>> GetOfferAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
     Task<ServiceResult<ChannelOfferView>> UpdateOfferAsync(Guid tenantId, Guid userId, Guid id, long expectedVersion, UpdateChannelOfferCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> ValidateExternalSyncAsync(Guid tenantId, string operation, CancellationToken cancellationToken);
-    Task<ServiceResult<Guid>> EnqueuePriceInventorySyncAsync(Guid tenantId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
+    Task<ServiceResult<Guid>> EnqueuePriceInventorySyncAsync(Guid tenantId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken, string? stockCode = null);
     Task<ServiceResult<Guid>> EnqueueProductPriceInventorySyncAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
 }
 

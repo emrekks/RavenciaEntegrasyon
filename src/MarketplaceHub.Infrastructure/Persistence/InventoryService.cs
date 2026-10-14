@@ -169,21 +169,36 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
     public Task<ServiceResult<Guid>> ValidateExternalSyncAsync(Guid tenantId, string operation, CancellationToken cancellationToken) =>
         Task.FromResult(ServiceResult<Guid>.Fail("USE_COMBINED_PRICE_INVENTORY", $"{operation} Trendyol'da ayrık gönderilmez; birleşik price-and-inventory işi kullanılmalıdır.", 422));
 
-    public async Task<ServiceResult<Guid>> EnqueuePriceInventorySyncAsync(Guid tenantId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
+    // stockCode (n11) limits the send to one linked variant, which is how the
+    // first controlled n11 write is made before the automatic flows are on.
+    public async Task<ServiceResult<Guid>> EnqueuePriceInventorySyncAsync(Guid tenantId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken, string? stockCode = null)
     {
-        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "TRENDYOL" && x.Status == "ACTIVE", cancellationToken);
-        if (connection is null) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Fiyat-stok gönderimi için ACTIVE Trendyol bağlantısı gerekir.", 422);
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "N11") && x.Status == "ACTIVE", cancellationToken);
+        if (connection is null) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Fiyat-stok gönderimi için ACTIVE Trendyol veya N11 bağlantısı gerekir.", 422);
+        Guid? variantId = null;
+        if (!string.IsNullOrWhiteSpace(stockCode))
+        {
+            if (connection.PlatformCode != "N11") return ServiceResult<Guid>.Fail("VALIDATION_FAILED", "Stok koduyla tekil gönderim yalnız N11 bağlantısında kullanılabilir.", 422);
+            var code = stockCode.Trim();
+            variantId = await db.MarketplaceVariantLinks.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == code)
+                .Select(x => (Guid?)x.VariantId)
+                .SingleOrDefaultAsync(cancellationToken);
+            if (variantId is null) return ServiceResult<Guid>.Fail("N11_STOCK_CODE_NOT_LINKED", $"'{code}' stok kodu panelde bir varyanta bağlı değil. Önce N11 ürün eşleştirmesini çalıştırın.", 404);
+            if (!await db.ConnectionSyncPolicies.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == MarketplaceExternalWritePolicies.Stock && x.Enabled, cancellationToken))
+                return ServiceResult<Guid>.Fail("EXTERNAL_WRITE_POLICY_DISABLED", "Stok dış yazma akışı kapalı.", 422);
+        }
         if (!IntegrationRuntimePolicy.IsSupportedEnvironment(connection)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Fiyat-stok gönderimi yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
         if (!WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
         var pricePolicy = await db.ConnectionSyncPolicies.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == MarketplaceExternalWritePolicies.Price, cancellationToken);
         if (pricePolicy is not null && !pricePolicy.Enabled) return ServiceResult<Guid>.Fail("EXTERNAL_WRITE_POLICY_DISABLED", "Fiyat dış yazma akışı kapalı.", 422);
-        var build = await new PriceInventoryComposer(db).BuildAsync(tenantId, connectionId, cancellationToken);
+        var build = await new PriceInventoryComposer(db).BuildAsync(tenantId, connectionId, cancellationToken, variantId);
         if (!build.Succeeded) return ServiceResult<Guid>.Fail(build.Error!.Code, build.Error.Message, build.Error.Status, build.Error.FieldErrors);
         var draft = build.Value!; var dedup = PriceInventoryOutboxPolicy.DedupKey(connectionId, draft.Lines);
         var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.PriceInventorySync && x.JobDedupKey == dedup, cancellationToken);
         if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);
         var id = Guid.CreateVersion7(); var now = timeProvider.GetUtcNow();
-        var payload = JsonSerializer.Serialize(new PriceInventoryJobPayload(id, connectionId, "SUBMIT", draft.PayloadHash, draft.PayloadJson, draft.Lines, null, null, null));
+        var payload = JsonSerializer.Serialize(new PriceInventoryJobPayload(id, connectionId, "SUBMIT", draft.PayloadHash, draft.PayloadJson, draft.Lines, null, null, variantId));
         var writeDelay = pricePolicy is null ? 0 : Math.Clamp(pricePolicy.IntervalSeconds, 0, 86_400);
         db.IntegrationJobs.Add(new IntegrationJob { Id = id, TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.PriceInventorySync, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{dedup}:{Hash(idempotencyKey.Trim())}", Priority = JobPriorityPolicy.For(MarketplaceJobTypes.PriceInventorySync, userInitiated: true), Status = JobStatus.Pending, AvailableAt = now.AddSeconds(writeDelay), MaxAttempts = 10, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
         await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(id);

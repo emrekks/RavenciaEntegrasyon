@@ -173,7 +173,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
     private async Task DisableExternalWriteAutomationAsync(CancellationToken cancellationToken)
     {
         var connections = await db.PlatformConnections
-            .Where(x => x.PlatformCode == "TRENDYOL" || x.PlatformCode == "HEPSIBURADA")
+            .Where(x => x.PlatformCode == "TRENDYOL" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11")
             .ToListAsync(cancellationToken);
         var blockedConnectionIds = connections
             .Where(x => !WritesEnabled(x.SettingsJson))
@@ -421,7 +421,8 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
 
     // n11 runs the order reads for now; returns, questions, references and the
     // write flows join as their integration phases go live.
-    internal static bool SupportsN11ScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "REFERENCE_DATA";
+    internal static bool SupportsN11ScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "REFERENCE_DATA"
+        || resourceType is MarketplaceExternalWritePolicies.Price or MarketplaceExternalWritePolicies.Stock;
 
     internal static bool DefaultPolicyEnabled(string platformCode, string resourceType) =>
         resourceType == "ORDER_CARGO_INFO"

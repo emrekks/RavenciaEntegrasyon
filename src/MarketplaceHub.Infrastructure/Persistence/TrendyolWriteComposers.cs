@@ -1,6 +1,8 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
@@ -118,6 +120,8 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
             .Select(item => new { item.PlatformCode, item.ExternalStoreId })
             .SingleOrDefaultAsync(cancellationToken);
         if (connection is null) return ServiceResult<PriceInventoryDraft>.Fail("CONNECTION_NOT_FOUND", "Pazaryeri bağlantısı bulunamadı.", 404);
+        if (string.Equals(connection.PlatformCode, "N11", StringComparison.OrdinalIgnoreCase))
+            return await BuildN11Async(tenantId, connectionId, cancellationToken, variantId, productId);
         var isHepsiburada = string.Equals(connection.PlatformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase);
         var rows = await (from offer in db.ChannelOffers.AsNoTracking()
                           join variant in db.ProductVariants.AsNoTracking() on new { offer.TenantId, offer.VariantId } equals new { variant.TenantId, VariantId = variant.Id }
@@ -163,5 +167,71 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         return ServiceResult<PriceInventoryDraft>.Ok(new(Hash(payload), payload, lines));
     }
 
+    // n11 has no listing profile in the panel: an n11 offer is sent when its
+    // variant is linked to an n11 stock code. Prices go with two decimals and
+    // listPrice >= salePrice, stock is capped at n11's 999,999.
+    private async Task<ServiceResult<PriceInventoryDraft>> BuildN11Async(Guid tenantId, Guid connectionId, CancellationToken cancellationToken, Guid? variantId, Guid? productId)
+    {
+        var rows = await (from offer in db.ChannelOffers.AsNoTracking()
+                          join variant in db.ProductVariants.AsNoTracking() on new { offer.TenantId, offer.VariantId } equals new { variant.TenantId, VariantId = variant.Id }
+                          join remoteLink in db.MarketplaceVariantLinks.AsNoTracking() on new { offer.TenantId, offer.ConnectionId, offer.VariantId } equals new { remoteLink.TenantId, remoteLink.ConnectionId, remoteLink.VariantId }
+                          join inventory in db.InventoryItems.AsNoTracking().Where(x => x.LocationCode == "MAIN") on new { offer.TenantId, offer.VariantId } equals new { inventory.TenantId, inventory.VariantId }
+                          where offer.TenantId == tenantId && offer.ConnectionId == connectionId && offer.Status == "ACTIVE"
+                               && (variantId == null || offer.VariantId == variantId)
+                               && (productId == null || variant.ProductId == productId)
+                          orderby variant.Id
+                          select new { Offer = offer, Variant = variant, Inventory = inventory, StockCode = remoteLink.ExternalId })
+            .ToListAsync(cancellationToken);
+        if (rows.Count == 0) return ServiceResult<PriceInventoryDraft>.Fail("LIVE_OFFER_REQUIRED", "N11 fiyat-stok gönderimi için N11 stok koduna bağlı varyant ve ACTIVE N11 teklifi gerekir.", 422);
+
+        var lines = new List<PriceInventoryPushLine>();
+        foreach (var row in rows)
+        {
+            var salePrice = N11PriceInventoryRules.Price(row.Offer.SalePrice);
+            var listPrice = Math.Max(N11PriceInventoryRules.Price(row.Offer.ListPrice), salePrice);
+            if (!string.Equals(row.Offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase) || salePrice <= 0)
+                return ServiceResult<PriceInventoryDraft>.Fail("CHANNEL_OFFER_INVALID", $"'{row.Variant.Sku}' için N11 teklifinde TRY para birimi ve sıfırdan büyük satış fiyatı gerekir.", 422);
+            var quantity = N11PriceInventoryRules.Quantity(row.Inventory.Available - row.Offer.SafetyStock);
+            var priceHash = Hash($"{listPrice:0.00}|{salePrice:0.00}|TRY|{row.Offer.PriceVersion}");
+            if (row.Offer.LastPriceHash == priceHash && row.Offer.LastStockProjectionVersion == row.Inventory.ProjectionVersion) continue;
+            lines.Add(new(row.Variant.Id, row.Offer.Id, row.StockCode.Trim(), quantity, listPrice, salePrice, "TRY", row.Inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash));
+        }
+        if (lines.Count == 0) return ServiceResult<PriceInventoryDraft>.Fail("NO_EXTERNAL_CHANGES", "Pazaryerine gönderilecek yeni fiyat veya stok değişikliği yok.", 409);
+        lines = lines.Take(N11PriceInventoryRules.MaxSkusPerRequest).ToList();
+        var payload = N11PriceInventoryRules.Payload(lines);
+        return ServiceResult<PriceInventoryDraft>.Ok(new(Hash(payload), payload, lines));
+    }
+
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
+}
+
+internal static class N11PriceInventoryRules
+{
+    public const int MaxSkusPerRequest = 1000;
+    public const int MaxQuantity = 999_999;
+    public const string Integrator = "Ravencia";
+
+    public static decimal Price(decimal value) => decimal.Round(value, 2, MidpointRounding.AwayFromZero);
+
+    public static decimal Quantity(decimal available) => Math.Clamp(decimal.Floor(Math.Max(0, available)), 0, MaxQuantity);
+
+    // n11 rejects comma decimals and more than two decimal places, so prices
+    // are written as invariant numbers carrying exactly two decimals.
+    public static string Payload(IReadOnlyList<PriceInventoryPushLine> lines)
+    {
+        var skus = new JsonArray();
+        foreach (var line in lines)
+            skus.Add(new JsonObject
+            {
+                ["stockCode"] = line.Barcode,
+                ["listPrice"] = TwoDecimals(line.ListPrice),
+                ["salePrice"] = TwoDecimals(line.SalePrice),
+                ["quantity"] = (int)Quantity(line.Quantity),
+                ["currencyType"] = "TL"
+            });
+        return new JsonObject { ["payload"] = new JsonObject { ["integrator"] = Integrator, ["skus"] = skus } }.ToJsonString();
+    }
+
+    private static decimal TwoDecimals(decimal value) =>
+        decimal.Parse(Price(value).ToString("0.00", CultureInfo.InvariantCulture), CultureInfo.InvariantCulture);
 }
