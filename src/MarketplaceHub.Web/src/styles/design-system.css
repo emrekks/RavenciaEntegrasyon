@@ -10459,6 +10459,16 @@ small,
   border-radius: 0;
 }
 
+/* The orders table keeps rounded corners without clipping (row menus open
+   past its edge), so the last row and its grid follow the bottom corners. */
+@media (min-width: 1101px) {
+  .app-shell.stitch-shell main .order-reference-table > .order-reference-row.order-reference-row:last-child,
+  .app-shell.stitch-shell main .order-reference-table > .order-reference-row.order-reference-row:last-child > .order-reference-grid {
+    border-bottom-left-radius: calc(var(--rv-radius-lg) - 1px);
+    border-bottom-right-radius: calc(var(--rv-radius-lg) - 1px);
+  }
+}
+
 /* Keep connection settings useful without turning each field into a full-width bar. */
 .app-shell.stitch-shell main .connection-settings-panel {
   gap: var(--rv-space-4);
