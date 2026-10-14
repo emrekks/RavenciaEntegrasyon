@@ -429,3 +429,28 @@ html body .order-detail-actions-list > button:hover:not(:disabled) { background:
   .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-row > .order-reference-grid > .order-reference-prices { display: none; }
   .app-shell.stitch-shell main .orders-page .order-product-unit-price { display: block; }
 }
+
+/* Phone order card, tidied to match the marketplace app: checkbox beside the order number, the
+   buyer on the next line with a small platform logo at the right, a full-width remaining-time
+   strip, then the products. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-row > .order-reference-grid {
+    padding: 12px 12px 0;
+    column-gap: 8px;
+    grid-template-columns: 24px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "select number date"
+      "select buyer logo"
+      "delivery delivery delivery"
+      "products products products";
+  }
+  .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-row > .order-reference-grid > .order-select { grid-area: select; align-self: start; margin: 1px 0 0; padding: 0; }
+  .app-shell.stitch-shell main .orders-page .order-reference-meta > .order-number { grid-area: number; align-self: center; margin: 0; }
+  .app-shell.stitch-shell main .orders-page .order-reference-meta > small:nth-of-type(1) { grid-area: date; align-self: center; max-width: 150px; margin: 0; font-size: 11.5px; line-height: 1.3; text-align: right; }
+  .app-shell.stitch-shell main .orders-page .order-reference-meta > .order-reference-platform { grid-area: logo; align-self: center; justify-self: end; }
+  .app-shell.stitch-shell main .orders-page .order-reference-meta .order-platform-logo { max-width: 72px; height: 18px; }
+  .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-row > .order-reference-grid > .order-reference-buyer { grid-area: buyer; padding: 0 0 10px; }
+  .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-row > .order-reference-grid > .order-reference-buyer > strong { font-size: 15px; font-weight: 600; }
+  .app-shell.stitch-shell main .orders-page .order-reference-meta > .order-reference-delivery { grid-area: delivery; grid-column: 1 / -1; margin: 0 -12px; padding: 8px 12px; }
+  .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-row > .order-reference-grid > .order-reference-products { grid-area: products; padding: 12px 0; border-top: 0; }
+}
