@@ -1171,6 +1171,63 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task JobLease_SkipsAConnectionLockGroupThatHitAQuotaUntilItsBackoffEnds()
+    {
+        var tenant = NewTenant("lease-quota-backoff");
+        var connectionId = Guid.CreateVersion7();
+        var limitedRead = NewJob(tenant.Id);
+        limitedRead.JobType = MarketplaceJobTypes.OrderSync;
+        limitedRead.ConnectionId = connectionId;
+        limitedRead.Priority = 0;
+        var sameGroupRead = NewJob(tenant.Id);
+        sameGroupRead.JobType = MarketplaceJobTypes.OrderStatusSync;
+        sameGroupRead.ConnectionId = connectionId;
+        sameGroupRead.Priority = 1;
+        var otherGroup = NewJob(tenant.Id);
+        otherGroup.JobType = MarketplaceJobTypes.ReturnSync;
+        otherGroup.ConnectionId = connectionId;
+        otherGroup.Priority = 2;
+
+        await using (var setup = fixture.CreateContext())
+        {
+            setup.Tenants.Add(tenant);
+            setup.IntegrationJobs.AddRange(limitedRead, sameGroupRead, otherGroup);
+            await setup.SaveChangesAsync();
+        }
+
+        var jobIds = new[] { limitedRead.Id, sameGroupRead.Id, otherGroup.Id };
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var leaseService = new JobLeaseService(db, fixture.TokenHasher, fixture.TimeProvider);
+            var first = await leaseService.TryLeaseAsync(TimeSpan.FromMinutes(2), null, null, CancellationToken.None);
+            Assert.Equal(limitedRead.Id, first?.Id);
+
+            var quota = JobExecutionResult.FromAdapterError(new AdapterError(AdapterErrorClass.RateLimit, "REMOTE_RATE_LIMITED", "Platform hız sınırı yanıtı verdi.", 429, TimeSpan.FromMinutes(2), null));
+            Assert.True(await leaseService.CompleteAsync(first!.Id, first.LeaseToken, quota, CancellationToken.None));
+
+            // The orders group of this connection is backing off; the returns group is not.
+            var second = await leaseService.TryLeaseAsync(TimeSpan.FromMinutes(2), null, null, CancellationToken.None);
+            var third = await leaseService.TryLeaseAsync(TimeSpan.FromMinutes(2), null, null, CancellationToken.None);
+            Assert.Equal(otherGroup.Id, second?.Id);
+            Assert.Null(third);
+
+            await using var verification = fixture.CreateContext();
+            var limited = await verification.IntegrationJobs.AsNoTracking().SingleAsync(x => x.Id == limitedRead.Id);
+            Assert.Equal(0, limited.AttemptCount);
+            Assert.Equal(JobStatus.RetryScheduled, limited.Status);
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateContext();
+            await cleanup.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM integration.connection_backoffs WHERE \"ConnectionId\" = {connectionId}");
+            await cleanup.JobAttempts.Where(x => jobIds.Contains(x.JobId)).ExecuteDeleteAsync();
+            await cleanup.IntegrationJobs.Where(x => jobIds.Contains(x.Id)).ExecuteDeleteAsync();
+            await cleanup.Tenants.Where(x => x.Id == tenant.Id).ExecuteDeleteAsync();
+        }
+    }
+
+    [PostgreSqlFact]
     public async Task JobLease_PrefersTheTenantWithFewerRunningJobsWithinOnePriority()
     {
         var busyTenant = NewTenant("lease-fair-busy");

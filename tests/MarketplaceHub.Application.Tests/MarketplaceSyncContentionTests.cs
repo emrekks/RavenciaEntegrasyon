@@ -7,6 +7,22 @@ namespace MarketplaceHub.Application.Tests;
 public sealed class MarketplaceSyncContentionTests
 {
     [Fact]
+    public void QuotaRejection_KeepsTheAttemptAndBacksOffTheConnection()
+    {
+        var limited = JobExecutionResult.FromAdapterError(new AdapterError(AdapterErrorClass.RateLimit, "REMOTE_RATE_LIMITED", "Platform hız sınırı yanıtı verdi.", 429, TimeSpan.FromSeconds(12), null));
+        var limitedWithoutDelay = JobExecutionResult.FromAdapterError(new AdapterError(AdapterErrorClass.RateLimit, "REMOTE_RATE_LIMITED", "x", 429, null, null));
+        var timeout = JobExecutionResult.FromAdapterError(new AdapterError(AdapterErrorClass.TransientNetwork, "REMOTE_TIMEOUT", "x", null, TimeSpan.FromSeconds(5), null));
+
+        Assert.Equal(JobCompletionKind.Retry, limited.Kind);
+        Assert.True(limited.RefundAttempt);
+        Assert.True(limited.BackOffConnection);
+        Assert.Equal(TimeSpan.FromSeconds(12), limited.RetryAfter);
+        Assert.Equal(TimeSpan.FromSeconds(30), limitedWithoutDelay.RetryAfter);
+        Assert.False(timeout.RefundAttempt);
+        Assert.False(timeout.BackOffConnection);
+    }
+
+    [Fact]
     public void ProcessorJobTypes_ListEveryMarketplaceJobConstant()
     {
         // The lease query skips jobs whose lock group is busy using this list; a job type missing

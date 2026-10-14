@@ -45,6 +45,15 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
                     AND running."ConnectionId" = candidate."ConnectionId"
                     AND running."Status" = 'LEASED'
                     AND running."LeaseExpiresAt" > {now})
+              -- A connection + lock group that hit a marketplace quota waits until its backoff ends.
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM unnest({LockGroupJobTypes}::text[], {LockGroups}::text[]) AS backoff_group(job_type, lock_group)
+                  JOIN integration.connection_backoffs backoff
+                    ON backoff."LockGroup" = backoff_group.lock_group
+                  WHERE backoff_group.job_type = candidate."JobType"
+                    AND backoff."ConnectionId" = candidate."ConnectionId"
+                    AND backoff."Until" > {now})
             ORDER BY candidate."Priority" ASC,
               -- Fairness: within one priority, the tenant with fewer running jobs goes first, so a
               -- tenant with hundreds of queued jobs cannot keep every slot to itself.
@@ -68,6 +77,21 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return new LeasedJob(job.Id, job.TenantId, job.ConnectionId, job.JobType, job.PayloadJson, job.CorrelationId, token);
+    }
+
+    private async Task RecordConnectionBackoffAsync(Guid connectionId, string jobType, DateTimeOffset now, JobExecutionResult result, CancellationToken cancellationToken)
+    {
+        var wait = result.RetryAfter is { } retryAfter && retryAfter > TimeSpan.Zero ? retryAfter : TimeSpan.FromSeconds(30);
+        if (wait > TimeSpan.FromMinutes(15)) wait = TimeSpan.FromMinutes(15);
+        var until = now.Add(wait);
+        var lockGroup = MarketplaceSyncExecutionLock.GroupFor(jobType);
+        var reason = result.ErrorCode is { Length: > 128 } code ? code[..128] : result.ErrorCode;
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO integration.connection_backoffs ("ConnectionId", "LockGroup", "Until", "Reason")
+            VALUES ({connectionId}, {lockGroup}, {until}, {reason})
+            ON CONFLICT ("ConnectionId", "LockGroup") DO UPDATE
+            SET "Until" = GREATEST(integration.connection_backoffs."Until", EXCLUDED."Until"), "Reason" = EXCLUDED."Reason"
+            """, cancellationToken);
     }
 
     public async Task<bool> ReleaseAsync(Guid jobId, string leaseToken, CancellationToken cancellationToken)
@@ -101,6 +125,8 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         if (job is null || job.Status != JobStatus.Leased || job.LeaseTokenHash is null || !hasher.Verify(leaseToken, job.LeaseTokenHash)) return false;
         var now = timeProvider.GetUtcNow();
         if (job.LeaseExpiresAt <= now) return false;
+        if (result.BackOffConnection && job.ConnectionId is { } backoffConnectionId)
+            await RecordConnectionBackoffAsync(backoffConnectionId, job.JobType, now, result, cancellationToken);
 
         // A deferred job never ran, so its attempt is refunded. Jobs deferred for over a day fall
         // back to normal attempt accounting so a permanently busy lock cannot loop forever.

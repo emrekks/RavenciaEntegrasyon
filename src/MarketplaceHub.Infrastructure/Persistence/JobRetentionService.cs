@@ -38,6 +38,8 @@ public sealed class JobRetentionService(AppDbContext db, TimeProvider timeProvid
             deleted += count;
             if (count < BatchSize) break;
         }
+        var expiredBackoffCutoff = now - TimeSpan.FromDays(1);
+        await db.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM integration.connection_backoffs WHERE \"Until\" < {expiredBackoffCutoff}", cancellationToken);
         return deleted;
     }
 }

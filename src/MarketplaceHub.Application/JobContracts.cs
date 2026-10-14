@@ -15,7 +15,10 @@ public sealed record JobExecutionResult(
     string? ErrorSummary = null,
     TimeSpan? RetryAfter = null,
     string? RemoteRequestId = null,
-    bool RefundAttempt = false)
+    bool RefundAttempt = false,
+    // The marketplace rejected the call for quota: other jobs of the same connection and lock group
+    // are not leased until RetryAfter has passed.
+    bool BackOffConnection = false)
 {
     public bool Succeeded => Kind == JobCompletionKind.Succeeded;
 
@@ -34,7 +37,10 @@ public sealed record JobExecutionResult(
 
     public static JobExecutionResult FromAdapterError(AdapterError error) => error.Class switch
     {
-        AdapterErrorClass.TransientNetwork or AdapterErrorClass.RateLimit or AdapterErrorClass.Remote5xx =>
+        // A quota rejection is not the job's fault: it keeps its attempt and the connection backs off.
+        AdapterErrorClass.RateLimit =>
+            new(JobCompletionKind.Retry, error.Code, Safe(error.SafeMessage), error.RetryAfter is { } wait && wait > TimeSpan.Zero ? wait : TimeSpan.FromSeconds(30), error.RemoteRequestId, RefundAttempt: true, BackOffConnection: true),
+        AdapterErrorClass.TransientNetwork or AdapterErrorClass.Remote5xx =>
             Retry(error.Code, error.SafeMessage, error.RetryAfter, error.RemoteRequestId),
         AdapterErrorClass.InternalBug or AdapterErrorClass.ContractViolation => ManualReview(error.Code, error.SafeMessage, error.RemoteRequestId),
         _ => Blocked(error.Code, error.SafeMessage, error.RemoteRequestId)
