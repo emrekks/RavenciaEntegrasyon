@@ -59,7 +59,9 @@
 
 .mapping-step .mapping-workspace-action-group:first-child,
 .value-mapping-editor .value-mapping-toolbar-group:first-child { padding-inline-start: 0; border-inline-start: 0; }
-.value-mapping-editor .value-mapping-toolbar-group.is-end { margin-inline-start: auto; padding-inline-end: 0; }
+/* The value dialog is narrow, so its groups wrap: spacing instead of dividers keeps rows tidy. */
+.value-mapping-editor .value-mapping-toolbar { gap: var(--rv-space-3) var(--rv-space-6); }
+.value-mapping-editor .value-mapping-toolbar .value-mapping-toolbar-group { padding-inline: 0; border-inline-start: 0; }
 
 .mapping-step .mapping-workspace-action-group > span,
 .value-mapping-editor .value-mapping-toolbar-group > span { color: var(--rv-color-subtle); font-size: 12px; font-weight: 500; }
@@ -89,8 +91,10 @@
 
 /* Value mapping editor: save is the one primary action, top right. */
 .value-mapping-editor .value-mapping-heading { align-items: center; }
+.mapping-values-modal .value-mapping-editor .value-mapping-save,
 .value-mapping-editor .value-mapping-save {
   display: inline-flex;
+  align-self: flex-start;
   flex: 0 0 auto;
   align-items: center;
   gap: 6px;
@@ -133,7 +137,7 @@
   .mapping-step .mapping-workspace-context > .mapping-table-status { justify-self: start; margin-top: 0; }
   .mapping-step .mapping-workspace-action-group,
   .value-mapping-editor .value-mapping-toolbar-group { flex: 1 1 100%; padding-inline: 0; border-inline-start: 0; }
-  .value-mapping-editor .value-mapping-toolbar-group.is-end { margin-inline-start: 0; }
+
   .value-mapping-editor .value-mapping-suggestions li { grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1fr); }
   .value-mapping-editor .value-mapping-suggestions li > small { grid-column: 1; }
 }

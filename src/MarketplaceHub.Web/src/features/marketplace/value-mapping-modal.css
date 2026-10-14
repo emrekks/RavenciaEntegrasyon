@@ -118,11 +118,17 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
-  margin-top: 8px;
+  gap: 6px 8px;
+  margin-top: var(--rv-space-3);
+  padding: 10px 12px;
   color: var(--rv-color-muted);
   font-size: var(--rv-font-size-sm);
+  background: var(--rv-color-surface-raised);
+  border: 1px dashed color-mix(in srgb, var(--rv-color-primary) 35%, var(--rv-color-border));
+  border-radius: var(--rv-radius-md);
 }
+
+.mapping-reference-card .category-suggestions > span { margin-inline-end: 4px; font-weight: 500; }
 
 .mapping-reference-card .category-suggestions button {
   max-width: 100%;
