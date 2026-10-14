@@ -208,6 +208,7 @@
   .app-shell.stitch-shell main .orders-page .order-reference-invoice small,
   .app-shell.stitch-shell main .orders-page .order-reference-invoice .order-invoice-label small { font-size: 13px; }
   .app-shell.stitch-shell main .orders-page .order-reference-invoice .row-menu { flex: 1 1 100%; }
+  .app-shell.stitch-shell main .orders-page .order-reference-invoice > .order-invoice-actions { justify-self: stretch; width: 100%; max-width: none; }
   .app-shell.stitch-shell main .orders-page .order-reference-invoice .invoice-document-link { min-height: 36px; font-size: 13px; }
   .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-row > .order-reference-grid > .order-reference-invoice { gap: 10px; }
 }
