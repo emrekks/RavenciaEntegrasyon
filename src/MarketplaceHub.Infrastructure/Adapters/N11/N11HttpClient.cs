@@ -11,13 +11,13 @@ namespace MarketplaceHub.Infrastructure.Adapters.N11;
 // n11 REST adapter. Phase 1 covers the connection test and the read-only
 // capability probe; product, order, return and question flows follow the
 // phases in docs/N11-ENTEGRASYON-PLANI.md and stay unsupported until then.
-public sealed class N11HttpClient(
+public sealed partial class N11HttpClient(
     IHttpClientFactory clients,
     N11AuthenticationHandler authentication,
     IOptions<N11Options> options,
     TimeProvider timeProvider,
     ILogger<N11HttpClient> logger)
-    : IConnectionPort
+    : IConnectionPort, IOrderPort
 {
     private const string ProductQueryGuide = "https://developer.n11.com/documentation/n11-marketplace-entegrasyonu/satici-urun-sorgulama/";
     private const string OrderListGuide = "https://developer.n11.com/documentation/n11-siparis-entegrasyonu/siparis-listeleme-servisi/";
