@@ -1,0 +1,106 @@
+/* Product list on phones: when the catalogue area is narrow, every product is a card instead of
+   a 9-column row. Written as a container query on the catalogue (like the desktop tiers), so it
+   follows the space the list really has. The sortable price and stock headers stay as chips. */
+@container product-catalog (max-width: 640px) {
+  .app-shell.stitch-shell main .products-page .product-catalog-table { width: 100%; min-width: 0; background: transparent; border: 0; }
+
+  .app-shell.stitch-shell main .products-page .product-catalog-table > .product-catalog-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    min-height: 0;
+    margin: 0 0 10px;
+    padding: 0;
+    background: transparent;
+    border: 0;
+  }
+  .app-shell.stitch-shell main .products-page .product-catalog-head > * {
+    flex: 0 0 auto;
+    grid-column: auto;
+    min-height: 36px;
+    padding: 0 12px;
+    color: var(--rv-color-ink);
+    font-size: var(--rv-font-size-sm);
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+    background: var(--rv-color-surface-raised);
+    border: 1px solid var(--rv-color-border-strong);
+    border-radius: 999px;
+  }
+  .app-shell.stitch-shell main .products-page .product-catalog-head > :not(.product-select-all):not(.product-sort-header) { display: none; }
+  .app-shell.stitch-shell main .products-page .product-catalog-head > .product-sort-header { display: inline-flex; align-items: center; gap: 4px; }
+
+  .app-shell.stitch-shell main .products-page .product-catalog-item {
+    margin: 0 0 10px;
+    overflow: hidden;
+    background: var(--rv-color-surface);
+    border: 1px solid var(--rv-color-border-strong);
+    border-radius: 12px;
+  }
+  .app-shell.stitch-shell main .products-page .product-catalog-item > .product-catalog-row {
+    grid-template-columns: 26px 60px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "select thumb identity identity"
+      "select thumb variants status"
+      "platforms platforms platforms actions"
+      "price price price stock";
+    align-items: center;
+    gap: 6px 10px;
+    min-height: 0;
+    padding: 12px;
+  }
+  .app-shell.stitch-shell main .products-page .product-catalog-item > .product-catalog-row > * { min-width: 0; padding: 0; }
+  .app-shell.stitch-shell main .products-page .product-catalog-row > .product-row-select { grid-area: select; align-self: start; margin: 4px 0 0; }
+  .app-shell.stitch-shell main .products-page .product-catalog-row > .product-list-thumb,
+  .app-shell.stitch-shell main .products-page .product-catalog-row > .product-list-placeholder { grid-area: thumb; align-self: start; width: 60px; height: 90px; min-height: 90px; }
+  .app-shell.stitch-shell main .products-page .product-catalog-row > .product-list-identity { grid-area: identity; align-self: end; }
+  .app-shell.stitch-shell main .products-page .product-list-identity > strong {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  .app-shell.stitch-shell main .products-page .product-catalog-row > .product-list-variants { grid-area: variants; display: flex; flex-wrap: wrap; gap: 0 6px; align-self: start; font-size: 13px; }
+  .app-shell.stitch-shell main .products-page .product-catalog-row > .product-list-status { grid-area: status; align-self: start; justify-self: end; }
+  .app-shell.stitch-shell main .products-page .product-catalog-row > .product-list-platforms {
+    grid-area: platforms;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: 6px;
+    padding-top: 10px;
+    border-top: 1px solid var(--rv-color-border);
+  }
+
+  /* Price and stock stay tappable for quick edits, now with their labels. */
+  .app-shell.stitch-shell main .products-page .product-catalog-row > .product-list-price,
+  .app-shell.stitch-shell main .products-page .product-catalog-row > .product-list-stock {
+    display: grid;
+    justify-items: start;
+    gap: 2px;
+    min-height: 44px;
+    padding: 4px 10px;
+    text-align: left;
+    background: var(--rv-color-surface-raised);
+    border: 1px solid var(--rv-color-border);
+    border-radius: var(--rv-radius-md);
+  }
+  .app-shell.stitch-shell main .products-page .product-catalog-row > .product-list-price { grid-area: price; }
+  .app-shell.stitch-shell main .products-page .product-catalog-row > .product-list-stock { grid-area: stock; }
+  .app-shell.stitch-shell main .products-page .product-catalog-row > .product-list-price::before { content: "Fiyat"; color: var(--rv-color-muted); font-size: 12px; font-weight: 500; }
+  .app-shell.stitch-shell main .products-page .product-catalog-row > .product-list-stock::before { content: "Stok"; color: var(--rv-color-muted); font-size: 12px; font-weight: 500; }
+  .app-shell.stitch-shell main .products-page .product-catalog-row > .product-list-actions { grid-area: actions; display: flex; justify-content: flex-end; gap: 4px; padding-top: 10px; border-top: 1px solid var(--rv-color-border); }
+  .app-shell.stitch-shell main .products-page .product-list-actions a,
+  .app-shell.stitch-shell main .products-page .product-list-actions button,
+  .app-shell.stitch-shell main .products-page .product-more-actions > summary { width: 40px; height: 40px; min-height: 40px; }
+}
+
+/* Filters on phones: search across the top, the selects and bulk actions two to a row. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .products-page .product-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .app-shell.stitch-shell main .products-page .product-toolbar > * { min-width: 0; }
+  .app-shell.stitch-shell main .products-page .product-toolbar > .order-search { grid-column: 1 / -1; order: -1; }
+  .app-shell.stitch-shell main .products-page .product-toolbar > .bulk-menu-shell { order: 1; }
+}
