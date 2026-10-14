@@ -45,7 +45,7 @@ function InvoiceOrderNumber({ item }: { item: InvoiceWorkspace }) {
     }
   }
   const tooltipId = `invoice-order-copy-tooltip-${item.packageId}`
-  return <span className="order-number invoice-order-number"><strong>{displayInvoiceOrderNumber(item.orderNumber)}</strong><button type="button" className="order-number-copy" onClick={copyOrderNumber} aria-label={copied ? `Sipariş numarası ${item.orderNumber} kopyalandı` : `Sipariş numarası ${item.orderNumber} kopyala`} aria-describedby={tooltipId}><UiIcon name="copy" /><span id={tooltipId} className={`order-copy-tooltip${copied ? ' is-copied' : ''}`} role="status" aria-live="polite" aria-hidden={!copied}>{copied ? 'Kopyalandı' : 'Kopyala'}</span></button></span>
+  return <span className="order-number invoice-order-number"><strong onClick={event => { if (window.matchMedia('(max-width: 760px)').matches) { event.stopPropagation(); void copyOrderNumber() } }}>{displayInvoiceOrderNumber(item.orderNumber)}</strong><button type="button" className="order-number-copy" onClick={copyOrderNumber} aria-label={copied ? `Sipariş numarası ${item.orderNumber} kopyalandı` : `Sipariş numarası ${item.orderNumber} kopyala`} aria-describedby={tooltipId}><UiIcon name="copy" /><span id={tooltipId} className={`order-copy-tooltip${copied ? ' is-copied' : ''}`} role="status" aria-live="polite" aria-hidden={!copied}>{copied ? 'Kopyalandı' : 'Kopyala'}</span></button></span>
 }
 function invoiceCustomerDisplayName(item: Pick<InvoiceWorkspace, 'customerName' | 'cargoTrackingNumber'>) {
   const name = item.customerName.trim()
