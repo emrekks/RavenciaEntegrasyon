@@ -650,3 +650,10 @@ html body .order-detail-actions-list > button:hover:not(:disabled) { background:
   .app-shell.stitch-shell main .orders-page .orders-selection-bar { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "cancel actions all"; align-items: center; gap: 10px; padding: 10px 20px calc(10px + env(safe-area-inset-bottom)); }
   .app-shell.stitch-shell main .orders-page .orders-selection-bar > .orders-selection-actions { grid-area: actions; width: 100%; min-height: 42px; font-size: 14px; }
 }
+
+/* Orders heading (final): title on top, the action row below it — never side by side with the title. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .orders-page > .page-heading { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 8px; }
+  .app-shell.stitch-shell main .orders-page > .page-heading > div:first-child { min-width: 0; }
+  .app-shell.stitch-shell main .orders-page .orders-reference-heading-actions { display: block; width: 100%; }
+}
