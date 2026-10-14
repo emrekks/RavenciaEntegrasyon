@@ -697,7 +697,7 @@ function Dashboard() {
     window.setTimeout(() => URL.revokeObjectURL(url), 0)
   }
   return <section className="content dashboard" aria-label="Dashboard">
-    <div className="page-heading"><div><p className="eyebrow">OPERASYON MERKEZİ</p><h1>Genel bakış</h1><p className="lede">Satış, sipariş ve operasyon akışınızı tek ekrandan takip edin.</p></div><div className="dashboard-heading-actions"><div className="dashboard-report-controls"><label className="dashboard-header-period"><span className="sr-only">Rapor dönemi</span><span className="dashboard-period-control"><UiIcon name="calendar" size={18} /><select aria-label="Rapor dönemi" value={reportRange} onChange={event => setReportRange(event.target.value as DashboardRevenueRange)}><option value="7">Son 7 gün</option><option value="30">Son 30 gün</option><option value="90">Son 90 gün</option><option value="custom">Özel tarih</option></select></span></label><button type="button" className="dashboard-report-download" onClick={downloadDashboardReport} disabled={reportRevenueQuery.isLoading}><UiIcon name="download" size={18} /> Raporu indir</button></div></div></div>
+    <div className="page-heading"><div><p className="eyebrow">OPERASYON MERKEZİ</p><h1>Genel bakış</h1></div><div className="dashboard-heading-actions"><div className="dashboard-report-controls"><label className="dashboard-header-period"><span className="sr-only">Rapor dönemi</span><span className="dashboard-period-control"><UiIcon name="calendar" size={18} /><select aria-label="Rapor dönemi" value={reportRange} onChange={event => setReportRange(event.target.value as DashboardRevenueRange)}><option value="7">Son 7 gün</option><option value="30">Son 30 gün</option><option value="90">Son 90 gün</option><option value="custom">Özel tarih</option></select></span></label><button type="button" className="dashboard-report-download" onClick={downloadDashboardReport} disabled={reportRevenueQuery.isLoading}><UiIcon name="download" size={18} /> Raporu indir</button></div></div></div>
     {reportRange === 'custom' && <div className="dashboard-custom-range dashboard-report-custom-range"><DateRangePicker from={reportFrom} to={reportTo} onChange={range => { setReportFrom(range.from); setReportTo(range.to) }} label="Rapor Tarihi" /></div>}
     {errors.length > 0 && <div role="alert" className="error">Bazı rapor verileri alınamadı; görünen değerler kısmi olabilir.</div>}
     <section className="dashboard-operational-section" aria-label="Operasyon metrikleri"><div className="dashboard-section-bridge dashboard-section-bridge-operational" aria-hidden="true"><span /><small>OPERASYON METRİKLERİ</small><span /></div><div className="dashboard-operational-grid"><DashboardOperationalCard kind="pendingOrders" label="Bekleyen siparişler" detail="İşleme alınmayı bekliyor" value={bootstrap.isLoading ? null : dashboardMetrics?.pendingOrders ?? 0} platformCounts={dashboardMetrics?.pendingByPlatform} to={dashboardOperationalLinks.pendingOrders} /><DashboardOperationalCard kind="lateOrders" label="Geciken siparişler" detail="Süre aşımı olanlar" value={bootstrap.isLoading ? null : dashboardMetrics?.lateOrders ?? 0} platformCounts={dashboardMetrics?.lateByPlatform} to="/orders" /><DashboardOperationalCard kind="pendingReturns" label="Bekleyen iadeler" detail="İnceleme bekliyor" value={bootstrap.isLoading ? null : dashboardMetrics?.pendingReturns ?? 0} platformCounts={dashboardMetrics?.pendingReturnsByPlatform} to={dashboardOperationalLinks.pendingReturns} /><DashboardOperationalCard kind="invoicePending" label="Bekleyen faturalar" detail="Fatura kesilmesi gerekenler" value={bootstrap.isLoading || invoiceWorkspaceSummary.isLoading ? null : invoiceWorkspaceSummary.data?.uninvoicedCount ?? dashboardMetrics?.uninvoicedInvoices ?? 0} to={dashboardOperationalLinks.pendingInvoices} /><DashboardOperationalCard kind="invoiceDue" label="Yaklaşan faturalar" detail="Vadesi yaklaşanlar" value={bootstrap.isLoading || invoiceWorkspaceSummary.isLoading ? null : invoiceDueSoonCount} to={dashboardOperationalLinks.dueInvoices} /><DashboardOperationalCard kind="lowStock" label="Düşük stok" detail="Yenileme gerektiren ürünler" value={bootstrap.isLoading ? null : dashboardMetrics?.lowStockProducts ?? 0} to="/products" /></div></section>
@@ -1109,14 +1109,14 @@ function AppearanceSettingsPage() {
 }
 
 type ShippingDesignerTab = 'general' | 'text' | 'barcode'
-type ShippingResizeDirection = 'nw' | 'ne' | 'se' | 'sw'
-type ShippingRotateDirection = 'n' | 'e' | 's' | 'w'
+type ShippingResizeDirection = 'n' | 'e' | 's' | 'w'
+type ShippingRotateDirection = 'nw' | 'ne' | 'se' | 'sw'
 type ShippingLabelTemplate = { id: string; name: string; savedAt: string; settings: ShippingLabelSettings }
 const shippingLabelTemplateStorageKey = 'ravencia.shippingLabelTemplates'
-const shippingResizeDirections: ShippingResizeDirection[] = ['nw', 'ne', 'se', 'sw']
-const shippingRotateDirections: ShippingRotateDirection[] = ['n', 'e', 's', 'w']
-const shippingResizeDirectionLabels: Record<ShippingResizeDirection, string> = { nw: 'sol üst köşe', ne: 'sağ üst köşe', se: 'sağ alt köşe', sw: 'sol alt köşe' }
-const shippingRotateDirectionLabels: Record<ShippingRotateDirection, string> = { n: 'üst kenar', e: 'sağ kenar', s: 'alt kenar', w: 'sol kenar' }
+const shippingResizeDirections: ShippingResizeDirection[] = ['n', 'e', 's', 'w']
+const shippingRotateDirections: ShippingRotateDirection[] = ['nw', 'ne', 'se', 'sw']
+const shippingResizeDirectionLabels: Record<ShippingResizeDirection, string> = { n: 'üst kenar', e: 'sağ kenar', s: 'alt kenar', w: 'sol kenar' }
+const shippingRotateDirectionLabels: Record<ShippingRotateDirection, string> = { nw: 'sol üst köşe', ne: 'sağ üst köşe', se: 'sağ alt köşe', sw: 'sol alt köşe' }
 
 function loadShippingLabelTemplates(): ShippingLabelTemplate[] {
   try {

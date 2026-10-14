@@ -123,14 +123,15 @@
   }
   .app-shell.stitch-shell main .page-heading > .page-heading-actions > :last-child:nth-child(odd) { grid-column: 1 / -1; }
 }
-/* Revenue chart on phones: the 652px drawing used to shrink to the screen, taking its 13px axis
-   labels down to about 6px and crowding the dates. It keeps a 600px width instead and scrolls
-   sideways inside its card, the date axis moving with it. */
+/* Revenue chart on phones: the whole drawing fits the card width (no sideways scroll, so the page
+   never drifts right). Axis labels get a larger drawing-unit size and every other date is hidden
+   so the scaled-down text stays readable and uncrowded. */
 @media (max-width: 760px) {
-  .app-shell.stitch-shell main .dashboard .dashboard-performance-chart { overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; }
-  .app-shell.stitch-shell main .dashboard .dashboard-performance-chart > svg,
-  .app-shell.stitch-shell main .dashboard .dashboard-performance-chart > .dashboard-performance-x-axis { min-width: 600px; }
-  .app-shell.stitch-shell main .dashboard .dashboard-performance-chart > svg { height: auto; }
+  .app-shell.stitch-shell main .dashboard .dashboard-performance-chart { overflow: hidden; padding-left: 16px; }
+  .app-shell.stitch-shell main .dashboard .dashboard-performance-chart > svg { inset: 12px 0 38px 16px; width: calc(100% - 16px); min-width: 0; height: calc(100% - 50px); }
+  .app-shell.stitch-shell main .dashboard .dashboard-performance-chart > .dashboard-performance-x-axis { min-width: 0; left: 60px; }
+  .app-shell.stitch-shell main .dashboard .dashboard-chart-y { font-size: 17px; }
+  .app-shell.stitch-shell main .dashboard .dashboard-performance-x-axis span:nth-child(even):not(:last-child) { display: none; }
 }
 /* Shipping label window on phones: the 100mm sticker preview (378px) plus its padding pushed the
    window past the screen, hiding the close button and half of Yazdır. On screen only, the preview
@@ -144,4 +145,22 @@
   html body .shipping-label-modal.format-a4 .shipping-label-print-surface { zoom: 0.42; }
   html body .shipping-label-modal > footer.shipping-label-modal-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   html body .shipping-label-modal > footer.shipping-label-modal-actions > :first-child { grid-column: 1 / -1; }
+}
+/* Dashboard on phones: tighter vertical rhythm between heading, alert and sections. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .dashboard > .page-heading { padding-bottom: 12px; gap: 12px; }
+  .app-shell.stitch-shell main .dashboard > .error { margin: 0; }
+  .app-shell.stitch-shell main .dashboard .dashboard-section-bridge { margin: 14px 0 0; }
+  .app-shell.stitch-shell main .dashboard .dashboard-section-bridge-operational { margin-bottom: 10px; }
+  .app-shell.stitch-shell main .dashboard .dashboard-section-bridge-detail { margin-top: 18px; }
+  .app-shell.stitch-shell main .dashboard .dashboard-summary-grid { margin-top: 10px; }
+}
+
+/* Health cards: two columns whenever there is room (phones included) instead of a single stack. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .dashboard .dashboard-health-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .app-shell.stitch-shell main .dashboard .dashboard-health-item { padding: 12px; min-height: 0; }
+}
+@media (max-width: 340px) {
+  .app-shell.stitch-shell main .dashboard .dashboard-health-grid { grid-template-columns: 1fr; }
 }
