@@ -393,3 +393,8 @@ html body .order-detail-actions-list > button:hover:not(:disabled) { background:
   html body .order-detail-actions:has(.order-detail-quick) > .order-detail-secondary { grid-column: 1; }
   html body .order-detail-actions > .order-detail-quick { grid-column: 2; grid-row: 2; }
 }
+
+/* Phone order list: slightly larger platform logo. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .orders-page .order-reference-meta .order-platform-logo { max-width: 100px; height: 24px; }
+}
