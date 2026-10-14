@@ -3950,7 +3950,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 {
                     if (mappingOnly)
                     {
-                        var mapped = await MapExistingCatalogProduct(tenantId, connectionId, snapshot, isShopify, cancellationToken);
+                        var mapped = await MapExistingCatalogProduct(tenantId, connectionId, snapshot, isShopify, cancellationToken, crossMatchCodes: isN11, reportUnmatched: isN11);
                         if (!mapped) telemetryImportSkippedCount++;
                         else telemetryImportProcessedCount++;
                         continue;
@@ -4904,7 +4904,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             ?? await db.AttributeValues.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.AttributeId == mapped.Definition.Id && x.IsActive && x.NormalizedValue == normalized, cancellationToken);
     }
 
-    private async Task<bool> MapExistingCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, bool preferBarcode, CancellationToken cancellationToken)
+    // crossMatchCodes (n11): the seller stock code may be the panel barcode
+    // and the n11 barcode the panel SKU, and model-code candidates are
+    // narrowed by colour and size. reportUnmatched records every remote
+    // variant that found no local variant so it can be fixed by hand.
+    private async Task<bool> MapExistingCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, bool preferBarcode, CancellationToken cancellationToken, bool crossMatchCodes = false, bool reportUnmatched = false)
     {
         var externalProductId = Short(snapshot.ExternalProductId, 256);
         if (string.IsNullOrWhiteSpace(externalProductId)) return false;
@@ -4931,6 +4935,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             .Where(variant => variant.TenantId == tenantId
                 && ((variant.BarcodeNormalized != null && barcodes.Contains(variant.BarcodeNormalized))
                     || (variant.SkuNormalized != null && skus.Contains(variant.SkuNormalized))
+                    || (crossMatchCodes && variant.BarcodeNormalized != null && skus.Contains(variant.BarcodeNormalized))
+                    || (crossMatchCodes && variant.SkuNormalized != null && barcodes.Contains(variant.SkuNormalized))
                     || (preferBarcode && variant.ModelCode != null && rawSkus.Contains(variant.ModelCode))
                     || (!preferBarcode && variant.ModelCode != null && modelCodes.Contains(variant.ModelCode))))
             .ToListAsync(cancellationToken);
@@ -4973,19 +4979,30 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var remoteModelCode = NormalizeCatalogKey(remote.ModelCode, 160);
             var barcodeMatches = string.IsNullOrWhiteSpace(remoteBarcode)
                 ? []
-                : localVariants.Where(variant => string.Equals(variant.BarcodeNormalized, remoteBarcode, StringComparison.Ordinal)).ToList();
+                : localVariants.Where(variant => string.Equals(variant.BarcodeNormalized, remoteBarcode, StringComparison.Ordinal)
+                    || crossMatchCodes && string.Equals(variant.SkuNormalized, remoteBarcode, StringComparison.Ordinal)).ToList();
             var skuMatches = string.IsNullOrWhiteSpace(remoteSku)
                 ? []
                 : localVariants.Where(variant => string.Equals(variant.SkuNormalized, remoteSku, StringComparison.Ordinal)
+                    || crossMatchCodes && string.Equals(variant.BarcodeNormalized, remoteSku, StringComparison.Ordinal)
                     || preferBarcode && string.Equals(NormalizeCatalogKey(variant.ModelCode, 160), remoteSku, StringComparison.Ordinal)).ToList();
             var modelMatches = !preferBarcode && string.IsNullOrWhiteSpace(remoteModelCode)
                 ? []
                 : !preferBarcode
                     ? localVariants.Where(variant => string.Equals(NormalizeCatalogKey(variant.ModelCode, 160), remoteModelCode, StringComparison.Ordinal)).ToList()
                     : [];
+            if (crossMatchCodes && modelMatches.Count > 1)
+                modelMatches = modelMatches.Where(variant => SameColorAndSize(variant.OptionSignature, remote.Options)).ToList();
             var matches = barcodeMatches.Count > 0 ? barcodeMatches : skuMatches.Count > 0 ? skuMatches : modelMatches;
             var candidate = matches.Count == 1 ? matches[0] : null;
-            if (candidate is null || claimedVariantIds.Contains(candidate.Id)) continue;
+            if (candidate is null || claimedVariantIds.Contains(candidate.Id))
+            {
+                if (reportUnmatched)
+                    await RecordIssue(tenantId, $"product-mapping-unmatched:{connectionId}:{externalVariantId}", "PRODUCT_MAPPING_UNMATCHED",
+                        Short($"Pazar yeri varyantı eşleşmedi: stok kodu {remote.Sku}, barkod {remote.Barcode ?? "yok"}, model kodu {remote.ModelCode ?? "yok"}, {string.Join(", ", remote.Options.Where(option => IsRealColorOptionKey(option.Key) || IsSizeOptionKey(option.Key)).Select(option => $"{option.Key}: {option.Value}"))} · {snapshot.Title}. {(candidate is null ? matches.Count > 1 ? $"{matches.Count} panel varyantı aday çıktı." : "Panelde aynı stok kodu, barkod veya model kodu yok." : "Aday panel varyantı başka bir pazar yeri varyantına bağlı.")}", 1000),
+                        cancellationToken);
+                continue;
+            }
 
             var externalLink = existingVariantLinks.FirstOrDefault(existing => string.Equals(existing.ExternalId, externalVariantId, StringComparison.OrdinalIgnoreCase));
             if (externalLink is not null)
@@ -6120,6 +6137,24 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     }
 
     private static bool IsRealColorOptionKey(string value) => IsColorOptionKey(value) && !IsWebColorOptionKey(value);
+
+    // True when the local option signature ("Renk: Mavi | Beden: XL | ...")
+    // carries the same colour and size values as the remote options. Remote
+    // options without a colour or size cannot narrow a model-code match.
+    internal static bool SameColorAndSize(string? localSignature, IReadOnlyDictionary<string, string> remoteOptions)
+    {
+        var axes = remoteOptions
+            .Where(option => IsRealColorOptionKey(option.Key) || IsSizeOptionKey(option.Key))
+            .ToList();
+        if (axes.Count == 0 || string.IsNullOrWhiteSpace(localSignature)) return false;
+        var local = localSignature.Split(" | ", StringSplitOptions.RemoveEmptyEntries)
+            .Select(part => part.Split(": ", 2))
+            .Where(pair => pair.Length == 2)
+            .GroupBy(pair => NormalizeCatalogKey(pair[0], 80), StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => NormalizeCatalogKey(CleanCatalogOptionValue(group.First()[1]), 120), StringComparer.Ordinal);
+        return axes.All(option => local.TryGetValue(NormalizeCatalogKey(option.Key, 80), out var value)
+            && string.Equals(value, NormalizeCatalogKey(CleanCatalogOptionValue(option.Value), 120), StringComparison.Ordinal));
+    }
 
     private static bool IsVariantOptionName(string value) => VariantOptionAxis(value) is not null;
 

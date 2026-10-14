@@ -76,6 +76,23 @@ public sealed class N11ProductMapperTests
         Assert.Single(page.Issues!);
     }
 
+    [Theory]
+    [InlineData("Renk: Mavi | Beden: XL | Kalıp: Regular", true)]
+    [InlineData("Renk: mavi | Beden: xl", true)]
+    [InlineData("Renk: Mavi | Beden: L", false)]
+    [InlineData("Beden: XL", false)]
+    [InlineData(null, false)]
+    public void ModelCodeCandidatesNarrowByColourAndSize(string? localSignature, bool expected)
+    {
+        var remote = new Dictionary<string, string> { ["Renk"] = "Mavi", ["Beden"] = "XL", ["Materyal"] = "Pamuk" };
+
+        Assert.Equal(expected, MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.SameColorAndSize(localSignature, remote));
+    }
+
+    [Fact]
+    public void OptionsWithoutColourOrSizeCannotNarrowAMatch() =>
+        Assert.False(MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.SameColorAndSize("Materyal: Pamuk", new Dictionary<string, string> { ["Materyal"] = "Pamuk" }));
+
     [Fact]
     public void ProductQueryCarriesPageSizeAndLookupFilters()
     {
