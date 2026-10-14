@@ -246,6 +246,7 @@ public sealed partial class InvoicingBillingService(
 
         var now = timeProvider.GetUtcNow();
         var dueSoonCount = 0;
+        var uninvoicedCount = 0;
         WorkspaceScanCursor? cursor = null;
         while (true)
         {
@@ -253,6 +254,9 @@ public sealed partial class InvoicingBillingService(
             if (candidates.Count == 0) break;
             foreach (var candidate in candidates)
             {
+                // Same rule as the Faturalar page: hidden packages are not pending work.
+                if (!hiddenPackageIds.Contains(candidate.Package.Id)
+                    && IsWorkspaceInvoiceUninvoiced(candidate.InvoiceStatus, candidate.CanCreateInvoice, HasMarketplaceInvoiceObservation(candidate))) uninvoicedCount++;
                 if (!hiddenPackageIds.Contains(candidate.Package.Id)
                     && candidate.Package.Status == ShipmentPackageStatus.Delivered
                     && now >= candidate.Package.StatusOccurredAt.AddDays(DashboardMetricPolicy.InvoiceReminderStartDays)
@@ -262,7 +266,7 @@ public sealed partial class InvoicingBillingService(
             cursor = new(last.Package.StatusOccurredAt, last.Package.Id);
         }
 
-        return new(dueSoonCount);
+        return new(dueSoonCount, uninvoicedCount);
     }
 
     public async Task<ServiceResult<Guid>> EnqueueOrderInvoiceReconciliationAsync(

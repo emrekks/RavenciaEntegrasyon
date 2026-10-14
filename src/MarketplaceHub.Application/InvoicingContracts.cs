@@ -374,7 +374,7 @@ public static class InvoiceWorkspaceActionPolicy
 }
 
 public sealed record InvoiceWorkspaceLineView(string Sku, string? Barcode, string Description, decimal Quantity, decimal UnitPrice, decimal VatRate, string? ImageUrl);
-public sealed record InvoiceWorkspaceSummaryView(int DueSoonCount);
+public sealed record InvoiceWorkspaceSummaryView(int DueSoonCount, int UninvoicedCount = 0);
 public sealed record InvoiceWorkspacePageQuery(
     int PageNumber = 1,
     int PageSize = 20,
