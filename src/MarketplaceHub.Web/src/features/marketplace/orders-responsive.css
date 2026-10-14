@@ -454,3 +454,8 @@ html body .order-detail-actions-list > button:hover:not(:disabled) { background:
   .app-shell.stitch-shell main .orders-page .order-reference-meta > .order-reference-delivery { grid-area: delivery; grid-column: 1 / -1; margin: 0 -12px; padding: 8px 12px; }
   .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-row > .order-reference-grid > .order-reference-products { grid-area: products; padding: 12px 0; border-top: 0; }
 }
+
+/* Phone order card: just the date, without the "Sipariş Tarihi:" label. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .orders-page .order-reference-meta .order-date-label { display: none; }
+}
