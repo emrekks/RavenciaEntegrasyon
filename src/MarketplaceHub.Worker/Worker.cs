@@ -69,6 +69,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         loops.Add(RunLeaseReaperAsync(stoppingToken));
         loops.Add(RunJobNotificationListenerAsync(stoppingToken));
         if (schedulerEnabled) loops.Add(RunSchedulerAsync(stoppingToken));
+        if (schedulerEnabled && configuration.GetValue("Worker:JobRetention:Enabled", true)) loops.Add(RunJobRetentionAsync(stoppingToken));
         await Task.WhenAll(loops);
     }
 
@@ -371,6 +372,34 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+    }
+
+    // Hourly purge of old finished scheduled jobs so the queue tables stop growing forever.
+    private async Task RunJobRetentionAsync(CancellationToken stoppingToken)
+    {
+        var succeededRetention = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("Worker:JobRetention:SucceededDays", 14), 1, 365));
+        var failedRetention = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("Worker:JobRetention:FailedDays", 30), 1, 365));
+        try
+        {
+            await Task.Delay(TimeSpan.FromMinutes(10), stoppingToken);
+            using var timer = new PeriodicTimer(TimeSpan.FromHours(1));
+            do
+            {
+                try
+                {
+                    await using var scope = scopeFactory.CreateAsyncScope();
+                    var deleted = await scope.ServiceProvider.GetRequiredService<JobRetentionService>()
+                        .PurgeAsync(succeededRetention, failedRetention, maximumBatches: 25, stoppingToken);
+                    if (deleted > 0) logger.LogInformation("Job retention removed {Count} finished scheduled jobs", deleted);
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    logger.LogError(exception, "Job retention pass failed");
+                }
+            }
+            while (await timer.WaitForNextTickAsync(stoppingToken));
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
     }
 
     // Holds one dedicated connection that LISTENs for runnable jobs and wakes the idle lanes.

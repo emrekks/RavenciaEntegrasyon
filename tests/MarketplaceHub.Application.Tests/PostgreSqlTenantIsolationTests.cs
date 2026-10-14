@@ -1000,6 +1000,66 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task JobRetention_RemovesOnlyOldFinishedScheduledJobs()
+    {
+        var tenant = NewTenant("job-retention");
+        var now = DateTimeOffset.UtcNow;
+        IntegrationJob Finished(string dedupPrefix, JobStatus status, int ageDays, string jobType = MarketplaceJobTypes.OrderSync)
+        {
+            var job = NewJob(tenant.Id);
+            job.JobType = jobType;
+            job.JobDedupKey = $"{dedupPrefix}:{Guid.NewGuid():N}";
+            job.Status = status;
+            job.CreatedAt = now.AddDays(-ageDays);
+            job.CompletedAt = now.AddDays(-ageDays);
+            return job;
+        }
+        var oldScheduledSuccess = Finished("scheduled", JobStatus.Succeeded, 20);
+        var recentScheduledSuccess = Finished("scheduled", JobStatus.Succeeded, 3);
+        var oldScheduledDead = Finished("scheduled", JobStatus.Dead, 40);
+        var youngerScheduledDead = Finished("scheduled", JobStatus.Dead, 20);
+        // Effect-guarding dedup keys and product syncs are never purged.
+        var oldEffectJob = Finished("product-create", JobStatus.Succeeded, 400, MarketplaceJobTypes.ProductCreate);
+        var oldProductSync = Finished("scheduled", JobStatus.Succeeded, 400, MarketplaceJobTypes.ProductSync);
+        var oldPending = Finished("scheduled", JobStatus.Pending, 400);
+        oldPending.CompletedAt = null;
+        var all = new[] { oldScheduledSuccess, recentScheduledSuccess, oldScheduledDead, youngerScheduledDead, oldEffectJob, oldProductSync, oldPending };
+
+        await using (var setup = fixture.CreateContext())
+        {
+            setup.Tenants.Add(tenant);
+            setup.IntegrationJobs.AddRange(all);
+            setup.JobAttempts.Add(new JobAttempt { Id = Guid.NewGuid(), TenantId = tenant.Id, JobId = oldScheduledSuccess.Id, AttemptNumber = 1, StartedAt = now.AddDays(-20) });
+            await setup.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var service = new JobRetentionService(db, fixture.TimeProvider);
+            await service.PurgeAsync(TimeSpan.FromDays(14), TimeSpan.FromDays(30), maximumBatches: 5, CancellationToken.None);
+
+            var ids = all.Select(job => job.Id).ToArray();
+            var remaining = await db.IntegrationJobs.AsNoTracking().Where(job => ids.Contains(job.Id)).Select(job => job.Id).ToListAsync();
+            Assert.DoesNotContain(oldScheduledSuccess.Id, remaining);
+            Assert.DoesNotContain(oldScheduledDead.Id, remaining);
+            Assert.Contains(recentScheduledSuccess.Id, remaining);
+            Assert.Contains(youngerScheduledDead.Id, remaining);
+            Assert.Contains(oldEffectJob.Id, remaining);
+            Assert.Contains(oldProductSync.Id, remaining);
+            Assert.Contains(oldPending.Id, remaining);
+            Assert.False(await db.JobAttempts.AsNoTracking().AnyAsync(attempt => attempt.JobId == oldScheduledSuccess.Id));
+        }
+        finally
+        {
+            var ids = all.Select(job => job.Id).ToArray();
+            await using var cleanup = fixture.CreateContext();
+            await cleanup.IntegrationJobs.Where(job => ids.Contains(job.Id)).ExecuteDeleteAsync();
+            await cleanup.Tenants.Where(x => x.Id == tenant.Id).ExecuteDeleteAsync();
+        }
+    }
+
+    [PostgreSqlFact]
     public async Task JobsTrigger_NotifiesListenersWhenAJobBecomesRunnable()
     {
         var tenant = NewTenant("job-notify");

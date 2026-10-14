@@ -53,6 +53,7 @@ public static class DependencyInjection
         services.AddSingleton(new TokenHasher(credentialKey));
         services.AddSingleton<TotpService>();
         services.AddScoped<IJobLeaseService, JobLeaseService>();
+        services.AddScoped<JobRetentionService>();
         services.AddScoped<IJobOperationsService, JobOperationsService>();
         services.AddScoped<IDashboardReadService, DashboardReadService>();
         services.AddScoped<IScheduledJobProducer, ScheduledJobProducer>();
