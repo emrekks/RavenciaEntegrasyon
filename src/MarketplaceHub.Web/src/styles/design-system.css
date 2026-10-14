@@ -5453,8 +5453,8 @@ button,
   z-index: 2;
   display: grid;
   width: min(calc(100% - 48px), 1120px);
-  height: 48px;
-  min-height: 48px;
+  height: 56px;
+  min-height: 56px;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   margin: 0 auto 18px;
@@ -5479,8 +5479,8 @@ button,
 
 .auth-notification-label > .ui-icon { color: var(--rv-color-primary); }
 .auth-notification-label > span { display: grid; gap: 2px; }
-.auth-notification-label strong { font-size: 11px; font-weight: 600; white-space: nowrap; }
-.auth-notification-label small { display: inline-flex; align-items: center; gap: 5px; color: var(--rv-color-subtle); font-size: 9px; white-space: nowrap; }
+.auth-notification-label strong { font-size: 13px; font-weight: 600; white-space: nowrap; }
+.auth-notification-label small { display: inline-flex; align-items: center; gap: 5px; color: var(--rv-color-subtle); font-size: 11px; white-space: nowrap; }
 .auth-notification-label small i { width: 5px; height: 5px; background: var(--rv-color-accent); border-radius: 50%; animation: rv-auth-status-pulse 2.4s ease-in-out infinite; }
 
 .auth-notification-viewport {
@@ -5491,7 +5491,7 @@ button,
 
 .auth-notification-marquee { display: flex; width: max-content; animation: auth-notification-marquee 34s linear infinite; }
 .auth-notification-events { display: flex; align-items: center; gap: 20px; padding: 0 18px; }
-.auth-notification-event { --event-color: var(--rv-color-primary); display: flex; min-width: 258px; align-items: center; gap: 8px; font-size: 10px; white-space: nowrap; }
+.auth-notification-event { --event-color: var(--rv-color-primary); display: flex; min-width: 330px; align-items: center; gap: 8px; font-size: 12.5px; white-space: nowrap; }
 .auth-notification-event > i { width: 6px; height: 6px; flex: 0 0 6px; background: var(--event-color); border-radius: 50%; box-shadow: 0 0 10px color-mix(in srgb, var(--event-color) 46%, transparent); animation: auth-dot-breathe 2.8s ease-in-out infinite; }
 .auth-notification-event:nth-child(2) > i { animation-delay: -.8s; }
 .auth-notification-event:nth-child(3) > i { animation-delay: -1.6s; }
@@ -5499,13 +5499,13 @@ button,
 .auth-notification-event:nth-child(5) > i { animation-delay: -.4s; }
 .auth-notification-event:nth-child(6) > i { animation-delay: -1.2s; }
 .auth-notification-event b { color: var(--rv-color-ink); font-weight: 500; }
-.auth-notification-event > span { min-width: 0; max-width: 178px; overflow: hidden; color: var(--rv-color-muted); text-overflow: ellipsis; }
-.auth-notification-event time { flex: 0 0 auto; margin-left: 2px; color: var(--rv-color-subtle); font-family: var(--rv-font-mono); font-size: 9px; }
+.auth-notification-event > span { min-width: 0; max-width: 220px; overflow: hidden; color: var(--rv-color-muted); text-overflow: ellipsis; }
+.auth-notification-event time { flex: 0 0 auto; margin-left: 2px; color: var(--rv-color-subtle); font-family: var(--rv-font-mono); font-size: 11px; }
 .auth-notification-event.event-trendyol { --event-color: #f27a24; }
 .auth-notification-event.event-hepsiburada { --event-color: #f59b3d; }
 .auth-notification-event.event-shopify { --event-color: #95bf47; }
 .auth-notification-event.event-n11 { --event-color: #b978df; }
-.auth-notification-count { margin-right: 14px; padding: 5px 8px; color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border-radius: 999px; font-size: 9px; font-weight: 500; white-space: nowrap; }
+.auth-notification-count { margin-right: 14px; padding: 5px 8px; color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border-radius: 999px; font-size: 11px; font-weight: 500; white-space: nowrap; }
 .auth-notification-center:hover .auth-notification-marquee { animation-play-state: paused; }
 
 @keyframes auth-notification-marquee {
