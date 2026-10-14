@@ -466,7 +466,7 @@ function DashboardOperationalCard({ kind, label, value, to, platformCounts }: { 
 }
 
 function dashboardMoney(amount: number, currency = 'TRY') {
-  return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: currency || 'TRY', maximumFractionDigits: 2 }).format(amount)
+  return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: currency || 'TRY', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount)
 }
 
 function dashboardQuantity(value: number) {

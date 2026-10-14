@@ -337,3 +337,22 @@ html body .mfs-sort-sheet [role="listbox"] > button.is-selected { color: var(--r
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .invoices-page .invoice-reference-order > div:not(.order-reference-platform) > small:first-of-type { align-self: center; margin: 12px 12px 0 0; line-height: 24px; }
 }
+
+/* Sign-in on phones: the whole screen fits the viewport, nothing scrolls. The page is locked to the
+   dynamic viewport height; the stage takes the remaining space and the card tightens on short phones. */
+@media (max-width: 760px) {
+  html body .rv-auth-page { height: 100dvh; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+  html body .rv-auth-page > .rv-auth-header { flex: 0 0 auto; min-height: 56px; }
+  html body .rv-auth-page > .rv-auth-stage { flex: 1 1 auto; min-height: 0; padding: 8px 16px; align-content: center; }
+  html body .rv-auth-page .auth-focus-column { gap: 10px; }
+  html body .rv-auth-page > .auth-notification-center { flex: 0 0 auto; margin-bottom: max(8px, env(safe-area-inset-bottom)); }
+  html body .rv-auth-page .rv-auth-card { padding: 18px 20px; }
+}
+@media (max-width: 760px) and (max-height: 720px) {
+  html body .rv-auth-page > .auth-notification-center { display: none; }
+  html body .rv-auth-page .auth-focus-column .rv-auth-hero-brand { min-height: 44px; }
+  html body .rv-auth-page .auth-focus-column .rv-auth-hero-symbol { width: 40px; height: 40px; flex-basis: 40px; }
+  html body .rv-auth-page .auth-focus-column .rv-auth-hero-wordmark { width: 140px; }
+  html body .rv-auth-page .rv-auth-card { padding: 14px 18px; }
+  html body .rv-auth-page .rv-auth-form { gap: 10px; }
+}
