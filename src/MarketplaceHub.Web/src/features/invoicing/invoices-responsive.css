@@ -168,3 +168,26 @@
   .app-shell.stitch-shell main .invoices-page .invoice-reference-row .order-platform-logo { max-width: 72px; height: 18px; }
   .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-row > :is(.invoice-reference-buyer, .invoice-reference-amount) { padding-top: 4px; }
 }
+
+/* Phone invoices, one tidy control area: search, sort and filter in the framed bar; page size and
+   the sort field live in the sheets; the heading collapses to a result count and a select-all row. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-filters .invoice-reference-sort { display: none; }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-filters.mfs:not(.is-open) { margin-bottom: 8px; }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-workspace > header { display: flex; align-items: center; justify-content: space-between; padding: 0 2px 8px; }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-workspace > header h2,
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-workspace > header .invoice-reference-page-size { display: none; }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-workspace > header p { margin: 0; color: var(--rv-color-muted); font-size: 13px; }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-head { margin: 0 0 8px; }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-platform-heading { padding: 0; background: none; border: 0; }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-platform-heading > strong { display: none; }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-select-all { display: inline-flex; align-items: center; gap: 8px; }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-select-all .sr-only { position: static; width: auto; height: auto; margin: 0; overflow: visible; clip: auto; white-space: nowrap; font-size: 13px; font-weight: 600; }
+
+  /* Card polish: steady type sizes and hairlines between the blocks. */
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-buyer > strong { font-size: 15px; font-weight: 600; }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-amount > strong { font-size: 16px; font-weight: 650; }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-buyer small,
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-amount small { color: var(--rv-color-muted); font-size: 12px; }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-products small { font-size: 13px; font-family: var(--rv-font-mono); letter-spacing: .01em; }
+}
