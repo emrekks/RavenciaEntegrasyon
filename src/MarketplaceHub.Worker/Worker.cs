@@ -377,7 +377,11 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             if (age <= healthStaleAfter) continue;
 
             logger.LogCritical("Worker database heartbeat is stale for {AgeSeconds} seconds; stopping so the container can restart", Math.Round(age.TotalSeconds));
-            throw new InvalidOperationException("Worker database heartbeat became stale.");
+            // Throwing here would not stop anything: ExecuteAsync awaits Task.WhenAll, which keeps
+            // waiting for the other endless loops. Stop the host instead so the container restarts.
+            Environment.ExitCode = 1;
+            applicationLifetime.StopApplication();
+            return;
         }
     }
 
