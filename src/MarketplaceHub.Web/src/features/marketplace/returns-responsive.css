@@ -1,7 +1,7 @@
-/* Returns on phones, tablets and laptops up to 1450px: every return is a card instead of a 1284px table row, and the
+/* Returns on phones, tablets and tablets up to 1180px: every return is a card instead of a 1284px table row, and the
    column headers shrink to the filter chips they carry (same pattern as the orders list).
    Selectors repeat the full table path so they outrank the desktop table rules. */
-@media (max-width: 1450px) {
+@media (max-width: 1180px) {
   .app-shell.stitch-shell main .returns-page .return-reference-table {
     overflow: visible;
     background: transparent;
@@ -133,7 +133,7 @@
 }
 
 /* Tablets: product on the left, reason, shipping and invoice on the right. */
-@media (min-width: 761px) and (max-width: 1450px) {
+@media (min-width: 761px) and (max-width: 1180px) {
   .app-shell.stitch-shell main .returns-page .return-reference-table > .return-reference-row {
     grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) auto;
     grid-template-areas:
