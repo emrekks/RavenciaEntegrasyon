@@ -322,3 +322,22 @@
   .app-shell.stitch-shell main .returns-page .return-reference-row > .order-reference-invoice .invoice-status-label.rv-badge-success::after { width: 7px; height: 3.5px; inset: 0 0 2px 0; border: 0; border-left: 1.8px solid var(--rv-color-accent); border-bottom: 1.8px solid var(--rv-color-accent); background: none; }
   .app-shell.stitch-shell main .returns-page .return-reference-row > .order-reference-invoice .order-invoice-payable { margin: 0; }
 }
+
+/* Returns card lower rows, one clear grid: each row has the same height, side padding and type size.
+   Cargo: [logo][tracking number][Kargo Takip]; invoice: [icon][amount]; status row at the end. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .returns-page .return-reference-row > :is(.return-reference-reason, .order-reference-cargo, .order-reference-invoice) { box-sizing: border-box; min-height: 48px; padding: 8px 12px; align-items: center; }
+  .app-shell.stitch-shell main .returns-page .return-reference-row > .return-reference-reason { font-size: 14px; }
+  .app-shell.stitch-shell main .returns-page .return-reference-row > .order-reference-cargo {
+    display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 10px; align-items: center;
+  }
+  .app-shell.stitch-shell main .returns-page .return-reference-row > .order-reference-cargo .cargo-provider-display { justify-self: start; }
+  .app-shell.stitch-shell main .returns-page .return-reference-row > .order-reference-cargo .cargo-provider-icon { max-width: 64px; max-height: 26px; object-fit: contain; }
+  .app-shell.stitch-shell main .returns-page .return-reference-row > .order-reference-cargo > b { min-width: 0; overflow-wrap: anywhere; font-size: 13px; font-weight: 600; letter-spacing: .01em; }
+  .app-shell.stitch-shell main .returns-page .return-reference-row > .order-reference-cargo .return-cargo-track { min-height: 32px; padding: 0 12px; font-size: 13px; font-weight: 600; white-space: nowrap; }
+  .app-shell.stitch-shell main .returns-page .return-reference-row > .order-reference-invoice { display: flex; flex-wrap: nowrap; justify-content: flex-start; gap: 8px; font-size: 13px; }
+  .app-shell.stitch-shell main .returns-page .return-reference-row > .order-reference-invoice .order-invoice-payable { display: flex; align-items: center; gap: 8px; margin: 0; }
+  .app-shell.stitch-shell main .returns-page .return-reference-row > .order-reference-invoice .order-invoice-payable small { font-size: 13px; }
+  .app-shell.stitch-shell main .returns-page .return-reference-row > .order-reference-invoice .order-invoice-payable strong { font-size: 13px; font-weight: 650; }
+  .app-shell.stitch-shell main .returns-page .return-reference-row > .return-reference-status { min-height: 52px; padding: 8px 12px; }
+}
