@@ -1247,6 +1247,77 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task InvoiceReconciliation_StopsWithinTimeBudgetAndCheckpointsFinishedOrders()
+    {
+        var tenant = NewTenant("invoice-time-budget");
+        var connection = NewQuestionConnection(tenant);
+        connection.PlatformCode = "TRENDYOL";
+        var orderIds = new[]
+        {
+            Guid.Parse("0199a5a1-1c00-7000-8000-000000000011"),
+            Guid.Parse("0199a5a1-1c00-7000-8000-000000000012"),
+            Guid.Parse("0199a5a1-1c00-7000-8000-000000000013")
+        };
+        var orders = orderIds.Select((id, index) => NewInvoiceTestOrder(tenant.Id, connection.Id, id, $"budget-order-{index}", isReturnClaim: false, fixture.Now)).ToArray();
+        var packages = orderIds.Select((id, index) => NewInvoiceTestPackage(tenant.Id, connection.Id, id, Guid.CreateVersion7(), $"budget-package-{index}", fixture.Now)).ToArray();
+        var clock = new SteppingTimeProvider(fixture.TimeProvider.GetUtcNow());
+        // Every package read takes 400 seconds; with a 600 second budget only two orders fit.
+        var orderPort = new ReadOnlyOrderTestPort(
+            new RemotePackage("budget-package", null, "Delivered", fixture.Now, null, null, [],
+                GrossAmount: 100m, NetAmount: 100m,
+                Invoice: new RemotePackageInvoiceObservation("NotInvoiced", null, null, fixture.Now)),
+            onPackageRead: () => clock.Advance(TimeSpan.FromSeconds(400)));
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.Orders.AddRange(orders);
+            seedDb.ShipmentPackages.AddRange(packages);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using var processorDb = fixture.CreateContext();
+            var processor = new MarketplaceJobProcessor(
+                processorDb,
+                null!, null!, null!, null!, orderPort, null!, null!, null!, null!, null!,
+                new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["MarketplaceSync:OrderInvoiceReconciliation:TimeBudgetSeconds"] = "600"
+                }).Build(),
+                clock);
+            var result = await processor.ProcessAsync(
+                tenant.Id,
+                connection.Id,
+                MarketplaceJobTypes.OrderInvoiceReconciliation,
+                "{}",
+                "invoice-time-budget",
+                CancellationToken.None);
+
+            Assert.True(result.Succeeded);
+            Assert.Equal(["budget-package-0", "budget-package-1"], orderPort.PackageReadCalls);
+
+            await using var verifyDb = fixture.CreateContext();
+            var persistedCursor = await verifyDb.SyncCursors.AsNoTracking().SingleAsync(cursor => cursor.TenantId == tenant.Id
+                && cursor.ConnectionId == connection.Id
+                && cursor.ResourceType == "ORDER_INVOICE_RECONCILIATION");
+            Assert.Equal(OrderInvoiceReconciliationBatchPolicy.WriteCursor(orderIds[1]), persistedCursor.OpaqueCursor);
+            var persistedPackages = await verifyDb.ShipmentPackages.AsNoTracking()
+                .Where(package => package.TenantId == tenant.Id && package.ConnectionId == connection.Id)
+                .ToDictionaryAsync(package => package.ExternalPackageId);
+            Assert.Equal(MarketplaceInvoiceStatus.NotInvoiced, persistedPackages["budget-package-0"].MarketplaceInvoiceStatus);
+            Assert.Equal(MarketplaceInvoiceStatus.NotInvoiced, persistedPackages["budget-package-1"].MarketplaceInvoiceStatus);
+            Assert.Equal(MarketplaceInvoiceStatus.Unknown, persistedPackages["budget-package-2"].MarketplaceInvoiceStatus);
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
     public async Task TargetedTrendyolOrderSync_UsesOrderNumberBeforeSuppliedPackage()
     {
         var tenant = NewTenant("trendyol-package-first-sync");
@@ -3327,7 +3398,14 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         }
     }
 
-    private sealed class ReadOnlyOrderTestPort(RemotePackage package, RemoteOrder? orderSnapshot = null, string externalOrderId = "regular-order", RemoteOrder? directOrderResult = null) : IOrderPort
+    private sealed class SteppingTimeProvider(DateTimeOffset start) : TimeProvider
+    {
+        private DateTimeOffset now = start;
+        public void Advance(TimeSpan delta) => now = now.Add(delta);
+        public override DateTimeOffset GetUtcNow() => now;
+    }
+
+    private sealed class ReadOnlyOrderTestPort(RemotePackage package, RemoteOrder? orderSnapshot = null, string externalOrderId = "regular-order", RemoteOrder? directOrderResult = null, Action? onPackageRead = null) : IOrderPort
     {
         public int OrderReadCalls { get; private set; }
         public List<string> PackageReadCalls { get; } = [];
@@ -3346,6 +3424,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         public Task<AdapterResult<RemoteOrderPackage>> GetShipmentPackageAsync(AdapterContext context, string externalPackageId, DateTimeOffset? packageStatusOccurredAt, CancellationToken cancellationToken)
         {
             PackageReadCalls.Add(externalPackageId);
+            onPackageRead?.Invoke();
             return Task.FromResult(AdapterResult<RemoteOrderPackage>.Success(new(externalOrderId, package, orderSnapshot)));
         }
 

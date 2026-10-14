@@ -2969,7 +2969,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     && package.Status != ShipmentPackageStatus.Cancelled))
             : DueInvoiceReconciliationOrders(tenantId, connectionId, now);
         SyncCursor? invoiceCursor = null;
-        Guid? lastReconciledOrderId = null;
+        List<string> cursorAfterOrder = [];
         if (targetedOrderId is not null)
         {
             externalOrderIds = await eligibleOrders.OrderBy(order => order.Id)
@@ -3006,9 +3006,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
             var selected = HepsiburadaInvoiceReconciliationBatchPolicy.Select(afterCursor, wrapped, batchSize);
             externalOrderIds = selected.Select(candidate => candidate.ExternalOrderId).ToList();
-            lastReconciledOrderId = selected.LastOrDefault()?.OrderId;
-            var lastCandidate = selected.LastOrDefault();
-            if (lastCandidate is not null) invoiceCursor.OpaqueCursor = HepsiburadaInvoiceReconciliationBatchPolicy.WriteCursor(lastCandidate);
+            cursorAfterOrder = selected.Select(HepsiburadaInvoiceReconciliationBatchPolicy.WriteCursor).ToList();
         }
         else
         {
@@ -3039,12 +3037,15 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
             var selected = OrderInvoiceReconciliationBatchPolicy.Select(afterCursor, wrapped, batchSize);
             externalOrderIds = selected.Select(candidate => candidate.ExternalOrderId).ToList();
-            lastReconciledOrderId = selected.LastOrDefault()?.OrderId;
-            if (lastReconciledOrderId is { } lastOrderId)
-                invoiceCursor.OpaqueCursor = OrderInvoiceReconciliationBatchPolicy.WriteCursor(lastOrderId);
+            cursorAfterOrder = selected.Select(candidate => OrderInvoiceReconciliationBatchPolicy.WriteCursor(candidate.OrderId)).ToList();
         }
 
         var totalOrders = externalOrderIds.Count;
+        // A Trendyol package lookup can scan the order stream page by page, so one order may take
+        // minutes. The batch stops within its time budget and every finished order is checkpointed,
+        // so a long batch neither hits the worker timeout nor repeats the same orders forever.
+        var timeBudget = TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("MarketplaceSync:OrderInvoiceReconciliation:TimeBudgetSeconds", 600), 30, 840));
+        var batchStartedAt = timeProvider.GetUtcNow();
         await UpdateOrderInvoiceReconciliationProgressAsync(
             tenantId,
             jobId,
@@ -3054,39 +3055,49 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             totalOrders == 0 ? "Kontrol edilecek sipariş bulunamadı" : $"0 / {totalOrders:N0} sipariş kontrol edildi",
             cancellationToken);
 
-        var processedOrders = 0;
-        foreach (var externalOrderId in externalOrderIds)
+        async Task ReconcileOrderInvoiceAsync(string externalOrderId)
         {
+            if (isTrendyol)
+            {
+                // Historical return claims can create a deliberately partial
+                // order projection. Hydrate those rows from the full read-only
+                // order contract before reconciling package invoice data.
+                if (!await HydrateTrendyolReturnClaimOrder(tenantId, connectionId, externalOrderId, correlationId, cancellationToken))
+                    return;
+                await ReconcileTrendyolPackageInvoices(tenantId, connectionId, externalOrderId, correlationId, cancellationToken);
+                return;
+            }
+
+            TrackRequest();
+            var result = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"order-invoice-reconciliation:{externalOrderId}"), externalOrderId, cancellationToken);
+            if (!result.IsSuccess)
+            {
+                if (result.Error?.Class != AdapterErrorClass.NotFound) TrackResultFailure(result.Error);
+                await RecordIssue(tenantId, $"order-invoice-reconciliation:{connectionId}:{externalOrderId}", result.Error!.Code,
+                    $"Siparişin pazaryeri fatura durumu yenilenemedi; sonraki otomatik taramada tekrar denenecek. {result.Error.SafeMessage}", cancellationToken);
+                return;
+            }
+
+            TrackReceived();
+            if (isHepsiburada && !await MergeHepsiburadaOrderInvoiceState(tenantId, connectionId, result.Value!, cancellationToken))
+                hepsiburadaInvoiceStatusUnavailable.Add(externalOrderId);
+            await UpsertOrder(tenantId, connectionId, result.Value!, cancellationToken, projectReservations: !isShopify, persistFinancialObservations: isShopify);
+            await ResolveIssue(tenantId, $"order-invoice-reconciliation:{connectionId}:{externalOrderId}", cancellationToken);
+        }
+
+        var processedOrders = 0;
+        var stoppedByTimeBudget = false;
+        for (var index = 0; index < externalOrderIds.Count; index++)
+        {
+            if (processedOrders > 0 && timeProvider.GetUtcNow() - batchStartedAt >= timeBudget)
+            {
+                stoppedByTimeBudget = true;
+                break;
+            }
+
             try
             {
-                if (isTrendyol)
-                {
-                    // Historical return claims can create a deliberately partial
-                    // order projection. Hydrate those rows from the full read-only
-                    // order contract before reconciling package invoice data.
-                    if (!await HydrateTrendyolReturnClaimOrder(tenantId, connectionId, externalOrderId, correlationId, cancellationToken))
-                        continue;
-                    await ReconcileTrendyolPackageInvoices(tenantId, connectionId, externalOrderId, correlationId, cancellationToken);
-                    continue;
-                }
-
-                TrackRequest();
-                var result = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"order-invoice-reconciliation:{externalOrderId}"), externalOrderId, cancellationToken);
-                if (!result.IsSuccess)
-                {
-                    if (result.Error?.Class != AdapterErrorClass.NotFound) TrackResultFailure(result.Error);
-                    await RecordIssue(tenantId, $"order-invoice-reconciliation:{connectionId}:{externalOrderId}", result.Error!.Code,
-                        $"Siparişin pazaryeri fatura durumu yenilenemedi; sonraki otomatik taramada tekrar denenecek. {result.Error.SafeMessage}", cancellationToken);
-                    continue;
-                }
-                else
-                {
-                    TrackReceived();
-                    if (isHepsiburada && !await MergeHepsiburadaOrderInvoiceState(tenantId, connectionId, result.Value!, cancellationToken))
-                        hepsiburadaInvoiceStatusUnavailable.Add(externalOrderId);
-                    await UpsertOrder(tenantId, connectionId, result.Value!, cancellationToken, projectReservations: !isShopify, persistFinancialObservations: isShopify);
-                    await ResolveIssue(tenantId, $"order-invoice-reconciliation:{connectionId}:{externalOrderId}", cancellationToken);
-                }
+                await ReconcileOrderInvoiceAsync(externalOrderIds[index]);
             }
             finally
             {
@@ -3104,6 +3115,18 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                         cancellationToken);
                 }
             }
+
+            // Checkpoint: the finished order's changes and the cursor position are saved together.
+            if (invoiceCursor is not null && index < cursorAfterOrder.Count)
+            {
+                invoiceCursor.OpaqueCursor = cursorAfterOrder[index];
+                invoiceCursor.Version++;
+                await db.SaveChangesAsync(cancellationToken);
+            }
+            else if (isTrendyol)
+            {
+                await db.SaveChangesAsync(cancellationToken);
+            }
         }
 
         if (isHepsiburada)
@@ -3114,15 +3137,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 await ResolveIssue(tenantId, $"order-invoice-reconciliation:{connectionId}:invoice-status-contract", cancellationToken);
         }
 
-        if (invoiceCursor is not null && lastReconciledOrderId is not null)
-        {
-            invoiceCursor.Version++;
+        if (invoiceCursor is not null || isTrendyol)
             await db.SaveChangesAsync(cancellationToken);
-        }
-        else if (isTrendyol)
-        {
-            await db.SaveChangesAsync(cancellationToken);
-        }
 
         await UpdateOrderInvoiceReconciliationProgressAsync(
             tenantId,
@@ -3130,7 +3146,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             processedOrders,
             totalOrders,
             100,
-            totalOrders == 0 ? "Kontrol edilecek sipariş bulunamadı" : $"{totalOrders:N0} / {totalOrders:N0} sipariş kontrol edildi",
+            totalOrders == 0
+                ? "Kontrol edilecek sipariş bulunamadı"
+                : stoppedByTimeBudget
+                    ? $"{processedOrders:N0} / {totalOrders:N0} sipariş kontrol edildi; süre sınırı nedeniyle kalanlar sonraki taramada"
+                    : $"{totalOrders:N0} / {totalOrders:N0} sipariş kontrol edildi",
             cancellationToken);
 
         return true;
