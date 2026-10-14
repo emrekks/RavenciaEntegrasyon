@@ -11,8 +11,9 @@
 
 /* Pagination: the record count and the page controls wrap instead of overflowing. */
 @media (max-width: 760px) {
-  .app-shell.stitch-shell main :has(> .rv-pagination) { flex-wrap: wrap; row-gap: 8px; }
-  .app-shell.stitch-shell main .rv-pagination { flex: 1 1 100%; justify-content: space-between; min-width: 0; }
+  .app-shell.stitch-shell main :has(> .rv-pagination) { flex-wrap: wrap; align-items: stretch; row-gap: 8px; }
+  /* width rather than flex-basis: some wrappers stack in a column, where a 100% basis is a height */
+  .app-shell.stitch-shell main .rv-pagination { flex: none; width: 100%; max-width: 100%; justify-content: space-between; min-width: 0; margin-inline: 0; }
 }
 
 /* Popups on phones are bottom sheets: full width, rising from the bottom edge with rounded top
@@ -133,4 +134,17 @@
   .app-shell.stitch-shell main .dashboard .dashboard-performance-chart > svg,
   .app-shell.stitch-shell main .dashboard .dashboard-performance-chart > .dashboard-performance-x-axis { min-width: 600px; }
   .app-shell.stitch-shell main .dashboard .dashboard-performance-chart > svg { height: auto; }
+}
+/* Shipping label window on phones: the 100mm sticker preview (378px) plus its padding pushed the
+   window past the screen, hiding the close button and half of Yazdır. On screen only, the preview
+   is scaled to fit and the footer puts its note above the two buttons; printing is unaffected
+   because these rules are screen-only. Popup grids may also shrink below their content. */
+@media screen and (max-width: 760px) {
+  html body :is(.rv-overlay, .workspace-modal-backdrop) { grid-template-columns: minmax(0, 1fr); }
+  html body .shipping-label-modal { grid-template-columns: minmax(0, 1fr); }
+  html body .shipping-label-modal .shipping-label-preview-wrap { padding: 12px; overflow: hidden; justify-items: center; }
+  html body .shipping-label-modal.format-sticker .shipping-label-print-surface { zoom: 0.82; }
+  html body .shipping-label-modal.format-a4 .shipping-label-print-surface { zoom: 0.42; }
+  html body .shipping-label-modal > footer.shipping-label-modal-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  html body .shipping-label-modal > footer.shipping-label-modal-actions > :first-child { grid-column: 1 / -1; }
 }
