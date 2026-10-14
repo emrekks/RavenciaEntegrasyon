@@ -240,3 +240,8 @@
   html body .app-shell.stitch-shell main .reference-returns-page .return-reference-head > :is(.order-column-filter, .return-reference-platform-heading) { display: none !important; }
   html body .app-shell.stitch-shell main .reference-returns-page .return-reference-head:not(:has(.return-select-cell)) { display: none !important; }
 }
+
+/* Invoices: the column filter chips in the table header move into the phone filter sheet too. */
+@media (max-width: 760px) {
+  html body .app-shell.stitch-shell main .invoice-reference-head :is(.order-column-filter, .platform-multi-select-field) { display: none !important; }
+}
