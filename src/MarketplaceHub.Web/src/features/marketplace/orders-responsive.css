@@ -298,3 +298,10 @@
   .app-shell.stitch-shell main :is(.order-reference-head, .return-reference-head, .invoice-reference-head) .order-column-filter-popover { width: min(320px, calc(100vw - 32px)); max-width: calc(100vw - 32px); }
   .app-shell.stitch-shell main :is(.order-reference-head, .return-reference-head, .invoice-reference-head) > :nth-child(odd of .order-column-filter) .order-column-filter-popover { left: auto; right: 0; }
 }
+@media (max-width: 1100px) {
+  /* The platform filter funnel was positioned absolutely by the desktop rule; in the grid cell it
+     sits at the right edge like the other filters. */
+  .app-shell.stitch-shell main :is(.order-reference-head, .return-reference-head, .invoice-reference-head) .platform-multi-select-trigger > svg { position: static; inset: auto; transform: none; }
+  /* Cargo logos keep a 20px height in the cards now that they have no badge. */
+  .app-shell.stitch-shell main :is(.order-reference-row, .return-reference-row, .invoice-reference-row) .cargo-provider-icon.cargo-provider-icon { width: auto; max-width: 96px; height: 20px; max-height: none; }
+}
