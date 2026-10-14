@@ -57,4 +57,23 @@ public sealed class MarketplacePortRouterTests
 
         Assert.Contains("adaptör yönlendirmesi tanımlı değil", exception.Message);
     }
+
+    [Theory]
+    [InlineData("N11")]
+    [InlineData(" n11 ")]
+    public void SelectPort_ResolvesN11Explicitly(string platform)
+    {
+        var n11 = new object();
+
+        Assert.Same(n11, MarketplacePortRouter.SelectPort(platform, new object(), new object(), new object(), n11));
+    }
+
+    [Fact]
+    public void SelectPort_RejectsN11WhenAdapterIsNotRegistered()
+    {
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => MarketplacePortRouter.SelectPort("N11", new object(), new object(), new object()));
+
+        Assert.Contains("adaptör yönlendirmesi tanımlı değil", exception.Message);
+    }
 }

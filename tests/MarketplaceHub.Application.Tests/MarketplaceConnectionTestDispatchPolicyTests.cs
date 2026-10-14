@@ -10,6 +10,7 @@ public sealed class MarketplaceConnectionTestDispatchPolicyTests
     [InlineData("TRENDYOL", true, MarketplaceJobTypes.ConnectionTest)]
     [InlineData("SHOPIFY", true, MarketplaceJobTypes.ShopifyConnectionTest)]
     [InlineData("HEPSIBURADA", true, MarketplaceJobTypes.HepsiburadaConnectionTest)]
+    [InlineData("N11", true, MarketplaceJobTypes.N11ConnectionTest)]
     [InlineData("TRENDYOL_EFATURAM", false, InvoicingJobTypes.ConnectionTest)]
     public void Resolve_UsesTheProcessorAndJobTypeForThePlatform(
         string platformCode,

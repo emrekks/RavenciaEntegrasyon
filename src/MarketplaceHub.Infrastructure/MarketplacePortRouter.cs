@@ -1,5 +1,6 @@
 using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
+using MarketplaceHub.Infrastructure.Adapters.N11;
 using MarketplaceHub.Infrastructure.Adapters.Shopify;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol;
 using MarketplaceHub.Infrastructure.Persistence;
@@ -11,7 +12,8 @@ public sealed class MarketplacePortRouter(
     AppDbContext db,
     TrendyolHttpClient trendyol,
     ShopifyHttpClient shopify,
-    HepsiburadaHttpClient hepsiburada)
+    HepsiburadaHttpClient hepsiburada,
+    N11HttpClient n11)
     : IConnectionPort, IReferenceDataPort, IProductPort, IHepsiburadaProductMatchPort, IProductVisualLookupPort, IInventoryPricePort, IOrderPort, IOrderPackageReadPort, IReturnPort, IInvoiceMarketplacePort, IHepsiburadaInvoiceStatusPort, IQuestionPort
 {
     private async Task<T> Resolve<T>(AdapterContext context) where T : class
@@ -20,15 +22,16 @@ public sealed class MarketplacePortRouter(
             .Where(x => x.TenantId == context.TenantId && x.Id == context.ConnectionId)
             .Select(x => x.PlatformCode)
             .SingleOrDefaultAsync();
-        object port = SelectPort(platform, trendyol, shopify, hepsiburada);
+        object port = SelectPort(platform, trendyol, shopify, hepsiburada, n11);
         return port as T ?? throw new InvalidOperationException($"{platform ?? "UNKNOWN"} bağlantısı {typeof(T).Name} portunu sağlamıyor.");
     }
 
-    internal static object SelectPort(string? platform, object trendyol, object shopify, object? hepsiburada = null) => platform?.Trim().ToUpperInvariant() switch
+    internal static object SelectPort(string? platform, object trendyol, object shopify, object? hepsiburada = null, object? n11 = null) => platform?.Trim().ToUpperInvariant() switch
     {
         "TRENDYOL" => trendyol,
         "SHOPIFY" => shopify,
         "HEPSIBURADA" when hepsiburada is not null => hepsiburada,
+        "N11" when n11 is not null => n11,
         _ => throw new InvalidOperationException($"{platform ?? "UNKNOWN"} platformu için adaptör yönlendirmesi tanımlı değil.")
     };
 

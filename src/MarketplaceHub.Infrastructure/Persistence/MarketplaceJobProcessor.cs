@@ -51,7 +51,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             return JobExecutionResult.Retry("INITIAL_SYNC_PENDING", "İlk kapsamlı veri aktarımı tamamlanmadan artımlı senkronizasyon başlatılmayacak.", TimeSpan.FromSeconds(30));
         // A disabled connection may still be tested so it can be reactivated, but
         // no data sync or marketplace operation may execute while it is passive.
-        if (jobType is not (MarketplaceJobTypes.ConnectionTest or MarketplaceJobTypes.ShopifyConnectionTest or MarketplaceJobTypes.HepsiburadaConnectionTest) && connectionState?.Status is not ("ACTIVE" or "VERIFIED"))
+        if (jobType is not (MarketplaceJobTypes.ConnectionTest or MarketplaceJobTypes.ShopifyConnectionTest or MarketplaceJobTypes.HepsiburadaConnectionTest or MarketplaceJobTypes.N11ConnectionTest) && connectionState?.Status is not ("ACTIVE" or "VERIFIED"))
             return JobExecutionResult.Blocked("CONNECTION_INACTIVE", "Bağlantı pasif olduğu için işlem çalıştırılmadı.");
         var syncLock = await MarketplaceSyncExecutionLock.TryAcquireAsync(db, connectionId.Value, jobType, cancellationToken);
         if (syncLock is null)
@@ -90,7 +90,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 }
                 var succeeded = jobType switch
                 {
-                    MarketplaceJobTypes.ConnectionTest or MarketplaceJobTypes.ShopifyConnectionTest or MarketplaceJobTypes.HepsiburadaConnectionTest => await TestConnection(tenantId, connectionId.Value, correlationId, cancellationToken),
+                    MarketplaceJobTypes.ConnectionTest or MarketplaceJobTypes.ShopifyConnectionTest or MarketplaceJobTypes.HepsiburadaConnectionTest or MarketplaceJobTypes.N11ConnectionTest => await TestConnection(tenantId, connectionId.Value, correlationId, cancellationToken),
                     MarketplaceJobTypes.ReferenceSync or MarketplaceJobTypes.HepsiburadaReferenceSync => await SyncReferences(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                     MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync => await SyncOrders(tenantId, connectionId.Value, payloadJson, correlationId, "ORDERS_HOT", allowBaseline: false, cancellationToken),
                     MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync or MarketplaceJobTypes.HepsiburadaOrderRecoverySync => await SyncOrders(tenantId, connectionId.Value, payloadJson, correlationId, "ORDERS_RECOVERY", allowBaseline: true, cancellationToken),
@@ -133,7 +133,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
     private static string? TelemetryResource(string jobType) => jobType switch
     {
-        MarketplaceJobTypes.ConnectionTest or MarketplaceJobTypes.ShopifyConnectionTest or MarketplaceJobTypes.HepsiburadaConnectionTest => "CONNECTION_TEST",
+        MarketplaceJobTypes.ConnectionTest or MarketplaceJobTypes.ShopifyConnectionTest or MarketplaceJobTypes.HepsiburadaConnectionTest or MarketplaceJobTypes.N11ConnectionTest => "CONNECTION_TEST",
         MarketplaceJobTypes.ReferenceSync or MarketplaceJobTypes.HepsiburadaReferenceSync => "REFERENCE_DATA",
         MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync => "ORDERS_HOT",
         MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync or MarketplaceJobTypes.HepsiburadaOrderRecoverySync => "ORDERS_RECOVERY",
@@ -1773,7 +1773,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
     private async Task<bool> TestConnection(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
     {
-        var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA"), cancellationToken); if (connection is null) return false; var now = timeProvider.GetUtcNow(); connection.LastTestedAt = now;
+        var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11"), cancellationToken); if (connection is null) return false; var now = timeProvider.GetUtcNow(); connection.LastTestedAt = now;
         IConnectionPort port = connections;
         var context = Context(tenantId, connectionId, correlationId, "connection-test"); TrackRequest(); var result = await port.TestAsync(context, cancellationToken); if (!result.IsSuccess) { TrackResultFailure(result.Error); connection.LastErrorCode = result.Error!.Code; connection.Version++; await db.SaveChangesAsync(cancellationToken); throw JobProcessingException.FromAdapter(result.Error!); }
         TrackRequest(); var discovery = await port.DiscoverCapabilitiesAsync(context, cancellationToken); if (!discovery.IsSuccess) { TrackResultFailure(discovery.Error); connection.LastErrorCode = discovery.Error!.Code; connection.Version++; await db.SaveChangesAsync(cancellationToken); throw JobProcessingException.FromAdapter(discovery.Error!); }
@@ -1804,14 +1804,14 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             }
             CapabilityEvidencePolicy.ApplyEvidence(capability, evidence);
         }
-        if (connection.PlatformCode == "HEPSIBURADA" && discovery.Value is not null
+        if (connection.PlatformCode is "HEPSIBURADA" or "N11" && discovery.Value is not null
             && !new[] { MarketplaceCapabilities.ProductRead, MarketplaceCapabilities.OrderRead }.All(code => discovery.Value.Any(item => item.Code == code && item.SupportLevel == "SUPPORTED")))
         {
-            connection.LastErrorCode = "HEPSIBURADA_REQUIRED_READ_CAPABILITY";
+            connection.LastErrorCode = $"{connection.PlatformCode}_REQUIRED_READ_CAPABILITY";
             connection.Version++;
             await db.SaveChangesAsync(cancellationToken);
             throw JobProcessingException.FromAdapter(new AdapterError(AdapterErrorClass.NotSupported, connection.LastErrorCode,
-                "Hepsiburada bağlantısı etkinleştirilemez: ürün ve sipariş okuma yeteneklerinin ikisi de doğrulanmalıdır.", null, null, null));
+                $"{(connection.PlatformCode == "N11" ? "N11" : "Hepsiburada")} bağlantısı etkinleştirilemez: ürün ve sipariş okuma yeteneklerinin ikisi de doğrulanmalıdır.", null, null, null));
         }
         if (connection.PlatformCode == "SHOPIFY" && discovery.Value is not null
             && !new[] { MarketplaceCapabilities.ProductRead, MarketplaceCapabilities.OrderRead }.All(code => discovery.Value.Any(item => item.Code == code && item.SupportLevel == "SUPPORTED")))

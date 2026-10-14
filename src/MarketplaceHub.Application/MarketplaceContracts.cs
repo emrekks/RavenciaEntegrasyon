@@ -4,9 +4,9 @@ namespace MarketplaceHub.Application;
 
 public static class ActiveIntegrationScope
 {
-    public static bool Contains(string? platformCode) => platformCode is "TRENDYOL" or "TRENDYOL_EFATURAM" or "SHOPIFY" or "HEPSIBURADA";
+    public static bool Contains(string? platformCode) => platformCode is "TRENDYOL" or "TRENDYOL_EFATURAM" or "SHOPIFY" or "HEPSIBURADA" or "N11";
 
-    public static bool IsMarketplace(string? platformCode) => platformCode is "TRENDYOL" or "SHOPIFY" or "HEPSIBURADA";
+    public static bool IsMarketplace(string? platformCode) => platformCode is "TRENDYOL" or "SHOPIFY" or "HEPSIBURADA" or "N11";
 }
 
 public static class MarketplaceJobTypes
@@ -54,6 +54,7 @@ public static class MarketplaceJobTypes
     public const string HepsiburadaWebhookIngest = "HEPSIBURADA_WEBHOOK_INGEST";
     public const string HepsiburadaReturnSync = "HEPSIBURADA_RETURN_SYNC";
     public const string HepsiburadaOrderInvoiceReconciliation = "HEPSIBURADA_ORDER_INVOICE_RECONCILIATION";
+    public const string N11ConnectionTest = "N11_CONNECTION_TEST";
     public const string QuestionSync = "MARKETPLACE_QUESTION_SYNC";
     public const string CatalogStructureImport = "CATALOG_STRUCTURE_IMPORT";
 
@@ -61,7 +62,7 @@ public static class MarketplaceJobTypes
     // per-connection execution lock of its lock group.
     public static readonly IReadOnlyList<string> ProcessorJobTypes =
     [
-        ConnectionTest, ShopifyConnectionTest, HepsiburadaConnectionTest,
+        ConnectionTest, ShopifyConnectionTest, HepsiburadaConnectionTest, N11ConnectionTest,
         ReferenceSync, HepsiburadaReferenceSync,
         ProductSync, ShopifyProductSync, HepsiburadaProductSync,
         ProductCreate, ProductApprovalReconcile, ProductUpdate, ProductArchive,
@@ -105,6 +106,13 @@ public static class MarketplaceJobTypes
             WebhookIngest => HepsiburadaWebhookIngest,
             ReturnSync => HepsiburadaReturnSync,
             OrderInvoiceReconciliation => HepsiburadaOrderInvoiceReconciliation,
+            _ => jobType
+        },
+        // Only the connection test runs for N11 so far; the read and write
+        // flows are added phase by phase (docs/N11-ENTEGRASYON-PLANI.md).
+        "N11" => jobType switch
+        {
+            ConnectionTest => N11ConnectionTest,
             _ => jobType
         },
         _ => jobType
@@ -622,7 +630,7 @@ public interface IWebhookVerifier
 public sealed record ConnectionView(Guid Id, Guid PublicId, string PlatformCode, string Environment, string DisplayName, string ExternalStoreId, string Status, string ApiVersion, DateTimeOffset? LastTestedAt, DateTimeOffset? LastSuccessAt, string? LastErrorCode, bool HasCredential, bool ExternalWritesEnabled, long Version, bool InvoiceCreationEnabled = true);
 public sealed record CapabilityView(string Code, string SupportLevel, string ApiVersion, string Environment, string StoreScope, string? SourceUrl, DateTimeOffset? VerifiedAt, string? ConstraintsJson, string? EvidenceNote, long Version, bool VerifiedForConnection = false);
 public sealed record RecordCapabilityEvidenceCommand(string SupportLevel, string SourceUrl, string SourceVersion, string Environment, string StoreScope, string EvidenceNote, string? FixtureChecksum, string? ConstraintsJson, DateTimeOffset VerifiedAt);
-public sealed record CreateConnectionCommand(string DisplayName, string Environment, string ExternalStoreId, string ApiVersion, string? UserAgentIdentity, string? PlatformCode = null, string? ShopifyAccessToken = null, string? HepsiburadaServiceKey = null, string? HepsiburadaIntegratorUsername = null);
+public sealed record CreateConnectionCommand(string DisplayName, string Environment, string ExternalStoreId, string ApiVersion, string? UserAgentIdentity, string? PlatformCode = null, string? ShopifyAccessToken = null, string? HepsiburadaServiceKey = null, string? HepsiburadaIntegratorUsername = null, string? N11AppKey = null, string? N11AppSecret = null);
 public sealed record UpdateConnectionCommand(string DisplayName, string? UserAgentIdentity, string? Environment = null, string? ExternalStoreId = null, bool? ExternalWritesEnabled = null, bool? InvoiceCreationEnabled = null);
 public sealed record CredentialCommand(
     string? ApiKey,
