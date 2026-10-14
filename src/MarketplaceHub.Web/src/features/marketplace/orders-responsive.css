@@ -398,3 +398,10 @@ html body .order-detail-actions-list > button:hover:not(:disabled) { background:
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .orders-page .order-reference-meta .order-platform-logo { max-width: 100px; height: 24px; }
 }
+
+/* Phone order list: product details one per line, as in the marketplace app (no inline dot separators). */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .orders-page .order-reference-products > article > div > small { display: block; line-height: 1.5; }
+  .app-shell.stitch-shell main .orders-page .order-reference-products > article > div > small + small::before { content: none; }
+  .app-shell.stitch-shell main .orders-page .order-reference-products small:has(.model-code-value) { display: none; }
+}
