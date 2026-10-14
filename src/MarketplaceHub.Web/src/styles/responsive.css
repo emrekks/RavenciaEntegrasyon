@@ -122,3 +122,12 @@
   }
   .app-shell.stitch-shell main .page-heading > .page-heading-actions > :last-child:nth-child(odd) { grid-column: 1 / -1; }
 }
+/* Revenue chart on phones: the 652px drawing used to shrink to the screen, taking its 13px axis
+   labels down to about 6px and crowding the dates. It keeps a 600px width instead and scrolls
+   sideways inside its card, the date axis moving with it. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .dashboard .dashboard-performance-chart { overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; }
+  .app-shell.stitch-shell main .dashboard .dashboard-performance-chart > svg,
+  .app-shell.stitch-shell main .dashboard .dashboard-performance-chart > .dashboard-performance-x-axis { min-width: 600px; }
+  .app-shell.stitch-shell main .dashboard .dashboard-performance-chart > svg { height: auto; }
+}
