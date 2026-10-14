@@ -5,7 +5,7 @@ export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
 export type ControlSize = 'sm' | 'md' | 'lg'
 export type StatusTone = 'neutral' | 'info' | 'success' | 'warning' | 'danger'
 export type FieldProps = { label?: string; hint?: string; error?: string; required?: boolean }
-type DialogSurfaceProps = { open: boolean; title: string; onClose: () => void; children: ReactNode; footer?: ReactNode; description?: ReactNode; className?: string }
+type DialogSurfaceProps = { open: boolean; title: ReactNode; onClose: () => void; children: ReactNode; footer?: ReactNode; description?: ReactNode; className?: string }
 
 const focusableSelector = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])'
 

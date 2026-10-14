@@ -945,7 +945,7 @@ function LowStockDetailsModal({ products, loading, error, onClose, onImageClick 
   </div>
 }
 
-function ProductColorRows({ group, selected, onSelect, onQuickEdit, onImageClick, onDelete, onDuplicate }: { group: ProductGroup; selected: boolean; onSelect: () => void; onQuickEdit: (mode: QuickEditMode) => void; onImageClick: (url: string, title: string) => void; onDelete: () => void; onDuplicate: () => void }) {
+function ProductColorRows({ group, selected, onSelect, selectionMode, onEnterSelection, onQuickEdit, onImageClick, onDelete, onDuplicate }: { group: ProductGroup; selected: boolean; onSelect: () => void; selectionMode: boolean; onEnterSelection: () => void; onQuickEdit: (mode: QuickEditMode) => void; onImageClick: (url: string, title: string) => void; onDelete: () => void; onDuplicate: () => void }) {
   const product = group.primary
   const platformStatuses = group.products.flatMap(item => item.platformStatuses ?? [])
   const platformStatusAggregates = new Map<string, { platform: string; platformCode: string; statuses: string[]; matchedVariantCount: number; variantCount: number; isChecking: boolean }>()
@@ -997,7 +997,11 @@ function ProductColorRows({ group, selected, onSelect, onQuickEdit, onImageClick
   const statusTone = productStatusTone(status)
   const variantDisplayGroups = productVariantDisplayGroups(group.variants.map(item => item.variant))
   const modelCode = group.products.map(item => item.modelCode).find(value => value?.trim()) ?? '—'
-  return <article className="product-catalog-item color-variant-item product-group-card">
+  const pressTimer = useRef<number | null>(null)
+  const pressFired = useRef(false)
+  const isPhone = () => window.matchMedia('(max-width: 760px)').matches
+  const clearPress = () => { if (pressTimer.current) window.clearTimeout(pressTimer.current) }
+  return <article className={`product-catalog-item color-variant-item product-group-card${selected ? ' is-selected' : ''}`} onPointerDown={event => { if (event.pointerType !== 'mouse' && isPhone() && !(event.target as Element).closest('button, a, input, select, textarea, label')) { pressFired.current = false; clearPress(); pressTimer.current = window.setTimeout(() => { pressFired.current = true; onEnterSelection(); onSelect(); navigator.vibrate?.(15) }, 480) } }} onPointerUp={clearPress} onPointerLeave={clearPress} onPointerCancel={clearPress} onContextMenu={event => { if (isPhone()) event.preventDefault() }} onClick={event => { if (!isPhone()) return; if (pressFired.current) { pressFired.current = false; return } if ((event.target as Element).closest('button, a, input, select, textarea, label')) return; if (selectionMode) onSelect() }}>
       <div className="product-catalog-row">
         <input className="product-row-select" type="checkbox" aria-label={`${product.title} ürün grubunu seç`} checked={selected} onChange={onSelect} />
         <ProductCatalogImage url={product.primaryImageUrl} title={product.title} onClick={() => onImageClick(product.primaryImageUrl!, product.title)} />
@@ -1329,6 +1333,8 @@ export function ProductsPage() {
     setDeleteRequest({ productIds: ids, title: `${selectedProductCardCount} ürün kartı`, description: `${ids.length} katalog kaydı seçildi. Sipariş geçmişi korunur; yalnızca yerel katalog verileri silinir.` })
   }
 
+  const [selectionMode, setSelectionMode] = useState(false)
+  function exitSelectionMode() { setSelectionMode(false); setSelectedProductIds([]); setSelectedProductCache({}); setAllProductsSelected(false) }
   function toggleCatalogSort(field: 'price' | 'stock') {
     setCatalogSort(current => nextProductCatalogSort(current, field))
   }
@@ -1392,6 +1398,7 @@ export function ProductsPage() {
       <select aria-label="Stok filtresi" value={stock} onChange={event => setStock(event.target.value)}><option value="">Stok Durumu</option><option value="OUT">Stoksuz</option><option value="LOW">Düşük stok</option><option value="OK">Yeterli stok</option></select>
       <label className="mfs-field mfs-sheet-only"><span>Sayfa başına ürün</span><select aria-label="Sayfa başına ürün kartı (mobil)" value={pageSize} onChange={event => setPageSize(Number(event.target.value))}>{[20, 50, 100].map(value => <option key={value} value={value}>{value} ürün kartı</option>)}</select></label>
     </MobileFilterShell>
+    {selectionMode && <div className="orders-selection-bar product-selection-bar" role="region" aria-label="Seçim modu"><button type="button" className="orders-selection-cancel" onClick={exitSelectionMode}>İptal</button><strong>{selectedProductCardCount} ürün kartı seçildi</strong><button type="button" className="orders-selection-all" onClick={toggleAllVisible}>{allVisibleSelected ? 'Seçimi Kaldır' : 'Tümünü Seç'}</button></div>}
     {selectedProductIds.length > 0 && hasMoreProductsToSelect && <div className={`product-selection-banner${allProductsSelected ? ' is-all' : ''}`} role="status">
       <div className="product-selection-summary" aria-label={allProductsSelected ? `Tüm ${selectedProductCardCount.toLocaleString('tr-TR')} ürün kartı seçildi.` : `${selectedProductCardCount.toLocaleString('tr-TR')} ürün kartı seçildi.`}><span className="product-selection-count" aria-hidden="true">{selectedProductCardCount.toLocaleString('tr-TR')}</span><div><strong>{allProductsSelected ? 'Tüm ürün kartları seçildi.' : 'ürün kartı seçildi.'}</strong>{allProductsSelected && <span>{selectedProductIds.length.toLocaleString('tr-TR')} katalog kaydı toplu işlemlere dahil.</span>}</div></div>
       {allProductsSelected ? <button type="button" className="secondary" onClick={() => { setSelectedProductIds([]); setSelectedProductCache({}); setAllProductsSelected(false) }}>Seçimi temizle</button> : <button type="button" onClick={() => void selectAllFilteredProducts()} disabled={selectingAllProducts}>{selectingAllProducts ? 'Tüm sayfalar seçiliyor…' : `Tüm ${totalCount.toLocaleString('tr-TR')} kaydı seç`}</button>}
@@ -1407,7 +1414,7 @@ export function ProductsPage() {
             <span>Varyant</span>{catalogSortHeader('price', 'Fiyat')}{catalogSortHeader('stock', 'Stok')}<span>Platform Durumu</span><span>Durum</span><span>İşlem</span>
           </div>
           {pageProductGroups.map(group => (
-            <ProductColorRows key={group.id} group={group} selected={group.products.every(product => selectedProductIds.includes(product.id))} onSelect={() => toggleProductGroup(group)} onQuickEdit={mode => setQuickEdit({ productIds: group.products.map(product => product.id), mode })} onImageClick={(url, title) => setLightboxImage({ url, title })} onDelete={() => requestDeleteProductGroup(group)} onDuplicate={() => navigate('/products/new', { state: { duplicateProductId: group.primary.id } })} />
+            <ProductColorRows key={group.id} selectionMode={selectionMode} onEnterSelection={() => setSelectionMode(true)} group={group} selected={group.products.every(product => selectedProductIds.includes(product.id))} onSelect={() => toggleProductGroup(group)} onQuickEdit={mode => setQuickEdit({ productIds: group.products.map(product => product.id), mode })} onImageClick={(url, title) => setLightboxImage({ url, title })} onDelete={() => requestDeleteProductGroup(group)} onDuplicate={() => navigate('/products/new', { state: { duplicateProductId: group.primary.id } })} />
           ))}
         </div>
       </div>

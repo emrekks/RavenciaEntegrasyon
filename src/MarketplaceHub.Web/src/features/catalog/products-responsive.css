@@ -294,3 +294,29 @@
   .app-shell.stitch-shell main .product-add-page .product-add-progress > button.active { color: #fff; background: var(--rv-color-primary); box-shadow: 0 2px 8px color-mix(in srgb, var(--rv-color-primary) 40%, transparent); }
   .app-shell.stitch-shell main .product-add-page .product-add-progress > button.active > span { background: rgb(255 255 255 / 22%); }
 }
+
+.product-selection-bar { display: none; }
+
+/* Products follow the orders pattern on phones: no checkboxes or "Ürün Detayı" select-all chip;
+   long-press starts selection mode (tinted cards) with a bottom bar; taps toggle while it is on. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .products-page .product-catalog-head > .product-select-all { display: none; }
+  .app-shell.stitch-shell main .products-page .product-catalog-head:not(:has(.product-sort-header:not([style*="none"]))) { display: none; }
+  .app-shell.stitch-shell main .products-page .product-catalog-row > .product-row-select { display: none; }
+  .app-shell.stitch-shell main .products-page .product-catalog-item { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; transition: background-color .15s ease, border-color .15s ease; }
+  .app-shell.stitch-shell main .products-page .product-catalog-item.is-selected {
+    background: color-mix(in srgb, var(--rv-color-primary) 16%, var(--rv-color-surface));
+    border-color: var(--rv-color-primary);
+    box-shadow: 0 0 0 1px var(--rv-color-primary);
+  }
+  .app-shell.stitch-shell main .products-page .product-selection-bar {
+    position: fixed; right: 0; bottom: 0; left: 0; z-index: calc(var(--rv-z-modal, 1000) - 1);
+    display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px;
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+    background: var(--rv-color-surface); border-top: 1px solid var(--rv-color-border-strong); box-shadow: 0 -8px 24px rgb(0 0 0 / 28%);
+  }
+  .app-shell.stitch-shell main .products-page .product-selection-bar > strong { text-align: center; font-size: 13px; font-weight: 600; }
+  .app-shell.stitch-shell main .products-page .product-selection-bar > button { min-height: 40px; padding: 0 12px; font-size: 14px; font-weight: 600; background: transparent; border: 0; }
+  .app-shell.stitch-shell main .products-page .product-selection-bar .orders-selection-cancel { color: var(--rv-color-danger); }
+  .app-shell.stitch-shell main .products-page .product-selection-bar .orders-selection-all { color: var(--rv-color-primary); }
+}

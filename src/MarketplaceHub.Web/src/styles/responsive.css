@@ -310,3 +310,12 @@ html body .mfs-sort-sheet [role="listbox"] > button.is-selected { color: var(--r
   html body .rv-topbar.is-hidden { transform: translateY(-100%); }
 }
 @media (max-width: 760px) and (prefers-reduced-motion: reduce) { html body .rv-topbar { transition: none; } }
+
+/* Mobile menu: the logo replaces the text title, and every link/group is spaced evenly. */
+.rv-drawer-logo { display: block; width: auto; height: 28px; max-width: 170px; object-fit: contain; }
+.rv-mobile-drawer > header { min-height: 0; padding: 16px 20px; }
+.rv-mobile-drawer > header h2 { line-height: 0; }
+.rv-mobile-navigation, .rv-mobile-navigation .nav-group { display: grid; gap: 4px; margin: 0; padding: 0; }
+.rv-mobile-navigation > .nav-group + .nav-group, .rv-mobile-navigation > .nav-group + a, .rv-mobile-navigation > a + a { margin-top: 0; }
+.rv-mobile-navigation a { min-height: 46px; margin: 0; }
+.rv-mobile-navigation > button { margin-top: 8px; }
