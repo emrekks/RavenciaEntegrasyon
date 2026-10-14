@@ -113,3 +113,32 @@
 .value-mapping-editor .value-mapping-suggestions li b { color: var(--rv-color-muted); font-weight: 400; }
 .value-mapping-editor .value-mapping-suggestions li small { color: var(--rv-color-muted); font-variant-numeric: tabular-nums; }
 .value-mapping-editor .value-mapping-suggestions button { padding: 2px 8px; font-size: var(--rv-font-size-sm); }
+/* Category suggestions under the marketplace category picker */
+.mapping-reference-card .category-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  color: var(--rv-color-muted);
+  font-size: var(--rv-font-size-sm);
+}
+
+.mapping-reference-card .category-suggestions button {
+  max-width: 100%;
+  padding: 3px 10px;
+  overflow: hidden;
+  color: var(--rv-color-text);
+  font: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--rv-color-primary) 6%, var(--rv-color-surface));
+  border: 1px solid color-mix(in srgb, var(--rv-color-primary) 25%, var(--rv-color-border));
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.mapping-reference-card .category-suggestions button:hover,
+.mapping-reference-card .category-suggestions button.active { border-color: var(--rv-color-primary); }
+.mapping-reference-card .category-suggestions button.active { color: var(--rv-color-primary); font-weight: 600; }
+.mapping-reference-card .category-suggestions button:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }
