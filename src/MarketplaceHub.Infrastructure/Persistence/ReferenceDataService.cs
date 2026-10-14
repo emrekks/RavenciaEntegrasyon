@@ -172,6 +172,18 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         return ServiceResult<CatalogMappingView>.Ok(Map(mapping));
     }
 
+    public async Task<ServiceResult<MappingTemplateFillView>> FillFromTemplatesAsync(Guid tenantId, Guid connectionId, string categoryExternalId, CancellationToken cancellationToken)
+    {
+        if (!await VisibleConnectionAsync(tenantId, connectionId, cancellationToken)) return NotFound<MappingTemplateFillView>();
+        var category = categoryExternalId.Trim();
+        if (category.Length == 0) return ServiceResult<MappingTemplateFillView>.Fail("CATEGORY_REQUIRED", "Doldurulacak pazaryeri kategorisi belirtilmelidir.", 422);
+        if (!await db.CategoryMappings.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == category && x.Status == "VERIFIED", cancellationToken))
+            return ServiceResult<MappingTemplateFillView>.Fail("CATEGORY_MAPPING_REQUIRED", "Önce bu pazaryeri kategorisini bir panel kategorisiyle eşleyin.", 422);
+        var result = await MappingTemplateFiller.FillCategoryAsync(db, tenantId, connectionId, category, timeProvider.GetUtcNow(), cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
+        return ServiceResult<MappingTemplateFillView>.Ok(new(result.Attributes, result.Values));
+    }
+
     public async Task<ServiceResult<bool>> DeleteMappingAsync(Guid tenantId, string mappingType, Guid localId, Guid connectionId, string? scopeExternalId, string? externalId, long expectedVersion, CancellationToken cancellationToken)
     {
         if (!await VisibleConnectionAsync(tenantId, connectionId, cancellationToken)) return NotFound<bool>();

@@ -2969,7 +2969,11 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         // The user removes Siyah from Bluz: a later fill (e.g. the next reference sync) leaves it out.
         Assert.True((await service.DeleteMappingAsync(tenant.Id, "attribute-values", blackId, connection.Id, "200/12", "13", valueMapping.Version, CancellationToken.None)).Succeeded);
         Assert.Equal(0, await MappingTemplateFiller.FillValuesAsync(db, tenant.Id, connection.Id, "200/12", fixture.Now, CancellationToken.None));
+        var manualFill = await service.FillFromTemplatesAsync(tenant.Id, connection.Id, "200", CancellationToken.None);
+        Assert.True(manualFill.Succeeded, manualFill.Error?.Message);
+        Assert.Equal(new MappingTemplateFillView(0, 0), manualFill.Value);
         Assert.False(await db.AttributeValueMappings.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.ScopeExternalId == "200/12"));
+        Assert.Equal("CATEGORY_MAPPING_REQUIRED", (await service.FillFromTemplatesAsync(tenant.Id, connection.Id, "999", CancellationToken.None)).Error?.Code);
 
         await transaction.RollbackAsync();
     }
