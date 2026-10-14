@@ -15,6 +15,26 @@
   .app-shell.stitch-shell main .rv-pagination { flex: 1 1 100%; justify-content: space-between; min-width: 0; }
 }
 
+/* Popups on phones are bottom sheets: full width, rising from the bottom edge with rounded top
+   corners. Short dialogs stay short; long ones grow to 94% of the screen and scroll inside.
+   Footer buttons share the width and are easy to tap. html body raises the selectors above the
+   feature-specific popup sizes. */
+@media (max-width: 760px) {
+  html body :is(.rv-overlay, .workspace-modal-backdrop) { place-items: end center; padding: 0; }
+  html body :is(.rv-overlay > .rv-modal, .workspace-modal-backdrop > .workspace-modal) {
+    width: 100%;
+    max-width: none;
+    max-height: 94dvh;
+    margin: 0;
+    border-width: 1px 0 0;
+    border-radius: 16px 16px 0 0;
+  }
+  html body :is(.rv-modal, .workspace-modal) > header { padding: 14px 16px; }
+  html body :is(.rv-modal, .workspace-modal) > footer { flex-wrap: wrap; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); }
+  html body :is(.rv-modal, .workspace-modal) > footer > button { flex: 1 1 0; min-height: 44px; }
+  html body .rv-drawer { width: 100%; max-width: none; }
+}
+
 /* Dashboard: metrics two to a row instead of one, so the operational summary fits on a screen. */
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .dashboard .dashboard-operational-grid,

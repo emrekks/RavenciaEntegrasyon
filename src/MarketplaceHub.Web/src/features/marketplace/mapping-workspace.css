@@ -307,3 +307,30 @@
   .app-shell.stitch-shell main .mapping-page .panel-attribute-library > *,
   .app-shell.stitch-shell main .mapping-page .panel-attribute-create > * { min-width: 0; }
 }
+/* Category attribute window on phones: less nested padding, the marketplace path may wrap, and
+   the action buttons sit two to a row at full width. */
+@media (max-width: 760px) {
+  .mapping-advanced-modal .mapping-advanced-modal-body { padding: 12px; }
+  .mapping-advanced-modal .mapping-popup-content > .mapping-step { padding: 12px; }
+  .mapping-step .mapping-workspace-context { gap: 10px; padding: 12px; }
+  .mapping-step .mapping-workspace-field > strong { min-height: 0; white-space: normal; }
+  .mapping-step .mapping-workspace-actions { gap: 12px 0; }
+  .mapping-step .mapping-workspace-action-group > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mapping-step .mapping-workspace-action-group button { justify-content: center; min-height: 40px; padding: 4px 8px; white-space: normal; text-align: center; }
+}
+/* Value mapping window on phones: the window title already names the attribute, so the inner
+   heading goes; the commands become a two-column button grid (switch across the full row); the
+   save bar is one compact row. */
+@media (max-width: 760px) {
+  .mapping-values-modal .rv-modal-body { padding: 12px; }
+  .mapping-values-modal .value-mapping-editor { padding: 0; }
+  .mapping-values-modal .value-mapping-editor > .value-mapping-heading { display: none; }
+  .value-mapping-editor .value-mapping-commandbar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
+  .value-mapping-editor .value-mapping-command-group { display: contents; }
+  .value-mapping-editor .value-mapping-commandbar .value-mapping-command-group > button.secondary { justify-content: flex-start; min-width: 0; white-space: normal; text-align: left; }
+  .value-mapping-editor .value-mapping-commandbar .value-mapping-share-switch { grid-column: 1 / -1; }
+  .value-mapping-editor .value-mapping-savebar { flex-wrap: nowrap; gap: 10px; padding: 8px 8px 8px 12px; bottom: 8px; }
+  .value-mapping-editor .value-mapping-savebar > span { display: grid; gap: 0; font-size: 12px; line-height: 1.35; }
+  .value-mapping-editor .value-mapping-savebar > button { flex: 0 0 auto; min-height: 44px; padding: 0 14px; }
+  .value-mapping-editor .value-mapping-rows { grid-template-columns: minmax(0, 1fr); }
+}
