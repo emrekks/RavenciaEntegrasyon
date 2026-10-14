@@ -90,6 +90,10 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         if (platform == "HEPSIBURADA" && string.IsNullOrWhiteSpace(command.HepsiburadaServiceKey)) return Invalid<ConnectionView>("hepsiburadaServiceKey", "Hepsiburada servis anahtarı zorunludur.");
         if (platform == "N11" && string.IsNullOrWhiteSpace(command.N11AppKey)) return Invalid<ConnectionView>("n11AppKey", "N11 API anahtarı (App Key) zorunludur.");
         if (platform == "N11" && string.IsNullOrWhiteSpace(command.N11AppSecret)) return Invalid<ConnectionView>("n11AppSecret", "N11 API şifresi (App Secret) zorunludur.");
+        var n11AppKey = platform == "N11" ? N11CredentialFormat.Normalize(command.N11AppKey) : null;
+        var n11AppSecret = platform == "N11" ? N11CredentialFormat.Normalize(command.N11AppSecret) : null;
+        if (platform == "N11" && n11AppKey is null) return Invalid<ConnectionView>("n11AppKey", N11InvalidCharacters("App Key"));
+        if (platform == "N11" && n11AppSecret is null) return Invalid<ConnectionView>("n11AppSecret", N11InvalidCharacters("App Secret"));
         if (await db.PlatformConnections.AnyAsync(x => x.TenantId == tenantId && x.Status != "DELETED" && x.PlatformCode == platform && x.Environment == environment && x.ExternalStoreId == externalStoreId, cancellationToken)) return ServiceResult<ConnectionView>.Fail("CONNECTION_ALREADY_EXISTS", "Bu platform kapsamı ve environment için bağlantı zaten var.", 409);
 
         var now = timeProvider.GetUtcNow(); var connection = new PlatformConnection
@@ -152,14 +156,14 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         }
         else if (platform == "N11")
         {
-            var appKey = command.N11AppKey!.Trim();
+            var appKey = n11AppKey!;
             db.PlatformCredentials.Add(new PlatformCredential
             {
                 Id = Guid.CreateVersion7(),
                 TenantId = tenantId,
                 ConnectionId = connection.Id,
                 CredentialType = "APP_KEY_SECRET",
-                ProtectedPayload = _credentialProtector.Protect(JsonSerializer.Serialize(new CredentialPayload(appKey, command.N11AppSecret!.Trim()))),
+                ProtectedPayload = _credentialProtector.Protect(JsonSerializer.Serialize(new CredentialPayload(appKey, n11AppSecret!))),
                 MaskedHint = Mask(appKey),
                 CreatedAt = now,
                 Version = 1
@@ -303,6 +307,10 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         if (connection.PlatformCode == "HEPSIBURADA" && string.IsNullOrWhiteSpace(hepsiburadaServiceKey)) return Invalid<ConnectionView>("hepsiburadaServiceKey", "Hepsiburada servis anahtarı zorunludur.");
         if (connection.PlatformCode == "SHOPIFY" && string.IsNullOrWhiteSpace(command.ShopifyAccessToken)) return Invalid<ConnectionView>("shopifyAccessToken", "Shopify uygulama tokenı zorunludur.");
         if (connection.PlatformCode == "N11" && (string.IsNullOrWhiteSpace(command.ApiKey) || string.IsNullOrWhiteSpace(command.ApiSecret))) return Invalid<ConnectionView>("credential", "N11 API anahtarı (App Key) ve şifresi (App Secret) zorunludur.");
+        var n11RotatedKey = connection.PlatformCode == "N11" ? N11CredentialFormat.Normalize(command.ApiKey) : null;
+        var n11RotatedSecret = connection.PlatformCode == "N11" ? N11CredentialFormat.Normalize(command.ApiSecret) : null;
+        if (connection.PlatformCode == "N11" && n11RotatedKey is null) return Invalid<ConnectionView>("apiKey", N11InvalidCharacters("App Key"));
+        if (connection.PlatformCode == "N11" && n11RotatedSecret is null) return Invalid<ConnectionView>("apiSecret", N11InvalidCharacters("App Secret"));
         TrendyolEFaturamCredentialPayload? efaturamCredential = null;
         if (connection.PlatformCode == "TRENDYOL_EFATURAM")
         {
@@ -316,7 +324,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             "TRENDYOL" => JsonSerializer.Serialize(new CredentialPayload(command.ApiKey!, command.ApiSecret!)),
             "HEPSIBURADA" => JsonSerializer.Serialize(new CredentialPayload(hepsiburadaIntegratorUsername!.Trim(), hepsiburadaServiceKey!)),
             "SHOPIFY" => JsonSerializer.Serialize(new ShopifyCredentialPayload(command.ShopifyAccessToken!.Trim())),
-            "N11" => JsonSerializer.Serialize(new CredentialPayload(command.ApiKey!.Trim(), command.ApiSecret!.Trim())),
+            "N11" => JsonSerializer.Serialize(new CredentialPayload(n11RotatedKey!, n11RotatedSecret!)),
             _ => JsonSerializer.Serialize(efaturamCredential!)
         };
         var hint = connection.PlatformCode switch
@@ -324,7 +332,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             "TRENDYOL" => Mask(command.ApiKey!),
             "HEPSIBURADA" => Mask(connection.ExternalStoreId.Trim()),
             "SHOPIFY" => Mask(command.ShopifyAccessToken!.Trim()),
-            "N11" => Mask(command.ApiKey!.Trim()),
+            "N11" => Mask(n11RotatedKey!),
             _ => MaskEmail(efaturamCredential!.Email!)
         };
         var credentialType = connection.PlatformCode is "TRENDYOL" or "HEPSIBURADA" ? "BASIC" : connection.PlatformCode == "SHOPIFY" ? "SHOPIFY_ACCESS_TOKEN" : connection.PlatformCode == "N11" ? "APP_KEY_SECRET" : "EMAIL_PASSWORD";
@@ -769,6 +777,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         catch (JsonException) { return false; }
     }
     private static string Mask(string value) => value.Length <= 4 ? "****" : $"****{value[^4..]}";
+    private static string N11InvalidCharacters(string field) => $"N11 {field} değerinde geçersiz karakter var. Değeri N11 satıcı panelindeki Hesabım → API Hesapları ekranından yeniden kopyalayın; yalnız harf, rakam ve işaretler kullanılabilir.";
     private static string? NormalizeShopifyStore(string value)
     {
         var normalized = value.Trim().ToLowerInvariant();

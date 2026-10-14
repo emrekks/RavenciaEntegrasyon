@@ -121,6 +121,34 @@ public sealed class N11AdapterTests
         if (status == HttpStatusCode.BadRequest) Assert.Contains("Satıcı stok kodu kullanılmaktadır.", error.SafeMessage);
     }
 
+    [Theory]
+    [InlineData(" abc-123 ", "abc-123")]
+    [InlineData("​abc﻿123 ", "abc123")]
+    [InlineData("a b\tc\r\n", "abc")]
+    public void CredentialFormatDropsSpacesAndInvisibleCharacters(string pasted, string expected) =>
+        Assert.Equal(expected, N11CredentialFormat.Normalize(pasted));
+
+    [Theory]
+    [InlineData("anahtarİ")]
+    [InlineData("şifre")]
+    [InlineData("   ")]
+    [InlineData(null)]
+    public void CredentialFormatRejectsNonAsciiOrEmptyValues(string? pasted) =>
+        Assert.Null(N11CredentialFormat.Normalize(pasted));
+
+    [Fact]
+    public async Task NonAsciiCredentialIsReportedWithoutSendingTheRequest()
+    {
+        var handler = new RoutingHandler(("ms/product-query", HttpStatusCode.OK, ProductPage));
+        var account = Account("İstanbul Mağaza") with { AppSecret = "gizliş" };
+
+        var result = await Client(handler).TestAsync(account, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("N11_CREDENTIAL_FORMAT_INVALID", result.Error!.Code);
+        Assert.Empty(handler.Requests);
+    }
+
     private static N11RequestContext Account(string store) => new(
         new PlatformConnection { PlatformCode = "N11", Environment = "PRODUCTION", DisplayName = "N11", ExternalStoreId = store, Status = "DRAFT", ApiVersion = "V1" },
         "key-1",
