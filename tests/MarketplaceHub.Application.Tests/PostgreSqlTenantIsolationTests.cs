@@ -2517,6 +2517,13 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             await db.Database.OpenConnectionAsync();
             try
             {
+                // The 100k rows were inserted just now; without fresh statistics the planner sometimes
+                // picks a sequential scan, which made this plan assertion fail intermittently in CI.
+                await using (var analyze = db.Database.GetDbConnection().CreateCommand())
+                {
+                    analyze.CommandText = "ANALYZE sales.shipment_packages";
+                    await analyze.ExecuteNonQueryAsync(CancellationToken.None);
+                }
                 await using var explainCommand = db.Database.GetDbConnection().CreateCommand();
                 explainCommand.CommandText = "EXPLAIN (ANALYZE, BUFFERS) SELECT \"Id\", \"StatusOccurredAt\" FROM sales.shipment_packages WHERE \"TenantId\" = @tenantId ORDER BY \"StatusOccurredAt\" DESC, \"Id\" DESC LIMIT 2000";
                 var tenantParameter = explainCommand.CreateParameter();
