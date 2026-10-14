@@ -79,6 +79,8 @@ export function classifyPublicationAttributeIssues(input: {
   attributeMappings: PublicationMappingReference[]
   platformName?: string
   valueReferencesByAttribute: Record<string, PublicationValueReferenceSet>
+  // Marketplace attributes the connection fills with a default when the product has no value.
+  defaultedAttributeIds?: readonly string[]
 }): PublicationAttributeIssues {
   const requiredIssues: PublicationAttributeIssue[] = []
   const optionalWarnings: PublicationAttributeIssue[] = []
@@ -93,8 +95,10 @@ export function classifyPublicationAttributeIssues(input: {
   )
   const mappedExternalIds = new Set(currentAttributeMappings.map(mapping => mapping.externalId))
 
+  const defaulted = new Set(input.defaultedAttributeIds ?? [])
   for (const remote of remoteById.values()) {
     if (!remote.isRequired) continue
+    if (defaulted.has(remote.externalId)) continue
     if (!mappedExternalIds.has(remote.externalId)) {
       addIssue(true, { attribute: remote.name, detail: `Zorunlu ${platformName} özelliği için güncel ve doğrulanmış eşleme yok.` })
       continue

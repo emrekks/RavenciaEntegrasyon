@@ -279,6 +279,23 @@ public sealed class AttributeMappingTemplate
     public long Version { get; set; } = 1;
 }
 
+// A fixed value a connection sends for a marketplace attribute whenever the product has none, e.g.
+// Trendyol "Menşei" = TR or "Yaş Grubu" = Yetişkin. ExternalValueId for list attributes,
+// CustomValue for free-text ones. Product values always win over the default.
+public sealed class ConnectionAttributeDefault
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid ConnectionId { get; set; }
+    public required string ExternalAttributeId { get; set; }
+    public required string AttributeName { get; set; }
+    public string? ExternalValueId { get; set; }
+    public string? ValueName { get; set; }
+    public string? CustomValue { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+    public long Version { get; set; } = 1;
+}
+
 // A mapping the user removed from one category: the template fill must not bring it back there.
 // Kind is ATTRIBUTE (scope = category, LocalId = panel attribute) or VALUE (scope =
 // "{category}/{attribute}", LocalId = panel value). Saving that mapping again clears it.

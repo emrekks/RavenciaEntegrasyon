@@ -1,0 +1,63 @@
+.attribute-defaults-panel {
+  margin-block: 10px;
+  background: var(--rv-color-surface);
+  border: 1px solid var(--rv-color-border);
+  border-radius: 10px;
+}
+
+.attribute-defaults-panel > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.attribute-defaults-panel > summary span { font-weight: 600; }
+.attribute-defaults-panel > summary small { color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); }
+.attribute-defaults-panel[open] > summary { border-bottom: 1px solid var(--rv-color-border); }
+
+.attribute-defaults-body { display: grid; gap: 12px; padding: 12px 14px; }
+
+.attribute-defaults-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.attribute-defaults-list li { display: flex; align-items: center; gap: 10px; font-size: var(--rv-font-size-sm); }
+.attribute-defaults-list span { color: var(--rv-color-muted); }
+.attribute-defaults-list strong { flex: 1 1 auto; }
+.attribute-defaults-list button,
+.attribute-defaults-actions .secondary { padding: 2px 8px; font-size: var(--rv-font-size-sm); }
+
+.attribute-defaults-add { display: grid; gap: 8px; }
+.attribute-defaults-add select,
+.attribute-defaults-add input {
+  width: 100%;
+  max-width: 420px;
+  padding: 7px 10px;
+  color: inherit;
+  font: inherit;
+  background: var(--rv-color-surface-raised);
+  border: 1px solid var(--rv-color-border);
+  border-radius: 8px;
+}
+
+.attribute-defaults-values { display: flex; flex-wrap: wrap; gap: 6px; max-height: 180px; overflow-y: auto; }
+.attribute-defaults-values button {
+  padding: 4px 10px;
+  color: inherit;
+  font: inherit;
+  font-size: var(--rv-font-size-sm);
+  background: var(--rv-color-surface-raised);
+  border: 1px solid var(--rv-color-border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.attribute-defaults-values button.is-chosen {
+  color: var(--rv-color-primary);
+  font-weight: 600;
+  background: color-mix(in srgb, var(--rv-color-primary) 10%, transparent);
+  border-color: var(--rv-color-primary);
+}
+
+.attribute-defaults-state { margin: 0; color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); }
+.attribute-defaults-actions { display: flex; gap: 8px; }

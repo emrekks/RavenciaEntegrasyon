@@ -67,7 +67,10 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
             attributeSnapshot.Id,
             requiredExternalIds.Select(externalId => new RequiredAttributeMappingReference(attributeSnapshot.Id, externalId)),
             attributeMappings.Select(x => new RequiredAttributeMappingReference(x.SnapshotId, x.ExternalId)));
-        foreach (var remote in remoteAttributes.Where(x => missingRequiredExternalIds.Contains(x.ExternalId)))
+        // Connection defaults (e.g. Menşei = TR) cover the attributes a product leaves empty, so a
+        // required attribute with a usable default needs no panel attribute mapping.
+        var attributeDefaults = await ResolveAttributeDefaultsAsync(tenantId, connectionId, categoryMapping.ExternalId, remoteAttributes, cancellationToken);
+        foreach (var remote in remoteAttributes.Where(x => missingRequiredExternalIds.Contains(x.ExternalId) && !attributeDefaults.ContainsKey(x.ExternalId)))
         {
             return Fail("REQUIRED_ATTRIBUTE_MAPPING_REQUIRED", $"Zorunlu Trendyol özelliği '{remote.Name}' eşlenmemiş.");
         }
@@ -247,6 +250,11 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
                     payloadAttributes.Add(new Dictionary<string, object?> { ["attributeId"] = webColorRemoteId, ["attributeValueId"] = webColorValue.Value });
                 }
             }
+            // Defaults only fill attributes the product and its variant options left empty.
+            foreach (var (_, defaultAttribute) in attributeDefaults.OrderBy(entry => entry.Key, StringComparer.Ordinal))
+            {
+                if (emittedRemoteAttributeIds.Add((long)defaultAttribute["attributeId"]!)) payloadAttributes.Add(new Dictionary<string, object?>(defaultAttribute));
+            }
             if (requiredExternalIds.Any(id => !long.TryParse(id, NumberStyles.None, CultureInfo.InvariantCulture, out var requiredRemoteId) || !emittedRemoteAttributeIds.Contains(requiredRemoteId)))
             {
                 var missingRequired = requiredExternalIds.Where(id => !long.TryParse(id, NumberStyles.None, CultureInfo.InvariantCulture, out var requiredRemoteId) || !emittedRemoteAttributeIds.Contains(requiredRemoteId)).Select(id => remoteAttributes.FirstOrDefault(item => item.ExternalId == id)?.Name ?? id).Distinct().ToList();
@@ -280,6 +288,39 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
         var payloadJson = JsonSerializer.Serialize(new Dictionary<string, object?> { ["items"] = items }, JsonOptions);
         var payloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payloadJson)));
         return ServiceResult<ProductPublicationDraft>.Ok(new(profile.Id, categoryMapping.ExternalId, brandMapping.ExternalId, payloadHash, payloadJson, draftVariants));
+    }
+
+    // Connection defaults this category can use, as ready payload entries keyed by attribute id. A
+    // list default counts only while its value is active in the category's current value snapshot;
+    // a free-text default only where the attribute accepts free text.
+    private async Task<Dictionary<string, Dictionary<string, object?>>> ResolveAttributeDefaultsAsync(Guid tenantId, Guid connectionId, string categoryExternalId, IReadOnlyList<ReferenceItem> remoteAttributes, CancellationToken cancellationToken)
+    {
+        var resolved = new Dictionary<string, Dictionary<string, object?>>(StringComparer.Ordinal);
+        var defaults = await db.ConnectionAttributeDefaults.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId)
+            .ToListAsync(cancellationToken);
+        foreach (var attributeDefault in defaults)
+        {
+            var remote = remoteAttributes.FirstOrDefault(x => x.ExternalId == attributeDefault.ExternalAttributeId);
+            if (remote is null || !long.TryParse(attributeDefault.ExternalAttributeId, NumberStyles.None, CultureInfo.InvariantCulture, out var attributeId)) continue;
+            if (!string.IsNullOrWhiteSpace(attributeDefault.ExternalValueId))
+            {
+                if (!long.TryParse(attributeDefault.ExternalValueId, NumberStyles.None, CultureInfo.InvariantCulture, out var valueId)) continue;
+                var scope = $"{categoryExternalId}/{attributeDefault.ExternalAttributeId}";
+                var offered = await (from snapshot in db.ReferenceSnapshots.AsNoTracking()
+                                     join item in db.ReferenceItems.AsNoTracking() on snapshot.Id equals item.SnapshotId
+                                     where snapshot.TenantId == tenantId && snapshot.ConnectionId == connectionId && snapshot.ResourceType == "ATTRIBUTE_VALUES"
+                                         && snapshot.ScopeExternalId == scope && snapshot.IsCurrent
+                                         && item.TenantId == tenantId && item.ResourceType == "ATTRIBUTE_VALUES" && item.ExternalId == attributeDefault.ExternalValueId && item.IsActive
+                                     select item.Id).AnyAsync(cancellationToken);
+                if (offered) resolved[attributeDefault.ExternalAttributeId] = new() { ["attributeId"] = attributeId, ["attributeValueId"] = valueId };
+            }
+            else if (!string.IsNullOrWhiteSpace(attributeDefault.CustomValue) && remote.AllowsCustomValue == true)
+            {
+                resolved[attributeDefault.ExternalAttributeId] = new() { ["attributeId"] = attributeId, ["customAttributeValue"] = attributeDefault.CustomValue.Trim() };
+            }
+        }
+        return resolved;
     }
 
     private async Task<ServiceResult<long>> ExternalValueAsync(Guid tenantId, Guid connectionId, string categoryExternalId, string attributeExternalId, Guid localValueId, string label, CancellationToken cancellationToken)

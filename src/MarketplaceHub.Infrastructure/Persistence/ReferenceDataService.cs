@@ -44,7 +44,14 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
             .Select(x => new { x.ScopeExternalId, x.SnapshotId, x.ExternalId })
             .ToListAsync(cancellationToken);
         var requirements = requiredAttributes.Select(item => new RequiredAttributeMappingReference(item.SnapshotId, item.ExternalId)).ToArray();
-        var verifiedMappings = mappedAttributes.Select(item => new RequiredAttributeMappingReference(item.SnapshotId, item.ExternalId)).ToArray();
+        // A required attribute with a connection default (e.g. Menşei = TR) is covered without a mapping.
+        var defaultedAttributeIds = await db.ConnectionAttributeDefaults.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId)
+            .Select(x => x.ExternalAttributeId)
+            .ToListAsync(cancellationToken);
+        var verifiedMappings = mappedAttributes.Select(item => new RequiredAttributeMappingReference(item.SnapshotId, item.ExternalId))
+            .Concat(attributeSnapshots.SelectMany(snapshot => defaultedAttributeIds.Select(attributeId => new RequiredAttributeMappingReference(snapshot.Id, attributeId))))
+            .ToArray();
         var missingByScope = attributeSnapshots.ToDictionary(
             snapshot => snapshot.ScopeExternalId,
             snapshot => RequiredAttributeMappingPolicy.CountMissing(snapshot.Id, requirements, verifiedMappings));
@@ -171,6 +178,55 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         }
         return ServiceResult<CatalogMappingView>.Ok(Map(mapping));
     }
+
+    public async Task<ServiceResult<IReadOnlyList<ConnectionAttributeDefaultView>>> ListAttributeDefaultsAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
+    {
+        if (!await VisibleConnectionAsync(tenantId, connectionId, cancellationToken)) return NotFound<IReadOnlyList<ConnectionAttributeDefaultView>>();
+        var rows = await db.ConnectionAttributeDefaults.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId)
+            .OrderBy(x => x.AttributeName)
+            .ToListAsync(cancellationToken);
+        return ServiceResult<IReadOnlyList<ConnectionAttributeDefaultView>>.Ok(rows.Select(MapDefault).ToList());
+    }
+
+    public async Task<ServiceResult<ConnectionAttributeDefaultView>> UpsertAttributeDefaultAsync(Guid tenantId, Guid connectionId, string externalAttributeId, UpsertConnectionAttributeDefaultCommand command, CancellationToken cancellationToken)
+    {
+        if (!await VisibleConnectionAsync(tenantId, connectionId, cancellationToken)) return NotFound<ConnectionAttributeDefaultView>();
+        var attributeId = externalAttributeId.Trim();
+        var attributeName = command.AttributeName?.Trim() ?? "";
+        var valueId = string.IsNullOrWhiteSpace(command.ExternalValueId) ? null : command.ExternalValueId.Trim();
+        var customValue = string.IsNullOrWhiteSpace(command.CustomValue) ? null : command.CustomValue.Trim();
+        if (attributeId.Length is 0 or > 256 || attributeName.Length is 0 or > 256)
+            return ServiceResult<ConnectionAttributeDefaultView>.Fail("ATTRIBUTE_DEFAULT_INVALID", "Varsayılan için pazaryeri özelliği ve adı gereklidir.", 422);
+        if ((valueId is null) == (customValue is null))
+            return ServiceResult<ConnectionAttributeDefaultView>.Fail("ATTRIBUTE_DEFAULT_VALUE_REQUIRED", "Varsayılan için ya listeden bir değer ya da serbest metin girilmelidir.", 422);
+        if ((valueId?.Length ?? 0) > 256 || (customValue?.Length ?? 0) > 320 || (command.ValueName?.Trim().Length ?? 0) > 320)
+            return ServiceResult<ConnectionAttributeDefaultView>.Fail("ATTRIBUTE_DEFAULT_INVALID", "Varsayılan değer çok uzun.", 422);
+        var row = await db.ConnectionAttributeDefaults.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalAttributeId == attributeId, cancellationToken);
+        if (row is null)
+        {
+            row = new ConnectionAttributeDefault { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ExternalAttributeId = attributeId, AttributeName = attributeName, Version = 1 };
+            db.ConnectionAttributeDefaults.Add(row);
+        }
+        else row.Version++;
+        row.AttributeName = attributeName;
+        row.ExternalValueId = valueId;
+        row.ValueName = valueId is null ? null : command.ValueName?.Trim();
+        row.CustomValue = customValue;
+        row.UpdatedAt = timeProvider.GetUtcNow();
+        await db.SaveChangesAsync(cancellationToken);
+        return ServiceResult<ConnectionAttributeDefaultView>.Ok(MapDefault(row));
+    }
+
+    public async Task<ServiceResult<bool>> DeleteAttributeDefaultAsync(Guid tenantId, Guid connectionId, string externalAttributeId, CancellationToken cancellationToken)
+    {
+        if (!await VisibleConnectionAsync(tenantId, connectionId, cancellationToken)) return NotFound<bool>();
+        var attributeId = externalAttributeId.Trim();
+        var removed = await db.ConnectionAttributeDefaults.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalAttributeId == attributeId).ExecuteDeleteAsync(cancellationToken);
+        return removed == 0 ? NotFound<bool>() : ServiceResult<bool>.Ok(true);
+    }
+
+    private static ConnectionAttributeDefaultView MapDefault(ConnectionAttributeDefault value) => new(value.ExternalAttributeId, value.AttributeName, value.ExternalValueId, value.ValueName, value.CustomValue, value.UpdatedAt, value.Version);
 
     public async Task<ServiceResult<MappingTemplateFillView>> FillFromTemplatesAsync(Guid tenantId, Guid connectionId, string categoryExternalId, CancellationToken cancellationToken)
     {

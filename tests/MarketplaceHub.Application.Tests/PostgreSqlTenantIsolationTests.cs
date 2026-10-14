@@ -2837,6 +2837,54 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task ConnectionDefault_CoversARequiredAttributeTheProductLeavesEmpty()
+    {
+        var tenant = NewTenant("attribute-default");
+        var connection = NewQuestionConnection(tenant);
+        var categoryId = Guid.CreateVersion7();
+        var brandId = Guid.CreateVersion7();
+        var productId = Guid.CreateVersion7();
+        var categories = NewReferenceSnapshot(tenant.Id, connection.Id, "CATEGORIES", "", fixture.Now, "categories");
+        var brands = NewReferenceSnapshot(tenant.Id, connection.Id, "BRANDS", "", fixture.Now, "brands");
+        var attributes = NewReferenceSnapshot(tenant.Id, connection.Id, "CATEGORY_ATTRIBUTES", "123", fixture.Now, "attributes");
+        var origins = NewReferenceSnapshot(tenant.Id, connection.Id, "ATTRIBUTE_VALUES", "123/500", fixture.Now, "origins");
+
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.PlatformConnections.Add(connection);
+        db.Categories.Add(new Category { Id = categoryId, TenantId = tenant.Id, Name = "Test kategori", NormalizedName = "TEST KATEGORI", Path = "Test kategori", IsLeaf = true, IsActive = true, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 });
+        db.Brands.Add(new Brand { Id = brandId, TenantId = tenant.Id, Name = "Test marka", NormalizedName = "TEST MARKA", IsActive = true, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 });
+        db.Products.Add(new Product { Id = productId, TenantId = tenant.Id, Title = "Test ürün", Description = "Varsayılan testi", CategoryId = categoryId, BrandId = brandId, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 });
+        db.ReferenceSnapshots.AddRange(categories, brands, attributes, origins);
+        db.ReferenceItems.AddRange(
+            NewReferenceItem(tenant.Id, connection.Id, categories.Id, "CATEGORIES", "123", "Test kategori", isLeaf: true),
+            NewReferenceItem(tenant.Id, connection.Id, brands.Id, "BRANDS", "456", "Test marka"),
+            NewReferenceItem(tenant.Id, connection.Id, attributes.Id, "CATEGORY_ATTRIBUTES", "500", "Menşei", isRequired: true),
+            NewReferenceItem(tenant.Id, connection.Id, origins.Id, "ATTRIBUTE_VALUES", "77", "TR"));
+        db.CategoryMappings.Add(new CategoryMapping { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, SnapshotId = categories.Id, LocalId = categoryId, ExternalId = "123", Status = "VERIFIED", VerifiedAt = fixture.Now, Version = 1 });
+        db.BrandMappings.Add(new BrandMapping { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, SnapshotId = brands.Id, LocalId = brandId, ExternalId = "456", Status = "VERIFIED", VerifiedAt = fixture.Now, Version = 1 });
+        db.ChannelListingProfiles.Add(new ChannelListingProfile { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ProductId = productId, Enabled = true, DesiredStatus = "ACTIVE", ActualStatus = "DRAFT", Version = 1 });
+        await db.SaveChangesAsync();
+
+        var referenceData = new ReferenceDataService(db, fixture.TimeProvider);
+        var composer = new ProductPublicationComposer(db, new ConfigurationBuilder().Build());
+        Assert.Equal("REQUIRED_ATTRIBUTE_MAPPING_REQUIRED", (await composer.BuildAsync(tenant.Id, productId, connection.Id, CancellationToken.None)).Error?.Code);
+
+        Assert.Equal("ATTRIBUTE_DEFAULT_VALUE_REQUIRED", (await referenceData.UpsertAttributeDefaultAsync(tenant.Id, connection.Id, "500", new UpsertConnectionAttributeDefaultCommand("Menşei", null, null, null), CancellationToken.None)).Error?.Code);
+        var saved = await referenceData.UpsertAttributeDefaultAsync(tenant.Id, connection.Id, "500", new UpsertConnectionAttributeDefaultCommand("Menşei", "77", "TR", null), CancellationToken.None);
+        Assert.True(saved.Succeeded, saved.Error?.Message);
+
+        // The required attribute no longer blocks: the next check is the missing variant.
+        Assert.Equal("PRODUCT_VARIANT_REQUIRED", (await composer.BuildAsync(tenant.Id, productId, connection.Id, CancellationToken.None)).Error?.Code);
+        var summary = await referenceData.ListMappingsAsync(tenant.Id, "categories", connection.Id, "*", CancellationToken.None);
+        Assert.Equal(0, Assert.Single(summary.Value!).MissingRequiredAttributeCount);
+        Assert.Equal("TR", Assert.Single((await referenceData.ListAttributeDefaultsAsync(tenant.Id, connection.Id, CancellationToken.None)).Value!).ValueName);
+
+        await transaction.RollbackAsync();
+    }
+
+    [PostgreSqlFact]
     public async Task SavedMappings_KeepTheConnectionWideTemplatesUpToDate()
     {
         var tenant = NewTenant("mapping-templates");

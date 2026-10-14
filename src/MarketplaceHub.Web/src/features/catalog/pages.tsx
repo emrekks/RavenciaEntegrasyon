@@ -2109,7 +2109,10 @@ function PublishPlatformCard({ card, selected, productId, categoryId, productChe
         return [externalAttributeId, { snapshotId: references.snapshotId, items: references.items, mappings }] as const
       }))
       const valueReferencesByAttribute: Record<string, PublicationValueReferenceSet> = Object.fromEntries(valueEntries)
+      // Connection defaults (e.g. Menşei = TR) cover required attributes the product leaves empty.
+      const attributeDefaults = await hubApi<Array<{ externalAttributeId: string }>>(`/connections/${connectionId}/attribute-defaults`).catch(() => [])
       const result = classifyPublicationAttributeIssues({
+        defaultedAttributeIds: attributeDefaults.map(item => item.externalAttributeId),
         selectedAttributes,
         remoteAttributes: attributeReferences.items,
         attributeSnapshotId: attributeReferences.snapshotId,

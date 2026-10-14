@@ -297,6 +297,14 @@ internal static class CatalogModelConfiguration
             entity.Property(x => x.ExternalAttributeId).HasMaxLength(256); entity.Property(x => x.ExternalValueId).HasMaxLength(256); entity.Property(x => x.Version).IsConcurrencyToken();
             entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ExternalAttributeId, x.LocalValueId }).IsUnique();
         });
+        builder.Entity<ConnectionAttributeDefault>(entity =>
+        {
+            entity.ToTable("connection_attribute_defaults", "catalog"); entity.HasKey(x => x.Id);
+            entity.Property(x => x.ExternalAttributeId).HasMaxLength(256); entity.Property(x => x.AttributeName).HasMaxLength(256);
+            entity.Property(x => x.ExternalValueId).HasMaxLength(256); entity.Property(x => x.ValueName).HasMaxLength(320); entity.Property(x => x.CustomValue).HasMaxLength(320);
+            entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ExternalAttributeId }).IsUnique();
+        });
         builder.Entity<MappingTemplateDismissal>(entity =>
         {
             entity.ToTable("mapping_template_dismissals", "catalog"); entity.HasKey(x => x.Id);

@@ -50,6 +50,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<AttributeMappingTemplate> AttributeMappingTemplates => Set<AttributeMappingTemplate>();
     public DbSet<AttributeValueMappingTemplate> AttributeValueMappingTemplates => Set<AttributeValueMappingTemplate>();
     public DbSet<MappingTemplateDismissal> MappingTemplateDismissals => Set<MappingTemplateDismissal>();
+    public DbSet<ConnectionAttributeDefault> ConnectionAttributeDefaults => Set<ConnectionAttributeDefault>();
     public DbSet<MarketplaceProductLink> MarketplaceProductLinks => Set<MarketplaceProductLink>();
     public DbSet<MarketplaceVariantLink> MarketplaceVariantLinks => Set<MarketplaceVariantLink>();
     public DbSet<MarketplaceListingState> MarketplaceListingStates => Set<MarketplaceListingState>();

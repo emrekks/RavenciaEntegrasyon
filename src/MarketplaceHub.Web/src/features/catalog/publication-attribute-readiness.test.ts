@@ -39,6 +39,17 @@ describe('publication attribute readiness', () => {
     expect(withoutFix(result.optionalWarnings)).toEqual([])
   })
 
+  it('does not report a required attribute the connection fills with a default', () => {
+    const result = classifyPublicationAttributeIssues({
+      ...baseInput,
+      selectedAttributes: [],
+      remoteAttributes: [...baseInput.remoteAttributes, { externalId: 'origin', name: 'Menşei', isActive: true, isRequired: true, allowsCustomValue: false }],
+      defaultedAttributeIds: ['origin']
+    })
+
+    expect(result.requiredIssues).toEqual([])
+  })
+
   it('carries what the publish card needs to map a missing value in place', () => {
     const result = classifyPublicationAttributeIssues({
       ...baseInput,
