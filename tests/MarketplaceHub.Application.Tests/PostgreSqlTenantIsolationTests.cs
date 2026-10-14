@@ -1000,6 +1000,43 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task JobsTrigger_NotifiesListenersWhenAJobBecomesRunnable()
+    {
+        var tenant = NewTenant("job-notify");
+        var job = NewJob(tenant.Id);
+        await using (var setup = fixture.CreateContext())
+        {
+            setup.Tenants.Add(tenant);
+            await setup.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using var listenerDb = fixture.CreateContext();
+            var listener = (Npgsql.NpgsqlConnection)listenerDb.Database.GetDbConnection();
+            await listener.OpenAsync();
+            var notifications = 0;
+            listener.Notification += (_, args) => { if (args.Channel == IntegrationJobNotifications.Channel) notifications++; };
+            await using (var listen = new Npgsql.NpgsqlCommand($"LISTEN {IntegrationJobNotifications.Channel}", listener))
+                await listen.ExecuteNonQueryAsync();
+
+            await using (var writer = fixture.CreateContext())
+            {
+                writer.IntegrationJobs.Add(job);
+                await writer.SaveChangesAsync();
+            }
+
+            Assert.True(await listener.WaitAsync(TimeSpan.FromSeconds(5)));
+            // Other test classes may insert jobs concurrently, so at least one notification is expected.
+            Assert.True(notifications >= 1);
+        }
+        finally
+        {
+            await DeleteJobAndTenantAsync(job.Id, tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
     public async Task JobLease_PrefersTheTenantWithFewerRunningJobsWithinOnePriority()
     {
         var busyTenant = NewTenant("lease-fair-busy");

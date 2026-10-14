@@ -1,7 +1,10 @@
 using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
+using MarketplaceHub.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
+using Npgsql;
 
 namespace MarketplaceHub.Worker;
 
@@ -31,6 +34,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
     private readonly Guid? singleJobId = Guid.TryParse(configuration["Worker:SingleJobId"], out var parsedJobId) ? parsedJobId : null;
     private readonly string? singleJobType = string.IsNullOrWhiteSpace(configuration["Worker:SingleJobType"]) ? null : configuration["Worker:SingleJobType"]!.Trim();
     private long lastDatabaseContactUnixMilliseconds = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+    private readonly JobWakeSignal wakeSignal = new();
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -63,6 +67,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         loops.AddRange(Lane("background", 2, slot => RunLeaseLaneAsync(slot, null, hotPriorityCeiling + 1, stoppingToken, excludedJobTypes: [.. ProductCatalogSyncJobTypes, .. ReturnReadJobTypes])));
         loops.Add(RunHealthWatchdogAsync(stoppingToken));
         loops.Add(RunLeaseReaperAsync(stoppingToken));
+        loops.Add(RunJobNotificationListenerAsync(stoppingToken));
         if (schedulerEnabled) loops.Add(RunSchedulerAsync(stoppingToken));
         await Task.WhenAll(loops);
     }
@@ -142,6 +147,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         var idleDelay = TimeSpan.FromSeconds(1);
         while (!stoppingToken.IsCancellationRequested)
         {
+            var wake = wakeSignal.Current;
             try
             {
                 var job = await LeaseNextAsync(maximumPriority, minimumPriority, stoppingToken, onlyJobType, reapExpiredLeases, includedJobTypes, excludedJobTypes);
@@ -165,8 +171,9 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
 
             if (!stoppingToken.IsCancellationRequested)
             {
-                await Task.Delay(idleDelay, stoppingToken);
-                idleDelay = TimeSpan.FromMilliseconds(Math.Min(3_000, idleDelay.TotalMilliseconds * 2));
+                // Polling stays as the fallback; a notification for a runnable job ends the wait early.
+                var woken = await JobWakeSignal.WaitAsync(wake, idleDelay, stoppingToken);
+                idleDelay = woken ? TimeSpan.FromSeconds(1) : TimeSpan.FromMilliseconds(Math.Min(3_000, idleDelay.TotalMilliseconds * 2));
             }
         }
     }
@@ -364,6 +371,40 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+    }
+
+    // Holds one dedicated connection that LISTENs for runnable jobs and wakes the idle lanes.
+    // Any failure only costs latency: the lanes keep polling while the listener reconnects.
+    private async Task RunJobNotificationListenerAsync(CancellationToken stoppingToken)
+    {
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                string connectionString;
+                await using (var scope = scopeFactory.CreateAsyncScope())
+                    connectionString = scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.GetConnectionString()
+                        ?? throw new InvalidOperationException("The database connection string is not configured.");
+                var builder = new NpgsqlConnectionStringBuilder(connectionString) { Pooling = false, KeepAlive = 30 };
+                await using var connection = new NpgsqlConnection(builder.ConnectionString);
+                await connection.OpenAsync(stoppingToken);
+                connection.Notification += (_, _) => wakeSignal.Pulse();
+                await using (var listen = new NpgsqlCommand($"LISTEN {IntegrationJobNotifications.Channel}", connection))
+                    await listen.ExecuteNonQueryAsync(stoppingToken);
+                logger.LogInformation("Listening for runnable job notifications on {Channel}", IntegrationJobNotifications.Channel);
+                // Jobs queued while the listener was down are picked up right away.
+                wakeSignal.Pulse();
+                while (!stoppingToken.IsCancellationRequested)
+                    await connection.WaitAsync(TimeSpan.FromSeconds(30), stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
+            catch (Exception exception)
+            {
+                logger.LogWarning(exception, "Job notification listener failed; lanes keep polling while it reconnects");
+                try { await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken); }
+                catch (OperationCanceledException) { }
+            }
+        }
     }
 
     private async Task RunHealthWatchdogAsync(CancellationToken cancellationToken)
