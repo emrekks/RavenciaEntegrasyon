@@ -247,3 +247,33 @@
   .app-shell.stitch-shell main .products-page .product-metrics > * > small { grid-column: 2; grid-row: 1; font-size: 13px; line-height: 1.25; }
   .app-shell.stitch-shell main .products-page .product-metrics > * > strong { grid-column: 2; grid-row: 2; font-size: 22px; line-height: 1.15; }
 }
+
+/* Phone product list: the toolbar and the catalogue share one frame — search, sort and filter on
+   top (page size and the sort headers live in the sheets), bulk actions as a quiet row, then the
+   count and the cards. Phones only. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .products-page .product-toolbar.mfs:not(.is-open) { margin-bottom: 0; border-bottom: 0; border-radius: 12px 12px 0 0; }
+  .app-shell.stitch-shell main .products-page .product-toolbar .bulk-action { color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); font-weight: 600; }
+  .app-shell.stitch-shell main .products-page .product-toolbar .bulk-action > .ui-icon { color: var(--rv-color-muted); }
+  .app-shell.stitch-shell main .products-page .product-catalog-workspace { margin-top: 0; border-top: 0; border-radius: 0 0 12px 12px; padding-top: 4px; }
+  .app-shell.stitch-shell main .products-page .product-catalog-workspace-head { margin-bottom: 8px; }
+  .app-shell.stitch-shell main .products-page .product-catalog-workspace-head h2,
+  .app-shell.stitch-shell main .products-page .product-catalog-workspace-head .invoice-reference-page-size { display: none; }
+}
+@container product-catalog (max-width: 640px) {
+  .app-shell.stitch-shell main .products-page .product-catalog-head > .product-sort-header { display: none; }
+  /* Compact product card: the checkbox sits on the image corner instead of taking its own column. */
+  .app-shell.stitch-shell main .products-page .product-catalog-item > .product-catalog-row {
+    position: relative;
+    grid-template-columns: 64px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "thumb identity identity"
+      "thumb variants status"
+      "platforms platforms actions"
+      "price price stock";
+    padding: 10px;
+  }
+  .app-shell.stitch-shell main .products-page .product-catalog-row > .product-row-select { position: absolute; top: 14px; left: 14px; z-index: 2; margin: 0; }
+  .app-shell.stitch-shell main .products-page .product-catalog-row > .product-list-thumb,
+  .app-shell.stitch-shell main .products-page .product-catalog-row > .product-list-placeholder { width: 64px; height: 96px; min-height: 96px; }
+}

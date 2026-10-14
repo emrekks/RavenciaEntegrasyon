@@ -69,3 +69,22 @@ describe('MobileFilterShell', () => {
     expect(container.querySelector('.mfs')!.classList.contains('is-open')).toBe(false)
   })
 })
+
+describe('MobileFilterShell sort sheet', () => {
+  it('opens a bottom sheet, marks the current option and reports the chosen one', () => {
+    const onChange = vi.fn()
+    act(() => root.render(<MobileFilterShell className="demo-filters" sort={{ value: 'a', options: [{ value: 'a', label: 'Birinci' }, { value: 'b', label: 'İkinci' }], onChange }}><label data-mfs-search>Ara<input aria-label="Ara" /></label></MobileFilterShell>))
+    act(() => container.querySelector<HTMLButtonElement>('.mfs-sort')!.click())
+    const options = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.mfs-sort-sheet [role="option"]'))
+    expect(options.map(option => option.textContent)).toEqual(['Birinci', 'İkinci'])
+    expect(options[0].getAttribute('aria-selected')).toBe('true')
+    act(() => options[1].click())
+    expect(onChange).toHaveBeenCalledWith('b')
+    expect(document.body.querySelector('.mfs-sort-sheet')).toBeNull()
+  })
+
+  it('has no sort button without sort options', () => {
+    render()
+    expect(container.querySelector('.mfs-sort')).toBeNull()
+  })
+})
