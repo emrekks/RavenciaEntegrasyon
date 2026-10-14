@@ -334,3 +334,16 @@
   .value-mapping-editor .value-mapping-savebar > button { flex: 0 0 auto; min-height: 44px; padding: 0 14px; }
   .value-mapping-editor .value-mapping-rows { grid-template-columns: minmax(0, 1fr); }
 }
+/* Mapping settings heading on phones: the title block's desktop flex-basis (360px) turned into a
+   360px height in the stacked layout and left a large empty gap. The tools follow as a tidy grid:
+   platform import across the row, the backup label and export/import side by side below. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main section.mapping-page .mapping-reference-heading { align-items: stretch; gap: 14px; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-reference-heading > div:first-child:first-of-type { flex: none; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-header-tools { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; width: 100%; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-header-tools > .structure-header-button { width: 100%; min-height: 44px; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-header-tools > .mapping-reference-heading-actions { display: grid; justify-self: stretch; align-items: stretch; gap: 6px; width: 100%; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-reference-heading-actions > span { justify-content: flex-start; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-transfer-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-transfer-actions > * { width: 100%; min-height: 44px; }
+}
