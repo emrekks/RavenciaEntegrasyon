@@ -277,3 +277,20 @@
   .app-shell.stitch-shell main .products-page .product-catalog-row > .product-list-thumb,
   .app-shell.stitch-shell main .products-page .product-catalog-row > .product-list-placeholder { width: 64px; height: 96px; min-height: 96px; }
 }
+
+/* Product wizard steps on phones: one segmented switch (two halves in a single frame) instead of two stacked buttons. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .product-add-page .product-add-progress {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; padding: 4px;
+    background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: 12px;
+  }
+  .app-shell.stitch-shell main .product-add-page .product-add-progress > i { display: none; }
+  .app-shell.stitch-shell main .product-add-page .product-add-progress > button {
+    display: inline-flex; min-width: 0; min-height: 42px; align-items: center; justify-content: center; gap: 8px; margin: 0; padding: 0 8px;
+    color: var(--rv-color-muted); background: transparent; border: 0; border-radius: 9px; box-shadow: none; transition: background-color .15s ease, color .15s ease;
+  }
+  .app-shell.stitch-shell main .product-add-page .product-add-progress > button > strong { overflow: hidden; font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+  .app-shell.stitch-shell main .product-add-page .product-add-progress > button > span { display: inline-grid; width: 22px; height: 22px; flex: 0 0 22px; place-items: center; font-size: 12px; font-weight: 700; color: inherit; background: color-mix(in srgb, var(--rv-color-ink) 10%, transparent); border-radius: 50%; }
+  .app-shell.stitch-shell main .product-add-page .product-add-progress > button.active { color: #fff; background: var(--rv-color-primary); box-shadow: 0 2px 8px color-mix(in srgb, var(--rv-color-primary) 40%, transparent); }
+  .app-shell.stitch-shell main .product-add-page .product-add-progress > button.active > span { background: rgb(255 255 255 / 22%); }
+}
