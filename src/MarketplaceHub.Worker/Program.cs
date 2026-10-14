@@ -5,12 +5,17 @@ using MarketplaceHub.Infrastructure.Persistence;
 using MarketplaceHub.Worker;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
+using Serilog.Events;
 using Serilog.Formatting.Compact;
 
 var builder = Host.CreateApplicationBuilder(args);
 AddWorkerAppSettings(builder);
 DependencyInjection.ApplyFileBackedSecrets(builder.Configuration);
-builder.Services.AddSerilog(configuration => configuration.WriteTo.Console(new RenderedCompactJsonFormatter()));
+// Every SQL statement logged at Information filled the container's 50 MB log budget in ~20 minutes,
+// so incident logs were gone before anyone could read them. Failed commands are still logged as errors.
+builder.Services.AddSerilog(configuration => configuration
+    .MinimumLevel.Override("Microsoft.EntityFrameworkCore.Database.Command", LogEventLevel.Warning)
+    .WriteTo.Console(new RenderedCompactJsonFormatter()));
 builder.Services.AddMarketplaceInfrastructure(builder.Configuration);
 builder.Services.Configure<HostOptions>(options => options.ShutdownTimeout = TimeSpan.FromSeconds(40));
 builder.Services.AddHostedService<Worker>();
