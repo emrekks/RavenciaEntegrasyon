@@ -164,3 +164,14 @@
 @media (max-width: 340px) {
   .app-shell.stitch-shell main .dashboard .dashboard-health-grid { grid-template-columns: 1fr; }
 }
+
+/* Products on phones: one type size and weight across the heading actions, filters and page-size select. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .products-page-actions { display: grid; width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .app-shell.stitch-shell main .products-page-actions > :is(button, a) { display: inline-flex; box-sizing: border-box; min-height: 44px; align-items: center; justify-content: center; gap: 8px; padding: 0 10px; font-size: 13px; font-weight: 600; line-height: 1.2; text-align: center; }
+  .app-shell.stitch-shell main .product-toolbar :is(select, .product-platform-filter-trigger, .bulk-action) { font-size: 13px; font-weight: 500; }
+  .app-shell.stitch-shell main .product-toolbar .product-platform-filter-trigger-copy strong { font-size: 13px; font-weight: 500; }
+  .app-shell.stitch-shell main .product-toolbar .bulk-action { font-weight: 600; }
+  .app-shell.stitch-shell main .product-catalog-workspace-head .invoice-reference-page-size { width: auto; gap: 8px; font-size: 13px; }
+  .app-shell.stitch-shell main .product-catalog-workspace-head .invoice-reference-page-size select { width: 72px; min-width: 72px; height: 36px; min-height: 36px; padding: 0 28px 0 10px; font-size: 13px; }
+}
