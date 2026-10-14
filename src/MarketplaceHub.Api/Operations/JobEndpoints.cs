@@ -15,6 +15,10 @@ public static class JobEndpoints
                     new JobListQuery(status, since, jobTypes?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), limit),
                     http.RequestAborted))
                 : Unauthorized(http));
+        api.MapGet("/metrics", async (HttpContext http, IJobOperationsService service, int? hours) =>
+            Tenant(http) is { } tenant
+                ? Results.Ok(await service.MetricsAsync(tenant.TenantId, TimeSpan.FromHours(Math.Clamp(hours ?? 24, 1, 168)), http.RequestAborted))
+                : Unauthorized(http));
         api.MapGet("/{id:guid}", async (Guid id, HttpContext http, IJobOperationsService service) =>
             Tenant(http) is { } tenant
                 ? Result(http, await service.GetAsync(tenant.TenantId, id, http.RequestAborted))

@@ -1000,6 +1000,58 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task JobMetrics_ReportWaitDurationFailuresAndQueueDepthPerJobType()
+    {
+        var tenant = NewTenant("job-metrics");
+        var now = DateTimeOffset.UtcNow;
+        var done = NewJob(tenant.Id);
+        done.JobType = MarketplaceJobTypes.OrderSync;
+        done.Status = JobStatus.Succeeded;
+        done.AttemptCount = 1;
+        done.AvailableAt = now.AddMinutes(-10);
+        var failed = NewJob(tenant.Id);
+        failed.JobType = MarketplaceJobTypes.OrderSync;
+        failed.Status = JobStatus.RetryScheduled;
+        failed.AttemptCount = 1;
+        failed.AvailableAt = now.AddHours(1);
+        var queued = NewJob(tenant.Id);
+        queued.JobType = MarketplaceJobTypes.OrderSync;
+        queued.AvailableAt = now.AddMinutes(-1);
+
+        await using (var setup = fixture.CreateContext())
+        {
+            setup.Tenants.Add(tenant);
+            setup.IntegrationJobs.AddRange(done, failed, queued);
+            setup.JobAttempts.AddRange(
+                // Started 4 s after it became runnable and ran for 20 s.
+                new JobAttempt { Id = Guid.NewGuid(), TenantId = tenant.Id, JobId = done.Id, AttemptNumber = 1, StartedAt = done.AvailableAt.AddSeconds(4), CompletedAt = done.AvailableAt.AddSeconds(24), Succeeded = true },
+                new JobAttempt { Id = Guid.NewGuid(), TenantId = tenant.Id, JobId = failed.Id, AttemptNumber = 1, StartedAt = now.AddMinutes(-5), CompletedAt = now.AddMinutes(-4), Succeeded = false, ErrorCode = "REMOTE_TIMEOUT" });
+            await setup.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var metrics = await new JobOperationsService(db, fixture.TimeProvider).MetricsAsync(tenant.Id, TimeSpan.FromHours(24), CancellationToken.None);
+
+            var orderSync = Assert.Single(metrics, row => row.JobType == MarketplaceJobTypes.OrderSync);
+            Assert.Equal(2, orderSync.Attempts);
+            Assert.Equal(1, orderSync.Failed);
+            Assert.Equal(1, orderSync.Queued);
+            Assert.Equal(0, orderSync.Running);
+            Assert.NotNull(orderSync.AverageDurationSeconds);
+            Assert.InRange(orderSync.AverageWaitSeconds!.Value, 3.9, 4.1);
+        }
+        finally
+        {
+            var ids = new[] { done.Id, failed.Id, queued.Id };
+            await using var cleanup = fixture.CreateContext();
+            await cleanup.IntegrationJobs.Where(job => ids.Contains(job.Id)).ExecuteDeleteAsync();
+            await cleanup.Tenants.Where(x => x.Id == tenant.Id).ExecuteDeleteAsync();
+        }
+    }
+
+    [PostgreSqlFact]
     public async Task SharedRateLimiter_TakesTokensUntilTheBucketIsEmptyThenReportsTheWait()
     {
         var key = $"test:rate:{Guid.NewGuid():N}";

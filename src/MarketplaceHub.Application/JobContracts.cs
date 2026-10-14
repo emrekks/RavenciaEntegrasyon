@@ -147,8 +147,22 @@ public sealed record JobListQuery(string? Status = null, DateTimeOffset? Since =
     public int EffectiveLimit => Math.Clamp(Limit ?? DefaultLimit, 1, MaximumLimit);
 }
 
+// Per job type, over the requested window: wait = first attempt start minus the time the job
+// became runnable (jobs that were never retried), duration = attempt run time.
+public sealed record JobTypeMetricView(
+    string JobType,
+    int Attempts,
+    int Failed,
+    double? AverageWaitSeconds,
+    double? P95WaitSeconds,
+    double? AverageDurationSeconds,
+    double? P95DurationSeconds,
+    int Queued,
+    int Running);
+
 public interface IJobOperationsService
 {
+    Task<IReadOnlyList<JobTypeMetricView>> MetricsAsync(Guid tenantId, TimeSpan window, CancellationToken cancellationToken);
     Task<IReadOnlyList<JobSummaryView>> ListAsync(Guid tenantId, JobListQuery query, CancellationToken cancellationToken);
     Task<ServiceResult<JobDetailView>> GetAsync(Guid tenantId, Guid jobId, CancellationToken cancellationToken);
     Task<ServiceResult<JobDetailView>> RetryAsync(Guid tenantId, Guid jobId, CancellationToken cancellationToken);

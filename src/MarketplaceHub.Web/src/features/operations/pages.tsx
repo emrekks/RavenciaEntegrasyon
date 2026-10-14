@@ -10,6 +10,7 @@ import { catalogStructureImportChange, catalogStructureImportPresentation } from
 import { hasEligibleOneTimeInvoiceSourceFailure } from './one-time-invoice-delivery-visibility'
 import { oneTimeInvoiceDeliveryIdempotencyKey } from './one-time-invoice-delivery-idempotency'
 import { jobListQueryString, type JobListTimeRange } from './job-list-query'
+import { JobQueueMetrics } from './JobQueueMetrics'
 
 type JobStatus = 'PENDING' | 'LEASED' | 'RETRY_SCHEDULED' | 'BLOCKED' | 'MANUAL_REVIEW' | 'SUCCEEDED' | 'DEAD' | 'CANCELLED'
 type JobSummary = {
@@ -516,6 +517,7 @@ export function JobsPage({ me }: { me: Me }) {
         </div>
       </div>
     </div>
+    <JobQueueMetrics hours={timeRange === '24h' ? 24 : 168} titleFor={jobType => jobPresentation(jobType).title} />
     <div className="jobs-reference-canvas">
       <Tabs className="jobs-reference-tabs" ariaLabel="İşlem kategorileri" value={category} onChange={value => setCategory(value as JobCategory)} items={categoryTabs.filter(tab => tab.key !== 'SYSTEM').map(tab => ({ value: tab.key, label: tab.label, count: categoryCounts.get(tab.key) ?? 0 }))} />
       <div className="jobs-reference-toolbar">

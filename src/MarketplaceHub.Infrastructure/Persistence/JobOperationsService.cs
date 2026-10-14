@@ -47,6 +47,58 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         }).ToList();
     }
 
+    public async Task<IReadOnlyList<JobTypeMetricView>> MetricsAsync(Guid tenantId, TimeSpan window, CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        var since = now - window;
+        var attempts = await db.Database.SqlQuery<JobAttemptMetricRow>($"""
+            SELECT job."JobType" AS "JobType",
+                   count(*)::int AS "Attempts",
+                   count(*) FILTER (WHERE attempt."CompletedAt" IS NOT NULL AND NOT attempt."Succeeded")::int AS "Failed",
+                   avg(wait.seconds) AS "AverageWaitSeconds",
+                   percentile_cont(0.95) WITHIN GROUP (ORDER BY wait.seconds) AS "P95WaitSeconds",
+                   avg(run.seconds) AS "AverageDurationSeconds",
+                   percentile_cont(0.95) WITHIN GROUP (ORDER BY run.seconds) AS "P95DurationSeconds"
+            FROM integration.job_attempts attempt
+            JOIN integration.jobs job ON job."Id" = attempt."JobId"
+            CROSS JOIN LATERAL (SELECT CASE WHEN attempt."AttemptNumber" = 1 AND job."AttemptCount" <= 1
+                THEN GREATEST(0, EXTRACT(EPOCH FROM attempt."StartedAt" - job."AvailableAt"))::double precision END AS seconds) wait
+            CROSS JOIN LATERAL (SELECT EXTRACT(EPOCH FROM attempt."CompletedAt" - attempt."StartedAt")::double precision AS seconds) run
+            WHERE attempt."TenantId" = {tenantId} AND attempt."StartedAt" >= {since}
+            GROUP BY job."JobType"
+            """).ToListAsync(cancellationToken);
+        var queue = await db.IntegrationJobs.AsNoTracking()
+            .Where(job => job.TenantId == tenantId && (job.Status == JobStatus.Leased
+                || ((job.Status == JobStatus.Pending || job.Status == JobStatus.RetryScheduled) && job.AvailableAt <= now)))
+            .GroupBy(job => job.JobType)
+            .Select(group => new { JobType = group.Key, Queued = group.Count(job => job.Status != JobStatus.Leased), Running = group.Count(job => job.Status == JobStatus.Leased) })
+            .ToDictionaryAsync(row => row.JobType, cancellationToken);
+        var rows = attempts.ToDictionary(row => row.JobType);
+        return rows.Keys.Union(queue.Keys)
+            .Select(jobType =>
+            {
+                rows.TryGetValue(jobType, out var attempt);
+                queue.TryGetValue(jobType, out var depth);
+                return new JobTypeMetricView(
+                    jobType,
+                    attempt?.Attempts ?? 0,
+                    attempt?.Failed ?? 0,
+                    Round(attempt?.AverageWaitSeconds),
+                    Round(attempt?.P95WaitSeconds),
+                    Round(attempt?.AverageDurationSeconds),
+                    Round(attempt?.P95DurationSeconds),
+                    depth?.Queued ?? 0,
+                    depth?.Running ?? 0);
+            })
+            .OrderByDescending(row => row.Queued + row.Running)
+            .ThenByDescending(row => row.Attempts)
+            .ToList();
+
+        static double? Round(double? value) => value is { } number ? Math.Round(number, 1) : null;
+    }
+
+    private sealed record JobAttemptMetricRow(string JobType, int Attempts, int Failed, double? AverageWaitSeconds, double? P95WaitSeconds, double? AverageDurationSeconds, double? P95DurationSeconds);
+
     public async Task<ServiceResult<JobDetailView>> GetAsync(Guid tenantId, Guid jobId, CancellationToken cancellationToken)
     {
         var job = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == jobId, cancellationToken);
