@@ -8,9 +8,12 @@ public static class JobEndpoints
     public static IEndpointRouteBuilder MapJobEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var api = endpoints.MapGroup("/api/v1/jobs");
-        api.MapGet("", async (HttpContext http, IJobOperationsService service, string? status) =>
+        api.MapGet("", async (HttpContext http, IJobOperationsService service, string? status, DateTimeOffset? since, string? jobTypes, int? limit) =>
             Tenant(http) is { } tenant
-                ? Results.Ok(await service.ListAsync(tenant.TenantId, status, http.RequestAborted))
+                ? Results.Ok(await service.ListAsync(
+                    tenant.TenantId,
+                    new JobListQuery(status, since, jobTypes?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), limit),
+                    http.RequestAborted))
                 : Unauthorized(http));
         api.MapGet("/{id:guid}", async (Guid id, HttpContext http, IJobOperationsService service) =>
             Tenant(http) is { } tenant

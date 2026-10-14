@@ -4,7 +4,10 @@ export type ProductSyncJobStatus = {
   status: string
 }
 
-const productSyncJobTypes = new Set(['TRENDYOL_PRODUCT_SYNC', 'SHOPIFY_PRODUCT_SYNC', 'HEPSIBURADA_PRODUCT_SYNC'])
+const productSyncJobTypeList = ['TRENDYOL_PRODUCT_SYNC', 'SHOPIFY_PRODUCT_SYNC', 'HEPSIBURADA_PRODUCT_SYNC']
+const productSyncJobTypes = new Set(productSyncJobTypeList)
+// Only the newest product sync jobs are needed to follow an import, not the whole job history.
+export const productSyncJobsPath = `/jobs?jobTypes=${productSyncJobTypeList.join(',')}&limit=100`
 const terminalProductSyncStatuses = new Set(['SUCCEEDED', 'CANCELLED', 'BLOCKED', 'MANUAL_REVIEW', 'DEAD'])
 
 export function isProductSyncJob(job: ProductSyncJobStatus) {

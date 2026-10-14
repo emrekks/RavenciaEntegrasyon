@@ -10,15 +10,21 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvider) : IJobOperationsService
 {
-    public async Task<IReadOnlyList<JobSummaryView>> ListAsync(Guid tenantId, string? status, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<JobSummaryView>> ListAsync(Guid tenantId, JobListQuery listQuery, CancellationToken cancellationToken)
     {
         var query = db.IntegrationJobs.AsNoTracking().Where(x => x.TenantId == tenantId);
-        if (!string.IsNullOrWhiteSpace(status))
+        if (!string.IsNullOrWhiteSpace(listQuery.Status))
         {
-            if (!TryParseStatus(status, out var parsed)) return [];
+            if (!TryParseStatus(listQuery.Status, out var parsed)) return [];
             query = query.Where(x => x.Status == parsed);
         }
-        var jobs = await query.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id).ToListAsync(cancellationToken);
+        if (listQuery.Since is { } since) query = query.Where(x => x.CreatedAt >= since);
+        if (listQuery.JobTypes is { Count: > 0 } jobTypes)
+        {
+            var types = jobTypes.Select(type => type.Trim().ToUpperInvariant()).Where(type => type.Length > 0).Distinct().ToArray();
+            query = query.Where(x => types.Contains(x.JobType));
+        }
+        var jobs = await query.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id).Take(listQuery.EffectiveLimit).ToListAsync(cancellationToken);
         var failures = await FailureTimes(jobs, cancellationToken);
         var jobIds = jobs.Select(job => job.Id).ToArray();
         var lastAttemptStarts = jobIds.Length == 0

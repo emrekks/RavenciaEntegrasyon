@@ -138,9 +138,18 @@ public sealed record JobDetailView(
     IReadOnlyList<JobFailureReasonView>? FailureReasons = null,
     JobInvoiceContextView? Invoice = null);
 
+// The job list returns at most Limit of the newest matching jobs (default 2,000, max 5,000)
+// instead of the whole history.
+public sealed record JobListQuery(string? Status = null, DateTimeOffset? Since = null, IReadOnlyList<string>? JobTypes = null, int? Limit = null)
+{
+    public const int DefaultLimit = 2_000;
+    public const int MaximumLimit = 5_000;
+    public int EffectiveLimit => Math.Clamp(Limit ?? DefaultLimit, 1, MaximumLimit);
+}
+
 public interface IJobOperationsService
 {
-    Task<IReadOnlyList<JobSummaryView>> ListAsync(Guid tenantId, string? status, CancellationToken cancellationToken);
+    Task<IReadOnlyList<JobSummaryView>> ListAsync(Guid tenantId, JobListQuery query, CancellationToken cancellationToken);
     Task<ServiceResult<JobDetailView>> GetAsync(Guid tenantId, Guid jobId, CancellationToken cancellationToken);
     Task<ServiceResult<JobDetailView>> RetryAsync(Guid tenantId, Guid jobId, CancellationToken cancellationToken);
     Task<ServiceResult<JobDetailView>> EnqueueOneTimeInvoiceDeliveryAsync(Guid tenantId, Guid jobId, string orderNumber, string idempotencyKey, string correlationId, CancellationToken cancellationToken);

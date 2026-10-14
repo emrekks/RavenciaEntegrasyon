@@ -9,6 +9,7 @@ import { marketplaceQuestionSyncChange, marketplaceQuestionSyncPresentation } fr
 import { catalogStructureImportChange, catalogStructureImportPresentation } from './catalog-structure-import'
 import { hasEligibleOneTimeInvoiceSourceFailure } from './one-time-invoice-delivery-visibility'
 import { oneTimeInvoiceDeliveryIdempotencyKey } from './one-time-invoice-delivery-idempotency'
+import { jobListQueryString, type JobListTimeRange } from './job-list-query'
 
 type JobStatus = 'PENDING' | 'LEASED' | 'RETRY_SCHEDULED' | 'BLOCKED' | 'MANUAL_REVIEW' | 'SUCCEEDED' | 'DEAD' | 'CANCELLED'
 type JobSummary = {
@@ -176,7 +177,7 @@ function jobAttemptDuration(job: JobSummary) {
   return jobDuration(startedAt, completedAt)
 }
 
-type JobTimeRange = '24h' | '7d' | 'all'
+type JobTimeRange = JobListTimeRange
 
 function timeRangeLabel(value: JobTimeRange) {
   if (value === '7d') return 'Son 7 Gün'
@@ -418,8 +419,8 @@ export function JobsPage({ me }: { me: Me }) {
   }, [feedback])
   const elevated = ['OWNER', 'ADMINISTRATOR'].includes((me.role ?? '').toUpperCase())
   const list = useQuery({
-    queryKey: ['jobs', status],
-    queryFn: () => hubApi<JobSummary[]>(`/jobs${status ? `?status=${encodeURIComponent(status)}` : ''}`),
+    queryKey: ['jobs', status, timeRange],
+    queryFn: () => hubApi<JobSummary[]>(`/jobs${jobListQueryString(status, timeRange)}`),
     refetchInterval: 5000
   })
   const detail = useQuery({
