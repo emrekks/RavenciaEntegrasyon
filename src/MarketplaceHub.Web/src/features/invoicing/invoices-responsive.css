@@ -232,3 +232,32 @@
   .app-shell.stitch-shell main .invoices-page .invoice-reference-order .invoice-order-number { margin: 0 12px 0 0; }
   .app-shell.stitch-shell main .invoices-page .invoice-reference-order > div:not(.order-reference-platform) > small:first-of-type { margin: 12px 12px 0 0; }
 }
+
+/* Invoices follow the orders pattern on phones: no checkbox or "select all" row; long-press starts
+   selection mode (tinted cards), a bottom bar offers İptal / count / Tümünü Seç, tapping a card
+   opens its detail and tapping the number copies it. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-head { display: none; }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-order > .invoice-reference-select { display: none; }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-row { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-row.is-selected {
+    background: color-mix(in srgb, var(--rv-color-primary) 16%, var(--rv-color-surface));
+    border-color: var(--rv-color-primary);
+    box-shadow: 0 0 0 1px var(--rv-color-primary);
+  }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-order .order-number-copy { width: 0; min-width: 0; margin: 0; padding: 0; }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-order .order-number-copy > .ui-icon { display: none; }
+  .app-shell.stitch-shell main .invoices-page .invoice-selection-bar {
+    position: fixed; right: 0; bottom: 0; left: 0; z-index: calc(var(--rv-z-modal, 1000) - 1);
+    display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px;
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+    background: var(--rv-color-surface); border-top: 1px solid var(--rv-color-border-strong); box-shadow: 0 -8px 24px rgb(0 0 0 / 28%);
+  }
+  .app-shell.stitch-shell main .invoices-page .invoice-selection-bar > strong { text-align: center; font-size: 13px; font-weight: 600; }
+  .app-shell.stitch-shell main .invoices-page .invoice-selection-bar > button { min-height: 40px; padding: 0 12px; font-size: 14px; font-weight: 600; background: transparent; border: 0; }
+  .app-shell.stitch-shell main .invoices-page .invoice-selection-bar .orders-selection-cancel { color: var(--rv-color-danger); }
+  .app-shell.stitch-shell main .invoices-page .invoice-selection-bar .orders-selection-all { color: var(--rv-color-primary); }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-bulk-toolbar { margin-bottom: 70px; }
+}
+.invoice-selection-bar { display: none; }
+@media (max-width: 760px) { .app-shell.stitch-shell main .invoices-page .invoice-selection-bar { display: grid; } }

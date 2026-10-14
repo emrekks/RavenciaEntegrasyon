@@ -222,3 +222,32 @@
   .app-shell.stitch-shell main .returns-page .return-reference-row .order-reference-meta > small:nth-of-type(1) { padding: 12px 12px 0 0; align-self: center; }
   .app-shell.stitch-shell main .returns-page .return-reference-row .order-reference-meta > .order-number { padding: 0 12px 0 0; }
 }
+
+/* Returns card, tidy: one-line date, a compact invoice row (payable amount left, status right),
+   tighter paddings and gaps. Phones only. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .returns-page { gap: 8px; }
+  .app-shell.stitch-shell main .returns-page > .page-heading { margin: 0; padding-bottom: 8px; }
+  .app-shell.stitch-shell main .returns-page .returns-reference-filter-shell { margin: 0; gap: 8px; }
+  .app-shell.stitch-shell main .returns-page .return-reference-filters.mfs:not(.is-open) { margin: 0; }
+  .app-shell.stitch-shell main .returns-page .return-reference-workspace { margin: 0; padding: 0; }
+  .app-shell.stitch-shell main .returns-page .return-reference-workspace > header { margin: 0 0 8px; padding: 0 2px; }
+  .app-shell.stitch-shell main .returns-page .return-reference-workspace > header > div { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .app-shell.stitch-shell main .returns-page .return-reference-workspace > header h2 { margin: 0; font-size: 15px; }
+  .app-shell.stitch-shell main .returns-page .return-reference-workspace > header p { margin: 0; font-size: 12px; color: var(--rv-color-muted); }
+  .app-shell.stitch-shell main .returns-page .return-reference-table > .return-reference-row { margin-bottom: 8px; }
+
+  .app-shell.stitch-shell main .returns-page .return-reference-row .order-reference-meta .order-date-label { display: none; }
+  .app-shell.stitch-shell main .returns-page .return-reference-row .order-reference-meta > small:nth-of-type(1) { font-size: 12px; }
+  .app-shell.stitch-shell main .returns-page .return-reference-row .order-reference-meta > small:nth-of-type(1) > * { font-size: inherit; }
+
+  .app-shell.stitch-shell main .returns-page .return-reference-row > .order-reference-invoice { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px; }
+  .app-shell.stitch-shell main .returns-page .return-reference-row > .order-reference-invoice .order-invoice-metric { display: none; }
+  .app-shell.stitch-shell main .returns-page .return-reference-row > .order-reference-invoice .order-invoice-payable { display: flex; align-items: baseline; gap: 8px; margin: 0; }
+  .app-shell.stitch-shell main .returns-page .return-reference-row > .order-reference-invoice .order-invoice-payable small { font-size: 12px; color: var(--rv-color-muted); }
+  .app-shell.stitch-shell main .returns-page .return-reference-row > .order-reference-invoice .order-invoice-payable strong { font-size: 14px; }
+  .app-shell.stitch-shell main .returns-page .return-reference-row > .order-reference-invoice .invoice-status-label { margin: 0; }
+  .app-shell.stitch-shell main .returns-page .return-reference-row > .return-reference-reason { padding: 8px 12px; }
+  .app-shell.stitch-shell main .returns-page .return-reference-row > .order-reference-cargo { padding: 8px 12px; }
+  .app-shell.stitch-shell main .returns-page .return-reference-table > .return-reference-row > .order-reference-prices { padding: 0 12px 6px; }
+}
