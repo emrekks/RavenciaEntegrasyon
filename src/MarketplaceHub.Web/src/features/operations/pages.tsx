@@ -11,6 +11,7 @@ import { hasEligibleOneTimeInvoiceSourceFailure } from './one-time-invoice-deliv
 import { oneTimeInvoiceDeliveryIdempotencyKey } from './one-time-invoice-delivery-idempotency'
 import { jobListQueryString, type JobListTimeRange } from './job-list-query'
 import { JobQueueMetrics } from './JobQueueMetrics'
+import './jobs-responsive.css'
 
 type JobStatus = 'PENDING' | 'LEASED' | 'RETRY_SCHEDULED' | 'BLOCKED' | 'MANUAL_REVIEW' | 'SUCCEEDED' | 'DEAD' | 'CANCELLED'
 type JobSummary = {

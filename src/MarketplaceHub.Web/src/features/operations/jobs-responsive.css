@@ -1,0 +1,39 @@
+/* Operations log on phones: each job is a card instead of a 980px table row. Type with its
+   detail button on top, status and attempts below, then the time. The correlation id stays in
+   the job detail. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .jobs-page .jobs-reference-canvas { width: auto; min-width: 0; max-width: 100%; }
+  .app-shell.stitch-shell main .jobs-page .jobs-reference-table-scroll { overflow: visible; background: transparent; border: 0; }
+  .app-shell.stitch-shell main .jobs-page .jobs-reference-table,
+  .app-shell.stitch-shell main .jobs-page .jobs-reference-table > tbody { display: block; width: 100%; min-width: 0; }
+  .app-shell.stitch-shell main .jobs-page .jobs-reference-table > thead { display: none; }
+
+  .app-shell.stitch-shell main .jobs-page .jobs-reference-table > tbody > tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "type action"
+      "status attempt"
+      "time time";
+    align-items: center;
+    gap: 8px 12px;
+    margin-bottom: 10px;
+    padding: 12px;
+    background: var(--rv-color-surface);
+    border: 1px solid var(--rv-color-border-strong);
+    border-radius: 12px;
+  }
+  .app-shell.stitch-shell main .jobs-page .jobs-reference-table > tbody > tr > td { width: auto; height: auto; min-width: 0; min-height: 0; padding: 0; border: 0; }
+  .app-shell.stitch-shell main .jobs-page .jobs-reference-table > tbody > tr > td:nth-child(1) { grid-area: type; }
+  .app-shell.stitch-shell main .jobs-page .jobs-reference-table > tbody > tr > td:nth-child(2) { grid-area: status; }
+  .app-shell.stitch-shell main .jobs-page .jobs-reference-table > tbody > tr > td:nth-child(3) { grid-area: attempt; color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); text-align: right; }
+  .app-shell.stitch-shell main .jobs-page .jobs-reference-table > tbody > tr > td:nth-child(3)::before { content: "Deneme\00a0"; }
+  .app-shell.stitch-shell main .jobs-page .jobs-reference-table > tbody > tr > td:nth-child(4) { grid-area: time; padding-top: 8px; border-top: 1px solid var(--rv-color-border); }
+  .app-shell.stitch-shell main .jobs-page .jobs-reference-table > tbody > tr > td:nth-child(5) { display: none; }
+  .app-shell.stitch-shell main .jobs-page .jobs-reference-table > tbody > tr > td:nth-child(6) { grid-area: action; align-self: start; }
+  .app-shell.stitch-shell main .jobs-page .jobs-reference-table > tbody > tr > td[colspan] { grid-column: 1 / -1; }
+  .app-shell.stitch-shell main .jobs-page .jobs-reference-time { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+  .app-shell.stitch-shell main .jobs-page .jobs-reference-row-action { width: 40px; height: 40px; }
+  /* The type tooltip needs hover; touch screens show the card instead. */
+  .app-shell.stitch-shell main .jobs-page .jobs-reference-type-tooltip { display: none; }
+}
