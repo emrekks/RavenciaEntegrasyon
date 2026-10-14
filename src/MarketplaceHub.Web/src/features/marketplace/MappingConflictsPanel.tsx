@@ -37,7 +37,8 @@ export function MappingConflictsPanel({ connectionId, platformLabel, onNotice }:
 
   return <details className="mapping-conflicts-panel">
     <summary>
-      <span>Gözden geçirilecek eşlemeler ({same.length + cross.length})</span>
+      <span className="panel-summary-title">Gözden geçirilecek eşlemeler</span>
+      <b className="panel-summary-count is-warning" aria-label={`${same.length + cross.length} kayıt`}>{same.length + cross.length}</b>
       <small>Aynı panel değeri birden fazla {platformLabel} değerine bağlanmış.</small>
     </summary>
     <div className="mapping-conflicts-body">

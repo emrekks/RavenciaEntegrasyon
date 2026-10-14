@@ -3104,32 +3104,19 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
   return <div className="mapping-step nested value-mapping-editor">
     <div className="value-mapping-heading">
       <div><h3>Değer eşleştirmeleri</h3><p>{platformLabel} değerlerini karşılık gelen panel değerleriyle eşleyin.{allowReusablePanelValues ? ' Aynı panel değeri birden fazla Hepsiburada seçeneği için kullanılabilir.' : ''}</p></div>
-      <button type="button" className="value-mapping-save" disabled={!selectionsReady || saving || syncBusy || autoMapping || quickValueSaving} onClick={() => void saveAll()}><UiIcon name="check" />{saving ? 'Kaydediliyor…' : 'Tüm eşlemeleri kaydet'}</button>
     </div>
-    <div className="value-mapping-toolbar" role="toolbar" aria-label="Değer eşleme işlemleri">
-      <div className="value-mapping-toolbar-group">
-        <span>Otomatik eşle</span>
-        <div>
-          <button type="button" className="secondary" title={`Aynı adlı panel ve ${platformLabel} değerlerini eşler.${directPlan.ambiguousCount ? ` Belirsiz ${directPlan.ambiguousCount} eşleşme atlanır.` : ''}`} disabled={!selectionsReady || autoMapping || saving || syncBusy || quickValueSaving || (directMappingWorkCount === 0 && unsavedExternalIds.size === 0)} onClick={() => void mapDirectMatchingValues()}>{autoMapping ? 'Eşleştiriliyor…' : 'Birebir eşleşenleri eşle'}</button>
-          <button type="button" className="secondary" title={`Eşleşmemiş panel değerleri için ${platformLabel} değeri önerir: aynı ad, Türkçe harf farkı ve eş anlamlılar (ör. Black → Siyah) doğrudan seçilir; zayıf benzerlikler onayınıza sunulur.`} disabled={!selectionsReady || autoMapping || saving || syncBusy || !unmatchedPanelValues.length || !activeRemoteValues.length} onClick={suggestMappings}>Önerileri getir</button>
-        </div>
+    <div className="value-mapping-commandbar" role="toolbar" aria-label="Değer eşleme işlemleri">
+      <div className="value-mapping-command-group" role="group" aria-label="Otomatik eşleme">
+        <button type="button" className="secondary" title={`Eşleşmemiş panel değerleri için ${platformLabel} değeri önerir: aynı ad, Türkçe harf farkı ve eş anlamlılar (ör. Black → Siyah) doğrudan seçilir; zayıf benzerlikler onayınıza sunulur.`} disabled={!selectionsReady || autoMapping || saving || syncBusy || !unmatchedPanelValues.length || !activeRemoteValues.length} onClick={suggestMappings}><UiIcon name="sparkle" />Önerileri getir</button>
+        <button type="button" className="secondary" title={`Aynı adlı panel ve ${platformLabel} değerlerini eşler.${directPlan.ambiguousCount ? ` Belirsiz ${directPlan.ambiguousCount} eşleşme atlanır.` : ''}`} disabled={!selectionsReady || autoMapping || saving || syncBusy || quickValueSaving || (directMappingWorkCount === 0 && unsavedExternalIds.size === 0)} onClick={() => void mapDirectMatchingValues()}><UiIcon name="equal" />{autoMapping ? 'Eşleştiriliyor…' : 'Birebir eşle'}</button>
       </div>
-      <div className="value-mapping-toolbar-group">
-        <span>Panel değeri ekle</span>
-        <div>
-          <button type="button" className="secondary" disabled={quickValueSaving || autoMapping || saving} onClick={() => setQuickValueOpen(true)}>Hızlı değer oluştur</button>
-          <button type="button" className="secondary" title="Eşlemesi boş pazar yeri değerlerinin adlarıyla panel değerleri oluşturur. Aynı adlı tekrarları tek değer olarak ekler." disabled={!selectionsReady || !missingPanelValues.length || quickValueSaving || autoMapping || saving || syncBusy} onClick={() => void createMissingPanelValues()}>{quickValueSaving ? 'Ekleniyor…' : `Boş değerleri oluştur (${missingPanelValues.length})`}</button>
-        </div>
+      <div className="value-mapping-command-group" role="group" aria-label="Panel değeri ekleme">
+        <button type="button" className="secondary" title="Yeni bir panel değeri ekler." disabled={quickValueSaving || autoMapping || saving} onClick={() => setQuickValueOpen(true)}><UiIcon name="plus" />Hızlı değer</button>
+        <button type="button" className="secondary" title="Eşlemesi boş pazar yeri değerlerinin adlarıyla panel değerleri oluşturur. Aynı adlı tekrarları tek değer olarak ekler." disabled={!selectionsReady || !missingPanelValues.length || quickValueSaving || autoMapping || saving || syncBusy} onClick={() => void createMissingPanelValues()}><UiIcon name="layers" />{quickValueSaving ? 'Ekleniyor…' : 'Boş değerleri oluştur'}{!quickValueSaving && missingPanelValues.length > 0 && <b className="value-mapping-command-count">{missingPanelValues.length}</b>}</button>
       </div>
-      <div className="value-mapping-toolbar-group">
-        <span>Liste</span>
-        <div>
-          <button type="button" className="secondary" title="Seçili pazar yerinin güncel referans değer listesini yenile" disabled={syncBusy || autoMapping || saving} onClick={() => sync.mutate()}><UiIcon name="refresh" />{syncBusy ? 'Yenileniyor…' : `${platformLabel} listesini yenile`}</button>
-          <label className="value-mapping-share" title="Açıkken bu eşlemeler, aynı özelliği listeleyen diğer kategorilere de otomatik uygulanır. Kapalıyken yalnızca bu kategoride kalır.">
-            <input type="checkbox" checked={shareWithOtherCategories} onChange={event => setShareWithOtherCategories(event.target.checked)} />
-            Diğer kategorilerde de kullan
-          </label>
-        </div>
+      <div className="value-mapping-command-group is-end" role="group" aria-label="Liste ve paylaşım">
+        <button type="button" className="secondary" title={`Güncel ${platformLabel} değer listesini salt-okunur olarak yeniden okur.`} disabled={syncBusy || autoMapping || saving} onClick={() => sync.mutate()}><UiIcon name="refresh" />{syncBusy ? 'Yenileniyor…' : 'Listeyi yenile'}</button>
+        <button type="button" role="switch" aria-checked={shareWithOtherCategories} className={`secondary value-mapping-share-switch${shareWithOtherCategories ? ' is-on' : ''}`} title="Açıkken bu eşlemeler, aynı özelliği listeleyen diğer kategorilere de otomatik uygulanır. Kapalıyken yalnızca bu kategoride kalır." onClick={() => setShareWithOtherCategories(current => !current)}><i aria-hidden="true" /><span>Diğer kategorilerde de kullan</span></button>
       </div>
     </div>
     {notice && <MessageToast message={notice} onClose={() => setNotice('')} />}
@@ -3180,6 +3167,10 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
         </div>
       })}
       {!!localValues.length && !remoteValues.length && <div className="unknown"><strong>Bu özellik için seçilebilir değer bulunamadı</strong><p>{platformLabel} referans listesi başarıyla okundu ancak kategori özelliği sabit seçenek döndürmedi.</p></div>}
+    </div>
+    <div className="value-mapping-savebar" role="region" aria-label="Kaydetme">
+      <span>{unmatchedPanelValues.length ? `Eşleşmeyen ${unmatchedPanelValues.length} panel değeri` : 'Tüm panel değerleri eşleşti'}{unsavedExternalIds.size > 0 ? <strong>{unsavedExternalIds.size} kaydedilmemiş değişiklik</strong> : <em>Kaydedilmemiş değişiklik yok</em>}</span>
+      <button type="button" disabled={!selectionsReady || saving || syncBusy || autoMapping || quickValueSaving} onClick={() => void saveAll()}><UiIcon name="save" />{saving ? 'Kaydediliyor…' : 'Tüm eşlemeleri kaydet'}</button>
     </div>
     {quickValueModal}
   </div>
