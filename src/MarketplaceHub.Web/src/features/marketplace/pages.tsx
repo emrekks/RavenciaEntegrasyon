@@ -758,7 +758,63 @@ function OrderReferenceRow({ item, selected, onSelect, openMenu, onMenuChange, o
       window.removeEventListener('scroll', updatePlacement, true)
     }
   }, [openMenu])
-  return <article className={`order-reference-row ${item.derivedStatus.toLowerCase()} ${item.isMicroExport ? 'micro-export' : ''} ${openMenu ? 'menu-open' : ''}`}>
+  const [detailOpen, setDetailOpen] = useState(false)
+  const [detailActionsOpen, setDetailActionsOpen] = useState(false)
+  const packageNoText = shipment?.externalPackageId ?? (isHepsiburadaUnverifiedWithoutPackage ? 'Paket bilgisi doğrulanmadı' : isHepsiburadaOrder ? 'Henüz paketlenmedi' : 'Bekleniyor')
+  const deliveryNoText = shipment?.cargoTrackingNumber ?? item.cargoTrackingNumber ?? (isHepsiburadaUnverifiedWithoutPackage ? 'Gönderi bilgisi doğrulanmadı' : isHepsiburadaOrder ? shipment ? 'Kargoya verildiğinde gelir' : 'Paket oluşturulunca gelir' : 'Takip no bekleniyor')
+  const closeDetailThen = (run: () => void) => () => { setDetailOpen(false); setDetailActionsOpen(false); run() }
+  const detailPrimaryAction = isCancelledOrder ? null : isCargoTrackingStage ? (shipment?.cargoTrackingNumber ? <Link className="order-detail-primary" to={`/shipments/${shipment.id}`}>Kargo Takip</Link> : null) : isCargoLabelStage && shipment ? <>{enabledLabelFormats.map(format => <button type="button" key={format} className="order-detail-primary" disabled={labelBlockedByInvoice} onClick={closeDetailThen(() => onPrintLabel(format))}>{format === 'a4' ? 'A4' : 'Sticker'} Etiketi Yazdır</button>)}</> : null
+  const detailActions: Array<{ key: string; label: string; disabled?: boolean; run: () => void }> = isCancelledOrder ? [] : [
+    ...(isShopifyOrder ? [{ key: 'status', label: 'Sipariş Durumunu Değiştir', run: onOrderStatusChange }] : normalizedOrderStatus === 'NEW' ? [{ key: 'process', label: processing ? 'İşleniyor…' : 'İşleme Al', disabled: processing, run: onProcessOrder }] : []),
+    ...(isHepsiburadaOrder && !['SHIPPED', 'UNDELIVERED', 'DELIVERED', 'RETURNED'].includes(normalizedOrderStatus) ? [{ key: 'package', label: 'Paket Oluştur', run: onCreatePackage }] : []),
+    ...(canChangeCargo ? [{ key: 'courier', label: 'Başka Kargo Firması İle Gönder', run: onCourierChange }] : []),
+    ...(invoiceNeedsAction ? [{ key: 'invoice-create', label: 'Fatura Oluştur', disabled: !invoiceCreationEnabled, run: onInvoiceCreate }] : []),
+    { key: 'invoice-info', label: 'Fatura Bilgileri', run: onInvoiceDetails },
+    ...(invoiceNeedsAction ? [{ key: 'invoice-upload', label: 'Fatura Yükle', disabled: !invoiceCreationEnabled && !item.invoiceId, run: onInvoiceUpload }] : [])
+  ]
+  const detailSheet = detailOpen ? createPortal(<div className="order-detail-backdrop" role="presentation" onMouseDown={() => setDetailOpen(false)} onClick={event => event.stopPropagation()}>
+    <section className="order-detail-sheet" role="dialog" aria-modal="true" aria-label={`Sipariş ${item.orderNumber} detayı`} onMouseDown={event => event.stopPropagation()}>
+      <header><button type="button" className="order-detail-back" aria-label="Detayı kapat" onClick={() => setDetailOpen(false)}><UiIcon name="arrowLeft" size={20} /></button><h2>Sipariş Detayı</h2></header>
+      <div className="order-detail-body">
+        <section className="order-detail-card">
+          <div className="order-detail-card-head"><h3>Sipariş Bilgileri</h3><Badge value={item.derivedStatus} /></div>
+          <div className={`order-detail-deadline${delivery.overdue ? ' is-overdue' : ''}`}><small>{delivery.label}</small><b>{delivery.value}</b>{delivery.note && <em>{delivery.note}</em>}</div>
+          <dl className="order-detail-facts">
+            <div><dt>Platform</dt><dd><PlatformMark code={item.platformCode} name={item.platformDisplayName} /></dd></div>
+            <div><dt>Sipariş Numarası</dt><dd>{displayOrderNumber(item.orderNumber)}<button type="button" className="order-number-copy" onClick={copyOrderNumber} aria-label={`Sipariş numarası ${item.orderNumber} kopyala`}><UiIcon name="copy" /></button></dd></div>
+            <div><dt>Sipariş Tarihi</dt><dd><DateText value={item.orderedAt} /></dd></div>
+            <div><dt>Paket No</dt><dd>{packageNoText}</dd></div>
+            <div><dt>Alıcı</dt><dd>{customerDisplayName(item)}</dd></div>
+          </dl>
+        </section>
+        <section className="order-detail-card">
+          <div className="order-detail-card-head"><h3>Ürünler</h3><span className="order-detail-count">{item.productQuantity || lines.length} Adet</span></div>
+          <div className="order-detail-products">{lines.length ? lines.map(line => { const imageUrl = line.imageUrl ?? (lines.length === 1 ? item.primaryImageUrl : null); const fallbackUrls = createProductImageFallbackUrls([line.barcode, line.sku], item.connectionId); const quantity = productLineQuantity(line); return <article key={line.id}><span className="reference-product-media">{imageUrl || fallbackUrls.length ? <ProductImage url={imageUrl} fallbackUrls={fallbackUrls} alt={`${line.title} ürün görseli`} onClick={() => onPreviewImage({ url: imageUrl ?? fallbackUrls[0]!, fallbackUrls, title: line.title, modelCode: line.modelCode, variant: line.optionSignature })} /> : <span className="reference-product-placeholder" aria-label="Ürün görseli eşleştirmesi bekleniyor"><UiIcon name="image" /></span>}<span className="quantity-bubble" aria-label={`${quantity} adet`}>{quantity}</span></span><div><strong><ProductTitleLink platformCode={item.platformCode} line={line} /></strong><small>Stok Kodu: <code className="technical-text">{line.sku}</code></small>{visibleOrderLineVariantOptions(line.optionSignature).map(option => <small key={`${option.label}:${option.value}`}>{option.label}: {option.value}</small>)}<small>Barkod: <code className="technical-text">{line.barcode ?? '—'}</code></small><small>Birim Fiyatı: <b>{money(line.unitPrice)}</b></small></div></article> }) : <p className="order-detail-empty">Ürün bilgisi eşitleme bekliyor</p>}</div>
+        </section>
+        <section className="order-detail-card">
+          <div className="order-detail-card-head"><h3>Kargo Bilgileri</h3></div>
+          <dl className="order-detail-facts">
+            <div><dt>Kargo Firması</dt><dd><CargoProviderIcon value={shipment?.cargoProviderName ?? item.cargoProviderName} fallbackText /></dd></div>
+            <div><dt>Kargo Kodu</dt><dd><code className="technical-text">{deliveryNoText}</code></dd></div>
+          </dl>
+        </section>
+        <section className="order-detail-card">
+          <div className="order-detail-card-head"><h3>Fatura Bilgileri</h3><InvoiceStatusBadge status={item.invoiceStatus} label={invoiceLabel} /></div>
+          <dl className="order-detail-facts">
+            {hasDiscount && <><div><dt>Satış Tutarı</dt><dd>{money(saleTotal)}</dd></div><div><dt>Satıcı İndirim Tutarı</dt><dd>{money(item.discountAmount)}</dd></div></>}
+            <div><dt>Faturalanacak Tutar</dt><dd><b>{money(invoiceableTotal)}</b></dd></div>
+            {!invoiceNeedsAction && invoiceDocumentAvailable && <div><dt>Fatura Belgesi</dt><dd>{item.invoiceId ? <a className="invoice-document-link" href={`/api/v1/invoices/${item.invoiceId}/documents/latest/content`} download>Faturayı Gör</a> : <a className="invoice-document-link" href={item.invoiceDocumentUrl ?? '#'} download>Faturayı Gör</a>}</dd></div>}
+          </dl>
+        </section>
+      </div>
+      <footer className="order-detail-actions">
+        {detailActionsOpen && detailActions.length > 0 && <div className="order-detail-actions-list" role="menu">{detailActions.map(action => <button type="button" role="menuitem" key={action.key} disabled={action.disabled} onClick={closeDetailThen(action.run)}>{action.label}</button>)}</div>}
+        {detailActions.length > 0 && <button type="button" className="order-detail-secondary" aria-haspopup="menu" aria-expanded={detailActionsOpen} onClick={() => setDetailActionsOpen(open => !open)}>İşlemler<UiIcon name="chevronDown" /></button>}
+        {detailPrimaryAction}
+      </footer>
+    </section>
+  </div>, document.body) : null
+  return <article className={`order-reference-row ${item.derivedStatus.toLowerCase()} ${item.isMicroExport ? 'micro-export' : ''} ${openMenu ? 'menu-open' : ''}`} tabIndex={0} onClick={event => { const target = event.target as Element; if (target.closest('button, a, input, select, textarea, label, .row-popover, .product-image-button, [role="dialog"], .workspace-modal-backdrop')) return; setDetailOpen(true) }} onKeyDown={event => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); setDetailOpen(true) } }}>
     <div className="order-reference-grid" style={{ gridTemplateRows: `repeat(${Math.max(1, lines.length)}, minmax(130px, 1fr))` }}>
       {isCancelledOrder ? <span className="order-select order-select-disabled" role="img" aria-label="İptal sipariş toplu seçilemez" title="İptal siparişler toplu seçilemez">—</span> : <label className="order-select"><input type="checkbox" checked={selected} onChange={event => onSelect(event.target.checked)} aria-label={`Sipariş ${item.orderNumber} seç`} /></label>}
       <div className="order-reference-meta"><div className="order-reference-platform"><PlatformMark code={item.platformCode} name={item.platformDisplayName} /></div><div className={`order-number${item.isMicroExport ? ' is-micro-export' : ''}`}><strong><i className="order-package-mark" aria-hidden="true" />{displayOrderNumber(item.orderNumber)}</strong><button type="button" className="order-number-copy" onClick={copyOrderNumber} aria-label={copied ? `Sipariş numarası ${item.orderNumber} kopyalandı` : `Sipariş numarası ${item.orderNumber} kopyala`} aria-describedby={`order-copy-tooltip-${item.id}`}><UiIcon name="copy" /><span id={`order-copy-tooltip-${item.id}`} className={`order-copy-tooltip${copied ? ' is-copied' : ''}`} role="status" aria-live="polite" aria-hidden={!copied}>{copied ? 'Kopyalandı' : 'Kopyala'}</span></button></div><small>Sipariş Tarihi: <DateText value={item.orderedAt} /></small><small>Paket No: {shipment?.externalPackageId ?? (isHepsiburadaUnverifiedWithoutPackage ? 'Paket bilgisi doğrulanmadı' : isHepsiburadaOrder ? 'Henüz paketlenmedi' : 'Bekleniyor')}</small><small>Teslimat No: {shipment?.cargoTrackingNumber ?? (isHepsiburadaUnverifiedWithoutPackage ? 'Gönderi bilgisi doğrulanmadı' : isHepsiburadaOrder ? shipment ? 'Kargoya verildiğinde gelir' : 'Paket oluşturulunca gelir' : 'Bekleniyor')}</small>{hepsiburadaPackageHistoryExpired && <small className="order-reference-delivery-note">Hepsiburada kargo durum listeleri son bir ayı kapsıyor; daha eski paket kaydı şu anda API’den doğrulanamıyor.</small>}<span className={`order-reference-delivery${delivery.overdue ? ' delivery-overdue' : ''}`}>{delivery.label && <small className="order-reference-delivery-label">{delivery.label}</small>}<b className="order-reference-delivery-value">{delivery.value}</b>{delivery.note && <em className="order-reference-delivery-note">{delivery.note}</em>}</span></div>
@@ -792,6 +848,7 @@ function OrderReferenceRow({ item, selected, onSelect, openMenu, onMenuChange, o
         <div className="order-reference-actions">{isCancelledOrder ? <div className="order-status-column"><span className="badge neutral order-status-feedback cancelled" role="status"><i aria-hidden="true" />İptal edildi</span><small>İşlem yapılamaz</small></div> : <>{isCargoTrackingStage ? shipment?.cargoTrackingNumber ? <Link className="cargo-track-action" to={`/shipments/${shipment.id}`}>Kargo Takip</Link> : <small className="cargo-action-unavailable">Takip numarası bekleniyor</small> : isCargoLabelStage && shipment ? <div className="order-label-actions" aria-label="Kargo etiketi yazdırma seçenekleri">{enabledLabelFormats.map(format => { const printed = printedLabels.has(printedShippingLabelKey(item.id, format)); const formatLabel = format === 'a4' ? 'A4' : 'Sticker'; const labelTitle = labelBlockedByInvoice ? 'Mikro ihracat faturası kesilmeden kargo etiketi yazdırılamaz.' : printed ? `${formatLabel} formatı daha önce yazdırıldı; yeniden yazdırabilirsiniz.` : undefined; return <button type="button" key={format} className={`order-label-action${printed ? ' is-printed' : ''}`} onClick={() => onPrintLabel(format)} disabled={labelBlockedByInvoice} title={labelTitle} aria-label={labelBlockedByInvoice ? `${formatLabel} kargo etiketi yazdırılamaz; mikro ihracat faturası bekleniyor` : `${formatLabel} kargo etiketi yazdır${printed ? ' (yazdırıldı)' : ''}`}><span>{formatLabel} Etiketi Yazdır</span></button> })}</div> : null}<div className="row-menu"><button type="button" className="order-action-menu row-menu-trigger" onClick={event => toggleMenu('actions', event)} aria-expanded={openMenu === 'actions'}><span>İşlemler</span><UiIcon name="chevronDown" /></button>{openMenu === 'actions' && <div ref={menuPopoverRef} className={`row-popover action-popover opens-${menuPlacement}`} role="menu">{isShopifyOrder ? <button type="button" role="menuitem" onClick={onOrderStatusChange}>Sipariş durumunu değiştir</button> : normalizedOrderStatus === 'NEW' ? <button type="button" role="menuitem" disabled={processing} onClick={onProcessOrder}>{processing ? 'İşleniyor…' : 'İşleme Al'}</button> : <button type="button" role="menuitem" disabled>{normalizedOrderStatus === 'DELIVERED' ? 'Teslim edildi' : 'İşleme Al'}</button>}{isHepsiburadaOrder && !['SHIPPED', 'UNDELIVERED', 'DELIVERED', 'RETURNED'].includes(normalizedOrderStatus) && <button type="button" role="menuitem" onClick={onCreatePackage}>Paket Oluştur</button>}{canChangeCargo && <button type="button" role="menuitem" onClick={onCourierChange}>Başka Kargo Firması İle Gönder</button>}<button type="button" role="menuitem" disabled>İptal Et</button></div>}</div></>}</div>
       {lines.length > 1 && Array.from({ length: lines.length - 1 }, (_, index) => <span key={`order-row-divider-${index}`} className="order-row-divider" style={{ gridRow: index + 1 }} aria-hidden="true" />)}
     </div>
+    {detailSheet}
     {invoiceStatusModalOpen && <ShopifyInvoiceStatusModal item={item} onClose={() => setInvoiceStatusModalOpen(false)} onFeedback={(message, kind) => { if (kind !== 'pending') appendNotification(message, normalizeNotificationKind(message, kind)) }} />}
   </article>
 

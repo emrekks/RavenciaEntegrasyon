@@ -317,3 +317,40 @@
   .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-head::-webkit-scrollbar { display: none; }
   .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-head > * { flex: 0 0 auto; min-width: 0; }
 }
+
+/* Order detail: tapping an order opens a full-screen sheet on phones (a right-hand panel on wide
+   screens) with order, product, carrier and invoice cards and the order actions pinned below. */
+.order-reference-row { cursor: pointer; }
+html body .order-detail-backdrop { position: fixed; inset: 0; z-index: calc(var(--rv-z-modal, 1000) + 2); display: flex; justify-content: flex-end; background: rgb(5 16 29 / 62%); }
+html body .order-detail-sheet { display: grid; width: min(560px, 100%); height: 100%; grid-template-rows: auto minmax(0, 1fr) auto; color: var(--rv-color-ink); background: var(--rv-color-surface); box-shadow: var(--rv-shadow-lg); }
+html body .order-detail-sheet > header { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--rv-color-border); }
+html body .order-detail-sheet > header h2 { margin: 0; font-size: 16px; font-weight: 600; }
+html body .order-detail-back { display: inline-grid; width: 40px; height: 40px; min-height: 40px; place-items: center; padding: 0; color: var(--rv-color-ink); background: transparent; border: 0; }
+html body .order-detail-body { display: grid; align-content: start; gap: 12px; padding: 12px 16px 24px; overflow-y: auto; background: var(--rv-color-bg, var(--rv-color-surface)); }
+html body .order-detail-card { display: grid; gap: 12px; padding: 14px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); }
+html body .order-detail-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+html body .order-detail-card-head h3 { margin: 0; font-size: 15px; font-weight: 600; }
+html body .order-detail-count { color: var(--rv-color-muted); font-size: 13px; }
+html body .order-detail-deadline { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; padding: 10px 12px; color: var(--rv-color-info); background: color-mix(in srgb, var(--rv-color-info) 12%, var(--rv-color-surface)); border-radius: var(--rv-radius-md); font-size: 13px; }
+html body .order-detail-deadline.is-overdue { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); }
+html body .order-detail-deadline em { flex-basis: 100%; color: var(--rv-color-muted); font-size: 12px; font-style: normal; }
+html body .order-detail-facts { display: grid; margin: 0; }
+html body .order-detail-facts > div { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 40px; padding: 8px 0; border-top: 1px solid var(--rv-color-border); font-size: 14px; }
+html body .order-detail-facts > div:first-child { border-top: 0; }
+html body .order-detail-facts dt { color: var(--rv-color-muted); }
+html body .order-detail-facts dd { display: inline-flex; min-width: 0; align-items: center; justify-content: flex-end; gap: 8px; margin: 0; font-weight: 600; text-align: right; overflow-wrap: anywhere; }
+html body .order-detail-products { display: grid; gap: 14px; }
+html body .order-detail-products > article { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 12px; align-items: start; }
+html body .order-detail-products > article > div { display: grid; gap: 3px; min-width: 0; font-size: 13px; }
+html body .order-detail-products > article small { color: var(--rv-color-muted); font-size: 13px; }
+html body .order-detail-products > article small b { color: var(--rv-color-ink); }
+html body .order-detail-products .reference-product-media { width: 72px; }
+html body .order-detail-empty { margin: 0; color: var(--rv-color-muted); font-size: 13px; }
+html body .order-detail-actions { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 8px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: var(--rv-color-surface); border-top: 1px solid var(--rv-color-border); }
+html body .order-detail-actions > :only-child { grid-column: 1 / -1; }
+html body .order-detail-actions > .order-detail-primary, html body .order-detail-actions > .order-detail-secondary { display: inline-flex; min-height: 46px; align-items: center; justify-content: center; gap: 8px; font-weight: 600; text-decoration: none; }
+html body .order-detail-actions > .order-detail-primary { grid-column: 2; color: #fff; background: var(--rv-color-primary); border: 0; border-radius: var(--rv-radius-md); }
+html body .order-detail-actions > .order-detail-secondary { grid-column: 1; color: var(--rv-color-ink); background: transparent; border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); }
+html body .order-detail-actions-list { position: absolute; right: 16px; bottom: calc(100% + 6px); left: 16px; display: grid; gap: 2px; padding: 6px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); box-shadow: var(--rv-shadow-lg); }
+html body .order-detail-actions-list > button { min-height: 44px; padding: 0 12px; color: var(--rv-color-ink); background: transparent; border: 0; border-radius: var(--rv-radius-sm); text-align: left; }
+html body .order-detail-actions-list > button:hover:not(:disabled) { background: var(--rv-color-surface-soft); }
