@@ -76,12 +76,16 @@ public static class DependencyInjection
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AutomaticDecompression = System.Net.DecompressionMethods.All, PooledConnectionLifetime = TimeSpan.FromMinutes(10) });
         services.AddScoped<TrendyolAuthenticationHandler>();
         services.AddScoped<TrendyolHttpClient>();
+        services.AddSingleton<MarketplaceCircuitBreakerState>();
+        services.AddTransient<MarketplaceCircuitBreakerHandler>();
         services.AddHttpClient("Shopify", client => client.Timeout = TimeSpan.FromSeconds(45))
+            .AddHttpMessageHandler<MarketplaceCircuitBreakerHandler>()
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AutomaticDecompression = System.Net.DecompressionMethods.All, PooledConnectionLifetime = TimeSpan.FromMinutes(10) });
         services.AddScoped<ShopifyAuthenticationHandler>();
         services.AddScoped<ShopifyHttpClient>();
         services.AddScoped<ShopifyWebhookVerifier>();
         services.AddHttpClient("Hepsiburada", client => client.Timeout = Timeout.InfiniteTimeSpan)
+            .AddHttpMessageHandler<MarketplaceCircuitBreakerHandler>()
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AutomaticDecompression = System.Net.DecompressionMethods.All, PooledConnectionLifetime = TimeSpan.FromMinutes(10) });
         services.AddScoped<HepsiburadaAuthenticationHandler>();
         services.AddScoped<HepsiburadaHttpClient>();
