@@ -12546,3 +12546,25 @@ h1, h2, h3, h4, .dashboard-summary-card-head > span:first-child, :is(.orders-con
 .app-shell.stitch-shell main .dashboard-summary-card-with-platforms:nth-child(even) .dashboard-summary-platform-list { right: var(--rv-space-5); left: auto; }
 .app-shell.stitch-shell main .dashboard-summary-platform-list > span > .dashboard-summary-platform-name { overflow-wrap: normal; text-overflow: ellipsis; white-space: nowrap; }
 .app-shell.stitch-shell main .dashboard-summary-platform-list > span { gap: var(--rv-space-3); }
+
+/* Product options: the bulk-sync action sits as a quiet toolbar above the option groups, and the
+   "create variants" panel follows the groups it summarises. */
+.product-options-card .product-options-toolbar { display: flex; justify-content: flex-end; margin: 0 0 var(--rv-space-3); }
+.product-options-card .product-options-toolbar .product-options-sync-button { min-height: 36px; margin: 0; padding: 0 12px; font-size: 13px; }
+.product-options-card .attribute-builder-list + .attribute-variant-action,
+.product-options-card .unknown + .attribute-variant-action { margin-top: var(--rv-space-4); margin-bottom: var(--rv-space-4); }
+
+/* Mobile menu: as tall and wide as its items need, anchored under the header, instead of a full-height sheet. */
+@media (max-width: 760px) {
+  html body .rv-drawer:has(.rv-mobile-navigation) {
+    inset: 8px auto auto 8px;
+    width: min(320px, calc(100vw - 16px));
+    max-width: calc(100vw - 16px);
+    height: auto;
+    max-height: calc(100dvh - 16px);
+    grid-template-rows: auto auto;
+    border: 1px solid var(--rv-color-border-strong);
+    border-radius: var(--rv-radius-lg);
+    box-shadow: var(--rv-shadow-lg);
+  }
+}

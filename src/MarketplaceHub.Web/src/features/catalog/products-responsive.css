@@ -170,3 +170,62 @@
   .app-shell.stitch-shell main .product-add-page .product-submit-actions .platform-update-split { display: flex; }
   .app-shell.stitch-shell main .product-add-page .product-submit-actions .platform-update-quick { flex: 1 1 auto; min-width: 0; }
 }
+/* Compact product cards on phones: price and stock are slim one-line chips instead of tall tiles,
+   with smaller actions and tighter spacing. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .products-page .product-catalog-row { row-gap: 8px; padding: 10px; }
+  .app-shell.stitch-shell main .products-page .product-catalog-row > .product-list-price,
+  .app-shell.stitch-shell main .products-page .product-catalog-row > .product-list-stock {
+    display: flex;
+    min-height: 34px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 0 10px;
+  }
+  .app-shell.stitch-shell main .products-page .product-catalog-row > .product-list-price::before,
+  .app-shell.stitch-shell main .products-page .product-catalog-row > .product-list-stock::before { font-size: 11px; }
+  .app-shell.stitch-shell main .products-page .product-catalog-row > :is(.product-list-price, .product-list-stock) > strong { font-size: 13px; font-weight: 600; }
+  .app-shell.stitch-shell main .products-page .product-catalog-row > .product-list-platforms { gap: 5px; padding-top: 8px; }
+  .app-shell.stitch-shell main .products-page .product-catalog-row > .product-list-actions { gap: 4px; padding-top: 8px; }
+  .app-shell.stitch-shell main .products-page .product-list-actions a,
+  .app-shell.stitch-shell main .products-page .product-list-actions button,
+  .app-shell.stitch-shell main .products-page .product-more-actions > summary { width: 34px; height: 34px; min-height: 34px; }
+  .app-shell.stitch-shell main .products-page .product-list-platforms .platform-square-mark { width: 30px; height: 30px; }
+}
+
+/* Product create/edit forms: two columns on phones wherever the fields are short. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .product-add-page :is(.product-step-grid, .product-basics-grid, .product-pricing-card .product-step-grid) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .app-shell.stitch-shell main .product-add-page :is(.product-title-field, .product-category-field, .product-description-field, .product-media-url-field, .wide) { grid-column: 1 / -1; }
+  .app-shell.stitch-shell main .product-add-page .product-step-grid label { font-size: 13px; }
+  .app-shell.stitch-shell main .product-add-page .category-attribute-mapping-list { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .app-shell.stitch-shell main .product-add-page .category-attribute-mapping-list > .category-attribute-field-web-color,
+  .app-shell.stitch-shell main .product-add-page .category-attribute-mapping-list > :has(.category-attribute-chips, textarea, input[type="text"]) { grid-column: 1 / -1; }
+  .app-shell.stitch-shell main .product-add-page .category-attribute-field { padding: 10px; }
+}
+@media (max-width: 340px) {
+  .app-shell.stitch-shell main .product-add-page :is(.product-step-grid, .product-basics-grid, .category-attribute-mapping-list) { grid-template-columns: 1fr; }
+}
+
+/* Sticky submit bar on phones: slimmer, one summary line, and the quick-update split uses regular
+   ink text on a neutral surface (purple on purple was hard to read). */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .product-add-page .product-submit-sticky { gap: 8px; padding: 10px; }
+  .app-shell.stitch-shell main .product-add-page .product-submit-sticky > div:first-child { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+  .app-shell.stitch-shell main .product-add-page .product-submit-sticky > div:first-child > strong { font-size: 13px; }
+  .app-shell.stitch-shell main .product-add-page .product-submit-sticky > div:first-child > p { margin: 0; font-size: 12px; }
+  .app-shell.stitch-shell main .product-add-page .product-submit-actions { gap: 6px; }
+  .app-shell.stitch-shell main .product-add-page .product-submit-actions > * { min-height: 40px; }
+  .app-shell.stitch-shell main .product-add-page .product-submit-actions > button { font-size: 13px; }
+  .app-shell.stitch-shell main .product-add-page .product-submit-actions .platform-update-split { color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border-color: var(--rv-color-border-strong); }
+  .app-shell.stitch-shell main .product-add-page .product-submit-actions .platform-update-split > button { min-height: 40px; padding: 0 10px; font-size: 13px; font-weight: 600; }
+  .app-shell.stitch-shell main .product-add-page .product-submit-actions .platform-update-quick { gap: 6px; }
+  .app-shell.stitch-shell main .product-add-page .product-submit-actions .platform-update-split > .platform-update-settings { flex-basis: 38px; width: 38px; border-left-color: var(--rv-color-border-strong); }
+}
+
+/* Section headings: the step number sits to the left of the title, on phones too. */
+@media (max-width: 1100px) {
+  .app-shell.stitch-shell main .product-add-page .editor-section-title > div:not(.product-media-header-actions) { flex: 1 1 0; min-width: 0; }
+  .app-shell.stitch-shell main .product-add-page .editor-section-title > .product-media-header-actions { flex: 1 1 100%; }
+}

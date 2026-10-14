@@ -3821,18 +3821,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
             <h2>Ürün seçenekleri</h2>
             <p>Seçenek grubu ve değerlerini burada seçin. Mevcut ürünlerde kayıtlı Renk ve Beden değerleri otomatik işaretlenir; yeni seçimler “Ürünleri ekle” ile varyant satırlarına eklenir.</p>
           </div>
-          {bulkSyncOptionRequirements.length > 0 && <button type="button" className="secondary product-options-sync-button" onClick={() => { setBulkOptionSyncSelection([]); setBulkOptionSyncOpen(true) }} aria-haspopup="dialog">Toplu eşitleme</button>}
         </div>
-        <div className="attribute-variant-action">
-          <div>
-             <strong>Varyantları oluştur</strong>
-             <small>{variantAttributeIds.length ? `${variantAttributeIds.map(id => allRequirements.find(item => item.attributeId === id)?.attribute.name).filter(Boolean).join(' × ')} · ${variantAttributeIds.reduce((total, id) => total * Math.max(1, attributeSelections[id]?.length ?? 0), 1)} kombinasyon` : 'Önce seçenek grubunu ve değerlerini işaretleyin.'}</small>
-             <label className="variant-auto-barcode-toggle"><input type="checkbox" checked={automaticBarcodeGeneration} onChange={event => setAutomaticBarcodeGeneration(event.target.checked)} /><span><strong>Barkodları otomatik oluştur</strong></span></label>
-          </div>
-          <div className="attribute-variant-actions">
-            <button type="button" onClick={() => generateVariants()} disabled={!canAddVariantCombinations}>{canAddVariantCombinations ? 'Ürünleri ekle' : 'Seçenekler güncel'}</button>
-          </div>
-        </div>
+        {bulkSyncOptionRequirements.length > 0 && <div className="product-options-toolbar"><button type="button" className="secondary product-options-sync-button" onClick={() => { setBulkOptionSyncSelection([]); setBulkOptionSyncOpen(true) }} aria-haspopup="dialog">Toplu eşitleme</button></div>}
         {!form.categoryId ? (
           <div className="unknown"><strong>Önce kategori seçin</strong><p>Kategori seçildiğinde o kategoriye bağlanan özellikler burada görünür.</p></div>
         ) : requirements.isLoading ? (
@@ -3898,6 +3888,16 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
             )}
           </div>
         )}
+        <div className="attribute-variant-action">
+          <div>
+             <strong>Varyantları oluştur</strong>
+             <small>{variantAttributeIds.length ? `${variantAttributeIds.map(id => allRequirements.find(item => item.attributeId === id)?.attribute.name).filter(Boolean).join(' × ')} · ${variantAttributeIds.reduce((total, id) => total * Math.max(1, attributeSelections[id]?.length ?? 0), 1)} kombinasyon` : 'Önce seçenek grubunu ve değerlerini işaretleyin.'}</small>
+             <label className="variant-auto-barcode-toggle"><input type="checkbox" checked={automaticBarcodeGeneration} onChange={event => setAutomaticBarcodeGeneration(event.target.checked)} /><span><strong>Barkodları otomatik oluştur</strong></span></label>
+          </div>
+          <div className="attribute-variant-actions">
+            <button type="button" onClick={() => generateVariants()} disabled={!canAddVariantCombinations}>{canAddVariantCombinations ? 'Ürünleri ekle' : 'Seçenekler güncel'}</button>
+          </div>
+        </div>
       <div className="product-variant-groups-section">
         <div className="editor-section-title"><span>6</span><div><h2>Ürün seçenek grupları</h2><p>İşaretlediğiniz özellik değerlerinin tüm kombinasyonları varyant satırı olur.</p></div></div>
         {variantRows.length > 0 && <>
