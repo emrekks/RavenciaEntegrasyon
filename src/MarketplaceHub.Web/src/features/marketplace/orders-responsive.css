@@ -474,3 +474,9 @@ html body .order-detail-actions-list > button:hover:not(:disabled) { background:
   .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-row > .order-reference-grid > .order-select { grid-area: select; align-self: center; justify-self: end; margin: 0; padding: 0; }
   .app-shell.stitch-shell main .orders-page .order-reference-meta > .order-reference-platform { margin-right: 4px; }
 }
+
+/* Multi-product orders: the desktop divider lines between product rows are placed on grid columns 4-6,
+   which added implicit columns on phones/tablets and narrowed the strip and products on the right. */
+@media (max-width: 1100px) {
+  .app-shell.stitch-shell main .orders-page .order-reference-grid > .order-row-divider { display: none; }
+}
