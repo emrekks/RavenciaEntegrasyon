@@ -632,3 +632,29 @@ html body .order-detail-actions-list > button:hover:not(:disabled) { background:
   .app-shell.stitch-shell main .orders-page .orders-sync-label-short { display: inline; }
   .app-shell.stitch-shell main .orders-page .orders-heading-more { display: none; }
 }
+
+/* Selection bar: wider side gaps and an "İşlemler (N)" button (full width, second row) that opens
+   the bulk actions for the selected orders. Phones only. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .orders-page .orders-selection-bar {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: "cancel count all" "actions actions actions";
+    gap: 6px 10px; padding: 10px 20px calc(12px + env(safe-area-inset-bottom));
+  }
+  .app-shell.stitch-shell main .orders-page .orders-selection-bar > .orders-selection-cancel { grid-area: cancel; padding: 0; justify-self: start; }
+  .app-shell.stitch-shell main .orders-page .orders-selection-bar > strong { grid-area: count; }
+  .app-shell.stitch-shell main .orders-page .orders-selection-bar > .orders-selection-all { grid-area: all; padding: 0; justify-self: end; }
+  .app-shell.stitch-shell main .orders-page .orders-selection-bar > .orders-selection-actions {
+    grid-area: actions; width: 100%; min-height: 46px; color: #fff; background: var(--rv-color-primary); border: 0; border-radius: var(--rv-radius-md); font-size: 15px; font-weight: 600;
+  }
+  .app-shell.stitch-shell main .orders-page .orders-selection-bar > .orders-selection-actions:disabled { opacity: .5; }
+  .app-shell.stitch-shell main .orders-page .orders-selection-menu {
+    position: absolute; right: 20px; bottom: calc(100% + 8px); left: 20px; display: grid; gap: 2px; padding: 6px;
+    background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); box-shadow: var(--rv-shadow-lg);
+  }
+  .app-shell.stitch-shell main .orders-page .orders-selection-menu > button { min-height: 46px; padding: 0 12px; color: var(--rv-color-ink); background: transparent; border: 0; border-radius: var(--rv-radius-sm); font-size: 14px; font-weight: 600; text-align: left; }
+  .app-shell.stitch-shell main .orders-page .orders-selection-menu > button:hover:not(:disabled) { background: var(--rv-color-surface-soft); }
+  .app-shell.stitch-shell main .orders-page .orders-selection-menu-empty { margin: 0; padding: 12px; color: var(--rv-color-muted); font-size: 13px; }
+  /* The inline bulk toolbar is replaced by the selection bar while selecting. */
+  .app-shell.stitch-shell main .orders-page .orders-bulk-toolbar { display: none; }
+}
