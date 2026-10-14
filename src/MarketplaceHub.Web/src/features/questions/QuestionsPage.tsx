@@ -10,6 +10,7 @@ import { productImageFallbackUrls } from '../marketplace/product-image-lookups'
 import { questionDeadline } from './question-time'
 import { visibleQuestionConversation, type QuestionConversation } from './question-conversation'
 import { DateRangePicker } from '../../shared/DateRangePicker'
+import { MobileFilterShell } from '../../shared/MobileFilterShell'
 import { Modal } from '../../shared/components'
 import { MessageToast } from '../../shared/components/NoticeToast'
 import './question-answer-dialog.css'
@@ -157,7 +158,7 @@ export function QuestionsPage() {
       {tab !== 'TEMPLATES' && (
       <section className="rv-filter-bar rv-questions-filters" aria-label="Soru filtreleri">
         <Tabs className="rv-questions-status-tabs" ariaLabel="Soru durum filtresi" value={status} onChange={value => setStatus(value as QuestionStatus)} items={statusFilters.map((item, index) => ({ value: item.value, label: item.label, count: formatCount(statusCounts[index]?.data) }))} />
-        <div className="rv-filter-fields rv-questions-filter-grid"><label className="rv-questions-search">Metin ara<input value={search} onChange={event => setSearch(event.target.value)} placeholder="Soru, ürün, SKU veya sipariş no" /></label><label>Mağaza<select value={connectionId} onChange={event => setConnectionId(event.target.value)}><option value="ALL">Tüm mağazalar</option>{connectionNames.filter(item => tab === 'ORDER' || platform === 'ALL' || item.platformCode === platform).filter(item => tab !== 'ORDER' || item.platformCode === 'HEPSIBURADA').map(item => <option value={item.id} key={item.id}>{item.displayName}</option>)}</select></label><DateRangePicker from={dateFrom} to={dateTo} onChange={range => { setDateFrom(range.from); setDateTo(range.to) }} label="Tarih aralığı" /><label>Sıralama<select value={sort} onChange={event => setSort(event.target.value)}><option value="NEWEST">En yeni</option><option value="OLDEST">En eski</option><option value="UPDATED">Son güncellenen</option></select></label></div>
+        <MobileFilterShell className="rv-filter-fields rv-questions-filter-grid" activeCount={(search.trim() ? 1 : 0) + (connectionId !== 'ALL' ? 1 : 0) + (dateFrom || dateTo ? 1 : 0) + (sort !== 'NEWEST' ? 1 : 0)} onClear={() => { setSearch(''); setConnectionId('ALL'); setDateFrom(''); setDateTo(''); setSort('NEWEST') }}><label className="rv-questions-search" data-mfs-search>Metin ara<input value={search} onChange={event => setSearch(event.target.value)} placeholder="Soru, ürün, SKU veya sipariş no" /></label><label>Mağaza<select value={connectionId} onChange={event => setConnectionId(event.target.value)}><option value="ALL">Tüm mağazalar</option>{connectionNames.filter(item => tab === 'ORDER' || platform === 'ALL' || item.platformCode === platform).filter(item => tab !== 'ORDER' || item.platformCode === 'HEPSIBURADA').map(item => <option value={item.id} key={item.id}>{item.displayName}</option>)}</select></label><DateRangePicker from={dateFrom} to={dateTo} onChange={range => { setDateFrom(range.from); setDateTo(range.to) }} label="Tarih aralığı" /><label>Sıralama<select value={sort} onChange={event => setSort(event.target.value)}><option value="NEWEST">En yeni</option><option value="OLDEST">En eski</option><option value="UPDATED">Son güncellenen</option></select></label></MobileFilterShell>
       </section>
       )}
     </div>

@@ -245,3 +245,9 @@
 @media (max-width: 760px) {
   html body .app-shell.stitch-shell main .invoice-reference-head :is(.order-column-filter, .platform-multi-select-field) { display: none !important; }
 }
+
+/* Questions: the search caption is plain text in its label, so it is collapsed (not hidden) while the sheet is closed. */
+@media (max-width: 760px) {
+  html body .app-shell.stitch-shell main .mfs:not(.is-open) > .rv-questions-search { font-size: 0; }
+  html body .app-shell.stitch-shell main .mfs:not(.is-open) > .rv-questions-search > input { font-size: 14px; }
+}
