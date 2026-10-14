@@ -113,3 +113,20 @@
   .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-amount { padding-block: 12px; }
   .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-actions { grid-template-columns: repeat(2, minmax(0, 220px)); justify-content: end; }
 }
+
+/* Invoice detail window on phones: title and close button on the first row, the platform
+   refresh button on its own row below (the three used to share one row and squeeze the title). */
+@media (max-width: 760px) {
+  .invoice-detail-modal .invoice-detail-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 10px;
+  }
+  .invoice-detail-modal .invoice-detail-header > :first-child { grid-column: 1; grid-row: 1; min-width: 0; }
+  .invoice-detail-modal .invoice-detail-header-actions { display: contents; }
+  .invoice-detail-modal .invoice-detail-header-actions > .modal-close:not(.invoice-detail-platform-refresh) { grid-column: 2; grid-row: 1; }
+  .invoice-detail-modal .invoice-detail-header-actions > .invoice-detail-platform-refresh { grid-column: 1 / -1; grid-row: 2; justify-self: stretch; width: 100%; min-height: 40px; }
+  /* The four summary tiles two to a row. */
+  .invoice-detail-modal .invoice-detail-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+}
