@@ -497,13 +497,13 @@ export function InvoicesPage() {
     </div>
     {message && <NoticeToast key={`${messageKind}:${message}`} kind={messageKind} message={message} onClose={() => setMessageState('')} durationMs={messageKind === 'pending' ? undefined : messageKind === 'info' ? 7000 : 5500} />}
     <div className="invoice-reference-metrics">
-      <article className="invoice-metric-pending"><small>Fatura bekleyen</small><strong>{counts.unInvoiced}</strong><span>paket bazlı işlem</span></article>
-      <article className="invoice-metric-due"><small>Süresi yaklaşan</small><strong>{counts.dueSoon}</strong><span>teslimden 5 gün geçen</span></article>
-      <article className="invoice-metric-complete"><small>Faturalandırılan</small><strong>{counts.invoiced}</strong><span>ikinci fatura kapalı</span></article>
-      <article className="invoice-metric-total"><small>Toplam paket</small><strong>{pageData?.totalPackageCount ?? 0}</strong><span>fatura çalışma alanı</span></article>
+      <article className="invoice-metric-pending"><small>Fatura bekleyen</small><strong>{pageData ? counts.unInvoiced : '—'}</strong><span>paket bazlı işlem</span></article>
+      <article className="invoice-metric-due"><small>Süresi yaklaşan</small><strong>{pageData ? counts.dueSoon : '—'}</strong><span>teslimden 5 gün geçen</span></article>
+      <article className="invoice-metric-complete"><small>Faturalandırılan</small><strong>{pageData ? counts.invoiced : '—'}</strong><span>ikinci fatura kapalı</span></article>
+      <article className="invoice-metric-total"><small>Toplam paket</small><strong>{pageData ? pageData.totalPackageCount : '—'}</strong><span>fatura çalışma alanı</span></article>
     </div>
     <div className="invoice-reference-filter-shell">
-      <Tabs className="invoice-reference-tabs" ariaLabel="Fatura görünümleri" value={tab} onChange={selectTab} items={tabs.map(([value, label]) => ({ value, label, count: value === 'ALL' ? counts.all : value === 'UNINVOICED' ? counts.unInvoiced : value === 'INVOICED' ? counts.invoiced : value === 'DUE_SOON' ? counts.dueSoon : counts.hidden }))} />
+      <Tabs className="invoice-reference-tabs" ariaLabel="Fatura görünümleri" value={tab} onChange={selectTab} items={tabs.map(([value, label]) => ({ value, label, count: !pageData ? undefined : value === 'ALL' ? counts.all : value === 'UNINVOICED' ? counts.unInvoiced : value === 'INVOICED' ? counts.invoiced : value === 'DUE_SOON' ? counts.dueSoon : counts.hidden }))} />
       <section className="invoice-reference-filters" aria-label="Fatura filtreleri">
         <label className="invoice-reference-search"><span>Fatura Ara</span><span className="invoice-reference-search-control"><UiIcon name="search" size={18} /><input aria-label="Fatura Ara" placeholder="Sipariş, müşteri, fatura veya takip no ara…" value={search} onChange={event => setSearch(event.target.value)} /></span></label>
         <PlatformMultiSelect label="Platform" options={platformOptions} selectedCodes={selectedPlatforms} onChange={setSelectedPlatforms} />

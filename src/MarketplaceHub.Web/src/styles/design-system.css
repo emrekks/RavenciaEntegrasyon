@@ -12429,3 +12429,6 @@ h1, h2, h3, h4, .dashboard-summary-card-head > span:first-child, :is(.orders-con
 .app-shell.stitch-shell main .invoice-reference-filters > .invoice-reference-search > span:first-child { color: var(--rv-color-muted); font-size: 13px; font-weight: 600; }
 .rv-questions-panel { display: grid; gap: 14px; min-width: 0; padding: 16px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); box-shadow: var(--rv-shadow-sm); }
 .app-shell.stitch-shell main .rv-questions-page .rv-questions-panel .rv-questions-filters { padding: 0; background: none; border: 0; box-shadow: none; }
+
+/* Long model codes must wrap inside the product list instead of overflowing narrow cards. */
+.product-list-identity code.model-code-value { overflow-wrap: anywhere; word-break: break-word; }

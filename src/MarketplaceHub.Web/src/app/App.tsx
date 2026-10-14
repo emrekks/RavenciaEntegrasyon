@@ -33,7 +33,6 @@ function Shell({ me }: { me: Me }) {
   const navigate = useNavigate()
   const navigationSummary = useQuery({ queryKey: ['dashboard-bootstrap'], queryFn: () => hubApi<DashboardBootstrap>('/dashboard/bootstrap'), staleTime: 30_000, refetchOnWindowFocus: true })
   const orderSummary = useQuery({ queryKey: ['orders', 'summary', []], queryFn: () => hubApi<OrderNavigationSummary>('/orders/summary'), staleTime: 30_000, refetchOnMount: 'always', refetchOnWindowFocus: true, refetchInterval: 15_000, refetchIntervalInBackground: true })
-  const invoiceWorkspaceSummary = useQuery({ queryKey: ['invoice-workspace-summary'], queryFn: () => hubApi<{ dueSoonCount: number }>('/invoice-workspace/summary'), staleTime: 30_000, refetchOnWindowFocus: true })
   const questionWaitingSummary = useQuery({ queryKey: ['questions', 'navigation-waiting'], queryFn: () => hubApi<{ totalCount: number }>(questionWaitingSummaryPath), staleTime: 30_000, refetchInterval: 60_000, refetchOnWindowFocus: true })
   const [sidebarPinned, setSidebarPinned] = useState(() => localStorage.getItem('ravencia.sidebarPinned') !== 'false')
   const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false)
@@ -123,7 +122,6 @@ function Shell({ me }: { me: Me }) {
   function handleSidebarMouseLeave() { if (!sidebarPinned) setSidebarHoverExpanded(false) }
   const icon = (name: UiIconName) => <span className="nav-icon-slot" aria-hidden="true"><UiIcon className="nav-icon" name={name} size={22} /></span>
   const navigationCounts = navigationSummary.data?.metrics
-  const invoiceDueSoonCount = invoiceWorkspaceSummary.data?.dueSoonCount ?? navigationCounts?.dueSoonInvoices ?? 0
   const item = (to: string, iconName: UiIconName, label: string, end = false, count?: number, showZeroCount = false) => {
     const hasCount = typeof count === 'number' && (count > 0 || showZeroCount)
     const accessibleCount = typeof count === 'number' && count > 999 ? '999 üzeri' : count?.toLocaleString('tr-TR')
@@ -132,7 +130,7 @@ function Shell({ me }: { me: Me }) {
     return <NavLink to={to} end={end} aria-label={accessibleLabel}>{icon(iconName)}<span className="nav-label">{label}</span>{hasCount && <span className="nav-count" aria-hidden="true">{visibleCount}</span>}</NavLink>
   }
   const navigationGroups: Array<{ label: string; items: ReactNode[] }> = [
-    { label: 'Ana menü', items: [item('/dashboard', 'dashboard', 'Genel bakış', true), item('/products', 'products', 'Ürünler'), item('/orders', 'orders', 'Siparişler', false, orderNavigationCount(orderSummary.data), true), item('/returns', 'returns', 'İadeler', false, navigationCounts?.pendingReturns ?? 0, true), item('/invoices', 'invoice', 'Faturalar', false, invoiceDueSoonCount, true), item('/questions', 'products', 'Ürün soruları', false, questionWaitingSummary.data?.totalCount ?? 0, true), item('/integrations', 'connect', 'Entegrasyonlar'), item('/mappings/categories', 'layers', 'Eşleştirmeler'), item('/jobs', 'jobs', 'İşlem Takibi')] },
+    { label: 'Ana menü', items: [item('/dashboard', 'dashboard', 'Genel bakış', true), item('/products', 'products', 'Ürünler'), item('/orders', 'orders', 'Siparişler', false, orderNavigationCount(orderSummary.data)), item('/returns', 'returns', 'İadeler', false, navigationCounts?.pendingReturns), item('/invoices', 'invoice', 'Faturalar', false, navigationCounts?.uninvoicedInvoices), item('/questions', 'products', 'Ürün soruları', false, questionWaitingSummary.data?.totalCount), item('/integrations', 'connect', 'Entegrasyonlar'), item('/mappings/categories', 'layers', 'Eşleştirmeler'), item('/jobs', 'jobs', 'İşlem Takibi')] },
   ]
   const navigation = <>{navigationGroups.map(group => <div className="nav-group" key={group.label}>{group.items}</div>)}</>
   const quickSearchItems: Array<{ to: string; label: string; description: string; icon: UiIconName }> = [
