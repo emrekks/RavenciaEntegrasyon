@@ -57,7 +57,10 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     options.KnownIPNetworks.Add(System.Net.IPNetwork.Parse("172.30.10.0/24"));
 });
 builder.Services.AddSingleton<PostgresHealthCheck>();
-builder.Services.AddHealthChecks().AddCheck<PostgresHealthCheck>("postgres", tags: ["ready"]);
+builder.Services.AddSingleton<JobQueueHealthCheck>();
+builder.Services.AddHealthChecks()
+    .AddCheck<PostgresHealthCheck>("postgres", tags: ["ready"])
+    .AddCheck<JobQueueHealthCheck>("job-queue", tags: ["ready", "queues"]);
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -106,6 +109,17 @@ app.MapSettingsEndpoints();
 app.MapHub<OperationsHub>("/hubs/operations");
 app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
+// Monitoring endpoint: a stuck queue (Degraded) is reported as 503 here, while /health/ready stays 200.
+app.MapHealthChecks("/health/queues", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("queues"),
+    ResultStatusCodes =
+    {
+        [Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Healthy] = StatusCodes.Status200OK,
+        [Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Degraded] = StatusCodes.Status503ServiceUnavailable,
+        [Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Unhealthy] = StatusCodes.Status503ServiceUnavailable
+    }
+});
 app.Run();
 
 public partial class Program;
