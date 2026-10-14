@@ -8,6 +8,8 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimeProvider timeProvider) : IJobLeaseService
 {
+    private static readonly TimeSpan MaximumDeferralAge = TimeSpan.FromHours(24);
+
     public async Task<LeasedJob?> TryLeaseAsync(TimeSpan leaseDuration, int? maximumPriority, int? minimumPriority, CancellationToken cancellationToken, string? onlyJobType = null, Guid? onlyJobId = null, string[]? includedJobTypes = null, string[]? excludedJobTypes = null)
     {
         var now = timeProvider.GetUtcNow();
@@ -66,6 +68,26 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         if (job is null || job.Status != JobStatus.Leased || job.LeaseTokenHash is null || !hasher.Verify(leaseToken, job.LeaseTokenHash)) return false;
         var now = timeProvider.GetUtcNow();
         if (job.LeaseExpiresAt <= now) return false;
+
+        // A deferred job never ran, so its attempt is refunded. Jobs deferred for over a day fall
+        // back to normal attempt accounting so a permanently busy lock cannot loop forever.
+        if (result.Kind == JobCompletionKind.Retry && result.RefundAttempt && now - job.CreatedAt < MaximumDeferralAge)
+        {
+            var deferredAttempt = await db.JobAttempts.SingleOrDefaultAsync(x => x.JobId == jobId && x.AttemptNumber == job.AttemptCount, cancellationToken);
+            if (deferredAttempt is not null) db.JobAttempts.Remove(deferredAttempt);
+            job.AttemptCount = Math.Max(0, job.AttemptCount - 1);
+            job.Status = JobStatus.RetryScheduled;
+            job.AvailableAt = now.Add(result.RetryAfter is { } delay && delay > TimeSpan.Zero ? delay : TimeSpan.FromSeconds(30));
+            job.LastErrorCode = result.ErrorCode;
+            job.LastErrorSummary = result.ErrorSummary;
+            job.LeaseTokenHash = null;
+            job.LeaseExpiresAt = null;
+            job.HeartbeatAt = null;
+            job.Version++;
+            AddOutboxEvent(job, now);
+            await db.SaveChangesAsync(cancellationToken);
+            return true;
+        }
 
         var kind = result.Kind;
         if (kind == JobCompletionKind.Retry && job.AttemptCount >= job.MaxAttempts) kind = JobCompletionKind.Dead;

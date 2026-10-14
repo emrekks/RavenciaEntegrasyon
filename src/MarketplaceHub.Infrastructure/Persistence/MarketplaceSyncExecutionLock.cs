@@ -101,7 +101,7 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
         if (jobType is MarketplaceJobTypes.OrderInvoiceReconciliation
             or MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation
             or MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation)
-            return JobExecutionResult.Retry("ORDER_INVOICE_RECONCILIATION_BUSY",
+            return JobExecutionResult.Deferred("ORDER_INVOICE_RECONCILIATION_BUSY",
                 "Fatura durumu kontrolü, sipariş okuma işlemi tamamlanınca yeniden denenecek.", TimeSpan.FromMinutes(3));
 
         if (jobType is MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync)
@@ -112,13 +112,30 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
                 if (payload.RootElement.ValueKind == JsonValueKind.Object
                     && payload.RootElement.TryGetProperty("externalOrderId", out var id)
                     && id.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(id.GetString()))
-                    return JobExecutionResult.Retry("TARGETED_ORDER_SYNC_BUSY",
+                    return JobExecutionResult.Deferred("TARGETED_ORDER_SYNC_BUSY",
                         "Tekil sipariş yenilemesi mevcut sipariş işleminin tamamlanmasını bekliyor.", TimeSpan.FromSeconds(30));
             }
             catch (JsonException) { }
         }
-        return JobExecutionResult.Success();
+        // Only recurring read syncs may coalesce: the job already holding the lock performs the
+        // same read. Writes, actions, webhooks, imports and targeted requests carry their own work
+        // and must wait for the lock instead of being reported as done.
+        return IsCoalescableRead(jobType)
+            ? JobExecutionResult.Success()
+            : JobExecutionResult.Deferred("CONNECTION_OPERATION_BUSY",
+                "Bu bağlantıda aynı türde başka bir işlem sürüyor; işlem tamamlanınca otomatik çalıştırılacak.", TimeSpan.FromSeconds(30));
     }
+
+    internal static bool IsCoalescableRead(string jobType) => jobType is
+        MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync
+        or MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync or MarketplaceJobTypes.HepsiburadaOrderRecoverySync
+        or MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.ShopifyOrderStatusSync or MarketplaceJobTypes.HepsiburadaOrderStatusSync
+        or MarketplaceJobTypes.TrendyolOrderCargoInfoReconciliation
+        or MarketplaceJobTypes.OrderReconciliation or MarketplaceJobTypes.ShopifyOrderReconciliation
+        or MarketplaceJobTypes.ReturnSync or MarketplaceJobTypes.HepsiburadaReturnSync or MarketplaceJobTypes.ReturnStatusSync or MarketplaceJobTypes.ReturnReconciliation
+        or MarketplaceJobTypes.StockReconciliation
+        or MarketplaceJobTypes.ProductSync or MarketplaceJobTypes.ShopifyProductSync or MarketplaceJobTypes.HepsiburadaProductSync
+        or MarketplaceJobTypes.QuestionSync;
 
     private static long LockKey(Guid connectionId, string group)
     {

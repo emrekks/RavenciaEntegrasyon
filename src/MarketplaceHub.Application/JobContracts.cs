@@ -14,11 +14,15 @@ public sealed record JobExecutionResult(
     string? ErrorCode = null,
     string? ErrorSummary = null,
     TimeSpan? RetryAfter = null,
-    string? RemoteRequestId = null)
+    string? RemoteRequestId = null,
+    bool RefundAttempt = false)
 {
     public bool Succeeded => Kind == JobCompletionKind.Succeeded;
 
     public static JobExecutionResult Success() => new(JobCompletionKind.Succeeded);
+    /// <summary>The job could not start yet (e.g. its connection lock is busy); retry later without consuming an attempt.</summary>
+    public static JobExecutionResult Deferred(string code, string? summary = null, TimeSpan? retryAfter = null) =>
+        new(JobCompletionKind.Retry, code, Safe(summary), retryAfter, null, RefundAttempt: true);
     public static JobExecutionResult Retry(string code, string? summary = null, TimeSpan? retryAfter = null, string? remoteRequestId = null) =>
         new(JobCompletionKind.Retry, code, Safe(summary), retryAfter, remoteRequestId);
     public static JobExecutionResult Blocked(string code, string? summary = null, string? remoteRequestId = null) =>

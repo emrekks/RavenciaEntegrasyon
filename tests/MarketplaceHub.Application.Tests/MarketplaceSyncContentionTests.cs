@@ -43,6 +43,40 @@ public sealed class MarketplaceSyncContentionTests
     }
 
     [Theory]
+    [InlineData(MarketplaceJobTypes.ProductCreate)]
+    [InlineData(MarketplaceJobTypes.ProductUpdate)]
+    [InlineData(MarketplaceJobTypes.ProductArchive)]
+    [InlineData(MarketplaceJobTypes.ProductApprovalReconcile)]
+    [InlineData(MarketplaceJobTypes.PriceInventorySync)]
+    [InlineData(MarketplaceJobTypes.StockProjectionDispatch)]
+    [InlineData(MarketplaceJobTypes.ShipmentAction)]
+    [InlineData(MarketplaceJobTypes.ReturnAction)]
+    [InlineData(MarketplaceJobTypes.WebhookIngest)]
+    [InlineData(MarketplaceJobTypes.ReferenceSync)]
+    [InlineData(MarketplaceJobTypes.CatalogStructureImport)]
+    public void WorkCarryingJobsAreDeferredInsteadOfReportedAsDone(string jobType)
+    {
+        var result = MarketplaceSyncExecutionLock.ContentionResult(jobType, "{}");
+
+        Assert.Equal(JobCompletionKind.Retry, result.Kind);
+        Assert.False(result.Succeeded);
+        Assert.True(result.RefundAttempt);
+        Assert.Equal("CONNECTION_OPERATION_BUSY", result.ErrorCode);
+    }
+
+    [Theory]
+    [InlineData(MarketplaceJobTypes.OrderSync)]
+    [InlineData(MarketplaceJobTypes.OrderStatusSync)]
+    [InlineData(MarketplaceJobTypes.ReturnSync)]
+    [InlineData(MarketplaceJobTypes.StockReconciliation)]
+    [InlineData(MarketplaceJobTypes.ProductSync)]
+    [InlineData(MarketplaceJobTypes.QuestionSync)]
+    public void RecurringReadsCoalesceWithTheRunningSync(string jobType)
+    {
+        Assert.True(MarketplaceSyncExecutionLock.ContentionResult(jobType, "{}").Succeeded);
+    }
+
+    [Theory]
     [InlineData(MarketplaceJobTypes.OrderInvoiceReconciliation)]
     [InlineData(MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation)]
     [InlineData(MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation)]
