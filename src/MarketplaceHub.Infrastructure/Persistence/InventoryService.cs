@@ -173,8 +173,8 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
     // first controlled n11 write is made before the automatic flows are on.
     public async Task<ServiceResult<Guid>> EnqueuePriceInventorySyncAsync(Guid tenantId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken, string? stockCode = null)
     {
-        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "N11") && x.Status == "ACTIVE", cancellationToken);
-        if (connection is null) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Fiyat-stok gönderimi için ACTIVE Trendyol veya N11 bağlantısı gerekir.", 422);
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.PlatformCode == "TRENDYOL" && x.Status == "ACTIVE" || x.PlatformCode == "N11" && (x.Status == "ACTIVE" || x.Status == "VERIFIED")), cancellationToken);
+        if (connection is null) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Fiyat-stok gönderimi için aktif Trendyol veya aktif/doğrulanmış N11 bağlantısı gerekir.", 422);
         Guid? variantId = null;
         if (!string.IsNullOrWhiteSpace(stockCode))
         {
