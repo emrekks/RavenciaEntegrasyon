@@ -356,3 +356,15 @@ html body .mfs-sort-sheet [role="listbox"] > button.is-selected { color: var(--r
   html body .rv-auth-page .rv-auth-card { padding: 14px 18px; }
   html body .rv-auth-page .rv-auth-form { gap: 10px; }
 }
+
+/* Tab strips scroll inside themselves on phones; they never widen the page (grid/flex parents may shrink below their content). */
+@media (max-width: 760px) {
+  html body .app-shell.stitch-shell main .content > *,
+  html body .app-shell.stitch-shell main :is(.orders-reference-filter-shell, .returns-reference-filter-shell) > * { min-width: 0; max-width: 100%; }
+  html body .app-shell.stitch-shell main :is(.rv-tabs, .order-tabs, .return-reference-tabs, .invoice-reference-tabs, .jobs-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .rv-questions-tabs) {
+    box-sizing: border-box; width: 100%; max-width: 100%; min-width: 0; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  }
+  html body .app-shell.stitch-shell main :is(.rv-tabs, .order-tabs, .return-reference-tabs, .invoice-reference-tabs, .jobs-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .rv-questions-tabs)::-webkit-scrollbar { display: none; }
+  html body .app-shell.stitch-shell main :is(.rv-tabs, .order-tabs, .return-reference-tabs, .invoice-reference-tabs, .jobs-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .rv-questions-tabs) > * { flex: 0 0 auto; }
+  html body .app-shell.stitch-shell main { overflow-x: clip; }
+}
