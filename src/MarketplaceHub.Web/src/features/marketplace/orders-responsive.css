@@ -502,3 +502,26 @@ html body .order-detail-actions-list > button:hover:not(:disabled) { background:
   }
   .app-shell.stitch-shell main .orders-page .order-reference-meta > .order-reference-platform { grid-area: logo; justify-self: start; margin: 0 0 4px; }
 }
+
+.orders-selection-bar { display: none; }
+
+/* Phone selection mode: the "select all" row is gone, the list gap matches the other gaps, and a
+   bottom bar offers İptal / count / Tümünü Seç while every tapped order joins the selection. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-head { display: none; }
+  .app-shell.stitch-shell main .orders-page .orders-reference-filter-shell { margin-bottom: 10px; }
+  .app-shell.stitch-shell main .orders-page .orders-control-bar.mfs:not(.is-open) { margin-bottom: 0; }
+  .app-shell.stitch-shell main .orders-page .order-reference-table { margin-top: 0; }
+  .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-row { margin-bottom: 10px; }
+  .app-shell.stitch-shell main .orders-page .orders-selection-bar {
+    position: fixed; right: 0; bottom: 0; left: 0; z-index: calc(var(--rv-z-modal, 1000) - 1);
+    display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px;
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+    background: var(--rv-color-surface); border-top: 1px solid var(--rv-color-border-strong); box-shadow: 0 -8px 24px rgb(0 0 0 / 28%);
+  }
+  .app-shell.stitch-shell main .orders-page .orders-selection-bar > strong { text-align: center; font-size: 13px; font-weight: 600; }
+  .app-shell.stitch-shell main .orders-page .orders-selection-bar > button { min-height: 40px; padding: 0 12px; font-size: 14px; font-weight: 600; background: transparent; border: 0; }
+  .app-shell.stitch-shell main .orders-page .orders-selection-cancel { color: var(--rv-color-danger); }
+  .app-shell.stitch-shell main .orders-page .orders-selection-all { color: var(--rv-color-primary); }
+  .app-shell.stitch-shell main .orders-page .orders-bulk-toolbar { margin-bottom: 70px; }
+}
