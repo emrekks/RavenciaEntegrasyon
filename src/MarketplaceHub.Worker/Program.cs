@@ -12,6 +12,7 @@ AddWorkerAppSettings(builder);
 DependencyInjection.ApplyFileBackedSecrets(builder.Configuration);
 builder.Services.AddSerilog(configuration => configuration.WriteTo.Console(new RenderedCompactJsonFormatter()));
 builder.Services.AddMarketplaceInfrastructure(builder.Configuration);
+builder.Services.Configure<HostOptions>(options => options.ShutdownTimeout = TimeSpan.FromSeconds(40));
 builder.Services.AddHostedService<Worker>();
 var host = builder.Build();
 

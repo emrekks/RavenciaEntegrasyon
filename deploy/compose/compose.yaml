@@ -88,6 +88,8 @@ services:
   worker:
     <<: *app
     command: ["worker/MarketplaceHub.Worker.dll"]
+    # Give the worker time to hand running jobs back to the queue before SIGKILL.
+    stop_grace_period: 45s
     networks: [backend, egress]
     depends_on:
       migrate: { condition: service_completed_successfully }

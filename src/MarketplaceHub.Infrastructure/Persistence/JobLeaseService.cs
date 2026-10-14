@@ -35,6 +35,31 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         return new LeasedJob(job.Id, job.TenantId, job.ConnectionId, job.JobType, job.PayloadJson, job.CorrelationId, token);
     }
 
+    public async Task<bool> ReleaseAsync(Guid jobId, string leaseToken, CancellationToken cancellationToken)
+    {
+        var job = await db.IntegrationJobs.SingleOrDefaultAsync(x => x.Id == jobId, cancellationToken);
+        if (job is null || job.Status != JobStatus.Leased || job.LeaseTokenHash is null || !hasher.Verify(leaseToken, job.LeaseTokenHash)) return false;
+        var now = timeProvider.GetUtcNow();
+        if (job.LeaseExpiresAt <= now) return false;
+
+        // The interrupted run is refunded: its attempt row is dropped so the next lease
+        // re-runs the job under the same attempt number.
+        var attempt = await db.JobAttempts.SingleOrDefaultAsync(x => x.JobId == jobId && x.AttemptNumber == job.AttemptCount, cancellationToken);
+        if (attempt is not null) db.JobAttempts.Remove(attempt);
+        job.AttemptCount = Math.Max(0, job.AttemptCount - 1);
+        job.Status = JobStatus.RetryScheduled;
+        job.AvailableAt = now;
+        job.LastErrorCode = "WORKER_SHUTDOWN";
+        job.LastErrorSummary = "Worker yeniden başlatıldı; iş kuyruğa geri bırakıldı.";
+        job.LeaseTokenHash = null;
+        job.LeaseExpiresAt = null;
+        job.HeartbeatAt = null;
+        job.Version++;
+        AddOutboxEvent(job, now);
+        await db.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
     public async Task<bool> CompleteAsync(Guid jobId, string leaseToken, JobExecutionResult result, CancellationToken cancellationToken)
     {
         var job = await db.IntegrationJobs.SingleOrDefaultAsync(x => x.Id == jobId, cancellationToken);

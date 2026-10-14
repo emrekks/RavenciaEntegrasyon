@@ -57,7 +57,8 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             RunLeaseLaneAsync("hepsiburada-orders", hotPriorityCeiling, 0, stoppingToken, includedJobTypes: HepsiburadaOrderJobTypes),
             RunLeaseLaneAsync("initial-data-sync", -1, -1, stoppingToken),
             RunLeaseLaneAsync("background", null, hotPriorityCeiling + 1, stoppingToken),
-            RunHealthWatchdogAsync(stoppingToken)
+            RunHealthWatchdogAsync(stoppingToken),
+            RunLeaseReaperAsync(stoppingToken)
         };
         if (schedulerEnabled) loops.Add(RunSchedulerAsync(stoppingToken));
         await Task.WhenAll(loops);
@@ -204,6 +205,12 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
                 ?? 10;
             execution.CancelAfter(TimeSpan.FromMinutes(Math.Clamp(configuredMinutes, 1, 60)));
         }
+        else
+        {
+            // Every other job type gets a generous ceiling so a hung call cannot hold a lane forever.
+            var configuredMinutes = configuration.GetValue<double?>("Worker:DefaultJobTimeoutMinutes") ?? 60;
+            execution.CancelAfter(TimeSpan.FromMinutes(Math.Clamp(configuredMinutes, 5, 180)));
+        }
         using var heartbeatStop = StopLeaseHeartbeatOnExecutionTimeout(job.JobType)
             ? CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, execution.Token)
             : CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
@@ -235,19 +242,47 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         }
 
         var leaseHeld = await heartbeat;
-        if (!leaseHeld || result is null || stoppingToken.IsCancellationRequested)
+        // Cancellation during shutdown can also surface as a transient Retry (e.g. a cancelled HTTP/DB call).
+        if (leaseHeld && stoppingToken.IsCancellationRequested && (result is null || result.Kind == JobCompletionKind.Retry))
+        {
+            await ReleaseOnShutdownAsync(job);
+            return;
+        }
+        if (!leaseHeld || result is null)
         {
             logger.LogWarning("Job {JobId} stopped without completion because its lease could not be confirmed", job.Id);
             return;
         }
 
+        // A job that finished just as shutdown began still records its real outcome.
+        using var completionTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         await using var completionScope = scopeFactory.CreateAsyncScope();
         var jobs = completionScope.ServiceProvider.GetRequiredService<IJobLeaseService>();
-        var completed = await jobs.CompleteAsync(job.Id, job.LeaseToken, result, stoppingToken);
+        var completed = await jobs.CompleteAsync(job.Id, job.LeaseToken, result, completionTimeout.Token);
         if (!completed)
             logger.LogError("Job {JobId} completion was fenced because the lease owner or expiry no longer matched", job.Id);
         else
             logger.LogInformation("Job {JobId} ({JobType}) completed with {CompletionKind}; error {ErrorCode}", job.Id, job.JobType, result.Kind, result.ErrorCode ?? "none");
+    }
+
+    // Shutdown cancels the running job; hand it straight back to the queue instead of waiting
+    // for lease expiry, so a deploy neither delays it by minutes nor burns one of its attempts.
+    private async Task ReleaseOnShutdownAsync(LeasedJob job)
+    {
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var jobs = scope.ServiceProvider.GetRequiredService<IJobLeaseService>();
+            if (await jobs.ReleaseAsync(job.Id, job.LeaseToken, timeout.Token))
+                logger.LogInformation("Job {JobId} ({JobType}) released back to the queue on shutdown", job.Id, job.JobType);
+            else
+                logger.LogWarning("Job {JobId} could not be released on shutdown; lease expiry will recover it", job.Id);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Job {JobId} release on shutdown failed; lease expiry will recover it", job.Id);
+        }
     }
 
     internal static bool IsOrderReadSyncJob(string jobType) => Array.IndexOf(OrderReadSyncJobTypes, jobType) >= 0;
@@ -292,6 +327,30 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         }
 
         return true;
+    }
+
+    // The hot lane only reaps between its own jobs; a long hot job would otherwise leave
+    // expired leases (e.g. from a crashed run) stuck until it finishes.
+    private async Task RunLeaseReaperAsync(CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                try
+                {
+                    await using var scope = scopeFactory.CreateAsyncScope();
+                    var reaped = await scope.ServiceProvider.GetRequiredService<IJobLeaseService>().ReapExpiredAsync(cancellationToken);
+                    if (reaped > 0) logger.LogWarning("Lease reaper recovered {Count} expired job leases", reaped);
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    logger.LogError(exception, "Lease reaper pass failed");
+                }
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
     }
 
     private async Task RunHealthWatchdogAsync(CancellationToken cancellationToken)
@@ -339,7 +398,11 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
     {
         TimeoutException or HttpRequestException or IOException or System.Data.Common.DbException =>
             JobExecutionResult.Retry("TRANSIENT_EXECUTION_FAILURE", "Geçici altyapı hatası nedeniyle işlem yeniden denenecek."),
-        JsonException or ArgumentException or InvalidOperationException =>
+        // InvalidOperationException is also thrown by runtime/EF faults, not only by bad job data,
+        // so it is surfaced for manual review instead of being silently blocked.
+        InvalidOperationException =>
+            JobExecutionResult.ManualReview("UNEXPECTED_JOB_STATE", $"İşlem beklenmeyen bir durumla karşılaştı ve incelenmeli. ({exception.GetType().Name}: {exception.Message.ReplaceLineEndings(" ")})"),
+        JsonException or ArgumentException =>
             JobExecutionResult.Blocked("INVALID_JOB_STATE", $"İşlem verisi veya mevcut durum doğrulaması başarısız oldu. ({exception.GetType().Name}: {exception.Message.ReplaceLineEndings(" ")})"),
         _ => JobExecutionResult.Retry("UNHANDLED_EXECUTION_FAILURE", "Beklenmeyen işlem hatası otomatik deneme sınırı içinde yeniden denenecek.")
     };
