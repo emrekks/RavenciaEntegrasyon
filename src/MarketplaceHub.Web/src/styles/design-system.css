@@ -12570,3 +12570,9 @@ h1, h2, h3, h4, .dashboard-summary-card-head > span:first-child, :is(.orders-con
     box-shadow: var(--rv-shadow-lg);
   }
 }
+
+/* Title Case everywhere a label is a title: buttons, tabs, menu items, dropdown options, navigation
+   and card headings start every word with a capital (lang="tr", so i becomes İ and ı becomes I).
+   Data that must show exactly as stored (codes, product images, prices, option values) is excluded. */
+:is(button, [role="tab"], [role="menuitem"], [role="menuitemradio"], [role="option"], summary, legend, option, select, .nav-label, .reference-integration-private-state strong, .attribute-variant-action > div > strong, .editor-section-title h2):not(.technical-text, code, kbd, samp, .product-image-button, .clickable-cell, .order-number-copy, .option-chip, .reference-menu-trigger) { text-transform: capitalize; }
+:is(button, select, option) :is(code, .technical-text, kbd) { text-transform: none; }
