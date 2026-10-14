@@ -105,6 +105,7 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         {
             valueMapping.Source = MappingSources.Manual;
             await MappingTemplateStore.RecordValueAsync(db, tenantId, command.ConnectionId, scope, localId, externalId, mapping.VerifiedAt.Value, cancellationToken);
+            await MappingTemplateFiller.ClearDismissalAsync(db, tenantId, command.ConnectionId, MappingTemplateFiller.ValueKind, scope, localId, cancellationToken);
         }
         if (mappingType == "attributes")
         {
@@ -114,6 +115,7 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
             {
                 attributeMapping.Source = MappingSources.Manual;
                 await MappingTemplateStore.RecordAttributeAsync(db, tenantId, command.ConnectionId, externalId, localId, role, mapping.VerifiedAt.Value, cancellationToken);
+                await MappingTemplateFiller.ClearDismissalAsync(db, tenantId, command.ConnectionId, MappingTemplateFiller.AttributeKind, scope, localId, cancellationToken);
             }
 
             var mappedCategoryId = await db.CategoryMappings.AsNoTracking()
@@ -158,6 +160,13 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
             }
         }
         await db.SaveChangesAsync(cancellationToken);
+        // A newly mapped category inherits the attribute and value decisions made for the other
+        // categories of this connection (see MappingTemplateFiller).
+        if (mappingType == "categories")
+        {
+            await MappingTemplateFiller.FillCategoryAsync(db, tenantId, command.ConnectionId, externalId, timeProvider.GetUtcNow(), cancellationToken);
+            await db.SaveChangesAsync(cancellationToken);
+        }
         return ServiceResult<CatalogMappingView>.Ok(Map(mapping));
     }
 
@@ -173,6 +182,11 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         if (mapping is null) return NotFound<bool>();
         if (mapping.Version != expectedVersion) return ServiceResult<bool>.Fail("CONCURRENCY_CONFLICT", $"Kayıt sürümü değişti; güncel sürüm v{mapping.Version}.", 412);
         db.Remove(mapping);
+        // The user removed it from this category: the template fill must not bring it back here.
+        if (mapping is AttributeValueMapping)
+            await MappingTemplateFiller.DismissAsync(db, tenantId, connectionId, MappingTemplateFiller.ValueKind, mapping.ScopeExternalId, mapping.LocalId, timeProvider.GetUtcNow(), cancellationToken);
+        else if (mapping is AttributeMapping)
+            await MappingTemplateFiller.DismissAsync(db, tenantId, connectionId, MappingTemplateFiller.AttributeKind, mapping.ScopeExternalId, mapping.LocalId, timeProvider.GetUtcNow(), cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         if (mapping is AttributeValueMapping)
             await MappingTemplateStore.ForgetValueAsync(db, tenantId, connectionId, mapping.ScopeExternalId, mapping.LocalId, mapping.ExternalId, mapping.Id, cancellationToken);

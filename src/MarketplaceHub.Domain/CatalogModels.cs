@@ -279,6 +279,20 @@ public sealed class AttributeMappingTemplate
     public long Version { get; set; } = 1;
 }
 
+// A mapping the user removed from one category: the template fill must not bring it back there.
+// Kind is ATTRIBUTE (scope = category, LocalId = panel attribute) or VALUE (scope =
+// "{category}/{attribute}", LocalId = panel value). Saving that mapping again clears it.
+public sealed class MappingTemplateDismissal
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid ConnectionId { get; set; }
+    public required string Kind { get; set; }
+    public required string ScopeExternalId { get; set; }
+    public Guid LocalId { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
 // Connection-wide value decision: in marketplace attribute ExternalAttributeId, panel value
 // LocalValueId is marketplace value ExternalValueId (e.g. Renk 47 / Siyah -> 1001).
 public sealed class AttributeValueMappingTemplate

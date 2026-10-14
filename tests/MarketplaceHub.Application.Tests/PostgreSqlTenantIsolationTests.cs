@@ -2888,6 +2888,62 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task MappingANewCategory_FillsItFromTheTemplatesButRespectsTheUser()
+    {
+        var tenant = NewTenant("mapping-template-fill");
+        var connection = NewQuestionConnection(tenant);
+        var colourId = Guid.CreateVersion7();
+        var blackId = Guid.CreateVersion7();
+        var whiteId = Guid.CreateVersion7();
+        var blouseId = Guid.CreateVersion7();
+        var colour = new AttributeDefinition { Id = colourId, TenantId = tenant.Id, Code = $"COLOUR-{Guid.NewGuid():N}", Name = "Renk", DataType = AttributeDataType.Text, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 };
+        var black = new AttributeValue { Id = blackId, TenantId = tenant.Id, AttributeId = colourId, Value = "Siyah", NormalizedValue = "SİYAH", SortOrder = 0, IsActive = true, Version = 1 };
+        var white = new AttributeValue { Id = whiteId, TenantId = tenant.Id, AttributeId = colourId, Value = "Beyaz", NormalizedValue = "BEYAZ", SortOrder = 1, IsActive = true, Version = 1 };
+        var blouse = new Category { Id = blouseId, TenantId = tenant.Id, Name = "Bluz", NormalizedName = "BLUZ", Path = "Bluz", IsLeaf = true, IsActive = true, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 };
+        var categories = NewReferenceSnapshot(tenant.Id, connection.Id, "CATEGORIES", "", fixture.Now, "categories");
+        var blouseAttributes = NewReferenceSnapshot(tenant.Id, connection.Id, "CATEGORY_ATTRIBUTES", "200", fixture.Now, "blouse-attributes");
+        var blouseColours = NewReferenceSnapshot(tenant.Id, connection.Id, "ATTRIBUTE_VALUES", "200/12", fixture.Now, "blouse-colours");
+
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.PlatformConnections.Add(connection);
+        db.AttributeDefinitions.Add(colour);
+        db.AttributeValues.AddRange(black, white);
+        db.Categories.Add(blouse);
+        db.ReferenceSnapshots.AddRange(categories, blouseAttributes, blouseColours);
+        db.ReferenceItems.AddRange(
+            NewReferenceItem(tenant.Id, connection.Id, categories.Id, "CATEGORIES", "200", "Bluz", isLeaf: true),
+            NewReferenceItem(tenant.Id, connection.Id, blouseAttributes.Id, "CATEGORY_ATTRIBUTES", "12", "Renk", isRequired: true),
+            // Bluz offers Siyah (13) but not the Beyaz value (15) chosen in T-shirt.
+            NewReferenceItem(tenant.Id, connection.Id, blouseColours.Id, "ATTRIBUTE_VALUES", "13", "Siyah"));
+        // Decisions made earlier in T-shirt: Panel Renk = Trendyol 12, Siyah = 13, Beyaz = 15.
+        db.AttributeMappingTemplates.Add(new AttributeMappingTemplate { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ExternalAttributeId = "12", LocalAttributeId = colourId, Role = "ATTRIBUTE", UpdatedAt = fixture.Now });
+        db.AttributeValueMappingTemplates.AddRange(
+            new AttributeValueMappingTemplate { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ExternalAttributeId = "12", LocalValueId = blackId, ExternalValueId = "13", UpdatedAt = fixture.Now },
+            new AttributeValueMappingTemplate { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ExternalAttributeId = "12", LocalValueId = whiteId, ExternalValueId = "15", UpdatedAt = fixture.Now });
+        await db.SaveChangesAsync();
+        var service = new ReferenceDataService(db, fixture.TimeProvider);
+
+        var mapped = await service.UpsertMappingAsync(tenant.Id, "categories", blouseId, null, new UpsertCatalogMappingCommand(connection.Id, categories.Id, "200", "VERIFIED"), CancellationToken.None);
+        Assert.True(mapped.Succeeded, mapped.Error?.Message);
+
+        var attributeMapping = await db.AttributeMappings.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ScopeExternalId == "200");
+        Assert.Equal((colourId, "12", MappingSources.Template), (attributeMapping.LocalId, attributeMapping.ExternalId, attributeMapping.Source));
+        var requirement = await db.CategoryAttributeRequirements.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.CategoryId == blouseId);
+        Assert.True(requirement.IsRequired);
+        var valueMapping = await db.AttributeValueMappings.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ScopeExternalId == "200/12");
+        Assert.Equal((blackId, "13", MappingSources.Template), (valueMapping.LocalId, valueMapping.ExternalId, valueMapping.Source));
+
+        // The user removes Siyah from Bluz: a later fill (e.g. the next reference sync) leaves it out.
+        Assert.True((await service.DeleteMappingAsync(tenant.Id, "attribute-values", blackId, connection.Id, "200/12", "13", valueMapping.Version, CancellationToken.None)).Succeeded);
+        Assert.Equal(0, await MappingTemplateFiller.FillValuesAsync(db, tenant.Id, connection.Id, "200/12", fixture.Now, CancellationToken.None));
+        Assert.False(await db.AttributeValueMappings.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.ScopeExternalId == "200/12"));
+
+        await transaction.RollbackAsync();
+    }
+
+    [PostgreSqlFact]
     public async Task ReferenceSync_RevalidatesUnchangedMappingsButKeepsChangedContractsStale()
     {
         var tenant = NewTenant("reference-revalidation");

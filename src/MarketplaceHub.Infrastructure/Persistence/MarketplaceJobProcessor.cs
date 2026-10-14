@@ -1474,6 +1474,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         }
         await db.SaveChangesAsync(cancellationToken);
         await RevalidateMappingsForCurrentSnapshotAsync(tenantId, connectionId, resourceType, scope, snapshot, now, cancellationToken);
+        // A category's attribute or value list just arrived: fill it from the connection-wide templates.
+        if (resourceType == "CATEGORY_ATTRIBUTES")
+            await MappingTemplateFiller.FillCategoryAsync(db, tenantId, connectionId, scope, now, cancellationToken);
+        else if (resourceType == "ATTRIBUTE_VALUES")
+            await MappingTemplateFiller.FillValuesAsync(db, tenantId, connectionId, scope, now, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         if (transaction is not null) await transaction.CommitAsync(cancellationToken);
         return true;

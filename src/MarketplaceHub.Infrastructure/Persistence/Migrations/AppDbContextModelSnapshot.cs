@@ -2738,6 +2738,42 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.ToTable("manual_order_invoice_documents", "billing");
                 });
 
+            modelBuilder.Entity("MarketplaceHub.Domain.MappingTemplateDismissal", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid>("LocalId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ScopeExternalId")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ConnectionId", "Kind", "ScopeExternalId", "LocalId")
+                        .IsUnique();
+
+                    b.ToTable("mapping_template_dismissals", "catalog");
+                });
+
             modelBuilder.Entity("MarketplaceHub.Domain.MarketplaceDelivery", b =>
                 {
                     b.Property<Guid>("Id")
