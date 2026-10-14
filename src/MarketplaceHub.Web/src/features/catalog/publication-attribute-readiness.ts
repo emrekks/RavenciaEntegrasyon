@@ -107,6 +107,19 @@ export function classifyPublicationAttributeIssues(input: {
       continue
     }
 
+    // The same panel attribute can also feed Web Color: every selected value needs its own Web Color value mapping.
+    for (const webColorMapping of mappings.filter(candidate => candidate !== mapping && isWebColorAttributeName(remoteById.get(candidate.externalId)?.name ?? ''))) {
+      const webColorRemote = remoteById.get(webColorMapping.externalId)
+      const webColorReferences = input.valueReferencesByAttribute[webColorMapping.externalId]
+      for (const value of selected.values) {
+        const webColorValue = webColorReferences?.mappings.find(candidate =>
+          candidate.localId === value.id && candidate.status === 'VERIFIED' && candidate.snapshotId === webColorReferences.snapshotId
+        )
+        const activeWebColor = webColorValue && webColorReferences.items.some(item => item.externalId === webColorValue.externalId && item.isActive)
+        if (!activeWebColor) addIssue(webColorRemote?.isRequired === true || required, { attribute: webColorRemote?.name ?? 'Web Color', detail: `“${value.label || 'Seçili değer'}” için güncel ${platformName} Web Color değer eşlemesi yok.` })
+      }
+    }
+
     if (selected.hasCustomValue && remote.allowsCustomValue !== true) {
       addIssue(required, { attribute: selected.name, detail: `${platformName} bu özellik için serbest değeri kabul etmiyor.` })
     }

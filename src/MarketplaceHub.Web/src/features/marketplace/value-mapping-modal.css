@@ -21,8 +21,8 @@
 .panel-value-multi-menu > button.is-elsewhere > em { color: var(--rv-color-muted); background: color-mix(in srgb, var(--rv-color-ink) 8%, transparent); }
 
 /* The backup tools of the mapping page sit in one quiet group instead of a loud pill above two buttons. */
-.mapping-reference-heading .mapping-reference-heading-actions { display: flex; flex-wrap: nowrap; align-items: center; justify-content: flex-end; gap: 8px; padding: 4px 4px 4px 14px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 10px; }
-.mapping-reference-heading .mapping-reference-heading-actions > span { min-height: 0; padding: 0; color: var(--rv-color-muted); background: none; border: 0; border-radius: 0; font-size: 13px; font-weight: 600; letter-spacing: 0; text-transform: none; white-space: nowrap; }
+.mapping-reference-heading .mapping-reference-heading-actions { display: flex; flex-direction: row; flex-wrap: nowrap; align-items: center; justify-content: flex-end; gap: 10px; padding: 0; background: none; border: 0; border-radius: 0; }
+.mapping-reference-heading .mapping-reference-heading-actions > span { min-height: 0; padding: 0; color: var(--rv-color-primary); background: none; border: 0; border-radius: 0; font-size: 13px; font-weight: 600; letter-spacing: 0; text-transform: none; white-space: nowrap; }
 .mapping-reference-heading .mapping-transfer-actions { flex-wrap: nowrap; }
 .panel-value-multi-menu > button:disabled { opacity: .55; cursor: not-allowed; }
 .panel-value-multi-menu > button:disabled:hover { background: transparent; }

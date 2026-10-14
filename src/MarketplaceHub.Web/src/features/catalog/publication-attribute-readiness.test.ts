@@ -108,7 +108,7 @@ describe('publication attribute readiness', () => {
     expect(result.requiredIssues).toEqual([])
   })
 
-  it('prefers the mapped Renk attribute over Web Color for panel color values', () => {
+  it('uses the mapped Renk attribute for the colour but still asks for the Web Color value mapping', () => {
     const result = classifyPublicationAttributeIssues({
       ...baseInput,
       selectedAttributes: [{ attributeId: 'local-color', name: 'Renk', isRequired: true, values: [{ id: 'emerald', label: 'Zümrüt' }], hasCustomValue: false }],
@@ -126,7 +126,7 @@ describe('publication attribute readiness', () => {
       }
     })
 
-    expect(result.requiredIssues).toEqual([])
+    expect(result.requiredIssues).toEqual([{ attribute: 'Web Color', detail: '“Zümrüt” için güncel Trendyol Web Color değer eşlemesi yok.' }])
   })
 
   it('still requires an exact value mapping for Web Color values', () => {
@@ -151,5 +151,23 @@ describe('publication attribute readiness', () => {
     })
 
     expect(result).toEqual({ requiredIssues: [], optionalWarnings: [] })
+  })
+
+  it('blocks a required Web Color that has no value mapping for a selected colour', () => {
+    const result = classifyPublicationAttributeIssues({
+      selectedAttributes: [{ attributeId: 'local-colour', name: 'Renk', isRequired: false, values: [{ id: 'brown', label: 'Açık Kahve' }], hasCustomValue: false }],
+      remoteAttributes: [
+        { externalId: 'remote-colour', name: 'Renk', isActive: true, isRequired: true, allowsCustomValue: true },
+        { externalId: 'remote-webcolor', name: 'Web Color', isActive: true, isRequired: true, allowsCustomValue: false }
+      ],
+      attributeSnapshotId: 'attributes-v2',
+      attributeMappings: [
+        { localId: 'local-colour', externalId: 'remote-colour', snapshotId: 'attributes-v2', status: 'VERIFIED' },
+        { localId: 'local-colour', externalId: 'remote-webcolor', snapshotId: 'attributes-v2', status: 'VERIFIED' }
+      ],
+      valueReferencesByAttribute: { 'remote-webcolor': { snapshotId: 'values-v2', items: [{ externalId: 'remote-brown', isActive: true }], mappings: [] } }
+    })
+
+    expect(result.requiredIssues).toEqual([{ attribute: 'Web Color', detail: '“Açık Kahve” için güncel Trendyol Web Color değer eşlemesi yok.' }])
   })
 })
