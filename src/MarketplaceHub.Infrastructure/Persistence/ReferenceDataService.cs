@@ -104,7 +104,8 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         if (mapping is AttributeValueMapping valueMapping)
         {
             valueMapping.Source = MappingSources.Manual;
-            await MappingTemplateStore.RecordValueAsync(db, tenantId, command.ConnectionId, scope, localId, externalId, mapping.VerifiedAt.Value, cancellationToken);
+            if (command.UpdateTemplate)
+                await MappingTemplateStore.RecordValueAsync(db, tenantId, command.ConnectionId, scope, localId, externalId, mapping.VerifiedAt.Value, cancellationToken);
             await MappingTemplateFiller.ClearDismissalAsync(db, tenantId, command.ConnectionId, MappingTemplateFiller.ValueKind, scope, localId, cancellationToken);
         }
         if (mappingType == "attributes")
@@ -114,7 +115,8 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
             if (mapping is AttributeMapping attributeMapping)
             {
                 attributeMapping.Source = MappingSources.Manual;
-                await MappingTemplateStore.RecordAttributeAsync(db, tenantId, command.ConnectionId, externalId, localId, role, mapping.VerifiedAt.Value, cancellationToken);
+                if (command.UpdateTemplate)
+                    await MappingTemplateStore.RecordAttributeAsync(db, tenantId, command.ConnectionId, externalId, localId, role, mapping.VerifiedAt.Value, cancellationToken);
                 await MappingTemplateFiller.ClearDismissalAsync(db, tenantId, command.ConnectionId, MappingTemplateFiller.AttributeKind, scope, localId, cancellationToken);
             }
 
@@ -225,7 +227,8 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
     private Task<bool> VisibleConnectionAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) =>
         db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.Status == "ACTIVE" || x.Status == "VERIFIED"), cancellationToken);
 
-    private static CatalogMappingView Map(CatalogMapping value, int? missingRequiredAttributeCount = null) => new(value.Id, value.ConnectionId, value.SnapshotId, value.LocalId, value.ScopeExternalId, value.ExternalId, value.Status, value.VerifiedAt, value.Version, missingRequiredAttributeCount);
+    private static CatalogMappingView Map(CatalogMapping value, int? missingRequiredAttributeCount = null) => new(value.Id, value.ConnectionId, value.SnapshotId, value.LocalId, value.ScopeExternalId, value.ExternalId, value.Status, value.VerifiedAt, value.Version, missingRequiredAttributeCount,
+        value switch { AttributeValueMapping valueMapping => valueMapping.Source, AttributeMapping attributeMapping => attributeMapping.Source, _ => null });
     private static string NormalizeRequirementRole(string? value) => string.Equals(value?.Trim(), "OPTION", StringComparison.OrdinalIgnoreCase) ? "OPTION" : string.Equals(value?.Trim(), "ATTRIBUTE", StringComparison.OrdinalIgnoreCase) ? "ATTRIBUTE" : value?.Trim().ToUpperInvariant() ?? "";
     private static ServiceResult<T> NotFound<T>() => ServiceResult<T>.Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", 404);
 }

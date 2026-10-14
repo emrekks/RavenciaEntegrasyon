@@ -26,7 +26,7 @@ import { orderStatusTabs, resolveOrderStatusTab } from './order-status-tabs'
 import { onHoldOrderStatusText, overdueShipmentDays } from './order-delivery-presentation'
 import { code128Bars, loadPrintedShippingLabels, markShippingLabelPrinted, printedShippingLabelKey, shippingLabelFields, useShippingLabelSettings, type ShippingLabelBlock, type ShippingLabelField, type ShippingLabelFormat, type ShippingLabelSettings } from '../shipping'
 import { formatPanelColorValue, usesCustomPanelColorValue } from './color-value-format'
-import { attributeValueMappingNeedsSave, normalizeReferenceValueLabel, planDirectReferenceValues, planMissingReferencePanelValues, planReferencePanelMappings, togglePanelValueReferenceSelection, updatePanelValueReferenceSelection, valueMappingRowClassName } from './attribute-value-mapping'
+import { attributeValueMappingNeedsSave, isTemplateFilledRow, normalizeReferenceValueLabel, planDirectReferenceValues, planMissingReferencePanelValues, planReferencePanelMappings, togglePanelValueReferenceSelection, updatePanelValueReferenceSelection, valueMappingRowClassName } from './attribute-value-mapping'
 import { isReferenceSyncJobTerminal, shouldAutoSyncHepsiburadaValues } from './reference-value-sync'
 import { activeMappingConnectionsForPlatform, mappingPlatformDefinitions, mappingPlatformLabel, type MappingPlatformCode } from './mapping-platforms'
 import { resolveAttributeMappingRole } from './mapping-attribute-role'
@@ -175,7 +175,7 @@ type CategoryRequirementView = { attributeId: string; isRequired: boolean; allow
 type AttributeRequirementCommand = { attributeId: string; isRequired: boolean; allowsCustomValue: boolean; displayOrder: number; role: 'ATTRIBUTE' | 'OPTION' }
 type ReferenceItem = { externalId: string; parentExternalId: string | null; name: string; path: string; depth: number; isLeaf: boolean; isActive: boolean; isRequired: boolean | null; allowsCustomValue: boolean | null; allowsMultipleValues: boolean | null }
 type ReferenceData = { snapshotId: string; resourceType: string; fetchedAt: string; items: ReferenceItem[] }
-type CatalogMapping = { id: string; connectionId: string; snapshotId: string; localId: string; scopeExternalId: string; externalId: string; status: string; verifiedAt: string | null; version: number; missingRequiredAttributeCount?: number | null }
+type CatalogMapping = { id: string; connectionId: string; snapshotId: string; localId: string; scopeExternalId: string; externalId: string; status: string; verifiedAt: string | null; version: number; missingRequiredAttributeCount?: number | null; source?: string | null }
 type MappingTransferBundle = { format: 'RAVENCIA_MAPPING_BUNDLE'; version: 1; exportedAt: string; categories: LocalCategory[]; attributes: LocalAttribute[]; categoryMappings: CatalogMapping[]; attributeMappings: CatalogMapping[]; attributeValueMappings: CatalogMapping[] }
 type BrandMappingTransferBundle = { format: 'RAVENCIA_BRAND_MAPPING_BUNDLE'; version: 1; exportedAt: string; brands: LocalBrand[]; mappings: CatalogMapping[] }
 type MappingTransferScope = 'categories' | 'options' | 'attributes' | 'mappings'
@@ -2785,7 +2785,7 @@ function WebColorValueMappingEditor({ connectionId, categoryScope, attribute, ex
 const autoQueuedHepsiburadaValueSyncs = new Set<string>()
 
 function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, externalAttributeId, platformLabel = 'Trendyol', customPanelColorValues = false, marketplaceAllowsFreeText = false, autoSyncMissingValues = false, allowReusablePanelValues = false, required = false }: { connectionId: string; categoryScope: string; attribute: LocalAttribute; externalAttributeId: string; platformLabel?: string; customPanelColorValues?: boolean; marketplaceAllowsFreeText?: boolean; autoSyncMissingValues?: boolean; allowReusablePanelValues?: boolean; required?: boolean }) {
-  const client = useQueryClient(); const [notice, setNotice] = useState(''); const [selections, setSelections] = useState<Record<string, string[]>>({}); const [unmatchedOpen, setUnmatchedOpen] = useState(false); const [selectionsReady, setSelectionsReady] = useState(false); const [initializedValueScope, setInitializedValueScope] = useState(''); const [saving, setSaving] = useState(false); const [autoMapping, setAutoMapping] = useState(false); const [quickValueOpen, setQuickValueOpen] = useState(false); const [quickValueDraft, setQuickValueDraft] = useState(''); const [quickValueSaving, setQuickValueSaving] = useState(false); const [editingQuickValue, setEditingQuickValue] = useState<{ id: string; value: string } | null>(null); const [syncJobId, setSyncJobId] = useState<string | null>(null); const handledSyncJobs = useRef(new Set<string>()); const valueScope = `${categoryScope}/${externalAttributeId}`
+  const client = useQueryClient(); const [notice, setNotice] = useState(''); const [selections, setSelections] = useState<Record<string, string[]>>({}); const [unmatchedOpen, setUnmatchedOpen] = useState(false); const [selectionsReady, setSelectionsReady] = useState(false); const [initializedValueScope, setInitializedValueScope] = useState(''); const [saving, setSaving] = useState(false); const [autoMapping, setAutoMapping] = useState(false); const [quickValueOpen, setQuickValueOpen] = useState(false); const [quickValueDraft, setQuickValueDraft] = useState(''); const [quickValueSaving, setQuickValueSaving] = useState(false); const [editingQuickValue, setEditingQuickValue] = useState<{ id: string; value: string } | null>(null); const [syncJobId, setSyncJobId] = useState<string | null>(null); const [shareWithOtherCategories, setShareWithOtherCategories] = useState(true); const handledSyncJobs = useRef(new Set<string>()); const valueScope = `${categoryScope}/${externalAttributeId}`
   const referenceKey = ['reference-attribute-values', connectionId, valueScope] as const
   const references = useQuery({ queryKey: referenceKey, queryFn: () => hubApi<ReferenceData>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(externalAttributeId)}/values?connectionId=${encodeURIComponent(connectionId)}`), retry: false, enabled: !customPanelColorValues && !marketplaceAllowsFreeText })
   const mappings = useQuery({ queryKey: ['attribute-value-mappings', connectionId, valueScope], queryFn: () => hubApi<CatalogMapping[]>(`/mappings/attribute-values?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(valueScope)}`), retry: false, enabled: !customPanelColorValues && !marketplaceAllowsFreeText })
@@ -2845,6 +2845,7 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
   const unsavedExternalIds = new Set(remoteValues.filter(item => !sameIds(selections[item.externalId] ?? [], (mappingsByExternal.get(item.externalId) ?? []).map(mapping => mapping.localId))).map(item => item.externalId))
   const availableDirectMappings = directPlan.mappings.filter(item => !unsavedExternalIds.has(item.externalId))
   const directMappingWorkCount = availableDirectMappings.filter(item => attributeValueMappingNeedsSave(mappingFor(item.externalId, item.localId), item.localId, item.externalId, references.data?.snapshotId ?? '')).length
+  const templateFilledCount = new Set((mappings.data ?? []).filter(item => item.source === 'TEMPLATE').map(item => item.localId)).size
   function updateAttributeCache(updated: LocalAttribute) {
     for (const queryKey of [['attributes', 'mapping-builder'], ['attributes', 'mapping']] as const) {
       client.setQueryData<Page<LocalAttribute>>(queryKey, current => current ? { ...current, items: current.items.map(item => item.id === updated.id ? updated : item) } : current)
@@ -2887,7 +2888,7 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
         if (!remoteValues.some(item => item.externalId === planned.externalId)) continue
         const existing = mappingFor(planned.externalId, planned.localId)
         if (!attributeValueMappingNeedsSave(existing, planned.localId, planned.externalId, references.data.snapshotId)) continue
-        await hubApi<CatalogMapping>(`/mappings/attribute-values/${planned.localId}`, { method: 'PUT', headers: existing ? { 'If-Match': `"v${existing.version}"` } : {}, body: JSON.stringify({ connectionId, snapshotId: references.data.snapshotId, scopeExternalId: valueScope, externalId: planned.externalId, status: 'VERIFIED' }) })
+        await hubApi<CatalogMapping>(`/mappings/attribute-values/${planned.localId}`, { method: 'PUT', headers: existing ? { 'If-Match': `"v${existing.version}"` } : {}, body: JSON.stringify({ connectionId, snapshotId: references.data.snapshotId, scopeExternalId: valueScope, externalId: planned.externalId, status: 'VERIFIED', updateTemplate: shareWithOtherCategories }) })
         changed++
       }
       await client.invalidateQueries({ queryKey: ['attribute-value-mappings', connectionId, valueScope] })
@@ -3018,6 +3019,10 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
         <button type="button" className="secondary" title="Eşlemesi boş pazar yeri değerlerinin adlarıyla panel değerleri oluşturur. Aynı adlı tekrarları tek değer olarak ekler." disabled={!selectionsReady || !missingPanelValues.length || quickValueSaving || autoMapping || saving || syncBusy} onClick={() => void createMissingPanelValues()}>{quickValueSaving ? 'Ekleniyor…' : `Boş değerleri oluştur (${missingPanelValues.length})`}</button>
         <button type="button" className="secondary" title={`Aynı adlı panel ve ${platformLabel} değerlerini eşler.${directPlan.ambiguousCount ? ` Belirsiz ${directPlan.ambiguousCount} eşleşme atlanır.` : ''}`} disabled={!selectionsReady || autoMapping || saving || syncBusy || quickValueSaving || (directMappingWorkCount === 0 && unsavedExternalIds.size === 0)} onClick={() => void mapDirectMatchingValues()}>{autoMapping ? 'Eşleştiriliyor…' : 'Birebir eşleşenleri eşle'}</button>
         <button type="button" className="secondary value-mapping-refresh-button" title="Seçili pazar yerinin güncel referans değer listesini yenile" disabled={syncBusy || autoMapping || saving} onClick={() => sync.mutate()}>{syncBusy ? 'Yenileniyor…' : `${platformLabel} listesini yenile`}</button>
+        <label className="value-mapping-share" title="Açıkken bu eşlemeler, aynı özelliği listeleyen diğer kategorilere de otomatik uygulanır. Kapalıyken yalnızca bu kategoride kalır.">
+          <input type="checkbox" checked={shareWithOtherCategories} onChange={event => setShareWithOtherCategories(event.target.checked)} />
+          Diğer kategorilerde de kullan
+        </label>
         <button type="button" disabled={!selectionsReady || saving || syncBusy || autoMapping || quickValueSaving} onClick={() => void saveAll()}>{saving ? 'Kaydediliyor…' : 'Tüm eşlemeleri kaydet'}</button>
       </div>
     </div>
@@ -3029,7 +3034,7 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
       return <div className={`value-mapping-unmatched ${unmatchedPanelValues.length ? 'has-unmatched' : 'is-complete'}`} role="status">
         <div className="value-mapping-unmatched-head">
           <strong>{unmatchedPanelValues.length ? `${unmatchedPanelValues.length} panel değeri henüz eşleşmedi` : `Tüm panel değerleri bir ${platformLabel} değeriyle eşleşti`}</strong>
-          <small>{matched} / {total} eşleşti</small>
+          <small>{matched} / {total} eşleşti{templateFilledCount > 0 ? ` · ${templateFilledCount} değer diğer kategorilerden geldi` : ''}</small>
         </div>
         <i className="value-mapping-unmatched-bar" aria-hidden="true"><b style={{ width: `${Math.round((matched / Math.max(total, 1)) * 100)}%` }} /></i>
         {unmatchedPanelValues.length > 0 && <div className={`value-mapping-unmatched-chips${unmatchedOpen ? ' is-open' : ''}`}>
@@ -3042,8 +3047,9 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
       {!remoteValues.length && <div className="unknown"><strong>Bu özellik için seçilebilir değer bulunamadı</strong><p>{platformLabel} referans listesi başarıyla okundu ancak kategori özelliği sabit seçenek döndürmedi.</p></div>}
       {remoteValues.map(remoteValue => {
         const selectedPanelIds = selections[remoteValue.externalId] ?? []
+        const fromTemplate = isTemplateFilledRow(mappingsByExternal.get(remoteValue.externalId) ?? [], selectedPanelIds)
         return <div key={remoteValue.externalId} className={valueMappingRowClassName(selectedPanelIds.length > 0, required)}>
-          <span>{remoteValue.name}</span>
+          <span>{remoteValue.name}{fromTemplate && <em className="value-mapping-template-badge" title="Bu eşleme, aynı özelliği kullanan başka bir kategorideki kararınızdan otomatik geldi. Değiştirip kaydederseniz sizin kararınız olur.">Şablon</em>}</span>
           <b className="value-mapping-row-link" aria-hidden="true" title="Eşleştir"><UiIcon name="link" /></b>
           <PanelValueMultiSelect label={remoteValue.name} options={localValues} selectedIds={selectedPanelIds} allowReuse={allowReusablePanelValues} assignedElsewhere={Object.fromEntries(Object.entries(assignedPanelValues).filter(([localId]) => !selectedPanelIds.includes(localId)))} disabled={!localValues.length} onToggle={localId => setSelections(current => togglePanelValueReferenceSelection(current, remoteValue.externalId, localId, allowReusablePanelValues))} />
         </div>

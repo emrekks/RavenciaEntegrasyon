@@ -49,3 +49,30 @@
 .mapping-values-modal .value-mapping-unmatched-bar { height: 4px; }
 .mapping-values-modal .value-mapping-unmatched-chips > span, .mapping-values-modal .value-mapping-unmatched-chips > button { padding: 1px 8px; font-size: 11px; line-height: 1.5; }
 .mapping-values-modal .value-mapping-heading-actions > button { min-height: 32px; padding-inline: 10px; font-size: 12px; }
+
+/* Template-filled rows and the share-with-other-categories switch */
+.value-mapping-editor .value-mapping-template-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-inline-start: 6px;
+  padding: 1px 6px;
+  color: var(--rv-color-primary);
+  font-size: var(--rv-font-size-xs);
+  font-style: normal;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--rv-color-primary) 10%, transparent);
+  border-radius: 999px;
+  vertical-align: middle;
+}
+
+.value-mapping-editor .value-mapping-share {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--rv-color-muted);
+  font-size: var(--rv-font-size-sm);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.value-mapping-editor .value-mapping-share input { margin: 0; accent-color: var(--rv-color-primary); }

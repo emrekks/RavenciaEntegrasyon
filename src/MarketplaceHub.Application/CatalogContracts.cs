@@ -219,8 +219,12 @@ public interface IImportJobProcessor
 
 public sealed record ReferenceItemView(string ExternalId, string? ParentExternalId, string Name, string Path, int Depth, bool IsLeaf, bool IsActive, bool? IsRequired, bool? AllowsCustomValue, bool? AllowsMultipleValues);
 public sealed record ReferenceDataView(Guid SnapshotId, string ResourceType, DateTimeOffset FetchedAt, IReadOnlyList<ReferenceItemView> Items);
-public sealed record CatalogMappingView(Guid Id, Guid ConnectionId, Guid SnapshotId, Guid LocalId, string ScopeExternalId, string ExternalId, string Status, DateTimeOffset? VerifiedAt, long Version, int? MissingRequiredAttributeCount = null);
-public sealed record UpsertCatalogMappingCommand(Guid ConnectionId, Guid SnapshotId, string ExternalId, string Status, string Role = "ATTRIBUTE");
+// Source: MANUAL or TEMPLATE for attribute and value mappings (filled from another category's
+// decision), null for category and brand mappings.
+public sealed record CatalogMappingView(Guid Id, Guid ConnectionId, Guid SnapshotId, Guid LocalId, string ScopeExternalId, string ExternalId, string Status, DateTimeOffset? VerifiedAt, long Version, int? MissingRequiredAttributeCount = null, string? Source = null);
+// UpdateTemplate: also use this decision for the connection's other categories (the default);
+// false keeps it to this category only.
+public sealed record UpsertCatalogMappingCommand(Guid ConnectionId, Guid SnapshotId, string ExternalId, string Status, string Role = "ATTRIBUTE", bool UpdateTemplate = true);
 
 public interface IReferenceDataService
 {

@@ -108,3 +108,10 @@ export function attributeValueMappingNeedsSave(
 ) {
   return Boolean(localId && externalId) && (!existing || existing.localId !== localId || existing.externalId !== externalId || existing.snapshotId !== snapshotId)
 }
+
+// A marketplace value row shows the "Şablon" badge while every saved mapping of it was filled from
+// another category's decision and the user has not changed the selection yet.
+export function isTemplateFilledRow(saved: readonly { localId: string; source?: string | null }[], selectedLocalIds: readonly string[]) {
+  if (!saved.length || !saved.every(item => item.source === 'TEMPLATE')) return false
+  return saved.length === selectedLocalIds.length && saved.every(item => selectedLocalIds.includes(item.localId))
+}

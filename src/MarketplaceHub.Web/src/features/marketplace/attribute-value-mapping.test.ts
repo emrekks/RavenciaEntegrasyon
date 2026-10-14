@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { attributeValueMappingNeedsSave, hasDirectReferenceValue, planDirectReferenceValues, planMissingReferencePanelValues, planReferencePanelMappings, togglePanelValueReferenceSelection, updatePanelValueReferenceSelection, valueMappingRowClassName } from './attribute-value-mapping'
+import { attributeValueMappingNeedsSave, hasDirectReferenceValue, isTemplateFilledRow, planDirectReferenceValues, planMissingReferencePanelValues, planReferencePanelMappings, togglePanelValueReferenceSelection, updatePanelValueReferenceSelection, valueMappingRowClassName } from './attribute-value-mapping'
 
 describe('attribute value reference mappings', () => {
   it('matches labels despite whitespace around season separators', () => {
@@ -98,5 +98,16 @@ describe('attribute value reference mappings', () => {
 
   it('keeps a panel value on one marketplace value on platforms that do not allow reuse', () => {
     expect(updatePanelValueReferenceSelection({ dress: ['panel-dress', 'panel-gown'] }, 'shirt', ['panel-dress'])).toEqual({ dress: ['panel-gown'], shirt: ['panel-dress'] })
+  })
+})
+
+describe('template filled value rows', () => {
+  it('shows the badge only while the saved template mappings are untouched', () => {
+    const saved = [{ localId: 'siyah', source: 'TEMPLATE' }]
+    expect(isTemplateFilledRow(saved, ['siyah'])).toBe(true)
+    expect(isTemplateFilledRow(saved, ['siyah', 'antrasit'])).toBe(false)
+    expect(isTemplateFilledRow(saved, [])).toBe(false)
+    expect(isTemplateFilledRow([{ localId: 'siyah', source: 'MANUAL' }], ['siyah'])).toBe(false)
+    expect(isTemplateFilledRow([], [])).toBe(false)
   })
 })
