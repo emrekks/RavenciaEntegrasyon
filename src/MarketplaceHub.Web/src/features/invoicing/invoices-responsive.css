@@ -142,3 +142,9 @@
   .app-shell.stitch-shell main .invoices-page .invoice-reference-buyer small,
   .app-shell.stitch-shell main .invoices-page .invoice-reference-amount small { font-size: 13px; }
 }
+/* Status badges keep their own size (the desktop cell centres them with auto margins) and the
+   cargo logo box grows with its badge instead of letting it spill over the card edge. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-row :is(.invoice-reference-shipment, .invoice-reference-status) > * { margin: 0; }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-row .cargo-provider-display { flex: 0 0 auto; width: auto; max-width: none; }
+}

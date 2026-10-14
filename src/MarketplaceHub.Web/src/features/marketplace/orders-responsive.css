@@ -212,3 +212,6 @@
   .app-shell.stitch-shell main .orders-page .order-reference-invoice .invoice-document-link { min-height: 36px; font-size: 13px; }
   .app-shell.stitch-shell main .orders-page .order-reference-table > .order-reference-row > .order-reference-grid > .order-reference-invoice { gap: 10px; }
 }
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main :is(.orders-page, .returns-page) .cargo-provider-display { flex: 0 0 auto; width: auto; max-width: none; }
+}

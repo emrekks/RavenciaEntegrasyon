@@ -82,7 +82,10 @@
   }
   .app-shell.stitch-shell main :is(.order-reference-row, .return-reference-row, .invoice-reference-row) .cargo-provider-icon.cargo-provider-icon {
     box-sizing: content-box;
-    max-height: 22px;
+    width: auto;
+    max-width: 96px;
+    height: 20px;
+    max-height: none;
     padding: 4px 8px;
     background: #f4f4f7;
     border-radius: 6px;
