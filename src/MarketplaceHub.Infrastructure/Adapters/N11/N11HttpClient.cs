@@ -40,6 +40,8 @@ public sealed class N11HttpClient(
     internal async Task<AdapterResult<ConnectionIdentity>> TestAsync(N11RequestContext account, CancellationToken cancellationToken)
     {
         var result = await SendAsync(account, HttpMethod.Get, ProductQuery(0, 1), cancellationToken);
+        if (!result.IsSuccess && result.Error!.Code == "N11_CREDENTIALS_REJECTED")
+            return AdapterResult<ConnectionIdentity>.Failure(await DiagnoseRejectedCredentialsAsync(account, result.Error, cancellationToken), result.RateLimit);
         if (!result.IsSuccess) return AdapterResult<ConnectionIdentity>.Failure(result.Error!, result.RateLimit);
         using var document = result.Value!;
         if (!HasContentArray(document.RootElement))
@@ -55,6 +57,58 @@ public sealed class N11HttpClient(
         return AdapterResult<ConnectionIdentity>.Success(
             new("N11", connection.Environment, connection.ExternalStoreId, connection.ApiVersion, seller.Id ?? connection.ExternalStoreId),
             result.RateLimit);
+    }
+
+    // The same App Key/Secret serve n11's REST and SOAP services. When REST
+    // rejects them, one read-only SOAP call (cargo company list) tells a wrong
+    // key pair apart from an account whose REST access is not enabled.
+    private async Task<AdapterError> DiagnoseRejectedCredentialsAsync(N11RequestContext account, AdapterError restError, CancellationToken cancellationToken)
+    {
+        var soap = await SoapAuthenticatesAsync(account, cancellationToken);
+        logger.LogWarning("N11 REST kimlik doğrulaması reddedildi; SOAP denemesi: {SoapResult}. ConnectionId: {ConnectionId}", soap?.ToString() ?? "belirsiz", account.Connection.Id);
+        return soap switch
+        {
+            true => new(AdapterErrorClass.Authentication, "N11_REST_ACCESS_DENIED", "App Key ve App Secret N11'in SOAP servislerinde geçerli, ancak REST servisleri (ürün ve sipariş) erişimi reddediyor. N11'den (sellerintegration@n11.com) bu API hesabı için REST erişiminin açılmasını isteyin.", restError.HttpStatus, null, null),
+            false => restError with { SafeMessage = "N11 App Key ve App Secret çiftini kabul etmedi (REST ve SOAP servisleri aynı yanıtı verdi). Hesabım → API Hesapları ekranındaki App Key ile aynı satırdaki App Secret'ı kaydedin; mağaza giriş şifresi App Secret yerine geçmez." },
+            null => restError
+        };
+    }
+
+    internal async Task<bool?> SoapAuthenticatesAsync(N11RequestContext account, CancellationToken cancellationToken)
+    {
+        var envelope = $"""<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:sch="http://www.n11.com/ws/schemas"><soapenv:Header/><soapenv:Body><sch:GetShipmentCompaniesRequest><auth><appKey>{System.Security.SecurityElement.Escape(account.AppKey)}</appKey><appSecret>{System.Security.SecurityElement.Escape(account.AppSecret)}</appSecret></auth></sch:GetShipmentCompaniesRequest></soapenv:Body></soapenv:Envelope>""";
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(settings.BaseAddress, "ws/shipmentCompanyService/"))
+            {
+                Content = new StringContent(envelope, System.Text.Encoding.UTF8, "text/xml")
+            };
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(settings.Timeout > TimeSpan.Zero && settings.Timeout < TimeSpan.FromMinutes(2) ? settings.Timeout : TimeSpan.FromSeconds(30));
+            using var response = await clients.CreateClient("N11").SendAsync(request, timeout.Token);
+            return SoapResultStatus(await response.Content.ReadAsStringAsync(timeout.Token));
+        }
+        catch (Exception exception) when (exception is HttpRequestException or OperationCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+    }
+
+    // true for result/status "success", false for an authentication failure,
+    // null when the answer does not say either way.
+    internal static bool? SoapResultStatus(string body)
+    {
+        try
+        {
+            var document = System.Xml.Linq.XDocument.Parse(body);
+            var result = document.Descendants().FirstOrDefault(x => x.Name.LocalName == "result");
+            var status = result?.Elements().FirstOrDefault(x => x.Name.LocalName == "status")?.Value.Trim();
+            var errorCode = result?.Elements().FirstOrDefault(x => x.Name.LocalName == "errorCode")?.Value ?? "";
+            if (string.Equals(status, "success", StringComparison.OrdinalIgnoreCase)) return true;
+            if (string.Equals(status, "failure", StringComparison.OrdinalIgnoreCase) && errorCode.Contains("authentication", StringComparison.OrdinalIgnoreCase)) return false;
+            return null;
+        }
+        catch (System.Xml.XmlException) { return null; }
     }
 
     public async Task<AdapterResult<IReadOnlyList<CapabilityEvidence>>> DiscoverCapabilitiesAsync(AdapterContext context, CancellationToken cancellationToken)

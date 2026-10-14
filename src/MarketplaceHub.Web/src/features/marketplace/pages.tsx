@@ -864,6 +864,7 @@ function connectionTestHelp(item: Connection) {
   if (item.platformCode === 'HEPSIBURADA') return item.lastErrorCode ?? 'Bağlantı testi en fazla bir sipariş kaydı okur; pazaryerine yazma yapmaz.'
   if (item.platformCode === 'N11' && item.lastErrorCode === 'N11_CREDENTIALS_REJECTED') return 'N11 anahtarı reddetti. Satıcı panelinde Hesabım → API Hesapları ekranındaki güncel App Key ve App Secret’ı kaydedip yeniden test edin.'
   if (item.platformCode === 'N11' && item.lastErrorCode === 'N11_CREDENTIAL_FORMAT_INVALID') return 'Kayıtlı App Key veya App Secret içinde geçersiz karakter var. Değerleri N11 satıcı panelinden yeniden kopyalayıp kaydedin.'
+  if (item.platformCode === 'N11' && item.lastErrorCode === 'N11_REST_ACCESS_DENIED') return 'Anahtarlar doğru ama bu API hesabında N11’in yeni (REST) servisleri kapalı. sellerintegration@n11.com adresine yazıp REST API erişiminin açılmasını isteyin.'
   if (item.platformCode === 'N11' && item.lastErrorCode === 'N11_STORE_MISMATCH') return 'Bu API anahtarı başka bir N11 mağazasına ait. Mağaza adını N11’deki gibi yazın ya da doğru mağazanın anahtarını girin.'
   if (item.platformCode === 'N11') return item.lastErrorCode ?? 'Bağlantı testi ürün ve sipariş listesinden en fazla birer kayıt okur; N11’e yazma yapmaz.'
   if (item.platformCode === 'TRENDYOL_EFATURAM' && item.lastErrorCode === 'EFATURAM_ACCESS_TOKEN_REJECTED') return 'Giriş başarılı; sağlayıcı sign-in yanıtındaki taze JWT tokenını korumalı fatura API’sinde geçersiz veya süresi dolmuş olarak reddetti.'

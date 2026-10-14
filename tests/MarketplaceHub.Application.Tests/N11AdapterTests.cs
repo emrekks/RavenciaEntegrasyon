@@ -67,13 +67,49 @@ public sealed class N11AdapterTests
     [Fact]
     public async Task RejectedCredentialsMapToAnAuthenticationError()
     {
-        var handler = new RoutingHandler(("ms/product-query", HttpStatusCode.Unauthorized, """{"message":"Unauthorized"}"""));
+        var handler = new RoutingHandler(
+            ("ms/product-query", HttpStatusCode.Unauthorized, """{"message":"Unauthorized"}"""),
+            ("ws/shipmentCompanyService", HttpStatusCode.ServiceUnavailable, ""));
         var result = await Client(handler).TestAsync(Account("İstanbul Mağaza"), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(AdapterErrorClass.Authentication, result.Error!.Class);
         Assert.Equal("N11_CREDENTIALS_REJECTED", result.Error.Code);
     }
+
+    [Fact]
+    public async Task RestRejectionWithWorkingSoapKeysPointsToRestAccess()
+    {
+        var handler = new RoutingHandler(
+            ("ms/product-query", HttpStatusCode.Unauthorized, """{"message":"Apide doğrulama işlemi başarısız oldu."}"""),
+            ("ws/shipmentCompanyService", HttpStatusCode.OK, SoapResult("success", null)));
+        var result = await Client(handler).TestAsync(Account("İstanbul Mağaza"), CancellationToken.None);
+
+        Assert.Equal("N11_REST_ACCESS_DENIED", result.Error!.Code);
+        Assert.Equal(HttpMethod.Post.Method, handler.Requests[1].Method);
+    }
+
+    [Fact]
+    public async Task RestAndSoapRejectionKeepTheCredentialError()
+    {
+        var handler = new RoutingHandler(
+            ("ms/product-query", HttpStatusCode.Unauthorized, "{}"),
+            ("ws/shipmentCompanyService", HttpStatusCode.OK, SoapResult("failure", "SELLER_API.authenticationFailed")));
+        var result = await Client(handler).TestAsync(Account("İstanbul Mağaza"), CancellationToken.None);
+
+        Assert.Equal("N11_CREDENTIALS_REJECTED", result.Error!.Code);
+        Assert.Contains("aynı yanıtı", result.Error.SafeMessage);
+    }
+
+    [Theory]
+    [InlineData("success", null, true)]
+    [InlineData("failure", "SELLER_API.authenticationFailed", false)]
+    [InlineData("failure", "SELLER_API.serviceUnavailable", null)]
+    public void SoapResultStatusReadsTheResultBlock(string status, string? errorCode, bool? expected) =>
+        Assert.Equal(expected, N11HttpClient.SoapResultStatus(SoapResult(status, errorCode)));
+
+    private static string SoapResult(string status, string? errorCode) =>
+        $"""<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/"><SOAP-ENV:Body><ns3:GetShipmentCompaniesResponse xmlns:ns3="http://www.n11.com/ws/schemas"><result><status>{status}</status>{(errorCode is null ? "" : $"<errorCode>{errorCode}</errorCode>")}</result></ns3:GetShipmentCompaniesResponse></SOAP-ENV:Body></SOAP-ENV:Envelope>""";
 
     [Fact]
     public async Task CapabilityProbeProvesProductAndOrderReadsOnly()
