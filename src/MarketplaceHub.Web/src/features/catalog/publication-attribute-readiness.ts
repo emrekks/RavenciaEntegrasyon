@@ -27,11 +27,34 @@ export type PublicationValueReferenceSet = {
   mappings: PublicationMappingReference[]
 }
 
-export type PublicationAttributeIssue = { attribute: string; detail: string }
+// A missing value mapping the publish card can fix in place ("Şimdi eşle").
+export type PublicationValueMappingFix = {
+  externalAttributeId: string
+  attributeName: string
+  localValueId: string
+  valueLabel: string
+}
+
+export type PublicationAttributeIssue = { attribute: string; detail: string; fix?: PublicationValueMappingFix }
 
 export type PublicationAttributeIssues = {
   requiredIssues: PublicationAttributeIssue[]
   optionalWarnings: PublicationAttributeIssue[]
+  categoryScope?: string
+}
+
+// Every distinct value mapping the card can offer to fix, required ones first.
+export function fixableValueMappings(issues: PublicationAttributeIssues | undefined) {
+  const seen = new Set<string>()
+  const fixes: PublicationValueMappingFix[] = []
+  for (const issue of [...(issues?.requiredIssues ?? []), ...(issues?.optionalWarnings ?? [])]) {
+    if (!issue.fix) continue
+    const key = `${issue.fix.externalAttributeId}:${issue.fix.localValueId}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    fixes.push(issue.fix)
+  }
+  return fixes
 }
 
 function isCustomPanelColorName(name: string) {
@@ -116,7 +139,11 @@ export function classifyPublicationAttributeIssues(input: {
           candidate.localId === value.id && candidate.status === 'VERIFIED' && candidate.snapshotId === webColorReferences.snapshotId
         )
         const activeWebColor = webColorValue && webColorReferences.items.some(item => item.externalId === webColorValue.externalId && item.isActive)
-        if (!activeWebColor) addIssue(webColorRemote?.isRequired === true || required, { attribute: webColorRemote?.name ?? 'Web Color', detail: `“${value.label || 'Seçili değer'}” için güncel ${platformName} Web Color değer eşlemesi yok.` })
+        if (!activeWebColor) addIssue(webColorRemote?.isRequired === true || required, {
+          attribute: webColorRemote?.name ?? 'Web Color',
+          detail: `“${value.label || 'Seçili değer'}” için güncel ${platformName} Web Color değer eşlemesi yok.`,
+          fix: { externalAttributeId: webColorMapping.externalId, attributeName: webColorRemote?.name ?? 'Web Color', localValueId: value.id, valueLabel: value.label }
+        })
       }
     }
 
@@ -132,7 +159,11 @@ export function classifyPublicationAttributeIssues(input: {
       )
       const activeReference = valueMapping && references.items.some(item => item.externalId === valueMapping.externalId && item.isActive)
       if (!activeReference) {
-        addIssue(required, { attribute: selected.name, detail: `“${value.label || 'Seçili değer'}” için güncel ${platformName} değer eşlemesi yok.` })
+        addIssue(required, {
+          attribute: selected.name,
+          detail: `“${value.label || 'Seçili değer'}” için güncel ${platformName} değer eşlemesi yok.`,
+          fix: { externalAttributeId: remote.externalId, attributeName: remote.name, localValueId: value.id, valueLabel: value.label }
+        })
       }
     }
   }

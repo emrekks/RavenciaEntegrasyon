@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { classifyPublicationAttributeIssues } from './publication-attribute-readiness'
+import { classifyPublicationAttributeIssues, fixableValueMappings } from './publication-attribute-readiness'
 
 const baseInput = {
   selectedAttributes: [{ attributeId: 'local-extra', name: 'Ek Özellik', isRequired: false, values: [{ id: 'soft', label: 'Extra Soft' }], hasCustomValue: false }],
@@ -15,6 +15,8 @@ const baseInput = {
   }
 }
 
+const withoutFix = (issues: Array<{ attribute: string; detail: string }>) => issues.map(({ attribute, detail }) => ({ attribute, detail }))
+
 describe('publication attribute readiness', () => {
   it('shows an unmapped optional selected value as a warning, not a blocker', () => {
     const result = classifyPublicationAttributeIssues({
@@ -22,8 +24,8 @@ describe('publication attribute readiness', () => {
       valueReferencesByAttribute: { 'remote-extra': { ...baseInput.valueReferencesByAttribute['remote-extra'], mappings: [] } }
     })
 
-    expect(result.requiredIssues).toEqual([])
-    expect(result.optionalWarnings).toEqual([{ attribute: 'Ek Özellik', detail: '“Extra Soft” için güncel Trendyol değer eşlemesi yok.' }])
+    expect(withoutFix(result.requiredIssues)).toEqual([])
+    expect(withoutFix(result.optionalWarnings)).toEqual([{ attribute: 'Ek Özellik', detail: '“Extra Soft” için güncel Trendyol değer eşlemesi yok.' }])
   })
 
   it('blocks a required attribute whose selected value has no current verified mapping', () => {
@@ -33,8 +35,20 @@ describe('publication attribute readiness', () => {
       valueReferencesByAttribute: { 'remote-extra': { ...baseInput.valueReferencesByAttribute['remote-extra'], mappings: [] } }
     })
 
-    expect(result.requiredIssues).toEqual([{ attribute: 'Ek Özellik', detail: '“Extra Soft” için güncel Trendyol değer eşlemesi yok.' }])
-    expect(result.optionalWarnings).toEqual([])
+    expect(withoutFix(result.requiredIssues)).toEqual([{ attribute: 'Ek Özellik', detail: '“Extra Soft” için güncel Trendyol değer eşlemesi yok.' }])
+    expect(withoutFix(result.optionalWarnings)).toEqual([])
+  })
+
+  it('carries what the publish card needs to map a missing value in place', () => {
+    const result = classifyPublicationAttributeIssues({
+      ...baseInput,
+      selectedAttributes: [{ ...baseInput.selectedAttributes[0], isRequired: true }],
+      valueReferencesByAttribute: { 'remote-extra': { ...baseInput.valueReferencesByAttribute['remote-extra'], mappings: [] } }
+    })
+
+    expect(result.requiredIssues[0].fix).toEqual({ externalAttributeId: 'remote-extra', attributeName: 'Ek Özellik', localValueId: 'soft', valueLabel: 'Extra Soft' })
+    expect(fixableValueMappings({ ...result, optionalWarnings: [result.requiredIssues[0]] })).toHaveLength(1)
+    expect(fixableValueMappings(undefined)).toEqual([])
   })
 
   it('treats stale snapshots and inactive remote values as missing mappings', () => {
@@ -50,7 +64,7 @@ describe('publication attribute readiness', () => {
     })
 
     expect(result.optionalWarnings).toHaveLength(1)
-    expect(result.requiredIssues).toEqual([])
+    expect(withoutFix(result.requiredIssues)).toEqual([])
   })
 
   it('flags every unmapped required Trendyol attribute even before a local value is selected', () => {
@@ -59,7 +73,7 @@ describe('publication attribute readiness', () => {
       remoteAttributes: [...baseInput.remoteAttributes, { externalId: 'remote-size', name: 'Beden', isActive: true, isRequired: true }]
     })
 
-    expect(result.requiredIssues).toEqual([{ attribute: 'Beden', detail: 'Zorunlu Trendyol özelliği için güncel ve doğrulanmış eşleme yok.' }])
+    expect(withoutFix(result.requiredIssues)).toEqual([{ attribute: 'Beden', detail: 'Zorunlu Trendyol özelliği için güncel ve doğrulanmış eşleme yok.' }])
   })
 
   it('uses the selected marketplace name in Hepsiburada publication checks', () => {
@@ -69,7 +83,7 @@ describe('publication attribute readiness', () => {
       remoteAttributes: [{ externalId: 'remote-size', name: 'Beden', isActive: true, isRequired: true }]
     })
 
-    expect(result.requiredIssues).toEqual([{ attribute: 'Beden', detail: 'Zorunlu Hepsiburada özelliği için güncel ve doğrulanmış eşleme yok.' }])
+    expect(withoutFix(result.requiredIssues)).toEqual([{ attribute: 'Beden', detail: 'Zorunlu Hepsiburada özelliği için güncel ve doğrulanmış eşleme yok.' }])
   })
 
   it('flags a required Trendyol attribute that is mapped but has no product or variant value', () => {
@@ -79,7 +93,7 @@ describe('publication attribute readiness', () => {
       remoteAttributes: [{ ...baseInput.remoteAttributes[0], isRequired: true }]
     })
 
-    expect(result.requiredIssues).toEqual([{
+    expect(withoutFix(result.requiredIssues)).toEqual([{
       attribute: 'Ek Özellik',
       detail: 'Zorunlu Trendyol özelliği için ürün veya varyant değeri seçilmemiş ya da girilmemiş.'
     }])
@@ -91,7 +105,7 @@ describe('publication attribute readiness', () => {
       remoteAttributes: [{ ...baseInput.remoteAttributes[0], isRequired: true }]
     })
 
-    expect(result.requiredIssues).toEqual([])
+    expect(withoutFix(result.requiredIssues)).toEqual([])
   })
 
   it('accepts a custom Renk value without requiring a marketplace color-value mapping', () => {
@@ -105,7 +119,7 @@ describe('publication attribute readiness', () => {
       }
     })
 
-    expect(result.requiredIssues).toEqual([])
+    expect(withoutFix(result.requiredIssues)).toEqual([])
   })
 
   it('uses the mapped Renk attribute for the colour but still asks for the Web Color value mapping', () => {
@@ -126,7 +140,7 @@ describe('publication attribute readiness', () => {
       }
     })
 
-    expect(result.requiredIssues).toEqual([{ attribute: 'Web Color', detail: '“Zümrüt” için güncel Trendyol Web Color değer eşlemesi yok.' }])
+    expect(withoutFix(result.requiredIssues)).toEqual([{ attribute: 'Web Color', detail: '“Zümrüt” için güncel Trendyol Web Color değer eşlemesi yok.' }])
   })
 
   it('still requires an exact value mapping for Web Color values', () => {
@@ -140,7 +154,7 @@ describe('publication attribute readiness', () => {
       }
     })
 
-    expect(result.requiredIssues).toEqual([{ attribute: 'Renk', detail: '“Zümrüt” için güncel Trendyol değer eşlemesi yok.' }])
+    expect(withoutFix(result.requiredIssues)).toEqual([{ attribute: 'Renk', detail: '“Zümrüt” için güncel Trendyol değer eşlemesi yok.' }])
   })
 
   it('does not warn for an unused optional attribute', () => {
@@ -168,6 +182,6 @@ describe('publication attribute readiness', () => {
       valueReferencesByAttribute: { 'remote-webcolor': { snapshotId: 'values-v2', items: [{ externalId: 'remote-brown', isActive: true }], mappings: [] } }
     })
 
-    expect(result.requiredIssues).toEqual([{ attribute: 'Web Color', detail: '“Açık Kahve” için güncel Trendyol Web Color değer eşlemesi yok.' }])
+    expect(withoutFix(result.requiredIssues)).toEqual([{ attribute: 'Web Color', detail: '“Açık Kahve” için güncel Trendyol Web Color değer eşlemesi yok.' }])
   })
 })
