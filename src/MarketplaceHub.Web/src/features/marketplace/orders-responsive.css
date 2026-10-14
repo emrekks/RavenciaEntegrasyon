@@ -525,3 +525,23 @@ html body .order-detail-actions-list > button:hover:not(:disabled) { background:
   .app-shell.stitch-shell main .orders-page .orders-selection-all { color: var(--rv-color-primary); }
   .app-shell.stitch-shell main .orders-page .orders-bulk-toolbar { margin-bottom: 70px; }
 }
+
+.orders-heading-more { display: none; }
+
+/* Orders heading on phones: title and a three-dot menu on one row (export, import and sync inside),
+   and one even 10px gap between the stacked blocks. Phones only. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .orders-page { gap: 10px; }
+  .app-shell.stitch-shell main .orders-page > .page-heading { position: relative; display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; margin: 0; padding: 0 0 10px; }
+  .app-shell.stitch-shell main .orders-page > .page-heading > div:first-child { min-width: 0; }
+  .app-shell.stitch-shell main .orders-page .orders-reference-heading-actions { display: block; width: auto; flex: 0 0 auto; }
+  .app-shell.stitch-shell main .orders-page .orders-reference-heading-actions > :is(.orders-export-action, .orders-import-action, .orders-sync-action) { display: none; }
+  .app-shell.stitch-shell main .orders-page .orders-heading-more { position: relative; display: block; }
+  .app-shell.stitch-shell main .orders-page .orders-heading-more-trigger { display: inline-grid; width: 44px; height: 44px; min-height: 44px; place-items: center; padding: 0; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); }
+  .app-shell.stitch-shell main .orders-page .orders-heading-more-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; display: grid; width: min(260px, 80vw); gap: 2px; padding: 6px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); box-shadow: var(--rv-shadow-lg); }
+  .app-shell.stitch-shell main .orders-page .orders-heading-more-menu > button { display: flex; align-items: center; gap: 10px; min-height: 46px; padding: 0 12px; color: var(--rv-color-ink); background: transparent; border: 0; border-radius: var(--rv-radius-sm); font-size: 14px; font-weight: 600; text-align: left; }
+  .app-shell.stitch-shell main .orders-page .orders-heading-more-menu > button:hover:not(:disabled) { background: var(--rv-color-surface-soft); }
+  .app-shell.stitch-shell main .orders-page .orders-reference-filter-shell { margin: 0; }
+  .app-shell.stitch-shell main .orders-page .orders-control-bar.mfs:not(.is-open) { margin: 0; }
+  .app-shell.stitch-shell main .orders-page .order-reference-table { margin-top: 0; }
+}
