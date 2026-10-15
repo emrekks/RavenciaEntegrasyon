@@ -1,4 +1,4 @@
-export const orderMarketplacePlatformCodes = ['TRENDYOL', 'SHOPIFY', 'HEPSIBURADA', 'N11'] as const
+export const orderMarketplacePlatformCodes = ['TRENDYOL', 'SHOPIFY', 'HEPSIBURADA', 'N11', 'PAZARAMA'] as const
 
 export type MarketplacePlatformOption = { value: string; label: string }
 export type MarketplacePlatformOptionSource = { platformCode: string; displayName?: string | null }
@@ -7,7 +7,8 @@ const marketplacePlatformLabels: Record<typeof orderMarketplacePlatformCodes[num
   TRENDYOL: 'Trendyol',
   SHOPIFY: 'Shopify',
   HEPSIBURADA: 'Hepsiburada',
-  N11: 'N11'
+  N11: 'N11',
+  PAZARAMA: 'Pazarama'
 }
 
 const hepsiburadaReadSyncPolicies = new Set([
@@ -25,6 +26,9 @@ const hepsiburadaReadSyncPolicies = new Set([
 
 // n11 flows join phase by phase.
 const n11ReadSyncPolicies = new Set(['ORDERS', 'ORDER_RECOVERY', 'ORDER_RECONCILE_SHORT', 'ORDER_RECONCILE_MEDIUM', 'ORDER_RECONCILE_DAILY', 'RETURNS', 'QUESTIONS', 'REFERENCE_DATA', 'STOCK_RECONCILE_SHORT', 'STOCK_RECONCILE_MEDIUM', 'STOCK_RECONCILE_DAILY', 'PRICE_WRITE', 'STOCK_WRITE', 'SHIPMENT_WRITE', 'RETURN_WRITE'])
+
+// Pazarama: the order reads (new orders, history, open-order status scan); its write flows join with their phases.
+const pazaramaReadSyncPolicies = new Set(['ORDERS', 'ORDER_RECOVERY', 'ORDER_LIFECYCLE'])
 
 export function isOrderMarketplacePlatform(platformCode: string) {
   return orderMarketplacePlatformCodes.includes(normalizeMarketplacePlatformCode(platformCode) as typeof orderMarketplacePlatformCodes[number])
@@ -74,12 +78,13 @@ export function isMarketplacePlatformSelected(selectedCodes: string[] | null, pl
 }
 
 export function supportsSyncPolicyManagement(platformCode: string) {
-  return platformCode === 'TRENDYOL' || platformCode === 'SHOPIFY' || platformCode === 'HEPSIBURADA' || platformCode === 'N11'
+  return platformCode === 'TRENDYOL' || platformCode === 'SHOPIFY' || platformCode === 'HEPSIBURADA' || platformCode === 'N11' || platformCode === 'PAZARAMA'
 }
 
 export function supportsSyncPolicy(platformCode: string, resourceType: string) {
   if (!supportsSyncPolicyManagement(platformCode)) return false
   if (platformCode === 'N11') return n11ReadSyncPolicies.has(resourceType)
+  if (platformCode === 'PAZARAMA') return pazaramaReadSyncPolicies.has(resourceType)
   return platformCode !== 'HEPSIBURADA' || hepsiburadaReadSyncPolicies.has(resourceType)
 }
 

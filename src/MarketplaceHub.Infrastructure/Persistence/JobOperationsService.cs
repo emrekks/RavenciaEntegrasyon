@@ -806,7 +806,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
     private static JobChangeView? Change(IntegrationJob job)
     {
         var type = job.JobType.ToUpperInvariant();
-        if (type is MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.ShopifyOrderStatusSync or MarketplaceJobTypes.HepsiburadaOrderStatusSync) return new("Tarama türü", "Sipariş durum taraması", "Açık siparişlerin paket ve taşıma durumları kontrol edilerek yerel durum güncellendi.");
+        if (type is MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.ShopifyOrderStatusSync or MarketplaceJobTypes.HepsiburadaOrderStatusSync or MarketplaceJobTypes.PazaramaOrderStatusSync) return new("Tarama türü", "Sipariş durum taraması", "Açık siparişlerin paket ve taşıma durumları kontrol edilerek yerel durum güncellendi.");
         if (type == MarketplaceJobTypes.TrendyolOrderCargoInfoReconciliation) return new("Tarama türü", "Trendyol kargo bilgi taraması", "Teslim edilen Trendyol paketlerinin kargo bilgileri salt okunur olarak yenilendi.");
         if (type == InvoicingJobTypes.InvoiceSubmit
             && (job.LastErrorCode == "EFATURAM_FISCAL_PAYLOAD_INVALID"
@@ -822,8 +822,8 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         }
         if (type is MarketplaceJobTypes.OrderReconciliation or MarketplaceJobTypes.ShopifyOrderReconciliation) return new("Tarama türü", "Kapsamlı sipariş taraması", "Yerel siparişler ile pazaryeri kayıtları karşılaştırıldı; durum ve paket farklılıkları düzeltildi.");
         if (type is MarketplaceJobTypes.OrderInvoiceReconciliation or MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation or MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation) return new("Tarama türü", "Paket fatura taraması", "Teslim edilmiş ve açık paketlerin pazaryeri fatura durumu kontrol edildi.");
-        if (type is MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync or MarketplaceJobTypes.HepsiburadaOrderRecoverySync or MarketplaceJobTypes.N11OrderRecoverySync) return new("Tarama türü", "Tam sipariş taraması", "Erişilebilen sipariş pencereleri taranarak eksik yerel kayıtlar tamamlandı.");
-        if (type is MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync or MarketplaceJobTypes.N11OrderSync) return new("Yapılan değişiklik", "Sipariş senkronizasyonu", "Sipariş bilgileri pazaryerinden eşitlendi.");
+        if (type is MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync or MarketplaceJobTypes.HepsiburadaOrderRecoverySync or MarketplaceJobTypes.N11OrderRecoverySync or MarketplaceJobTypes.PazaramaOrderRecoverySync) return new("Tarama türü", "Tam sipariş taraması", "Erişilebilen sipariş pencereleri taranarak eksik yerel kayıtlar tamamlandı.");
+        if (type is MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync or MarketplaceJobTypes.N11OrderSync or MarketplaceJobTypes.PazaramaOrderSync) return new("Yapılan değişiklik", "Sipariş senkronizasyonu", "Sipariş bilgileri pazaryerinden eşitlendi.");
         if (type is MarketplaceJobTypes.ReferenceSync or MarketplaceJobTypes.HepsiburadaReferenceSync or MarketplaceJobTypes.N11ReferenceSync)
             return new("Yapılan işlem", type == MarketplaceJobTypes.HepsiburadaReferenceSync ? "Hepsiburada kategori ve eşleştirme verisi" : type == MarketplaceJobTypes.N11ReferenceSync ? "N11 kategori ve eşleştirme verisi" : "Trendyol kategori ve eşleştirme verisi", "Kategori, özellik ve eşleştirme referansları salt okunur yenilendi; dış platforma veri gönderilmedi.");
         if (type.Contains("PRODUCT", StringComparison.Ordinal) || type.Contains("CATALOG", StringComparison.Ordinal)) return new("Yapılan değişiklik", "Ürün senkronizasyonu", "Ürün bilgileri pazaryerinden okundu; dış yazma yapılmadı.");

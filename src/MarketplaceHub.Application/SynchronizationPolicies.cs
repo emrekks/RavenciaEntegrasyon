@@ -89,6 +89,40 @@ public static class N11OrderHistoryPolicy
     }
 }
 
+// Pazarama lists orders by order date only (no modification filter) in windows of at most one
+// month; the end date is exclusive. A full scan reads the last three months; incremental runs
+// re-read a short fixed lookback because the day filter cannot name only the new orders.
+// Status changes of older orders come from the open-order lifecycle scan.
+public static class PazaramaOrderHistoryPolicy
+{
+    public const int InitialLookbackMonths = 3;
+    public const int IncrementalLookbackDays = 2;
+    public const int PageSize = 100;
+    // Pazarama refuses ranges above one month; 28 days keeps a safe margin.
+    public static readonly TimeSpan MaxWindow = TimeSpan.FromDays(28);
+    public static readonly TimeSpan TurkeyOffset = TimeSpan.FromHours(3);
+
+    // First day (Turkey time) the run reads.
+    public static DateTime StartDay(bool full, DateTimeOffset? watermark, DateTimeOffset now)
+    {
+        var today = now.ToOffset(TurkeyOffset).Date;
+        if (full || watermark is null) return today.AddMonths(-InitialLookbackMonths);
+        var fromWatermark = watermark.Value.ToOffset(TurkeyOffset).Date.AddDays(-IncrementalLookbackDays);
+        var floor = today.AddDays(-IncrementalLookbackDays);
+        return fromWatermark < floor ? fromWatermark : floor;
+    }
+
+    // Consecutive [start, end) day windows up to tomorrow (the end day is excluded by Pazarama).
+    public static IReadOnlyList<(DateTime Start, DateTime End)> Windows(DateTime startDay, DateTimeOffset now)
+    {
+        var end = now.ToOffset(TurkeyOffset).Date.AddDays(1);
+        var windows = new List<(DateTime, DateTime)>();
+        for (var cursor = startDay; cursor < end; cursor = cursor.Add(MaxWindow))
+            windows.Add((cursor, cursor.Add(MaxWindow) < end ? cursor.Add(MaxWindow) : end));
+        return windows;
+    }
+}
+
 public static class HepsiburadaOrderHistoryPolicy
 {
     public const int DefaultInitialLookbackMonths = 1;

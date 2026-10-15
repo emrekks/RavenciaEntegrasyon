@@ -469,7 +469,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             // marketplace snapshot. Checking for remaining rows is not reliable:
             // reference snapshots can survive an operational data reset while the
             // connection is still missing orders/products/returns.
-            queueActivationBootstrap = connection.PlatformCode is "TRENDYOL" or "SHOPIFY" or "HEPSIBURADA" or "N11"
+            queueActivationBootstrap = connection.PlatformCode is "TRENDYOL" or "SHOPIFY" or "HEPSIBURADA" or "N11" or "PAZARAMA"
                 && connection.Status is not ("ACTIVE" or "VERIFIED");
             connection.Status = "ACTIVE";
         }
@@ -750,7 +750,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         if (platform == "N11")
             jobs.Add(new(MarketplaceJobTypes.N11ReferenceSync, "categories", JsonSerializer.Serialize(new { connectionId, resourceType = "CATEGORIES", parentExternalId = (string?)null })));
 
-        if (platform is not ("TRENDYOL" or "SHOPIFY" or "HEPSIBURADA" or "N11")) return jobs;
+        if (platform is not ("TRENDYOL" or "SHOPIFY" or "HEPSIBURADA" or "N11" or "PAZARAMA")) return jobs;
         var orderType = MarketplaceJobTypes.ForPlatform(platform, MarketplaceJobTypes.OrderRecoverySync);
         jobs.Add(new(orderType, "orders", JsonSerializer.Serialize(new { connectionId, externalOrderId = (string?)null, full = true })));
 

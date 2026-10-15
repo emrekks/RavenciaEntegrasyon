@@ -22,6 +22,10 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         MarketplaceJobTypes.HepsiburadaOrderStatusSync, MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation,
         MarketplaceJobTypes.N11OrderSync, MarketplaceJobTypes.N11OrderRecoverySync
     ];
+    // Pazarama has no change filter on orders, so its status scan re-reads open orders one by one;
+    // the three order flows run in their own lane so they never occupy the hot lane's slots.
+    private static readonly string[] PazaramaOrderJobTypes =
+        [MarketplaceJobTypes.PazaramaOrderSync, MarketplaceJobTypes.PazaramaOrderRecoverySync, MarketplaceJobTypes.PazaramaOrderStatusSync];
     private static readonly string[] ReturnReadJobTypes =
         [MarketplaceJobTypes.ReturnSync, MarketplaceJobTypes.HepsiburadaReturnSync, MarketplaceJobTypes.ReturnStatusSync];
     private static readonly string[] ProductCatalogSyncJobTypes =
@@ -59,11 +63,12 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         // Return reads and product-catalog syncs have dedicated lanes and are kept out of the
         // shared hot/background lanes so long reads cannot occupy their slots.
         var loops = new List<Task>();
-        loops.AddRange(Lane("hot", 3, slot => RunLeaseLaneAsync(slot, hotPriorityCeiling, 0, stoppingToken, excludedJobTypes: [.. HepsiburadaOrderJobTypes, .. ReturnReadJobTypes])));
+        loops.AddRange(Lane("hot", 3, slot => RunLeaseLaneAsync(slot, hotPriorityCeiling, 0, stoppingToken, excludedJobTypes: [.. HepsiburadaOrderJobTypes, .. PazaramaOrderJobTypes, .. ReturnReadJobTypes])));
         loops.AddRange(Lane("returns-read", 1, slot => RunLeaseLaneAsync(slot, null, null, stoppingToken, includedJobTypes: ReturnReadJobTypes)));
         loops.AddRange(Lane("product-catalog", 1, slot => RunLeaseLaneAsync(slot, null, null, stoppingToken, includedJobTypes: ProductCatalogSyncJobTypes)));
         loops.AddRange(Lane("hepsiburada-status", 1, slot => RunLeaseLaneAsync(slot, hotPriorityCeiling, 0, stoppingToken, MarketplaceJobTypes.HepsiburadaOrderStatusSync)));
         loops.AddRange(Lane("hepsiburada-orders", 1, slot => RunLeaseLaneAsync(slot, hotPriorityCeiling, 0, stoppingToken, includedJobTypes: HepsiburadaOrderJobTypes)));
+        loops.AddRange(Lane("pazarama-orders", 1, slot => RunLeaseLaneAsync(slot, hotPriorityCeiling, 0, stoppingToken, includedJobTypes: PazaramaOrderJobTypes)));
         loops.AddRange(Lane("initial-data-sync", 1, slot => RunLeaseLaneAsync(slot, -1, -1, stoppingToken)));
         loops.AddRange(Lane("background", 2, slot => RunLeaseLaneAsync(slot, null, hotPriorityCeiling + 1, stoppingToken, excludedJobTypes: [.. ProductCatalogSyncJobTypes, .. ReturnReadJobTypes])));
         loops.Add(RunHealthWatchdogAsync(stoppingToken));

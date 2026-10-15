@@ -1260,6 +1260,8 @@ function IntegrationDetailWorkspace({ id, inline = false }: { id: string; inline
          { key: 'automatic-external-writes', label: 'Otomatik dış yazmalar', resourceTypes: ['PRICE_WRITE', 'STOCK_WRITE'], description: 'Açıkken paneldeki fiyat ve stok değişiklikleri Shopify mağazasına gönderilir.', capabilityCodes: ['PRICE_WRITE', 'INVENTORY_WRITE'] },
          { key: 'manual-external-writes', label: 'Manuel dış yazmalar', resourceTypes: ['SHIPMENT_WRITE', 'RETURN_WRITE'], description: 'Mevcut fulfillment kargo takip bilgisi ve iade onay/ret kararları Shopify’a gönderilir. Shopify Admin API bu panelden taşıyıcı etiketi satın almaz veya üretmez.', capabilityCodes: ['SHIPMENT_WRITE', 'RETURN_READ', 'RETURN_WRITE'] }
        ]
+     : item.platformCode === 'PAZARAMA'
+     ? []
      : item.platformCode === 'N11'
      ? [
          { key: 'automatic-external-writes', label: 'Otomatik dış yazmalar', resourceTypes: ['PRICE_WRITE', 'STOCK_WRITE'], description: 'Açıkken paneldeki N11 fiyatı ve stok değişikliklerini N11’e otomatik gönderir. Kapalıyken bu güncellemeler N11’e aktarılmaz.' },
