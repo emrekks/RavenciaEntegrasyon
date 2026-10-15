@@ -35,7 +35,7 @@ export function PlatformMultiSelect({ label, options, selectedCodes, onChange, c
     const top = triggerRect.bottom + menuRect.height + 8 <= window.innerHeight - 12
       ? triggerRect.bottom + 8
       : Math.max(12, triggerRect.top - menuRect.height - 8)
-    const left = Math.max(12, Math.min(triggerRect.right - menuRect.width, window.innerWidth - menuRect.width - 12))
+    const left = Math.max(12, Math.min(triggerRect.left, window.innerWidth - menuRect.width - 12))
     setCompactMenuPosition(current => current?.top === top && current.left === left ? current : { top, left })
   }
 
@@ -83,7 +83,7 @@ export function PlatformMultiSelect({ label, options, selectedCodes, onChange, c
     if (compact && trigger.current) {
       const rect = trigger.current.getBoundingClientRect()
       const width = Math.min(300, window.innerWidth - 24)
-      setCompactMenuPosition({ top: rect.bottom + 8, left: Math.max(12, Math.min(rect.right - width, window.innerWidth - width - 12)) })
+      setCompactMenuPosition({ top: rect.bottom + 8, left: Math.max(12, Math.min(rect.left, window.innerWidth - width - 12)) })
     }
     setOpen(true)
   }

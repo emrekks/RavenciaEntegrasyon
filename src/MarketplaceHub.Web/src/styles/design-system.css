@@ -12638,3 +12638,8 @@ h1, h2, h3, h4, .dashboard-summary-card-head > span:first-child, :is(.orders-con
 .mam, .mam > .mam-primary, .mam > .mam-icons, .mam > .mam-more { display: contents; }
 .mam > .mam-trigger { display: none; }
 .mam :is(.mam-primary, .mam-icons, .mam-more) > * { order: var(--mam-order, 0); }
+
+/* Dashboard heading: on wide screens the period select and the report button sit on one row. */
+@media (min-width: 761px) {
+  .app-shell.stitch-shell main .dashboard-heading-actions { display: flex; flex-direction: row; align-items: center; justify-content: flex-end; flex-wrap: nowrap; }
+}

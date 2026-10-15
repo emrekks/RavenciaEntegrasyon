@@ -1735,6 +1735,7 @@ function ReturnReferenceRow({ item, order, onNotice, selection, selectColumn, se
 function returnPlatformName(platformCode: string | null | undefined) {
   switch (platformCode?.toUpperCase()) {
     case 'HEPSIBURADA': return 'Hepsiburada'
+    case 'N11': return 'N11'
     case 'SHOPIFY': return 'Shopify'
     case 'TRENDYOL': return 'Trendyol'
     default: return 'Pazar yeri'
@@ -1930,7 +1931,7 @@ export function ReturnsPage() {
     if (value) reasonOptions.set(value, returnReasonPresentation(item).label)
   }
   const reasons = Array.from(reasonOptions, ([value, label]) => ({ value, label }))
-  const platformOptions = Array.from(new Map(items.map(item => [item.platformCode, { value: item.platformCode, label: item.platformDisplayName || returnPlatformName(item.platformCode) }])).values())
+  const platformOptions = marketplacePlatformOptions(connections.data?.items ?? [], items.map(item => ({ platformCode: item.platformCode, displayName: item.platformDisplayName || returnPlatformName(item.platformCode) })))
   const cargoOptions = Array.from(new Set(items.map(item => item.cargoProviderName?.trim()).filter((value): value is string => Boolean(value)))).sort((left, right) => left.localeCompare(right, 'tr-TR'))
   const matchesLocalFilters = (item: ReturnClaim) => matchesReturnReferenceFilters(item, { platforms: selectedPlatforms, cargo: cargoFilter, reason: reasonFilter })
   const matchesInvoiceStatus = (item: ReturnClaim) => (invoiceStatusFilter === 'ALL' || item.invoiceStatus === invoiceStatusFilter) && matchesLocalFilters(item)
