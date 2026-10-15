@@ -45,7 +45,7 @@ Sunucuda `aa57d0ba` çalışıyor (API ve worker sağlıklı). Aşağıdakilerin
 
 ## Yapılacaklar (sırayla)
 
-1. **N11 ürün yükleme** — yarım; `wip/n11-urun-yayinlama` dalında (`ffb35aca`). Bir alt ajan başlattı, oturum kapanırken durduruldu, hiç derlenmedi. Önce dalı incele (12 dosya, `N11ProductPublicationComposer.cs` yeni), eksikleri tamamla, derlemeyi CI'da doğrula (dal push'u Validate çalıştırır, deploy etmez), sonra `main`'e al.
+1. **N11 ürün yükleme** — yarım; `wip/n11-urun-yayinlama` dalında. Ayrıntılı durum ve eksikler o dalda `docs/N11-URUN-YAYINLAMA-WIP.md` dosyasında (dala geçip oku). Dalın derleme kontrolü elle başlatıldı: https://github.com/emrekks/RavenciaEntegrasyon/actions/runs/38709352064 . Bir alt ajan başlattı, oturum kapanırken durduruldu, hiç derlenmedi. Önce dalı incele (12 dosya, `N11ProductPublicationComposer.cs` yeni), eksikleri tamamla, derlemeyi CI'da doğrula (dal push'u Validate çalıştırır, deploy etmez), sonra `main`'e al.
    - Sözleşme: `POST ms/product/tasks/product-create`, gövde `{"payload":{"integrator":..., "skus":[{title, description, categoryId, currencyType:"TL", productMainId, preparingDay, shipmentTemplate, maxPurchaseQuantity?, stockCode, catalogId?, barcode?, quantity, images:[{url,order}], attributes:[{id, valueId, customValue}], salePrice, listPrice, vatRate(0|1|10|20)}]}}`; en fazla 1000 SKU; yanıt `{id, type, status: IN_QUEUE|REJECT, reasons}`; sonuç `ms/product/task-details/page-query` ile.
    - Marka: özellik id 1, `customValue` metni. Zorunlu özellikler gönderilmeli; özel değere izin yoksa `valueId`.
    - `shipmentTemplate` (satıcı panelindeki şablon adı) ve `preparingDay` için N11 bağlantı ayarı + panel girişi gerekiyor.
