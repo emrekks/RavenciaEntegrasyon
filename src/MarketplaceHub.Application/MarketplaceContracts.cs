@@ -111,8 +111,10 @@ public static class MarketplaceJobTypes
             OrderInvoiceReconciliation => HepsiburadaOrderInvoiceReconciliation,
             _ => jobType
         },
-        // Only the connection test runs for N11 so far; the read and write
-        // flows are added phase by phase (docs/N11-ENTEGRASYON-PLANI.md).
+        // N11 has its own connection test, reference and order read job types. Order and
+        // stock reconciliation and the price/stock writes reuse the shared job types and
+        // reach the n11 adapter through the connection's port routing
+        // (docs/N11-ENTEGRASYON-PLANI.md).
         "N11" => jobType switch
         {
             ConnectionTest => N11ConnectionTest,
