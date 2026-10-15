@@ -36,6 +36,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
                 .ToDictionaryAsync(attempt => attempt.JobId, attempt => attempt.StartedAt, cancellationToken);
         var batchCounts = jobs.GroupBy(job => job.CorrelationId, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
+        var platforms = await ConnectionPlatformsAsync(jobs, cancellationToken);
         return jobs.Select(job =>
         {
             lastAttemptStarts.TryGetValue(job.Id, out var lastAttemptStartedAt);
@@ -43,7 +44,8 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
                 job,
                 failures.GetValueOrDefault(job.Id),
                 batchCounts.GetValueOrDefault(job.CorrelationId, 1),
-                lastAttemptStarts.ContainsKey(job.Id) ? lastAttemptStartedAt : null);
+                lastAttemptStarts.ContainsKey(job.Id) ? lastAttemptStartedAt : null,
+                job.ConnectionId is Guid connectionId ? platforms.GetValueOrDefault(connectionId) : null);
         }).ToList();
     }
 
@@ -346,7 +348,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         }
         var scan = await ScanAsync(job, cancellationToken);
         var failureReasons = await ProductImportFailureReasonsAsync(job, cancellationToken);
-        var summary = Summary(job, failureTimes, relatedJobs.Count, attempts.FirstOrDefault()?.StartedAt);
+        var summary = Summary(job, failureTimes, relatedJobs.Count, attempts.FirstOrDefault()?.StartedAt, (job.ConnectionId is Guid relatedConnectionId ? (await ConnectionPlatformsAsync([job], cancellationToken)).GetValueOrDefault(relatedConnectionId) : null));
         if (job.JobType == InvoicingJobTypes.InvoiceSubmit && job.LastErrorCode == "EFATURAM_REQUEST_REJECTED")
         {
             var invoiceId = PayloadGuid(job.PayloadJson, "invoiceId");
@@ -779,10 +781,22 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             .ToDictionary(x => x.JobId, x => new FailureTime(x.FirstFailedAt, x.LastFailedAt));
     }
 
-    private static JobSummaryView Summary(IntegrationJob x, FailureTime? failure = null, int batchCount = 1, DateTimeOffset? lastAttemptStartedAt = null) => new(
+    // Jobs of the shared Trendyol job types also run for n11 connections, so the marketplace shown to
+    // the operator comes from the connection when the job type does not name one.
+    private async Task<Dictionary<Guid, string>> ConnectionPlatformsAsync(IReadOnlyCollection<IntegrationJob> jobs, CancellationToken cancellationToken)
+    {
+        var connectionIds = jobs.Where(job => job.ConnectionId.HasValue).Select(job => job.ConnectionId!.Value).Distinct().ToArray();
+        if (connectionIds.Length == 0) return [];
+        return await db.PlatformConnections.AsNoTracking()
+            .Where(connection => connectionIds.Contains(connection.Id))
+            .Select(connection => new { connection.Id, connection.PlatformCode })
+            .ToDictionaryAsync(connection => connection.Id, connection => connection.PlatformCode, cancellationToken);
+    }
+
+    private static JobSummaryView Summary(IntegrationJob x, FailureTime? failure = null, int batchCount = 1, DateTimeOffset? lastAttemptStartedAt = null, string? platformCode = null) => new(
         x.Id, x.ConnectionId, x.JobType, Wire(x.Status), x.AttemptCount, x.MaxAttempts,
         x.AvailableAt, x.LastErrorCode, x.LastErrorSummary, x.CorrelationId,
-        x.CreatedAt, x.StartedAt, x.CompletedAt, Marketplace(x.JobType), ExternalId(x.PayloadJson),
+        x.CreatedAt, x.StartedAt, x.CompletedAt, Marketplace(x.JobType, platformCode), ExternalId(x.PayloadJson),
         failure?.FirstFailedAt, failure?.LastFailedAt,
         x.Status is JobStatus.Pending or JobStatus.RetryScheduled ? x.AvailableAt : null,
         Math.Max(1, batchCount), x.ProgressCurrent, x.ProgressTotal, x.ProgressPercent, x.ProgressLabel,
@@ -834,7 +848,9 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         return null;
     }
 
-    private static string Marketplace(string jobType) => jobType.Contains("EFATURAM", StringComparison.OrdinalIgnoreCase)
+    internal static string Marketplace(string jobType, string? platformCode = null) => string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase) && !jobType.Contains("EFATURAM", StringComparison.OrdinalIgnoreCase)
+        ? "N11"
+        : jobType.Contains("EFATURAM", StringComparison.OrdinalIgnoreCase)
         ? "Trendyol e-Faturam"
         : jobType.Contains("HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
             ? "Hepsiburada"

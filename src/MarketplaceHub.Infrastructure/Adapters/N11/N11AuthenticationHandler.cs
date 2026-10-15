@@ -44,7 +44,14 @@ public sealed class N11AuthenticationHandler(
         return new(connection, N11CredentialFormat.Normalize(payload.ApiKey) ?? payload.ApiKey, N11CredentialFormat.Normalize(payload.ApiSecret) ?? payload.ApiSecret);
     }
 
-    private sealed record CredentialPayload(string ApiKey, string ApiSecret);
+    private sealed record CredentialPayload(string ApiKey, string ApiSecret)
+    {
+        public override string ToString() => nameof(CredentialPayload);
+    }
 }
 
-public sealed record N11RequestContext(PlatformConnection Connection, string AppKey, string AppSecret);
+public sealed record N11RequestContext(PlatformConnection Connection, string AppKey, string AppSecret)
+{
+    // The generated ToString would print the key pair; a logged or thrown context must not leak it.
+    public override string ToString() => $"N11RequestContext {{ ConnectionId = {Connection.Id} }}";
+}

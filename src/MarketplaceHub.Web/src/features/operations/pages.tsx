@@ -120,9 +120,10 @@ function jobPresentation(jobType: string): JobPresentation {
   return { title: jobType.replaceAll('_', ' ').toLocaleLowerCase('tr-TR').replace(/(^|\s)\S/g, value => value.toLocaleUpperCase('tr-TR')), icon: 'generic', description: 'İşlem arka planda yürütülür; ayrıntılar için kaydı açabilirsiniz.' }
 }
 
-function jobSource(jobType: string) {
+function jobSource(jobType: string, marketplace?: string) {
   const type = jobType.toUpperCase()
   if (type.includes('EFATURAM')) return 'e-Faturam API'
+  if (marketplace === 'N11') return 'N11 API'
   if (type.startsWith('HEPSIBURADA_')) return 'Hepsiburada API'
   if (type.startsWith('N11_')) return 'N11 API'
   if (type.startsWith('TRENDYOL_')) return 'Trendyol API'
@@ -344,7 +345,7 @@ function JobDetailDrawer({ selected, detail, selectedIsRunning, elevated, retrya
     <div className="jobs-reference-drawer-header">
       <div>
         <h2 id="job-detail-title">{selected ? jobPresentation(selected.jobType).title : 'İşlem ayrıntısı'}</h2>
-        <p>{selected ? `${jobSource(selected.jobType)} · ${selected.jobType}${selected.batchCount > 1 ? ` · Toplu işlem (${selected.batchCount} job)` : ''}` : 'İşlem ayrıntısı yükleniyor'}</p>
+        <p>{selected ? `${jobSource(selected.jobType, selected.marketplace)} · ${selected.jobType}${selected.batchCount > 1 ? ` · Toplu işlem (${selected.batchCount} job)` : ''}` : 'İşlem ayrıntısı yükleniyor'}</p>
       </div>
       <button type="button" className="jobs-reference-drawer-close" aria-label="Detay panelini kapat" onClick={onClose}><UiIcon name="close" /></button>
     </div>
@@ -542,7 +543,7 @@ export function JobsPage({ me }: { me: Me }) {
             const time = formatJobTime(job.createdAt)
             const typeDescriptionId = `job-type-description-${job.id}`
             return <tr className="jobs-reference-row" key={job.id} aria-describedby={typeDescriptionId} onClick={() => setSelectedId(job.id)} tabIndex={0} onKeyDown={event => { if (event.key === 'Enter') setSelectedId(job.id) }}>
-              <td><div className="jobs-reference-type"><span className="jobs-reference-type-icon" aria-hidden="true"><JobsIcon name={presentation.icon} /></span><span className="jobs-reference-type-content"><strong>{presentation.title}</strong>{(job.batchCount > 1 || job.externalId || job.jobType.toUpperCase() !== 'HEPSIBURADA_ORDER_SYNC') && <small>{job.batchCount > 1 ? `Toplu işlem · ${job.batchCount} job` : job.externalId ?? `${job.marketplace} · ${jobSource(job.jobType)}`}</small>}<span id={typeDescriptionId} className="jobs-reference-type-tooltip" role="tooltip">{presentation.description}</span></span></div></td>
+              <td><div className="jobs-reference-type"><span className="jobs-reference-type-icon" aria-hidden="true"><JobsIcon name={presentation.icon} /></span><span className="jobs-reference-type-content"><strong>{presentation.title}</strong>{(job.batchCount > 1 || job.externalId || job.jobType.toUpperCase() !== 'HEPSIBURADA_ORDER_SYNC') && <small>{job.batchCount > 1 ? `Toplu işlem · ${job.batchCount} job` : job.externalId ?? `${job.marketplace} · ${jobSource(job.jobType, job.marketplace)}`}</small>}<span id={typeDescriptionId} className="jobs-reference-type-tooltip" role="tooltip">{presentation.description}</span></span></div></td>
               <td><span className={`jobs-reference-status ${jobStatusTone(job.status)}`}><i aria-hidden="true" />{jobStatusLabel(job.status)}</span></td>
               <td className="jobs-reference-attempt">{job.attemptCount} / {job.maxAttempts}</td>
               <td><div className="jobs-reference-time"><strong>{time.time}</strong><small>{time.day}</small><small>{job.attemptCount > 0 ? `Son deneme ${jobAttemptDuration(job)}` : 'Çalışma başlamadı'}</small></div></td>
