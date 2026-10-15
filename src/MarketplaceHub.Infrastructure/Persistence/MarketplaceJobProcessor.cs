@@ -7907,6 +7907,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             return await SyncShopifyReturns(tenantId, connectionId, payloadJson, correlationId, cancellationToken);
         if (string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase))
             return await SyncHepsiburadaReturns(tenantId, connectionId, payloadJson, correlationId, cancellationToken);
+        if (string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase))
+            return await SyncN11Returns(tenantId, connectionId, payloadJson, correlationId, cancellationToken);
 
         var cursor = await Cursor(tenantId, connectionId, "RETURNS", cancellationToken);
         var configuredOverlapSeconds = await db.ConnectionSyncPolicies.AsNoTracking()
@@ -8018,6 +8020,104 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             return true;
         }
         return false;
+    }
+
+    // n11 lists claims by request date only, so every run re-reads a fixed request window to
+    // pick up later status changes (approval, denial, refund) of recent claims.
+    private const int N11ReturnLookbackDays = 45;
+    private const int N11ReturnInitialLookbackDays = 90;
+
+    private async Task<bool> SyncN11Returns(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    {
+        var cursor = await Cursor(tenantId, connectionId, "RETURNS", cancellationToken);
+        var now = timeProvider.GetUtcNow();
+        var full = ReadBoolean(payloadJson, "forceFull") || cursor.LastSuccessAt is null;
+        var window = new ReturnPollWindow(now.AddDays(-(full ? N11ReturnInitialLookbackDays : N11ReturnLookbackDays)), now);
+        var productSnapshots = new Dictionary<string, string?>(StringComparer.Ordinal);
+        var page = 0;
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            TrackRequest();
+            var result = await returns.PollAsync(Context(tenantId, connectionId, correlationId, $"n11-return-sync:{page}"), window, new(page.ToString(CultureInfo.InvariantCulture), 100), cancellationToken);
+            if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
+            foreach (var claim in result.Value!.Items)
+            {
+                TrackReceived();
+                var resolved = await ResolveN11ReturnOrderLinesAsync(tenantId, connectionId, correlationId, claim, cancellationToken);
+                await UpsertReturn(tenantId, connectionId, correlationId, resolved, productSnapshots, cancellationToken);
+            }
+            if (!result.Value.HasMore) break;
+            page = int.TryParse(result.Value.NextCursor, NumberStyles.None, CultureInfo.InvariantCulture, out var next) && next > page ? next : page + 1;
+        }
+        cursor.OpaqueCursor = null;
+        cursor.LastModifiedWatermark = now;
+        cursor.LastSuccessAt = timeProvider.GetUtcNow();
+        cursor.Version++;
+        await db.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    // An n11 claim names the product (productId) but not the order line. Ensure the order is
+    // stored, then point the claim at the order lines whose n11 snapshot carries that product.
+    private async Task<RemoteReturnClaim> ResolveN11ReturnOrderLinesAsync(Guid tenantId, Guid connectionId, string correlationId, RemoteReturnClaim claim, CancellationToken cancellationToken)
+    {
+        string? productId = null;
+        try
+        {
+            using var raw = JsonDocument.Parse(claim.RawJson);
+            if (raw.RootElement.TryGetProperty("productId", out var value) && value.ValueKind == JsonValueKind.String) productId = value.GetString()?.Trim();
+        }
+        catch (JsonException) { }
+        if (string.IsNullOrWhiteSpace(productId)) return claim;
+
+        var orderId = await db.Orders.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && (x.ExternalOrderId == claim.ExternalOrderId || x.OrderNumber == claim.ExternalOrderId))
+            .Select(x => (Guid?)x.Id)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (orderId is null)
+        {
+            TrackRequest();
+            var order = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"n11-return-order:{claim.ExternalOrderId}"), claim.ExternalOrderId, cancellationToken);
+            if (!order.IsSuccess) return claim;
+            TrackReceived();
+            await UpsertOrder(tenantId, connectionId, order.Value!, cancellationToken);
+            orderId = await db.Orders.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && (x.ExternalOrderId == claim.ExternalOrderId || x.OrderNumber == claim.ExternalOrderId))
+                .Select(x => (Guid?)x.Id)
+                .SingleOrDefaultAsync(cancellationToken);
+            if (orderId is null) return claim;
+        }
+
+        var lines = await db.OrderLines.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.OrderId == orderId.Value)
+            .Select(x => new { x.ExternalLineId, x.SourceSnapshotJson })
+            .ToListAsync(cancellationToken);
+        var matches = lines.Where(line => string.Equals(N11LineProductId(line.SourceSnapshotJson), productId, StringComparison.Ordinal))
+            .Select(line => line.ExternalLineId)
+            .ToList();
+        if (matches.Count == 0) return claim;
+        return claim with
+        {
+            Lines = claim.Lines.Select(line => line with { ExternalOrderLineId = matches[0], AlternateExternalOrderLineIds = matches.Skip(1).ToList() }).ToList()
+        };
+    }
+
+    internal static string? N11LineProductId(string? snapshotJson)
+    {
+        if (string.IsNullOrWhiteSpace(snapshotJson)) return null;
+        try
+        {
+            using var document = JsonDocument.Parse(snapshotJson);
+            return document.RootElement.ValueKind == JsonValueKind.Object && document.RootElement.TryGetProperty("productId", out var value)
+                ? value.ValueKind switch
+                {
+                    JsonValueKind.String => value.GetString()?.Trim(),
+                    JsonValueKind.Number => value.GetRawText(),
+                    _ => null
+                }
+                : null;
+        }
+        catch (JsonException) { return null; }
     }
 
     private static ShopifyReturnSyncState? ReadShopifyReturnSyncState(string? value)

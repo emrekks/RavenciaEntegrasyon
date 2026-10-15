@@ -149,15 +149,16 @@ public sealed class N11OrderMapperTests
         Assert.Equal(MarketplaceJobTypes.N11OrderSync, MarketplaceJobTypes.ForPlatform("N11", MarketplaceJobTypes.OrderSync));
         Assert.Equal(MarketplaceJobTypes.ReturnSync, MarketplaceJobTypes.ForPlatform("N11", MarketplaceJobTypes.ReturnSync));
         Assert.True(MarketplaceHub.Infrastructure.Persistence.ScheduledJobProducer.SupportsN11ScheduledPolicy("ORDERS"));
-        Assert.False(MarketplaceHub.Infrastructure.Persistence.ScheduledJobProducer.SupportsN11ScheduledPolicy("RETURNS"));
+        Assert.True(MarketplaceHub.Infrastructure.Persistence.ScheduledJobProducer.SupportsN11ScheduledPolicy("RETURNS"));
+        Assert.False(MarketplaceHub.Infrastructure.Persistence.ScheduledJobProducer.SupportsN11ScheduledPolicy("QUESTIONS"));
         // Already imported n11 orders are repaired by the per-order reconciliation reads.
         Assert.True(MarketplaceHub.Infrastructure.Persistence.ScheduledJobProducer.SupportsN11ScheduledPolicy("ORDER_RECONCILE_SHORT"));
         Assert.True(MarketplaceHub.Infrastructure.Persistence.ScheduledJobProducer.SupportsN11ScheduledPolicy("ORDER_RECONCILE_DAILY"));
         // Cross-channel stock reaches n11 through scheduled stock reconciliation.
         Assert.True(MarketplaceHub.Infrastructure.Persistence.ScheduledJobProducer.SupportsN11ScheduledPolicy("STOCK_RECONCILE_SHORT"));
         Assert.True(MarketplaceHub.Infrastructure.Persistence.ScheduledJobProducer.SupportsN11ScheduledPolicy("STOCK_RECONCILE_DAILY"));
-        // No n11 returns integration yet, so the return write switch is not offered.
-        Assert.False(MarketplaceHub.Infrastructure.Persistence.ScheduledJobProducer.SupportsN11ScheduledPolicy(MarketplaceExternalWritePolicies.Return));
+        // Return approvals go to n11 through the SOAP ReturnService.
+        Assert.True(MarketplaceHub.Infrastructure.Persistence.ScheduledJobProducer.SupportsN11ScheduledPolicy(MarketplaceExternalWritePolicies.Return));
     }
 
     [Fact]

@@ -3,7 +3,7 @@ export type ReturnSyncResult = { succeeded: number; failed: number }
 
 export function activeReturnSyncConnections<T extends ReturnSyncConnection>(connections: T[]) {
   return connections.filter(connection =>
-    (connection.platformCode === 'TRENDYOL' || connection.platformCode === 'HEPSIBURADA')
+    (connection.platformCode === 'TRENDYOL' || connection.platformCode === 'HEPSIBURADA' || connection.platformCode === 'N11')
     && (connection.status === 'ACTIVE' || connection.status === 'VERIFIED'))
 }
 

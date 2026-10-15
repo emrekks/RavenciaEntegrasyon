@@ -422,11 +422,11 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
     // n11 flows join as their integration phases go live. Stock reconciliation carries
     // sales from other channels and panel edits to n11; it only writes while the
     // connection's external writes and its STOCK_WRITE policy are enabled.
-    // RETURN_WRITE stays out until the n11 returns integration exists.
+    // RETURNS reads claims through the SOAP ReturnService; RETURN_WRITE sends approvals only.
     internal static bool SupportsN11ScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "REFERENCE_DATA"
-            or "ORDER_RECONCILE_SHORT" or "ORDER_RECONCILE_MEDIUM" or "ORDER_RECONCILE_DAILY"
+            or "ORDER_RECONCILE_SHORT" or "ORDER_RECONCILE_MEDIUM" or "ORDER_RECONCILE_DAILY" or "RETURNS"
             or "STOCK_RECONCILE_SHORT" or "STOCK_RECONCILE_MEDIUM" or "STOCK_RECONCILE_DAILY"
-        || resourceType is MarketplaceExternalWritePolicies.Price or MarketplaceExternalWritePolicies.Stock or MarketplaceExternalWritePolicies.Shipment;
+        || resourceType is MarketplaceExternalWritePolicies.Price or MarketplaceExternalWritePolicies.Stock or MarketplaceExternalWritePolicies.Shipment or MarketplaceExternalWritePolicies.Return;
 
     internal static bool DefaultPolicyEnabled(string platformCode, string resourceType) =>
         resourceType == "ORDER_CARGO_INFO"

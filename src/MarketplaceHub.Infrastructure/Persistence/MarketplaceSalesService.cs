@@ -1681,6 +1681,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             ReturnClaimStatus.Requested or ReturnClaimStatus.InTransit => ["RECEIVE"],
             ReturnClaimStatus.AwaitingShipment when isHepsiburada => Array.Empty<string>(),
             ReturnClaimStatus.ActionRequired when isHepsiburada => HepsiburadaReturnActionPolicy.AllowedActions(claim.RawStatus, decisionPending),
+            // n11 approvals go through the API; denials need n11's own panel.
+            ReturnClaimStatus.ActionRequired when !decisionPending && string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase) => ["APPROVE"],
             ReturnClaimStatus.ActionRequired when !decisionPending => ReturnActions,
             ReturnClaimStatus.ActionRequired => Array.Empty<string>(),
             _ => await CapabilityValues(tenantId, claim.ConnectionId, MarketplaceCapabilities.ReturnWrite, "allowedActions", cancellationToken)
@@ -1823,6 +1825,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var preApprovalConfirm = action == "PREAPPROVAL_CONFIRM";
         var awaitingPreApproval = isHepsiburada && HepsiburadaReturnActionPolicy.IsAwaitingPreApproval(claim.RawStatus);
         if (action is not ("APPROVE" or "REJECT") && !preApprovalConfirm) return Invalid<ReturnDetailView>("action", "İade aksiyonu APPROVE, PREAPPROVAL_CONFIRM veya REJECT olmalıdır.");
+        if (action == "REJECT" && string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase)) return ServiceResult<ReturnDetailView>.Fail("N11_RETURN_REJECT_MANUAL", "N11 iadeleri panelden yalnız onaylanabilir; reddetmek için N11 satıcı panelini kullanın.", 422);
         if (preApprovalConfirm && !awaitingPreApproval) return ServiceResult<ReturnDetailView>.Fail("HEPSIBURADA_PREAPPROVAL_ACTION_NOT_ALLOWED", "İnceleme için geri gönderim yalnız Hepsiburada AwaitingPreApproval durumunda kullanılabilir.", 409);
         if (claim.Status != ReturnClaimStatus.ActionRequired && !(awaitingPreApproval && claim.Status == ReturnClaimStatus.Requested)) return ServiceResult<ReturnDetailView>.Fail("RETURN_ACTION_NOT_ALLOWED", "İade aksiyonu yalnız sağlayıcının aksiyon beklediği durumda kullanılabilir.", 409);
 
