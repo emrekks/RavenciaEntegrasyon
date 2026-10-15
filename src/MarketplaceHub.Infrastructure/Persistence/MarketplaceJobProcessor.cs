@@ -8545,6 +8545,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             db.ExternalEffectRecords.Remove(effect); await db.SaveChangesAsync(cancellationToken); throw JobProcessingException.FromAdapter(result.Error!);
         }
         effect.CompletedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken);
+        await RecordN11ShipmentWriteEvidenceAsync(tenantId, connectionId, payload.Action, cancellationToken);
         var orderNumber = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.OrderId).Select(x => x.OrderNumber).SingleAsync(cancellationToken);
         TrackRequest();
         var readback = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"{job.EffectIdempotencyKey}:readback"), orderNumber, cancellationToken);
@@ -8552,6 +8553,30 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (readback.IsSuccess) await UpsertOrder(tenantId, connectionId, readback.Value!, cancellationToken);
         else { await RecordIssue(tenantId, $"shipment-readback:{connectionId}:{package.ExternalPackageId}:{payload.Action}", "SHIPMENT_ACTION_READBACK_PENDING", "Paket aksiyonu kabul edildi ancak anlık order read-back tamamlanamadı; planlı sync kesinleştirecek.", cancellationToken); await db.SaveChangesAsync(cancellationToken); }
         return true;
+    }
+
+    // n11 has no sandbox and its probe is read-only, so SHIPMENT_WRITE is proven by the first
+    // package action the live store accepts. Once recorded, the shipment detail offers the
+    // n11 package actions (approve and splits) like the other marketplaces.
+    internal static readonly string[] N11ShipmentActions = ["PICKING", "SPLIT", "MULTI_SPLIT"];
+
+    private async Task RecordN11ShipmentWriteEvidenceAsync(Guid tenantId, Guid connectionId, string action, CancellationToken cancellationToken)
+    {
+        if (!N11ShipmentActions.Contains(action, StringComparer.OrdinalIgnoreCase)) return;
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "N11", cancellationToken);
+        if (connection is null) return;
+        var capability = await db.PlatformCapabilities.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == MarketplaceCapabilities.ShipmentWrite, cancellationToken);
+        if (capability is null || capability.SupportLevel == CapabilitySupportLevel.Supported && capability.VerifiedAt is not null) return;
+        capability.SupportLevel = CapabilitySupportLevel.Supported;
+        capability.SourceUrl = "https://api.n11.com/rest/order/v1/update";
+        capability.SourceVersion = "V1";
+        capability.Environment = connection.Environment;
+        capability.StoreScope = connection.ExternalStoreId;
+        capability.ConstraintsJson = JsonSerializer.Serialize(new { allowedActions = N11ShipmentActions });
+        capability.EvidenceNote = $"SHIPMENT_WRITE, N11 canlı mağazasının kabul ettiği ilk paket aksiyonuyla ({action.ToUpperInvariant()}) doğrulandı.";
+        capability.VerifiedAt = timeProvider.GetUtcNow();
+        capability.Version++;
+        await db.SaveChangesAsync(cancellationToken);
     }
 
     private async Task<bool> ReturnAction(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
