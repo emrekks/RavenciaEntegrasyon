@@ -52,7 +52,9 @@ Sunucuda `aa57d0ba` çalışıyor (API ve worker sağlıklı). Aşağıdakilerin
 3. **N11 sipariş detayı alanları** — tamam (899d569d). Sipariş detayında (telefon düzeni) "Kargo takip no" (N11 kargo linkiyle), "Teslimat tipi", "Komisyon oranı", "N11 indirimi", "Satıcı indirimi" gösteriliyor; `OrderListView.PlatformInfo` ile gelir (`MarketplaceSalesService.N11OrderInfo`). Canlıda doğrulandı.
 4. **N11 hata mesajı eşleyici:** eşlenecek gerçek hata metni henüz toplanmadı. Soru listesindeki "1 dakikada bir" reddi giderildi: SOAP reddi hız sınırı sayılıyor ve 1/dk kovasında %25 ek aralık var (046b7521); soru eşitlemesi hatasız çalışıyor.
 5. **Worker `LEASE_EXPIRED`:** son 48 saatte 136 (çoğu 13–14 Ekim gecesi), 15 Ekim 07:00 UTC'den sonra yok; sorun çözülmüş görünüyor. İzlemeye devam et: `integration.job_attempts` üzerinde `ErrorCode='LEASE_EXPIRED'`.
-6. **Kategori/özellik eşleştirme otomasyonu:** plan sunuldu, kullanıcı hangi aşamadan başlanacağını henüz seçmedi (risk düzeltmeleri → kategoriden bağımsız değer şablonları → öneri motoru).
+6. **Kategori/özellik eşleştirme otomasyonu:** Aşama 1 (kategoriden bağımsız değer şablonları, platform varsayılanları, "Şimdi eşle") ve Aşama 2 (tek normalizer, eş anlamlılar, güven puanı + toplu onay, platformlar arası köprü, kategori önerisi) `main`'de ve canlıda. N11 eşleştirme sekmesi de çalışıyor (3.722 yaprak kategori). Açık/isteğe bağlı: Aşama 3 (insan onaylı yapay zekâ önerileri) ve Pazarama; başlamadan kullanıcıya sor.
+
+**Dış yazma gerektirenler (kullanıcı onayı şart):** N11 ilk ürün açma, bölme/işçilik/toplama aksiyonları, fiyat-stok toplu gönderimi.
 
 ## Notlar
 - Eski bilgisayarda `stash@{0}` ("Preserve existing local edits before Ravencia invoice and returns fixes", 8 Ekim) yalnız o bilgisayarda; kullanıcı bırakılmasını istedi.
