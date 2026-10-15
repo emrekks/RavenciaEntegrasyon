@@ -435,7 +435,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
     // open-order status scan (ORDER_LIFECYCLE), because the order list has no change filter, plus the
     // category/attribute/brand references. The write flows are listed so the policies exist (and stay
     // off) for the later phases.
-    internal static bool SupportsPazaramaScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "ORDER_LIFECYCLE" or "REFERENCE_DATA" or "RETURNS"
+    internal static bool SupportsPazaramaScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "ORDER_LIFECYCLE" or "REFERENCE_DATA" or "RETURNS" or "QUESTIONS"
         || MarketplaceExternalWritePolicies.IsPolicy(resourceType);
 
     internal static bool DefaultPolicyEnabled(string platformCode, string resourceType) =>

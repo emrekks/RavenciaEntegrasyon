@@ -11,6 +11,8 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
     private static readonly string[] TrendyolStatuses = ["WAITING_FOR_ANSWER", "ANSWERED", "REPORTED", "REJECTED", "UNANSWERED"];
     private static readonly string[] HepsiburadaStatuses = ["WAITING_FOR_ANSWER", "ANSWERED", "REJECTED", "EXPIRED"];
     private static readonly string[] N11Statuses = ["WAITING_FOR_ANSWER", "ANSWERED"];
+    // Pazarama answers wait for its approval (shown as answered) and may be rejected.
+    private static readonly string[] PazaramaStatuses = ["WAITING_FOR_ANSWER", "ANSWERED", "REJECTED"];
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
     public async Task<MarketplaceQuestionListPage> ListAsync(Guid tenantId, QuestionListQuery query, CancellationToken cancellationToken)
@@ -67,7 +69,7 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
     {
         var connections = await db.PlatformConnections.AsNoTracking().Where(connection => connection.TenantId == tenantId
             && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")
-            && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "HEPSIBURADA" || connection.PlatformCode == "N11"))
+            && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "HEPSIBURADA" || connection.PlatformCode == "N11" || connection.PlatformCode == "PAZARAMA"))
             .Select(connection => connection.Id).ToListAsync(cancellationToken);
         var added = 0; var updated = 0; string? error = null;
         foreach (var id in connections)
@@ -82,7 +84,7 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
     public async Task<QuestionSyncView> SyncConnectionAsync(Guid tenantId, Guid connectionId, string? kind, CancellationToken cancellationToken)
     {
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(row => row.TenantId == tenantId && row.Id == connectionId
-            && (row.PlatformCode == "TRENDYOL" || row.PlatformCode == "HEPSIBURADA" || row.PlatformCode == "N11"), cancellationToken);
+            && (row.PlatformCode == "TRENDYOL" || row.PlatformCode == "HEPSIBURADA" || row.PlatformCode == "N11" || row.PlatformCode == "PAZARAMA"), cancellationToken);
         if (connection is null) return new(0, 0, timeProvider.GetUtcNow(), "Pazaryeri bağlantısı bulunamadı.");
         var state = await db.MarketplaceQuestionSyncStates.SingleOrDefaultAsync(row => row.TenantId == tenantId && row.ConnectionId == connectionId, cancellationToken);
         if (state is null) { state = new() { TenantId = tenantId, ConnectionId = connectionId, HistoryStartedAt = timeProvider.GetUtcNow().AddYears(-1) }; db.MarketplaceQuestionSyncStates.Add(state); await db.SaveChangesAsync(cancellationToken); }
@@ -94,14 +96,14 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         await db.SaveChangesAsync(cancellationToken);
         try
         {
-            var kinds = connection.PlatformCode is "TRENDYOL" or "N11" ? new[] { "PRODUCT" } : new[] { "PRODUCT", "ORDER" };
-            var statuses = connection.PlatformCode switch { "TRENDYOL" => TrendyolStatuses, "N11" => N11Statuses, _ => HepsiburadaStatuses };
-            var liveStart = connection.PlatformCode is "TRENDYOL" or "N11" ? now.AddDays(-14) : now.AddDays(-7);
+            var kinds = connection.PlatformCode is "TRENDYOL" or "N11" or "PAZARAMA" ? new[] { "PRODUCT" } : new[] { "PRODUCT", "ORDER" };
+            var statuses = connection.PlatformCode switch { "TRENDYOL" => TrendyolStatuses, "N11" => N11Statuses, "PAZARAMA" => PazaramaStatuses, _ => HepsiburadaStatuses };
+            var liveStart = connection.PlatformCode is "TRENDYOL" or "N11" or "PAZARAMA" ? now.AddDays(-14) : now.AddDays(-7);
             var pageBase = connection.PlatformCode is "TRENDYOL" or "N11" ? 0 : 1;
             // n11 allows one question list call per minute, so each run reads a single page.
-            var liveBatches = connection.PlatformCode == "N11" ? 1 : 6;
-            var historyBatches = connection.PlatformCode == "N11" ? 1 : 3;
-            var pageSize = connection.PlatformCode is "TRENDYOL" or "N11" ? 50 : 25;
+            var liveBatches = connection.PlatformCode == "N11" ? 1 : connection.PlatformCode == "PAZARAMA" ? 3 : 6;
+            var historyBatches = connection.PlatformCode == "N11" ? 1 : connection.PlatformCode == "PAZARAMA" ? 2 : 3;
+            var pageSize = connection.PlatformCode is "TRENDYOL" or "N11" or "PAZARAMA" ? 50 : 25;
             updated += await ReconcilePendingAnswerSubmissionsAsync(tenantId, connectionId, now, cancellationToken);
             if (initial)
             {
@@ -410,7 +412,7 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         await (from connection in db.PlatformConnections.AsNoTracking()
                join state in db.MarketplaceQuestionSyncStates.AsNoTracking() on new { connection.TenantId, ConnectionId = connection.Id } equals new { state.TenantId, ConnectionId = state.ConnectionId } into states
                from state in states.DefaultIfEmpty()
-               where connection.TenantId == tenantId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED") && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "HEPSIBURADA" || connection.PlatformCode == "N11")
+               where connection.TenantId == tenantId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED") && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "HEPSIBURADA" || connection.PlatformCode == "N11" || connection.PlatformCode == "PAZARAMA")
                select new MarketplaceQuestionSyncStateView(connection.Id, connection.PlatformCode, connection.DisplayName, state != null && state.HistoryImported, state == null ? null : state.HistoryStartedAt,
                    state == null ? "QUEUED" : state.ProgressStatus, state == null ? 0 : state.ImportedCount, state == null ? null : state.LastRunStartedAt,
                    state == null ? null : state.LastSuccessAt, state == null ? null : state.LastError)).ToListAsync(cancellationToken);

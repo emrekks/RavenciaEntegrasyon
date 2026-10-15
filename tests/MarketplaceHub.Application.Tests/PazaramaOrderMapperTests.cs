@@ -246,7 +246,10 @@ public sealed class PazaramaOrderMapperTests
         Assert.True(ScheduledJobProducer.SupportsPazaramaScheduledPolicy("ORDERS"));
         Assert.True(ScheduledJobProducer.SupportsPazaramaScheduledPolicy("ORDER_RECOVERY"));
         Assert.True(ScheduledJobProducer.SupportsPazaramaScheduledPolicy("ORDER_LIFECYCLE"));
-        Assert.False(ScheduledJobProducer.SupportsPazaramaScheduledPolicy("QUESTIONS"));
+        Assert.True(ScheduledJobProducer.SupportsPazaramaScheduledPolicy("QUESTIONS"));
+        Assert.True(ScheduledJobProducer.SupportsPazaramaScheduledPolicy("RETURNS"));
+        Assert.True(ScheduledJobProducer.SupportsPazaramaScheduledPolicy("REFERENCE_DATA"));
+        Assert.False(ScheduledJobProducer.SupportsPazaramaScheduledPolicy("STOCK_RECONCILE_SHORT"));
         Assert.False(ScheduledJobProducer.DefaultPolicyEnabled("PAZARAMA", MarketplaceExternalWritePolicies.Price));
         Assert.True(ScheduledJobProducer.DefaultPolicyEnabled("PAZARAMA", "ORDERS"));
     }

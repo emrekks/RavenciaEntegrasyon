@@ -52,7 +52,7 @@ function formatDate(value?: string | null) {
   return Number.isNaN(date.getTime()) ? '—' : new Intl.DateTimeFormat('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(date).replace(' ', ' · ')
 }
 
-function displayPlatform(code: string) { return code === 'HEPSIBURADA' ? 'Hepsiburada' : code === 'N11' ? 'N11' : 'Trendyol' }
+function displayPlatform(code: string) { return code === 'HEPSIBURADA' ? 'Hepsiburada' : code === 'N11' ? 'N11' : code === 'PAZARAMA' ? 'Pazarama' : 'Trendyol' }
 function QuestionProductImage({ src, connectionId, sku, barcode, modelCode, productName }: { src?: string | null; connectionId: string; sku?: string | null; barcode?: string | null; modelCode?: string | null; productName: string }) {
   const sources = [...new Set([src, ...productImageFallbackUrls([barcode, sku, modelCode], connectionId, productName), ...(productName.trim() ? productImageFallbackUrls([], connectionId, productName) : [])].filter((value): value is string => Boolean(value)))]
   const sourceKey = sources.join('\u0000')
@@ -92,7 +92,7 @@ export function QuestionsPage() {
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null)
   const requestedSync = useRef(false)
   const kind = tab === 'ORDER' ? 'ORDER' : 'PRODUCT'
-  const connections = useQuery({ queryKey: ['questions', 'connections'], queryFn: async () => (await loadAllPages<Connection>('/connections', 100)).items.filter(item => ['TRENDYOL', 'HEPSIBURADA', 'N11'].includes(item.platformCode)), staleTime: 60_000 })
+  const connections = useQuery({ queryKey: ['questions', 'connections'], queryFn: async () => (await loadAllPages<Connection>('/connections', 100)).items.filter(item => ['TRENDYOL', 'HEPSIBURADA', 'N11', 'PAZARAMA'].includes(item.platformCode)), staleTime: 60_000 })
   const filters = new URLSearchParams({ kind, status })
   if (platform !== 'ALL') filters.set('platform', platform)
   if (connectionId !== 'ALL') filters.set('connectionId', connectionId)
@@ -193,7 +193,7 @@ export function QuestionsPage() {
         const length = draft.trim().length
         const productHref = row.kind === 'PRODUCT' || row.platformCode === 'HEPSIBURADA' ? row.productUrl || marketplaceProductSearchUrl(row.platformCode, row.productBarcode, row.productSku, row.productModelCode, row.productName) : null
         const deadline = questionDeadline(row.expiresAt, now)
-        const send = () => { if (length >= minLength && length <= 2000 && !sendAnswer.isPending) { if (row.platformCode === 'N11' && !window.confirm('N11’de bir soruya yalnızca bir kez cevap verilir ve sonradan değiştirilemez. Cevap gönderilsin mi?')) return; sendAnswer.mutate({ id: row.id, version: row.version, text: draft }) } }
+        const send = () => { if (length >= minLength && length <= 2000 && !sendAnswer.isPending) { if (row.platformCode === 'N11' && !window.confirm('N11’de bir soruya yalnızca bir kez cevap verilir ve sonradan değiştirilemez. Cevap gönderilsin mi?')) return; if (row.platformCode === 'PAZARAMA' && !window.confirm('Pazarama’da cevap önce Pazarama onayına düşer; onaylanmadan müşteriye görünmez ve reddedilebilir. Cevap gönderilsin mi?')) return; sendAnswer.mutate({ id: row.id, version: row.version, text: draft }) } }
         return <Modal open title="Soru Detayı" className="rv-question-answer-modal" onClose={() => setAnswerTarget(null)} footer={<div className="rv-answer-composer" aria-label={`#${row.externalQuestionId} için cevap`}>
           {templates.data?.length ? <div className="rv-question-bubbles" aria-label="Hazır cevaplar">{templates.data.map(item => <button type="button" key={item.id} title={item.text} onClick={() => setAnswerDrafts(current => ({ ...current, [row.id]: item.text }))}>{item.title}</button>)}</div> : null}
           <div className="rv-answer-bar"><textarea rows={1} maxLength={2000} value={draft} onChange={event => setAnswerDrafts(current => ({ ...current, [row.id]: event.target.value }))} onKeyDown={event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); send() } }} placeholder="Cevabınızı yazın…" aria-label="Soruya cevap" autoFocus /><Button onClick={send} loading={sendAnswer.isPending} disabled={length < minLength || length > 2000}>Gönder</Button></div>

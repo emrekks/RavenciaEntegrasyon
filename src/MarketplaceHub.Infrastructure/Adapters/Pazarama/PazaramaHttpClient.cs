@@ -101,6 +101,9 @@ public sealed partial class PazaramaHttpClient(
         var refunds = await SendAsync(account, HttpMethod.Post, Refunds, cancellationToken, Json(RefundBody(now.AddDays(-1), now, 1, 1)));
         var refundsReadable = refunds.IsSuccess && Data(refunds.Value!.RootElement, out _);
         refunds.Value?.Dispose();
+        var questions = await SendAsync(account, HttpMethod.Post, QuestionSearch, cancellationToken, Json(PazaramaQuestionMapper.SearchBody(new QuestionPollRequest("PRODUCT", "WAITING_FOR_ANSWER", null, null, 1, 1), 0)));
+        var questionsReadable = questions.IsSuccess && Data(questions.Value!.RootElement, out _);
+        questions.Value?.Dispose();
         var brands = await SendAsync(account, HttpMethod.Get, $"{Brands}?Page=1&Size=1", cancellationToken);
         var referencesReadable = brands.IsSuccess && Data(brands.Value!.RootElement, out _);
         brands.Value?.Dispose();
@@ -113,6 +116,8 @@ public sealed partial class PazaramaHttpClient(
                 ordersReadable ? "Son günün siparişleri salt okunur listelendi." : $"Sipariş listeleme denemesi tamamlanamadı ({orders.Error?.Code ?? "PAZARAMA_CONTRACT_INVALID"}); yetenek UNKNOWN bırakıldı.", null, now),
             new(MarketplaceCapabilities.ReturnRead, refundsReadable ? "SUPPORTED" : "UNKNOWN", identity.ApiVersion, identity.Environment, identity.ExternalStoreId, DocumentationHost + "iadeler", "rest", null, null,
                 refundsReadable ? "Son günün iade talepleri salt okunur listelendi." : $"İade listeleme denemesi tamamlanamadı ({refunds.Error?.Code ?? "PAZARAMA_CONTRACT_INVALID"}); yetenek UNKNOWN bırakıldı.", null, now),
+            new(MarketplaceCapabilities.QuestionRead, questionsReadable ? "SUPPORTED" : "UNKNOWN", identity.ApiVersion, identity.Environment, identity.ExternalStoreId, DocumentationHost + "saticiya-sorulan-urun-soru-ve-cevap", "rest", null, null,
+                questionsReadable ? "Cevap bekleyen müşteri soruları salt okunur listelendi." : $"Soru listeleme denemesi tamamlanamadı ({questions.Error?.Code ?? "PAZARAMA_CONTRACT_INVALID"}); yetenek UNKNOWN bırakıldı.", null, now),
             new(MarketplaceCapabilities.ReferenceRead, referencesReadable ? "SUPPORTED" : "UNKNOWN", identity.ApiVersion, identity.Environment, identity.ExternalStoreId, DocumentationHost + "brand-marka", "rest", null, null,
                 referencesReadable ? "Marka listesi salt okunur okundu." : $"Marka listesi okunamadı ({brands.Error?.Code ?? "PAZARAMA_CONTRACT_INVALID"}); yetenek UNKNOWN bırakıldı.", null, now)
         ];
