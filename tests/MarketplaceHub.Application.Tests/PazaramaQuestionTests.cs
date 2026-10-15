@@ -120,9 +120,41 @@ public sealed class PazaramaQuestionTests
 
     [Theory]
     [InlineData("""{"success":true}""")]
+    [InlineData("""{"data":null}""")]
     [InlineData("""{"data":[]}""")]
-    [InlineData("""{"data":{"approvalAnswersByMerchantSearchs":{}}}""")]
-    public void A_different_shape_is_a_contract_error(string json) => Assert.Throws<JsonException>(() => PazaramaQuestionMapper.Page(Parse(json), 1));
+    [InlineData("""{"data":{}}""")]
+    [InlineData("""{"data":{"approvalAnswersByMerchantSearchs":null,"unAnsweredCount":0}}""")]
+    public void No_questions_can_be_answered_in_several_ways(string json)
+    {
+        var page = PazaramaQuestionMapper.Page(Parse(json), 1);
+
+        Assert.Empty(page.Items);
+        Assert.Equal(0, page.TotalElements);
+    }
+
+    [Fact]
+    public void A_bare_list_of_questions_is_read()
+    {
+        var page = PazaramaQuestionMapper.Page(Parse($$"""{"data":[{{Row}}]}"""), 1);
+
+        Assert.Single(page.Items);
+    }
+
+    [Theory]
+    [InlineData("[]")]
+    [InlineData("""{"data":"x"}""")]
+    [InlineData("""{"data":5}""")]
+    public void Something_else_is_a_contract_error(string json) => Assert.Throws<JsonException>(() => PazaramaQuestionMapper.Page(Parse(json), 1));
+
+    [Fact]
+    public void The_shape_of_an_odd_answer_names_fields_only()
+    {
+        var shape = PazaramaHttpClient.ShapeOf(Parse("""{"data":{"secret":"value"},"success":true,"list":[1]}"""));
+
+        Assert.Contains("data.secret", shape);
+        Assert.Contains("list:Array", shape);
+        Assert.DoesNotContain("value", shape);
+    }
 
     // ---- detail ----
 

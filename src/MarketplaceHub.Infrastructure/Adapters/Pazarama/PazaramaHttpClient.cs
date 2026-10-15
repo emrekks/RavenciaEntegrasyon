@@ -299,6 +299,19 @@ public sealed partial class PazaramaHttpClient(
         catch (JsonException) { return "JSON değil"; }
     }
 
+    // Field names of an answer that did not have the expected shape (never the values).
+    internal static string ShapeOf(JsonElement element)
+    {
+        if (element.ValueKind != JsonValueKind.Object) return element.ValueKind.ToString();
+        var names = new List<string>();
+        foreach (var property in element.EnumerateObject())
+        {
+            names.Add(property.Name + (property.Value.ValueKind is JsonValueKind.Object or JsonValueKind.Array ? ":" + property.Value.ValueKind : ""));
+            if (property.Value.ValueKind == JsonValueKind.Object) names.AddRange(property.Value.EnumerateObject().Select(child => property.Name + "." + child.Name));
+        }
+        return names.Count == 0 ? "boş" : string.Join(", ", names.Take(20));
+    }
+
     internal static AdapterError Error(HttpStatusCode status, string body, TimeSpan? retryAfter)
     {
         var remote = RemoteMessage(body);

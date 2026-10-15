@@ -39,7 +39,7 @@ public sealed partial class PazaramaHttpClient : IQuestionPort
             }
             catch (JsonException)
             {
-                return Failure<MarketplaceQuestionPage>(AdapterErrorClass.ContractViolation, "PAZARAMA_QUESTION_CONTRACT_INVALID", "Pazarama soru yanıtı beklenen yapıda değil.", HttpStatusCode.BadGateway);
+                return Failure<MarketplaceQuestionPage>(AdapterErrorClass.ContractViolation, "PAZARAMA_QUESTION_CONTRACT_INVALID", $"Pazarama soru yanıtı beklenen yapıda değil (alanlar: {ShapeOf(document.RootElement)}).", HttpStatusCode.BadGateway);
             }
         }
         return AdapterResult<MarketplaceQuestionPage>.Success(new(items, request.Page, totalPages, total), rate);
@@ -114,16 +114,20 @@ public static class PazaramaQuestionMapper
 
     public static MarketplaceQuestionPage Page(JsonElement root, int pageNumber)
     {
-        if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object)
-            throw new JsonException("Pazarama question response has no data object.");
+        if (root.ValueKind != JsonValueKind.Object) throw new JsonException("Pazarama question response is not an object.");
         var items = new List<RemoteMarketplaceQuestion>();
-        if (data.TryGetProperty("approvalAnswersByMerchantSearchs", out var rows))
-        {
-            if (rows.ValueKind != JsonValueKind.Array) throw new JsonException("Pazarama question list is not a list.");
+        // No questions can come back as a null or missing data, an empty object or a bare list.
+        if (!root.TryGetProperty("data", out var data) || data.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined) return new(items, pageNumber, 0, 0);
+        JsonElement rows = default;
+        if (data.ValueKind == JsonValueKind.Array) rows = data;
+        else if (data.ValueKind == JsonValueKind.Object)
+            foreach (var name in new[] { "approvalAnswersByMerchantSearchs", "approvalAnswersByMerchantSearch", "approvalAnswersByMerchant", "items", "data" })
+                if (data.TryGetProperty(name, out var list) && list.ValueKind == JsonValueKind.Array) { rows = list; break; }
+        if (data.ValueKind is not (JsonValueKind.Object or JsonValueKind.Array)) throw new JsonException("Pazarama question data is neither an object nor a list.");
+        if (rows.ValueKind == JsonValueKind.Array)
             foreach (var row in rows.EnumerateArray())
-                if (Question(row) is { } question) items.Add(question);
-        }
-        var paging = data.TryGetProperty("pageResponse", out var page) && page.ValueKind == JsonValueKind.Object ? page : default;
+                if (row.ValueKind == JsonValueKind.Object && Question(row) is { } question) items.Add(question);
+        var paging = data.ValueKind == JsonValueKind.Object && (data.TryGetProperty("pageResponse", out var page) || data.TryGetProperty("pageResult", out page)) && page.ValueKind == JsonValueKind.Object ? page : default;
         var totalPages = (int)(Number(paging, "totalPages") ?? 0);
         var total = Number(paging, "totalCount") ?? items.Count;
         return new(items, pageNumber, totalPages, total);
