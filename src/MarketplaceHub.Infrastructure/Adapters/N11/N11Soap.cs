@@ -44,7 +44,7 @@ public sealed partial class N11HttpClient
             var parsed = SoapResponse(body, operation, requireResult);
             if (parsed.Error is { } error)
             {
-                logger.LogWarning("N11 SOAP isteği reddedildi. ConnectionId: {ConnectionId}, Operation: {Operation}, Code: {Code}", account.Connection.Id, operation, error.Code);
+                logger.LogWarning("N11 SOAP isteği reddedildi. ConnectionId: {ConnectionId}, Operation: {Operation}, Code: {Code}, Message: {Message}", account.Connection.Id, operation, error.Code, error.SafeMessage);
                 return AdapterResult<XElement>.Failure(error);
             }
             return AdapterResult<XElement>.Success(parsed.Response!);
