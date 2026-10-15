@@ -1,6 +1,6 @@
 # Pazarama Entegrasyonu Planı
 
-Durum (15 Ekim 2026): plan aşaması. Kod yazılmadı. Kaynak: Pazarama satıcı paneli entegrasyon dokümanı (`https://isortagim.pazarama.com/auth/integration/...`, 51 sayfa, 15 Ekim 2026'da okundu). Kodda Pazarama yalnız arayüzde ad, logo ve eşleştirme sekmesi tanımı olarak var; arka uçta hiç yok.
+Durum (15 Ekim 2026): kararlar alındı (bölüm 2), Aşama 1 başlıyor. Kaynak: Pazarama satıcı paneli entegrasyon dokümanı (`https://isortagim.pazarama.com/auth/integration/...`, 51 sayfa, 15 Ekim 2026'da okundu). Kodda Pazarama yalnız arayüzde ad, logo ve eşleştirme sekmesi tanımı olarak var; arka uçta hiç yok.
 
 Bu plan N11 entegrasyonunda izlenen yolu izler (`docs/N11-ENTEGRASYON-PLANI.md`). N11'den öğrenilenler ve yeni platform ekleme kontrol listesi (bölüm 5.3) bu deneyimden çıkarıldı.
 
@@ -12,17 +12,16 @@ Bu plan N11 entegrasyonunda izlenen yolu izler (`docs/N11-ENTEGRASYON-PLANI.md`)
 - Her yazma, N11'de kurulan desende adaptör içindeki tek kapıdan geçer: sunucu genel anahtarı + bağlantı anahtarı + canlı ortam + doğrulanmış/aktif bağlantı (+ ilgili yazma politikası üst katmanda).
 - Okuma yetenekleri bağlantı testinde kanıtlanır; yazma yetenekleri ilk kabul edilen canlı yazmayla kanıtlanır.
 
-## 2. Kullanıcı kararları (bekleniyor)
+## 2. Kullanıcı kararları (15 Ekim 2026)
 
-| Konu | Seçenekler | Önerilen |
-|---|---|---|
-| Mağaza | Canlı mağaza (dış yazma kapalı başlar) | Canlı, yazma kapalı |
-| Kargo modeli | Pazarama anlaşmalı kargo / kendi kargo anlaşmam | Sorulacak — durum akışını değiştirir (6.2) |
-| Eşleşme anahtarı | Barkod (Pazarama'nın fiyat/stok anahtarı) / SKU (stockCode) | Barkod birincil, SKU çapraz kontrol |
-| Öncelik | Siparişler + fiyat/stok önce (N11'deki gibi) | Aynı |
-| Ürün çekme | Mevcut modlar: tam tarama / yalnız eşleme | Aynı |
-| Başlangıç fiyatı | Pazarama'daki mevcut fiyat / paneldeki fiyat | Pazarama'daki mevcut fiyat (N11 kararıyla aynı) |
-| Sipariş servisi | `getOrdersForApi` (adetli satır) / `getOrdersForApiV2` (her adet ayrı satır) | V1; iadelerde `SplitItems=false` |
+- **Mağaza:** canlı mağaza; dış yazma kapalı başlar, her yazma yeteneği kullanıcı onayıyla tek tek açılır.
+- **Kargo modeli: Pazarama anlaşmalı kargo.** Statü 12 (Hazırlanıyor) sonrasında kargo süreci Pazarama tarafından otomatik ilerler; panel "Kargoya verildi" (5) göndermez, takip bilgisini siparişten okur. Etiket/gönderi kodu `shipmentCode` (PZ...). Kendi kargo akışı (5 + takip no) kod yolunda kapalı tutulur.
+- **Eşleşme anahtarı:** barkod (Pazarama'nın fiyat/stok anahtarı), SKU (`stockCode`) çapraz kontrol.
+- **Öncelik:** önce siparişler + fiyat/stok (N11'deki sıra).
+- **Ürün çekme:** mevcut modlar (tam tarama / yalnız eşleme).
+- **Başlangıç fiyatı:** Pazarama'daki mevcut fiyat.
+- **Sipariş servisi:** `getOrdersForApi` (V1); iadelerde `SplitItems=false`.
+- **API bilgisi:** kullanıcı Pazarama panelinde üretip bağlantı formuna kendisi girer (anahtar bir kez gösterilir; yeni anahtar eskisini anında iptal eder).
 
 ## 3. Pazarama API özeti
 
@@ -170,7 +169,7 @@ Panel:
 ### 5.5 Bağlantı ayarları (`SettingsJson`)
 
 - `ExternalWritesEnabled` (varsayılan kapalı), `InvoiceCreationEnabled`.
-- `PazaramaCargoModel`: `CONTRACTED` (Pazarama anlaşmalı) / `OWN` (kendi kargo) — durum akışını ve "Kargoya verildi" aksiyonunu belirler.
+- `PazaramaCargoModel`: `CONTRACTED` (kullanıcı kararı; `OWN` yalnız ileride gerekirse açılır) — durum akışını ve "Kargoya verildi" aksiyonunu belirler.
 - `PazaramaDefaultCargoCompanyId`, `PazaramaDefaultSellerAddressId` (paket işlemleri için; boşsa Pazarama varsayılanı).
 - `PazaramaDefaultDesi` (üründe desi yoksa).
 - `SellerId` (bağlantı testinde okunur, katalog aramada gerekir).
