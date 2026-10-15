@@ -10,4 +10,11 @@ public sealed class N11Options
     // n11 asks integrators to send the same integrator name with every write.
     public string IntegratorName { get; init; } = "Ravencia";
     public TimeSpan Timeout { get; init; } = TimeSpan.FromSeconds(30);
+    // Shared per-account quotas (requests per minute). n11 documents 1000/min for orders;
+    // the rest are cautious starting values until live 429 behaviour is observed.
+    public int OrderRequestsPerMinute { get; init; } = 600;
+    public int ProductRequestsPerMinute { get; init; } = 120;
+    public int TaskRequestsPerMinute { get; init; } = 120;
+    public int CategoryRequestsPerMinute { get; init; } = 30;
+    public int SoapRequestsPerMinute { get; init; } = 60;
 }

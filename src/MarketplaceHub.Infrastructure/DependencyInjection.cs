@@ -91,7 +91,9 @@ public static class DependencyInjection
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AutomaticDecompression = System.Net.DecompressionMethods.All, PooledConnectionLifetime = TimeSpan.FromMinutes(10) });
         services.AddScoped<HepsiburadaAuthenticationHandler>();
         services.AddScoped<HepsiburadaHttpClient>();
+        services.AddTransient<N11RateLimitHandler>();
         services.AddHttpClient("N11", client => client.Timeout = Timeout.InfiniteTimeSpan)
+            .AddHttpMessageHandler<N11RateLimitHandler>()
             .AddHttpMessageHandler<MarketplaceCircuitBreakerHandler>()
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AutomaticDecompression = System.Net.DecompressionMethods.All, PooledConnectionLifetime = TimeSpan.FromMinutes(10) });
         services.AddScoped<N11AuthenticationHandler>();
