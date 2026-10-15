@@ -53,10 +53,11 @@ public sealed class N11RateLimitHandler(
     }
 
     // A sliding window cannot express very small quotas (1/min would allow one call per ~16 min),
-    // so those are enforced as even spacing instead.
+    // so those are enforced as even spacing instead. n11 measures the gap on its own clock, so an
+    // exact 60 s spacing is still refused now and then ("1 dakikada bir"); a quarter more is kept.
     internal static (double Capacity, double TokensPerSecond) BucketShape(int limitPerMinute) =>
         limitPerMinute <= 5
-            ? SharedRateLimits.ForSpacing(TimeSpan.FromMinutes(1) / Math.Max(1, limitPerMinute))
+            ? SharedRateLimits.ForSpacing(TimeSpan.FromMinutes(1) * 1.25 / Math.Max(1, limitPerMinute))
             : SharedRateLimits.ForWindow(limitPerMinute, TimeSpan.FromMinutes(1));
 
     internal static int LimitPerMinute(N11Options options, string bucket) => bucket switch

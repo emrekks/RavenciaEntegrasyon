@@ -69,7 +69,7 @@ public sealed class N11QuestionTests
     }
 
     [Theory]
-    [InlineData(1, 1d / 60)]
+    [InlineData(1, 1d / 75)]
     [InlineData(600, 480d / 60)]
     public void TinyQuotasAreEvenlySpaced(int perMinute, double tokensPerSecond)
     {
