@@ -100,18 +100,24 @@ public static class PazaramaPriceInventoryRules
 
     // The composer writes {"price":[{code,listPrice,salePrice}],"stock":[{code,stockCount}]}; each list
     // becomes the body of its own request. Null when the shape, the counts or a value is not acceptable.
-    public static string Payload(IReadOnlyList<PriceInventoryPushLine> lines)
+    // Pazarama refuses a request whose price (or stock) equals what it already holds, so a barcode goes into the
+    // price list only when its price changed and into the stock list only when its stock changed.
+    public static string Payload(IReadOnlyList<(PriceInventoryPushLine Line, bool Price, bool Stock)> lines)
     {
         var price = new JsonArray();
         var stock = new JsonArray();
-        foreach (var line in lines)
+        foreach (var (line, priceChanged, stockChanged) in lines)
         {
             var sale = Price(line.SalePrice);
-            price.Add(new JsonObject { ["code"] = line.Barcode, ["listPrice"] = Price(Math.Max(line.ListPrice, sale)), ["salePrice"] = sale });
-            stock.Add(new JsonObject { ["code"] = line.Barcode, ["stockCount"] = Quantity(line.Quantity) });
+            if (priceChanged) price.Add(new JsonObject { ["code"] = line.Barcode, ["listPrice"] = Price(Math.Max(line.ListPrice, sale)), ["salePrice"] = sale });
+            if (stockChanged) stock.Add(new JsonObject { ["code"] = line.Barcode, ["stockCount"] = Quantity(line.Quantity) });
         }
         return new JsonObject { ["price"] = price, ["stock"] = stock }.ToJsonString();
     }
+
+    // The hash that marks a price as sent; the composer and the catalog mapping must agree on it.
+    public static string PriceHash(decimal listPrice, decimal salePrice, long priceVersion) =>
+        Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes($"{listPrice:0.00}|{salePrice:0.00}|TRY|{priceVersion}")));
 
     public static SplitBodies? Split(string payloadJson)
     {

@@ -5167,11 +5167,17 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     private async Task SeedChannelOfferAsync(Guid tenantId, Guid connectionId, Guid variantId, RemoteCatalogVariant remote, ConnectionInventoryPolicy? inventoryPolicy, DateTimeOffset now, CancellationToken cancellationToken, string source = "N11")
     {
         if (remote.SalePrice is null && remote.ListPrice is null) return;
-        var exists = db.ChannelOffers.Local.Any(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variantId)
-            || await db.ChannelOffers.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variantId, cancellationToken);
-        if (exists) return;
         var salePrice = decimal.Round(Math.Max(0m, remote.SalePrice ?? remote.ListPrice ?? 0m), 2, MidpointRounding.AwayFromZero);
         var listPrice = decimal.Round(Math.Max(salePrice, Math.Max(0m, remote.ListPrice ?? salePrice)), 2, MidpointRounding.AwayFromZero);
+        var existing = db.ChannelOffers.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variantId)
+            ?? await db.ChannelOffers.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variantId, cancellationToken);
+        if (existing is not null)
+        {
+            // Pazarama refuses an update that repeats the values it already holds. An offer that is still the
+            // untouched copy of the remote price and stock counts as sent, so only real changes go out later.
+            if (source == "PAZARAMA") await MarkPazaramaOfferInSyncAsync(tenantId, existing, remote, salePrice, listPrice, cancellationToken);
+            return;
+        }
         if (salePrice <= 0) return;
         var offer = new ChannelOffer
         {
@@ -5191,6 +5197,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             Version = 1
         };
         db.ChannelOffers.Add(offer);
+        if (source == "PAZARAMA") await MarkPazaramaOfferInSyncAsync(tenantId, offer, remote, salePrice, listPrice, cancellationToken);
         db.ChannelPriceHistory.Add(new ChannelPriceHistory
         {
             Id = Guid.CreateVersion7(),
@@ -5205,6 +5212,26 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             EffectiveAt = now
         });
         telemetryInsertedCount++;
+    }
+
+    private async Task MarkPazaramaOfferInSyncAsync(Guid tenantId, ChannelOffer offer, RemoteCatalogVariant remote, decimal salePrice, decimal listPrice, CancellationToken cancellationToken)
+    {
+        var changed = false;
+        if (offer.LastPriceHash is null && offer.PriceVersion == 1 && offer.SalePrice == salePrice && offer.ListPrice == listPrice)
+        {
+            offer.LastPriceHash = PazaramaPriceInventoryRules.PriceHash(offer.ListPrice, offer.SalePrice, offer.PriceVersion);
+            changed = true;
+        }
+        if (offer.LastStockProjectionVersion is null && remote.StockQuantity is { } remoteStock)
+        {
+            var inventory = await db.InventoryItems.AsNoTracking().FirstOrDefaultAsync(x => x.TenantId == tenantId && x.VariantId == offer.VariantId && x.LocationCode == "MAIN", cancellationToken);
+            if (inventory is not null && PazaramaPriceInventoryRules.Quantity(inventory.Available - offer.SafetyStock) == PazaramaPriceInventoryRules.Quantity(remoteStock))
+            {
+                offer.LastStockProjectionVersion = inventory.ProjectionVersion;
+                changed = true;
+            }
+        }
+        if (changed && db.Entry(offer).State != EntityState.Added) offer.Version++;
     }
 
     private async Task<bool> UpdateCatalogOptionsOnly(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CancellationToken cancellationToken)

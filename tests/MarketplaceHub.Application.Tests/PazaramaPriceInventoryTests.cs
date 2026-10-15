@@ -11,6 +11,39 @@ public sealed class PazaramaPriceInventoryTests
     private static PriceInventoryPushLine Line(string barcode, decimal quantity = 5, decimal list = 120m, decimal sale = 99.994m) =>
         new(Guid.NewGuid(), Guid.NewGuid(), barcode, quantity, list, sale, "TRY", 1, 1, "hash");
 
+    private static string Both(IReadOnlyList<PriceInventoryPushLine> lines) =>
+        PazaramaPriceInventoryRules.Payload(lines.Select(line => (line, true, true)).ToList());
+
+    [Fact]
+    public void A_barcode_goes_only_into_the_lists_whose_value_changed()
+    {
+        var payload = JsonNode.Parse(PazaramaPriceInventoryRules.Payload([(Line("PRICE"), true, false), (Line("STOCK"), false, true), (Line("BOTH"), true, true)]))!.AsObject();
+
+        Assert.Equal(["PRICE", "BOTH"], payload["price"]!.AsArray().Select(x => (string?)x!["code"]));
+        Assert.Equal(["STOCK", "BOTH"], payload["stock"]!.AsArray().Select(x => (string?)x!["code"]));
+    }
+
+    [Fact]
+    public void A_price_only_payload_makes_only_a_price_request()
+    {
+        var bodies = PazaramaPriceInventoryRules.Split(PazaramaPriceInventoryRules.Payload([(Line("B1"), true, false)]));
+
+        Assert.NotNull(bodies);
+        Assert.Equal(1, bodies.PriceCount);
+        Assert.Equal(0, bodies.StockCount);
+    }
+
+    [Fact]
+    public void The_price_hash_is_stable_and_depends_on_every_part()
+    {
+        var hash = PazaramaPriceInventoryRules.PriceHash(120m, 99.99m, 1);
+
+        Assert.Equal(hash, PazaramaPriceInventoryRules.PriceHash(120m, 99.99m, 1));
+        Assert.NotEqual(hash, PazaramaPriceInventoryRules.PriceHash(121m, 99.99m, 1));
+        Assert.NotEqual(hash, PazaramaPriceInventoryRules.PriceHash(120m, 99.98m, 1));
+        Assert.NotEqual(hash, PazaramaPriceInventoryRules.PriceHash(120m, 99.99m, 2));
+    }
+
     private static JsonElement Parse(string json) => JsonDocument.Parse(json).RootElement.Clone();
 
     // ---- payload ----
@@ -18,7 +51,7 @@ public sealed class PazaramaPriceInventoryTests
     [Fact]
     public void Payload_carries_price_and_stock_lists_keyed_by_barcode()
     {
-        var payload = JsonNode.Parse(PazaramaPriceInventoryRules.Payload([Line("B1", 7.9m), Line("B2", -3m, 50m, 80m)]))!.AsObject();
+        var payload = JsonNode.Parse(Both([Line("B1", 7.9m), Line("B2", -3m, 50m, 80m)]))!.AsObject();
 
         var price = payload["price"]!.AsArray();
         var stock = payload["stock"]!.AsArray();
@@ -35,7 +68,7 @@ public sealed class PazaramaPriceInventoryTests
     [Fact]
     public void Split_makes_one_request_body_per_list()
     {
-        var bodies = PazaramaPriceInventoryRules.Split(PazaramaPriceInventoryRules.Payload([Line("B1"), Line("B2")]));
+        var bodies = PazaramaPriceInventoryRules.Split(Both([Line("B1"), Line("B2")]));
 
         Assert.NotNull(bodies);
         Assert.Equal(2, bodies.PriceCount);
@@ -67,13 +100,13 @@ public sealed class PazaramaPriceInventoryTests
     {
         var lines = Enumerable.Range(0, PazaramaPriceInventoryRules.MaxItemsPerRequest + 1).Select(i => Line($"B{i}")).ToList();
 
-        Assert.Null(PazaramaPriceInventoryRules.Split(PazaramaPriceInventoryRules.Payload(lines)));
-        Assert.NotNull(PazaramaPriceInventoryRules.Split(PazaramaPriceInventoryRules.Payload(lines.Take(PazaramaPriceInventoryRules.MaxItemsPerRequest).ToList())));
+        Assert.Null(PazaramaPriceInventoryRules.Split(Both(lines)));
+        Assert.NotNull(PazaramaPriceInventoryRules.Split(Both(lines.Take(PazaramaPriceInventoryRules.MaxItemsPerRequest).ToList())));
     }
 
     [Fact]
     public void Split_rejects_a_barcode_longer_than_the_documented_length() =>
-        Assert.Null(PazaramaPriceInventoryRules.Split(PazaramaPriceInventoryRules.Payload([Line(new string('9', PazaramaPriceInventoryRules.MaxCodeLength + 1))])));
+        Assert.Null(PazaramaPriceInventoryRules.Split(Both([Line(new string('9', PazaramaPriceInventoryRules.MaxCodeLength + 1))])));
 
     [Theory]
     [InlineData(5.9, 5)]

@@ -222,7 +222,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
             .ToListAsync(cancellationToken);
         if (rows.Count == 0) return ServiceResult<PriceInventoryDraft>.Fail("LIVE_OFFER_REQUIRED", "Pazarama fiyat-stok gönderimi için Pazarama barkoduna bağlı varyant ve ACTIVE Pazarama teklifi gerekir.", 422);
 
-        var lines = new List<PriceInventoryPushLine>();
+        var lines = new List<(PriceInventoryPushLine Line, bool Price, bool Stock)>();
         foreach (var row in rows)
         {
             var salePrice = PazaramaPriceInventoryRules.Price(row.Offer.SalePrice);
@@ -233,15 +233,17 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
             if (barcode.Length == 0 || barcode.Length > PazaramaPriceInventoryRules.MaxCodeLength)
                 return ServiceResult<PriceInventoryDraft>.Fail("PAZARAMA_BARCODE_INVALID", $"'{row.Variant.Sku}' için Pazarama barkodu boş veya {PazaramaPriceInventoryRules.MaxCodeLength} karakterden uzun.", 422);
             var quantity = PazaramaPriceInventoryRules.Quantity(row.Inventory.Available - row.Offer.SafetyStock);
-            var priceHash = Hash($"{listPrice:0.00}|{salePrice:0.00}|TRY|{row.Offer.PriceVersion}");
-            if (row.Offer.LastPriceHash == priceHash && row.Offer.LastStockProjectionVersion == row.Inventory.ProjectionVersion) continue;
-            lines.Add(new(row.Variant.Id, row.Offer.Id, barcode, quantity, listPrice, salePrice, "TRY", row.Inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash));
+            var priceHash = PazaramaPriceInventoryRules.PriceHash(listPrice, salePrice, row.Offer.PriceVersion);
+            var priceChanged = row.Offer.LastPriceHash != priceHash;
+            var stockChanged = row.Offer.LastStockProjectionVersion != row.Inventory.ProjectionVersion;
+            if (!priceChanged && !stockChanged) continue;
+            lines.Add((new(row.Variant.Id, row.Offer.Id, barcode, quantity, listPrice, salePrice, "TRY", row.Inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash), priceChanged, stockChanged));
         }
         if (lines.Count == 0) return ServiceResult<PriceInventoryDraft>.Fail("NO_EXTERNAL_CHANGES", "Pazaryerine gönderilecek yeni fiyat veya stok değişikliği yok.", 409);
         // A barcode may be linked to two variants only by mistake; one request must not carry it twice.
-        lines = lines.GroupBy(x => x.Barcode, StringComparer.OrdinalIgnoreCase).Select(group => group.First()).Take(PazaramaPriceInventoryRules.MaxItemsPerRequest).ToList();
+        lines = lines.GroupBy(x => x.Line.Barcode, StringComparer.OrdinalIgnoreCase).Select(group => group.First()).Take(PazaramaPriceInventoryRules.MaxItemsPerRequest).ToList();
         var payload = PazaramaPriceInventoryRules.Payload(lines);
-        return ServiceResult<PriceInventoryDraft>.Ok(new(Hash(payload), payload, lines));
+        return ServiceResult<PriceInventoryDraft>.Ok(new(Hash(payload), payload, lines.Select(x => x.Line).ToList()));
     }
 
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
