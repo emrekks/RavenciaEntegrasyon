@@ -2579,10 +2579,11 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             if (invoiceStatus == InvoiceStatus.Completed) return "FATURA_KONTROLDE";
             if (label == "FATURA_BILINMIYOR") return "FATURA_BEKLIYOR";
         }
-        // n11 and Pazarama do not report an invoice state of their own; with no invoice recorded
-        // the order simply waits for one instead of showing an unknown state.
-        else if (label == "FATURA_BILINMIYOR" && platformCode is not null && (platformCode.Equals("N11", StringComparison.OrdinalIgnoreCase) || platformCode.Equals("PAZARAMA", StringComparison.OrdinalIgnoreCase)))
-            return "FATURA_BEKLIYOR";
+        // n11 gives no invoice state, only the link of an invoice that was attached to the order (empty until
+        // one is); Pazarama gives nothing at all. A link means an invoice exists at the marketplace but no local
+        // record matches it, so it is shown for review; without one the state stays unknown, never "waiting".
+        else if (label == "FATURA_BILINMIYOR" && string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(JsonText(customerJson, "invoiceLink")))
+            return "FATURA_KONTROLDE";
         return label;
     }
 

@@ -10,7 +10,17 @@
 .return-reference-table .return-select-cell input { width: 16px; height: 16px; min-height: 0; margin: 0; accent-color: var(--rv-color-primary); cursor: pointer; }
 .return-reference-table.has-select > .return-reference-row > .return-row-divider { grid-column: 4 / 6; }
 .return-reference-table.has-select > .return-reference-row > .return-select-cell, .return-reference-table.has-select > .return-reference-head > .return-select-cell { grid-column: 1; }
-.return-reference-table.has-select > .return-reference-row > :not(.return-select-cell):not(.return-row-divider), .return-reference-table.has-select > .return-reference-head > :not(.return-select-cell):not(.return-row-divider) { grid-column: auto; }
+/* Header cells follow the grid in order; row cells keep explicit columns (shifted by the select column) because the
+   per-line dividers occupy grid cells and would otherwise push auto-placed cells of multi-product returns to the right. */
+.return-reference-table.has-select > .return-reference-head > :not(.return-select-cell):not(.return-row-divider) { grid-column: auto; }
+.return-reference-table.has-select > .return-reference-row > .order-reference-meta { grid-column: 2; }
+.return-reference-table.has-select > .return-reference-row > .order-reference-buyer { grid-column: 3; }
+.return-reference-table.has-select > .return-reference-row > .order-reference-products { grid-column: 4; }
+.return-reference-table.has-select > .return-reference-row > .order-reference-prices { grid-column: 5; }
+.return-reference-table.has-select > .return-reference-row > .order-reference-cargo { grid-column: 6; }
+.return-reference-table.has-select > .return-reference-row > .order-reference-invoice { grid-column: 7; }
+.return-reference-table.has-select > .return-reference-row > .return-reference-reason { grid-column: 8; }
+.return-reference-table.has-select > .return-reference-row > .return-reference-status { grid-column: 9; }
 
 .return-bulk-cards { display: grid; gap: 14px; }
 .return-bulk-card { border: 1px solid var(--rv-color-border-strong); border-radius: 8px; overflow: hidden; }
@@ -33,14 +43,13 @@
 .return-bulk-reject small { color: var(--rv-color-muted); font-size: 12px; font-weight: 400; }
 .return-bulk-reject select, .return-bulk-reject textarea { width: 100%; box-sizing: border-box; }
 .return-bulk-reject select { height: 34px; min-height: 34px; }
-.return-bulk-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; margin: 0 0 16px; padding: 14px 18px; border: 1px solid color-mix(in srgb, var(--rv-color-primary) 45%, var(--rv-color-border-strong)); border-radius: 10px; background: linear-gradient(90deg, color-mix(in srgb, var(--rv-color-primary) 14%, var(--rv-color-surface-raised)), var(--rv-color-surface-raised) 60%); }
-.return-bulk-bar-title { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.return-bulk-bar-title > i { display: grid; place-items: center; width: 36px; height: 36px; flex: none; border-radius: 10px; background: color-mix(in srgb, var(--rv-color-primary) 22%, transparent); color: var(--rv-color-primary); }
-.return-bulk-bar-title strong { display: block; font-size: 15px; font-weight: 600; }
-.return-bulk-bar-title small { display: block; color: var(--rv-color-muted); font-size: 12px; }
-.return-bulk-count { display: inline-flex; align-items: baseline; gap: 4px; padding: 6px 14px; border-radius: 999px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); font-size: 13px; color: var(--rv-color-muted); }
-.return-bulk-count b { color: var(--rv-color-ink); font-size: 18px; font-weight: 700; line-height: 1; }
-.return-bulk-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-left: auto; }
+/* The bulk bar appears only once something is selected and stays at the bottom of the screen while the list scrolls. */
+.return-bulk-bar { position: fixed; left: 50%; bottom: 20px; z-index: var(--rv-z-toast, 60); display: flex; align-items: center; gap: 16px; width: max-content; max-width: calc(100vw - 32px); padding: 10px 12px 10px 20px; border: 1px solid color-mix(in srgb, var(--rv-color-primary) 55%, var(--rv-color-border-strong)); border-radius: 14px; background: color-mix(in srgb, var(--rv-color-surface-raised) 94%, transparent); backdrop-filter: blur(8px); box-shadow: 0 12px 32px rgba(0, 0, 0, .45); transform: translateX(-50%); animation: rv-bulk-bar-in .16s ease-out; }
+@keyframes rv-bulk-bar-in { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@media (prefers-reduced-motion: reduce) { .return-bulk-bar { animation: none; } }
+.return-bulk-count { display: inline-flex; align-items: baseline; gap: 8px; color: var(--rv-color-ink); font-size: 14px; white-space: nowrap; }
+.return-bulk-count b { color: var(--rv-color-primary); font-size: 22px; font-weight: 700; line-height: 1; }
+.return-bulk-actions { display: flex; align-items: center; gap: 8px; }
 .return-bulk-actions button { display: inline-flex; align-items: center; gap: 8px; height: 34px; min-height: 34px; padding: 0 14px; }
 .return-bulk-actions .return-bulk-clear { border: 0; background: transparent; color: var(--rv-color-muted); font-weight: 500; }
 .return-bulk-actions .return-bulk-clear:hover:not(:disabled) { color: var(--rv-color-ink); background: transparent; }

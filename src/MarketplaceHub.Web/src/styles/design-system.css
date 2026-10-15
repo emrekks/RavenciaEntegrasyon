@@ -12461,7 +12461,7 @@ h1, h2, h3, h4, .dashboard-summary-card-head > span:first-child, :is(.orders-con
 .reference-integration-card-error .reference-provider-logo,
 .reference-integration-card-hidden .reference-provider-logo { opacity: .8; }
 .reference-integration-card-error .reference-connection-state.inactive,
-.reference-integration-card-hidden .reference-connection-state { width: fit-content; padding: 0 9px 0 7px; background: color-mix(in srgb, var(--rv-color-warning) 12%, transparent); border-radius: 999px; }
+.reference-integration-card-hidden .reference-connection-state { width: fit-content; padding: 0; background: none; border-radius: 0; }
 
 /* Publish card status chips: left-aligned and sized to their label instead of a fixed centred 108px block. */
 .app-shell.stitch-shell main .publish-platform-facts .publish-platform-status,
