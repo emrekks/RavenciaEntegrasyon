@@ -1141,7 +1141,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var requiredWritePolicies = requiresPriceAndStock
                 ? new[] { MarketplaceExternalWritePolicies.Price, MarketplaceExternalWritePolicies.Stock }
                 : new[] { MarketplaceExternalWritePolicies.Price };
-            foreach (var writePolicy in requiredWritePolicies)
+            // A manual send (started from the panel) is guarded by the connection switch alone.
+            foreach (var writePolicy in payload.Manual ? Array.Empty<string>() : requiredWritePolicies)
                 if (!await ExternalWritePolicyEnabledAsync(tenantId, connectionId, writePolicy, cancellationToken))
                     return JobExecutionResult.Blocked("EXTERNAL_WRITE_POLICY_DISABLED", writePolicy == MarketplaceExternalWritePolicies.Stock ? "Stok dış yazma akışı kapalı; pazar yeri isteği gönderilmedi." : "Fiyat dış yazma akışı kapalı; pazar yeri isteği gönderilmedi.");
             var current = await new PriceInventoryComposer(db).BuildAsync(tenantId, connectionId, cancellationToken, payload.VariantId, payload.ProductId);

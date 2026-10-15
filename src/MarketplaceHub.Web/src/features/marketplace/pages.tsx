@@ -1173,7 +1173,7 @@ function PriceStockSendPanel({ connectionId, writesEnabled, connectionActive, pl
   const blocked = !writesEnabled || !connectionActive
   return <section className="panel n11-price-stock-send">
     <h2>{platformName}’{platformName === 'Pazarama' ? 'ya' : 'e'} fiyat ve stok gönder</h2>
-    <p>{!connectionActive ? 'Gönderim için bağlantı aktif veya doğrulanmış olmalı.' : !writesEnabled ? 'Gönderim için yukarıdaki dış yazma anahtarını ve fiyat-stok akışını açın.' : `İlk gönderimi tek bir ${codeLabel} ile yapıp sonucu ${platformName} panelinde kontrol edin; sorun yoksa değişen tüm ürünleri gönderin.`}</p>
+    <p>{!connectionActive ? 'Gönderim için bağlantı aktif veya doğrulanmış olmalı.' : !writesEnabled ? (platformName === 'Pazarama' ? 'Gönderim için yukarıdaki dış yazma anahtarını açın.' : 'Gönderim için yukarıdaki dış yazma anahtarını ve fiyat-stok akışını açın.') : `İlk gönderimi tek bir ${codeLabel} ile yapıp sonucu ${platformName} panelinde kontrol edin; sorun yoksa değişen tüm ürünleri gönderin.`}</p>
     <form onSubmit={event => { event.preventDefault(); if (stockCode.trim()) send.mutate(stockCode.trim()) }}>
       <label>{platformName} {codeLabel}<input value={stockCode} onChange={event => setStockCode(event.target.value)} placeholder={`Örn. ${codeExample}`} autoComplete="off" /></label>
       <div className="n11-price-stock-send-actions">
@@ -1262,7 +1262,7 @@ function IntegrationDetailWorkspace({ id, inline = false }: { id: string; inline
        ]
      : item.platformCode === 'PAZARAMA'
      ? [
-         { key: 'automatic-external-writes', label: 'Otomatik dış yazmalar', resourceTypes: ['PRICE_WRITE', 'STOCK_WRITE'], description: 'Açıkken paneldeki Pazarama fiyatı ve stok değişikliklerini Pazarama’ya otomatik gönderir. Kapalıyken bu güncellemeler Pazarama’ya aktarılmaz. Sipariş işleme, iade ve ürün açma sonraki aşamalarda açılacak.' }
+         { key: 'automatic-external-writes', label: 'Otomatik dış yazmalar', resourceTypes: ['PRICE_WRITE', 'STOCK_WRITE'], description: 'Açıkken paneldeki Pazarama fiyatı ve stok değişikliklerini Pazarama’ya otomatik gönderir. Kapalıyken sistem bu güncellemeleri kendiliğinden göndermez; panelden elle başlattığınız fiyat-stok gönderimi bu ayardan bağımsızdır, yalnız dış yazma anahtarı açık olmalıdır. Sipariş işleme, iade ve ürün açma sonraki aşamalarda açılacak.' }
        ]
      : item.platformCode === 'N11'
      ? [
