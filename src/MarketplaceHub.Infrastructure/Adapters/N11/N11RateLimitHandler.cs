@@ -14,15 +14,22 @@ public sealed class N11RateLimitHandler(
     ISharedRateLimiter? sharedLimiter = null,
     ILogger<N11RateLimitHandler>? logger = null) : DelegatingHandler
 {
+    // A request can name a stricter bucket than its path family (e.g. the 1/min question list).
+    public static readonly HttpRequestOptionsKey<string> BucketKey = new("MarketplaceHub.N11.RateBucket");
+    // SOAP calls carry the account inside the envelope, so the client names it here.
+    public static readonly HttpRequestOptionsKey<string> AccountKeyOption = new("MarketplaceHub.N11.Account");
+
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
-        var bucket = BucketFor(request.RequestUri);
+        var bucket = request.Options.TryGetValue(BucketKey, out var namedBucket) && !string.IsNullOrWhiteSpace(namedBucket)
+            ? namedBucket
+            : BucketFor(request.RequestUri);
         if (sharedLimiter is not null && bucket is not null)
         {
             try
             {
                 var limit = LimitPerMinute(options.Value, bucket);
-                await SharedRateLimits.WaitAsync(sharedLimiter, $"n11:{AccountKey(request)}:{bucket}", SharedRateLimits.ForWindow(limit, TimeSpan.FromMinutes(1)), timeProvider, cancellationToken);
+                await SharedRateLimits.WaitAsync(sharedLimiter, $"n11:{AccountKey(request)}:{bucket}", BucketShape(limit), timeProvider, cancellationToken);
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
@@ -45,20 +52,29 @@ public sealed class N11RateLimitHandler(
         return null;
     }
 
+    // A sliding window cannot express very small quotas (1/min would allow one call per ~16 min),
+    // so those are enforced as even spacing instead.
+    internal static (double Capacity, double TokensPerSecond) BucketShape(int limitPerMinute) =>
+        limitPerMinute <= 5
+            ? SharedRateLimits.ForSpacing(TimeSpan.FromMinutes(1) / Math.Max(1, limitPerMinute))
+            : SharedRateLimits.ForWindow(limitPerMinute, TimeSpan.FromMinutes(1));
+
     internal static int LimitPerMinute(N11Options options, string bucket) => bucket switch
     {
         "orders" => options.OrderRequestsPerMinute,
         "tasks" => options.TaskRequestsPerMinute,
         "products" => options.ProductRequestsPerMinute,
         "categories" => options.CategoryRequestsPerMinute,
+        "questions-list" => options.QuestionListRequestsPerMinute,
         _ => options.SoapRequestsPerMinute
     };
 
-    // REST calls carry the account in the appkey header; SOAP calls carry it in the envelope,
-    // so they share one bucket per host.
+    // REST calls carry the account in the appkey header; SOAP calls name it through AccountKeyOption.
     private static string AccountKey(HttpRequestMessage request)
     {
-        var appKey = request.Headers.TryGetValues("appkey", out var values) ? values.FirstOrDefault() : null;
+        var appKey = request.Options.TryGetValue(AccountKeyOption, out var soapAccount) && !string.IsNullOrWhiteSpace(soapAccount)
+            ? soapAccount
+            : request.Headers.TryGetValues("appkey", out var values) ? values.FirstOrDefault() : null;
         return string.IsNullOrWhiteSpace(appKey)
             ? "shared"
             : Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(appKey)))[..16];

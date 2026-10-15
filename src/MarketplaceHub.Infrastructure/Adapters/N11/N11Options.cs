@@ -17,4 +17,6 @@ public sealed class N11Options
     public int TaskRequestsPerMinute { get; init; } = 120;
     public int CategoryRequestsPerMinute { get; init; } = 30;
     public int SoapRequestsPerMinute { get; init; } = 60;
+    // n11 documents one question list call per minute.
+    public int QuestionListRequestsPerMinute { get; init; } = 1;
 }

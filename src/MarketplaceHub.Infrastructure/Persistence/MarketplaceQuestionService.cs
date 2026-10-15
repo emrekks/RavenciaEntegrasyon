@@ -10,6 +10,7 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
 {
     private static readonly string[] TrendyolStatuses = ["WAITING_FOR_ANSWER", "ANSWERED", "REPORTED", "REJECTED", "UNANSWERED"];
     private static readonly string[] HepsiburadaStatuses = ["WAITING_FOR_ANSWER", "ANSWERED", "REJECTED", "EXPIRED"];
+    private static readonly string[] N11Statuses = ["WAITING_FOR_ANSWER", "ANSWERED"];
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
     public async Task<MarketplaceQuestionListPage> ListAsync(Guid tenantId, QuestionListQuery query, CancellationToken cancellationToken)
@@ -66,7 +67,7 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
     {
         var connections = await db.PlatformConnections.AsNoTracking().Where(connection => connection.TenantId == tenantId
             && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")
-            && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "HEPSIBURADA"))
+            && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "HEPSIBURADA" || connection.PlatformCode == "N11"))
             .Select(connection => connection.Id).ToListAsync(cancellationToken);
         var added = 0; var updated = 0; string? error = null;
         foreach (var id in connections)
@@ -81,7 +82,7 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
     public async Task<QuestionSyncView> SyncConnectionAsync(Guid tenantId, Guid connectionId, string? kind, CancellationToken cancellationToken)
     {
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(row => row.TenantId == tenantId && row.Id == connectionId
-            && (row.PlatformCode == "TRENDYOL" || row.PlatformCode == "HEPSIBURADA"), cancellationToken);
+            && (row.PlatformCode == "TRENDYOL" || row.PlatformCode == "HEPSIBURADA" || row.PlatformCode == "N11"), cancellationToken);
         if (connection is null) return new(0, 0, timeProvider.GetUtcNow(), "Pazaryeri bağlantısı bulunamadı.");
         var state = await db.MarketplaceQuestionSyncStates.SingleOrDefaultAsync(row => row.TenantId == tenantId && row.ConnectionId == connectionId, cancellationToken);
         if (state is null) { state = new() { TenantId = tenantId, ConnectionId = connectionId, HistoryStartedAt = timeProvider.GetUtcNow().AddYears(-1) }; db.MarketplaceQuestionSyncStates.Add(state); await db.SaveChangesAsync(cancellationToken); }
@@ -93,11 +94,14 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         await db.SaveChangesAsync(cancellationToken);
         try
         {
-            var kinds = connection.PlatformCode == "TRENDYOL" ? new[] { "PRODUCT" } : new[] { "PRODUCT", "ORDER" };
-            var statuses = connection.PlatformCode == "TRENDYOL" ? TrendyolStatuses : HepsiburadaStatuses;
-            var liveStart = connection.PlatformCode == "TRENDYOL" ? now.AddDays(-14) : now.AddDays(-7);
-            var pageBase = connection.PlatformCode == "TRENDYOL" ? 0 : 1;
-            var pageSize = connection.PlatformCode == "TRENDYOL" ? 50 : 25;
+            var kinds = connection.PlatformCode is "TRENDYOL" or "N11" ? new[] { "PRODUCT" } : new[] { "PRODUCT", "ORDER" };
+            var statuses = connection.PlatformCode switch { "TRENDYOL" => TrendyolStatuses, "N11" => N11Statuses, _ => HepsiburadaStatuses };
+            var liveStart = connection.PlatformCode is "TRENDYOL" or "N11" ? now.AddDays(-14) : now.AddDays(-7);
+            var pageBase = connection.PlatformCode is "TRENDYOL" or "N11" ? 0 : 1;
+            // n11 allows one question list call per minute, so each run reads a single page.
+            var liveBatches = connection.PlatformCode == "N11" ? 1 : 6;
+            var historyBatches = connection.PlatformCode == "N11" ? 1 : 3;
+            var pageSize = connection.PlatformCode is "TRENDYOL" or "N11" ? 50 : 25;
             updated += await ReconcilePendingAnswerSubmissionsAsync(tenantId, connectionId, now, cancellationToken);
             if (initial)
             {
@@ -123,7 +127,7 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
                     Math.Clamp(state.HistoryStatusIndex, 0, statuses.Length - 1),
                     Math.Clamp(state.HistoryKindIndex, 0, kinds.Length - 1),
                     Math.Max(pageBase, state.HistoryPageIndex));
-                for (var batch = 0; batch < 6 && cursor is not null; batch++)
+                for (var batch = 0; batch < liveBatches && cursor is not null; batch++)
                 {
                     var request = new QuestionPollRequest(kinds[cursor.KindIndex], statuses[cursor.StatusIndex], liveStart, now, cursor.PageIndex, pageSize);
                     var result = await FetchAndSavePageAsync(request, $"live:{cursor.StatusIndex}:{cursor.KindIndex}:{cursor.PageIndex}", countForHistory: false);
@@ -138,7 +142,7 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
 
             // Long history imports run in bounded pages so a large merchant history never monopolizes one worker lease.
             // Waiting questions are imported first; subsequent passes continue from the persisted status/kind/window/page cursor.
-            for (var batch = 0; initial && batch < 3 && !state.HistoryImported; batch++)
+            for (var batch = 0; initial && batch < historyBatches && !state.HistoryImported; batch++)
             {
                 var statusIndex = Math.Clamp(state.HistoryStatusIndex, 0, statuses.Length);
                 if (statusIndex >= statuses.Length) { state.HistoryImported = true; break; }
@@ -151,13 +155,13 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
                 if (historyWindows.Length == 0) { state.HistoryImported = true; break; }
                 var windowIndex = Math.Clamp(state.HistoryWindowIndex, 0, historyWindows.Length - 1);
                 var window = historyWindows[windowIndex];
-                var page = connection.PlatformCode == "TRENDYOL" ? Math.Max(0, state.HistoryPageIndex) : Math.Max(1, state.HistoryPageIndex);
-                var request = new QuestionPollRequest(questionKind, statuses[statusIndex], window.Item1, window.Item2, page, connection.PlatformCode == "TRENDYOL" ? 50 : 25);
+                var page = Math.Max(pageBase, state.HistoryPageIndex);
+                var request = new QuestionPollRequest(questionKind, statuses[statusIndex], window.Item1, window.Item2, page, pageSize);
                 var result = await FetchAndSavePageAsync(request, $"history:{statusIndex}:{kindIndex}:{windowIndex}:{page}", countForHistory: true);
                 var lastPage = result.Items.Count == 0 || result.Items.Count < request.Size || page >= result.TotalPages;
                 if (lastPage)
                 {
-                    state.HistoryPageIndex = connection.PlatformCode == "TRENDYOL" ? 0 : 1;
+                    state.HistoryPageIndex = pageBase;
                     state.HistoryWindowIndex++;
                     if (state.HistoryWindowIndex >= historyWindows.Length)
                     {
@@ -406,7 +410,7 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         await (from connection in db.PlatformConnections.AsNoTracking()
                join state in db.MarketplaceQuestionSyncStates.AsNoTracking() on new { connection.TenantId, ConnectionId = connection.Id } equals new { state.TenantId, ConnectionId = state.ConnectionId } into states
                from state in states.DefaultIfEmpty()
-               where connection.TenantId == tenantId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED") && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "HEPSIBURADA")
+               where connection.TenantId == tenantId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED") && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "HEPSIBURADA" || connection.PlatformCode == "N11")
                select new MarketplaceQuestionSyncStateView(connection.Id, connection.PlatformCode, connection.DisplayName, state != null && state.HistoryImported, state == null ? null : state.HistoryStartedAt,
                    state == null ? "QUEUED" : state.ProgressStatus, state == null ? 0 : state.ImportedCount, state == null ? null : state.LastRunStartedAt,
                    state == null ? null : state.LastSuccessAt, state == null ? null : state.LastError)).ToListAsync(cancellationToken);

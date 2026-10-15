@@ -424,7 +424,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
     // connection's external writes and its STOCK_WRITE policy are enabled.
     // RETURNS reads claims through the SOAP ReturnService; RETURN_WRITE sends approvals only.
     internal static bool SupportsN11ScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "REFERENCE_DATA"
-            or "ORDER_RECONCILE_SHORT" or "ORDER_RECONCILE_MEDIUM" or "ORDER_RECONCILE_DAILY" or "RETURNS"
+            or "ORDER_RECONCILE_SHORT" or "ORDER_RECONCILE_MEDIUM" or "ORDER_RECONCILE_DAILY" or "RETURNS" or "QUESTIONS"
             or "STOCK_RECONCILE_SHORT" or "STOCK_RECONCILE_MEDIUM" or "STOCK_RECONCILE_DAILY"
         || resourceType is MarketplaceExternalWritePolicies.Price or MarketplaceExternalWritePolicies.Stock or MarketplaceExternalWritePolicies.Shipment or MarketplaceExternalWritePolicies.Return;
 

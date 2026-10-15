@@ -21,24 +21,27 @@ public sealed partial class N11HttpClient
         $"<{name}>{SecurityElement.Escape(value ?? "")}</{name}>";
 
     // Returns the <{operation}Response> element when n11 answered result/status success.
-    private async Task<AdapterResult<XElement>> SendSoapAsync(N11RequestContext account, string servicePath, string operation, string innerXml, CancellationToken cancellationToken)
+    private async Task<AdapterResult<XElement>> SendSoapAsync(N11RequestContext account, string servicePath, string operation, string innerXml, CancellationToken cancellationToken, bool requireResult = true, string? rateBucket = null)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(settings.BaseAddress, servicePath))
         {
             Content = new StringContent(SoapEnvelope(operation, account, innerXml), System.Text.Encoding.UTF8, "text/xml")
         };
         request.Headers.TryAddWithoutValidation("SOAPAction", "\"\"");
+        request.Options.Set(N11RateLimitHandler.AccountKeyOption, account.AppKey);
+        if (rateBucket is not null) request.Options.Set(N11RateLimitHandler.BucketKey, rateBucket);
         try
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(settings.Timeout > TimeSpan.Zero && settings.Timeout < TimeSpan.FromMinutes(2) ? settings.Timeout : TimeSpan.FromSeconds(30));
+            // A named slow bucket (1/min) may queue the call for up to a minute before it is sent.
+            timeout.CancelAfter((settings.Timeout > TimeSpan.Zero && settings.Timeout < TimeSpan.FromMinutes(2) ? settings.Timeout : TimeSpan.FromSeconds(30)) + (rateBucket is null ? TimeSpan.Zero : TimeSpan.FromSeconds(75)));
             using var response = await clients.CreateClient("N11").SendAsync(request, timeout.Token);
             var body = await response.Content.ReadAsStringAsync(timeout.Token);
             if (response.StatusCode == HttpStatusCode.TooManyRequests)
                 return AdapterResult<XElement>.Failure(new(AdapterErrorClass.RateLimit, "N11_RATE_LIMITED", "N11 istek sınırına ulaşıldı; işlem biraz sonra yeniden denenecek.", 429, response.Headers.RetryAfter?.Delta ?? TimeSpan.FromSeconds(60), null));
             if ((int)response.StatusCode >= 500 && !body.Contains(operation + "Response", StringComparison.Ordinal))
                 return AdapterResult<XElement>.Failure(new(AdapterErrorClass.Remote5xx, "N11_REMOTE_ERROR", "N11 servisi geçici olarak hata veriyor; işlem yeniden denenecek.", (int)response.StatusCode, TimeSpan.FromSeconds(30), null));
-            var parsed = SoapResponse(body, operation);
+            var parsed = SoapResponse(body, operation, requireResult);
             if (parsed.Error is { } error)
             {
                 logger.LogWarning("N11 SOAP isteği reddedildi. ConnectionId: {ConnectionId}, Operation: {Operation}, Code: {Code}", account.Connection.Id, operation, error.Code);
@@ -57,7 +60,7 @@ public sealed partial class N11HttpClient
         }
     }
 
-    internal static (XElement? Response, AdapterError? Error) SoapResponse(string body, string operation)
+    internal static (XElement? Response, AdapterError? Error) SoapResponse(string body, string operation, bool requireResult = true)
     {
         XDocument document;
         try { document = XDocument.Parse(body); }
@@ -71,6 +74,8 @@ public sealed partial class N11HttpClient
         var response = document.Descendants().FirstOrDefault(x => x.Name.LocalName == operation + "Response");
         var result = response?.Elements().FirstOrDefault(x => x.Name.LocalName == "result");
         var status = Child(result, "status");
+        // Some read operations (question list and detail) answer without a result block.
+        if (response is not null && result is null && !requireResult) return (response, null);
         if (response is null || result is null)
             return (null, new(AdapterErrorClass.ContractViolation, "N11_SOAP_CONTRACT_INVALID", $"N11 {operation} yanıtında sonuç bilgisi yok.", null, null, null));
         if (string.Equals(status, "success", StringComparison.OrdinalIgnoreCase)) return (response, null);
