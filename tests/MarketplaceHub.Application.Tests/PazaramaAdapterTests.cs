@@ -26,6 +26,39 @@ public sealed class PazaramaAdapterTests
     }
 
     [Theory]
+    [InlineData("""{"data":{"accessToken":"env-token","expiresIn":1800,"tokenType":"Bearer"},"success":true,"messageCode":null}""", "env-token", 1800)]
+    [InlineData("""{"data":{"access_token":"env2","expires_in":900},"success":true}""", "env2", 900)]
+    [InlineData("""{"AccessToken":"upper","ExpiresIn":60}""", "upper", 60)]
+    [InlineData("""{"data":"bare-token","success":true}""", "bare-token", 3600)]
+    public void TokenInsideThePazaramaEnvelopeIsRead(string body, string expectedToken, int seconds)
+    {
+        var token = PazaramaHttpClient.TokenResponse(HttpStatusCode.OK, body);
+
+        Assert.True(token.IsSuccess);
+        Assert.Equal(expectedToken, token.AccessToken);
+        Assert.Equal(TimeSpan.FromSeconds(seconds), token.ExpiresIn);
+    }
+
+    [Fact]
+    public void AnEnvelopeSayingSuccessFalseIsRejectedCredentialsWithTheMessage()
+    {
+        var token = PazaramaHttpClient.TokenResponse(HttpStatusCode.OK, """{"data":null,"success":false,"userMessage":"Geçersiz anahtar"}""");
+
+        Assert.Equal("PAZARAMA_CREDENTIALS_REJECTED", token.Error!.Code);
+        Assert.Contains("Geçersiz anahtar", token.Error.SafeMessage);
+    }
+
+    [Fact]
+    public void AnUnknownTokenAnswerNamesItsFieldsButNeverTheirValues()
+    {
+        var token = PazaramaHttpClient.TokenResponse(HttpStatusCode.OK, """{"result":{"jwt":"super-secret-value"},"ok":true}""");
+
+        Assert.Equal("PAZARAMA_TOKEN_INVALID", token.Error!.Code);
+        Assert.Contains("result.jwt", token.Error.SafeMessage);
+        Assert.DoesNotContain("super-secret-value", token.Error.SafeMessage);
+    }
+
+    [Theory]
     [InlineData(HttpStatusCode.BadRequest, """{"error":"invalid_client"}""", "PAZARAMA_CREDENTIALS_REJECTED")]
     [InlineData(HttpStatusCode.Unauthorized, "", "PAZARAMA_CREDENTIALS_REJECTED")]
     [InlineData(HttpStatusCode.BadRequest, """{"error":"invalid_scope"}""", "PAZARAMA_SCOPE_DENIED")]

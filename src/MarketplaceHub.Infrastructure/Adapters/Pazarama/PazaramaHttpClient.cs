@@ -217,33 +217,76 @@ public sealed partial class PazaramaHttpClient(
         }
     }
 
-    // {access_token, expires_in, token_type} on success; {error: invalid_client|unauthorized_client|invalid_scope} otherwise.
+    // Standard OAuth answers {access_token, expires_in, token_type}; Pazarama's token service wraps
+    // its answer in the shared {data, success, userMessage} envelope. Both shapes are read, with the
+    // field names matched case-insensitively (accessToken / access_token, expiresIn / expires_in).
     internal static PazaramaToken TokenResponse(HttpStatusCode status, string body)
     {
-        string? accessToken = null, error = null;
+        string? accessToken = null, error = null, userMessage = null;
         var expiresIn = TimeSpan.FromHours(1);
+        var successFalse = false;
         try
         {
             using var document = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
             var root = document.RootElement;
             if (root.ValueKind == JsonValueKind.Object)
             {
-                if (root.TryGetProperty("access_token", out var value) && value.ValueKind == JsonValueKind.String) accessToken = value.GetString();
-                if (root.TryGetProperty("expires_in", out var expires) && expires.ValueKind == JsonValueKind.Number && expires.TryGetInt32(out var seconds) && seconds > 0) expiresIn = TimeSpan.FromSeconds(seconds);
-                if (root.TryGetProperty("error", out var code) && code.ValueKind == JsonValueKind.String) error = code.GetString();
+                ReadToken(root, ref accessToken, ref expiresIn);
+                if (Member(root, "data") is { ValueKind: JsonValueKind.Object } data) ReadToken(data, ref accessToken, ref expiresIn);
+                else if (Member(root, "data") is { ValueKind: JsonValueKind.String } dataText && accessToken is null) accessToken = dataText.GetString();
+                error = Member(root, "error") is { ValueKind: JsonValueKind.String } code ? code.GetString() : null;
+                successFalse = Member(root, "success") is { ValueKind: JsonValueKind.False };
+                userMessage = Text(root, "userMessage") ?? Text(root, "message");
             }
         }
         catch (JsonException) { }
-        if ((int)status is >= 200 and < 300 && !string.IsNullOrWhiteSpace(accessToken)) return new(accessToken, expiresIn, null);
-        if (error is "invalid_client" or "unauthorized_client" || status is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
-            return new(null, TimeSpan.Zero, new(AdapterErrorClass.Authentication, "PAZARAMA_CREDENTIALS_REJECTED", "Pazarama Client Id ve Client Secret çiftini kabul etmedi. Pazarama satıcı panelinde Hesabım → Entegrasyon Bilgileri'ndeki güncel değerleri girin; orada yeni anahtar üretildiyse eskisi geçersiz olur.", (int)status, null, null));
+        if ((int)status is >= 200 and < 300 && !string.IsNullOrWhiteSpace(accessToken) && !successFalse) return new(accessToken, expiresIn, null);
+        if (error is "invalid_client" or "unauthorized_client" || status is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden || successFalse)
+            return new(null, TimeSpan.Zero, new(AdapterErrorClass.Authentication, "PAZARAMA_CREDENTIALS_REJECTED", userMessage is null
+                ? "Pazarama Client Id ve Client Secret çiftini kabul etmedi. Pazarama satıcı panelinde Hesabım → Entegrasyon Bilgileri'ndeki güncel değerleri girin; orada yeni anahtar üretildiyse eskisi geçersiz olur."
+                : $"Pazarama Client Id ve Client Secret çiftini kabul etmedi: {userMessage}", (int)status, null, null));
         if (error == "invalid_scope")
             return new(null, TimeSpan.Zero, new(AdapterErrorClass.Authentication, "PAZARAMA_SCOPE_DENIED", "Pazarama bu API hesabına entegrasyon (merchantgatewayapi.fullaccess) yetkisi vermiyor. Pazarama destekle API erişimini açtırın.", (int)status, null, null));
         if ((int)status == 429)
             return new(null, TimeSpan.Zero, new(AdapterErrorClass.RateLimit, "PAZARAMA_RATE_LIMITED", "Pazarama oturum servisi istek sınırına ulaştı; biraz sonra yeniden denenecek.", 429, TimeSpan.FromSeconds(60), null));
         if ((int)status >= 500)
             return new(null, TimeSpan.Zero, new(AdapterErrorClass.Remote5xx, "PAZARAMA_REMOTE_ERROR", "Pazarama oturum servisi geçici olarak hata veriyor; işlem yeniden denenecek.", (int)status, TimeSpan.FromSeconds(30), null));
-        return new(null, TimeSpan.Zero, new(AdapterErrorClass.ContractViolation, "PAZARAMA_TOKEN_INVALID", "Pazarama oturum servisi beklenen token yanıtını vermedi.", (int)status, null, null));
+        return new(null, TimeSpan.Zero, new(AdapterErrorClass.ContractViolation, "PAZARAMA_TOKEN_INVALID", $"Pazarama oturum servisi beklenen token yanıtını vermedi (yanıt alanları: {ShapeOf(body)}).", (int)status, null, null));
+    }
+
+    private static void ReadToken(JsonElement element, ref string? accessToken, ref TimeSpan expiresIn)
+    {
+        foreach (var name in new[] { "access_token", "accessToken", "token", "jwtToken" })
+            if (accessToken is null && Member(element, name) is { ValueKind: JsonValueKind.String } value && !string.IsNullOrWhiteSpace(value.GetString())) accessToken = value.GetString();
+        foreach (var name in new[] { "expires_in", "expiresIn", "expiresInSeconds" })
+            if (Member(element, name) is { ValueKind: JsonValueKind.Number } expires && expires.TryGetInt32(out var seconds) && seconds > 0) expiresIn = TimeSpan.FromSeconds(seconds);
+    }
+
+    private static JsonElement? Member(JsonElement element, string name)
+    {
+        if (element.ValueKind != JsonValueKind.Object) return null;
+        foreach (var property in element.EnumerateObject())
+            if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase)) return property.Value;
+        return null;
+    }
+
+    // Field names of an unexpected answer (never their values), so the next failure names what
+    // Pazarama really sends without leaking a token.
+    internal static string ShapeOf(string body)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
+            if (document.RootElement.ValueKind != JsonValueKind.Object) return document.RootElement.ValueKind.ToString();
+            var names = new List<string>();
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                names.Add(property.Name);
+                if (property.Value.ValueKind == JsonValueKind.Object) names.AddRange(property.Value.EnumerateObject().Select(child => property.Name + "." + child.Name));
+            }
+            return names.Count == 0 ? "boş" : string.Join(", ", names.Take(20));
+        }
+        catch (JsonException) { return "JSON değil"; }
     }
 
     internal static AdapterError Error(HttpStatusCode status, string body, TimeSpan? retryAfter)
