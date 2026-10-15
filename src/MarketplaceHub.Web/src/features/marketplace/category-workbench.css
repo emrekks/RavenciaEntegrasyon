@@ -41,3 +41,6 @@
   .cm-detail-foot { margin-inline: -16px; padding-inline: 16px; }
   .cm-detail .mapping-fields { grid-template-columns: minmax(0, 1fr); }
 }
+.cm-detail .attribute-mapping-card-head { display: block; width: 100%; margin: 0 0 var(--rv-space-3); }
+.cm-detail .attribute-mapping-card-head > div { display: block; width: 100%; min-width: 0; }
+.cm-detail .attribute-mapping-card-head small { display: block; width: auto; color: var(--rv-color-muted); white-space: normal; }
