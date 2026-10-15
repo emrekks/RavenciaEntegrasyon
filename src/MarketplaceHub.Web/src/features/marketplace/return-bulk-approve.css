@@ -56,3 +56,9 @@
 .return-bulk-actions .return-bulk-reject-action { color: var(--rv-color-danger); border-color: color-mix(in srgb, var(--rv-color-danger) 55%, var(--rv-color-border-strong)); }
 .return-bulk-stock-control { display: grid; gap: 8px; margin-left: auto; align-content: start; justify-items: end; min-width: 200px; }
 .return-bulk-stock-control .return-approve-quantity { width: 100%; }
+
+/* With the select column the table is 36px wider than the plain one: rows and header share that width, so borders and
+   backgrounds run the whole way when the table scrolls sideways. */
+@media (min-width: 1181px) {
+  .app-shell.stitch-shell main .return-reference-table.has-select > :is(.return-reference-head, .return-reference-row) { width: max(100%, 1320px); min-width: max(100%, 1320px); }
+}
