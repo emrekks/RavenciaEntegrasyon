@@ -210,8 +210,8 @@ public static class PazaramaOrderMapper
         if (text is null) return null;
         string[] formats = ["yyyy-MM-dd HH:mm", "yyyy-MM-dd HH:mm:ss", "yyyy-MM-ddTHH:mm:ss", "yyyy-MM-ddTHH:mm:ss.FFFFFFF", "yyyy-MM-dd"];
         return DateTime.TryParseExact(text, formats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var local)
-            ? new DateTimeOffset(local, PazaramaOrderHistoryPolicy.TurkeyOffset)
-            : DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed) ? parsed : null;
+            ? new DateTimeOffset(local, PazaramaOrderHistoryPolicy.TurkeyOffset).ToUniversalTime()
+            : DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed) ? parsed.ToUniversalTime() : null;
     }
 
     private static DateTimeOffset? LatestHistory(JsonElement item)
@@ -227,7 +227,8 @@ public static class PazaramaOrderMapper
     {
         var text = Text(element, property);
         if (text is null) return null;
-        if (DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed)) return parsed;
+        // PostgreSQL stores only UTC instants; Pazarama writes +03:00 offsets.
+        if (DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed)) return parsed.ToUniversalTime();
         return null;
     }
 

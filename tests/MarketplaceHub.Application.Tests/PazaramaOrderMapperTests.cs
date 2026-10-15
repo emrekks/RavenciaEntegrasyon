@@ -44,6 +44,11 @@ public sealed class PazaramaOrderMapperTests
         Assert.Equal("283534307", order.ExternalOrderId);
         Assert.Equal("TRY", order.Currency);
         Assert.Equal(new DateTimeOffset(2026, 2, 17, 17, 23, 0, TimeSpan.FromHours(3)), order.OrderedAt);
+        // PostgreSQL accepts only UTC offsets, so every instant of the order must be UTC.
+        Assert.Equal(TimeSpan.Zero, order.OrderedAt.Offset);
+        Assert.Equal(TimeSpan.Zero, order.LastModifiedAt.Offset);
+        Assert.Equal(TimeSpan.Zero, order.ShipmentDueAt!.Value.Offset);
+        Assert.Equal(TimeSpan.Zero, order.Packages.Single().OccurredAt.Offset);
         Assert.Equal(7m, order.GrossAmount);
         Assert.Equal(7m, order.NetAmount);
         Assert.Equal(new DateTimeOffset(2026, 2, 18, 19, 0, 0, TimeSpan.FromHours(3)), order.ShipmentDueAt);
