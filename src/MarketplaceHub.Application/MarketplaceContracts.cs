@@ -550,6 +550,16 @@ public interface IConnectionPort
     Task<AdapterResult<IReadOnlyList<CapabilityEvidence>>> DiscoverCapabilitiesAsync(AdapterContext context, CancellationToken cancellationToken);
 }
 
+// Order finance (commission, allowance, transfer date): read-only, asked for one order at a time.
+public sealed record RemoteFinanceTransaction(string TransactionCode, string Status, decimal Amount, decimal Commission, decimal Allowance, decimal CouponDiscount, decimal IntegrationAmount, decimal CargoDebt, decimal Stoppage, int Installments, DateTimeOffset? TransactionDate, DateTimeOffset? TransferredDate);
+public sealed record RemoteCommissionInvoice(string OrderNumber, string? InvoiceNumber, DateTimeOffset? InvoiceDate, decimal VatAmount, string? OperationStatus);
+public sealed record RemoteOrderFinance(IReadOnlyList<RemoteFinanceTransaction> Transactions, IReadOnlyList<RemoteCommissionInvoice> CommissionInvoices);
+
+public interface IOrderFinancePort
+{
+    Task<AdapterResult<RemoteOrderFinance>> GetOrderFinanceAsync(AdapterContext context, string orderNumber, DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken);
+}
+
 public interface IReferenceDataPort
 {
     Task<AdapterResult<AdapterPageResult<RemoteReferenceItem>>> ReadAsync(AdapterContext context, ReferenceResource resource, AdapterPageRequest page, CancellationToken cancellationToken);

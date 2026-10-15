@@ -290,7 +290,7 @@ public static class PazaramaProductWriteMapper
                     succeeded.Add(c.GetString()!.Trim());
         if (succeeded.Count == 0 && codes is not null) succeeded.AddRange(codes.Where(code => !failed.ContainsKey(code)));
 
-        var lines = failed.Select(entry => new RemoteOperationLine(entry.Key, false, null, "PAZARAMA_PRODUCT_REJECTED", false, entry.Value.Length <= 300 ? entry.Value : entry.Value[..300]))
+        var lines = failed.Select(entry => new RemoteOperationLine(entry.Key, false, null, "PAZARAMA_PRODUCT_REJECTED", false, PazaramaErrorAdvice.WithAdvice(entry.Value.Length <= 300 ? entry.Value : entry.Value[..300])))
             .Concat(succeeded.Where(code => !failed.ContainsKey(code)).Distinct(StringComparer.OrdinalIgnoreCase).Select(code => new RemoteOperationLine(code, true, null, null, false, "Ürün onaya gönderildi.")))
             .ToList();
         // An error batch without any line applied nothing.

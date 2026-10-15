@@ -67,6 +67,20 @@ public static class MarketplaceEndpoints
         api.MapPost("/orders/shopify-csv-import", ImportShopifyOrdersAsync).DisableAntiforgery();
         api.MapGet("/orders/product-image", async (HttpContext http, IMarketplaceSalesService service, string? barcode, Guid? connectionId, string? productName) => Tenant(http) is { } tenant ? Result(await service.ProductImageAsync(tenant.TenantId, barcode, http.TraceIdentifier, http.RequestAborted, connectionId, productName), value => Results.Redirect(value)) : Unauthorized(http));
         api.MapGet("/orders/{id:guid}", async (Guid id, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant ? WithEtag(http, await service.OrderAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http));
+        api.MapGet("/orders/{id:guid}/finance", async (Guid id, HttpContext http, AppDbContext db, IOrderFinancePort finance, TimeProvider clock) =>
+        {
+            if (Tenant(http) is not { } tenant) return Unauthorized(http);
+            var order = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenant.TenantId && x.Id == id).Select(x => new { x.ConnectionId, x.OrderNumber, x.OrderedAt }).SingleOrDefaultAsync(http.RequestAborted);
+            if (order is null) return Results.NotFound();
+            var platform = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenant.TenantId && x.Id == order.ConnectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(http.RequestAborted);
+            if (platform != "PAZARAMA") return Results.Problem(title: "Finans bilgisi yalnız Pazarama siparişlerinde okunur.", statusCode: 422);
+            var now = clock.GetUtcNow();
+            var context = new AdapterContext(tenant.TenantId, order.ConnectionId, http.TraceIdentifier, $"order-finance:{id:N}", now.AddMinutes(1), Operation: IntegrationOperation.Manual);
+            var result = await finance.GetOrderFinanceAsync(context, order.OrderNumber, order.OrderedAt.AddDays(-1), now.AddDays(1), http.RequestAborted);
+            return result.IsSuccess
+                ? Results.Ok(new { readAt = now, transactions = result.Value!.Transactions, commissionInvoices = result.Value.CommissionInvoices })
+                : Results.Problem(title: result.Error!.SafeMessage, statusCode: result.Error.Class == AdapterErrorClass.Authentication ? 401 : 502, extensions: new Dictionary<string, object?> { ["code"] = result.Error.Code });
+        });
         api.MapPut("/orders/{id:guid}/shopify-status", UpdateShopifyOrderStatusAsync);
         api.MapPost("/orders/{id:guid}/instant-process", async (Guid id, HttpContext http, AppDbContext db, IMarketplaceSalesService service, IMarketplaceJobProcessor marketplaceProcessor) =>
         {

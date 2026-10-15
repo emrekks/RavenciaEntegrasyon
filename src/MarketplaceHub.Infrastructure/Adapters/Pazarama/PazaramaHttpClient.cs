@@ -308,7 +308,7 @@ public sealed partial class PazaramaHttpClient(
             HttpStatusCode.TooManyRequests => new(AdapterErrorClass.RateLimit, "PAZARAMA_RATE_LIMITED", "Pazarama istek sınırına ulaşıldı; işlem biraz sonra yeniden denenecek.", (int)status, retryAfter ?? TimeSpan.FromSeconds(60), null),
             HttpStatusCode.NotFound => new(AdapterErrorClass.NotFound, "PAZARAMA_NOT_FOUND", remote is null ? "Pazarama istenen kaydı bulamadı." : $"Pazarama kaydı bulamadı: {remote}", (int)status, null, null),
             >= HttpStatusCode.InternalServerError => new(AdapterErrorClass.Remote5xx, "PAZARAMA_REMOTE_ERROR", "Pazarama servisi geçici olarak hata veriyor; işlem yeniden denenecek.", (int)status, retryAfter ?? TimeSpan.FromSeconds(30), null),
-            _ => new(AdapterErrorClass.Validation, "PAZARAMA_REQUEST_REJECTED", remote is null ? "Pazarama isteği reddetti." : $"Pazarama isteği reddetti: {remote}", (int)status, null, null)
+            _ => new(AdapterErrorClass.Validation, "PAZARAMA_REQUEST_REJECTED", remote is null ? "Pazarama isteği reddetti." : $"Pazarama isteği reddetti: {PazaramaErrorAdvice.WithAdvice(remote)}", (int)status, null, null)
         };
     }
 
@@ -319,7 +319,7 @@ public sealed partial class PazaramaHttpClient(
         var message = Text(root, "userMessage") ?? Text(root, "message");
         var code = Text(root, "messageCode");
         return new(AdapterErrorClass.Validation, "PAZARAMA_REQUEST_REJECTED",
-            message is null ? code is null ? "Pazarama isteği reddetti." : $"Pazarama isteği reddetti (kod {code})." : $"Pazarama isteği reddetti: {message}",
+            message is null ? code is null ? "Pazarama isteği reddetti." : $"Pazarama isteği reddetti (kod {code})." : $"Pazarama isteği reddetti: {PazaramaErrorAdvice.WithAdvice(message)}",
             null, null, null);
     }
 

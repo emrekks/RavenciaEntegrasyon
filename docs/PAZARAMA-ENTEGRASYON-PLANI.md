@@ -1,6 +1,6 @@
 # Pazarama Entegrasyonu Planı
 
-Durum (15 Ekim 2026): kararlar alındı (bölüm 2). Aşama 1 (bağlantı) ve Aşama 2 (siparişler, okuma) canlıda; son 3 ayın 3 Pazarama siparişi içeri alındı ve doğrulandı. Aşama 3 (referanslar, ürün çekme/eşleme) kodlandı ve yayında; Aşama 3 canlıda doğrulandı (3.169 varyantın 3.153ü bağlandı). Aşama 4 (fiyat-stok) kodlandı; dış yazma kapalı, ilk gönderim kullanıcı onayıyla tek barkodla yapılacak.
+Durum (16 Ekim 2026): kararlar alındı (bölüm 2). Aşamalar 1-10 kodlandı ve yayında; dış yazma kapalı ve yalnız kullanıcı onayıyla açılır. Canlıda doğrulanan: bağlantı, siparişler (okuma), referanslar, ürün çekme/eşleme (3.153/3.169 varyant), iade okuma kodlandı. Fiyat-stok ilk gönderimi (tek barkod) sonucu: Pazarama aynı değeri reddeder, panel yalnız değişen alanı gönderir. Canlıda ilk yazmada doğrulanacak varsayımlar aşağıda "Doğrulanacaklar" başlığında.
 
 Bu plan N11 entegrasyonunda izlenen yolu izler (`docs/N11-ENTEGRASYON-PLANI.md`). N11'den öğrenilenler ve yeni platform ekleme kontrol listesi (bölüm 5.3) bu deneyimden çıkarıldı.
 
@@ -381,3 +381,14 @@ Her aşama küçük commit'lerle `main`'e gider; her commit'in Validate ve Deplo
 - **Fiyat onayı**: %70 indirim onaya düşer, sonuç 4 saate kadar gecikebilir; panelde "beklemede" görünür.
 - **Anahtar yenileme**: Pazarama panelinde yeni anahtar üretilirse eski anında ölür; tüm işler kimlik hatasına düşer. Panel kimlik hatasında açık uyarı vermeli.
 - **Doküman tutarsızlıkları**: alan adı büyük/küçük harf farkları (`Code`/`code`, `orderid`/`orderId`), `GroupCode` uzunluğu. Canlı yanıtla doğrulanacak.
+
+## 14. Uygulama özeti ve canlıda doğrulanacaklar (16 Ekim 2026)
+
+Aşama 5 (sipariş aksiyonları): `PazaramaPackageActions.cs` — işleme al (12) ve tedarik edilemedi (13) kalem başına `order/updateOrderStatus`; paket böl/güncelle (`order/api/packages-split`, `order/update-packages`), işçilik (`order/api/{orderId}/items/labor-costs`), iptal talebi onay/ret (`order/api/cancel/items` ile listele, `order/api/cancel` ile karar). Anlaşmalı kargoda 5 (kargoya verildi) hiç gönderilmez. Panel: gönderi detayında duruma göre aksiyonlar, her biri onay penceresiyle.
+Aşama 6 (fatura): `order/invoice-link` — sipariş bazlı link (kargo/takip boş). Bağlantı ayarı `InvoiceCreationEnabled` (varsayılan kapalı) belirler; fatura sayfasında N11 ve Pazarama listelenir.
+Aşama 7 (iade yazma): `order/updateRefund` — onay (2), ret (3 + gerekçe 1-12 + açıklama + en çok 3 görsel/5 MB; 10 ve 11 dışında görsel zorunlu). İncelemeye gönderme panelde yok.
+Aşama 8 (sorular): `QuestionAnswer/getApprovalAnswersByMerchantSearch` (durum 0/1/2/3), `getApprovalAnswerById`, `sellerAnswer`; cevap Pazarama onayına düşer (kabul edildi, doğrulanmadı).
+Aşama 9 (ürün): `product/create` bileşeni (yaprak kategori, marka eşlemesi, değer kimlikli özellikler, 10 karakterlik grup kodu), `getProductBatchResult` takibi, barkodla yayın durumu, satışa aç/kapat (`product/external-status`; bağlantı sayfasında barkodla). İçerik güncelleme servisi Pazarama'da yok.
+Aşama 10: `order/paymentAgreement` ile sipariş başına finans (komisyon, hakediş, aktarım, kesintiler, komisyon faturaları) canlı okunur (gönderi detayı); hata öneri eşleyicisi (`PazaramaErrorAdvice`). Temin bilgileri (ithalatçı/imalatçı, parti/seri, uyarı görseli) kapsam dışı: ihtiyaç doğarsa eklenecek.
+
+Doğrulanacaklar (canlıda ilk yazma/okumada): `getRefund` ve soru servislerinin sayfa/tarih parametre biçimi; `getApprovalAnswersByMerchantSearch` tarih biçimi; `paymentAgreement` tarih aralığı sınırı; `updateRefund` yanıtı; `product/create` için `GroupCode` uzunluğu (10 varsayıldı); onaysız ürün listesinde ret durumu alanı; `packages-split` isteğinde `sellerId` gereksinimi; fatura linkinin uzantı koşulu.
