@@ -855,6 +855,7 @@
   .product-platform-filter-logo.trendyol { background: #f56600; }
   .product-platform-filter-logo.shopify { background: #6eae35; }
   .product-platform-filter-logo.hepsiburada { background: #ff6a00; }
+  .product-platform-filter-logo.n11 { background: #252525; }
   .product-platform-filter-logo.other { color: var(--rv-color-primary); background: var(--rv-color-primary-soft); }
   .product-platform-filter-options { display: grid; gap: 2px; }
   .product-platform-filter-state-dot { width: 9px; height: 9px; justify-self: center; background: var(--rv-color-muted); border: 2px solid color-mix(in srgb, var(--rv-color-muted) 25%, transparent); border-radius: 50%; }

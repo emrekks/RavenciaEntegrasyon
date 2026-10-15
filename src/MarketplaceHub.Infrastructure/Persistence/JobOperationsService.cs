@@ -840,6 +840,8 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             ? "Hepsiburada"
         : jobType.Contains("SHOPIFY", StringComparison.OrdinalIgnoreCase)
             ? "Shopify"
+        : jobType.StartsWith("N11_", StringComparison.OrdinalIgnoreCase)
+            ? "N11"
         : jobType.Contains("TRENDYOL", StringComparison.OrdinalIgnoreCase)
             ? "Trendyol"
             : "Ravencia";

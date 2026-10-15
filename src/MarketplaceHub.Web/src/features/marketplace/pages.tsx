@@ -654,7 +654,7 @@ function SingleOrderSyncModal({ activeConnection: activeConnections, onClose, on
         <form className="single-order-sync-form" onSubmit={handleSubmit}>
           {!activeConnections.length && (
             <div className="notice single-order-sync-notice" role="alert">
-              ⚠️ Aktif Trendyol, Shopify veya Hepsiburada bağlantısı bulunamadı. Platformlar sayfasından bağlantınızı etkinleştirin.
+              ⚠️ Aktif Trendyol, Shopify, Hepsiburada veya N11 bağlantısı bulunamadı. Platformlar sayfasından bağlantınızı etkinleştirin.
             </div>
           )}
           <fieldset className="sync-source-fieldset">

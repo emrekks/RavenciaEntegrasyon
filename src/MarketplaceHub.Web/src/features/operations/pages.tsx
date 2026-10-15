@@ -95,7 +95,7 @@ function jobPresentation(jobType: string): JobPresentation {
   if (type === 'MARKETPLACE_QUESTION_SYNC') return marketplaceQuestionSyncPresentation
   if (type === 'CATALOG_STRUCTURE_IMPORT') return catalogStructureImportPresentation
   if (type.includes('REFERENCE_SYNC')) {
-    const platform = type.startsWith('HEPSIBURADA_') ? 'Hepsiburada' : 'Trendyol'
+    const platform = type.startsWith('HEPSIBURADA_') ? 'Hepsiburada' : type.startsWith('N11_') ? 'N11' : 'Trendyol'
     return { title: `${platform} kategori ve eşleştirme verisi`, icon: 'product', description: `${platform} kategori, özellik ve eşleştirme referansları salt okunur olarak yenilenir; platforma ürün veya başka veri gönderilmez.` }
   }
   if (type === 'STOCK_PROJECTION_DISPATCH') return { title: 'Stok Gönderim Hazırlığı', icon: 'price', description: 'Yerel stok değişikliği gönderim kuyruğuna aktarılır. Dış yazma kapalıysa pazaryerine değişiklik gönderilmez; başarılı durumu yalnızca bu hazırlık adımının işlendiğini gösterir.' }
@@ -109,6 +109,7 @@ function jobPresentation(jobType: string): JobPresentation {
   if (type === 'TRENDYOL_ORDER_RECOVERY_SYNC') return { title: 'Sipariş Geçmişi Taraması', icon: 'order', description: 'Erişilebilen sipariş geçmişi taranarak eksik yerel sipariş kayıtları tamamlanır.' }
   if (type === 'TRENDYOL_ORDER_SYNC') return { title: 'Yeni Sipariş Senkronizasyonu', icon: 'order', description: 'Trendyol’daki yeni ve değişen siparişler güvenli aralıklarla sisteme alınır.' }
   if (type === 'HEPSIBURADA_ORDER_SYNC') return { title: 'Hepsiburada Sipariş İşlemi', icon: 'order', description: 'Hepsiburada sipariş bilgileri güvenli biçimde panele aktarılır.' }
+  if (type === 'N11_ORDER_SYNC' || type === 'N11_ORDER_RECOVERY_SYNC') return { title: 'N11 Sipariş İşlemi', icon: 'order', description: 'N11 sipariş paketleri 15 günlük aralıklarla okunup panele aktarılır.' }
   if (type.includes('SHIPMENT') || type.includes('PACKAGE') || type.includes('COURIER')) return { title: 'Kargo ve Paket İşlemi', icon: 'order', description: 'Paket, kargo firması veya teslimatla ilgili işlem pazaryerine gönderilir.' }
   if (type.includes('LABEL')) return { title: 'Kargo Etiketi', icon: 'order', description: 'Seçilen sipariş veya paket için kargo etiketi işlemi yürütülür.' }
   if (type.includes('ORDER')) return { title: 'Sipariş İşlemi', icon: 'order', description: 'Siparişle ilgili arka plan işlemi yürütülür.' }
@@ -123,6 +124,7 @@ function jobSource(jobType: string) {
   const type = jobType.toUpperCase()
   if (type.includes('EFATURAM')) return 'e-Faturam API'
   if (type.startsWith('HEPSIBURADA_')) return 'Hepsiburada API'
+  if (type.startsWith('N11_')) return 'N11 API'
   if (type.startsWith('TRENDYOL_')) return 'Trendyol API'
   if (type.includes('INVOICE')) return 'e-Faturam API'
   return 'Ravencia Worker'
@@ -142,7 +144,7 @@ function fallbackJobChange(job: JobSummary): JobChange {
   if (type === 'TRENDYOL_ORDER_INVOICE_RECONCILIATION') return { label: 'Tarama türü', value: 'Paket fatura taraması', detail: 'Teslim edilmiş ve açık paketlerin pazaryeri fatura durumu kontrol edilir.' }
   if (type === 'TRENDYOL_ORDER_RECOVERY_SYNC') return { label: 'Tarama türü', value: 'Tam sipariş taraması', detail: 'Erişilebilen sipariş pencereleri taranarak eksik yerel kayıtlar tamamlanır.' }
   if (type === 'TRENDYOL_ORDER_SYNC') return { label: 'Yapılan değişiklik', value: 'Sipariş senkronizasyonu', detail: 'Sipariş bilgileri pazaryerinden eşitlendi.' }
-  if (type.includes('REFERENCE_SYNC')) return { label: 'Yapılan işlem', value: type.startsWith('HEPSIBURADA_') ? 'Hepsiburada kategori ve eşleştirme verisi' : 'Trendyol kategori ve eşleştirme verisi', detail: 'Kategori, özellik ve eşleştirme referansları salt okunur yenilendi; dış platforma veri gönderilmedi.' }
+  if (type.includes('REFERENCE_SYNC')) return { label: 'Yapılan işlem', value: type.startsWith('HEPSIBURADA_') ? 'Hepsiburada kategori ve eşleştirme verisi' : type.startsWith('N11_') ? 'N11 kategori ve eşleştirme verisi' : 'Trendyol kategori ve eşleştirme verisi', detail: 'Kategori, özellik ve eşleştirme referansları salt okunur yenilendi; dış platforma veri gönderilmedi.' }
   if (type.includes('PRODUCT') || type.includes('CATALOG')) return { label: 'Yapılan değişiklik', value: 'Ürün senkronizasyonu', detail: 'Ürün bilgileri pazaryerine gönderildi.' }
   if (type.includes('INVOICE')) return { label: 'Yapılan değişiklik', value: 'Fatura işlemi', detail: 'Fatura isteği pazaryerine gönderildi.' }
   return { label: 'Yapılan değişiklik', value: jobPresentation(job.jobType).title, detail: 'İşlem isteği sisteme kaydedildi.' }

@@ -71,7 +71,7 @@ export function connectionDataResetGroups(platformCode: string): ConnectionDataR
     options: [...orderOptions]
   }]
   const catalogOptions = [productOption]
-  if (normalizedPlatformCode === 'TRENDYOL' || normalizedPlatformCode === 'HEPSIBURADA') catalogOptions.push(...categoryOptions)
+  if (normalizedPlatformCode === 'TRENDYOL' || normalizedPlatformCode === 'HEPSIBURADA' || normalizedPlatformCode === 'N11') catalogOptions.push(...categoryOptions)
   if (normalizedPlatformCode === 'TRENDYOL') catalogOptions.push(brandOption)
   groups.push({
     label: 'Ürün kataloğu',

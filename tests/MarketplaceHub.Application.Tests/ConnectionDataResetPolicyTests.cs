@@ -23,6 +23,16 @@ public sealed class ConnectionDataResetPolicyTests
     }
 
     [Fact]
+    public void N11OffersCategoryButNotBrandReset()
+    {
+        var scopes = ConnectionDataResetPolicy.ScopesFor("N11");
+        Assert.Contains("ORDERS", scopes);
+        Assert.Contains("PRODUCTS", scopes);
+        Assert.Contains("CATEGORY_ATTRIBUTES", scopes);
+        Assert.DoesNotContain("BRANDS", scopes);
+    }
+
+    [Fact]
     public void EInvoiceConnectionCanOnlyResetInvoices()
     {
         Assert.Equal(new[] { "INVOICES" }, ConnectionDataResetPolicy.ScopesFor("TRENDYOL_EFATURAM"));

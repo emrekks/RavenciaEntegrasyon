@@ -27,7 +27,7 @@ public static class ConnectionDataResetPolicy
     public static IReadOnlySet<string> ScopesFor(string platformCode) => platformCode.Trim().ToUpperInvariant() switch
     {
         "TRENDYOL" => Marketplace,
-        "HEPSIBURADA" => Hepsiburada,
+        "HEPSIBURADA" or "N11" => Hepsiburada,
         "SHOPIFY" => Shopify,
         "TRENDYOL_EFATURAM" => EInvoice,
         _ => None
