@@ -2,6 +2,7 @@ using System.Net;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.N11;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Xunit;
@@ -195,7 +196,8 @@ public sealed class N11AdapterTests
         null!,
         Options.Create(new N11Options()),
         TimeProvider.System,
-        NullLogger<N11HttpClient>.Instance);
+        NullLogger<N11HttpClient>.Instance,
+        new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["FeatureFlags:ExternalWrites"] = "true" }).Build());
 
     private sealed class FixedHttpClientFactory(HttpMessageHandler handler) : IHttpClientFactory
     {

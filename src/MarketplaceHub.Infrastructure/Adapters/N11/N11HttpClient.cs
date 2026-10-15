@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using MarketplaceHub.Application;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -17,13 +18,29 @@ public sealed partial class N11HttpClient(
     N11AuthenticationHandler authentication,
     IOptions<N11Options> options,
     TimeProvider timeProvider,
-    ILogger<N11HttpClient> logger)
+    ILogger<N11HttpClient> logger,
+    Microsoft.Extensions.Configuration.IConfiguration configuration)
     : IConnectionPort, IOrderPort
 {
     private const string ProductQueryGuide = "https://developer.n11.com/documentation/n11-marketplace-entegrasyonu/satici-urun-sorgulama/";
     private const string OrderListGuide = "https://developer.n11.com/documentation/n11-siparis-entegrasyonu/siparis-listeleme-servisi/";
     private static readonly CultureInfo Turkish = CultureInfo.GetCultureInfo("tr-TR");
     private readonly N11Options settings = options.Value;
+
+    // Every n11 write goes through this gate: the server-wide switch, the connection switch, a
+    // production connection that was verified or activated. Callers above check the same switches
+    // when they queue work; this keeps a write from leaving even when a caller forgets.
+    internal AdapterResult<T>? WriteBlocked<T>(N11RequestContext account, string what)
+    {
+        var connection = account.Connection;
+        var allowed = configuration.GetValue<bool>("FeatureFlags:ExternalWrites")
+            && ConnectionWritesEnabled(connection.SettingsJson)
+            && string.Equals(connection.Environment, "PRODUCTION", StringComparison.OrdinalIgnoreCase)
+            && (string.Equals(connection.Status, "ACTIVE", StringComparison.OrdinalIgnoreCase) || string.Equals(connection.Status, "VERIFIED", StringComparison.OrdinalIgnoreCase));
+        return allowed
+            ? null
+            : Failure<T>(AdapterErrorClass.Validation, "N11_EXTERNAL_WRITES_DISABLED", $"N11 bağlantısında dış yazma kapalı; {what} gönderilmedi.", HttpStatusCode.Forbidden);
+    }
 
     internal static string ProductQuery(int page, int size) =>
         $"ms/product-query?page={page.ToString(CultureInfo.InvariantCulture)}&size={size.ToString(CultureInfo.InvariantCulture)}";

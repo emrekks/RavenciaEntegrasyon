@@ -62,8 +62,7 @@ public sealed partial class N11HttpClient : IProductPort
             return Failure<RemoteOperationRef>(AdapterErrorClass.Validation, "N11_PRODUCT_PAYLOAD_INVALID", $"N11 ürün açma içeriği beklenen yapıda değil (1-{MaxCreateSkus} SKU).", HttpStatusCode.UnprocessableEntity);
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return CredentialMissing<RemoteOperationRef>();
-        if (!ConnectionWritesEnabled(account.Connection.SettingsJson))
-            return Failure<RemoteOperationRef>(AdapterErrorClass.Validation, "N11_EXTERNAL_WRITES_DISABLED", "N11 bağlantısında dış yazma kapalı; ürün açma isteği gönderilmedi.", HttpStatusCode.Forbidden);
+        if (WriteBlocked<RemoteOperationRef>(account, "ürün açma isteği") is { } blocked) return blocked;
         var result = await SendAsync(account, HttpMethod.Post, ProductCreateTask, cancellationToken, new StringContent(body, Encoding.UTF8, "application/json"));
         if (!result.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(result.Error!, result.RateLimit);
         using var document = result.Value!;

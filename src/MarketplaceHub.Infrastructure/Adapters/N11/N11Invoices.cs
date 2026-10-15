@@ -22,6 +22,7 @@ public sealed partial class N11HttpClient : IInvoiceMarketplacePort
         if (request.Error is not null) return Failure<InvoiceDeliveryResult>(AdapterErrorClass.Validation, "N11_INVOICE_LINK_INVALID", request.Error, HttpStatusCode.UnprocessableEntity);
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return CredentialMissing<InvoiceDeliveryResult>();
+        if (WriteBlocked<InvoiceDeliveryResult>(account, "fatura linki") is { } blocked) return blocked;
 
         var inner = SoapElement("url", request.Link) + SoapElement("orderNumber", request.OrderNumber)
             + SoapElement("invoiceDateTime", request.InvoiceDateTime) + SoapElement("invoiceNumber", request.InvoiceNumber);

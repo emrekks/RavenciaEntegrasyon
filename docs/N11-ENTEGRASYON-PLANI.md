@@ -4,7 +4,7 @@ Hazırlanma: 14 Ekim 2026. Durum (15 Ekim 2026): uygulama sürüyor.
 
 - Tamam: bağlantı, referanslar ve eşleştirme, ürün çekme/eşleştirme, sipariş okuma ve mutabakatı, sipariş onaylama ve paket bölme (ilk kabul edilen işlemden sonra SHIPMENT_WRITE kanıtı kaydedilir), fiyat/stok gönderimi ve kanallar arası stok mutabakatı, hesap başına ortak hız sınırı.
 - Tamam (15 Ekim): fatura linki (SOAP), iadeler (okuma + onay; ret N11 panelinden), müşteri soruları.
-- Bekliyor: ürün açma/güncelleme (`wip/n11-urun-yayinlama` dalında yarım), adetle bölme/kısmi iptal, işçilik bedeli, toplama talebi, kampanya kodlu etiket, N11 hata mesajı eşleyici. Ayrıntılar: `docs/DEVAM-NOTU.md`.
+- Canlıda: ürün açma (ilk canlı deneme bekliyor), miktarla bölme/kısmi iptal, işçilik bedeli, toplama talebi (üçü de canlıda denenmedi), sipariş detayı alanları. Bekliyor: ürün güncelleme/silme/satıştan kaldırma, hızlı yükleme (SearchCatalog), `ClaimCancelPartial`, iade reddi/erteleme, kampanya kodlu etiket, N11 hata mesajı eşleyici, görsel yedek akışı. Her N11 yazması `N11HttpClient.WriteBlocked` kapısından geçer. Ayrıntılar: `docs/DEVAM-NOTU.md`.
 
 ## 1. Amaç ve temel ilke
 

@@ -17,8 +17,7 @@ public sealed partial class N11HttpClient : IInventoryPricePort
     {
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return CredentialMissing<RemoteOperationRef>();
-        if (!ConnectionWritesEnabled(account.Connection.SettingsJson))
-            return Failure<RemoteOperationRef>(AdapterErrorClass.Validation, "N11_EXTERNAL_WRITES_DISABLED", "N11 bağlantısında dış yazma kapalı; fiyat-stok gönderilmedi.", HttpStatusCode.Forbidden);
+        if (WriteBlocked<RemoteOperationRef>(account, "fiyat-stok") is { } blocked) return blocked;
         var result = await SendAsync(account, HttpMethod.Post, PriceStockUpdate, cancellationToken, new StringContent(payloadJson, Encoding.UTF8, "application/json"));
         if (!result.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(result.Error!, result.RateLimit);
         using var document = result.Value!;
