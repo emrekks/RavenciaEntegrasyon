@@ -59,6 +59,7 @@ public static class MarketplaceJobTypes
     public const string N11OrderSync = "N11_ORDER_SYNC";
     public const string N11OrderRecoverySync = "N11_ORDER_RECOVERY_SYNC";
     public const string PazaramaConnectionTest = "PAZARAMA_CONNECTION_TEST";
+    public const string PazaramaReferenceSync = "PAZARAMA_REFERENCE_SYNC";
     public const string PazaramaOrderSync = "PAZARAMA_ORDER_SYNC";
     public const string PazaramaOrderRecoverySync = "PAZARAMA_ORDER_RECOVERY_SYNC";
     public const string PazaramaOrderStatusSync = "PAZARAMA_ORDER_STATUS_SYNC";
@@ -70,7 +71,7 @@ public static class MarketplaceJobTypes
     public static readonly IReadOnlyList<string> ProcessorJobTypes =
     [
         ConnectionTest, ShopifyConnectionTest, HepsiburadaConnectionTest, N11ConnectionTest, PazaramaConnectionTest,
-        ReferenceSync, HepsiburadaReferenceSync, N11ReferenceSync,
+        ReferenceSync, HepsiburadaReferenceSync, N11ReferenceSync, PazaramaReferenceSync,
         ProductSync, ShopifyProductSync, HepsiburadaProductSync,
         ProductCreate, ProductApprovalReconcile, ProductUpdate, ProductArchive,
         PriceInventorySync, StockProjectionDispatch,
@@ -132,6 +133,7 @@ public static class MarketplaceJobTypes
         "PAZARAMA" => jobType switch
         {
             ConnectionTest => PazaramaConnectionTest,
+            ReferenceSync => PazaramaReferenceSync,
             OrderSync => PazaramaOrderSync,
             OrderRecoverySync => PazaramaOrderRecoverySync,
             OrderStatusSync => PazaramaOrderStatusSync,

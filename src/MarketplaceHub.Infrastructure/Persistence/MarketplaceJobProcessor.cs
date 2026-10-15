@@ -91,7 +91,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 var succeeded = jobType switch
                 {
                     MarketplaceJobTypes.ConnectionTest or MarketplaceJobTypes.ShopifyConnectionTest or MarketplaceJobTypes.HepsiburadaConnectionTest or MarketplaceJobTypes.N11ConnectionTest or MarketplaceJobTypes.PazaramaConnectionTest => await TestConnection(tenantId, connectionId.Value, correlationId, cancellationToken),
-                    MarketplaceJobTypes.ReferenceSync or MarketplaceJobTypes.HepsiburadaReferenceSync or MarketplaceJobTypes.N11ReferenceSync => await SyncReferences(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
+                    MarketplaceJobTypes.ReferenceSync or MarketplaceJobTypes.HepsiburadaReferenceSync or MarketplaceJobTypes.N11ReferenceSync or MarketplaceJobTypes.PazaramaReferenceSync => await SyncReferences(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                     MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync or MarketplaceJobTypes.N11OrderSync or MarketplaceJobTypes.PazaramaOrderSync => await SyncOrders(tenantId, connectionId.Value, payloadJson, correlationId, "ORDERS_HOT", allowBaseline: false, cancellationToken),
                     MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync or MarketplaceJobTypes.HepsiburadaOrderRecoverySync or MarketplaceJobTypes.N11OrderRecoverySync or MarketplaceJobTypes.PazaramaOrderRecoverySync => await SyncOrders(tenantId, connectionId.Value, payloadJson, correlationId, "ORDERS_RECOVERY", allowBaseline: true, cancellationToken),
                     MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.ShopifyOrderStatusSync or MarketplaceJobTypes.HepsiburadaOrderStatusSync or MarketplaceJobTypes.PazaramaOrderStatusSync => await SyncOpenOrders(tenantId, connectionId.Value, correlationId, cancellationToken),
@@ -134,7 +134,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     private static string? TelemetryResource(string jobType) => jobType switch
     {
         MarketplaceJobTypes.ConnectionTest or MarketplaceJobTypes.ShopifyConnectionTest or MarketplaceJobTypes.HepsiburadaConnectionTest or MarketplaceJobTypes.N11ConnectionTest or MarketplaceJobTypes.PazaramaConnectionTest => "CONNECTION_TEST",
-        MarketplaceJobTypes.ReferenceSync or MarketplaceJobTypes.HepsiburadaReferenceSync or MarketplaceJobTypes.N11ReferenceSync => "REFERENCE_DATA",
+        MarketplaceJobTypes.ReferenceSync or MarketplaceJobTypes.HepsiburadaReferenceSync or MarketplaceJobTypes.N11ReferenceSync or MarketplaceJobTypes.PazaramaReferenceSync => "REFERENCE_DATA",
         MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync or MarketplaceJobTypes.N11OrderSync or MarketplaceJobTypes.PazaramaOrderSync => "ORDERS_HOT",
         MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync or MarketplaceJobTypes.HepsiburadaOrderRecoverySync or MarketplaceJobTypes.N11OrderRecoverySync or MarketplaceJobTypes.PazaramaOrderRecoverySync => "ORDERS_RECOVERY",
         MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.ShopifyOrderStatusSync or MarketplaceJobTypes.HepsiburadaOrderStatusSync or MarketplaceJobTypes.PazaramaOrderStatusSync => "ORDER_LIFECYCLE",
@@ -163,7 +163,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     };
 
     private static bool IsBootstrapManagedJob(string jobType) => jobType is
-        MarketplaceJobTypes.ReferenceSync or MarketplaceJobTypes.HepsiburadaReferenceSync or MarketplaceJobTypes.N11ReferenceSync
+        MarketplaceJobTypes.ReferenceSync or MarketplaceJobTypes.HepsiburadaReferenceSync or MarketplaceJobTypes.N11ReferenceSync or MarketplaceJobTypes.PazaramaReferenceSync
         or MarketplaceJobTypes.OrderSync
         or MarketplaceJobTypes.ShopifyOrderSync
         or MarketplaceJobTypes.HepsiburadaOrderSync or MarketplaceJobTypes.N11OrderSync or MarketplaceJobTypes.PazaramaOrderSync
@@ -3677,10 +3677,15 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     private async Task<bool> SyncProducts(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, Guid? jobId, CancellationToken cancellationToken)
     {
         var connection = await db.PlatformConnections.AsNoTracking()
-            .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11"), cancellationToken);
+            .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11" || x.PlatformCode == "PAZARAMA"), cancellationToken);
         var isShopify = connection?.PlatformCode == "SHOPIFY";
         var isHepsiburada = connection?.PlatformCode == "HEPSIBURADA";
         var isN11 = connection?.PlatformCode == "N11";
+        var isPazarama = connection?.PlatformCode == "PAZARAMA";
+        // n11 and Pazarama list a flat catalog: pending listings are real listings, there is no
+        // category-mapping or watermark logic and no brand reference, and the import only observes
+        // the remote catalog (n11 keys it by stock code, Pazarama by barcode).
+        var flatCatalog = isN11 || isPazarama;
         // Product import is read-only on the remote platform and writes only to
         // Ravencia's local catalog. Shopify observations never become local
         // price/stock authority.
@@ -3695,9 +3700,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var mappingOnly = ReadBoolean(payloadJson, "mappingOnly");
         var optionsOnly = ReadBoolean(payloadJson, "optionsOnly");
         var includeArchived = ReadBoolean(payloadJson, "includeArchived");
-        // n11 listings awaiting approval are real listings that also take price and
-        // stock updates, so they are always part of an n11 import.
-        var includePendingApproval = isN11 || !isShopify && !isHepsiburada && ReadBoolean(payloadJson, "includePendingApproval");
+        // n11 and Pazarama listings awaiting approval are real listings that also take price and
+        // stock updates, so they are always part of their import.
+        var includePendingApproval = flatCatalog || !isShopify && !isHepsiburada && ReadBoolean(payloadJson, "includePendingApproval");
         var updateExistingProducts = ReadBooleanOrDefault(payloadJson, "updateExistingProducts", true);
         var updateExistingPricesAndStock = ReadBoolean(payloadJson, "updateExistingPricesAndStock");
         // Shopify's single inactive-product option intentionally covers both
@@ -3794,11 +3799,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 .Where(identity => !string.IsNullOrWhiteSpace(identity))
                 .ToHashSet(StringComparer.Ordinal)
             : null;
-        var hasCategoryMappings = !isShopify && !isHepsiburada && !isN11 && await db.CategoryMappings.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == "VERIFIED", cancellationToken);
+        var hasCategoryMappings = !isShopify && !isHepsiburada && !flatCatalog && await db.CategoryMappings.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == "VERIFIED", cancellationToken);
         // The first attribute backfill must revisit the already imported catalog. Keep
         // LastModifiedWatermark null until that full pass is complete so a retry cannot
         // accidentally switch to the incremental window halfway through the backfill.
-        if (!isShopify && !isHepsiburada && !isN11 && !hasCategoryMappings && cursor.OpaqueCursor is null && cursor.LastModifiedWatermark is not null)
+        if (!isShopify && !isHepsiburada && !flatCatalog && !hasCategoryMappings && cursor.OpaqueCursor is null && cursor.LastModifiedWatermark is not null)
         {
             cursor.LastModifiedWatermark = null;
             cursor.Version++;
@@ -3960,7 +3965,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // catalog rows are being materialized. These calls intentionally happen
         // after remote product paging so a cold reference cache cannot hide
         // product-read progress.
-        brandReferences = isShopify || isHepsiburada || isN11 || optionsOnly ? null : await EnsureReferenceSnapshot(tenantId, connectionId, "BRANDS", null, correlationId, cancellationToken);
+        brandReferences = isShopify || isHepsiburada || flatCatalog || optionsOnly ? null : await EnsureReferenceSnapshot(tenantId, connectionId, "BRANDS", null, correlationId, cancellationToken);
         if (jobId is { } categoryReferenceJob)
             await UpdateProductSyncProgressAsync(
                 tenantId,
@@ -4025,7 +4030,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 {
                     if (mappingOnly)
                     {
-                        var mapped = await MapExistingCatalogProduct(tenantId, connectionId, snapshot, isShopify, cancellationToken, crossMatchCodes: isN11, reportUnmatched: isN11, seedOffers: isN11, inventoryPolicy: inventoryPolicy);
+                        var mapped = await MapExistingCatalogProduct(tenantId, connectionId, snapshot, isShopify, cancellationToken, crossMatchCodes: flatCatalog, reportUnmatched: flatCatalog, seedOffers: flatCatalog, inventoryPolicy: inventoryPolicy);
                         if (!mapped) telemetryImportSkippedCount++;
                         else telemetryImportProcessedCount++;
                         continue;
@@ -4064,7 +4069,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     var categoryContext = categoryReferences is null
                         ? null
                         : await EnsureCategoryAttributeContext(tenantId, connectionId, categoryReferences, snapshot, categoryItems, importedAttributeLibrary, categoryContexts, correlationId, cancellationToken);
-                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, brandReferences?.Id, inventoryPolicy, cancellationToken, saveChanges: false, onlyNewVariants: newOnly && productAlreadyLinked, observeOnly: isShopify || isHepsiburada || isN11, preferBarcode: isShopify, matchBySku: isN11, onlyExistingVariants: existingOnly && isShopify, updateExistingProducts: updateExistingProducts, updateExistingPricesAndStock: updateExistingPricesAndStock, isHepsiburada: isHepsiburada);
+                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, brandReferences?.Id, inventoryPolicy, cancellationToken, saveChanges: false, onlyNewVariants: newOnly && productAlreadyLinked, observeOnly: isShopify || isHepsiburada || flatCatalog, preferBarcode: isShopify, matchBySku: isN11, onlyExistingVariants: existingOnly && isShopify, updateExistingProducts: updateExistingProducts, updateExistingPricesAndStock: updateExistingPricesAndStock, isHepsiburada: isHepsiburada, observedPlatformName: isPazarama ? "Pazarama" : null);
                     existingProductExternalIds?.Add(snapshot.ExternalProductId);
                     if (existingVariantExternalIds is not null)
                         foreach (var variant in snapshot.Variants)
@@ -5277,7 +5282,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         return true;
     }
 
-    private async Task<bool> UpsertCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CategoryAttributeContext? categoryContext, Guid? brandReferenceSnapshotId, ConnectionInventoryPolicy? inventoryPolicy, CancellationToken cancellationToken, bool saveChanges = true, bool onlyNewVariants = false, bool observeOnly = false, bool preferBarcode = false, bool onlyExistingVariants = false, bool updateExistingProducts = true, bool updateExistingPricesAndStock = false, bool isHepsiburada = false, bool matchBySku = false)
+    private async Task<bool> UpsertCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CategoryAttributeContext? categoryContext, Guid? brandReferenceSnapshotId, ConnectionInventoryPolicy? inventoryPolicy, CancellationToken cancellationToken, bool saveChanges = true, bool onlyNewVariants = false, bool observeOnly = false, bool preferBarcode = false, bool onlyExistingVariants = false, bool updateExistingProducts = true, bool updateExistingPricesAndStock = false, bool isHepsiburada = false, bool matchBySku = false, string? observedPlatformName = null)
     {
         var now = timeProvider.GetUtcNow();
         var externalProductId = Short(snapshot.ExternalProductId, 256);
@@ -5308,7 +5313,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             // as a separate Product row, so existing-only sync may need to link
             // variants across more than one local product.
             var allowCrossProductVariantMatch = preferBarcode && onlyExistingVariants;
-            var observedPlatform = matchBySku ? "N11" : "Shopify";
+            var observedPlatform = observedPlatformName ?? (matchBySku ? "N11" : "Shopify");
             var identityCodes = snapshot.Variants
                 .Select(variant => variant.Barcode)
                 .Select(value => NormalizeCatalogKey(value, 160))

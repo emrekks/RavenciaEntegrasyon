@@ -175,7 +175,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
     private async Task DisableExternalWriteAutomationAsync(CancellationToken cancellationToken)
     {
         var connections = await db.PlatformConnections
-            .Where(x => x.PlatformCode == "TRENDYOL" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11")
+            .Where(x => x.PlatformCode == "TRENDYOL" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11" || x.PlatformCode == "PAZARAMA")
             .ToListAsync(cancellationToken);
         var blockedConnectionIds = connections
             .Where(x => !WritesEnabled(x.SettingsJson))
@@ -432,9 +432,10 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         || resourceType is MarketplaceExternalWritePolicies.Price or MarketplaceExternalWritePolicies.Stock or MarketplaceExternalWritePolicies.Shipment or MarketplaceExternalWritePolicies.Return;
 
     // Pazarama runs the order reads: new orders (ORDERS), the history scan (ORDER_RECOVERY) and the
-    // open-order status scan (ORDER_LIFECYCLE), because the order list has no change filter. The
-    // write flows are listed so the policies exist (and stay off) for the later phases.
-    internal static bool SupportsPazaramaScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "ORDER_LIFECYCLE"
+    // open-order status scan (ORDER_LIFECYCLE), because the order list has no change filter, plus the
+    // category/attribute/brand references. The write flows are listed so the policies exist (and stay
+    // off) for the later phases.
+    internal static bool SupportsPazaramaScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "ORDER_LIFECYCLE" or "REFERENCE_DATA"
         || MarketplaceExternalWritePolicies.IsPolicy(resourceType);
 
     internal static bool DefaultPolicyEnabled(string platformCode, string resourceType) =>

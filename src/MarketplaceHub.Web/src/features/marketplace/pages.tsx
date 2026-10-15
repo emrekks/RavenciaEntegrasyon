@@ -1772,6 +1772,7 @@ function returnPlatformName(platformCode: string | null | undefined) {
   switch (platformCode?.toUpperCase()) {
     case 'HEPSIBURADA': return 'Hepsiburada'
     case 'N11': return 'N11'
+    case 'PAZARAMA': return 'Pazarama'
     case 'SHOPIFY': return 'Shopify'
     case 'TRENDYOL': return 'Trendyol'
     default: return 'Pazar yeri'
@@ -2020,7 +2021,7 @@ export function MappingPage() {
   return searchParams.get('view') === 'brands' ? <BrandMappingPage /> : <CategoryMappingWorkspace />
 }
 
-const supportedAttributeMappingPlatforms = mappingPlatformDefinitions.filter(platform => platform.code === 'TRENDYOL' || platform.code === 'HEPSIBURADA' || platform.code === 'N11')
+const supportedAttributeMappingPlatforms = mappingPlatformDefinitions.filter(platform => platform.code === 'TRENDYOL' || platform.code === 'HEPSIBURADA' || platform.code === 'N11' || platform.code === 'PAZARAMA')
 
 function CategoryMappingWorkspace() {
   const client = useQueryClient()

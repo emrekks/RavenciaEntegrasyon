@@ -1,6 +1,6 @@
 # Pazarama Entegrasyonu Planı
 
-Durum (15 Ekim 2026): kararlar alındı (bölüm 2). Aşama 1 (bağlantı) ve Aşama 2 (siparişler, okuma) canlıda; son 3 ayın 3 Pazarama siparişi içeri alındı ve doğrulandı. Sıradaki: Aşama 3 (referanslar, ürün çekme/eşleme), sonra Aşama 4 (fiyat-stok).
+Durum (15 Ekim 2026): kararlar alındı (bölüm 2). Aşama 1 (bağlantı) ve Aşama 2 (siparişler, okuma) canlıda; son 3 ayın 3 Pazarama siparişi içeri alındı ve doğrulandı. Aşama 3 (referanslar, ürün çekme/eşleme) kodlandı ve yayında; sıradaki: canlı salt-okunur doğrulama (kullanıcı eşleme çalıştırır), sonra Aşama 4 (fiyat-stok).
 
 Bu plan N11 entegrasyonunda izlenen yolu izler (`docs/N11-ENTEGRASYON-PLANI.md`). N11'den öğrenilenler ve yeni platform ekleme kontrol listesi (bölüm 5.3) bu deneyimden çıkarıldı.
 
@@ -317,6 +317,7 @@ Her aşama küçük commit'lerle `main`'e gider; her commit'in Validate ve Deplo
 2. Ürün çekme (onaylı imleç + onaysız), tam tarama / yalnız eşleme modları, barkod eşleşmesi, eşleşmeyen raporu, teklif tohumlama.
 3. Eşleştirme ekranında Pazarama sekmesi etkin (`supportedAttributeMappingPlatforms`), marka eşleme.
 - Çıkış: Pazarama ürünleri panel varyantlarına bağlı.
+- Uygulama notu (15 Ekim 2026): `PazaramaReferences.cs` (kategori ağacı düz liste -> kök/yol/derinlik, kategori özellikleri + değerleri tek `getCategoryWithAttributes` çağrısından, 2 dk önbellekli; markalar sayfa+ilk-id imleciyle), `PazaramaProducts.cs` (imleç: `A:` onaylı, `U:{sayfa}:{ilkKod}` onaysız sayfa-indeksli, `C:` onaysız imleçli; sayfa indeksi 0/1 tabanı `hasPreviousPage` ile otomatik ayrılır). Ürün = barkod (`code`); `groupCode` yalnız gruplama (`group:{kod}`), model kodu değildir. İçe aktarma N11 ile aynı "düz katalog" dalı: onay bekleyenler dahil, yalnız gözlem, barkod kimliği, mapping-only modunda barkod->stok kodu çapraz eşleşme ve teklif tohumlama (Pazarama fiyatından başlar). Marka referansı ürün içe aktarmada okunmaz (Aşama 9). Fiyat-stok değişikliği zaten kapalı (`updateExistingPricesAndStock` Pazarama için hep false).
 
 ### Aşama 4 — Fiyat ve stok
 1. Bileşen (`BuildPazaramaAsync`), fiyat ve stok ayrı yükler, 3000 parça, `dataId` sonuç takibi (5 = onaya gönderildi).
