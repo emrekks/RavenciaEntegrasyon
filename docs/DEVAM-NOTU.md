@@ -45,12 +45,9 @@ Sunucuda `aa57d0ba` çalışıyor (API ve worker sağlıklı). Aşağıdakilerin
 
 ## Yapılacaklar (sırayla)
 
-1. **N11 ürün yükleme** — yarım; `wip/n11-urun-yayinlama` dalında. Ayrıntılı durum ve eksikler o dalda `docs/N11-URUN-YAYINLAMA-WIP.md` dosyasında (dala geçip oku). Dalın derleme kontrolü elle başlatıldı: https://github.com/emrekks/RavenciaEntegrasyon/actions/runs/38709352064 . Bir alt ajan başlattı, oturum kapanırken durduruldu, hiç derlenmedi. Önce dalı incele (12 dosya, `N11ProductPublicationComposer.cs` yeni), eksikleri tamamla, derlemeyi CI'da doğrula (dal push'u Validate çalıştırır, deploy etmez), sonra `main`'e al.
-   - Sözleşme: `POST ms/product/tasks/product-create`, gövde `{"payload":{"integrator":..., "skus":[{title, description, categoryId, currencyType:"TL", productMainId, preparingDay, shipmentTemplate, maxPurchaseQuantity?, stockCode, catalogId?, barcode?, quantity, images:[{url,order}], attributes:[{id, valueId, customValue}], salePrice, listPrice, vatRate(0|1|10|20)}]}}`; en fazla 1000 SKU; yanıt `{id, type, status: IN_QUEUE|REJECT, reasons}`; sonuç `ms/product/task-details/page-query` ile.
-   - Marka: özellik id 1, `customValue` metni. Zorunlu özellikler gönderilmeli; özel değere izin yoksa `valueId`.
-   - `shipmentTemplate` (satıcı panelindeki şablon adı) ve `preparingDay` için N11 bağlantı ayarı + panel girişi gerekiyor.
-   - `stockCode`, fiyat/stok gönderiminin kullandığı `MarketplaceVariantLinks.ExternalId` ile aynı olmalı.
-   - Güncelleme (`product-update`) yalnız status, preparingDay, shipmentTemplate, currencyType, productMainId, maxPurchaseQuantity, description alanlarını değiştirir.
+1. **N11 ürün yükleme** — `main`'de ve canlıda (da5f398c). Dış yazma kapalıyken ya da bağlantıda kargo şablonu boşken hiçbir şey N11'e gitmez. Panelde N11 bağlantı sayfasında "N11 ürün açma ayarları" (kargo şablonu adı + hazırlık süresi) eklendi; 21 birim testi yazıldı.
+   - **Kalan:** ilk canlı deneme kullanıcıyla birlikte yapılacak (yayın işi → `CreateAsync` → görev sorgusu → onay takibi → `MarketplaceVariantLinks.ExternalId` = stok kodu). N11'de test ortamı yok; tek ürünle, izleyerek açın. Ürün güncelleme (`product-update`), satıştan kaldırma/açma, silme ve SearchCatalog hızlı yükleme henüz yok.
+   - Sözleşme: `POST ms/product/tasks/product-create`, en fazla 1000 SKU, marka = özellik id 1 (`customValue`), `stockCode` = panel SKU, sonuç `ms/product/task-details/page-query` ile. Ayrıntı: `wip/n11-urun-yayinlama` dalındaki `docs/N11-URUN-YAYINLAMA-WIP.md`.
 2. **N11 kargo ekleri:** adetle bölme + kısmi iptal (`POST rest/delivery/v1/splitPackageByQuantity`, iptal nedenleri 61–65), işçilik bedeli (`PUT rest/order/v1/labor-costs`), toplama talebi (HLZ/CEVA), kampanya kodlu etiket.
 3. **N11 sipariş detayı alanları:** `cargoSenderNumber`, `cargoTrackingLink`, `deliveryAddressType`, komisyon, N11 indirimi (model + ekran).
 4. **N11 hata mesajı eşleyici** (gerçek hata metinleri görüldükçe).
