@@ -36,6 +36,7 @@ public static class CapabilityEvidencePolicy
         "HEPSIBURADA" => "developers.hepsiburada.com",
         "SHOPIFY" => "shopify.dev",
         "N11" => "developer.n11.com",
+        "PAZARAMA" => "isortagim.pazarama.com",
         _ => throw new ArgumentOutOfRangeException(nameof(platformCode), "Unsupported platform capability evidence scope.")
     };
 

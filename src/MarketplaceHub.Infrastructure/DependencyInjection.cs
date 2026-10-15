@@ -3,6 +3,7 @@ using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Adapters;
 using MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
 using MarketplaceHub.Infrastructure.Adapters.N11;
+using MarketplaceHub.Infrastructure.Adapters.Pazarama;
 using MarketplaceHub.Infrastructure.Adapters.Shopify;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam;
@@ -70,6 +71,7 @@ public static class DependencyInjection
         services.Configure<ShopifyOptions>(configuration.GetSection(ShopifyOptions.SectionName));
         services.Configure<HepsiburadaOptions>(configuration.GetSection(HepsiburadaOptions.SectionName));
         services.Configure<N11Options>(configuration.GetSection(N11Options.SectionName));
+        services.Configure<PazaramaOptions>(configuration.GetSection(PazaramaOptions.SectionName));
         services.AddSingleton<ISharedRateLimiter>(_ => new PostgresSharedRateLimiter(Npgsql.NpgsqlDataSource.Create(connection)));
         services.AddSingleton<TrendyolResilienceState>();
         services.AddTransient<TrendyolResilienceHandler>();
@@ -98,6 +100,14 @@ public static class DependencyInjection
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AutomaticDecompression = System.Net.DecompressionMethods.All, PooledConnectionLifetime = TimeSpan.FromMinutes(10) });
         services.AddScoped<N11AuthenticationHandler>();
         services.AddScoped<N11HttpClient>();
+        services.AddSingleton<PazaramaTokenCache>();
+        services.AddTransient<PazaramaRateLimitHandler>();
+        services.AddHttpClient(PazaramaHttpClient.ClientName, client => client.Timeout = Timeout.InfiniteTimeSpan)
+            .AddHttpMessageHandler<PazaramaRateLimitHandler>()
+            .AddHttpMessageHandler<MarketplaceCircuitBreakerHandler>()
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AutomaticDecompression = System.Net.DecompressionMethods.All, PooledConnectionLifetime = TimeSpan.FromMinutes(10) });
+        services.AddScoped<PazaramaAuthenticationHandler>();
+        services.AddScoped<PazaramaHttpClient>();
         services.AddScoped<MarketplacePortRouter>();
         services.AddScoped<IConnectionPort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
         services.AddScoped<IReferenceDataPort>(provider => provider.GetRequiredService<MarketplacePortRouter>());

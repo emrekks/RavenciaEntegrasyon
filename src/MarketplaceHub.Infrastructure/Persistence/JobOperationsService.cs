@@ -850,6 +850,8 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
 
     internal static string Marketplace(string jobType, string? platformCode = null) => string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase) && !jobType.Contains("EFATURAM", StringComparison.OrdinalIgnoreCase)
         ? "N11"
+        : string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase) && !jobType.Contains("EFATURAM", StringComparison.OrdinalIgnoreCase)
+        ? "Pazarama"
         : jobType.Contains("EFATURAM", StringComparison.OrdinalIgnoreCase)
         ? "Trendyol e-Faturam"
         : jobType.Contains("HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
@@ -858,6 +860,8 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             ? "Shopify"
         : jobType.StartsWith("N11_", StringComparison.OrdinalIgnoreCase)
             ? "N11"
+        : jobType.StartsWith("PAZARAMA_", StringComparison.OrdinalIgnoreCase)
+            ? "Pazarama"
         : jobType.Contains("TRENDYOL", StringComparison.OrdinalIgnoreCase)
             ? "Trendyol"
             : "Ravencia";
