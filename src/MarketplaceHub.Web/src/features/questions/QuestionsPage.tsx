@@ -25,7 +25,7 @@ type MarketplaceQuestion = {
 }
 type Template = { id: string; title: string; text: string; version: number; updatedAt: string }
 type Connection = { id: string; platformCode: string; displayName: string; status: string }
-type SyncState = { connectionId: string; platformCode: string; storeName: string; historyImported: boolean; historyStartedAt?: string | null; progressStatus: string; importedCount: number; lastRunStartedAt?: string | null; lastSuccessAt?: string | null; lastError?: string | null }
+type SyncState = { connectionId: string; platformCode: string; storeName: string; historyImported: boolean; historyStartedAt?: string | null; progressStatus: string; importedCount: number; productQuestionCount?: number; orderQuestionCount?: number; lastRunStartedAt?: string | null; lastSuccessAt?: string | null; lastError?: string | null }
 type QuestionListPage = { items: MarketplaceQuestion[]; page: number; limit: number; totalCount: number }
 type QuestionStatus = 'WAITING' | 'ANSWERED' | 'EXPIRED' | 'OTHER' | 'ALL'
 // Hepsiburada has its own order questions; Pazarama marks a question that names an order. Trendyol and n11 only ask about products.
@@ -67,9 +67,11 @@ function QuestionProductImage({ src, connectionId, sku, barcode, modelCode, prod
     : <span className="rv-question-product-placeholder" aria-label="Ürün görseli bulunamadı"><UiIcon name="image" size={20} /></span>
 }
 
-function syncSummary(item: SyncState) {
-  if (item.historyImported) return `${item.importedCount.toLocaleString('tr-TR')} kayıt · Geçmiş tamamlandı`
-  if (item.progressStatus === 'INITIAL') return `${item.importedCount.toLocaleString('tr-TR')} kayıt · Geçmiş aktarılıyor`
+// The count follows the open tab: product questions on the product tab, order questions on the order tab.
+function syncSummary(item: SyncState, tab: WorkspaceTab) {
+  const count = (tab === 'ORDER' ? item.orderQuestionCount : item.productQuestionCount) ?? item.importedCount
+  if (item.historyImported) return `${count.toLocaleString('tr-TR')} kayıt · Geçmiş tamamlandı`
+  if (item.progressStatus === 'INITIAL') return `${count.toLocaleString('tr-TR')} kayıt · Geçmiş aktarılıyor`
   if (item.progressStatus === 'FAILED') return 'Son aktarım başarısız'
   if (item.progressStatus === 'QUEUED') return 'İlk aktarım sırada'
   return 'İlk aktarım bekleniyor'
@@ -153,7 +155,7 @@ export function QuestionsPage() {
   return <section className="content rv-questions-page">
     <PageHeader eyebrow="Müşteri iletişimi" title="Ürün soruları" description="Ürün sorularını ve Hepsiburada ile Pazarama sipariş sorularını yönetin." actions={<Button variant="secondary" onClick={() => sync.mutate({ kind })} loading={sync.isPending}><UiIcon name="refresh" size={17} /> Yenile</Button>} />
     <section className="rv-questions-sync" aria-label="Soru aktarım durumu">
-      {(syncStates.data ?? []).filter(item => (platform === 'ALL' || item.platformCode === platform) && (tab !== 'ORDER' || ORDER_QUESTION_PLATFORMS.includes(item.platformCode))).map(item => <div className="rv-questions-sync-item" data-platform={item.platformCode.toLowerCase()} key={item.connectionId}><img className={`rv-question-platform-logo ${platformLogoClass(item.platformCode)}`} src={platformLogoSource(item.platformCode) ?? undefined} alt="" aria-hidden="true" /><strong>{item.storeName}</strong><span title={item.historyStartedAt ? `Aktarım başlangıcı: ${formatDate(item.historyStartedAt)}` : undefined}>{syncSummary(item)}</span><small>{item.lastSuccessAt ? `Son aktarım ${formatDate(item.lastSuccessAt)}` : item.lastError ? item.lastError : ''}</small></div>)}
+      {(syncStates.data ?? []).filter(item => (platform === 'ALL' || item.platformCode === platform) && (tab !== 'ORDER' || ORDER_QUESTION_PLATFORMS.includes(item.platformCode))).map(item => <div className="rv-questions-sync-item" data-platform={item.platformCode.toLowerCase()} key={item.connectionId}><img className={`rv-question-platform-logo ${platformLogoClass(item.platformCode)}`} src={platformLogoSource(item.platformCode) ?? undefined} alt="" aria-hidden="true" /><strong>{item.storeName}</strong><span title={item.historyStartedAt ? `Aktarım başlangıcı: ${formatDate(item.historyStartedAt)}` : undefined}>{syncSummary(item, tab)}</span><small>{item.lastSuccessAt ? `Son aktarım ${formatDate(item.lastSuccessAt)}` : item.lastError ? item.lastError : ''}</small></div>)}
       {!syncStates.data?.length && <span>Soru geçmişi bağlantılarınızdan arka planda alınır. İlk senkronizasyon sonrası aktarım durumu burada görünür.</span>}
     </section>
     <div className="rv-questions-panel">

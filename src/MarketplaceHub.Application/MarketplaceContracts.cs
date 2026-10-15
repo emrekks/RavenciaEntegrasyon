@@ -647,7 +647,7 @@ public sealed record MarketplaceQuestionTemplateView(Guid Id, string Title, stri
 public sealed record SaveQuestionTemplateCommand(string Title, string Text);
 public sealed record AnswerQuestionCommand(string Text, long Version);
 public sealed record QuestionSyncView(int Added, int Updated, DateTimeOffset SyncedAt, string? Error = null);
-public sealed record MarketplaceQuestionSyncStateView(Guid ConnectionId, string PlatformCode, string StoreName, bool HistoryImported, DateTimeOffset? HistoryStartedAt, string ProgressStatus, int ImportedCount, DateTimeOffset? LastRunStartedAt, DateTimeOffset? LastSuccessAt, string? LastError);
+public sealed record MarketplaceQuestionSyncStateView(Guid ConnectionId, string PlatformCode, string StoreName, bool HistoryImported, DateTimeOffset? HistoryStartedAt, string ProgressStatus, int ImportedCount, DateTimeOffset? LastRunStartedAt, DateTimeOffset? LastSuccessAt, string? LastError, int ProductQuestionCount = 0, int OrderQuestionCount = 0);
 public sealed record QuestionListQuery(string Kind, string? Status, string? PlatformCode, Guid? ConnectionId, DateTimeOffset? DateFrom, DateTimeOffset? DateTo, string? Search, int Page = 1, int Limit = 50, string Sort = "NEWEST");
 public sealed record MarketplaceQuestionListPage(IReadOnlyList<MarketplaceQuestionView> Items, int Page, int Limit, int TotalCount);
 

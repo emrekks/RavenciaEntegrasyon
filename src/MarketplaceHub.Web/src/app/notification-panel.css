@@ -37,7 +37,7 @@
 .rv-notification-group:has(> button[aria-expanded="false"]) { border-bottom: 0; }
 @media (prefers-reduced-motion: reduce) { .rv-notification-group > button > .ui-icon { transition: none; } }
 /* An open day scrolls inside its own card. */
-.rv-notification-day-body { max-height: min(340px, 45vh); overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.rv-notification-day-body { max-height: min(340px, 45vh); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 .rv-notification-group > button > span { color: var(--rv-color-ink); font-size: 14px; font-weight: 700; }
 .rv-notification-group > button > small { min-width: 0; flex: 1; overflow: hidden; color: var(--rv-color-muted); font-size: 12px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .rv-notification-group > button > b { flex: none; padding: 1px 8px; color: var(--rv-color-muted); background: color-mix(in srgb, var(--rv-color-ink) 8%, transparent); border-radius: 10px; font-size: 11px; font-weight: 600; }

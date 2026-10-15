@@ -415,7 +415,9 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
                where connection.TenantId == tenantId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED") && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "HEPSIBURADA" || connection.PlatformCode == "N11" || connection.PlatformCode == "PAZARAMA")
                select new MarketplaceQuestionSyncStateView(connection.Id, connection.PlatformCode, connection.DisplayName, state != null && state.HistoryImported, state == null ? null : state.HistoryStartedAt,
                    state == null ? "QUEUED" : state.ProgressStatus, state == null ? 0 : state.ImportedCount, state == null ? null : state.LastRunStartedAt,
-                   state == null ? null : state.LastSuccessAt, state == null ? null : state.LastError)).ToListAsync(cancellationToken);
+                   state == null ? null : state.LastSuccessAt, state == null ? null : state.LastError,
+                   db.MarketplaceQuestions.Count(question => question.TenantId == tenantId && question.ConnectionId == connection.Id && question.Kind == "PRODUCT"),
+                   db.MarketplaceQuestions.Count(question => question.TenantId == tenantId && question.ConnectionId == connection.Id && question.Kind == "ORDER"))).ToListAsync(cancellationToken);
 
     private async Task<bool> UpsertAsync(Guid tenantId, Guid connectionId, RemoteMarketplaceQuestion remote, DateTimeOffset now, CancellationToken cancellationToken)
     {
