@@ -2837,14 +2837,14 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
         <nav className="cm-nav" aria-label="Kategori özellikleri">
           {entryGroups.map(group => <Fragment key={group.title}>
             <div className="cm-section"><span>{group.title}</span><span>{group.items.filter(entry => entry.mapped).length} / {group.items.length}</span></div>
-            {group.items.map(entry => <button type="button" key={entry.key} className={`cm-item${entry.key === activeEntry?.key ? ' is-selected' : ''}`} aria-current={entry.key === activeEntry?.key ? 'true' : undefined} onClick={() => setSelectedEntryKey(entry.key)}><MappingStateGlyph mapped={entry.mapped} /><span className="cm-name">{entry.name}</span><span className="cm-meta">{entry.meta}</span></button>)}
+            {group.items.map(entry => <button type="button" key={entry.key} className={`cm-item${entry.key === activeEntry?.key ? ' is-selected' : ''}`} aria-current={entry.key === activeEntry?.key ? 'true' : undefined} onClick={() => setSelectedEntryKey(entry.key)}><MappingStateGlyph mapped={entry.mapped} required={entry.required} /><span className="cm-name">{entry.name}</span><span className="cm-meta">{entry.meta}</span></button>)}
           </Fragment>)}
         </nav>
         <div className="cm-detail" key={activeEntry?.key}>
           {activeEntry && <>
-            <div className="cm-detail-head"><h4>{activeEntry.name}</h4><span className="cm-tag">{activeEntry.required ? 'Zorunlu' : 'İsteğe bağlı'}</span></div>
+            <div className="cm-detail-head"><h4>{activeEntry.name}</h4><span className={`cm-tag${activeEntry.required ? ' is-required' : ''}`}>{activeEntry.required ? 'Zorunlu' : 'İsteğe bağlı'}</span></div>
             {activeEntry.node}
-            <div className="cm-detail-foot"><span>{mappingEntries.filter(entry => entry.required && !entry.mapped).length ? `${mappingEntries.filter(entry => entry.required && !entry.mapped).length} zorunlu alan eşlenmeyi bekliyor` : 'Zorunlu alanların hepsi eşlendi'}</span>{nextOpenEntry && <button type="button" className="secondary" onClick={() => setSelectedEntryKey(nextOpenEntry.key)}>Sonraki eksik</button>}</div>
+            <div className={`cm-detail-foot${mappingEntries.some(entry => entry.required && !entry.mapped) ? '' : ' is-complete'}`}><span>{mappingEntries.filter(entry => entry.required && !entry.mapped).length ? `${mappingEntries.filter(entry => entry.required && !entry.mapped).length} zorunlu alan eşlenmeyi bekliyor` : 'Zorunlu alanların hepsi eşlendi'}</span>{nextOpenEntry && <button type="button" className="secondary" onClick={() => setSelectedEntryKey(nextOpenEntry.key)}>Sonraki eksik</button>}</div>
           </>}
         </div>
       </div></section>
@@ -2854,10 +2854,10 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
 type MappingEntry = { key: string; name: string; required: boolean; mapped: boolean; meta: string; node: ReactNode }
 
 // Status by shape rather than colour: a filled check for a mapped field, an outlined plus for one still open.
-function MappingStateGlyph({ mapped }: { mapped: boolean }) {
+function MappingStateGlyph({ mapped, required }: { mapped: boolean; required: boolean }) {
   return mapped
     ? <svg className="cm-glyph is-done" viewBox="0 0 16 16" aria-label="Eşlendi" role="img"><circle cx="8" cy="8" r="7" fill="currentColor" /><path d="m5 8.2 2.1 2.1 3.9-4.2" fill="none" stroke="var(--rv-color-surface)" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>
-    : <svg className="cm-glyph" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-label="Eşlenmedi" role="img"><rect x="2.2" y="2.2" width="11.6" height="11.6" rx="3.2" /><path d="M8 5.4v5.2M5.4 8h5.2" /></svg>
+    : <svg className={`cm-glyph${required ? ' is-required' : ''}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-label="Eşlenmedi" role="img"><rect x="2.2" y="2.2" width="11.6" height="11.6" rx="3.2" /><path d="M8 5.4v5.2M5.4 8h5.2" /></svg>
 }
 
 function MappingValueModal({ open, title, description, onClose, children }: { open: boolean; title: string; description: string; onClose: () => void; children: ReactNode }) {
