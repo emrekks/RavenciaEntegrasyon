@@ -18,7 +18,12 @@ public sealed class N11WriteGateTests
     private static N11RequestContext Account(string environment, string status, bool connectionWrites) => new(
         new PlatformConnection
         {
-            PlatformCode = "N11", Environment = environment, Status = status, DisplayName = "N11", ExternalStoreId = "Ravencia", ApiVersion = "V1",
+            PlatformCode = "N11",
+            Environment = environment,
+            Status = status,
+            DisplayName = "N11",
+            ExternalStoreId = "Ravencia",
+            ApiVersion = "V1",
             SettingsJson = connectionWrites ? """{"ExternalWritesEnabled":true}""" : """{"ExternalWritesEnabled":false}"""
         },
         "key", "secret");
