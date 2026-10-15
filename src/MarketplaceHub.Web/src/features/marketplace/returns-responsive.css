@@ -377,3 +377,34 @@
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .returns-page .return-reference-workspace > header { display: none; }
 }
+
+.returns-selection-bar { display: none; }
+
+/* Returns selection on phones (same as orders): no bulk checkbox bar — long-press selects, the
+   bottom bar offers İptal | İşlemler (N) | Tümünü Seç with Toplu Onayla / Toplu Reddet in the menu. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .returns-page .return-bulk-bar { display: none; }
+  .app-shell.stitch-shell main .returns-page .return-reference-row { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  .app-shell.stitch-shell main .returns-page .return-reference-row.is-selected { background: color-mix(in srgb, var(--rv-color-primary) 16%, var(--rv-color-surface)); border-color: var(--rv-color-primary); box-shadow: 0 0 0 1px var(--rv-color-primary); animation: rv-select-pop .18s ease-out; }
+  .app-shell.stitch-shell main .returns-page .returns-selection-bar {
+    position: fixed; right: 0; bottom: 0; left: 0; z-index: calc(var(--rv-z-modal, 1000) - 1); display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px;
+    padding: 10px 20px calc(10px + env(safe-area-inset-bottom)); background: var(--rv-color-surface); border-top: 1px solid var(--rv-color-border-strong); box-shadow: 0 -8px 24px rgb(0 0 0 / 28%);
+  }
+  .app-shell.stitch-shell main .returns-page .returns-selection-bar > button { min-height: 40px; background: transparent; border: 0; font-size: 14px; font-weight: 600; }
+  .app-shell.stitch-shell main .returns-page .returns-selection-bar > .orders-selection-cancel { justify-self: start; padding: 0; color: var(--rv-color-danger); }
+  .app-shell.stitch-shell main .returns-page .returns-selection-bar > .orders-selection-all { justify-self: end; padding: 0; color: var(--rv-color-primary); }
+  .app-shell.stitch-shell main .returns-page .returns-selection-bar > .orders-selection-actions {
+    justify-self: center; display: inline-flex; align-items: center; gap: 6px; padding: 0 6px; color: var(--rv-color-ink); font-size: 15px; font-weight: 650;
+  }
+  .app-shell.stitch-shell main .returns-page .returns-selection-bar > .orders-selection-actions::after {
+    content: ""; width: 14px; height: 14px; flex: 0 0 14px; transition: transform .18s ease;
+    background: no-repeat center / contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238b5cf6' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 15l6-6 6 6'/%3E%3C/svg%3E");
+  }
+  .app-shell.stitch-shell main .returns-page .returns-selection-bar > .orders-selection-actions[aria-expanded="true"]::after { transform: rotate(180deg); }
+  .app-shell.stitch-shell main .returns-page .returns-selection-bar > .orders-selection-actions:disabled { color: var(--rv-color-muted); opacity: .6; }
+  .app-shell.stitch-shell main .returns-page .returns-selection-bar > .orders-selection-menu {
+    position: absolute; right: 20px; bottom: calc(100% + 8px); left: 20px; display: grid; gap: 2px; padding: 6px;
+    background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); box-shadow: var(--rv-shadow-lg);
+  }
+  .app-shell.stitch-shell main .returns-page .returns-selection-bar > .orders-selection-menu > button { min-height: 46px; padding: 0 12px; color: var(--rv-color-ink); background: transparent; border: 0; border-radius: var(--rv-radius-sm); font-size: 14px; font-weight: 600; text-align: left; }
+}
