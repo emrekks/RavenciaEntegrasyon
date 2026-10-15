@@ -6,6 +6,7 @@ describe('shouldLoadConnectionCapabilities', () => {
     expect(shouldLoadConnectionCapabilities('SHOPIFY')).toBe(true)
     expect(shouldLoadConnectionCapabilities('HEPSIBURADA')).toBe(true)
     expect(shouldLoadConnectionCapabilities('N11')).toBe(true)
+    expect(shouldLoadConnectionCapabilities('PAZARAMA')).toBe(true)
   })
 
   it('does not load marketplace write evidence for unsupported platforms', () => {
