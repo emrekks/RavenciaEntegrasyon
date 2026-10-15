@@ -317,7 +317,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var waitingMessage = string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
                 ? "Hepsiburada ürün import sonucu bekleniyor."
                 : string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase) ? "Shopify ürün ve Online Store yayın sonucu kaydediliyor."
-                : string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase) ? "N11 ürün açma görevinin sonucu bekleniyor." : "Trendyol create batch sonucu bekleniyor.";
+                : string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase) ? "N11 ürün açma görevinin sonucu bekleniyor." : string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase) ? "Pazarama ürün açma sonucu bekleniyor." : "Trendyol create batch sonucu bekleniyor.";
             return JobExecutionResult.Retry("PRODUCT_BATCH_PENDING", waitingMessage, TimeSpan.FromSeconds(15), operation.ExternalOperationId);
         }
 
@@ -347,7 +347,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var runningMessage = string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
                 ? "Hepsiburada ürün import işlemi sürüyor."
                 : string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase) ? "Shopify ürün yayın işlemi sürüyor."
-                : string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase) ? "N11 ürün açma görevi işleniyor." : "Trendyol create batch işlemi sürüyor.";
+                : string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase) ? "N11 ürün açma görevi işleniyor." : string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase) ? "Pazarama ürün açma işlemi sürüyor." : "Trendyol create batch işlemi sürüyor.";
             return JobExecutionResult.Retry("PRODUCT_BATCH_PENDING", runningMessage, TimeSpan.FromSeconds(15), payload.ExternalOperationId);
         }
         // n11 drops a whole task without per-SKU lines when it rejects it; nothing was created.
@@ -365,7 +365,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var keyedBySku = isHepsiburada || isShopify || isN11;
         var lines = operationStatus.Lines.Where(x => !string.IsNullOrWhiteSpace(x.ExternalKey)).ToList();
         var remoteKeyLabel = isN11 ? "stok kodu" : isShopify || isHepsiburada ? "merchantSku" : "barkod";
-        var marketplaceName = isShopify ? "Shopify" : isHepsiburada ? "Hepsiburada" : isN11 ? "N11" : "Trendyol";
+        var marketplaceName = isShopify ? "Shopify" : isHepsiburada ? "Hepsiburada" : isN11 ? "N11" : string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase) ? "Pazarama" : "Trendyol";
         if (lines.Count == 0 || lines.GroupBy(x => x.ExternalKey, StringComparer.OrdinalIgnoreCase).Any(group => group.Count() > 1)) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", $"Tamamlanan {marketplaceName} sonucu eksik veya yinelenen {remoteKeyLabel} satırları içeriyor.", payload.ExternalOperationId), cancellationToken);
         var resultKeys = listings.Select(x => keyedBySku ? x.ExternalSku ?? "" : x.ExternalBarcode ?? "").ToList();
         if (resultKeys.Any(string.IsNullOrWhiteSpace) || resultKeys.Distinct(StringComparer.OrdinalIgnoreCase).Count() != listings.Count) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", $"Uzak sonuç eşlemesi için listing {remoteKeyLabel} değerleri eksik veya yinelenmiş.", payload.ExternalOperationId), cancellationToken);
@@ -417,7 +417,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // n11 follows the same status-query flow, keyed by stock code (the listing SKU)
         // instead of barcode; an approved stock code becomes the variant's n11 link.
         var isN11 = string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase);
-        var marketplaceName = isN11 ? "N11" : "Trendyol";
+        var isPazarama = string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase);
+        var marketplaceName = isN11 ? "N11" : isPazarama ? "Pazarama" : "Trendyol";
         var keyLabel = isN11 ? "stok kodu" : "barkod";
         Func<ChannelListingVariant, string?> approvalKey = item => isN11 ? item.ExternalSku : item.ExternalBarcode;
 
@@ -462,7 +463,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var localVariantIds = candidates.Select(x => x.VariantId).ToArray();
         // A just-created n11 product can be missing from the product query for a while, so a
         // missing n11 stock code stays pending instead of resetting the publication.
-        if (!isN11 && candidates.Count == listings.Count
+        if (!isN11 && !isPazarama && candidates.Count == listings.Count
             && ProductApprovalReconciliationPolicy.ShouldResetMissingPublication(listings.Count, remoteByBarcode.Values.ToArray()))
             return await ResetMissingPublication(tenantId, connectionId, profile, listings, states, payload.PayloadHash, payload.JobId, cancellationToken);
 
@@ -1028,8 +1029,58 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         return rejected == 0 ? JobExecutionResult.Success() : rejected == listings.Count ? JobExecutionResult.Blocked("PRODUCT_UPDATE_REJECTED", "Trendyol ürün güncellemesindeki tüm varyantlar reddedildi.") : JobExecutionResult.Blocked("PRODUCT_UPDATE_PARTIAL_FAILURE", "Trendyol ürün güncellemesi bazı varyantlar için reddedildi.");
     }
 
+    // Pazarama answers a sale status change for each barcode at once, so one call carries the whole job.
+    private async Task<JobExecutionResult> ChangePazaramaSaleStatus(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    {
+        PazaramaSaleStatusJobPayload? payload;
+        try { payload = JsonSerializer.Deserialize<PazaramaSaleStatusJobPayload>(payloadJson, JsonOptions); }
+        catch (JsonException) { return JobExecutionResult.Blocked("PAZARAMA_SALE_STATUS_PAYLOAD_INVALID", "Satışa açma/kapatma işi içeriği okunamadı."); }
+        if (payload is null || payload.JobId == Guid.Empty || payload.SaleStatusBarcodes.Count is < 1 or > 100) return JobExecutionResult.Blocked("PAZARAMA_SALE_STATUS_PAYLOAD_INVALID", "Satışa açma/kapatma işi barkodları eksik.");
+        var job = await db.IntegrationJobs.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == payload.JobId && x.ConnectionId == connectionId && x.JobType == MarketplaceJobTypes.ProductArchive, cancellationToken);
+        if (job is null) return JobExecutionResult.Blocked("PAZARAMA_SALE_STATUS_STATE_MISSING", "Satışa açma/kapatma işi bulunamadı.");
+        if (!await ExternalWriteMasterAllowedAsync(tenantId, connectionId, cancellationToken)) return JobExecutionResult.Blocked("EXTERNAL_WRITES_DISABLED", "Dış yazma anahtarı kapalı; Pazarama isteği gönderilmedi.");
+        var effectKey = job.EffectIdempotencyKey;
+        if (await db.ExternalEffectRecords.AnyAsync(x => x.TenantId == tenantId && x.EffectType == MarketplaceJobTypes.ProductArchive && x.IdempotencyKey == effectKey, cancellationToken))
+            return JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Önceki satışa açma/kapatma çağrısının sonucu kesinleştirilemedi; tekrar gönderim engellendi.");
+        var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = MarketplaceJobTypes.ProductArchive, IdempotencyKey = effectKey, CreatedAt = timeProvider.GetUtcNow() };
+        db.ExternalEffectRecords.Add(effect); await db.SaveChangesAsync(cancellationToken);
+
+        var items = payload.SaleStatusBarcodes.Select(code => new { barcode = code, archived = payload.Close }).ToArray();
+        TrackRequest();
+        var submit = await products.ArchiveAsync(Context(tenantId, connectionId, correlationId, effectKey), JsonSerializer.Serialize(new { items }), cancellationToken);
+        if (!submit.IsSuccess)
+        {
+            TrackResultFailure(submit.Error);
+            if (IsAmbiguous(submit.Error!)) return JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Satışa açma/kapatma çağrısının uygulanıp uygulanmadığı kesinleştirilemedi.", submit.Error!.RemoteRequestId);
+            db.ExternalEffectRecords.Remove(effect); await db.SaveChangesAsync(cancellationToken);
+            return JobExecutionResult.FromAdapterError(submit.Error!);
+        }
+        effect.CompletedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken);
+        TrackRequest();
+        var outcome = await products.GetOperationAsync(Context(tenantId, connectionId, correlationId, $"{effectKey}:result"), submit.Value!.ExternalOperationId, cancellationToken);
+        if (!outcome.IsSuccess) { TrackResultFailure(outcome.Error); return JobExecutionResult.ManualReview("PAZARAMA_SALE_STATUS_RESULT_UNKNOWN", "Satışa açma/kapatma istendi ama sonucu okunamadı; ürünleri Pazarama panelinden kontrol edin.", submit.Value.ExternalOperationId); }
+        var succeededCodes = outcome.Value!.Lines.Where(x => x.Succeeded).Select(x => x.ExternalKey).ToList();
+        var failed = outcome.Value.Lines.Where(x => !x.Succeeded).ToList();
+        if (succeededCodes.Count > 0)
+        {
+            // A product closed for sale takes no price or stock updates; opening it brings its offer back.
+            var variantIds = await db.MarketplaceVariantLinks.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && succeededCodes.Contains(x.ExternalId)).Select(x => x.VariantId).ToListAsync(cancellationToken);
+            var offers = await db.ChannelOffers.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && variantIds.Contains(x.VariantId)).ToListAsync(cancellationToken);
+            foreach (var offer in offers) { offer.Status = payload.Close ? "INACTIVE" : "ACTIVE"; offer.Version++; }
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        foreach (var line in failed)
+            await RecordIssue(tenantId, $"pazarama-sale-status:{connectionId:N}:{line.ExternalKey}", SafeCode(line.ErrorCode) ?? "PAZARAMA_SALE_STATUS_REJECTED", $"Pazarama satışa {(payload.Close ? "kapatma" : "açma")} işlemini reddetti: {line.ExternalKey}{(string.IsNullOrWhiteSpace(line.Status) ? "" : " · " + line.Status)}", cancellationToken);
+        if (failed.Count == 0) return JobExecutionResult.Success();
+        return succeededCodes.Count == 0
+            ? JobExecutionResult.Blocked("PAZARAMA_SALE_STATUS_REJECTED", "Pazarama satışa açma/kapatma isteğindeki tüm barkodları reddetti.", submit.Value.ExternalOperationId)
+            : JobExecutionResult.Blocked("PAZARAMA_SALE_STATUS_PARTIAL_FAILURE", "Pazarama satışa açma/kapatma isteği kısmi başarısızlıkla tamamlandı.", submit.Value.ExternalOperationId);
+    }
+
     private async Task<JobExecutionResult> ArchiveProduct(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
+        if (payloadJson.Contains("\"SaleStatusBarcodes\"", StringComparison.Ordinal))
+            return await ChangePazaramaSaleStatus(tenantId, connectionId, payloadJson, correlationId, cancellationToken);
         ProductArchiveJobPayload? payload;
         try { payload = JsonSerializer.Deserialize<ProductArchiveJobPayload>(payloadJson, JsonOptions); }
         catch (JsonException) { return JobExecutionResult.Blocked("PRODUCT_ARCHIVE_PAYLOAD_INVALID", "Ürün arşiv işi payload sözleşmesini sağlamıyor."); }

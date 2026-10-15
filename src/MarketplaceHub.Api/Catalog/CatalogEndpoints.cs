@@ -114,6 +114,12 @@ public static class CatalogEndpoints
             var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
             return Accepted(await service.EnqueueProductUpdateAsync(tenant.TenantId, id, command.ConnectionId, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted));
         });
+        api.MapPost("/connections/{connectionId:guid}/sale-status-jobs", async (Guid connectionId, PazaramaSaleStatusRequest command, HttpContext http, ICatalogService service) =>
+        {
+            if (Tenant(http) is not { } tenant) return Unauthorized(http);
+            var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
+            return Accepted(await service.EnqueuePazaramaSaleStatusAsync(tenant.TenantId, connectionId, command.Barcodes ?? [], command.Close, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted));
+        });
         api.MapPost("/products/{id:guid}/archive-jobs", async (Guid id, ProductArchiveRequest command, HttpContext http, ICatalogService service) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
@@ -1010,6 +1016,7 @@ public static class CatalogEndpoints
     private static object ToProblem(ServiceError error, string? correlationId) => new { type = $"https://marketplacehub.invalid/problems/{error.Code.ToLowerInvariant().Replace('_', '-')}", title = error.Message, status = error.Status, code = error.Code, correlationId, retryable = error.Status is 429 or >= 500, fieldErrors = error.FieldErrors };
     public sealed record PublicationRequest(Guid ConnectionId);
     public sealed record ProductArchiveRequest(Guid ConnectionId, bool Archived);
+    public sealed record PazaramaSaleStatusRequest(IReadOnlyList<string>? Barcodes, bool Close);
     public sealed record RegisterProductMediaUrl(Guid ProductId, Guid? VariantId, string Url, string? MediaRole, int SortOrder, string? AltText);
     public sealed record ReconcileProductMediaCommand(Guid ProductId, Guid? VariantId, IReadOnlyList<ReconcileProductMediaItem>? Items, string? AltText);
     public sealed record ReconcileProductMediaItem(string Url, int SortOrder);

@@ -749,7 +749,11 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             jobs.Add(new(MarketplaceJobTypes.N11ReferenceSync, "categories", JsonSerializer.Serialize(new { connectionId, resourceType = "CATEGORIES", parentExternalId = (string?)null })));
 
         if (platform == "PAZARAMA")
+        {
             jobs.Add(new(MarketplaceJobTypes.PazaramaReferenceSync, "categories", JsonSerializer.Serialize(new { connectionId, resourceType = "CATEGORIES", parentExternalId = (string?)null })));
+            // Product create needs the brand list for the brand mapping.
+            jobs.Add(new(MarketplaceJobTypes.PazaramaReferenceSync, "brands", JsonSerializer.Serialize(new { connectionId, resourceType = "BRANDS", parentExternalId = (string?)null })));
+        }
 
         if (platform is not ("TRENDYOL" or "SHOPIFY" or "HEPSIBURADA" or "N11" or "PAZARAMA")) return jobs;
         var orderType = MarketplaceJobTypes.ForPlatform(platform, MarketplaceJobTypes.OrderRecoverySync);

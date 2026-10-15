@@ -1241,7 +1241,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     {
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
-        if (connection is null || connection.PlatformCode is not ("TRENDYOL" or "HEPSIBURADA" or "SHOPIFY" or "N11") || !IntegrationRuntimePolicy.IsManualProductWriteReady(connection)) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Yayın için ACTIVE veya doğrulanmış STAGE marketplace bağlantısı gerekir.", 422);
+        if (connection is null || connection.PlatformCode is not ("TRENDYOL" or "HEPSIBURADA" or "SHOPIFY" or "N11" or "PAZARAMA") || !IntegrationRuntimePolicy.IsManualProductWriteReady(connection)) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Yayın için ACTIVE veya doğrulanmış STAGE marketplace bağlantısı gerekir.", 422);
         if (!IntegrationRuntimePolicy.IsSupportedEnvironment(connection)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Yayın yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
         if (IntegrationRuntimePolicy.IsProduction(connection) && !WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
         if (connection.PlatformCode == "SHOPIFY")
@@ -1257,6 +1257,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         // n11 has no sandbox, so write evidence can only follow a first live write; the
         // global and connection write switches are the gate for product create.
         if (connection.PlatformCode == "N11" && !WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "N11'de ürün açmak için global ve bağlantı dış yazma anahtarları açık olmalıdır.", 422);
+        if (connection.PlatformCode == "PAZARAMA" && !WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Pazarama'da ürün açmak için global ve bağlantı dış yazma anahtarları açık olmalıdır.", 422);
         var draftResult = connection.PlatformCode == "SHOPIFY"
             ? await new ShopifyProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken)
             : await new ProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken);
@@ -1392,6 +1393,29 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var payload = JsonSerializer.Serialize(new ProductArchiveJobPayload(jobId, productId, profile.Id, archived, "SUBMIT", draft.PayloadHash, draft.PayloadJson, null, now, now.AddHours(24)));
         db.IntegrationJobs.Add(new IntegrationJob { Id = jobId, TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.ProductArchive, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{dedup}:{NormalizeKey(idempotencyKey)}", Priority = JobPriorityPolicy.For(MarketplaceJobTypes.ProductArchive, userInitiated: true), Status = JobStatus.Pending, AvailableAt = now, MaxAttempts = 20, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
         await db.SaveChangesAsync(cancellationToken); await transaction.CommitAsync(cancellationToken); return ServiceResult<Guid>.Ok(jobId);
+    }
+
+    // Pazarama: close (or reopen) mapped products for sale by barcode. There is no listing profile behind a
+    // mapped product, so the job carries the barcodes itself; the connection write switch is the gate.
+    public async Task<ServiceResult<Guid>> EnqueuePazaramaSaleStatusAsync(Guid tenantId, Guid connectionId, IReadOnlyList<string> barcodes, bool close, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
+    {
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "PAZARAMA", cancellationToken);
+        if (connection is null || !IntegrationRuntimePolicy.IsManualProductWriteReady(connection)) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Satışa açma/kapatma için aktif veya doğrulanmış bir Pazarama bağlantısı gerekir.", 422);
+        if (!WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
+        var normalized = barcodes.Select(x => x?.Trim() ?? "").Where(x => x.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x, StringComparer.Ordinal).ToList();
+        if (normalized.Count is < 1 or > 100) return ServiceResult<Guid>.Fail("VALIDATION_FAILED", "Bir istekte 1-100 barkod gönderilebilir.", 422);
+        var linked = await db.MarketplaceVariantLinks.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && normalized.Contains(x.ExternalId)).Select(x => x.ExternalId).ToListAsync(cancellationToken);
+        var unknown = normalized.Where(code => !linked.Contains(code, StringComparer.OrdinalIgnoreCase)).ToList();
+        if (unknown.Count > 0) return ServiceResult<Guid>.Fail("PAZARAMA_BARCODE_NOT_LINKED", $"Şu barkodlar panelde bir varyanta bağlı değil: {string.Join(", ", unknown.Take(5))}{(unknown.Count > 5 ? " …" : "")}. Önce Pazarama ürün eşleştirmesini çalıştırın.", 404);
+
+        var dedup = $"pazarama-sale:{connectionId:N}:{close}:{Hash(string.Join('|', normalized))}";
+        var existing = await db.IntegrationJobs.AsNoTracking().FirstOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.ProductArchive && x.JobDedupKey == dedup && (x.Status == JobStatus.Pending || x.Status == JobStatus.Leased || x.Status == JobStatus.RetryScheduled), cancellationToken);
+        if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);
+        var jobId = Guid.CreateVersion7(); var now = timeProvider.GetUtcNow();
+        var payload = JsonSerializer.Serialize(new PazaramaSaleStatusJobPayload(jobId, normalized, close, now));
+        db.IntegrationJobs.Add(new IntegrationJob { Id = jobId, TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.ProductArchive, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup + ":" + jobId.ToString("N"), EffectIdempotencyKey = $"{dedup}:{NormalizeKey(idempotencyKey)}", Priority = JobPriorityPolicy.For(MarketplaceJobTypes.ProductArchive, userInitiated: true), Status = JobStatus.Pending, AvailableAt = now, MaxAttempts = 3, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
+        await db.SaveChangesAsync(cancellationToken);
+        return ServiceResult<Guid>.Ok(jobId);
     }
 
     public async Task<ServiceResult<Guid>> RequestPublicationStatusRefreshAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken)

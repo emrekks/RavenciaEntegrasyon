@@ -126,14 +126,6 @@ public sealed partial class PazaramaHttpClient : IProductPort
         return AdapterResult<AdapterPageResult<RemoteProduct>>.Success(new(items, catalog.Value.NextCursor, catalog.Value.HasMore, catalog.Value.TotalCount, catalog.Value.Issues), catalog.RateLimit);
     }
 
-    public Task<AdapterResult<RemoteOperationRef>> CreateAsync(AdapterContext context, ProductPublication publication, CancellationToken cancellationToken) => ProductWriteUnsupported();
-    public Task<AdapterResult<RemoteOperationRef>> UpdateUnapprovedAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => ProductWriteUnsupported();
-    public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedContentAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => ProductWriteUnsupported();
-    public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedVariantsAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => ProductWriteUnsupported();
-    public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedDeliveryAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => ProductWriteUnsupported();
-    public Task<AdapterResult<RemoteOperationRef>> ArchiveAsync(AdapterContext context, string payloadJson, CancellationToken cancellationToken) => ProductWriteUnsupported();
-    public Task<AdapterResult<RemotePublicationStatus>> GetPublicationStatusAsync(AdapterContext context, string barcode, CancellationToken cancellationToken) =>
-        Task.FromResult(NotSupported<RemotePublicationStatus>("PAZARAMA_PUBLICATION_STATUS_UNSUPPORTED", ProductWritesLater));
 
     private static Task<AdapterResult<RemoteOperationRef>> ProductWriteUnsupported() =>
         Task.FromResult(NotSupported<RemoteOperationRef>("PAZARAMA_PRODUCT_WRITE_UNSUPPORTED", ProductWritesLater));

@@ -51,6 +51,8 @@ public sealed partial class PazaramaHttpClient : IInventoryPricePort
 
     public async Task<AdapterResult<RemoteOperationStatus>> GetOperationAsync(AdapterContext context, string externalOperationId, CancellationToken cancellationToken)
     {
+        if (externalOperationId.StartsWith("b:", StringComparison.Ordinal) || externalOperationId.StartsWith("i:", StringComparison.Ordinal))
+            return await GetProductOperationAsync(context, externalOperationId, cancellationToken);
         var parts = PazaramaBatchMapper.ParseOperation(externalOperationId);
         if (parts.Count == 0)
             return Failure<RemoteOperationStatus>(AdapterErrorClass.Validation, "PAZARAMA_OPERATION_ID_INVALID", "Pazarama işlem numarası geçersiz.", HttpStatusCode.UnprocessableEntity);
