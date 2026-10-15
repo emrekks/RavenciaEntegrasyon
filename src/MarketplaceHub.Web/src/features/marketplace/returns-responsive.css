@@ -372,3 +372,8 @@
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234ade9f' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E");
   }
 }
+
+/* Returns on phones: the "Tüm İadeler / Filtreleme Sonuçları" line is removed. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .returns-page .return-reference-workspace > header { display: none; }
+}

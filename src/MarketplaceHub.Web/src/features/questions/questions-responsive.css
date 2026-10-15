@@ -37,3 +37,10 @@
   .app-shell.stitch-shell main .rv-questions-panel .rv-questions-filters { gap: 12px; }
   .app-shell.stitch-shell main .rv-questions-panel .mfs:not(.is-open) { margin: 0; padding: 0; background: none; border: 0; }
 }
+
+/* Questions heading on phones: title on top, the action row below as dark equal-width buttons. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .rv-page-header { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; align-items: start; margin: 0; }
+  .app-shell.stitch-shell main .rv-page-header > .rv-page-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 8px; width: 100%; }
+  .app-shell.stitch-shell main .rv-page-header > .rv-page-actions > button { box-sizing: border-box; width: 100%; min-height: 44px; justify-content: center; gap: 8px; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); font-size: 14px; font-weight: 600; }
+}
