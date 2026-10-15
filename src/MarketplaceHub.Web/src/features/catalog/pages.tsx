@@ -2122,8 +2122,10 @@ function PublishPlatformCard({ card, selected, productId, categoryId, productChe
       const valueReferencesByAttribute: Record<string, PublicationValueReferenceSet> = Object.fromEntries(valueEntries)
       // Connection defaults (e.g. Menşei = TR) cover required attributes the product leaves empty.
       const attributeDefaults = await hubApi<Array<{ externalAttributeId: string }>>(`/connections/${connectionId}/attribute-defaults`).catch(() => [])
+      // n11 fills its brand attribute (id 1) from the product brand, so it needs no mapping.
+      const brandAttributeIds = card.connection.platformCode.trim().toUpperCase() === 'N11' ? ['1'] : []
       const result = classifyPublicationAttributeIssues({
-        defaultedAttributeIds: attributeDefaults.map(item => item.externalAttributeId),
+        defaultedAttributeIds: [...attributeDefaults.map(item => item.externalAttributeId), ...brandAttributeIds],
         selectedAttributes,
         remoteAttributes: attributeReferences.items,
         attributeSnapshotId: attributeReferences.snapshotId,
@@ -2163,8 +2165,10 @@ function PublishPlatformCard({ card, selected, productId, categoryId, productChe
   const hasRequiredPublicationBlock = blockedIssues.length > 0 && !alreadyPublished
   const displayedPublicationLabel = hasRequiredPublicationBlock ? 'Yayın için zorunlu eksik' : publicationLabel
   const displayedPublicationTone = hasRequiredPublicationBlock ? 'danger' : publicationTone
+  const readOnlyIsN11 = card.connection.platformCode.trim().toUpperCase() === 'N11'
+  const readOnlyTitle = readOnlyIsN11 ? 'N11 ürün açma için Entegrasyonlar bölümünde N11 bağlantısının dış yazma anahtarını açın.' : 'Shopify ürün yayını için Entegrasyonlar bölümünde dış yazma anahtarını açın ve gerekli API izinlerini doğrulayın.'
   return <article className={`publish-platform-card${selected ? ' selected' : ''}${card.mode === 'READ_ONLY' ? ' is-read-only' : ''}`}>
-    <button type="button" className="publish-platform-card-head" onClick={onSelect} aria-pressed={selected} aria-describedby={issueDescriptionIds} title={card.mode === 'READ_ONLY' ? 'Shopify ürün yayını için Entegrasyonlar bölümünde dış yazma anahtarını açın ve gerekli API izinlerini doğrulayın.' : alreadyPublished ? 'Ürün bu platformda zaten yayında.' : undefined} disabled={card.mode === 'READ_ONLY' || isPublicationSelectionDisabled(publication.data?.actualStatus, selected, publicationCheckPending, publicationCheckUnavailable, selectionBlocked)}>
+    <button type="button" className="publish-platform-card-head" onClick={onSelect} aria-pressed={selected} aria-describedby={issueDescriptionIds} title={card.mode === 'READ_ONLY' ? readOnlyTitle : alreadyPublished ? 'Ürün bu platformda zaten yayında.' : undefined} disabled={card.mode === 'READ_ONLY' || isPublicationSelectionDisabled(publication.data?.actualStatus, selected, publicationCheckPending, publicationCheckUnavailable, selectionBlocked)}>
       <span className={`publish-platform-mark ${card.tone}`}><img className={`publish-platform-logo ${platformLogoClass(card.connection.platformCode)}`} src={platformLogoSource(card.connection.platformCode) ?? '/platforms/trendyol.png'} alt="" aria-hidden="true" /></span>
       <span><strong>{card.name}</strong><small>{card.mode === 'READ_ONLY' ? 'Dış yazma kapalı · yayın kuyruğu devre dışı' : alreadyPublished ? 'Zaten yayında · yeniden seçilemez' : publicationCheckPending ? 'Yayın durumu kontrol ediliyor…' : publicationCheckUnavailable ? 'Yayın durumu doğrulanamadı' : shopifyCapabilityCheckPending ? 'Shopify yazma izinleri kontrol ediliyor…' : selected ? 'Yayın için seçildi' : mappingCheckPending ? 'Zorunlu alanlar kontrol ediliyor…' : selectionBlocked ? 'Zorunlu eksikler giderilmeden seçilemez' : 'Yayın için seçilmedi'}</small></span>
       <i className={`publish-platform-toggle ${selected ? 'on' : ''}`} aria-hidden="true"><b /></i>

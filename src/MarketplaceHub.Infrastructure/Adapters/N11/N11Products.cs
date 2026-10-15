@@ -1,18 +1,22 @@
 using System.Globalization;
 using System.Net;
+using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using MarketplaceHub.Application;
 
 namespace MarketplaceHub.Infrastructure.Adapters.N11;
 
 // Product reads (phase 3). The seller product query has no modification
 // filter, so every read walks all pages (at most 250 per page). Each n11 item
-// is one SKU; items sharing a productMainId form one product. Product writes
-// (create, update, price/stock) come with their own phases.
+// is one SKU; items sharing a productMainId form one product. Product create
+// and price/stock writes are tasks; product update and archive come later.
 public sealed partial class N11HttpClient : IProductPort
 {
     internal const int ProductPageSize = 250;
-    private const string ProductWritesLater = "N11 ürün yazma işlemleri (açma, güncelleme, fiyat/stok) sonraki entegrasyon aşamalarında açılacak.";
+    internal const string ProductCreateTask = "ms/product/tasks/product-create";
+    internal const int MaxCreateSkus = 1000;
+    private const string ProductWritesLater = "N11 ürün güncelleme ve arşivleme sonraki entegrasyon aşamasında açılacak; N11'de yalnız yeni ürün açılabilir.";
 
     internal static string ProductPage(int page, int size, ProductReadFilter filter)
     {
@@ -48,15 +52,65 @@ public sealed partial class N11HttpClient : IProductPort
         return AdapterResult<AdapterPageResult<RemoteProduct>>.Success(new(items, catalog.Value.NextCursor, catalog.Value.HasMore, catalog.Value.TotalCount, catalog.Value.Issues), catalog.RateLimit);
     }
 
-    public Task<AdapterResult<RemoteOperationRef>> CreateAsync(AdapterContext context, ProductPublication publication, CancellationToken cancellationToken) => ProductWriteUnsupported();
+    // Product create (phase 5). n11 queues the SKUs as a PRODUCT_CREATE task; the per-SKU
+    // result is read from the task details (GetOperationAsync) and approval from the
+    // product query by stock code.
+    public async Task<AdapterResult<RemoteOperationRef>> CreateAsync(AdapterContext context, ProductPublication publication, CancellationToken cancellationToken)
+    {
+        var body = CreatePayload(publication.PayloadJson, settings.IntegratorName);
+        if (body is null)
+            return Failure<RemoteOperationRef>(AdapterErrorClass.Validation, "N11_PRODUCT_PAYLOAD_INVALID", $"N11 ürün açma içeriği beklenen yapıda değil (1-{MaxCreateSkus} SKU).", HttpStatusCode.UnprocessableEntity);
+        var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
+        if (account is null) return CredentialMissing<RemoteOperationRef>();
+        if (!ConnectionWritesEnabled(account.Connection.SettingsJson))
+            return Failure<RemoteOperationRef>(AdapterErrorClass.Validation, "N11_EXTERNAL_WRITES_DISABLED", "N11 bağlantısında dış yazma kapalı; ürün açma isteği gönderilmedi.", HttpStatusCode.Forbidden);
+        var result = await SendAsync(account, HttpMethod.Post, ProductCreateTask, cancellationToken, new StringContent(body, Encoding.UTF8, "application/json"));
+        if (!result.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(result.Error!, result.RateLimit);
+        using var document = result.Value!;
+        return N11TaskMapper.Submitted(document.RootElement, timeProvider.GetUtcNow(), "ürün açma", "PRODUCT_CREATE") is { } submitted
+            ? submitted.Error is null
+                ? AdapterResult<RemoteOperationRef>.Success(submitted.Reference!, result.RateLimit)
+                : AdapterResult<RemoteOperationRef>.Failure(submitted.Error, result.RateLimit)
+            : Failure<RemoteOperationRef>(AdapterErrorClass.ContractViolation, "N11_TASK_CONTRACT_INVALID", "N11 ürün açma yanıtında görev numarası yok.", HttpStatusCode.BadGateway);
+    }
+
     public Task<AdapterResult<RemoteOperationRef>> UpdateUnapprovedAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => ProductWriteUnsupported();
     public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedContentAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => ProductWriteUnsupported();
     public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedVariantsAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => ProductWriteUnsupported();
     public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedDeliveryAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => ProductWriteUnsupported();
     public Task<AdapterResult<RemoteOperationRef>> ArchiveAsync(AdapterContext context, string payloadJson, CancellationToken cancellationToken) => ProductWriteUnsupported();
 
-    public Task<AdapterResult<RemotePublicationStatus>> GetPublicationStatusAsync(AdapterContext context, string barcode, CancellationToken cancellationToken) =>
-        Task.FromResult(NotSupported<RemotePublicationStatus>("N11_PRODUCT_WRITE_UNSUPPORTED", ProductWritesLater));
+    // The shared port names the key "barcode"; on n11 a published SKU is found by its stock code.
+    public async Task<AdapterResult<RemotePublicationStatus>> GetPublicationStatusAsync(AdapterContext context, string barcode, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(barcode))
+            return Failure<RemotePublicationStatus>(AdapterErrorClass.Validation, "N11_STOCK_CODE_REQUIRED", "N11 ürün durumu için stok kodu gerekir.", HttpStatusCode.UnprocessableEntity);
+        var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
+        if (account is null) return CredentialMissing<RemotePublicationStatus>();
+        var stockCode = barcode.Trim();
+        var result = await SendAsync(account, HttpMethod.Get, ProductPage(0, 20, new ProductReadFilter(null, stockCode)), cancellationToken);
+        if (!result.IsSuccess) return AdapterResult<RemotePublicationStatus>.Failure(result.Error!, result.RateLimit);
+        using var document = result.Value!;
+        try { return AdapterResult<RemotePublicationStatus>.Success(N11ProductMapper.PublicationStatus(document.RootElement, stockCode), result.RateLimit); }
+        catch (JsonException)
+        {
+            return Failure<RemotePublicationStatus>(AdapterErrorClass.ContractViolation, "N11_PRODUCT_CONTRACT_INVALID", "N11 ürün sorgulama yanıtı beklenen sayfa yapısında değil.", HttpStatusCode.BadGateway);
+        }
+    }
+
+    // The composer writes the whole n11 body; the integrator name comes from the
+    // adapter settings so every write carries the same name. Null when the body is
+    // not {"payload":{"skus":[1..1000 items]}}.
+    internal static string? CreatePayload(string payloadJson, string integrator)
+    {
+        try
+        {
+            if (JsonNode.Parse(payloadJson) is not JsonObject root || root["payload"] is not JsonObject payload || payload["skus"] is not JsonArray skus || skus.Count is < 1 or > MaxCreateSkus) return null;
+            payload["integrator"] = integrator;
+            return root.ToJsonString();
+        }
+        catch (JsonException) { return null; }
+    }
 
     private static Task<AdapterResult<RemoteOperationRef>> ProductWriteUnsupported() =>
         Task.FromResult(NotSupported<RemoteOperationRef>("N11_PRODUCT_WRITE_UNSUPPORTED", ProductWritesLater));
@@ -131,6 +185,39 @@ public static class N11ProductMapper
             [variant],
             item.GetRawText(),
             IsPendingApproval: status is "InApproval" or "InCatalogApproval");
+    }
+
+    // Publication state of one stock code in the shared approval vocabulary. Only an
+    // item with exactly this stock code counts; no such item means n11 has not listed
+    // it yet. Items of one model share productMainId, the same product id product
+    // reads use, and the stock code is the variant id price/stock writes are keyed by.
+    public static RemotePublicationStatus PublicationStatus(JsonElement root, string stockCode)
+    {
+        if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("content", out var content) || content.ValueKind != JsonValueKind.Array)
+            throw new JsonException("n11 product page has no content array.");
+        var item = content.EnumerateArray().FirstOrDefault(x => string.Equals(Text(x, "stockCode"), stockCode, StringComparison.OrdinalIgnoreCase));
+        if (item.ValueKind != JsonValueKind.Object) return new(stockCode, "NOT_FOUND", null, null, null, "{}");
+        var status = (Text(item, "status") ?? Text(item, "productStatus") ?? "").ToUpperInvariant();
+        var mappedStatus = status switch
+        {
+            "ACTIVE" => "APPROVED",
+            "INAPPROVAL" or "INCATALOGAPPROVAL" => "PENDING_APPROVAL",
+            "CATALOGREJECTED" or "PROHIBITED" => "REJECTED",
+            "SUSPENDED" => "ARCHIVED",
+            "" => "UNKNOWN",
+            // Unlisted and unknown states are passed on as-is and end in manual review.
+            _ => $"N11_{status}"
+        };
+        var rejectionCode = status switch
+        {
+            "CATALOGREJECTED" => "N11_PRODUCT_CATALOG_REJECTED",
+            "PROHIBITED" => "N11_PRODUCT_PROHIBITED",
+            _ => null
+        };
+        var productMainId = Text(item, "productMainId");
+        var n11ProductId = Text(item, "n11ProductId");
+        var externalProductId = productMainId is not null ? $"main:{productMainId}" : n11ProductId is not null ? $"n11:{n11ProductId}" : null;
+        return new(stockCode, mappedStatus, externalProductId, Text(item, "stockCode"), rejectionCode, item.GetRawText());
     }
 
     private sealed record Attribute(string? Id, string Name, string Value);

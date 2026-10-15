@@ -32,8 +32,11 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
         var profile = await db.ChannelListingProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId, cancellationToken);
         if (profile is null) return Fail("LISTING_PROFILE_REQUIRED", "Yayın öncesi bağlantıya ait listing profile oluşturulmalıdır.");
         if (!profile.Enabled) return Fail("LISTING_PROFILE_DISABLED", "Listing profile etkinleştirilmeden yayın işi oluşturulamaz.");
-        if (await db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "HEPSIBURADA", cancellationToken))
+        var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        if (platformCode == "HEPSIBURADA")
             return await new HepsiburadaProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken);
+        if (platformCode == "N11")
+            return await new N11ProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken);
         if (ProductApprovalReconciliationPolicy.RequiresContentSplitReview(profile.LastRejectionCode))
             return Fail("PRODUCT_APPROVAL_CONTENT_SPLIT", "Trendyol varyantları birden fazla içerik kimliğine ayırdı. Yanlış ilana yazmamak için ürün içeriği güncellemesi durduruldu; varyant durumları ayrı ayrı izlenebilir.", status: 409);
 

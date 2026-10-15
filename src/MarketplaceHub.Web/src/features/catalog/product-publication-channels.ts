@@ -5,6 +5,7 @@ export function productPublicationChannelMode(platformCode: string, status: stri
 
   const code = platformCode.trim().toUpperCase()
   if (code === 'TRENDYOL' || code === 'HEPSIBURADA') return 'PUBLISH'
-  if (code === 'SHOPIFY') return externalWritesEnabled ? 'PUBLISH' : 'READ_ONLY'
+  // n11 has only a live store, so product create (n11 supports create only) waits for the external-write switch like Shopify.
+  if (code === 'SHOPIFY' || code === 'N11') return externalWritesEnabled ? 'PUBLISH' : 'READ_ONLY'
   return null
 }

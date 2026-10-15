@@ -62,14 +62,15 @@ public static class N11TaskMapper
     public sealed record SubmitResult(RemoteOperationRef? Reference, AdapterError? Error);
 
     // A REJECT answer means n11 refused the whole request before queueing it.
-    public static SubmitResult? Submitted(JsonElement root, DateTimeOffset now)
+    // Price/stock and product create tasks answer in the same shape.
+    public static SubmitResult? Submitted(JsonElement root, DateTimeOffset now, string operation = "fiyat-stok", string defaultType = "SKU_UPDATE")
     {
         if (root.ValueKind != JsonValueKind.Object) return null;
         var status = Text(root, "status");
         if (string.Equals(status, "REJECT", StringComparison.OrdinalIgnoreCase))
-            return new(null, new(AdapterErrorClass.Validation, "N11_TASK_REJECTED", $"N11 fiyat-stok isteğini reddetti: {Reasons(root) ?? "neden belirtilmedi"}", 422, null, null));
+            return new(null, new(AdapterErrorClass.Validation, "N11_TASK_REJECTED", $"N11 {operation} isteğini reddetti: {Reasons(root) ?? "neden belirtilmedi"}", 422, null, null));
         var id = Text(root, "id");
-        return id is null ? null : new(new(id, Text(root, "type") ?? "SKU_UPDATE", now), null);
+        return id is null ? null : new(new(id, Text(root, "type") ?? defaultType, now), null);
     }
 
     // Task states: IN_QUEUE while processing, PROCESSED when done, REJECT when

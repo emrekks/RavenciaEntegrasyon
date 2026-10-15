@@ -189,6 +189,12 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             return Invalid<ConnectionView>("invoiceCreationEnabled", "Fatura oluşturma ayarı yalnız pazaryeri bağlantılarında kullanılabilir.");
         if (connection.PlatformCode == "HEPSIBURADA" && command.InvoiceCreationEnabled == true)
             return Invalid<ConnectionView>("invoiceCreationEnabled", "Hepsiburada fatura aktarımı SIT doğrulaması tamamlanana kadar kapalıdır.");
+        if ((command.N11ShipmentTemplate is not null || command.N11PreparingDay.HasValue) && connection.PlatformCode != "N11")
+            return Invalid<ConnectionView>("n11ShipmentTemplate", "Kargo şablonu ve hazırlık süresi yalnız N11 bağlantısında kullanılır.");
+        if (command.N11ShipmentTemplate is not null && command.N11ShipmentTemplate.Trim().Length > N11ProductPublicationComposer.MaxShipmentTemplateLength)
+            return Invalid<ConnectionView>("n11ShipmentTemplate", $"N11 kargo şablonu adı en fazla {N11ProductPublicationComposer.MaxShipmentTemplateLength} karakter olabilir.");
+        if (command.N11PreparingDay is < 1 or > N11ProductPublicationComposer.MaxPreparingDay)
+            return Invalid<ConnectionView>("n11PreparingDay", $"N11 hazırlık süresi 1-{N11ProductPublicationComposer.MaxPreparingDay} gün arasında olmalıdır.");
 
         var requestedEnvironment = command.Environment?.Trim().ToUpperInvariant();
         if (requestedEnvironment is not null && requestedEnvironment is not ("STAGE" or "PRODUCTION")) return Invalid<ConnectionView>("environment", "Ortam STAGE veya PRODUCTION olmalıdır.");
@@ -260,7 +266,15 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         else if (connection.PlatformCode == "HEPSIBURADA")
             connection.SettingsJson = JsonSerializer.Serialize(new HepsiburadaConnectionSettings(requestedExternalWrites));
         else if (connection.PlatformCode == "N11")
-            connection.SettingsJson = JsonSerializer.Serialize(n11Settings! with { ExternalWritesEnabled = requestedExternalWrites });
+        {
+            var current = n11Settings!;
+            connection.SettingsJson = JsonSerializer.Serialize(current with
+            {
+                ExternalWritesEnabled = requestedExternalWrites,
+                N11ShipmentTemplate = command.N11ShipmentTemplate is null ? current.N11ShipmentTemplate : string.IsNullOrWhiteSpace(command.N11ShipmentTemplate) ? null : command.N11ShipmentTemplate.Trim(),
+                N11PreparingDay = command.N11PreparingDay ?? current.N11PreparingDay
+            });
+        }
         else if (connection.PlatformCode == "SHOPIFY")
             connection.SettingsJson = JsonSerializer.Serialize(new ShopifyConnectionSettings(requestedExternalWrites, command.InvoiceCreationEnabled ?? invoiceCreationEnabled));
         else
@@ -750,7 +764,8 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
                         ? ReadN11Settings(x).ExternalWritesEnabled
                         : x.PlatformCode == "TRENDYOL_EFATURAM" && ReadEfaturamSettings(x).ExternalWritesEnabled);
         var invoiceCreationEnabled = x.PlatformCode != "HEPSIBURADA" && MarketplaceInvoiceCreationPolicy.IsEnabled(x.PlatformCode, x.SettingsJson);
-        return new(x.Id, x.PublicId, x.PlatformCode, x.Environment, x.DisplayName, x.ExternalStoreId, x.Status, x.ApiVersion, x.LastTestedAt, x.LastSuccessAt, x.LastErrorCode, hasCredential, externalWritesEnabled, x.Version, invoiceCreationEnabled);
+        var n11Settings = x.PlatformCode == "N11" ? ReadN11Settings(x) : null;
+        return new(x.Id, x.PublicId, x.PlatformCode, x.Environment, x.DisplayName, x.ExternalStoreId, x.Status, x.ApiVersion, x.LastTestedAt, x.LastSuccessAt, x.LastErrorCode, hasCredential, externalWritesEnabled, x.Version, invoiceCreationEnabled, n11Settings?.N11ShipmentTemplate, n11Settings?.N11PreparingDay);
     }
     private static SyncPolicyView Map(ConnectionSyncPolicy x) => new(x.Id, x.ResourceType, x.IntervalSeconds, x.OverlapSeconds, x.JitterSeconds, x.Enabled, x.Version, RequiresExternalWrites: MarketplaceSyncPolicyRules.RequiresExternalWrites(x.ResourceType));
     private static WebhookSubscriptionView Map(WebhookSubscription x) => new(x.Id, x.AuthenticationType, x.Status, x.ExternalSubscriptionId, x.VerifiedAt, x.LastReceivedAt, x.Version);
@@ -804,7 +819,9 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
     private sealed record ConnectionSettings(string UserAgentIdentity, bool ExternalWritesEnabled, bool InvoiceCreationEnabled = true);
     private sealed record ShopifyConnectionSettings(bool ExternalWritesEnabled, bool InvoiceCreationEnabled = true);
     private sealed record HepsiburadaConnectionSettings(bool ExternalWritesEnabled);
-    // Invoice creation stays off until the n11 invoice-link phase is live.
-    private sealed record N11ConnectionSettings(bool ExternalWritesEnabled, bool InvoiceCreationEnabled = false);
+    // Invoice creation stays off until the n11 invoice-link phase is live. The shipment
+    // template (the template name in the n11 seller panel) and preparing day are written
+    // into every n11 product create; n11 requires both.
+    private sealed record N11ConnectionSettings(bool ExternalWritesEnabled, bool InvoiceCreationEnabled = false, string? N11ShipmentTemplate = null, int N11PreparingDay = N11ProductPublicationComposer.DefaultPreparingDay);
     private sealed record WebhookVerifierPayload(string? Username, string? Password, string? ApiKey, string? ClientSecret);
 }

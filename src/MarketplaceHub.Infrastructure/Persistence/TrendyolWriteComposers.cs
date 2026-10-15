@@ -232,6 +232,6 @@ internal static class N11PriceInventoryRules
         return new JsonObject { ["payload"] = new JsonObject { ["integrator"] = Integrator, ["skus"] = skus } }.ToJsonString();
     }
 
-    private static decimal TwoDecimals(decimal value) =>
+    internal static decimal TwoDecimals(decimal value) =>
         decimal.Parse(Price(value).ToString("0.00", CultureInfo.InvariantCulture), CultureInfo.InvariantCulture);
 }
