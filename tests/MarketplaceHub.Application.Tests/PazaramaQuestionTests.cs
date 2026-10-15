@@ -171,6 +171,19 @@ public sealed class PazaramaQuestionTests
         Assert.Equal("WAITING_FOR_ANSWER", question.Status);
     }
 
+    [Theory]
+    [InlineData("\"orderNumber\":567800436", "ORDER")]
+    [InlineData("\"orderNumber\":0", "PRODUCT")]
+    [InlineData("\"orderNumber\":null", "PRODUCT")]
+    [InlineData("\"other\":1", "PRODUCT")]
+    public void A_question_that_names_an_order_is_an_order_question(string orderField, string kind)
+    {
+        var json = "{\"questionId\":\"a82a1cf6-d113-4e73-0c48-08dde351ae8d\",\"question\":\"nerede\",\"questionDate\":\"2025-08-25T18:45:42.773\",\"questionStatus\":0," + orderField + "}";
+
+        Assert.Equal(kind, PazaramaQuestionMapper.Question(Parse(json))!.Kind);
+        Assert.Equal(kind, PazaramaQuestionMapper.Detail(Parse(json))!.Kind);
+    }
+
     [Fact]
     public void Detail_of_something_else_is_nothing() => Assert.Null(PazaramaQuestionMapper.Detail(Parse("[]")));
 

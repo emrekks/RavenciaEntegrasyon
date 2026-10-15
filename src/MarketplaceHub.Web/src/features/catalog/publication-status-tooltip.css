@@ -1,7 +1,7 @@
 .publish-platform-card:has(.publish-platform-status[data-tooltip]:hover),
 .publish-platform-card:has(.publish-platform-status[data-tooltip]:focus-visible) {
   position: relative;
-  z-index: var(--rv-z-dropdown);
+  z-index: 10;
   overflow: visible;
 }
 .publish-platform-fact-publication .publish-platform-status[data-tooltip] {

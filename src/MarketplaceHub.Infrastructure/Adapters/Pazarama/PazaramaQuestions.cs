@@ -146,7 +146,7 @@ public static class PazaramaQuestionMapper
         if (answer is not null)
             conversations.Add(new("Merchant", answer, answered ?? asked, status == 3 ? "Cevap Pazarama tarafından reddedildi." : null));
         return new RemoteMarketplaceQuestion(
-            id, "PRODUCT", PanelStatus(status), text,
+            id, KindOf(Text(row, "orderNumber")), PanelStatus(status), text,
             Text(row, "productName"), Text(row, "productImageUrl"),
             null, Text(row, "barcode"), null,
             Text(row, "maskedUserName"), Text(row, "orderNumber"),
@@ -163,13 +163,16 @@ public static class PazaramaQuestionMapper
         var topic = Text(data, "topicName");
         var asked = Instant(Text(data, "questionDate")) ?? DateTimeOffset.UnixEpoch;
         return new RemoteMarketplaceQuestion(
-            id, "PRODUCT", PanelStatus((int?)Number(data, "questionStatus")),
+            id, KindOf(Text(data, "orderNumber")), PanelStatus((int?)Number(data, "questionStatus")),
             topic is null ? text : $"{topic}: {text}",
             Text(data, "productName"), Text(data, "productImageUrl"),
             null, Text(data, "barcode"), null,
             Text(data, "maskedUserName"), Text(data, "orderNumber"),
             asked, null, asked, []);
     }
+
+    // A question that names an order is an order question; the rest are about a product.
+    private static string KindOf(string? orderNumber) => orderNumber is null or "0" ? "PRODUCT" : "ORDER";
 
     // "2023-12-28T09:12:16.333": Turkey time without an offset, stored as UTC.
     public static DateTimeOffset? Instant(string? value)

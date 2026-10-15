@@ -195,7 +195,7 @@ describe('QuestionsPage workspace flows', () => {
     await settle()
     params = lastQuestionRequest()
     expect(params.get('kind')).toBe('ORDER')
-    expect(params.get('platform')).toBe('HEPSIBURADA')
+    expect(params.get('platform')).toBeNull()
     expect(container.querySelector('.rv-questions-platform-note')).toBeNull()
     expect(container.querySelector('.rv-question-platform-fixed')).toBeNull()
     const orderStore = container.querySelectorAll<HTMLSelectElement>('.rv-questions-filter-grid select')[0]

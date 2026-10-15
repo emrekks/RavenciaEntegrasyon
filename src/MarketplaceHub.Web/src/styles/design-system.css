@@ -2343,7 +2343,7 @@
   .integration-view-tabs > button { min-height: 34px; padding-inline: var(--rv-space-3); }
   .integration-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); align-items: stretch; }
   .integration-card.reference-integration-card { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-height: 100%; padding: 0; overflow: hidden; }
-  .integration-card.reference-integration-card.reference-integration-card-menu-open { position: relative; z-index: var(--rv-z-dropdown); overflow: visible; }
+  .integration-card.reference-integration-card.reference-integration-card-menu-open { position: relative; z-index: 10; overflow: visible; }
   .reference-integration-accent { height: 3px; background: linear-gradient(90deg, var(--rv-color-primary), var(--rv-color-accent)); }
   .reference-integration-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--rv-space-4); padding: var(--rv-space-5); border-bottom: 1px solid var(--rv-color-border); }
   .reference-integration-brand { display: flex; min-width: 0; align-items: center; gap: var(--rv-space-3); }
@@ -4323,7 +4323,7 @@ button,
    widening or visually spilling into an adjacent order row. */
 .app-shell.stitch-shell main .order-reference-row.menu-open {
   position: relative;
-  z-index: var(--rv-z-dropdown);
+  z-index: 10; /* above the neighbouring rows, below the topbar (20) and the sidebar (40) */
 }
 
 @media (max-width: 1200px) {
@@ -12644,3 +12644,66 @@ h1, h2, h3, h4, .dashboard-summary-card-head > span:first-child, :is(.orders-con
 @media (min-width: 761px) {
   .app-shell.stitch-shell main .dashboard-heading-actions { display: flex; flex-direction: row; align-items: center; justify-content: flex-end; flex-wrap: nowrap; }
 }
+
+/* Back link of the product pages: a quiet text link with a round arrow, no filled pill. */
+.app-shell.stitch-shell main .product-heading-back {
+  min-height: 32px;
+  gap: 10px;
+  padding: 0 4px 0 0;
+  color: var(--rv-color-muted);
+  background: none;
+  border: 0;
+  border-radius: 0;
+  font-size: var(--rv-font-size-sm);
+  font-weight: 600;
+  text-transform: none;
+}
+.app-shell.stitch-shell main .product-heading-back .ui-icon {
+  box-sizing: border-box;
+  width: 28px;
+  height: 28px;
+  padding: 6px;
+  color: var(--rv-color-ink);
+  border: 1px solid var(--rv-color-border-strong);
+  border-radius: 50%;
+  transition: transform var(--rv-duration-fast) var(--rv-ease-standard), background-color var(--rv-duration-fast) var(--rv-ease-standard), border-color var(--rv-duration-fast) var(--rv-ease-standard);
+}
+.app-shell.stitch-shell main .product-heading-back:hover,
+.app-shell.stitch-shell main .product-heading-back:focus-visible {
+  color: var(--rv-color-ink);
+  background: none;
+  border: 0;
+}
+.app-shell.stitch-shell main .product-heading-back:hover .ui-icon,
+.app-shell.stitch-shell main .product-heading-back:focus-visible .ui-icon {
+  background: var(--rv-color-primary-soft);
+  border-color: var(--rv-color-primary);
+  transform: translateX(-2px);
+}
+
+/* The publish bar follows the page while the platform cards are on screen and settles into its own place
+   once the end of the list is reached. */
+.product-publish-step .publish-selection-footer {
+  position: sticky;
+  bottom: var(--rv-space-3);
+  z-index: var(--rv-z-sticky);
+  box-shadow: 0 -8px 24px rgb(0 0 0 / 28%);
+}
+
+/* Attribute library rows: the actions have no fill or frame; they only light up on hover. */
+.app-shell.stitch-shell main .panel-attribute-record-actions > button {
+  background: none;
+  border-color: transparent;
+}
+.app-shell.stitch-shell main .panel-attribute-record-actions > .panel-attribute-category-button {
+  color: var(--rv-color-primary);
+  font-weight: 600;
+}
+.app-shell.stitch-shell main .panel-attribute-record-actions > button:hover:not(:disabled),
+.app-shell.stitch-shell main .panel-attribute-record-actions > button:focus-visible {
+  background: var(--rv-color-surface-soft);
+  border-color: var(--rv-color-border);
+}
+
+/* Label designer library: long descriptions wrap instead of being cut with an ellipsis. */
+.shipping-designer-palette-list small { white-space: normal; text-overflow: clip; line-height: 1.3; }

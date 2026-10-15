@@ -1188,6 +1188,7 @@ function ShippingLabelSettingsPanel({ settings, onChange, onSave }: { settings: 
   }
   const snapStep = 2.5
   function snapPosition(value: number, maximum: number) { return Math.min(maximum, Math.max(0, Math.round(value / snapStep) * snapStep)) }
+  function snapPositionBetween(value: number, minimum: number, maximum: number) { return Math.min(maximum, Math.max(minimum, Math.round(value / snapStep) * snapStep)) }
   function beginPointerDrag(event: ReactPointerEvent<HTMLElement>, block: ShippingLabelBlock) {
     if (event.button !== 0) return
     const blockRect = event.currentTarget.getBoundingClientRect()
@@ -1205,7 +1206,15 @@ function ShippingLabelSettingsPanel({ settings, onChange, onSave }: { settings: 
     const position = positionFor(block, layout.indexOf(block))
     const x = ((event.clientX - paperRect.left - drag.offsetX) / paperRect.width) * 100
     const y = ((event.clientY - paperRect.top - drag.offsetY) / paperRect.height) * 100
-    updateBlock(block.id, { position: { ...position, x: snapPosition(x, 100 - position.width), y: snapPosition(y, 100 - position.height) } })
+    // A rotated block is turned around its centre, so the room it needs on the paper is its turned outline, not its own box.
+    const radians = ((block.rotation ?? 0) * Math.PI) / 180
+    const widthPx = (position.width / 100) * paperRect.width
+    const heightPx = (position.height / 100) * paperRect.height
+    const outlineWidth = (Math.abs(widthPx * Math.cos(radians)) + Math.abs(heightPx * Math.sin(radians))) / paperRect.width * 100
+    const outlineHeight = (Math.abs(widthPx * Math.sin(radians)) + Math.abs(heightPx * Math.cos(radians))) / paperRect.height * 100
+    const minX = (outlineWidth - position.width) / 2
+    const minY = (outlineHeight - position.height) / 2
+    updateBlock(block.id, { position: { ...position, x: snapPositionBetween(x, minX, 100 - position.width - minX), y: snapPositionBetween(y, minY, 100 - position.height - minY) } })
   }
   function beginPointerResize(event: ReactPointerEvent<HTMLButtonElement>, block: ShippingLabelBlock, direction: ShippingResizeDirection) {
     if (event.button !== 0) return

@@ -341,7 +341,6 @@
   .app-shell.stitch-shell main section.mapping-page .mapping-reference-heading { align-items: stretch; gap: 14px; }
   .app-shell.stitch-shell main section.mapping-page .mapping-reference-heading > div:first-child:first-of-type { flex: none; }
   .app-shell.stitch-shell main section.mapping-page .mapping-header-tools { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; width: 100%; }
-  .app-shell.stitch-shell main section.mapping-page .mapping-header-tools > .structure-header-button { width: 100%; min-height: 44px; }
   .app-shell.stitch-shell main section.mapping-page .mapping-header-tools > .mapping-reference-heading-actions { display: grid; justify-self: stretch; align-items: stretch; gap: 6px; width: 100%; }
   .app-shell.stitch-shell main section.mapping-page .mapping-reference-heading-actions > span { justify-content: flex-start; }
   .app-shell.stitch-shell main section.mapping-page .mapping-transfer-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
@@ -363,7 +362,6 @@
    equal dark buttons side by side, same structure as the other pages. */
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .mapping-header-tools { display: block; width: 100%; }
-  .app-shell.stitch-shell main .mapping-header-tools > .structure-header-button:disabled { display: none; }
   .app-shell.stitch-shell main .mapping-reference-heading-actions > span { display: none; }
   .app-shell.stitch-shell main .mapping-reference-heading-actions { width: 100%; justify-items: stretch; }
 }
