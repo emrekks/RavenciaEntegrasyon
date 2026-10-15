@@ -1,6 +1,6 @@
 # Pazarama Entegrasyonu Planı
 
-Durum (15 Ekim 2026): kararlar alındı (bölüm 2). Aşama 1 (bağlantı) canlıda: 0ae0d615 arka uç (token, hız sınırı, bağlantı testi, okuma yoklaması), b8deb741 panel formu. Sıradaki: kullanıcı bağlantıyı kurup test eder, sonra Aşama 2 (siparişler).
+Durum (15 Ekim 2026): kararlar alındı (bölüm 2). Aşama 1 (bağlantı) ve Aşama 2 (siparişler, okuma) canlıda; son 3 ayın 3 Pazarama siparişi içeri alındı ve doğrulandı. Sıradaki: Aşama 3 (referanslar, ürün çekme/eşleme), sonra Aşama 4 (fiyat-stok).
 
 Bu plan N11 entegrasyonunda izlenen yolu izler (`docs/N11-ENTEGRASYON-PLANI.md`). N11'den öğrenilenler ve yeni platform ekleme kontrol listesi (bölüm 5.3) bu deneyimden çıkarıldı.
 
