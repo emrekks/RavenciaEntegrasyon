@@ -82,6 +82,9 @@ public sealed partial class N11HttpClient
         var errorCode = Child(result, "errorCode") ?? "";
         var message = Child(result, "errorMessage") ?? errorCode;
         var authentication = errorCode.Contains("authentication", StringComparison.OrdinalIgnoreCase);
+        // n11 answers a too frequent question list with a plain rejection text instead of HTTP 429.
+        if (message.Contains("1 dakikada bir", StringComparison.OrdinalIgnoreCase))
+            return (null, new(AdapterErrorClass.RateLimit, "N11_RATE_LIMITED", $"N11 istek sınırına ulaşıldı: {Trim(message)}", null, TimeSpan.FromMinutes(3), null));
         return (null, new(authentication ? AdapterErrorClass.Authentication : AdapterErrorClass.Validation,
             authentication ? "N11_CREDENTIALS_REJECTED" : "N11_REQUEST_REJECTED",
             string.IsNullOrWhiteSpace(message) ? "N11 isteği reddetti." : $"N11 isteği reddetti: {Trim(message)}", null, null, null));
