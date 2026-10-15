@@ -1148,7 +1148,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             effect.CompletedAt = timeProvider.GetUtcNow(); var op = submit.Value!;
             var next = payload with { Phase = "POLL", ExternalOperationId = op.ExternalOperationId, SubmittedAt = op.SubmittedAt };
             job.PayloadJson = JsonSerializer.Serialize(next); job.PayloadHash = Hash(job.PayloadJson); await db.SaveChangesAsync(cancellationToken);
-            return JobExecutionResult.Retry("PRICE_INVENTORY_BATCH_PENDING", "Trendyol fiyat-stok batch sonucu bekleniyor.", TimeSpan.FromSeconds(15), op.ExternalOperationId);
+            return JobExecutionResult.Retry("PRICE_INVENTORY_BATCH_PENDING", "Fiyat-stok batch sonucu bekleniyor.", TimeSpan.FromSeconds(15), op.ExternalOperationId);
         }
         if (phase != "POLL" || string.IsNullOrWhiteSpace(payload.ExternalOperationId) || payload.SubmittedAt is null) return JobExecutionResult.Blocked("PRICE_INVENTORY_PHASE_INVALID", "Fiyat-stok işi bilinmeyen bir fazda.");
         if (timeProvider.GetUtcNow() - payload.SubmittedAt.Value > TimeSpan.FromHours(4)) return JobExecutionResult.ManualReview("PRICE_INVENTORY_BATCH_EXPIRED", "Fiyat-stok batch sonucu dört saatlik pencerede alınamadı.", payload.ExternalOperationId);
@@ -1156,7 +1156,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var operation = await products.GetOperationAsync(Context(tenantId, connectionId, correlationId, $"{job.EffectIdempotencyKey}:poll"), payload.ExternalOperationId, cancellationToken);
         if (!operation.IsSuccess) { TrackResultFailure(operation.Error); return JobExecutionResult.FromAdapterError(operation.Error!); }
         TrackReceived();
-        if (operation.Value!.Status.Equals("IN_PROGRESS", StringComparison.OrdinalIgnoreCase)) return JobExecutionResult.Retry("PRICE_INVENTORY_BATCH_PENDING", "Trendyol fiyat-stok batch sonucu bekleniyor.", TimeSpan.FromSeconds(20), payload.ExternalOperationId);
+        if (operation.Value!.Status.Equals("IN_PROGRESS", StringComparison.OrdinalIgnoreCase)) return JobExecutionResult.Retry("PRICE_INVENTORY_BATCH_PENDING", "Fiyat-stok batch sonucu bekleniyor.", TimeSpan.FromSeconds(20), payload.ExternalOperationId);
+        if (operation.Value.Status.Equals("REJECTED", StringComparison.OrdinalIgnoreCase)) return JobExecutionResult.Blocked("PRICE_INVENTORY_REJECTED", "Pazar yeri fiyat-stok isteğini satır sonucu vermeden tamamen reddetti; fiyat ve stok değerlerini kontrol edin.", payload.ExternalOperationId);
         if (!operation.Value.Status.Equals("COMPLETED", StringComparison.OrdinalIgnoreCase)) return JobExecutionResult.ManualReview("PRICE_INVENTORY_BATCH_STATUS_UNKNOWN", "Fiyat-stok batch servisi tanınmayan durum döndürdü.", payload.ExternalOperationId);
         var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
         var isHepsiburada = string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase);

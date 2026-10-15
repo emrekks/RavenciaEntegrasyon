@@ -419,10 +419,13 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
     internal static bool SupportsHepsiburadaScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "ORDER_LIFECYCLE" or "ORDER_INVOICE_RECONCILIATION" or "RETURNS" or "REFERENCE_DATA" or "QUESTIONS"
         || MarketplaceExternalWritePolicies.IsPolicy(resourceType);
 
-    // n11 runs the order reads for now; returns, questions, references and the
-    // write flows join as their integration phases go live.
+    // n11 flows join as their integration phases go live. Stock reconciliation carries
+    // sales from other channels and panel edits to n11; it only writes while the
+    // connection's external writes and its STOCK_WRITE policy are enabled.
+    // RETURN_WRITE stays out until the n11 returns integration exists.
     internal static bool SupportsN11ScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "REFERENCE_DATA"
-        || resourceType is MarketplaceExternalWritePolicies.Price or MarketplaceExternalWritePolicies.Stock or MarketplaceExternalWritePolicies.Shipment or MarketplaceExternalWritePolicies.Return;
+            or "STOCK_RECONCILE_SHORT" or "STOCK_RECONCILE_MEDIUM" or "STOCK_RECONCILE_DAILY"
+        || resourceType is MarketplaceExternalWritePolicies.Price or MarketplaceExternalWritePolicies.Stock or MarketplaceExternalWritePolicies.Shipment;
 
     internal static bool DefaultPolicyEnabled(string platformCode, string resourceType) =>
         resourceType == "ORDER_CARGO_INFO"

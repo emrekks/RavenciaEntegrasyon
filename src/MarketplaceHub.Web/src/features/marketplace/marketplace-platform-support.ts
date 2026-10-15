@@ -23,8 +23,8 @@ const hepsiburadaReadSyncPolicies = new Set([
   'RETURN_WRITE'
 ])
 
-// n11 runs the order reads for now; other flows join phase by phase.
-const n11ReadSyncPolicies = new Set(['ORDERS', 'ORDER_RECOVERY', 'REFERENCE_DATA', 'PRICE_WRITE', 'STOCK_WRITE', 'SHIPMENT_WRITE', 'RETURN_WRITE'])
+// n11 flows join phase by phase; RETURN_WRITE stays hidden until n11 returns exist.
+const n11ReadSyncPolicies = new Set(['ORDERS', 'ORDER_RECOVERY', 'REFERENCE_DATA', 'STOCK_RECONCILE_SHORT', 'STOCK_RECONCILE_MEDIUM', 'STOCK_RECONCILE_DAILY', 'PRICE_WRITE', 'STOCK_WRITE', 'SHIPMENT_WRITE'])
 
 export function isOrderMarketplacePlatform(platformCode: string) {
   return orderMarketplacePlatformCodes.includes(normalizeMarketplacePlatformCode(platformCode) as typeof orderMarketplacePlatformCodes[number])

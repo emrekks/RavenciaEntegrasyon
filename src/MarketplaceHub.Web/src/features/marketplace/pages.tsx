@@ -1230,7 +1230,7 @@ function IntegrationDetailWorkspace({ id, inline = false }: { id: string; inline
      : item.platformCode === 'N11'
      ? [
          { key: 'automatic-external-writes', label: 'Otomatik dış yazmalar', resourceTypes: ['PRICE_WRITE', 'STOCK_WRITE'], description: 'Açıkken paneldeki N11 fiyatı ve stok değişikliklerini N11’e otomatik gönderir. Kapalıyken bu güncellemeler N11’e aktarılmaz.' },
-         { key: 'manual-external-writes', label: 'Manuel dış yazmalar', resourceTypes: ['SHIPMENT_WRITE', 'RETURN_WRITE'], description: 'Açıkken panelden başlattığınız sipariş işleme alma, paket bölme ve iade kararlarını N11’e gönderir. Kapalıyken bu işlemler N11’e aktarılmaz.' }
+         { key: 'manual-external-writes', label: 'Manuel dış yazmalar', resourceTypes: ['SHIPMENT_WRITE'], description: 'Açıkken panelden başlattığınız sipariş işleme alma ve paket bölme işlemlerini N11’e gönderir. Kapalıyken bu işlemler N11’e aktarılmaz.' }
        ]
      : item.platformCode === 'HEPSIBURADA'
      ? [

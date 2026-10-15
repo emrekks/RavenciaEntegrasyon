@@ -150,6 +150,11 @@ public sealed class N11OrderMapperTests
         Assert.Equal(MarketplaceJobTypes.ReturnSync, MarketplaceJobTypes.ForPlatform("N11", MarketplaceJobTypes.ReturnSync));
         Assert.True(MarketplaceHub.Infrastructure.Persistence.ScheduledJobProducer.SupportsN11ScheduledPolicy("ORDERS"));
         Assert.False(MarketplaceHub.Infrastructure.Persistence.ScheduledJobProducer.SupportsN11ScheduledPolicy("RETURNS"));
+        // Cross-channel stock reaches n11 through scheduled stock reconciliation.
+        Assert.True(MarketplaceHub.Infrastructure.Persistence.ScheduledJobProducer.SupportsN11ScheduledPolicy("STOCK_RECONCILE_SHORT"));
+        Assert.True(MarketplaceHub.Infrastructure.Persistence.ScheduledJobProducer.SupportsN11ScheduledPolicy("STOCK_RECONCILE_DAILY"));
+        // No n11 returns integration yet, so the return write switch is not offered.
+        Assert.False(MarketplaceHub.Infrastructure.Persistence.ScheduledJobProducer.SupportsN11ScheduledPolicy(MarketplaceExternalWritePolicies.Return));
     }
 
     [Fact]

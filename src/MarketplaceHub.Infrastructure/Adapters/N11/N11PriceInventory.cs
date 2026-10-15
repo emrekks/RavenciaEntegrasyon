@@ -93,7 +93,9 @@ public static class N11TaskMapper
         {
             "IN_QUEUE" => "IN_PROGRESS",
             "PROCESSED" => "COMPLETED",
-            "REJECT" => "COMPLETED",
+            // A dropped task with per-SKU results is reported line by line; without any
+            // lines nothing was applied, so it must not look like a completed batch.
+            "REJECT" => lines.Count > 0 ? "COMPLETED" : "REJECTED",
             _ => status
         };
         return new(taskId, mapped, lines);

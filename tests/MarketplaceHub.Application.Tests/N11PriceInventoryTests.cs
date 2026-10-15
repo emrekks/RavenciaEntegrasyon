@@ -74,6 +74,9 @@ public sealed class N11PriceInventoryTests
         Assert.Equal("N11_SKU_REJECTED", failed.ErrorCode);
         Assert.Equal("Ürün bulunamadı.", failed.Status);
         Assert.Equal("IN_PROGRESS", N11TaskMapper.Status(queued.RootElement, "1096").Status);
+
+        using var droppedWithoutLines = JsonDocument.Parse("""{"taskId":1097,"skus":{"content":[]},"status":"REJECT"}""");
+        Assert.Equal("REJECTED", N11TaskMapper.Status(droppedWithoutLines.RootElement, "1097").Status);
     }
 
     [Fact]
