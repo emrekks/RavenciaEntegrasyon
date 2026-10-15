@@ -1453,7 +1453,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     {
         var hasOperationalReturnConnection = await db.PlatformConnections.AsNoTracking()
             .AnyAsync(x => x.TenantId == tenantId
-                && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "HEPSIBURADA")
+                && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11")
                 && (x.Status == "ACTIVE" || x.Status == "VERIFIED"), cancellationToken);
         if (!hasOperationalReturnConnection) return new([], null, false);
 

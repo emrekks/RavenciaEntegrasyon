@@ -2686,6 +2686,46 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task ReturnsList_ShowsClaimsForTenantWhoseOnlyMarketplaceIsN11()
+    {
+        var tenant = NewTenant("n11-only-returns-list");
+        var connection = NewQuestionConnection(tenant);
+        connection.PlatformCode = "N11";
+        var orderId = Guid.CreateVersion7();
+        var order = NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, "n11-return-order", isReturnClaim: false, fixture.Now);
+        var claim = NewReturnLifecycleClaim(tenant.Id, connection.Id, orderId, Guid.CreateVersion7(), "n11-claim", fixture.Now, hasCargo: false);
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.Orders.Add(order);
+            seedDb.ReturnClaims.Add(claim);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var listService = new MarketplaceSalesService(
+                db,
+                new CursorCodec(new EphemeralDataProtectionProvider(), fixture.TimeProvider),
+                new ConfigurationBuilder().Build(),
+                null!, null!, null!, null!, fixture.TimeProvider);
+            var returns = await listService.ReturnsAsync(tenant.Id, 20, null, new ReturnListQuery(), latest: true, CancellationToken.None);
+
+            Assert.Equal(1, returns.TotalCount);
+            var item = Assert.Single(returns.Items);
+            Assert.Equal(claim.Id, item.Id);
+            Assert.Equal("N11", item.PlatformCode);
+        }
+        finally
+        {
+            await DeleteReturnLifecycleTestTenantAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
     public async Task RequiredAttributeMappingSummary_MatchesPublicationReadinessForCurrentSnapshot()
     {
         var tenant = NewTenant("required-attribute-snapshot");
