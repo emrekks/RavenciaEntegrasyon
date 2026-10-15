@@ -185,7 +185,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 orderLines.Select(x => ResolveOrderVariant(order, x)).Where(x => x is not null).Select(x => imageUrls.GetValueOrDefault(x!.Id)).FirstOrDefault(x => x is not null),
                 orderLines.Sum(x => OrderLinePresentationPolicy.ActiveQuantity(x.OrderedQuantity, x.CancelledQuantity)), customer.Email, customer.TaxOrIdentityNumber,
                 order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, order.GrossAmount, order.DiscountAmount,
-                lineViews, packageViews, invoice?.Id, invoiceDocumentUrl);
+                lineViews, packageViews, invoice?.Id, invoiceDocumentUrl,
+                connection?.PlatformCode == "N11" ? N11OrderInfo(orderLines.Select(x => x.SourceSnapshotJson), order.CustomerSnapshotJson) : null);
         }).ToList();
         var hasMore = orders.Count > limit;
         var pageRows = rows.Take(limit).ToList();
@@ -2566,6 +2567,44 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     {
         return Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps ? uri.ToString() : null;
     }
+
+    // n11 facts the order card shows besides the shared fields: cargo tracking (number and carrier
+    // link), delivery type, commission rate and the discounts split by who paid them.
+    internal static IReadOnlyList<OrderInfoItem> N11OrderInfo(IEnumerable<string?> lineSnapshots, string customerSnapshotJson)
+    {
+        var info = new List<OrderInfoItem>();
+        var trackingNumber = JsonText(customerSnapshotJson, "cargoSenderNumber");
+        var trackingLink = JsonText(customerSnapshotJson, "cargoTrackingLink");
+        var safeLink = Uri.TryCreate(trackingLink, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps ? uri.ToString() : null;
+        if (trackingNumber is not null) info.Add(new("Kargo takip no", trackingNumber, safeLink));
+        if (JsonText(customerSnapshotJson, "deliveryAddressType") is { } deliveryType) info.Add(new("Teslimat tipi", deliveryType));
+
+        decimal mallDiscount = 0, sellerDiscount = 0;
+        var rates = new SortedSet<decimal>();
+        foreach (var snapshot in lineSnapshots)
+        {
+            if (string.IsNullOrWhiteSpace(snapshot)) continue;
+            try
+            {
+                using var document = JsonDocument.Parse(snapshot);
+                var line = document.RootElement;
+                if (line.ValueKind != JsonValueKind.Object) continue;
+                mallDiscount += JsonAmount(line, "totalMallDiscountPrice");
+                sellerDiscount += JsonAmount(line, "totalSellerDiscountPrice");
+                if (line.TryGetProperty("commissionRate", out var rate) && rate.ValueKind == JsonValueKind.Number && rate.TryGetDecimal(out var commission))
+                    rates.Add(commission - JsonAmount(line, "sellerCampaignCommissionRate"));
+            }
+            catch (JsonException) { }
+        }
+        var tr = System.Globalization.CultureInfo.GetCultureInfo("tr-TR");
+        if (rates.Count > 0) info.Add(new("Komisyon oranı", string.Join(" / ", rates.Select(rate => "%" + rate.ToString("0.##", tr)))));
+        if (mallDiscount > 0) info.Add(new("N11 indirimi", mallDiscount.ToString("N2", tr) + " ₺"));
+        if (sellerDiscount > 0) info.Add(new("Satıcı indirimi", sellerDiscount.ToString("N2", tr) + " ₺"));
+        return info;
+    }
+
+    private static decimal JsonAmount(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out var amount) ? amount : 0;
 
     private static SourceLineView SourceLine(string? json)
     {

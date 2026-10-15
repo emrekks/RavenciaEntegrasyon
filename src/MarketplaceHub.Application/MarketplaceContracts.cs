@@ -762,7 +762,10 @@ public sealed record OrderListView(
     IReadOnlyList<OrderLineView>? Lines = null,
     IReadOnlyList<ShipmentView>? Packages = null,
     Guid? InvoiceId = null,
-    string? InvoiceDocumentUrl = null);
+    string? InvoiceDocumentUrl = null,
+    IReadOnlyList<OrderInfoItem>? PlatformInfo = null);
+// A label/value fact a marketplace adds to the order detail (n11 commission, tracking link, ...).
+public sealed record OrderInfoItem(string Label, string Value, string? Url = null);
 public sealed record OrderListQuery(
     string? Status = null,
     string? Search = null,
