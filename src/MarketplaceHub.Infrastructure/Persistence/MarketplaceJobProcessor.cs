@@ -8084,7 +8084,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (raw.RootElement.TryGetProperty("productId", out var value) && value.ValueKind == JsonValueKind.String) productId = value.GetString()?.Trim();
         }
         catch (JsonException) { }
-        if (string.IsNullOrWhiteSpace(productId)) return claim;
+        if (string.IsNullOrWhiteSpace(productId))
+        {
+            await RecordIssue(tenantId, $"n11-return-line:{connectionId:N}:{claim.ExternalClaimId}", "N11_RETURN_LINE_UNMATCHED", $"N11 iade talebi {claim.ExternalClaimId} için ürün numarası gelmedi; sipariş satırı eşlenemedi.", cancellationToken);
+            return claim;
+        }
 
         var orderId = await db.Orders.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && (x.ExternalOrderId == claim.ExternalOrderId || x.OrderNumber == claim.ExternalOrderId))
@@ -8111,7 +8115,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var matches = lines.Where(line => string.Equals(N11LineProductId(line.SourceSnapshotJson), productId, StringComparison.Ordinal))
             .Select(line => line.ExternalLineId)
             .ToList();
-        if (matches.Count == 0) return claim;
+        if (matches.Count == 0)
+        {
+            await RecordIssue(tenantId, $"n11-return-line:{connectionId:N}:{claim.ExternalClaimId}", "N11_RETURN_LINE_UNMATCHED", $"N11 iade talebi {claim.ExternalClaimId} (ürün {productId}) siparişteki hiçbir satırla eşleşmedi; iade satırı bağlanmadı.", cancellationToken);
+            return claim;
+        }
         return claim with
         {
             Lines = claim.Lines.Select(line => line with { ExternalOrderLineId = matches[0], AlternateExternalOrderLineIds = matches.Skip(1).ToList() }).ToList()

@@ -56,6 +56,17 @@ Sunucuda `aa57d0ba` çalışıyor (API ve worker sağlıklı). Aşağıdakilerin
 
 **Dış yazma gerektirenler (kullanıcı onayı şart):** N11 ilk ürün açma, bölme/işçilik/toplama aksiyonları, fiyat-stok toplu gönderimi.
 
+## N11 denetimi (15 Ekim 2026) ve sonrası
+
+Plan-kod denetimi yapıldı. Kapatılanlar: tüm N11 yazmaları adaptörde tek kapıdan geçiyor (`N11HttpClient.WriteBlocked`: genel anahtar + bağlantı anahtarı + canlı ortam + doğrulanmış/aktif bağlantı); işlem takibi N11 bağlantısındaki ortak işleri "N11" gösteriyor; soru ekranında N11 tek seferlik cevap uyarısı ve onayı; N11 paket aksiyonlarında onay penceresi (iptalde ayrı uyarı); AppSecret `ToString`'ten gizli; N11 ürün/görev reddi hata mesajlarına öneri eklendi (`N11ErrorAdvice`); eşleşmeyen iade satırı sorun kaydı açıyor (`N11_RETURN_LINE_UNMATCHED`).
+
+Bilerek yapılmayanlar (karar/doğrulama gerekir):
+- **Ürün güncelleme, satıştan kaldırma/açma, silme:** N11 mapping-only ile gelen ürünlerin panelde listing profili yok; mevcut güncelleme/arşiv akışları profile dayanıyor. Önce "profil olmayan N11 ürünleri nasıl yönetilsin" kararı lazım. API: `POST ms/product/tasks/product-update` (status Active/Suspended, preparingDay, shipmentTemplate, description, vatRate, attributes) ve `product-delete`; ayrıntı resmi dokümanda.
+- **İade reddi/erteleme:** N11 belgesi gerekli kargo alanlarını vermiyor; N11 satıcı panelinden yapılır.
+- **`ClaimCancelPartial` (SOAP), kampanya kodlu etiket, SearchCatalog hızlı yükleme.**
+- **Otomatik N11 fatura iletimi:** `InvoiceDeliver` yeteneğini SUPPORTED yapan kod yok; otomatik kuyruk çalışmaz, elle yol çalışır. Canlıda doğrulanacak.
+- **Panel dışı:** dashboard fatura sayaçları yalnız Trendyol bağlantısı olan kiracıda hesaplanıyor.
+
 ## Notlar
 - Eski bilgisayarda `stash@{0}` ("Preserve existing local edits before Ravencia invoice and returns fixes", 8 Ekim) yalnız o bilgisayarda; kullanıcı bırakılmasını istedi.
 - `docs/N11-ENTEGRASYON-PLANI.md` N11 planının tamamı; üstteki durum bölümü bu nota göre güncel tutulmalı.
