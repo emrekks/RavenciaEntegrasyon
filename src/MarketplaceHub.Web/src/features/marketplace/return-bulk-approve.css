@@ -13,14 +13,14 @@
 /* Header cells follow the grid in order; row cells keep explicit columns (shifted by the select column) because the
    per-line dividers occupy grid cells and would otherwise push auto-placed cells of multi-product returns to the right. */
 .return-reference-table.has-select > .return-reference-head > :not(.return-select-cell):not(.return-row-divider) { grid-column: auto; }
-.return-reference-table.has-select > .return-reference-row > .order-reference-meta { grid-column: 2; }
-.return-reference-table.has-select > .return-reference-row > .order-reference-buyer { grid-column: 3; }
-.return-reference-table.has-select > .return-reference-row > .order-reference-products { grid-column: 4; }
-.return-reference-table.has-select > .return-reference-row > .order-reference-prices { grid-column: 5; }
-.return-reference-table.has-select > .return-reference-row > .order-reference-cargo { grid-column: 6; }
-.return-reference-table.has-select > .return-reference-row > .order-reference-invoice { grid-column: 7; }
-.return-reference-table.has-select > .return-reference-row > .return-reference-reason { grid-column: 8; }
-.return-reference-table.has-select > .return-reference-row > .return-reference-status { grid-column: 9; }
+.app-shell.stitch-shell main .return-reference-table.has-select > .return-reference-row > .order-reference-meta { grid-column: 2; }
+.app-shell.stitch-shell main .return-reference-table.has-select > .return-reference-row > .order-reference-buyer { grid-column: 3; }
+.app-shell.stitch-shell main .return-reference-table.has-select > .return-reference-row > .order-reference-products { grid-column: 4; }
+.app-shell.stitch-shell main .return-reference-table.has-select > .return-reference-row > .order-reference-prices { grid-column: 5; }
+.app-shell.stitch-shell main .return-reference-table.has-select > .return-reference-row > .order-reference-cargo { grid-column: 6; }
+.app-shell.stitch-shell main .return-reference-table.has-select > .return-reference-row > .order-reference-invoice { grid-column: 7; }
+.app-shell.stitch-shell main .return-reference-table.has-select > .return-reference-row > .return-reference-reason { grid-column: 8; }
+.app-shell.stitch-shell main .return-reference-table.has-select > .return-reference-row > .return-reference-status { grid-column: 9; }
 
 .return-bulk-cards { display: grid; gap: 14px; }
 .return-bulk-card { border: 1px solid var(--rv-color-border-strong); border-radius: 8px; overflow: hidden; }
