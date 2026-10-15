@@ -205,7 +205,7 @@ public sealed partial class N11HttpClient(
 
     internal static AdapterError Error(HttpStatusCode status, string body, TimeSpan? retryAfter)
     {
-        var remote = RemoteMessage(body);
+        var remote = RemoteMessage(body) is { } remoteText ? N11ErrorAdvice.WithAdvice(remoteText) : null;
         return status switch
         {
             HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => new(AdapterErrorClass.Authentication, "N11_CREDENTIALS_REJECTED", "N11 API anahtarı veya şifresi reddedildi. N11 satıcı panelinde Hesabım > API Hesapları altındaki güncel bilgileri girin.", (int)status, null, null),
