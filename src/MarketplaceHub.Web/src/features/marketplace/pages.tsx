@@ -1177,7 +1177,7 @@ function PriceStockSendPanel({ connectionId, writesEnabled, connectionActive, pl
     <form onSubmit={event => { event.preventDefault(); if (stockCode.trim()) send.mutate(stockCode.trim()) }}>
       <label>{platformName} {codeLabel}<input value={stockCode} onChange={event => setStockCode(event.target.value)} placeholder={`Örn. ${codeExample}`} autoComplete="off" /></label>
       <div className="n11-price-stock-send-actions">
-        <button type="submit" disabled={blocked || !stockCode.trim() || send.isPending}>{send.isPending ? 'Kuyruğa alınıyor…' : `Bu ${codeLabel} gönder`}</button>
+        <button type="submit" disabled={blocked || !stockCode.trim() || send.isPending}>{send.isPending ? 'Kuyruğa alınıyor…' : `Bu ${codeAccusative} gönder`}</button>
         <button type="button" className="secondary" disabled={blocked || send.isPending} onClick={() => send.mutate(null)}>Değişen tüm ürünleri gönder</button>
       </div>
     </form>
