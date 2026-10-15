@@ -1,6 +1,6 @@
 # Pazarama Entegrasyonu Planı
 
-Durum (15 Ekim 2026): kararlar alındı (bölüm 2). Aşama 1 (bağlantı) ve Aşama 2 (siparişler, okuma) canlıda; son 3 ayın 3 Pazarama siparişi içeri alındı ve doğrulandı. Aşama 3 (referanslar, ürün çekme/eşleme) kodlandı ve yayında; sıradaki: canlı salt-okunur doğrulama (kullanıcı eşleme çalıştırır), sonra Aşama 4 (fiyat-stok).
+Durum (15 Ekim 2026): kararlar alındı (bölüm 2). Aşama 1 (bağlantı) ve Aşama 2 (siparişler, okuma) canlıda; son 3 ayın 3 Pazarama siparişi içeri alındı ve doğrulandı. Aşama 3 (referanslar, ürün çekme/eşleme) kodlandı ve yayında; Aşama 3 canlıda doğrulandı (3.169 varyantın 3.153ü bağlandı). Aşama 4 (fiyat-stok) kodlandı; dış yazma kapalı, ilk gönderim kullanıcı onayıyla tek barkodla yapılacak.
 
 Bu plan N11 entegrasyonunda izlenen yolu izler (`docs/N11-ENTEGRASYON-PLANI.md`). N11'den öğrenilenler ve yeni platform ekleme kontrol listesi (bölüm 5.3) bu deneyimden çıkarıldı.
 
@@ -320,6 +320,7 @@ Her aşama küçük commit'lerle `main`'e gider; her commit'in Validate ve Deplo
 - Uygulama notu (15 Ekim 2026): `PazaramaReferences.cs` (kategori ağacı düz liste -> kök/yol/derinlik, kategori özellikleri + değerleri tek `getCategoryWithAttributes` çağrısından, 2 dk önbellekli; markalar sayfa+ilk-id imleciyle), `PazaramaProducts.cs` (imleç: `A:` onaylı, `U:{sayfa}:{ilkKod}` onaysız sayfa-indeksli, `C:` onaysız imleçli; sayfa indeksi 0/1 tabanı `hasPreviousPage` ile otomatik ayrılır). Ürün = barkod (`code`); `groupCode` yalnız gruplama (`group:{kod}`), model kodu değildir. İçe aktarma N11 ile aynı "düz katalog" dalı: onay bekleyenler dahil, yalnız gözlem, barkod kimliği, mapping-only modunda barkod->stok kodu çapraz eşleşme ve teklif tohumlama (Pazarama fiyatından başlar). Marka referansı ürün içe aktarmada okunmaz (Aşama 9). Fiyat-stok değişikliği zaten kapalı (`updateExistingPricesAndStock` Pazarama için hep false).
 
 ### Aşama 4 — Fiyat ve stok
+- Uygulama notu (15 Ekim 2026): `PazaramaPriceInventory.cs`. `PriceInventoryComposer` Pazarama dalı barkoda bağlı ACTIVE teklifleri `{price:[{code,listPrice,salePrice}],stock:[{code,stockCount}]}` olarak hazırlar (3000 sınırı, listPrice>=salePrice, 2 ondalık). Adaptör fiyatı sonra stoku ayrı iki istekle gönderir (aynı 10 sn kovası; ikinci istek için 90 sn zaman aşımı) ve tek işlem numarası olarak `p:{dataId}:{n}|s:{dataId}:{n}` döner. Sonuç `lake-projections` sayfalarından okunur; işlem, beklenen tüm barkodlar gelene ve hiçbiri İşleniyor olmayana kadar IN_PROGRESS kalır; barkod ancak fiyat ve stok ikisi de başarılıysa başarılı sayılır (durum 5 Onaya gönderildi başarılıdır). Panelde Pazarama bağlantı sayfasında dış yazma anahtarı + otomatik fiyat/stok grubu + tek barkod gönderim paneli var. Yazma yolları: global bayrak + bağlantı anahtarı + PRICE_WRITE ve STOCK_WRITE politikaları; hepsi varsayılan kapalı.
 1. Bileşen (`BuildPazaramaAsync`), fiyat ve stok ayrı yükler, 3000 parça, `dataId` sonuç takibi (5 = onaya gönderildi).
 2. Bağlantı sayfasında "Pazarama'ya fiyat-stok gönder" paneli (tek barkod / değişenler), otomatik/manuel dış yazma grupları.
 - Çıkış: kullanıcı onayıyla ilk değişmeyen yazma, sonra tek değişiklik.

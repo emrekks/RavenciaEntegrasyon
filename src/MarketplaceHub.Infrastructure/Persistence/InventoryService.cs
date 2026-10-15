@@ -173,18 +173,18 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
     // first controlled n11 write is made before the automatic flows are on.
     public async Task<ServiceResult<Guid>> EnqueuePriceInventorySyncAsync(Guid tenantId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken, string? stockCode = null)
     {
-        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.PlatformCode == "TRENDYOL" && x.Status == "ACTIVE" || x.PlatformCode == "N11" && (x.Status == "ACTIVE" || x.Status == "VERIFIED")), cancellationToken);
-        if (connection is null) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Fiyat-stok gönderimi için aktif Trendyol veya aktif/doğrulanmış N11 bağlantısı gerekir.", 422);
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.PlatformCode == "TRENDYOL" && x.Status == "ACTIVE" || (x.PlatformCode == "N11" || x.PlatformCode == "PAZARAMA") && (x.Status == "ACTIVE" || x.Status == "VERIFIED")), cancellationToken);
+        if (connection is null) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Fiyat-stok gönderimi için aktif Trendyol veya aktif/doğrulanmış N11 ya da Pazarama bağlantısı gerekir.", 422);
         Guid? variantId = null;
         if (!string.IsNullOrWhiteSpace(stockCode))
         {
-            if (connection.PlatformCode != "N11") return ServiceResult<Guid>.Fail("VALIDATION_FAILED", "Stok koduyla tekil gönderim yalnız N11 bağlantısında kullanılabilir.", 422);
+            if (connection.PlatformCode is not ("N11" or "PAZARAMA")) return ServiceResult<Guid>.Fail("VALIDATION_FAILED", "Stok koduyla tekil gönderim yalnız N11 ve Pazarama bağlantısında kullanılabilir.", 422);
             var code = stockCode.Trim();
             variantId = await db.MarketplaceVariantLinks.AsNoTracking()
                 .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == code)
                 .Select(x => (Guid?)x.VariantId)
                 .SingleOrDefaultAsync(cancellationToken);
-            if (variantId is null) return ServiceResult<Guid>.Fail("N11_STOCK_CODE_NOT_LINKED", $"'{code}' stok kodu panelde bir varyanta bağlı değil. Önce N11 ürün eşleştirmesini çalıştırın.", 404);
+            if (variantId is null) return ServiceResult<Guid>.Fail(connection.PlatformCode == "PAZARAMA" ? "PAZARAMA_BARCODE_NOT_LINKED" : "N11_STOCK_CODE_NOT_LINKED", connection.PlatformCode == "PAZARAMA" ? $"'{code}' barkodu panelde bir varyanta bağlı değil. Önce Pazarama ürün eşleştirmesini çalıştırın." : $"'{code}' stok kodu panelde bir varyanta bağlı değil. Önce N11 ürün eşleştirmesini çalıştırın.", 404);
             if (!await db.ConnectionSyncPolicies.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == MarketplaceExternalWritePolicies.Stock && x.Enabled, cancellationToken))
                 return ServiceResult<Guid>.Fail("EXTERNAL_WRITE_POLICY_DISABLED", "Stok dış yazma akışı kapalı.", 422);
         }

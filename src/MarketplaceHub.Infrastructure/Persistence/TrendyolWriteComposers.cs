@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
+using MarketplaceHub.Infrastructure.Adapters.Pazarama;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 
@@ -122,6 +123,8 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         if (connection is null) return ServiceResult<PriceInventoryDraft>.Fail("CONNECTION_NOT_FOUND", "Pazaryeri bağlantısı bulunamadı.", 404);
         if (string.Equals(connection.PlatformCode, "N11", StringComparison.OrdinalIgnoreCase))
             return await BuildN11Async(tenantId, connectionId, cancellationToken, variantId, productId);
+        if (string.Equals(connection.PlatformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase))
+            return await BuildPazaramaAsync(tenantId, connectionId, cancellationToken, variantId, productId);
         var isHepsiburada = string.Equals(connection.PlatformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase);
         var rows = await (from offer in db.ChannelOffers.AsNoTracking()
                           join variant in db.ProductVariants.AsNoTracking() on new { offer.TenantId, offer.VariantId } equals new { variant.TenantId, VariantId = variant.Id }
@@ -199,6 +202,45 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         if (lines.Count == 0) return ServiceResult<PriceInventoryDraft>.Fail("NO_EXTERNAL_CHANGES", "Pazaryerine gönderilecek yeni fiyat veya stok değişikliği yok.", 409);
         lines = lines.Take(N11PriceInventoryRules.MaxSkusPerRequest).ToList();
         var payload = N11PriceInventoryRules.Payload(lines);
+        return ServiceResult<PriceInventoryDraft>.Ok(new(Hash(payload), payload, lines));
+    }
+
+    // Pazarama has no listing profile in the panel either: an offer is sent when its variant is linked
+    // to a Pazarama barcode (the variant link carries it). Price and stock go as two requests built
+    // from the same lines; prices keep two decimals with listPrice >= salePrice.
+    private async Task<ServiceResult<PriceInventoryDraft>> BuildPazaramaAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken, Guid? variantId, Guid? productId)
+    {
+        var rows = await (from offer in db.ChannelOffers.AsNoTracking()
+                          join variant in db.ProductVariants.AsNoTracking() on new { offer.TenantId, offer.VariantId } equals new { variant.TenantId, VariantId = variant.Id }
+                          join remoteLink in db.MarketplaceVariantLinks.AsNoTracking() on new { offer.TenantId, offer.ConnectionId, offer.VariantId } equals new { remoteLink.TenantId, remoteLink.ConnectionId, remoteLink.VariantId }
+                          join inventory in db.InventoryItems.AsNoTracking().Where(x => x.LocationCode == "MAIN") on new { offer.TenantId, offer.VariantId } equals new { inventory.TenantId, inventory.VariantId }
+                          where offer.TenantId == tenantId && offer.ConnectionId == connectionId && offer.Status == "ACTIVE"
+                               && (variantId == null || offer.VariantId == variantId)
+                               && (productId == null || variant.ProductId == productId)
+                          orderby variant.Id
+                          select new { Offer = offer, Variant = variant, Inventory = inventory, Barcode = remoteLink.ExternalId })
+            .ToListAsync(cancellationToken);
+        if (rows.Count == 0) return ServiceResult<PriceInventoryDraft>.Fail("LIVE_OFFER_REQUIRED", "Pazarama fiyat-stok gönderimi için Pazarama barkoduna bağlı varyant ve ACTIVE Pazarama teklifi gerekir.", 422);
+
+        var lines = new List<PriceInventoryPushLine>();
+        foreach (var row in rows)
+        {
+            var salePrice = PazaramaPriceInventoryRules.Price(row.Offer.SalePrice);
+            var listPrice = Math.Max(PazaramaPriceInventoryRules.Price(row.Offer.ListPrice), salePrice);
+            if (!string.Equals(row.Offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase) || salePrice <= 0)
+                return ServiceResult<PriceInventoryDraft>.Fail("CHANNEL_OFFER_INVALID", $"'{row.Variant.Sku}' için Pazarama teklifinde TRY para birimi ve sıfırdan büyük satış fiyatı gerekir.", 422);
+            var barcode = row.Barcode.Trim();
+            if (barcode.Length == 0 || barcode.Length > PazaramaPriceInventoryRules.MaxCodeLength)
+                return ServiceResult<PriceInventoryDraft>.Fail("PAZARAMA_BARCODE_INVALID", $"'{row.Variant.Sku}' için Pazarama barkodu boş veya {PazaramaPriceInventoryRules.MaxCodeLength} karakterden uzun.", 422);
+            var quantity = PazaramaPriceInventoryRules.Quantity(row.Inventory.Available - row.Offer.SafetyStock);
+            var priceHash = Hash($"{listPrice:0.00}|{salePrice:0.00}|TRY|{row.Offer.PriceVersion}");
+            if (row.Offer.LastPriceHash == priceHash && row.Offer.LastStockProjectionVersion == row.Inventory.ProjectionVersion) continue;
+            lines.Add(new(row.Variant.Id, row.Offer.Id, barcode, quantity, listPrice, salePrice, "TRY", row.Inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash));
+        }
+        if (lines.Count == 0) return ServiceResult<PriceInventoryDraft>.Fail("NO_EXTERNAL_CHANGES", "Pazaryerine gönderilecek yeni fiyat veya stok değişikliği yok.", 409);
+        // A barcode may be linked to two variants only by mistake; one request must not carry it twice.
+        lines = lines.GroupBy(x => x.Barcode, StringComparer.OrdinalIgnoreCase).Select(group => group.First()).Take(PazaramaPriceInventoryRules.MaxItemsPerRequest).ToList();
+        var payload = PazaramaPriceInventoryRules.Payload(lines);
         return ServiceResult<PriceInventoryDraft>.Ok(new(Hash(payload), payload, lines));
     }
 

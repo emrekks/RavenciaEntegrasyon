@@ -124,7 +124,7 @@ public sealed partial class PazaramaHttpClient(
 
     internal static string Day(DateTime value) => value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
-    private async Task<AdapterResult<JsonDocument>> SendAsync(PazaramaRequestContext account, HttpMethod method, string path, CancellationToken cancellationToken, HttpContent? content = null)
+    private async Task<AdapterResult<JsonDocument>> SendAsync(PazaramaRequestContext account, HttpMethod method, string path, CancellationToken cancellationToken, HttpContent? content = null, TimeSpan? timeoutOverride = null)
     {
         var body = content is null ? null : await content.ReadAsStringAsync(cancellationToken);
         var mediaType = content?.Headers.ContentType?.MediaType;
@@ -141,7 +141,7 @@ public sealed partial class PazaramaHttpClient(
             try
             {
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                timeout.CancelAfter(settings.Timeout > TimeSpan.Zero && settings.Timeout < TimeSpan.FromMinutes(2) ? settings.Timeout : TimeSpan.FromSeconds(30));
+                timeout.CancelAfter(timeoutOverride ?? (settings.Timeout > TimeSpan.Zero && settings.Timeout < TimeSpan.FromMinutes(2) ? settings.Timeout : TimeSpan.FromSeconds(30)));
                 using var response = await clients.CreateClient(ClientName).SendAsync(request, timeout.Token);
                 var text = await response.Content.ReadAsStringAsync(timeout.Token);
                 var retryAfter = response.Headers.RetryAfter?.Delta

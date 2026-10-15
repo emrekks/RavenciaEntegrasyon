@@ -6,6 +6,7 @@ using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
+using MarketplaceHub.Infrastructure.Adapters.Pazarama;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping;
 using MarketplaceHub.Infrastructure.Imports;
@@ -1136,7 +1137,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (!WritesEnabled(connection.SettingsJson))
                 return JobExecutionResult.Blocked("EXTERNAL_WRITES_DISABLED", "Dış yazma kapalı olduğu için fiyat-stok gönderimi çalıştırılmadı.");
             var isHepsiburadaConnection = string.Equals(connection.PlatformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase);
-            var requiresPriceAndStock = isHepsiburadaConnection || string.Equals(connection.PlatformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase) || string.Equals(connection.PlatformCode, "N11", StringComparison.OrdinalIgnoreCase) || payload.VariantId.HasValue;
+            var requiresPriceAndStock = isHepsiburadaConnection || string.Equals(connection.PlatformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase) || string.Equals(connection.PlatformCode, "N11", StringComparison.OrdinalIgnoreCase) || string.Equals(connection.PlatformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase) || payload.VariantId.HasValue;
             var requiredWritePolicies = requiresPriceAndStock
                 ? new[] { MarketplaceExternalWritePolicies.Price, MarketplaceExternalWritePolicies.Stock }
                 : new[] { MarketplaceExternalWritePolicies.Price };
@@ -1177,7 +1178,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (!operation.Value.Status.Equals("COMPLETED", StringComparison.OrdinalIgnoreCase)) return JobExecutionResult.ManualReview("PRICE_INVENTORY_BATCH_STATUS_UNKNOWN", "Fiyat-stok batch servisi tanınmayan durum döndürdü.", payload.ExternalOperationId);
         var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
         var isHepsiburada = string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase);
-        var maximumLineCount = isHepsiburada ? 4000 : 1000;
+        var maximumLineCount = isHepsiburada ? 4000 : string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase) ? PazaramaPriceInventoryRules.MaxItemsPerRequest : 1000;
         var duplicateKeys = isHepsiburada
             ? payload.Lines.Select(x => x.MerchantSku).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).Count()
             : payload.Lines.Select(x => x.Barcode).Distinct(StringComparer.OrdinalIgnoreCase).Count();
@@ -4030,7 +4031,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 {
                     if (mappingOnly)
                     {
-                        var mapped = await MapExistingCatalogProduct(tenantId, connectionId, snapshot, isShopify, cancellationToken, crossMatchCodes: flatCatalog, reportUnmatched: flatCatalog, seedOffers: flatCatalog, inventoryPolicy: inventoryPolicy);
+                        var mapped = await MapExistingCatalogProduct(tenantId, connectionId, snapshot, isShopify, cancellationToken, crossMatchCodes: flatCatalog, reportUnmatched: flatCatalog, seedOffers: flatCatalog, inventoryPolicy: inventoryPolicy, seedSource: isPazarama ? "PAZARAMA" : "N11");
                         if (!mapped) telemetryImportSkippedCount++;
                         else telemetryImportProcessedCount++;
                         continue;
@@ -4990,7 +4991,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     // variant that found no local variant so it can be fixed by hand. seedOffers (n11)
     // opens the channel offer of a linked variant from the remote price when
     // the variant has none yet; existing offers are never changed.
-    private async Task<bool> MapExistingCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, bool preferBarcode, CancellationToken cancellationToken, bool crossMatchCodes = false, bool reportUnmatched = false, bool seedOffers = false, ConnectionInventoryPolicy? inventoryPolicy = null)
+    private async Task<bool> MapExistingCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, bool preferBarcode, CancellationToken cancellationToken, bool crossMatchCodes = false, bool reportUnmatched = false, bool seedOffers = false, ConnectionInventoryPolicy? inventoryPolicy = null, string seedSource = "N11")
     {
         var externalProductId = Short(snapshot.ExternalProductId, 256);
         if (string.IsNullOrWhiteSpace(externalProductId)) return false;
@@ -5110,7 +5111,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var externalLink = existingVariantLinks.FirstOrDefault(existing => string.Equals(existing.ExternalId, externalVariantId, StringComparison.OrdinalIgnoreCase));
             if (externalLink is not null)
             {
-                if (externalLink.VariantId == candidate.Id) { matchedVariantCount++; if (seedOffers) await SeedChannelOfferAsync(tenantId, connectionId, candidate.Id, remote, inventoryPolicy, now, cancellationToken); }
+                if (externalLink.VariantId == candidate.Id) { matchedVariantCount++; if (seedOffers) await SeedChannelOfferAsync(tenantId, connectionId, candidate.Id, remote, inventoryPolicy, now, cancellationToken, seedSource); }
                 else if (reportUnmatched)
                     await RecordIssue(tenantId, $"product-mapping-unmatched:{connectionId}:{externalVariantId}", "PRODUCT_MAPPING_UNMATCHED",
                         Short($"Pazar yeri varyantı {remote.Sku} daha önce başka bir panel varyantına bağlanmış; şimdiki eşleşme {candidate.Sku}. Bağlantı değiştirilmedi · {snapshot.Title}.", 1000), cancellationToken);
@@ -5131,7 +5132,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             claimedVariantIds.Add(candidate.Id);
             matchedVariantCount++;
             telemetryInsertedCount++;
-            if (seedOffers) await SeedChannelOfferAsync(tenantId, connectionId, candidate.Id, remote, inventoryPolicy, now, cancellationToken);
+            if (seedOffers) await SeedChannelOfferAsync(tenantId, connectionId, candidate.Id, remote, inventoryPolicy, now, cancellationToken, seedSource);
         }
 
         if (matchedVariantCount == 0) return false;
@@ -5162,7 +5163,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         return true;
     }
 
-    private async Task SeedChannelOfferAsync(Guid tenantId, Guid connectionId, Guid variantId, RemoteCatalogVariant remote, ConnectionInventoryPolicy? inventoryPolicy, DateTimeOffset now, CancellationToken cancellationToken)
+    private async Task SeedChannelOfferAsync(Guid tenantId, Guid connectionId, Guid variantId, RemoteCatalogVariant remote, ConnectionInventoryPolicy? inventoryPolicy, DateTimeOffset now, CancellationToken cancellationToken, string source = "N11")
     {
         if (remote.SalePrice is null && remote.ListPrice is null) return;
         var exists = db.ChannelOffers.Local.Any(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variantId)
@@ -5198,8 +5199,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             ListPrice = offer.ListPrice,
             SalePrice = offer.SalePrice,
             Currency = offer.Currency,
-            Reason = "N11_CATALOG_MAPPING",
-            ActorSource = "SYSTEM:N11",
+            Reason = $"{source}_CATALOG_MAPPING",
+            ActorSource = $"SYSTEM:{source}",
             EffectiveAt = now
         });
         telemetryInsertedCount++;
