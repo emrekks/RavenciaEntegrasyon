@@ -159,7 +159,10 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
 
         try
         {
-            if (acquired)
+            // An advisory lock belongs to its session: when the connection was already closed (or
+            // broke) while the job ran, the lock is gone with it. Skipping the unlock then keeps the
+            // original job failure visible instead of replacing it with "Connection is not open".
+            if (acquired && connection.State == System.Data.ConnectionState.Open)
             {
                 await using var command = connection.CreateCommand();
                 command.CommandText = "SELECT pg_advisory_unlock(@key)";
@@ -167,9 +170,17 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
                 await command.ExecuteScalarAsync();
             }
         }
+        catch (Exception exception) when (exception is InvalidOperationException or NpgsqlException)
+        {
+            // Same reason: a connection that fails during the unlock has already released the lock.
+        }
         finally
         {
-            if (closeConnectionOnDispose && db is not null) await db.Database.CloseConnectionAsync();
+            if (closeConnectionOnDispose && db is not null)
+            {
+                try { await db.Database.CloseConnectionAsync(); }
+                catch (Exception exception) when (exception is InvalidOperationException or NpgsqlException) { }
+            }
         }
     }
 }
