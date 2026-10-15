@@ -189,8 +189,6 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             return Invalid<ConnectionView>("invoiceCreationEnabled", "Fatura oluşturma ayarı yalnız pazaryeri bağlantılarında kullanılabilir.");
         if (connection.PlatformCode == "HEPSIBURADA" && command.InvoiceCreationEnabled == true)
             return Invalid<ConnectionView>("invoiceCreationEnabled", "Hepsiburada fatura aktarımı SIT doğrulaması tamamlanana kadar kapalıdır.");
-        if (connection.PlatformCode == "N11" && command.InvoiceCreationEnabled == true)
-            return Invalid<ConnectionView>("invoiceCreationEnabled", "N11 fatura aktarımı fatura linki aşaması tamamlanana kadar kapalıdır.");
 
         var requestedEnvironment = command.Environment?.Trim().ToUpperInvariant();
         if (requestedEnvironment is not null && requestedEnvironment is not ("STAGE" or "PRODUCTION")) return Invalid<ConnectionView>("environment", "Ortam STAGE veya PRODUCTION olmalıdır.");

@@ -13,9 +13,9 @@ public static class MarketplaceInvoiceCreationPolicy
         // Shopify fiscal submission is intentionally fail-closed until the
         // configured provider contract for Shopify orders is verified.
         if (string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase)) return false;
-        // N11 invoice links are delivered from a later integration phase; until
-        // then N11 orders must not start fiscal submission either.
-        if (string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase)) return false;
+        // N11 invoice links go through SaveLinkSellerInvoice; N11 connections store
+        // InvoiceCreationEnabled=false by default, so fiscal submission starts only after
+        // the seller enables it on the connection.
         if (!ActiveIntegrationScope.IsMarketplace(platformCode) || string.IsNullOrWhiteSpace(settingsJson)) return true;
 
         try

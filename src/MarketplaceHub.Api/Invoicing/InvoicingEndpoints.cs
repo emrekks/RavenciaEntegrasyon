@@ -19,7 +19,13 @@ public static class InvoicingEndpoints
     {
         var api = endpoints.MapGroup("/api/v1").AddEndpointFilter(async (context, next) => { try { return await next(context); } catch (ArgumentException exception) { return Problem(context.HttpContext, new("INVALID_CURSOR", exception.Message, 400)); } });
 
-        api.MapGet("/public/invoice-documents/{token}/content", async (string token, HttpContext http, IDataProtectionProvider protection, AppDbContext db, IInvoicingBillingService service) =>
+        // The same document-bound link with a .pdf file name, for marketplaces (n11) that only accept
+        // invoice links ending in a document extension. The stored link stays the /content form.
+        api.MapGet("/public/invoice-documents/{token}/" + InvoiceDocumentLink.PdfFileName, (string token, HttpContext http, IDataProtectionProvider protection, AppDbContext db, IInvoicingBillingService service) =>
+            OpenPublicInvoiceDocumentAsync(token, http, protection, db, service));
+        api.MapGet("/public/invoice-documents/{token}/content", (string token, HttpContext http, IDataProtectionProvider protection, AppDbContext db, IInvoicingBillingService service) =>
+            OpenPublicInvoiceDocumentAsync(token, http, protection, db, service));
+        static async Task<IResult> OpenPublicInvoiceDocumentAsync(string token, HttpContext http, IDataProtectionProvider protection, AppDbContext db, IInvoicingBillingService service)
         {
             if (!InvoiceDocumentLink.TryRead(protection, token, out var tenantId, out var invoiceId, out var documentId)) return Results.NotFound();
             var expectedPath = $"/api/v1/public/invoice-documents/{token}/content";
@@ -29,7 +35,7 @@ public static class InvoicingEndpoints
             if (!Uri.TryCreate(permanentUrl, UriKind.Absolute, out var uri) || uri.AbsolutePath != expectedPath) return Results.NotFound();
             try { return Stream(await service.OpenDocumentAsync(tenantId, invoiceId, documentId, http.RequestAborted), http); }
             catch (FileNotFoundException) { return Results.NotFound(); }
-        });
+        }
         api.MapGet("/public/manual-invoice-documents/{token}/content", OpenPublicManualOrderInvoiceDocumentAsync);
 
         api.MapGet("/billing/invoice-policies/{connectionId:guid}", async (Guid connectionId, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant ? WithEtag(http, await service.GetPolicyAsync(tenant.TenantId, connectionId, http.RequestAborted), x => x.Version) : Unauthorized(http));
