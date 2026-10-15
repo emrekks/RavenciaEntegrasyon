@@ -32,6 +32,17 @@ describe('suggestCategoryMappings', () => {
     expect(suggestCategoryMappings({ name: 'Tulum', path: 'Tulum' }, [{ externalId: '9', name: 'Tül', path: 'Hobi / Tül' }])).toEqual([])
   })
 
+  it('does not offer a generic category when a category named like the panel one exists', () => {
+    const modest = [
+      { externalId: '10', name: 'Tesettür Gömlek', path: 'Kadın Giyim / Tesettür Giyim / Tesettür Gömlek' },
+      { externalId: '11', name: 'Gömlek', path: 'Erkek Giyim / Gömlek' },
+      { externalId: '12', name: 'Gömlek', path: 'Bebek Giyim / Erkek Bebek / Gömlek' }
+    ]
+    expect(suggestCategoryMappings({ name: 'Tesettür Gömlek', path: 'Tesettür Gömlek' }, modest).map(item => item.externalId)).toEqual(['10'])
+    // without a close match the generic category is still better than nothing
+    expect(suggestCategoryMappings({ name: 'Tesettür Gömlek', path: 'Tesettür Gömlek' }, modest.slice(1)).map(item => item.externalId)).toEqual(['11', '12'])
+  })
+
   it('keeps at most the requested number of candidates', () => {
     expect(suggestCategoryMappings({ name: 'Tişört', path: 'Tişört' }, remotes, 2)).toHaveLength(2)
   })

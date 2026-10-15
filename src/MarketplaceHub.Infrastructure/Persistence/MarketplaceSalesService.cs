@@ -2540,6 +2540,10 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             if (invoiceStatus == InvoiceStatus.Completed) return "FATURA_KONTROLDE";
             if (label == "FATURA_BILINMIYOR") return "FATURA_BEKLIYOR";
         }
+        // n11 and Pazarama do not report an invoice state of their own; with no invoice recorded
+        // the order simply waits for one instead of showing an unknown state.
+        else if (label == "FATURA_BILINMIYOR" && platformCode is not null && (platformCode.Equals("N11", StringComparison.OrdinalIgnoreCase) || platformCode.Equals("PAZARAMA", StringComparison.OrdinalIgnoreCase)))
+            return "FATURA_BEKLIYOR";
         return label;
     }
 

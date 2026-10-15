@@ -35,6 +35,16 @@ public sealed class MarketplaceSalesInvoiceLabelTests
         Assert.Equal(expected, label);
     }
 
+    [Theory]
+    [InlineData("N11")]
+    [InlineData("PAZARAMA")]
+    public void N11AndPazaramaOrdersWithoutAnInvoiceWaitForOne(string platformCode)
+    {
+        var label = MarketplaceSalesService.InvoiceLabelForPlatform(null, MarketplaceInvoiceStatus.Unknown, "{}", ["Delivered"], platformCode);
+
+        Assert.Equal("FATURA_BEKLIYOR", label);
+    }
+
     [Fact]
     public void ReturnWithoutInvoiceEvidenceIsPresentedAsUnknown()
     {

@@ -9,6 +9,8 @@ public sealed class InvoiceWorkspaceMarketplacePolicyTests
     [InlineData("TRENDYOL")]
     [InlineData("SHOPIFY")]
     [InlineData("HEPSIBURADA")]
+    [InlineData("N11")]
+    [InlineData("PAZARAMA")]
     public void SupportedMarketplaceOrdersCanAppearInInvoiceWorkspace(string platformCode)
     {
         Assert.True(InvoiceWorkspaceMarketplacePolicy.Supports(platformCode));

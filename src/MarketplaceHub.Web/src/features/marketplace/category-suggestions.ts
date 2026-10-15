@@ -35,8 +35,11 @@ function nameScore(local: string, remote: string) {
   if (!left.length || !right.size) return 0
   const shared = left.filter(word => right.has(word)).length
   if (shared === left.length && shared === right.size) return 92
-  // one name is the other plus extra words: "Kot Pantolon" and "Pantolon"
-  if (shared === left.length || shared === right.size) return 60
+  // the remote name is the panel name plus extra words: "Pantolon" can be listed under "Pantolon Takım"
+  if (shared === left.length) return 60
+  // the remote name is only part of the panel name: "Tesettür Gömlek" is not a plain "Gömlek"; the missing
+  // word is what the category is about, so this is a weak fallback that a real match hides
+  if (shared === right.size) return 52
   // a prefix only counts when it is most of the word ("Bluz" / "Bluzlar", not "Tulum" / "Tül")
   const [short, long] = [matchingKey(local), matchingKey(remote)].sort((a, b) => a.length - b.length)
   if (short.length >= 4 && short.length / long.length >= 0.6 && long.startsWith(short)) return 70
@@ -61,7 +64,7 @@ export function suggestCategoryMappings(
   const localSegments = segments(local.path)
   const localLeaf = localSegments.at(-1) ?? local.name
   const localParents = new Set(localSegments.slice(0, -1).flatMap(words))
-  const scored: CategorySuggestion[] = []
+  const scored: Array<CategorySuggestion & { leaf: number }> = []
   for (const remote of remotes) {
     const remoteSegments = segments(remote.path)
     const leaf = leafScore(localLeaf, remoteSegments.at(-1) ?? remote.name)
@@ -69,9 +72,14 @@ export function suggestCategoryMappings(
     const remoteParents = new Set(remoteSegments.slice(0, -1).flatMap(words))
     const shared = [...localParents].filter(word => remoteParents.has(word)).length
     const parent = localParents.size ? shared / localParents.size : 0
-    scored.push({ externalId: remote.externalId, path: remote.path, score: Math.round(leaf * 0.7 + parent * 30) })
+    scored.push({ externalId: remote.externalId, path: remote.path, score: Math.round(leaf * 0.7 + parent * 30), leaf })
   }
-  return scored
+  // When one category matches the panel name almost exactly, weaker leaf matches ("Gömlek" for "Tesettür Gömlek")
+  // would only be noise next to it.
+  const strongest = Math.max(0, ...scored.map(item => item.leaf))
+  const kept = strongest >= 90 ? scored.filter(item => item.leaf >= 70) : scored
+  return kept
     .sort((left, right) => right.score - left.score || left.path.length - right.path.length || left.path.localeCompare(right.path, 'tr-TR'))
     .slice(0, limit)
+    .map(({ externalId, path, score }) => ({ externalId, path, score }))
 }
