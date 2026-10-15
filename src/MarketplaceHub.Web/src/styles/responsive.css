@@ -396,3 +396,22 @@ html body .mfs-sort-sheet [role="listbox"] > button.is-selected { color: var(--r
 @media (max-width: 760px) {
   html body .app-shell.stitch-shell main :is(.order-reference-row, .invoice-reference-row, .product-catalog-item).is-selected { animation: rv-select-pop .18s ease-out; will-change: transform, background-color; }
 }
+
+/* Heading actions, final rules. One action: full width. Two: halves. Three: two text buttons plus one
+   icon-only button. Four or more: two text buttons plus "⋮". Always one row under the title, same left
+   and right edge as the title block, 8px gaps; each button is icon + text on one line. */
+@media (max-width: 760px) {
+  html body .mam { width: 100%; box-sizing: border-box; margin: 0; }
+  html body .mam.mam-primary-2.has-icon { grid-template-columns: repeat(2, minmax(0, 1fr)) 44px; }
+  html body .mam > .mam-icons { display: contents; }
+  html body .mam .mam-icons > * {
+    order: 9; display: inline-flex; box-sizing: border-box; width: 44px; min-width: 44px; height: 44px; min-height: 44px; align-items: center; justify-content: center; padding: 0; margin: 0; overflow: hidden;
+    color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); box-shadow: none; font-size: 0; line-height: 0;
+  }
+  html body .mam .mam-icons > * > svg { width: 18px; height: 18px; }
+  html body .mam .mam-primary > * { flex-wrap: nowrap; }
+  html body .mam .mam-primary > * > svg { flex: 0 0 18px; }
+  html body .mam .mam-primary > .orders-sync-action .orders-sync-label-short, html body .mam .mam-primary > button { white-space: nowrap; }
+  /* The heading stacks (title above, actions below) on every page that uses the menu. */
+  html body .app-shell.stitch-shell main .content > .page-heading, html body .app-shell.stitch-shell main .content > .mapping-reference-heading, html body .app-shell.stitch-shell main .content > .rv-page-header { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; align-items: start; }
+}
