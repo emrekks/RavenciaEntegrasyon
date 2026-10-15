@@ -1274,7 +1274,7 @@ function IntegrationDetailWorkspace({ id, inline = false }: { id: string; inline
      : item.platformCode === 'PAZARAMA'
      ? [
          { key: 'automatic-external-writes', label: 'Otomatik dış yazmalar', resourceTypes: ['PRICE_WRITE', 'STOCK_WRITE'], description: 'Açıkken paneldeki Pazarama fiyatı ve stok değişikliklerini Pazarama’ya otomatik gönderir. Kapalıyken sistem bu güncellemeleri kendiliğinden göndermez; panelden elle başlattığınız fiyat-stok gönderimi bu ayardan bağımsızdır, yalnız dış yazma anahtarı açık olmalıdır. Ürün açma ve iade kararları sonraki aşamalarda açılacak.' },
-         { key: 'manual-external-writes', label: 'Manuel dış yazmalar', resourceTypes: ['SHIPMENT_WRITE'], description: 'Açıkken panelden başlattığınız sipariş işleme alma, tedarik edilemedi, paket bölme/güncelleme, işçilik bedeli ve iptal talebi kararlarını Pazarama’ya gönderir. Kapalıyken bu işlemler Pazarama’ya aktarılmaz.' }
+         { key: 'manual-external-writes', label: 'Manuel dış yazmalar', resourceTypes: ['SHIPMENT_WRITE', 'RETURN_WRITE'], description: 'Açıkken panelden başlattığınız sipariş işleme alma, tedarik edilemedi, paket bölme/güncelleme, işçilik bedeli, iptal talebi kararlarını ve iade onay/retlerini Pazarama’ya gönderir. Kapalıyken bu işlemler Pazarama’ya aktarılmaz.' }
        ]
      : item.platformCode === 'N11'
      ? [

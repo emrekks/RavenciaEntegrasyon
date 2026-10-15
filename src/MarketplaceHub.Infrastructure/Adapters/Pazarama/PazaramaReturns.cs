@@ -48,19 +48,77 @@ public sealed partial class PazaramaHttpClient : IReturnPort
     public Task<AdapterResult<IReadOnlyList<ReturnIssueReason>>> IssueReasonsAsync(AdapterContext context, CancellationToken cancellationToken) =>
         Task.FromResult(AdapterResult<IReadOnlyList<ReturnIssueReason>>.Success(PazaramaReturnMapper.RejectReasons));
 
-    public Task<AdapterResult<ReturnActionResult>> ExecuteAsync(AdapterContext context, ReturnActionCommand command, CancellationToken cancellationToken) =>
-        Task.FromResult(NotSupported<ReturnActionResult>("PAZARAMA_RETURN_ACTION_UNSUPPORTED", "Pazarama iadesini onaylamak veya reddetmek için şimdilik Pazarama satıcı panelini kullanın; panelden bu işlem sonraki aşamada açılacak."));
+    internal const string UpdateRefund = "order/updateRefund";
+
+    // Approve and reject go to POST order/updateRefund with the refund id. A rejection carries the reason
+    // (RefundRejectType 1-12), the explanation and up to three photos; sending a refund to review is not
+    // offered from the panel.
+    public async Task<AdapterResult<ReturnActionResult>> ExecuteAsync(AdapterContext context, ReturnActionCommand command, CancellationToken cancellationToken)
+    {
+        var action = command.Action.Trim().ToUpperInvariant();
+        if (action is not ("APPROVE" or "REJECT"))
+            return NotSupported<ReturnActionResult>("PAZARAMA_RETURN_ACTION_UNSUPPORTED", "Pazarama iadesi panelden yalnız onaylanabilir veya reddedilebilir; incelemeye gönderme için Pazarama satıcı panelini kullanın.");
+        var request = PazaramaReturnMapper.ActionBody(command);
+        if (request.Error is not null)
+            return Failure<ReturnActionResult>(AdapterErrorClass.Validation, "PAZARAMA_RETURN_ACTION_INVALID", request.Error, HttpStatusCode.UnprocessableEntity);
+        var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
+        if (account is null) return CredentialMissing<ReturnActionResult>();
+        if (WriteBlocked<ReturnActionResult>(account, action == "APPROVE" ? "iade onayı" : "iade reddi") is { } blocked) return blocked;
+
+        var result = await SendAsync(account, HttpMethod.Post, UpdateRefund, cancellationToken, Json(request.Body!));
+        if (!result.IsSuccess) return AdapterResult<ReturnActionResult>.Failure(result.Error!, result.RateLimit);
+        result.Value!.Dispose();
+        return AdapterResult<ReturnActionResult>.Success(new(command.ExternalClaimId, action == "APPROVE" ? "APPROVED" : "REJECTED", null), result.RateLimit);
+    }
 }
 
 public static class PazaramaReturnMapper
 {
+    // Every reason needs photos except "return package was empty" (10) and "never reached me" (11).
     public static readonly IReadOnlyList<ReturnIssueReason> RejectReasons =
     [
-        new("1", "Gelen ürün bana ait değil", false), new("2", "Gelen ürün defolu/zarar görmüş", false), new("3", "Gelen ürün adedi eksik", false),
-        new("4", "Gelen ürün yanlış", false), new("5", "Gelen ürün kullanılmış", false), new("6", "Gelen ürün sahte", false),
-        new("7", "Gelen ürünün parçası/aksesuarı eksik", false), new("8", "Gönderdiğim ürün kusurlu değil", false), new("9", "Gönderdiğim ürün yanlış değil", false),
-        new("10", "İade paketi boş geldi", false), new("11", "İade paketi elime ulaşmadı", false), new("12", "Diğer", false)
+        new("1", "Gelen ürün bana ait değil", true), new("2", "Gelen ürün defolu/zarar görmüş", true), new("3", "Gelen ürün adedi eksik", true),
+        new("4", "Gelen ürün yanlış", true), new("5", "Gelen ürün kullanılmış", true), new("6", "Gelen ürün sahte", true),
+        new("7", "Gelen ürünün parçası/aksesuarı eksik", true), new("8", "Gönderdiğim ürün kusurlu değil", true), new("9", "Gönderdiğim ürün yanlış değil", true),
+        new("10", "İade paketi boş geldi", false), new("11", "İade paketi elime ulaşmadı", false), new("12", "Diğer", true)
     ];
+
+    public const int MaxEvidenceFiles = 3;
+    public const int MaxEvidenceBytes = 5 * 1024 * 1024;
+
+    public sealed record ActionRequest(object? Body, string? Error);
+
+    // The updateRefund body, or the reason it cannot be sent.
+    public static ActionRequest ActionBody(ReturnActionCommand command)
+    {
+        var refundId = command.ExternalClaimId?.Trim();
+        if (string.IsNullOrWhiteSpace(refundId) || !Guid.TryParse(refundId, out var id))
+            return new(null, "Pazarama iade numarası (refundId) geçersiz.");
+        if (string.Equals(command.Action, "APPROVE", StringComparison.OrdinalIgnoreCase))
+            return new(new { refundId = id.ToString(), status = 2 }, null);
+
+        if (!int.TryParse(command.ReasonCode, NumberStyles.None, CultureInfo.InvariantCulture, out var reason) || RejectReasons.All(x => x.Id != reason.ToString(CultureInfo.InvariantCulture)))
+            return new(null, "İade reddi için Pazarama'nın 1-12 arası red gerekçelerinden biri seçilmelidir.");
+        if (string.IsNullOrWhiteSpace(command.Explanation))
+            return new(null, "İade reddi için açıklama zorunludur.");
+        var files = command.EvidenceFiles ?? [];
+        if (files.Count > MaxEvidenceFiles)
+            return new(null, $"Pazarama en fazla {MaxEvidenceFiles} görsel kabul eder.");
+        if (files.Any(file => file.Content.Length == 0 || file.Content.Length > MaxEvidenceBytes))
+            return new(null, "Görsellerin her biri en fazla 5 MB olmalıdır.");
+        if (files.Any(file => !file.MimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)))
+            return new(null, "Pazarama yalnız görsel dosyaları kabul eder.");
+        if (files.Count == 0 && RejectReasons.First(x => x.Id == reason.ToString(CultureInfo.InvariantCulture)).EvidenceRequired)
+            return new(null, "Bu red gerekçesi için en az bir görsel eklenmelidir.");
+        return new(new
+        {
+            refundId = id.ToString(),
+            status = 3,
+            refundRejectType = reason,
+            documentObjects = files.Select(file => new { name = file.FileName, bytes = Convert.ToBase64String(file.Content) }).ToArray(),
+            description = command.Explanation.Trim()
+        }, null);
+    }
 
     // data.refundList is the page, data.responsePage {pageIndex,totalPages,totalCount} the position.
     public static AdapterPageResult<RemoteReturnClaim> Page(JsonElement root, int pageNumber, DateTimeOffset now)

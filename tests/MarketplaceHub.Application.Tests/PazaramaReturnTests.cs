@@ -153,6 +153,99 @@ public sealed class PazaramaReturnTests
         Assert.Contains("\"pageSize\":100", body);
     }
 
+    // ---- decisions ----
+
+    private const string RefundId = "ef2affaf-fdfc-4128-b5bc-3a4c1129e662";
+
+    private static ReturnActionCommand Command(string action, string? reason = null, string? explanation = null, params ReturnEvidenceFile[] files) =>
+        new(RefundId, [RefundId], action, reason, explanation, files);
+
+    private static ReturnEvidenceFile Photo(int bytes = 100, string mime = "image/png") => new("kanit.png", mime, new byte[bytes]);
+
+    [Fact]
+    public void Approval_sends_status_two_for_the_refund()
+    {
+        var request = PazaramaReturnMapper.ActionBody(Command("APPROVE"));
+
+        Assert.Null(request.Error);
+        Assert.Equal($$"""{"refundId":"{{RefundId}}","status":2}""", JsonSerializer.Serialize(request.Body));
+    }
+
+    [Fact]
+    public void Rejection_carries_reason_description_and_photos_as_base64()
+    {
+        var request = PazaramaReturnMapper.ActionBody(Command("REJECT", "2", " Urun defolu geldi ", new ReturnEvidenceFile("a.png", "image/png", [1, 2, 3])));
+
+        Assert.Null(request.Error);
+        var body = JsonSerializer.Serialize(request.Body);
+        Assert.Contains("\"status\":3", body);
+        Assert.Contains("\"refundRejectType\":2", body);
+        Assert.Contains("\"description\":\"Urun defolu geldi\"", body);
+        Assert.Contains("\"documentObjects\":[{\"name\":\"a.png\",\"bytes\":\"AQID\"}]", body);
+    }
+
+    [Theory]
+    [InlineData("10")]
+    [InlineData("11")]
+    public void Empty_package_and_lost_package_reasons_need_no_photo(string reason)
+    {
+        var request = PazaramaReturnMapper.ActionBody(Command("REJECT", reason, "Paket boş geldi"));
+
+        Assert.Null(request.Error);
+        Assert.Contains("\"documentObjects\":[]", JsonSerializer.Serialize(request.Body));
+    }
+
+    [Theory]
+    [InlineData("1")]
+    [InlineData("7")]
+    [InlineData("12")]
+    public void Other_reasons_need_at_least_one_photo(string reason) =>
+        Assert.NotNull(PazaramaReturnMapper.ActionBody(Command("REJECT", reason, "Açıklama")).Error);
+
+    [Theory]
+    [InlineData(null, "Açıklama")]
+    [InlineData("", "Açıklama")]
+    [InlineData("0", "Açıklama")]
+    [InlineData("13", "Açıklama")]
+    [InlineData("abc", "Açıklama")]
+    [InlineData("10", null)]
+    [InlineData("10", "   ")]
+    public void A_rejection_needs_a_known_reason_and_an_explanation(string? reason, string? explanation) =>
+        Assert.NotNull(PazaramaReturnMapper.ActionBody(Command("REJECT", reason, explanation, Photo())).Error);
+
+    [Fact]
+    public void Photos_are_limited_to_three_files_of_five_megabytes_each()
+    {
+        Assert.Null(PazaramaReturnMapper.ActionBody(Command("REJECT", "1", "x", Photo(), Photo(), Photo())).Error);
+        Assert.NotNull(PazaramaReturnMapper.ActionBody(Command("REJECT", "1", "x", Photo(), Photo(), Photo(), Photo())).Error);
+        Assert.Null(PazaramaReturnMapper.ActionBody(Command("REJECT", "1", "x", Photo(PazaramaReturnMapper.MaxEvidenceBytes))).Error);
+        Assert.NotNull(PazaramaReturnMapper.ActionBody(Command("REJECT", "1", "x", Photo(PazaramaReturnMapper.MaxEvidenceBytes + 1))).Error);
+        Assert.NotNull(PazaramaReturnMapper.ActionBody(Command("REJECT", "1", "x", Photo(0))).Error);
+    }
+
+    [Fact]
+    public void Only_images_are_accepted_as_evidence() =>
+        Assert.NotNull(PazaramaReturnMapper.ActionBody(Command("REJECT", "1", "x", Photo(10, "application/pdf"))).Error);
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("not-a-guid")]
+    public void The_refund_id_must_be_a_guid(string id) =>
+        Assert.NotNull(PazaramaReturnMapper.ActionBody(new ReturnActionCommand(id, [], "APPROVE", null, null, [])).Error);
+
+    [Fact]
+    public void Reasons_report_which_ones_need_photos()
+    {
+        var needPhotos = PazaramaReturnMapper.RejectReasons.Where(x => x.EvidenceRequired).Select(x => x.Id).ToList();
+
+        Assert.Equal(10, needPhotos.Count);
+        Assert.DoesNotContain("10", needPhotos);
+        Assert.DoesNotContain("11", needPhotos);
+    }
+
+    [Fact]
+    public void The_update_service_is_the_documented_one() => Assert.Equal("order/updateRefund", PazaramaHttpClient.UpdateRefund);
+
     [Fact]
     public void The_documented_reject_reasons_are_offered() =>
         Assert.Equal(Enumerable.Range(1, 12).Select(x => x.ToString()), PazaramaReturnMapper.RejectReasons.Select(x => x.Id));
