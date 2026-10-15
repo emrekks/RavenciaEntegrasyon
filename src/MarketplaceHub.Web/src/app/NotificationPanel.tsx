@@ -77,6 +77,8 @@ type PanelProps = { notifications: AppNotification[]; onNavigate: (href: string)
 export function NotificationPanel({ notifications, onNavigate, onCleared }: PanelProps) {
   const [filter, setFilter] = useState<Filter>('ALL')
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  // Only today starts open; every other day opens on demand. A day the user toggled keeps that choice.
+  const [toggledDays, setToggledDays] = useState<Record<string, boolean>>({})
   const unread = notifications.filter(notification => !notification.read)
   const errors = notifications.filter(notification => notification.kind === 'error')
   const visible = filter === 'UNREAD' ? unread : filter === 'ERROR' ? errors : notifications
@@ -107,8 +109,8 @@ export function NotificationPanel({ notifications, onNavigate, onCleared }: Pane
       ? <p className="rv-notification-history-empty">{notifications.length === 0 ? 'Henüz kaydedilmiş bildirim yok.' : filter === 'UNREAD' ? 'Okunmamış bildirim yok.' : 'Hata bildirimi yok.'}</p>
       : <div className="rv-notification-history-list">
         {groups.map(([label, items]) => <section key={label} className={`rv-notification-day ${dayKind(label)}`} aria-label={label}>
-          <h4 className="rv-notification-group"><span>{label}</span><small>{dayDate(items[0].createdAt)}</small><b>{items.length}</b></h4>
-          {items.map(notification => <NotificationItem key={notification.id} notification={notification} expanded={expandedId === notification.id} onToggle={() => setExpandedId(current => current === notification.id ? null : notification.id)} onOpen={open(notification)} />)}
+          <h4 className="rv-notification-group"><button type="button" aria-expanded={toggledDays[label] ?? label === 'Bugün'} aria-controls={`rv-notification-day-${label}`} onClick={() => setToggledDays(current => ({ ...current, [label]: !(current[label] ?? label === 'Bugün') }))}><UiIcon name="chevronDown" size={16} /><span>{label}</span><small>{dayDate(items[0].createdAt)}</small><b>{items.length}</b></button></h4>
+          {(toggledDays[label] ?? label === 'Bugün') && <div className="rv-notification-day-body" id={`rv-notification-day-${label}`}>{items.map(notification => <NotificationItem key={notification.id} notification={notification} expanded={expandedId === notification.id} onToggle={() => setExpandedId(current => current === notification.id ? null : notification.id)} onOpen={open(notification)} />)}</div>}
         </section>)}
       </div>}
   </>
