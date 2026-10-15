@@ -297,3 +297,9 @@
 }
 .invoice-detail-modal .invoice-detail-platform-refresh:hover:not(:disabled) { background: var(--rv-color-surface-soft); border-color: var(--rv-color-primary); }
 .invoice-detail-modal .invoice-detail-platform-refresh:disabled { opacity: .55; cursor: wait; }
+
+/* Invoice detail summary tiles: long values (tracking numbers) wrap inside their tile instead of spilling out. */
+.invoice-detail-modal .invoice-detail-summary > div { min-width: 0; overflow: hidden; }
+.invoice-detail-modal .invoice-detail-summary > div > strong { min-width: 0; max-width: 100%; overflow-wrap: anywhere; word-break: break-all; font-size: 14px; line-height: 1.3; }
+.invoice-detail-modal .invoice-detail-summary .invoice-detail-cargo { max-width: 100%; }
+.invoice-detail-modal .invoice-detail-summary .invoice-detail-cargo img { max-width: 100%; height: auto; max-height: 28px; object-fit: contain; }
