@@ -13,12 +13,9 @@ public static class MarketplaceInvoiceCreationPolicy
         // Shopify fiscal submission is intentionally fail-closed until the
         // configured provider contract for Shopify orders is verified.
         if (string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase)) return false;
-        // Pazarama invoice links arrive in a later integration phase; until then Pazarama
-        // orders must not start fiscal submission.
-        if (string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase)) return false;
-        // N11 invoice links go through SaveLinkSellerInvoice; N11 connections store
-        // InvoiceCreationEnabled=false by default, so fiscal submission starts only after
-        // the seller enables it on the connection.
+        // N11 (SaveLinkSellerInvoice) and Pazarama (order/invoice-link) take an invoice link per order;
+        // their connections store InvoiceCreationEnabled=false by default, so fiscal submission starts
+        // only after the seller enables it on the connection.
         if (!ActiveIntegrationScope.IsMarketplace(platformCode) || string.IsNullOrWhiteSpace(settingsJson)) return true;
 
         try

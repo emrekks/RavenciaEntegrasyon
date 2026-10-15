@@ -223,13 +223,14 @@ public sealed class PazaramaAdapterTests
     }
 
     [Fact]
-    public void PazaramaIsAMarketplaceWithItsOwnConnectionTestAndNoInvoicingYet()
+    public void PazaramaIsAMarketplaceWithItsOwnConnectionTestAndInvoicingFollowsTheConnectionSetting()
     {
         Assert.True(ActiveIntegrationScope.IsMarketplace("PAZARAMA"));
         Assert.Equal(MarketplaceJobTypes.PazaramaConnectionTest, MarketplaceJobTypes.ForPlatform("PAZARAMA", MarketplaceJobTypes.ConnectionTest));
         Assert.Equal(MarketplaceJobTypes.PazaramaOrderSync, MarketplaceJobTypes.ForPlatform("PAZARAMA", MarketplaceJobTypes.OrderSync));
         Assert.Equal(MarketplaceJobTypes.PriceInventorySync, MarketplaceJobTypes.ForPlatform("PAZARAMA", MarketplaceJobTypes.PriceInventorySync));
-        Assert.False(MarketplaceInvoiceCreationPolicy.IsEnabled("PAZARAMA", """{"ExternalWritesEnabled":false,"InvoiceCreationEnabled":true}"""));
+        Assert.True(MarketplaceInvoiceCreationPolicy.IsEnabled("PAZARAMA", """{"ExternalWritesEnabled":false,"InvoiceCreationEnabled":true}"""));
+        Assert.False(MarketplaceInvoiceCreationPolicy.IsEnabled("PAZARAMA", """{"ExternalWritesEnabled":false,"InvoiceCreationEnabled":false}"""));
         Assert.Equal("isortagim.pazarama.com", CapabilityEvidencePolicy.OfficialDocumentationHost("PAZARAMA"));
         Assert.Equal("Pazarama", JobOperationsService.Marketplace("PAZARAMA_CONNECTION_TEST"));
         Assert.Equal("Pazarama", JobOperationsService.Marketplace("PRICE_INVENTORY_SYNC", "PAZARAMA"));

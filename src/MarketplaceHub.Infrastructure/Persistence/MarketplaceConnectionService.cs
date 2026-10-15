@@ -222,8 +222,6 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             return Invalid<ConnectionView>("invoiceCreationEnabled", "Fatura oluşturma ayarı yalnız pazaryeri bağlantılarında kullanılabilir.");
         if (connection.PlatformCode == "HEPSIBURADA" && command.InvoiceCreationEnabled == true)
             return Invalid<ConnectionView>("invoiceCreationEnabled", "Hepsiburada fatura aktarımı SIT doğrulaması tamamlanana kadar kapalıdır.");
-        if (connection.PlatformCode == "PAZARAMA" && command.InvoiceCreationEnabled == true)
-            return Invalid<ConnectionView>("invoiceCreationEnabled", "Pazarama fatura aktarımı fatura linki aşaması tamamlanana kadar kapalıdır.");
         if ((command.N11ShipmentTemplate is not null || command.N11PreparingDay.HasValue) && connection.PlatformCode != "N11")
             return Invalid<ConnectionView>("n11ShipmentTemplate", "Kargo şablonu ve hazırlık süresi yalnız N11 bağlantısında kullanılır.");
         if (command.N11ShipmentTemplate is not null && command.N11ShipmentTemplate.Trim().Length > N11ProductPublicationComposer.MaxShipmentTemplateLength)
@@ -313,7 +311,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             });
         }
         else if (connection.PlatformCode == "PAZARAMA")
-            connection.SettingsJson = JsonSerializer.Serialize(pazaramaSettings! with { ExternalWritesEnabled = requestedExternalWrites });
+            connection.SettingsJson = JsonSerializer.Serialize(pazaramaSettings! with { ExternalWritesEnabled = requestedExternalWrites, InvoiceCreationEnabled = command.InvoiceCreationEnabled ?? pazaramaSettings.InvoiceCreationEnabled });
         else if (connection.PlatformCode == "SHOPIFY")
             connection.SettingsJson = JsonSerializer.Serialize(new ShopifyConnectionSettings(requestedExternalWrites, command.InvoiceCreationEnabled ?? invoiceCreationEnabled));
         else

@@ -47,6 +47,17 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         }
     }
 
+    internal static string? PazaramaOrderId(string? customerSnapshotJson)
+    {
+        if (string.IsNullOrWhiteSpace(customerSnapshotJson)) return null;
+        try
+        {
+            using var document = JsonDocument.Parse(customerSnapshotJson);
+            return document.RootElement.ValueKind == JsonValueKind.Object && document.RootElement.TryGetProperty("pazaramaOrderId", out var value) && value.ValueKind == JsonValueKind.String ? value.GetString()?.Trim() : null;
+        }
+        catch (JsonException) { return null; }
+    }
+
     private async Task<bool> TestConnection(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
     {
         var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "TRENDYOL_EFATURAM", cancellationToken);
@@ -692,10 +703,11 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         if (oneTimeAuthorization is not null
             && !await IsValidOneTimeInvoiceDeliveryAsync(tenantId, jobConnectionId, invoice, package, order?.OrderNumber, oneTimeAuthorization, state, cancellationToken))
             return false;
-        // n11 only accepts links that end in a document extension, so n11 deliveries always use the
+        // n11 and Pazarama take only links that end in a document extension, so their deliveries always use the
         // document-bound link, which the API also serves as .../invoice.pdf.
         if ((oneTimeAuthorization is not null && OneTimeInvoiceDeliveryPolicy.IsAuthorizedStageDocument(order?.OrderNumber, invoice.Id)
-                || string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase))
+                || string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase))
             && state?.Status is not ("STARTED" or "UNKNOWN" or "SUBMITTED" or "CONFIRMATION_RETRYABLE" or "CONFIRMED"))
         {
             // Provider URLs may require authentication. Publish only the already
@@ -1008,6 +1020,12 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             deliveryPayload["shopifyOrderId"] = ShopifyOrderGid(order?.ExternalOrderId);
         if (string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase))
             deliveryPayload["orderNumber"] = order?.OrderNumber;
+        // Pazarama attaches the link to the order by its GUID, which the order snapshot keeps.
+        if (string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase))
+        {
+            deliveryPayload["orderNumber"] = order?.OrderNumber;
+            deliveryPayload["pazaramaOrderId"] = PazaramaOrderId(order?.CustomerSnapshotJson);
+        }
         var payload = JsonSerializer.Serialize(deliveryPayload);
         var requestHash = Hash(payload);
         if (state?.Status == "FAILED" && oneTimeAuthorization is not null
@@ -1615,7 +1633,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                                     && state.UpdatedAt <= now.AddMinutes(-2)
                                     && connection.Status == "ACTIVE"
                                     && connection.Environment == "PRODUCTION"
-                                    && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "HEPSIBURADA" || connection.PlatformCode == "SHOPIFY" || connection.PlatformCode == "N11")
+                                    && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "HEPSIBURADA" || connection.PlatformCode == "SHOPIFY" || connection.PlatformCode == "N11" || connection.PlatformCode == "PAZARAMA")
                                     && db.InvoiceDocuments.Any(document => document.TenantId == invoice.TenantId && document.InvoiceId == invoice.Id && document.PermanentUrl != null)
                                 select new { invoice.Id, PackageId = package.Id, ConnectionId = package.ConnectionId, StateVersion = state.Version }).ToListAsync(cancellationToken);
 
@@ -1632,7 +1650,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                                      && invoice.UpdatedAt <= now.AddMinutes(-2)
                                      && connection.Status == "ACTIVE"
                                      && connection.Environment == "PRODUCTION"
-                                     && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "HEPSIBURADA" || connection.PlatformCode == "SHOPIFY" || connection.PlatformCode == "N11")
+                                     && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "HEPSIBURADA" || connection.PlatformCode == "SHOPIFY" || connection.PlatformCode == "N11" || connection.PlatformCode == "PAZARAMA")
                                      && !db.MarketplaceDeliveryStates.Any(state => state.TenantId == invoice.TenantId && state.InvoiceId == invoice.Id)
                                      && db.InvoiceDocuments.Any(document => document.TenantId == invoice.TenantId && document.InvoiceId == invoice.Id && document.PermanentUrl != null)
                                  select new { InvoiceId = invoice.Id, ConnectionId = package.ConnectionId }).ToListAsync(cancellationToken);
