@@ -8,9 +8,10 @@ using Microsoft.Extensions.Options;
 
 namespace MarketplaceHub.Infrastructure.Adapters.N11;
 
-// n11 REST adapter. Phase 1 covers the connection test and the read-only
-// capability probe; product, order, return and question flows follow the
-// phases in docs/N11-ENTEGRASYON-PLANI.md and stay unsupported until then.
+// n11 REST adapter: connection test and read-only probe, references, product read,
+// order read, package actions (approve/split) and the price/stock task. Product writes,
+// returns, questions and invoice links follow the phases in
+// docs/N11-ENTEGRASYON-PLANI.md and stay unsupported until then.
 public sealed partial class N11HttpClient(
     IHttpClientFactory clients,
     N11AuthenticationHandler authentication,

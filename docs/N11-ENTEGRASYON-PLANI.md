@@ -1,6 +1,9 @@
 # N11 Entegrasyonu Planı
 
-Hazırlanma: 14 Ekim 2026. Durum: plan onaylandı, uygulama başlamadı.
+Hazırlanma: 14 Ekim 2026. Durum (15 Ekim 2026): uygulama sürüyor.
+
+- Tamam: bağlantı, referanslar ve eşleştirme, ürün çekme/eşleştirme, sipariş okuma ve mutabakatı, sipariş onaylama ve paket bölme (ilk kabul edilen işlemden sonra SHIPMENT_WRITE kanıtı kaydedilir), fiyat/stok gönderimi ve kanallar arası stok mutabakatı, hesap başına ortak hız sınırı.
+- Bekliyor: fatura linki (SOAP `SaveLinkSellerInvoice`; `invoiceDateTime` biçimi ve linkin `.pdf` uzantısı şartı netleşmeli), adetle bölme/kısmi iptal, işçilik bedeli, toplama talebi, kampanya kodlu etiket, ürün açma/güncelleme, iadeler (iade yazma anahtarı bu yüzden gizli), müşteri soruları, N11 hata mesajı eşleyici.
 
 ## 1. Amaç ve temel ilke
 
