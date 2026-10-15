@@ -8674,7 +8674,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     // n11 has no sandbox and its probe is read-only, so SHIPMENT_WRITE is proven by the first
     // package action the live store accepts. Once recorded, the shipment detail offers the
     // n11 package actions (approve and splits) like the other marketplaces.
-    internal static readonly string[] N11ShipmentActions = ["PICKING", "SPLIT", "MULTI_SPLIT"];
+    internal static readonly string[] N11ShipmentActions = ["PICKING", "SPLIT", "MULTI_SPLIT", "SPLIT_BY_QUANTITY", "LABOR_COST", "COLLECTION_REQUEST"];
 
     private async Task RecordN11ShipmentWriteEvidenceAsync(Guid tenantId, Guid connectionId, string action, CancellationToken cancellationToken)
     {

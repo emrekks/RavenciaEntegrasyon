@@ -875,6 +875,9 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             : await CapabilityValues(tenantId, row.Package.ConnectionId, MarketplaceCapabilities.ShipmentWrite, "allowedActions", cancellationToken);
         if (row.Package.Status == ShipmentPackageStatus.PaymentPending)
             actions = [];
+        // n11's capability is proven by its first accepted action; once proven, every n11 package action is offered.
+        if (!stage && row.PlatformCode == "N11" && actions.Count > 0)
+            actions = MarketplaceJobProcessor.N11ShipmentActions;
         if (!stage && row.PlatformCode == "HEPSIBURADA")
         {
             var evidencedActions = actions;
@@ -2125,10 +2128,18 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     // can only be split after it was approved.
     private static ServiceError? ValidateN11ShipmentAction(ShipmentPackage package, string action, string payloadJson)
     {
-        if (action is not ("PICKING" or "SPLIT" or "MULTI_SPLIT"))
-            return new("SHIPMENT_ACTION_UNSUPPORTED", "N11 için yalnız siparişi işleme alma ve paket bölme desteklenir; diğer işlemleri N11 satıcı panelinden yapın.", 422);
-        if (action is "SPLIT" or "MULTI_SPLIT" && package.Status != ShipmentPackageStatus.Processing)
-            return new("SHIPMENT_STATE_CONFLICT", "N11 paketleri yalnız işleme alındıktan sonra bölünebilir.", 409);
+        if (!MarketplaceJobProcessor.N11ShipmentActions.Contains(action, StringComparer.Ordinal))
+            return new("SHIPMENT_ACTION_UNSUPPORTED", "N11 için yalnız siparişi işleme alma, paket bölme, işçilik bedeli ve lojistik toplama talebi desteklenir; diğer işlemleri N11 satıcı panelinden yapın.", 422);
+        if (package.Status == ShipmentPackageStatus.PaymentPending) return new("SHIPMENT_PAYMENT_PENDING", "Ödeme onayı gelmeden paket işlemi yapılamaz.", 409);
+        if (package.Status is ShipmentPackageStatus.Shipped or ShipmentPackageStatus.Delivered or ShipmentPackageStatus.Returned or ShipmentPackageStatus.Cancelled)
+            return new("SHIPMENT_STATE_CONFLICT", "Sevk edilmiş veya terminal pakette N11 işlemi yapılamaz.", 409);
+        if (action is "SPLIT" or "MULTI_SPLIT" or "SPLIT_BY_QUANTITY" or "COLLECTION_REQUEST" && package.Status != ShipmentPackageStatus.Processing)
+            return new("SHIPMENT_STATE_CONFLICT", "Bu N11 işlemi yalnız işleme alınmış (Picking) paketlerde yapılabilir.", 409);
+        if (action is "SPLIT_BY_QUANTITY" or "LABOR_COST" or "COLLECTION_REQUEST")
+        {
+            try { return MarketplaceHub.Infrastructure.Adapters.N11.N11PackageActionMapper.Body(action, payloadJson) is null ? new("SHIPMENT_ACTION_PAYLOAD_INVALID", "N11 işlem içeriği okunamadı.", 422) : null; }
+            catch (JsonException) { return new("SHIPMENT_ACTION_PAYLOAD_INVALID", $"{action} için zorunlu body alanları eksik veya geçersiz.", 422); }
+        }
         return ValidateShipmentAction(package, action, payloadJson);
     }
 
