@@ -879,6 +879,10 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         // n11's capability is proven by its first accepted action; once proven, every n11 package action is offered.
         if (!stage && row.PlatformCode == "N11" && actions.Count > 0)
             actions = MarketplaceJobProcessor.N11ShipmentActions;
+        // Pazarama has no sandbox and nothing to probe without writing; the actions follow the package state and every
+        // send still passes the write gate (global flag, connection switch, shipment policy).
+        if (row.PlatformCode == "PAZARAMA")
+            actions = row.Package.Status == ShipmentPackageStatus.PaymentPending ? [] : PazaramaShipmentActionsFor(row.Package);
         if (!stage && row.PlatformCode == "HEPSIBURADA")
         {
             var evidencedActions = actions;
@@ -1178,7 +1182,18 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var action = command.Action.Trim().ToUpperInvariant();
         var commandPayload = command.PayloadJson;
         var platform = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.ConnectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
-        if (action == "PICKING" && IsEmptyJsonObject(commandPayload))
+        if (platform == "PAZARAMA" && action is "PICKING" or "NOT_SUPPLIED" && IsEmptyJsonObject(commandPayload))
+        {
+            // Pazarama order items are GUIDs; the adapter sends one status request per item.
+            var pazaramaLines = await (from allocation in db.PackageLineAllocations.AsNoTracking()
+                                       where allocation.TenantId == tenantId && allocation.PackageId == package.Id && allocation.AllocatedQuantity > 0
+                                       join line in db.OrderLines.AsNoTracking() on new { allocation.TenantId, Id = allocation.OrderLineId } equals new { line.TenantId, line.Id }
+                                       select new { line.ExternalLineId, allocation.AllocatedQuantity }).ToListAsync(cancellationToken);
+            if (pazaramaLines.Count == 0)
+                return ServiceResult<Guid>.Fail("PICKING_LINES_REQUIRED", "Pazarama işlemi için pakette sipariş kalemi bulunamadı.", 422);
+            commandPayload = JsonSerializer.Serialize(new { lines = pazaramaLines.Select(line => new { lineId = line.ExternalLineId, quantity = (int)line.AllocatedQuantity }), status = action == "PICKING" ? "Picking" : "NotSupplied" });
+        }
+        if (platform != "PAZARAMA" && action == "PICKING" && IsEmptyJsonObject(commandPayload))
         {
             var packageLines = await (from allocation in db.PackageLineAllocations.AsNoTracking()
                                       where allocation.TenantId == tenantId && allocation.PackageId == package.Id && allocation.AllocatedQuantity > 0
@@ -1192,7 +1207,9 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             ? ValidateHepsiburadaShipmentAction(package, action, commandPayload)
             : platform == "N11"
                 ? ValidateN11ShipmentAction(package, action, commandPayload)
-                : ValidateShipmentAction(package, action, commandPayload);
+                : platform == "PAZARAMA"
+                    ? ValidatePazaramaShipmentAction(package, action, commandPayload)
+                    : ValidateShipmentAction(package, action, commandPayload);
         if (validation is not null) return ServiceResult<Guid>.Fail(validation.Code, validation.Message, validation.Status, validation.FieldErrors);
         var stage = await IsStageConnection(tenantId, package.ConnectionId, cancellationToken);
         if (!stage && !await IsProductionConnection(tenantId, package.ConnectionId, cancellationToken)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Shipment işlemi yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
@@ -2144,6 +2161,28 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             catch (JsonException) { return new("SHIPMENT_ACTION_PAYLOAD_INVALID", $"{action} için zorunlu body alanları eksik veya geçersiz.", 422); }
         }
         return ValidateShipmentAction(package, action, payloadJson);
+    }
+
+    // Pazarama: an order in "Created" can be moved to "Preparing" (picking) or marked not supplied; once preparing, the
+    // package can still be split, re-addressed, get a labor cost or have a cancel request decided. Shipped and later
+    // states are Pazarama's own cargo process and take no action from here.
+    internal static IReadOnlyList<string> PazaramaShipmentActionsFor(ShipmentPackage package) => package.Status switch
+    {
+        ShipmentPackageStatus.New or ShipmentPackageStatus.OnHold => ["PICKING", "NOT_SUPPLIED", "SPLIT", "UPDATE_PACKAGE", "LABOR_COST", "CANCEL_APPROVE", "CANCEL_REJECT"],
+        ShipmentPackageStatus.Processing => ["NOT_SUPPLIED", "SPLIT", "UPDATE_PACKAGE", "LABOR_COST", "CANCEL_APPROVE", "CANCEL_REJECT"],
+        _ => []
+    };
+
+    private static ServiceError? ValidatePazaramaShipmentAction(ShipmentPackage package, string action, string payloadJson)
+    {
+        if (!MarketplaceHub.Infrastructure.Adapters.Pazarama.PazaramaPackageActionMapper.Actions.Contains(action, StringComparer.Ordinal))
+            return new("SHIPMENT_ACTION_UNSUPPORTED", "Pazarama için yalnız siparişi işleme alma, tedarik edilemedi, paket bölme/güncelleme, işçilik bedeli ve iptal talebi kararı desteklenir; diğer işlemleri Pazarama satıcı panelinden yapın.", 422);
+        if (package.Status == ShipmentPackageStatus.PaymentPending) return new("SHIPMENT_PAYMENT_PENDING", "Ödeme onayı gelmeden paket işlemi yapılamaz.", 409);
+        if (!PazaramaShipmentActionsFor(package).Contains(action, StringComparer.Ordinal))
+            return new("SHIPMENT_STATE_CONFLICT", action == "PICKING" ? "Siparişi işleme alma yalnız yeni (Sipariş Alındı) paketlerde yapılabilir." : "Bu paketin durumunda Pazarama işlemi yapılamaz; kargo süreci Pazarama anlaşmalı kargosunda kendiliğinden ilerler.", 409);
+        return MarketplaceHub.Infrastructure.Adapters.Pazarama.PazaramaPackageActionMapper.Validate(action, payloadJson) is { } invalid
+            ? new("SHIPMENT_ACTION_PAYLOAD_INVALID", invalid, 422)
+            : null;
     }
 
     private static ServiceError? ValidateHepsiburadaShipmentAction(ShipmentPackage package, string action, string payloadJson)

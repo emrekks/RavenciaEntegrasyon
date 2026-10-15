@@ -77,9 +77,6 @@ public sealed partial class PazaramaHttpClient : IOrderPort
     public Task<AdapterResult<StageTestOrderResult>> CreateStageTestOrderAsync(AdapterContext context, string barcode, CancellationToken cancellationToken) =>
         Task.FromResult(NotSupported<StageTestOrderResult>("PAZARAMA_TEST_ORDER_UNSUPPORTED", "Pazarama'nın test ortamı olmadığı için test siparişi oluşturulamaz."));
 
-    public Task<AdapterResult<PackageActionResult>> ExecutePackageActionAsync(AdapterContext context, PackageActionCommand command, CancellationToken cancellationToken) =>
-        Task.FromResult(NotSupported<PackageActionResult>("PAZARAMA_PACKAGE_ACTION_UNSUPPORTED", "Pazarama paket işlemleri (işleme alma, tedarik edilemedi) sonraki aşamada eklenecek; şimdilik Pazarama satıcı panelinden yapın."));
-
     private static AdapterResult<T> NotSupported<T>(string code, string message) =>
         Failure<T>(AdapterErrorClass.NotSupported, code, message, HttpStatusCode.NotImplemented);
 }
