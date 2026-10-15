@@ -1453,7 +1453,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     {
         var hasOperationalReturnConnection = await db.PlatformConnections.AsNoTracking()
             .AnyAsync(x => x.TenantId == tenantId
-                && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11")
+                && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11" || x.PlatformCode == "PAZARAMA")
                 && (x.Status == "ACTIVE" || x.Status == "VERIFIED"), cancellationToken);
         if (!hasOperationalReturnConnection) return new([], null, false);
 
@@ -1685,6 +1685,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             ReturnClaimStatus.Requested or ReturnClaimStatus.InTransit => ["RECEIVE"],
             ReturnClaimStatus.AwaitingShipment when isHepsiburada => Array.Empty<string>(),
             ReturnClaimStatus.ActionRequired when isHepsiburada => HepsiburadaReturnActionPolicy.AllowedActions(claim.RawStatus, decisionPending),
+            // Pazarama returns are read-only for now; approving or rejecting happens on Pazarama's panel.
+            ReturnClaimStatus.ActionRequired when string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase) => Array.Empty<string>(),
             // n11 approvals go through the API; denials need n11's own panel.
             ReturnClaimStatus.ActionRequired when !decisionPending && string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase) => ["APPROVE"],
             ReturnClaimStatus.ActionRequired when !decisionPending => ReturnActions,

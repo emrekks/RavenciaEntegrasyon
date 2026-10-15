@@ -337,6 +337,7 @@ Her aşama küçük commit'lerle `main`'e gider; her commit'in Validate ve Deplo
 - `order/invoice-link` (paket bazında: kargo firması + takip no) ve gerekirse kalem bazlı. Link uzantı ve erişilebilirlik doğrulaması.
 
 ### Aşama 7 — İadeler
+- Uygulama notu (16 Ekim 2026, okuma tarafı): `PazaramaReturns.cs` — `POST order/getRefund` (tarihe göre, 28 günlük pencereler, 100/sayfa), iade = `refundId`, sipariş `orderNumber`, ürün `productCode` (barkod) ile sipariş satırına bağlanır; durumlar 1 beklemede, 2/4/6/8 onaylı, 3/5 reddedildi, 7 iptal. Bağlantı testi `RETURN_READ` yeteneğini işaretler; zamanlayıcıda `RETURNS` politikası. Onay/ret (`order/updateRefund`) yazma tarafı henüz yok; panelde Pazarama iadeleri için aksiyon sunulmaz.
 1. İade listesi ve durum eşlemesi, sipariş satırı bağlama.
 2. Onay, ret (gerekçe + görsel yükleme + açıklama), incelemeye gönderme; revizyon taleplerinin gösterimi.
 - Panelde ret penceresi: gerekçe listesi, görsel zorunluluğu, dosya sınırları.

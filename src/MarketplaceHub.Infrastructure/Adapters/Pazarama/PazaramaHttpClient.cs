@@ -98,6 +98,9 @@ public sealed partial class PazaramaHttpClient(
         var orders = await SendAsync(account, HttpMethod.Post, Orders, cancellationToken, Json(OrderProbeBody(now)));
         var ordersReadable = orders.IsSuccess && Data(orders.Value!.RootElement, out _);
         orders.Value?.Dispose();
+        var refunds = await SendAsync(account, HttpMethod.Post, Refunds, cancellationToken, Json(RefundBody(now.AddDays(-1), now, 1, 1)));
+        var refundsReadable = refunds.IsSuccess && Data(refunds.Value!.RootElement, out _);
+        refunds.Value?.Dispose();
         var brands = await SendAsync(account, HttpMethod.Get, $"{Brands}?Page=1&Size=1", cancellationToken);
         var referencesReadable = brands.IsSuccess && Data(brands.Value!.RootElement, out _);
         brands.Value?.Dispose();
@@ -108,6 +111,8 @@ public sealed partial class PazaramaHttpClient(
             new(MarketplaceCapabilities.ProductRead, "SUPPORTED", identity.ApiVersion, identity.Environment, identity.ExternalStoreId, DocumentationHost + "onayli-onaysiz-urun-listeleme", "rest", null, null, "Onaylı ürünler salt okunur listelendi.", null, now),
             new(MarketplaceCapabilities.OrderRead, ordersReadable ? "SUPPORTED" : "UNKNOWN", identity.ApiVersion, identity.Environment, identity.ExternalStoreId, DocumentationHost + "siparisler", "rest", null, null,
                 ordersReadable ? "Son günün siparişleri salt okunur listelendi." : $"Sipariş listeleme denemesi tamamlanamadı ({orders.Error?.Code ?? "PAZARAMA_CONTRACT_INVALID"}); yetenek UNKNOWN bırakıldı.", null, now),
+            new(MarketplaceCapabilities.ReturnRead, refundsReadable ? "SUPPORTED" : "UNKNOWN", identity.ApiVersion, identity.Environment, identity.ExternalStoreId, DocumentationHost + "iadeler", "rest", null, null,
+                refundsReadable ? "Son günün iade talepleri salt okunur listelendi." : $"İade listeleme denemesi tamamlanamadı ({refunds.Error?.Code ?? "PAZARAMA_CONTRACT_INVALID"}); yetenek UNKNOWN bırakıldı.", null, now),
             new(MarketplaceCapabilities.ReferenceRead, referencesReadable ? "SUPPORTED" : "UNKNOWN", identity.ApiVersion, identity.Environment, identity.ExternalStoreId, DocumentationHost + "brand-marka", "rest", null, null,
                 referencesReadable ? "Marka listesi salt okunur okundu." : $"Marka listesi okunamadı ({brands.Error?.Code ?? "PAZARAMA_CONTRACT_INVALID"}); yetenek UNKNOWN bırakıldı.", null, now)
         ];

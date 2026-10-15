@@ -7991,6 +7991,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             return await SyncHepsiburadaReturns(tenantId, connectionId, payloadJson, correlationId, cancellationToken);
         if (string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase))
             return await SyncN11Returns(tenantId, connectionId, payloadJson, correlationId, cancellationToken);
+        if (string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase))
+            return await SyncPazaramaReturns(tenantId, connectionId, payloadJson, correlationId, cancellationToken);
 
         var cursor = await Cursor(tenantId, connectionId, "RETURNS", cancellationToken);
         var configuredOverlapSeconds = await db.ConnectionSyncPolicies.AsNoTracking()
@@ -8106,6 +8108,101 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
     // n11 lists claims by request date only, so every run re-reads a fixed request window to
     // pick up later status changes (approval, denial, refund) of recent claims.
+    private const int PazaramaReturnLookbackDays = 45;
+    private const int PazaramaReturnInitialLookbackDays = 90;
+    private const int PazaramaReturnWindowDays = 28;
+
+    // Pazarama lists refunds by request date in windows of at most a month. Every refund names the order
+    // (orderNumber) and the product (productCode = barcode); the order line is found among the stored lines.
+    private async Task<bool> SyncPazaramaReturns(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    {
+        var cursor = await Cursor(tenantId, connectionId, "RETURNS", cancellationToken);
+        var now = timeProvider.GetUtcNow();
+        var full = ReadBoolean(payloadJson, "forceFull") || cursor.LastSuccessAt is null;
+        var from = now.AddDays(-(full ? PazaramaReturnInitialLookbackDays : PazaramaReturnLookbackDays));
+        var productSnapshots = new Dictionary<string, string?>(StringComparer.Ordinal);
+        for (var windowStart = from; windowStart < now && !cancellationToken.IsCancellationRequested; windowStart = windowStart.AddDays(PazaramaReturnWindowDays))
+        {
+            var windowEnd = windowStart.AddDays(PazaramaReturnWindowDays) < now ? windowStart.AddDays(PazaramaReturnWindowDays) : now;
+            var window = new ReturnPollWindow(windowStart, windowEnd);
+            var page = 1;
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                TrackRequest();
+                var result = await returns.PollAsync(Context(tenantId, connectionId, correlationId, $"pazarama-return-sync:{windowStart:yyyyMMdd}:{page}"), window, new(page.ToString(CultureInfo.InvariantCulture), 100), cancellationToken);
+                if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
+                foreach (var claim in result.Value!.Items)
+                {
+                    TrackReceived();
+                    var resolved = await ResolvePazaramaReturnOrderLinesAsync(tenantId, connectionId, correlationId, claim, cancellationToken);
+                    await UpsertReturn(tenantId, connectionId, correlationId, resolved, productSnapshots, cancellationToken);
+                }
+                if (!result.Value.HasMore) break;
+                page = int.TryParse(result.Value.NextCursor, NumberStyles.None, CultureInfo.InvariantCulture, out var next) && next > page ? next : page + 1;
+            }
+        }
+        cursor.OpaqueCursor = null;
+        cursor.LastModifiedWatermark = now;
+        cursor.LastSuccessAt = timeProvider.GetUtcNow();
+        cursor.Version++;
+        await db.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    private async Task<RemoteReturnClaim> ResolvePazaramaReturnOrderLinesAsync(Guid tenantId, Guid connectionId, string correlationId, RemoteReturnClaim claim, CancellationToken cancellationToken)
+    {
+        string? barcode = null, stockCode = null;
+        try
+        {
+            using var raw = JsonDocument.Parse(claim.RawJson);
+            barcode = raw.RootElement.TryGetProperty("productCode", out var code) && code.ValueKind == JsonValueKind.String ? code.GetString()?.Trim() : null;
+            stockCode = raw.RootElement.TryGetProperty("productStockCode", out var stock) && stock.ValueKind == JsonValueKind.String ? stock.GetString()?.Trim() : null;
+        }
+        catch (JsonException) { }
+        var issueKey = $"pazarama-return-line:{connectionId:N}:{claim.ExternalClaimId}";
+        if (string.IsNullOrWhiteSpace(barcode) && string.IsNullOrWhiteSpace(stockCode))
+        {
+            await RecordIssue(tenantId, issueKey, "PAZARAMA_RETURN_LINE_UNMATCHED", $"Pazarama iade talebi {claim.ExternalClaimId} için ürün barkodu gelmedi; sipariş satırı eşlenemedi.", cancellationToken);
+            return claim;
+        }
+
+        var orderId = await db.Orders.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && (x.ExternalOrderId == claim.ExternalOrderId || x.OrderNumber == claim.ExternalOrderId))
+            .Select(x => (Guid?)x.Id)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (orderId is null)
+        {
+            TrackRequest();
+            var order = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"pazarama-return-order:{claim.ExternalOrderId}"), claim.ExternalOrderId, cancellationToken);
+            if (!order.IsSuccess) return claim;
+            TrackReceived();
+            await UpsertOrder(tenantId, connectionId, order.Value!, cancellationToken);
+            orderId = await db.Orders.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && (x.ExternalOrderId == claim.ExternalOrderId || x.OrderNumber == claim.ExternalOrderId))
+                .Select(x => (Guid?)x.Id)
+                .SingleOrDefaultAsync(cancellationToken);
+            if (orderId is null) return claim;
+        }
+
+        var lines = await db.OrderLines.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.OrderId == orderId.Value)
+            .Select(x => new { x.ExternalLineId, x.Barcode, x.Sku })
+            .ToListAsync(cancellationToken);
+        var matches = lines.Where(line => !string.IsNullOrWhiteSpace(barcode) && string.Equals(line.Barcode?.Trim(), barcode.Trim(), StringComparison.OrdinalIgnoreCase)).Select(line => line.ExternalLineId).ToList();
+        if (matches.Count == 0 && !string.IsNullOrWhiteSpace(stockCode))
+            matches = lines.Where(line => string.Equals(line.Sku?.Trim(), stockCode.Trim(), StringComparison.OrdinalIgnoreCase)).Select(line => line.ExternalLineId).ToList();
+        if (matches.Count == 0)
+        {
+            await RecordIssue(tenantId, issueKey, "PAZARAMA_RETURN_LINE_UNMATCHED", $"Pazarama iade talebi {claim.ExternalClaimId} (barkod {barcode ?? stockCode}) siparişteki hiçbir satırla eşleşmedi; iade satırı bağlanamadı.", cancellationToken);
+            return claim;
+        }
+        await ResolveIssue(tenantId, issueKey, cancellationToken);
+        return claim with
+        {
+            Lines = claim.Lines.Select(line => line with { ExternalOrderLineId = matches[0], AlternateExternalOrderLineIds = matches.Skip(1).ToList() }).ToList()
+        };
+    }
+
     private const int N11ReturnLookbackDays = 45;
     private const int N11ReturnInitialLookbackDays = 90;
 
