@@ -358,3 +358,12 @@
     font-size: 14px; font-weight: 600; line-height: 1.2; white-space: nowrap;
   }
 }
+
+/* Mapping heading on phones: the (disabled) platform import is hidden; the backup actions are two
+   equal dark buttons side by side, same structure as the other pages. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .mapping-header-tools { display: block; width: 100%; }
+  .app-shell.stitch-shell main .mapping-header-tools > .structure-header-button:disabled { display: none; }
+  .app-shell.stitch-shell main .mapping-reference-heading-actions > span { display: none; }
+  .app-shell.stitch-shell main .mapping-reference-heading-actions { width: 100%; justify-items: stretch; }
+}

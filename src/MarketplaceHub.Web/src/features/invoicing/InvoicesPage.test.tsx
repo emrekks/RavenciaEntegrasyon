@@ -88,7 +88,7 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     expect(addresses.textContent).toContain('İlçe: Keçiören')
     expect(addresses.textContent).toContain('İl: Ankara')
     expect(addresses.textContent).toContain('Posta kodu: 06000')
-    expect(button('Manuel Fatura Belgesi Ekle')).toBeTruthy()
+    expect(container.textContent).not.toContain('Manuel Fatura Belgesi Ekle')
     expect(button('Siparişi Gizle')).toBeTruthy()
   })
 
