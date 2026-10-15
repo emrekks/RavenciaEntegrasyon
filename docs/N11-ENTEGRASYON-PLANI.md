@@ -305,10 +305,10 @@ Trendyol'daki genel iş adları korunur. Okuma senkronları `ForPlatform` ile N1
 | `N11_ORDER_STATUS_SYNC` | N11'e özel | 3 dk (`ORDER_LIFECYCLE`), açık paketler |
 | `N11_RETURN_SYNC` | N11'e özel | 3 dk (`RETURNS`) |
 | `MARKETPLACE_QUESTION_SYNC` | Ortak | N11 için **2 dk** (liste sınırı 1/dk) |
-| `TRENDYOL_PRICE_INVENTORY_SYNC`, `STOCK_PROJECTION_DISPATCH`, `TRENDYOL_STOCK_RECONCILIATION` | Ortak | Mevcut zamanlama |
-| `TRENDYOL_PRODUCT_CREATE`, `_UPDATE`, `_ARCHIVE`, `_APPROVAL_RECONCILE` | Ortak | Mevcut |
-| `TRENDYOL_SHIPMENT_ACTION`, `TRENDYOL_RETURN_ACTION`, `INVOICE_MARKETPLACE_DELIVERY` | Ortak | Kullanıcı aksiyonuyla |
-| `TRENDYOL_ORDER_RECONCILIATION` (kısa/orta/günlük) | Ortak | Mevcut |
+| `PRICE_INVENTORY_SYNC`, `STOCK_PROJECTION_DISPATCH`, `STOCK_RECONCILIATION` | Ortak | Mevcut zamanlama |
+| `PRODUCT_CREATE`, `_UPDATE`, `_ARCHIVE`, `_APPROVAL_RECONCILE` | Ortak | Mevcut |
+| `SHIPMENT_ACTION`, `RETURN_ACTION`, `INVOICE_MARKETPLACE_DELIVERY` | Ortak | Kullanıcı aksiyonuyla |
+| `ORDER_RECONCILIATION` (kısa/orta/günlük) | Ortak | Mevcut |
 
 Görev (task) sorgusu Trendyol toplu gönderim takibi gibi çalışır:
 

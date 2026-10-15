@@ -8,11 +8,11 @@ namespace MarketplaceHub.Application.Tests;
 public sealed class N11PolishTests
 {
     [Theory]
-    [InlineData("TRENDYOL_PRICE_INVENTORY_SYNC", "N11", "N11")]
+    [InlineData("PRICE_INVENTORY_SYNC", "N11", "N11")]
     [InlineData("SHIPMENT_ACTION", "N11", "N11")]
     [InlineData("MARKETPLACE_QUESTION_SYNC", "N11", "N11")]
-    [InlineData("TRENDYOL_PRICE_INVENTORY_SYNC", "TRENDYOL", "Trendyol")]
-    [InlineData("TRENDYOL_PRICE_INVENTORY_SYNC", null, "Trendyol")]
+    [InlineData("PRICE_INVENTORY_SYNC", "TRENDYOL", "Trendyol")]
+    [InlineData("PRICE_INVENTORY_SYNC", null, "Ravencia")]
     [InlineData("HEPSIBURADA_ORDER_SYNC", "HEPSIBURADA", "Hepsiburada")]
     [InlineData("N11_ORDER_SYNC", null, "N11")]
     [InlineData("TRENDYOL_EFATURAM_INVOICE", "N11", "Trendyol e-Faturam")]

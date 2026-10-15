@@ -232,7 +232,7 @@ public sealed class PazaramaAdapterTests
         Assert.False(MarketplaceInvoiceCreationPolicy.IsEnabled("PAZARAMA", """{"ExternalWritesEnabled":false,"InvoiceCreationEnabled":true}"""));
         Assert.Equal("isortagim.pazarama.com", CapabilityEvidencePolicy.OfficialDocumentationHost("PAZARAMA"));
         Assert.Equal("Pazarama", JobOperationsService.Marketplace("PAZARAMA_CONNECTION_TEST"));
-        Assert.Equal("Pazarama", JobOperationsService.Marketplace("TRENDYOL_PRICE_INVENTORY_SYNC", "PAZARAMA"));
+        Assert.Equal("Pazarama", JobOperationsService.Marketplace("PRICE_INVENTORY_SYNC", "PAZARAMA"));
     }
 
     private static PazaramaHttpClient Client(bool globalWrites) => new(

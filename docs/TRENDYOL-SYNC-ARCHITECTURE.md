@@ -18,12 +18,12 @@ Bu belge, Trendyol odaklı entegrasyon gereksinimlerinin Ravencia’daki uygulan
 | Akış | Job/resource | Varsayılan aralık | Öncelik |
 | --- | --- | ---: | ---: |
 | Sipariş hot akışı | `TRENDYOL_ORDER_SYNC` / `ORDERS_HOT` | 60 sn | 0 |
-| İade hot akışı | `TRENDYOL_RETURN_SYNC` / `RETURNS` | 3 dk | 2 |
-| Açık sipariş lifecycle | `TRENDYOL_ORDER_STATUS_SYNC` | 3 dk | 0 |
-| Açık iade lifecycle | `TRENDYOL_RETURN_STATUS_SYNC` | 3 dk | 2 |
+| İade hot akışı | `RETURN_SYNC` / `RETURNS` | 3 dk | 2 |
+| Açık sipariş lifecycle | `ORDER_STATUS_SYNC` | 3 dk | 0 |
+| Açık iade lifecycle | `RETURN_STATUS_SYNC` | 3 dk | 2 |
 | Sipariş recovery | `TRENDYOL_ORDER_RECOVERY_SYNC` | 15 dk | 6 |
 | Günlük/kısa/orta uzlaştırma | ilgili reconciliation job’ı | 15 dk–24 sa | 4 |
-| Fatura durumu uzlaştırma | `TRENDYOL_ORDER_INVOICE_RECONCILIATION` | 15 dk, 20 sipariş/tur | 3 |
+| Fatura durumu uzlaştırma | `ORDER_INVOICE_RECONCILIATION` | 15 dk, 20 sipariş/tur | 3 |
 
 İşletim ekranındaki sync policy kayıtları tüm bu resource türlerinin aralığını, overlap’ini, son denemesini, son başarısını, istek/kayıt/hata/retry sayaçlarını ve `HEALTHY`, `DELAYED`, `DEGRADED`, `OFFLINE` durumunu gösterir.
 

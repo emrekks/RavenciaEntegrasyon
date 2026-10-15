@@ -8,10 +8,10 @@ public sealed class IntegrationJobMetadataPolicyTests
 {
     [Theory]
     [InlineData("TRENDYOL_ORDER_SYNC", "orders")]
-    [InlineData("TRENDYOL_RETURN_RECONCILIATION", "returns")]
-    [InlineData("TRENDYOL_PRICE_INVENTORY_SYNC", "inventory")]
+    [InlineData("RETURN_RECONCILIATION", "returns")]
+    [InlineData("PRICE_INVENTORY_SYNC", "inventory")]
     [InlineData("INVOICE_RECONCILE", "invoices")]
-    [InlineData("TRENDYOL_PRODUCT_UPDATE", "products")]
+    [InlineData("PRODUCT_UPDATE", "products")]
     [InlineData("HEPSIBURADA_REFERENCE_SYNC", "connections")]
     [InlineData("EFATURAM_CONNECTION_TEST", "connections")]
     public void Known_job_types_have_explicit_resource(string jobType, string resource)

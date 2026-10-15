@@ -4,7 +4,7 @@ import { activeProductSyncJobs, isActiveProductSyncJob, productSyncJobsFinished 
 describe('product sync tracking', () => {
   it('tracks pending, leased, and retry-scheduled catalog imports', () => {
     for (const status of ['PENDING', 'LEASED', 'RETRY_SCHEDULED']) {
-      expect(isActiveProductSyncJob({ jobType: 'TRENDYOL_PRODUCT_SYNC', status })).toBe(true)
+      expect(isActiveProductSyncJob({ jobType: 'PRODUCT_SYNC', status })).toBe(true)
     }
   })
 
@@ -15,10 +15,10 @@ describe('product sync tracking', () => {
 
   it('does not treat completed or unrelated jobs as active product imports', () => {
     const jobs = [
-      { id: 'done', jobType: 'TRENDYOL_PRODUCT_SYNC', status: 'SUCCEEDED' },
+      { id: 'done', jobType: 'PRODUCT_SYNC', status: 'SUCCEEDED' },
       { id: 'blocked', jobType: 'SHOPIFY_PRODUCT_SYNC', status: 'BLOCKED' },
       { id: 'other', jobType: 'TRENDYOL_ORDER_SYNC', status: 'PENDING' },
-      { id: 'active', jobType: 'TRENDYOL_PRODUCT_SYNC', status: 'LEASED' }
+      { id: 'active', jobType: 'PRODUCT_SYNC', status: 'LEASED' }
     ]
 
     expect(activeProductSyncJobs(jobs).map(job => job.id)).toEqual(['active'])
@@ -27,7 +27,7 @@ describe('product sync tracking', () => {
   it('waits for every queued product import to become terminal before refreshing', () => {
     const jobs = [
       { id: 'one', jobType: 'HEPSIBURADA_PRODUCT_SYNC', status: 'SUCCEEDED' },
-      { id: 'two', jobType: 'TRENDYOL_PRODUCT_SYNC', status: 'LEASED' }
+      { id: 'two', jobType: 'PRODUCT_SYNC', status: 'LEASED' }
     ]
 
     expect(productSyncJobsFinished(['one', 'two'], jobs)).toBe(false)

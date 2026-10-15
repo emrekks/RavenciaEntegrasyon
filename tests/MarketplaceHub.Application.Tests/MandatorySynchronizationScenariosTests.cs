@@ -255,7 +255,7 @@ public sealed class MandatorySynchronizationScenariosTests
     [Fact]
     public void Scenario14_ManualMarketplaceUpdate_UsesExplicitQueueType()
     {
-        Assert.Equal("TRENDYOL_PRODUCT_UPDATE", MarketplaceJobTypes.ProductUpdate);
+        Assert.Equal("PRODUCT_UPDATE", MarketplaceJobTypes.ProductUpdate);
         Assert.NotEqual(MarketplaceJobTypes.ProductUpdate, MarketplaceJobTypes.ProductSync);
     }
 
@@ -312,18 +312,18 @@ public sealed class MandatorySynchronizationScenariosTests
     [Fact]
     public void ProductImportConcurrencyPolicy_RejectsModeCollisions()
     {
-        Assert.True(ProductImportConcurrencyPolicy.RejectsModeCollision("TRENDYOL_PRODUCT_SYNC", "TRENDYOL_PRODUCT_SYNC"));
+        Assert.True(ProductImportConcurrencyPolicy.RejectsModeCollision("PRODUCT_SYNC", "PRODUCT_SYNC"));
         Assert.True(ProductImportConcurrencyPolicy.RejectsModeCollision("SHOPIFY_PRODUCT_SYNC", "SHOPIFY_PRODUCT_SYNC"));
         Assert.True(ProductImportConcurrencyPolicy.RejectsModeCollision("HEPSIBURADA_PRODUCT_SYNC", "HEPSIBURADA_PRODUCT_SYNC"));
-        Assert.False(ProductImportConcurrencyPolicy.RejectsModeCollision("TRENDYOL_ORDER_SYNC", "TRENDYOL_PRODUCT_SYNC"));
+        Assert.False(ProductImportConcurrencyPolicy.RejectsModeCollision("TRENDYOL_ORDER_SYNC", "PRODUCT_SYNC"));
     }
 
     [Fact]
     public void DistributedSyncLock_UsesSeparateResourceGroupsPerConnection()
     {
         Assert.Equal("orders", MarketplaceSyncExecutionLock.GroupFor("TRENDYOL_ORDER_SYNC"));
-        Assert.Equal("shipment-actions", MarketplaceSyncExecutionLock.GroupFor("TRENDYOL_SHIPMENT_ACTION"));
-        Assert.Equal("returns", MarketplaceSyncExecutionLock.GroupFor("TRENDYOL_RETURN_SYNC"));
-        Assert.NotEqual(MarketplaceSyncExecutionLock.GroupFor("TRENDYOL_ORDER_SYNC"), MarketplaceSyncExecutionLock.GroupFor("TRENDYOL_RETURN_SYNC"));
+        Assert.Equal("shipment-actions", MarketplaceSyncExecutionLock.GroupFor("SHIPMENT_ACTION"));
+        Assert.Equal("returns", MarketplaceSyncExecutionLock.GroupFor("RETURN_SYNC"));
+        Assert.NotEqual(MarketplaceSyncExecutionLock.GroupFor("TRENDYOL_ORDER_SYNC"), MarketplaceSyncExecutionLock.GroupFor("RETURN_SYNC"));
     }
 }

@@ -201,7 +201,7 @@ Okuma işleri Pazarama'ya özel adlarla (`ForPlatform`), yazma işleri ortak tip
 | `PAZARAMA_ORDER_STATUS_SYNC` | Özel | 3 dk (`ORDER_LIFECYCLE`): açık siparişler numarayla (sipariş tarihi filtresi durum değişikliğini yakalamaz) |
 | `PAZARAMA_RETURN_SYNC` | Özel | 3 dk (`RETURNS`) + iptal talepleri |
 | `MARKETPLACE_QUESTION_SYNC` | Ortak | 2 dk |
-| `TRENDYOL_PRICE_INVENTORY_SYNC`, `STOCK_PROJECTION_DISPATCH`, stok uzlaştırma | Ortak | Mevcut |
+| `PRICE_INVENTORY_SYNC`, `STOCK_PROJECTION_DISPATCH`, stok uzlaştırma | Ortak | Mevcut |
 | Ürün açma / onay takibi / arşiv (satışa kapat) | Ortak | Mevcut |
 | Paket aksiyonu, iade aksiyonu, fatura iletimi | Ortak | Kullanıcı aksiyonuyla |
 

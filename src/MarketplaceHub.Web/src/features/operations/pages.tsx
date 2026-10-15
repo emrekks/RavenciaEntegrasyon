@@ -99,13 +99,13 @@ function jobPresentation(jobType: string): JobPresentation {
     return { title: `${platform} kategori ve eşleştirme verisi`, icon: 'product', description: `${platform} kategori, özellik ve eşleştirme referansları salt okunur olarak yenilenir; platforma ürün veya başka veri gönderilmez.` }
   }
   if (type === 'STOCK_PROJECTION_DISPATCH') return { title: 'Stok Gönderim Hazırlığı', icon: 'price', description: 'Yerel stok değişikliği gönderim kuyruğuna aktarılır. Dış yazma kapalıysa pazaryerine değişiklik gönderilmez; başarılı durumu yalnızca bu hazırlık adımının işlendiğini gösterir.' }
-  if (type === 'TRENDYOL_STOCK_RECONCILIATION') return { title: 'Stok Uzlaştırma', icon: 'price', description: 'Yerel stok projection kayıtları kontrol edilir. Bu tarama tek başına pazaryerine stok gönderildiği anlamına gelmez.' }
-  if (type === 'TRENDYOL_PRICE_INVENTORY_SYNC') return { title: 'Fiyat ve Stok Gönderimi', icon: 'price', description: 'Fiyat veya stok bilgisi Trendyol’a gönderilir. Dış yazma kapalıysa yeni gönderim engellenir.' }
+  if (type === 'STOCK_RECONCILIATION') return { title: 'Stok Uzlaştırma', icon: 'price', description: 'Yerel stok projection kayıtları kontrol edilir. Bu tarama tek başına pazaryerine stok gönderildiği anlamına gelmez.' }
+  if (type === 'PRICE_INVENTORY_SYNC') return { title: 'Fiyat ve Stok Gönderimi', icon: 'price', description: 'Fiyat veya stok bilgisi Trendyol’a gönderilir. Dış yazma kapalıysa yeni gönderim engellenir.' }
   if (type.includes('PRICE') || type.includes('INVENTORY') || type.includes('STOCK')) return { title: 'Fiyat ve Stok İşlemi', icon: 'price', description: 'Fiyat veya stokla ilgili arka plan işlemi yürütülür; ayrıntılar için kaydı açabilirsiniz.' }
-  if (type === 'TRENDYOL_ORDER_STATUS_SYNC') return { title: 'Sipariş Durum Kontrolü', icon: 'order', description: 'Açık siparişlerin paket ve taşıma durumları kontrol edilerek yerel kayıtlar güncellenir.' }
+  if (type === 'ORDER_STATUS_SYNC') return { title: 'Sipariş Durum Kontrolü', icon: 'order', description: 'Açık siparişlerin paket ve taşıma durumları kontrol edilerek yerel kayıtlar güncellenir.' }
   if (type === 'TRENDYOL_ORDER_CARGO_INFO_RECONCILIATION') return { title: 'Trendyol Kargo Bilgisi Kontrolü', icon: 'order', description: 'Teslim edilmiş paketlerin eksik kargo bilgileri ayrı, salt okunur bir taramada yenilenir.' }
-  if (type === 'TRENDYOL_ORDER_RECONCILIATION') return { title: 'Sipariş Mutabakatı', icon: 'order', description: 'Yerel siparişlerle Trendyol kayıtları karşılaştırılır; eksik veya farklı durumlar düzeltilir.' }
-  if (type === 'TRENDYOL_ORDER_INVOICE_RECONCILIATION') return { title: 'Paket Fatura Durum Kontrolü', icon: 'invoice', description: 'Trendyol’daki açık paketlerin fatura durumu okunur ve yerel pakete işlenir. Yeni fatura oluşturmaz.' }
+  if (type === 'ORDER_RECONCILIATION') return { title: 'Sipariş Mutabakatı', icon: 'order', description: 'Yerel siparişlerle Trendyol kayıtları karşılaştırılır; eksik veya farklı durumlar düzeltilir.' }
+  if (type === 'ORDER_INVOICE_RECONCILIATION') return { title: 'Paket Fatura Durum Kontrolü', icon: 'invoice', description: 'Trendyol’daki açık paketlerin fatura durumu okunur ve yerel pakete işlenir. Yeni fatura oluşturmaz.' }
   if (type === 'TRENDYOL_ORDER_RECOVERY_SYNC') return { title: 'Sipariş Geçmişi Taraması', icon: 'order', description: 'Erişilebilen sipariş geçmişi taranarak eksik yerel sipariş kayıtları tamamlanır.' }
   if (type === 'TRENDYOL_ORDER_SYNC') return { title: 'Yeni Sipariş Senkronizasyonu', icon: 'order', description: 'Trendyol’daki yeni ve değişen siparişler güvenli aralıklarla sisteme alınır.' }
   if (type === 'HEPSIBURADA_ORDER_SYNC') return { title: 'Hepsiburada Sipariş İşlemi', icon: 'order', description: 'Hepsiburada sipariş bilgileri güvenli biçimde panele aktarılır.' }
@@ -127,6 +127,7 @@ function jobSource(jobType: string, marketplace?: string) {
   if (type.includes('EFATURAM')) return 'e-Faturam API'
   if (marketplace === 'N11') return 'N11 API'
   if (marketplace === 'Pazarama') return 'Pazarama API'
+  if (marketplace === 'Trendyol') return 'Trendyol API'
   if (type.startsWith('HEPSIBURADA_')) return 'Hepsiburada API'
   if (type.startsWith('N11_')) return 'N11 API'
   if (type.startsWith('PAZARAMA_')) return 'Pazarama API'
@@ -140,13 +141,13 @@ function fallbackJobChange(job: JobSummary): JobChange {
   if (type === 'MARKETPLACE_QUESTION_SYNC') return marketplaceQuestionSyncChange
   if (type === 'CATALOG_STRUCTURE_IMPORT') return catalogStructureImportChange
   if (type === 'STOCK_PROJECTION_DISPATCH') return { label: 'İşlem türü', value: 'Stok gönderim hazırlığı', detail: 'Bu adım dış API’ye yazmaz. Dış yazma açıksa ayrı bir fiyat-stok gönderim işi oluşturur.' }
-  if (type === 'TRENDYOL_STOCK_RECONCILIATION') return { label: 'İşlem türü', value: 'Stok uzlaştırma taraması', detail: 'Bu kayıt tek başına pazaryerine stok gönderildiği anlamına gelmez.' }
-  if (type === 'TRENDYOL_PRICE_INVENTORY_SYNC') return { label: 'İşlem türü', value: 'Fiyat ve stok gönderimi', detail: 'Dış yazma kapalıysa Trendyol’a yeni gönderim yapılmaz.' }
+  if (type === 'STOCK_RECONCILIATION') return { label: 'İşlem türü', value: 'Stok uzlaştırma taraması', detail: 'Bu kayıt tek başına pazaryerine stok gönderildiği anlamına gelmez.' }
+  if (type === 'PRICE_INVENTORY_SYNC') return { label: 'İşlem türü', value: 'Fiyat ve stok gönderimi', detail: 'Dış yazma kapalıysa Trendyol’a yeni gönderim yapılmaz.' }
   if (type.includes('SHIPMENT_ACTION')) return { label: 'Yapılan değişiklik', value: 'Paket işlemi', detail: 'Paket işlemi Trendyol’a gönderildi.' }
-  if (type === 'TRENDYOL_ORDER_STATUS_SYNC') return { label: 'Tarama türü', value: 'Sipariş durum taraması', detail: 'Açık siparişlerin paket ve taşıma durumları kontrol edilerek yerel durum güncellenir.' }
+  if (type === 'ORDER_STATUS_SYNC') return { label: 'Tarama türü', value: 'Sipariş durum taraması', detail: 'Açık siparişlerin paket ve taşıma durumları kontrol edilerek yerel durum güncellenir.' }
   if (type === 'TRENDYOL_ORDER_CARGO_INFO_RECONCILIATION') return { label: 'Tarama türü', value: 'Trendyol kargo bilgisi taraması', detail: 'Teslim edilmiş paketlerin kargo bilgileri ayrı, salt okunur bir taramada yenilenir.' }
-  if (type === 'TRENDYOL_ORDER_RECONCILIATION') return { label: 'Tarama türü', value: 'Kapsamlı sipariş taraması', detail: 'Yerel siparişler ile pazaryeri kayıtları karşılaştırılır; durum ve paket farklılıkları düzeltilir.' }
-  if (type === 'TRENDYOL_ORDER_INVOICE_RECONCILIATION') return { label: 'Tarama türü', value: 'Paket fatura taraması', detail: 'Teslim edilmiş ve açık paketlerin pazaryeri fatura durumu kontrol edilir.' }
+  if (type === 'ORDER_RECONCILIATION') return { label: 'Tarama türü', value: 'Kapsamlı sipariş taraması', detail: 'Yerel siparişler ile pazaryeri kayıtları karşılaştırılır; durum ve paket farklılıkları düzeltilir.' }
+  if (type === 'ORDER_INVOICE_RECONCILIATION') return { label: 'Tarama türü', value: 'Paket fatura taraması', detail: 'Teslim edilmiş ve açık paketlerin pazaryeri fatura durumu kontrol edilir.' }
   if (type === 'TRENDYOL_ORDER_RECOVERY_SYNC') return { label: 'Tarama türü', value: 'Tam sipariş taraması', detail: 'Erişilebilen sipariş pencereleri taranarak eksik yerel kayıtlar tamamlanır.' }
   if (type === 'TRENDYOL_ORDER_SYNC') return { label: 'Yapılan değişiklik', value: 'Sipariş senkronizasyonu', detail: 'Sipariş bilgileri pazaryerinden eşitlendi.' }
   if (type.includes('REFERENCE_SYNC')) return { label: 'Yapılan işlem', value: type.startsWith('HEPSIBURADA_') ? 'Hepsiburada kategori ve eşleştirme verisi' : type.startsWith('N11_') ? 'N11 kategori ve eşleştirme verisi' : type.startsWith('PAZARAMA_') ? 'Pazarama kategori, özellik ve marka verisi' : 'Trendyol kategori ve eşleştirme verisi', detail: 'Kategori, özellik ve eşleştirme referansları salt okunur yenilendi; dış platforma veri gönderilmedi.' }

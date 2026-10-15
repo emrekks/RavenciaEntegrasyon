@@ -4,7 +4,7 @@ export type ProductSyncJobStatus = {
   status: string
 }
 
-const productSyncJobTypeList = ['TRENDYOL_PRODUCT_SYNC', 'SHOPIFY_PRODUCT_SYNC', 'HEPSIBURADA_PRODUCT_SYNC']
+const productSyncJobTypeList = ['PRODUCT_SYNC', 'SHOPIFY_PRODUCT_SYNC', 'HEPSIBURADA_PRODUCT_SYNC']
 const productSyncJobTypes = new Set(productSyncJobTypeList)
 // Only the newest product sync jobs are needed to follow an import, not the whole job history.
 export const productSyncJobsPath = `/jobs?jobTypes=${productSyncJobTypeList.join(',')}&limit=100`

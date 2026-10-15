@@ -852,6 +852,8 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         ? "N11"
         : string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase) && !jobType.Contains("EFATURAM", StringComparison.OrdinalIgnoreCase)
         ? "Pazarama"
+        : string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase) && !jobType.Contains("EFATURAM", StringComparison.OrdinalIgnoreCase)
+        ? "Trendyol"
         : jobType.Contains("EFATURAM", StringComparison.OrdinalIgnoreCase)
         ? "Trendyol e-Faturam"
         : jobType.Contains("HEPSIBURADA", StringComparison.OrdinalIgnoreCase)

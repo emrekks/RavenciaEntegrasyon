@@ -381,7 +381,7 @@ public static class ProductImportScanPolicy
 public static class ProductImportConcurrencyPolicy
 {
     public static bool IsProductImportJob(string jobType) =>
-        string.Equals(jobType, "TRENDYOL_PRODUCT_SYNC", StringComparison.OrdinalIgnoreCase)
+        string.Equals(jobType, "PRODUCT_SYNC", StringComparison.OrdinalIgnoreCase)
         || string.Equals(jobType, "SHOPIFY_PRODUCT_SYNC", StringComparison.OrdinalIgnoreCase)
         || string.Equals(jobType, "HEPSIBURADA_PRODUCT_SYNC", StringComparison.OrdinalIgnoreCase)
         || string.Equals(jobType, "CATALOG_STRUCTURE_IMPORT", StringComparison.OrdinalIgnoreCase);
