@@ -1,0 +1,75 @@
+/* Back link of the product pages: a quiet text link with a round arrow, no filled pill. */
+.app-shell.stitch-shell main .product-heading-back {
+  min-height: 32px;
+  gap: 10px;
+  padding: 0 4px 0 0;
+  color: var(--rv-color-muted);
+  background: none;
+  border: 0;
+  border-radius: 0;
+  font-size: var(--rv-font-size-sm);
+  font-weight: 600;
+  text-transform: none;
+}
+.app-shell.stitch-shell main .product-heading-back .ui-icon {
+  box-sizing: border-box;
+  width: 28px;
+  height: 28px;
+  padding: 6px;
+  color: var(--rv-color-ink);
+  border: 1px solid var(--rv-color-border-strong);
+  border-radius: 50%;
+  transition: transform var(--rv-duration-fast) var(--rv-ease-standard), background-color var(--rv-duration-fast) var(--rv-ease-standard), border-color var(--rv-duration-fast) var(--rv-ease-standard);
+}
+.app-shell.stitch-shell main .product-heading-back:hover,
+.app-shell.stitch-shell main .product-heading-back:focus-visible {
+  color: var(--rv-color-ink);
+  background: none;
+  border: 0;
+}
+.app-shell.stitch-shell main .product-heading-back:hover .ui-icon,
+.app-shell.stitch-shell main .product-heading-back:focus-visible .ui-icon {
+  background: var(--rv-color-primary-soft);
+  border-color: var(--rv-color-primary);
+  transform: translateX(-2px);
+}
+
+/* The publish bar follows the page while the platform cards are on screen and settles into its own place
+   once the end of the list is reached. */
+.product-publish-step .publish-selection-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: var(--rv-z-sticky);
+  box-shadow: 0 -8px 24px rgb(0 0 0 / 28%);
+}
+
+
+/* Variant table toolbar: both actions stay on one line. */
+.app-shell.stitch-shell main .variant-table-toolbar { flex-wrap: wrap; }
+.app-shell.stitch-shell main .variant-table-toolbar-actions { flex-wrap: nowrap; margin-left: auto; }
+.app-shell.stitch-shell main .variant-table-toolbar-actions > button { white-space: nowrap; }
+@media (max-width: 640px) { .app-shell.stitch-shell main .variant-table-toolbar-actions { flex-wrap: wrap; margin-left: 0; } }
+
+/* Marketplace pricing: a disclosure with the title on top and the channels opening right below it. */
+.app-shell.stitch-shell main .marketplace-pricing-open { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; justify-items: start; gap: 6px; padding: 14px 16px; text-align: left; }
+.app-shell.stitch-shell main .marketplace-pricing-open-title { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 10px; }
+.app-shell.stitch-shell main .marketplace-pricing-open-title strong { font-size: 14px; font-weight: 700; }
+.app-shell.stitch-shell main .marketplace-pricing-open-title .ui-icon { flex: none; color: var(--rv-color-muted); transition: transform .15s ease; }
+.app-shell.stitch-shell main .marketplace-pricing-open.is-open .marketplace-pricing-open-title .ui-icon { transform: rotate(180deg); }
+.app-shell.stitch-shell main .marketplace-pricing-open > small { color: var(--rv-color-muted); font-size: 12px; font-weight: 400; line-height: 1.45; }
+.app-shell.stitch-shell main .marketplace-pricing-open-count { display: inline-flex; margin-top: 4px; padding: 2px 8px; color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border-radius: 6px; font-size: 12px; font-weight: 600; }
+.app-shell.stitch-shell main .marketplace-pricing-open.is-open { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.app-shell.stitch-shell main .marketplace-pricing-inline { padding: 12px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-top: 0; border-radius: 0 0 var(--rv-radius-md) var(--rv-radius-md); }
+.app-shell.stitch-shell main .marketplace-pricing-inline .marketplace-pricing-bar-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.app-shell.stitch-shell main .marketplace-pricing-inline .marketplace-pricing-bar { min-width: 0; margin: 0; }
+.app-shell.stitch-shell main .marketplace-pricing-inline .marketplace-pricing-bar-heading { flex-wrap: wrap; }
+.app-shell.stitch-shell main .marketplace-pricing-inline .marketplace-pricing-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+
+/* Quick edit variants: option values as labelled pairs, the stock code underneath. */
+.app-shell.stitch-shell .quick-edit-variant-label { display: grid; min-width: 0; gap: 4px; }
+.app-shell.stitch-shell .quick-edit-variant-options { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.app-shell.stitch-shell .quick-edit-variant-option { display: inline-flex; align-items: baseline; gap: 6px; }
+.app-shell.stitch-shell .quick-edit-variant-option small { color: var(--rv-color-muted); font-size: 12px; font-weight: 500; }
+.app-shell.stitch-shell .quick-edit-variant-option strong { color: var(--rv-color-ink); font-size: 15px; font-weight: 700; }
+.app-shell.stitch-shell .quick-edit-variant-sku { color: var(--rv-color-muted); font-family: var(--rv-font-mono, ui-monospace, monospace); font-size: 12px; }

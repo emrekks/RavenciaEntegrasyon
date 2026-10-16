@@ -55,7 +55,7 @@ function NotificationItem({ notification, expanded, onToggle, onOpen }: ItemProp
     <div className="rv-notification-history-copy">
       <div className="rv-notification-history-top">
         <strong>{presentation.title}</strong>
-        <time dateTime={notification.createdAt} title={new Date(notification.createdAt).toLocaleString('tr-TR')}>{relativeTime(notification.createdAt)}</time>
+        {unread && <i className="rv-notification-unread-dot" aria-label="Okunmadı" />}<time dateTime={notification.createdAt} title={new Date(notification.createdAt).toLocaleString('tr-TR')}>{relativeTime(notification.createdAt)}</time>
       </div>
       <p>{presentation.summary}</p>
       {expanded && <dl className="rv-notification-detail">
@@ -64,9 +64,9 @@ function NotificationItem({ notification, expanded, onToggle, onOpen }: ItemProp
         <div><dt>Zaman</dt><dd>{new Date(notification.createdAt).toLocaleString('tr-TR')}</dd></div>
       </dl>}
       <div className="rv-notification-foot">
-        {notification.href && <button type="button" className="rv-notification-go" onClick={() => onOpen(notification.href!)}>{notification.actionLabel ?? 'Sayfaya Git'}</button>}
-        <button type="button" className="rv-notification-more" aria-expanded={expanded} onClick={onToggle}>{expanded ? 'Ayrıntıyı Gizle' : 'Ayrıntı'}</button>
-        {unread && <button type="button" className="rv-notification-mark-read" onClick={() => markNotificationRead(notification.id)} aria-label="Okundu olarak işaretle" title="Okundu olarak işaretle"><UiIcon name="circleCheck" size={18} /></button>}
+        {notification.href && <button type="button" className="rv-notification-go" onClick={() => onOpen(notification.href!)}><span>{notification.actionLabel ?? 'Sayfaya Git'}</span><UiIcon name="arrowRight" size={14} /></button>}
+        <button type="button" className="rv-notification-more" aria-expanded={expanded} onClick={onToggle}><span>{expanded ? 'Ayrıntıyı Gizle' : 'Ayrıntı'}</span><UiIcon name="chevronDown" size={14} /></button>
+        {unread && <button type="button" className="rv-notification-mark-read" onClick={() => markNotificationRead(notification.id)} title="Bu bildirimi okundu olarak işaretle"><UiIcon name="circleCheck" size={14} /><span>Okundu</span></button>}
       </div>
     </div>
   </article>

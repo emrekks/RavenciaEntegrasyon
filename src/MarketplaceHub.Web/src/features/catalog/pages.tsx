@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
+import { variantOptionParts } from './variant-option-label'
 import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import { createPortal, flushSync } from 'react-dom'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -17,6 +18,7 @@ import './marketplace-pricing.css'
 import './variant-header-menu.css'
 import './publish-platform-issues.css'
 import './products-responsive.css'
+import './catalog-polish.css'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { appendNotification } from '../../shared/notifications'
 import { toggleProductAttributeValue } from './attribute-selection'
@@ -642,7 +644,7 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
     } catch (error) { const message = error instanceof Error ? error.message : 'Toplu düzenleme tamamlanamadı.'; setNotice(`Başarısız: ${message}`); onResult?.(message, 'error') } finally { setSaving(false) }
   }
   const toggleColorGroup = (color: string) => setOpenColorGroups(current => current.includes(color) ? current.filter(item => item !== color) : [...current, color])
-  const renderVariantList = (items: typeof variants) => <div className="quick-edit-variants">{items.map(item => <div className="quick-edit-variant" key={item.variant.id}><input type="checkbox" checked={selectedSet.has(item.variant.id)} onChange={() => toggle(item.variant.id)} aria-label={`${item.variant.optionSignature || item.variant.sku} varyantını seç`} /><span><strong>{item.variant.optionSignature || 'Varyant'} · {item.variant.sku}</strong></span><QuickEditVariantControls variant={item.variant} connections={connections} onChanged={onChanged} onSelect={() => setSelectionDraft(current => current.includes(item.variant.id) ? current : [...current, item.variant.id])} /></div>)}</div>
+  const renderVariantList = (items: typeof variants) => <div className="quick-edit-variants">{items.map(item => <div className="quick-edit-variant" key={item.variant.id}><input type="checkbox" checked={selectedSet.has(item.variant.id)} onChange={() => toggle(item.variant.id)} aria-label={`${item.variant.optionSignature || item.variant.sku} varyantını seç`} /><span className="quick-edit-variant-label"><span className="quick-edit-variant-options">{variantOptionParts(item.variant.optionSignature).length ? variantOptionParts(item.variant.optionSignature).map(part => <span key={part.name} className="quick-edit-variant-option"><small>{part.name}</small><strong>{part.value}</strong></span>) : <strong>Varyant</strong>}</span><small className="quick-edit-variant-sku">Stok kodu: {item.variant.sku}</small></span><QuickEditVariantControls variant={item.variant} connections={connections} onChanged={onChanged} onSelect={() => setSelectionDraft(current => current.includes(item.variant.id) ? current : [...current, item.variant.id])} /></div>)}</div>
   return <div className="workspace-modal-backdrop product-quick-edit-backdrop" role="presentation" onMouseDown={onClose}>
     <section className="workspace-modal product-quick-edit-modal" role="dialog" aria-modal="true" aria-label={title} onMouseDown={event => event.stopPropagation()}>
       <header>
