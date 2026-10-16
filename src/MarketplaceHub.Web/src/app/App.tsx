@@ -142,15 +142,15 @@ function Shell({ me }: { me: Me }) {
   function handleSidebarMouseLeave() { if (!sidebarPinned) setSidebarHoverExpanded(false) }
   const icon = (name: UiIconName) => <span className="nav-icon-slot" aria-hidden="true"><UiIcon className="nav-icon" name={name} size={22} /></span>
   const navigationCounts = navigationSummary.data?.metrics
-  const item = (to: string, iconName: UiIconName, label: string, end = false, count?: number, showZeroCount = false, countNoun = 'bildirim') => {
+  const item = (to: string, iconName: UiIconName, label: string, end = false, count?: number, showZeroCount = false, countNoun = 'bildirim', warnWhenPositive = false) => {
     const hasCount = typeof count === 'number' && (count > 0 || showZeroCount)
     const accessibleCount = typeof count === 'number' && count > 999 ? '999 üzeri' : count?.toLocaleString('tr-TR')
     const visibleCount = typeof count === 'number' && count > 999 ? '999' : count?.toLocaleString('tr-TR')
     const accessibleLabel = hasCount ? `${label}, ${accessibleCount} ${countNoun}` : label
-    return <NavLink to={to} end={end} aria-label={accessibleLabel}>{icon(iconName)}<span className="nav-label">{label}</span>{hasCount && <span className="nav-count" aria-hidden="true" title={`${accessibleCount} ${countNoun}`}>{visibleCount}</span>}</NavLink>
+    return <NavLink to={to} end={end} aria-label={accessibleLabel}>{icon(iconName)}<span className="nav-label">{label}</span>{hasCount && <span className={`nav-count${warnWhenPositive && count! > 0 ? ' is-warn' : ''}`} aria-hidden="true" title={`${accessibleCount} ${countNoun}`}>{visibleCount}</span>}</NavLink>
   }
   const navigationGroups: Array<{ label: string; items: ReactNode[] }> = [
-    { label: 'Ana menü', items: [item('/dashboard', 'dashboard', 'Genel bakış', true), item('/products', 'products', 'Ürünler'), item('/orders', 'orders', 'Siparişler', false, orderNavigationCount(orderSummary.data)), item('/returns', 'returns', 'İadeler', false, navigationCounts?.pendingReturns), item('/invoices', 'invoice', 'Faturalar', false, invoiceWorkspaceSummary.data?.dueSoonCount, false, 'fatura süresi yaklaşıyor'), item('/questions', 'products', 'Ürün soruları', false, questionWaitingSummary.data?.totalCount), item('/integrations', 'connect', 'Entegrasyonlar'), item('/mappings/categories', 'layers', 'Eşleştirmeler'), item('/jobs', 'jobs', 'İşlem Takibi')] },
+    { label: 'Ana menü', items: [item('/dashboard', 'dashboard', 'Genel bakış', true), item('/products', 'products', 'Ürünler'), item('/orders', 'orders', 'Siparişler', false, orderNavigationCount(orderSummary.data)), item('/returns', 'returns', 'İadeler', false, navigationCounts?.pendingReturns), item('/invoices', 'invoice', 'Faturalar', false, invoiceWorkspaceSummary.data?.dueSoonCount, true, 'faturanın süresi yaklaşıyor', true), item('/questions', 'products', 'Ürün soruları', false, questionWaitingSummary.data?.totalCount, true, 'bekleyen soru'), item('/integrations', 'connect', 'Entegrasyonlar'), item('/mappings/categories', 'layers', 'Eşleştirmeler'), item('/jobs', 'jobs', 'İşlem Takibi')] },
   ]
   const navigation = <>{navigationGroups.map(group => <div className="nav-group" key={group.label}>{group.items}</div>)}</>
   const quickSearchItems: Array<{ to: string; label: string; description: string; icon: UiIconName }> = [

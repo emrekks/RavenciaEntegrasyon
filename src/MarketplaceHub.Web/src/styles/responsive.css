@@ -428,3 +428,4 @@ html body .mfs-sort-sheet [role="listbox"] > button.is-selected { color: var(--r
   .rv-auth-page :is(.rv-auth-lede, .rv-auth-kicker, .rv-auth-page-footer) { display: none; }
   .rv-auth-page .rv-auth-hero-brand { min-height: 0; margin-bottom: 8px; }
 }
+.app-shell.stitch-shell > aside .nav-count.is-warn { color: var(--rv-color-warning); background: color-mix(in srgb, var(--rv-color-warning) 14%, transparent); border-color: transparent; }
