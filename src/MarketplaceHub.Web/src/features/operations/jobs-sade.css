@@ -136,3 +136,15 @@
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-type-tooltip { top: 50%; bottom: auto; left: calc(100% + 14px); width: min(320px, 40vw); padding: 10px 12px; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: 10px; box-shadow: 0 12px 32px rgb(0 0 0 / 45%); font-size: 13px; font-weight: 400; line-height: 1.45; white-space: normal; transform: translate(-4px, -50%); }
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-type-tooltip::before { top: 50%; bottom: auto; left: -5px; border: 0; border-bottom: 1px solid var(--rv-color-border-strong); border-left: 1px solid var(--rv-color-border-strong); transform: translateY(-50%) rotate(45deg); }
 .app-shell.stitch-shell main .jobs-reference-page :is(.jobs-reference-row:hover, .jobs-reference-row:focus-visible) .jobs-reference-type-tooltip { transform: translate(0, -50%); }
+
+/* State glyphs instead of coloured dots: ink check, violet turning arc, muted clock arc, red cross, dashed circle. */
+.jb-glyph { display: block; flex: none; width: 15px; height: 15px; }
+.jb-glyph.is-success { color: var(--rv-color-ink); }
+.jb-glyph.is-running { color: color-mix(in srgb, var(--rv-color-primary) 55%, #fff); animation: jb-glyph-turn 1s linear infinite; }
+.jb-glyph.is-waiting { color: var(--rv-color-muted); }
+.jb-glyph.is-error { color: var(--rv-color-danger); }
+.jb-glyph.is-cancelled { color: var(--rv-color-subtle); }
+.jobs-reference-page .jobs-reference-status-summary .jb-glyph { width: 14px; height: 14px; }
+.jobs-reference-status-hero h3 .jb-glyph { width: 18px; height: 18px; }
+@keyframes jb-glyph-turn { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .jb-glyph.is-running { animation: none; } }

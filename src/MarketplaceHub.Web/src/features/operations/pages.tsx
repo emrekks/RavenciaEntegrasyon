@@ -81,6 +81,18 @@ function jobStatusLabel(status: JobStatus) {
   return 'İptal edildi'
 }
 
+type JobGlyphState = 'success' | 'running' | 'waiting' | 'error' | 'cancelled'
+
+// The shared state glyphs: filled check, turning arc while running, clock arc while waiting, red cross, dashed circle.
+function JobStateGlyph({ tone }: { tone: string }) {
+  const state: JobGlyphState = tone === 'success' || tone === 'running' || tone === 'error' || tone === 'cancelled' ? tone : 'waiting'
+  if (state === 'success') return <svg className="jb-glyph is-success" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="currentColor" /><path d="m5 8.2 2.1 2.1 3.9-4.2" fill="none" stroke="var(--rv-color-surface)" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" /></svg>
+  if (state === 'running') return <svg className="jb-glyph is-running" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6" opacity=".25" /><path d="M8 2a6 6 0 0 1 6 6" /></svg>
+  if (state === 'error') return <svg className="jb-glyph is-error" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.2" /><path d="m5.8 5.8 4.4 4.4M10.2 5.8l-4.4 4.4" /></svg>
+  if (state === 'cancelled') return <svg className="jb-glyph is-cancelled" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} strokeDasharray="2.6 2.2" aria-hidden="true"><circle cx="8" cy="8" r="6.2" /></svg>
+  return <svg className="jb-glyph is-waiting" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.2" opacity=".35" /><path d="M8 1.8a6.2 6.2 0 0 1 5.9 4.3" /><path d="M8 5.6v2.6l1.8 1.1" /></svg>
+}
+
 function jobStatusTone(status: JobStatus) {
   if (status === 'SUCCEEDED') return 'success'
   if (status === 'LEASED') return 'running'
@@ -270,7 +282,7 @@ function JobStatusSummary({ job }: { job: JobSummary }) {
   return <section className={`jobs-reference-status-hero jobs-reference-status-hero-${tone}`} aria-labelledby="job-status-title">
     <div>
       <span className="jobs-reference-section-kicker">İşlem durumu</span>
-      <h3 id="job-status-title"><i aria-hidden="true" />{jobStatusLabel(job.status)}</h3>
+      <h3 id="job-status-title"><JobStateGlyph tone={tone} />{jobStatusLabel(job.status)}</h3>
       <p>{jobStatusDescription(job)}</p>
     </div>
     <div className="jobs-reference-status-hero-time">
@@ -532,11 +544,11 @@ export function JobsPage({ me }: { me: Me }) {
       <Tabs className="jobs-reference-tabs" ariaLabel="İşlem kategorileri" value={category} onChange={value => setCategory(value as JobCategory)} items={categoryTabs.filter(tab => tab.key !== 'SYSTEM').map(tab => ({ value: tab.key, label: tab.label, count: categoryCounts.get(tab.key) ?? 0 }))} />
       <div className="jobs-reference-toolbar">
         <div className="jobs-reference-status-summary" aria-label="İşlem durum özeti">
-          <span className="success"><i aria-hidden="true" />Başarılı <strong>{statusSummary.success}</strong></span>
-          <span className="running"><i aria-hidden="true" />Çalışıyor <strong>{statusSummary.running}</strong></span>
-          <span className="waiting"><i aria-hidden="true" />Bekliyor <strong>{statusSummary.waiting}</strong></span>
-          <span className="error"><i aria-hidden="true" />Hata <strong>{statusSummary.error}</strong></span>
-          {statusSummary.cancelled > 0 && <span className="cancelled"><i aria-hidden="true" />İptal <strong>{statusSummary.cancelled}</strong></span>}
+          <span className="success"><JobStateGlyph tone="success" />Başarılı <strong>{statusSummary.success}</strong></span>
+          <span className="running"><JobStateGlyph tone="running" />Çalışıyor <strong>{statusSummary.running}</strong></span>
+          <span className="waiting"><JobStateGlyph tone="waiting" />Bekliyor <strong>{statusSummary.waiting}</strong></span>
+          <span className="error"><JobStateGlyph tone="error" />Hata <strong>{statusSummary.error}</strong></span>
+          {statusSummary.cancelled > 0 && <span className="cancelled"><JobStateGlyph tone="cancelled" />İptal <strong>{statusSummary.cancelled}</strong></span>}
         </div>
         <div className="jobs-reference-toolbar-actions">
           <label className="jobs-reference-search"><JobsIcon name="search" /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Correlation ID..." aria-label="Correlation ID ile işlem ara" /></label>
@@ -551,7 +563,7 @@ export function JobsPage({ me }: { me: Me }) {
             const typeDescriptionId = `job-type-description-${job.id}`
             return <tr className="jobs-reference-row" key={job.id} aria-describedby={typeDescriptionId} onClick={() => setSelectedId(job.id)} tabIndex={0} onKeyDown={event => { if (event.key === 'Enter') setSelectedId(job.id) }}>
               <td><div className="jobs-reference-type"><span className="jobs-reference-type-icon" aria-hidden="true"><JobsIcon name={presentation.icon} /></span><span className="jobs-reference-type-content"><strong>{presentation.title}</strong>{(job.batchCount > 1 || job.externalId || job.jobType.toUpperCase() !== 'HEPSIBURADA_ORDER_SYNC') && <small>{job.batchCount > 1 ? `Toplu işlem · ${job.batchCount} job` : job.externalId ?? `${job.marketplace} · ${jobSource(job.jobType, job.marketplace)}`}</small>}<span id={typeDescriptionId} className="jobs-reference-type-tooltip" role="tooltip">{presentation.description}</span></span></div></td>
-              <td><span className={`jobs-reference-status ${jobStatusTone(job.status)}`}><i aria-hidden="true" />{jobStatusLabel(job.status)}</span></td>
+              <td><span className={`jobs-reference-status ${jobStatusTone(job.status)}`}><JobStateGlyph tone={jobStatusTone(job.status)} />{jobStatusLabel(job.status)}</span></td>
               <td className="jobs-reference-attempt">{job.attemptCount} / {job.maxAttempts}</td>
               <td><div className="jobs-reference-time"><strong>{time.time}</strong><small>{time.day} · {job.attemptCount > 0 ? `son deneme ${jobAttemptDuration(job)}` : 'çalışma başlamadı'}</small></div></td>
               <td><span className="jobs-reference-correlation">{job.correlationId}</span></td>
