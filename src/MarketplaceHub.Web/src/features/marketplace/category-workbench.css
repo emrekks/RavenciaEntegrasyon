@@ -213,3 +213,5 @@
 
 /* Footer hint a step smaller. */
 .panel.mapping-step.cm-card .cm-foot > span:first-child { font-size: 13px; }
+/* The rows scroll with a thin scrollbar; the tools and the header reserve the same thin gutter. */
+.app-shell .panel.mapping-step.cm-card :is(.cm-vtools, .cm-vrow.is-head, .cm-vscroll) { scrollbar-width: thin; }
