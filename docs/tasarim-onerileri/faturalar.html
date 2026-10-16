@@ -535,8 +535,8 @@ function mocks() {
 }
 
 // Status glyphs, one system on a 16px grid:
-// - order states are a progress dial: a faint ring with a pie that fills as the order moves on (new, preparing,
-//   handed to cargo, in transit), and a full disc with a check once delivered;
+// - order states are the order's own objects: a shopping bag when it arrives, an open box while it is packed, a
+//   sealed box with an arrow when handed to the carrier, a truck on the road, and a full disc with a check once delivered;
 // - invoice states keep the same ring and put one mark inside it (clock, moving arc, check, exclamation, bar).
 // Colours come from the theme: violet for progress, green for done, amber for waiting, blue for moving, red for
 // failure, subtle grey for cancelled.
@@ -551,10 +551,10 @@ function pie(fraction) {
 }
 const solidCheck = tone => svg(tone, '<circle cx="8" cy="8" r="7.3" fill="currentColor"/><path d="m4.9 8.2 2.1 2.1 4.1-4.4" fill="none" stroke="var(--surface)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>')
 Object.assign(G, {
-  fresh: svg(T.prog, ringFaint + '<circle cx="8" cy="8" r="1.6" fill="currentColor"/>'),
-  packing: svg(T.prog, ringFaint + pie(.25)),
-  handed: svg(T.prog, ringFaint + pie(.5)),
-  transit: svg(T.prog, ringFaint + pie(.75)),
+  fresh: svg(T.prog, '<path d="M3.4 5.6h9.2l-.8 8.1H4.2z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M5.9 5.6V4.7a2.1 2.1 0 0 1 4.2 0v.9" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>'),
+  packing: svg(T.wait, '<path d="M2.6 6.4 8 8.8l5.4-2.4V12L8 14.4 2.6 12z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 8.8v5.6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M2.6 6.4 1.4 4.1 6.8 1.8 8 4.1M13.4 6.4l1.2-2.3-5.4-2.3L8 4.1" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>'),
+  handed: svg(T.move, '<path d="M1.6 6 5.8 4.1 10 6v4.9l-4.2 1.9-4.2-1.9z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M1.6 6l4.2 1.9L10 6M5.8 7.9v4.8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M11.2 9h3.4M13.2 7.5l1.5 1.5-1.5 1.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>'),
+  transit: svg(T.move, '<path d="M1.4 4.2h8.2v7.2H1.4z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M9.6 6.6h2.7l2.3 2.5v2.3H9.6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="4.4" cy="11.9" r="1.35" fill="var(--surface)" stroke="currentColor" stroke-width="1.3"/><circle cx="11.7" cy="11.9" r="1.35" fill="var(--surface)" stroke="currentColor" stroke-width="1.3"/>'),
   delivered: solidCheck(T.ok),
   invok: solidCheck(T.ok),
   waiting: svg(T.wait, ringFull + '<path d="M8 4.9V8l2 1.3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>'),
