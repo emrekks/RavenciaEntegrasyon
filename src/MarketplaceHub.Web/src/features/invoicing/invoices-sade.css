@@ -44,7 +44,7 @@
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-page-size { color: var(--rv-color-muted); font-size: 13px; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-table { border: 0; border-top: 1px solid var(--rv-color-border); border-radius: 0; }
 @media (min-width: 1101px) {
-  .app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-head, .invoice-reference-row) { grid-template-columns: minmax(0, 22fr) minmax(0, 14fr) minmax(0, 13fr) minmax(0, 12fr) minmax(0, 15fr) minmax(0, 12fr) minmax(0, 12fr); }
+  .app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-head, .invoice-reference-row) { grid-template-columns: minmax(0, 21fr) minmax(0, 13fr) minmax(0, 13fr) minmax(0, 14fr) minmax(0, 15fr) minmax(0, 12fr) minmax(0, 12fr); }
 }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head { min-height: 44px; background: var(--rv-color-surface-raised); border-bottom: 1px solid var(--rv-color-border); }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head :is(strong, .order-column-filter-label) { color: var(--rv-color-muted); font-size: 12px; font-weight: 500; letter-spacing: 0; }
