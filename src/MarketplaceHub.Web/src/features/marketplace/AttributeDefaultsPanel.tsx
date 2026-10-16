@@ -89,13 +89,13 @@ export function AttributeDefaultsPanel({ connectionId, categoryScope, platformLa
   const otherCandidates = candidates.filter(item => item.isRequired !== true)
   return <details className="attribute-defaults-panel" open={expanded || undefined}>
     <summary>
-      <span className="panel-summary-title">Platform varsayılanları</span>
+      <span className="panel-summary-title">Platform Varsayılanları</span>
       <b className="panel-summary-count" aria-label={`${existing.length} varsayılan`}>{existing.length}</b>
       <small>Ürünlerde boş kalan alanlar için {platformLabel}’a gönderilecek sabit değerler.</small>
     </summary>
     <div className="attribute-defaults-body">
       <section className="attribute-defaults-section">
-        <h4>Kayıtlı varsayılanlar</h4>
+        <h4>Kayıtlı Varsayılanlar</h4>
         {existing.length > 0
           ? <ul className="attribute-defaults-list">
             {existing.map(item => <li key={item.externalAttributeId}>
@@ -107,7 +107,7 @@ export function AttributeDefaultsPanel({ connectionId, categoryScope, platformLa
           : <p className="attribute-defaults-state">Henüz varsayılan yok. Örneğin Menşei için TR seçerseniz, menşei boş bırakılan ürünlerde TR gönderilir.</p>}
       </section>
       <section className="attribute-defaults-section attribute-defaults-add">
-        <h4>Yeni varsayılan</h4>
+        <h4>Yeni Varsayılan</h4>
         <p className="attribute-defaults-state">Ürüne girilen değer her zaman önce gelir; varsayılan yalnızca alan boşsa kullanılır.</p>
         <div className="attribute-defaults-form">
           <label>
@@ -119,11 +119,11 @@ export function AttributeDefaultsPanel({ connectionId, categoryScope, platformLa
             </select>
           </label>
           {selected && freeText && <label>
-            <span>Gönderilecek değer</span>
+            <span>Gönderilecek Değer</span>
             <input value={customValue} maxLength={320} placeholder="Değeri yazın" onChange={event => setCustomValue(event.target.value)} />
           </label>}
           {selected && !freeText && <label>
-            <span>{platformLabel} değeri</span>
+            <span>{platformLabel} Değeri</span>
             <input type="search" value={search} placeholder={`${platformLabel} değerlerinde ara`} onChange={event => setSearch(event.target.value)} />
           </label>}
         </div>
@@ -135,7 +135,7 @@ export function AttributeDefaultsPanel({ connectionId, categoryScope, platformLa
             </div>)}
         {selected && <div className="attribute-defaults-actions">
           <button type="button" className="secondary" disabled={busy} onClick={reset}>Vazgeç</button>
-          <button type="button" disabled={busy || !canSave} onClick={() => void save()}>{busy ? 'Kaydediliyor…' : 'Varsayılanı kaydet'}</button>
+          <button type="button" disabled={busy || !canSave} onClick={() => void save()}>{busy ? 'Kaydediliyor…' : 'Varsayılanı Kaydet'}</button>
         </div>}
       </section>
     </div>

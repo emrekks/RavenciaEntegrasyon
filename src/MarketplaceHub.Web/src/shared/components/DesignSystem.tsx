@@ -183,6 +183,6 @@ export function Drawer({ open, title, onClose, children, footer, description, cl
 
 export function PageHeader({ eyebrow, title, description: _description, actions }: { eyebrow?: string; title: string; description?: string; actions?: ReactNode }) { return <header className="rv-page-header"><div>{eyebrow ? <p className="rv-eyebrow">{eyebrow}</p> : null}<h1>{title}</h1></div>{actions ? <div className="rv-page-actions">{actions}</div> : null}</header> }
 export function EmptyState({ children }: { children: ReactNode }) { return <div className="rv-empty-state"><span className="rv-empty-state-icon" aria-hidden="true"><UiIcon name="box" /></span><strong>Henüz kayıt yok</strong><p>{children}</p></div> }
-export function LoadingState({ children = 'Yükleniyor…' }: { children?: ReactNode }) { return <div className="rv-loading-state" role="status" aria-live="polite"><span className="rv-loading-state-icon" aria-hidden="true"><UiIcon name="sync" /></span><strong>{children}</strong><small>Veriler hazırlanıyor</small><span className="rv-loading-state-skeleton" aria-hidden="true"><i /><i /><i /></span></div> }
+export function LoadingState({ children = 'Yükleniyor…' }: { children?: ReactNode }) { return <div className="rv-loading-state" role="status" aria-live="polite"><strong>{children}</strong><span className="rv-splash-loading-bar" aria-hidden="true"><span className="rv-splash-loading-progress" /></span></div> }
 
 export function controlStyle(size: ControlSize): CSSProperties { return { minHeight: `var(--rv-control-height-${size})` } }

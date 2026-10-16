@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kaydırma Çubuğu Önerileri</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #111115;
+    --surface: #17171c;
+    --surface-raised: #1d1d23;
+    --surface-soft: #22222a;
+    --border: #2a2a32;
+    --border-strong: #383842;
+    --ink: #ececf0;
+    --muted: #a3a3b0;
+    --subtle: #6f6f7c;
+    --primary: #8b5cf6;
+    --primary-soft: #272139;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page { max-width: 1200px; margin: 0 auto; padding: 32px 16px 48px; }
+  header h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px; }
+  header p { margin: 0 0 24px; color: var(--muted); }
+  .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    min-width: 0;
+  }
+  .card h2 { font-size: 15px; font-weight: 600; margin: 0 0 2px; }
+  .card h2 .no { color: var(--primary); font-weight: 600; }
+  .card .desc { color: var(--muted); margin: 0 0 12px; font-size: 13px; }
+
+  .demo {
+    height: 220px;
+    overflow: auto;
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .list { list-style: none; margin: 0; padding: 4px 0; }
+  .list li {
+    display: flex; justify-content: space-between; gap: 12px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .list li:last-child { border-bottom: 0; }
+  .list li:hover { background: var(--surface-soft); }
+  .list .count { color: var(--subtle); font-variant-numeric: tabular-nums; }
+
+  table.tbl { border-collapse: collapse; width: 100%; min-width: 760px; }
+  .tbl th, .tbl td { text-align: left; padding: 8px 12px; white-space: nowrap; border-bottom: 1px solid var(--border); }
+  .tbl th { position: sticky; top: 0; background: var(--surface-soft); color: var(--muted); font-weight: 500; font-size: 12px; }
+  .tbl td.num { color: var(--subtle); text-align: right; font-variant-numeric: tabular-nums; }
+  .tbl tr:hover td { background: var(--surface-soft); }
+
+  .strip {
+    margin-top: 8px;
+    overflow-x: auto;
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .chips { display: flex; gap: 8px; padding: 10px; width: max-content; }
+  .chip {
+    padding: 4px 10px; border-radius: 999px;
+    background: var(--surface-soft); border: 1px solid var(--border);
+    color: var(--muted); font-size: 12px; white-space: nowrap;
+  }
+
+  pre {
+    margin: 12px 0 0;
+    padding: 10px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.55;
+    overflow-x: auto;
+    font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  }
+
+  /* ---------- 1 · Mac İnce ---------- */
+  .sb-1 { scrollbar-width: thin; scrollbar-color: #4a4a55 transparent; }
+  .sb-1::-webkit-scrollbar { width: 8px; height: 8px; }
+  .sb-1::-webkit-scrollbar-track { background: transparent; }
+  .sb-1::-webkit-scrollbar-thumb { background: #4a4a55; border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+  .sb-1::-webkit-scrollbar-thumb:hover { background-color: #5c5c69; }
+  .sb-1::-webkit-scrollbar-corner { background: transparent; }
+
+  /* ---------- 2 · Mor Vurgulu ---------- */
+  .sb-2 { scrollbar-width: thin; scrollbar-color: var(--border-strong) var(--surface); }
+  .sb-2::-webkit-scrollbar { width: 10px; height: 10px; }
+  .sb-2::-webkit-scrollbar-track { background: var(--surface); }
+  .sb-2::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 6px; }
+  .sb-2::-webkit-scrollbar-thumb:hover { background: var(--primary); }
+  .sb-2::-webkit-scrollbar-thumb:active { background: #7c4ee6; }
+  .sb-2::-webkit-scrollbar-corner { background: var(--surface); }
+
+  /* ---------- 3 · Gizlenen ---------- */
+  .sb-3 { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+  .sb-3:hover, .sb-3:focus-within { scrollbar-color: #4a4a55 transparent; }
+  .sb-3::-webkit-scrollbar { width: 8px; height: 8px; }
+  .sb-3::-webkit-scrollbar-track { background: transparent; }
+  .sb-3::-webkit-scrollbar-thumb { background: transparent; border-radius: 8px; }
+  .sb-3:hover::-webkit-scrollbar-thumb { background: #4a4a55; }
+  .sb-3::-webkit-scrollbar-thumb:hover { background: #5c5c69 !important; }
+  .sb-3::-webkit-scrollbar-corner { background: transparent; }
+
+  /* ---------- 4 · Kapsül Raylı ---------- */
+  .sb-4 { scrollbar-width: thin; scrollbar-color: #55556a var(--surface-soft); }
+  .sb-4::-webkit-scrollbar { width: 12px; height: 12px; }
+  .sb-4::-webkit-scrollbar-track { background: var(--surface-soft); border-radius: 999px; border: 3px solid var(--surface-raised); }
+  .sb-4::-webkit-scrollbar-thumb { background: #55556a; border-radius: 999px; border: 3px solid var(--surface-raised); }
+  .sb-4::-webkit-scrollbar-thumb:hover { background: #6a6a80; }
+  .sb-4::-webkit-scrollbar-corner { background: var(--surface-raised); }
+
+  /* ---------- 5 · Kenar Çizgili ---------- */
+  .sb-5 { scrollbar-width: thin; scrollbar-color: var(--border-strong) var(--surface); }
+  .sb-5::-webkit-scrollbar { width: 10px; height: 10px; }
+  .sb-5::-webkit-scrollbar-track { background: var(--surface); border-left: 1px solid var(--border); }
+  .sb-5::-webkit-scrollbar-track:horizontal { border-left: 0; border-top: 1px solid var(--border); }
+  .sb-5::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 0; border: 2px solid var(--surface); }
+  .sb-5::-webkit-scrollbar-thumb:hover { background: var(--subtle); }
+  .sb-5::-webkit-scrollbar-corner { background: var(--surface); }
+
+  /* ---------- 6 · Geniş Dokunmatik ---------- */
+  .sb-6 { scrollbar-width: auto; scrollbar-color: #4a4a55 var(--surface); }
+  .sb-6::-webkit-scrollbar { width: 14px; height: 14px; }
+  .sb-6::-webkit-scrollbar-track { background: var(--surface); }
+  .sb-6::-webkit-scrollbar-thumb { background: #4a4a55; border-radius: 10px; border: 3px solid var(--surface); min-height: 40px; }
+  .sb-6::-webkit-scrollbar-thumb:hover { background: #5c5c69; }
+  .sb-6::-webkit-scrollbar-corner { background: var(--surface); }
+
+  /* ---------- 7 · Sade Mor Thumb ---------- */
+  .sb-7 { scrollbar-width: thin; scrollbar-color: #5b45a0 var(--primary-soft); }
+  .sb-7::-webkit-scrollbar { width: 8px; height: 8px; }
+  .sb-7::-webkit-scrollbar-track { background: var(--primary-soft); }
+  .sb-7::-webkit-scrollbar-thumb { background: #5b45a0; border-radius: 8px; }
+  .sb-7::-webkit-scrollbar-thumb:hover { background: var(--primary); }
+  .sb-7::-webkit-scrollbar-corner { background: var(--primary-soft); }
+
+  /* ---------- 8 · Çerçeveli Thumb ---------- */
+  .sb-8 { scrollbar-width: thin; scrollbar-color: var(--surface-soft) var(--surface-raised); }
+  .sb-8::-webkit-scrollbar { width: 12px; height: 12px; }
+  .sb-8::-webkit-scrollbar-track { background: var(--surface-raised); }
+  .sb-8::-webkit-scrollbar-thumb {
+    background: var(--surface-soft) padding-box;
+    border: 3px solid transparent;
+    border-radius: 999px;
+    box-shadow: inset 0 0 0 1px var(--border-strong);
+  }
+  .sb-8::-webkit-scrollbar-thumb:hover { background-color: #2c2c36; box-shadow: inset 0 0 0 1px var(--subtle); }
+  .sb-8::-webkit-scrollbar-corner { background: var(--surface-raised); }
+
+  /* ---------- 9 · Overlay / gutter stable ---------- */
+  .sb-9 { scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: #3f3f4a transparent; }
+  .sb-9::-webkit-scrollbar { width: 10px; height: 10px; background: transparent; }
+  .sb-9::-webkit-scrollbar-track { background: transparent; }
+  .sb-9::-webkit-scrollbar-thumb { background: rgba(163,163,176,.22); border-radius: 999px; border: 3px solid transparent; background-clip: padding-box; }
+  .sb-9::-webkit-scrollbar-thumb:hover { background-color: rgba(163,163,176,.38); }
+  .sb-9::-webkit-scrollbar-corner { background: transparent; }
+
+  /* ---------- 10 · Minimal 3px ---------- */
+  .sb-10 { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+  .sb-10::-webkit-scrollbar { width: 3px; height: 3px; }
+  .sb-10::-webkit-scrollbar-track { background: transparent; }
+  .sb-10::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
+  .sb-10::-webkit-scrollbar-thumb:hover { background: var(--primary); }
+  .sb-10::-webkit-scrollbar-corner { background: transparent; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <h1>Kaydırma Çubuğu Önerileri</h1>
+    <p>Ravencia — Sade teması için 10 özel kaydırma çubuğu. Her kutuyu kaydırıp üzerine gelerek deneyin; CSS doğrudan kopyalanabilir.</p>
+  </header>
+
+  <div class="grid">
+
+    <!-- 1 -->
+    <section class="card">
+      <h2><span class="no">1</span> · Mac İnce</h2>
+      <p class="desc">İnce, yuvarlak ve şeffaf raylı; macOS hissine en yakın, en az dikkat çeken seçenek.</p>
+      <div class="demo sb-1" data-list></div>
+      <pre>.sb-1 { scrollbar-width: thin; scrollbar-color: #4a4a55 transparent; }
+.sb-1::-webkit-scrollbar { width: 8px; height: 8px; }
+.sb-1::-webkit-scrollbar-track { background: transparent; }
+.sb-1::-webkit-scrollbar-thumb { background: #4a4a55; border-radius: 8px;
+  border: 2px solid transparent; background-clip: padding-box; }
+.sb-1::-webkit-scrollbar-thumb:hover { background-color: #5c5c69; }
+.sb-1::-webkit-scrollbar-corner { background: transparent; }</pre>
+    </section>
+
+    <!-- 2 -->
+    <section class="card">
+      <h2><span class="no">2</span> · Mor Vurgulu</h2>
+      <p class="desc">Normalde nötr gri; üzerine gelince marka moruna döner.</p>
+      <div class="demo sb-2" data-table></div>
+      <pre>.sb-2 { scrollbar-width: thin; scrollbar-color: #383842 #17171c; }
+.sb-2::-webkit-scrollbar { width: 10px; height: 10px; }
+.sb-2::-webkit-scrollbar-track { background: #17171c; }
+.sb-2::-webkit-scrollbar-thumb { background: #383842; border-radius: 6px; }
+.sb-2::-webkit-scrollbar-thumb:hover { background: #8b5cf6; }
+.sb-2::-webkit-scrollbar-corner { background: #17171c; }</pre>
+    </section>
+
+    <!-- 3 -->
+    <section class="card">
+      <h2><span class="no">3</span> · Gizlenen (hover'da görünen)</h2>
+      <p class="desc">Thumb yalnızca kutunun üzerine gelince görünür; yer kaplar ama göze girmez.</p>
+      <div class="demo sb-3" data-list tabindex="0"></div>
+      <pre>.sb-3 { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+.sb-3:hover, .sb-3:focus-within { scrollbar-color: #4a4a55 transparent; }
+.sb-3::-webkit-scrollbar { width: 8px; height: 8px; }
+.sb-3::-webkit-scrollbar-track { background: transparent; }
+.sb-3::-webkit-scrollbar-thumb { background: transparent; border-radius: 8px; }
+.sb-3:hover::-webkit-scrollbar-thumb { background: #4a4a55; }
+.sb-3::-webkit-scrollbar-thumb:hover { background: #5c5c69 !important; }
+.sb-3::-webkit-scrollbar-corner { background: transparent; }</pre>
+    </section>
+
+    <!-- 4 -->
+    <section class="card">
+      <h2><span class="no">4</span> · Kapsül Raylı</h2>
+      <p class="desc">Ray da thumb da kapsül biçiminde; ray kenardan içeri çekilmiş, hafif yüzer görünür.</p>
+      <div class="demo sb-4" data-list></div>
+      <div class="strip sb-4" data-chips></div>
+      <pre>.sb-4 { scrollbar-width: thin; scrollbar-color: #55556a #22222a; }
+.sb-4::-webkit-scrollbar { width: 12px; height: 12px; }
+.sb-4::-webkit-scrollbar-track { background: #22222a; border-radius: 999px;
+  border: 3px solid #1d1d23; }
+.sb-4::-webkit-scrollbar-thumb { background: #55556a; border-radius: 999px;
+  border: 3px solid #1d1d23; }
+.sb-4::-webkit-scrollbar-thumb:hover { background: #6a6a80; }
+.sb-4::-webkit-scrollbar-corner { background: #1d1d23; }</pre>
+    </section>
+
+    <!-- 5 -->
+    <section class="card">
+      <h2><span class="no">5</span> · Kenar Çizgili</h2>
+      <p class="desc">Rayı içerikten 1px çizgiyle ayırır; tablo ve paneller için düzenli, köşeli görünüm.</p>
+      <div class="demo sb-5" data-table></div>
+      <pre>.sb-5 { scrollbar-width: thin; scrollbar-color: #383842 #17171c; }
+.sb-5::-webkit-scrollbar { width: 10px; height: 10px; }
+.sb-5::-webkit-scrollbar-track { background: #17171c; border-left: 1px solid #2a2a32; }
+.sb-5::-webkit-scrollbar-track:horizontal { border-left: 0; border-top: 1px solid #2a2a32; }
+.sb-5::-webkit-scrollbar-thumb { background: #383842; border-radius: 0;
+  border: 2px solid #17171c; }
+.sb-5::-webkit-scrollbar-thumb:hover { background: #6f6f7c; }
+.sb-5::-webkit-scrollbar-corner { background: #17171c; }</pre>
+    </section>
+
+    <!-- 6 -->
+    <section class="card">
+      <h2><span class="no">6</span> · Geniş Dokunmatik</h2>
+      <p class="desc">14px genişlik ve en az 40px thumb; tablet ve dokunmatik ekranda kolay yakalanır.</p>
+      <div class="demo sb-6" data-list></div>
+      <div class="strip sb-6" data-chips></div>
+      <pre>.sb-6 { scrollbar-width: auto; scrollbar-color: #4a4a55 #17171c; }
+.sb-6::-webkit-scrollbar { width: 14px; height: 14px; }
+.sb-6::-webkit-scrollbar-track { background: #17171c; }
+.sb-6::-webkit-scrollbar-thumb { background: #4a4a55; border-radius: 10px;
+  border: 3px solid #17171c; min-height: 40px; }
+.sb-6::-webkit-scrollbar-thumb:hover { background: #5c5c69; }
+.sb-6::-webkit-scrollbar-corner { background: #17171c; }</pre>
+    </section>
+
+    <!-- 7 -->
+    <section class="card">
+      <h2><span class="no">7</span> · Sade Mor Thumb</h2>
+      <p class="desc">Degrade yok; soluk mor ray üzerinde düz mor thumb, hover'da tam marka rengi.</p>
+      <div class="demo sb-7" data-list></div>
+      <pre>.sb-7 { scrollbar-width: thin; scrollbar-color: #5b45a0 #272139; }
+.sb-7::-webkit-scrollbar { width: 8px; height: 8px; }
+.sb-7::-webkit-scrollbar-track { background: #272139; }
+.sb-7::-webkit-scrollbar-thumb { background: #5b45a0; border-radius: 8px; }
+.sb-7::-webkit-scrollbar-thumb:hover { background: #8b5cf6; }
+.sb-7::-webkit-scrollbar-corner { background: #272139; }</pre>
+    </section>
+
+    <!-- 8 -->
+    <section class="card">
+      <h2><span class="no">8</span> · Çerçeveli Thumb (padding-box)</h2>
+      <p class="desc">Şeffaf kenarlık + padding-box ile içeri çekilmiş, ince çerçeveli thumb.</p>
+      <div class="demo sb-8" data-table></div>
+      <pre>.sb-8 { scrollbar-width: thin; scrollbar-color: #22222a #1d1d23; }
+.sb-8::-webkit-scrollbar { width: 12px; height: 12px; }
+.sb-8::-webkit-scrollbar-track { background: #1d1d23; }
+.sb-8::-webkit-scrollbar-thumb { background: #22222a padding-box;
+  border: 3px solid transparent; border-radius: 999px;
+  box-shadow: inset 0 0 0 1px #383842; }
+.sb-8::-webkit-scrollbar-thumb:hover { background-color: #2c2c36;
+  box-shadow: inset 0 0 0 1px #6f6f7c; }
+.sb-8::-webkit-scrollbar-corner { background: #1d1d23; }</pre>
+    </section>
+
+    <!-- 9 -->
+    <section class="card">
+      <h2><span class="no">9</span> · Overlay / scrollbar-gutter stable</h2>
+      <p class="desc">Yarı saydam thumb, şeffaf ray; gutter sabit olduğu için içerik kaymaz.</p>
+      <div class="demo sb-9" data-list></div>
+      <div class="strip sb-9" data-chips></div>
+      <pre>.sb-9 { scrollbar-gutter: stable; scrollbar-width: thin;
+  scrollbar-color: #3f3f4a transparent; }
+.sb-9::-webkit-scrollbar { width: 10px; height: 10px; background: transparent; }
+.sb-9::-webkit-scrollbar-track { background: transparent; }
+.sb-9::-webkit-scrollbar-thumb { background: rgba(163,163,176,.22);
+  border-radius: 999px; border: 3px solid transparent; background-clip: padding-box; }
+.sb-9::-webkit-scrollbar-thumb:hover { background-color: rgba(163,163,176,.38); }
+.sb-9::-webkit-scrollbar-corner { background: transparent; }</pre>
+    </section>
+
+    <!-- 10 -->
+    <section class="card">
+      <h2><span class="no">10</span> · Minimal 3px</h2>
+      <p class="desc">Neredeyse görünmez 3px çizgi; yan menü ve dar listeler için.</p>
+      <div class="demo sb-10" data-list></div>
+      <pre>.sb-10 { scrollbar-width: thin; scrollbar-color: #383842 transparent; }
+.sb-10::-webkit-scrollbar { width: 3px; height: 3px; }
+.sb-10::-webkit-scrollbar-track { background: transparent; }
+.sb-10::-webkit-scrollbar-thumb { background: #383842; border-radius: 3px; }
+.sb-10::-webkit-scrollbar-thumb:hover { background: #8b5cf6; }
+.sb-10::-webkit-scrollbar-corner { background: transparent; }</pre>
+    </section>
+
+  </div>
+</div>
+
+<script>
+  (function () {
+    var rows = [
+      ["Bluz", 1284], ["Elbise", 2310], ["Ceket", 642], ["Etek", 918], ["Gömlek", 1576],
+      ["Hırka", 433], ["Jeans", 1102], ["Kazak", 789], ["Mont", 356], ["Pantolon", 1945],
+      ["Şort", 512], ["Sweatshirt", 874], ["Tayt", 297], ["Tişört", 3021], ["Tunik", 268],
+      ["Yelek", 184], ["Eşofman", 455], ["Trençkot", 121]
+    ];
+    var fmt = function (n) { return n.toLocaleString("tr-TR"); };
+
+    document.querySelectorAll("[data-list]").forEach(function (el) {
+      el.innerHTML = '<ul class="list">' + rows.map(function (r) {
+        return '<li><span>' + r[0] + '</span><span class="count">' + fmt(r[1]) + ' ürün</span></li>';
+      }).join("") + "</ul>";
+    });
+
+    var pazar = ["Trendyol", "Hepsiburada", "N11", "Pazarama", "Amazon"];
+    document.querySelectorAll("[data-table]").forEach(function (el) {
+      var body = rows.map(function (r, i) {
+        return "<tr><td>" + r[0] + "</td><td>Kadın / Giyim / " + r[0] + "</td><td>" + pazar[i % pazar.length] +
+          "</td><td>" + (i % 3 === 0 ? "Eşleşti" : i % 3 === 1 ? "Bekliyor" : "Eksik alan") +
+          '</td><td class="num">' + fmt(r[1]) + "</td></tr>";
+      }).join("");
+      el.innerHTML = '<table class="tbl"><thead><tr><th>Kategori</th><th>Yol</th><th>Pazaryeri</th><th>Durum</th><th>Ürün</th></tr></thead><tbody>' + body + "</tbody></table>";
+    });
+
+    document.querySelectorAll("[data-chips]").forEach(function (el) {
+      el.innerHTML = '<div class="chips">' + rows.map(function (r) {
+        return '<span class="chip">' + r[0] + " · " + fmt(r[1]) + "</span>";
+      }).join("") + "</div>";
+    });
+  })();
+</script>
+</body>
+</html>

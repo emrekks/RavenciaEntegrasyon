@@ -248,3 +248,41 @@
 .cm-extra-modal .mapping-conflict-options button b { color: var(--rv-color-primary); font-size: 12px; font-weight: 500; }
 .cm-extra-modal .mapping-conflict-options em { display: inline-flex; align-items: center; height: 18px; padding: 0 6px; color: color-mix(in srgb, var(--rv-color-primary) 55%, #fff); background: var(--rv-color-primary-soft); border-radius: 4px; font-size: 11px; font-style: normal; font-weight: 600; }
 @media (max-width: 640px) { .cm-extra-modal .mapping-conflicts-body li { grid-template-columns: minmax(0, 1fr); gap: 8px; } }
+
+/* Saved category mappings: quiet title-case header, platform logo + name, status glyph word, secondary actions. */
+.app-shell.stitch-shell main .mapping-saved-card .mapping-saved-table { overflow: hidden; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; }
+.app-shell.stitch-shell main .mapping-saved-card .mapping-saved-table table { border-collapse: collapse; }
+.app-shell.stitch-shell main .mapping-saved-card .mapping-saved-table th { height: 38px; padding: 0 16px; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border-bottom: 1px solid var(--rv-color-border); font-size: 13px; font-weight: 500; letter-spacing: 0; text-align: left; text-transform: none; }
+.app-shell.stitch-shell main .mapping-saved-card .mapping-saved-table th:last-child { text-align: right; }
+.app-shell.stitch-shell main .mapping-saved-card .mapping-saved-table td { height: 46px; padding: 6px 16px; color: var(--rv-color-ink); background: none; border-top: 1px solid var(--rv-color-border); font-size: 14px; }
+.app-shell.stitch-shell main .mapping-saved-card .mapping-saved-table tbody tr:first-child td { border-top: 0; }
+.app-shell.stitch-shell main .mapping-saved-card .mapping-saved-table tbody tr:hover td { background: var(--rv-color-surface-raised); }
+.app-shell.stitch-shell main .mapping-saved-card .mapping-saved-table td:nth-child(3) { color: var(--rv-color-muted); font-size: 13px; }
+.mapping-saved-card .ms-platform { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; white-space: nowrap; }
+.mapping-saved-card .ms-platform img { box-sizing: border-box; width: 20px; height: 20px; object-fit: contain; border-radius: 4px; }
+.app-shell.stitch-shell main .mapping-saved-card .mapping-table-status { display: inline-flex; align-items: center; gap: 8px; min-height: 0; height: auto; padding: 0; color: var(--rv-color-ink); background: none; border: 0; border-radius: 0; font-size: 13px; font-weight: 400; }
+.app-shell.stitch-shell main .mapping-saved-card .mapping-table-status i { width: 8px; height: 8px; background: currentColor; border-radius: 50%; }
+.app-shell.stitch-shell main .mapping-saved-card .mapping-table-status:is(.pending) { color: var(--rv-color-muted); } .app-shell.stitch-shell main .mapping-saved-card .mapping-table-status:is(.warning) { color: var(--rv-color-warning); } .app-shell.stitch-shell main .mapping-saved-card .mapping-table-status:is(.error) { color: var(--rv-color-danger); }
+.app-shell.stitch-shell main .mapping-saved-card .mapping-row-actions { display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; }
+.app-shell.stitch-shell main .mapping-saved-card .mapping-feature-button { height: 30px; min-height: 30px; padding: 0 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 13px; font-weight: 500 !important; text-transform: none; white-space: nowrap; }
+.app-shell.stitch-shell main .mapping-saved-card .mapping-feature-button:hover { background: var(--rv-color-primary-soft); border-color: color-mix(in srgb, var(--rv-color-primary) 55%, transparent); }
+.app-shell.stitch-shell main .mapping-saved-card .mapping-delete-button { display: grid; width: 30px; min-width: 30px; height: 30px; min-height: 30px; place-items: center; padding: 0; color: var(--rv-color-muted); background: none; border: 0; border-radius: 7px; box-shadow: none; }
+.app-shell.stitch-shell main .mapping-saved-card .mapping-delete-button:hover:not(:disabled) { color: var(--rv-color-danger); background: var(--rv-color-surface-soft); }
+
+/* Platform defaults popup: two flat columns, a saved list as rows, quiet value chips. */
+.cm-extra-modal .attribute-defaults-body { gap: 0; padding: 0; }
+.cm-extra-modal .attribute-defaults-section > h4 { margin: 0 0 8px; color: var(--rv-color-ink); font-size: 14px; font-weight: 600; letter-spacing: 0; text-transform: none; }
+.cm-extra-modal .attribute-defaults-list { gap: 0; overflow: hidden; background: none; border: 1px solid var(--rv-color-border); border-radius: 10px; }
+.cm-extra-modal .attribute-defaults-list li { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 8px 0 14px; background: none; border: 0; border-radius: 0; }
+.cm-extra-modal .attribute-defaults-list li + li { border-top: 1px solid var(--rv-color-border); }
+.cm-extra-modal .attribute-defaults-list li > span { flex: 1; font-size: 14px; }
+.cm-extra-modal .attribute-defaults-list li > strong { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; color: var(--rv-color-ink); background: none; border: 1px solid var(--rv-color-border-strong); border-radius: 5px; font-size: 12px; font-weight: 500; }
+.app-shell.stitch-shell main .cm-extra-modal .attribute-defaults-remove { display: grid; width: 28px; min-width: 28px; height: 28px; min-height: 28px; place-items: center; padding: 0; color: var(--rv-color-muted); background: none; border: 0; border-radius: 7px; box-shadow: none; }
+.app-shell.stitch-shell main .cm-extra-modal .attribute-defaults-remove:hover:not(:disabled) { color: var(--rv-color-danger); background: var(--rv-color-surface-soft); }
+.cm-extra-modal .attribute-defaults-state { color: var(--rv-color-muted); font-size: 13px; line-height: 1.5; }
+.cm-extra-modal .attribute-defaults-form label { gap: 6px; }
+.cm-extra-modal .attribute-defaults-form label > span { color: var(--rv-color-muted); font-size: 12px; font-weight: 500; }
+.app-shell.stitch-shell main .cm-extra-modal .attribute-defaults-form :is(select, input) { box-sizing: border-box; height: 36px; min-height: 36px; padding: 0 12px; color: var(--rv-color-ink); background-color: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 14px; }
+.app-shell.stitch-shell main .cm-extra-modal .attribute-defaults-values button { height: 28px; min-height: 28px; padding: 0 10px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 13px; font-weight: 400 !important; text-transform: none; }
+.app-shell.stitch-shell main .cm-extra-modal .attribute-defaults-values button.is-chosen { background: var(--rv-color-primary-soft); border-color: color-mix(in srgb, var(--rv-color-primary) 60%, transparent); }
+.app-shell.stitch-shell main .cm-extra-modal .attribute-defaults-actions button { height: 34px; min-height: 34px; padding: 0 14px; border-radius: 7px; font-size: 14px; text-transform: none; }

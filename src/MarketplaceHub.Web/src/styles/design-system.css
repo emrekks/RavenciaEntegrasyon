@@ -4090,13 +4090,10 @@ button,
   border-radius: 0;
   box-shadow: none;
 }
-.rv-loading-feedback { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--rv-space-3); min-width: min(100%, 320px); padding: var(--rv-space-4); color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); box-shadow: var(--rv-shadow-sm); }
-.rv-loading-feedback-icon { display: grid; width: 32px; height: 32px; place-items: center; color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border-radius: 50%; }
-.rv-loading-feedback-icon .ui-icon { animation: rv-spin .9s linear infinite; }
-.rv-loading-feedback-copy { display: grid; min-width: 0; gap: 2px; }
-.rv-loading-feedback-copy strong { font-size: var(--rv-font-size-sm); }
-.rv-loading-feedback-copy small { color: var(--rv-color-muted); }
-.rv-loading-feedback-lines { grid-column: 1 / -1; width: 100%; }
+.rv-loading-feedback { display: grid; gap: 10px; min-width: min(100%, 320px); padding: 16px 18px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; box-shadow: none; }
+.rv-loading-feedback > strong { font-size: 13px; font-weight: 500; }
+.rv-loading-feedback .rv-splash-loading-bar, .rv-loading-state .rv-splash-loading-bar { width: 100%; height: 3px; }
+.rv-loading-state .rv-splash-loading-bar { width: min(240px, 100%); }
 
 @media (min-width: 701px) {
   /* Hover expansion is an overlay: the grid column never changes and neither

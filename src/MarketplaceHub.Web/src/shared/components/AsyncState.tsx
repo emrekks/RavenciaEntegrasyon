@@ -1,8 +1,7 @@
 import { Callout } from './DesignSystem'
-import { UiIcon } from './UiIcon'
 
 export function Busy({ text = 'Veriler yükleniyor…' }: { text?: string }) {
-  return <div className="status inline rv-loading-feedback" role="status" aria-live="polite"><span className="rv-loading-feedback-icon" aria-hidden="true"><UiIcon name="sync" /></span><span className="rv-loading-feedback-copy"><strong>{text}</strong><small>Veriler hazırlanıyor</small></span><span className="rv-loading-feedback-lines" aria-hidden="true"><i /><i /><i /></span></div>
+  return <div className="status inline rv-loading-feedback" role="status" aria-live="polite"><strong>{text}</strong><span className="rv-splash-loading-bar" aria-hidden="true"><span className="rv-splash-loading-progress" /></span></div>
 }
 
 export function ErrorBox({ error }: { error: unknown }) {
