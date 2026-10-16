@@ -2932,8 +2932,8 @@ function FieldDetail({ platformCode, platformLabel, connectionId, categoryScope,
           {panelOptions.length > 0 && <optgroup label="Panel seçenekleri">{panelOptions.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</optgroup>}
           {panelAttributes.length > 0 && <optgroup label="Panel özellikleri">{panelAttributes.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</optgroup>}
         </select>
-        <button type="button" className="secondary cm-quiet" disabled={!mapping || busy} onClick={() => void choose('')}>Kaldır</button>
       </div></div>
+      <button type="button" className="secondary cm-quiet cm-unlink" disabled={!mapping || busy} onClick={() => void choose('')}>Kaldır</button>
     </div>
     {!mapping || !selected ? <><p className="cm-empty">Bir panel özelliği seçtiğinizde değerleri burada eşlersiniz.</p><FieldFooter hint={footerHint} onNext={onNext} /></>
       : !values.length ? <><p className="cm-empty">“{selected.name}” özelliğinde henüz değer yok. Değerleri özellik kütüphanesinden ekleyin.</p><FieldFooter hint={footerHint} onNext={onNext} /></>

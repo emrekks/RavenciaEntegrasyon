@@ -183,3 +183,11 @@
 .app-shell .panel.mapping-step.cm-card .cm-actions > button { flex: none; gap: 6px; padding: 0 10px; font-size: 13px; white-space: nowrap; }
 .app-shell .panel.mapping-step.cm-card .cm-actions > button .cm-count { margin-left: 2px; }
 .app-shell .panel.mapping-step.cm-card .cm-actions > button:last-child { margin-left: auto; }
+
+/* Marketplace field and panel attribute as two equal boxes with the link mark exactly between them;
+   "Kaldır" sits after the pair. */
+.panel.mapping-step.cm-card .cm-form { grid-template-columns: minmax(0, 1fr) 36px minmax(0, 1fr) auto; column-gap: 12px; align-items: end; }
+.panel.mapping-step.cm-card .cm-readonly { box-sizing: border-box; height: 36px; min-height: 36px; padding: 0 12px; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 7px; font-weight: 600; }
+.panel.mapping-step.cm-card .cm-link { width: 36px; height: 36px; justify-self: center; }
+.app-shell .panel.mapping-step.cm-card .cm-form > .cm-unlink { min-height: 36px; height: 36px; padding: 0 12px; }
+@media (max-width: 900px) { .panel.mapping-step.cm-card .cm-form { grid-template-columns: minmax(0, 1fr); } .panel.mapping-step.cm-card .cm-form > .cm-unlink { justify-self: start; } }
