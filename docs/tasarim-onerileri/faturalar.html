@@ -236,7 +236,9 @@
   .seg button { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px; color: var(--muted); white-space: nowrap; background: none; border: 1px solid transparent; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; }
   .seg button:hover { color: var(--ink); }
   .seg button.on { color: var(--violet); background: var(--primary-soft); border-color: var(--violet-line); }
-  .v1 .filters { display: grid; grid-template-columns: minmax(220px, 1.6fr) repeat(2, minmax(170px, 1fr)) minmax(170px, .9fr) auto; gap: 12px; align-items: end; }
+  .v1 .filters { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(150px, .85fr) minmax(240px, 1.1fr) minmax(170px, .85fr) auto; gap: 12px; align-items: end; }
+  .fld > .anchor, .fld > span { display: block; min-width: 0; }
+  .trigger { min-width: 0; } .trigger .ico { flex: none; }
   .search { position: relative; } .search .ico { position: absolute; left: 11px; top: 10px; color: var(--subtle); } .search .in { padding-left: 34px; }
   .v1 .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
   .v1 .panel-h { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 16px; }
@@ -278,7 +280,9 @@
   .detail-grid > section { display: grid; gap: 14px; align-content: start; padding: 20px 24px; }
   .detail-grid > section + section { border-left: 1px solid var(--line); background: color-mix(in srgb, var(--raised) 40%, var(--surface)); }
 
-  @media (max-width: 1200px) { .v1 .filters { grid-template-columns: 1fr 1fr; } .v1 .filters .search { grid-column: 1 / -1; } }
+  .v1 .fshell { container: fshell / inline-size; }
+  @container fshell (max-width: 930px) { .v1 .filters { grid-template-columns: 1fr 1fr; } .v1 .filters .search { grid-column: 1 / -1; } .v1 .filters > .btn { justify-self: start; } }
+  @container fshell (max-width: 480px) { .v1 .filters { grid-template-columns: 1fr; } }
   @media (max-width: 1000px) {
     .shell { grid-template-columns: 1fr; } .side { display: none; }
     .v1 .metrics, .v2 .strip { grid-template-columns: 1fr 1fr; }
@@ -289,7 +293,6 @@
   }
   @media (max-width: 700px) {
     .page { padding: 16px 16px 96px; }
-    .v1 .filters { grid-template-columns: 1fr; }
     .addr, .kv { grid-template-columns: 1fr; }
     .cal { grid-template-columns: 1fr; } .cal .presets { grid-template-columns: repeat(3, 1fr); border-right: 0; padding-right: 0; }
   }
