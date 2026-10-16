@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fatura Durumları</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #111115; --surface: #17171c; --raised: #1d1d23; --soft: #22222a;
+    --line: #2a2a32; --line-strong: #383842;
+    --ink: #ececf0; --muted: #a3a3b0; --subtle: #6f6f7c;
+    --primary: #8b5cf6; --primary-soft: #272139;
+    --violet: color-mix(in srgb, var(--primary) 55%, white);
+    --warn: #e2aa4b; --bad: #e4636f; --ok: #46b98f; --info: #83b4ff;
+  }
+  * { box-sizing: border-box; }
+  html, body { overflow-x: clip; }
+  body { margin: 0; font: 14px/1.5 Inter, "Segoe UI", system-ui, sans-serif; color: var(--ink); background: var(--bg); -webkit-font-smoothing: antialiased; }
+  h1, h2, p { margin: 0; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 32px 16px 96px; display: grid; gap: 28px; }
+  .intro h1 { font-size: 22px; font-weight: 600; }
+  .intro p { color: var(--muted); margin-top: 6px; max-width: 74ch; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; position: sticky; top: 0; z-index: 5; padding: 10px 0; background: var(--bg); }
+  .tabs button { height: 34px; padding: 0 14px; color: var(--muted); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 7px; font: inherit; font-size: 13px; cursor: pointer; }
+  .tabs button[aria-pressed="true"] { color: var(--ink); background: var(--primary-soft); border-color: color-mix(in srgb, var(--primary) 55%, transparent); }
+  .option { display: grid; gap: 12px; margin-bottom: 36px; }
+  .option-head h2 { font-size: 17px; font-weight: 600; }
+  .option-head p { color: var(--muted); font-size: 13px; margin-top: 4px; max-width: 82ch; }
+  .pros { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--muted); font-size: 12.5px; }
+  .pros span::before { content: "+ "; color: var(--ok); }
+  .pros span.con::before { content: "− "; color: var(--warn); }
+  .table { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); overflow: hidden; }
+  .tr { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1.5fr) minmax(0, .7fr); align-items: center; border-top: 1px solid var(--line); }
+  .tr.th { border-top: 0; height: 44px; background: var(--raised); color: var(--muted); font-size: 12.5px; font-weight: 500; }
+  .tr > div { padding: 16px; min-width: 0; }
+  .tr.th > div { padding: 0 16px; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .tr.th .f { margin-left: auto; color: var(--subtle); }
+  .order b { display: block; font-weight: 600; font-size: 13.5px; }
+  .order small { color: var(--subtle); font-size: 12px; }
+  .money { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .tr.th .money { justify-content: flex-end; }
+  .ico { width: 16px; height: 16px; flex: none; display: block; }
+  .num { font-variant-numeric: tabular-nums; }
+  .warn { --tone: var(--warn); } .info { --tone: var(--info); } .ok { --tone: var(--ok); } .bad { --tone: var(--bad); } .mut { --tone: var(--subtle); }
+
+  /* F — document glyph that fills up */
+  .vF .doc { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 10px; align-items: center; }
+  .vF .doc svg { width: 28px; height: 28px; color: var(--tone); }
+  .vF .doc span { display: block; font-size: 13px; font-weight: 500; line-height: 1.3; }
+  .vF .doc small { display: block; color: var(--subtle); font-size: 12px; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .vF .doc.bad small { color: color-mix(in srgb, var(--bad) 75%, var(--muted)); }
+
+  /* G — tone rule inside the cell */
+  .vG .rule { padding: 2px 0 2px 12px; border-left: 2px solid var(--tone); }
+  .vG .rule span { display: block; font-size: 13px; font-weight: 500; color: color-mix(in srgb, var(--tone) 70%, white); line-height: 1.3; }
+  .vG .rule.mut span { color: var(--muted); }
+  .vG .rule small { display: block; color: var(--subtle); font-size: 12px; line-height: 1.35; }
+
+  /* H — colour only where attention is needed */
+  .vH .calm { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+  .vH .calm svg { color: var(--subtle); }
+  .vH .calm.ok svg { color: var(--ok); }
+  .vH .loud { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px; border-radius: 7px; font-size: 13px; font-weight: 500; color: color-mix(in srgb, var(--tone) 75%, white); background: color-mix(in srgb, var(--tone) 12%, transparent); border: 1px solid color-mix(in srgb, var(--tone) 40%, transparent); }
+  .vH .loud small { color: var(--muted); font-weight: 400; font-size: 12px; }
+  .vH .row-wrap { display: grid; gap: 4px; justify-items: start; }
+  .vH .row-wrap > small { color: var(--subtle); font-size: 12px; }
+
+  /* I — invoice number first */
+  .vI .inv { display: grid; gap: 3px; }
+  .vI .inv .top { display: flex; align-items: center; gap: 8px; }
+  .vI .inv .dot { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--tone); box-shadow: 0 0 0 3px color-mix(in srgb, var(--tone) 18%, transparent); }
+  .vI .inv b { font-weight: 600; font-size: 13px; }
+  .vI .inv .none { font-weight: 500; font-size: 13px; color: color-mix(in srgb, var(--tone) 75%, white); }
+  .vI .inv .mut .none { color: var(--muted); }
+  .vI .inv small { padding-left: 16px; color: var(--subtle); font-size: 12px; }
+
+  /* J — split badge */
+  .vJ .split { display: inline-flex; align-items: stretch; height: 30px; border: 1px solid var(--line-strong); border-radius: 7px; overflow: hidden; font-size: 13px; }
+  .vJ .split i { display: grid; place-items: center; width: 30px; color: var(--tone); background: color-mix(in srgb, var(--tone) 16%, var(--surface)); border-right: 1px solid color-mix(in srgb, var(--tone) 35%, var(--line-strong)); }
+  .vJ .split span { display: flex; align-items: center; padding: 0 11px; font-weight: 500; white-space: nowrap; background: var(--raised); }
+  .vJ .cell { display: grid; gap: 5px; justify-items: start; }
+  .vJ .cell small { color: var(--subtle); font-size: 12px; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 18px; padding: 12px 14px; color: var(--muted); font-size: 12.5px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; }
+  .legend i { width: 8px; height: 8px; border-radius: 50%; background: var(--tone); }
+  @media (max-width: 760px) { .table { overflow-x: auto; } .tr { min-width: 620px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="intro">
+    <h1>Fatura Durumu Hücresi · 5 Öneri Daha</h1>
+    <p>Bu sefer yalnızca fatura durumuna odaklandım. Sistemdeki altı fatura durumunun hepsi her öneride bir satır olarak gösteriliyor; böylece hangi durumun nasıl görüneceği yan yana karşılaştırılabilir.</p>
+  </div>
+  <div class="legend">
+    <span class="warn"><i></i>Fatura Bekliyor</span><span class="info"><i></i>Fatura İletiliyor</span><span class="ok"><i></i>Faturası Mevcut</span><span class="bad"><i></i>Fatura İletilemedi</span><span class="bad"><i></i>Fatura Oluşturulamadı</span><span class="mut"><i></i>Fatura İptal</span>
+  </div>
+  <div class="tabs" role="group" aria-label="Öneri seç">
+    <button type="button" data-show="all" aria-pressed="true">Hepsi</button>
+    <button type="button" data-show="F" aria-pressed="false">Öneri F</button>
+    <button type="button" data-show="G" aria-pressed="false">Öneri G</button>
+    <button type="button" data-show="H" aria-pressed="false">Öneri H</button>
+    <button type="button" data-show="I" aria-pressed="false">Öneri I</button>
+    <button type="button" data-show="J" aria-pressed="false">Öneri J</button>
+  </div>
+  <div id="options"></div>
+</div>
+<script>
+const I = {
+  clock: '<circle cx="8" cy="8" r="6"/><path d="M8 4.8V8l2.2 1.4"/>',
+  send: '<path d="M14 2 7 9M14 2l-4.5 12L7 9 2 6.5z"/>',
+  check: '<circle cx="8" cy="8" r="6"/><path d="m5.5 8.2 1.7 1.7 3.4-3.6"/>',
+  alert: '<path d="M8 2 14.5 13.5h-13z"/><path d="M8 6.5v3M8 11.6v.1"/>',
+  stop: '<circle cx="8" cy="8" r="6"/><path d="M8 5v3.4M8 10.8v.1"/>',
+  x: '<circle cx="8" cy="8" r="6"/><path d="M5.5 8h5"/>',
+  filter: '<path d="M2.5 3.5h11L9.2 8.6v4l-2.4 1.1V8.6z"/>'
+};
+const svg = n => `<svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[n]}</svg>`;
+
+/* Document glyph per state: outline page, inner mark changes */
+const docMark = {
+  wait: '<path d="M10 16h8M10 20h5" stroke-dasharray="2 2.4"/>',
+  send: '<path d="M10 18h8M15 15l3 3-3 3"/>',
+  ok: '<path d="m10.5 18 2.4 2.4 4.8-5"/>',
+  fail: '<path d="M14 14v4.2M14 21.3v.1"/>',
+  build: '<path d="m11 15 6 6M17 15l-6 6"/>',
+  cancel: '<path d="M10 18h8"/>'
+};
+const doc = k => `<svg viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3.5h9.5L21 8v16.5H7z" ${k === 'wait' ? 'stroke-dasharray="3 2.2"' : ''}/><path d="M16.5 3.5V8H21"/>${docMark[k]}</svg>`;
+
+const rows = [
+  { no: '#11717855898', who: 'Gülcan Demirkıran Kara', sum: '₺519,75', t: 'Fatura Bekliyor', short: 'Bekliyor', c: 'warn', i: 'clock', k: 'wait', attention: true,
+    d: 'Kesilmedi · 2 saattir', inv: null },
+  { no: '#11717783115', who: 'Ali Can', sum: '₺791,01', t: 'Fatura İletiliyor', short: 'İletiliyor', c: 'info', i: 'send', k: 'send', attention: false,
+    d: 'Trendyol yanıtı bekleniyor', inv: 'RVN2026000412' },
+  { no: '#11717712403', who: 'Merve Aksoy', sum: '₺1.240,00', t: 'Faturası Mevcut', short: 'Mevcut', c: 'ok', i: 'check', k: 'ok', attention: false,
+    d: '16.10.2026 18:05 iletildi', inv: 'RVN2026000398' },
+  { no: '#11717650981', who: 'Kerem Uslu', sum: '₺349,90', t: 'Fatura İletilemedi', short: 'İletilemedi', c: 'bad', i: 'alert', k: 'fail', attention: true,
+    d: 'Pazaryeri dosyayı reddetti', inv: 'RVN2026000371' },
+  { no: '#11717621177', who: 'Burak Er', sum: '₺918,40', t: 'Fatura Oluşturulamadı', short: 'Oluşturulamadı', c: 'bad', i: 'stop', k: 'build', attention: true,
+    d: 'Vergi numarası geçersiz', inv: null },
+  { no: '#11717599214', who: 'Selin Ateş', sum: '₺229,00', t: 'Fatura İptal', short: 'İptal', c: 'mut', i: 'x', k: 'cancel', attention: false,
+    d: 'Sipariş iptal edildi', inv: 'RVN2026000355' }
+];
+const order = r => `<div class="order"><b>${r.no}</b><small>${r.who}</small></div>`;
+const money = r => `<div class="money">${r.sum}</div>`;
+const head = (t = 'Fatura Durumu') => `<div>Sipariş Bilgileri<span class="f">${svg('filter')}</span></div><div>${t}<span class="f">${svg('filter')}</span></div><div class="money">Tutar</div>`;
+
+const options = [
+  { n: 'F', title: 'Dolan Belge Simgesi',
+    text: 'Her durum aynı belge simgesinin farklı bir hâli: bekleyen fatura kesik çizgili boş sayfa, iletilen sayfada ok, mevcut faturada onay, hatalılarda ünlem veya çarpı. Yanında durum adı ve kısa açıklama.',
+    pros: ['Simge tek bir aileden, temaya uyumlu', 'Durum değişince sayfa "dolar"', 'Açıklama satırı nedeni gösterir'],
+    cell: r => `<div class="doc ${r.c}">${doc(r.k)}<div><span>${r.t}</span><small>${r.d}</small></div></div>` },
+  { n: 'G', title: 'Renkli Kenar Çizgisi',
+    text: 'Etiket kutusu yerine hücre içinde solda ince renkli bir çizgi; durum adı o renge yakın, altında fatura numarası veya neden. Simge yok, çok sakin bir görünüm.',
+    pros: ['Kutu yok, en sade seçenek', 'Fatura numarası satırda görünür', 'con:Renk dışında ayırt edici bir işaret yok'],
+    cell: r => `<div class="rule ${r.c}"><span>${r.t}</span><small>${r.inv ? `<span class="num" style="display:inline;color:inherit;font-weight:400">${r.inv}</span> · ` : ''}${r.d}</small></div>` },
+  { n: 'H', title: 'Sadece Dikkat Gerekene Renk',
+    text: 'İşi bitmiş veya beklemesi normal olan durumlar gri metin olarak kalır; yalnızca kullanıcının bir şey yapması gereken durumlar (bekleyen ve hatalı faturalar) renkli kutuyla öne çıkar. Liste taranırken göz doğrudan sorunlara gider.',
+    pros: ['Sorunlar kendiliğinden ayrışır', 'Tablo sakin kalır', 'con:Başarılı durumlar geri planda kalır'],
+    cell: r => r.attention
+      ? `<div class="row-wrap"><span class="loud ${r.c}">${svg(r.i)}${r.t}</span><small>${r.d}</small></div>`
+      : `<div class="calm ${r.c}">${svg(r.i)}<span>${r.t}</span></div>` },
+  { n: 'I', title: 'Önce Fatura Numarası',
+    text: 'Fatura varsa hücrenin ana içeriği fatura numarasıdır; başında durum renginde bir nokta, altında durum ve tarih. Fatura yoksa numaranın yerinde durumun kendisi yazar. Başlık "Fatura" olarak kısalır.',
+    pros: ['En çok aranan bilgi (fatura no) öne çıkar', 'Kısa başlık, kesilme yok', 'con:Durum metni ikinci plana düşer'],
+    headTitle: 'Fatura',
+    cell: r => `<div class="inv ${r.c}"><div class="top"><i class="dot"></i>${r.inv ? `<b class="num">${r.inv}</b>` : `<span class="none">${r.t}</span>`}</div><small>${r.inv ? `${r.short} · ${r.d}` : r.d}</small></div>` },
+  { n: 'J', title: 'İki Parçalı Rozet',
+    text: 'Rozetin sol parçası durum renginde dolgulu bir simge karesi, sağ parçası nötr zeminde durum adı. Renk küçük bir alanda kaldığı için tablo sakin, ama durum yine anında okunur. Altında kısa açıklama.',
+    pros: ['Mevcut rozet fikrine en yakın', 'Renk kontrollü kullanılır', 'Hizalama düzgün, tüm rozetler aynı boy'],
+    cell: r => `<div class="cell"><span class="split ${r.c}"><i>${svg(r.i)}</i><span>${r.t}</span></span><small>${r.d}</small></div>` }
+];
+
+document.getElementById('options').innerHTML = options.map(o => `
+  <section class="option v${o.n}" data-n="${o.n}">
+    <div class="option-head"><h2>Öneri ${o.n} · ${o.title}</h2><p>${o.text}</p></div>
+    <div class="pros">${o.pros.map(p => p.startsWith('con:') ? `<span class="con">${p.slice(4)}</span>` : `<span>${p}</span>`).join('')}</div>
+    <div class="table">
+      <div class="tr th">${head(o.headTitle)}</div>
+      ${rows.map(r => `<div class="tr">${order(r)}<div>${o.cell(r)}</div>${money(r)}</div>`).join('')}
+    </div>
+  </section>`).join('');
+
+document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('.tabs button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  document.querySelectorAll('.option').forEach(s => s.hidden = b.dataset.show !== 'all' && s.dataset.n !== b.dataset.show);
+}));
+</script>
+</body>
+</html>
