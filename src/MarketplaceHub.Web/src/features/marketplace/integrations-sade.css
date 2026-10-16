@@ -87,10 +87,10 @@
 .app-shell.stitch-shell main .integrations-reference-page :is(.integration-filter-button, .integration-add-button, .reference-action, .reference-menu-trigger, [role="tab"]):focus-visible { outline: none; border-color: var(--rv-color-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--rv-color-primary) 18%, transparent); }
 
 /* Second pass against docs/tasarim-onerileri/kategori-eslestirme-d.html:
-   - buttons 32px like the reference .btn;
+   - buttons stay 34px, the panel control height;
    - status tags keep the reference tag colour (ink-2) for every state; only the glyph says "done";
    - the passive mark sits on its own like the reference status shapes: no frame, no grey tile. */
-.app-shell.stitch-shell main .integrations-reference-page { --sade-control: 32px; }
+.app-shell.stitch-shell main .integrations-reference-page { --sade-control: 34px; }
 .app-shell.stitch-shell main .integrations-reference-page .reference-connection-state.connected { color: var(--rv-color-muted); }
 .app-shell.stitch-shell main .integrations-reference-page .reference-integration-private-state { grid-template-columns: 18px minmax(0, 1fr); align-items: start; gap: 12px; }
 .app-shell.stitch-shell main .integrations-reference-page .reference-private-icon { display: block; width: 18px; height: 18px; margin-top: 2px; color: var(--rv-color-subtle); background: none; border: 0; border-radius: 0; }
