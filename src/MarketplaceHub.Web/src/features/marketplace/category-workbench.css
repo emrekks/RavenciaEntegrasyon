@@ -370,3 +370,38 @@
 .app-shell.stitch-shell main .cm-card .cm-item + button.cm-section { margin-top: 8px; }
 .app-shell.stitch-shell main .cm-card button.cm-section > span:last-child { display: inline-grid; min-width: 20px; height: 18px; place-items: center; padding: 0 6px; color: var(--rv-color-ink); background: var(--rv-color-border-strong); border-radius: 5px; font-size: 11px; font-weight: 600; }
 .app-shell.stitch-shell main .cm-card button.cm-section + .cm-item { margin-top: 4px; }
+
+/* Detail column children keep their height; only the value table / editor gives way. */
+.mapping-advanced-modal .cm-card .cm-detail > * { flex-shrink: 0; }
+.mapping-advanced-modal .cm-card .cm-detail > :is(.cm-vtable, .cm-legacy-card) { flex-shrink: 1; }
+
+/* Mapping page head: backup actions as plain 34px secondary buttons. */
+.app-shell.stitch-shell main .mapping-reference-heading .mapping-reference-heading-actions { gap: 0; }
+.app-shell.stitch-shell main .mapping-reference-heading .mapping-transfer-actions { gap: 8px; }
+.app-shell.stitch-shell main .mapping-reference-heading .mapping-transfer-actions :is(button, .mapping-transfer-upload) { display: inline-flex; align-items: center; gap: 8px; height: 34px; min-height: 34px; padding: 0 14px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 14px; font-weight: 500 !important; text-transform: none; }
+.app-shell.stitch-shell main .mapping-reference-heading .mapping-transfer-actions :is(button, .mapping-transfer-upload):hover:not(:disabled) { background: var(--rv-color-surface-soft); }
+.app-shell.stitch-shell main .mapping-reference-heading .mapping-transfer-actions .ui-icon { width: 16px; height: 16px; flex: none; }
+
+/* Backup popups: plain head, one card of option rows, quiet notice, 34px footer actions. */
+.app-shell.stitch-shell main .mapping-transfer-modal { width: min(640px, calc(100vw - 32px)); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 14px; box-shadow: 0 24px 64px rgb(0 0 0 / 50%); }
+.app-shell.stitch-shell main .mapping-transfer-modal > header { display: flex; align-items: flex-start; gap: 12px; padding: 20px 24px 16px; border-bottom: 1px solid var(--rv-color-border); }
+.app-shell.stitch-shell main .mapping-transfer-modal > header > div { flex: 1; min-width: 0; }
+.app-shell.stitch-shell main .mapping-transfer-modal > header h2 { margin: 0; font-size: 18px; font-weight: 600; text-transform: none; }
+.app-shell.stitch-shell main .mapping-transfer-modal > header p { margin: 4px 0 0; color: var(--rv-color-muted); font-size: 13px; line-height: 1.5; }
+.app-shell.stitch-shell main .mapping-transfer-modal .modal-close { display: grid; width: 32px; min-width: 32px; height: 32px; min-height: 32px; place-items: center; padding: 0; color: var(--rv-color-muted); background: none; border: 0; border-radius: 7px; box-shadow: none; }
+.app-shell.stitch-shell main .mapping-transfer-modal .modal-close:hover { color: var(--rv-color-ink); background: var(--rv-color-surface-soft); }
+.app-shell.stitch-shell main .mapping-transfer-modal .mapping-transfer-options { gap: 0; margin: 20px 24px; overflow: hidden; border: 1px solid var(--rv-color-border); border-radius: 12px; }
+.app-shell.stitch-shell main .mapping-transfer-modal .mapping-export-scope-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; }
+.app-shell.stitch-shell main .mapping-transfer-modal .mapping-transfer-options label { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: 12px; height: auto; min-height: 56px; margin: 0; padding: 10px 16px; background: none; border: 0; border-top: 1px solid var(--rv-color-border); border-radius: 0; cursor: pointer; }
+.app-shell.stitch-shell main .mapping-transfer-modal .mapping-transfer-options > label:first-child { border-top: 0; }
+.app-shell.stitch-shell main .mapping-transfer-modal .mapping-transfer-options label:hover { background: var(--rv-color-surface-raised); }
+.app-shell.stitch-shell main .mapping-transfer-modal .mapping-transfer-options label:has(input:checked) { background: var(--rv-color-primary-soft); }
+.app-shell.stitch-shell main .mapping-transfer-modal .mapping-transfer-all-option { background: var(--rv-color-surface-raised) !important; }
+.app-shell.stitch-shell main .mapping-transfer-modal .mapping-transfer-options input[type="checkbox"] { width: 16px; min-width: 16px; height: 16px; margin: 0; accent-color: var(--rv-color-primary); }
+.app-shell.stitch-shell main .mapping-transfer-modal .mapping-transfer-options strong { color: var(--rv-color-ink); font-size: 14px; font-weight: 600; }
+.app-shell.stitch-shell main .mapping-transfer-modal .mapping-transfer-options small { color: var(--rv-color-muted); font-size: 12px; }
+.app-shell.stitch-shell main .mapping-transfer-modal .mapping-transfer-all-option em { color: var(--rv-color-muted); font-size: 12px; font-style: normal; font-weight: 500; }
+.app-shell.stitch-shell main .mapping-transfer-modal .mapping-transfer-warning { margin: 0 24px 20px; padding: 10px 14px; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 10px; font-size: 13px; line-height: 1.5; }
+.app-shell.stitch-shell main .mapping-transfer-modal > footer { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 14px 24px; border-top: 1px solid var(--rv-color-border); }
+.app-shell.stitch-shell main .mapping-transfer-modal > footer .mapping-export-footer-hint { flex: 1; color: var(--rv-color-muted); font-size: 13px; }
+.app-shell.stitch-shell main .mapping-transfer-modal > footer > button { height: 34px; min-height: 34px; padding: 0 14px; border-radius: 7px; font-size: 14px; text-transform: none; }
