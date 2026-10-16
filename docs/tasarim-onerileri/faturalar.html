@@ -77,14 +77,14 @@
   .callout.danger { background: color-mix(in srgb, var(--bad) 8%, var(--surface)); border-color: color-mix(in srgb, var(--bad) 40%, var(--line-strong)); } .callout.danger .ico { color: var(--bad); }
 
   /* badges: dot + label, tinted only by the dot */
-  .badge { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; color: var(--ink); white-space: nowrap; background: var(--raised); border: 1px solid var(--line-strong); border-radius: 6px; font-size: 12px; font-weight: 500; }
-  .badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--subtle); }
-  .badge.warn::before { background: var(--warn); } .badge.ok::before { background: var(--ok); } .badge.info::before { background: var(--info); } .badge.bad::before { background: var(--bad); }
+  /* status tags of the new design: outlined, with a state glyph (filled check, clock arc, dashed circle, red cross) */
+  .badge { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px 0 5px; color: var(--ink); white-space: nowrap; background: none; border: 1px solid var(--line-strong); border-radius: 5px; font-size: 12px; font-weight: 500; }
+  .badge .st { width: 13px; height: 13px; }
+  .badge.warn .st { color: var(--warn); } .badge.info .st { color: var(--info); }
   .badge.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, var(--line-strong)); }
   .logo { width: 28px; height: 28px; flex: none; object-fit: contain; background: #fff; border-radius: 6px; padding: 2px; }
   .logo.lg { width: 36px; height: 36px; border-radius: 8px; }
-  .cargo { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border: 1px solid var(--line-strong); border-radius: 5px; font-size: 11px; font-weight: 600; letter-spacing: .02em; }
-  .cargo.tex { color: #f27a1a; } .cargo.hx { color: #ff6000; } .cargo.ptt { color: #f5c400; } .cargo.yk { color: #4f9cf9; } .cargo.aras { color: #e4636f; }
+  .cargo-img { display: block; width: auto; max-width: 112px; height: 28px; object-fit: contain; object-position: left center; }
 
   /* popovers / menus */
   .anchor { position: relative; }
@@ -124,7 +124,7 @@
   .m-head > div { flex: 1; min-width: 0; }
   .m-head .crumb { color: var(--subtle); font-size: 12px; font-weight: 500; }
   .m-head h2 { font-size: 18px; font-weight: 600; } .m-head p { margin-top: 2px; color: var(--muted); font-size: 13px; }
-  .m-body { display: grid; gap: 16px; align-content: start; padding: 20px 24px; overflow-y: auto; min-height: 0; }
+  .m-body { display: grid; grid-auto-rows: max-content; gap: 16px; align-content: start; padding: 20px 24px; overflow-y: auto; min-height: 0; }
   .m-body.flush { padding: 0; gap: 0; }
   .m-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 14px 24px 16px; background: var(--raised); border-top: 1px solid var(--line); border-radius: 0 0 14px 14px; }
   .m-foot .note { flex: 1 1 200px; color: var(--muted); font-size: 13px; }
@@ -277,7 +277,7 @@
   .v2 .rowacts { flex-wrap: nowrap; white-space: nowrap; display: flex; } .v2 .rowacts .btn.primary { height: 30px; padding: 0 10px; } .v2 .rowacts { align-items: center; gap: 6px; justify-content: flex-end; }
   .v2 .meta-line { display: flex; flex-wrap: wrap; gap: 4px 10px; color: var(--muted); font-size: 12px; }
   .detail-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); }
-  .detail-grid > section { display: grid; gap: 14px; align-content: start; padding: 20px 24px; }
+  .detail-grid > section { display: grid; grid-auto-rows: max-content; gap: 14px; align-content: start; padding: 20px 24px; }
   .detail-grid > section + section { border-left: 1px solid var(--line); background: color-mix(in srgb, var(--raised) 40%, var(--surface)); }
 
   .v1 .fshell { container: fshell / inline-size; }
@@ -363,6 +363,9 @@ const ROWS = [
   { id: 'r6', p: 'shopify', no: '1042', date: '15.10.2026 10:02', cust: 'Deniz Koç', qty: '1 adet · 1 çeşit', cargo: ['ptt', 'PTT Kargo'], track: 'KP0912873411', os: 'Hazırlanıyor', inv: 'wait', amt: '₺1.090,00' },
 ]
 const S = { v: '1', tab: 'pending', sel: new Set(['r2', 'r3']), pop: null, modal: null, cf: { cargo: 'Trendyol Express' }, plats: ['trendyol', 'hepsiburada'], sort: ['Sipariş Tarihi', 'down'], toast: null }
+const CARGO = { tex: 'https://cdn.dsmcdn.com/seller-center/oms/nexus/cargo-provider/17.png', hx: 'https://www.hepsijet.com/images/hepsijet.svg', yk: 'https://cdn.dsmcdn.com/seller-center/oms/nexus/cargo-provider/4.png', aras: 'https://cdn.dsmcdn.com/seller-center/oms/nexus/cargo-provider/7.png', ptt: 'https://cdn.dsmcdn.com/seller-center/oms/nexus/cargo-provider/19.png' }
+const cargoImg = (k, l) => `<img class="cargo-img" src="${CARGO[k]}" alt="${l}" title="${l}" referrerpolicy="no-referrer" loading="lazy">`
+const osKind = o => o === 'Teslim Edildi' ? 'ok' : o === 'Kargoda' || o === 'Kargoya Verildi' ? 'info' : ''
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
 const logo = (p, lg) => `<img class="logo ${lg ? 'lg' : ''}" src="${P}${p}.png" alt="">`
 const pname = p => PLATFORMS.find(x => x[0] === p)[1]
@@ -409,8 +412,8 @@ function row(r, compact) {
   const sel = S.sel.has(r.id)
   const order = `<div class="ordercell"><input type="checkbox" class="cb" data-row="${r.id}" ${sel ? 'checked' : ''}>${logo(r.p)}<div><span class="on-no">#${r.no}<button class="icon-btn" title="Kopyala" style="width:22px;height:22px">${I.copy}</button></span><small class="num">${r.date}${r.invNo ? ` · ${r.invNo}` : ''}</small></div></div>`
   const cust = `<div class="cust anchor"><b>${r.cust}</b><span class="prodsum" data-a="pop" data-k="tip-${r.id}">${r.qty}</span>${S.pop === 'tip-' + r.id ? prodTip() : ''}</div>`
-  const cargo = `<div class="cargocell"><span class="cargo ${r.cargo[0]}">${r.cargo[1]}</span><small class="num">${r.track || 'Takip numarası yok'}</small></div>`
-  const os = `<div class="stacked"><span class="badge">${r.os}</span>${r.deliv ? `<small>Teslim: ${r.deliv}</small>` : ''}</div>`
+  const cargo = `<div class="cargocell">${cargoImg(r.cargo[0], r.cargo[1])}<small class="num">${r.track || 'Takip numarası yok'}</small></div>`
+  const os = `<div class="stacked"><span class="badge ${osKind(r.os)}">${r.os}</span>${r.deliv ? `<small>Teslim: ${r.deliv}</small>` : ''}</div>`
   const inv = `<div class="stacked">${invBadge(r)}${r.reason ? `<small style="color:var(--bad)" title="${esc(r.reason)}">Neden: belge numarası geçersiz</small>` : ''}${r.deadline ? `<small class="${r.crit ? 'crit' : ''}">Son Tarih: ${r.deadline}</small>` : ''}</div>`
   const amt = `<div class="amt"><b class="num">${r.amt}</b><small class="${r.due ? 'pri' : ''}">${r.due ? 'Öncelikli Takip' : 'Sipariş Toplamı'}</small></div>`
   const menu = `<span class="anchor"><button class="btn" data-a="pop" data-k="act-${r.id}">İşlemler${I.chev}</button>${S.pop === 'act-' + r.id ? popActions(r) : ''}</span>`
@@ -463,7 +466,7 @@ function v2() {
 const modal = ({ crumb, title, desc, body, foot, w = '', flush }) => `<div class="modal ${w}" role="dialog" aria-modal="true"><header class="m-head"><div>${crumb ? `<div class="crumb">${crumb}</div>` : ''}<h2>${title}</h2>${desc ? `<p>${desc}</p>` : ''}</div><button class="icon-btn" data-a="close" aria-label="Kapat">${I.close}</button></header><div class="m-body ${flush ? 'flush' : ''}">${body}</div>${foot ? `<footer class="m-foot">${foot}</footer>` : ''}</div>`
 function mDetail(two) {
   const r = ROWS[2]
-  const facts = `<div class="facts"><div><small>Sipariş Durumu</small><span class="badge">${r.os}</span></div><div><small>Fatura Durumu</small>${invBadge(r)}<em>Hata kodu: INV-REJECTED</em></div><div><small>Toplam</small><b class="num">${r.amt}</b></div><div><small>Kargo / Takip</small><span class="cargo hx">HepsiJET</span><em class="num">${r.track}</em></div></div>`
+  const facts = `<div class="facts"><div><small>Sipariş Durumu</small><span class="badge ${osKind(r.os)}">${r.os}</span></div><div><small>Fatura Durumu</small>${invBadge(r)}<em>Hata kodu: INV-REJECTED</em></div><div><small>Toplam</small><b class="num">${r.amt}</b></div><div><small>Kargo / Takip</small>${cargoImg('hx', 'hepsiJET')}<em class="num">${r.track}</em></div></div>`
   const invInfo = `<div><div class="h3">Fatura Bilgileri</div><p class="lead">Mali fatura, pazaryerindeki fatura ve teslim kanıtı ayrı izlenir.</p></div><dl class="kv"><dt>Mali Fatura Numarası</dt><dd class="num">${r.invNo}</dd><dt>Mali Fatura</dt><dd><span class="badge ok">Faturası Mevcut</span></dd><dt>Pazaryerindeki Fatura</dt><dd>${invBadge(r)}</dd><dt>İletim Kanıtı</dt><dd><span class="badge bad">Platform aktarımı başarısız</span><small style="color:var(--muted)">Referans: HB-INV-88213</small></dd><dt>Son Başarılı Kontrol</dt><dd>16.10.2026 21:40</dd></dl><div class="callout danger">${I.alert}<span><b>Pazaryeri faturayı reddetti.</b> Belge numarası geçersiz. Fatura numarasını kontrol edip yeniden iletin.</span></div><div style="display:flex;flex-wrap:wrap;gap:12px"><button class="btn link">${I.open} Mali sağlayıcı yerel PDF’sini aç</button><button class="btn link">${I.open} Pazaryerindeki güncel fatura bağlantısını aç</button></div><details><summary class="lead" style="cursor:pointer">Önceki pazaryeri fatura referansları (1)</summary><div class="sum" style="margin-top:8px"><div>${G.none}<span>RVC2026000102<small>12.10.2026 · Portalda iptal edildi</small></span><button class="btn link">Geçmiş bağlantıyı aç</button></div></div></details>`
   const prod = `<div style="display:flex;justify-content:space-between;align-items:center"><span class="h3">Ürünler</span><span class="lead">2 kalem</span></div><div class="lines"><div><i></i><span><b>Kadın Triko Bluz — Siyah</b><small>SKU: BLUZ-01 · Barkod: 8690001234567</small></span><small class="num">1 adet · Birim ₺519,75 · KDV %10</small></div><div><i></i><span><b>Örme Hırka — Bej</b><small>SKU: HRK-07 · Barkod: 8690001239876</small></span><small class="num">1 adet · Birim ₺728,65 · KDV %10</small></div></div>`
   const addr = `<div class="addr"><div><b>Teslimat Adresi</b><span>Adres: Atatürk Cad. No:12 D:4</span><span>İlçe / İl: Karaköprü / Şanlıurfa</span><span>Telefon: 0532 *** ** 12</span></div><div><b>Fatura Adresi</b><span>Adres: Atatürk Cad. No:12 D:4</span><span>İlçe / İl: Karaköprü / Şanlıurfa</span><span>Posta Kodu: 63300</span></div></div>`
@@ -510,8 +513,16 @@ function mocks() {
   return `<section class="mocks"><h3>Açılır Menüler ve Pencereler</h3><p>Bu öneride sayfadaki her düğmenin açtığı menü ve pencerenin görünümü. Yukarıdaki düğmeler aynılarını canlı açar.</p><div class="mock-grid">${m.join('')}</div></section>`
 }
 
+function addGlyphs() {
+  document.querySelectorAll('.badge:not([data-g])').forEach(b => {
+    b.dataset.g = '1'
+    const k = b.classList.contains('ok') ? 'done' : b.classList.contains('bad') ? 'bad' : b.classList.contains('warn') || b.classList.contains('info') ? 'pending' : 'none'
+    b.insertAdjacentHTML('afterbegin', G[k])
+  })
+}
 function render() {
   document.getElementById('root').innerHTML = S.v === '1' ? v1() : v2()
+  setTimeout(addGlyphs)
   document.getElementById('layer').innerHTML = (S.modal ? `<div class="overlay" data-a="overlay">${POP[S.modal]()}</div>` : '') + (S.toast ? toast : '')
 }
 document.addEventListener('click', e => {
