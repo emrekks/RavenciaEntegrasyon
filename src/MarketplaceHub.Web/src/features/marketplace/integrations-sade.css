@@ -109,3 +109,4 @@
 /* Status tag: Title Case; an active connection reads in ink. */
 .app-shell.stitch-shell main .integrations-reference-page .reference-connection-state { text-transform: capitalize; }
 .app-shell.stitch-shell main .integrations-reference-page .reference-connection-state.connected { color: #ececf0; }
+.app-shell.stitch-shell main .integrations-reference-page .reference-connection-state { height: 22px; }
