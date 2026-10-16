@@ -121,3 +121,12 @@
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-attempts-section table { table-layout: fixed; min-width: 0; }
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-attempts-section :is(th, td):first-child { width: 40px; }
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-attempts-section :is(th, td) { overflow-wrap: anywhere; white-space: normal; }
+
+/* Queue metrics fit the card width: compact columns, wrapping headings, the job code under its title. */
+.app-shell.stitch-shell main .jobs-reference-page .job-queue-metrics-scroll { overflow-x: visible; }
+.app-shell.stitch-shell main .jobs-reference-page .job-queue-metrics table { table-layout: auto; width: 100%; }
+.app-shell.stitch-shell main .jobs-reference-page .job-queue-metrics :is(th, td) { padding: 8px 10px; }
+.app-shell.stitch-shell main .jobs-reference-page .job-queue-metrics th { height: auto; white-space: normal; line-height: 1.3; }
+.app-shell.stitch-shell main .jobs-reference-page .job-queue-metrics td { white-space: nowrap; }
+.app-shell.stitch-shell main .jobs-reference-page .job-queue-metrics :is(th, td):first-child { padding-left: 16px; white-space: normal; }
+.app-shell.stitch-shell main .jobs-reference-page .job-queue-metrics td:first-child small { overflow-wrap: anywhere; font-size: 11px; }

@@ -429,3 +429,4 @@ html body .mfs-sort-sheet [role="listbox"] > button.is-selected { color: var(--r
   .rv-auth-page .rv-auth-hero-brand { min-height: 0; margin-bottom: 8px; }
 }
 .app-shell.stitch-shell > aside .nav-count.is-warn { color: var(--rv-color-warning); background: color-mix(in srgb, var(--rv-color-warning) 14%, transparent); border-color: transparent; }
+.app-shell.stitch-shell main button:hover .rv-tab-count, .app-shell.stitch-shell main .rv-button:hover :is(.qi-count, .cs-count) { background: var(--rv-color-border-strong); }

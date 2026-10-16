@@ -2628,7 +2628,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         claim.Status = ReturnClaimStatus.ActionRequired;
         claim.RawStatus = "AwaitingAction";
         claim.LastRemoteModifiedAt = fixture.Now.AddMinutes(-10);
-        var returnsPort = new ReadOnlyReturnTestPort(fixture.Now, rawStatus: "Accepted", externalOrderId: order.ExternalOrderId);
+        var returnsPort = new ReadOnlyReturnTestPort(fixture.Now, rawStatus: "Accepted", externalOrderId: order.ExternalOrderId, listedClaimId: "accepted-claim");
 
         await using (var seedDb = fixture.CreateContext())
         {
@@ -2655,7 +2655,9 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                     CancellationToken.None);
 
                 Assert.True(result.Succeeded);
-                Assert.Equal(["accepted-claim"], returnsPort.ReadCalls);
+                // Hepsiburada has no single-claim read: the open claim is found in the status it moved on to.
+                Assert.Empty(returnsPort.ReadCalls);
+                Assert.Equal("Accepted", returnsPort.ListedStatuses[0]);
             }
 
             await using var verificationDb = fixture.CreateContext();
@@ -4149,12 +4151,20 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             throw new NotSupportedException();
     }
 
-    private sealed class ReadOnlyReturnTestPort(DateTimeOffset lastModifiedAt, string rawStatus = "NewRequest", string externalOrderId = "return-lifecycle-order") : IReturnPort
+    private sealed class ReadOnlyReturnTestPort(DateTimeOffset lastModifiedAt, string rawStatus = "NewRequest", string externalOrderId = "return-lifecycle-order", string? listedClaimId = null) : IReturnPort
     {
         public List<string> ReadCalls { get; } = [];
+        public List<string> ListedStatuses { get; } = [];
 
-        public Task<AdapterResult<AdapterPageResult<RemoteReturnClaim>>> PollAsync(AdapterContext context, ReturnPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken) =>
-            throw new NotSupportedException("Return lifecycle test must use individual claim reads.");
+        public Task<AdapterResult<AdapterPageResult<RemoteReturnClaim>>> PollAsync(AdapterContext context, ReturnPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken)
+        {
+            if (listedClaimId is null) throw new NotSupportedException("Return lifecycle test must use individual claim reads.");
+            ListedStatuses.Add(window.Status ?? "");
+            IReadOnlyList<RemoteReturnClaim> items = string.Equals(window.Status, rawStatus, StringComparison.Ordinal)
+                ? [new(listedClaimId, externalOrderId, rawStatus, null, null, null, lastModifiedAt, [], "{}")]
+                : [];
+            return Task.FromResult(AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Success(new(items, null, false)));
+        }
 
         public Task<AdapterResult<RemoteReturnClaim>> GetAsync(AdapterContext context, string externalReturnId, CancellationToken cancellationToken)
         {
