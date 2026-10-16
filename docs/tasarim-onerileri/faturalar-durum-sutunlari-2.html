@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Durum Sütunları 2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #111115; --surface: #17171c; --raised: #1d1d23; --soft: #22222a;
+    --line: #2a2a32; --line-strong: #383842;
+    --ink: #ececf0; --muted: #a3a3b0; --subtle: #6f6f7c;
+    --primary: #8b5cf6; --primary-soft: #272139;
+    --violet: color-mix(in srgb, var(--primary) 55%, white);
+    --warn: #e2aa4b; --bad: #e4636f; --ok: #46b98f; --info: #83b4ff;
+  }
+  * { box-sizing: border-box; }
+  html, body { overflow-x: clip; }
+  body { margin: 0; font: 14px/1.5 Inter, "Segoe UI", system-ui, sans-serif; color: var(--ink); background: var(--bg); -webkit-font-smoothing: antialiased; }
+  h1, h2, p { margin: 0; }
+  button { font: inherit; }
+  .wrap { max-width: 1160px; margin: 0 auto; padding: 32px 16px 96px; display: grid; gap: 28px; }
+  .intro h1 { font-size: 22px; font-weight: 600; }
+  .intro p { color: var(--muted); margin-top: 6px; max-width: 72ch; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; position: sticky; top: 0; z-index: 5; padding: 10px 0; background: var(--bg); }
+  .tabs button { height: 34px; padding: 0 14px; color: var(--muted); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 7px; font-size: 13px; cursor: pointer; }
+  .tabs button[aria-pressed="true"] { color: var(--ink); background: var(--primary-soft); border-color: color-mix(in srgb, var(--primary) 55%, transparent); }
+  .option { display: grid; gap: 12px; margin-bottom: 36px; }
+  .option-head h2 { font-size: 17px; font-weight: 600; }
+  .option-head p { color: var(--muted); font-size: 13px; margin-top: 4px; max-width: 82ch; }
+  .pros { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--muted); font-size: 12.5px; }
+  .pros span::before { content: "+ "; color: var(--ok); }
+  .pros span.con::before { content: "− "; color: var(--warn); }
+  .table { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); overflow: hidden; }
+  .tr { position: relative; display: grid; align-items: center; border-top: 1px solid var(--line); }
+  .tr.th { border-top: 0; height: 44px; background: var(--raised); color: var(--muted); font-size: 12.5px; font-weight: 500; }
+  .tr > div { padding: 16px; min-width: 0; }
+  .tr.th > div { padding: 0 16px; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .tr.th .f { margin-left: auto; color: var(--subtle); }
+  .tr.th .c { justify-content: center; } .tr.th .c .f { margin-left: 6px; }
+  .order b { display: block; font-weight: 600; font-size: 13.5px; }
+  .order small { color: var(--subtle); font-size: 12px; }
+  .money { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .tr.th .money { justify-content: flex-end; }
+  .ico { width: 16px; height: 16px; flex: none; display: block; }
+  .ok { --tone: var(--ok); } .warn { --tone: var(--warn); } .bad { --tone: var(--bad); } .info { --tone: var(--info); } .vio { --tone: var(--violet); } .mut { --tone: var(--subtle); }
+
+  /* A — step dots */
+  .vA .tr { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, .8fr); }
+  .vA .steps { display: grid; gap: 7px; }
+  .vA .steps span { font-size: 13px; font-weight: 500; }
+  .vA .dots { display: flex; gap: 4px; }
+  .vA .dots i { width: 18px; height: 4px; border-radius: 2px; background: var(--line-strong); }
+  .vA .dots i.on { background: var(--tone); }
+  .vA .steps small { color: var(--subtle); font-size: 11.5px; line-height: 1; }
+
+  /* B — actionable invoice cell */
+  .vB .tr { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1.1fr) minmax(0, .8fr); }
+  .vB .plain { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink); }
+  .vB .plain svg { color: var(--tone); }
+  .vB .act { display: flex; align-items: center; gap: 10px; }
+  .vB .act button { height: 30px; padding: 0 12px; border-radius: 7px; font-size: 12.5px; font-weight: 500; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+  .vB .act .go { color: #fff; background: var(--primary); border: 1px solid var(--primary); }
+  .vB .act .retry { color: var(--bad); background: transparent; border: 1px solid color-mix(in srgb, var(--bad) 45%, var(--line-strong)); }
+  .vB .act small { color: var(--subtle); font-size: 12px; line-height: 1.3; }
+  .vB .act .bad-text { color: color-mix(in srgb, var(--bad) 80%, var(--muted)); }
+
+  /* C — soft pills */
+  .vC .tr { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, .8fr); }
+  .vC .tr > .mid { display: flex; justify-content: center; }
+  .vC .pill { display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 11px 0 9px; border-radius: 999px; font-size: 12.5px; font-weight: 500; color: color-mix(in srgb, var(--tone) 80%, white); background: color-mix(in srgb, var(--tone) 14%, transparent); white-space: nowrap; }
+  .vC .pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--tone); }
+
+  /* D — row stripe */
+  .vD .tr { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, .8fr); }
+  .vD .tr:not(.th)::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px; border-radius: 0 3px 3px 0; background: var(--tone); }
+  .vD .txt span { display: block; font-size: 13px; font-weight: 500; color: var(--ink); }
+  .vD .txt small { display: block; font-size: 12px; color: var(--subtle); }
+  .vD .txt.inv span { color: color-mix(in srgb, var(--tone) 85%, white); }
+  .vD .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--muted); font-size: 12px; }
+  .vD .legend i { display: inline-block; width: 3px; height: 12px; margin-right: 6px; border-radius: 2px; background: var(--tone); vertical-align: -2px; }
+
+  /* E — lifecycle bar */
+  .vE .tr { grid-template-columns: minmax(0, 1.3fr) minmax(0, 2fr) minmax(0, .8fr); }
+  .vE .life { display: grid; gap: 8px; }
+  .vE .life-top { display: flex; align-items: baseline; gap: 10px; font-size: 13px; }
+  .vE .life-top b { font-weight: 500; }
+  .vE .life-top small { margin-left: auto; color: var(--subtle); font-size: 12px; white-space: nowrap; }
+  .vE .seg { display: grid; grid-template-columns: repeat(4, 1fr) 6px 1.3fr; gap: 3px; }
+  .vE .seg i { height: 6px; border-radius: 3px; background: var(--line-strong); }
+  .vE .seg i.o { background: var(--violet); }
+  .vE .seg i.sp { background: none; }
+  .vE .seg i.f { background: var(--tone); }
+  .vE .seg-labels { display: grid; grid-template-columns: repeat(4, 1fr) 6px 1.3fr; gap: 3px; color: var(--subtle); font-size: 11px; line-height: 1; }
+
+  @media (max-width: 760px) { .table { overflow-x: auto; } .tr { min-width: 700px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="intro">
+    <h1>Sipariş ve Fatura Durumu · Yeni Öneriler</h1>
+    <p>İlk beş öneriden farklı yönler: ilerleme göstergesi, eyleme dönük fatura hücresi, yumuşak hap etiketler, satır kenarı rengi ve tek bir yaşam döngüsü çubuğu.</p>
+  </div>
+  <div class="tabs" role="group" aria-label="Öneri seç">
+    <button type="button" data-show="all" aria-pressed="true">Hepsi</button>
+    <button type="button" data-show="A" aria-pressed="false">Öneri A</button>
+    <button type="button" data-show="B" aria-pressed="false">Öneri B</button>
+    <button type="button" data-show="C" aria-pressed="false">Öneri C</button>
+    <button type="button" data-show="D" aria-pressed="false">Öneri D</button>
+    <button type="button" data-show="E" aria-pressed="false">Öneri E</button>
+  </div>
+  <div id="options"></div>
+</div>
+<script>
+const I = {
+  cart: '<path d="M2.5 3h2l1.6 7.4a1 1 0 0 0 1 .8h5.6a1 1 0 0 0 1-.8L14.5 6H5.2"/><circle cx="7" cy="13.5" r=".9"/><circle cx="12.5" cy="13.5" r=".9"/>',
+  box: '<path d="M2.5 5.2 8 2.5l5.5 2.7v5.6L8 13.5l-5.5-2.7z"/><path d="M2.5 5.2 8 8l5.5-2.8M8 8v5.5"/>',
+  truck: '<path d="M1.8 4h7.7v7H1.8zM9.5 6.5h2.8l2 2.3V11H9.5"/><circle cx="4.5" cy="11.8" r="1.2"/><circle cx="11.8" cy="11.8" r="1.2"/>',
+  check: '<circle cx="8" cy="8" r="6"/><path d="m5.5 8.2 1.7 1.7 3.4-3.6"/>',
+  x: '<circle cx="8" cy="8" r="6"/><path d="m5.8 5.8 4.4 4.4M10.2 5.8l-4.4 4.4"/>',
+  doc: '<path d="M4 2h5l3 3v9H4z"/><path d="M9 2v3h3M6 8.5h4M6 11h3"/>',
+  send: '<path d="M14 2 7 9M14 2l-4.5 12L7 9 2 6.5z"/>',
+  retry: '<path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5v2.5h-2.5"/>',
+  filter: '<path d="M2.5 3.5h11L9.2 8.6v4l-2.4 1.1V8.6z"/>'
+};
+const svg = n => `<svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[n]}</svg>`;
+
+/* o.s = order step 1..4 (0 = cancelled); f.s = invoice step 1..3 (0 = not needed, -1 = failed) */
+const rows = [
+  { no: '#11717855898', who: 'Gülcan Demirkıran Kara', date: '17.10.2026 01:00', sum: '₺519,75',
+    o: { t: 'Yeni', i: 'cart', c: 'vio', s: 1, d: 'Az önce' },
+    f: { t: 'Fatura Bekliyor', c: 'warn', s: 1, d: 'Kesilmedi · 2 saattir' } },
+  { no: '#11717783115', who: 'Ali Can', date: '16.10.2026 22:14', sum: '₺791,01',
+    o: { t: 'Hazırlanıyor', i: 'box', c: 'info', s: 2, d: 'Paketleniyor' },
+    f: { t: 'Fatura Kesildi', c: 'info', s: 2, d: 'İletim sırada' } },
+  { no: '#11717712403', who: 'Merve Aksoy', date: '16.10.2026 15:42', sum: '₺1.240,00',
+    o: { t: 'Kargoda', i: 'truck', c: 'info', s: 3, d: 'Yurtiçi Kargo' },
+    f: { t: 'İletildi', c: 'ok', s: 3, d: '16.10 18:05' } },
+  { no: '#11717650981', who: 'Kerem Uslu', date: '15.10.2026 11:08', sum: '₺349,90',
+    o: { t: 'Teslim Edildi', i: 'check', c: 'ok', s: 4, d: '17.10 09:30' },
+    f: { t: 'İletilemedi', c: 'bad', s: -1, d: 'Fatura numarası reddedildi' } },
+  { no: '#11717599214', who: 'Selin Ateş', date: '14.10.2026 20:51', sum: '₺229,00',
+    o: { t: 'İptal Edildi', i: 'x', c: 'mut', s: 0, d: 'Müşteri iptali' },
+    f: { t: 'Gerekmiyor', c: 'mut', s: 0, d: 'Sipariş iptal' } }
+];
+const order = r => `<div class="order"><b>${r.no}</b><small>${r.who} · ${r.date}</small></div>`;
+const money = r => `<div class="money">${r.sum}</div>`;
+const th = (t, f = true, cls = '') => `<div class="${cls}">${t}${f ? `<span class="f">${svg('filter')}</span>` : ''}</div>`;
+const dots = (n, on) => Array.from({ length: n }, (_, k) => `<i class="${k < on ? 'on' : ''}"></i>`).join('');
+const invoiceAction = f => f.s === 1 ? `<button class="go" type="button">${svg('doc')}Fatura Kes</button><small>${f.d}</small>`
+  : f.s === -1 ? `<button class="retry" type="button">${svg('retry')}Tekrar Dene</button><small class="bad-text">${f.d}</small>`
+  : `<span class="plain ${f.c}">${svg(f.s === 3 ? 'send' : f.s === 2 ? 'doc' : 'x')}${f.t}</span>`;
+
+const options = [
+  { n: 'A', title: 'İlerleme Noktaları',
+    text: 'Her durum hücresinde durumun adı ve altında kısa bir ilerleme çubuğu var: siparişte 4 adım (Yeni, Hazırlanıyor, Kargoda, Teslim), faturada 3 adım (Bekliyor, Kesildi, İletildi). Kutu ve simge yok; renk ve doluluk sürecin nerede olduğunu anlatır.',
+    pros: ['Hangi aşamada olduğu bir bakışta görülür', 'Sade, kutusuz', 'Hata durumu tüm çubuğu kırmızı yapar', 'con:İlk kez görene adımlar sezgisel olmayabilir'],
+    head: th('Sipariş Bilgileri') + th('Sipariş') + th('Fatura') + th('Tutar', false, 'money'),
+    row: r => order(r)
+      + `<div class="steps ${r.o.c}"><span>${r.o.t}</span><div class="dots">${dots(4, r.o.s)}</div></div>`
+      + `<div class="steps ${r.f.c}"><span>${r.f.t}</span><div class="dots">${dots(3, r.f.s === -1 ? 3 : r.f.s)}</div></div>`
+      + money(r) },
+  { n: 'B', title: 'Eyleme Dönük Fatura Hücresi',
+    text: 'Fatura sütunu durum göstermek yerine yapılacak işi gösterir: faturası beklenen pakette "Fatura Kes", iletilemeyende "Tekrar Dene" düğmesi ve nedeni. İşi bitmiş satırlar sakin bir metinle kalır. Sipariş durumu yalnızca renkli simge ve metindir.',
+    pros: ['En sık işlem tek tıkta', 'Sorunlu satırlar kendiliğinden öne çıkar', 'Hata nedeni tabloda okunur', 'con:İşlemler menüsüyle görev çakışması olur'],
+    head: th('Sipariş Bilgileri') + th('Sipariş Durumu') + th('Fatura') + th('Tutar', false, 'money'),
+    row: r => order(r)
+      + `<div><span class="plain ${r.o.c}">${svg(r.o.i)}${r.o.t}</span></div>`
+      + `<div class="act">${invoiceAction(r.f)}</div>`
+      + money(r) },
+  { n: 'C', title: 'Yumuşak Hap Etiketler',
+    text: 'Kenarlıksız, tamamen yuvarlak, durum renginde hafif dolgulu etiketler; başında küçük bir nokta. Ortada durur ama dolgulu olduğu için hücrede kaybolmaz. Başlıklar "Sipariş" ve "Fatura" olarak kısalır.',
+    pros: ['Mevcut düzen hiç değişmez', 'Renkler satırlar arasında net ayrışır', 'En az iş gerektiren'],
+    head: th('Sipariş Bilgileri') + th('Sipariş', true, 'c') + th('Fatura', true, 'c') + th('Tutar', false, 'money'),
+    row: r => order(r)
+      + `<div class="mid"><span class="pill ${r.o.c}">${r.o.t}</span></div>`
+      + `<div class="mid"><span class="pill ${r.f.c}">${r.f.t}</span></div>`
+      + money(r) },
+  { n: 'D', title: 'Satır Kenarı Rengi',
+    text: 'Satırın sol kenarındaki ince renkli şerit fatura durumunu gösterir; tablo kaydırılırken bekleyen ve hatalı paketler hemen fark edilir. Hücrelerde etiket yok: durum adı ve altında açıklama, fatura metni durum renginde.',
+    pros: ['Liste taranırken renk ile ayıklanır', 'Hücreler sade kalır', 'con:Rengin anlamı ilk seferde öğrenilmeli'],
+    legend: true,
+    head: th('Sipariş Bilgileri') + th('Sipariş Durumu') + th('Fatura Durumu') + th('Tutar', false, 'money'),
+    rowClass: r => r.f.c,
+    row: r => order(r)
+      + `<div class="txt"><span>${r.o.t}</span><small>${r.o.d}</small></div>`
+      + `<div class="txt inv ${r.f.c}"><span>${r.f.t}</span><small>${r.f.d}</small></div>`
+      + money(r) },
+  { n: 'E', title: 'Yaşam Döngüsü Çubuğu',
+    text: 'Sipariş ve fatura tek sütunda, tek bir çubukta: dört sipariş adımı mor, son parça faturanın rengi. Üstte o anki durumun adı ve sağda açıklaması yazar. Paket nerede ve faturası ne durumda, aynı yerde okunur.',
+    pros: ['Tek sütun, başlık sorunu yok', 'Tüm süreç tek çizgide', 'con:İptal ve hata durumları için ayrı renk kuralları gerekir'],
+    head: th('Sipariş Bilgileri') + th('Süreç') + th('Tutar', false, 'money'),
+    row: r => order(r) + `<div class="life ${r.f.c}">
+      <div class="life-top"><b>${r.o.t}</b><span style="color:var(--subtle)">·</span><b style="color:color-mix(in srgb, var(--tone) 85%, white)">${r.f.t}</b><small>${r.f.d}</small></div>
+      <div class="seg">${[1,2,3,4].map(k => `<i class="${r.o.s >= k ? 'o' : ''}"></i>`).join('')}<i class="sp"></i><i class="${r.f.s === 0 ? '' : 'f'}" style="${r.f.s > 0 && r.f.s < 3 ? 'opacity:.55' : ''}"></i></div>
+      <div class="seg-labels"><span>Yeni</span><span>Hazırlık</span><span>Kargo</span><span>Teslim</span><span></span><span>Fatura</span></div></div>` + money(r) }
+];
+
+document.getElementById('options').innerHTML = options.map(o => `
+  <section class="option v${o.n}" data-n="${o.n}">
+    <div class="option-head"><h2>Öneri ${o.n} · ${o.title}</h2><p>${o.text}</p></div>
+    <div class="pros">${o.pros.map(p => p.startsWith('con:') ? `<span class="con">${p.slice(4)}</span>` : `<span>${p}</span>`).join('')}</div>
+    ${o.legend ? '<div class="legend"><span class="warn"><i></i>Fatura bekliyor</span><span class="info"><i></i>Kesildi</span><span class="ok"><i></i>İletildi</span><span class="bad"><i></i>İletilemedi</span><span class="mut"><i></i>Gerekmiyor</span></div>' : ''}
+    <div class="table">
+      <div class="tr th">${o.head}</div>
+      ${rows.map(r => `<div class="tr ${o.rowClass ? o.rowClass(r) : ''}">${o.row(r)}</div>`).join('')}
+    </div>
+  </section>`).join('');
+
+document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('.tabs button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  document.querySelectorAll('.option').forEach(s => s.hidden = b.dataset.show !== 'all' && s.dataset.n !== b.dataset.show);
+}));
+</script>
+</body>
+</html>
