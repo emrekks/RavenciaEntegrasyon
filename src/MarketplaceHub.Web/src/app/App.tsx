@@ -8,7 +8,7 @@ import { MobileActionMenu } from '../shared/MobileActionMenu'
 import { AttributesPage, AttributeMappingPage, BrandsPage, CategoriesPage, ImportDetailPage, ImportsPage, NewProductPage, ProductDetailPage, ProductsPage, IntegrationDetailPage, IntegrationsPage, MappingPage, OrdersPage, QuestionsPage, ReturnDetailPage, ReturnsPage, ShipmentDetailPage, ShipmentsPage, InvoiceDetailPage, InvoicesPage, JobsPage } from './route-components'
 import { useOperationsRealtime } from './hooks/useOperationsRealtime'
 import { code128Bars, defaultShippingLabelBlockPosition, defaultShippingLabelSettings, shippingLabelBlockCatalog, shippingLabelFields, useShippingLabelSettings, type ShippingLabelAlignment, type ShippingLabelBlock, type ShippingLabelBlockKind, type ShippingLabelField, type ShippingLabelSettings } from '../features/shipping'
-import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFontFamilyCss, appearanceFontFamilyOptions, appearanceFontScale, appearanceFontSizeOptions, defaultAppearanceColorTheme, defaultAppearanceSettings, defaultLightPalette, useAppearanceSettings, type AppearanceColorThemeProfile, type AppearanceSettings } from '../features/settings/appearance-settings'
+import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFontFamilyCss, appearanceFontFamilyOptions, appearanceFontScale, appearanceFontSizeOptions, defaultAppearanceColorTheme, defaultAppearanceSettings, grafitAppearanceColorTheme, matchingColorThemeId, defaultLightPalette, useAppearanceSettings, type AppearanceColorThemeProfile, type AppearanceSettings } from '../features/settings/appearance-settings'
 import { appendNotification, readNotificationHistory, subscribeNotificationHistory, type AppNotification } from '../shared/notifications'
 import { dashboardOperationalLinks } from '../shared/dashboard-operational-links'
 import { DateRangePicker } from '../shared/DateRangePicker'
@@ -981,7 +981,7 @@ function AppearanceSettingsPage() {
   const [busy, setBusy] = useState(false)
   const [newThemeName, setNewThemeName] = useState('')
   const [themeMenuOpen, setThemeMenuOpen] = useState(false)
-  const [selectedThemeId, setSelectedThemeId] = useState(defaultAppearanceColorTheme.id)
+  const [selectedThemeId, setSelectedThemeId] = useState(() => matchingColorThemeId(appearance.settings))
   const [themeToDelete, setThemeToDelete] = useState<AppearanceColorThemeProfile | null>(null)
   const [visualTheme, setVisualTheme] = useState<VisualTheme>(readVisualThemePreference)
   // The colour editor works on the palette of the theme being previewed.
@@ -1122,6 +1122,7 @@ function AppearanceSettingsPage() {
   const selectableThemes: Array<{ id: string; label: string; description: string; mode: VisualTheme; profile: typeof defaultAppearanceColorTheme | null }> = [
     { id: 'default-light', label: 'Ravencia — Aydınlık', description: 'Açık çalışma alanı görünümü', mode: 'light', profile: null },
     { id: defaultAppearanceColorTheme.id, label: defaultAppearanceColorTheme.name, description: defaultAppearanceColorTheme.builtIn ? 'Çalışma alanının varsayılan koyu teması' : 'Kayıtlı özel tema', mode: 'dark', profile: defaultAppearanceColorTheme },
+    { id: grafitAppearanceColorTheme.id, label: grafitAppearanceColorTheme.name, description: 'Önceki varsayılan koyu tema', mode: 'dark', profile: grafitAppearanceColorTheme },
     ...appearance.draft.colorThemes.filter(theme => !theme.builtIn).map(theme => ({ id: theme.id, label: theme.name, description: 'Kayıtlı özel tema', mode: 'dark' as const, profile: theme }))
   ]
   const activeSelectableTheme = selectableThemes.find(theme => theme.id === (visualTheme === 'light' ? 'default-light' : selectedThemeId)) ?? selectableThemes[0]

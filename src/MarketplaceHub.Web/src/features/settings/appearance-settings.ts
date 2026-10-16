@@ -36,17 +36,40 @@ const defaultDarkPalette: AppearancePalette = {
   bg: '#101014', sidebar: '#17171c', surface: '#17171c', surfaceRaised: '#1d1d23', surfaceSoft: '#22222a', border: '#2a2a32', borderStrong: '#383842', ink: '#ececf0', muted: '#a3a3b0', subtle: '#6f6f7c', primary: '#8b5cf6', primaryHover: '#7c3aed', primarySoft: '#272139', accent: '#46b98f', accentSoft: '#1e2e2c', warning: '#e2aa4b', warningSoft: '#332c23', danger: '#e4636f', dangerSoft: '#342228', info: '#83b4ff'
 }
 
-// Clean light surfaces with grey lines and one violet accent. It is only the starting point; the palette is
-// editable in Settings and saved with the account.
+// Soft by design: no pure white anywhere, so large light areas stay easy on the eyes. It is only the starting
+// point; the palette is editable in Settings and saved with the account.
 export const defaultLightPalette: AppearancePalette = {
-  bg: '#f6f6f8', sidebar: '#ffffff', surface: '#ffffff', surfaceRaised: '#f4f4f6', surfaceSoft: '#eeeef2', border: '#e4e4ea', borderStrong: '#d3d3dc', ink: '#17171c', muted: '#5b5b68', subtle: '#8c8c99', primary: '#6d3df0', primaryHover: '#5b2ee0', primarySoft: '#f2eefe', accent: '#1f9a6c', accentSoft: '#e3f2ec', warning: '#b7791f', warningSoft: '#f6ecdc', danger: '#c8414e', dangerSoft: '#f8e3e5', info: '#2f5aa8'
+  bg: '#e1e4eb', sidebar: '#eaedf2', surface: '#eaedf2', surfaceRaised: '#f0f2f6', surfaceSoft: '#dfe3ea', border: '#c9d0dc', borderStrong: '#a4aec0', ink: '#2f3a4f', muted: '#525e77', subtle: '#69758d', primary: '#5b44d2', primaryHover: '#4b36bb', primarySoft: '#e0dcf6', accent: '#0f7864', accentSoft: '#d3e8df', warning: '#8a560d', warningSoft: '#efe1c0', danger: '#a2344f', dangerSoft: '#efd5dc', info: '#2f5aa8'
 }
 
+// Sade: darker, cooler surfaces with thin lines and a single violet accent. It is the default dark theme.
 export const defaultAppearanceColorTheme: AppearanceColorThemeProfile = {
   id: 'default-dark',
-  name: 'Ravencia — Grafit',
+  name: 'Ravencia — Sade',
   palette: { ...defaultDarkPalette },
   builtIn: true
+}
+
+// The former default stays available as a built-in choice.
+const grafitDarkPalette: AppearancePalette = {
+  bg: '#101014', sidebar: '#18181f', surface: '#18181f', surfaceRaised: '#202028', surfaceSoft: '#272730', border: '#303039', borderStrong: '#41414d', ink: '#f4f4f7', muted: '#aaaab9', subtle: '#858595', primary: '#8b5cf6', primaryHover: '#7c3aed', primarySoft: '#302443', accent: '#4adea0', accentSoft: '#1c332c', warning: '#f6c16b', warningSoft: '#382f22', danger: '#fb858b', dangerSoft: '#3c252b', info: '#83b4ff'
+}
+
+export const grafitAppearanceColorTheme: AppearanceColorThemeProfile = {
+  id: 'ravencia-grafit',
+  name: 'Ravencia — Grafit',
+  palette: { ...grafitDarkPalette },
+  builtIn: true
+}
+
+export const builtInAppearanceColorThemes: AppearanceColorThemeProfile[] = [defaultAppearanceColorTheme, grafitAppearanceColorTheme]
+const builtInThemeProfiles = () => builtInAppearanceColorThemes.map(theme => ({ ...theme, palette: { ...theme.palette } }))
+
+// The theme whose palette is the account's current dark palette; a hand-edited palette falls back to the default.
+export function matchingColorThemeId(settings: AppearanceSettings) {
+  const dark = settings.colors.dark
+  const same = (palette: AppearancePalette) => (Object.keys(palette) as AppearanceColorToken[]).every(key => palette[key].toLowerCase() === dark[key].toLowerCase())
+  return settings.colorThemes.find(theme => same(theme.palette))?.id ?? defaultAppearanceColorTheme.id
 }
 
 export const defaultAppearanceSettings: AppearanceSettings = {
@@ -57,7 +80,7 @@ export const defaultAppearanceSettings: AppearanceSettings = {
     dark: { ...defaultDarkPalette },
     light: { ...defaultLightPalette }
   },
-  colorThemes: [{ ...defaultAppearanceColorTheme, palette: { ...defaultAppearanceColorTheme.palette } }]
+  colorThemes: builtInThemeProfiles()
 }
 
 export const appearanceColorTokenOptions: Array<{ key: AppearanceColorToken; label: string; description: string }> = [
@@ -135,15 +158,16 @@ function normalizePalette(value: unknown, fallback: AppearancePalette): Appearan
   return Object.fromEntries(colorTokens.map(token => [token, typeof candidate[token] === 'string' && hexColor.test(candidate[token]) ? candidate[token] : fallback[token]])) as AppearancePalette
 }
 
-function normalizeColors(value: unknown): AppearanceColors {
+// Settings saved before the Grafit theme existed carry no Grafit entry; only those move from the former default to Sade.
+function normalizeColors(value: unknown, fromBeforeGrafitTheme = false): AppearanceColors {
   if (!value || typeof value !== 'object') return { dark: { ...defaultDarkPalette }, light: { ...defaultLightPalette } }
   const candidate = value as Partial<AppearanceColors>
-  return { dark: migrateFormerDarkDefault(normalizePalette(candidate.dark, defaultDarkPalette)), light: migrateFormerLightDefault(normalizePalette(candidate.light, defaultLightPalette)) }
+  return { dark: fromBeforeGrafitTheme ? migrateFormerDarkDefault(normalizePalette(candidate.dark, defaultDarkPalette)) : normalizePalette(candidate.dark, defaultDarkPalette), light: migrateFormerLightDefault(normalizePalette(candidate.light, defaultLightPalette)) }
 }
 
 // Accounts that saved an earlier default palette (never edited by hand) follow the current default.
-const formerLightBackgrounds = new Set(['#d4d9e2', '#cbd0db', '#d8dce5', '#e1e4eb'])
-const formerLightSurfaces = new Set(['#e5e8ee', '#d9dde6', '#dfe3ea', '#eaedf2'])
+const formerLightBackgrounds = new Set(['#d4d9e2', '#cbd0db', '#d8dce5'])
+const formerLightSurfaces = new Set(['#e5e8ee', '#d9dde6', '#dfe3ea'])
 function migrateFormerLightDefault(palette: AppearancePalette): AppearancePalette {
   return formerLightBackgrounds.has(palette.bg.toLowerCase()) && formerLightSurfaces.has(palette.surface.toLowerCase()) ? { ...defaultLightPalette } : palette
 }
@@ -154,7 +178,7 @@ function migrateFormerDarkDefault(palette: AppearancePalette): AppearancePalette
 }
 
 function normalizeColorThemes(value: unknown): AppearanceColorThemeProfile[] {
-  const profiles: AppearanceColorThemeProfile[] = [{ ...defaultAppearanceColorTheme, palette: { ...defaultAppearanceColorTheme.palette } }]
+  const profiles: AppearanceColorThemeProfile[] = builtInThemeProfiles()
   if (!Array.isArray(value)) return profiles
   const ids = new Set(profiles.map(profile => profile.id.toLowerCase()))
   for (const item of value) {
@@ -178,7 +202,7 @@ export function normalizeAppearanceSettings(value: unknown): AppearanceSettings 
     fontFamily: typeof candidate.fontFamily === 'string' && fontFamilies.has(candidate.fontFamily as AppearanceFontFamily) ? candidate.fontFamily as AppearanceFontFamily : defaultAppearanceSettings.fontFamily,
     fontSize: typeof candidate.fontSize === 'string' && fontSizes.has(candidate.fontSize as AppearanceFontSize) ? candidate.fontSize as AppearanceFontSize : defaultAppearanceSettings.fontSize,
     themeMode: typeof candidate.themeMode === 'string' && themeModes.has(candidate.themeMode as AppearanceThemeMode) ? candidate.themeMode as AppearanceThemeMode : defaultAppearanceSettings.themeMode,
-    colors: normalizeColors(candidate.colors),
+    colors: normalizeColors(candidate.colors, !(Array.isArray(candidate.colorThemes) && candidate.colorThemes.some(theme => (theme as Partial<AppearanceColorThemeProfile> | null)?.id === grafitAppearanceColorTheme.id))),
     colorThemes: normalizeColorThemes(candidate.colorThemes)
   }
 }
