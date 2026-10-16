@@ -484,3 +484,13 @@
   .app-shell.stitch-shell main section.mapping-page .mapping-saved-card .mapping-saved-header-tools { grid-template-columns: minmax(0, 1fr) auto; }
   .app-shell.stitch-shell main section.mapping-page .mapping-saved-card .mapping-saved-header-tools > :first-child { grid-column: 1 / -1; }
 }
+.app-shell.stitch-shell main section.mapping-page :is(.category-library-list, .category-chip-list) > span > button:first-child { justify-content: flex-start !important; height: auto !important; min-height: 0 !important; padding: 0 !important; text-align: left !important; font-weight: 400 !important; }
+.app-shell.stitch-shell main section.mapping-page .panel-category-picker-trigger > span { font-weight: 400; text-transform: none; }
+.app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-category-list { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 16px; }
+.app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-category-list > button { font-weight: 400 !important; }
+.app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-category-list > button.active { background: none; }
+.app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-category-list > button:hover { background: var(--rv-color-surface-raised) !important; }
+.app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-category-list > button:not(.active) { color: var(--rv-color-muted); }
+.app-shell.stitch-shell main .panel-attribute-modal-card > header > button { border: 0 !important; box-shadow: none !important; }
+@media (max-width: 560px) { .app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-category-list { grid-template-columns: minmax(0, 1fr); } }
+.app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-value-editor > div > div > button { width: 28px !important; min-width: 28px !important; height: 28px !important; min-height: 28px !important; padding: 0 !important; border: 0 !important; }
