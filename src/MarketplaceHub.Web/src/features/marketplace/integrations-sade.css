@@ -101,3 +101,7 @@
 .app-shell.stitch-shell main .integrations-reference-page :is(.integration-filter-summary, .reference-integration-private-state p, .reference-connection-state, .reference-connection-state.connected, .integration-view-tabs > [role="tab"][aria-selected="false"], .reference-menu-trigger) { color: var(--sade-text-2); }
 .app-shell.stitch-shell main .integrations-reference-page :is(.reference-private-icon, .reference-connection-state .cm-glyph) { color: var(--rv-color-muted); }
 .app-shell.stitch-shell main .integrations-reference-page .reference-connection-state.connected .cm-glyph { color: var(--rv-color-ink); }
+
+/* Passive card: the same four fields as an active card, hidden values in the muted tone, one short note below. */
+.app-shell.stitch-shell main .integrations-reference-page .reference-integration-body.is-passive .reference-data-point > strong { color: var(--rv-color-muted); font-weight: 500; }
+.app-shell.stitch-shell main .integrations-reference-page .reference-passive-note { grid-column: 1 / -1; margin: 2px 0 0; color: var(--sade-text-2, var(--rv-color-muted)); font-size: 13px; line-height: 1.5; }
