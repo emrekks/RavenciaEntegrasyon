@@ -138,3 +138,10 @@
   .cs-workspace .cs-frow > :is(.cs-fstate, .cs-ftime) { grid-column: 1; }
   .cs-workspace .cs-frow.is-head { display: none; }
 }
+
+/* Live check fixes: the global checkbox rule (17px square) and the global centred button text outrank the plain rules above. */
+.app-shell.stitch-shell main .cs-workspace input.cs-switch,
+.app-shell.stitch-shell main .cs-workspace .cs-pane .integration-write-toggle > input[type="checkbox"] { box-sizing: border-box; width: 34px; min-width: 34px; max-width: 34px; height: 20px; min-height: 20px; margin: 0; padding: 0; appearance: none; -webkit-appearance: none; border: 0; border-radius: 99px; }
+.app-shell.stitch-shell main .cs-workspace .cs-pane .integration-write-toggle > input[type="checkbox"]:disabled { opacity: .4; cursor: default; }
+.app-shell.stitch-shell main .cs-workspace .cs-fname { display: block; justify-content: flex-start; width: 100%; text-align: left; }
+.app-shell.stitch-shell main .cs-workspace .cs-pane .cs-issue-actions > button { height: 28px; min-height: 28px; padding: 0 10px; font-size: 13px; }
