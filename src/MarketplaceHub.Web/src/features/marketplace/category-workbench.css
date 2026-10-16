@@ -96,3 +96,14 @@
   .cm-card .cm-vtools-actions { flex-wrap: wrap; }
   .cm-card :is(.cm-page-head, .cm-context, .cm-actions, .cm-legend) { padding-inline: 16px; }
 }
+
+/* Inside the category modal the workbench is the modal's own body: no second card, no repeated title. */
+.mapping-advanced-modal .mapping-advanced-modal-body:has(.cm-card) { padding: 0; scrollbar-gutter: auto; }
+.mapping-advanced-modal .mapping-advanced-modal-body:has(.cm-card) .mapping-popup-content { padding: 0; border-top: 0; }
+.mapping-advanced-modal .mapping-popup-content > .panel.mapping-step.cm-card.cm-card { padding: 0; background: transparent; border: 0; border-radius: 0; }
+.mapping-advanced-modal .cm-card .cm-page-head { display: none; }
+.mapping-advanced-modal .cm-card .cm-context { border-top: 1px solid var(--rv-color-border); }
+.mapping-advanced-modal .cm-card .cm-foot { border-radius: 0; }
+
+/* Selects in the value table: the text sits in the middle of the 34px box instead of being cut at the bottom. */
+.cm-card .cm-vrow select, .cm-card .cm-select-row select, .cm-card .cm-context select { box-sizing: border-box; height: 36px; min-height: 36px; padding-block: 0; line-height: normal; }
