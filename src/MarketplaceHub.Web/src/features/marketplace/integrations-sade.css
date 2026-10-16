@@ -94,3 +94,10 @@
 .app-shell.stitch-shell main .integrations-reference-page .reference-connection-state.connected { color: var(--rv-color-muted); }
 .app-shell.stitch-shell main .integrations-reference-page .reference-integration-private-state { grid-template-columns: 18px minmax(0, 1fr); align-items: start; gap: 12px; }
 .app-shell.stitch-shell main .integrations-reference-page .reference-private-icon { display: block; width: 18px; height: 18px; margin-top: 2px; color: var(--rv-color-subtle); background: none; border: 0; border-radius: 0; }
+
+/* Lighter secondary text: labels move from subtle to muted, muted notes move halfway to ink. */
+.app-shell.stitch-shell main .integrations-reference-page { --sade-text-2: color-mix(in srgb, var(--rv-color-ink) 55%, var(--rv-color-muted)); }
+.app-shell.stitch-shell main .integrations-reference-page :is(.reference-data-point > span, .reference-integration-footer > span, .integration-filter-summary > span) { color: var(--rv-color-muted); }
+.app-shell.stitch-shell main .integrations-reference-page :is(.integration-filter-summary, .reference-integration-private-state p, .reference-connection-state, .reference-connection-state.connected, .integration-view-tabs > [role="tab"][aria-selected="false"], .reference-menu-trigger) { color: var(--sade-text-2); }
+.app-shell.stitch-shell main .integrations-reference-page :is(.reference-private-icon, .reference-connection-state .cm-glyph) { color: var(--rv-color-muted); }
+.app-shell.stitch-shell main .integrations-reference-page .reference-connection-state.connected .cm-glyph { color: var(--rv-color-ink); }
