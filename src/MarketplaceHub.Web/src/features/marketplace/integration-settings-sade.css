@@ -145,3 +145,11 @@
 .app-shell.stitch-shell main .cs-workspace .cs-pane .integration-write-toggle > input[type="checkbox"]:disabled { opacity: .4; cursor: default; }
 .app-shell.stitch-shell main .cs-workspace .cs-fname { display: block; justify-content: flex-start; width: 100%; text-align: left; }
 .app-shell.stitch-shell main .cs-workspace .cs-pane .cs-issue-actions > button { height: 28px; min-height: 28px; padding: 0 10px; font-size: 13px; }
+
+/* External-write group switches: the same 34×20 violet switch as the flow table; the state word moves to a quiet label. */
+.app-shell.stitch-shell main .cs-workspace .sync-policy-card-switch { gap: 10px; color: var(--rv-color-muted) !important; font-size: 12px; font-weight: 500; }
+.app-shell.stitch-shell main .cs-workspace .sync-policy-card-switch > i { width: 34px; height: 20px; flex: 0 0 34px; background: var(--rv-color-border-strong); border: 0; }
+.app-shell.stitch-shell main .cs-workspace .sync-policy-card-switch > i::after { top: 3px; left: 3px; width: 14px; height: 14px; background: #fff; }
+.app-shell.stitch-shell main .cs-workspace .sync-policy-card-switch > input:checked + i { background: var(--rv-color-primary); border-color: var(--rv-color-primary); }
+.app-shell.stitch-shell main .cs-workspace .sync-policy-card-switch > input:checked + i::after { transform: translateX(14px); }
+.app-shell.stitch-shell main .cs-workspace .sync-policy-card-switch:has(> input:disabled) { opacity: .45; }
