@@ -451,9 +451,9 @@
   .app-shell.stitch-shell > aside :is(nav, .settings-nav) a, .app-shell.stitch-shell > aside .logout-link { display: flex; width: 100%; height: var(--rv-control-height-md); min-height: var(--rv-control-height-md); flex: 0 0 var(--rv-control-height-md); align-items: center; gap: var(--rv-space-3); padding: 0 var(--rv-space-3); color: var(--rv-color-muted); background: transparent; border: 1px solid transparent; border-radius: var(--rv-radius-md); text-decoration: none; font-weight: 600; }
   .app-shell.stitch-shell > aside :is(nav, .settings-nav) a:hover, .app-shell.stitch-shell > aside .logout-link:hover { color: var(--rv-color-ink); background: var(--rv-color-surface-soft); border-color: var(--rv-color-border-strong); }
   .app-shell.stitch-shell > aside :is(nav, .settings-nav) a.active { color: #fff; background: var(--rv-color-primary); border-color: var(--rv-color-primary); box-shadow: 0 8px 18px color-mix(in srgb, var(--rv-color-primary) 24%, transparent); }
-  .app-shell.stitch-shell > aside :is(nav, .settings-nav) a.active .nav-count { color: var(--rv-color-primary); background: #fff; border-color: transparent; }
+  .app-shell.stitch-shell > aside :is(nav, .settings-nav) a.active .nav-count { color: var(--rv-color-ink); background: var(--rv-color-surface-soft); border-color: var(--rv-color-border); }
   .nav-icon { width: 22px; height: 22px; flex: 0 0 22px; stroke-width: 1.8; vector-effect: non-scaling-stroke; }
-  .nav-count { display: inline-flex; min-width: 22px; height: 22px; flex: 0 0 auto; align-items: center; justify-content: center; margin-left: auto; padding-inline: 5px; color: var(--rv-color-ink); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 7px; font-size: 11px; font-variant-numeric: tabular-nums; line-height: 1; }
+  .nav-count { display: inline-flex; min-width: 22px; height: 22px; flex: 0 0 auto; align-items: center; justify-content: center; margin-left: auto; padding-inline: 5px; color: var(--rv-color-ink); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 7px; font-size: 11px; font-variant-numeric: normal; line-height: 1; }
   .app-shell.stitch-shell.sidebar-collapsed .nav-count { display: none; }
   .app-shell.stitch-shell.sidebar-collapsed > aside :is(nav, .settings-nav) a, .app-shell.stitch-shell.sidebar-collapsed > aside .logout-link { justify-content: flex-start; padding-inline: var(--rv-space-3); }
   .app-shell.stitch-shell.sidebar-collapsed > aside :is(nav, .settings-nav) a .nav-icon, .app-shell.stitch-shell.sidebar-collapsed > aside .logout-link .nav-icon { width: 22px; height: 22px; }
@@ -4475,11 +4475,14 @@ button,
   }
 }
 
-.app-shell.stitch-shell > aside :is(nav, .settings-nav) a.active .nav-count {
-  color: #fff;
-  background: color-mix(in srgb, var(--rv-color-primary) 62%, var(--rv-color-bg));
-  border-color: color-mix(in srgb, #fff 18%, transparent);
+/* Every menu count looks the same, the active item included; proportional digits keep a lone 1 optically centred. */
+.app-shell.stitch-shell > aside :is(nav, .settings-nav) :is(a, a.active) .nav-count {
+  color: var(--rv-color-ink);
+  background: var(--rv-color-surface-soft);
+  border-color: var(--rv-color-border);
+  font-variant-numeric: normal;
 }
+.app-shell.stitch-shell > aside :is(nav, .settings-nav) a .nav-count.is-warn { color: var(--rv-color-warning); }
 
 /* Button labels use one consistent medium weight throughout the workspace. */
 :is(button, .button-link, [role="button"], .dashboard-panel-link, .return-detail-trigger, .return-cargo-track, .cargo-track-action, .invoice-document-link, .invoice-menu-view, .mapping-transfer-upload, .invoice-reference-details-trigger),
