@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Durum Sütunları 4</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #111115; --surface: #17171c; --raised: #1d1d23; --soft: #22222a;
+    --line: #2a2a32; --line-strong: #383842;
+    --ink: #ececf0; --muted: #a3a3b0; --subtle: #6f6f7c;
+    --primary: #8b5cf6; --primary-soft: #272139;
+    --violet: color-mix(in srgb, var(--primary) 55%, white);
+    --warn: #e2aa4b; --bad: #e4636f; --ok: #46b98f; --info: #83b4ff;
+  }
+  * { box-sizing: border-box; }
+  html, body { overflow-x: clip; }
+  body { margin: 0; font: 14px/1.5 Inter, "Segoe UI", system-ui, sans-serif; color: var(--ink); background: var(--bg); -webkit-font-smoothing: antialiased; }
+  h1, h2, p { margin: 0; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 32px 16px 96px; display: grid; gap: 28px; }
+  .intro h1 { font-size: 22px; font-weight: 600; }
+  .intro p { color: var(--muted); margin-top: 6px; max-width: 74ch; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; position: sticky; top: 0; z-index: 5; padding: 10px 0; background: var(--bg); }
+  .tabs button { height: 34px; padding: 0 12px; color: var(--muted); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 7px; font: inherit; font-size: 13px; cursor: pointer; }
+  .tabs button[aria-pressed="true"] { color: var(--ink); background: var(--primary-soft); border-color: color-mix(in srgb, var(--primary) 55%, transparent); }
+  .option { display: grid; gap: 12px; margin-bottom: 36px; }
+  .option-head h2 { font-size: 17px; font-weight: 600; }
+  .option-head p { color: var(--muted); font-size: 13px; margin-top: 4px; max-width: 82ch; }
+  .table { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); overflow: hidden; }
+  .tr { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, .6fr); align-items: stretch; border-top: 1px solid var(--line); }
+  .tr.th { border-top: 0; height: 44px; background: var(--raised); color: var(--muted); font-size: 12.5px; font-weight: 500; }
+  .tr > div { display: flex; align-items: center; justify-content: center; padding: 16px; min-width: 0; text-align: center; }
+  .tr > div:not(:last-child) { border-right: 1px solid var(--line); }
+  .tr > .order { display: block; text-align: left; align-self: center; border-right: 1px solid var(--line); }
+  .tr.th > div { padding: 0 16px; gap: 6px; white-space: nowrap; }
+  .tr.th > div:first-child { justify-content: flex-start; }
+  .order b { display: block; font-weight: 600; font-size: 13.5px; }
+  .order small { color: var(--subtle); font-size: 12px; }
+  .tr > .money { justify-content: flex-end; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .ico { width: 16px; height: 16px; flex: none; display: block; }
+  .num { font-variant-numeric: tabular-nums; }
+  .warn { --tone: var(--warn); } .info { --tone: var(--info); } .ok { --tone: var(--ok); } .bad { --tone: var(--bad); } .mut { --tone: var(--subtle); } .vio { --tone: var(--violet); }
+  .tone-ink { color: color-mix(in srgb, var(--tone) 78%, white); }
+  .mut .tone-ink { color: var(--muted); }
+
+  /* K — plain line */
+  .vK .plain { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 500; }
+  .vK .plain svg { color: var(--tone); }
+
+  /* L — whole cell tinted */
+  .vL .tr > .tint { background: color-mix(in srgb, var(--tone) 9%, transparent); box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--tone) 60%, transparent); flex-direction: column; gap: 2px; }
+  .vL .tint b { font-size: 13px; font-weight: 600; }
+  .vL .tint small { font-size: 12px; color: var(--muted); }
+  .vL .tr > .tint.mut { background: transparent; box-shadow: none; }
+
+  /* M — progress ring */
+  .vM .ring { display: inline-flex; align-items: center; gap: 10px; text-align: left; }
+  .vM .ring svg { width: 30px; height: 30px; flex: none; transform: rotate(-90deg); }
+  .vM .ring b { display: block; font-size: 13px; font-weight: 500; line-height: 1.25; }
+  .vM .ring small { display: block; font-size: 11.5px; color: var(--subtle); line-height: 1.3; }
+
+  /* N — round avatar */
+  .vN .av { display: inline-flex; align-items: center; gap: 10px; text-align: left; }
+  .vN .av i { width: 34px; height: 34px; flex: none; display: grid; place-items: center; border-radius: 50%; color: var(--tone); background: color-mix(in srgb, var(--tone) 15%, var(--surface)); }
+  .vN .av b { display: block; font-size: 13px; font-weight: 500; line-height: 1.25; }
+  .vN .av small { display: block; font-size: 12px; color: var(--subtle); line-height: 1.3; }
+
+  /* O — outline pill */
+  .vO .opill { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px 0 9px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--tone) 70%, transparent); color: color-mix(in srgb, var(--tone) 80%, white); font-size: 12.5px; font-weight: 500; white-space: nowrap; }
+
+  /* P — stacked in one column */
+  .vP .tr { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1.4fr) minmax(0, .6fr); }
+  .vP .stack { display: grid; gap: 6px; width: min(220px, 100%); }
+  .vP .chip { display: grid; grid-template-columns: 52px 16px minmax(0, 1fr); align-items: center; gap: 8px; height: 30px; padding: 0 10px; border-radius: 7px; background: var(--raised); border: 1px solid var(--line-strong); font-size: 12.5px; text-align: left; }
+  .vP .chip em { font-style: normal; color: var(--subtle); font-size: 11.5px; }
+  .vP .chip svg { color: var(--tone); }
+  .vP .chip span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* Q — led + elapsed time */
+  .vQ .led { display: grid; grid-template-columns: 10px minmax(0, 1fr); column-gap: 10px; align-items: center; text-align: left; }
+  .vQ .led i { width: 8px; height: 8px; border-radius: 50%; background: var(--tone); box-shadow: 0 0 8px color-mix(in srgb, var(--tone) 70%, transparent); }
+  .vQ .led b { font-size: 13px; font-weight: 500; }
+  .vQ .led small { grid-column: 2; font-size: 11.5px; color: var(--subtle); font-variant-numeric: tabular-nums; }
+  .vQ .led.mut i { box-shadow: none; }
+
+  /* R — icon only, compact */
+  .vR .tr { grid-template-columns: minmax(0, 1.6fr) 120px 120px minmax(0, .6fr); }
+  .vR .tr:not(.th) > div { overflow: visible; } .vR .table { overflow: visible; } .vR .tip { position: relative; display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 9px; color: var(--tone); background: color-mix(in srgb, var(--tone) 12%, transparent); border: 1px solid color-mix(in srgb, var(--tone) 35%, transparent); cursor: default; }
+  .vR .tip svg { width: 18px; height: 18px; }
+  .vR .tip::after { content: attr(data-label); position: absolute; top: calc(100% + 8px); left: 50%; transform: translateX(-50%); padding: 6px 10px; color: var(--ink); background: var(--soft); border: 1px solid var(--line-strong); border-radius: 7px; font-size: 12px; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity .12s; z-index: 3; }
+  .vR .tip:hover::after, .vR .tip:focus-visible::after { opacity: 1; }
+  .vR .tr.th > div:nth-child(2), .vR .tr.th > div:nth-child(3) { justify-content: center; }
+
+  /* S — tag shape */
+  .vS .tag { position: relative; display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 12px 0 18px; border-radius: 0 7px 7px 0; background: color-mix(in srgb, var(--tone) 14%, var(--raised)); color: color-mix(in srgb, var(--tone) 75%, white); font-size: 12.5px; font-weight: 500; white-space: nowrap; clip-path: polygon(10px 0, 100% 0, 100% 100%, 10px 100%, 0 50%); }
+  .vS .tag::before { content: ""; position: absolute; left: 8px; width: 5px; height: 5px; border-radius: 50%; background: var(--surface); }
+
+  /* T — solid badge */
+  .vT .solid { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px 0 9px; border-radius: 7px; color: #141418; background: var(--tone); font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+  .vT .solid.mut { color: var(--ink); background: var(--soft); }
+
+  @media (max-width: 760px) { .table { overflow-x: auto; } .tr { min-width: 760px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="intro">
+    <h1>Sipariş ve Fatura Durumu · 10 Yeni Öneri</h1>
+    <p>Önceki önerilerden farklı on yön. Hepsi canlı tablodaki gibi ortalanmış sütunlarla ve sütun çizgileriyle gösteriliyor; altı satırda farklı sipariş durumları ve sistemdeki altı fatura durumu var.</p>
+  </div>
+  <div class="tabs" role="group" aria-label="Öneri seç" id="tabs"></div>
+  <div id="options"></div>
+</div>
+<script>
+const I = {
+  cart: '<path d="M2.5 3h2l1.6 7.4a1 1 0 0 0 1 .8h5.6a1 1 0 0 0 1-.8L14.5 6H5.2"/><circle cx="7" cy="13.5" r=".9"/><circle cx="12.5" cy="13.5" r=".9"/>',
+  box: '<path d="M2.5 5.2 8 2.5l5.5 2.7v5.6L8 13.5l-5.5-2.7z"/><path d="M2.5 5.2 8 8l5.5-2.8M8 8v5.5"/>',
+  truck: '<path d="M1.8 4h7.7v7H1.8zM9.5 6.5h2.8l2 2.3V11H9.5"/><circle cx="4.5" cy="11.8" r="1.2"/><circle cx="11.8" cy="11.8" r="1.2"/>',
+  home: '<path d="M2.5 7.5 8 3l5.5 4.5V13h-11z"/><path d="m6 9.6 1.5 1.5 2.7-2.8"/>',
+  clock: '<circle cx="8" cy="8" r="6"/><path d="M8 4.8V8l2.2 1.4"/>',
+  send: '<path d="M14 2 7 9M14 2l-4.5 12L7 9 2 6.5z"/>',
+  check: '<circle cx="8" cy="8" r="6"/><path d="m5.5 8.2 1.7 1.7 3.4-3.6"/>',
+  alert: '<path d="M8 2 14.5 13.5h-13z"/><path d="M8 6.5v3M8 11.6v.1"/>',
+  stop: '<circle cx="8" cy="8" r="6"/><path d="M8 5v3.4M8 10.8v.1"/>',
+  x: '<circle cx="8" cy="8" r="6"/><path d="m5.8 5.8 4.4 4.4M10.2 5.8l-4.4 4.4"/>',
+  minus: '<circle cx="8" cy="8" r="6"/><path d="M5.5 8h5"/>',
+  filter: '<path d="M2.5 3.5h11L9.2 8.6v4l-2.4 1.1V8.6z"/>'
+};
+const svg = n => `<svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[n]}</svg>`;
+
+/* p = how far along the flow (0..1) */
+const rows = [
+  { no: '#11717855898', who: 'Gülcan Demirkıran Kara', sum: '₺519,75',
+    o: { t: 'Yeni', c: 'vio', i: 'cart', p: .25, d: 'Az önce', ago: '12 dk' },
+    f: { t: 'Fatura Bekliyor', c: 'warn', i: 'clock', p: .2, d: 'Kesilmedi', ago: '2 sa' } },
+  { no: '#11717783115', who: 'Ali Can', sum: '₺791,01',
+    o: { t: 'Hazırlanıyor', c: 'info', i: 'box', p: .5, d: 'Son gün yarın', ago: '5 sa' },
+    f: { t: 'Fatura İletiliyor', c: 'info', i: 'send', p: .66, d: 'Yanıt bekleniyor', ago: '8 dk' } },
+  { no: '#11717712403', who: 'Merve Aksoy', sum: '₺1.240,00',
+    o: { t: 'Kargoda', c: 'info', i: 'truck', p: .75, d: 'Yurtiçi Kargo', ago: '1 gün' },
+    f: { t: 'Faturası Mevcut', c: 'ok', i: 'check', p: 1, d: '16.10 18:05', ago: '1 gün' } },
+  { no: '#11717650981', who: 'Kerem Uslu', sum: '₺349,90',
+    o: { t: 'Teslim Edildi', c: 'ok', i: 'home', p: 1, d: '17.10 09:30', ago: '3 sa' },
+    f: { t: 'Fatura İletilemedi', c: 'bad', i: 'alert', p: .66, d: 'Dosya reddedildi', ago: '40 dk' } },
+  { no: '#11717621177', who: 'Burak Er', sum: '₺918,40',
+    o: { t: 'Teslim Edilemedi', c: 'bad', i: 'alert', p: .75, d: 'Adreste yok', ago: '6 sa' },
+    f: { t: 'Fatura Oluşturulamadı', c: 'bad', i: 'stop', p: .33, d: 'Vergi no geçersiz', ago: '1 sa' } },
+  { no: '#11717599214', who: 'Selin Ateş', sum: '₺229,00',
+    o: { t: 'İptal Edildi', c: 'mut', i: 'x', p: 0, d: 'Müşteri iptali', ago: '2 gün' },
+    f: { t: 'Fatura İptal', c: 'mut', i: 'minus', p: 0, d: 'Sipariş iptal', ago: '2 gün' } }
+];
+const ring = p => { const r = 12, c = 2 * Math.PI * r; return `<svg viewBox="0 0 30 30" aria-hidden="true"><circle cx="15" cy="15" r="${r}" fill="none" stroke="var(--line-strong)" stroke-width="3"/><circle cx="15" cy="15" r="${r}" fill="none" stroke="var(--tone)" stroke-width="3" stroke-linecap="round" stroke-dasharray="${(c * p).toFixed(1)} ${c.toFixed(1)}"/></svg>` };
+const fh = (t, cls = '') => `<div class="${cls}">${t}${svg('filter')}</div>`;
+
+const options = [
+  { n: 'K', title: 'Yalın Satır',
+    text: 'Kutu, dolgu ve açıklama yok: yalnızca durum renginde simge ve biraz daha büyük, okunaklı metin. Hücre ortasında tek bir satır olarak durur. En az görsel gürültü.',
+    cell: s => `<span class="plain ${s.c}">${svg(s.i)}${s.t}</span>` },
+  { n: 'L', title: 'Renkli Hücre',
+    text: 'Durumu küçük bir etiket değil, hücrenin kendisi taşır: hücre zemini durum renginde çok hafif boyanır ve altında ince renkli bir çizgi olur. İçinde durum adı ve kısa açıklama. Tablo bir ısı haritası gibi taranır.',
+    cellClass: s => `tint ${s.c}`,
+    cell: s => `<b class="tone-ink">${s.t}</b><small>${s.d}</small>` },
+  { n: 'M', title: 'İlerleme Halkası',
+    text: 'Durumun yanında akıştaki ilerlemeyi gösteren küçük bir halka: siparişte Yeni çeyrek, Kargoda dörtte üç, Teslim tam dolu. Faturada Bekliyor az, İletiliyor üçte iki, Mevcut tam. Hata durumunda halka kırmızıya döner.',
+    cell: s => `<span class="ring ${s.c}">${ring(s.p)}<span><b>${s.t}</b><small>${s.d}</small></span></span>` },
+  { n: 'N', title: 'Yuvarlak Simge',
+    text: 'Solda durum renginde yumuşak dolgulu yuvarlak bir simge, sağında durum adı ve açıklama. Kişi avatarı gibi okunur; satırlar arasında renk ve simge birlikte ayrışır.',
+    cell: s => `<span class="av ${s.c}"><i>${svg(s.i)}</i><span><b>${s.t}</b><small>${s.d}</small></span></span>` },
+  { n: 'O', title: 'Kontur Hap',
+    text: 'Dolgusuz, yalnızca renkli kenarlı ve tamamen yuvarlak hap etiketler; başında simge. Koyu zeminde hafif ama net durur; kutulu rozetlere göre daha zarif.',
+    cell: s => `<span class="opill ${s.c}">${svg(s.i)}${s.t}</span>` },
+  { n: 'P', title: 'Tek Sütunda Alt Alta',
+    text: 'Sipariş ve fatura durumu tek "Durum" sütununda, aynı genişlikte iki satır olarak alt alta. Her satırın başında küçük "Sipariş" ve "Fatura" yazısı. Kazanılan genişlik diğer sütunlara kalır.',
+    combined: true,
+    cell: r => `<div class="stack">${[['Sipariş', r.o], ['Fatura', r.f]].map(([k, s]) => `<span class="chip ${s.c}"><em>${k}</em>${svg(s.i)}<span>${s.t}</span></span>`).join('')}</div>` },
+  { n: 'Q', title: 'Işık ve Süre',
+    text: 'Durum renginde hafif parlayan küçük bir ışık, yanında durum adı, altında bu durumda ne kadar süredir beklendiği. Uzun süredir bekleyen fatura hemen fark edilir.',
+    cell: s => `<span class="led ${s.c}"><i></i><b>${s.t}</b><small>Bu durumda ${s.ago}</small></span>` },
+  { n: 'R', title: 'Yalnızca Simge',
+    text: 'İki durum sütunu daralır ve yalnızca renkli bir simge karesi gösterir; durum adı fareyle üzerine gelince balon olarak çıkar. Sipariş bilgilerine en geniş alanı bırakır. (Simgelerin üzerine gelip deneyebilirsin.)',
+    heads: ['Sipariş', 'Fatura'],
+    cell: s => `<span class="tip ${s.c}" tabindex="0" data-label="${s.t} · ${s.d}" aria-label="${s.t}">${svg(s.i)}</span>` },
+  { n: 'S', title: 'Etiket Biçimi',
+    text: 'Fiyat etiketi gibi sol ucu sivri, delikli bir etiket. Hafif renkli zemin, renkli yazı. Diğer rozetlerden ayrışan, kendine has bir biçim.',
+    cell: s => `<span class="tag ${s.c}">${s.t}</span>` },
+  { n: 'T', title: 'Dolu Renkli Rozet',
+    text: 'Zemini doğrudan durum rengiyle dolu, koyu yazılı rozetler. En güçlü vurgu; durum uzaktan bile okunur. İptal gibi pasif durumlar gri kalır.',
+    cell: s => `<span class="solid ${s.c}">${svg(s.i)}${s.t}</span>` }
+];
+
+document.getElementById('tabs').innerHTML = '<button type="button" data-show="all" aria-pressed="true">Hepsi</button>'
+  + options.map(o => `<button type="button" data-show="${o.n}" aria-pressed="false">${o.n} · ${o.title}</button>`).join('');
+
+const head = o => o.combined
+  ? fh('Sipariş Bilgileri') + fh('Durum') + '<div class="money">Tutar</div>'
+  : fh('Sipariş Bilgileri') + fh((o.heads || [])[0] || 'Sipariş Durumu') + fh((o.heads || [])[1] || 'Fatura Durumu') + '<div class="money">Tutar</div>';
+const body = (o, r) => {
+  const order = `<div class="order"><b>${r.no}</b><small>${r.who}</small></div>`;
+  const money = `<div class="money">${r.sum}</div>`;
+  if (o.combined) return order + `<div>${o.cell(r)}</div>` + money;
+  const cell = s => `<div class="${o.cellClass ? o.cellClass(s) : ''}">${o.cell(s)}</div>`;
+  return order + cell(r.o) + cell(r.f) + money;
+};
+document.getElementById('options').innerHTML = options.map(o => `
+  <section class="option v${o.n}" data-n="${o.n}">
+    <div class="option-head"><h2>Öneri ${o.n} · ${o.title}</h2><p>${o.text}</p></div>
+    <div class="table">
+      <div class="tr th">${head(o)}</div>
+      ${rows.map(r => `<div class="tr">${body(o, r)}</div>`).join('')}
+    </div>
+  </section>`).join('');
+
+document.querySelectorAll('#tabs button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('#tabs button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  document.querySelectorAll('.option').forEach(s => s.hidden = b.dataset.show !== 'all' && s.dataset.n !== b.dataset.show);
+}));
+</script>
+</body>
+</html>
