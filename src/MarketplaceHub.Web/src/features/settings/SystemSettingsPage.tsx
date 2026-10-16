@@ -187,7 +187,8 @@ export function SystemSettingsPage() {
   const [sessionConfirmation, setSessionConfirmation] = useState<SessionConfirmation | null>(null)
   const [sessionActionBusy, setSessionActionBusy] = useState(false)
   const totpEnabled = status.data?.totpState === 'ENABLED'
-  const activeSessions = (sessions.data ?? []).filter(session => session.state === 'ACTIVE')
+  // The current device leads the active list.
+  const activeSessions = (sessions.data ?? []).filter(session => session.state === 'ACTIVE').sort((left, right) => Number(right.current) - Number(left.current))
   const activeOtherSessions = activeSessions.filter(session => !session.current)
   const closedSessions = (sessions.data ?? []).filter(session => !session.current && session.state !== 'ACTIVE')
 

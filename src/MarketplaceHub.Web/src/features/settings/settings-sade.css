@@ -8,6 +8,8 @@
   font-size: 14px;
 }
 .ss-page h1, .ss-page h2, .ss-page h3, .ss-page p { margin: 0; }
+/* Labels are written in title case by hand; the global heading and control rules must not re-case them ("ve" stays small). */
+.app-shell.stitch-shell main .ss-page * { text-transform: none !important; }
 
 /* Page head */
 .ss-page .ss-page-head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 16px; margin-bottom: 16px; }
@@ -143,7 +145,7 @@
 .ss-page .ss-sess { display: grid; }
 .ss-page .ss-sess-sub { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 20px; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border-top: 1px solid var(--rv-color-border); border-bottom: 1px solid var(--rv-color-border); font-size: 12px; font-weight: 500; }
 .ss-page .ss-sess > .ss-sess-sub:first-child { border-top: 0; }
-.ss-page .ss-ses { display: grid; grid-template-columns: 32px minmax(0, 1fr) minmax(0, 1fr) auto; align-items: center; gap: 4px 14px; min-height: 58px; padding: 10px 20px; border-top: 1px solid var(--rv-color-border); }
+.ss-page .ss-ses { display: grid; grid-template-columns: 32px minmax(0, 1fr) minmax(0, 1fr) 186px; align-items: center; gap: 4px 14px; min-height: 58px; padding: 10px 20px; border-top: 1px solid var(--rv-color-border); }
 .ss-page .ss-sess-sub + .ss-ses { border-top: 0; }
 .ss-page .ss-ses.is-current { background: var(--rv-color-primary-soft); box-shadow: inset 2px 0 0 var(--rv-color-primary); }
 .ss-page .ss-ses-who { display: grid; gap: 1px; min-width: 0; }
