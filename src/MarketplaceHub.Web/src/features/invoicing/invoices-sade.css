@@ -306,3 +306,7 @@ body .invoice-reference-actions-popover > button:disabled { opacity: .45; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head .platform-multi-select-field.is-compact { position: static; margin: 0; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head .platform-multi-select-field.is-compact .platform-multi-select { position: static; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head > .invoice-reference-platform-heading { padding-right: 36px; }
+
+/* One hairline between rows: the row top border doubled the previous row's bottom border */
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-row { border-top: 0 !important; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-row:last-child { border-bottom: 0 !important; }
