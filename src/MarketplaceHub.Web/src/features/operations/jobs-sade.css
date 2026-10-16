@@ -130,3 +130,9 @@
 .app-shell.stitch-shell main .jobs-reference-page .job-queue-metrics td { white-space: nowrap; }
 .app-shell.stitch-shell main .jobs-reference-page .job-queue-metrics :is(th, td):first-child { padding-left: 16px; white-space: normal; }
 .app-shell.stitch-shell main .jobs-reference-page .job-queue-metrics td:first-child small { overflow-wrap: anywhere; font-size: 11px; }
+
+/* Job type description opens beside the title, centred on the row, so the table's scroll area never clips it. */
+.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-type-content { position: relative; }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-type-tooltip { top: 50%; bottom: auto; left: calc(100% + 14px); width: min(320px, 40vw); padding: 10px 12px; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: 10px; box-shadow: 0 12px 32px rgb(0 0 0 / 45%); font-size: 13px; font-weight: 400; line-height: 1.45; white-space: normal; transform: translate(-4px, -50%); }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-type-tooltip::before { top: 50%; bottom: auto; left: -5px; border: 0; border-bottom: 1px solid var(--rv-color-border-strong); border-left: 1px solid var(--rv-color-border-strong); transform: translateY(-50%) rotate(45deg); }
+.app-shell.stitch-shell main .jobs-reference-page :is(.jobs-reference-row:hover, .jobs-reference-row:focus-visible) .jobs-reference-type-tooltip { transform: translate(0, -50%); }
