@@ -533,4 +533,4 @@
 .app-shell.stitch-shell main section.mapping-page .mapping-reference-refresh-row:not(:has(*)) { display: none; }
 .app-shell.stitch-shell main section.mapping-page .mapping-reference-refresh-row { justify-content: flex-start; }
 .app-shell.stitch-shell main section.mapping-page .mapping-reference-grid { row-gap: 0; }
-.app-shell.stitch-shell main section.mapping-page .mapping-reference-grid > .mapping-link-rail { align-self: start !important; margin-top: 24px !important; }
+.app-shell.stitch-shell main section.mapping-page .mapping-reference-grid > .mapping-link-rail { align-self: start !important; margin-top: 12px !important; }
