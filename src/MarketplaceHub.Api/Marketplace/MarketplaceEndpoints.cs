@@ -32,6 +32,16 @@ public static class MarketplaceEndpoints
                 : await invoicingProcessor.ProcessAsync(tenant.TenantId, id, jobType, "{}", http.TraceIdentifier, http.RequestAborted);
             return Results.Ok(result);
         });
+        // n11 cargo template names from the seller panel, offered as choices for the product create setting.
+        api.MapGet("/connections/{id:guid}/n11-shipment-templates", async (Guid id, HttpContext http, AppDbContext db, MarketplaceHub.Infrastructure.Adapters.N11.N11HttpClient n11) =>
+        {
+            if (Tenant(http) is not { } tenant) return Unauthorized(http);
+            var connection = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenant.TenantId && x.Id == id).Select(x => new { x.PlatformCode, x.Status }).SingleOrDefaultAsync(http.RequestAborted);
+            if (connection is null || connection.PlatformCode != "N11") return Results.NotFound();
+            if (connection.Status is not ("ACTIVE" or "VERIFIED")) return Problem(http, new("N11_CONNECTION_INACTIVE", "Kargo şablonları yalnız aktif veya doğrulanmış N11 bağlantısından okunur.", 409));
+            var result = await n11.ShipmentTemplatesAsync(tenant.TenantId, id, http.RequestAborted);
+            return result.IsSuccess ? Results.Ok(result.Value) : Problem(http, new(result.Error!.Code, result.Error.SafeMessage, result.Error.HttpStatus is >= 400 and < 600 ? result.Error.HttpStatus.Value : 502));
+        });
         api.MapPut("/connections/{id:guid}/active", async (Guid id, ActiveCommand command, HttpContext http, IMarketplaceConnectionService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.SetActiveAsync(tenant.TenantId, id, version, command.Active, http.RequestAborted), x => x.Version) : failure! : MissingContext(http));
         api.MapPost("/connections/{id:guid}/initial-data-sync-jobs", async (Guid id, HttpContext http, IMarketplaceConnectionService service) =>
         {
