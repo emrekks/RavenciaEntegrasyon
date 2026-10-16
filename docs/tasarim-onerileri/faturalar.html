@@ -230,7 +230,11 @@
   .amt b { display: block; font-weight: 600; white-space: nowrap; } .amt small { color: var(--muted); font-size: 12px; white-space: nowrap; } .amt small.pri { color: var(--warn); }
   .acts-cell { display: grid; gap: 6px; justify-items: start; }
   .pager { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
-  .pages { display: flex; gap: 4px; }
+  .pages { display: flex; gap: 4px; margin-left: auto; }
+  .jump { display: inline-flex; align-items: center; gap: 8px; padding-left: 12px; border-left: 1px solid var(--line); color: var(--muted); font-size: 13px; white-space: nowrap; }
+  .jump .in { width: 64px; height: 32px; padding: 0 8px; text-align: center; -moz-appearance: textfield; }
+  .jump .in::-webkit-inner-spin-button, .jump .in::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  .jump .btn { height: 32px; }
   .pages button { min-width: 32px; height: 32px; padding: 0 8px; color: var(--muted); background: none; border: 1px solid transparent; border-radius: 7px; cursor: pointer; }
   .pages button.on { color: var(--violet); background: var(--primary-soft); border-color: var(--violet-line); }
   .pages button:hover:not(.on) { color: var(--ink); background: var(--raised); }
@@ -442,7 +446,7 @@ function table(compact) {
   const all = ROWS.every(r => S.sel.has(r.id))
   return `<table class="tbl"><colgroup><col class="c-order"><col class="c-cust"><col class="c-cargo"><col class="c-os"><col class="c-inv"><col class="c-amt"><col class="c-act"></colgroup><thead><tr>${headCell('Sipariş Bilgileri', null, `<input type="checkbox" class="cb" data-a="all" ${all ? 'checked' : ''} aria-label="Bu sayfadaki tüm siparişleri seç" style="margin-right:8px">`)}${headCell('Alıcı')}${headCell('Kargo', 'cargo')}${headCell('Sipariş Durumu', 'os')}${headCell('Fatura Durumu', 'inv')}${headCell('Tutar')}${headCell('İşlemler', 'ops')}</tr></thead><tbody>${ROWS.map(r => row(r, compact)).join('')}</tbody></table>`
 }
-const pager = `<div class="pager"><span>Toplam <b style="color:var(--ink)">63</b> adet</span><div class="pages"><button aria-label="Önceki">${I.left}</button><button class="on">1</button><button>2</button><button>3</button><button>4</button><button aria-label="Sonraki">${I.right}</button></div></div>`
+const pager = `<div class="pager"><span>Toplam <b style="color:var(--ink)">63</b> adet</span><div class="pages"><button aria-label="Önceki">${I.left}</button><button class="on">1</button><button>2</button><button>3</button><button>4</button><button aria-label="Sonraki">${I.right}</button></div><label class="jump">Sayfaya Git<input class="in" type="number" min="1" max="4" placeholder="1–4" aria-label="Sayfa numarası"><button class="btn">Git</button></label></div>`
 const bulkButtons = n => `<button class="btn primary" data-a="m" data-k="preview-bulk">${I.doc}Toplu Fatura Oluştur (${n})</button><button class="btn" data-a="m" data-k="shopify-bulk">${I.edit}Shopify Faturalarını Güncelle (1)</button><button class="btn">${I.eyeoff}Siparişleri Gizle</button><button class="btn quiet" data-a="clear-sel">Seçimi Temizle</button>`
 const platTrigger = () => `<span class="anchor"><button class="trigger ${S.pop === 'plat' ? 'on' : ''}" data-a="pop" data-k="plat"><span>${S.plats.length === PLATFORMS.length || !S.plats.length ? 'Tüm Platformlar' : S.plats.length === 1 ? pname(S.plats[0]) : `${S.plats.length} Platform Seçili`}</span>${I.chev}</button>${S.pop === 'plat' ? popPlatforms() : ''}</span>`
 const dateTrigger = () => `<span class="anchor"><button class="trigger ${S.pop === 'date' ? 'on' : ''}" data-a="pop" data-k="date">${I.cal}<span>03.10.2026 – 08.10.2026</span>${I.chev}</button>${S.pop === 'date' ? popDate() : ''}</span>`
@@ -533,8 +537,9 @@ function mocks() {
 // Each state has its own glyph in the same outlined 16px circle language.
 const ring = inner => `<svg class="st" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.2"/>${inner}</svg>`
 // One solid set: a filled disc in the state's colour with a white pictogram, same size and stroke everywhere.
-const solid = (fill, inner) => `<svg class="st solid" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7.4" fill="${fill}"/><g fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${inner}</g></svg>`
-const C = { violet: '#8b5cf6', slate: '#64748b', blue: '#3b82f6', orange: '#f08a24', green: '#22c55e', amber: '#e2aa4b', red: '#e4636f', gray: '#52525e' }
+// Theme-toned: a soft disc in the state's tone (like primary-soft) with the pictogram in the light tone of the same colour.
+const solid = (tone, inner) => `<svg class="st solid" viewBox="0 0 16 16" aria-hidden="true" style="color:${tone}"><circle cx="8" cy="8" r="7.4" style="fill:color-mix(in srgb, currentColor 20%, transparent);stroke:color-mix(in srgb, currentColor 38%, transparent)" stroke-width=".8"/><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${inner.replaceAll('fill="#fff"', 'fill="currentColor"')}</g></svg>`
+const C = { violet: 'var(--violet)', slate: 'var(--muted)', blue: 'var(--info)', orange: '#ec9a4f', green: 'var(--ok)', amber: 'var(--warn)', red: 'var(--bad)', gray: 'var(--subtle)' }
 Object.assign(G, {
   fresh: solid(C.violet, '<path d="M8 4.6v6.8M4.6 8h6.8"/>'),
   packing: solid(C.slate, '<path d="M4.8 6.4 8 4.8l3.2 1.6v3.4L8 11.4 4.8 9.8z"/><path d="M4.8 6.4 8 8l3.2-1.6M8 8v3.4"/>'),
