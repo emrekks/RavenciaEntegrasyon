@@ -172,3 +172,7 @@
 .app-shell .panel.mapping-step.cm-card :is(select, input):focus { border-color: var(--rv-color-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--rv-color-primary) 18%, transparent); outline: none; }
 .app-shell .panel.mapping-step.cm-card .cm-vrow .cm-pv { font-weight: 400; }
 .app-shell .panel.mapping-step.cm-card .cm-vrow.is-open .cm-pv { font-weight: 600; }
+
+/* Value search: 34px like the buttons beside it. */
+.app-shell .panel.mapping-step.cm-card .cm-search { height: 34px; min-height: 34px; padding: 0 10px; }
+.app-shell .panel.mapping-step.cm-card .cm-actions > button .ui-icon { width: 15px; height: 15px; }
