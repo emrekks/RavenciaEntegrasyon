@@ -11,6 +11,6 @@ export function formatDateRange(range: DateRange): string {
     const [year, month, day] = value.split('-')
     return `${day}.${month}.${year}`
   }
-  if (!range.from && !range.to) return 'Tarih aralığı seçin'
+  if (!range.from && !range.to) return 'Tarih Aralığı Seçin'
   return `${format(range.from) || 'Başlangıç'} – ${format(range.to) || 'Bitiş'}`
 }

@@ -154,3 +154,30 @@ body .invoice-reference-actions-popover > button:disabled { opacity: .45; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-order .invoice-order-number { justify-self: start; }
 .app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-shipment, .invoice-reference-status) { place-content: center start; place-items: center start; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head > * { justify-self: stretch; }
+
+/* Second pass against the proposal, element by element */
+.app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-shipment, .invoice-reference-status) > * { justify-self: start; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filters :is(.platform-multi-select > button, .date-range-picker-trigger, .invoice-sort-trigger) * { font-weight: 400 !important; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-page-size select { height: 34px; min-height: 34px; padding: 0 30px 0 10px; font-size: 13px; border-radius: 7px; }
+.app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-select, .invoice-reference-select-all input) { position: relative; width: 16px; min-width: 16px; height: 16px; min-height: 16px; margin: 0; appearance: none; -webkit-appearance: none; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 4px; box-shadow: none; cursor: pointer; }
+.app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-select, .invoice-reference-select-all input):checked { background: var(--rv-color-primary-soft); border-color: var(--inv-violet-line); }
+.app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-select, .invoice-reference-select-all input):checked::after { content: ""; position: absolute; left: 4.5px; top: 1.5px; width: 4px; height: 8px; border: solid var(--inv-violet); border-width: 0 1.8px 1.8px 0; transform: rotate(45deg); }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-actions-trigger { height: 34px; min-height: 34px; padding: 0 10px 0 12px; gap: 6px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 13px; font-weight: 500 !important; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-actions-trigger:hover { background: var(--rv-color-surface-soft); }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head .order-column-filter-trigger { width: 24px; min-width: 24px; height: 24px; min-height: 24px; padding: 0; color: var(--rv-color-subtle); background: none; border: 0; border-radius: 5px; box-shadow: none; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head .order-column-filter-trigger:hover { color: var(--rv-color-ink); background: var(--rv-color-surface-soft); }
+
+/* Pager: numbers with arrows on the right, go-to-page field after a divider */
+.app-shell.stitch-shell main .reference-invoices-page .order-pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.reference-invoices-page .invoice-pager { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-left: auto; }
+.reference-invoices-page .invoice-pager-pages { display: flex; gap: 4px; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-pager-pages > button { display: grid; place-items: center; min-width: 32px; height: 32px; min-height: 32px; padding: 0 8px; color: var(--rv-color-muted); background: none; border: 1px solid transparent; border-radius: 7px; box-shadow: none; font-size: 13px; font-weight: 500 !important; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-pager-pages > button:hover:not(:disabled):not(.is-on) { color: var(--rv-color-ink); background: var(--rv-color-surface-raised); }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-pager-pages > button.is-on { color: var(--inv-violet); background: var(--rv-color-primary-soft); border-color: var(--inv-violet-line); }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-pager-pages > button:disabled { opacity: .4; }
+.reference-invoices-page .invoice-pager-gap { display: grid; place-items: center; min-width: 20px; color: var(--rv-color-subtle); }
+.reference-invoices-page .invoice-pager-jump { display: flex; align-items: center; gap: 8px; padding-left: 12px; border-left: 1px solid var(--rv-color-border); }
+.reference-invoices-page .invoice-pager-jump label { display: inline-flex; align-items: center; gap: 8px; margin: 0; color: var(--rv-color-muted); font-size: 13px; white-space: nowrap; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-pager-jump input { width: 64px; height: 32px; min-height: 32px; padding: 0 8px; text-align: center; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; -moz-appearance: textfield; }
+.reference-invoices-page .invoice-pager-jump input::-webkit-inner-spin-button, .reference-invoices-page .invoice-pager-jump input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-pager-jump button { height: 32px; min-height: 32px; padding: 0 12px; font-size: 13px; border-radius: 7px; }

@@ -27,7 +27,7 @@ describe('PlatformMultiSelect', () => {
     ]
 
     act(() => root.render(<PlatformMultiSelect label="Platformlar" options={options} selectedCodes={[]} onChange={onChange} />))
-    expect(container.querySelector('.platform-multi-select-trigger')?.textContent).toContain('Tüm platformlar')
+    expect(container.querySelector('.platform-multi-select-trigger')?.textContent).toContain('Tüm Platformlar')
     act(() => container.querySelector<HTMLButtonElement>('.platform-multi-select-trigger')?.click())
     expect(Array.from(container.querySelectorAll<HTMLInputElement>('.platform-multi-select-option input')).map(input => input.checked)).toEqual([false, false])
     expect(container.querySelector('.platform-multi-select-menu')?.parentElement?.classList.contains('platform-multi-select')).toBe(true)

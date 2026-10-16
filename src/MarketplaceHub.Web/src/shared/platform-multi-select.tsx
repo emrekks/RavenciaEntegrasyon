@@ -23,10 +23,10 @@ export function PlatformMultiSelect({ label, options, selectedCodes, onChange, c
   const allSelected = options.length > 0 && selectedOptions.length === options.length
   const hasSelection = selectedOptions.length > 0 && !allSelected
   const triggerLabel = !hasSelection
-    ? 'Tüm platformlar'
+    ? 'Tüm Platformlar'
     : selectedOptions.length === 1
         ? selectedOptions[0].label
-        : `${selectedOptions.length} platform seçili`
+        : `${selectedOptions.length} Platform Seçili`
 
   function updateCompactMenuPosition() {
     if (!compact || !menu.current || !trigger.current) return

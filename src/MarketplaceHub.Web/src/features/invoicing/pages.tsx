@@ -3,7 +3,7 @@ import { createPortal, flushSync } from 'react-dom'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, loadAllPages } from '../../shared/api'
-import { Busy, CargoProviderIcon, ErrorBox, InvoiceStatusBadge, Modal, Pagination, Tabs, UiIcon } from '../../shared/components'
+import { Busy, CargoProviderIcon, ErrorBox, InvoiceStatusBadge, Modal, Tabs, UiIcon } from '../../shared/components'
 import { invoiceStatusLabel, statusLabel } from '../../shared/status-labels'
 import { appendNotification } from '../../shared/notifications'
 import { NoticeToast } from '../../shared/components/NoticeToast'
@@ -544,7 +544,7 @@ export function InvoicesPage() {
           <div className={`order-column-filter${invoiceActionFilter !== 'ALL' ? ' has-filter' : ''}`}><span className="order-column-filter-label">İşlemler</span><button type="button" className="order-column-filter-trigger" aria-label="Fatura oluşturma filtresini aç" aria-expanded={columnFilterOpen === 'action'} aria-controls={columnFilterOpen === 'action' ? 'invoices-action-filter' : undefined} onClick={() => setColumnFilterOpen(current => current === 'action' ? null : 'action')}><svg className="order-filter-funnel" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7.2V18l-4 1v-6.8L4 5z" /></svg></button>{columnFilterOpen === 'action' && <div id="invoices-action-filter" className="order-column-filter-popover invoice-filter-popover" role="dialog" aria-label="Fatura oluşturma uygunluğu filtreleri"><ColumnFilterChoices label="Oluşturma Durumu" value={invoiceActionFilter} options={[['ALL', 'Tüm İşlem Durumları'], ['CREATABLE', 'Fatura Oluşturulabilir'], ['NOT_CREATABLE', 'Fatura Oluşturulamaz']]} onChange={value => { setInvoiceActionFilter(value as typeof invoiceActionFilter); setColumnFilterOpen(null) }} />{invoiceActionFilter !== 'ALL' && <button type="button" className="order-column-filter-reset" onClick={() => { setInvoiceActionFilter('ALL'); setColumnFilterOpen(null) }}>Filtreyi Temizle</button>}</div>}</div>
         </div>
         {!pageItems.length && <div className="invoice-reference-state" role="row"><div className="empty"><span className="empty-icon" aria-hidden="true"><UiIcon name="box" /></span><strong>Kayıt yok</strong><p>Seçili fatura sekmesi ve filtrelerle eşleşen paket bulunamadı.</p></div></div>}{pageItems.map(item => { const isPicked = selectedPackages.has(item.packageId); const togglePick = () => setSelectedPackages(current => { const next = new Set(current); if (next.has(item.packageId)) next.delete(item.packageId); else next.add(item.packageId); return next }); const isPhone = () => window.matchMedia('(max-width: 760px)').matches; return <article className={`invoice-reference-row ${item.isDueSoon ? 'due-soon' : ''}${isPicked ? ' is-selected' : ''}`} key={item.packageId} role="row" onPointerDown={event => { if (event.pointerType !== 'mouse' && isPhone() && !(event.target as Element).closest('button, a, input, select, textarea, label')) { longPressFired.current = false; if (longPressTimer.current) window.clearTimeout(longPressTimer.current); longPressTimer.current = window.setTimeout(() => { longPressFired.current = true; flushSync(() => { setSelectionMode(true); togglePick() }); navigator.vibrate?.(15) }, 480) } }} onPointerUp={() => { if (longPressTimer.current) window.clearTimeout(longPressTimer.current) }} onPointerLeave={() => { if (longPressTimer.current) window.clearTimeout(longPressTimer.current) }} onPointerCancel={() => { if (longPressTimer.current) window.clearTimeout(longPressTimer.current) }} onContextMenu={event => { if (isPhone()) event.preventDefault() }} onClick={event => { if (!isPhone()) return; if (longPressFired.current) { longPressFired.current = false; return } if ((event.target as Element).closest('button, a, input, select, textarea, label, .invoice-order-number')) return; if (selectionMode) { togglePick(); return } setSelectedItem(item) }}>
-          <div className="invoice-reference-order"><input className="invoice-reference-select" type="checkbox" aria-label={`${item.platformDisplayName} ${displayInvoiceOrderNumber(item.orderNumber)} siparişini seç`} checked={selectedPackages.has(item.packageId)} onChange={() => setSelectedPackages(current => { const next = new Set(current); if (next.has(item.packageId)) next.delete(item.packageId); else next.add(item.packageId); return next })} /><div className="order-reference-platform"><PlatformMark code={item.platformCode} name={item.platformDisplayName} /></div><div><InvoiceOrderNumber item={item} /><small>{new Date(item.orderedAt).toLocaleString('tr-TR')}</small>{item.invoiceNumber?.trim() && <small>{item.invoiceNumber}</small>}</div></div>
+          <div className="invoice-reference-order"><input className="invoice-reference-select" type="checkbox" aria-label={`${item.platformDisplayName} ${displayInvoiceOrderNumber(item.orderNumber)} siparişini seç`} checked={selectedPackages.has(item.packageId)} onChange={() => setSelectedPackages(current => { const next = new Set(current); if (next.has(item.packageId)) next.delete(item.packageId); else next.add(item.packageId); return next })} /><div className="order-reference-platform"><PlatformMark code={item.platformCode} name={item.platformDisplayName} /></div><div><InvoiceOrderNumber item={item} /><small>{new Date(item.orderedAt).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}{item.invoiceNumber?.trim() ? ` · ${item.invoiceNumber}` : ''}</small></div></div>
           <div className="invoice-reference-buyer"><strong>{invoiceCustomerDisplayName(item)}</strong><InvoiceProductSummary item={item} /></div>
           <div className="invoice-reference-products"><div className="cargo-provider-display invoice-cargo-provider"><CargoProviderIcon value={item.cargoProviderName ?? 'Kargo bilgisi yok'} fallbackText /></div><small>{item.cargoTrackingNumber ?? 'Takip numarası yok'}</small></div>
           <div className="invoice-reference-shipment"><Badge value={item.shipmentStatus} />{item.deliveredAt && invoiceWorkspaceStatus(item).value !== 'FATURA_KONTROLDE' && <small>{`Teslim: ${new Date(item.deliveredAt).toLocaleDateString('tr-TR')}`}</small>}</div>
@@ -572,7 +572,7 @@ export function InvoicesPage() {
             <div className="invoice-reference-action-footer"><button type="button" className="invoice-reference-details-trigger" onClick={() => setSelectedItem(item)}>Detayları Aç <UiIcon name="externalLink" /></button></div>
           </div>
         </article> })}
-      </div>{pageItems.length > 0 && <nav className="order-pagination" aria-label="Fatura sayfaları"><span>Toplam {(pageData?.totalCount ?? 0).toLocaleString('tr-TR')} adet</span><Pagination className="pagination-controls" page={currentPage} totalPages={totalPages} onPageChange={setPageNumber} onPrevious={() => setPageNumber(value => Math.max(1, value - 1))} onNext={() => setPageNumber(value => Math.min(totalPages, value + 1))} /></nav>}</>}
+      </div>{pageItems.length > 0 && <nav className="order-pagination" aria-label="Fatura sayfaları"><span>Toplam {(pageData?.totalCount ?? 0).toLocaleString('tr-TR')} adet</span><InvoicePager page={currentPage} totalPages={totalPages} onChange={setPageNumber} /></nav>}</>}
     </section>
     {selectedItem && <div className="invoice-detail-backdrop" role="presentation" onMouseDown={() => setSelectedItem(null)}><section className="workspace-modal invoice-detail-modal" role="dialog" aria-modal="true" aria-labelledby="invoice-detail-title" onMouseDown={event => event.stopPropagation()}>
       <header className="invoice-detail-header"><div><p className="eyebrow">Sipariş ve Fatura Özeti</p><h2 id="invoice-detail-title">#{selectedItem.orderNumber}</h2><p>{selectedItem.customerName} · {new Date(selectedItem.orderedAt).toLocaleString('tr-TR')}</p></div><div className="invoice-detail-header-actions">{selectedItem.allowedActions?.includes('CHECK_PLATFORM') && <button type="button" className="modal-close invoice-detail-platform-refresh" onClick={() => invoiceReconcile.mutate(selectedItem)} disabled={invoiceReconcile.isPending} title="Pazaryeri fatura bilgisini platformdan yeniden okur">{invoiceReconcile.isPending ? 'Güncelleniyor…' : 'Platformdan Bilgileri Güncelle'}</button>}<button type="button" className="modal-close" onClick={() => setSelectedItem(null)} aria-label="Detay panelini kapat"><UiIcon name="close" /></button></div></header>
@@ -592,6 +592,31 @@ export function InvoicesPage() {
   </section>
 }
 
+
+// Page numbers around the current page with previous / next arrows, plus a go-to-page field.
+function invoicePagerPages(page: number, totalPages: number): Array<number | null> {
+  if (totalPages <= 7) return Array.from({ length: totalPages }, (_, index) => index + 1)
+  const pages = new Set([1, totalPages, page - 1, page, page + 1].filter(value => value >= 1 && value <= totalPages))
+  const sorted = [...pages].sort((left, right) => left - right)
+  return sorted.flatMap((value, index) => index > 0 && value - sorted[index - 1] > 1 ? [null, value] : [value])
+}
+
+function InvoicePager({ page, totalPages, onChange }: { page: number; totalPages: number; onChange: (page: number) => void }) {
+  const [draft, setDraft] = useState('')
+  const safeTotal = Math.max(1, totalPages)
+  function go(next: number) { onChange(Math.min(safeTotal, Math.max(1, next))) }
+  return <div className="invoice-pager">
+    <div className="invoice-pager-pages">
+      <button type="button" aria-label="Önceki sayfa" disabled={page <= 1} onClick={() => go(page - 1)}><UiIcon name="chevronLeft" /></button>
+      {invoicePagerPages(page, safeTotal).map((value, index) => value === null ? <span key={`gap-${index}`} className="invoice-pager-gap">…</span> : <button type="button" key={value} className={value === page ? 'is-on' : undefined} aria-current={value === page ? 'page' : undefined} onClick={() => go(value)}>{value}</button>)}
+      <button type="button" aria-label="Sonraki sayfa" disabled={page >= safeTotal} onClick={() => go(page + 1)}><UiIcon name="chevronRight" /></button>
+    </div>
+    <form className="invoice-pager-jump" onSubmit={event => { event.preventDefault(); const value = Number(draft); if (Number.isFinite(value) && value >= 1) go(value); setDraft('') }}>
+      <label>Sayfaya Git<input type="number" inputMode="numeric" min={1} max={safeTotal} value={draft} placeholder={`1–${safeTotal}`} aria-label="Sayfa numarası" onChange={event => setDraft(event.target.value)} /></label>
+      <button type="submit" className="secondary">Git</button>
+    </form>
+  </div>
+}
 
 function ColumnFilterChoices({ label, value, options, onChange }: { label: string; value: string; options: ReadonlyArray<readonly [string, string]>; onChange: (value: string) => void }) {
   return <div className="invoice-filter-choices" role="radiogroup" aria-label={label}>
