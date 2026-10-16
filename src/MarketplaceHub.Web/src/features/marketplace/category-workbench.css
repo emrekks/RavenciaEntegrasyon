@@ -356,3 +356,17 @@
 .app-shell.stitch-shell main .cm-webcolor .cm-webcolor-actions button { height: 34px; min-height: 34px; padding: 0 14px; border-radius: 7px; font-size: 14px; text-transform: none; }
 .app-shell.stitch-shell main .cm-webcolor .web-color-assignment-groups .cm-webcolor-groups-head { display: grid; grid-template-columns: 180px minmax(0, 1fr); flex: none; }
 .app-shell.stitch-shell main .cm-webcolor .web-color-assignment-groups .cm-webcolor-groups-head > span { display: block; }
+
+/* Popup footer runs the full width; the field list ends on its top line. The popup body never scrolls, not even programmatically. */
+.mapping-advanced-modal .mapping-advanced-modal-body:has(.cm-card) { overflow: clip; }
+.mapping-advanced-modal .cm-card .cm-layout:has(.cm-detail > .cm-foot) { position: relative; padding-bottom: 62px; }
+.mapping-advanced-modal .cm-card .cm-detail { padding-bottom: 16px; }
+.app-shell.stitch-shell main .mapping-advanced-modal .cm-card .cm-detail > .cm-foot { position: absolute; right: 0; bottom: 0; left: 0; box-sizing: border-box; height: 62px; margin: 0; padding: 0 28px 0 24px; border-top: 1px solid var(--rv-color-border); }
+
+/* Group headings read as headings: a raised band that stays on top while the list scrolls. */
+.app-shell.stitch-shell main .cm-card .cm-nav { padding-top: 0; }
+.app-shell.stitch-shell main .cm-card button.cm-section { position: sticky; top: 0; z-index: 1; height: 36px; min-height: 36px; padding: 0 20px; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border-top: 1px solid var(--rv-color-border); border-bottom: 1px solid var(--rv-color-border); font-size: 12px; font-weight: 600 !important; letter-spacing: .04em; }
+.app-shell.stitch-shell main .cm-card .cm-nav > button.cm-section:first-child { border-top: 0; }
+.app-shell.stitch-shell main .cm-card .cm-item + button.cm-section { margin-top: 8px; }
+.app-shell.stitch-shell main .cm-card button.cm-section > span:last-child { display: inline-grid; min-width: 20px; height: 18px; place-items: center; padding: 0 6px; color: var(--rv-color-ink); background: var(--rv-color-border-strong); border-radius: 5px; font-size: 11px; font-weight: 600; }
+.app-shell.stitch-shell main .cm-card button.cm-section + .cm-item { margin-top: 4px; }
