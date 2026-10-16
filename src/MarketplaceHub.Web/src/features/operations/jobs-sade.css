@@ -115,3 +115,9 @@
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-status-summary > span.cancelled i { background: var(--rv-color-subtle); }
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-correlation { max-width: 180px; }
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-change-summary > div + div { margin-top: 10px; padding: 10px 0 0; background: none; border: 0; border-top: 1px solid var(--rv-color-border); border-radius: 0; }
+
+/* Attempt history fits the popup width: no inner scroll. */
+.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-attempts-section .table-wrap { overflow: visible; margin: 0; padding: 0; background: none; border: 1px solid var(--rv-color-border); border-radius: 10px; }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-attempts-section table { table-layout: fixed; min-width: 0; }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-attempts-section :is(th, td):first-child { width: 40px; }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-attempts-section :is(th, td) { overflow-wrap: anywhere; white-space: normal; }

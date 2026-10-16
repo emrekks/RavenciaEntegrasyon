@@ -419,7 +419,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
     internal static bool SupportsShopifyPolicy(string resourceType) =>
         IsShopifyReadPolicy(resourceType) || MarketplaceExternalWritePolicies.IsPolicy(resourceType);
 
-    internal static bool SupportsHepsiburadaScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "ORDER_LIFECYCLE" or "ORDER_INVOICE_RECONCILIATION" or "RETURNS" or "REFERENCE_DATA" or "QUESTIONS"
+    internal static bool SupportsHepsiburadaScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "ORDER_LIFECYCLE" or "ORDER_INVOICE_RECONCILIATION" or "RETURNS" or "RETURN_LIFECYCLE" or "REFERENCE_DATA" or "QUESTIONS"
         || MarketplaceExternalWritePolicies.IsPolicy(resourceType);
 
     // n11 flows join as their integration phases go live. Stock reconciliation carries

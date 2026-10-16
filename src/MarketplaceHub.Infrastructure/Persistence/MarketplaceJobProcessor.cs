@@ -8395,6 +8395,78 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         }
         catch (JsonException) { return null; }
     }
+    // Hepsiburada has no single-claim read. Claims that are still open locally are followed up by
+    // listing the statuses a claim moves on to, over the claim creation dates of those open claims,
+    // so a decision taken on Hepsiburada's own panel reaches the panel even when the status-change
+    // filter of the regular scan misses it. Only claims open locally are updated here.
+    private static readonly string[] HepsiburadaOpenClaimStatuses = ["NewRequest", "AwaitingAction", "InDispute", "AwaitingPreApproval"];
+    private static readonly string[] HepsiburadaClaimFollowUpStatuses = ["Accepted", "Refunded", "Rejected", "Cancelled", "InDispute", "AwaitingPreApproval", "AwaitingAction"];
+
+    private async Task<bool> SyncHepsiburadaOpenReturns(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
+    {
+        var cursor = await Cursor(tenantId, connectionId, "RETURN_LIFECYCLE", cancellationToken);
+        var open = await db.ReturnClaims.AsNoTracking()
+            .Where(claim => claim.TenantId == tenantId && claim.ConnectionId == connectionId
+                && claim.Status != ReturnClaimStatus.Completed && claim.Status != ReturnClaimStatus.Cancelled
+                && HepsiburadaOpenClaimStatuses.Contains(claim.RawStatus))
+            .Select(claim => new { claim.ExternalClaimId, claim.RawStatus, claim.CreatedAt })
+            .ToListAsync(cancellationToken);
+        var now = timeProvider.GetUtcNow();
+        cursor.LastAttemptAt = now;
+        if (open.Count == 0)
+        {
+            cursor.LastSuccessAt = now;
+            cursor.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+            return true;
+        }
+
+        var pending = open.ToDictionary(claim => claim.ExternalClaimId, claim => claim.RawStatus, StringComparer.Ordinal);
+        var windowStart = open.Min(claim => claim.CreatedAt).AddDays(-2);
+        var earliest = now - HepsiburadaReturnHistoryPolicy.InitialLookback;
+        if (windowStart < earliest) windowStart = earliest;
+        var productSnapshots = new Dictionary<string, string?>(StringComparer.Ordinal);
+        foreach (var status in HepsiburadaClaimFollowUpStatuses)
+        {
+            if (pending.Count == 0) break;
+            var offset = 0;
+            while (!cancellationToken.IsCancellationRequested && pending.Count > 0)
+            {
+                TrackRequest();
+                var result = await returns.PollAsync(
+                    Context(tenantId, connectionId, correlationId, $"hepsiburada-return-lifecycle:{status}:{offset}"),
+                    new ReturnPollWindow(windowStart, now, Status: status),
+                    new(offset.ToString(CultureInfo.InvariantCulture), 100),
+                    cancellationToken);
+                if (!result.IsSuccess)
+                {
+                    TrackResultFailure(result.Error);
+                    throw JobProcessingException.FromAdapter(result.Error!);
+                }
+                var page = result.Value!;
+                foreach (var claim in page.Items)
+                {
+                    TrackReceived();
+                    if (!pending.TryGetValue(claim.ExternalClaimId, out var localStatus)) { TrackSkipped(); continue; }
+                    // The same claim can be listed under its old status a moment longer; keep the local one.
+                    if (string.Equals(status, localStatus, StringComparison.Ordinal)) { pending.Remove(claim.ExternalClaimId); continue; }
+                    await UpsertReturn(tenantId, connectionId, correlationId, claim, productSnapshots, cancellationToken);
+                    await db.SaveChangesAsync(cancellationToken);
+                    pending.Remove(claim.ExternalClaimId);
+                }
+                if (!page.HasMore) break;
+                offset = int.TryParse(page.NextCursor, NumberStyles.None, CultureInfo.InvariantCulture, out var next) ? Math.Max(offset + 1, next) : offset + Math.Max(1, page.Items.Count);
+            }
+        }
+        cursor.LastSuccessAt = timeProvider.GetUtcNow();
+        cursor.LastError = null;
+        cursor.LastErrorAt = null;
+        cursor.ConsecutiveFailureCount = 0;
+        cursor.Version++;
+        await db.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
     private async Task<bool> SyncHepsiburadaReturns(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
         var cursor = await Cursor(tenantId, connectionId, "RETURNS", cancellationToken);
@@ -8518,6 +8590,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
     private async Task<bool> SyncOpenReturns(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
     {
+        var platformCode = await db.PlatformConnections.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.Id == connectionId)
+            .Select(x => x.PlatformCode)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (string.Equals(platformCode, "HEPSIBURADA", StringComparison.Ordinal))
+            return await SyncHepsiburadaOpenReturns(tenantId, connectionId, correlationId, cancellationToken);
         var batchSize = configuration.GetValue("MarketplaceSync:ReturnLifecycle:BatchSize", 25);
         var (incompleteCargoBudget, completeCargoBudget) = ReturnLifecycleBatchPolicy.SplitBatch(batchSize);
         var incompleteCargoCursor = await Cursor(tenantId, connectionId, "RETURN_LIFECYCLE_CARGO_MISSING", cancellationToken);

@@ -11,6 +11,7 @@ public sealed class HepsiburadaReferencePolicyTests
     {
         Assert.True(ScheduledJobProducer.SupportsHepsiburadaScheduledPolicy("REFERENCE_DATA"));
         Assert.True(ScheduledJobProducer.SupportsHepsiburadaScheduledPolicy("ORDERS"));
+        Assert.True(ScheduledJobProducer.SupportsHepsiburadaScheduledPolicy("RETURN_LIFECYCLE"));
         Assert.False(ScheduledJobProducer.SupportsHepsiburadaScheduledPolicy("PRODUCTS"));
     }
 
