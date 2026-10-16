@@ -2440,7 +2440,7 @@ function CategoryMappingWorkspace() {
         <h2><UiIcon name="equal" />5. Kayıtlı Kategori Eşleştirmeleri</h2>
         <div className="mapping-saved-header-tools">
           <div className="mapping-saved-tabs mapping-platform-tabs" role="tablist" aria-label="Kayıtlı eşleştirme platformları">
-            {mappingPlatformDefinitions.map(platform => {
+            {mappingPlatformDefinitions.filter(platform => platform.code !== 'SHOPIFY').map(platform => {
               const available = activeMappingConnections.some(item => item.platformCode.toUpperCase() === platform.code)
               return <button type="button" role="tab" aria-selected={selectedPlatformCode === platform.code} className={`${selectedPlatformCode === platform.code ? 'active' : ''}${available ? '' : ' is-unavailable'}`} title={available ? `${platform.label} eşleştirmelerini göster` : `${platform.label} için aktif bağlantı yok`} onClick={() => { setSelectedPlatformCode(platform.code); setSavedPage(1); setLocalId(''); setExternalId(''); setExternalSearch(''); setNotice('') }}>{platform.label}</button>
             })}
@@ -2490,7 +2490,7 @@ function AttributeCategoryAssignmentModal({ attribute, role, categories, onClose
   const categoryKey = categories.map(category => `${category.id}:${category.version}`).join(',')
   const activeCategories = categories.filter(category => category.isActive && category.isLeaf)
   const normalizedSearch = search.trim().toLocaleLowerCase('tr-TR')
-  const visibleCategories = activeCategories.filter(category => !normalizedSearch || `${category.path} ${category.name}`.toLocaleLowerCase('tr-TR').includes(normalizedSearch))
+  const visibleCategories = activeCategories.filter(category => !normalizedSearch || `${category.path} ${category.name}`.toLocaleLowerCase('tr-TR').includes(normalizedSearch)).slice().sort((left, right) => left.path.localeCompare(right.path, 'tr-TR', { sensitivity: 'base', numeric: true }))
 
   useScrollLock(true, true)
 
@@ -2623,7 +2623,7 @@ function PanelAttributeLibraryBuilder({ role, attributes, onNotice }: { role: 'A
     }
     try {
       const updated = await hubApi<LocalAttribute>(`/catalog/attributes/${attribute.id}/values/order`, { method: 'PUT', headers: { 'If-Match': `"v${attribute.version}"` }, body: JSON.stringify({ valueIds: next.map(value => value.id) }) })
-      updateCache(updated); showFeedback(direction === 1 ? 'Değerler A–Z sıralandı.' : 'Değerler Z–A sıralandı.')
+      updateCache(updated)
       return true
     } catch (reason) { showFeedback(reason instanceof Error ? reason.message : 'Değerler sıralanamadı.', 'error'); return false }
   }
@@ -2868,18 +2868,18 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
   return <article className="panel mapping-step cm-card">
     <header className="cm-page-head"><h2>Kategori eşleştirmeleri</h2><p>{platformLabel} alanlarını panel özellikleri ve değerleriyle eşleyin.</p></header>
     <div className="cm-context">
-      <label className="cm-field"><small>Panel kategorisi</small><select value={attributeCategoryId} onChange={event => setAttributeCategoryId(event.target.value)}>{matchedCategories.map(({ category }) => <option key={category.id} value={category.id}>{category.path}</option>)}</select></label>
+      <label className="cm-field"><small>Panel Kategorisi</small><select value={attributeCategoryId} onChange={event => setAttributeCategoryId(event.target.value)}>{matchedCategories.map(({ category }) => <option key={category.id} value={category.id}>{category.path}</option>)}</select></label>
       <span className="cm-link cm-context-link" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M6.6 9.4 9.4 6.6" /><path d="M7.4 4.6 8.6 3.4a2.6 2.6 0 0 1 3.7 3.7l-1.2 1.2" /><path d="M8.6 11.4 7.4 12.6a2.6 2.6 0 0 1-3.7-3.7l1.2-1.2" /></svg></span>
-      <div className="cm-field cm-target"><small>{platformLabel} kategorisi</small><span className="cm-path"><strong title={targetCategoryPath}>{targetCategoryPath}</strong>{targetCategoryStatus && <span className={`mapping-table-status ${targetCategoryStatus.className}`} title={targetCategoryStatus.title}>{targetCategoryStatus.label}</span>}</span></div>
-      {!dataLoading && !dataFailed && requiredEntries.length > 0 && <div className="cm-progress" aria-label={`Zorunlu alanlar: ${requiredReady} / ${requiredEntries.length}`}><div><span>Zorunlu alanlar</span><b>{requiredReady} / {requiredEntries.length}</b></div><div className="cm-track"><i style={{ width: `${Math.round(requiredReady / requiredEntries.length * 100)}%` }} /></div></div>}
+      <div className="cm-field cm-target"><small>{platformLabel} Kategorisi</small><span className="cm-path"><strong title={targetCategoryPath}>{targetCategoryPath}</strong>{targetCategoryStatus && <span className={`mapping-table-status ${targetCategoryStatus.className}`} title={targetCategoryStatus.title}>{targetCategoryStatus.label}</span>}</span></div>
+      {!dataLoading && !dataFailed && requiredEntries.length > 0 && <div className="cm-progress" aria-label={`Zorunlu alanlar: ${requiredReady} / ${requiredEntries.length}`}><div><span>Zorunlu Alanlar</span><b>{requiredReady} / {requiredEntries.length}</b></div><div className="cm-track"><i style={{ width: `${Math.round(requiredReady / requiredEntries.length * 100)}%` }} /></div></div>}
       {!dataLoading && !dataFailed && <div className="cm-actions" role="toolbar" aria-label="Kategori eşleme işlemleri">
-      <button type="button" className="secondary" title="Önce adı aynı olan panel başlıklarını, bulunamazsa eş anlamlısını (ör. Materyal ≈ Kumaş Tipi) ya da diğer pazaryerinde eşlendiği adı toplu eşler. Birden fazla aday varsa atlar." disabled={sync.isPending || bulkBusy !== ''} onClick={() => void matchHeadingsByName()}>{bulkBusy === 'HEADINGS' ? 'Başlıklar eşleniyor…' : 'Başlıkları eşle'}</button>
-      <button type="button" className="secondary" title="Eşlenmiş tüm başlıklarda adı aynı olan değerleri toplu eşler" disabled={sync.isPending || bulkBusy !== ''} onClick={() => void matchAllValuesByName()}>{bulkBusy === 'VALUES' ? 'Değerler eşleniyor…' : 'Tüm değerleri eşle'}</button>
-      <button type="button" className="secondary" title={`Aynı ${platformLabel} başlığını kullanan diğer kategorilerde yaptığınız başlık ve değer eşlemelerini bu kategoriye getirir. Elle yaptığınız ve sildiğiniz eşlemelere dokunmaz.`} disabled={sync.isPending || bulkBusy !== ''} onClick={() => void fillFromOtherCategories()}>{bulkBusy === 'TEMPLATES' ? 'Getiriliyor…' : 'Kategorilerden doldur'}</button>
-      {(platformCode === 'TRENDYOL' || platformCode === 'HEPSIBURADA') && categoryScope && <button type="button" className="secondary" title={`Ürünlerde boş kalan alanlar için ${platformLabel}’a gönderilecek sabit değerler`} onClick={() => setExtraPanel('defaults')}>Platform varsayılanları <span className="cm-count">{attributeDefaultsCount}</span></button>}
-      <button type="button" className={`secondary${mappingConflictCount ? ' cm-has-conflicts' : ''}`} title={`Aynı panel değeri birden fazla ${platformLabel} değerine bağlanmış eşlemeler`} onClick={() => setExtraPanel('conflicts')}>Gözden geçirilecek <span className="cm-count">{mappingConflictCount}</span></button>
-      {platformCode === 'TRENDYOL' && optionCount > 0 && <button type="button" className="secondary" title="Trendyol’daki ürünleri salt-okunur okuyarak ürün seçeneklerini günceller; Trendyol’a yazma yapmaz." disabled={productSync.isPending} onClick={() => productSync.mutate()}>{productSync.isPending ? 'Ürünler eşitleniyor…' : 'Seçenekleri eşitle'}</button>}
-      <button type="button" className="secondary" title={`Bu kategorinin ${platformLabel} alan listesini salt-okunur olarak yeniden okur.`} disabled={sync.isPending} onClick={() => sync.mutate()}><UiIcon name="refresh" />{sync.isPending ? 'Güncelleniyor…' : 'Alanları güncelle'}</button>
+      <button type="button" className="secondary" title="Önce adı aynı olan panel başlıklarını, bulunamazsa eş anlamlısını (ör. Materyal ≈ Kumaş Tipi) ya da diğer pazaryerinde eşlendiği adı toplu eşler. Birden fazla aday varsa atlar." disabled={sync.isPending || bulkBusy !== ''} onClick={() => void matchHeadingsByName()}>{bulkBusy === 'HEADINGS' ? 'Başlıklar eşleniyor…' : 'Başlıkları Eşle'}</button>
+      <button type="button" className="secondary" title="Eşlenmiş tüm başlıklarda adı aynı olan değerleri toplu eşler" disabled={sync.isPending || bulkBusy !== ''} onClick={() => void matchAllValuesByName()}>{bulkBusy === 'VALUES' ? 'Değerler eşleniyor…' : 'Tüm Değerleri Eşle'}</button>
+      <button type="button" className="secondary" title={`Aynı ${platformLabel} başlığını kullanan diğer kategorilerde yaptığınız başlık ve değer eşlemelerini bu kategoriye getirir. Elle yaptığınız ve sildiğiniz eşlemelere dokunmaz.`} disabled={sync.isPending || bulkBusy !== ''} onClick={() => void fillFromOtherCategories()}>{bulkBusy === 'TEMPLATES' ? 'Getiriliyor…' : 'Kategorilerden Doldur'}</button>
+      {(platformCode === 'TRENDYOL' || platformCode === 'HEPSIBURADA') && categoryScope && <button type="button" className="secondary" title={`Ürünlerde boş kalan alanlar için ${platformLabel}’a gönderilecek sabit değerler`} onClick={() => setExtraPanel('defaults')}>Platform Varsayılanları <span className="cm-count">{attributeDefaultsCount}</span></button>}
+      <button type="button" className={`secondary${mappingConflictCount ? ' cm-has-conflicts' : ''}`} title={`Aynı panel değeri birden fazla ${platformLabel} değerine bağlanmış eşlemeler`} onClick={() => setExtraPanel('conflicts')}>Gözden Geçirilecek <span className="cm-count">{mappingConflictCount}</span></button>
+      {platformCode === 'TRENDYOL' && optionCount > 0 && <button type="button" className="secondary" title="Trendyol’daki ürünleri salt-okunur okuyarak ürün seçeneklerini günceller; Trendyol’a yazma yapmaz." disabled={productSync.isPending} onClick={() => productSync.mutate()}>{productSync.isPending ? 'Ürünler eşitleniyor…' : 'Seçenekleri Eşitle'}</button>}
+      <button type="button" className="secondary" title={`Bu kategorinin ${platformLabel} alan listesini salt-okunur olarak yeniden okur.`} disabled={sync.isPending} onClick={() => sync.mutate()}><UiIcon name="refresh" />{sync.isPending ? 'Güncelleniyor…' : 'Alanları Güncelle'}</button>
       </div>}
     </div>
     {dataLoading ? <Busy text="Kategori özellikleri ve eşlemeler yükleniyor…" /> : dataFailed ? <div className="unknown"><strong>Güncel kategori özellik verisi alınamadı</strong><p>Seçili {platformLabel} kategorisinin özellik listesini yeniden eşitleyin.</p><button type="button" disabled={sync.isPending} onClick={() => sync.mutate()}>{sync.isPending ? 'Kuyruğa alınıyor…' : 'Kategori özelliklerini eşitle'}</button></div> : <>
@@ -2900,7 +2900,7 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
             </>}
         </section>
       </div>
-      <div className="cm-legend" aria-label="Durum simgeleri"><span><MappingStateGlyph state="done" /> Tamam</span><span><MappingStateGlyph state="partial" /> Değerleri eksik</span><span><MappingStateGlyph state="none" /> Eşlenmedi</span></div>
+      <div className="cm-legend" aria-label="Durum simgeleri"><span><MappingStateGlyph state="done" /> Tamam</span><span><MappingStateGlyph state="partial" /> Değerleri Eksik</span><span><MappingStateGlyph state="none" /> Eşlenmedi</span></div>
     </>}
     <Modal open={extraPanel === 'defaults'} title="Platform Varsayılanları" description={`Ürünlerde boş kalan alanlar için ${platformLabel}’a gönderilecek sabit değerler.`} onClose={() => setExtraPanel('')} className="cm-extra-modal">
       {categoryScope && references.data && <AttributeDefaultsPanel connectionId={connectionId} categoryScope={categoryScope} platformLabel={platformLabel} remoteAttributes={references.data.items} onNotice={onNotice} expanded />}
@@ -2932,7 +2932,7 @@ function FieldFooter({ hint, dirty = false, saving = false, onSave, onNext }: { 
   return <div className={`cm-foot${dirty ? ' is-dirty' : ''}`}>
     <span>{dirty ? 'Kaydedilmemiş değişiklikler var' : hint}</span>
     <span className="cm-grow" />
-    {onNext && <button type="button" className="secondary" onClick={onNext}>Sonraki eksik</button>}
+    {onNext && <button type="button" className="secondary" onClick={onNext}>Sonraki Eksik</button>}
     <button type="button" disabled={!onSave || !dirty || saving} onClick={onSave}>{saving ? 'Kaydediliyor…' : 'Kaydet'}</button>
   </div>
 }
@@ -2969,9 +2969,9 @@ function FieldDetail({ platformCode, platformLabel, connectionId, categoryScope,
   return <>
     <FieldHeading name={remote.name} required={required} platformLabel={platformLabel} />
     <div className="cm-form">
-      <div className="cm-field"><small>{platformLabel} alanı</small><span className="cm-readonly">{remote.name}</span></div>
+      <div className="cm-field"><small>{platformLabel} Alanı</small><span className="cm-readonly">{remote.name}</span></div>
       <span className="cm-link" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M6.6 9.4 9.4 6.6" /><path d="M7.4 4.6 8.6 3.4a2.6 2.6 0 0 1 3.7 3.7l-1.2 1.2" /><path d="M8.6 11.4 7.4 12.6a2.6 2.6 0 0 1-3.7-3.7l1.2-1.2" /></svg></span>
-      <div className="cm-field"><small>Panel özelliği</small><div className="cm-select-row">
+      <div className="cm-field"><small>Panel Özelliği</small><div className="cm-select-row">
         <select aria-label={`${remote.name} için panel özelliği`} value={mapping?.localId ?? ''} disabled={busy} onChange={event => void choose(event.target.value)}>
           <option value="">Seçin…</option>
           {panelOptions.length > 0 && <optgroup label="Panel seçenekleri">{panelOptions.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</optgroup>}
@@ -3072,15 +3072,15 @@ function FieldValueTable({ platformCode, platformLabel, connectionId, categorySc
   }
   return <>
     <div className="cm-vtools">
-      <div className="cm-vtools-title"><h5>Değer eşlemeleri</h5><span>{doneCount} / {localValues.length}</span></div>
+      <div className="cm-vtools-title"><h5>Değer Eşlemeleri</h5><span>{doneCount} / {localValues.length}</span></div>
       <div className="cm-vtools-actions">
         <input className="cm-search" type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Değer ara" aria-label="Panel değeri ara" />
-        <button type="button" className={`secondary cm-toggle${onlyMissing ? ' is-on' : ''}`} aria-pressed={onlyMissing} onClick={() => setOnlyMissing(value => !value)}>Yalnızca eksikler</button>
-        <button type="button" className="secondary" onClick={matchSameNames}>Birebir eşle</button>
+        <button type="button" className={`secondary cm-toggle${onlyMissing ? ' is-on' : ''}`} aria-pressed={onlyMissing} onClick={() => setOnlyMissing(value => !value)}>Yalnızca Eksikler</button>
+        <button type="button" className="secondary" onClick={matchSameNames}>Birebir Eşle</button>
       </div>
     </div>
     <div className="cm-vtable" role="table" aria-label={`${remote.name} değer eşlemeleri`}>
-      <div className="cm-vrow is-head" role="row"><span role="columnheader">Panel değeri</span><span role="columnheader">{platformLabel} değeri</span><span aria-hidden="true" /></div>
+      <div className="cm-vrow is-head" role="row"><span role="columnheader">Panel Değeri</span><span role="columnheader">{platformLabel} Değeri</span><span aria-hidden="true" /></div>
       <div className="cm-vscroll">
         {rows.length ? rows.map(item => {
           const target = targetOf(selections, item.id)
