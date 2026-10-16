@@ -8422,9 +8422,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         }
 
         var pending = open.ToDictionary(claim => claim.ExternalClaimId, claim => claim.RawStatus, StringComparer.Ordinal);
-        var windowStart = open.Min(claim => claim.CreatedAt).AddDays(-2);
-        var earliest = now - HepsiburadaReturnHistoryPolicy.InitialLookback;
-        if (windowStart < earliest) windowStart = earliest;
+        // The local record date can be days after the claim was opened on Hepsiburada; the whole history window is listed.
+        var windowStart = now - HepsiburadaReturnHistoryPolicy.InitialLookback;
+        var seen = new Dictionary<string, List<string>>(StringComparer.Ordinal);
         var productSnapshots = new Dictionary<string, string?>(StringComparer.Ordinal);
         foreach (var status in HepsiburadaClaimFollowUpStatuses)
         {
@@ -8444,6 +8444,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     throw JobProcessingException.FromAdapter(result.Error!);
                 }
                 var page = result.Value!;
+                if (!seen.TryGetValue(status, out var seenInStatus)) seen[status] = seenInStatus = [];
+                seenInStatus.AddRange(page.Items.Select(item => $"{item.ExternalClaimId}:{item.RawStatus}"));
                 foreach (var claim in page.Items)
                 {
                     TrackReceived();
@@ -8458,6 +8460,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 offset = int.TryParse(page.NextCursor, NumberStyles.None, CultureInfo.InvariantCulture, out var next) ? Math.Max(offset + 1, next) : offset + Math.Max(1, page.Items.Count);
             }
         }
+        // What Hepsiburada listed per status in this pass, kept for diagnosis; the follow-up itself keeps no cursor.
+        cursor.OpaqueCursor = JsonSerializer.Serialize(new { at = now, open = open.Select(claim => claim.ExternalClaimId), seen, unresolved = pending.Keys });
         cursor.LastSuccessAt = timeProvider.GetUtcNow();
         cursor.LastError = null;
         cursor.LastErrorAt = null;
