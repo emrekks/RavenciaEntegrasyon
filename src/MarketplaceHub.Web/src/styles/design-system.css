@@ -2637,7 +2637,7 @@
   /* Shared interaction language for the revised workspace surfaces. */
 
   /* Canonical workspace navigation. */
-  :is(.rv-tabs, .settings-tabs, .jobs-reference-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) { display: flex; width: fit-content; max-width: 100%; min-width: 0; align-items: center; gap: 4px; overflow-x: auto; margin: 0 0 20px; padding: 4px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); scrollbar-width: thin; }
+  :is(.rv-tabs, .settings-tabs, .jobs-reference-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) { display: flex; width: fit-content; max-width: 100%; min-width: 0; align-items: center; gap: 4px; overflow-x: auto; margin: 0 0 20px; padding: 4px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
   :is(.rv-tabs, .settings-tabs, .jobs-reference-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) > :is(button, a) { display: inline-flex; flex: 0 0 auto; width: auto; min-width: 0; min-height: 34px; align-items: center; justify-content: center; gap: 8px; padding: 6px 12px; color: var(--rv-color-muted); background: transparent; border: 0; border-radius: var(--rv-radius-sm); box-shadow: none; font-size: var(--rv-font-size-sm); font-weight: 600; line-height: 1.4; white-space: nowrap; text-decoration: none; }
   :is(.rv-tabs, .settings-tabs, .jobs-reference-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) > :is(button, a):hover { color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border-color: transparent; box-shadow: none; }
   :is(.rv-tabs, .settings-tabs, .jobs-reference-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) > :is(button, a):is(.active, .is-active, [aria-selected="true"]) { color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border-bottom-color: transparent; box-shadow: 0 1px 4px rgb(0 0 0 / 12%); }
@@ -4329,7 +4329,7 @@ button,
     overflow-x: auto;
     overflow-y: visible;
     overscroll-behavior-x: contain;
-    scrollbar-width: thin;
+    
   }
 
   .app-shell.stitch-shell main .order-reference-actions .order-label-action {
@@ -11450,7 +11450,7 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
-  scrollbar-width: thin;
+  
 }
 .value-mapping-quick-value-backdrop .panel-attribute-quick-modal-card > .panel-attribute-value-editor > div {
   grid-template-columns: minmax(0, 1fr) auto;

@@ -28,7 +28,7 @@
 .cm-card button.cm-quiet .ui-icon { width: 16px; height: 16px; }
 
 .cm-card .cm-layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); min-height: 560px; }
-.cm-card .cm-nav { max-height: 760px; overflow-y: auto; padding-bottom: 10px; border-right: 1px solid var(--rv-color-border); scrollbar-width: thin; }
+.cm-card .cm-nav { max-height: 760px; overflow-y: auto; padding-bottom: 10px; border-right: 1px solid var(--rv-color-border); }
 .cm-card .cm-section { display: flex; align-items: baseline; justify-content: space-between; padding: 14px 20px 6px; color: var(--rv-color-primary); font-size: 12px; font-weight: 700; }
 .cm-card .cm-section > span:last-child { color: var(--rv-color-muted); font-weight: 500; font-variant-numeric: tabular-nums; }
 .cm-card .cm-item + .cm-section { margin-top: 10px; border-top: 1px solid var(--rv-color-border); }
@@ -69,7 +69,7 @@
 .cm-card .cm-vtools-actions > button { flex: none; min-height: 34px; height: 34px; }
 .cm-card button.cm-toggle.is-on { color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border-color: var(--rv-color-primary); }
 .cm-card .cm-vtable { overflow: hidden; border: 1px solid var(--rv-color-border); border-radius: 8px; }
-.cm-card .cm-vscroll { max-height: 380px; overflow-y: auto; scrollbar-width: thin; }
+.cm-card .cm-vscroll { max-height: 380px; overflow-y: auto; }
 .cm-card .cm-vrow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) 28px; align-items: center; gap: 16px; min-height: 44px; padding: 5px 16px; border-top: 1px solid var(--rv-color-border); }
 .cm-card .cm-vscroll > .cm-vrow:first-child { border-top: 0; }
 .cm-card .cm-vrow.is-head { min-height: 34px; color: var(--rv-color-muted); font-size: 12px; background: var(--rv-color-surface-raised); border-top: 0; border-bottom: 1px solid var(--rv-color-border); }
@@ -214,7 +214,7 @@
 /* Footer hint a step smaller. */
 .panel.mapping-step.cm-card .cm-foot > span:first-child { font-size: 13px; }
 /* The rows scroll with a thin scrollbar; the tools and the header reserve the same thin gutter. */
-.app-shell .panel.mapping-step.cm-card :is(.cm-vtools, .cm-vrow.is-head, .cm-vscroll) { scrollbar-width: thin; }
+.app-shell .panel.mapping-step.cm-card :is(.cm-vtools, .cm-vrow.is-head, .cm-vscroll) { }
 /* Let the shared macOS-style scrollbar apply here; the tools and the header keep the same gutter as the rows. */
 @supports not (-moz-appearance: none) { .app-shell .panel.mapping-step.cm-card :is(.cm-vtools, .cm-vrow.is-head, .cm-vscroll, .cm-nav) { scrollbar-width: auto; } }
 /* Category actions fill the row: buttons share the width with an even 8px gap instead of large spaces between them. */
