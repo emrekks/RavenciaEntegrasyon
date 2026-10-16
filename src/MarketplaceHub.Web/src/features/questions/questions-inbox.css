@@ -1,0 +1,191 @@
+/* Questions as an inbox (docs/tasarim-onerileri/urun-sorulari.html, option 2): sources card, list on the left,
+   the selected question with its answer box on the right, quick replies in a popup. */
+.app-shell.stitch-shell main .qi-page { display: grid; align-content: start; gap: 16px; }
+.qi-page .qi-glyph { display: block; flex: none; width: 15px; height: 15px; color: var(--rv-color-muted); }
+.qi-page .qi-glyph.is-done { color: var(--rv-color-ink); }
+.qi-page .qi-glyph.is-bad { color: var(--rv-color-danger); }
+.qi-page .qi-count, .qi-templates-modal .qi-count { display: inline-grid; min-width: 20px; height: 18px; place-items: center; padding: 0 5px; color: var(--rv-color-muted); background: var(--rv-color-surface-soft); border-radius: 5px; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.qi-page .qi-count.is-warn { color: var(--rv-color-warning); background: color-mix(in srgb, var(--rv-color-warning) 14%, transparent); }
+.app-shell.stitch-shell main .qi-page .qi-link { display: inline-flex; align-items: center; gap: 6px; height: 28px; min-height: 28px; padding: 0 8px; color: var(--rv-color-muted); background: none; border: 0; border-radius: 7px; box-shadow: none; font-size: 13px; font-weight: 500 !important; text-transform: none; }
+.app-shell.stitch-shell main .qi-page .qi-link:hover { color: var(--rv-color-ink); background: var(--rv-color-surface-soft); }
+
+/* Head */
+.app-shell.stitch-shell main .qi-page .qi-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
+.qi-page .qi-head > div:first-child { flex: 1; min-width: 0; }
+.qi-page .qi-crumb { margin: 0; color: var(--rv-color-subtle); font-size: 12px; font-weight: 500; text-transform: none; letter-spacing: 0; }
+.app-shell.stitch-shell main .qi-page .qi-head h1 { margin: 2px 0 0; font-size: 22px; font-weight: 600; text-transform: none; }
+.qi-page .qi-head p:not(.qi-crumb) { margin: 4px 0 0; color: var(--rv-color-muted); font-size: 13px; }
+.qi-page .qi-acts { display: flex; align-items: center; gap: 8px; }
+.app-shell.stitch-shell main .qi-page .qi-acts > button { display: inline-flex; align-items: center; gap: 8px; height: 34px; min-height: 34px; padding: 0 12px; border-radius: 7px; font-size: 14px; text-transform: none; }
+
+/* Sources card: one column per store */
+.app-shell.stitch-shell main .qi-page .qi-sync { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0; margin: 0; padding: 0; overflow: hidden; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; box-shadow: none; }
+.app-shell.stitch-shell main .qi-page .qi-sync .rv-questions-sync-item { display: grid; grid-template-columns: 30px minmax(0, 1fr); align-items: start; gap: 12px; min-height: 0; margin: 0; padding: 14px 16px; background: none; border: 0; border-left: 1px solid var(--rv-color-border); border-radius: 0; box-shadow: none; }
+.app-shell.stitch-shell main .qi-page .qi-sync .rv-questions-sync-item:first-child { border-left: 0; }
+.app-shell.stitch-shell main .qi-page .qi-sync .rv-question-platform-logo { box-sizing: border-box; width: 30px; height: 30px; object-fit: contain; border-radius: 7px; }
+.qi-page .qi-sync .rv-questions-sync-item > div { display: grid; gap: 3px; min-width: 0; }
+.qi-page .qi-sync b { font-size: 14px; font-weight: 600; }
+.qi-page .qi-sync b em { margin-left: 4px; color: var(--rv-color-muted); font-size: 13px; font-style: normal; font-weight: 400; }
+.qi-page .qi-sync small { display: flex; align-items: center; gap: 6px; color: var(--rv-color-muted); font-size: 12px; }
+.qi-page .qi-sync small.qi-sync-time { padding-left: 21px; color: var(--rv-color-subtle); font-variant-numeric: tabular-nums; }
+.qi-page .qi-sync .qi-glyph { width: 14px; height: 14px; }
+.qi-page .qi-sync-empty { padding: 14px 16px; color: var(--rv-color-muted); font-size: 13px; }
+
+/* Inbox frame */
+.app-shell.stitch-shell main .qi-page .qi-inbox { display: grid; grid-template-columns: 380px minmax(0, 1fr); height: max(560px, calc(100dvh - 300px)); overflow: hidden; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; }
+.qi-page .qi-left { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-right: 1px solid var(--rv-color-border); }
+.qi-page .qi-right { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+
+/* Left: tabs, tools, list, foot */
+.app-shell.stitch-shell main .qi-page .qi-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; margin: 0; padding: 10px; border-bottom: 1px solid var(--rv-color-border); }
+.app-shell.stitch-shell main .qi-page .qi-tabs :is(button, [role="tab"]) { justify-content: center; gap: 8px; height: 36px; min-height: 36px; padding: 0 8px; border-radius: 7px; font-size: 13px; text-transform: none; }
+.qi-page .qi-tools { position: relative; display: grid; gap: 8px; padding: 12px; border-bottom: 1px solid var(--rv-color-border); }
+.qi-page .qi-tools-row { display: flex; gap: 8px; }
+.app-shell.stitch-shell main .qi-page .qi-search { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; height: 36px; padding: 0 12px; color: var(--rv-color-muted); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font-size: 0; }
+.app-shell.stitch-shell main .qi-page .qi-search:focus-within { border-color: var(--rv-color-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--rv-color-primary) 18%, transparent); }
+.app-shell.stitch-shell main .qi-page .qi-search input { flex: 1; min-width: 0; height: 100%; min-height: 0; padding: 0; color: var(--rv-color-ink); background: none; border: 0; box-shadow: none; font-size: 14px; outline: none; }
+.qi-page .qi-filter, .qi-page .qi-status { position: relative; }
+.app-shell.stitch-shell main .qi-page :is(.qi-filter-btn, .qi-status-btn) { display: inline-flex; align-items: center; gap: 8px; height: 36px; min-height: 36px; padding: 0 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 13px; font-weight: 500 !important; text-transform: none; }
+.app-shell.stitch-shell main .qi-page :is(.qi-filter-btn, .qi-status-btn):hover { background: var(--rv-color-surface-soft); }
+.app-shell.stitch-shell main .qi-page :is(.qi-filter-btn, .qi-status-btn).is-on { background: var(--rv-color-primary-soft); border-color: color-mix(in srgb, var(--rv-color-primary) 55%, transparent); }
+.app-shell.stitch-shell main .qi-page .qi-status-btn { width: 100%; }
+.qi-page .qi-status-btn b { flex: 1; overflow: hidden; font-weight: 500; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+.qi-page .qi-status-btn > .ui-icon { color: var(--rv-color-muted); transition: transform .15s; }
+.qi-page .qi-status-btn.is-on > .ui-icon { transform: rotate(180deg); }
+.qi-page :is(.qi-status-menu, .qi-popover) { position: absolute; z-index: 30; top: calc(100% + 6px); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; box-shadow: 0 18px 50px rgb(0 0 0 / 45%); }
+.qi-page .qi-status-menu { right: 0; left: 0; display: grid; gap: 2px; padding: 6px; }
+.app-shell.stitch-shell main .qi-page .qi-status-menu > button { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 34px; min-height: 34px; padding: 0 10px; color: var(--rv-color-ink); background: none; border: 0; border-radius: 7px; box-shadow: none; font-size: 13px; font-weight: 400 !important; text-align: left; text-transform: none; }
+.qi-page .qi-status-menu > button > span:first-child { display: inline-flex; align-items: center; gap: 8px; }
+.app-shell.stitch-shell main .qi-page .qi-status-menu > button:hover { background: var(--rv-color-surface-soft); }
+.app-shell.stitch-shell main .qi-page .qi-status-menu > button.is-on { background: var(--rv-color-primary-soft); }
+.qi-page .qi-popover { right: 0; display: grid; gap: 14px; width: 320px; padding: 16px; }
+.app-shell.stitch-shell main .qi-page .qi-popover label, .qi-page .qi-popover .qi-field { display: grid; gap: 6px; color: var(--rv-color-muted); font-size: 12px; font-weight: 500; text-transform: none; }
+.app-shell.stitch-shell main .qi-page .qi-popover select { box-sizing: border-box; height: 36px; min-height: 36px; padding: 0 12px; color: var(--rv-color-ink); background-color: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 14px; }
+.qi-page .qi-range { display: grid; grid-template-columns: minmax(0, 1fr) 36px; gap: 6px; }
+.qi-page .qi-seg { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); overflow: hidden; height: 36px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; }
+.app-shell.stitch-shell main .qi-page .qi-seg > button { min-width: 0; height: 34px; min-height: 34px; padding: 0 4px; color: var(--rv-color-muted); background: none; border: 0; border-left: 1px solid var(--rv-color-border); border-radius: 0; box-shadow: none; font-size: 12px; font-weight: 500 !important; text-transform: none; white-space: nowrap; }
+.qi-page .qi-seg > button:first-child { border-left: 0; }
+.app-shell.stitch-shell main .qi-page .qi-seg > button:hover { color: var(--rv-color-ink); background: var(--rv-color-surface-raised); }
+.app-shell.stitch-shell main .qi-page .qi-seg > button.is-on { color: var(--rv-color-ink); background: var(--rv-color-primary-soft); box-shadow: inset 0 -2px 0 var(--rv-color-primary); }
+.qi-page .qi-range-picker { position: relative; }
+.qi-page .qi-range-picker .date-range-picker-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.app-shell.stitch-shell main .qi-page .qi-range-picker .date-range-picker-trigger { display: grid; width: 36px; min-width: 36px; height: 36px; min-height: 36px; place-items: center; padding: 0; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 0; }
+.qi-page .qi-range-picker .date-range-picker-trigger > :not(.ui-icon-calendar) { display: none; }
+.qi-page .qi-popover footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 12px; border-top: 1px solid var(--rv-color-border); }
+.app-shell.stitch-shell main .qi-page .qi-popover footer > .rv-button { height: 34px; min-height: 34px; }
+.qi-page .qi-list { flex: 1; min-height: 0; overflow-y: auto; }
+.app-shell.stitch-shell main .qi-page .qi-item { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 4px 12px; width: 100%; height: auto; min-height: 0; margin: 0; padding: 12px 14px 12px 12px; color: var(--rv-color-ink); text-align: left; background: none; border: 0; border-bottom: 1px solid var(--rv-color-border); border-left: 2px solid transparent; border-radius: 0; box-shadow: none; font-weight: 400 !important; text-transform: none; cursor: pointer; }
+.app-shell.stitch-shell main .qi-page .qi-item:hover { background: var(--rv-color-surface-raised); }
+.app-shell.stitch-shell main .qi-page .qi-item.is-on { background: var(--rv-color-primary-soft); border-left-color: var(--rv-color-primary); }
+.qi-page .qi-item-logo { grid-row: span 3; }
+.qi-page .qi-item-logo img, .qi-page .qi-item-logo .order-platform-fallback { display: block; box-sizing: border-box; width: 28px; height: 28px; object-fit: contain; border-radius: 6px; }
+.qi-page .qi-item-top { display: flex; gap: 6px; min-width: 0; color: var(--rv-color-muted); font-size: 12px; }
+.qi-page .qi-item-top b { color: var(--rv-color-ink); font-size: 13px; font-weight: 600; white-space: nowrap; }
+.qi-page .qi-item-top span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qi-page .qi-item-top span::before { content: "·"; margin-right: 6px; }
+.qi-page .qi-item time { color: var(--rv-color-subtle); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.qi-page .qi-item-text { grid-column: 2 / -1; display: -webkit-box; overflow: hidden; font-size: 14px; line-height: 1.45; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.qi-page .qi-item-meta { grid-column: 2 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; color: var(--rv-color-muted); font-size: 12px; }
+.qi-page :is(.qi-deadline, .qi-item-state) { display: inline-flex; align-items: center; gap: 6px; }
+.qi-page .qi-deadline.is-urgent { color: var(--rv-color-warning); }
+.qi-page .qi-item-state .qi-glyph { width: 13px; height: 13px; }
+.qi-page .qi-draft { color: color-mix(in srgb, var(--rv-color-primary) 55%, #fff); }
+.qi-page .qi-list .rv-empty-state, .qi-page .qi-list .rv-loading-state { min-height: 200px; margin: 12px; border: 0; }
+.qi-page .qi-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 14px; color: var(--rv-color-subtle); border-top: 1px solid var(--rv-color-border); font-size: 12px; }
+.qi-page .qi-foot nav { display: flex; align-items: center; gap: 6px; }
+.qi-page .qi-live { display: inline-flex; align-items: center; gap: 6px; }
+.qi-page .qi-live i { width: 6px; height: 6px; background: var(--rv-color-success, #34d399); border-radius: 50%; }
+
+/* Right: selected question */
+.qi-page .qi-detail { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+.qi-page .qi-detail-head { display: grid; gap: 10px; padding: 16px 20px; border-bottom: 1px solid var(--rv-color-border); }
+.app-shell.stitch-shell main .qi-page .qi-back { display: none; justify-self: start; align-items: center; gap: 6px; height: 30px; min-height: 30px; padding: 0 8px 0 4px; color: var(--rv-color-muted); background: none; border: 0; box-shadow: none; font-size: 13px; }
+.qi-page .qi-dcard { overflow: hidden; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 12px; }
+.app-shell.stitch-shell main .qi-page .qi-product { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 12px 14px; }
+.app-shell.stitch-shell main .qi-page .qi-product > img, .qi-page .qi-product > .rv-question-product-placeholder { box-sizing: border-box; display: grid; width: 48px; height: 48px; place-items: center; object-fit: cover; color: var(--rv-color-muted); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 8px; }
+.qi-page .qi-product > div:nth-child(2) { display: grid; gap: 2px; min-width: 0; }
+.qi-page .qi-product strong { overflow: hidden; font-size: 15px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.qi-page .qi-product strong a { color: var(--rv-color-ink); text-decoration: none; }
+.qi-page .qi-product strong a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.qi-page .qi-product small { overflow: hidden; color: var(--rv-color-subtle); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.app-shell.stitch-shell main .qi-page .qi-platform { display: inline-flex; align-items: center; gap: 8px; color: var(--rv-color-muted); font-size: 13px; }
+.qi-page .qi-platform img { box-sizing: border-box; width: 24px; height: 24px; object-fit: contain; border-radius: 5px; }
+.qi-page .qi-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; border-top: 1px solid var(--rv-color-border); }
+.qi-page .qi-facts > div { display: grid; align-content: center; gap: 4px; min-width: 0; min-height: 56px; padding: 8px 14px; border-left: 1px solid var(--rv-color-border); }
+.qi-page .qi-facts > div:first-child { border-left: 0; }
+.qi-page .qi-facts dt { color: var(--rv-color-subtle); font-size: 12px; }
+.qi-page .qi-facts dd { margin: 0; overflow: hidden; color: var(--rv-color-ink); font-size: 13px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.qi-page .qi-facts dd.is-urgent { color: var(--rv-color-warning); }
+.qi-page .qi-facts dd a { color: var(--rv-color-ink); }
+.qi-page .qi-tag { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px 0 6px; color: var(--rv-color-ink); border: 1px solid var(--rv-color-border-strong); border-radius: 5px; font-size: 12px; font-weight: 500; }
+.qi-page .qi-tag .qi-glyph { width: 13px; height: 13px; }
+.app-shell.stitch-shell main .qi-page .qi-detail-body { display: grid; flex: 1; align-content: start; gap: 12px; min-height: 0; margin: 0; padding: 20px; overflow-y: auto; background: none; border: 0; }
+.app-shell.stitch-shell main .qi-page .qi-detail-body .rv-question-conversation { display: grid; gap: 12px; margin: 0; padding: 0; border: 0; }
+.app-shell.stitch-shell main .qi-page .qi-detail-body .rv-question-thread-message { display: grid; gap: 6px; max-width: 86%; margin: 0; padding: 12px 14px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 12px; box-shadow: none; }
+.app-shell.stitch-shell main .qi-page .qi-detail-body .rv-question-thread-message.is-seller { justify-self: end; background: var(--rv-color-primary-soft); border-color: color-mix(in srgb, var(--rv-color-primary) 40%, transparent); }
+.qi-page .qi-detail-body .rv-question-thread-message header { display: flex; align-items: baseline; gap: 10px; }
+.qi-page .qi-detail-body .rv-question-thread-message header strong { font-size: 13px; font-weight: 600; }
+.qi-page .qi-detail-body .rv-question-thread-message time { color: var(--rv-color-subtle); font-size: 12px; font-variant-numeric: tabular-nums; }
+.qi-page .qi-detail-body .rv-question-thread-message p { margin: 0; font-size: 14px; line-height: 1.55; }
+.qi-page .qi-detail-body .rv-question-rejection { color: var(--rv-color-danger); font-size: 12px; }
+.qi-page .qi-note { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--rv-color-subtle); font-size: 12px; }
+.qi-page .qi-composer { display: grid; gap: 10px; padding: 14px 20px 16px; background: var(--rv-color-surface-raised); border-top: 1px solid var(--rv-color-border); }
+.qi-page .qi-templates-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--rv-color-subtle); font-size: 12px; }
+.qi-page .qi-templates-row > span { margin-right: 4px; }
+.qi-page .qi-templates-row .rv-question-bubbles { display: flex; flex-wrap: wrap; gap: 6px; }
+.app-shell.stitch-shell main .qi-page .rv-question-bubbles > button { height: 28px; min-height: 28px; padding: 0 10px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 12px; font-weight: 500 !important; text-transform: none; }
+.app-shell.stitch-shell main .qi-page .rv-question-bubbles > button:hover { background: var(--rv-color-primary-soft); border-color: color-mix(in srgb, var(--rv-color-primary) 55%, transparent); }
+.app-shell.stitch-shell main .qi-page .qi-composer textarea { box-sizing: border-box; width: 100%; min-height: 86px; padding: 10px 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font: inherit; font-size: 14px; line-height: 1.5; resize: vertical; }
+.app-shell.stitch-shell main .qi-page .qi-composer textarea:focus { border-color: var(--rv-color-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--rv-color-primary) 18%, transparent); outline: none; }
+.qi-page .qi-composer-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.qi-page .qi-composer-foot .rv-answer-bar-meta { color: var(--rv-color-subtle); font-size: 12px; }
+.qi-page .qi-composer-foot > div { display: flex; gap: 8px; }
+.app-shell.stitch-shell main .qi-page .qi-composer-foot .rv-button { height: 34px; min-height: 34px; }
+.qi-page .rv-question-send-error { margin: 0; color: var(--rv-color-danger); font-size: 13px; }
+.qi-page .qi-closed { display: flex; align-items: center; gap: 10px; padding: 14px 20px; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border-top: 1px solid var(--rv-color-border); font-size: 13px; }
+.qi-page .qi-empty { display: grid; flex: 1; place-items: center; padding: 24px; }
+.qi-page .qi-empty .rv-empty-state { border: 0; }
+
+/* Quick replies popup */
+.qi-templates-modal { width: min(720px, calc(100vw - 32px)); }
+.qi-templates-modal .rv-question-templates { display: grid; gap: 16px; margin: 0; }
+.app-shell.stitch-shell main .qi-templates-modal .rv-question-template-editor { display: grid; gap: 12px; margin: 0; padding: 16px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 12px; box-shadow: none; }
+.qi-templates-modal :is(.rv-question-template-editor, .rv-question-template-list) h3 { margin: 0; font-size: 14px; font-weight: 600; }
+.app-shell.stitch-shell main .qi-templates-modal .rv-question-template-editor label { display: grid; gap: 6px; color: var(--rv-color-muted); font-size: 12px; font-weight: 500; }
+.app-shell.stitch-shell main .qi-templates-modal .rv-question-template-editor :is(input, textarea) { box-sizing: border-box; width: 100%; padding: 0 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font: inherit; font-size: 14px; }
+.app-shell.stitch-shell main .qi-templates-modal .rv-question-template-editor input { height: 36px; min-height: 36px; }
+.app-shell.stitch-shell main .qi-templates-modal .rv-question-template-editor textarea { min-height: 96px; padding: 10px 12px; line-height: 1.5; resize: vertical; }
+.qi-templates-modal .rv-question-template-editor small { justify-self: end; color: var(--rv-color-subtle); font-size: 12px; }
+.qi-templates-modal .rv-question-template-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.qi-templates-modal .rv-question-template-list { overflow: hidden; border: 1px solid var(--rv-color-border); border-radius: 12px; }
+.qi-templates-modal .rv-question-template-list > header { display: flex; align-items: center; gap: 8px; padding: 12px 16px; background: var(--rv-color-surface-raised); border-bottom: 1px solid var(--rv-color-border); }
+.app-shell.stitch-shell main .qi-templates-modal .rv-question-template-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 28px; margin: 0; padding: 14px 16px; background: none; border: 0; border-top: 1px solid var(--rv-color-border); border-radius: 0; box-shadow: none; }
+.qi-templates-modal .rv-question-template-list > header + .rv-question-template-card { border-top: 0; }
+.qi-templates-modal .rv-question-template-card > div:first-child { display: grid; gap: 4px; min-width: 0; }
+.qi-templates-modal .rv-question-template-card strong { font-size: 14px; font-weight: 600; }
+.qi-templates-modal .rv-question-template-card p { margin: 0; color: var(--rv-color-muted); font-size: 13px; line-height: 1.5; }
+.qi-templates-modal .rv-question-template-card small { color: var(--rv-color-subtle); font-size: 12px; }
+.qi-templates-modal .rv-question-template-card > div:last-child { display: flex; align-items: center; gap: 6px; }
+.app-shell.stitch-shell main .qi-templates-modal .rv-button { height: 34px; min-height: 34px; text-transform: none; }
+
+@media (max-width: 900px) {
+  .app-shell.stitch-shell main .qi-page .qi-inbox { grid-template-columns: minmax(0, 1fr); height: auto; min-height: 520px; }
+  .qi-page .qi-left { border-right: 0; }
+  .qi-page .qi-inbox .qi-right { display: none; }
+  .qi-page .qi-inbox.is-detail .qi-left { display: none; }
+  .qi-page .qi-inbox.is-detail .qi-right { display: flex; }
+  .app-shell.stitch-shell main .qi-page .qi-back { display: inline-flex; }
+  .qi-page .qi-list { max-height: none; }
+  .qi-page .qi-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .qi-page .qi-facts > div:nth-child(3) { border-left: 0; }
+  .qi-page .qi-facts > div:nth-child(n + 3) { border-top: 1px solid var(--rv-color-border); }
+  .app-shell.stitch-shell main .qi-page .qi-product { grid-template-columns: 48px minmax(0, 1fr); }
+  .qi-page .qi-product .qi-platform { grid-column: 1 / -1; }
+  .qi-page .qi-popover { right: auto; left: 0; width: min(320px, calc(100vw - 56px)); }
+  .qi-page .qi-acts { width: 100%; }
+}
+
+/* Row hover matches the orders list: raised surface with a short fade. */
+.app-shell.stitch-shell main .qi-page .qi-item { transition: background var(--rv-duration-fast, .12s) var(--rv-ease-standard, ease), border-color var(--rv-duration-fast, .12s) var(--rv-ease-standard, ease); }
+.app-shell.stitch-shell main .qi-page .qi-item:not(.is-on):hover { background: var(--rv-color-surface-raised) !important; }
+.app-shell.stitch-shell main .qi-page .qi-item.is-on:hover { background: var(--rv-color-primary-soft) !important; }

@@ -79,12 +79,6 @@ function button(label: string) {
   return found
 }
 
-function replyButton() {
-  const found = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(item => item.textContent?.trim() === 'Cevapla')
-  if (!found) throw new Error('Could not find the reply button')
-  return found
-}
-
 function select(element: HTMLSelectElement, value: string) {
   act(() => { element.value = value; element.dispatchEvent(new Event('change', { bubbles: true })) })
 }
@@ -135,6 +129,19 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+function chooseStatus(label: string) {
+  act(() => container.querySelector<HTMLButtonElement>('.qi-status-btn')!.click())
+  const option = Array.from(container.querySelectorAll<HTMLButtonElement>('.qi-status-menu [role="option"]')).find(item => item.textContent?.includes(label))
+  if (!option) throw new Error(`Could not find status option “${label}”`)
+  act(() => option.click())
+}
+
+function composer() {
+  const found = container.querySelector<HTMLTextAreaElement>('.qi-composer textarea')
+  if (!found) throw new Error('Could not find the answer box')
+  return found
+}
+
 describe('QuestionsPage workspace flows', () => {
   it('renders a duplicate marketplace seller reply once without sending another answer', async () => {
     apiState.detail = {
@@ -152,7 +159,7 @@ describe('QuestionsPage workspace flows', () => {
     expect(apiState.calls.some(call => call.path.endsWith('/answer'))).toBe(false)
   })
 
-  it('covers workspace tabs, every status filter, platform/store filters, date range, and search', async () => {
+  it('covers workspace tabs, every status filter, store filter, date range, and search', async () => {
     await renderPage()
     expect(lastQuestionRequest().get('kind')).toBe('PRODUCT')
     expect(lastQuestionRequest().get('status')).toBe('WAITING')
@@ -160,21 +167,21 @@ describe('QuestionsPage workspace flows', () => {
     expect(container.querySelector('[data-platform="hepsiburada"]')).not.toBeNull()
     expect(container.querySelector('.rv-questions-sync-item img')?.getAttribute('src')).toBe('/platforms/trendyol.png')
     expect(container.querySelector('[data-platform="hepsiburada"] .rv-question-platform-logo')?.getAttribute('src')).toBe('/platforms/hepsiburada.png')
-    expect(container.querySelector('.rv-questions-notice')).toBeNull()
+    expect(container.querySelector('[data-platform="trendyol"]')?.textContent).toContain('Geçmiş tamamlandı')
     expect(button('Yenile').querySelector('.ui-icon-refresh')).not.toBeNull()
-    expect(container.querySelector('.rv-questions-sync-trigger')).toBeNull()
     expect(apiState.calls.some(call => call.path === '/questions/sync' && JSON.parse(call.body ?? '{}').kind === 'ALL')).toBe(true)
     expect(container.querySelector('.rv-question-thread-message.is-question time')?.textContent).toMatch(/^\d{2}\.\d{2}\.2026 · \d{2}:\d{2}$/)
 
-    for (const [label, expected] of [['Cevap bekleyenler', 'WAITING'], ['Cevaplananlar', 'ANSWERED'], ['Süresi dolanlar', 'EXPIRED'], ['Diğer durumlar', 'OTHER'], ['Tümü', 'ALL']]) {
-      act(() => button(label).click())
+    for (const [label, expected] of [['Cevap Bekleyenler', 'WAITING'], ['Cevaplananlar', 'ANSWERED'], ['Süresi Dolanlar', 'EXPIRED'], ['Diğer Durumlar', 'OTHER'], ['Tümü', 'ALL']]) {
+      chooseStatus(label)
       await settle()
       expect(lastQuestionRequest().get('status')).toBe(expected)
-      expect(button(label).getAttribute('aria-selected')).toBe('true')
+      expect(container.querySelector('.qi-status-btn')?.textContent).toContain(label)
+      expect(container.querySelector('.qi-status-menu')).toBeNull()
     }
 
+    act(() => button('Filtre').click())
     const selects = container.querySelectorAll<HTMLSelectElement>('.rv-questions-filter-grid select')
-    expect(container.querySelector('.rv-question-platform-fixed')).toBeNull()
     expect(Array.from(selects[0].options).map(option => option.textContent)).toContain('Trendyol Mağazası')
     expect(Array.from(selects[0].options).map(option => option.textContent)).toContain('Hepsiburada Mağazası')
     select(selects[0], 'ty-store')
@@ -190,25 +197,22 @@ describe('QuestionsPage workspace flows', () => {
     expect(params.get('dateFrom')).toBe(new Date('2026-10-01T00:00:00').toISOString())
     expect(params.get('dateTo')).toBe(new Date('2026-10-05T23:59:59').toISOString())
     expect(params.get('search')).toBe('bluz 01')
+    expect(container.querySelector('.qi-filter-btn')?.textContent).toContain('2')
 
     act(() => button('Sipariş Soruları').click())
     await settle()
     params = lastQuestionRequest()
     expect(params.get('kind')).toBe('ORDER')
     expect(params.get('platform')).toBeNull()
-    expect(container.querySelector('.rv-questions-platform-note')).toBeNull()
-    expect(container.querySelector('.rv-question-platform-fixed')).toBeNull()
     const orderStore = container.querySelectorAll<HTMLSelectElement>('.rv-questions-filter-grid select')[0]
     expect(Array.from(orderStore.options).map(option => option.textContent)).toContain('Hepsiburada Mağazası')
     expect(Array.from(orderStore.options).map(option => option.textContent)).not.toContain('Trendyol Mağazası')
-    expect(container.querySelector('.rv-question-meta a')?.getAttribute('href')).toContain('HB-12345')
+    act(() => button('Uygula').click())
     expect(container.querySelector('[role="dialog"]')).toBeNull()
+    expect(container.querySelector('.rv-question-meta a')?.getAttribute('href')).toContain('HB-12345')
     expect(container.querySelector('.rv-question-card')?.textContent).toContain('Sipariş #HB-12345')
     expect(container.querySelector('.rv-question-card')?.textContent).toContain('Ürün boyu kaç santimetredir?')
-    expect(container.querySelector<HTMLButtonElement>('.rv-question-actions button')).toBeNull()
-    act(() => replyButton().click())
-    expect(container.querySelector('.rv-question-answer-modal')?.textContent).toContain('Soru Detayı')
-    input(container.querySelector<HTMLTextAreaElement>('.rv-question-answer-modal textarea')!, 'x')
+    input(composer(), 'x')
     expect(button('Gönder').disabled).toBe(false)
 
     act(() => button('Ürün Soruları').click())
@@ -218,7 +222,7 @@ describe('QuestionsPage workspace flows', () => {
     act(() => button('Hazır Cevaplar').click())
     await settle()
     expect(container.querySelector('.rv-question-template-editor')).not.toBeNull()
-    expect(container.textContent).toContain('Ölçü bilgisi')
+    expect(container.querySelector('.qi-templates-modal')?.textContent).toContain('Ölçü bilgisi')
   })
 
   it('creates, edits, and deletes shared quick replies using mocked API calls', async () => {
@@ -228,7 +232,7 @@ describe('QuestionsPage workspace flows', () => {
     const fields = container.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('.rv-question-template-editor input, .rv-question-template-editor textarea')
     input(fields[0] as HTMLInputElement, 'Kargo bilgisi')
     input(fields[1] as HTMLTextAreaElement, 'Kargonuz yola çıktığında takip bağlantısı paylaşılır.')
-    act(() => button('Hazır cevabı oluştur').click())
+    act(() => button('Hazır Cevabı Oluştur').click())
     await settle()
     expect(apiState.calls.some(call => call.path === '/question-templates' && call.method === 'POST')).toBe(true)
     expect(container.textContent).toContain('Kargo bilgisi')
@@ -238,7 +242,7 @@ describe('QuestionsPage workspace flows', () => {
     const editFields = container.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('.rv-question-template-editor input, .rv-question-template-editor textarea')
     input(editFields[0] as HTMLInputElement, 'Kargo güncellemesi')
     input(editFields[1] as HTMLTextAreaElement, 'Yeni takip bağlantısını siparişlerimden görebilirsiniz.')
-    act(() => button('Değişiklikleri kaydet').click())
+    act(() => button('Değişiklikleri Kaydet').click())
     await settle()
     expect(apiState.calls.some(call => call.path.startsWith('/question-templates/template-') && call.method === 'PUT')).toBe(true)
     expect(container.textContent).toContain('Kargo güncellemesi')
@@ -249,16 +253,15 @@ describe('QuestionsPage workspace flows', () => {
     expect(container.textContent).not.toContain('Kargo güncellemesi')
   })
 
-  it('shows conversation history and rejection reasons, inserts a reply bubble, and submits the edited answer', async () => {
+  it('shows conversation history and rejection reasons, inserts a quick reply, and submits the edited answer', async () => {
     await renderPage()
-    expect(container.querySelector('[role="dialog"]')).toBeNull()
-    expect(container.querySelector('.rv-question-card')?.textContent).toContain('Ölçüleri kontrol ediyorum.')
-    expect(container.querySelector('.rv-question-card')?.textContent).toContain('Ret nedeni: Yanıt eksik bilgi içeriyor.')
+    const detail = () => container.querySelector('.qi-detail')
+    expect(detail()?.textContent).toContain('Ölçüleri kontrol ediyorum.')
+    expect(detail()?.textContent).toContain('Ret nedeni: Yanıt eksik bilgi içeriyor.')
     expect(Array.from(container.querySelectorAll('.rv-question-thread-message p')).map(message => message.textContent)).toEqual(['Ürün boyu kaç santimetredir?', 'Ölçüleri kontrol ediyorum.'])
 
-    act(() => replyButton().click())
     act(() => button('Ölçü bilgisi').click())
-    const editor = container.querySelector<HTMLTextAreaElement>('.rv-question-answer-modal textarea')!
+    const editor = composer()
     expect(editor.value).toBe('Ürün ölçülerini ürün sayfasında bulabilirsiniz.')
     expect(editor.maxLength).toBe(2000)
     input(editor, 'kısa')
@@ -271,37 +274,32 @@ describe('QuestionsPage workspace flows', () => {
     act(() => button('Gönder').click())
     await settle()
     expect(apiState.calls.some(call => call.path.endsWith('/answer') && call.method === 'POST')).toBe(true)
-    expect(container.querySelector('[role="dialog"]')).toBeNull()
-    expect(container.querySelector('.rv-question-actions')?.textContent).toContain('Cevap gönderildi · doğrulanıyor')
-    expect(container.querySelector('.rv-question-card')?.textContent).toContain('Ürün uzunluğu 65 cm.')
+    expect(detail()?.textContent).toContain('Cevap Gönderildi · Doğrulanıyor')
+    expect(detail()?.textContent).toContain('Ürün uzunluğu 65 cm.')
+    expect(container.querySelector('.qi-composer')).toBeNull()
   })
 
-  it('opens the answer dialog with the question and a message bar, and sends it with that row version', async () => {
+  it('answers the selected question from the inline box with that row version', async () => {
     await renderPage()
-    expect(container.querySelector('.rv-question-card .rv-question-content')?.textContent).toContain('Ürün boyu kaç santimetredir?')
-    expect(container.querySelector('.rv-question-answer-modal')).toBeNull()
-    act(() => replyButton().click())
-    const dialog = container.querySelector('.rv-question-answer-modal')
-    expect(dialog?.textContent).toContain('Ürün boyu kaç santimetredir?')
-    expect(dialog?.querySelector('footer textarea')).not.toBeNull()
-    const editor = container.querySelector<HTMLTextAreaElement>('.rv-question-answer-modal textarea')!
-    input(editor, 'Ürün uzunluğu 65 cm olarak ölçülmüştür.')
+    expect(container.querySelector('.rv-question-card')?.textContent).toContain('Ürün boyu kaç santimetredir?')
+    expect(container.querySelector('.qi-detail .rv-question-content')?.textContent).toContain('Ürün boyu kaç santimetredir?')
+    input(composer(), 'Ürün uzunluğu 65 cm olarak ölçülmüştür.')
     act(() => button('Gönder').click())
     await settle()
     const answerRequest = apiState.calls.find(call => call.path === '/questions/q-product/answer')
     expect(answerRequest?.method).toBe('POST')
     expect(JSON.parse(answerRequest?.body ?? '{}')).toEqual({ text: 'Ürün uzunluğu 65 cm olarak ölçülmüştür.', version: 2 })
-    expect(container.querySelector('.rv-question-answer-modal')).toBeNull()
   })
 
   it('shows the question date for answered questions instead of an expired reply deadline', async () => {
     apiState.detail = { ...createQuestion(), expiresAt: '2026-10-04T09:00:00Z' }
     await renderPage()
-    act(() => button('Cevaplananlar').click())
+    chooseStatus('Cevaplananlar')
     await settle()
 
     expect(container.querySelector('.rv-question-deadline')).toBeNull()
-    expect(container.querySelector('.rv-question-age')?.textContent).toContain('Soru tarihi:')
+    expect(container.querySelector('.qi-facts')?.textContent).toContain('Soru Tarihi')
+    expect(container.querySelector('.rv-question-age')?.textContent).toMatch(/2026/)
     expect(container.textContent).not.toContain('Süre doldu kaldı')
   })
 
@@ -339,20 +337,16 @@ describe('QuestionsPage workspace flows', () => {
     expect(link?.getAttribute('rel')).toBe('noopener noreferrer')
   })
 
-  it('shows the marketplace logo above question timing and status at the bottom right', async () => {
+  it('shows the marketplace logo with the store and the status and deadline in the fact strip', async () => {
     apiState.detail = { ...createQuestion(), storeName: 'Trendyol' }
     await renderPage()
 
     const context = container.querySelector('.rv-question-platform-context')!
-    const details = context.lastElementChild!
     expect(context.firstElementChild?.classList.contains('order-platform-logo')).toBe(true)
     expect(context.querySelector('.order-platform-logo')?.getAttribute('src')).toBe('/platforms/orders/trendyol.png')
-    expect(details.querySelector('.rv-question-deadline, .rv-question-age')).not.toBeNull()
-    expect(details.lastElementChild?.classList.contains('rv-badge')).toBe(true)
-    expect(context.querySelector('.rv-badge')?.textContent).toBe('Cevap bekliyor')
-    expect(container.querySelector('.rv-question-meta .order-platform-logo')).toBeNull()
-    expect(container.querySelector('.rv-question-meta .rv-badge')).toBeNull()
-    expect(container.querySelector('.rv-question-meta')?.textContent).not.toContain('TrendyolTrendyol')
+    expect(container.querySelector('.qi-facts .qi-tag')?.textContent).toBe('Cevap Bekliyor')
+    expect(container.querySelector('.qi-facts')?.textContent).toContain('Kalan Süre')
+    expect(container.querySelector('.qi-item .order-platform-logo')).not.toBeNull()
   })
 
   it('renders the platform rejection when answer submission fails and refreshes the active question kind', async () => {
@@ -362,8 +356,7 @@ describe('QuestionsPage workspace flows', () => {
     expect(apiState.calls.some(call => call.path === '/questions/sync' && call.method === 'POST' && JSON.parse(call.body ?? '{}').kind === 'PRODUCT')).toBe(true)
 
     apiState.answerFailure = true
-    act(() => replyButton().click())
-    input(container.querySelector<HTMLTextAreaElement>('.rv-question-answer-modal textarea')!, 'Ürün uzunluğu 65 cm. Ayrıntılar sayfada yazıyor.')
+    input(composer(), 'Ürün uzunluğu 65 cm. Ayrıntılar sayfada yazıyor.')
     act(() => button('Gönder').click())
     await settle()
     expect(container.querySelector('[role="alert"]')?.textContent).toBe('Pazaryeri cevabı kabul etmedi.')
