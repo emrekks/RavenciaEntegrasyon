@@ -110,3 +110,5 @@
 .app-shell.stitch-shell main .integrations-reference-page .reference-connection-state { text-transform: capitalize; }
 .app-shell.stitch-shell main .integrations-reference-page .reference-connection-state.connected { color: #ececf0; }
 .app-shell.stitch-shell main .integrations-reference-page .reference-connection-state { height: 22px; }
+/* The lighter-text :is() list above carries the specificity of its tab selector, so the active tag restates its ink colour with one more class. */
+.app-shell.stitch-shell main .integrations-reference-page .reference-integration-brand .reference-connection-state.connected { color: #ececf0; }
