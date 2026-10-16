@@ -263,7 +263,6 @@ body .invoice-reference-actions-popover > button:disabled { opacity: .45; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-row > :not(.invoice-reference-order) > * { justify-self: center !important; margin-left: auto !important; margin-right: auto !important; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-row .cargo-provider-display { display: flex; justify-content: center; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-products .cargo-provider-icon { object-position: center; }
-${src}/features/invoicing/invoices-sade.css`, `
 /* Detail head: logo tile, order number with copy, one meta line; status strip one row of four */
 .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-header { align-items: center; padding: 16px 20px 16px 24px; }
 .reference-invoices-page .invoice-detail-identity { display: flex; align-items: center; gap: 14px; min-width: 0; }
