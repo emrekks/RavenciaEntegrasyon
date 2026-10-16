@@ -242,3 +242,6 @@ body .invoice-reference-actions-popover > button:disabled { opacity: .45; }
   .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-addresses { grid-template-columns: 1fr; }
   .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary-facts > div > small:first-child { flex-basis: 100%; }
 }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-footer button.secondary.invoice-detail-platform-refresh { color: var(--rv-color-muted); background: none; border-color: transparent; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-footer button.secondary.invoice-detail-platform-refresh:hover:not(:disabled) { color: var(--rv-color-ink); background: var(--rv-color-surface-soft); }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-document-actions:empty { display: none; }
