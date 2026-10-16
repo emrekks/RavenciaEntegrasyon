@@ -84,25 +84,25 @@ export const defaultAppearanceSettings: AppearanceSettings = {
 }
 
 export const appearanceColorTokenOptions: Array<{ key: AppearanceColorToken; label: string; description: string }> = [
-  { key: 'bg', label: 'Arka plan', description: 'Sayfanın ana zemini' },
-  { key: 'sidebar', label: 'Menü zemini', description: 'Ana menünün zemini' },
+  { key: 'bg', label: 'Arka Plan', description: 'Sayfanın ana zemini' },
+  { key: 'sidebar', label: 'Menü Zemini', description: 'Ana menünün zemini' },
   { key: 'surface', label: 'Yüzey', description: 'Kart ve panel zemini' },
-  { key: 'surfaceRaised', label: 'Yükseltilmiş yüzey', description: 'Alan ve kontrol zemini' },
-  { key: 'surfaceSoft', label: 'Yumuşak yüzey', description: 'İkincil yüzey ve rozet zemini' },
+  { key: 'surfaceRaised', label: 'Yükseltilmiş Yüzey', description: 'Alan ve kontrol zemini' },
+  { key: 'surfaceSoft', label: 'Yumuşak Yüzey', description: 'İkincil yüzey ve rozet zemini' },
   { key: 'border', label: 'Kenarlık', description: 'Standart ayırıcı çizgiler' },
-  { key: 'borderStrong', label: 'Güçlü kenarlık', description: 'Input ve belirgin çerçeveler' },
-  { key: 'ink', label: 'Ana metin', description: 'Başlık ve önemli metinler' },
-  { key: 'muted', label: 'İkincil metin', description: 'Açıklama ve yardımcı metinler' },
-  { key: 'subtle', label: 'Soluk metin', description: 'Düşük öncelikli metinler' },
-  { key: 'primary', label: 'Ana renk', description: 'Birincil buton ve aktif durum' },
-  { key: 'primaryHover', label: 'Ana renk hover', description: 'Birincil etkileşim hover durumu' },
-  { key: 'primarySoft', label: 'Ana renk yumuşak', description: 'Seçili ve hafif vurgulu alanlar' },
+  { key: 'borderStrong', label: 'Güçlü Kenarlık', description: 'Input ve belirgin çerçeveler' },
+  { key: 'ink', label: 'Ana Metin', description: 'Başlık ve önemli metinler' },
+  { key: 'muted', label: 'İkincil Metin', description: 'Açıklama ve yardımcı metinler' },
+  { key: 'subtle', label: 'Soluk Metin', description: 'Düşük öncelikli metinler' },
+  { key: 'primary', label: 'Ana Renk', description: 'Birincil buton ve aktif durum' },
+  { key: 'primaryHover', label: 'Ana Renk Hover', description: 'Birincil etkileşim hover durumu' },
+  { key: 'primarySoft', label: 'Ana Renk Yumuşak', description: 'Seçili ve hafif vurgulu alanlar' },
   { key: 'accent', label: 'Accent', description: 'Başarı ve ikincil vurgu' },
-  { key: 'accentSoft', label: 'Accent yumuşak', description: 'Başarı arka planları' },
+  { key: 'accentSoft', label: 'Accent Yumuşak', description: 'Başarı arka planları' },
   { key: 'warning', label: 'Uyarı', description: 'Uyarı ve dikkat durumları' },
-  { key: 'warningSoft', label: 'Uyarı yumuşak', description: 'Uyarı arka planları' },
+  { key: 'warningSoft', label: 'Uyarı Yumuşak', description: 'Uyarı arka planları' },
   { key: 'danger', label: 'Hata', description: 'Hata ve tehlikeli işlemler' },
-  { key: 'dangerSoft', label: 'Hata yumuşak', description: 'Hata arka planları' },
+  { key: 'dangerSoft', label: 'Hata Yumuşak', description: 'Hata arka planları' },
   { key: 'info', label: 'Bilgi', description: 'Bilgilendirme vurgusu' }
 ]
 
@@ -112,18 +112,18 @@ export function appearanceColorCssVariable(token: AppearanceColorToken) {
 
 export const appearanceFontFamilyOptions: Array<{ value: AppearanceFontFamily; label: string }> = [
   { value: 'inter', label: 'Inter' },
-  { value: 'system', label: 'Sistem yazı tipi' },
+  { value: 'system', label: 'Sistem Yazı Tipi' },
   { value: 'segoe', label: 'Segoe UI' },
   { value: 'arial', label: 'Arial' }
 ]
 
 export const appearanceFontSizeOptions: Array<{ value: AppearanceFontSize; label: string; description: string }> = [
-  { value: 'compact', label: 'Çok küçük', description: 'En fazla içerik için en sıkı görünüm' },
+  { value: 'compact', label: 'Çok Küçük', description: 'En fazla içerik için en sıkı görünüm' },
   { value: 'small', label: 'Küçük', description: 'Normal ve varsayılan çalışma görünümü' },
   { value: 'normal', label: 'Normal', description: 'Daha rahat okuma için biraz daha geniş görünüm' },
   { value: 'large', label: 'Büyük', description: 'Yoğun tablolarda daha rahat okuma' },
-  { value: 'extra-large', label: 'Çok büyük', description: 'Yüksek okunabilirlik için ferah görünüm' },
-  { value: 'huge', label: 'Ekstra büyük', description: 'Maksimum okunabilirlik ve daha belirgin metinler' }
+  { value: 'extra-large', label: 'Çok Büyük', description: 'Yüksek okunabilirlik için ferah görünüm' },
+  { value: 'huge', label: 'Ekstra Büyük', description: 'Maksimum okunabilirlik ve daha belirgin metinler' }
 ]
 
 export const appearanceThemeModeOptions: Array<{ value: AppearanceThemeMode; label: string; description: string }> = [
