@@ -1171,7 +1171,8 @@
   .session-bulk-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--rv-space-2); }
   .sessions { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
   .sessions li { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; gap: var(--rv-space-3); padding: var(--rv-space-4) 0; border-top: 1px solid var(--rv-color-border); }
-  .sessions li.current { margin-inline: calc(var(--rv-space-3) * -1); padding-inline: var(--rv-space-3); background: var(--rv-color-primary-soft); }
+  .sessions li { margin-inline: calc(var(--rv-space-3) * -1); padding-inline: var(--rv-space-3); }
+  .sessions li.current { background: var(--rv-color-primary-soft); }
   .sessions li > span:nth-child(2) { display: grid; gap: 2px; }
   .sessions li small { color: var(--rv-color-muted); }
   .session-device-icon { display: inline-grid; width: 30px; height: 30px; place-items: center; color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border-radius: 50%; }
