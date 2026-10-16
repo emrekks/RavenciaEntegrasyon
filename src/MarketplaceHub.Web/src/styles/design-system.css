@@ -12664,3 +12664,11 @@ h1, h2, h3, h4, .dashboard-summary-card-head > span:first-child, :is(.orders-con
 .app-shell.stitch-shell main .dashboard-health-item > small { min-height: 0; line-height: 1.45; }
 .app-shell.stitch-shell main .dashboard-health-link { display: inline-flex; align-items: center; gap: 4px; margin-top: 2px; color: var(--rv-color-primary); font-size: 13px; font-weight: 600; text-decoration: none; }
 .app-shell.stitch-shell main .dashboard-health-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+/* macOS-style scrollbars: no arrows, a transparent track and a slim rounded thumb that brightens on hover. */
+::-webkit-scrollbar { width: 10px; height: 10px; background: transparent; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--rv-color-ink) 22%, transparent); background-clip: padding-box; border: 3px solid transparent; border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--rv-color-ink) 38%, transparent); }
+@supports (-moz-appearance: none) { * { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--rv-color-ink) 25%, transparent) transparent; } }

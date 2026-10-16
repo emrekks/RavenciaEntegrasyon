@@ -215,3 +215,8 @@
 .panel.mapping-step.cm-card .cm-foot > span:first-child { font-size: 13px; }
 /* The rows scroll with a thin scrollbar; the tools and the header reserve the same thin gutter. */
 .app-shell .panel.mapping-step.cm-card :is(.cm-vtools, .cm-vrow.is-head, .cm-vscroll) { scrollbar-width: thin; }
+/* Let the shared macOS-style scrollbar apply here; the tools and the header keep the same gutter as the rows. */
+@supports not (-moz-appearance: none) { .app-shell .panel.mapping-step.cm-card :is(.cm-vtools, .cm-vrow.is-head, .cm-vscroll, .cm-nav) { scrollbar-width: auto; } }
+/* Category actions fill the row: buttons share the width with an even 8px gap instead of large spaces between them. */
+.app-shell .panel.mapping-step.cm-card .cm-actions { justify-content: flex-start; gap: 8px; }
+.app-shell .panel.mapping-step.cm-card .cm-actions > button { flex: 1 1 auto; justify-content: center; }
