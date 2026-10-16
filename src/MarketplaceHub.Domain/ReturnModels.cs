@@ -58,10 +58,12 @@ public static class ReturnClaimStateMachine
     private static readonly IReadOnlyDictionary<ReturnClaimStatus, ReturnClaimStatus[]> Allowed =
         new Dictionary<ReturnClaimStatus, ReturnClaimStatus[]>
         {
-            [ReturnClaimStatus.Requested] = [ReturnClaimStatus.AwaitingShipment, ReturnClaimStatus.InTransit, ReturnClaimStatus.ActionRequired, ReturnClaimStatus.Approved, ReturnClaimStatus.Rejected, ReturnClaimStatus.Cancelled],
-            [ReturnClaimStatus.AwaitingShipment] = [ReturnClaimStatus.InTransit, ReturnClaimStatus.ActionRequired, ReturnClaimStatus.Cancelled],
-            [ReturnClaimStatus.InTransit] = [ReturnClaimStatus.ActionRequired, ReturnClaimStatus.Approved, ReturnClaimStatus.Disputed],
-            [ReturnClaimStatus.ActionRequired] = [ReturnClaimStatus.AwaitingShipment, ReturnClaimStatus.Approved, ReturnClaimStatus.Rejected, ReturnClaimStatus.Disputed],
+            // A marketplace can accept and refund in one step (Hepsiburada lists the claim straight under Refunded),
+            // so an open claim may close as Completed without passing through Approved.
+            [ReturnClaimStatus.Requested] = [ReturnClaimStatus.AwaitingShipment, ReturnClaimStatus.InTransit, ReturnClaimStatus.ActionRequired, ReturnClaimStatus.Approved, ReturnClaimStatus.Rejected, ReturnClaimStatus.Cancelled, ReturnClaimStatus.Completed],
+            [ReturnClaimStatus.AwaitingShipment] = [ReturnClaimStatus.InTransit, ReturnClaimStatus.ActionRequired, ReturnClaimStatus.Cancelled, ReturnClaimStatus.Completed],
+            [ReturnClaimStatus.InTransit] = [ReturnClaimStatus.ActionRequired, ReturnClaimStatus.Approved, ReturnClaimStatus.Disputed, ReturnClaimStatus.Completed],
+            [ReturnClaimStatus.ActionRequired] = [ReturnClaimStatus.AwaitingShipment, ReturnClaimStatus.Approved, ReturnClaimStatus.Rejected, ReturnClaimStatus.Disputed, ReturnClaimStatus.Completed],
             [ReturnClaimStatus.Approved] = [ReturnClaimStatus.Disputed, ReturnClaimStatus.Completed],
             [ReturnClaimStatus.Rejected] = [ReturnClaimStatus.Disputed, ReturnClaimStatus.Completed],
             [ReturnClaimStatus.Disputed] = [ReturnClaimStatus.Approved, ReturnClaimStatus.Rejected, ReturnClaimStatus.Completed]

@@ -16,6 +16,8 @@ public sealed class ReturnLifecyclePolicyTests
     [InlineData(ReturnClaimStatus.Disputed, ReturnClaimStatus.Rejected)]
     [InlineData(ReturnClaimStatus.Approved, ReturnClaimStatus.Completed)]
     [InlineData(ReturnClaimStatus.Rejected, ReturnClaimStatus.Completed)]
+    [InlineData(ReturnClaimStatus.ActionRequired, ReturnClaimStatus.Completed)]
+    [InlineData(ReturnClaimStatus.InTransit, ReturnClaimStatus.Completed)]
     public void StateMachine_AllowsOperationalReturnTransitions(ReturnClaimStatus current, ReturnClaimStatus next)
     {
         Assert.True(ReturnClaimStateMachine.CanTransition(current, next));
