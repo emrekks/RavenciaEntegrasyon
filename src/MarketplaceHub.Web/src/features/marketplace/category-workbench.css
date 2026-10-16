@@ -286,3 +286,30 @@
 .app-shell.stitch-shell main .cm-extra-modal .attribute-defaults-values button { height: 28px; min-height: 28px; padding: 0 10px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 13px; font-weight: 400 !important; text-transform: none; }
 .app-shell.stitch-shell main .cm-extra-modal .attribute-defaults-values button.is-chosen { background: var(--rv-color-primary-soft); border-color: color-mix(in srgb, var(--rv-color-primary) 60%, transparent); }
 .app-shell.stitch-shell main .cm-extra-modal .attribute-defaults-actions button { height: 34px; min-height: 34px; padding: 0 14px; border-radius: 7px; font-size: 14px; text-transform: none; }
+
+/* Web Color: own editor (one Web Color value, several panel colours) in the shared field layout. */
+.app-shell.stitch-shell main .cm-detail .cm-webcolor-link { height: 34px; min-height: 34px; padding: 0 14px; border-radius: 7px; font-size: 14px; text-transform: none; }
+.cm-detail .cm-webcolor { display: grid; min-height: 0; margin-top: 18px; padding-top: 18px; overflow-y: auto; border-top: 1px solid var(--rv-color-border); }
+.app-shell.stitch-shell main .cm-webcolor .web-color-value-editor { display: grid; gap: 14px; padding: 0; background: none; border: 0; box-shadow: none; }
+.app-shell.stitch-shell main .cm-webcolor .value-mapping-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0; padding: 0; border: 0; }
+.app-shell.stitch-shell main .cm-webcolor .value-mapping-heading h3 { margin: 0; font-size: 14px; font-weight: 600; }
+.app-shell.stitch-shell main .cm-webcolor .value-mapping-heading p { margin: 2px 0 0; color: var(--rv-color-muted); font-size: 13px; }
+.app-shell.stitch-shell main .cm-webcolor .value-mapping-heading button { flex: none; height: 34px; min-height: 34px; padding: 0 14px; border-radius: 7px; font-size: 14px; text-transform: none; }
+.app-shell.stitch-shell main .cm-webcolor .web-color-assignment-picker { display: block; padding: 0; background: none; border: 0; }
+.app-shell.stitch-shell main .cm-webcolor .web-color-assignment-picker > label { display: grid; gap: 6px; max-width: 360px; color: var(--rv-color-muted); font-size: 12px; font-weight: 500; }
+.app-shell.stitch-shell main .cm-webcolor .web-color-assignment-picker select { box-sizing: border-box; height: 36px; min-height: 36px; padding: 0 12px; color: var(--rv-color-ink); background-color: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 14px; }
+.app-shell.stitch-shell main .cm-webcolor :is(.web-color-panel-value-picker, .web-color-assignment-groups) { display: grid; gap: 10px; padding: 14px 16px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; box-shadow: none; }
+.app-shell.stitch-shell main .cm-webcolor .web-color-panel-value-picker-head { display: flex; align-items: center; justify-content: space-between; }
+.app-shell.stitch-shell main .cm-webcolor :is(.web-color-panel-value-picker-head, .web-color-assignment-groups) > strong, .app-shell.stitch-shell main .cm-webcolor .web-color-panel-value-picker-head strong { font-size: 14px; font-weight: 600; }
+.app-shell.stitch-shell main .cm-webcolor .web-color-panel-value-picker-head > span { color: var(--rv-color-muted); font-size: 12px; font-weight: 500; }
+.app-shell.stitch-shell main .cm-webcolor .web-color-panel-value-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.app-shell.stitch-shell main .cm-webcolor .web-color-panel-value { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 10px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font-size: 13px; font-weight: 400; cursor: pointer; }
+.app-shell.stitch-shell main .cm-webcolor .web-color-panel-value:hover { background: var(--rv-color-surface-soft); }
+.app-shell.stitch-shell main .cm-webcolor .web-color-panel-value.selected { background: var(--rv-color-primary-soft); border-color: color-mix(in srgb, var(--rv-color-primary) 60%, transparent); }
+.app-shell.stitch-shell main .cm-webcolor .web-color-panel-value input { flex: none; width: 14px; min-width: 14px; height: 14px; margin: 0; accent-color: var(--rv-color-primary); }
+.app-shell.stitch-shell main .cm-webcolor .web-color-panel-value > span { font-size: 13px; font-weight: 400; }
+.app-shell.stitch-shell main .cm-webcolor .web-color-assignment-groups > div { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; }
+.app-shell.stitch-shell main .cm-webcolor .web-color-assignment-groups p { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 12px; margin: 0; padding: 8px 0; border-top: 1px solid var(--rv-color-border); }
+.app-shell.stitch-shell main .cm-webcolor .web-color-assignment-groups p:first-child { border-top: 0; }
+.app-shell.stitch-shell main .cm-webcolor .web-color-assignment-groups p span { font-size: 13px; font-weight: 500; }
+.app-shell.stitch-shell main .cm-webcolor .web-color-assignment-groups p small { color: var(--rv-color-muted); font-size: 12px; }
