@@ -107,3 +107,28 @@
 
 /* Selects in the value table: the text sits in the middle of the 34px box instead of being cut at the bottom. */
 .cm-card .cm-vrow select, .cm-card .cm-select-row select, .cm-card .cm-context select { box-sizing: border-box; height: 36px; min-height: 36px; padding-block: 0; line-height: normal; }
+
+/* Same as the agreed design: neutral status shapes, grey section labels, sentence-case controls,
+   colour only on the selected row and the primary action. */
+.panel.mapping-step.cm-card :is(button, select, option, [role="option"]) { text-transform: none; }
+.workspace-modal.mapping-advanced-modal > header :is(h2, p) { text-transform: none; }
+.panel.mapping-step.cm-card .cm-glyph { color: var(--rv-color-subtle); }
+.panel.mapping-step.cm-card .cm-glyph.is-done { color: var(--rv-color-ink); }
+.panel.mapping-step.cm-card .cm-glyph.is-partial, .panel.mapping-step.cm-card .cm-glyph.is-required { color: var(--rv-color-subtle); }
+.panel.mapping-step.cm-card .cm-section { color: var(--rv-color-muted); font-size: 12px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; }
+.panel.mapping-step.cm-card .cm-item { font-weight: 400; }
+.panel.mapping-step.cm-card .cm-item.is-selected .cm-name { font-weight: 400; }
+.panel.mapping-step.cm-card .cm-item .cm-meta { color: var(--rv-color-subtle); }
+.panel.mapping-step.cm-card .cm-item.is-selected .cm-meta { color: var(--rv-color-muted); }
+.panel.mapping-step.cm-card .cm-tag, .panel.mapping-step.cm-card .cm-tag.is-required { height: 20px; color: var(--rv-color-muted); background: transparent; border-color: var(--rv-color-border-strong); border-radius: 5px; }
+.panel.mapping-step.cm-card .cm-track > i { background: var(--rv-color-muted); }
+.panel.mapping-step.cm-card .cm-field > small { color: var(--rv-color-subtle); }
+.panel.mapping-step.cm-card .cm-path strong { font-weight: 600; }
+.panel.mapping-step.cm-card .cm-context { flex-wrap: wrap; }
+.panel.mapping-step.cm-card .cm-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0; border: 0; }
+.panel.mapping-step.cm-card .cm-vrow .cm-pv { font-weight: 400; }
+.panel.mapping-step.cm-card .cm-vrow.is-open .cm-pv { font-weight: 600; }
+.panel.mapping-step.cm-card .cm-vtools-title h5 { font-weight: 600; }
+.panel.mapping-step.cm-card .cm-foot > span:first-child { color: var(--rv-color-muted); }
+.panel.mapping-step.cm-card button.cm-toggle.is-on { color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border-color: var(--rv-color-primary); }
+.panel.mapping-step.cm-card .mapping-table-status { display: none; }
