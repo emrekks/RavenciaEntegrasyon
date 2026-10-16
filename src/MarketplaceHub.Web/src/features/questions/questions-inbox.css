@@ -199,3 +199,11 @@
 .app-shell.stitch-shell main .qi-page .qi-sync b { font-size: 14px; white-space: nowrap; }
 .qi-page .qi-item-logo img { object-fit: contain; }
 .qi-page .qi-facts dd { white-space: normal; overflow-wrap: anywhere; }
+
+/* Fits one screen: head and sources take their height, the inbox fills the rest and only its lists scroll. */
+@media (min-width: 901px) {
+  .app-shell.stitch-shell main .qi-page { box-sizing: border-box; grid-template-rows: auto auto minmax(0, 1fr); height: calc(100dvh - var(--rv-topbar-height, 70px) - 64px); min-height: 620px; }
+  .app-shell.stitch-shell main .qi-page .qi-inbox { height: auto; min-height: 0; }
+}
+.app-shell.stitch-shell main .qi-page .qi-tabs { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); width: auto; max-width: none; margin: 0; padding: 10px; background: none; border: 0; border-bottom: 1px solid var(--rv-color-border); border-radius: 0; box-shadow: none; }
+.app-shell.stitch-shell main .qi-page .qi-tabs > * { width: 100%; }
