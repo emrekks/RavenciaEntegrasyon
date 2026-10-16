@@ -253,3 +253,6 @@ body .invoice-reference-actions-popover > button:disabled { opacity: .45; }
 /* Product images keep the 2:3 catalogue ratio */
 .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-line > :first-child { width: 44px; height: 66px; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-line > :first-child img { display: block; width: 44px; height: 66px; object-fit: cover; }
+/* Platform wordmark a little larger above the order number */
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-order .order-reference-platform { height: 28px; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-order .order-platform-logo { width: 112px; min-width: 112px; max-width: 112px; height: 28px; }
