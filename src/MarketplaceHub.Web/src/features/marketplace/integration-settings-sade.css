@@ -153,3 +153,11 @@
 .app-shell.stitch-shell main .cs-workspace .sync-policy-card-switch > input:checked + i { background: var(--rv-color-primary); border-color: var(--rv-color-primary); }
 .app-shell.stitch-shell main .cs-workspace .sync-policy-card-switch > input:checked + i::after { transform: translateX(14px); }
 .app-shell.stitch-shell main .cs-workspace .sync-policy-card-switch:has(> input:disabled) { opacity: .45; }
+
+/* Store and credential forms: one card, sections divided by a line instead of nested boxes; fields on the card colour. */
+.app-shell.stitch-shell main .cs-workspace .connection-settings-panel .connection-settings-section { padding: 0; background: none; border: 0; border-radius: 0; box-shadow: none; }
+.app-shell.stitch-shell main .cs-workspace .connection-settings-panel .connection-settings-divider { height: 1px; margin: 0; background: var(--rv-color-border); }
+.app-shell.stitch-shell main .cs-workspace .connection-settings-panel .connection-settings-section h2 { margin: 0 0 2px; font-size: 16px; font-weight: 600; }
+.app-shell.stitch-shell main .cs-workspace .connection-settings-panel .connection-settings-section input:not([type="checkbox"]):not([type="radio"]) { box-sizing: border-box; height: 36px; min-height: 36px; padding: 0 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; }
+.app-shell.stitch-shell main .cs-workspace .connection-settings-panel .connection-settings-section input:focus { border-color: var(--rv-color-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--rv-color-primary) 18%, transparent); outline: none; }
+.app-shell.stitch-shell main .cs-workspace .connection-settings-panel .connection-settings-section label { display: grid; gap: 6px; color: var(--rv-color-muted); font-size: 12px; font-weight: 500; }
