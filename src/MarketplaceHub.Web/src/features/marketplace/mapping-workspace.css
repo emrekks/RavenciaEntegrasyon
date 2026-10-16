@@ -520,7 +520,7 @@
 .app-shell.stitch-shell main section.mapping-page .category-library-tools { grid-template-columns: minmax(0, 1fr) 88px auto; }
 /* Link mark sits on the picker row, centred between the two pickers; both pickers on the same line. */
 .app-shell.stitch-shell main section.mapping-page .mapping-reference-grid { align-items: end; }
-.app-shell.stitch-shell main section.mapping-page .mapping-reference-grid > .mapping-link-rail { grid-row: 1; grid-column: 2; align-self: end; justify-self: center; height: 36px; margin: 0; }
+.app-shell.stitch-shell main section.mapping-page .mapping-reference-grid > .mapping-link-rail { grid-row: 2; grid-column: 2; align-self: end; justify-self: center; height: 36px; margin: 0; }
 .app-shell.stitch-shell main section.mapping-page .mapping-reference-target { display: grid; gap: 6px; align-content: end; }
 .app-shell.stitch-shell main section.mapping-page .mapping-reference-target > label { margin: 0; line-height: 18px; }
 .app-shell.stitch-shell main section.mapping-page .mapping-reference-local > label { line-height: 18px; }
@@ -532,3 +532,4 @@
 .app-shell.stitch-shell main section.mapping-page .mapping-builder-head > button { display: inline-flex; align-items: center; gap: 8px; height: 34px !important; min-height: 34px !important; }
 .app-shell.stitch-shell main section.mapping-page .mapping-reference-refresh-row:not(:has(*)) { display: none; }
 .app-shell.stitch-shell main section.mapping-page .mapping-reference-refresh-row { justify-content: flex-start; }
+.app-shell.stitch-shell main section.mapping-page .mapping-reference-grid { row-gap: 0; }
