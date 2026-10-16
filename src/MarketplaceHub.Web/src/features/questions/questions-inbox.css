@@ -219,3 +219,6 @@
 .qi-page .qi-count.is-warn { color: var(--rv-color-warning); background: color-mix(in srgb, var(--rv-color-warning) 16%, var(--rv-color-surface)); }
 /* Sources card keeps one height whichever tab is open. */
 .app-shell.stitch-shell main .qi-page .qi-sync .rv-questions-sync-item { min-height: 76px; align-content: center; }
+
+/* The popover reuses .rv-questions-filter-grid, whose global multi-column grid squeezed every field into one row */
+.qi-page .qi-popover.rv-questions-filter-grid { grid-template-columns: minmax(0, 1fr); align-items: stretch; }
