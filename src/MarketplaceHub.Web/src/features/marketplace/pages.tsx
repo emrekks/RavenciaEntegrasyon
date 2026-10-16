@@ -2,7 +2,7 @@ import { marketplaceProductSearchUrl } from '../questions/marketplace-product-li
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type FormEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import { createPortal, flushSync } from 'react-dom'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, loadAllPages } from '../../shared/api'
 import { Busy, CargoProviderIcon, cargoCarriers, cargoLabel, cargoMatches, ErrorBox, InvoiceStatusBadge, Modal, Pagination, StatusBadge, Tabs, UiIcon } from '../../shared/components'
 import { MessageToast, NoticeToast } from '../../shared/components/NoticeToast'
@@ -2674,6 +2674,10 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
   // Bulk "same name" matching for the whole category: first the headings (attributes and option groups), then every value of the mapped headings.
   const [bulkBusy, setBulkBusy] = useState<'' | 'HEADINGS' | 'VALUES' | 'TEMPLATES'>('')
   const [selectedEntryKey, setSelectedEntryKey] = useState('')
+  // Value progress of every mapped field, read from the same cache entries the value table uses.
+  const mappedValueFields = productRemoteItems.filter(item => productMappingByExternal.has(item.externalId))
+  const valueMappingQueries = useQueries({ queries: mappedValueFields.map(item => ({ queryKey: ['attribute-value-mappings', connectionId, `${categoryScope}/${item.externalId}`], queryFn: () => hubApi<CatalogMapping[]>(`/mappings/attribute-values?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(`${categoryScope}/${item.externalId}`)}`), retry: false, staleTime: 30_000, enabled: !!connectionId && !!categoryScope })) })
+  const valueMappingsByExternal = new Map(mappedValueFields.map((item, index) => [item.externalId, valueMappingQueries[index]?.data]))
   const attributeNameHints = useQuery({ queryKey: ['attribute-name-hints', connectionId], queryFn: () => hubApi<Record<string, string[]>>(`/mappings/attribute-name-hints?connectionId=${encodeURIComponent(connectionId)}`), retry: false, staleTime: 5 * 60_000, enabled: !!connectionId })
   // Brings over the attribute and value decisions made for the connection's other categories.
   async function fillFromOtherCategories() {
@@ -2781,84 +2785,262 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
   if (!categoryMapping.data) return <article className="panel mapping-step"><div className="editor-section-title"><span>4</span><div><h2>{platformLabel} kategori ve özellik eşlemeleri</h2><p>Ürün özellikleri ve seçenekleri kendi adımlarında tanımladıktan sonra değer karşılıklarını eşleyin.</p></div></div><div className="unknown"><strong>Kategori eşlemesi bekleniyor</strong><p>Önce 1. adımda panel kategorisini {platformLabel} kategorisiyle eşleştirin.</p></div></article>
 
   const mappingEntries: MappingEntry[] = [
-    ...(specialColorOption ? [{ key: 'web-color', name: 'Web Color', required: true, mapped: !!existingWebColorMapping, meta: existingWebColorMapping ? 'Eşlendi' : 'Eşlenmedi', node: <WebColorMappingCard connectionId={connectionId} categoryScope={categoryScope} snapshotId={references.data!.snapshotId} localAttribute={specialColorOption.attribute} localAttributes={productAttributes} categoryOptionIds={categoryOptionIds} remoteAttribute={specialColorOption.remote} existingMapping={existingWebColorMapping} existingMappings={allMappings} onNotice={onNotice} /> }] : []),
+    ...(specialColorOption ? [{ key: 'web-color', name: 'Web Color', required: true, state: (existingWebColorMapping ? 'done' : 'none') as FieldState, meta: existingWebColorMapping ? 'Eşlendi' : 'Eşlenmedi', node: <WebColorMappingCard connectionId={connectionId} categoryScope={categoryScope} snapshotId={references.data!.snapshotId} localAttribute={specialColorOption.attribute} localAttributes={productAttributes} categoryOptionIds={categoryOptionIds} remoteAttribute={specialColorOption.remote} existingMapping={existingWebColorMapping} existingMappings={allMappings} onNotice={onNotice} /> }] : []),
     ...(optionRemoteItems.length > 0 ? optionAttributes.filter(item => !sizeOptionAttributeIds.has(item.id)).map(item => {
       const mapped = optionMappings.some(mapping => mapping.localId === item.id && optionRemoteItems.some(remote => remote.externalId === mapping.externalId))
-      return { key: `option-${item.id}`, name: item.name, required: false, mapped, meta: mapped ? 'Seçenek' : 'Eşlenmedi', node: <OptionMappingCard connectionId={connectionId} categoryScope={categoryScope} snapshotId={references.data!.snapshotId} localAttribute={item} remoteAttributes={optionRemoteItems} existingMapping={optionMappings.find(mapping => mapping.localId === item.id && optionRemoteItems.some(remote => remote.externalId === mapping.externalId)) ?? null} onNotice={onNotice} /> }
+      return { key: `option-${item.id}`, name: item.name, required: false, state: (mapped ? 'done' : 'none') as FieldState, meta: mapped ? 'Seçenek' : 'Eşlenmedi', node: <OptionMappingCard connectionId={connectionId} categoryScope={categoryScope} snapshotId={references.data!.snapshotId} localAttribute={item} remoteAttributes={optionRemoteItems} existingMapping={optionMappings.find(mapping => mapping.localId === item.id && optionRemoteItems.some(remote => remote.externalId === mapping.externalId)) ?? null} onNotice={onNotice} /> }
     }) : []),
     ...productRemoteItems.map(item => {
-      const current = productMappingByExternal.get(item.externalId)
-      const valueCount = current ? productAttributes.find(attribute => attribute.id === current.localId)?.values.length ?? 0 : 0
-      return { key: `attribute-${item.externalId}`, name: item.name, required: item.isRequired === true, mapped: !!current, meta: current ? (valueCount ? `${valueCount} değer` : 'Eşlendi') : 'Eşlenmedi', node: <CategoryAttributeCard platformCode={platformCode} platformLabel={platformLabel} connectionId={connectionId} categoryScope={categoryScope} snapshotId={references.data!.snapshotId} localAttributes={productAttributes} categoryOptionIds={categoryOptionIds} remoteAttribute={item} existingMapping={productMappingByExternal.get(item.externalId) ?? null} onNotice={onNotice} inline /> }
+      const current = productMappingByExternal.get(item.externalId) ?? null
+      const local = current ? productAttributes.find(attribute => attribute.id === current.localId) : undefined
+      const activeValues = local?.values.filter(value => value.isActive) ?? []
+      const needsValues = !!current && activeValues.length > 0 && item.allowsCustomValue !== true && !(platformCode === 'TRENDYOL' && usesCustomPanelColorValue(item.name))
+      const saved = valueMappingsByExternal.get(item.externalId)
+      const done = needsValues && saved ? new Set(saved.filter(mapping => activeValues.some(value => value.id === mapping.localId)).map(mapping => mapping.localId)).size : null
+      const state: FieldState = !current ? 'none' : needsValues && done !== null && done < activeValues.length ? 'partial' : 'done'
+      const meta = !current ? 'Eşlenmedi' : !needsValues ? 'Eşlendi' : done !== null && done < activeValues.length ? `${done}/${activeValues.length} Değer` : `${activeValues.length} Değer`
+      return { key: `attribute-${item.externalId}`, name: item.name, required: item.isRequired === true, state, meta, remote: item, mapping: current }
     })
   ]
   const requiredEntries = mappingEntries.filter(entry => entry.required)
   const optionalEntries = mappingEntries.filter(entry => !entry.required)
-  const activeEntry = mappingEntries.find(entry => entry.key === selectedEntryKey) ?? mappingEntries.find(entry => entry.required && !entry.mapped) ?? mappingEntries[0]
-  const nextOpenEntry = [...mappingEntries.slice(mappingEntries.indexOf(activeEntry) + 1), ...mappingEntries.slice(0, mappingEntries.indexOf(activeEntry))].sort((left, right) => Number(right.required) - Number(left.required)).find(entry => !entry.mapped)
-  const entryGroups = [{ title: 'Zorunlu', items: requiredEntries }, { title: 'İsteğe bağlı', items: optionalEntries }].filter(group => group.items.length > 0)
-  return <article className="panel mapping-step">
-    <div className="editor-section-title"><span>4</span><div><h2>Kategori eşleştirmeleri</h2><p>{platformCode === 'TRENDYOL' ? 'Trendyol katalog alanlarını Web Color, Renk ve diğer panel özellikleriyle eşleyin.' : 'Pazar yeri katalog alanlarını panel özellikleri ve değerleriyle eşleyin.'}</p></div></div>
-    <div className="mapping-workspace-context">
-      <label className="mapping-workspace-field">
-        <span>Panel kategorisi</span>
-        <select value={attributeCategoryId} onChange={event => setAttributeCategoryId(event.target.value)}>{matchedCategories.map(({ category }) => <option key={category.id} value={category.id}>{category.path}</option>)}</select>
-      </label>
-      <UiIcon name="arrowRight" className="mapping-workspace-arrow" />
-      <div className="mapping-workspace-field">
-        <span>{platformLabel} kategorisi</span>
-        <strong title={targetCategoryPath}>{targetCategoryPath}</strong>
-      </div>
-      {targetCategoryStatus && <span className={`mapping-table-status ${targetCategoryStatus.className}`} title={targetCategoryStatus.title}>{targetCategoryStatus.label}</span>}
+  const activeEntry = mappingEntries.find(entry => entry.key === selectedEntryKey) ?? mappingEntries.find(entry => entry.required && entry.state !== 'done') ?? mappingEntries[0]
+  const activeIndex = activeEntry ? mappingEntries.indexOf(activeEntry) : -1
+  const nextOpenEntry = [...mappingEntries.slice(activeIndex + 1), ...mappingEntries.slice(0, Math.max(0, activeIndex))].sort((left, right) => Number(right.required) - Number(left.required)).find(entry => entry.state !== 'done')
+  const entryGroups = [{ title: 'Zorunlu', items: requiredEntries }, { title: 'İsteğe Bağlı', items: optionalEntries }].filter(group => group.items.length > 0)
+  const requiredReady = requiredEntries.filter(entry => entry.state === 'done').length
+  const openRequired = requiredEntries.length - requiredReady
+  const footerHint = openRequired ? `${openRequired} zorunlu alan bekliyor` : 'Zorunlu alanların hepsi hazır'
+  const goToNext = nextOpenEntry ? () => setSelectedEntryKey(nextOpenEntry.key) : undefined
+  const dataLoading = references.isLoading || mappings.isLoading || categoryRequirements.isLoading
+  const dataFailed = references.isError || mappings.isError || categoryRequirements.isError
+  return <article className="panel mapping-step cm-card">
+    <header className="cm-page-head"><h2>Kategori Eşleştirmeleri</h2><p>{platformLabel} alanlarını panel özellikleri ve değerleriyle eşleyin.</p></header>
+    <div className="cm-context">
+      <label className="cm-field"><small>Panel Kategorisi</small><select value={attributeCategoryId} onChange={event => setAttributeCategoryId(event.target.value)}>{matchedCategories.map(({ category }) => <option key={category.id} value={category.id}>{category.path}</option>)}</select></label>
+      <div className="cm-field cm-target"><small>{platformLabel} Kategorisi</small><span className="cm-path"><strong title={targetCategoryPath}>{targetCategoryPath}</strong>{targetCategoryStatus && <span className={`mapping-table-status ${targetCategoryStatus.className}`} title={targetCategoryStatus.title}>{targetCategoryStatus.label}</span>}</span></div>
+      {!dataLoading && !dataFailed && requiredEntries.length > 0 && <div className="cm-progress" aria-label={`Zorunlu alanlar: ${requiredReady} / ${requiredEntries.length}`}><div><span>Zorunlu Alanlar</span><b>{requiredReady} / {requiredEntries.length}</b></div><div className="cm-track"><i style={{ width: `${Math.round(requiredReady / requiredEntries.length * 100)}%` }} /></div></div>}
     </div>
-    {!references.isLoading && !mappings.isLoading && !categoryRequirements.isLoading && !references.isError && !mappings.isError && !categoryRequirements.isError && <div className="mapping-workspace-actions" role="toolbar" aria-label="Kategori eşleme işlemleri">
-      <div className="mapping-workspace-action-group">
-        <span>Otomatik eşleme</span>
-        <div>
-          <button type="button" className="secondary" title="Önce adı aynı olan panel başlıklarını, bulunamazsa eş anlamlısını (ör. Materyal ≈ Kumaş Tipi) ya da diğer pazaryerinde eşlendiği adı toplu eşler. Birden fazla aday varsa atlar." disabled={sync.isPending || bulkBusy !== ''} onClick={() => void matchHeadingsByName()}>{bulkBusy === 'HEADINGS' ? 'Başlıklar eşleniyor…' : 'Başlıkları eşle'}</button>
-          <button type="button" className="secondary" title="Eşlenmiş tüm başlıklarda adı aynı olan değerleri toplu eşler" disabled={sync.isPending || bulkBusy !== ''} onClick={() => void matchAllValuesByName()}>{bulkBusy === 'VALUES' ? 'Değerler eşleniyor…' : 'Tüm değerleri birebir eşle'}</button>
-          <button type="button" className="secondary" title={`Aynı ${platformLabel} başlığını kullanan diğer kategorilerde yaptığınız başlık ve değer eşlemelerini bu kategoriye getirir. Elle yaptığınız ve sildiğiniz eşlemelere dokunmaz.`} disabled={sync.isPending || bulkBusy !== ''} onClick={() => void fillFromOtherCategories()}>{bulkBusy === 'TEMPLATES' ? 'Getiriliyor…' : 'Diğer kategorilerden doldur'}</button>
-        </div>
-      </div>
-      <div className="mapping-workspace-action-group">
-        <span>{platformLabel} verisi</span>
-        <div>
-          <button type="button" className="secondary" title={`Bu kategorinin ${platformLabel} alan listesini salt-okunur olarak yeniden okur.`} disabled={sync.isPending} onClick={() => sync.mutate()}><UiIcon name="refresh" />{sync.isPending ? 'Alanlar yenileniyor…' : 'Kategori alanlarını yenile'}</button>
-          {platformCode === 'TRENDYOL' && optionCount > 0 && <button type="button" className="secondary" title="Trendyol’daki ürünleri salt-okunur okuyarak ürün seçeneklerini günceller; Trendyol’a yazma yapmaz." disabled={productSync.isPending} onClick={() => productSync.mutate()}>{productSync.isPending ? 'Ürünler eşitleniyor…' : 'Ürün seçeneklerini eşitle'}</button>}
-        </div>
-      </div>
+    {!dataLoading && !dataFailed && <div className="cm-actions" role="toolbar" aria-label="Kategori eşleme işlemleri">
+      <button type="button" className="secondary" title="Önce adı aynı olan panel başlıklarını, bulunamazsa eş anlamlısını (ör. Materyal ≈ Kumaş Tipi) ya da diğer pazaryerinde eşlendiği adı toplu eşler. Birden fazla aday varsa atlar." disabled={sync.isPending || bulkBusy !== ''} onClick={() => void matchHeadingsByName()}>{bulkBusy === 'HEADINGS' ? 'Başlıklar eşleniyor…' : 'Başlıkları Eşle'}</button>
+      <button type="button" className="secondary" title="Eşlenmiş tüm başlıklarda adı aynı olan değerleri toplu eşler" disabled={sync.isPending || bulkBusy !== ''} onClick={() => void matchAllValuesByName()}>{bulkBusy === 'VALUES' ? 'Değerler eşleniyor…' : 'Tüm Değerleri Eşle'}</button>
+      <button type="button" className="secondary" title={`Aynı ${platformLabel} başlığını kullanan diğer kategorilerde yaptığınız başlık ve değer eşlemelerini bu kategoriye getirir. Elle yaptığınız ve sildiğiniz eşlemelere dokunmaz.`} disabled={sync.isPending || bulkBusy !== ''} onClick={() => void fillFromOtherCategories()}>{bulkBusy === 'TEMPLATES' ? 'Getiriliyor…' : 'Diğer Kategorilerden Doldur'}</button>
+      <span className="cm-grow" />
+      {platformCode === 'TRENDYOL' && optionCount > 0 && <button type="button" className="secondary cm-quiet" title="Trendyol’daki ürünleri salt-okunur okuyarak ürün seçeneklerini günceller; Trendyol’a yazma yapmaz." disabled={productSync.isPending} onClick={() => productSync.mutate()}>{productSync.isPending ? 'Ürünler eşitleniyor…' : 'Ürün Seçeneklerini Eşitle'}</button>}
+      <button type="button" className="secondary cm-quiet" title={`Bu kategorinin ${platformLabel} alan listesini salt-okunur olarak yeniden okur.`} disabled={sync.isPending} onClick={() => sync.mutate()}><UiIcon name="refresh" />{sync.isPending ? 'Yenileniyor…' : 'Alanları Yenile'}</button>
     </div>}
-    <div className="mapping-workspace-panels">
+    {dataLoading ? <Busy text="Kategori özellikleri ve eşlemeler yükleniyor…" /> : dataFailed ? <div className="unknown"><strong>Güncel kategori özellik verisi alınamadı</strong><p>Seçili {platformLabel} kategorisinin özellik listesini yeniden eşitleyin.</p><button type="button" disabled={sync.isPending} onClick={() => sync.mutate()}>{sync.isPending ? 'Kuyruğa alınıyor…' : 'Kategori özelliklerini eşitle'}</button></div> : <>
+      <div className="cm-layout">
+        <nav className="cm-nav" aria-label="Kategori özellikleri">
+          {entryGroups.map(group => <Fragment key={group.title}>
+            <div className="cm-section"><span>{group.title}</span><span>{group.items.filter(entry => entry.state === 'done').length} / {group.items.length}</span></div>
+            {group.items.map(entry => <button type="button" key={entry.key} className={`cm-item${entry.key === activeEntry?.key ? ' is-selected' : ''}`} aria-current={entry.key === activeEntry?.key ? 'true' : undefined} onClick={() => setSelectedEntryKey(entry.key)}><MappingStateGlyph state={entry.state} required={entry.required} /><span className="cm-name">{entry.name}</span><span className="cm-meta">{entry.meta}</span></button>)}
+          </Fragment>)}
+        </nav>
+        <section className="cm-detail" key={activeEntry?.key ?? 'empty'}>
+          {!activeEntry ? <p className="cm-empty">Bu kategoride eşlenecek {platformLabel} alanı yok.</p>
+            : activeEntry.remote ? <FieldDetail platformCode={platformCode} platformLabel={platformLabel} connectionId={connectionId} categoryScope={categoryScope} snapshotId={references.data!.snapshotId} localAttributes={productAttributes} categoryOptionIds={categoryOptionIds} remote={activeEntry.remote} mapping={activeEntry.mapping ?? null} required={activeEntry.required} footerHint={footerHint} onNext={goToNext} onNotice={onNotice} />
+            : <>
+              <FieldHeading name={activeEntry.name} required={activeEntry.required} platformLabel={platformLabel} />
+              <div className="cm-legacy-card">{activeEntry.node}</div>
+              <FieldFooter hint={footerHint} onNext={goToNext} />
+            </>}
+        </section>
+      </div>
+      <div className="cm-legend" aria-label="Durum simgeleri"><span><MappingStateGlyph state="done" /> Tamam</span><span><MappingStateGlyph state="partial" /> Değerleri Eksik</span><span><MappingStateGlyph state="none" /> Eşlenmedi</span></div>
+    </>}
+    <div className="mapping-workspace-panels cm-extra-panels">
       {(platformCode === 'TRENDYOL' || platformCode === 'HEPSIBURADA') && categoryScope && references.data && <AttributeDefaultsPanel connectionId={connectionId} categoryScope={categoryScope} platformLabel={platformLabel} remoteAttributes={references.data.items} onNotice={onNotice} />}
       {connectionId && <MappingConflictsPanel connectionId={connectionId} platformLabel={platformLabel} onNotice={onNotice} />}
     </div>
-    {references.isLoading || mappings.isLoading || categoryRequirements.isLoading ? <Busy text="Kategori özellikleri ve eşlemeler yükleniyor…" /> : references.isError || mappings.isError || categoryRequirements.isError ? <div className="unknown"><strong>Güncel kategori özellik verisi alınamadı</strong><p>Seçili {platformLabel} kategorisinin özellik listesini yeniden eşitleyin.</p><button type="button" disabled={sync.isPending} onClick={() => sync.mutate()}>{sync.isPending ? 'Kuyruğa alınıyor…' : 'Kategori özelliklerini eşitle'}</button></div> : <>
-      <section className="mapping-category-attributes-section"><div className="mapping-section-heading"><div><h3>Kategori özellikleri</h3><p>{platformCode === 'TRENDYOL' ? 'Normal Renk alanında panel renkleri doğrudan gönderilir; Web Color değerleri ayrı eşleştirilir.' : 'Kategori özelliklerini ve varsa seçimlik değerlerini pazar yeri referansıyla eşleyin.'}</p></div></div><div className="cm-layout">
-        <nav className="cm-nav" aria-label="Kategori özellikleri">
-          {entryGroups.map(group => <Fragment key={group.title}>
-            <div className="cm-section"><span>{group.title}</span><span>{group.items.filter(entry => entry.mapped).length} / {group.items.length}</span></div>
-            {group.items.map(entry => <button type="button" key={entry.key} className={`cm-item${entry.key === activeEntry?.key ? ' is-selected' : ''}`} aria-current={entry.key === activeEntry?.key ? 'true' : undefined} onClick={() => setSelectedEntryKey(entry.key)}><MappingStateGlyph mapped={entry.mapped} required={entry.required} /><span className="cm-name">{entry.name}</span><span className="cm-meta">{entry.meta}</span></button>)}
-          </Fragment>)}
-        </nav>
-        <div className="cm-detail" key={activeEntry?.key}>
-          {activeEntry && <>
-            <div className="cm-detail-head"><h4>{activeEntry.name}</h4><span className={`cm-tag${activeEntry.required ? ' is-required' : ''}`}>{activeEntry.required ? 'Zorunlu' : 'İsteğe bağlı'}</span></div>
-            {activeEntry.node}
-            <div className={`cm-detail-foot${mappingEntries.some(entry => entry.required && !entry.mapped) ? '' : ' is-complete'}`}><span>{mappingEntries.filter(entry => entry.required && !entry.mapped).length ? `${mappingEntries.filter(entry => entry.required && !entry.mapped).length} zorunlu alan eşlenmeyi bekliyor` : 'Zorunlu alanların hepsi eşlendi'}</span>{nextOpenEntry && <button type="button" className="secondary" onClick={() => setSelectedEntryKey(nextOpenEntry.key)}>Sonraki eksik</button>}</div>
-          </>}
-        </div>
-      </div></section>
-    </>}</article>
+  </article>
 }
 
-type MappingEntry = { key: string; name: string; required: boolean; mapped: boolean; meta: string; node: ReactNode }
+type FieldState = 'done' | 'partial' | 'none'
+type MappingEntry = { key: string; name: string; required: boolean; state: FieldState; meta: string; node?: ReactNode; remote?: ReferenceItem; mapping?: CatalogMapping | null }
 
-// Status by shape rather than colour: a filled check for a mapped field, an outlined plus for one still open.
-function MappingStateGlyph({ mapped, required }: { mapped: boolean; required: boolean }) {
-  return mapped
-    ? <svg className="cm-glyph is-done" viewBox="0 0 16 16" aria-label="Eşlendi" role="img"><circle cx="8" cy="8" r="7" fill="currentColor" /><path d="m5 8.2 2.1 2.1 3.9-4.2" fill="none" stroke="var(--rv-color-surface)" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>
-    : <svg className={`cm-glyph${required ? ' is-required' : ''}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-label="Eşlenmedi" role="img"><rect x="2.2" y="2.2" width="11.6" height="11.6" rx="3.2" /><path d="M8 5.4v5.2M5.4 8h5.2" /></svg>
+// Status is read from the shape: a filled check when ready, a clock when values are still missing,
+// an outlined plus when the field has no panel attribute yet.
+function MappingStateGlyph({ state, required = false }: { state: FieldState; required?: boolean }) {
+  if (state === 'done') return <svg className="cm-glyph is-done" viewBox="0 0 16 16" aria-label="Tamam" role="img"><circle cx="8" cy="8" r="7" fill="currentColor" /><path d="m5 8.2 2.1 2.1 3.9-4.2" fill="none" stroke="var(--rv-color-surface)" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>
+  if (state === 'partial') return <svg className="cm-glyph is-partial" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-label="Değerleri eksik" role="img"><circle cx="8" cy="8" r="6.2" opacity=".35" /><path d="M8 1.8a6.2 6.2 0 0 1 5.9 4.3" /><path d="M8 5.6v2.6l1.8 1.1" /></svg>
+  return <svg className={`cm-glyph${required ? ' is-required' : ''}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-label="Eşlenmedi" role="img"><rect x="2.2" y="2.2" width="11.6" height="11.6" rx="3.2" /><path d="M8 5.4v5.2M5.4 8h5.2" /></svg>
 }
+
+function FieldHeading({ name, required, platformLabel }: { name: string; required: boolean; platformLabel: string }) {
+  return <>
+    <div className="cm-detail-head"><h4>{name}</h4><span className={`cm-tag${required ? ' is-required' : ''}`}>{required ? 'Zorunlu' : 'İsteğe Bağlı'}</span></div>
+    <p className="cm-lead">{required ? `${platformLabel} bu alan olmadan ürünü kabul etmez.` : 'Boş bırakılabilir; doldurmak ürün sayfasını güçlendirir.'}</p>
+  </>
+}
+
+function FieldFooter({ hint, dirty = false, saving = false, onSave, onNext }: { hint: string; dirty?: boolean; saving?: boolean; onSave?: () => void; onNext?: () => void }) {
+  return <div className={`cm-foot${dirty ? ' is-dirty' : ''}`}>
+    <span>{dirty ? 'Kaydedilmemiş değişiklikler var' : hint}</span>
+    <span className="cm-grow" />
+    {onNext && <button type="button" className="secondary" onClick={onNext}>Sonraki Eksik</button>}
+    <button type="button" disabled={!onSave || !dirty || saving} onClick={onSave}>{saving ? 'Kaydediliyor…' : 'Kaydet'}</button>
+  </div>
+}
+
+// One marketplace field: which panel attribute feeds it, then a table of the attribute's values.
+function FieldDetail({ platformCode, platformLabel, connectionId, categoryScope, snapshotId, localAttributes, categoryOptionIds, remote, mapping, required, footerHint, onNext, onNotice }: { platformCode: MappingPlatformCode; platformLabel: string; connectionId: string; categoryScope: string; snapshotId: string; localAttributes: LocalAttribute[]; categoryOptionIds: Set<string>; remote: ReferenceItem; mapping: CatalogMapping | null; required: boolean; footerHint: string; onNext?: () => void; onNotice: (value: string) => void }) {
+  const client = useQueryClient()
+  const [busy, setBusy] = useState(false)
+  const selectable = localAttributes.filter(item => item.isActive !== false)
+  const panelOptions = selectable.filter(item => categoryOptionIds.has(item.id) || isOptionAttribute(item))
+  const panelAttributes = selectable.filter(item => !categoryOptionIds.has(item.id) && !isOptionAttribute(item))
+  const selected = mapping ? localAttributes.find(item => item.id === mapping.localId) : undefined
+  const values = selected?.values.filter(value => value.isActive) ?? []
+  const customPanelColorValues = platformCode === 'TRENDYOL' && usesCustomPanelColorValue(remote.name)
+  async function choose(localId: string) {
+    if (busy || (mapping?.localId ?? '') === localId) return
+    setBusy(true)
+    try {
+      if (mapping) await hubApi<boolean>(`/mappings/attributes/${mapping.localId}?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(categoryScope)}&externalId=${encodeURIComponent(mapping.externalId)}`, { method: 'DELETE', headers: { 'If-Match': `"v${mapping.version}"` } })
+      if (localId) {
+        const chosen = localAttributes.find(item => item.id === localId)
+        const role = categoryOptionIds.has(localId) || (chosen && isOptionAttribute(chosen)) ? 'OPTION' : 'ATTRIBUTE'
+        await hubApi<CatalogMapping>(`/mappings/attributes/${localId}`, { method: 'PUT', body: JSON.stringify({ connectionId, snapshotId, scopeExternalId: categoryScope, externalId: remote.externalId, status: 'VERIFIED', role }) })
+      }
+      onNotice(localId ? `${remote.name} eşlemesi kaydedildi.` : `${remote.name} eşlemesi kaldırıldı.`)
+    } catch (reason) {
+      onNotice(reason instanceof Error ? reason.message : 'Özellik eşlemesi kaydedilemedi.')
+    } finally {
+      await client.invalidateQueries({ queryKey: ['attribute-mappings', connectionId, categoryScope] })
+      await client.invalidateQueries({ queryKey: ['publication-attribute-readiness'] })
+      setBusy(false)
+    }
+  }
+  return <>
+    <FieldHeading name={remote.name} required={required} platformLabel={platformLabel} />
+    <div className="cm-form">
+      <div className="cm-field"><small>{platformLabel} Alanı</small><span className="cm-readonly">{remote.name}</span></div>
+      <div className="cm-field"><small>Panel Özelliği</small><div className="cm-select-row">
+        <select aria-label={`${remote.name} için panel özelliği`} value={mapping?.localId ?? ''} disabled={busy} onChange={event => void choose(event.target.value)}>
+          <option value="">Seçin…</option>
+          {panelOptions.length > 0 && <optgroup label="Panel seçenekleri">{panelOptions.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</optgroup>}
+          {panelAttributes.length > 0 && <optgroup label="Panel özellikleri">{panelAttributes.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</optgroup>}
+        </select>
+        <button type="button" className="secondary cm-quiet" disabled={!mapping || busy} onClick={() => void choose('')}>Kaldır</button>
+      </div></div>
+    </div>
+    {!mapping || !selected ? <><p className="cm-empty">Bir panel özelliği seçtiğinizde değerleri burada eşlersiniz.</p><FieldFooter hint={footerHint} onNext={onNext} /></>
+      : !values.length ? <><p className="cm-empty">“{selected.name}” özelliğinde henüz değer yok. Değerleri özellik kütüphanesinden ekleyin.</p><FieldFooter hint={footerHint} onNext={onNext} /></>
+      : customPanelColorValues || remote.allowsCustomValue === true ? <><div className="cm-legacy-card"><AttributeValueMappingEditor connectionId={connectionId} categoryScope={categoryScope} attribute={selected} externalAttributeId={remote.externalId} platformLabel={platformLabel} customPanelColorValues={customPanelColorValues} marketplaceAllowsFreeText={remote.allowsCustomValue === true} required={required} /></div><FieldFooter hint={footerHint} onNext={onNext} /></>
+      : <FieldValueTable key={`${categoryScope}/${remote.externalId}/${selected.id}`} platformCode={platformCode} platformLabel={platformLabel} connectionId={connectionId} categoryScope={categoryScope} attribute={selected} remote={remote} required={required} footerHint={footerHint} onNext={onNext} onNotice={onNotice} />}
+  </>
+}
+
+function groupValueSelections(items: readonly CatalogMapping[]) {
+  return items.reduce<Record<string, string[]>>((current, item) => ({ ...current, [item.externalId]: [...(current[item.externalId] ?? []), item.localId] }), {})
+}
+
+// Panel values down the side, the marketplace value each one is sent as on the right.
+function FieldValueTable({ platformCode, platformLabel, connectionId, categoryScope, attribute, remote, required, footerHint, onNext, onNotice }: { platformCode: MappingPlatformCode; platformLabel: string; connectionId: string; categoryScope: string; attribute: LocalAttribute; remote: ReferenceItem; required: boolean; footerHint: string; onNext?: () => void; onNotice: (value: string) => void }) {
+  const client = useQueryClient()
+  const valueScope = `${categoryScope}/${remote.externalId}`
+  const references = useQuery({ queryKey: ['reference-attribute-values', connectionId, valueScope], queryFn: () => hubApi<ReferenceData>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(remote.externalId)}/values?connectionId=${encodeURIComponent(connectionId)}`), retry: false })
+  const mappings = useQuery({ queryKey: ['attribute-value-mappings', connectionId, valueScope], queryFn: () => hubApi<CatalogMapping[]>(`/mappings/attribute-values?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(valueScope)}`), retry: false })
+  const [selections, setSelections] = useState<Record<string, string[]> | null>(null)
+  const [search, setSearch] = useState('')
+  const [onlyMissing, setOnlyMissing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  useEffect(() => { if (mappings.data && selections === null) setSelections(groupValueSelections(mappings.data)) }, [mappings.data, selections])
+  // A Hepsiburada value may reuse a panel value that already feeds another Hepsiburada value.
+  const allowReuse = platformCode === 'HEPSIBURADA'
+  if (references.isError) return <><div className="cm-legacy-card"><AttributeValueMappingEditor connectionId={connectionId} categoryScope={categoryScope} attribute={attribute} externalAttributeId={remote.externalId} platformLabel={platformLabel} autoSyncMissingValues={platformCode === 'HEPSIBURADA' && remote.allowsCustomValue === false} allowReusablePanelValues={allowReuse} required={required} /></div><FieldFooter hint={footerHint} onNext={onNext} /></>
+  if (mappings.isError) return <ErrorBox error={mappings.error} />
+  if (references.isLoading || mappings.isLoading || !selections || !references.data || !mappings.data) return <Busy text="Değerler ve eşlemeler yükleniyor…" />
+  const snapshotId = references.data.snapshotId
+  const saved = groupValueSelections(mappings.data)
+  const localValues = attribute.values.filter(item => item.isActive).slice().sort((left, right) => left.value.localeCompare(right.value, 'tr-TR', { sensitivity: 'base', numeric: true }))
+  const mappedExternalIds = new Set(mappings.data.map(item => item.externalId))
+  const remoteValues = references.data.items.filter(item => item.isActive || mappedExternalIds.has(item.externalId)).slice().sort((left, right) => left.name.localeCompare(right.name, 'tr-TR', { sensitivity: 'base', numeric: true }))
+  const knownExternalIds = new Set(remoteValues.map(item => item.externalId))
+  const targetOf = (current: Record<string, string[]>, localId: string) => Object.keys(current).find(externalId => current[externalId].includes(localId)) ?? ''
+  const sameIds = (left: readonly string[], right: readonly string[]) => left.length === right.length && left.every(id => right.includes(id))
+  const dirty = [...new Set([...Object.keys(saved), ...Object.keys(selections)])].some(externalId => !sameIds(selections[externalId] ?? [], saved[externalId] ?? []))
+  const doneCount = localValues.filter(item => targetOf(selections, item.id)).length
+  const query = search.trim().toLocaleLowerCase('tr-TR')
+  const rows = localValues.filter(item => (!query || item.value.toLocaleLowerCase('tr-TR').includes(query)) && (!onlyMissing || !targetOf(selections, item.id)))
+  function setTarget(localId: string, externalId: string) {
+    setSelections(current => {
+      const base = current ?? {}
+      const previous = targetOf(base, localId)
+      const next: Record<string, string[]> = {}
+      for (const [key, ids] of Object.entries(base)) {
+        const kept = allowReuse && key !== previous ? ids : ids.filter(id => id !== localId)
+        if (kept.length) next[key] = kept
+      }
+      if (externalId) next[externalId] = [...(next[externalId] ?? []).filter(id => id !== localId), localId]
+      return next
+    })
+  }
+  function matchSameNames() {
+    const plan = planDirectReferenceValues(localValues, references.data!.items.filter(item => item.isActive))
+    const open = plan.mappings.filter(item => !targetOf(selections!, item.localId))
+    if (open.length) setSelections(current => open.reduce((next, item) => ({ ...next, [item.externalId]: [...(next[item.externalId] ?? []).filter(id => id !== item.localId), item.localId] }), current ?? {}))
+    onNotice(open.length ? `${open.length} değer aynı adlı ${platformLabel} değeriyle eşlendi; kalıcı olması için Kaydet’e basın.` : 'Yeni birebir eşleşen değer bulunamadı.')
+  }
+  async function save() {
+    if (!selections || saving) return
+    setSaving(true)
+    let changed = 0
+    try {
+      for (const [externalId, ids] of Object.entries(saved)) {
+        const wanted = selections[externalId] ?? []
+        for (const localId of ids) {
+          if (wanted.includes(localId)) continue
+          const existing = mappings.data!.find(item => item.externalId === externalId && item.localId === localId)
+          if (!existing) continue
+          await hubApi<boolean>(`/mappings/attribute-values/${localId}?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(valueScope)}&externalId=${encodeURIComponent(externalId)}`, { method: 'DELETE', headers: { 'If-Match': `"v${existing.version}"` } })
+          changed++
+        }
+      }
+      for (const planned of planReferencePanelMappings(selections)) {
+        if (!knownExternalIds.has(planned.externalId)) continue
+        const existing = mappings.data!.find(item => item.externalId === planned.externalId && item.localId === planned.localId)
+        if (!attributeValueMappingNeedsSave(existing, planned.localId, planned.externalId, snapshotId)) continue
+        await hubApi<CatalogMapping>(`/mappings/attribute-values/${planned.localId}`, { method: 'PUT', headers: existing ? { 'If-Match': `"v${existing.version}"` } : {}, body: JSON.stringify({ connectionId, snapshotId, scopeExternalId: valueScope, externalId: planned.externalId, status: 'VERIFIED', updateTemplate: true }) })
+        changed++
+      }
+      onNotice(changed ? `${remote.name}: ${changed} değer eşlemesi kaydedildi.` : 'Değer eşlemelerinde değişiklik yok.')
+    } catch (reason) {
+      onNotice(reason instanceof Error ? reason.message : 'Değer eşlemeleri kaydedilemedi.')
+    } finally {
+      await client.invalidateQueries({ queryKey: ['attribute-value-mappings', connectionId, valueScope] })
+      await client.invalidateQueries({ queryKey: ['publication-attribute-readiness'] })
+      setSelections(null)
+      setSaving(false)
+    }
+  }
+  return <>
+    <div className="cm-vtools">
+      <div className="cm-vtools-title"><h5>Değer Eşlemeleri</h5><span>{doneCount} / {localValues.length}</span></div>
+      <div className="cm-vtools-actions">
+        <input className="cm-search" type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Değer ara" aria-label="Panel değeri ara" />
+        <button type="button" className={`secondary cm-toggle${onlyMissing ? ' is-on' : ''}`} aria-pressed={onlyMissing} onClick={() => setOnlyMissing(value => !value)}>Yalnızca Eksikler</button>
+        <button type="button" className="secondary" onClick={matchSameNames}>Birebir Eşle</button>
+      </div>
+    </div>
+    <div className="cm-vtable" role="table" aria-label={`${remote.name} değer eşlemeleri`}>
+      <div className="cm-vrow is-head" role="row"><span role="columnheader">Panel Değeri</span><span role="columnheader">{platformLabel} Değeri</span><span aria-hidden="true" /></div>
+      <div className="cm-vscroll">
+        {rows.length ? rows.map(item => {
+          const target = targetOf(selections, item.id)
+          return <div className={`cm-vrow${target ? '' : ' is-open'}`} role="row" key={item.id}>
+            <span className="cm-pv" role="cell">{item.value}</span>
+            <span role="cell"><select aria-label={`${item.value} için ${platformLabel} değeri`} value={target} onChange={event => setTarget(item.id, event.target.value)}><option value="">Seçin…</option>{remoteValues.map(option => <option key={option.externalId} value={option.externalId}>{option.name}</option>)}</select></span>
+            <span className="cm-vstate" role="cell"><MappingStateGlyph state={target ? 'done' : 'none'} /></span>
+          </div>
+        }) : <p className="cm-empty">{onlyMissing ? 'Eşlenmemiş değer kalmadı.' : 'Aramaya uyan değer yok.'}</p>}
+      </div>
+    </div>
+    <FieldFooter hint={footerHint} dirty={dirty} saving={saving} onSave={() => void save()} onNext={onNext} />
+  </>
+}
+
 
 function MappingValueModal({ open, title, description, onClose, children }: { open: boolean; title: string; description: string; onClose: () => void; children: ReactNode }) {
   const displayedDescription = description.startsWith('Panel değerlerini mevcut Trendyol seçeneklerine eşleyin.')
@@ -2917,40 +3099,6 @@ export function WebColorMappingCard({ connectionId, categoryScope, snapshotId, l
     try { await hubApi<boolean>(`/mappings/attributes/${currentMapping.localId}?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(categoryScope)}&externalId=${encodeURIComponent(currentMapping.externalId)}`, { method: 'DELETE', headers: { 'If-Match': `"v${currentMapping.version}"` } }); setShowValues(false); onNotice('Panel Renk → Trendyol Web Color eşlemesi kaldırıldı.'); await client.invalidateQueries({ queryKey: ['attribute-mappings', connectionId, categoryScope] }) } catch (reason) { onNotice(reason instanceof Error ? reason.message : 'Web Color eşlemesi kaldırılamadı.') }
   }
   return <section className="attribute-mapping-card required"><div className="attribute-mapping-card-head"><img className={`mapping-platform-logo ${platformLogoClass('TRENDYOL')}`} src={platformLogoSource('TRENDYOL')!} alt="" aria-hidden="true" /><div><strong>Webcolor</strong><small>Kaynak: Panel {selectedAttribute.name} · Zorunlu alan</small></div></div><div className="mapping-fields compact"><label><span className="sr-only">Entegrasyon ürün özelliği</span><select aria-label="Webcolor için panel özelliği" value={localId} onChange={event => { setLocalId(event.target.value); setShowValues(false) }}><option value="">Panel özelliği seçin</option>{categoryOptions.length > 0 && <optgroup label="Panel seçenekleri">{categoryOptions.map(attribute => <option key={attribute.id} value={attribute.id}>{attribute.name}</option>)}</optgroup>}{panelCategoryAttributes.length > 0 && <optgroup label="Panel kategori özellikleri">{panelCategoryAttributes.map(attribute => <option key={attribute.id} value={attribute.id}>{attribute.name}</option>)}</optgroup>}</select></label>{mapped ? <button type="button" className="secondary" onClick={() => void remove()}>Eşlemeyi kaldır</button> : <button type="button" onClick={() => void save()} disabled={!localId}>{selectedAttribute.values.length > 0 ? `Değer eşlemelerini eşle (${selectedAttribute.values.length})` : 'Kaydet'}</button>}</div>{mapped && selectedAttribute.values.length > 0 && <><button type="button" className="value-mapping-toggle" onClick={() => setShowValues(value => !value)}>{showValues ? 'Değer eşlemeleri açık' : `Değer eşlemelerini eşle (${selectedAttribute.values.length})`}</button><MappingValueModal open={showValues} title={`${remoteAttribute.name} değer eşlemeleri`} description="Panel Renk değerlerini Trendyol Webcolor değerlerine eşleyin." onClose={() => setShowValues(false)}><WebColorValueMappingEditor connectionId={connectionId} categoryScope={categoryScope} attribute={selectedAttribute} externalAttributeId={remoteAttribute.externalId} /></MappingValueModal></>}</section>
-}
-
-function CategoryAttributeCard({ platformCode, platformLabel, connectionId, categoryScope, snapshotId, localAttributes, categoryOptionIds, remoteAttribute, existingMapping, onNotice, inline = false }: { inline?: boolean; platformCode: MappingPlatformCode; platformLabel: string; connectionId: string; categoryScope: string; snapshotId: string; localAttributes: LocalAttribute[]; categoryOptionIds: Set<string>; remoteAttribute: ReferenceItem; existingMapping: CatalogMapping | null; onNotice: (value: string) => void }) {
-  const client = useQueryClient(); const [localId, setLocalId] = useState(existingMapping?.localId ?? ''); const [showValues, setShowValues] = useState(false)
-  useEffect(() => { setLocalId(existingMapping?.localId ?? '') }, [existingMapping?.localId])
-  const selectedAttribute = localAttributes.find(item => item.id === localId)
-  // Every Trendyol field must be able to see every active panel option and
-  // category attribute, including fields already used by another mapping.
-  const selectableAttributes = localAttributes.filter(item => item.isActive !== false)
-  const panelOptions = selectableAttributes.filter(item => categoryOptionIds.has(item.id) || isOptionAttribute(item))
-  const panelAttributes = selectableAttributes.filter(item => !categoryOptionIds.has(item.id) && !isOptionAttribute(item))
-  async function save() {
-    try {
-      if (!localId) throw new Error('Entegrasyon ürün özelliğini seçin.')
-      const role = categoryOptionIds.has(localId) || isOptionAttribute(localAttributes.find(item => item.id === localId) ?? { code: '', name: '', roles: [] }) ? 'OPTION' : 'ATTRIBUTE'
-      await hubApi<CatalogMapping>(`/mappings/attributes/${localId}`, { method: 'PUT', body: JSON.stringify({ connectionId, snapshotId, scopeExternalId: categoryScope, externalId: remoteAttribute.externalId, status: 'VERIFIED', role }) })
-      onNotice(`${remoteAttribute.name} eşlemesi kaydedildi.`)
-      await client.invalidateQueries({ queryKey: ['attribute-mappings', connectionId, categoryScope] })
-    } catch (reason) { onNotice(reason instanceof Error ? reason.message : 'Özellik eşlemesi kaydedilemedi.') }
-  }
-  async function remove() {
-    if (!existingMapping) return
-    try {
-      await hubApi<boolean>(`/mappings/attributes/${existingMapping.localId}?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(categoryScope)}&externalId=${encodeURIComponent(existingMapping.externalId)}`, { method: 'DELETE', headers: { 'If-Match': `"v${existingMapping.version}"` } })
-      setShowValues(false); onNotice(`${remoteAttribute.name} eşlemesi kaldırıldı.`)
-      await client.invalidateQueries({ queryKey: ['attribute-mappings', connectionId, categoryScope] })
-    } catch (reason) { onNotice(reason instanceof Error ? reason.message : 'Özellik eşlemesi kaldırılamadı.') }
-  }
-  const mapped = existingMapping?.externalId === remoteAttribute.externalId
-  const required = remoteAttribute.isRequired === true
-  const colorField = isPanelColorAttributeName(remoteAttribute.name) || isWebColorAttributeName(remoteAttribute.name)
-  const customPanelColorValues = platformCode === 'TRENDYOL' && usesCustomPanelColorValue(remoteAttribute.name)
-  const valueEditor = selectedAttribute ? <AttributeValueMappingEditor connectionId={connectionId} categoryScope={categoryScope} attribute={selectedAttribute} externalAttributeId={remoteAttribute.externalId} platformLabel={platformLabel} customPanelColorValues={customPanelColorValues} marketplaceAllowsFreeText={remoteAttribute.allowsCustomValue === true} autoSyncMissingValues={platformCode === 'HEPSIBURADA' && remoteAttribute.allowsCustomValue === false} allowReusablePanelValues={platformCode === 'HEPSIBURADA'} required={required} /> : null
-  return <section className={`attribute-mapping-card ${required ? 'required' : ''} ${required && !mapped && !colorField ? 'unmapped' : ''}`}><div className="attribute-mapping-card-head"><img className={`mapping-platform-logo ${platformLogoClass(platformCode)}`} src={platformLogoSource(platformCode)!} alt="" aria-hidden="true" /><div><strong>{remoteAttribute.name}</strong><small>{required ? 'Zorunlu alan' : ''}</small></div></div><div className="mapping-fields compact"><label><span className="sr-only">Entegrasyon ürün özelliği</span><select aria-label={`${platformLabel} için panel özelliği`} value={localId} onChange={event => setLocalId(event.target.value)}><option value="">Özellik seçin</option>{panelOptions.length > 0 && <optgroup label="Panel seçenekleri">{panelOptions.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</optgroup>}{panelAttributes.length > 0 && <optgroup label="Panel özellikleri">{panelAttributes.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</optgroup>}</select></label>{mapped ? <button type="button" className="secondary" onClick={() => void remove()}>Eşlemeyi kaldır</button> : <button type="button" onClick={() => void save()} disabled={!localId}>Kaydet</button>}</div>{selectedAttribute && mapped && selectedAttribute.values.length > 0 && (inline ? <div className="cm-values">{valueEditor}</div> : <><button type="button" className="value-mapping-toggle" onClick={() => setShowValues(value => !value)}>{showValues ? 'Değer eşlemeleri açık' : customPanelColorValues ? `Gönderilecek renkleri gör (${selectedAttribute.values.length})` : `Değer eşlemelerini aç (${selectedAttribute.values.length})`}</button><MappingValueModal open={showValues} title={customPanelColorValues ? `${platformLabel}’a gönderilecek panel renkleri` : `${remoteAttribute.name} değer eşlemeleri`} description={customPanelColorValues ? 'Normal Renk alanı sabit değer listesi kullanmaz; panel renkleri baş harfleri büyük biçimde gönderilir.' : `Panel değerlerini mevcut ${platformLabel} seçeneklerine eşleyin. Yeni değer ${platformLabel}’a gönderilmez.`} onClose={() => setShowValues(false)}>{valueEditor}</MappingValueModal></>)}</section>
 }
 
 export function AttributeMappingPage() {
