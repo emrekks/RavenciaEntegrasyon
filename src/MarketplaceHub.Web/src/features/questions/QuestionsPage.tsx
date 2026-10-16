@@ -68,6 +68,13 @@ function QuestionProductImage({ src, connectionId, sku, barcode, modelCode, prod
 }
 
 // The count follows the open tab: product questions on the product tab, order questions on the order tab.
+// A store named differently from its marketplace also shows the marketplace; a passive connection says so.
+function storeLabel(item: Connection) {
+  const platform = displayPlatform(item.platformCode)
+  const name = item.displayName.toLocaleLowerCase('tr-TR').includes(platform.toLocaleLowerCase('tr-TR')) ? item.displayName : `${item.displayName} · ${platform}`
+  return item.status === 'ACTIVE' || item.status === 'VERIFIED' ? name : `${name} (pasif)`
+}
+
 function syncSummary(item: SyncState, tab: WorkspaceTab) {
   const count = (tab === 'ORDER' ? item.orderQuestionCount : item.productQuestionCount) ?? item.importedCount
   if (item.historyImported) return `${count.toLocaleString('tr-TR')} kayıt · Geçmiş tamamlandı`
@@ -163,7 +170,7 @@ export function QuestionsPage() {
       {tab !== 'TEMPLATES' && (
       <section className="rv-filter-bar rv-questions-filters" aria-label="Soru filtreleri">
         <Tabs className="rv-questions-status-tabs" ariaLabel="Soru durum filtresi" value={status} onChange={value => setStatus(value as QuestionStatus)} items={statusFilters.map((item, index) => ({ value: item.value, label: item.label, count: formatCount(statusCounts[index]?.data) }))} />
-        <MobileFilterShell className="rv-filter-fields rv-questions-filter-grid" activeCount={(search.trim() ? 1 : 0) + (connectionId !== 'ALL' ? 1 : 0) + (dateFrom || dateTo ? 1 : 0) + (sort !== 'NEWEST' ? 1 : 0)} onClear={() => { setSearch(''); setConnectionId('ALL'); setDateFrom(''); setDateTo(''); setSort('NEWEST') }}><label className="rv-questions-search" data-mfs-search>Metin ara<input value={search} onChange={event => setSearch(event.target.value)} placeholder="Soru, ürün, SKU veya sipariş no" /></label><label>Mağaza<select value={connectionId} onChange={event => setConnectionId(event.target.value)}><option value="ALL">Tüm mağazalar</option>{connectionNames.filter(item => tab === 'ORDER' || platform === 'ALL' || item.platformCode === platform).filter(item => tab !== 'ORDER' || ORDER_QUESTION_PLATFORMS.includes(item.platformCode)).map(item => <option value={item.id} key={item.id}>{item.displayName}</option>)}</select></label><DateRangePicker from={dateFrom} to={dateTo} onChange={range => { setDateFrom(range.from); setDateTo(range.to) }} label="Tarih aralığı" /><label>Sıralama<select value={sort} onChange={event => setSort(event.target.value)}><option value="NEWEST">En yeni</option><option value="OLDEST">En eski</option><option value="UPDATED">Son güncellenen</option></select></label></MobileFilterShell>
+        <MobileFilterShell className="rv-filter-fields rv-questions-filter-grid" activeCount={(search.trim() ? 1 : 0) + (connectionId !== 'ALL' ? 1 : 0) + (dateFrom || dateTo ? 1 : 0) + (sort !== 'NEWEST' ? 1 : 0)} onClear={() => { setSearch(''); setConnectionId('ALL'); setDateFrom(''); setDateTo(''); setSort('NEWEST') }}><label className="rv-questions-search" data-mfs-search>Metin ara<input value={search} onChange={event => setSearch(event.target.value)} placeholder="Soru, ürün, SKU veya sipariş no" /></label><label>Mağaza<select value={connectionId} onChange={event => setConnectionId(event.target.value)}><option value="ALL">Tüm mağazalar</option>{connectionNames.filter(item => tab === 'ORDER' || platform === 'ALL' || item.platformCode === platform).filter(item => tab !== 'ORDER' || ORDER_QUESTION_PLATFORMS.includes(item.platformCode)).map(item => <option value={item.id} key={item.id}>{storeLabel(item)}</option>)}</select></label><DateRangePicker from={dateFrom} to={dateTo} onChange={range => { setDateFrom(range.from); setDateTo(range.to) }} label="Tarih aralığı" /><label>Sıralama<select value={sort} onChange={event => setSort(event.target.value)}><option value="NEWEST">En yeni</option><option value="OLDEST">En eski</option><option value="UPDATED">Son güncellenen</option></select></label></MobileFilterShell>
       </section>
       )}
     </div>
