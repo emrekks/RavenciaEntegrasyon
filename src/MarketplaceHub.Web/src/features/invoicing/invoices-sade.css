@@ -278,3 +278,27 @@ body .invoice-reference-actions-popover > button:disabled { opacity: .45; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary > div:nth-child(n) { border-top: 0; border-left: 1px solid var(--rv-color-border); }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary > div:first-child { border-left: 0; }
+
+/* Failure callout, link row and previous references as in the proposal */
+.reference-invoices-page .invoice-detail-callout { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font-size: 13px; line-height: 1.5; }
+.reference-invoices-page .invoice-detail-callout .ui-icon { flex: none; margin-top: 2px; }
+.reference-invoices-page .invoice-detail-callout strong { color: var(--rv-color-ink); font-weight: 600; }
+.reference-invoices-page .invoice-detail-callout.is-danger { background: color-mix(in srgb, var(--rv-color-danger) 8%, var(--rv-color-surface)); border-color: color-mix(in srgb, var(--rv-color-danger) 40%, var(--rv-color-border-strong)); }
+.reference-invoices-page .invoice-detail-callout.is-danger .ui-icon { color: var(--rv-color-danger); }
+.reference-invoices-page .invoice-detail-links { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-links .invoice-document-link,
+.app-shell.stitch-shell main .reference-invoices-page .invoice-platform-reference-history .invoice-document-link { display: inline-flex; align-items: center; gap: 6px; padding: 0; color: var(--inv-violet); background: none; border: 0; font-size: 13px; font-weight: 500; text-decoration: none; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-document-link:hover { text-decoration: underline; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-platform-reference-history summary { color: var(--rv-color-muted); font-size: 13px; cursor: pointer; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-platform-reference-history[open] summary { margin-bottom: 8px; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-platform-reference-history > .invoice-detail-document-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; margin: 0; padding: 9px 12px; color: var(--rv-color-muted); border: 1px solid var(--rv-color-border); border-top-width: 0; font-size: 13px; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-platform-reference-history > summary + .invoice-detail-document-actions { border-top-width: 1px; border-radius: 10px 10px 0 0; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-platform-reference-history > .invoice-detail-document-actions:last-child { border-radius: 0 0 10px 10px; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-platform-reference-history > summary + .invoice-detail-document-actions:last-child { border-radius: 10px; }
+
+/* Detail head back to the proposal, with the platform wordmark next to the order number */
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-header { align-items: flex-start; padding: 18px 20px 16px 24px; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-header h2 { display: flex; align-items: center; gap: 10px; margin-top: 2px; font-size: 18px; font-weight: 600; }
+.reference-invoices-page .invoice-detail-title-mark { display: inline-flex; align-items: center; height: 26px; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-title-mark img { display: block; width: auto; max-width: 120px; height: 24px; object-fit: contain; object-position: left center; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-subline { margin: 2px 0 0; color: var(--rv-color-muted); font-size: 13px; }
