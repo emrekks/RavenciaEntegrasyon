@@ -10,7 +10,7 @@ type Conflicts = { sameCategory: Conflict[]; crossCategory: Conflict[] }
 // Value mappings worth a look: a panel value mapped to several marketplace values in one category
 // (only one can be sent, so the user keeps one) and a panel value mapped differently across
 // categories (shown for information, with the value other categories inherit).
-export function MappingConflictsPanel({ connectionId, platformLabel, onNotice }: { connectionId: string; platformLabel: string; onNotice: (value: string) => void }) {
+export function MappingConflictsPanel({ connectionId, platformLabel, onNotice, expanded = false }: { connectionId: string; platformLabel: string; onNotice: (value: string) => void; expanded?: boolean }) {
   const client = useQueryClient()
   const conflictsKey = ['mapping-conflicts', connectionId] as const
   const conflicts = useQuery({ queryKey: conflictsKey, queryFn: () => hubApi<Conflicts>(`/mappings/conflicts?connectionId=${encodeURIComponent(connectionId)}`), retry: false, staleTime: 30_000 })
@@ -35,7 +35,7 @@ export function MappingConflictsPanel({ connectionId, platformLabel, onNotice }:
     } finally { setBusyKey('') }
   }
 
-  return <details className="mapping-conflicts-panel">
+  return <details className="mapping-conflicts-panel" open={expanded || undefined}>
     <summary>
       <span className="panel-summary-title">Gözden geçirilecek eşlemeler</span>
       <b className="panel-summary-count is-warning" aria-label={`${same.length + cross.length} kayıt`}>{same.length + cross.length}</b>

@@ -2675,6 +2675,11 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
   // Bulk "same name" matching for the whole category: first the headings (attributes and option groups), then every value of the mapped headings.
   const [bulkBusy, setBulkBusy] = useState<'' | 'HEADINGS' | 'VALUES' | 'TEMPLATES'>('')
   const [selectedEntryKey, setSelectedEntryKey] = useState('')
+  const [extraPanel, setExtraPanel] = useState<'' | 'defaults' | 'conflicts'>('')
+  // Same cache entries as the two panels, so the header buttons can show how many items each holds.
+  const attributeDefaultsCount = useQuery({ queryKey: ['attribute-defaults', connectionId], queryFn: () => hubApi<unknown[]>(`/connections/${connectionId}/attribute-defaults`), retry: false, enabled: !!connectionId && (platformCode === 'TRENDYOL' || platformCode === 'HEPSIBURADA') }).data?.length ?? 0
+  const mappingConflictData = useQuery({ queryKey: ['mapping-conflicts', connectionId], queryFn: () => hubApi<{ sameCategory?: unknown[]; crossCategory?: unknown[] }>(`/mappings/conflicts?connectionId=${encodeURIComponent(connectionId)}`), retry: false, staleTime: 30_000, enabled: !!connectionId }).data
+  const mappingConflictCount = (mappingConflictData?.sameCategory?.length ?? 0) + (mappingConflictData?.crossCategory?.length ?? 0)
   // Value progress of every mapped field, read from the same cache entries the value table uses.
   const mappedValueFields = productRemoteItems.filter(item => productMappingByExternal.has(item.externalId))
   const valueMappingQueries = useQueries({ queries: mappedValueFields.map(item => ({ queryKey: ['attribute-value-mappings', connectionId, `${categoryScope}/${item.externalId}`], queryFn: () => hubApi<CatalogMapping[]>(`/mappings/attribute-values?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(`${categoryScope}/${item.externalId}`)}`), retry: false, staleTime: 30_000, enabled: !!connectionId && !!categoryScope })) })
@@ -2825,6 +2830,8 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
       <button type="button" className="secondary" title="Önce adı aynı olan panel başlıklarını, bulunamazsa eş anlamlısını (ör. Materyal ≈ Kumaş Tipi) ya da diğer pazaryerinde eşlendiği adı toplu eşler. Birden fazla aday varsa atlar." disabled={sync.isPending || bulkBusy !== ''} onClick={() => void matchHeadingsByName()}>{bulkBusy === 'HEADINGS' ? 'Başlıklar eşleniyor…' : 'Başlıkları eşle'}</button>
       <button type="button" className="secondary" title="Eşlenmiş tüm başlıklarda adı aynı olan değerleri toplu eşler" disabled={sync.isPending || bulkBusy !== ''} onClick={() => void matchAllValuesByName()}>{bulkBusy === 'VALUES' ? 'Değerler eşleniyor…' : 'Tüm değerleri eşle'}</button>
       <button type="button" className="secondary" title={`Aynı ${platformLabel} başlığını kullanan diğer kategorilerde yaptığınız başlık ve değer eşlemelerini bu kategoriye getirir. Elle yaptığınız ve sildiğiniz eşlemelere dokunmaz.`} disabled={sync.isPending || bulkBusy !== ''} onClick={() => void fillFromOtherCategories()}>{bulkBusy === 'TEMPLATES' ? 'Getiriliyor…' : 'Diğer kategorilerden doldur'}</button>
+      {(platformCode === 'TRENDYOL' || platformCode === 'HEPSIBURADA') && categoryScope && <button type="button" className="secondary" title={`Ürünlerde boş kalan alanlar için ${platformLabel}’a gönderilecek sabit değerler`} onClick={() => setExtraPanel('defaults')}>Platform varsayılanları <span className="cm-count">{attributeDefaultsCount}</span></button>}
+      <button type="button" className={`secondary${mappingConflictCount ? ' cm-has-conflicts' : ''}`} title={`Aynı panel değeri birden fazla ${platformLabel} değerine bağlanmış eşlemeler`} onClick={() => setExtraPanel('conflicts')}>Gözden geçirilecek <span className="cm-count">{mappingConflictCount}</span></button>
       {platformCode === 'TRENDYOL' && optionCount > 0 && <button type="button" className="secondary cm-quiet" title="Trendyol’daki ürünleri salt-okunur okuyarak ürün seçeneklerini günceller; Trendyol’a yazma yapmaz." disabled={productSync.isPending} onClick={() => productSync.mutate()}>{productSync.isPending ? 'Ürünler eşitleniyor…' : 'Ürün seçeneklerini eşitle'}</button>}
       <button type="button" className="secondary cm-quiet" title={`Bu kategorinin ${platformLabel} alan listesini salt-okunur olarak yeniden okur.`} disabled={sync.isPending} onClick={() => sync.mutate()}><UiIcon name="refresh" />{sync.isPending ? 'Yenileniyor…' : 'Alanları yenile'}</button>
       </div>}
@@ -2849,10 +2856,12 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
       </div>
       <div className="cm-legend" aria-label="Durum simgeleri"><span><MappingStateGlyph state="done" /> Tamam</span><span><MappingStateGlyph state="partial" /> Değerleri eksik</span><span><MappingStateGlyph state="none" /> Eşlenmedi</span></div>
     </>}
-    <div className="mapping-workspace-panels cm-extra-panels">
-      {(platformCode === 'TRENDYOL' || platformCode === 'HEPSIBURADA') && categoryScope && references.data && <AttributeDefaultsPanel connectionId={connectionId} categoryScope={categoryScope} platformLabel={platformLabel} remoteAttributes={references.data.items} onNotice={onNotice} />}
-      {connectionId && <MappingConflictsPanel connectionId={connectionId} platformLabel={platformLabel} onNotice={onNotice} />}
-    </div>
+    <Modal open={extraPanel === 'defaults'} title="Platform varsayılanları" description={`Ürünlerde boş kalan alanlar için ${platformLabel}’a gönderilecek sabit değerler.`} onClose={() => setExtraPanel('')} className="cm-extra-modal">
+      {categoryScope && references.data && <AttributeDefaultsPanel connectionId={connectionId} categoryScope={categoryScope} platformLabel={platformLabel} remoteAttributes={references.data.items} onNotice={onNotice} expanded />}
+    </Modal>
+    <Modal open={extraPanel === 'conflicts'} title="Gözden geçirilecek eşlemeler" description={`Aynı panel değeri birden fazla ${platformLabel} değerine bağlanmış eşlemeler.`} onClose={() => setExtraPanel('')} className="cm-extra-modal">
+      {mappingConflictCount ? <MappingConflictsPanel connectionId={connectionId} platformLabel={platformLabel} onNotice={onNotice} expanded /> : <p className="cm-empty">Gözden geçirilecek eşleme yok.</p>}
+    </Modal>
   </article>
 }
 

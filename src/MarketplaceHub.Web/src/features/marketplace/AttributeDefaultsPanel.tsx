@@ -16,7 +16,8 @@ export function defaultValueLabel(item: AttributeDefault) {
 // Connection-wide fixed values (e.g. Menşei = TR, Yaş Grubu = Yetişkin) sent whenever a product
 // has no value for that attribute. Shown in the category attribute workspace so the value can be
 // picked from this category's marketplace list.
-export function AttributeDefaultsPanel({ connectionId, categoryScope, platformLabel, remoteAttributes, onNotice }: {
+export function AttributeDefaultsPanel({ connectionId, categoryScope, platformLabel, remoteAttributes, onNotice, expanded = false }: {
+  expanded?: boolean
   connectionId: string
   categoryScope: string
   platformLabel: string
@@ -86,7 +87,7 @@ export function AttributeDefaultsPanel({ connectionId, categoryScope, platformLa
   const canSave = Boolean(selected) && (freeText ? customValue.trim().length > 0 : Boolean(valueId))
   const requiredCandidates = candidates.filter(item => item.isRequired === true)
   const otherCandidates = candidates.filter(item => item.isRequired !== true)
-  return <details className="attribute-defaults-panel">
+  return <details className="attribute-defaults-panel" open={expanded || undefined}>
     <summary>
       <span className="panel-summary-title">Platform varsayılanları</span>
       <b className="panel-summary-count" aria-label={`${existing.length} varsayılan`}>{existing.length}</b>

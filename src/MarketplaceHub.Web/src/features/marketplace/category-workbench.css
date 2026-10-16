@@ -132,3 +132,17 @@
 .panel.mapping-step.cm-card .cm-foot > span:first-child { color: var(--rv-color-muted); }
 .panel.mapping-step.cm-card button.cm-toggle.is-on { color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border-color: var(--rv-color-primary); }
 .panel.mapping-step.cm-card .mapping-table-status { display: none; }
+
+/* The global button rule (.app-shell.stitch-shell main :where(button…)) outranks plain class rules, so the list
+   rows restate their flat shape here: square, 38px, no frame. */
+.app-shell .panel.mapping-step.cm-card .cm-item { height: 38px; min-height: 38px; padding: 0 20px 0 18px; color: var(--rv-color-ink); background: transparent; border: 0; border-left: 2px solid transparent; border-radius: 0; box-shadow: none; font-weight: 400; }
+.app-shell .panel.mapping-step.cm-card .cm-item:hover { background: var(--rv-color-surface-raised); }
+.app-shell .panel.mapping-step.cm-card .cm-item.is-selected { background: var(--rv-color-primary-soft); border-left-color: var(--rv-color-primary); }
+.app-shell .panel.mapping-step.cm-card .cm-actions > button, .app-shell .panel.mapping-step.cm-card .cm-vtools-actions > button, .app-shell .panel.mapping-step.cm-card .cm-foot > button { min-height: 34px; height: 34px; padding: 0 12px; border-radius: 7px; }
+.app-shell .panel.mapping-step.cm-card .cm-select-row > button { min-height: 36px; height: 36px; padding: 0 12px; }
+.panel.mapping-step.cm-card .cm-count { display: inline-grid; min-width: 20px; height: 18px; margin-left: 6px; place-items: center; padding: 0 5px; color: var(--rv-color-muted); background: var(--rv-color-surface-soft); border-radius: 5px; font-size: 11px; font-weight: 600; }
+.panel.mapping-step.cm-card .cm-has-conflicts .cm-count { color: var(--rv-color-warning); background: color-mix(in srgb, var(--rv-color-warning) 14%, transparent); }
+.cm-extra-modal { width: min(760px, calc(100vw - 32px)); }
+.cm-extra-modal :is(.attribute-defaults-panel, .mapping-conflicts-panel) { margin: 0; padding: 0; background: transparent; border: 0; }
+.cm-extra-modal :is(.attribute-defaults-panel, .mapping-conflicts-panel) > summary { display: none; }
+.cm-extra-modal .cm-empty { margin: 0; padding: 24px 0; color: var(--rv-color-muted); text-align: center; }
