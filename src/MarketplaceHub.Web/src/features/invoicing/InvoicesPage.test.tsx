@@ -144,7 +144,7 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     const refresh = container.querySelector<HTMLButtonElement>('.invoice-detail-platform-refresh')
     expect(refresh?.textContent).toBe('Platformdan Bilgileri Güncelle')
     expect(refresh?.querySelector('.ui-icon')).toBeNull()
-    expect(refresh?.closest('.invoice-detail-header')).not.toBeNull()
+    expect(refresh?.closest('.invoice-detail-footer')).not.toBeNull()
   })
 
   it('shows every invoice operation and locks actions that are unavailable for the Trendyol order', () => {

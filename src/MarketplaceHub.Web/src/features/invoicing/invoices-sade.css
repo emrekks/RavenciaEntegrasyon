@@ -184,3 +184,61 @@ body .invoice-reference-actions-popover > button:disabled { opacity: .45; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-pager-jump input { width: 64px; height: 32px; min-height: 32px; padding: 0 8px; text-align: center; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; -moz-appearance: textfield; }
 .reference-invoices-page .invoice-pager-jump input::-webkit-inner-spin-button, .reference-invoices-page .invoice-pager-jump input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-pager-jump button { height: 32px; min-height: 32px; padding: 0 12px; font-size: 13px; border-radius: 7px; }
+
+/* Filter card: the tab strip spans the card; the reset stays in place, quiet, disabled while nothing is filtered */
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-tabs { display: flex; width: auto; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filter-reset:disabled { opacity: .45; cursor: default; background: none; }
+
+/* Detail popup as in the proposal */
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-modal { width: min(880px, calc(100vw - 32px)); }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-header { align-items: flex-start; padding: 18px 20px 16px 24px; border-bottom: 1px solid var(--rv-color-border); }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-header h2 { display: flex; align-items: center; gap: 8px; font-size: 18px; }
+.reference-invoices-page .invoice-detail-title-logo { width: 28px; height: 28px; border-radius: 6px; object-fit: contain; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-header p:not(.eyebrow) { margin-top: 2px; color: var(--rv-color-muted); font-size: 13px; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-body { display: grid; grid-auto-rows: max-content; gap: 16px; padding: 20px 24px; background: none; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; padding: 0; overflow: hidden; background: none; border: 1px solid var(--rv-color-border); border-radius: 10px; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary > div { display: grid; gap: 4px; align-content: start; justify-items: start; min-width: 0; margin: 0; padding: 12px 14px; background: none; border: 0; border-left: 1px solid var(--rv-color-border); border-radius: 0; box-shadow: none; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary > div:first-child { border-left: 0; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary strong { font-size: 14px; font-weight: 600; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary :is(small:not(:first-child), code) { padding: 0; color: var(--rv-color-muted); background: none; font-family: inherit; font-size: 12px; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary .cargo-provider-icon { width: 112px; height: 28px; object-fit: contain; object-position: left center; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-section { display: grid; gap: 12px; margin: 0; padding: 0; background: none; border: 0; border-radius: 0; box-shadow: none; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0; padding: 0; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-section-heading h3 { margin: 0; font-size: 14px; font-weight: 600; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-section-heading > span,
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-muted { color: var(--rv-color-muted); font-size: 13px; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary-facts { display: grid; grid-template-columns: 1fr; gap: 0; overflow: hidden; border: 1px solid var(--rv-color-border); border-radius: 10px; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary-facts > div { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-height: 40px; margin: 0; padding: 8px 12px; background: none; border: 0; border-top: 1px solid var(--rv-color-border); border-radius: 0; box-shadow: none; font-size: 13px; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary-facts > div:first-child { border-top: 0; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary-facts > div > small:first-child { flex: 0 0 168px; color: var(--rv-color-muted); font-size: 13px; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary-facts > div > small:not(:first-child) { color: var(--rv-color-muted); font-size: 12px; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary-facts strong { font-size: 13px; font-weight: 600; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-document-link { display: inline-flex; align-items: center; gap: 6px; color: var(--inv-violet); font-size: 13px; font-weight: 500; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-lines { display: grid; gap: 0; overflow: hidden; border: 1px solid var(--rv-color-border); border-radius: 10px; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-line { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: 2px 12px; margin: 0; padding: 10px 12px; background: none; border: 0; border-top: 1px solid var(--rv-color-border); border-radius: 0; box-shadow: none; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-line:first-child { border-top: 0; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-line > :first-child { grid-row: 1 / span 2; width: 44px; height: 44px; overflow: hidden; border-radius: 7px; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-line > :first-child img { width: 100%; height: 100%; object-fit: cover; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-line > div { display: contents; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-line > div > strong { grid-column: 2; font-size: 13px; font-weight: 500; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-line > div > small { grid-column: 2; color: var(--rv-color-muted); font-size: 12px; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-line > div > small:last-child { grid-column: 3; grid-row: 1 / span 2; align-self: center; white-space: nowrap; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-addresses { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 0; padding: 0; background: none; border: 0; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-addresses > article { display: grid; gap: 2px; align-content: start; margin: 0; padding: 12px 14px; background: none; border: 1px solid var(--rv-color-border); border-radius: 10px; box-shadow: none; font-size: 13px; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-addresses h3 { margin: 0 0 2px; font-size: 13px; font-weight: 600; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-addresses span { color: var(--rv-color-muted); }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-addresses span strong { color: var(--rv-color-muted); font-weight: 400; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 14px 24px 16px; }
+.reference-invoices-page .invoice-detail-footer-gap { flex: 1; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-footer :is(button, .button-link) { display: inline-flex; align-items: center; gap: 6px; height: 34px; min-height: 34px; padding: 0 12px; border-radius: 7px; box-shadow: none; font-size: 13px; font-weight: 500 !important; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-footer button.secondary { color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-footer .invoice-detail-platform-refresh { color: var(--rv-color-muted); background: none; border-color: transparent; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-footer .invoice-detail-platform-refresh:hover:not(:disabled) { color: var(--rv-color-ink); background: var(--rv-color-surface-soft); }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-footer .invoice-detail-open-record { color: #fff; background: var(--rv-color-primary); border: 1px solid var(--rv-color-primary); text-decoration: none; }
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary { grid-template-columns: 1fr 1fr; }
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary > div:nth-child(3) { border-left: 0; }
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary > div:nth-child(n + 3) { border-top: 1px solid var(--rv-color-border); }
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-addresses { grid-template-columns: 1fr; }
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary-facts > div > small:first-child { flex-basis: 100%; }
+}
