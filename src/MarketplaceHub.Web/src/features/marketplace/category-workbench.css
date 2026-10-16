@@ -148,3 +148,14 @@
 .cm-extra-modal .cm-empty { margin: 0; padding: 24px 0; color: var(--rv-color-muted); text-align: center; }
 /* Field names in regular weight, as in the design; the global button rule sets 500 with !important. */
 .app-shell .panel.mapping-step.cm-card .cm-item { font-weight: 400 !important; }
+
+/* Modal title with the same room as the design's page head. */
+.workspace-modal.mapping-advanced-modal > header { min-height: 0; padding: 20px 24px; align-items: flex-start; }
+.workspace-modal.mapping-advanced-modal > header .eyebrow { display: none; }
+.workspace-modal.mapping-advanced-modal > header h2 { margin: 0; font-size: 18px; font-weight: 600; line-height: 1.35; }
+.workspace-modal.mapping-advanced-modal > header p { margin: 2px 0 0; color: var(--rv-color-muted); font-size: 14px; line-height: 1.5; }
+
+/* Bulk actions on their own line under the category row; the quiet data tools sit at its right end. */
+.panel.mapping-step.cm-card .cm-actions { flex: 1 1 100%; }
+.panel.mapping-step.cm-card .cm-actions > .cm-quiet { margin-left: 0; }
+.panel.mapping-step.cm-card .cm-actions > .cm-quiet:first-of-type, .panel.mapping-step.cm-card .cm-actions > button:not(.cm-quiet) + .cm-quiet { margin-left: auto; }
