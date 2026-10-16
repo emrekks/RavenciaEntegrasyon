@@ -242,3 +242,4 @@
   .app-shell.stitch-shell main .sp-sade .sync-policy-modal-telemetry dl { grid-template-columns: minmax(0, 1fr); }
   .app-shell.stitch-shell main .sp-sade .sync-policy-modal-telemetry dl > div { border-right: 0 !important; border-bottom: 1px solid var(--rv-color-border) !important; }
 }
+.app-shell.stitch-shell main .cs-workspace .cs-pane .integration-write-toggle > :is(input[type="checkbox"], .cs-switch-state) { align-self: center; }
