@@ -544,7 +544,6 @@
 .app-shell.stitch-shell main .mapping-transfer-modal .mapping-transfer-all-option { border-bottom: 1px solid var(--rv-color-border-strong); }
 
 /* Brand mapping: quiet note, flat pickers with the link mark between them, title-row refresh. */
-.app-shell.stitch-shell main section.mapping-page > .mapping-brand-platform-note { margin: 0; padding: 10px 14px; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 10px; font-size: 13px; line-height: 1.5; }
 .app-shell.stitch-shell main section.mapping-page .brand-library-panel { display: grid; gap: 12px; margin: 0; padding: 0; background: none; border: 0; box-shadow: none; }
 .app-shell.stitch-shell main section.mapping-page .brand-library-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .app-shell.stitch-shell main section.mapping-page .brand-library-heading > div { display: grid; gap: 2px; }
