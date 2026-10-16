@@ -58,3 +58,9 @@
 .app-shell.stitch-shell main .integrations-reference-page .reference-integration-footer .reference-action { height: var(--sade-control); min-height: var(--sade-control); gap: 6px; padding: 0 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 14px; }
 .app-shell.stitch-shell main .integrations-reference-page .reference-integration-footer .reference-action:hover:not(:disabled) { color: var(--rv-color-ink); background: var(--rv-color-surface-soft); }
 .app-shell.stitch-shell main .integrations-reference-page .reference-integration-footer .reference-action .ui-icon { width: 15px; height: 15px; color: var(--rv-color-muted); }
+
+/* The logo spans the name and the status tag: from the top of the name to the bottom of the tag. */
+.app-shell.stitch-shell main .integrations-reference-page .reference-integration-brand { align-items: stretch; }
+.app-shell.stitch-shell main .integrations-reference-page .reference-integration-brand > div { display: flex; flex-direction: column; justify-content: space-between; }
+.app-shell.stitch-shell main .integrations-reference-page .reference-integration-brand h2 { line-height: 20px; }
+.app-shell.stitch-shell main .integrations-reference-page .reference-provider-logo { box-sizing: border-box; flex: none; width: 46px; min-width: 46px; height: 46px; object-fit: contain; }
