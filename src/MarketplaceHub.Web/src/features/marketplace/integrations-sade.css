@@ -112,3 +112,41 @@
 .app-shell.stitch-shell main .integrations-reference-page .reference-connection-state { height: 22px; }
 /* The lighter-text :is() list above carries the specificity of its tab selector, so the active tag restates its ink colour with one more class. */
 .app-shell.stitch-shell main .integrations-reference-page .reference-integration-brand .reference-connection-state.connected { color: #ececf0; }
+
+/* Filter popover: quiet group titles, 34px rows, radio marks, soft violet selection like the section lists. */
+.app-shell.stitch-shell main .integrations-reference-page .integration-filter-menu { width: 260px; min-width: 260px; gap: 2px; padding: 8px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; box-shadow: 0 16px 40px rgb(0 0 0 / 45%); }
+.app-shell.stitch-shell main .integrations-reference-page .integration-filter-menu strong { margin: 6px 8px 4px; color: var(--rv-color-muted); font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; }
+.app-shell.stitch-shell main .integrations-reference-page .integration-filter-menu .integration-filter-menu-group { margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--rv-color-border); }
+.app-shell.stitch-shell main .integrations-reference-page .integration-filter-menu button { display: flex; align-items: center; gap: 10px; height: 34px; min-height: 34px; padding: 0 10px; color: var(--rv-color-ink); background: none; border: 0; border-radius: 7px; box-shadow: none; font-size: 14px; font-weight: 400 !important; text-align: left; text-transform: none; }
+.app-shell.stitch-shell main .integrations-reference-page .integration-filter-menu button:hover { background: var(--rv-color-surface-soft); }
+.app-shell.stitch-shell main .integrations-reference-page .integration-filter-menu button.active { color: var(--rv-color-ink); background: var(--rv-color-primary-soft); }
+.app-shell.stitch-shell main .integrations-reference-page .integration-filter-menu button i { box-sizing: border-box; flex: 0 0 14px; width: 14px; height: 14px; background: none; border: 1.5px solid var(--rv-color-border-strong); border-radius: 50%; }
+.app-shell.stitch-shell main .integrations-reference-page .integration-filter-menu button.active i { border: 4px solid color-mix(in srgb, var(--rv-color-primary) 55%, #fff); }
+
+/* New connection popup: head, platform tiles, two-column fields, footer actions. */
+.integrations-reference-page .integration-modal-backdrop { background: rgb(5 6 12 / 55%); backdrop-filter: none; }
+.app-shell.stitch-shell main .integrations-reference-page .integration-modal.im-sade { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 0; width: min(640px, 100%); padding: 0; overflow: hidden; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 14px; box-shadow: 0 24px 64px rgb(0 0 0 / 50%); }
+.app-shell.stitch-shell main .im-sade .integration-modal-header { align-items: flex-start; padding: 20px 24px 16px; border-bottom: 1px solid var(--rv-color-border); }
+.app-shell.stitch-shell main .im-sade .integration-modal-header h2 { margin: 0; font-size: 18px; font-weight: 600; }
+.app-shell.stitch-shell main .im-sade .integration-modal-header p { margin: 4px 0 0; color: var(--rv-color-muted); font-size: 13px; }
+.app-shell.stitch-shell main .im-sade .modal-close { display: grid; width: 32px; min-width: 32px; height: 32px; min-height: 32px; place-items: center; padding: 0; color: var(--rv-color-muted); background: none; border: 0; border-radius: 7px; box-shadow: none; }
+.app-shell.stitch-shell main .im-sade .modal-close:hover { color: var(--rv-color-ink); background: var(--rv-color-surface-soft); }
+.app-shell.stitch-shell main .im-sade .im-platforms { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 20px 24px 0; }
+.app-shell.stitch-shell main .im-sade .im-platforms > button { display: flex; align-items: center; gap: 10px; height: 48px; min-height: 48px; padding: 0 10px; color: var(--rv-color-ink); text-align: left; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 10px; box-shadow: none; font-size: 14px; font-weight: 500 !important; text-transform: none; }
+.app-shell.stitch-shell main .im-sade .im-platforms > button:hover { background: var(--rv-color-surface-soft); }
+.app-shell.stitch-shell main .im-sade .im-platforms > button.is-on { background: var(--rv-color-primary-soft); border-color: color-mix(in srgb, var(--rv-color-primary) 60%, transparent); }
+.app-shell.stitch-shell main .im-sade .im-platforms img { box-sizing: border-box; flex: none; width: 30px; height: 30px; object-fit: contain; border-radius: 6px; }
+.app-shell.stitch-shell main .im-sade .im-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; gap: 14px 12px; min-height: 0; padding: 18px 24px 22px; overflow-y: auto; }
+.app-shell.stitch-shell main .im-sade .im-fields > label { display: grid; align-content: start; gap: 6px; color: var(--rv-color-muted); font-size: 12px; font-weight: 500; }
+.app-shell.stitch-shell main .im-sade .im-fields > label:has(small) { grid-column: 1 / -1; }
+.app-shell.stitch-shell main .im-sade .im-fields :is(input, select) { box-sizing: border-box; height: 36px; min-height: 36px; padding: 0 12px; color: var(--rv-color-ink); background-color: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 14px; font-weight: 400; }
+.app-shell.stitch-shell main .im-sade .im-fields input[readonly] { color: var(--rv-color-muted); background-color: var(--rv-color-surface-raised); }
+.app-shell.stitch-shell main .im-sade .im-fields :is(input, select):focus { border-color: var(--rv-color-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--rv-color-primary) 18%, transparent); outline: none; }
+.app-shell.stitch-shell main .im-sade .im-fields small { color: var(--rv-color-subtle); font-size: 12px; font-weight: 400; line-height: 1.45; }
+.app-shell.stitch-shell main .im-sade .im-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 24px; border-top: 1px solid var(--rv-color-border); }
+.app-shell.stitch-shell main .im-sade .im-foot > button { width: auto; height: 34px; min-height: 34px; padding: 0 14px; border-radius: 7px; font-size: 14px; text-transform: none; }
+@media (max-width: 640px) {
+  .app-shell.stitch-shell main .im-sade .im-platforms { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 16px 16px 0; }
+  .app-shell.stitch-shell main .im-sade .im-fields { grid-template-columns: minmax(0, 1fr); padding: 16px; }
+  .app-shell.stitch-shell main .im-sade :is(.integration-modal-header, .im-foot) { padding-inline: 16px; }
+}
