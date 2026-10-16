@@ -314,3 +314,19 @@
 .app-shell.stitch-shell main .cm-webcolor .web-color-assignment-groups p span { font-size: 13px; font-weight: 500; }
 .app-shell.stitch-shell main .cm-webcolor .web-color-assignment-groups p small { color: var(--rv-color-muted); font-size: 12px; }
 .panel.mapping-step.cm-card .cm-context > .cm-context-link { align-self: flex-end; width: 28px; height: 36px; margin-inline: -16px; }
+
+/* Web Color editor fits the popup: the colour grid scrolls like the value table, saved groups open from a button. */
+.cm-detail .cm-webcolor { overflow: visible; }
+.app-shell.stitch-shell main .cm-webcolor .web-color-panel-value-grid { max-height: 380px; padding-right: 4px; overflow-y: auto; }
+.cm-webcolor .cm-webcolor-actions { display: inline-flex; flex: none; gap: 8px; }
+.app-shell.stitch-shell main .cm-webcolor .web-color-assignment-groups { gap: 0; padding: 0; overflow: hidden; }
+.app-shell.stitch-shell main .cm-webcolor .web-color-assignment-groups > div:last-child { max-height: 440px; overflow-y: auto; }
+.cm-webcolor .cm-webcolor-groups-head { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 12px; height: 38px; align-items: center; padding: 0 16px; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border-bottom: 1px solid var(--rv-color-border); font-size: 13px; font-weight: 500; }
+.app-shell.stitch-shell main .cm-webcolor .web-color-assignment-groups p { display: grid; grid-template-columns: 180px minmax(0, 1fr); align-items: center; gap: 12px; min-height: 40px; margin: 0; padding: 6px 16px; background: none; border: 0; border-top: 1px solid var(--rv-color-border); border-radius: 0; box-shadow: none; }
+.app-shell.stitch-shell main .cm-webcolor .web-color-assignment-groups p:first-child { border-top: 0; }
+.app-shell.stitch-shell main .cm-webcolor .web-color-assignment-groups p span { font-size: 14px; font-weight: 500; }
+.app-shell.stitch-shell main .cm-webcolor .web-color-assignment-groups p small { color: var(--rv-color-muted); font-size: 13px; }
+
+/* Saved mappings: actions column centred. */
+.app-shell.stitch-shell main .mapping-saved-card .mapping-saved-table :is(th, td):last-child { text-align: center; }
+.app-shell.stitch-shell main .mapping-saved-card .mapping-row-actions { display: flex; justify-content: center; }

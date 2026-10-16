@@ -247,3 +247,8 @@
 /* Write status tag: only Açık/Kapalı, centred on the heading block. */
 .app-shell.stitch-shell main .cs-workspace .cs-pane .integration-detail-write-heading { align-items: center; }
 .app-shell.stitch-shell main .cs-workspace .cs-pane .integration-detail-write-status { align-self: center; height: 22px; min-height: 22px; }
+
+/* Section list starts closer to the head; selected filter chips use the shared soft violet. */
+.cs-workspace .cs-nav { padding-top: 6px; }
+.app-shell.stitch-shell main .cs-workspace .cs-chip.is-on { color: var(--rv-color-ink); background: var(--rv-color-primary-soft); border-color: color-mix(in srgb, var(--rv-color-primary) 55%, transparent); }
+.app-shell.stitch-shell main .cs-workspace .cs-chip.is-on b { color: color-mix(in srgb, var(--rv-color-primary) 55%, #fff); }
