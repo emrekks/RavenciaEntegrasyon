@@ -106,3 +106,12 @@
   .app-shell.stitch-shell main .jobs-reference-page :is(.job-detail-facts, .jobs-reference-order-facts) { grid-template-columns: minmax(0, 1fr); }
   .app-shell.stitch-shell main .jobs-reference-page :is(.job-detail-facts, .jobs-reference-order-facts) > p { padding: 0 !important; border-left: 0 !important; border-top: 1px solid var(--rv-color-border) !important; }
 }
+
+/* Status dots keep their tone colour while the label stays ink. */
+.app-shell.stitch-shell main .jobs-reference-page :is(.jobs-reference-status, .jobs-reference-status-summary > span).success i { background: var(--rv-color-success, #34d399); }
+.app-shell.stitch-shell main .jobs-reference-page :is(.jobs-reference-status, .jobs-reference-status-summary > span).running i { background: color-mix(in srgb, var(--rv-color-primary) 55%, #fff); }
+.app-shell.stitch-shell main .jobs-reference-page :is(.jobs-reference-status, .jobs-reference-status-summary > span):is(.waiting, .neutral, .retry) i { background: var(--rv-color-warning); }
+.app-shell.stitch-shell main .jobs-reference-page :is(.jobs-reference-status, .jobs-reference-status-summary > span).error i { background: var(--rv-color-danger); }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-status-summary > span.cancelled i { background: var(--rv-color-subtle); }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-correlation { max-width: 180px; }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-change-summary > div + div { margin-top: 10px; padding: 10px 0 0; background: none; border: 0; border-top: 1px solid var(--rv-color-border); border-radius: 0; }

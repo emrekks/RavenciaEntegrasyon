@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, type Me } from '../../shared/api'
 import { Pagination, Tabs, UiIcon, type UiIconName } from '../../shared/components'
+import { Busy } from '../../shared/components/AsyncState'
 import { NoticeToast } from '../../shared/components/NoticeToast'
 import { appendNotification } from '../../shared/notifications'
 import { statusLabel } from '../../shared/status-labels'
@@ -355,7 +356,7 @@ function JobDetailDrawer({ selected, detail, selectedIsRunning, elevated, retrya
       </div>
       <button type="button" className="jobs-reference-drawer-close" aria-label="Detay panelini kapat" onClick={onClose}><UiIcon name="close" /></button>
     </div>
-    {detail.isLoading ? <p className="jobs-reference-state">Yükleniyor…</p> : detail.isError || !detail.data ? <div role="alert" className="jobs-reference-state jobs-reference-state-error">İşlem ayrıntısı alınamadı.</div> : (() => {
+    {detail.isLoading ? <div className="jobs-reference-drawer-body"><Busy text="İşlem ayrıntısı yükleniyor…" /></div> : detail.isError || !detail.data ? <div role="alert" className="jobs-reference-state jobs-reference-state-error">İşlem ayrıntısı alınamadı.</div> : (() => {
       const job = detail.data.job
       const change = detail.data.change ?? fallbackJobChange(job)
       const hasError = job.status !== 'SUCCEEDED' && Boolean(job.lastErrorCode || job.lastErrorSummary)
@@ -542,7 +543,7 @@ export function JobsPage({ me }: { me: Me }) {
           <button type="button" className="jobs-reference-refresh" title="Yenile" aria-label="İşlemleri yenile" onClick={refreshJobs}><JobsIcon name="refresh" /></button>
         </div>
       </div>
-      {list.isLoading ? <p className="jobs-reference-state">İşlemler yükleniyor…</p> : list.isError ? <div role="alert" className="jobs-reference-state jobs-reference-state-error">İşlem listesi alınamadı.</div> : <>
+      {list.isLoading ? <Busy text="İşlemler yükleniyor…" /> : list.isError ? <div role="alert" className="jobs-reference-state jobs-reference-state-error">İşlem listesi alınamadı.</div> : <>
         <div className="jobs-reference-table-scroll"><table className="jobs-reference-table"><thead><tr><th>İşlem Türü</th><th>Durum</th><th>Deneme</th><th>Zaman</th><th>Correlation ID</th></tr></thead><tbody>
           {pageJobs.map(job => {
             const presentation = jobPresentation(job.jobType)
