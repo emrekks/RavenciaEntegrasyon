@@ -263,3 +263,19 @@ body .invoice-reference-actions-popover > button:disabled { opacity: .45; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-row > :not(.invoice-reference-order) > * { justify-self: center !important; margin-left: auto !important; margin-right: auto !important; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-row .cargo-provider-display { display: flex; justify-content: center; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-products .cargo-provider-icon { object-position: center; }
+${src}/features/invoicing/invoices-sade.css`, `
+/* Detail head: logo tile, order number with copy, one meta line; status strip one row of four */
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-header { align-items: center; padding: 16px 20px 16px 24px; }
+.reference-invoices-page .invoice-detail-identity { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-identity .invoice-detail-title-logo { flex: none; width: 44px; height: 44px; border-radius: 10px; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-identity h2 { margin: 0; font-size: 20px; font-weight: 600; line-height: 1.3; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-identity h2 .invoice-order-number { display: inline-flex; align-items: center; gap: 6px; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-identity h2 .invoice-order-number strong { color: var(--rv-color-ink); font-size: 20px; font-weight: 600; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin: 4px 0 0; color: var(--rv-color-muted); font-size: 13px; }
+.reference-invoices-page .invoice-detail-meta > span { display: inline-flex; align-items: center; gap: 6px; }
+.reference-invoices-page .invoice-detail-meta > span:nth-child(2) { color: var(--rv-color-ink); font-weight: 500; }
+.reference-invoices-page .invoice-detail-meta .ui-icon { color: var(--rv-color-subtle); }
+.reference-invoices-page .invoice-detail-meta > span:first-child { padding: 0 8px; height: 22px; border: 1px solid var(--rv-color-border-strong); border-radius: 5px; font-size: 12px; font-weight: 500; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary > div:nth-child(n) { border-top: 0; border-left: 1px solid var(--rv-color-border); }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary > div:first-child { border-left: 0; }
