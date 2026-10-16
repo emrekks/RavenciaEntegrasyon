@@ -518,3 +518,9 @@
 .app-shell.stitch-shell main section.mapping-page > .mapping-view-tabs { box-sizing: border-box; justify-self: start; height: 36px; min-height: 36px; padding: 2px; gap: 2px; align-items: center; }
 .app-shell.stitch-shell main section.mapping-page > .mapping-view-tabs > a { display: inline-flex; align-items: center; height: 30px; min-height: 30px; padding: 0 12px; font-size: 13px; }
 .app-shell.stitch-shell main section.mapping-page .category-library-tools { grid-template-columns: minmax(0, 1fr) 88px auto; }
+/* Link mark sits on the picker row, centred between the two pickers; both pickers on the same line. */
+.app-shell.stitch-shell main section.mapping-page .mapping-reference-grid { align-items: end; }
+.app-shell.stitch-shell main section.mapping-page .mapping-reference-grid > .mapping-link-rail { grid-row: 1; grid-column: 2; align-self: end; justify-self: center; height: 36px; margin: 0; }
+.app-shell.stitch-shell main section.mapping-page .mapping-reference-target { display: grid; gap: 6px; align-content: end; }
+.app-shell.stitch-shell main section.mapping-page .mapping-reference-target > label { margin: 0; line-height: 18px; }
+.app-shell.stitch-shell main section.mapping-page .mapping-reference-local > label { line-height: 18px; }
