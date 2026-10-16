@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Fatura Durumları</title>
+<title>Sipariş ve Fatura Durumları</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -33,7 +33,7 @@
   .pros span::before { content: "+ "; color: var(--ok); }
   .pros span.con::before { content: "− "; color: var(--warn); }
   .table { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); overflow: hidden; }
-  .tr { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1.5fr) minmax(0, .7fr); align-items: center; border-top: 1px solid var(--line); }
+  .tr { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.1fr) minmax(0, 1.2fr) minmax(0, .6fr); align-items: center; border-top: 1px solid var(--line); }
   .tr.th { border-top: 0; height: 44px; background: var(--raised); color: var(--muted); font-size: 12.5px; font-weight: 500; }
   .tr > div { padding: 16px; min-width: 0; }
   .tr.th > div { padding: 0 16px; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
@@ -44,7 +44,7 @@
   .tr.th .money { justify-content: flex-end; }
   .ico { width: 16px; height: 16px; flex: none; display: block; }
   .num { font-variant-numeric: tabular-nums; }
-  .warn { --tone: var(--warn); } .info { --tone: var(--info); } .ok { --tone: var(--ok); } .bad { --tone: var(--bad); } .mut { --tone: var(--subtle); }
+  .warn { --tone: var(--warn); } .info { --tone: var(--info); } .ok { --tone: var(--ok); } .bad { --tone: var(--bad); } .mut { --tone: var(--subtle); } .vio { --tone: var(--violet); }
 
   /* F — document glyph that fills up */
   .vF .doc { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 10px; align-items: center; }
@@ -87,19 +87,16 @@
   .legend { display: flex; flex-wrap: wrap; gap: 8px 18px; padding: 12px 14px; color: var(--muted); font-size: 12.5px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
   .legend span { display: inline-flex; align-items: center; gap: 7px; }
   .legend i { width: 8px; height: 8px; border-radius: 50%; background: var(--tone); }
-  @media (max-width: 760px) { .table { overflow-x: auto; } .tr { min-width: 620px; } }
+  @media (max-width: 760px) { .table { overflow-x: auto; } .tr { min-width: 760px; } }
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="intro">
-    <h1>Fatura Durumu Hücresi · 5 Öneri Daha</h1>
-    <p>Bu sefer yalnızca fatura durumuna odaklandım. Sistemdeki altı fatura durumunun hepsi her öneride bir satır olarak gösteriliyor; böylece hangi durumun nasıl görüneceği yan yana karşılaştırılabilir.</p>
+    <h1>Sipariş ve Fatura Durumu · 5 Öneri Daha</h1>
+    <p>Her öneri hem sipariş hem fatura durumunu gösteriyor. Altı satırda farklı sipariş durumları (Yeni, Hazırlanıyor, Kargoda, Teslim Edildi, Teslim Edilemedi, İptal) ve sistemdeki altı fatura durumunun hepsi var; her durumun nasıl görüneceği yan yana karşılaştırılabilir.</p>
   </div>
-  <div class="legend">
-    <span class="warn"><i></i>Fatura Bekliyor</span><span class="info"><i></i>Fatura İletiliyor</span><span class="ok"><i></i>Faturası Mevcut</span><span class="bad"><i></i>Fatura İletilemedi</span><span class="bad"><i></i>Fatura Oluşturulamadı</span><span class="mut"><i></i>Fatura İptal</span>
-  </div>
-  <div class="tabs" role="group" aria-label="Öneri seç">
+    <div class="tabs" role="group" aria-label="Öneri seç">
     <button type="button" data-show="all" aria-pressed="true">Hepsi</button>
     <button type="button" data-show="F" aria-pressed="false">Öneri F</button>
     <button type="button" data-show="G" aria-pressed="false">Öneri G</button>
@@ -111,18 +108,35 @@
 </div>
 <script>
 const I = {
+  cart: '<path d="M2.5 3h2l1.6 7.4a1 1 0 0 0 1 .8h5.6a1 1 0 0 0 1-.8L14.5 6H5.2"/><circle cx="7" cy="13.5" r=".9"/><circle cx="12.5" cy="13.5" r=".9"/>',
+  box: '<path d="M2.5 5.2 8 2.5l5.5 2.7v5.6L8 13.5l-5.5-2.7z"/><path d="M2.5 5.2 8 8l5.5-2.8M8 8v5.5"/>',
+  truck: '<path d="M1.8 4h7.7v7H1.8zM9.5 6.5h2.8l2 2.3V11H9.5"/><circle cx="4.5" cy="11.8" r="1.2"/><circle cx="11.8" cy="11.8" r="1.2"/>',
+  home: '<path d="M2.5 7.5 8 3l5.5 4.5V13h-11z"/><path d="m6 9.6 1.5 1.5 2.7-2.8"/>',
+  ret: '<path d="M5.5 4 2.5 7l3 3"/><path d="M2.5 7h7a4 4 0 0 1 0 8H7"/>',
   clock: '<circle cx="8" cy="8" r="6"/><path d="M8 4.8V8l2.2 1.4"/>',
   send: '<path d="M14 2 7 9M14 2l-4.5 12L7 9 2 6.5z"/>',
   check: '<circle cx="8" cy="8" r="6"/><path d="m5.5 8.2 1.7 1.7 3.4-3.6"/>',
   alert: '<path d="M8 2 14.5 13.5h-13z"/><path d="M8 6.5v3M8 11.6v.1"/>',
   stop: '<circle cx="8" cy="8" r="6"/><path d="M8 5v3.4M8 10.8v.1"/>',
-  x: '<circle cx="8" cy="8" r="6"/><path d="M5.5 8h5"/>',
+  x: '<circle cx="8" cy="8" r="6"/><path d="m5.8 5.8 4.4 4.4M10.2 5.8l-4.4 4.4"/>',
+  minus: '<circle cx="8" cy="8" r="6"/><path d="M5.5 8h5"/>',
   filter: '<path d="M2.5 3.5h11L9.2 8.6v4l-2.4 1.1V8.6z"/>'
 };
 const svg = n => `<svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[n]}</svg>`;
 
-/* Document glyph per state: outline page, inner mark changes */
-const docMark = {
+/* Large glyphs for option F: a parcel family for the order, a page family for the invoice */
+const big = (body, dashed) => `<svg viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
+const parcel = '<path d="M4 9 14 4l10 5v10l-10 5-10-5z"/><path d="M4 9l10 5 10-5M14 14v10"/>';
+const parcelMark = {
+  new: '<path d="M4 9 14 4l10 5v10l-10 5-10-5z" stroke-dasharray="3 2.2"/><path d="M14 11v6M11 14h6"/>',
+  prep: parcel + '<path d="m9 6.5 10 5"/>',
+  ship: parcel + '<path d="M17 19.5h6M21 17.5l2 2-2 2"/>',
+  done: parcel + '<path d="m17.5 18 2 2 3.5-3.6"/>',
+  late: parcel + '<path d="M20 15.5v3M20 21v.1"/>',
+  cancel: '<path d="M4 9 14 4l10 5v10l-10 5-10-5z" opacity=".5"/><path d="m10 11 8 8M18 11l-8 8"/>'
+};
+const page = (k) => `<path d="M7 3.5h9.5L21 8v16.5H7z" ${k === 'wait' ? 'stroke-dasharray="3 2.2"' : ''}/><path d="M16.5 3.5V8H21"/>`;
+const pageMark = {
   wait: '<path d="M10 16h8M10 20h5" stroke-dasharray="2 2.4"/>',
   send: '<path d="M10 18h8M15 15l3 3-3 3"/>',
   ok: '<path d="m10.5 18 2.4 2.4 4.8-5"/>',
@@ -130,50 +144,56 @@ const docMark = {
   build: '<path d="m11 15 6 6M17 15l-6 6"/>',
   cancel: '<path d="M10 18h8"/>'
 };
-const doc = k => `<svg viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3.5h9.5L21 8v16.5H7z" ${k === 'wait' ? 'stroke-dasharray="3 2.2"' : ''}/><path d="M16.5 3.5V8H21"/>${docMark[k]}</svg>`;
 
 const rows = [
-  { no: '#11717855898', who: 'Gülcan Demirkıran Kara', sum: '₺519,75', t: 'Fatura Bekliyor', short: 'Bekliyor', c: 'warn', i: 'clock', k: 'wait', attention: true,
-    d: 'Kesilmedi · 2 saattir', inv: null },
-  { no: '#11717783115', who: 'Ali Can', sum: '₺791,01', t: 'Fatura İletiliyor', short: 'İletiliyor', c: 'info', i: 'send', k: 'send', attention: false,
-    d: 'Trendyol yanıtı bekleniyor', inv: 'RVN2026000412' },
-  { no: '#11717712403', who: 'Merve Aksoy', sum: '₺1.240,00', t: 'Faturası Mevcut', short: 'Mevcut', c: 'ok', i: 'check', k: 'ok', attention: false,
-    d: '16.10.2026 18:05 iletildi', inv: 'RVN2026000398' },
-  { no: '#11717650981', who: 'Kerem Uslu', sum: '₺349,90', t: 'Fatura İletilemedi', short: 'İletilemedi', c: 'bad', i: 'alert', k: 'fail', attention: true,
-    d: 'Pazaryeri dosyayı reddetti', inv: 'RVN2026000371' },
-  { no: '#11717621177', who: 'Burak Er', sum: '₺918,40', t: 'Fatura Oluşturulamadı', short: 'Oluşturulamadı', c: 'bad', i: 'stop', k: 'build', attention: true,
-    d: 'Vergi numarası geçersiz', inv: null },
-  { no: '#11717599214', who: 'Selin Ateş', sum: '₺229,00', t: 'Fatura İptal', short: 'İptal', c: 'mut', i: 'x', k: 'cancel', attention: false,
-    d: 'Sipariş iptal edildi', inv: 'RVN2026000355' }
+  { no: '#11717855898', who: 'Gülcan Demirkıran Kara', sum: '₺519,75',
+    o: { t: 'Yeni', c: 'vio', i: 'cart', g: 'new', d: 'Az önce düştü', inv: '' },
+    f: { t: 'Fatura Bekliyor', c: 'warn', i: 'clock', g: 'wait', d: 'Kesilmedi · 2 saattir', attention: true } },
+  { no: '#11717783115', who: 'Ali Can', sum: '₺791,01',
+    o: { t: 'Hazırlanıyor', c: 'info', i: 'box', g: 'prep', d: 'Kargoya son gün yarın', attention: true, code: '7330038087071122' },
+    f: { t: 'Fatura İletiliyor', c: 'info', i: 'send', g: 'send', d: 'Trendyol yanıtı bekleniyor', inv: 'RVN2026000412' } },
+  { no: '#11717712403', who: 'Merve Aksoy', sum: '₺1.240,00',
+    o: { t: 'Kargoda', c: 'info', i: 'truck', g: 'ship', d: 'Yurtiçi Kargo', code: '7330038086010542' },
+    f: { t: 'Faturası Mevcut', c: 'ok', i: 'check', g: 'ok', d: '16.10.2026 18:05 iletildi', inv: 'RVN2026000398' } },
+  { no: '#11717650981', who: 'Kerem Uslu', sum: '₺349,90',
+    o: { t: 'Teslim Edildi', c: 'ok', i: 'home', g: 'done', d: '17.10.2026 09:30', code: '7330038084538314' },
+    f: { t: 'Fatura İletilemedi', c: 'bad', i: 'alert', g: 'fail', d: 'Pazaryeri dosyayı reddetti', attention: true, inv: 'RVN2026000371' } },
+  { no: '#11717621177', who: 'Burak Er', sum: '₺918,40',
+    o: { t: 'Teslim Edilemedi', c: 'bad', i: 'alert', g: 'late', d: 'Adreste bulunamadı', attention: true, code: '7330038083704741' },
+    f: { t: 'Fatura Oluşturulamadı', c: 'bad', i: 'stop', g: 'build', d: 'Vergi numarası geçersiz', attention: true } },
+  { no: '#11717599214', who: 'Selin Ateş', sum: '₺229,00',
+    o: { t: 'İptal Edildi', c: 'mut', i: 'x', g: 'cancel', d: 'Müşteri iptali' },
+    f: { t: 'Fatura İptal', c: 'mut', i: 'minus', g: 'cancel', d: 'Sipariş iptal edildi', inv: 'RVN2026000355' } }
 ];
 const order = r => `<div class="order"><b>${r.no}</b><small>${r.who}</small></div>`;
 const money = r => `<div class="money">${r.sum}</div>`;
-const head = (t = 'Fatura Durumu') => `<div>Sipariş Bilgileri<span class="f">${svg('filter')}</span></div><div>${t}<span class="f">${svg('filter')}</span></div><div class="money">Tutar</div>`;
+const fh = t => `<div>${t}<span class="f">${svg('filter')}</span></div>`;
+const head = (a = 'Sipariş Durumu', b = 'Fatura Durumu') => fh('Sipariş Bilgileri') + fh(a) + fh(b) + '<div class="money">Tutar</div>';
 
 const options = [
-  { n: 'F', title: 'Dolan Belge Simgesi',
-    text: 'Her durum aynı belge simgesinin farklı bir hâli: bekleyen fatura kesik çizgili boş sayfa, iletilen sayfada ok, mevcut faturada onay, hatalılarda ünlem veya çarpı. Yanında durum adı ve kısa açıklama.',
-    pros: ['Simge tek bir aileden, temaya uyumlu', 'Durum değişince sayfa "dolar"', 'Açıklama satırı nedeni gösterir'],
-    cell: r => `<div class="doc ${r.c}">${doc(r.k)}<div><span>${r.t}</span><small>${r.d}</small></div></div>` },
+  { n: 'F', title: 'Dolan Simgeler',
+    text: 'Sipariş için bir koli, fatura için bir belge simgesi; her durumda simgenin içi değişiyor. Yeni siparişte kesik çizgili koli, kargodakinde ok, teslimde onay. Faturada boş sayfa, gönderim oku, onay veya hata işareti. Yanında durum adı ve kısa açıklama.',
+    pros: ['İki sütun aynı aileden simgeler kullanır', 'Durum değişince simge "dolar"', 'Açıklama satırı nedeni gösterir'],
+    cell: (s, kind) => `<div class="doc ${s.c}">${big(kind === 'o' ? parcelMark[s.g] : page(s.g) + pageMark[s.g])}<div><span>${s.t}</span><small>${s.d}</small></div></div>` },
   { n: 'G', title: 'Renkli Kenar Çizgisi',
-    text: 'Etiket kutusu yerine hücre içinde solda ince renkli bir çizgi; durum adı o renge yakın, altında fatura numarası veya neden. Simge yok, çok sakin bir görünüm.',
-    pros: ['Kutu yok, en sade seçenek', 'Fatura numarası satırda görünür', 'con:Renk dışında ayırt edici bir işaret yok'],
-    cell: r => `<div class="rule ${r.c}"><span>${r.t}</span><small>${r.inv ? `<span class="num" style="display:inline;color:inherit;font-weight:400">${r.inv}</span> · ` : ''}${r.d}</small></div>` },
+    text: 'Etiket kutusu yerine hücre içinde solda ince renkli bir çizgi; durum adı o renge yakın. Altında siparişte kargo takip numarası veya açıklama, faturada fatura numarası veya neden yazar. Simge yok, çok sakin bir görünüm.',
+    pros: ['Kutu yok, en sade seçenek', 'Takip ve fatura numarası satırda görünür', 'con:Renk dışında ayırt edici bir işaret yok'],
+    cell: s => `<div class="rule ${s.c}"><span>${s.t}</span><small>${(s.inv || s.code) ? `<span class="num" style="display:inline;color:inherit;font-weight:400">${s.inv || s.code}</span> · ` : ''}${s.d}</small></div>` },
   { n: 'H', title: 'Sadece Dikkat Gerekene Renk',
-    text: 'İşi bitmiş veya beklemesi normal olan durumlar gri metin olarak kalır; yalnızca kullanıcının bir şey yapması gereken durumlar (bekleyen ve hatalı faturalar) renkli kutuyla öne çıkar. Liste taranırken göz doğrudan sorunlara gider.',
+    text: 'Normal akıştaki durumlar gri metin olarak kalır; yalnızca kullanıcının bir şey yapması gereken durumlar renkli kutuyla öne çıkar: kargo süresi dolmak üzere olan sipariş, teslim edilemeyen paket, bekleyen veya hatalı fatura.',
     pros: ['Sorunlar kendiliğinden ayrışır', 'Tablo sakin kalır', 'con:Başarılı durumlar geri planda kalır'],
-    cell: r => r.attention
-      ? `<div class="row-wrap"><span class="loud ${r.c}">${svg(r.i)}${r.t}</span><small>${r.d}</small></div>`
-      : `<div class="calm ${r.c}">${svg(r.i)}<span>${r.t}</span></div>` },
-  { n: 'I', title: 'Önce Fatura Numarası',
-    text: 'Fatura varsa hücrenin ana içeriği fatura numarasıdır; başında durum renginde bir nokta, altında durum ve tarih. Fatura yoksa numaranın yerinde durumun kendisi yazar. Başlık "Fatura" olarak kısalır.',
-    pros: ['En çok aranan bilgi (fatura no) öne çıkar', 'Kısa başlık, kesilme yok', 'con:Durum metni ikinci plana düşer'],
-    headTitle: 'Fatura',
-    cell: r => `<div class="inv ${r.c}"><div class="top"><i class="dot"></i>${r.inv ? `<b class="num">${r.inv}</b>` : `<span class="none">${r.t}</span>`}</div><small>${r.inv ? `${r.short} · ${r.d}` : r.d}</small></div>` },
+    cell: s => s.attention
+      ? `<div class="row-wrap"><span class="loud ${s.c}">${svg(s.i)}${s.t}</span><small>${s.d}</small></div>`
+      : `<div class="calm ${s.c}">${svg(s.i)}<span>${s.t}</span></div>` },
+  { n: 'I', title: 'Önce Numara',
+    text: 'Hücrenin ana içeriği en çok aranan numara olur: siparişte kargo takip numarası, faturada fatura numarası. Başında durum renginde bir nokta, altında durum adı. Numara yoksa yerinde durumun kendisi yazar. Başlıklar "Kargo / Sipariş" ve "Fatura" olarak kısalır.',
+    pros: ['Aranan numaralar öne çıkar', 'Kısa başlık, kesilme yok', 'con:Durum metni ikinci plana düşer'],
+    heads: ['Sipariş', 'Fatura'],
+    cell: s => { const num = s.inv || s.code; return `<div class="inv ${s.c}"><div class="top"><i class="dot"></i>${num ? `<b class="num">${num}</b>` : `<span class="none">${s.t}</span>`}</div><small>${num ? `${s.t} · ${s.d}` : s.d}</small></div>` } },
   { n: 'J', title: 'İki Parçalı Rozet',
-    text: 'Rozetin sol parçası durum renginde dolgulu bir simge karesi, sağ parçası nötr zeminde durum adı. Renk küçük bir alanda kaldığı için tablo sakin, ama durum yine anında okunur. Altında kısa açıklama.',
-    pros: ['Mevcut rozet fikrine en yakın', 'Renk kontrollü kullanılır', 'Hizalama düzgün, tüm rozetler aynı boy'],
-    cell: r => `<div class="cell"><span class="split ${r.c}"><i>${svg(r.i)}</i><span>${r.t}</span></span><small>${r.d}</small></div>` }
+    text: 'Rozetin sol parçası durum renginde dolgulu bir simge karesi, sağ parçası nötr zeminde durum adı. Her iki sütunda aynı rozet; renk küçük bir alanda kaldığı için tablo sakin ama durum anında okunur. Altında kısa açıklama.',
+    pros: ['Mevcut rozet fikrine en yakın', 'Renk kontrollü kullanılır', 'Tüm rozetler aynı boy, hizalı'],
+    cell: s => `<div class="cell"><span class="split ${s.c}"><i>${svg(s.i)}</i><span>${s.t}</span></span><small>${s.d}</small></div>` }
 ];
 
 document.getElementById('options').innerHTML = options.map(o => `
@@ -181,8 +201,8 @@ document.getElementById('options').innerHTML = options.map(o => `
     <div class="option-head"><h2>Öneri ${o.n} · ${o.title}</h2><p>${o.text}</p></div>
     <div class="pros">${o.pros.map(p => p.startsWith('con:') ? `<span class="con">${p.slice(4)}</span>` : `<span>${p}</span>`).join('')}</div>
     <div class="table">
-      <div class="tr th">${head(o.headTitle)}</div>
-      ${rows.map(r => `<div class="tr">${order(r)}<div>${o.cell(r)}</div>${money(r)}</div>`).join('')}
+      <div class="tr th">${head(...(o.heads || []))}</div>
+      ${rows.map(r => `<div class="tr">${order(r)}<div>${o.cell(r.o, 'o')}</div><div>${o.cell(r.f, 'f')}</div>${money(r)}</div>`).join('')}
     </div>
   </section>`).join('');
 
