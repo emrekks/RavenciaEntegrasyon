@@ -168,6 +168,14 @@
   .toast .ti { display: grid; width: 34px; height: 34px; place-items: center; background: var(--raised); border: 1px solid var(--line); border-radius: 9px; }
   .toast strong { display: block; font-weight: 600; } .toast p { color: var(--muted); font-size: 13px; }
 
+  /* failure reason opens on hover or focus of the failed status tag */
+  .reason-tip { position: relative; display: inline-flex; cursor: help; outline: none; }
+  .reason-pop { position: absolute; z-index: 70; top: calc(100% + 8px); left: 0; display: none; width: 260px; padding: 10px 12px; color: var(--muted); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 10px; box-shadow: 0 18px 50px rgb(0 0 0 / 45%); font-size: 12px; line-height: 1.5; white-space: normal; }
+  .reason-pop b { display: block; margin-bottom: 2px; color: var(--bad); font-size: 13px; font-weight: 600; }
+  .reason-pop small { display: block; margin-top: 6px; color: var(--subtle); }
+  .reason-tip:hover .reason-pop, .reason-tip:focus-visible .reason-pop { display: block; }
+  .reason-tip:focus-visible .badge { box-shadow: 0 0 0 3px rgb(139 92 246 / 18%); }
+
   /* static mocks */
   .mocks { display: grid; gap: 16px; margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--line); }
   .mocks > h3 { font-size: 16px; font-weight: 600; } .mocks > p { margin-top: -10px; color: var(--muted); font-size: 13px; }
@@ -415,7 +423,7 @@ function row(r, compact) {
   const cust = `<div class="cust anchor"><b>${r.cust}</b><span class="prodsum" data-a="pop" data-k="tip-${r.id}">${r.qty}</span>${S.pop === 'tip-' + r.id ? prodTip() : ''}</div>`
   const cargo = `<div class="cargocell">${cargoImg(r.cargo[0], r.cargo[1])}<small class="num">${r.track || 'Takip numarası yok'}</small></div>`
   const os = `<div class="stacked"><span class="badge ${osKind(r.os)}">${r.os}</span>${r.deliv ? `<small>Teslim: ${r.deliv}</small>` : ''}</div>`
-  const inv = `<div class="stacked">${invBadge(r)}${r.reason ? `<small style="color:var(--bad)" title="${esc(r.reason)}">Neden: belge numarası geçersiz</small>` : ''}${r.deadline ? `<small class="${r.crit ? 'crit' : ''}">Son Tarih: ${r.deadline}</small>` : ''}</div>`
+  const inv = `<div class="stacked">${r.reason ? `<span class="reason-tip" tabindex="0">${invBadge(r)}<span class="reason-pop" role="tooltip"><b>Fatura İletilemedi</b>${esc(r.reason)}<small>Hata kodu: INV-REJECTED</small></span></span>` : invBadge(r)}${r.deadline ? `<small class="${r.crit ? 'crit' : ''}">Son Tarih: ${r.deadline}</small>` : ''}</div>`
   const amt = `<div class="amt"><b class="num">${r.amt}</b><small class="${r.due ? 'pri' : ''}">${r.due ? 'Öncelikli Takip' : 'Sipariş Toplamı'}</small></div>`
   const menu = `<span class="anchor"><button class="btn" data-a="pop" data-k="act-${r.id}">İşlemler${I.chev}</button>${S.pop === 'act-' + r.id ? popActions(r) : ''}</span>`
   const acts = compact
