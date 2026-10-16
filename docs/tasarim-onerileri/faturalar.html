@@ -1,0 +1,543 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Faturalar Önerileri</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #111115; --surface: #17171c; --raised: #1d1d23; --soft: #22222a;
+    --line: #2a2a32; --line-strong: #383842;
+    --ink: #ececf0; --muted: #a3a3b0; --subtle: #6f6f7c;
+    --primary: #8b5cf6; --primary-soft: #272139;
+    --violet: color-mix(in srgb, var(--primary) 55%, white);
+    --violet-line: color-mix(in srgb, var(--primary) 55%, transparent);
+    --warn: #e2aa4b; --bad: #e4636f; --ok: #46b98f; --info: #83b4ff;
+    --side: 232px; --top: 70px;
+  }
+  * { box-sizing: border-box; }
+  html, body { overflow-x: clip; }
+  body { margin: 0; font: 14px/1.5 Inter, "Segoe UI", system-ui, sans-serif; color: var(--ink); background: var(--bg); -webkit-font-smoothing: antialiased; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  h1, h2, h3, p { margin: 0; }
+  [hidden] { display: none !important; }
+  ::-webkit-scrollbar { width: 12px; height: 12px; background: transparent; }
+  ::-webkit-scrollbar-thumb { background: transparent padding-box; border: 3px solid transparent; border-radius: 999px; }
+  :hover::-webkit-scrollbar-thumb { background-color: var(--line-strong); }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* ---------- app shell (static) ---------- */
+  .shell { display: grid; grid-template-columns: var(--side) minmax(0, 1fr); min-height: 100vh; }
+  .side { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; background: var(--surface); border-right: 1px solid var(--line); }
+  .side .brand { display: flex; align-items: center; gap: 12px; height: var(--top); padding: 0 20px; border-bottom: 1px solid var(--line); font-weight: 600; }
+  .side .brand i { width: 34px; height: 34px; border: 1px solid var(--line-strong); border-radius: 50%; display: grid; place-items: center; font-style: italic; font-family: Georgia, serif; }
+  .side nav { display: grid; gap: 4px; padding: 16px 12px; }
+  .side nav a { display: flex; align-items: center; justify-content: space-between; height: 40px; padding: 0 12px; color: var(--muted); border-radius: 8px; }
+  .side nav a.on { color: #fff; background: var(--primary); }
+  .side nav a b { min-width: 22px; height: 22px; display: grid; place-items: center; padding: 0 5px; color: var(--ink); background: var(--soft); border: 1px solid var(--line); border-radius: 7px; font-size: 11px; font-weight: 400; }
+  .topbar { position: sticky; top: 0; z-index: 40; display: flex; align-items: center; height: var(--top); padding: 0 24px; background: color-mix(in srgb, var(--surface) 94%, transparent); border-bottom: 1px solid var(--line); backdrop-filter: blur(14px); color: var(--muted); }
+  .topbar b { color: var(--ink); font-weight: 600; margin-left: 8px; }
+  main { min-width: 0; }
+  .page { padding: 28px 32px 96px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-content: start; }
+
+  /* ---------- controls ---------- */
+  .ico { display: block; flex: none; }
+  .st { width: 16px; height: 16px; flex: none; display: block; color: var(--subtle); } .st.done { color: var(--ink); } .st.bad { color: var(--bad); }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 34px; padding: 0 12px; white-space: nowrap; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: 500; }
+  .btn:hover { background: var(--soft); }
+  .btn.primary { color: #fff; background: var(--primary); border-color: var(--primary); }
+  .btn.primary:hover { filter: brightness(1.08); }
+  .btn.quiet { color: var(--muted); background: none; border-color: transparent; } .btn.quiet:hover { color: var(--ink); background: var(--raised); }
+  .btn.danger { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, var(--line-strong)); }
+  .btn.solid { color: #fff; background: var(--bad); border-color: var(--bad); }
+  .btn.link { height: auto; padding: 0; color: var(--violet); background: none; border: 0; font-size: 13px; }
+  .btn.link:hover { text-decoration: underline; background: none; }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .icon-btn { display: grid; width: 28px; height: 28px; place-items: center; color: var(--muted); background: none; border: 0; border-radius: 6px; cursor: pointer; }
+  .icon-btn:hover { color: var(--ink); background: var(--raised); }
+  .count { display: inline-grid; min-width: 20px; height: 18px; place-items: center; padding: 0 5px; color: var(--ink); background: var(--line-strong); border-radius: 5px; font-size: 11px; font-weight: 500; line-height: 1; }
+  .count.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 16%, var(--line-strong)); }
+  .in { width: 100%; height: 36px; padding: 0 12px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 7px; outline: none; }
+  .in:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgb(139 92 246 / 18%); }
+  select.in { appearance: none; padding-right: 34px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='%23a3a3b0' stroke-width='1.6' stroke-linecap='round'%3E%3Cpath d='m4.5 6 3.5 3.5L11.5 6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; cursor: pointer; }
+  .fld { display: grid; gap: 6px; min-width: 0; } .fld > small { color: var(--subtle); font-size: 12px; font-weight: 500; }
+  .cb { position: relative; width: 16px; height: 16px; flex: none; margin: 0; appearance: none; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 4px; cursor: pointer; }
+  .cb:checked { background: var(--primary-soft); border-color: var(--violet-line); }
+  .cb:checked::after { content: ""; position: absolute; left: 4.5px; top: 1.5px; width: 4px; height: 8px; border: solid var(--violet); border-width: 0 1.8px 1.8px 0; transform: rotate(45deg); }
+  .trigger { display: flex; align-items: center; gap: 8px; width: 100%; height: 36px; padding: 0 10px 0 12px; color: var(--ink); text-align: left; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 7px; cursor: pointer; }
+  .trigger span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .trigger.on { border-color: var(--violet-line); }
+  .trigger .muted { color: var(--muted); }
+  .callout { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; color: var(--muted); background: var(--raised); border: 1px solid var(--line-strong); border-radius: 7px; font-size: 13px; }
+  .callout .ico { margin-top: 2px; } .callout b { color: var(--ink); font-weight: 600; }
+  .callout.warn { background: color-mix(in srgb, var(--warn) 8%, var(--surface)); border-color: color-mix(in srgb, var(--warn) 40%, var(--line-strong)); } .callout.warn .ico { color: var(--warn); }
+  .callout.danger { background: color-mix(in srgb, var(--bad) 8%, var(--surface)); border-color: color-mix(in srgb, var(--bad) 40%, var(--line-strong)); } .callout.danger .ico { color: var(--bad); }
+
+  /* badges: dot + label, tinted only by the dot */
+  .badge { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; color: var(--ink); white-space: nowrap; background: var(--raised); border: 1px solid var(--line-strong); border-radius: 6px; font-size: 12px; font-weight: 500; }
+  .badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--subtle); }
+  .badge.warn::before { background: var(--warn); } .badge.ok::before { background: var(--ok); } .badge.info::before { background: var(--info); } .badge.bad::before { background: var(--bad); }
+  .badge.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, var(--line-strong)); }
+  .logo { width: 28px; height: 28px; flex: none; object-fit: contain; background: #fff; border-radius: 6px; padding: 2px; }
+  .logo.lg { width: 36px; height: 36px; border-radius: 8px; }
+  .cargo { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border: 1px solid var(--line-strong); border-radius: 5px; font-size: 11px; font-weight: 600; letter-spacing: .02em; }
+  .cargo.tex { color: #f27a1a; } .cargo.hx { color: #ff6000; } .cargo.ptt { color: #f5c400; } .cargo.yk { color: #4f9cf9; } .cargo.aras { color: #e4636f; }
+
+  /* popovers / menus */
+  .anchor { position: relative; }
+  .pop { position: absolute; z-index: 60; top: calc(100% + 6px); left: 0; min-width: 240px; padding: 6px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 12px; box-shadow: 0 18px 50px rgb(0 0 0 / 45%); }
+  .pop.right { left: auto; right: 0; }
+  .pop.static { position: static; box-shadow: none; }
+  .pop .ph { display: flex; align-items: center; justify-content: space-between; padding: 6px 8px 8px; color: var(--muted); font-size: 12px; font-weight: 600; }
+  .opt { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 34px; padding: 6px 10px; color: var(--ink); text-align: left; background: none; border: 0; border-radius: 7px; cursor: pointer; font-size: 13px; }
+  .opt:hover { background: var(--soft); }
+  .opt.on { background: var(--primary-soft); color: var(--violet); }
+  .opt .grow { flex: 1; }
+  .opt small { color: var(--subtle); font-size: 12px; }
+  .opt.danger { color: var(--bad); }
+  .opt:disabled { opacity: .45; cursor: default; background: none; }
+  .sep { height: 1px; margin: 4px 6px; background: var(--line); }
+  .pop .foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 6px 2px; border-top: 1px solid var(--line); margin-top: 6px; color: var(--subtle); font-size: 12px; }
+  .cal { display: grid; grid-template-columns: 132px 252px; gap: 8px; }
+  .cal .presets { display: grid; align-content: start; gap: 2px; padding-right: 8px; border-right: 1px solid var(--line); }
+  .cal .mh { display: flex; align-items: center; justify-content: space-between; padding: 2px 4px 8px; font-weight: 600; font-size: 13px; }
+  .cal .grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; font-size: 12px; }
+  .cal .grid b { color: var(--subtle); font-weight: 500; padding: 4px 0; }
+  .cal .grid span { display: grid; place-items: center; height: 32px; border-radius: 6px; cursor: pointer; }
+  .cal .grid span:hover { background: var(--soft); }
+  .cal .grid span.in-range { background: var(--primary-soft); border-radius: 0; }
+  .cal .grid span.edge { color: #fff; background: var(--primary); }
+  .cal .grid span.off { color: var(--subtle); opacity: .45; cursor: default; }
+  .tip { position: absolute; z-index: 60; top: calc(100% + 6px); left: 0; width: 320px; padding: 10px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 12px; box-shadow: 0 18px 50px rgb(0 0 0 / 45%); display: grid; gap: 8px; }
+  .tip .li { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 10px; align-items: center; font-size: 12px; }
+  .tip .li i { width: 40px; height: 40px; border-radius: 6px; background: linear-gradient(135deg, #3a3a46, #24242c); }
+  .tip .li b { display: block; font-size: 13px; font-weight: 500; } .tip .li small { color: var(--muted); }
+
+  /* modal */
+  .overlay { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 24px 16px; overflow: auto; background: rgb(5 6 12 / 62%); }
+  .modal { display: flex; flex-direction: column; width: min(560px, 100%); max-height: calc(100vh - 48px); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 14px; box-shadow: 0 30px 80px rgb(0 0 0 / 45%); }
+  .modal.sm { width: min(460px, 100%); } .modal.md { width: min(640px, 100%); } .modal.lg { width: min(880px, 100%); } .modal.xl { width: min(1080px, 100%); }
+  .m-head { display: flex; align-items: flex-start; gap: 12px; padding: 18px 20px 16px 24px; border-bottom: 1px solid var(--line); }
+  .m-head > div { flex: 1; min-width: 0; }
+  .m-head .crumb { color: var(--subtle); font-size: 12px; font-weight: 500; }
+  .m-head h2 { font-size: 18px; font-weight: 600; } .m-head p { margin-top: 2px; color: var(--muted); font-size: 13px; }
+  .m-body { display: grid; gap: 16px; align-content: start; padding: 20px 24px; overflow-y: auto; min-height: 0; }
+  .m-body.flush { padding: 0; gap: 0; }
+  .m-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 14px 24px 16px; background: var(--raised); border-top: 1px solid var(--line); border-radius: 0 0 14px 14px; }
+  .m-foot .note { flex: 1 1 200px; color: var(--muted); font-size: 13px; }
+  .facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .facts > div { display: grid; gap: 4px; align-content: start; justify-items: start; min-width: 0; padding: 12px 14px; border-left: 1px solid var(--line); }
+  .facts > div:first-child { border-left: 0; }
+  .facts small { color: var(--subtle); font-size: 12px; } .facts b { font-weight: 600; } .facts em { color: var(--muted); font-size: 12px; font-style: normal; }
+  .kv { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; font-size: 13px; }
+  .kv > * { padding: 9px 12px; border-top: 1px solid var(--line); } .kv > :nth-child(-n+2) { border-top: 0; }
+  .kv dt { color: var(--muted); } .kv dd { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .h3 { font-size: 14px; font-weight: 600; } .lead { color: var(--muted); font-size: 13px; }
+  .lines { display: grid; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .lines > div { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 12px; border-top: 1px solid var(--line); }
+  .lines > div:first-child { border-top: 0; }
+  .lines i { width: 44px; height: 44px; border-radius: 7px; background: linear-gradient(135deg, #3a3a46, #24242c); }
+  .lines b { display: block; font-weight: 500; } .lines small { color: var(--muted); font-size: 12px; }
+  .addr { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .addr > div { padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; font-size: 13px; display: grid; gap: 2px; }
+  .addr span { color: var(--muted); }
+  .ptable { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .ptable th { padding: 8px 10px; color: var(--subtle); font-weight: 500; text-align: left; border-bottom: 1px solid var(--line); }
+  .ptable td { padding: 9px 10px; border-bottom: 1px solid var(--line); }
+  .ptable td:not(:first-child), .ptable th:not(:first-child) { text-align: right; }
+  .totals { display: grid; grid-template-columns: auto auto; justify-content: end; gap: 4px 24px; font-size: 13px; }
+  .totals span { color: var(--muted); } .totals b:last-child { font-size: 15px; }
+  .ocard { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .ocard > header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 16px; background: var(--raised); border-bottom: 1px solid var(--line); }
+  .ocard > header div { flex: 1; } .ocard > header small { display: block; color: var(--muted); font-size: 12px; }
+  .ocard > section { display: grid; gap: 12px; padding: 14px 16px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; } .chip { display: inline-flex; align-items: center; height: 24px; padding: 0 8px; background: var(--raised); border: 1px solid var(--line-strong); border-radius: 6px; font-size: 12px; }
+  .drop { display: grid; justify-items: center; gap: 6px; padding: 20px; text-align: center; border: 1px dashed var(--line-strong); border-radius: 10px; }
+  .drop small { color: var(--muted); }
+  .divider { display: flex; align-items: center; gap: 10px; color: var(--subtle); font-size: 12px; } .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  .cklabel { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+  .sum { display: grid; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .sum > div { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 12px; border-top: 1px solid var(--line); font-size: 13px; }
+  .sum > div:first-child { border-top: 0; } .sum small { display: block; color: var(--muted); font-size: 12px; }
+
+  /* toast */
+  .toast { position: fixed; top: 86px; right: 16px; z-index: 120; display: grid; grid-template-columns: 34px minmax(0, 1fr) 28px; gap: 12px; width: min(380px, calc(100vw - 32px)); padding: 12px 10px 14px 12px; overflow: hidden; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 12px; box-shadow: 0 18px 50px rgb(0 0 0 / 45%); }
+  .toast .ti { display: grid; width: 34px; height: 34px; place-items: center; background: var(--raised); border: 1px solid var(--line); border-radius: 9px; }
+  .toast strong { display: block; font-weight: 600; } .toast p { color: var(--muted); font-size: 13px; }
+
+  /* static mocks */
+  .mocks { display: grid; gap: 16px; margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--line); }
+  .mocks > h3 { font-size: 16px; font-weight: 600; } .mocks > p { margin-top: -10px; color: var(--muted); font-size: 13px; }
+  .mock-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+  .mock { display: grid; gap: 8px; min-width: 0; } .mock.full { grid-column: 1 / -1; }
+  .mock > span { color: var(--muted); font-size: 13px; font-weight: 500; }
+  .stage { display: grid; place-items: center; padding: 24px 16px; overflow: hidden; background: linear-gradient(rgb(5 6 12 / 62%), rgb(5 6 12 / 62%)), repeating-linear-gradient(135deg, var(--surface) 0 14px, var(--bg) 14px 28px); border: 1px solid var(--line); border-radius: 12px; }
+  .stage .modal { max-height: none; }
+  .stage .pop, .stage .tip { position: static; }
+
+  /* switcher */
+  .switcher { position: fixed; z-index: 150; left: 50%; bottom: 16px; transform: translateX(-50%); display: flex; flex-wrap: wrap; gap: 4px; padding: 4px; background: var(--raised); border: 1px solid var(--line-strong); border-radius: 12px; box-shadow: 0 16px 40px rgb(0 0 0 / 50%); max-width: calc(100vw - 32px); }
+  .switcher button { height: 32px; padding: 0 12px; color: var(--muted); background: none; border: 1px solid transparent; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 500; white-space: nowrap; }
+  .switcher button.on { color: var(--violet); background: var(--primary-soft); border-color: var(--violet-line); }
+
+  /* ================= shared page parts ================= */
+  .ph { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 16px; }
+  .ph .crumb { color: var(--subtle); font-size: 12px; font-weight: 500; }
+  .ph h1 { font-size: 18px; font-weight: 600; }
+  .ph p { color: var(--muted); font-size: 13px; }
+  .ph .acts { margin-left: auto; display: flex; gap: 8px; }
+  .provider { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+
+  /* table */
+  .tbl { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; }
+  .tbl col.c-order { width: 22%; } .tbl col.c-cust { width: 13%; } .tbl col.c-cargo { width: 15%; } .tbl col.c-os { width: 12%; } .tbl col.c-inv { width: 14%; } .tbl col.c-amt { width: 10%; } .tbl col.c-act { width: 14%; }
+  .v2 .tbl col.c-order { width: 21%; } .v2 .tbl col.c-cust { width: 13%; } .v2 .tbl col.c-cargo { width: 14%; } .v2 .tbl col.c-os { width: 11%; } .v2 .tbl col.c-inv { width: 13%; } .v2 .tbl col.c-amt { width: 10%; } .v2 .tbl col.c-act { width: 18%; }
+  .tbl td > * { min-width: 0; } .ordercell > div { min-width: 0; } .cargocell small, .ordercell small { overflow-wrap: anywhere; }
+  .tbl th { position: relative; height: 44px; padding: 0 12px; color: var(--muted); font-size: 12px; font-weight: 500; text-align: left; white-space: nowrap; background: var(--raised); border-bottom: 1px solid var(--line); }
+  .tbl th .hf { display: inline-flex; align-items: center; gap: 4px; }
+  .tbl th .fbtn { display: inline-grid; place-items: center; width: 24px; height: 24px; color: var(--subtle); background: none; border: 0; border-radius: 5px; cursor: pointer; }
+  .tbl th .fbtn:hover { color: var(--ink); background: var(--soft); }
+  .tbl th.has-filter .fbtn { color: var(--violet); background: var(--primary-soft); }
+  .tbl td { padding: 12px 12px; vertical-align: middle; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .tbl tr:last-child td { border-bottom: 0; }
+  .tbl tbody tr:hover td { background: color-mix(in srgb, var(--raised) 60%, transparent); }
+  .tbl tr.sel td { background: var(--primary-soft); }
+  .tbl tr.sel td:first-child { box-shadow: inset 2px 0 0 var(--primary); }
+  .tbl tr.due td:first-child { box-shadow: inset 2px 0 0 var(--warn); }
+  .ordercell { display: flex; align-items: center; gap: 12px; }
+  .ordercell .on-no { display: flex; align-items: center; gap: 4px; font-weight: 600; }
+  .ordercell small { display: block; color: var(--muted); font-size: 12px; }
+  .cust b { font-weight: 500; display: block; }
+  .prodsum { white-space: nowrap; color: var(--muted); font-size: 12px; text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; }
+  .cargocell { display: grid; gap: 4px; justify-items: start; } .cargocell small { color: var(--muted); font-size: 12px; }
+  .stacked { display: grid; gap: 4px; justify-items: start; } .stacked small { color: var(--muted); font-size: 12px; } .stacked small.crit { color: var(--warn); }
+  .amt b { display: block; font-weight: 600; white-space: nowrap; } .amt small { color: var(--muted); font-size: 12px; } .amt small.pri { color: var(--warn); }
+  .acts-cell { display: grid; gap: 6px; justify-items: start; }
+  .pager { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+  .pages { display: flex; gap: 4px; }
+  .pages button { min-width: 32px; height: 32px; padding: 0 8px; color: var(--muted); background: none; border: 1px solid transparent; border-radius: 7px; cursor: pointer; }
+  .pages button.on { color: var(--violet); background: var(--primary-soft); border-color: var(--violet-line); }
+  .pages button:hover:not(.on) { color: var(--ink); background: var(--raised); }
+  .bulk { position: sticky; bottom: 72px; z-index: 30; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px 10px 16px; background: var(--raised); border: 1px solid var(--line-strong); border-radius: 12px; box-shadow: 0 16px 40px rgb(0 0 0 / 45%); }
+  .bulk .grow { flex: 1; font-weight: 500; }
+
+  /* ================= Öneri 1 · Aynı Yapı, Sade ================= */
+  .v1 .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+  .v1 .metrics article { display: grid; gap: 2px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+  .v1 .metrics small { color: var(--muted); font-size: 13px; }
+  .v1 .metrics strong { font-size: 24px; font-weight: 600; line-height: 1.3; font-variant-numeric: tabular-nums; }
+  .v1 .metrics span { color: var(--subtle); font-size: 12px; }
+  .v1 .metrics article.warn strong { color: var(--warn); }
+  .v1 .fshell { display: grid; gap: 14px; padding: 14px 16px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+  .seg { display: inline-flex; gap: 3px; max-width: 100%; padding: 3px; overflow-x: auto; background: var(--bg); border: 1px solid var(--line-strong); border-radius: 9px; }
+  .seg button { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px; color: var(--muted); white-space: nowrap; background: none; border: 1px solid transparent; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; }
+  .seg button:hover { color: var(--ink); }
+  .seg button.on { color: var(--violet); background: var(--primary-soft); border-color: var(--violet-line); }
+  .v1 .filters { display: grid; grid-template-columns: minmax(220px, 1.6fr) repeat(2, minmax(170px, 1fr)) minmax(170px, .9fr) auto; gap: 12px; align-items: end; }
+  .search { position: relative; } .search .ico { position: absolute; left: 11px; top: 10px; color: var(--subtle); } .search .in { padding-left: 34px; }
+  .v1 .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+  .v1 .panel-h { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 16px; }
+  .v1 .panel-h > div:first-child { flex: 1; } .v1 .panel-h h2 { font-size: 16px; font-weight: 600; } .v1 .panel-h p { color: var(--muted); font-size: 13px; }
+  .v1 .psize { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; } .v1 .psize .in { width: 86px; height: 34px; }
+  .v1 .tblwrap { border-top: 1px solid var(--line); }
+
+  /* ================= Öneri 2 · Tek Çalışma Alanı ================= */
+  .v2 .strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .v2 .strip button { display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; gap: 0 12px; align-items: center; padding: 14px 16px; color: var(--ink); text-align: left; background: none; border: 0; border-left: 1px solid var(--line); cursor: pointer; }
+  .v2 .strip button:first-child { border-left: 0; }
+  .v2 .strip button:hover { background: var(--raised); }
+  .v2 .strip button.on { background: var(--primary-soft); box-shadow: inset 0 -2px 0 var(--primary); }
+  .v2 .strip .dot { grid-row: span 2; width: 36px; height: 36px; display: grid; place-items: center; color: var(--muted); background: var(--raised); border: 1px solid var(--line); border-radius: 9px; }
+  .v2 .strip button.on .dot { color: var(--violet); border-color: var(--violet-line); }
+  .v2 .strip strong { font-size: 20px; font-weight: 600; line-height: 1.25; font-variant-numeric: tabular-nums; }
+  .v2 .strip small { color: var(--muted); font-size: 12px; }
+  .v2 .strip .warn strong { color: var(--warn); }
+  .v2 .work { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+  .v2 .tabs { display: flex; gap: 4px; padding: 0 12px; overflow-x: auto; border-bottom: 1px solid var(--line); }
+  .v2 .tabs button { display: inline-flex; align-items: center; gap: 8px; height: 46px; margin-bottom: -1px; padding: 0 10px; color: var(--muted); white-space: nowrap; background: none; border: 0; border-bottom: 2px solid transparent; cursor: pointer; font-size: 13px; font-weight: 500; }
+  .v2 .tabs button:hover { color: var(--ink); } .v2 .tabs button.on { color: var(--ink); border-bottom-color: var(--primary); }
+  .v2 .tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px; border-bottom: 1px solid var(--line); }
+  .v2 .tools .search { flex: 1 1 280px; }
+  .v2 .tools .trigger { width: auto; height: 34px; }
+  .v2 .tools .grow { flex: 1; }
+  .v2 .afilters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--line); color: var(--subtle); font-size: 12px; }
+  .v2 .afilter { display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 4px 0 10px; color: var(--ink); background: var(--raised); border: 1px solid var(--line-strong); border-radius: 6px; font-size: 12px; }
+  .v2 .afilter span { color: var(--muted); }
+  .v2 .afilter button { display: grid; place-items: center; width: 20px; height: 20px; color: var(--subtle); background: none; border: 0; border-radius: 4px; cursor: pointer; }
+  .v2 .selbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; background: var(--primary-soft); border-bottom: 1px solid var(--violet-line); }
+  .v2 .selbar b { margin-right: auto; font-weight: 500; color: var(--violet); }
+  .v2 .tblwrap { }
+  .v2 .tbl th { background: var(--surface); }
+  .v2 .tbl td { padding: 10px 12px; }
+  .v2 .rowacts { flex-wrap: nowrap; white-space: nowrap; display: flex; } .v2 .rowacts .btn.primary { height: 30px; padding: 0 10px; } .v2 .rowacts { align-items: center; gap: 6px; justify-content: flex-end; }
+  .v2 .meta-line { display: flex; flex-wrap: wrap; gap: 4px 10px; color: var(--muted); font-size: 12px; }
+  .detail-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); }
+  .detail-grid > section { display: grid; gap: 14px; align-content: start; padding: 20px 24px; }
+  .detail-grid > section + section { border-left: 1px solid var(--line); background: color-mix(in srgb, var(--raised) 40%, var(--surface)); }
+
+  @media (max-width: 1200px) { .v1 .filters { grid-template-columns: 1fr 1fr; } .v1 .filters .search { grid-column: 1 / -1; } }
+  @media (max-width: 1000px) {
+    .shell { grid-template-columns: 1fr; } .side { display: none; }
+    .v1 .metrics, .v2 .strip { grid-template-columns: 1fr 1fr; }
+    .v2 .strip button:nth-child(3) { border-left: 0; } .v2 .strip button:nth-child(n+3) { border-top: 1px solid var(--line); }
+    .facts { grid-template-columns: 1fr 1fr; } .facts > div:nth-child(3) { border-left: 0; } .facts > div:nth-child(n+3) { border-top: 1px solid var(--line); }
+    .mock-grid { grid-template-columns: 1fr; }
+    .detail-grid { grid-template-columns: 1fr; } .detail-grid > section + section { border-left: 0; border-top: 1px solid var(--line); }
+  }
+  @media (max-width: 700px) {
+    .page { padding: 16px 16px 96px; }
+    .v1 .filters { grid-template-columns: 1fr; }
+    .addr, .kv { grid-template-columns: 1fr; }
+    .cal { grid-template-columns: 1fr; } .cal .presets { grid-template-columns: repeat(3, 1fr); border-right: 0; padding-right: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <div class="brand"><i>R</i>Ravencia</div>
+    <nav><a>Genel Bakış</a><a>Ürünler</a><a>Siparişler <b>12</b></a><a>İadeler <b>1</b></a><a class="on">Faturalar <b>0</b></a><a>Ürün Soruları <b>0</b></a><a>Entegrasyonlar</a><a>Eşleştirmeler</a><a>İşlem Takibi</a></nav>
+  </aside>
+  <main>
+    <div class="topbar">Operasyon Merkezi › <b>Faturalar</b></div>
+    <div id="root"></div>
+  </main>
+</div>
+<div id="layer"></div>
+<div class="switcher" id="sw">
+  <button data-v="1" class="on">Öneri 1 · Aynı Yapı, Sade</button>
+  <button data-v="2">Öneri 2 · Tek Çalışma Alanı</button>
+</div>
+
+<script>
+const P = '../../src/MarketplaceHub.Web/public/platforms/'
+const ico = (p, s = 16) => `<svg class="ico" width="${s}" height="${s}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`
+const I = {
+  search: ico('<circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/>'),
+  chev: ico('<path d="m4.5 6 3.5 3.5L11.5 6"/>'),
+  left: ico('<path d="M10 3.5 5.5 8l4.5 4.5"/>'), right: ico('<path d="m6 3.5 4.5 4.5L6 12.5"/>'),
+  cal: ico('<rect x="2.5" y="3.5" width="11" height="10" rx="1.5"/><path d="M2.5 6.5h11M5.5 2v3M10.5 2v3"/>'),
+  down: ico('<path d="M8 3v10M4.5 9.5 8 13l3.5-3.5"/>'), up: ico('<path d="M8 13V3M4.5 6.5 8 3l3.5 3.5"/>'),
+  filter: ico('<path d="M2.5 3.5h11l-4.3 5v4l-2.4 1v-5z"/>', 14),
+  copy: ico('<rect x="5" y="5" width="8.5" height="8.5" rx="1.5"/><path d="M11 5V3.5a1 1 0 0 0-1-1H3.5a1 1 0 0 0-1 1V10a1 1 0 0 0 1 1H5"/>', 14),
+  open: ico('<path d="M9.5 2.5h4v4M13.5 2.5 8 8M11.5 9.5v3a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3"/>', 14),
+  close: ico('<path d="m4 4 8 8M12 4l-8 8"/>'),
+  more: ico('<circle cx="8" cy="3.5" r=".6" fill="currentColor"/><circle cx="8" cy="8" r=".6" fill="currentColor"/><circle cx="8" cy="12.5" r=".6" fill="currentColor"/>'),
+  doc: ico('<path d="M4 1.8h5.5L12.5 5v9.2H4z"/><path d="M9.5 1.8V5h3M6 8.5h4.5M6 11h4.5"/>'),
+  clock: ico('<circle cx="8" cy="8" r="6"/><path d="M8 4.8V8l2 1.3"/>'),
+  check: ico('<circle cx="8" cy="8" r="6"/><path d="m5.6 8 1.7 1.7L10.6 6.3"/>'),
+  box: ico('<path d="M2.5 5 8 2.2 13.5 5v6L8 13.8 2.5 11z"/><path d="M2.5 5 8 7.8 13.5 5M8 7.8v6"/>'),
+  eye: ico('<path d="M1.8 8S4 3.8 8 3.8 14.2 8 14.2 8 12 12.2 8 12.2 1.8 8 1.8 8z"/><circle cx="8" cy="8" r="2"/>'),
+  eyeoff: ico('<path d="M2 2l12 12M6.4 4.1A6.5 6.5 0 0 1 8 3.8c4 0 6.2 4.2 6.2 4.2a11 11 0 0 1-1.7 2.2M4 5.6A11 11 0 0 0 1.8 8S4 12.2 8 12.2c.9 0 1.7-.2 2.4-.5"/>'),
+  refresh: ico('<path d="M13 8a5 5 0 1 1-1.5-3.5"/><path d="M13 2.5v3h-3"/>'),
+  upload: ico('<path d="M8 10.5V2.5M4.8 5.5 8 2.5l3.2 3"/><path d="M2.5 10.5v2.5h11v-2.5"/>'),
+  alert: ico('<path d="M8 2.5 14 13H2z"/><path d="M8 6.5v3M8 11.5h.01"/>'),
+  info: ico('<circle cx="8" cy="8" r="6.2"/><path d="M8 7.2v3.6M8 5h.01"/>'),
+  edit: ico('<path d="m10.5 2.5 3 3L6 13H3v-3z"/>'),
+  plus: ico('<path d="M8 3.5v9M3.5 8h9"/>'),
+  link: ico('<path d="M6.5 9.5 9.5 6.5M7 4.5l1-1a2.5 2.5 0 0 1 3.5 3.5l-1 1M9 11.5l-1 1A2.5 2.5 0 0 1 4.5 9l1-1"/>'),
+}
+const G = {
+  done: '<svg class="st done" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="currentColor"/><path d="m5 8.2 2.1 2.1 3.9-4.2" fill="none" stroke="#17171c" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  pending: '<svg class="st" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.2" opacity=".35"/><path d="M8 1.8a6.2 6.2 0 0 1 5.9 4.3"/><path d="M8 5.6v2.6l1.8 1.1"/></svg>',
+  none: '<svg class="st" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2.6 2.2" aria-hidden="true"><circle cx="8" cy="8" r="6.2"/></svg>',
+  bad: '<svg class="st bad" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.2"/><path d="m5.8 5.8 4.4 4.4M10.2 5.8l-4.4 4.4"/></svg>',
+}
+
+/* ---------- data ---------- */
+const TABS = [['all', 'Tümü', 1795], ['pending', 'Faturalandırılmamışlar', 63], ['done', 'Faturalandırılmışlar', 1732], ['due', 'Süresi Yaklaşanlar', 0], ['hidden', 'Gizlenenler', 7]]
+const PLATFORMS = [['trendyol', 'Trendyol'], ['hepsiburada', 'Hepsiburada'], ['n11', 'N11'], ['pazarama', 'Pazarama'], ['shopify', 'Shopify']]
+const INV = { wait: ['Fatura Bekliyor', 'warn'], ok: ['Faturası Mevcut', 'ok'], send: ['Fatura İletiliyor', 'info'], fail: ['Fatura İletilemedi', 'bad'], err: ['Fatura Oluşturulamadı', 'bad'], cancel: ['Fatura İptal', ''] }
+const ROWS = [
+  { id: 'r1', p: 'trendyol', no: '11717855898', date: '17.10.2026 01:00', cust: 'Gülcan Demirkıran Kara', qty: '1 adet · 1 çeşit', cargo: ['tex', 'Trendyol Express'], track: '7330038087576399', os: 'Yeni', inv: 'wait', amt: '₺519,75', deadline: '22.10.2026' },
+  { id: 'r2', p: 'trendyol', no: '11717793115', date: '17.10.2026 00:41', cust: 'Ali Can', qty: '1 adet · 1 çeşit', cargo: ['tex', 'Trendyol Express'], track: '7330038087071122', os: 'Yeni', inv: 'wait', amt: '₺791,01', due: true, deadline: '17.10.2026', crit: true },
+  { id: 'r3', p: 'hepsiburada', no: '4736002251', date: '16.10.2026 21:12', cust: 'Zeynep Aydın', qty: '2 adet · 2 çeşit', cargo: ['hx', 'HepsiJET'], track: 'HJ0018273641', os: 'Kargoda', inv: 'fail', amt: '₺1.248,40', reason: 'Pazaryeri faturayı reddetti: belge numarası geçersiz.', invNo: 'RVC2026000184' },
+  { id: 'r4', p: 'n11', no: '205118734', date: '16.10.2026 18:05', cust: 'Murat Yılmaz', qty: '1 adet · 1 çeşit', cargo: ['yk', 'Yurtiçi Kargo'], track: '', os: 'Teslim Edildi', deliv: '15.10.2026', inv: 'ok', amt: '₺389,90', invNo: 'RVC2026000171', onPlatform: true },
+  { id: 'r5', p: 'pazarama', no: 'PZ8812031', date: '16.10.2026 14:30', cust: 'Elif Şahin', qty: '3 adet · 1 çeşit', cargo: ['aras', 'Aras Kargo'], track: '4421009871', os: 'Kargoya Verildi', inv: 'send', amt: '₺654,00', invNo: 'RVC2026000179' },
+  { id: 'r6', p: 'shopify', no: '1042', date: '15.10.2026 10:02', cust: 'Deniz Koç', qty: '1 adet · 1 çeşit', cargo: ['ptt', 'PTT Kargo'], track: 'KP0912873411', os: 'Hazırlanıyor', inv: 'wait', amt: '₺1.090,00' },
+]
+const S = { v: '1', tab: 'pending', sel: new Set(['r2', 'r3']), pop: null, modal: null, cf: { cargo: 'Trendyol Express' }, plats: ['trendyol', 'hepsiburada'], sort: ['Sipariş Tarihi', 'down'], toast: null }
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+const logo = (p, lg) => `<img class="logo ${lg ? 'lg' : ''}" src="${P}${p}.png" alt="">`
+const pname = p => PLATFORMS.find(x => x[0] === p)[1]
+const invBadge = r => `<span class="badge ${INV[r.inv][1]}">${INV[r.inv][0]}</span>`
+
+/* ---------- popovers ---------- */
+function popPlatforms(st) {
+  return `<div class="pop ${st ? 'static' : ''}" role="dialog" style="min-width:260px"><div class="ph">Platformlar<button class="btn link" data-a="plat-all">${S.plats.length === PLATFORMS.length ? 'Tümünü kaldır' : 'Tümünü seç'}</button></div>${PLATFORMS.map(([k, l]) => `<label class="opt"><input type="checkbox" class="cb" data-plat="${k}" ${S.plats.includes(k) ? 'checked' : ''}>${logo(k)}<span class="grow">${l}</span></label>`).join('')}</div>`
+}
+function popDate(st) {
+  const days = []; for (let i = 0; i < 3; i++) days.push('<span class="off"></span>')
+  for (let d = 1; d <= 31; d++) days.push(`<span class="${d === 3 || d === 8 ? 'edge' : d > 3 && d < 8 ? 'in-range' : d > 17 ? 'off' : ''}">${d}</span>`)
+  return `<div class="pop ${st ? 'static' : ''}" role="dialog"><div class="cal"><div class="presets">${['Bugün', 'Dün', 'Geçen Hafta', 'Geçen Ay', 'Bu Ay', 'Bu Sene'].map((p, i) => `<button class="opt ${i === 2 ? 'on' : ''}">${p}</button>`).join('')}</div><div><div class="mh"><button class="icon-btn">${I.left}</button>Ekim 2026<button class="icon-btn">${I.right}</button></div><div class="grid">${['Pt', 'Sa', 'Ça', 'Pe', 'Cu', 'Ct', 'Pa'].map(d => `<b>${d}</b>`).join('')}${days.join('')}</div></div></div><div class="foot"><span>Başlangıç ve bitiş gününü seçin</span><button class="btn quiet" style="height:28px">Temizle</button></div></div>`
+}
+function popSort(st) {
+  const o = [['Sipariş Tarihi', 'down'], ['Sipariş Tarihi', 'up'], ['Kargo Tarihi', 'down'], ['Kargo Tarihi', 'up'], ['Fatura Son Tarihi', 'up'], ['Tutar', 'down'], ['Tutar', 'up']]
+  return `<div class="pop right ${st ? 'static' : ''}" role="listbox" style="min-width:230px">${o.map(([l, d]) => { const on = S.sort[0] === l && S.sort[1] === d; return `<button class="opt ${on ? 'on' : ''}" data-a="sort" data-k="${l}|${d}"><span class="grow">${l}</span><small>${d === 'down' ? 'Azalan' : 'Artan'}</small>${d === 'down' ? I.down : I.up}</button>` }).join('')}</div>`
+}
+const CF = {
+  cargo: ['Kargo Firması', ['Tüm Kargolar', 'Trendyol Express', 'HepsiJET', 'Yurtiçi Kargo', 'Aras Kargo', 'PTT Kargo']],
+  os: ['Sipariş Durumu', ['Tüm Sipariş Durumları', 'Yeni', 'Hazırlanıyor', 'Kargoya Verildi', 'Kargoda', 'Teslim Edildi']],
+  inv: ['Fatura Durumu', ['Tüm Fatura Durumları', 'Fatura Bekliyor', 'Faturası Mevcut', 'Fatura İletiliyor', 'Fatura İletilemedi', 'Fatura Oluşturulamadı', 'Fatura İptal']],
+  ops: ['Oluşturma Durumu', ['Tüm İşlem Durumları', 'Fatura Oluşturulabilir', 'Fatura Oluşturulamaz']],
+}
+function popColumn(k, st) {
+  const [label, opts] = CF[k], cur = S.cf[k]
+  return `<div class="pop ${k === 'ops' ? 'right' : ''} ${st ? 'static' : ''}" role="dialog" style="min-width:230px"><div class="ph">${label}</div>${opts.map((o, i) => `<button class="opt ${(cur ? cur === o : i === 0) ? 'on' : ''}" data-a="cf" data-k="${k}" data-val="${i ? o : ''}"><span class="grow">${o}</span>${(cur ? cur === o : i === 0) ? G.done : ''}</button>`).join('')}${cur ? `<div class="foot"><span></span><button class="btn quiet" style="height:28px" data-a="cf" data-k="${k}" data-val="">Filtreyi Temizle</button></div>` : ''}</div>`
+}
+function popActions(r, st, withDetail = S.v === '2') {
+  const items = []
+  if (withDetail) items.push(`<button class="opt" data-a="m" data-k="detail">${I.open}<span class="grow">Detayları Aç</span></button>`, '<div class="sep"></div>')
+  items.push(`<button class="opt" data-a="m" data-k="preview">${I.doc}<span class="grow">${r.inv === 'fail' ? 'Platforma Tekrar Gönder' : r.inv === 'err' ? 'Tekrar Dene' : 'Fatura Oluştur'}</span></button>`)
+  if (r.p === 'shopify') items.push(`<button class="opt">${I.eyeoff}<span class="grow">Siparişi Gizle</span></button>`)
+  if (r.p !== 'trendyol' && r.p !== 'shopify') items.push(`<button class="opt">${I.refresh}<span class="grow">Sipariş Durumunu Güncelle</span></button>`)
+  if (r.inv === 'fail' || r.inv === 'send') items.push('<div class="sep"></div>', `<button class="opt" data-a="m" data-k="resend">${I.alert}<span class="grow">Sağlayıcıda Fatura Yok, Yeniden Gönder</span></button>`, `<button class="opt" data-a="m" data-k="seen">${I.check}<span class="grow">Pazaryerinde Gördüm, Tamamla</span></button>`, `<button class="opt" data-a="m" data-k="recut">${I.close}<span class="grow">Portalda İptal Ettim, Yeni Fatura Kes</span></button>`)
+  items.push('<div class="sep"></div>', `<button class="opt" data-a="m" data-k="manual">${I.upload}<span class="grow">Manuel Fatura Ekle</span></button>`, `<button class="opt" disabled title="Önce manuel fatura belgesi ekleyin.">${I.link}<span class="grow">Manuel Faturayı Pazaryerine Gönder</span></button>`)
+  return `<div class="pop right ${st ? 'static' : ''}" role="menu" style="min-width:300px">${items.join('')}</div>`
+}
+const prodTip = st => `<div class="tip" ${st ? 'style="position:static"' : ''}><div class="li"><i></i><span><b>Kadın Triko Bluz — Siyah</b><small>1 adet · Birim ₺519,75<br>SKU: BLUZ-01 · Barkod: 8690001234567</small></span></div></div>`
+
+/* ---------- table ---------- */
+function headCell(label, k, extra = '') { const f = k && S.cf[k]; return `<th class="${f ? 'has-filter' : ''}"><span class="hf">${extra}${label}${k ? `<span class="anchor"><button class="fbtn" data-a="pop" data-k="cf-${k}" aria-label="${label} filtresi">${I.filter}</button>${S.pop === 'cf-' + k ? popColumn(k) : ''}</span>` : ''}</span></th>` }
+function row(r, compact) {
+  const sel = S.sel.has(r.id)
+  const order = `<div class="ordercell"><input type="checkbox" class="cb" data-row="${r.id}" ${sel ? 'checked' : ''}>${logo(r.p)}<div><span class="on-no">#${r.no}<button class="icon-btn" title="Kopyala" style="width:22px;height:22px">${I.copy}</button></span><small class="num">${r.date}${r.invNo ? ` · ${r.invNo}` : ''}</small></div></div>`
+  const cust = `<div class="cust anchor"><b>${r.cust}</b><span class="prodsum" data-a="pop" data-k="tip-${r.id}">${r.qty}</span>${S.pop === 'tip-' + r.id ? prodTip() : ''}</div>`
+  const cargo = `<div class="cargocell"><span class="cargo ${r.cargo[0]}">${r.cargo[1]}</span><small class="num">${r.track || 'Takip numarası yok'}</small></div>`
+  const os = `<div class="stacked"><span class="badge">${r.os}</span>${r.deliv ? `<small>Teslim: ${r.deliv}</small>` : ''}</div>`
+  const inv = `<div class="stacked">${invBadge(r)}${r.reason ? `<small style="color:var(--bad)" title="${esc(r.reason)}">Neden: belge numarası geçersiz</small>` : ''}${r.deadline ? `<small class="${r.crit ? 'crit' : ''}">Son Tarih: ${r.deadline}</small>` : ''}</div>`
+  const amt = `<div class="amt"><b class="num">${r.amt}</b><small class="${r.due ? 'pri' : ''}">${r.due ? 'Öncelikli Takip' : 'Sipariş Toplamı'}</small></div>`
+  const menu = `<span class="anchor"><button class="btn" data-a="pop" data-k="act-${r.id}">İşlemler${I.chev}</button>${S.pop === 'act-' + r.id ? popActions(r) : ''}</span>`
+  const acts = compact
+    ? `<div class="rowacts">${r.inv === 'wait' ? `<button class="btn primary" data-a="m" data-k="preview">Fatura Oluştur</button>` : ''}<span class="anchor"><button class="icon-btn" style="width:34px;height:34px" data-a="pop" data-k="act-${r.id}" aria-label="#${r.no} sipariş işlemleri">${I.more}</button>${S.pop === 'act-' + r.id ? popActions(r) : ''}</span></div>`
+    : `<div class="acts-cell">${menu}${r.onPlatform ? '<small style="color:var(--muted);font-size:12px">Platformda fatura var</small>' : ''}<button class="btn link" data-a="m" data-k="detail">Detayları Aç ${I.open}</button></div>`
+  return `<tr class="${sel ? 'sel' : ''} ${r.due ? 'due' : ''}"><td>${order}</td><td>${cust}</td><td>${cargo}</td><td>${os}</td><td>${inv}</td><td>${amt}</td><td>${acts}</td></tr>`
+}
+function table(compact) {
+  const all = ROWS.every(r => S.sel.has(r.id))
+  return `<table class="tbl"><colgroup><col class="c-order"><col class="c-cust"><col class="c-cargo"><col class="c-os"><col class="c-inv"><col class="c-amt"><col class="c-act"></colgroup><thead><tr>${headCell('Sipariş Bilgileri', null, `<input type="checkbox" class="cb" data-a="all" ${all ? 'checked' : ''} aria-label="Bu sayfadaki tüm siparişleri seç" style="margin-right:8px">`)}${headCell('Alıcı')}${headCell('Kargo', 'cargo')}${headCell('Sipariş Durumu', 'os')}${headCell('Fatura Durumu', 'inv')}${headCell('Tutar')}${headCell('İşlemler', 'ops')}</tr></thead><tbody>${ROWS.map(r => row(r, compact)).join('')}</tbody></table>`
+}
+const pager = `<div class="pager"><span>Toplam <b style="color:var(--ink)">63</b> adet</span><div class="pages"><button aria-label="Önceki">${I.left}</button><button class="on">1</button><button>2</button><button>3</button><button>4</button><button aria-label="Sonraki">${I.right}</button></div></div>`
+const bulkButtons = n => `<button class="btn primary" data-a="m" data-k="preview-bulk">${I.doc}Toplu Fatura Oluştur (${n})</button><button class="btn" data-a="m" data-k="shopify-bulk">${I.edit}Shopify Faturalarını Güncelle (1)</button><button class="btn">${I.eyeoff}Siparişleri Gizle</button><button class="btn quiet" data-a="clear-sel">Seçimi Temizle</button>`
+const platTrigger = () => `<span class="anchor"><button class="trigger ${S.pop === 'plat' ? 'on' : ''}" data-a="pop" data-k="plat"><span>${S.plats.length === PLATFORMS.length || !S.plats.length ? 'Tüm Platformlar' : S.plats.length === 1 ? pname(S.plats[0]) : `${S.plats.length} Platform Seçili`}</span>${I.chev}</button>${S.pop === 'plat' ? popPlatforms() : ''}</span>`
+const dateTrigger = () => `<span class="anchor"><button class="trigger ${S.pop === 'date' ? 'on' : ''}" data-a="pop" data-k="date">${I.cal}<span>03.10.2026 – 08.10.2026</span>${I.chev}</button>${S.pop === 'date' ? popDate() : ''}</span>`
+const sortTrigger = () => `<span class="anchor"><button class="trigger ${S.pop === 'sort' ? 'on' : ''}" data-a="pop" data-k="sort"><span>${S.sort[0]}</span>${S.sort[1] === 'down' ? I.down : I.up}${I.chev}</button>${S.pop === 'sort' ? popSort() : ''}</span>`
+const providerNotice = `<div class="callout warn">${I.alert}<span><b>E-Faturam Sağlayıcısı Hazır Değil.</b> Fatura oluşturmak için sipariş bağlantısıyla aynı ortamda (Stage veya Canlı) etkin ve kimlik bilgisi kayıtlı E-Faturam bağlantısı gerekir. <button class="btn link">Bağlantıyı Yönet</button></span></div>`
+
+/* ---------- proposals ---------- */
+function v1() {
+  const tabLabel = TABS.find(t => t[0] === S.tab)[1]
+  return `<div class="page v1">
+    <div class="ph"><div><div class="crumb">Mali Belgeler</div><h1>Faturalar</h1><p>Paket bazlı fatura kesimi, pazaryerine iletim ve takip.</p></div></div>
+    <div class="metrics"><article><small>Fatura Bekleyen</small><strong>63</strong><span>paket bazlı işlem</span></article><article class="${0 ? 'warn' : ''}"><small>Süresi Yaklaşan</small><strong>0</strong><span>teslimden 5 gün geçen</span></article><article><small>Faturalandırılan</small><strong>1.732</strong><span>ikinci fatura kapalı</span></article><article><small>Toplam Paket</small><strong>1.795</strong><span>fatura çalışma alanı</span></article></div>
+    ${providerNotice}
+    <div class="fshell"><span class="seg" role="tablist">${TABS.map(([k, l, n]) => `<button class="${S.tab === k ? 'on' : ''}" data-a="tab" data-k="${k}">${l}<span class="count ${k === 'due' && n ? 'warn' : ''}">${n.toLocaleString('tr-TR')}</span></button>`).join('')}</span>
+      <div class="filters"><label class="fld search"><small>Fatura Ara</small><span style="position:relative">${I.search.replace('class="ico"', 'class="ico" style="position:absolute;left:11px;top:10px;color:var(--subtle)"')}<input class="in" style="padding-left:34px" placeholder="Sipariş, müşteri, fatura veya takip no ara…"></span></label><div class="fld"><small>Platform</small>${platTrigger()}</div><div class="fld"><small>Sipariş Tarihi</small>${dateTrigger()}</div><div class="fld"><small>Sıralama</small>${sortTrigger()}</div><button class="btn quiet" data-a="cf-clear">Filtreleri Temizle</button></div></div>
+    <div class="panel"><div class="panel-h"><div><h2>${tabLabel}</h2><p>Filtreleme sonuçları: 63 paket</p></div><label class="psize">Sayfa Başına<select class="in"><option>20</option><option>50</option><option>100</option><option>200</option></select></label></div>
+      <div class="tblwrap">${table(false)}</div>${pager}</div>
+    ${S.sel.size ? `<div class="bulk"><span class="grow">${S.sel.size} sipariş seçildi</span>${bulkButtons(S.sel.size)}</div>` : ''}
+    ${mocks()}</div>`
+}
+function v2() {
+  const M = [['pending', 'Fatura Bekleyen', 63, 'paket bazlı işlem', I.clock], ['due', 'Süresi Yaklaşan', 0, 'teslimden 5 gün geçen', I.alert], ['done', 'Faturalandırılan', 1732, 'ikinci fatura kapalı', I.check], ['all', 'Toplam Paket', 1795, 'fatura çalışma alanı', I.box]]
+  const af = [...(S.plats.length && S.plats.length < PLATFORMS.length ? [['Platform', S.plats.map(pname).join(', '), 'plat']] : []), ['Sipariş Tarihi', '03.10.2026 – 08.10.2026', 'date'], ...Object.entries(S.cf).filter(([, v]) => v).map(([k, v]) => [CF[k][0], v, 'cf-' + k])]
+  return `<div class="page v2">
+    <div class="ph"><div><div class="crumb">Mali Belgeler</div><h1>Faturalar</h1><p>Paket bazlı fatura kesimi, pazaryerine iletim ve takip.</p></div></div>
+    <div class="strip">${M.map(([k, l, n, s, ic]) => `<button class="${S.tab === k ? 'on' : ''} ${k === 'due' && n ? 'warn' : ''}" data-a="tab" data-k="${k}"><span class="dot">${ic}</span><strong>${n.toLocaleString('tr-TR')}</strong><small>${l} · ${s}</small></button>`).join('')}</div>
+    ${providerNotice}
+    <div class="work">
+      <nav class="tabs" role="tablist">${TABS.map(([k, l, n]) => `<button class="${S.tab === k ? 'on' : ''}" data-a="tab" data-k="${k}">${l}<span class="count">${n.toLocaleString('tr-TR')}</span></button>`).join('')}</nav>
+      ${S.sel.size ? `<div class="selbar"><b>${S.sel.size} sipariş seçildi</b>${bulkButtons(S.sel.size)}</div>` : `<div class="tools"><div class="search">${I.search}<input class="in" style="height:34px" placeholder="Sipariş, müşteri, fatura veya takip no ara…"></div>${platTrigger()}${dateTrigger()}${sortTrigger()}<label class="psize" style="display:flex;align-items:center;gap:8px;color:var(--muted);font-size:13px"><select class="in" style="width:110px;height:34px"><option>20 Paket</option><option>50 Paket</option><option>100 Paket</option><option>200 Paket</option></select></label></div>`}
+      ${af.length ? `<div class="afilters">63 paket ·${af.map(([l, v, k]) => `<span class="afilter"><span>${l}:</span>${esc(v)}<button data-a="af-rm" data-k="${k}" aria-label="${l} filtresini kaldır">${I.close}</button></span>`).join('')}<button class="btn link" data-a="cf-clear" style="margin-left:4px">Filtreleri Temizle</button></div>` : ''}
+      <div class="tblwrap">${table(true)}</div>${pager}</div>
+    ${mocks()}</div>`
+}
+
+/* ---------- popups ---------- */
+const modal = ({ crumb, title, desc, body, foot, w = '', flush }) => `<div class="modal ${w}" role="dialog" aria-modal="true"><header class="m-head"><div>${crumb ? `<div class="crumb">${crumb}</div>` : ''}<h2>${title}</h2>${desc ? `<p>${desc}</p>` : ''}</div><button class="icon-btn" data-a="close" aria-label="Kapat">${I.close}</button></header><div class="m-body ${flush ? 'flush' : ''}">${body}</div>${foot ? `<footer class="m-foot">${foot}</footer>` : ''}</div>`
+function mDetail(two) {
+  const r = ROWS[2]
+  const facts = `<div class="facts"><div><small>Sipariş Durumu</small><span class="badge">${r.os}</span></div><div><small>Fatura Durumu</small>${invBadge(r)}<em>Hata kodu: INV-REJECTED</em></div><div><small>Toplam</small><b class="num">${r.amt}</b></div><div><small>Kargo / Takip</small><span class="cargo hx">HepsiJET</span><em class="num">${r.track}</em></div></div>`
+  const invInfo = `<div><div class="h3">Fatura Bilgileri</div><p class="lead">Mali fatura, pazaryerindeki fatura ve teslim kanıtı ayrı izlenir.</p></div><dl class="kv"><dt>Mali Fatura Numarası</dt><dd class="num">${r.invNo}</dd><dt>Mali Fatura</dt><dd><span class="badge ok">Faturası Mevcut</span></dd><dt>Pazaryerindeki Fatura</dt><dd>${invBadge(r)}</dd><dt>İletim Kanıtı</dt><dd><span class="badge bad">Platform aktarımı başarısız</span><small style="color:var(--muted)">Referans: HB-INV-88213</small></dd><dt>Son Başarılı Kontrol</dt><dd>16.10.2026 21:40</dd></dl><div class="callout danger">${I.alert}<span><b>Pazaryeri faturayı reddetti.</b> Belge numarası geçersiz. Fatura numarasını kontrol edip yeniden iletin.</span></div><div style="display:flex;flex-wrap:wrap;gap:12px"><button class="btn link">${I.open} Mali sağlayıcı yerel PDF’sini aç</button><button class="btn link">${I.open} Pazaryerindeki güncel fatura bağlantısını aç</button></div><details><summary class="lead" style="cursor:pointer">Önceki pazaryeri fatura referansları (1)</summary><div class="sum" style="margin-top:8px"><div>${G.none}<span>RVC2026000102<small>12.10.2026 · Portalda iptal edildi</small></span><button class="btn link">Geçmiş bağlantıyı aç</button></div></div></details>`
+  const prod = `<div style="display:flex;justify-content:space-between;align-items:center"><span class="h3">Ürünler</span><span class="lead">2 kalem</span></div><div class="lines"><div><i></i><span><b>Kadın Triko Bluz — Siyah</b><small>SKU: BLUZ-01 · Barkod: 8690001234567</small></span><small class="num">1 adet · Birim ₺519,75 · KDV %10</small></div><div><i></i><span><b>Örme Hırka — Bej</b><small>SKU: HRK-07 · Barkod: 8690001239876</small></span><small class="num">1 adet · Birim ₺728,65 · KDV %10</small></div></div>`
+  const addr = `<div class="addr"><div><b>Teslimat Adresi</b><span>Adres: Atatürk Cad. No:12 D:4</span><span>İlçe / İl: Karaköprü / Şanlıurfa</span><span>Telefon: 0532 *** ** 12</span></div><div><b>Fatura Adresi</b><span>Adres: Atatürk Cad. No:12 D:4</span><span>İlçe / İl: Karaköprü / Şanlıurfa</span><span>Posta Kodu: 63300</span></div></div>`
+  const body = two ? `${`<div style="padding:16px 24px;border-bottom:1px solid var(--line)">${facts}</div>`}<div class="detail-grid"><section>${invInfo}</section><section>${prod}<div class="h3">Adresler</div>${addr}</section></div>` : `${facts}${invInfo}${prod}${addr}`
+  return modal({ crumb: 'Sipariş ve Fatura Özeti', title: `${logo('hepsiburada')} `.replace('<img', '<img style="vertical-align:-7px;margin-right:8px"') + `#${r.no}`, desc: `${r.cust} · ${r.date}`, w: two ? 'xl' : 'lg', flush: two, body, foot: `<button class="btn quiet">${I.refresh}Platformdan Bilgileri Güncelle</button><span class="note"></span><button class="btn" data-a="close">Kapat</button><button class="btn">${I.eyeoff}Siparişi Gizle</button><button class="btn primary">Fatura Kaydını Aç ${I.open}</button>` })
+}
+function mPreview(bulk) {
+  const card = (r, kind) => `<article class="ocard"><header>${logo(r.p)}<div><b>${pname(r.p)} · #${r.no}</b><small>Canlı · Bireysel · E-Arşiv</small></div><span class="badge ${kind[1]}">${kind[0]}</span></header><section><div class="chips"><span class="lead" style="margin-right:4px">Tek mali fatura kesilir ve 1 pakete iletilir</span><span class="chip num">${r.track || 'Paket numarası yok'}</span></div><dl class="kv"><dt>Alıcı / Unvan</dt><dd>${r.cust}</dd><dt>TC / Vergi No</dt><dd class="num">11111111111</dd><dt>Fatura Adresi</dt><dd>Atatürk Cad. No:12 D:4 · Karaköprü / Şanlıurfa</dd><dt>Fatura Türü</dt><dd>E-Arşiv · Satış</dd></dl><table class="ptable"><thead><tr><th>Ürün</th><th>Miktar</th><th>Birim Fiyat</th><th>İndirim</th><th>KDV</th><th>Toplam</th></tr></thead><tbody><tr><td>Kadın Triko Bluz — Siyah<br><small style="color:var(--muted)">BLUZ-01</small></td><td>1</td><td>₺472,50</td><td>₺0,00</td><td>%10</td><td>${r.amt}</td></tr></tbody></table><div class="totals"><span>Ara Toplam</span><b class="num">₺472,50</b><span>KDV</span><b class="num">₺47,25</b><span>İndirim</span><b class="num">₺0,00</b><span>Fatura Toplamı</span><b class="num">${r.amt}</b></div></section></article>`
+  const body = bulk ? `${card(ROWS[0], ['Mali Faturayı Oluştur ve Platforma İlet', 'info'])}${card(ROWS[1], ['Mali Faturayı Oluştur ve Platforma İlet', 'info'])}` : card(ROWS[0], ['Mali Faturayı Oluştur ve Platforma İlet', 'info'])
+  return modal({ crumb: 'Salt Okunur Fatura Kontrolü', title: 'Fatura Oluşturma Önizlemesi', desc: 'Bilgileri kontrol edin; onayladığınızda fatura hemen kesilir ve sonuç bildirim olarak gelir.', w: 'lg', body, foot: `<label class="cklabel"><input type="checkbox" class="cb" checked>İnternet Satış Bilgilerini Doldur</label><span class="note"></span><button class="btn" data-a="close">Vazgeç</button><button class="btn primary" data-a="confirm-preview">Onayla ve Faturayı Kes${bulk ? ' (2)' : ''}</button>` })
+}
+const statusSelect = `<label class="fld"><small>Yeni Fatura Durumu</small><select class="in"><option>Fatura Bekliyor</option><option>Faturası Yüklendi</option></select></label>`
+const mShopify = () => modal({ crumb: 'Shopify', title: 'Fatura Durumunu Değiştir', desc: '#1042 · Bu değişiklik yalnızca panel kaydını günceller.', w: 'sm', body: `${statusSelect}<div class="callout">${I.info}<span>Shopify’a fatura gönderilmez; yalnızca paneldeki durum güncellenir.</span></div>`, foot: `<span class="note"></span><button class="btn" data-a="close">Vazgeç</button><button class="btn primary">Durumu Kaydet</button>` })
+const mShopifyBulk = () => modal({ crumb: 'Toplu Fatura Durumu · Shopify', title: 'Seçilen Shopify Faturalarını Güncelle', desc: '1 Shopify siparişi · Fatura dosyası yüklenmez.', w: 'md', body: `${statusSelect}<div class="callout">${I.info}<span>Durum yalnızca Shopify siparişlerinin panel kaydında güncellenir. Dosya yüklenmez ve Shopify’a fatura gönderilmez.</span></div><div class="sum"><div>${logo('shopify')}<span>#1042<small>Deniz Koç · 15.10.2026 10:02</small></span><span class="badge warn">Fatura Bekliyor</span></div></div>`, foot: `<span class="note"></span><button class="btn" data-a="close">Vazgeç</button><button class="btn primary">1 Shopify Siparişini Güncelle</button>` })
+const mManual = () => modal({ crumb: 'Hepsiburada · #4736002251', title: 'Siparişe Manuel Fatura Belgesi Ekle', desc: 'Belge e-Faturam bağlantısı veya mali taslak gerektirmeden kaydedilir. Kaydetmek platforma gönderim başlatmaz.', w: 'md', body: `<div style="display:flex;flex-wrap:wrap;gap:8px"><span class="lead">Mali fatura kaydı</span><span class="badge ok">Faturası Mevcut</span><span class="lead" style="margin-left:8px">Platform belgesi</span><span class="badge">Henüz iletilmedi</span></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px"><label class="fld"><small>Fatura Numarası</small><input class="in" placeholder="Fatura numarası"></label><label class="fld"><small>Fatura Tarihi</small><input class="in" type="datetime-local"></label></div><label class="fld"><small>Mevcut HTTPS Fatura Bağlantısı</small><input class="in" placeholder="https://…"></label><div class="divider">veya PDF dosyası</div><div class="drop">${I.upload}<b>PDF Dosyasını Seçin</b><small>PDF · En fazla 10 MB</small><button class="btn">Dosya Seç</button></div>`, foot: `<span class="note"></span><button class="btn" data-a="close">Vazgeç</button><button class="btn primary">Belgeyi Kaydet</button>` })
+const CONF = {
+  seen: ['Pazaryerinde Gördüm, Tamamla', '#4736002251 siparişinde RVC2026000184 numaralı faturayı pazaryerinin satıcı panelinde gördünüz mü?', 'Onaylarsanız fatura tamamlandı olarak işaretlenir ve tekrar gönderilmez.', 'Faturayı Tamamla', ''],
+  recut: ['Portalda İptal Ettim, Yeni Fatura Kes', '#4736002251 için RVC2026000184 numaralı faturayı E-Faturam portalında iptal ettiniz mi?', 'Onaylarsanız bu fatura panelde iptal olarak kapanır ve aynı siparişe yeni fatura kesebilirsiniz. Portalda iptal edilmemiş bir fatura için bunu yapmayın.', 'İptal Edildi, Yeni Fatura Kes', 'warn'],
+  resend: ['Sağlayıcıda Fatura Yok, Yeniden Gönder', '#4736002251 için E-Faturam portalında fatura olmadığını doğruladınız mı?', 'Onaylarsanız bu fatura yeniden gönderilebilir hâle gelir. Portalda fatura varsa mükerrer fatura oluşur.', 'Yeniden Gönderilebilir Yap', 'danger'],
+}
+const mConfirm = k => { const c = CONF[k]; return modal({ title: c[0], desc: c[1], w: 'sm', body: `<div class="sum"><div>${logo('hepsiburada')}<span>#4736002251<small>Zeynep Aydın · RVC2026000184</small></span><span class="badge bad">Fatura İletilemedi</span></div></div><div class="callout ${c[4]}">${I.alert}<span>${c[2]}</span></div>`, foot: `<span class="note"></span><button class="btn" data-a="close">Vazgeç</button><button class="btn ${c[4] === 'danger' ? 'solid' : 'primary'}" data-a="close">${c[3]}</button>` }) }
+const POP = { detail: () => mDetail(S.v === '2'), preview: () => mPreview(false), 'preview-bulk': () => mPreview(true), shopify: mShopify, 'shopify-bulk': mShopifyBulk, manual: mManual, seen: () => mConfirm('seen'), recut: () => mConfirm('recut'), resend: () => mConfirm('resend') }
+const toast = `<div class="toast"><span class="ti">${G.pending}</span><div><strong>İşlem Sürüyor</strong><p>#11717855898 nolu siparişin faturası oluşturuluyor ve pazaryerine iletiliyor…</p></div><button class="icon-btn" data-a="toast-x">${I.close}</button></div>`
+
+function mocks() {
+  const m = []
+  const add = (l, h, full) => m.push(`<div class="mock ${full ? 'full' : ''}"><span>${l}</span><div class="stage" inert>${h}</div></div>`)
+  add('Detayları Aç · Sipariş ve Fatura Özeti', mDetail(S.v === '2'), true)
+  add('Fatura Oluştur · Önizleme', mPreview(false), true)
+  add('Platform Seçimi', `<div style="width:280px">${popPlatforms(true)}</div>`)
+  add('Sipariş Tarihi · Takvim', popDate(true))
+  add('Sıralama', `<div style="width:240px">${popSort(true)}</div>`)
+  add('Sütun Filtresi · Kargo', `<div style="width:240px">${popColumn('cargo', true)}</div>`)
+  add('İşlemler Menüsü', `<div style="width:310px">${popActions(ROWS[2], true)}</div>`)
+  add('Ürün Özeti İpucu', `<div style="width:320px">${prodTip(true)}</div>`)
+  add('Manuel Fatura Ekle', mManual())
+  add('Shopify · Fatura Durumunu Değiştir', mShopify())
+  add('Toplu Shopify Güncelleme', mShopifyBulk())
+  add('Pazaryerinde Gördüm, Tamamla (tarayıcı onayı yerine)', mConfirm('seen'))
+  add('Portalda İptal Ettim, Yeni Fatura Kes', mConfirm('recut'))
+  add('Sağlayıcıda Fatura Yok, Yeniden Gönder', mConfirm('resend'))
+  add('Boş Liste', `<div style="display:grid;justify-items:center;gap:6px;padding:24px;text-align:center"><span style="display:grid;place-items:center;width:44px;height:44px;color:var(--violet);background:var(--primary-soft);border:1px solid var(--violet-line);border-radius:10px">${I.box}</span><b>Kayıt Yok</b><span class="lead">Seçili fatura sekmesi ve filtrelerle eşleşen paket bulunamadı.</span></div>`)
+  add('Bildirim · Fatura Kesiliyor', toast.replace('class="toast"', 'class="toast" style="position:static"'))
+  return `<section class="mocks"><h3>Açılır Menüler ve Pencereler</h3><p>Bu öneride sayfadaki her düğmenin açtığı menü ve pencerenin görünümü. Yukarıdaki düğmeler aynılarını canlı açar.</p><div class="mock-grid">${m.join('')}</div></section>`
+}
+
+function render() {
+  document.getElementById('root').innerHTML = S.v === '1' ? v1() : v2()
+  document.getElementById('layer').innerHTML = (S.modal ? `<div class="overlay" data-a="overlay">${POP[S.modal]()}</div>` : '') + (S.toast ? toast : '')
+}
+document.addEventListener('click', e => {
+  const sw = e.target.closest('#sw button'); if (sw) { S.v = sw.dataset.v; S.pop = null; document.querySelectorAll('#sw button').forEach(b => b.classList.toggle('on', b === sw)); render(); scrollTo(0, 0); return }
+  const t = e.target.closest('[data-a]')
+  if (!t) { if (S.pop && !e.target.closest('.pop, .tip')) { S.pop = null; render() } return }
+  const a = t.dataset.a, k = t.dataset.k
+  if (a === 'overlay' && e.target !== t) return
+  if (a === 'pop') S.pop = S.pop === k ? null : k
+  else if (a === 'tab') S.tab = k
+  else if (a === 'm') { S.modal = k; S.pop = null }
+  else if (a === 'close' || a === 'overlay') S.modal = null
+  else if (a === 'confirm-preview') { S.modal = null; S.toast = true; setTimeout(() => { S.toast = null; render() }, 4000) }
+  else if (a === 'toast-x') S.toast = null
+  else if (a === 'sort') { S.sort = k.split('|'); S.pop = null }
+  else if (a === 'cf') { S.cf[k] = t.dataset.val || undefined; S.pop = null }
+  else if (a === 'cf-clear') { S.cf = {}; S.plats = PLATFORMS.map(p => p[0]) }
+  else if (a === 'af-rm') { if (k === 'plat') S.plats = PLATFORMS.map(p => p[0]); else if (k.startsWith('cf-')) delete S.cf[k.slice(3)] }
+  else if (a === 'plat-all') S.plats = S.plats.length === PLATFORMS.length ? [] : PLATFORMS.map(p => p[0])
+  else if (a === 'clear-sel') S.sel.clear()
+  else if (a === 'all') { if (ROWS.every(r => S.sel.has(r.id))) S.sel.clear(); else ROWS.forEach(r => S.sel.add(r.id)) }
+  render()
+})
+document.addEventListener('change', e => {
+  const r = e.target.dataset.row; if (r) { S.sel.has(r) ? S.sel.delete(r) : S.sel.add(r); render() }
+  const p = e.target.dataset.plat; if (p) { S.plats = e.target.checked ? [...S.plats, p] : S.plats.filter(x => x !== p); render() }
+})
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { S.modal = null; S.pop = null; render() } })
+render()
+</script>
+</body>
+</html>
