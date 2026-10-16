@@ -2925,6 +2925,7 @@ function FieldDetail({ platformCode, platformLabel, connectionId, categoryScope,
     <FieldHeading name={remote.name} required={required} platformLabel={platformLabel} />
     <div className="cm-form">
       <div className="cm-field"><small>{platformLabel} alanı</small><span className="cm-readonly">{remote.name}</span></div>
+      <span className="cm-link" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M6.6 9.4 9.4 6.6" /><path d="M7.4 4.6 8.6 3.4a2.6 2.6 0 0 1 3.7 3.7l-1.2 1.2" /><path d="M8.6 11.4 7.4 12.6a2.6 2.6 0 0 1-3.7-3.7l1.2-1.2" /></svg></span>
       <div className="cm-field"><small>Panel özelliği</small><div className="cm-select-row">
         <select aria-label={`${remote.name} için panel özelliği`} value={mapping?.localId ?? ''} disabled={busy} onChange={event => void choose(event.target.value)}>
           <option value="">Seçin…</option>
