@@ -342,11 +342,11 @@ describe('QuestionsPage workspace flows', () => {
     await renderPage()
 
     const context = container.querySelector('.rv-question-platform-context')!
-    expect(context.firstElementChild?.classList.contains('order-platform-logo')).toBe(true)
-    expect(context.querySelector('.order-platform-logo')?.getAttribute('src')).toBe('/platforms/orders/trendyol.png')
+    expect(context.querySelector('img')?.getAttribute('src')).toBe('/platforms/trendyol.png')
+    expect(context.textContent).toContain('Trendyol')
     expect(container.querySelector('.qi-facts .qi-tag')?.textContent).toBe('Cevap Bekliyor')
     expect(container.querySelector('.qi-facts')?.textContent).toContain('Kalan Süre')
-    expect(container.querySelector('.qi-item .order-platform-logo')).not.toBeNull()
+    expect(container.querySelector('.qi-item-logo img')?.getAttribute('src')).toBe('/platforms/trendyol.png')
   })
 
   it('renders the platform rejection when answer submission fails and refreshes the active question kind', async () => {

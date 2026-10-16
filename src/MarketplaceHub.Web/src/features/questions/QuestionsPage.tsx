@@ -5,7 +5,6 @@ import { hubApi, loadAllPages } from '../../shared/api'
 import { marketplaceProductSearchUrl } from './marketplace-product-link'
 import { Button, EmptyState, LoadingState, Tabs, UiIcon } from '../../shared/components'
 import { platformLogoClass, platformLogoSource } from '../../shared/platform-logos'
-import { PlatformMark } from '../../shared/platform-mark'
 import { productImageFallbackUrls } from '../marketplace/product-image-lookups'
 import { questionDeadline } from './question-time'
 import { visibleQuestionConversation, type QuestionConversation } from './question-conversation'
@@ -214,7 +213,7 @@ export function QuestionsPage() {
       <div className="qi-detail-head">
         <button type="button" className="qi-back" onClick={() => setDetailOpen(false)}><UiIcon name="chevronLeft" size={16} />Sorular</button>
         <div className="qi-dcard">
-          <div className="qi-product rv-question-product"><QuestionProductImage src={row.productImageUrl} connectionId={row.connectionId} sku={row.productSku} barcode={row.productBarcode} modelCode={row.productModelCode} productName={row.productName || 'Ürün'} /><div><strong>{productHref ? <a className="rv-question-product-link" href={productHref} target="_blank" rel="noopener noreferrer">{row.productName || 'Ürün'}</a> : row.productName || (row.kind === 'ORDER' ? 'Sipariş Sorusu' : 'Ürün bilgisi yok')}</strong><small>{codesOf(row)}</small></div><div className="qi-platform rv-question-platform-context"><PlatformMark code={row.platformCode} name={displayPlatform(row.platformCode)} /><span>{row.storeName || displayPlatform(row.platformCode)}</span></div></div>
+          <div className="qi-product rv-question-product"><QuestionProductImage src={row.productImageUrl} connectionId={row.connectionId} sku={row.productSku} barcode={row.productBarcode} modelCode={row.productModelCode} productName={row.productName || 'Ürün'} /><div><strong>{productHref ? <a className="rv-question-product-link" href={productHref} target="_blank" rel="noopener noreferrer">{row.productName || 'Ürün'}</a> : row.productName || (row.kind === 'ORDER' ? 'Sipariş Sorusu' : 'Ürün bilgisi yok')}</strong><small>{codesOf(row)}</small></div><div className="qi-platform rv-question-platform-context"><img className={platformLogoClass(row.platformCode)} src={platformLogoSource(row.platformCode) ?? undefined} alt="" aria-hidden="true" /><span>{row.storeName || displayPlatform(row.platformCode)}</span></div></div>
           <dl className="qi-facts"><div><dt>Durum</dt><dd><span className="qi-tag"><StateGlyph state={state.glyph} />{state.label}</span></dd></div><div><dt>{deadline ? 'Kalan Süre' : 'Son Güncelleme'}</dt><dd className={deadline?.urgent ? 'is-urgent' : undefined}>{deadline ? <span className="rv-question-deadline" title={`Son cevap tarihi: ${formatDate(row.expiresAt)}`}>{deadline.text}</span> : formatDate(row.lastRemoteModifiedAt)}</dd></div><div><dt>{row.kind === 'ORDER' && row.externalOrderNumber ? 'Sipariş' : 'Soru No'}</dt><dd>{row.kind === 'ORDER' && row.externalOrderNumber ? <span className="rv-question-meta"><Link to={`/orders?search=${encodeURIComponent(row.externalOrderNumber)}`}>Sipariş #{row.externalOrderNumber}</Link></span> : `#${row.externalQuestionId}`}</dd></div><div><dt>Soru Tarihi</dt><dd className="rv-question-age">{formatDate(row.createdAt)}</dd></div></dl>
         </div>
       </div>
@@ -265,7 +264,7 @@ export function QuestionsPage() {
             const state = questionStatus(row.status)
             const deadline = row.status === 'WAITING_FOR_ANSWER' ? questionDeadline(row.expiresAt, now) : null
             return <button type="button" className={`qi-item rv-question-card${selected?.id === row.id ? ' is-on' : ''}`} key={row.id} aria-current={selected?.id === row.id ? 'true' : undefined} onClick={() => openQuestion(row.id)}>
-              <span className="qi-item-logo"><PlatformMark code={row.platformCode} name={displayPlatform(row.platformCode)} /></span>
+              <span className="qi-item-logo"><img className={platformLogoClass(row.platformCode)} src={platformLogoSource(row.platformCode) ?? undefined} alt={displayPlatform(row.platformCode)} /></span>
               <span className="qi-item-top"><b>{row.customerName || 'Müşteri'}</b><span>{row.productName || (row.kind === 'ORDER' ? 'Sipariş Sorusu' : 'Ürün')}</span></span>
               <time dateTime={row.createdAt}>{formatDate(row.createdAt).split(' · ')[1] ?? ''}</time>
               <span className="qi-item-text">{row.questionText}</span>

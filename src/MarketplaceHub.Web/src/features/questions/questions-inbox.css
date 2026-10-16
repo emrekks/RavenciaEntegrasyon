@@ -189,3 +189,13 @@
 .app-shell.stitch-shell main .qi-page .qi-item { transition: background var(--rv-duration-fast, .12s) var(--rv-ease-standard, ease), border-color var(--rv-duration-fast, .12s) var(--rv-ease-standard, ease); }
 .app-shell.stitch-shell main .qi-page .qi-item:not(.is-on):hover { background: var(--rv-color-surface-raised) !important; }
 .app-shell.stitch-shell main .qi-page .qi-item.is-on:hover { background: var(--rv-color-primary-soft) !important; }
+
+/* Sources card: neutralise the older sync-item grid so logo and text sit side by side. */
+.app-shell.stitch-shell main .qi-page .qi-sync .rv-questions-sync-item { position: static; grid-template-columns: 30px minmax(0, 1fr) !important; column-gap: 12px; }
+.app-shell.stitch-shell main .qi-page .qi-sync .rv-questions-sync-item > img { position: static; inset: auto; grid-column: 1; grid-row: 1; margin: 0; transform: none; }
+.app-shell.stitch-shell main .qi-page .qi-sync .rv-questions-sync-item > div { grid-column: 2; grid-row: 1; }
+.app-shell.stitch-shell main .qi-page .qi-sync .rv-questions-sync-item > div > * { grid-column: auto !important; font-size: inherit; }
+.app-shell.stitch-shell main .qi-page .qi-sync .rv-questions-sync-item small { font-size: 12px !important; line-height: 1.4; }
+.app-shell.stitch-shell main .qi-page .qi-sync b { font-size: 14px; white-space: nowrap; }
+.qi-page .qi-item-logo img { object-fit: contain; }
+.qi-page .qi-facts dd { white-space: normal; overflow-wrap: anywhere; }
