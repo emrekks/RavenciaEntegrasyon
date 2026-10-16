@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Durum Sütunları</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #111115; --surface: #17171c; --raised: #1d1d23; --soft: #22222a;
+    --line: #2a2a32; --line-strong: #383842;
+    --ink: #ececf0; --muted: #a3a3b0; --subtle: #6f6f7c;
+    --primary: #8b5cf6; --primary-soft: #272139;
+    --violet: color-mix(in srgb, var(--primary) 55%, white);
+    --warn: #e2aa4b; --bad: #e4636f; --ok: #46b98f; --info: #83b4ff;
+  }
+  * { box-sizing: border-box; }
+  html, body { overflow-x: clip; }
+  body { margin: 0; font: 14px/1.5 Inter, "Segoe UI", system-ui, sans-serif; color: var(--ink); background: var(--bg); -webkit-font-smoothing: antialiased; }
+  h1, h2, p { margin: 0; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 32px 16px 96px; display: grid; gap: 28px; }
+  .intro h1 { font-size: 22px; font-weight: 600; }
+  .intro p { color: var(--muted); margin-top: 6px; max-width: 70ch; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; position: sticky; top: 0; z-index: 5; padding: 10px 0; background: var(--bg); }
+  .tabs button { height: 34px; padding: 0 14px; color: var(--muted); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 7px; font: inherit; font-size: 13px; cursor: pointer; }
+  .tabs button[aria-pressed="true"] { color: var(--ink); background: var(--primary-soft); border-color: color-mix(in srgb, var(--primary) 55%, transparent); }
+  .option { display: grid; gap: 12px; }
+  .option-head h2 { font-size: 17px; font-weight: 600; }
+  .option-head p { color: var(--muted); font-size: 13px; margin-top: 4px; max-width: 80ch; }
+  .pros { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--muted); font-size: 12.5px; }
+  .pros span::before { content: "+ "; color: var(--ok); }
+  .pros span.con::before { content: "− "; color: var(--warn); }
+  .table { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); overflow: hidden; }
+  .tr { display: grid; align-items: center; border-top: 1px solid var(--line); }
+  .tr.th { border-top: 0; height: 44px; background: var(--raised); color: var(--muted); font-size: 12.5px; font-weight: 500; }
+  .tr > div { padding: 14px 16px; min-width: 0; }
+  .tr.th > div { padding: 0 16px; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .tr.th .f { margin-left: auto; color: var(--subtle); }
+  .order b { display: block; font-weight: 600; font-size: 13.5px; }
+  .order small { color: var(--subtle); font-size: 12px; }
+  .money { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .tr.th .money { justify-content: flex-end; }
+  .ico { width: 16px; height: 16px; flex: none; display: block; }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); } .info { color: var(--info); } .vio { color: var(--violet); } .mut { color: var(--subtle); }
+
+  /* 1 — single status column, two lines */
+  .v1 .tr { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.6fr) minmax(0, .8fr); }
+  .v1 .pair { display: grid; gap: 6px; }
+  .v1 .line { display: grid; grid-template-columns: 60px 16px minmax(0, 1fr); align-items: center; gap: 8px; font-size: 13px; }
+  .v1 .line em { font-style: normal; color: var(--subtle); font-size: 12px; }
+  .v1 .line small { color: var(--subtle); font-size: 12px; margin-left: 6px; }
+
+  /* 2 — flow track */
+  .v2 .tr { grid-template-columns: minmax(0, 1.3fr) minmax(0, 2fr) minmax(0, .8fr); }
+  .v2 .flow { display: grid; grid-template-columns: auto minmax(24px, 1fr) auto; align-items: center; gap: 10px; }
+  .v2 .node { display: flex; align-items: center; gap: 8px; font-size: 13px; white-space: nowrap; }
+  .v2 .node .dot { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; border: 1px solid var(--line-strong); background: var(--raised); }
+  .v2 .node small { display: block; color: var(--subtle); font-size: 11.5px; line-height: 1.2; }
+  .v2 .node span { line-height: 1.25; }
+  .v2 .bar { height: 2px; border-radius: 2px; background: var(--line-strong); }
+  .v2 .bar.go { background: linear-gradient(90deg, var(--line-strong), currentColor); }
+
+  /* 3 — quiet two columns with group header */
+  .v3 .tr { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1.1fr) minmax(0, .8fr); }
+  .v3 .tr.group { height: 30px; background: var(--raised); border-top: 0; border-bottom: 1px solid var(--line); color: var(--subtle); font-size: 12px; }
+  .v3 .tr.group > div { padding: 0 16px; }
+  .v3 .tr.group .span { grid-column: 2 / 4; text-align: left; border-bottom: 1px solid var(--line-strong); padding-bottom: 2px; }
+  .v3 .tr.th { border-top: 0; }
+  .v3 .st { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .v3 .st small { display: block; color: var(--subtle); font-size: 12px; line-height: 1.3; }
+  .v3 .st span { line-height: 1.3; }
+
+  /* 4 — tinted full width chips */
+  .v4 .tr { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1.1fr) minmax(0, .8fr); }
+  .v4 .chip { display: flex; align-items: center; gap: 8px; width: 100%; height: 34px; padding: 0 10px; border-radius: 7px; font-size: 13px; font-weight: 500; border: 1px solid color-mix(in srgb, currentColor 30%, transparent); background: color-mix(in srgb, currentColor 10%, transparent); }
+  .v4 .chip span { color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .v4 .chip small { margin-left: auto; color: var(--muted); font-size: 11.5px; white-space: nowrap; }
+
+  /* 5 — glyph tile + detail line */
+  .v5 .tr { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1.1fr) minmax(0, 1.2fr) minmax(0, .8fr); }
+  .v5 .tile { display: grid; grid-template-columns: 32px minmax(0, 1fr); align-items: center; gap: 10px; }
+  .v5 .tile i { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 8px; background: color-mix(in srgb, currentColor 13%, var(--surface)); }
+  .v5 .tile span { display: block; color: var(--ink); font-size: 13px; font-weight: 500; line-height: 1.25; }
+  .v5 .tile small { display: block; color: var(--subtle); font-size: 12px; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .v5 .tile.bad small { color: color-mix(in srgb, var(--bad) 75%, var(--muted)); }
+
+  @media (max-width: 760px) {
+    .table { overflow-x: auto; }
+    .tr { min-width: 680px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="intro">
+    <h1>Sipariş ve Fatura Durumu Sütunları</h1>
+    <p>Şu anki görünümde başlıklar kısalıyor, küçük etiketler geniş hücrelerin ortasında kayboluyor ve her satır aynı görünüyor. Aşağıda beş farklı çözüm var; hepsi aynı beş örnek siparişi gösteriyor.</p>
+  </div>
+  <div class="tabs" role="group" aria-label="Öneri seç">
+    <button type="button" data-show="all" aria-pressed="true">Hepsi</button>
+    <button type="button" data-show="1" aria-pressed="false">Öneri 1</button>
+    <button type="button" data-show="2" aria-pressed="false">Öneri 2</button>
+    <button type="button" data-show="3" aria-pressed="false">Öneri 3</button>
+    <button type="button" data-show="4" aria-pressed="false">Öneri 4</button>
+    <button type="button" data-show="5" aria-pressed="false">Öneri 5</button>
+  </div>
+  <div id="options"></div>
+</div>
+<script>
+const I = {
+  cart: '<path d="M2.5 3h2l1.6 7.4a1 1 0 0 0 1 .8h5.6a1 1 0 0 0 1-.8L14.5 6H5.2"/><circle cx="7" cy="13.5" r=".9"/><circle cx="12.5" cy="13.5" r=".9"/>',
+  box: '<path d="M2.5 5.2 8 2.5l5.5 2.7v5.6L8 13.5l-5.5-2.7z"/><path d="M2.5 5.2 8 8l5.5-2.8M8 8v5.5"/>',
+  truck: '<path d="M1.8 4h7.7v7H1.8zM9.5 6.5h2.8l2 2.3V11H9.5"/><circle cx="4.5" cy="11.8" r="1.2"/><circle cx="11.8" cy="11.8" r="1.2"/>',
+  check: '<circle cx="8" cy="8" r="6"/><path d="m5.5 8.2 1.7 1.7 3.4-3.6"/>',
+  clock: '<circle cx="8" cy="8" r="6"/><path d="M8 4.8V8l2.2 1.4"/>',
+  doc: '<path d="M4 2h5l3 3v9H4z"/><path d="M9 2v3h3M6 8.5h4M6 11h3"/>',
+  send: '<path d="M14 2 7 9M14 2l-4.5 12L7 9 2 6.5z"/>',
+  alert: '<path d="M8 2 14.5 13.5h-13z"/><path d="M8 6.5v3M8 11.6v.1"/>',
+  x: '<circle cx="8" cy="8" r="6"/><path d="m5.8 5.8 4.4 4.4M10.2 5.8l-4.4 4.4"/>',
+  minus: '<circle cx="8" cy="8" r="6"/><path d="M5.5 8h5"/>',
+  filter: '<path d="M2.5 3.5h11L9.2 8.6v4l-2.4 1.1V8.6z"/>'
+};
+const svg = (n, c = '') => `<svg class="ico ${c}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[n]}</svg>`;
+
+const rows = [
+  { no: '#11717855898', who: 'Gülcan Demirkıran Kara', date: '17.10.2026 01:00', sum: '₺519,75',
+    o: { t: 'Yeni', i: 'cart', c: 'vio', d: 'Az önce' },
+    f: { t: 'Fatura Bekliyor', i: 'clock', c: 'warn', d: 'Kesilmedi · 2 saat' } },
+  { no: '#11717783115', who: 'Ali Can', date: '16.10.2026 22:14', sum: '₺791,01',
+    o: { t: 'Hazırlanıyor', i: 'box', c: 'info', d: 'Paketleniyor' },
+    f: { t: 'Fatura Kesildi', i: 'doc', c: 'info', d: 'Pazaryerine iletilecek' } },
+  { no: '#11717712403', who: 'Merve Aksoy', date: '16.10.2026 15:42', sum: '₺1.240,00',
+    o: { t: 'Kargoda', i: 'truck', c: 'info', d: 'Yurtiçi Kargo' },
+    f: { t: 'İletildi', i: 'send', c: 'ok', d: '16.10 18:05' } },
+  { no: '#11717650981', who: 'Kerem Uslu', date: '15.10.2026 11:08', sum: '₺349,90',
+    o: { t: 'Teslim Edildi', i: 'check', c: 'ok', d: '17.10 09:30' },
+    f: { t: 'İletilemedi', i: 'alert', c: 'bad', d: 'Fatura numarası reddedildi' } },
+  { no: '#11717599214', who: 'Selin Ateş', date: '14.10.2026 20:51', sum: '₺229,00',
+    o: { t: 'İptal Edildi', i: 'x', c: 'mut', d: 'Müşteri iptali' },
+    f: { t: 'Gerekmiyor', i: 'minus', c: 'mut', d: 'Sipariş iptal' } }
+];
+const order = r => `<div class="order"><b>${r.no}</b><small>${r.who} · ${r.date}</small></div>`;
+const money = r => `<div class="money">${r.sum}</div>`;
+const th = (t, f = true, cls = '') => `<div class="${cls}">${t}${f ? `<span class="f">${svg('filter')}</span>` : ''}</div>`;
+
+const options = [
+  { n: 1, title: 'Tek Durum Sütunu',
+    text: 'Sipariş ve fatura durumu tek sütunda, alt alta iki satır olarak durur. Her satırın başında küçük bir etiket var; kutu yok, sadece simge ve metin. Kazanılan genişlik sipariş bilgisine gider, başlık hiç kısalmaz.',
+    pros: ['Başlık kesilmez', 'İki durum yan yana okunur', 'Tabloda bir sütun azalır', 'con:İki ayrı filtre tek başlıkta birleşir'],
+    head: th('Sipariş Bilgileri') + th('Durum') + th('Tutar', false, 'money'),
+    row: r => order(r) + `<div class="pair">
+      <div class="line"><em>Sipariş</em>${svg(r.o.i, r.o.c)}<span>${r.o.t}</span></div>
+      <div class="line"><em>Fatura</em>${svg(r.f.i, r.f.c)}<span>${r.f.t}<small>${r.f.c === 'bad' ? r.f.d : ''}</small></span></div></div>` + money(r) },
+  { n: 2, title: 'Akış Çizgisi',
+    text: 'Sipariş durumundan fatura durumuna giden kısa bir akış. İki düğüm arasındaki çizgi, faturanın sipariş ilerledikçe takip edilmesi gerektiğini gösterir; altlarında zaman veya açıklama yazar.',
+    pros: ['Sürecin neresinde olunduğu tek bakışta görünür', 'Açıklama satırı ek bilgi taşır', 'con:Dar ekranda ikinci satıra kırılabilir'],
+    head: th('Sipariş Bilgileri') + th('Sipariş → Fatura') + th('Tutar', false, 'money'),
+    row: r => order(r) + `<div class="flow">
+      <div class="node"><i class="dot ${r.o.c}">${svg(r.o.i)}</i><span>${r.o.t}<small>${r.o.d}</small></span></div>
+      <i class="bar ${r.f.c}"></i>
+      <div class="node"><i class="dot ${r.f.c}">${svg(r.f.i)}</i><span>${r.f.t}<small>${r.f.d}</small></span></div></div>` + money(r) },
+  { n: 3, title: 'Sade İki Sütun ve Grup Başlığı',
+    text: 'İki sütun kalır ama üstte ortak bir "Durum" grup başlığı olur; alt başlıklar "Sipariş" ve "Fatura" kadar kısalır. Etiket kutuları kalkar, metin sola hizalanır ve altına küçük bir açıklama gelir. Gövdede dikey çizgi yok.',
+    pros: ['Mevcut yapıya en yakın', 'Filtreler ayrı kalır', 'Uzun başlık sorunu çözülür'],
+    group: true,
+    head: th('Sipariş Bilgileri') + th('Sipariş') + th('Fatura') + th('Tutar', false, 'money'),
+    row: r => order(r) + [r.o, r.f].map(s => `<div class="st">${svg(s.i, s.c)}<span>${s.t}<small>${s.d}</small></span></div>`).join('') + money(r) },
+  { n: 4, title: 'Hücreyi Dolduran Renkli Etiket',
+    text: 'Etiket hücrenin tamamını kaplar, rengi durumdan gelir (hafif dolgu ve ince kenar). Sağ tarafta kısa ek bilgi durur. Boş alan kalmaz, durum renkleri satırlar arasında belirgin şekilde ayrışır.',
+    pros: ['Hücreler boş görünmez', 'Sorunlu satır hemen göze çarpar', 'con:Tablo daha renkli ve yoğun olur'],
+    head: th('Sipariş Bilgileri') + th('Sipariş Durumu') + th('Fatura Durumu') + th('Tutar', false, 'money'),
+    row: r => order(r) + [r.o, r.f].map(s => `<div><div class="chip ${s.c}">${svg(s.i)}<span>${s.t}</span></div></div>`).join('') + money(r) },
+  { n: 5, title: 'Simge Karosu ve Açıklama',
+    text: 'Solda durum renginde yumuşak bir simge karosu, sağında iki satır: durumun adı ve ne anlama geldiği (zaman, kargo firması, hata nedeni). Faturası iletilemeyen satırda neden doğrudan tabloda görünür.',
+    pros: ['En bilgilendirici seçenek', 'Hata nedeni için detaya girmek gerekmez', 'con:Satır yüksekliği biraz artar'],
+    head: th('Sipariş Bilgileri') + th('Sipariş Durumu') + th('Fatura Durumu') + th('Tutar', false, 'money'),
+    row: r => order(r) + [r.o, r.f].map(s => `<div class="tile ${s.c}"><i>${svg(s.i)}</i><div><span>${s.t}</span><small>${s.d}</small></div></div>`).join('') + money(r) }
+];
+
+document.getElementById('options').innerHTML = options.map(o => `
+  <section class="option v${o.n}" data-n="${o.n}" style="margin-bottom:36px">
+    <div class="option-head"><h2>Öneri ${o.n} · ${o.title}</h2><p>${o.text}</p></div>
+    <div class="pros">${o.pros.map(p => p.startsWith('con:') ? `<span class="con">${p.slice(4)}</span>` : `<span>${p}</span>`).join('')}</div>
+    <div class="table">
+      ${o.group ? '<div class="tr group"><div></div><div class="span">Durum</div><div></div></div>' : ''}
+      <div class="tr th">${o.head}</div>
+      ${rows.map(r => `<div class="tr">${o.row(r)}</div>`).join('')}
+    </div>
+  </section>`).join('');
+
+document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('.tabs button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  document.querySelectorAll('.option').forEach(s => s.hidden = b.dataset.show !== 'all' && s.dataset.n !== b.dataset.show);
+}));
+</script>
+</body>
+</html>
