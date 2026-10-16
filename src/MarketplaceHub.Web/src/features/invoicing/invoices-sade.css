@@ -134,11 +134,23 @@ body .invoice-reference-actions-popover > button:disabled { opacity: .45; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head > .invoice-reference-platform-heading { padding-left: 12px; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-row > div { padding-left: 10px; padding-right: 10px; font-size: 13px; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-row > .invoice-reference-order { padding-left: 40px; }
-.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-order .order-platform-logo { width: auto; max-width: 96px; height: 22px; margin-bottom: 4px; object-fit: contain; object-position: left center; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-order .order-platform-logo { width: 96px; min-width: 96px; max-width: 96px; height: 22px; margin-bottom: 4px; object-fit: contain; object-position: left center; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-order .invoice-order-number strong { color: var(--rv-color-ink); font-size: 13px; font-weight: 600; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-order .order-number-copy { width: 22px; min-width: 22px; height: 22px; min-height: 22px; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-order .order-number-copy svg { width: 14px; height: 14px; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-row small { color: var(--rv-color-muted); font-size: 12px; line-height: 1.45; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-buyer strong { font-size: 13px; font-weight: 500; line-height: 1.4; }
-.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-products .cargo-provider-icon { width: auto; max-width: 112px; height: 28px; object-fit: contain; object-position: left center; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-products .cargo-provider-icon { width: 112px; max-width: 100%; height: 28px; object-fit: contain; object-position: left center; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-amount strong { font-size: 13px; font-weight: 600; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-row { min-height: 0; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-order { align-content: center; row-gap: 2px; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-order .invoice-order-number { display: inline-flex; align-items: center; justify-content: flex-start; gap: 4px; width: auto; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head > .invoice-reference-platform-heading { justify-content: flex-start; gap: 12px; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-order .order-reference-platform { height: 22px; min-height: 0; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-actions { align-content: center; row-gap: 6px; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-action-footer { min-height: 0; padding: 0; border: 0; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-details-trigger { height: auto; min-height: 0; padding: 0; color: var(--inv-violet); background: none; border: 0; box-shadow: none; font-size: 13px; font-weight: 500 !important; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-details-trigger:hover { text-decoration: underline; background: none; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-order .invoice-order-number { justify-self: start; }
+.app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-shipment, .invoice-reference-status) { place-content: center start; place-items: center start; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head > * { justify-self: stretch; }
