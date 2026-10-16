@@ -1,0 +1,60 @@
+/* Integrations page in the Sade design language (docs/TASARIM-DILI.md): flat cards with 1px lines, status by shape,
+   one violet accent for the main action only. */
+.app-shell.stitch-shell main .integrations-reference-page { --sade-control: 34px; }
+
+/* Head: title with the page actions; "Filtrele" is secondary, "Ekle" is the one primary action. */
+.app-shell.stitch-shell main .integrations-reference-page .integration-reference-heading h1 { font-size: 22px; font-weight: 600; letter-spacing: 0; }
+.app-shell.stitch-shell main .integrations-reference-page .integration-heading-actions { gap: 8px; }
+.app-shell.stitch-shell main .integrations-reference-page :is(.integration-filter-button, .integration-add-button) { height: var(--sade-control); min-height: var(--sade-control); gap: 6px; padding: 0 12px; border-radius: 7px; font-size: 14px; box-shadow: none; }
+.app-shell.stitch-shell main .integrations-reference-page .integration-filter-button { color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); }
+.app-shell.stitch-shell main .integrations-reference-page .integration-filter-button:hover { background: var(--rv-color-surface-soft); }
+.app-shell.stitch-shell main .integrations-reference-page .integration-filter-button[aria-expanded="true"] { color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border-color: var(--rv-color-primary); }
+.app-shell.stitch-shell main .integrations-reference-page .integration-add-button { color: #fff; background: var(--rv-color-primary); border: 1px solid var(--rv-color-primary); }
+.app-shell.stitch-shell main .integrations-reference-page :is(.integration-filter-button, .integration-add-button) .ui-icon { width: 15px; height: 15px; }
+
+/* View tabs: text tabs on a hairline, the active one underlined in violet. */
+.app-shell.stitch-shell main .integrations-reference-page .integration-view-tabs { display: flex; width: auto; gap: 22px; padding: 0; background: none; border: 0; border-bottom: 1px solid var(--rv-color-border); border-radius: 0; box-shadow: none; }
+.app-shell.stitch-shell main .integrations-reference-page .integration-view-tabs > [role="tab"] { height: 40px; min-height: 40px; padding: 0; color: var(--rv-color-muted); background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; box-shadow: none; font-size: 14px; }
+.app-shell.stitch-shell main .integrations-reference-page .integration-view-tabs > [role="tab"]:hover { color: var(--rv-color-ink); background: none; }
+.app-shell.stitch-shell main .integrations-reference-page .integration-view-tabs > [role="tab"][aria-selected="true"] { color: var(--rv-color-ink); background: none; border-bottom-color: var(--rv-color-primary); }
+
+/* Filter summary: a quiet line, not a box. */
+.app-shell.stitch-shell main .integrations-reference-page .integration-filter-summary { padding: 0; color: var(--rv-color-muted); background: none; border: 0; font-size: 13px; }
+.app-shell.stitch-shell main .integrations-reference-page .integration-filter-summary > span { color: var(--rv-color-subtle); font-variant-numeric: tabular-nums; }
+
+/* Cards. */
+.app-shell.stitch-shell main .integrations-reference-page .integration-grid { gap: 16px; }
+.app-shell.stitch-shell main .integrations-reference-page .reference-integration-card { overflow: visible; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; box-shadow: none; }
+.app-shell.stitch-shell main .integrations-reference-page .reference-integration-card:hover { border-color: var(--rv-color-border-strong); box-shadow: none; transform: none; }
+.app-shell.stitch-shell main .integrations-reference-page .reference-integration-accent { display: none; }
+.app-shell.stitch-shell main .integrations-reference-page .reference-integration-header { align-items: center; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--rv-color-border); }
+.app-shell.stitch-shell main .integrations-reference-page .reference-integration-brand { gap: 12px; align-items: center; }
+.app-shell.stitch-shell main .integrations-reference-page .reference-provider-logo { width: 38px; height: 38px; border-radius: 9px; box-shadow: none; }
+.app-shell.stitch-shell main .integrations-reference-page .reference-integration-brand h2 { margin: 0 0 4px; font-size: 15px; font-weight: 600; line-height: 1.3; }
+.app-shell.stitch-shell main .integrations-reference-page .reference-connection-state { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px 0 6px; color: var(--rv-color-muted); background: none; border: 1px solid var(--rv-color-border-strong); border-radius: 6px; font-size: 12px; font-weight: 500; }
+.app-shell.stitch-shell main .integrations-reference-page .reference-connection-state .cm-glyph { width: 14px; height: 14px; color: var(--rv-color-subtle); }
+.app-shell.stitch-shell main .integrations-reference-page .reference-connection-state.connected { color: var(--rv-color-ink); }
+.app-shell.stitch-shell main .integrations-reference-page .reference-connection-state.connected .cm-glyph { color: var(--rv-color-accent); }
+.app-shell.stitch-shell main .integrations-reference-page .reference-menu-trigger { width: 32px; min-width: 32px; height: 32px; min-height: 32px; padding: 0; color: var(--rv-color-muted); background: none; border: 1px solid transparent; border-radius: 7px; }
+.app-shell.stitch-shell main .integrations-reference-page .reference-menu-trigger:hover,
+.app-shell.stitch-shell main .integrations-reference-page .reference-menu-trigger[aria-expanded="true"] { color: var(--rv-color-ink); background: var(--rv-color-surface-soft); }
+
+/* Card body: label 12 subtle over value 14/600, two columns. */
+.app-shell.stitch-shell main .integrations-reference-page .reference-integration-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px 16px; padding: 16px 20px; }
+.app-shell.stitch-shell main .integrations-reference-page .reference-data-point { display: grid; gap: 2px; min-width: 0; }
+.app-shell.stitch-shell main .integrations-reference-page .reference-data-point > span { color: var(--rv-color-subtle); font-size: 12px; font-weight: 500; }
+.app-shell.stitch-shell main .integrations-reference-page .reference-data-point > strong { overflow: hidden; color: var(--rv-color-ink); font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Hidden or passive data: one muted note with a quiet icon. */
+.app-shell.stitch-shell main .integrations-reference-page .reference-integration-private-state { display: grid; grid-template-columns: 16px minmax(0, 1fr); align-items: start; gap: 10px; padding: 16px 20px; background: none; border: 0; }
+.app-shell.stitch-shell main .integrations-reference-page .reference-private-icon { display: block; width: 16px; height: 16px; margin-top: 2px; padding: 0; color: var(--rv-color-subtle); background: none; border: 0; }
+.app-shell.stitch-shell main .integrations-reference-page .reference-private-icon .ui-icon { width: 16px; height: 16px; }
+.app-shell.stitch-shell main .integrations-reference-page .reference-integration-private-state strong { display: block; margin-bottom: 2px; color: var(--rv-color-ink); font-size: 14px; font-weight: 600; text-transform: none; }
+.app-shell.stitch-shell main .integrations-reference-page .reference-integration-private-state p { margin: 0; color: var(--rv-color-muted); font-size: 13px; line-height: 1.5; }
+
+/* Footer: the type on the left, a secondary "Yönet" on the right. */
+.app-shell.stitch-shell main .integrations-reference-page .reference-integration-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 20px; background: none; border-top: 1px solid var(--rv-color-border); }
+.app-shell.stitch-shell main .integrations-reference-page .reference-integration-footer > span { color: var(--rv-color-subtle); font-size: 12px; font-weight: 500; }
+.app-shell.stitch-shell main .integrations-reference-page .reference-integration-footer .reference-action { height: var(--sade-control); min-height: var(--sade-control); gap: 6px; padding: 0 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 14px; }
+.app-shell.stitch-shell main .integrations-reference-page .reference-integration-footer .reference-action:hover:not(:disabled) { color: var(--rv-color-ink); background: var(--rv-color-surface-soft); }
+.app-shell.stitch-shell main .integrations-reference-page .reference-integration-footer .reference-action .ui-icon { width: 15px; height: 15px; color: var(--rv-color-muted); }
