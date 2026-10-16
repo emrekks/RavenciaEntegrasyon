@@ -245,3 +245,11 @@ body .invoice-reference-actions-popover > button:disabled { opacity: .45; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-footer button.secondary.invoice-detail-platform-refresh { color: var(--rv-color-muted); background: none; border-color: transparent; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-footer button.secondary.invoice-detail-platform-refresh:hover:not(:disabled) { color: var(--rv-color-ink); background: var(--rv-color-surface-soft); }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-document-actions:empty { display: none; }
+
+/* Status strip carries the buyer and order date too: two rows of three */
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary > div:nth-child(3n + 1) { border-left: 0; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary > div:nth-child(n + 4) { border-top: 1px solid var(--rv-color-border); }
+/* Product images keep the 2:3 catalogue ratio */
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-line > :first-child { width: 44px; height: 66px; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-line > :first-child img { display: block; width: 44px; height: 66px; object-fit: cover; }
