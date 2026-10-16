@@ -330,3 +330,29 @@
 /* Saved mappings: actions column centred. */
 .app-shell.stitch-shell main .mapping-saved-card .mapping-saved-table :is(th, td):last-child { text-align: center; }
 .app-shell.stitch-shell main .mapping-saved-card .mapping-row-actions { display: flex; justify-content: center; }
+
+/* The popup never scrolls as a whole: the field list and the detail fill the height and only their lists scroll. */
+.mapping-advanced-modal .mapping-advanced-modal-body:has(.cm-card) { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.mapping-advanced-modal .mapping-advanced-modal-body:has(.cm-card) > .mapping-popup-content { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+.mapping-advanced-modal .mapping-popup-content > .panel.mapping-step.cm-card { display: flex; flex: 1; flex-direction: column; min-height: 0; overflow: hidden; }
+.mapping-advanced-modal .cm-card .cm-layout { flex: 1; grid-template-rows: minmax(0, 1fr); min-height: 0; }
+.mapping-advanced-modal .cm-card .cm-nav { max-height: none; min-height: 0; }
+.mapping-advanced-modal .cm-card .cm-detail { min-height: 0; overflow-y: auto; }
+.mapping-advanced-modal .cm-card .cm-legend { flex: none; }
+.mapping-advanced-modal .cm-card .cm-detail > :is(.cm-vtable, .cm-legacy-card) { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 160px; }
+.mapping-advanced-modal .cm-card .cm-vtable > .cm-vscroll { flex: 1; min-height: 0; max-height: none; }
+.mapping-advanced-modal .cm-card .cm-detail > .cm-foot { flex: none; }
+.mapping-advanced-modal .cm-legacy-card > .cm-webcolor { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+.app-shell.stitch-shell main .mapping-advanced-modal .cm-webcolor .web-color-value-editor { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+.app-shell.stitch-shell main .mapping-advanced-modal .cm-webcolor :is(.web-color-panel-value-picker, .web-color-assignment-groups) { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+.app-shell.stitch-shell main .mapping-advanced-modal .cm-webcolor .web-color-panel-value-grid { flex: 1; min-height: 0; max-height: none; align-content: start; }
+.app-shell.stitch-shell main .mapping-advanced-modal .cm-webcolor .web-color-assignment-groups > div:last-child { flex: 1; min-height: 0; max-height: none; }
+
+/* Web Color heading row: value picker on the left, actions on the right; saved groups as a two-column table. */
+.app-shell.stitch-shell main .cm-webcolor .value-mapping-heading { align-items: flex-end; }
+.app-shell.stitch-shell main .cm-webcolor .cm-webcolor-pick { display: grid; gap: 6px; width: min(360px, 100%); color: var(--rv-color-muted); font-size: 12px; font-weight: 500; }
+.app-shell.stitch-shell main .cm-webcolor .cm-webcolor-pick select { box-sizing: border-box; height: 36px; min-height: 36px; padding: 0 12px; color: var(--rv-color-ink); background-color: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 14px; }
+.app-shell.stitch-shell main .cm-webcolor .cm-webcolor-title { align-self: center; font-size: 14px; font-weight: 600; }
+.app-shell.stitch-shell main .cm-webcolor .cm-webcolor-actions button { height: 34px; min-height: 34px; padding: 0 14px; border-radius: 7px; font-size: 14px; text-transform: none; }
+.app-shell.stitch-shell main .cm-webcolor .web-color-assignment-groups .cm-webcolor-groups-head { display: grid; grid-template-columns: 180px minmax(0, 1fr); flex: none; }
+.app-shell.stitch-shell main .cm-webcolor .web-color-assignment-groups .cm-webcolor-groups-head > span { display: block; }
