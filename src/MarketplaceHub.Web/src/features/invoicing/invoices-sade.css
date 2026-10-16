@@ -256,3 +256,10 @@ body .invoice-reference-actions-popover > button:disabled { opacity: .45; }
 /* Platform wordmark a little larger above the order number */
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-order .order-reference-platform { height: 28px; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-order .order-platform-logo { width: 112px; min-width: 112px; max-width: 112px; height: 28px; }
+
+/* Columns after the order column are centred, headings and values alike */
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head > :not(.invoice-reference-platform-heading) { justify-content: center !important; text-align: center; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-row > :not(.invoice-reference-order) { justify-items: center !important; place-items: center !important; place-content: center !important; text-align: center !important; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-row > :not(.invoice-reference-order) > * { justify-self: center !important; margin-left: auto !important; margin-right: auto !important; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-row .cargo-provider-display { display: flex; justify-content: center; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-products .cargo-provider-icon { object-position: center; }
