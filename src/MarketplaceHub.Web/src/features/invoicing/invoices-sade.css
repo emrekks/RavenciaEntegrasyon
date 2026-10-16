@@ -296,9 +296,3 @@ body .invoice-reference-actions-popover > button:disabled { opacity: .45; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-platform-reference-history > .invoice-detail-document-actions:last-child { border-radius: 0 0 10px 10px; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-platform-reference-history > summary + .invoice-detail-document-actions:last-child { border-radius: 10px; }
 
-/* Detail head back to the proposal, with the platform wordmark next to the order number */
-.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-header { align-items: flex-start; padding: 18px 20px 16px 24px; }
-.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-header h2 { display: flex; align-items: center; gap: 10px; margin-top: 2px; font-size: 18px; font-weight: 600; }
-.reference-invoices-page .invoice-detail-title-mark { display: inline-flex; align-items: center; height: 26px; }
-.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-title-mark img { display: block; width: auto; max-width: 120px; height: 24px; object-fit: contain; object-position: left center; }
-.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-subline { margin: 2px 0 0; color: var(--rv-color-muted); font-size: 13px; }
