@@ -176,3 +176,10 @@
 /* Value search: 34px like the buttons beside it. */
 .app-shell .panel.mapping-step.cm-card .cm-search { height: 34px; min-height: 34px; padding: 0 10px; }
 .app-shell .panel.mapping-step.cm-card .cm-actions > button .ui-icon { width: 15px; height: 15px; }
+
+/* All category actions on one line: compact buttons that never wrap; a narrow window scrolls the row sideways. */
+.app-shell .panel.mapping-step.cm-card .cm-actions { flex-wrap: nowrap; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.app-shell .panel.mapping-step.cm-card .cm-actions::-webkit-scrollbar { display: none; }
+.app-shell .panel.mapping-step.cm-card .cm-actions > button { flex: none; gap: 6px; padding: 0 10px; font-size: 13px; white-space: nowrap; }
+.app-shell .panel.mapping-step.cm-card .cm-actions > button .cm-count { margin-left: 2px; }
+.app-shell .panel.mapping-step.cm-card .cm-actions > button:last-child { margin-left: auto; }
