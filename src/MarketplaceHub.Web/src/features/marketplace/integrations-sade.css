@@ -65,7 +65,7 @@
 .app-shell.stitch-shell main .integrations-reference-page .reference-integration-brand h2 { line-height: 20px; }
 .app-shell.stitch-shell main .integrations-reference-page .reference-provider-logo { box-sizing: border-box; flex: none; width: 46px; min-width: 46px; height: 46px; object-fit: contain; }
 
-/* Hidden details: a lock in a 36px tile, level with the note's title and text. */
+/* Hidden details: a power-off mark (passive) in a 36px tile, level with the note's title and text. */
 .app-shell.stitch-shell main .integrations-reference-page .reference-integration-private-state { grid-template-columns: 36px minmax(0, 1fr); align-items: center; gap: 12px; }
 .app-shell.stitch-shell main .integrations-reference-page .reference-private-icon { display: grid; width: 36px; height: 36px; margin: 0; place-items: center; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 9px; }
 .app-shell.stitch-shell main .integrations-reference-page .reference-private-icon svg { width: 18px; height: 18px; }
