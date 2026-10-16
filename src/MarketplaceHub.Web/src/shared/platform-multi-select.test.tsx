@@ -41,6 +41,12 @@ describe('PlatformMultiSelect', () => {
 
     act(() => container.querySelector<HTMLButtonElement>('.platform-multi-select-menu-header button')?.click())
     expect(onChange).toHaveBeenLastCalledWith([])
+
+    // A partial selection is cleared first; "select all" appears only when nothing is selected.
+    act(() => root.render(<PlatformMultiSelect label="Platformlar" options={options} selectedCodes={['HEPSIBURADA']} onChange={onChange} />))
+    expect(container.querySelector('.platform-multi-select-menu-header button')?.textContent).toBe('Tümünü kaldır')
+    act(() => container.querySelector<HTMLButtonElement>('.platform-multi-select-menu-header button')?.click())
+    expect(onChange).toHaveBeenLastCalledWith([])
   })
 
   it('anchors compact filter menus to the viewport when rendered in a portal', () => {

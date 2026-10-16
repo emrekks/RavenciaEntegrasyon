@@ -191,3 +191,25 @@
 .panel.mapping-step.cm-card .cm-link { width: 36px; height: 36px; justify-self: center; }
 .app-shell .panel.mapping-step.cm-card .cm-form > .cm-unlink { min-height: 36px; height: 36px; padding: 0 12px; }
 @media (max-width: 900px) { .panel.mapping-step.cm-card .cm-form { grid-template-columns: minmax(0, 1fr); } .panel.mapping-step.cm-card .cm-form > .cm-unlink { justify-self: start; } }
+
+/* Modal title in Title Case like other titles, with a calm two-line head. */
+.workspace-modal.mapping-advanced-modal > header { padding: 18px 24px 16px; }
+.workspace-modal.mapping-advanced-modal > header h2 { text-transform: capitalize; }
+.workspace-modal.mapping-advanced-modal > header p { margin-top: 4px; }
+
+/* Category actions: one line, no clipping, first and last button on the row's edges. */
+.app-shell .panel.mapping-step.cm-card .cm-actions { justify-content: space-between; overflow: visible; }
+.app-shell .panel.mapping-step.cm-card .cm-actions > button:last-child { margin-left: 0; }
+
+/* Field head: the description line is gone, so the head keeps its own space. */
+.panel.mapping-step.cm-card .cm-detail-head { margin-bottom: 18px; }
+
+/* Value tools on the table's own columns: the same column template, the same side padding and the same
+   scrollbar gutter, so the search starts and "Birebir eşle" ends exactly with the select column. */
+.app-shell .panel.mapping-step.cm-card .cm-vtools { grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) 28px; column-gap: 16px; padding: 0 17px; overflow: hidden; scrollbar-gutter: stable; }
+.app-shell .panel.mapping-step.cm-card .cm-vrow.is-head { overflow: hidden; scrollbar-gutter: stable; font-size: 13px; }
+.app-shell .panel.mapping-step.cm-card .cm-vscroll { scrollbar-gutter: stable; }
+.app-shell .panel.mapping-step.cm-card .cm-vtools-actions { gap: 8px; }
+
+/* Footer hint a step smaller. */
+.panel.mapping-step.cm-card .cm-foot > span:first-child { font-size: 13px; }
