@@ -185,6 +185,10 @@
   .stage { display: grid; place-items: center; padding: 24px 16px; overflow: hidden; background: linear-gradient(rgb(5 6 12 / 62%), rgb(5 6 12 / 62%)), repeating-linear-gradient(135deg, var(--surface) 0 14px, var(--bg) 14px 28px); border: 1px solid var(--line); border-radius: 12px; }
   .stage .modal { max-height: none; }
   .stage .pop, .stage .tip { position: static; }
+  /* product summary opens on hover or focus of "n adet · k çeşit" */
+  .prod-hover { position: relative; display: inline-block; outline: none; }
+  .prod-hover > .tip { display: none; }
+  .prod-hover:hover > .tip, .prod-hover:focus-visible > .tip { display: grid; }
 
   /* switcher */
   .switcher { position: fixed; z-index: 150; left: 50%; bottom: 16px; transform: translateX(-50%); display: flex; flex-wrap: wrap; gap: 4px; padding: 4px; background: var(--raised); border: 1px solid var(--line-strong); border-radius: 12px; box-shadow: 0 16px 40px rgb(0 0 0 / 50%); max-width: calc(100vw - 32px); }
@@ -420,7 +424,7 @@ function headCell(label, k, extra = '') { const f = k && S.cf[k]; return `<th cl
 function row(r, compact) {
   const sel = S.sel.has(r.id)
   const order = `<div class="ordercell"><input type="checkbox" class="cb" data-row="${r.id}" ${sel ? 'checked' : ''}>${logo(r.p)}<div><span class="on-no">#${r.no}<button class="icon-btn" title="Kopyala" style="width:22px;height:22px">${I.copy}</button></span><small class="num">${r.date}${r.invNo ? ` · ${r.invNo}` : ''}</small></div></div>`
-  const cust = `<div class="cust anchor"><b>${r.cust}</b><span class="prodsum" data-a="pop" data-k="tip-${r.id}">${r.qty}</span>${S.pop === 'tip-' + r.id ? prodTip() : ''}</div>`
+  const cust = `<div class="cust anchor"><b>${r.cust}</b><span class="prod-hover" tabindex="0"><span class="prodsum">${r.qty}</span>${prodTip()}</span></div>`
   const cargo = `<div class="cargocell">${cargoImg(r.cargo[0], r.cargo[1])}<small class="num">${r.track || 'Takip numarası yok'}</small></div>`
   const os = `<div class="stacked"><span class="badge ${osKind(r.os)}">${r.os}</span>${r.deliv ? `<small>Teslim: ${r.deliv}</small>` : ''}</div>`
   const inv = `<div class="stacked">${r.reason ? `<span class="reason-tip" tabindex="0">${invBadge(r)}<span class="reason-pop" role="tooltip"><b>Fatura İletilemedi</b>${esc(r.reason)}<small>Hata kodu: INV-REJECTED</small></span></span>` : invBadge(r)}${r.deadline ? `<small class="${r.crit ? 'crit' : ''}">Son Tarih: ${r.deadline}</small>` : ''}</div>`
