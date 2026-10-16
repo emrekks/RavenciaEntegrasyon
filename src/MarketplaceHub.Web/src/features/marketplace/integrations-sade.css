@@ -63,7 +63,7 @@
 .app-shell.stitch-shell main .integrations-reference-page .reference-integration-brand { align-items: stretch; }
 .app-shell.stitch-shell main .integrations-reference-page .reference-integration-brand > div { display: flex; flex-direction: column; justify-content: space-between; }
 .app-shell.stitch-shell main .integrations-reference-page .reference-integration-brand h2 { line-height: 20px; }
-.app-shell.stitch-shell main .integrations-reference-page .reference-provider-logo { box-sizing: border-box; flex: none; width: 50px; min-width: 50px; height: 50px; align-self: flex-start; object-fit: contain; }
+.app-shell.stitch-shell main .integrations-reference-page .reference-provider-logo { box-sizing: border-box; flex: none; width: 45px; min-width: 45px; height: 45px; margin-top: 5px; align-self: flex-start; object-fit: contain; }
 
 /* Hidden details: a power-off mark (passive) in a 36px tile, level with the note's title and text. */
 .app-shell.stitch-shell main .integrations-reference-page .reference-integration-private-state { grid-template-columns: 36px minmax(0, 1fr); align-items: center; gap: 12px; }

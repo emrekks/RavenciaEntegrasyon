@@ -2720,6 +2720,7 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
   const [bulkBusy, setBulkBusy] = useState<'' | 'HEADINGS' | 'VALUES' | 'TEMPLATES'>('')
   const [selectedEntryKey, setSelectedEntryKey] = useState('')
   const [extraPanel, setExtraPanel] = useState<'' | 'defaults' | 'conflicts'>('')
+  const [collapsedGroups, setCollapsedGroups] = useState<string[]>([])
   // Same cache entries as the two panels, so the header buttons can show how many items each holds.
   const attributeDefaultsCount = useQuery({ queryKey: ['attribute-defaults', connectionId], queryFn: () => hubApi<unknown[]>(`/connections/${connectionId}/attribute-defaults`), retry: false, enabled: !!connectionId && (platformCode === 'TRENDYOL' || platformCode === 'HEPSIBURADA') }).data?.length ?? 0
   const mappingConflictData = useQuery({ queryKey: ['mapping-conflicts', connectionId], queryFn: () => hubApi<{ sameCategory?: unknown[]; crossCategory?: unknown[] }>(`/mappings/conflicts?connectionId=${encodeURIComponent(connectionId)}`), retry: false, staleTime: 30_000, enabled: !!connectionId }).data
@@ -2884,8 +2885,8 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
       <div className="cm-layout">
         <nav className="cm-nav" aria-label="Kategori özellikleri">
           {entryGroups.map(group => <Fragment key={group.title}>
-            <div className="cm-section"><span>{group.title}</span><span>{group.items.filter(entry => entry.state === 'done').length} / {group.items.length}</span></div>
-            {group.items.map(entry => <button type="button" key={entry.key} className={`cm-item${entry.key === activeEntry?.key ? ' is-selected' : ''}`} aria-current={entry.key === activeEntry?.key ? 'true' : undefined} onClick={() => setSelectedEntryKey(entry.key)}><MappingStateGlyph state={entry.state} required={entry.required} /><span className="cm-name">{entry.name}</span><span className="cm-meta">{entry.meta}</span></button>)}
+            <button type="button" className={`cm-section${collapsedGroups.includes(group.title) ? ' is-collapsed' : ''}`} aria-expanded={!collapsedGroups.includes(group.title)} onClick={() => setCollapsedGroups(current => current.includes(group.title) ? current.filter(title => title !== group.title) : [...current, group.title])}><svg className="cm-section-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4.5 6.5 3.5 3.5 3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg><span>{group.title}</span><span>{group.items.filter(entry => entry.state === 'done').length} / {group.items.length}</span></button>
+            {!collapsedGroups.includes(group.title) && group.items.map(entry => <button type="button" key={entry.key} className={`cm-item${entry.key === activeEntry?.key ? ' is-selected' : ''}`} aria-current={entry.key === activeEntry?.key ? 'true' : undefined} onClick={() => setSelectedEntryKey(entry.key)}><MappingStateGlyph state={entry.state} required={entry.required} /><span className="cm-name">{entry.name}</span><span className="cm-meta">{entry.meta}</span></button>)}
           </Fragment>)}
         </nav>
         <section className="cm-detail" key={activeEntry?.key ?? 'empty'}>
@@ -2900,10 +2901,10 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
       </div>
       <div className="cm-legend" aria-label="Durum simgeleri"><span><MappingStateGlyph state="done" /> Tamam</span><span><MappingStateGlyph state="partial" /> Değerleri eksik</span><span><MappingStateGlyph state="none" /> Eşlenmedi</span></div>
     </>}
-    <Modal open={extraPanel === 'defaults'} title="Platform varsayılanları" description={`Ürünlerde boş kalan alanlar için ${platformLabel}’a gönderilecek sabit değerler.`} onClose={() => setExtraPanel('')} className="cm-extra-modal">
+    <Modal open={extraPanel === 'defaults'} title="Platform Varsayılanları" description={`Ürünlerde boş kalan alanlar için ${platformLabel}’a gönderilecek sabit değerler.`} onClose={() => setExtraPanel('')} className="cm-extra-modal">
       {categoryScope && references.data && <AttributeDefaultsPanel connectionId={connectionId} categoryScope={categoryScope} platformLabel={platformLabel} remoteAttributes={references.data.items} onNotice={onNotice} expanded />}
     </Modal>
-    <Modal open={extraPanel === 'conflicts'} title="Gözden geçirilecek eşlemeler" description={`Aynı panel değeri birden fazla ${platformLabel} değerine bağlanmış eşlemeler.`} onClose={() => setExtraPanel('')} className="cm-extra-modal">
+    <Modal open={extraPanel === 'conflicts'} title="Gözden Geçirilecek Eşlemeler" description={`Aynı panel değeri birden fazla ${platformLabel} değerine bağlanmış eşlemeler.`} onClose={() => setExtraPanel('')} className="cm-extra-modal">
       {mappingConflictCount ? <MappingConflictsPanel connectionId={connectionId} platformLabel={platformLabel} onNotice={onNotice} expanded /> : <p className="cm-empty">Gözden geçirilecek eşleme yok.</p>}
     </Modal>
   </article>

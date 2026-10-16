@@ -220,3 +220,31 @@
 /* Category actions fill the row: buttons share the width with an even 8px gap instead of large spaces between them. */
 .app-shell .panel.mapping-step.cm-card .cm-actions { justify-content: flex-start; gap: 8px; }
 .app-shell .panel.mapping-step.cm-card .cm-actions > button { flex: 1 1 auto; justify-content: center; }
+
+/* Field groups in the list fold open and closed from their heading. */
+.app-shell.stitch-shell main .cm-card button.cm-section { display: flex; align-items: center; gap: 6px; width: 100%; height: auto; min-height: 0; padding: 14px 20px 6px; color: var(--rv-color-muted); text-align: left; background: none; border: 0; border-radius: 0; box-shadow: none; font-size: 12px; font-weight: 600 !important; letter-spacing: .02em; text-transform: uppercase; cursor: pointer; }
+.app-shell.stitch-shell main .cm-card button.cm-section:hover { color: var(--rv-color-ink); }
+.app-shell.stitch-shell main .cm-card button.cm-section > span:first-of-type { flex: 1; }
+.app-shell.stitch-shell main .cm-card button.cm-section > span:last-child { color: var(--rv-color-muted); font-weight: 500; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+.cm-card .cm-section-chevron { flex: none; width: 14px; height: 14px; margin-left: -2px; transition: transform .15s; }
+.cm-card .cm-section.is-collapsed .cm-section-chevron { transform: rotate(-90deg); }
+.cm-card .cm-section.is-collapsed + .cm-section { margin-top: 0; }
+
+/* Review popup: one card per group, a row per panel value, quiet option chips. */
+.cm-extra-modal .mapping-conflicts-body { gap: 18px; max-height: none; padding: 0; overflow: visible; }
+.cm-extra-modal .mapping-conflicts-body h4 { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; color: var(--rv-color-ink); font-size: 14px; font-weight: 600; }
+.cm-extra-modal .mc-count { display: inline-grid; min-width: 20px; height: 18px; place-items: center; padding: 0 5px; color: var(--rv-color-warning); background: color-mix(in srgb, var(--rv-color-warning) 14%, transparent); border-radius: 5px; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.cm-extra-modal .mapping-conflicts-body p { margin: 0 0 12px; color: var(--rv-color-muted); font-size: 13px; line-height: 1.5; }
+.cm-extra-modal .mapping-conflicts-body ul { gap: 0; overflow: hidden; border: 1px solid var(--rv-color-border); border-radius: 12px; }
+.cm-extra-modal .mapping-conflicts-body li { display: grid; grid-template-columns: minmax(140px, 200px) minmax(0, 1fr); align-items: center; gap: 16px; padding: 12px 16px; border-top: 1px solid var(--rv-color-border); }
+.cm-extra-modal .mapping-conflicts-body li:first-child { border-top: 0; }
+.cm-extra-modal .mapping-conflict-head { display: grid; gap: 2px; }
+.cm-extra-modal .mapping-conflict-head strong { font-size: 14px; font-weight: 600; }
+.cm-extra-modal .mapping-conflict-head span { color: var(--rv-color-muted); font-size: 12px; }
+.cm-extra-modal .mapping-conflict-options { gap: 6px; margin: 0; }
+.app-shell.stitch-shell main .cm-extra-modal .mapping-conflict-options :is(button, span) { display: inline-flex; align-items: center; gap: 6px; height: 28px; min-height: 28px; padding: 0 10px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 13px; font-weight: 400 !important; text-transform: none; }
+.app-shell.stitch-shell main .cm-extra-modal .mapping-conflict-options button:hover:not(:disabled) { background: var(--rv-color-primary-soft); border-color: color-mix(in srgb, var(--rv-color-primary) 55%, transparent); }
+.cm-extra-modal .mapping-conflict-options small { color: var(--rv-color-muted); font-size: 12px; }
+.cm-extra-modal .mapping-conflict-options button b { color: var(--rv-color-primary); font-size: 12px; font-weight: 500; }
+.cm-extra-modal .mapping-conflict-options em { display: inline-flex; align-items: center; height: 18px; padding: 0 6px; color: color-mix(in srgb, var(--rv-color-primary) 55%, #fff); background: var(--rv-color-primary-soft); border-radius: 4px; font-size: 11px; font-style: normal; font-weight: 600; }
+@media (max-width: 640px) { .cm-extra-modal .mapping-conflicts-body li { grid-template-columns: minmax(0, 1fr); gap: 8px; } }

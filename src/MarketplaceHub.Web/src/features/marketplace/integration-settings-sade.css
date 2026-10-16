@@ -243,3 +243,7 @@
   .app-shell.stitch-shell main .sp-sade .sync-policy-modal-telemetry dl > div { border-right: 0 !important; border-bottom: 1px solid var(--rv-color-border) !important; }
 }
 .app-shell.stitch-shell main .cs-workspace .cs-pane .integration-write-toggle > :is(input[type="checkbox"], .cs-switch-state) { align-self: center; }
+
+/* Write status tag: only Açık/Kapalı, centred on the heading block. */
+.app-shell.stitch-shell main .cs-workspace .cs-pane .integration-detail-write-heading { align-items: center; }
+.app-shell.stitch-shell main .cs-workspace .cs-pane .integration-detail-write-status { align-self: center; height: 22px; min-height: 22px; }

@@ -37,13 +37,13 @@ export function MappingConflictsPanel({ connectionId, platformLabel, onNotice, e
 
   return <details className="mapping-conflicts-panel" open={expanded || undefined}>
     <summary>
-      <span className="panel-summary-title">Gözden geçirilecek eşlemeler</span>
+      <span className="panel-summary-title">Gözden Geçirilecek Eşlemeler</span>
       <b className="panel-summary-count is-warning" aria-label={`${same.length + cross.length} kayıt`}>{same.length + cross.length}</b>
       <small>Aynı panel değeri birden fazla {platformLabel} değerine bağlanmış.</small>
     </summary>
     <div className="mapping-conflicts-body">
       {same.length > 0 && <section>
-        <h4>Aynı kategoride birden fazla değer ({same.length})</h4>
+        <h4>Aynı Kategoride Birden Fazla Değer <span className="mc-count">{same.length}</span></h4>
         <p>{platformLabel}’a yalnızca biri gönderilebilir; kalacak değeri seçin, diğerleri bu kategoriden kaldırılır.</p>
         <ul>
           {same.map(conflict => {
@@ -52,7 +52,7 @@ export function MappingConflictsPanel({ connectionId, platformLabel, onNotice, e
               <div className="mapping-conflict-head"><strong>{conflict.localValueName}</strong><span>{conflict.categoryName} · {conflict.attributeName}</span></div>
               <div className="mapping-conflict-options">
                 {conflict.options.map(option => <button type="button" key={option.externalId} disabled={busyKey !== ''} onClick={() => void keep(conflict, option)} title={`Yalnızca “${option.name}” kalsın`}>
-                  {option.name}{option.externalId === conflict.templateExternalId ? <em>Şablon</em> : null}<b>Bunu tut</b>
+                  {option.name}{option.externalId === conflict.templateExternalId ? <em>Şablon</em> : null}<b>Bunu Tut</b>
                 </button>)}
               </div>
             </li>
@@ -60,7 +60,7 @@ export function MappingConflictsPanel({ connectionId, platformLabel, onNotice, e
         </ul>
       </section>}
       {cross.length > 0 && <section>
-        <h4>Kategoriler arasında farklı değer ({cross.length})</h4>
+        <h4>Kategoriler Arasında Farklı Değer <span className="mc-count">{cross.length}</span></h4>
         <p>Bazıları bilerek yapılmış olabilir. Yeni kategoriler “Şablon” işaretli değeri alır; değiştirmek için o değeri istediğiniz kategoride yeniden kaydedin.</p>
         <ul>
           {cross.map(conflict => <li key={`${conflict.attributeName}:${conflict.localValueId}`}>
