@@ -13,17 +13,18 @@
 
 /* The page fills the work area under the top bar: page head, group tabs stuck under the top bar, the group's section
    segment (only when it has more than one section), then the section with its sticky apply bar. */
-.app-shell.stitch-shell main .ss-page.content { display: flex; flex-direction: column; width: 100%; max-width: none; min-height: calc(100dvh - var(--rv-topbar-height, 70px)); margin: 0; padding: 0; }
-.ss-page .ss-page-head { display: grid; gap: 2px; padding: 22px 32px 0; }
+/* Same side gaps as the other pages (.content padding); lists and the designer sit in a bordered box inside them. */
+.app-shell.stitch-shell main .ss-page.content { display: flex; flex-direction: column; min-height: calc(100dvh - var(--rv-topbar-height, 70px)); }
+.ss-page .ss-page-head { display: grid; gap: 2px; padding: 0; }
 .ss-page .ss-crumb { display: block; color: var(--rv-color-subtle); font-size: 12px; font-weight: 500; }
 .ss-page .ss-page-head h1 { font-size: 18px; font-weight: 600; line-height: 1.35; }
 .ss-page .ss-page-head p { color: var(--rv-color-muted); font-size: 13px; line-height: 1.45; }
-.ss-page .ss-gtabs { position: sticky; top: var(--rv-topbar-height, 70px); z-index: 20; display: flex; gap: 4px; margin-top: 14px; padding: 0 32px; overflow-x: auto; background: var(--rv-color-bg); border-bottom: 1px solid var(--rv-color-border); scrollbar-width: none; }
+.ss-page .ss-gtabs { position: sticky; top: var(--rv-topbar-height, 70px); z-index: 20; display: flex; gap: 4px; margin-top: 14px; padding: 0; overflow-x: auto; background: var(--rv-color-bg); border-bottom: 1px solid var(--rv-color-border); scrollbar-width: none; }
 .app-shell.stitch-shell main .ss-page .ss-gtabs > button { display: inline-flex; flex: none; align-items: center; gap: 8px; height: 44px; min-height: 44px; margin-bottom: -1px; padding: 0 14px; color: var(--rv-color-muted); white-space: nowrap; background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; box-shadow: none; cursor: pointer; font-size: 14px; font-weight: 500 !important; }
 .app-shell.stitch-shell main .ss-page .ss-gtabs > button:hover { color: var(--rv-color-ink); background: none; }
 .app-shell.stitch-shell main .ss-page .ss-gtabs > button.is-on { color: var(--rv-color-ink); border-bottom-color: var(--rv-color-primary); }
 .ss-page .ss-card { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-.ss-page .ss-stabs { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 16px 32px 0; }
+.ss-page .ss-stabs { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 16px 0 0; }
 .ss-page .ss-seg { display: inline-flex; gap: 3px; max-width: 100%; padding: 3px; overflow-x: auto; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 9px; scrollbar-width: none; }
 .app-shell.stitch-shell main .ss-page .ss-seg > button { display: inline-flex; flex: none; align-items: center; gap: 8px; height: 30px; min-height: 30px; padding: 0 12px; color: var(--rv-color-muted); white-space: nowrap; background: none; border: 1px solid transparent; border-radius: 6px; box-shadow: none; cursor: pointer; font-size: 13px; font-weight: 500 !important; }
 .app-shell.stitch-shell main .ss-page .ss-seg > button:hover { color: var(--rv-color-ink); background: none; }
@@ -32,14 +33,14 @@
 .ss-page .ss-seg .ss-st { width: 14px; height: 14px; }
 .ss-page .ss-seg > button.is-on .ss-st:not(.is-done) { color: var(--ss-violet); }
 .ss-page .ss-pane { flex: 1; display: flex; flex-direction: column; min-width: 0; container: ss-pane / inline-size; }
-.ss-page .ss-head { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 16px; padding: 20px 32px 16px; }
+.ss-page .ss-head { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 16px; padding: 20px 0 16px; }
 .ss-page .ss-head > div:first-child { flex: 1 1 260px; min-width: 0; }
 .ss-page .ss-head h2 { font-size: 16px; font-weight: 600; line-height: 1.35; }
 .ss-page .ss-head p { color: var(--rv-color-muted); font-size: 13px; }
 .ss-page .ss-head-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.ss-page .ss-body { flex: 1; display: grid; align-content: start; gap: 16px; padding: 0 32px 24px; }
-.ss-page .ss-body.is-flush { gap: 0; padding: 0; border-top: 1px solid var(--rv-color-border); }
-.ss-page .ss-pad { padding: 16px 32px; }
+.ss-page .ss-body { flex: 1; display: grid; align-content: start; gap: 16px; padding: 0 0 24px; }
+.ss-page .ss-body.is-flush { flex: none; gap: 0; margin-bottom: 24px; padding: 0; overflow: clip; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; }
+.ss-page .ss-pad { padding: 16px 20px; }
 .ss-page .ss-pad.is-divided { border-bottom: 1px solid var(--rv-color-border); }
 
 /* Icons and state glyphs */
@@ -125,7 +126,7 @@
 .ss-page .ss-ferr .ss-st { width: 14px; height: 14px; }
 
 /* Sticky apply bar */
-.ss-page .ss-bar { position: sticky; bottom: 0; z-index: 6; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 32px; background: var(--rv-color-surface); border-top: 1px solid var(--rv-color-border); }
+.ss-page .ss-bar { position: sticky; bottom: 12px; margin-top: auto; z-index: 6; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 20px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; box-shadow: 0 -12px 30px rgb(0 0 0 / 30%); }
 .ss-page .ss-bar-copy { flex: 1 1 260px; display: grid; min-width: 0; }
 .ss-page .ss-bar-copy strong { font-size: 14px; font-weight: 600; }
 .ss-page .ss-bar-copy span { color: var(--rv-color-muted); font-size: 13px; }
@@ -145,9 +146,9 @@
 
 /* Sessions */
 .ss-page .ss-sess { display: grid; }
-.ss-page .ss-sess-sub { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 32px; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border-top: 1px solid var(--rv-color-border); border-bottom: 1px solid var(--rv-color-border); font-size: 12px; font-weight: 500; }
+.ss-page .ss-sess-sub { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 20px; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border-top: 1px solid var(--rv-color-border); border-bottom: 1px solid var(--rv-color-border); font-size: 12px; font-weight: 500; }
 .ss-page .ss-sess > .ss-sess-sub:first-child { border-top: 0; }
-.ss-page .ss-ses { display: grid; grid-template-columns: 32px minmax(0, 1fr) minmax(0, 1fr) 186px; align-items: center; gap: 4px 14px; min-height: 58px; padding: 10px 32px; border-top: 1px solid var(--rv-color-border); }
+.ss-page .ss-ses { display: grid; grid-template-columns: 32px minmax(0, 1fr) minmax(0, 1fr) 186px; align-items: center; gap: 4px 14px; min-height: 58px; padding: 10px 20px; border-top: 1px solid var(--rv-color-border); }
 .ss-page .ss-sess-sub + .ss-ses { border-top: 0; }
 .ss-page .ss-ses.is-current { background: var(--rv-color-primary-soft); box-shadow: inset 2px 0 0 var(--rv-color-primary); }
 .ss-page .ss-ses-who { display: grid; gap: 1px; min-width: 0; }
@@ -160,7 +161,7 @@
 
 /* Database scopes */
 .ss-page .ss-scopes { display: grid; }
-.ss-page .ss-sg { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 12px 24px; padding: 18px 32px; border-top: 1px solid var(--rv-color-border); }
+.ss-page .ss-sg { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 12px 24px; padding: 18px 20px; border-top: 1px solid var(--rv-color-border); }
 .ss-page .ss-scopes > .ss-sg:first-child { border-top: 0; }
 .ss-page .ss-sg h3 { font-size: 14px; font-weight: 600; }
 .ss-page .ss-sg p { color: var(--rv-color-muted); font-size: 13px; }
@@ -175,7 +176,7 @@
 
 /* Label designer */
 .ss-page .ss-dz { display: grid; }
-.ss-page .ss-dz-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 32px; border-bottom: 1px solid var(--rv-color-border); }
+.ss-page .ss-dz-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--rv-color-border); }
 .app-shell.stitch-shell main .ss-page .ss-dz-template { width: 190px; }
 .ss-page .ss-seg2 { display: inline-flex; gap: 3px; padding: 3px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 9px; }
 .app-shell.stitch-shell main .ss-page .ss-seg2 button { display: inline-flex; align-items: center; gap: 6px; height: 26px; min-height: 26px; padding: 0 10px; color: var(--rv-color-muted); white-space: nowrap; background: none; border: 1px solid transparent; border-radius: 6px; box-shadow: none; cursor: pointer; font-size: 13px; font-weight: 500 !important; text-transform: none; }
@@ -355,7 +356,7 @@
   .ss-page .ss-sg { grid-template-columns: 1fr; }
 }
 @media (max-width: 760px) {
-  .ss-page :is(.ss-page-head, .ss-gtabs, .ss-stabs, .ss-head, .ss-body:not(.is-flush), .ss-bar, .ss-ses, .ss-sg, .ss-sess-sub, .ss-pad, .ss-dz-bar) { padding-left: 16px; padding-right: 16px; }
+  .ss-page :is(.ss-bar, .ss-ses, .ss-sg, .ss-sess-sub, .ss-pad, .ss-dz-bar) { padding-left: 16px; padding-right: 16px; }
   .ss-page .ss-auth { grid-template-columns: 40px minmax(0, 1fr); }
   .ss-page .ss-auth-side { grid-column: 1 / -1; grid-row: auto; }
   .ss-page .ss-auth-side > * { flex: 1; justify-content: center; }
