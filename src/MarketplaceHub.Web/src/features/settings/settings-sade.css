@@ -12,16 +12,18 @@
 .app-shell.stitch-shell main .ss-page * { text-transform: none !important; }
 
 /* Page head */
-.ss-page .ss-page-head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 16px; margin-bottom: 16px; }
+/* The page fills the work area under the top bar: the section list is a full-height column on the left edge, the pane takes the rest. */
+.app-shell.stitch-shell main .ss-page.content { width: 100%; max-width: none; margin: 0; padding: 0; }
+.ss-page .ss-page-head { display: grid; gap: 2px; padding: 20px 18px 14px; margin: 0 0 6px; border-bottom: 1px solid var(--rv-color-border); }
 .ss-page .ss-crumb { display: block; color: var(--rv-color-subtle); font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; }
 .ss-page .ss-page-head h1 { font-size: 18px; font-weight: 600; line-height: 1.35; }
-.ss-page .ss-page-head p { margin-top: 2px; color: var(--rv-color-muted); font-size: 14px; }
+.ss-page .ss-page-head p { color: var(--rv-color-muted); font-size: 13px; line-height: 1.45; }
 
 /* Card: section list + pane */
-.ss-page .ss-card { display: grid; grid-template-columns: 248px minmax(0, 1fr); min-height: 720px; overflow: clip; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; }
-.ss-page .ss-nav { display: grid; align-content: start; padding: 10px 0 14px; background: var(--rv-color-surface); border-right: 1px solid var(--rv-color-border); }
+.ss-page .ss-card { display: grid; grid-template-columns: 260px minmax(0, 1fr); min-height: calc(100dvh - var(--rv-topbar-height, 70px)); }
+.ss-page .ss-nav { position: sticky; top: var(--rv-topbar-height, 70px); align-self: start; display: grid; align-content: start; height: calc(100dvh - var(--rv-topbar-height, 70px)); padding: 0 0 14px; overflow-y: auto; background: var(--rv-color-surface); border-right: 1px solid var(--rv-color-border); }
 .ss-page .ss-nav-group { padding: 12px 18px 4px; color: var(--rv-color-muted); font-size: 12px; font-weight: 600; }
-.ss-page .ss-nav > .ss-nav-group:first-child { padding-top: 4px; }
+.ss-page .ss-page-head + .ss-nav-group { padding-top: 8px; }
 .ss-page .ss-nav-sep { height: 1px; margin: 10px 18px 4px; background: var(--rv-color-border); }
 .app-shell.stitch-shell main .ss-page .ss-nav > button { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; height: 38px; min-height: 38px; padding: 0 16px 0 18px; color: var(--rv-color-muted); text-align: left; background: none; border: 0; border-left: 2px solid transparent; border-radius: 0; box-shadow: none; font-size: 14px; font-weight: 400 !important; letter-spacing: 0; text-transform: none; }
 .ss-page .ss-nav > button > span:not(.ss-count) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -30,14 +32,14 @@
 .ss-page .ss-nav > button.is-on .ss-st:not(.is-done) { color: var(--ss-violet); }
 .ss-page .ss-pane { display: flex; flex-direction: column; min-width: 0; container: ss-pane / inline-size; }
 .ss-page .ss-mnav { display: none; }
-.ss-page .ss-head { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 16px; padding: 18px 24px 16px; border-bottom: 1px solid var(--rv-color-border); }
+.ss-page .ss-head { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 16px; padding: 22px 32px 18px; border-bottom: 1px solid var(--rv-color-border); }
 .ss-page .ss-head > div:first-child { flex: 1 1 260px; min-width: 0; }
 .ss-page .ss-head h2 { font-size: 18px; font-weight: 600; line-height: 1.35; }
 .ss-page .ss-head p { color: var(--rv-color-muted); font-size: 13px; }
 .ss-page .ss-head-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.ss-page .ss-body { flex: 1; display: grid; align-content: start; gap: 16px; padding: 20px 24px; }
+.ss-page .ss-body { flex: 1; display: grid; align-content: start; gap: 16px; padding: 24px 32px; }
 .ss-page .ss-body.is-flush { gap: 0; padding: 0; }
-.ss-page .ss-pad { padding: 16px 20px; }
+.ss-page .ss-pad { padding: 16px 32px; }
 .ss-page .ss-pad.is-divided { border-bottom: 1px solid var(--rv-color-border); }
 
 /* Icons and state glyphs */
@@ -123,7 +125,7 @@
 .ss-page .ss-ferr .ss-st { width: 14px; height: 14px; }
 
 /* Sticky apply bar */
-.ss-page .ss-bar { position: sticky; bottom: 0; z-index: 6; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 20px; background: var(--rv-color-surface-raised); border-top: 1px solid var(--rv-color-border); border-radius: 0 0 12px 0; }
+.ss-page .ss-bar { position: sticky; bottom: 0; z-index: 6; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 32px; background: var(--rv-color-surface); border-top: 1px solid var(--rv-color-border); }
 .ss-page .ss-bar-copy { flex: 1 1 260px; display: grid; min-width: 0; }
 .ss-page .ss-bar-copy strong { font-size: 14px; font-weight: 600; }
 .ss-page .ss-bar-copy span { color: var(--rv-color-muted); font-size: 13px; }
@@ -143,9 +145,9 @@
 
 /* Sessions */
 .ss-page .ss-sess { display: grid; }
-.ss-page .ss-sess-sub { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 20px; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border-top: 1px solid var(--rv-color-border); border-bottom: 1px solid var(--rv-color-border); font-size: 12px; font-weight: 500; }
+.ss-page .ss-sess-sub { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 32px; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border-top: 1px solid var(--rv-color-border); border-bottom: 1px solid var(--rv-color-border); font-size: 12px; font-weight: 500; }
 .ss-page .ss-sess > .ss-sess-sub:first-child { border-top: 0; }
-.ss-page .ss-ses { display: grid; grid-template-columns: 32px minmax(0, 1fr) minmax(0, 1fr) 186px; align-items: center; gap: 4px 14px; min-height: 58px; padding: 10px 20px; border-top: 1px solid var(--rv-color-border); }
+.ss-page .ss-ses { display: grid; grid-template-columns: 32px minmax(0, 1fr) minmax(0, 1fr) 186px; align-items: center; gap: 4px 14px; min-height: 58px; padding: 10px 32px; border-top: 1px solid var(--rv-color-border); }
 .ss-page .ss-sess-sub + .ss-ses { border-top: 0; }
 .ss-page .ss-ses.is-current { background: var(--rv-color-primary-soft); box-shadow: inset 2px 0 0 var(--rv-color-primary); }
 .ss-page .ss-ses-who { display: grid; gap: 1px; min-width: 0; }
@@ -158,13 +160,13 @@
 
 /* Database scopes */
 .ss-page .ss-scopes { display: grid; }
-.ss-page .ss-sg { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 12px 24px; padding: 16px 20px; border-top: 1px solid var(--rv-color-border); }
+.ss-page .ss-sg { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 12px 24px; padding: 18px 32px; border-top: 1px solid var(--rv-color-border); }
 .ss-page .ss-scopes > .ss-sg:first-child { border-top: 0; }
 .ss-page .ss-sg h3 { font-size: 14px; font-weight: 600; }
 .ss-page .ss-sg p { color: var(--rv-color-muted); font-size: 13px; }
 .ss-page .ss-sel-all { display: inline-flex; align-items: center; gap: 8px; margin-top: 8px; color: var(--rv-color-muted); font-size: 13px; cursor: pointer; }
 .ss-page .ss-sel-all .ss-cb { margin-top: 0; }
-.ss-page .ss-sg-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; align-content: start; }
+.ss-page .ss-sg-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px; align-content: start; }
 .ss-page .ss-sc { display: flex; align-items: flex-start; gap: 10px; margin: 0; padding: 10px 12px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; cursor: pointer; }
 .ss-page .ss-sc:hover { background: var(--rv-color-surface-raised); }
 .ss-page .ss-sc.is-on { background: var(--rv-color-primary-soft); border-color: var(--ss-violet-line); }
@@ -173,7 +175,7 @@
 
 /* Label designer */
 .ss-page .ss-dz { display: grid; }
-.ss-page .ss-dz-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--rv-color-border); }
+.ss-page .ss-dz-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 32px; border-bottom: 1px solid var(--rv-color-border); }
 .app-shell.stitch-shell main .ss-page .ss-dz-template { width: 190px; }
 .ss-page .ss-seg2 { display: inline-flex; gap: 3px; padding: 3px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 9px; }
 .app-shell.stitch-shell main .ss-page .ss-seg2 button { display: inline-flex; align-items: center; gap: 6px; height: 26px; min-height: 26px; padding: 0 10px; color: var(--rv-color-muted); white-space: nowrap; background: none; border: 1px solid transparent; border-radius: 6px; box-shadow: none; cursor: pointer; font-size: 13px; font-weight: 500 !important; text-transform: none; }
@@ -348,13 +350,14 @@
 }
 
 @media (max-width: 1000px) {
-  .ss-page .ss-card { grid-template-columns: 1fr; min-height: 0; }
-  .ss-page .ss-nav { display: none; }
+  .ss-page .ss-card { grid-template-columns: 1fr; }
+  .ss-page .ss-nav { position: static; height: auto; padding: 0; border-right: 0; }
+  .ss-page .ss-nav > :not(.ss-page-head) { display: none; }
+  .ss-page .ss-page-head { margin: 0; padding: 16px; }
   .ss-page .ss-mnav { display: flex; gap: 4px; padding: 8px; overflow-x: auto; border-bottom: 1px solid var(--rv-color-border); }
   .app-shell.stitch-shell main .ss-page .ss-mnav button { flex: none; display: inline-flex; align-items: center; height: 32px; min-height: 32px; padding: 0 12px; color: var(--rv-color-muted); white-space: nowrap; background: none; border: 1px solid transparent; border-radius: 7px; box-shadow: none; font-size: 13px; font-weight: 500 !important; text-transform: none; }
   .app-shell.stitch-shell main .ss-page .ss-mnav button:hover { color: var(--rv-color-ink); background: var(--rv-color-surface-raised); }
   .app-shell.stitch-shell main .ss-page .ss-mnav button.is-on { color: var(--ss-violet); background: var(--rv-color-primary-soft); border-color: var(--ss-violet-line); }
-  .ss-page .ss-bar { border-radius: 0 0 12px 12px; }
   .ss-page .ss-app-grid { grid-template-columns: 1fr 1fr; }
   .ss-page .ss-app-grid > :last-child { grid-column: 1 / -1; }
   .ss-page .ss-sg { grid-template-columns: 1fr; }

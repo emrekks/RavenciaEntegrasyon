@@ -315,10 +315,9 @@ export function SystemSettingsPage() {
   const isAppearance = appearanceSections.includes(section)
 
   return <section className="content ss-page">
-    <header className="ss-page-head"><div><span className="ss-crumb">Ayarlar</span><h1>Sistem Ayarları</h1><p>Hesap güvenliği, yerel veri, kargo etiketi ve görünüm.</p></div></header>
     {message && <SettingsNotice message={message} />}
     <div className="ss-card">
-      <nav className="ss-nav" aria-label="Ayar bölümleri">{settingsSectionGroups.map((group, index) => <Fragment key={group.label}>{index ? <div className="ss-nav-sep" /> : null}<div className="ss-nav-group">{group.label}</div>{group.items.map(item => <button type="button" key={item.key} className={section === item.key ? 'is-on' : undefined} aria-current={section === item.key ? 'page' : undefined} onClick={() => selectSection(item.key)}><SettingsIcon name={item.icon} /><span>{item.label}</span>{navMeta(item.key)}</button>)}</Fragment>)}</nav>
+      <nav className="ss-nav" aria-label="Ayar bölümleri"><header className="ss-page-head"><span className="ss-crumb">Ayarlar</span><h1>Sistem Ayarları</h1><p>Hesap güvenliği, yerel veri, kargo etiketi ve görünüm.</p></header>{settingsSectionGroups.map((group, index) => <Fragment key={group.label}>{index ? <div className="ss-nav-sep" /> : null}<div className="ss-nav-group">{group.label}</div>{group.items.map(item => <button type="button" key={item.key} className={section === item.key ? 'is-on' : undefined} aria-current={section === item.key ? 'page' : undefined} onClick={() => selectSection(item.key)}><SettingsIcon name={item.icon} /><span>{item.label}</span>{navMeta(item.key)}</button>)}</Fragment>)}</nav>
       <div className="ss-pane">
         <div className="ss-mnav" role="tablist" aria-label="Ayar bölümleri">{settingsSections.map(item => <button type="button" role="tab" key={item.key} aria-selected={section === item.key} className={section === item.key ? 'is-on' : undefined} onClick={() => selectSection(item.key)}>{item.label}</button>)}</div>
         {section === 'auth' && <>
