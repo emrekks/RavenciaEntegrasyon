@@ -161,3 +161,10 @@
 .app-shell.stitch-shell main .cs-workspace .connection-settings-panel .connection-settings-section input:not([type="checkbox"]):not([type="radio"]) { box-sizing: border-box; height: 36px; min-height: 36px; padding: 0 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; }
 .app-shell.stitch-shell main .cs-workspace .connection-settings-panel .connection-settings-section input:focus { border-color: var(--rv-color-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--rv-color-primary) 18%, transparent); outline: none; }
 .app-shell.stitch-shell main .cs-workspace .connection-settings-panel .connection-settings-section label { display: grid; gap: 6px; color: var(--rv-color-muted); font-size: 12px; font-weight: 500; }
+
+/* Tool panels (N11, Pazarama, stage): the same field labels, inputs and 34px buttons as the store form. */
+.app-shell.stitch-shell main .cs-workspace .cs-pane .panel label:not(.integration-write-toggle):not(.sync-policy-card-switch) { display: grid; gap: 6px; color: var(--rv-color-muted); font-size: 12px; font-weight: 500; }
+.app-shell.stitch-shell main .cs-workspace .cs-pane .panel :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) { box-sizing: border-box; min-height: 36px; padding: 0 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 14px; }
+.app-shell.stitch-shell main .cs-workspace .cs-pane .panel :is(input:not([type="checkbox"]):not([type="radio"]), select) { height: 36px; }
+.app-shell.stitch-shell main .cs-workspace .cs-pane .panel :is(input, select, textarea):focus { border-color: var(--rv-color-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--rv-color-primary) 18%, transparent); outline: none; }
+.app-shell.stitch-shell main .cs-workspace .cs-pane .panel button:not(.cs-chip):not(.cs-fname):not(.cs-quiet) { height: 34px; min-height: 34px; padding: 0 12px; border-radius: 7px; font-size: 14px; }
