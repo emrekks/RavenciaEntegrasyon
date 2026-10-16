@@ -9760,6 +9760,9 @@ small,
   .app-shell.stitch-shell > aside .sidebar-brand-row {
     justify-content: flex-start;
     box-sizing: border-box;
+    /* Ends on the top bar's bottom line: the aside's 20px top padding plus this row equal the top bar height. */
+    height: calc(var(--rv-topbar-height) - 20px);
+    min-height: 0;
     padding-inline-start: 16px;
     padding-inline-end: 0;
     transition: none;
