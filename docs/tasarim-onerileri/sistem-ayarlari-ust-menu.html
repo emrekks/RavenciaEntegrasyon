@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sistem Ayarları Üst Menü</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #111115; --surface: #17171c; --raised: #1d1d23; --soft: #22222a;
+    --line: #2a2a32; --line-strong: #383842;
+    --ink: #ececf0; --muted: #a3a3b0; --subtle: #6f6f7c;
+    --primary: #8b5cf6; --primary-soft: #272139;
+    --violet: color-mix(in srgb, var(--primary) 55%, white);
+    --violet-line: color-mix(in srgb, var(--primary) 55%, transparent);
+    --warn: #e2aa4b; --bad: #e4636f;
+    --side: 232px; --top: 70px;
+  }
+  * { box-sizing: border-box; }
+  html, body { overflow-x: clip; }
+  body { margin: 0; font: 14px/1.5 Inter, "Segoe UI", system-ui, sans-serif; color: var(--ink); background: var(--bg); -webkit-font-smoothing: antialiased; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  h1, h2, h3, p { margin: 0; }
+  ::-webkit-scrollbar { width: 12px; height: 12px; background: var(--raised); }
+  ::-webkit-scrollbar-thumb { background: var(--soft); background-clip: padding-box; border: 3px solid transparent; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--line-strong); }
+
+  /* proposal switcher */
+  .switcher { position: fixed; z-index: 90; left: 50%; bottom: 16px; transform: translateX(-50%); display: flex; flex-wrap: wrap; gap: 4px; padding: 4px; background: var(--raised); border: 1px solid var(--line-strong); border-radius: 12px; box-shadow: 0 16px 40px rgb(0 0 0 / 50%); max-width: calc(100vw - 32px); }
+  .switcher button { height: 32px; padding: 0 12px; color: var(--muted); background: none; border: 1px solid transparent; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 500; white-space: nowrap; }
+  .switcher button.on { color: var(--violet); background: var(--primary-soft); border-color: var(--violet-line); }
+
+  /* app shell (static) */
+  .shell { display: grid; grid-template-columns: var(--side) minmax(0, 1fr); min-height: 100vh; }
+  .side { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; background: var(--surface); border-right: 1px solid var(--line); }
+  .side .brand { display: flex; align-items: center; gap: 12px; height: var(--top); padding: 0 20px; border-bottom: 1px solid var(--line); font-weight: 600; }
+  .side .brand i { width: 34px; height: 34px; border: 1px solid var(--line-strong); border-radius: 50%; display: grid; place-items: center; font-style: italic; font-family: Georgia, serif; }
+  .side nav { display: grid; gap: 4px; padding: 16px 12px; }
+  .side nav a { display: flex; align-items: center; justify-content: space-between; height: 40px; padding: 0 12px; color: var(--muted); text-decoration: none; border-radius: 8px; }
+  .side nav a b { min-width: 20px; height: 18px; display: grid; place-items: center; color: var(--ink); background: var(--line-strong); border-radius: 5px; font-size: 11px; font-weight: 500; }
+  .side .bottom { margin-top: auto; padding: 12px; border-top: 1px solid var(--line); }
+  .side .bottom a { display: flex; align-items: center; height: 40px; padding: 0 12px; color: #fff; background: var(--primary); border-radius: 8px; text-decoration: none; font-weight: 500; }
+  .topbar { position: sticky; top: 0; z-index: 40; display: flex; align-items: center; height: var(--top); padding: 0 24px; background: color-mix(in srgb, var(--surface) 94%, transparent); border-bottom: 1px solid var(--line); backdrop-filter: blur(14px); color: var(--muted); }
+  .topbar b { color: var(--ink); font-weight: 600; margin-left: 8px; }
+  main { min-width: 0; }
+
+  /* shared controls */
+  .ico { display: block; flex: none; }
+  .st { width: 16px; height: 16px; flex: none; display: block; color: var(--subtle); } .st.done { color: var(--ink); } .st.bad { color: var(--bad); }
+  .count { display: inline-grid; min-width: 20px; height: 18px; place-items: center; padding: 0 5px; color: var(--ink); background: var(--line-strong); border-radius: 5px; font-size: 11px; font-weight: 500; line-height: 1; }
+  .count.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 16%, var(--line-strong)); }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 34px; padding: 0 12px; white-space: nowrap; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: 500; }
+  .btn:hover { background: var(--soft); }
+  .btn.primary { color: #fff; background: var(--primary); border-color: var(--primary); }
+  .btn.danger { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, var(--line-strong)); }
+  .btn.solid { color: #fff; background: var(--bad); border-color: var(--bad); }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .tag { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px 0 5px; color: var(--muted); border: 1px solid var(--line-strong); border-radius: 5px; font-size: 12px; font-weight: 500; }
+  .tag .st { width: 13px; height: 13px; } .tag.lg { height: 34px; padding: 0 12px 0 9px; border-radius: 7px; color: var(--ink); font-size: 13px; }
+  .tile { display: grid; width: 32px; height: 32px; flex: none; place-items: center; color: var(--muted); background: var(--raised); border: 1px solid var(--line); border-radius: 7px; }
+  .tile.lg { width: 40px; height: 40px; }
+  .in { width: 100%; height: 36px; padding: 0 12px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 7px; outline: none; }
+  textarea.in { height: auto; min-height: 76px; padding: 8px 12px; }
+  select.in { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='%23a3a3b0' stroke-width='1.6' stroke-linecap='round'%3E%3Cpath d='m4.5 6 3.5 3.5L11.5 6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; }
+  .fld { display: grid; gap: 6px; min-width: 0; } .fld > small { color: var(--subtle); font-size: 12px; font-weight: 500; }
+  .pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: end; }
+  .swfld { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 36px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 7px; }
+  .swfld b { font-weight: 400; font-size: 13px; }
+  .swl { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+  .sw { position: relative; width: 34px; height: 20px; background: var(--soft); border: 1px solid var(--line-strong); border-radius: 99px; }
+  .sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 12px; height: 12px; background: var(--subtle); border-radius: 50%; }
+  .sw.on { background: var(--primary-soft); border-color: var(--violet-line); } .sw.on::after { left: 17px; background: var(--violet); }
+  .callout { display: flex; gap: 10px; padding: 10px 12px; color: var(--muted); background: var(--raised); border: 1px solid var(--line-strong); border-radius: 7px; font-size: 13px; }
+  .callout b { color: var(--ink); font-weight: 600; }
+  .callout.danger { background: color-mix(in srgb, var(--bad) 8%, var(--surface)); border-color: color-mix(in srgb, var(--bad) 40%, var(--line-strong)); } .callout.danger .ico { color: var(--bad); }
+  .cb { width: 16px; height: 16px; flex: none; margin-top: 2px; border: 1px solid var(--line-strong); border-radius: 4px; }
+  .cb.on { background: var(--primary-soft); border-color: var(--violet-line); }
+
+  /* page frame shared by all proposals: full width under the top bar */
+  .page-head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 16px; padding: 22px 32px 0; }
+  .page-head .crumb { color: var(--subtle); font-size: 12px; font-weight: 500; }
+  .page-head h1 { font-size: 18px; font-weight: 600; }
+  .page-head p { color: var(--muted); font-size: 13px; }
+  .sec-head { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 16px; padding: 20px 32px 16px; }
+  .sec-head > div { flex: 1 1 260px; }
+  .sec-head h2 { font-size: 16px; font-weight: 600; } .sec-head p { color: var(--muted); font-size: 13px; }
+  .sec-head .acts { display: flex; gap: 8px; }
+  .body { display: grid; gap: 16px; align-content: start; padding: 0 32px 24px; }
+  .body.flush { padding: 0; gap: 0; border-top: 1px solid var(--line); }
+  .bar { position: sticky; bottom: 0; z-index: 6; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 32px; background: var(--surface); border-top: 1px solid var(--line); }
+  .bar .copy { flex: 1 1 260px; display: grid; } .bar strong { font-weight: 600; } .bar span { color: var(--muted); font-size: 13px; }
+  .bar .btns { display: flex; gap: 8px; }
+  .page { display: flex; flex-direction: column; min-height: calc(100vh - var(--top)); }
+  .page > .fill { flex: 1; display: flex; flex-direction: column; }
+  .page > .fill > .grow { flex: 1; }
+
+  /* blocks */
+  .auth { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 4px 16px; }
+  .auth .tile { grid-row: span 2; align-self: start; }
+  .auth h3 { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; }
+  .auth p { color: var(--muted); font-size: 13px; } .auth small { grid-column: 2; color: var(--subtle); font-size: 12px; }
+  .auth .side-a { grid-column: 3; grid-row: 1 / span 2; }
+  .sub { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 32px; color: var(--muted); background: var(--raised); border-bottom: 1px solid var(--line); font-size: 12px; font-weight: 500; }
+  .ses { display: grid; grid-template-columns: 32px minmax(0, 1fr) minmax(0, 1fr) 186px; align-items: center; gap: 4px 14px; min-height: 58px; padding: 10px 32px; border-bottom: 1px solid var(--line); }
+  .ses.cur { background: var(--primary-soft); box-shadow: inset 2px 0 0 var(--primary); }
+  .ses b { font-weight: 500; } .ses small { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; } .ses small .st { width: 13px; height: 13px; }
+  .ses .when { font-size: 13px; } .ses .when small { display: block; }
+  .ses .act { display: flex; justify-content: flex-end; }
+  .sg { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 12px 24px; padding: 18px 32px; border-bottom: 1px solid var(--line); }
+  .sg h3 { font-size: 14px; font-weight: 600; } .sg p { color: var(--muted); font-size: 13px; }
+  .sg-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px; }
+  .sc { display: flex; gap: 10px; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: 7px; }
+  .sc.on { background: var(--primary-soft); border-color: var(--violet-line); }
+  .sc b { display: block; font-weight: 500; } .sc small { color: var(--muted); font-size: 12px; }
+  .app-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .pv { display: grid; gap: 8px; padding: 16px; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; }
+  .pv small { color: var(--subtle); font-size: 12px; } .pv .card { padding: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+  .pv p { color: var(--muted); font-size: 13px; }
+  .cgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 32px; }
+  .cf { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; border-top: 1px solid var(--line); }
+  .cf b { display: block; font-weight: 500; font-size: 13px; } .cf small { color: var(--muted); font-size: 12px; }
+  .cctl { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px 0 4px; border: 1px solid var(--line-strong); border-radius: 7px; }
+  .cctl i { width: 26px; height: 26px; border-radius: 5px; border: 1px solid rgb(255 255 255 / 14%); }
+  .cctl code { font: 500 12px ui-monospace, Consolas, monospace; }
+  .themes { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
+  .th { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: 7px; }
+  .th.on { background: var(--primary-soft); border-color: var(--violet-line); }
+  .sws { display: inline-flex; overflow: hidden; border: 1px solid var(--line-strong); border-radius: 5px; } .sws i { width: 16px; height: 26px; }
+  .th small { display: block; color: var(--muted); font-size: 12px; }
+  .dz { display: grid; grid-template-columns: 236px minmax(0, 1fr) 264px; min-height: 520px; }
+  .dz > aside { padding: 12px 16px; background: var(--surface); }
+  .dz > aside:first-child { border-right: 1px solid var(--line); } .dz > aside:last-child { border-left: 1px solid var(--line); }
+  .dz .lib { display: grid; gap: 8px; margin-top: 10px; } .dz .lib div { padding: 8px 10px; border: 1px solid var(--line); border-radius: 7px; font-size: 13px; }
+  .dz .stage { display: grid; place-items: center; background: radial-gradient(var(--line) 1px, transparent 1px) 0 0 / 14px 14px; }
+  .paper { width: 300px; aspect-ratio: 210 / 297; background: #f6f6f8; border-radius: 4px; box-shadow: 0 12px 30px rgb(0 0 0 / 40%); padding: 14px; display: grid; gap: 8px; align-content: start; }
+  .paper i { display: block; height: 40px; border: 1px dashed #b9bac4; border-radius: 3px; }
+  .muted { color: var(--muted); font-size: 13px; }
+
+  /* ---------- Öneri 1: İki katlı sekmeler ---------- */
+  .v1 .gtabs { position: sticky; top: var(--top); z-index: 20; display: flex; gap: 4px; margin-top: 14px; padding: 0 32px; background: var(--bg); border-bottom: 1px solid var(--line); overflow-x: auto; }
+  .v1 .gtabs button { display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 14px; color: var(--muted); white-space: nowrap; background: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer; font-weight: 500; }
+  .v1 .gtabs button:hover { color: var(--ink); }
+  .v1 .gtabs button.on { color: var(--ink); border-bottom-color: var(--primary); }
+  .v1 .stabs { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 16px 32px 0; }
+  .seg { display: inline-flex; gap: 3px; padding: 3px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 9px; overflow-x: auto; max-width: 100%; }
+  .seg button { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px; color: var(--muted); white-space: nowrap; background: none; border: 1px solid transparent; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; }
+  .seg button:hover { color: var(--ink); }
+  .seg button.on { color: var(--violet); background: var(--primary-soft); border-color: var(--violet-line); }
+  .seg button .count { height: 16px; min-width: 18px; font-size: 10px; }
+
+  /* ---------- Öneri 2: Tek satır, gruplu sekmeler ---------- */
+  .v2 .rail { position: sticky; top: var(--top); z-index: 20; display: flex; align-items: stretch; gap: 0; margin-top: 14px; padding: 0 24px; background: var(--bg); border-bottom: 1px solid var(--line); overflow-x: auto; }
+  .v2 .grp { display: flex; align-items: stretch; padding: 0 8px; }
+  .v2 .grp + .grp { border-left: 1px solid var(--line); }
+  .v2 .grp > span { align-self: center; padding: 0 8px 0 4px; color: var(--subtle); font-size: 11px; font-weight: 600; white-space: nowrap; }
+  .v2 .rail button { display: inline-flex; align-items: center; gap: 7px; height: 46px; padding: 0 10px; color: var(--muted); white-space: nowrap; background: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer; font-size: 13px; font-weight: 500; }
+  .v2 .rail button:hover { color: var(--ink); }
+  .v2 .rail button.on { color: var(--ink); border-bottom-color: var(--primary); }
+  .v2 .rail button.on .st:not(.done) { color: var(--violet); }
+
+  /* ---------- Öneri 3: Grup sekmesi, bölümler tek sayfada ---------- */
+  .v3 .gtabs { position: sticky; top: var(--top); z-index: 20; display: flex; gap: 6px; margin-top: 14px; padding: 10px 32px; background: color-mix(in srgb, var(--bg) 94%, transparent); border-bottom: 1px solid var(--line); overflow-x: auto; backdrop-filter: blur(10px); }
+  .v3 .gtabs button { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; color: var(--muted); white-space: nowrap; background: none; border: 1px solid transparent; border-radius: 7px; cursor: pointer; font-weight: 500; }
+  .v3 .gtabs button:hover { color: var(--ink); background: var(--raised); }
+  .v3 .gtabs button.on { color: var(--violet); background: var(--primary-soft); border-color: var(--violet-line); }
+  .v3 .jump { margin-left: auto; display: flex; gap: 2px; align-items: center; color: var(--subtle); font-size: 12px; }
+  .v3 .jump a { padding: 4px 8px; color: var(--muted); text-decoration: none; border-radius: 6px; white-space: nowrap; } .v3 .jump a:hover { color: var(--ink); background: var(--raised); }
+  .v3 .block { border-bottom: 1px solid var(--line); scroll-margin-top: calc(var(--top) + 64px); }
+  .v3 .block:last-of-type { border-bottom: 0; }
+
+  @media (max-width: 1000px) {
+    .shell { grid-template-columns: 1fr; } .side { display: none; }
+    .app-grid { grid-template-columns: 1fr 1fr; } .sg { grid-template-columns: 1fr; }
+    .dz { grid-template-columns: 1fr; } .dz > aside { border: 0 !important; border-top: 1px solid var(--line) !important; }
+    .v3 .jump { display: none; }
+  }
+  @media (max-width: 700px) {
+    .page-head, .sec-head, .body:not(.flush), .bar, .ses, .sg, .sub, .v1 .stabs { padding-left: 16px; padding-right: 16px; }
+    .v1 .gtabs, .v3 .gtabs { padding-left: 16px; padding-right: 16px; } .v2 .rail { padding: 0 8px; }
+    .pair, .app-grid, .cgrid, .sg-list { grid-template-columns: 1fr; }
+    .ses { grid-template-columns: 32px minmax(0, 1fr); } .ses .when, .ses .act { grid-column: 2; justify-content: flex-start; }
+    .auth { grid-template-columns: 40px 1fr; } .auth .side-a { grid-column: 1 / -1; grid-row: auto; }
+    .bar .btns { width: 100%; } .bar .btns .btn { flex: 1; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <div class="brand"><i>R</i>Ravencia</div>
+    <nav><a>Genel Bakış</a><a>Ürünler</a><a>Siparişler <b>10</b></a><a>İadeler <b>1</b></a><a>Faturalar <b>0</b></a><a>Ürün Soruları <b>0</b></a><a>Entegrasyonlar</a><a>Eşleştirmeler</a><a>İşlem Takibi</a></nav>
+    <div class="bottom"><a>Sistem Ayarları</a></div>
+  </aside>
+  <main>
+    <div class="topbar">Operasyon Merkezi › <b>Sistem Ayarları</b></div>
+    <div id="root"></div>
+  </main>
+</div>
+<div class="switcher" id="sw">
+  <button data-v="1" class="on">Öneri 1 · İki Katlı Sekmeler</button>
+  <button data-v="2">Öneri 2 · Tek Satır Gruplu Sekmeler</button>
+  <button data-v="3">Öneri 3 · Grup Sekmesi, Bölümler Tek Sayfada</button>
+</div>
+<script>
+const ico = p => `<svg class="ico" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`
+const I = {
+  shield: ico('<path d="M8 1.8 13 3.6v4.1c0 3-2.1 5.4-5 6.5-2.9-1.1-5-3.5-5-6.5V3.6z"/><path d="m5.8 8 1.6 1.6 2.9-3"/>'),
+  device: ico('<rect x="2" y="3" width="12" height="8" rx="1.5"/><path d="M5.5 13.5h5M8 11v2.5"/>'),
+  phone: ico('<rect x="4.5" y="1.8" width="7" height="12.4" rx="1.6"/><path d="M7.2 12h1.6"/>'),
+  db: ico('<ellipse cx="8" cy="3.8" rx="5" ry="2"/><path d="M3 3.8v8.4c0 1.1 2.2 2 5 2s5-.9 5-2V3.8"/><path d="M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>'),
+  truck: ico('<path d="M1.8 4h7.7v7H1.8z"/><path d="M9.5 6.5h2.7l2 2.3V11H9.5"/><circle cx="4.5" cy="11.8" r="1.3"/><circle cx="11.5" cy="11.8" r="1.3"/>'),
+  palette: ico('<path d="M8 2a6 6 0 1 0 0 12c.9 0 1.3-.6 1.3-1.2 0-.8-.6-1-.6-1.7 0-.6.5-1.1 1.1-1.1h1.4A2.8 2.8 0 0 0 14 7.2C14 4.3 11.3 2 8 2z"/>'),
+  user: ico('<circle cx="8" cy="5.5" r="2.7"/><path d="M2.8 13.6a5.4 5.4 0 0 1 10.4 0"/>'),
+  ruler: ico('<rect x="1.8" y="5" width="12.4" height="6" rx="1"/><path d="M4.5 5v2.2M7 5v3M9.5 5v2.2M12 5v3"/>'),
+  layout: ico('<rect x="2.5" y="2.5" width="11" height="11" rx="1.5"/><path d="M2.5 6.5h11M7 6.5v7"/>'),
+  type: ico('<path d="M3 4.5V3h10v1.5M8 3v10M6 13h4"/>'),
+  save: ico('<path d="M3 2.5h8l2.5 2.5v8.5H3z"/><path d="M5.5 2.5v3h4v-3M5.5 13.5V9.5h5v4"/>'),
+  bell: ico('<path d="M4 11V7.5a4 4 0 0 1 8 0V11l1 1.5H3z"/><path d="M6.6 14a1.5 1.5 0 0 0 2.8 0"/>'),
+  lock: ico('<rect x="3" y="7" width="10" height="7" rx="1.6"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/>'),
+  info: ico('<circle cx="8" cy="8" r="6.2"/><path d="M8 7.2v3.6M8 5h.01"/>'),
+  logout: ico('<path d="M6 2.5H3.5v11H6"/><path d="M10 5l3 3-3 3M13 8H6.5"/>'),
+  trash: ico('<path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5"/>'),
+}
+const G = {
+  done: '<svg class="st done" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="currentColor"/><path d="m5 8.2 2.1 2.1 3.9-4.2" fill="none" stroke="#17171c" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  none: '<svg class="st" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2.6 2.2" aria-hidden="true"><circle cx="8" cy="8" r="6.2"/></svg>',
+}
+const GROUPS = [
+  ['security', 'Güvenlik ve Oturumlar', I.shield, [['auth', 'Authenticator', I.shield, G.none], ['sessions', 'Oturumlar', I.device, '<span class="count">4</span>']]],
+  ['data', 'Veri', I.db, [['database', 'Veritabanı Temizliği', I.db, '<span class="count warn">2</span>']]],
+  ['shipping', 'Kargo Ayarları', I.truck, [['sender', 'Gönderici ve Yazdırma', I.user, ''], ['dims', 'Etiket Ölçüleri', I.ruler, ''], ['designer', 'Etiket Tasarımı', I.layout, '<span class="count">4</span>']]],
+  ['appearance', 'Görünüm', I.palette, [['read', 'Okunabilirlik ve Tema', I.type, ''], ['palette', 'Renk Paleti', I.palette, ''], ['themes', 'Kayıtlı Temalar', I.save, '<span class="count">2</span>'], ['notify', 'Bildirimler', I.bell, '']]],
+]
+const BAR = {
+  ship: '<div class="bar"><div class="copy"><strong>Etiket Düzenini Yayınla</strong><span>Gönderici bilgileri ve kâğıt yerleşimi tüm yazdırma akışlarında kullanılır.</span></div><div class="btns"><button class="btn primary" disabled>Ayarları Kaydet</button></div></div>',
+  app: '<div class="bar"><div class="copy"><strong>Görünüm Ayarlarını Uygula</strong><span>Değişiklikleri hesabınıza kaydetmeden önce önizleyin.</span></div><div class="btns"><button class="btn">Varsayılanlara Dön</button><button class="btn primary" disabled>Görünüm Ayarlarını Kaydet</button></div></div>',
+  db: '<div class="bar"><div class="copy"><strong>Seçili Listeleri Kalıcı Olarak Temizle</strong><span><b style="color:var(--ink);font-weight:500">2 liste seçildi</b> · Bu işlem seçtiğiniz kayıtları geri alınamayacak şekilde kaldırır.</span></div><div class="btns"><button class="btn">Seçimi Temizle</button><button class="btn solid">Seçili Listeleri Kalıcı Sil</button></div></div>',
+}
+const sesRow = (cur, last, exp) => `<div class="ses ${cur ? 'cur' : ''}"><span class="tile">${cur ? I.device : I.phone}</span><div><b>${cur ? 'Bu Cihaz' : 'Diğer Oturum'}</b><small>${G.done}Aktif</small></div><div class="when">Son etkinlik ${last}<small style="color:var(--muted);font-size:12px">Bitiş ${exp}</small></div><div class="act">${cur ? `<span class="tag lg">${G.done}Mevcut Oturum</span>` : `<button class="btn danger">${I.logout}Oturumu Sonlandır</button>`}</div></div>`
+const scope = (t, d, on) => `<div class="sc ${on ? 'on' : ''}"><span class="cb ${on ? 'on' : ''}"></span><span><b>${t}</b><small>${d}</small></span></div>`
+const sw = (l, on) => `<div class="swfld"><b>${l}</b><span class="swl"><span class="sw ${on ? 'on' : ''}"></span>${on ? 'Açık' : 'Kapalı'}</span></div>`
+const COLORS = [['Arka Plan', '#101014'], ['Menü Zemini', '#17171C'], ['Yüzey', '#17171C'], ['Yükseltilmiş Yüzey', '#1D1D23'], ['Yumuşak Yüzey', '#22222A'], ['Kenarlık', '#2A2A32'], ['Güçlü Kenarlık', '#383842'], ['Ana Metin', '#ECECF0'], ['İkincil Metin', '#A3A3B0'], ['Soluk Metin', '#6F6F7C'], ['Ana Renk', '#8B5CF6'], ['Ana Renk Hover', '#7C3AED']]
+const SEC = {
+  auth: { d: 'İki adımlı doğrulama ile girişte telefonunuzdaki kod da istenir.', b: `<div class="auth"><span class="tile lg">${I.shield}</span><h3>Authenticator <span class="tag">${G.none}Kapalı</span></h3><p>Giriş sırasında telefonunuzdaki tek kullanımlık kodla hesabınızı koruyun.</p><small>Google Authenticator, Microsoft Authenticator veya uyumlu bir uygulama gerekir.</small><div class="side-a"><button class="btn primary">${I.shield}Authenticator’ı Etkinleştir</button></div></div><div class="callout">${I.info}<span>Kurulum üç adımdır: <b>parolanızı doğrulayın</b>, <b>QR kodu tarayıp 6 haneli kodu girin</b>, <b>kurtarma kodlarını saklayın</b>.</span></div>` },
+  sessions: { d: 'Hesabınıza bağlı cihazları ve son etkinliklerini görüntüleyin.', a: '<button class="btn danger">Diğer Tüm Oturumları Kapat <span class="count">3</span></button>', flush: true, b: `<div class="sub">Aktif <span class="count">4</span></div>${sesRow(true, '16.10.2026 21:41', '16.10.2026 22:11')}${sesRow(false, '16.10.2026 18:05', '16.10.2026 18:35')}${sesRow(false, '16.10.2026 21:42', '16.10.2026 22:12')}${sesRow(false, '16.10.2026 03:58', '16.10.2026 04:28')}` },
+  database: { d: 'Yalnız seçtiğiniz alanlar bu hesabın yerel veritabanından silinir.', flush: true, bar: 'db', b: `<div style="padding:16px 32px;border-bottom:1px solid var(--line)"><div class="callout danger">${I.lock}<span><b>Yetkili işlemi.</b> Bağlı alt kayıtlar güvenli sırayla temizlenir; işlem geri alınamaz.</span></div></div><div class="sg"><div><h3>Katalog</h3><p>Ürün kataloğunda kullanılan temel listeleri temizleyin.</p></div><div class="sg-list">${scope('Ürünler Listesi', 'Ürünleri, varyantları ve bağlı görsel, stok ve kanal kayıtlarını temizler.', true)}${scope('Kategori Listesi', 'Panel kategori ağacını ve eşleştirmelerini kaldırır.')}${scope('Kategori Özellikleri', 'Özellik başlıklarını, değerlerini ve eşleştirmelerini kaldırır.')}${scope('Marka Listesi', 'Marka kayıtlarını ve marka eşleştirmelerini kaldırır.')}</div></div><div class="sg"><div><h3>Operasyon</h3><p>İşlem ve satış kayıtlarını temizleyin.</p></div><div class="sg-list">${scope('Siparişler Listesi', 'Siparişleri ve bağlı kargo, satır ve finansal kayıtları temizler.', true)}${scope('İadeler Listesi', 'İade taleplerini, kararlarını ve stok işlemlerini temizler.')}${scope('Faturalar Listesi', 'Faturaları ve gönderim denemelerini temizler.')}</div></div>` },
+  sender: { d: 'Etiketin üzerinde görünen gönderici ve varsayılan çıktı.', bar: 'ship', b: `<div class="pair"><label class="fld"><small>Gönderici Adı</small><input class="in" value="Ravencia"></label><label class="fld"><small>Varsayılan Çıktı</small><select class="in"><option>Kargo Etiketi · Sticker</option></select></label></div><label class="fld"><small>Gönderici Adresi</small><textarea class="in" placeholder="İsteğe bağlı"></textarea></label><label class="fld"><small>A4 Sayfa Düzeni</small><select class="in"><option>Sayfada 1 Etiket</option></select></label><div class="pair">${sw('A4 Yazdırma Butonunu Göster')}${sw('Sticker Yazdırma Butonunu Göster', true)}</div>` },
+  dims: { d: 'Sticker boyutu ve alan aralıkları.', bar: 'ship', b: `<div class="pair"><label class="fld"><small>Sticker Genişliği (mm)</small><input class="in" value="100"></label><label class="fld"><small>Sticker Yüksekliği (mm)</small><input class="in" value="100"></label></div><div class="pair"><label class="fld"><small>Bloklar Arası Boşluk (mm)</small><input class="in" value="4"></label>${sw('Müşteri İletişim Alanını Göster', true)}</div>` },
+  designer: { d: 'Alanları kütüphaneden kâğıda sürükleyin; seçili alanı sağ panelden düzenleyin.', flush: true, bar: 'ship', b: `<div class="dz"><aside><b style="font-size:13px">İçerik Kütüphanesi</b><div class="lib"><div>Takip Barkodu</div><div>Teslimat Adresi</div><div>Paket / Sipariş Bilgileri</div><div>Paket Barkodu</div><div>Gönderici ve Kargo Bilgileri</div><div>Özel İçerik Bloğu</div></div></aside><div class="stage"><div class="paper"><i></i><i style="height:60px"></i><i></i><i></i></div></div><aside><b style="font-size:13px">Özellikler</b><p class="muted" style="margin-top:6px">Seçili: Takip Barkodu</p></aside></div>` },
+  read: { d: 'Tablo ve işlem ekranlarındaki yazıları hesabınız için özelleştirin.', bar: 'app', b: `<div class="app-grid"><label class="fld"><small>Font Tipi</small><select class="in"><option>Inter</option></select></label><label class="fld"><small>Yazı Boyutu</small><select class="in"><option>Küçük — Normal ve varsayılan çalışma görünümü</option></select></label><label class="fld"><small>Tema</small><select class="in"><option>Ravencia — Sade</option></select></label></div><div class="pv"><small>Önizleme</small><div class="card"><b>Ravencia MarketplaceHub</b><p>Bu ayar sipariş, iade, ürün ve diğer çalışma ekranlarındaki metinleri etkiler.</p></div></div>` },
+  palette: { d: 'Değişiklikler kaydetmeden önce anlık önizlenir.', a: '<span class="tag lg" style="padding-left:12px">Ravencia — Sade</span>', bar: 'app', b: `<div class="cgrid">${COLORS.map(([l, c]) => `<div class="cf"><b>${l}</b><span class="cctl"><i style="background:${c}"></i><code>${c}</code></span></div>`).join('')}</div>` },
+  themes: { d: 'Hazır paletleri saklayın, daha sonra yeniden uygulayın. Varsayılan tema korunur ve silinemez.', bar: 'app', b: `<div style="display:flex;gap:8px"><input class="in" placeholder="Yeni tema adı"><button class="btn primary">Renk Temasını Kaydet</button></div><div class="themes"><div class="th on"><span class="sws"><i style="background:#101014"></i><i style="background:#17171c"></i><i style="background:#8b5cf6"></i><i style="background:#46b98f"></i></span><span><b>Ravencia — Sade</b><small>Varsayılan tema</small></span></div><div class="th"><span class="sws"><i style="background:#101014"></i><i style="background:#18181f"></i><i style="background:#8b5cf6"></i><i style="background:#4adea0"></i></span><span><b>Ravencia — Grafit</b><small>Varsayılan tema</small></span></div></div>` },
+  notify: { d: 'Sağ üstte çıkan bildirimlerin seçili temadaki görünümünü deneyin.', b: `<div style="display:flex;gap:8px"><button class="btn">${G.done}Başarılı</button><button class="btn">Bekliyor</button><button class="btn">Başarısız</button></div>` },
+}
+const groupOf = k => GROUPS.find(g => g[3].some(s => s[0] === k))
+const itemOf = k => groupOf(k)[3].find(s => s[0] === k)
+const pageHead = `<div class="page-head"><div><div class="crumb">Ayarlar</div><h1>Sistem Ayarları</h1><p>Hesap güvenliği, yerel veri, kargo etiketi ve görünüm.</p></div></div>`
+const section = (k, head = true) => { const s = SEC[k]; return `${head ? `<div class="sec-head"><div><h2>${itemOf(k)[1]}</h2><p>${s.d}</p></div>${s.a ? `<div class="acts">${s.a}</div>` : ''}</div>` : ''}<div class="body ${s.flush ? 'flush' : ''}">${s.b}</div>` }
+
+let V = '1', K = 'sessions'
+function v1() {
+  const g = groupOf(K)
+  const gt = GROUPS.map(x => `<button class="${x === g ? 'on' : ''}" data-k="${x[3][0][0]}">${x[2]}${x[1]}</button>`).join('')
+  const st = g[3].length > 1 ? `<div class="stabs"><span class="seg">${g[3].map(s => `<button class="${s[0] === K ? 'on' : ''}" data-k="${s[0]}">${s[1]}${s[3]}</button>`).join('')}</span></div>` : ''
+  return `<div class="page v1">${pageHead}<nav class="gtabs">${gt}</nav><div class="fill">${st}<div class="grow">${section(K)}</div>${SEC[K].bar ? BAR[SEC[K].bar] : ''}</div></div>`
+}
+function v2() {
+  const rail = GROUPS.map(g => `<div class="grp"><span>${g[1]}</span>${g[3].map(s => `<button class="${s[0] === K ? 'on' : ''}" data-k="${s[0]}">${s[1]}${s[3]}</button>`).join('')}</div>`).join('')
+  return `<div class="page v2">${pageHead}<nav class="rail">${rail}</nav><div class="fill"><div class="grow">${section(K)}</div>${SEC[K].bar ? BAR[SEC[K].bar] : ''}</div></div>`
+}
+function v3() {
+  const g = groupOf(K)
+  const gt = GROUPS.map(x => `<button class="${x === g ? 'on' : ''}" data-k="${x[3][0][0]}">${x[2]}${x[1]}</button>`).join('')
+  const jump = g[3].length > 1 ? `<span class="jump">Bu sayfada:${g[3].map(s => `<a href="#b-${s[0]}">${s[1]}</a>`).join('')}</span>` : ''
+  const bars = [...new Set(g[3].map(s => SEC[s[0]].bar).filter(Boolean))]
+  return `<div class="page v3">${pageHead}<nav class="gtabs">${gt}${jump}</nav><div class="fill"><div class="grow">${g[3].map(s => `<section class="block" id="b-${s[0]}">${section(s[0])}</section>`).join('')}</div>${bars.map(b => BAR[b]).join('')}</div></div>`
+}
+function render() { document.getElementById('root').innerHTML = { 1: v1, 2: v2, 3: v3 }[V]() }
+document.addEventListener('click', e => {
+  const s = e.target.closest('#sw button'); if (s) { V = s.dataset.v; document.querySelectorAll('#sw button').forEach(b => b.classList.toggle('on', b === s)); render(); window.scrollTo(0, 0); return }
+  const t = e.target.closest('[data-k]'); if (t) { K = t.dataset.k; render() }
+})
+render()
+</script>
+</body>
+</html>

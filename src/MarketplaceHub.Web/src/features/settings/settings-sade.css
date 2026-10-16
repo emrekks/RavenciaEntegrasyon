@@ -11,34 +11,34 @@
 /* Labels are written in title case by hand; the global heading and control rules must not re-case them ("ve" stays small). */
 .app-shell.stitch-shell main .ss-page * { text-transform: none !important; }
 
-/* Page head */
-/* The page fills the work area under the top bar: the section list is a full-height column on the left edge, the pane takes the rest. */
-.app-shell.stitch-shell main .ss-page.content { width: 100%; max-width: none; margin: 0; padding: 0; }
-.ss-page .ss-page-head { display: grid; gap: 2px; padding: 20px 18px 14px; margin: 0 0 6px; border-bottom: 1px solid var(--rv-color-border); }
-.ss-page .ss-crumb { display: block; color: var(--rv-color-subtle); font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+/* The page fills the work area under the top bar: page head, group tabs stuck under the top bar, the group's section
+   segment (only when it has more than one section), then the section with its sticky apply bar. */
+.app-shell.stitch-shell main .ss-page.content { display: flex; flex-direction: column; width: 100%; max-width: none; min-height: calc(100dvh - var(--rv-topbar-height, 70px)); margin: 0; padding: 0; }
+.ss-page .ss-page-head { display: grid; gap: 2px; padding: 22px 32px 0; }
+.ss-page .ss-crumb { display: block; color: var(--rv-color-subtle); font-size: 12px; font-weight: 500; }
 .ss-page .ss-page-head h1 { font-size: 18px; font-weight: 600; line-height: 1.35; }
 .ss-page .ss-page-head p { color: var(--rv-color-muted); font-size: 13px; line-height: 1.45; }
-
-/* Card: section list + pane */
-.ss-page .ss-card { display: grid; grid-template-columns: 260px minmax(0, 1fr); min-height: calc(100dvh - var(--rv-topbar-height, 70px)); }
-.ss-page .ss-nav { position: sticky; top: var(--rv-topbar-height, 70px); align-self: start; display: grid; align-content: start; height: calc(100dvh - var(--rv-topbar-height, 70px)); padding: 0 0 14px; overflow-y: auto; background: var(--rv-color-surface); border-right: 1px solid var(--rv-color-border); }
-.ss-page .ss-nav-group { padding: 12px 18px 4px; color: var(--rv-color-muted); font-size: 12px; font-weight: 600; }
-.ss-page .ss-page-head + .ss-nav-group { padding-top: 8px; }
-.ss-page .ss-nav-sep { height: 1px; margin: 10px 18px 4px; background: var(--rv-color-border); }
-.app-shell.stitch-shell main .ss-page .ss-nav > button { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; height: 38px; min-height: 38px; padding: 0 16px 0 18px; color: var(--rv-color-muted); text-align: left; background: none; border: 0; border-left: 2px solid transparent; border-radius: 0; box-shadow: none; font-size: 14px; font-weight: 400 !important; letter-spacing: 0; text-transform: none; }
-.ss-page .ss-nav > button > span:not(.ss-count) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.app-shell.stitch-shell main .ss-page .ss-nav > button:hover { color: var(--rv-color-ink); background: var(--rv-color-surface-soft); }
-.app-shell.stitch-shell main .ss-page .ss-nav > button.is-on { color: var(--rv-color-ink); background: var(--rv-color-primary-soft); border-left-color: var(--rv-color-primary); }
-.ss-page .ss-nav > button.is-on .ss-st:not(.is-done) { color: var(--ss-violet); }
-.ss-page .ss-pane { display: flex; flex-direction: column; min-width: 0; container: ss-pane / inline-size; }
-.ss-page .ss-mnav { display: none; }
-.ss-page .ss-head { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 16px; padding: 22px 32px 18px; border-bottom: 1px solid var(--rv-color-border); }
+.ss-page .ss-gtabs { position: sticky; top: var(--rv-topbar-height, 70px); z-index: 20; display: flex; gap: 4px; margin-top: 14px; padding: 0 32px; overflow-x: auto; background: var(--rv-color-bg); border-bottom: 1px solid var(--rv-color-border); scrollbar-width: none; }
+.app-shell.stitch-shell main .ss-page .ss-gtabs > button { display: inline-flex; flex: none; align-items: center; gap: 8px; height: 44px; min-height: 44px; margin-bottom: -1px; padding: 0 14px; color: var(--rv-color-muted); white-space: nowrap; background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; box-shadow: none; cursor: pointer; font-size: 14px; font-weight: 500 !important; }
+.app-shell.stitch-shell main .ss-page .ss-gtabs > button:hover { color: var(--rv-color-ink); background: none; }
+.app-shell.stitch-shell main .ss-page .ss-gtabs > button.is-on { color: var(--rv-color-ink); border-bottom-color: var(--rv-color-primary); }
+.ss-page .ss-card { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.ss-page .ss-stabs { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 16px 32px 0; }
+.ss-page .ss-seg { display: inline-flex; gap: 3px; max-width: 100%; padding: 3px; overflow-x: auto; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 9px; scrollbar-width: none; }
+.app-shell.stitch-shell main .ss-page .ss-seg > button { display: inline-flex; flex: none; align-items: center; gap: 8px; height: 30px; min-height: 30px; padding: 0 12px; color: var(--rv-color-muted); white-space: nowrap; background: none; border: 1px solid transparent; border-radius: 6px; box-shadow: none; cursor: pointer; font-size: 13px; font-weight: 500 !important; }
+.app-shell.stitch-shell main .ss-page .ss-seg > button:hover { color: var(--rv-color-ink); background: none; }
+.app-shell.stitch-shell main .ss-page .ss-seg > button.is-on { color: var(--ss-violet); background: var(--rv-color-primary-soft); border-color: var(--ss-violet-line); }
+.ss-page .ss-seg .ss-count { min-width: 18px; height: 16px; font-size: 10px; }
+.ss-page .ss-seg .ss-st { width: 14px; height: 14px; }
+.ss-page .ss-seg > button.is-on .ss-st:not(.is-done) { color: var(--ss-violet); }
+.ss-page .ss-pane { flex: 1; display: flex; flex-direction: column; min-width: 0; container: ss-pane / inline-size; }
+.ss-page .ss-head { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 16px; padding: 20px 32px 16px; }
 .ss-page .ss-head > div:first-child { flex: 1 1 260px; min-width: 0; }
-.ss-page .ss-head h2 { font-size: 18px; font-weight: 600; line-height: 1.35; }
+.ss-page .ss-head h2 { font-size: 16px; font-weight: 600; line-height: 1.35; }
 .ss-page .ss-head p { color: var(--rv-color-muted); font-size: 13px; }
 .ss-page .ss-head-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.ss-page .ss-body { flex: 1; display: grid; align-content: start; gap: 16px; padding: 24px 32px; }
-.ss-page .ss-body.is-flush { gap: 0; padding: 0; }
+.ss-page .ss-body { flex: 1; display: grid; align-content: start; gap: 16px; padding: 0 32px 24px; }
+.ss-page .ss-body.is-flush { gap: 0; padding: 0; border-top: 1px solid var(--rv-color-border); }
 .ss-page .ss-pad { padding: 16px 32px; }
 .ss-page .ss-pad.is-divided { border-bottom: 1px solid var(--rv-color-border); }
 
@@ -350,20 +350,12 @@
 }
 
 @media (max-width: 1000px) {
-  .ss-page .ss-card { grid-template-columns: 1fr; }
-  .ss-page .ss-nav { position: static; height: auto; padding: 0; border-right: 0; }
-  .ss-page .ss-nav > :not(.ss-page-head) { display: none; }
-  .ss-page .ss-page-head { margin: 0; padding: 16px; }
-  .ss-page .ss-mnav { display: flex; gap: 4px; padding: 8px; overflow-x: auto; border-bottom: 1px solid var(--rv-color-border); }
-  .app-shell.stitch-shell main .ss-page .ss-mnav button { flex: none; display: inline-flex; align-items: center; height: 32px; min-height: 32px; padding: 0 12px; color: var(--rv-color-muted); white-space: nowrap; background: none; border: 1px solid transparent; border-radius: 7px; box-shadow: none; font-size: 13px; font-weight: 500 !important; text-transform: none; }
-  .app-shell.stitch-shell main .ss-page .ss-mnav button:hover { color: var(--rv-color-ink); background: var(--rv-color-surface-raised); }
-  .app-shell.stitch-shell main .ss-page .ss-mnav button.is-on { color: var(--ss-violet); background: var(--rv-color-primary-soft); border-color: var(--ss-violet-line); }
   .ss-page .ss-app-grid { grid-template-columns: 1fr 1fr; }
   .ss-page .ss-app-grid > :last-child { grid-column: 1 / -1; }
   .ss-page .ss-sg { grid-template-columns: 1fr; }
 }
 @media (max-width: 760px) {
-  .ss-page :is(.ss-head, .ss-body:not(.is-flush), .ss-bar, .ss-ses, .ss-sg, .ss-sess-sub, .ss-pad) { padding-left: 16px; padding-right: 16px; }
+  .ss-page :is(.ss-page-head, .ss-gtabs, .ss-stabs, .ss-head, .ss-body:not(.is-flush), .ss-bar, .ss-ses, .ss-sg, .ss-sess-sub, .ss-pad, .ss-dz-bar) { padding-left: 16px; padding-right: 16px; }
   .ss-page .ss-auth { grid-template-columns: 40px minmax(0, 1fr); }
   .ss-page .ss-auth-side { grid-column: 1 / -1; grid-row: auto; }
   .ss-page .ss-auth-side > * { flex: 1; justify-content: center; }

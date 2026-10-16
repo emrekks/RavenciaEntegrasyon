@@ -20,14 +20,14 @@ type SessionConfirmation = { action: 'revoke' | 'revoke-others' | 'delete' | 'de
 type SettingsSectionKey = 'auth' | 'sessions' | 'database' | 'sender' | 'dims' | 'designer' | 'read' | 'palette' | 'themes' | 'notify'
 type ShippingSection = 'sender' | 'dims' | 'designer'
 type AppearanceSection = 'read' | 'palette' | 'themes' | 'notify'
-type SettingsIconName = 'shield' | 'device' | 'phone' | 'db' | 'user' | 'ruler' | 'layout' | 'type' | 'palette' | 'save' | 'bell' | 'lock' | 'info' | 'alert' | 'logout' | 'trash' | 'reset' | 'plus' | 'barcode' | 'sparkle' | 'copy' | 'back' | 'chev'
+type SettingsIconName = 'shield' | 'truck' | 'device' | 'phone' | 'db' | 'user' | 'ruler' | 'layout' | 'type' | 'palette' | 'save' | 'bell' | 'lock' | 'info' | 'alert' | 'logout' | 'trash' | 'reset' | 'plus' | 'barcode' | 'sparkle' | 'copy' | 'back' | 'chev'
 type SettingsGlyphState = 'done' | 'pending' | 'none' | 'bad'
 
-const settingsSectionGroups: Array<{ label: string; items: Array<{ key: SettingsSectionKey; label: string; icon: SettingsIconName }> }> = [
-  { label: 'Güvenlik ve Oturumlar', items: [{ key: 'auth', label: 'Authenticator', icon: 'shield' }, { key: 'sessions', label: 'Oturumlar', icon: 'device' }] },
-  { label: 'Veri', items: [{ key: 'database', label: 'Veritabanı Temizliği', icon: 'db' }] },
-  { label: 'Kargo Ayarları', items: [{ key: 'sender', label: 'Gönderici ve Yazdırma', icon: 'user' }, { key: 'dims', label: 'Etiket Ölçüleri', icon: 'ruler' }, { key: 'designer', label: 'Etiket Tasarımı', icon: 'layout' }] },
-  { label: 'Görünüm', items: [{ key: 'read', label: 'Okunabilirlik ve Tema', icon: 'type' }, { key: 'palette', label: 'Renk Paleti', icon: 'palette' }, { key: 'themes', label: 'Kayıtlı Temalar', icon: 'save' }, { key: 'notify', label: 'Bildirimler', icon: 'bell' }] }
+const settingsSectionGroups: Array<{ label: string; icon: SettingsIconName; items: Array<{ key: SettingsSectionKey; label: string; icon: SettingsIconName }> }> = [
+  { label: 'Güvenlik ve Oturumlar', icon: 'shield', items: [{ key: 'auth', label: 'Authenticator', icon: 'shield' }, { key: 'sessions', label: 'Oturumlar', icon: 'device' }] },
+  { label: 'Veri', icon: 'db', items: [{ key: 'database', label: 'Veritabanı Temizliği', icon: 'db' }] },
+  { label: 'Kargo Ayarları', icon: 'truck', items: [{ key: 'sender', label: 'Gönderici ve Yazdırma', icon: 'user' }, { key: 'dims', label: 'Etiket Ölçüleri', icon: 'ruler' }, { key: 'designer', label: 'Etiket Tasarımı', icon: 'layout' }] },
+  { label: 'Görünüm', icon: 'palette', items: [{ key: 'read', label: 'Okunabilirlik ve Tema', icon: 'type' }, { key: 'palette', label: 'Renk Paleti', icon: 'palette' }, { key: 'themes', label: 'Kayıtlı Temalar', icon: 'save' }, { key: 'notify', label: 'Bildirimler', icon: 'bell' }] }
 ]
 const settingsSections = settingsSectionGroups.flatMap(group => group.items.map(item => ({ ...item, group: group.label })))
 // Links from before the section list still open the matching first section.
@@ -47,6 +47,7 @@ function formatSettingsDate(value: string) {
 const settingsIconPaths: Record<SettingsIconName, ReactNode> = {
   shield: <><path d="M8 1.8 13 3.6v4.1c0 3-2.1 5.4-5 6.5-2.9-1.1-5-3.5-5-6.5V3.6z" /><path d="m5.8 8 1.6 1.6 2.9-3" /></>,
   phone: <><rect x="4.5" y="1.8" width="7" height="12.4" rx="1.6" /><path d="M7.2 12h1.6" /></>,
+  truck: <><path d="M1.8 4h7.7v7H1.8z" /><path d="M9.5 6.5h2.7l2 2.3V11H9.5" /><circle cx="4.5" cy="11.8" r="1.3" /><circle cx="11.5" cy="11.8" r="1.3" /></>,
   device: <><rect x="2" y="3" width="12" height="8" rx="1.5" /><path d="M5.5 13.5h5M8 11v2.5" /></>,
   db: <><ellipse cx="8" cy="3.8" rx="5" ry="2" /><path d="M3 3.8v8.4c0 1.1 2.2 2 5 2s5-.9 5-2V3.8" /><path d="M3 8c0 1.1 2.2 2 5 2s5-.9 5-2" /></>,
   user: <><circle cx="8" cy="5.5" r="2.7" /><path d="M2.8 13.6a5.4 5.4 0 0 1 10.4 0" /></>,
@@ -83,7 +84,7 @@ function SettingsGlyph({ state }: { state: SettingsGlyphState }) {
 
 function SettingsPaneHead({ section, description, actions }: { section: SettingsSectionKey; description: ReactNode; actions?: ReactNode }) {
   const item = settingsSections.find(entry => entry.key === section) ?? settingsSections[0]
-  return <header className="ss-head"><div><span className="ss-crumb">{item.group}</span><h2>{item.label}</h2><p>{description}</p></div>{actions ? <div className="ss-head-actions">{actions}</div> : null}</header>
+  return <header className="ss-head"><div><h2>{item.label}</h2><p>{description}</p></div>{actions ? <div className="ss-head-actions">{actions}</div> : null}</header>
 }
 
 function SettingsBar({ title, copy, dirty = false, children }: { title: string; copy: ReactNode; dirty?: boolean; children: ReactNode }) {
@@ -278,13 +279,13 @@ export function SystemSettingsPage() {
   }
 
   function navMeta(key: SettingsSectionKey) {
-    if (key === 'auth') return status.data ? <SettingsGlyph state={totpEnabled ? 'done' : 'none'} /> : <span />
-    if (key === 'sessions') return sessions.data ? <span className="ss-count">{sessions.data.length}</span> : <span />
-    if (key === 'database') return resetScopes.length ? <span className="ss-count is-warn">{resetScopes.length}</span> : <span />
+    if (key === 'auth') return status.data ? <SettingsGlyph state={totpEnabled ? 'done' : 'none'} /> : null
+    if (key === 'sessions') return sessions.data ? <span className="ss-count">{sessions.data.length}</span> : null
+    if (key === 'database') return resetScopes.length ? <span className="ss-count is-warn">{resetScopes.length}</span> : null
     if (key === 'designer') return <span className="ss-count">{labelSettings.layout[labelFormat].length}</span>
-    if (key === 'palette') return appearanceStatus.dirty ? <SettingsGlyph state="pending" /> : <span />
-    if (key === 'themes') return appearanceStatus.themeCount ? <span className="ss-count">{appearanceStatus.themeCount}</span> : <span />
-    return <span />
+    if (key === 'palette') return appearanceStatus.dirty ? <SettingsGlyph state="pending" /> : null
+    if (key === 'themes') return appearanceStatus.themeCount ? <span className="ss-count">{appearanceStatus.themeCount}</span> : null
+    return null
   }
   function resetScopeOption(scope: string) {
     const detail = resetScopeDetails[scope]
@@ -311,15 +312,17 @@ export function SystemSettingsPage() {
           : null
   const affectedSessions = !sessionConfirmation ? [] : sessionConfirmation.sessionId ? (sessions.data ?? []).filter(session => session.id === sessionConfirmation.sessionId) : sessionConfirmation.action === 'revoke-others' ? activeOtherSessions : closedSessions
   const mfaIndex = Math.max(0, mfaSteps.findIndex(step => step.key === mfaStep))
+  const activeGroup = settingsSectionGroups.find(group => group.items.some(item => item.key === section)) ?? settingsSectionGroups[0]
   const isShipping = shippingSections.includes(section)
   const isAppearance = appearanceSections.includes(section)
 
   return <section className="content ss-page">
     {message && <SettingsNotice message={message} />}
+    <header className="ss-page-head"><span className="ss-crumb">Ayarlar</span><h1>Sistem Ayarları</h1><p>Hesap güvenliği, yerel veri, kargo etiketi ve görünüm.</p></header>
+    <nav className="ss-gtabs" role="tablist" aria-label="Ayar grupları">{settingsSectionGroups.map(group => <button type="button" role="tab" key={group.label} aria-selected={group === activeGroup} className={group === activeGroup ? 'is-on' : undefined} onClick={() => selectSection(group.items[0].key)}><SettingsIcon name={group.icon} />{group.label}</button>)}</nav>
     <div className="ss-card">
-      <nav className="ss-nav" aria-label="Ayar bölümleri"><header className="ss-page-head"><span className="ss-crumb">Ayarlar</span><h1>Sistem Ayarları</h1><p>Hesap güvenliği, yerel veri, kargo etiketi ve görünüm.</p></header>{settingsSectionGroups.map((group, index) => <Fragment key={group.label}>{index ? <div className="ss-nav-sep" /> : null}<div className="ss-nav-group">{group.label}</div>{group.items.map(item => <button type="button" key={item.key} className={section === item.key ? 'is-on' : undefined} aria-current={section === item.key ? 'page' : undefined} onClick={() => selectSection(item.key)}><SettingsIcon name={item.icon} /><span>{item.label}</span>{navMeta(item.key)}</button>)}</Fragment>)}</nav>
+      {activeGroup.items.length > 1 && <div className="ss-stabs"><span className="ss-seg" role="tablist" aria-label={`${activeGroup.label} bölümleri`}>{activeGroup.items.map(item => <button type="button" role="tab" key={item.key} aria-selected={section === item.key} className={section === item.key ? 'is-on' : undefined} onClick={() => selectSection(item.key)}>{item.label}{navMeta(item.key)}</button>)}</span></div>}
       <div className="ss-pane">
-        <div className="ss-mnav" role="tablist" aria-label="Ayar bölümleri">{settingsSections.map(item => <button type="button" role="tab" key={item.key} aria-selected={section === item.key} className={section === item.key ? 'is-on' : undefined} onClick={() => selectSection(item.key)}>{item.label}</button>)}</div>
         {section === 'auth' && <>
           <SettingsPaneHead section="auth" description="İki adımlı doğrulama ile girişte telefonunuzdaki kod da istenir." />
           <div className="ss-body">{status.isLoading ? <LoadingState>Güvenlik durumu yükleniyor…</LoadingState> : status.isError || !status.data ? <div role="alert" className="ss-callout is-danger"><SettingsIcon name="alert" /><span>Güvenlik durumu alınamadı.</span></div> : <>

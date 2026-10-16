@@ -73,12 +73,13 @@ describe('SystemSettingsPage', () => {
     container.remove()
   })
 
-  it('opens on the Authenticator section and lists every section in its group', async () => {
+  it('opens on the Authenticator section with the group tabs on top and the sections of the group below', async () => {
     await renderPage()
     expect(paneTitle()).toBe('Authenticator')
-    expect(container.querySelector('.ss-crumb + h2, .ss-head .ss-crumb')?.textContent).toBe('Güvenlik ve Oturumlar')
-    const sections = Array.from(container.querySelectorAll('.ss-nav > button')).map(item => item.textContent)
-    expect(sections).toHaveLength(10)
+    const groups = Array.from(container.querySelectorAll('.ss-gtabs > button')).map(item => item.textContent)
+    expect(groups).toEqual(['Güvenlik ve Oturumlar', 'Veri', 'Kargo Ayarları', 'Görünüm'])
+    expect(container.querySelector('.ss-gtabs > button.is-on')?.textContent).toBe('Güvenlik ve Oturumlar')
+    expect(Array.from(container.querySelectorAll('.ss-seg > button')).map(item => item.textContent)).toEqual(['Authenticator', 'Oturumlar3'])
     expect(button('Authenticator’ı Etkinleştir')).toBeTruthy()
   })
 
