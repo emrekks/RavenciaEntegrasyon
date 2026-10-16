@@ -524,3 +524,11 @@
 .app-shell.stitch-shell main section.mapping-page .mapping-reference-target { display: grid; gap: 6px; align-content: end; }
 .app-shell.stitch-shell main section.mapping-page .mapping-reference-target > label { margin: 0; line-height: 18px; }
 .app-shell.stitch-shell main section.mapping-page .mapping-reference-local > label { line-height: 18px; }
+
+/* Section 2 head: title with the platform refresh on the right; the info row only holds a connection picker when there are several. */
+.app-shell.stitch-shell main section.mapping-page .mapping-builder-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0; }
+.app-shell.stitch-shell main section.mapping-page .mapping-builder-head h2 { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 16px; font-weight: 600; text-transform: none; }
+.app-shell.stitch-shell main section.mapping-page .mapping-builder-head h2 .ui-icon { width: 16px; height: 16px; color: var(--rv-color-muted); }
+.app-shell.stitch-shell main section.mapping-page .mapping-builder-head > button { display: inline-flex; align-items: center; gap: 8px; height: 34px !important; min-height: 34px !important; }
+.app-shell.stitch-shell main section.mapping-page .mapping-reference-refresh-row:not(:has(*)) { display: none; }
+.app-shell.stitch-shell main section.mapping-page .mapping-reference-refresh-row { justify-content: flex-start; }
