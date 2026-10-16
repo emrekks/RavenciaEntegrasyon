@@ -146,3 +146,5 @@
 .cm-extra-modal :is(.attribute-defaults-panel, .mapping-conflicts-panel) { margin: 0; padding: 0; background: transparent; border: 0; }
 .cm-extra-modal :is(.attribute-defaults-panel, .mapping-conflicts-panel) > summary { display: none; }
 .cm-extra-modal .cm-empty { margin: 0; padding: 24px 0; color: var(--rv-color-muted); text-align: center; }
+/* Field names in regular weight, as in the design; the global button rule sets 500 with !important. */
+.app-shell .panel.mapping-step.cm-card .cm-item { font-weight: 400 !important; }
