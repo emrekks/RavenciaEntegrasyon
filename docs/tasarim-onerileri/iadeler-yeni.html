@@ -466,6 +466,8 @@
   .modal.img .img-preview { aspect-ratio: 2 / 3; width: auto; height: min(calc(100vh - 230px), 600px); min-height: 240px; margin-inline: auto; }
   .modal.img .m-head h2 { max-width: 34ch; }
   .stage .modal.img .img-preview { height: 420px; }
+  /* the filter area and its menus stay above the table (whose filter icons are lifted above the rows) */
+  .fshell { position: relative; z-index: 80; }
   .tone-prog { --tone: var(--violet); } .tone-move { --tone: var(--info); } .tone-wait { --tone: var(--warn); } .tone-ok { --tone: var(--ok); } .tone-bad { --tone: var(--bad); } .tone-off { --tone: var(--subtle); }
   /* actions column: "İşlemler" menu and the detail link */
   .actcell { display: grid; gap: 8px; justify-items: center; }
@@ -782,7 +784,7 @@ function page() {
     <div class="metrics"><article class="warn"><small>Aksiyon Bekleyen</small><strong>9</strong><span>satıcı kararı bekliyor</span></article><article><small>Kargoya Verilen</small><strong>21</strong><span>müşteriden yola çıktı</span></article><article><small>Onaylanan</small><strong>94</strong><span>kabul kararı iletildi</span></article><article><small>Tüm İadeler</small><strong>148</strong><span>iade çalışma alanı</span></article></div>
     <div class="fshell">${viewTabs()}
       <div class="fcard">
-      <div class="filters ${sortOn ? 'has-sort' : ''}"><label class="fld search"><small>İade Ara</small><span style="position:relative">${I.search.replace('class="ico"', 'class="ico" style="position:absolute;left:11px;top:10px;color:var(--subtle)"')}<input class="in" style="padding-left:34px" aria-label="İadelerde ara" placeholder="Müşteri, sipariş, iade kodu veya barkod ara"></span></label><div class="fld"><small>İade Platformu</small>${platTrigger()}</div><div class="fld"><small>İade Talep Tarihi</small>${dateTrigger()}</div>${sortOn ? `<div class="fld"><small>Sıralama</small>${sortTrigger()}</div>` : ''}${sheetField('cargo')}${sheetField('inv')}${sheetField('reason')}${sheetField('status')}<div class="fbtns"><button class="btn quiet" data-a="cf-clear">Temizle</button><button class="btn primary">Filtrele</button></div></div></div></div>
+      <div class="filters ${sortOn ? 'has-sort' : ''}"><label class="fld search"><small>İade Ara</small><span style="position:relative">${I.search.replace('class="ico"', 'class="ico" style="position:absolute;left:11px;top:10px;color:var(--subtle)"')}<input class="in" style="padding-left:34px" aria-label="İadelerde ara" placeholder="Müşteri, sipariş, iade kodu veya barkod ara"></span></label><div class="fld"><small>İade Platformu</small>${platTrigger()}</div><div class="fld"><small>İade Talep Tarihi</small>${dateTrigger()}</div>${sortOn ? `<div class="fld"><small>Sıralama</small>${sortTrigger()}</div>` : ''}${sheetField('cargo')}${sheetField('inv')}${sheetField('reason')}${sheetField('status')}<div class="fbtns"><button class="btn" data-a="cf-clear">Temizle</button><button class="btn primary">Filtrele</button></div></div></div></div>
     <div class="panel"><div class="panel-h"><div><h2>${tab[1]}</h2><p>Filtreleme Sonuçları: Toplam ${tab[2]} iade bilgisi</p></div><label class="psize">Sayfa Başına<select class="in"><option>20</option><option>50</option><option>100</option><option>200</option></select></label></div>
       <div class="tblwrap">${table()}</div>${rows.length ? pager(tab[2]) : ''}</div>
     ${selCount ? `<div class="bulk" role="group" aria-label="Toplu işlemler"><span class="grow">${selCount} iade seçildi</span>${bulkButtons(selCount)}</div>` : ''}
