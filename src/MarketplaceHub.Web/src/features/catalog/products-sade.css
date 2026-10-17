@@ -153,8 +153,9 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl td[data-l="Platform Durumu"],
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl td[data-l="Durum"] { grid-column: 1 / -1; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-srcs,
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-radios,
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-low-tools { grid-template-columns: 1fr; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-radios { grid-template-columns: 1fr; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-low-tools { grid-template-columns: 1fr 1fr; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-low-tools > :first-child { grid-column: 1 / -1; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vline { grid-template-columns: 16px minmax(0, 1fr) 80px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vline .rr-mini:last-child:not(:nth-child(3)) { grid-column: 3; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-step-tools { margin-left: 0; width: 100%; }
