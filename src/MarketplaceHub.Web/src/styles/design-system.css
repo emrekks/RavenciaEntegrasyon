@@ -4090,9 +4090,20 @@ button,
   border-radius: 0;
   box-shadow: none;
 }
-.rv-loading-feedback { display: grid; gap: 10px; min-width: min(100%, 320px); padding: 16px 18px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; box-shadow: none; }
-.rv-loading-feedback > strong { font-size: 13px; font-weight: 500; }
-.rv-loading-feedback .rv-splash-loading-bar, .rv-loading-state .rv-splash-loading-bar { width: 100%; height: 3px; }
+.rv-loading-state .rv-splash-loading-bar { width: 100%; height: 3px; }
+/* Loading and error states fill the area they replace, like the splash screen (shared/components/AsyncState.tsx). */
+.rv-state { display: grid; justify-items: center; align-content: center; gap: 8px; width: 100%; min-height: min(56vh, 420px); padding: 32px 20px; color: var(--rv-color-ink); text-align: center; background: none; border: 0; }
+.rv-state strong { margin-top: 8px; font-size: 15px; font-weight: 600; }
+.rv-state p { max-width: 46ch; margin: 0; color: var(--rv-color-muted); font-size: 13px; }
+.rv-state .rv-splash-loading-bar { width: 180px; height: 3px; margin-top: 8px; }
+.rv-state-mark { position: relative; display: grid; width: 56px; height: 56px; place-items: center; color: var(--rv-color-danger); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 50%; }
+.rv-state-mark img { width: 30px; height: 30px; object-fit: contain; }
+.rv-loading-feedback .rv-state-mark::after { content: ""; position: absolute; inset: -5px; border: 2px solid transparent; border-top-color: var(--rv-color-primary); border-radius: 50%; animation: rv-state-turn .9s linear infinite; }
+@keyframes rv-state-turn { to { transform: rotate(360deg); } }
+.rv-state.is-error .rv-state-mark { background: color-mix(in srgb, var(--rv-color-danger) 12%, var(--rv-color-surface)); border-color: color-mix(in srgb, var(--rv-color-danger) 40%, transparent); }
+.rv-state-retry { display: inline-flex; align-items: center; gap: 6px; height: 34px; margin-top: 10px; padding: 0 14px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font-size: 13px; font-weight: 500; }
+.rv-state-retry:hover { background: var(--rv-color-surface-raised); }
+@media (prefers-reduced-motion: reduce) { .rv-loading-feedback .rv-state-mark::after { animation-duration: 3s; } }
 .rv-loading-state .rv-splash-loading-bar { width: min(240px, 100%); }
 
 @media (min-width: 701px) {
@@ -8578,17 +8589,6 @@ small,
 .operation-feedback-toast > button:hover,
 .product-operation-toast > button:hover { color: var(--rv-color-ink); background: var(--rv-color-surface-soft); }
 
-.rv-loading-feedback {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: 12px;
-  min-width: min(100%, 320px);
-  padding: 14px 16px;
-  background: var(--rv-color-surface-raised);
-  border: 1px solid var(--rv-color-border-strong);
-  border-radius: 8px;
-}
 
 @media (max-width: 480px) {
   .rv-toast,
