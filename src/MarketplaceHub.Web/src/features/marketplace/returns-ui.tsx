@@ -6,7 +6,7 @@ import './returns-sade.css'
 // Building blocks of the returns page, as drawn in docs/tasarim-onerileri/iadeler-yeni.html. Class names carry the
 // "rr-" prefix of returns-sade.css.
 
-type IconName = 'search' | 'chev' | 'left' | 'right' | 'cal' | 'down' | 'up' | 'filter' | 'copy' | 'open' | 'close' | 'doc' | 'check' | 'box' | 'refresh' | 'upload' | 'alert' | 'info' | 'print' | 'arrowR' | 'image' | 'clock' | 'truck' | 'play' | 'edit' | 'ban' | 'export' | 'import' | 'plus' | 'trash' | 'dup' | 'price' | 'on' | 'off' | 'sortv'
+type IconName = 'search' | 'chev' | 'left' | 'right' | 'cal' | 'down' | 'up' | 'filter' | 'copy' | 'open' | 'close' | 'doc' | 'check' | 'box' | 'refresh' | 'upload' | 'alert' | 'info' | 'print' | 'arrowR' | 'image' | 'clock' | 'truck' | 'play' | 'edit' | 'ban' | 'export' | 'import' | 'plus' | 'trash' | 'dup' | 'price' | 'stock' | 'on' | 'off' | 'sortv'
 
 const iconPaths: Record<IconName, [ReactNode, number]> = {
   search: [<><circle cx="7" cy="7" r="4.5" /><path d="m10.5 10.5 3 3" /></>, 16],
@@ -41,6 +41,7 @@ const iconPaths: Record<IconName, [ReactNode, number]> = {
   trash: [<path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 9h5.8l.6-9" />, 16],
   dup: [<><rect x="5" y="5" width="8.5" height="8.5" rx="1.5" /><path d="M11 5V3.5a1 1 0 0 0-1-1H3.5a1 1 0 0 0-1 1V10a1 1 0 0 0 1 1H5" /></>, 16],
   price: [<><path d="M2.5 8.6V2.5h6.1l5 5-6.1 6.1z" /><circle cx="5.6" cy="5.6" r="1" /></>, 16],
+  stock: [<><path d="M2.5 5 8 2.2 13.5 5v6L8 13.8 2.5 11z" /><path d="M2.5 5 8 7.8 13.5 5M8 7.8v6" /></>, 16],
   on: [<><circle cx="8" cy="8" r="5.8" /><path d="m5.5 8.2 1.7 1.7 3.4-3.6" /></>, 16],
   off: [<><circle cx="8" cy="8" r="5.8" /><path d="M6.6 5.8v4.4M9.4 5.8v4.4" /></>, 16],
   sortv: [<path d="M5 3v10M2.8 10.8 5 13l2.2-2.2M11 13V3M8.8 5.2 11 3l2.2 2.2" />, 14],
@@ -131,6 +132,17 @@ export function RrAnchor({ trigger, children, className }: { trigger: (open: boo
   const ref = useRef<HTMLSpanElement>(null)
   useOutsideClose(open, ref, () => setOpen(false))
   return <span ref={ref} className={['rr-anchor', className].filter(Boolean).join(' ')}>{trigger(open, () => setOpen(value => !value))}{open && children(() => setOpen(false))}</span>
+}
+
+// Single-choice filter popover used under table heads and filter fields.
+export function RrColumnPop({ label, options, value, onPick, right, width = 240 }: { label: string; options: Array<{ value: string; label: string }>; value: string; onPick: (value: string) => void; right?: boolean; width?: number }) {
+  const active = value !== 'ALL'
+  return <div className={`rr-pop${right ? ' rr-right' : ''}`} role="dialog" style={{ minWidth: width }}><div className="rr-ph">{label}</div>{options.map((option, index) => { const on = active ? option.value === value : index === 0; return <button key={option.value} type="button" className={`rr-opt${on ? ' rr-on' : ''}`} role="radio" aria-checked={on} onClick={() => onPick(option.value)}><span className="rr-radio" aria-hidden="true" /><span className="rr-grow">{option.label}</span></button> })}{active && <div className="rr-foot"><span /><button type="button" className="rr-btn rr-quiet" style={{ height: 28 }} onClick={() => onPick('ALL')}>Filtreyi Temizle</button></div>}</div>
+}
+
+// Table head cell with an optional sort button and filter popover.
+export function RrHeadCell({ label, active, extra, pop, sort, onSort }: { label: string; active?: boolean; extra?: ReactNode; pop?: (close: () => void) => ReactNode; sort?: 'asc' | 'desc' | null; onSort?: () => void }) {
+  return <th className={active ? 'rr-has-filter' : undefined}><span className="rr-hf">{extra}{label}{onSort && <button type="button" className={`rr-sortbtn${sort ? ' rr-on' : ''}`} onClick={onSort} aria-pressed={Boolean(sort)} aria-label={`${label} sırala${sort === 'asc' ? ', düşükten yükseğe' : sort === 'desc' ? ', yüksekten düşüğe' : ''}`}><RrIcon name="sortv" /></button>}{pop && <RrAnchor trigger={(_open, toggle) => <button type="button" className="rr-fbtn" onClick={toggle} aria-label={`${label} filtresini aç`}><RrIcon name="filter" /></button>}>{pop}</RrAnchor>}</span></th>
 }
 
 // Popups: overlay, framed window with head, body and footer. Only the top window answers Escape.
