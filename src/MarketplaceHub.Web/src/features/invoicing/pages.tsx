@@ -178,15 +178,7 @@ function isInvoiceFailureStatus(value: string | null | undefined) {
   return ['FATURA_REDDEDILDI', 'FATURA_PLATFORMA_AKTARILMADI', 'REJECTED', 'VALIDATION_FAILED', 'MANUAL_REVIEW', 'MARKETPLACE_FAILED'].includes(value?.trim().toUpperCase() ?? '')
 }
 // Detail line under the status rings of the table (proposal M): how long it has waited, which invoice it got. The carrier is not repeated here; the Kargo column shows it.
-function elapsedLabel(value: string) {
-  const minutes = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 60_000))
-  if (minutes < 5) return 'Az önce'
-  if (minutes < 60) return `${minutes} dk önce`
-  if (minutes < 1_440) return `${Math.round(minutes / 60)} sa önce`
-  return `${Math.round(minutes / 1_440)} gün önce`
-}
 function orderRingDetail(item: InvoiceWorkspace, kind: InvoiceGlyphKind) {
-  if (kind === 'placed') return elapsedLabel(item.orderedAt)
   if (kind === 'packing') return 'Paketleniyor'
   if (kind === 'done') return item.deliveredAt ? `Teslim: ${new Date(item.deliveredAt).toLocaleDateString('tr-TR')}` : undefined
   if (kind === 'cancelled') return 'Sipariş kapandı'
