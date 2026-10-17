@@ -260,3 +260,26 @@
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip { width: max-content; min-width: 260px; max-width: calc(100vw - 32px); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip th, :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip td { white-space: nowrap; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip th + th, :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip td + td { padding-left: 16px; }
+/* ---------- phones (mobil-tum-sayfalar.html): compact operation cards, metrics as a sideways strip, three data types per row ---------- */
+@media (max-width: 760px) {
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-dsect > header p { display: none; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid { gap: 8px; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard { grid-template-columns: minmax(0, 1fr); padding: 10px 12px; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard > .rr-ico, :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard > .rr-op-ic { display: none; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-op-t { display: flex; flex-direction: column-reverse; gap: 1px; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-op-t small { font-size: 12px; line-height: 1.35; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-op-t strong { font-size: 20px; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pf-h { padding: 12px 12px 10px; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pf-h p { display: none; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kgrid { display: flex; gap: 8px; padding: 0 12px 12px; overflow-x: auto; border: 0; scrollbar-width: none; scroll-padding-inline: 12px; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kgrid::-webkit-scrollbar { display: none; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc { flex: none; width: 150px; padding: 10px 12px; background: var(--rr-surface); border: 1px solid var(--rr-line) !important; border-radius: 12px; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc.rr-on { border-color: color-mix(in srgb, var(--pf-accent, var(--rr-primary)) 70%, transparent) !important; background: color-mix(in srgb, var(--pf-accent, var(--rr-primary)) 14%, var(--rr-surface)); }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc.rr-on::after { display: none; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc > strong { font-size: 18px; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc .rr-trend em, :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc .rr-avg, :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc .rr-krange { display: none; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pf-body { padding: 12px; border-top: 1px solid var(--rr-line); }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pf-chan { padding: 12px 0 0; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt tr { grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 12px; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mx-foot { display: grid; gap: 8px; }
+}
