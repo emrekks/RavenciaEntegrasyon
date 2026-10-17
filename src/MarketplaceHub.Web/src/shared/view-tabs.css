@@ -51,3 +51,14 @@
   .rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.is-strip .rv-view-tab-icon { display: none; }
   .rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.is-strip > :is(button, a) .rv-tab-count { min-width: 20px; height: 20px; padding: 1.5px 5px 0; font-size: 11px; border-radius: 6px !important; }
 }
+/* Phones: tab rows that do not come from ViewTabsWithMore (invoices, questions, mappings, jobs…) get the same pills, scrolling inside their own box. */
+@media (max-width: 760px) {
+  main .rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs:not(.is-strip) { gap: 6px; height: auto !important; min-height: 0 !important; max-height: none; padding: 8px !important; overflow-x: auto !important; overflow-y: hidden; }
+  main .rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs:not(.is-strip) > :is(button, a) { height: 36px !important; padding: 0 12px !important; color: var(--rv-color-muted) !important; background: var(--rv-color-surface) !important; border: 1px solid var(--rv-color-border) !important; border-radius: 999px !important; font-size: 13px !important; }
+  main .rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs:not(.is-strip) > :is(button, a).is-active { color: var(--rv-color-ink) !important; background: color-mix(in srgb, var(--rv-color-primary) 16%, var(--rv-color-surface)) !important; border-color: color-mix(in srgb, var(--rv-color-primary) 60%, transparent) !important; }
+  main .rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs:not(.is-strip) > :is(button, a)::before,
+  main .rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs:not(.is-strip) > :is(button, a).is-active::after { display: none !important; }
+  main .rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs:not(.is-strip) .rv-view-tab-icon,
+  main .rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs:not(.is-strip) > :is(button, a) .rv-tab-label > svg { display: none; }
+  main .rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs:not(.is-strip) > :is(button, a) .rv-tab-count { min-width: 20px; height: 20px; padding: 1.5px 5px 0; font-size: 11px; }
+}
