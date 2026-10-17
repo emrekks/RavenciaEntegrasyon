@@ -6,7 +6,7 @@ import { DateRangePicker } from '../../shared/DateRangePicker'
 import { NoticeToast } from '../../shared/components/NoticeToast'
 import { dashboardOperationalLinks } from '../../shared/dashboard-operational-links'
 import { InvoiceGlyph } from '../invoicing/invoice-state-glyph'
-import { RrAnchor, RrIcon, RrLogo } from '../marketplace/returns-ui'
+import { RrIcon, RrLogo } from '../marketplace/returns-ui'
 import './dashboard-sade.css'
 
 // The overview page, as drawn in docs/tasarim-onerileri/genel-bakis-yeni.html.
@@ -94,21 +94,18 @@ function Breakdown({ rows }: { rows: Array<[string, string]> }) {
 }
 const breakdownRows = (counts: Record<string, number> | undefined) => Object.entries(counts ?? {}).filter(([, value]) => value > 0).sort((left, right) => right[1] - left[1]).map(([platform, value]) => [platform, `${count(value)} adet`] as [string, string])
 
-function PeriodTrigger({ value, options, onPick, icon: lead }: { value: string; options: Array<[string, string]>; onPick: (value: string) => void; icon?: ReactNode }) {
-  return <RrAnchor trigger={(open, toggle) => <button type="button" className={`rr-trigger${open ? ' rr-on' : ''}`} onClick={toggle}>{lead}<span>{options.find(([key]) => key === value)?.[1]}</span><RrIcon name="chev" /></button>}>{close => <div className="rr-pop rr-right" role="listbox" style={{ minWidth: 220 }}>{options.map(([key, label]) => { const on = key === value; return <button key={key} type="button" className={`rr-opt${on ? ' rr-on' : ''}`} role="radio" aria-checked={on} onClick={() => { onPick(key); close() }}>{key !== 'ALL' && PLATFORMS.some(([code]) => code === key) ? <RrLogo code={key} /> : <span className="rr-radio" aria-hidden="true" />}<span className="rr-grow">{label}</span></button> })}</div>}</RrAnchor>
-}
 
 // Daily revenue: area and line for this period, dashed line for the previous one. The day tooltip follows the
 // pointer, above it when the page has room there, otherwise below.
-function RevenueChart({ points, previous, currency }: { points: RevenuePoint[]; previous: RevenuePoint[]; currency: string }) {
+function RevenueChart({ points, previous, currency, value = point => point.amount, axis = axisLabel }: { points: RevenuePoint[]; previous: RevenuePoint[]; currency: string; value?: (point: RevenuePoint) => number; axis?: (value: number) => string }) {
   const [hover, setHover] = useState<{ index: number; x: number; y: number } | null>(null)
   const chartRef = useRef<HTMLDivElement>(null)
   const tipRef = useRef<HTMLDivElement>(null)
   const W = 760, H = 260, L = 64, R = 12, T = 12, B = 30
-  const max = niceStep(Math.max(1, ...points.map(point => point.amount), ...previous.map(point => point.amount))) * 5
+  const max = niceStep(Math.max(1, ...points.map(value), ...previous.map(value))) * 5
   const x = (index: number, length = points.length) => L + (length > 1 ? index / (length - 1) : 0) * (W - L - R)
   const y = (value: number) => T + (1 - value / max) * (H - T - B)
-  const line = (series: RevenuePoint[]) => series.map((point, index) => `${index ? 'L' : 'M'}${x(index, series.length).toFixed(1)} ${y(point.amount).toFixed(1)}`).join(' ')
+  const line = (series: RevenuePoint[]) => series.map((point, index) => `${index ? 'L' : 'M'}${x(index, series.length).toFixed(1)} ${y(value(point)).toFixed(1)}`).join(' ')
   const labelStep = Math.max(1, Math.round(points.length / 6))
   useLayoutEffect(() => {
     const tip = tipRef.current, chart = chartRef.current
@@ -131,12 +128,12 @@ function RevenueChart({ points, previous, currency }: { points: RevenuePoint[]; 
   const before = hover ? points[hover.index - 1] ?? previous[previous.length - 1] : null
   return <div ref={chartRef} className="rr-chart" onMouseMove={move} onMouseLeave={() => setHover(null)}>
     <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Günlük ciro grafiği">
-      <g className="rr-grid">{Array.from({ length: 6 }, (_, index) => { const value = max / 5 * index; return <g key={index}><line x1={L} x2={W - R} y1={y(value)} y2={y(value)} /><text x={L - 10} y={y(value) + 4} textAnchor="end">{axisLabel(value)}</text></g> })}</g>
+      <g className="rr-grid">{Array.from({ length: 6 }, (_, index) => { const value = max / 5 * index; return <g key={index}><line x1={L} x2={W - R} y1={y(value)} y2={y(value)} /><text x={L - 10} y={y(value) + 4} textAnchor="end">{axis(value)}</text></g> })}</g>
       <g className="rr-xax">{points.map((item, index) => index % labelStep === 0 || new Date(item.day).getDate() === 1 ? <text key={item.day} x={x(index)} y={H - 8} textAnchor="middle">{dayShort(item.day)}</text> : null)}</g>
       <path className="rr-area" d={`${line(points)} L${x(points.length - 1)} ${y(0)} L${x(0)} ${y(0)} Z`} />
       {previous.length > 0 && <path className="rr-prev" d={line(previous)} />}
       <path className="rr-cur" d={line(points)} />
-      {hover && point && <><line className="rr-hl" x1={x(hover.index)} x2={x(hover.index)} y1={T} y2={H - B} /><circle className="rr-hp" cx={x(hover.index)} cy={y(point.amount)} r="4.5" /></>}
+      {hover && point && <><line className="rr-hl" x1={x(hover.index)} x2={x(hover.index)} y1={T} y2={H - B} /><circle className="rr-hp" cx={x(hover.index)} cy={y(value(point))} r="4.5" /></>}
     </svg>
     {hover && point && <div ref={tipRef} className="rr-ctip" style={{ visibility: 'hidden' }}><b>{dayLong(point.day)}</b><table><thead><tr><th /><th>Seçilen Gün</th><th>Önceki Gün</th></tr></thead><tbody>
       <tr><td>Sipariş</td><td className="rr-num">{count(point.orderCount)}</td><td className="rr-num">{before ? count(before.orderCount) : '—'}</td></tr>
@@ -147,16 +144,15 @@ function RevenueChart({ points, previous, currency }: { points: RevenuePoint[]; 
   </div>
 }
 
-// Option 9 of genel-bakis-performans.html: the daily average, and where today sits between the weakest and the strongest day.
-function PerfCard({ label, value, delta, avgLabel = 'Günlük ortalama', avg, min, max, minLabel = 'En Düşük Gün', maxLabel = 'En Yüksek Gün', position, breakdown }: { label: string; value: string; delta: [string, boolean] | null; avgLabel?: string; avg: string; min: string; max: string; minLabel?: string; maxLabel?: string; position: number; breakdown?: Array<[string, string]> }) {
-  return <article className="rr-pcardm" tabIndex={0}>
+// Option A of genel-bakis-platform-sekmeleri.html: one metric of the performance card. The cells that can be drawn
+// pick the chart's metric; the bar shows where the latest day sits between the weakest and the strongest one.
+function KpiCell({ label, value, delta, note, avgLabel = 'Günlük ortalama', avg, min, max, position, on, onPick }: { label: string; value: string; delta: [string, boolean] | null; note?: string; avgLabel?: string; avg: string; min: string; max: string; position: number; on?: boolean; onPick?: () => void }) {
+  return <div className={`rr-kc${on ? ' rr-on' : ''}${onPick ? ' rr-pick' : ''}`} role={onPick ? 'tab' : undefined} aria-selected={onPick ? Boolean(on) : undefined} tabIndex={onPick ? 0 : undefined} onClick={onPick} onKeyDown={event => { if (onPick && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onPick() } }}>
     <small>{label}</small><strong className="rr-num">{value}</strong>
-    {delta ? <span className={`rr-trend ${delta[1] ? 'rr-up' : 'rr-down'}`}>{delta[1] ? ICONS.up : ICONS.down}{delta[0]}<em>önceki döneme göre</em></span> : <span className="rr-trend"><em>Katalogdaki güncel durum</em></span>}
+    {delta ? <span className={`rr-trend ${delta[1] ? 'rr-up' : 'rr-down'}`}>{delta[1] ? ICONS.up : ICONS.down}{delta[0]}<em>önceki döneme göre</em></span> : <span className="rr-trend"><em>{note}</em></span>}
     <span className="rr-avg">{avgLabel} <b className="rr-num">{avg}</b></span>
-    <div className="rr-range" role="img" aria-label={`${minLabel} ${min}, ${maxLabel} ${max}`}><i style={{ left: `${Math.max(0, Math.min(1, position)) * 100}%` }} /></div>
-    <div className="rr-ends"><span><small>{minLabel}</small><b className="rr-num">{min}</b></span><span><small>{maxLabel}</small><b className="rr-num">{max}</b></span></div>
-    {breakdown && <Breakdown rows={breakdown} />}
-  </article>
+    <div className="rr-krange" role="img" aria-label={`${min} – ${max}`}><span className="rr-kbar"><i style={{ left: `${Math.max(0, Math.min(1, position)) * 100}%` }} /></span><span className="rr-kends"><span className="rr-num">{min}</span><span className="rr-num">{max}</span></span></div>
+  </div>
 }
 
 function dailyStats(values: number[], format: (value: number) => string, average: number) {
@@ -170,8 +166,9 @@ export function DashboardPage() {
   const [range, setRange] = useState<Range>('30')
   const [from, setFrom] = useState(today)
   const [to, setTo] = useState(today)
-  const [chartRange, setChartRange] = useState<Exclude<Range, 'custom'>>('30')
-  const [chartPlatform, setChartPlatform] = useState('ALL')
+  // The channel picked in the channel list filters the whole performance card; the metric picks what the chart draws.
+  const [platform, setPlatform] = useState('ALL')
+  const [metric, setMetric] = useState<0 | 1 | 2>(0)
   const [noticeClosed, setNoticeClosed] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const now = new Date()
@@ -182,14 +179,11 @@ export function DashboardPage() {
   const platforms = Array.from(new Set((bootstrap.data?.platforms ?? []).map(platform => platform.name)))
   const report = rangeDates(range, from, to, now)
   const reportPrevious = previousRange(report.start, report.end)
-  const chart = rangeDates(chartRange, from, to, now)
-  const chartPrevious = previousRange(chart.start, chart.end)
   const reportKey = `${range}:${from}:${to}`
-  const reportQuery = useQuery({ queryKey: ['dashboard-revenue-series', reportKey], queryFn: () => hubApi<RevenuePoint[]>(revenuePath(report.start, report.end)), ...refresh })
-  const reportPreviousQuery = useQuery({ queryKey: ['dashboard-revenue-series-previous', reportKey], queryFn: () => hubApi<RevenuePoint[]>(revenuePath(reportPrevious.start, reportPrevious.end)), ...refresh })
-  const chartQuery = useQuery({ queryKey: ['dashboard-chart-revenue-series', chartRange, chartPlatform], queryFn: () => hubApi<RevenuePoint[]>(revenuePath(chart.start, chart.end, chartPlatform)), ...refresh })
-  const chartPreviousQuery = useQuery({ queryKey: ['dashboard-chart-revenue-series-previous', chartRange, chartPlatform], queryFn: () => hubApi<RevenuePoint[]>(revenuePath(chartPrevious.start, chartPrevious.end, chartPlatform)), ...refresh })
-  const channelQuery = useQuery({ queryKey: ['dashboard-channel-revenue', reportKey, platforms], queryFn: () => Promise.all(platforms.map(async platform => ({ platform, points: await hubApi<RevenuePoint[]>(revenuePath(report.start, report.end, platform)) }))), enabled: platforms.length > 0, ...refresh })
+  const reportQuery = useQuery({ queryKey: ['dashboard-revenue-series', reportKey, platform], queryFn: () => hubApi<RevenuePoint[]>(revenuePath(report.start, report.end, platform)), ...refresh })
+  const reportPreviousQuery = useQuery({ queryKey: ['dashboard-revenue-series-previous', reportKey, platform], queryFn: () => hubApi<RevenuePoint[]>(revenuePath(reportPrevious.start, reportPrevious.end, platform)), ...refresh })
+  const channelQuery = useQuery({ queryKey: ['dashboard-channel-revenue', reportKey, platforms], queryFn: () => Promise.all(platforms.map(async name => ({ platform: name, points: await hubApi<RevenuePoint[]>(revenuePath(report.start, report.end, name)) }))), enabled: platforms.length > 0, ...refresh })
+  const channelPreviousQuery = useQuery({ queryKey: ['dashboard-channel-revenue-previous', reportKey, platforms], queryFn: () => Promise.all(platforms.map(async name => ({ platform: name, points: await hubApi<RevenuePoint[]>(revenuePath(reportPrevious.start, reportPrevious.end, name)) }))), enabled: platforms.length > 0, ...refresh })
 
   const metrics = bootstrap.data?.metrics
   const series = reportQuery.data ?? []
@@ -206,17 +200,17 @@ export function DashboardPage() {
   const channelAmount = channels.reduce((sum, channel) => sum + channel.amount, 0)
   const channelOrders = channels.reduce((sum, channel) => sum + channel.orders, 0)
   const channelShares = channels.map((channel, index) => ({ ...channel, color: platformColor(channel.platform, index), share: channelAmount > 0 ? channel.amount / channelAmount * 100 : channelOrders > 0 ? channel.orders / channelOrders * 100 : 0 }))
-  const donut = channelShares.length ? `conic-gradient(${channelShares.map((channel, index) => { const start = channelShares.slice(0, index).reduce((sum, item) => sum + item.share, 0); return `${channel.color} ${start}% ${start + channel.share}%` }).join(', ')})` : 'conic-gradient(var(--rr-line) 0 100%)'
-  const chartSeries = chartQuery.data ?? []
-  const chartPreviousSeries = chartPreviousQuery.data ?? []
-  const chartCurrency = chartSeries.find(point => point.amount > 0)?.currency || 'TRY'
-  const chartTotal = chartSeries.reduce((sum, point) => sum + point.amount, 0)
-  const chartPreviousTotal = chartPreviousSeries.reduce((sum, point) => sum + point.amount, 0)
-  const chartDelta = trend(chartTotal, chartPreviousTotal)
+  const previousByChannel = new Map((channelPreviousQuery.data ?? []).map(channel => [channel.platform, channel.points.reduce((sum, point) => sum + point.amount, 0)]))
+  const periodText = range === 'custom' ? 'Seçilen dönem' : periodLabel(range)
+  const chartValues: Array<[(point: RevenuePoint) => number, (value: number) => string, string]> = [
+    [point => point.amount, axisLabel, 'Günlük Ciro'],
+    [point => point.orderCount, value => count(value), 'Günlük Sipariş'],
+    [point => point.orderCount ? point.amount / point.orderCount : 0, axisLabel, 'Günlük Ortalama Sepet'],
+  ]
   // Only marketplaces: invoicing providers are connections too, but they carry no orders, stock or prices.
   const rows = (matrix.data ?? []).filter(row => PLATFORMS.some(([code]) => code === row.platformCode.toUpperCase()))
   const attention = rows.filter(row => row.issue || Object.values(row.cells).some(cell => cell.state === 'bad' || cell.state === 'warn')).length
-  const errors = [bootstrap.error, productSummary.error, reportQuery.error, reportPreviousQuery.error, chartQuery.error, chartPreviousQuery.error, channelQuery.error, matrix.error].filter(Boolean)
+  const errors = [bootstrap.error, productSummary.error, reportQuery.error, reportPreviousQuery.error, channelQuery.error, channelPreviousQuery.error, matrix.error].filter(Boolean)
   const loadingValue = (loading: boolean, value: number | undefined) => loading ? '—' : count(value ?? 0)
   const revenueStats = dailyStats(series.map(point => point.amount), value => money(value, currency), total / days)
   const orderStats = dailyStats(series.map(point => point.orderCount), count, orders / days)
@@ -246,30 +240,35 @@ export function DashboardPage() {
 
   return <section className="content f3 rr rr-dashboard" aria-label="Genel Bakış">
     <div className="rr-ph"><div><div className="rr-crumb">Operasyon Merkezi</div><h1>Genel Bakış</h1><p>Siparişler, iadeler, faturalar ve stok için bugün ilgilenmeniz gerekenler ve satış performansınız.</p></div><div className="rr-acts">
-      <PeriodTrigger value={range} options={PERIODS} onPick={value => setRange(value as Range)} icon={<RrIcon name="cal" />} />
-      {range === 'custom' && <DateRangePicker className="rr-date" from={from} to={to} onChange={value => { setFrom(value.from); setTo(value.to) }} label="Rapor Tarihi" placeholder="Başlangıç – Bitiş" chevron={<RrIcon name="chev" />} />}
       <button type="button" className="rr-btn" onClick={downloadReport} disabled={reportQuery.isLoading}><RrIcon name="export" />Raporu İndir</button>
     </div></div>
     {errors.length > 0 && !noticeClosed && <div className="rr-callout rr-warn" role="status"><RrIcon name="alert" /><span><b>Bazı rapor verileri alınamadı.</b> Görünen değerler kısmi olabilir; birkaç dakika içinde tekrar denenir.</span><button type="button" className="rr-icon-btn" onClick={() => setNoticeClosed(true)} aria-label="Uyarıyı kapat"><RrIcon name="close" /></button></div>}
     <section className="rr-dsect"><header><h2>Operasyon Metrikleri</h2><p>Bugün ilgilenmeniz gereken işler</p></header><div className="rr-opgrid">{ops.map(([kind, label, value, tone, to, byPlatform]) => <Link key={kind} className={`rr-opcard${tone && value ? ` rr-${tone}` : ''}`} to={to}><span className="rr-op-ic">{ICONS[kind]}</span><span className="rr-op-t"><strong className="rr-num">{value == null ? '—' : count(value)}</strong><small>{label}</small></span><RrIcon name="arrowR" /><Breakdown rows={breakdownRows(byPlatform)} /></Link>)}</div></section>
-    <section className="rr-dsect"><header><h2>Performans Metrikleri</h2><p>{range === 'custom' ? 'Seçilen dönem' : periodLabel(range)} · önceki eşit dönemle karşılaştırma</p></header><div className="rr-metrics rr-perf">
-      <PerfCard label="Toplam Gelir" value={reportQuery.isLoading ? '—' : money(total, currency)} delta={trend(total, previousTotal)} {...revenueStats} breakdown={channels.map(channel => [channel.platform, money(channel.amount, currency)])} />
-      <PerfCard label="Toplam Sipariş" value={loadingValue(reportQuery.isLoading, orders)} delta={trend(orders, previousOrders)} {...orderStats} breakdown={channels.map(channel => [channel.platform, `${count(channel.orders)} adet`])} />
-      <PerfCard label="Ortalama Sepet" value={reportQuery.isLoading ? '—' : money(basket, currency)} delta={trend(basket, previousBasket)} {...basketStats} />
-      <PerfCard label="Aktif Ürün" value={loadingValue(productSummary.isLoading, products?.activeCount)} delta={null} avgLabel="Stoksuz ürün" avg={count(products?.outOfStockCount ?? 0)} minLabel="Düşük Stoklu" min={count(products?.lowStockCount ?? 0)} maxLabel="Toplam Ürün" max={count(products?.totalCount ?? 0)} position={products?.totalCount ? products.activeCount / products.totalCount : 0} />
-    </div></section>
-    <section className="rr-dsect"><header><h2>Detaylı Görünüm</h2></header><div className="rr-detail-grid">
-      <article className="rr-panel rr-dcard"><div className="rr-panel-h"><div><h2>Gelir Performansı</h2><p>Satışlarınızın büyük resmini görün.</p></div><div className="rr-ctools">
-        <PeriodTrigger value={chartRange} options={PERIODS.filter(([value]) => value !== 'custom')} onPick={value => setChartRange(value as Exclude<Range, 'custom'>)} />
-        <PeriodTrigger value={chartPlatform} options={[['ALL', 'Tüm Platformlar'], ...platforms.map(platform => [platform, platformName(platform)] as [string, string])]} onPick={setChartPlatform} />
+    <section className="rr-panel rr-pf">
+      <div className="rr-pf-h"><div><h2>Performans</h2><p>{periodText} · {platform === 'ALL' ? 'Tüm Platformlar' : platformName(platform)} · önceki eşit dönemle karşılaştırma</p></div><div className="rr-pf-tools">
+        {range === 'custom' && <DateRangePicker className="rr-date" from={from} to={to} onChange={value => { setFrom(value.from); setTo(value.to) }} label="Rapor Tarihi" placeholder="Başlangıç – Bitiş" chevron={<RrIcon name="chev" />} />}
+        <div className="rr-seg" role="radiogroup" aria-label="Dönem">{PERIODS.map(([value, label]) => <button key={value} type="button" role="radio" aria-checked={range === value} className={range === value ? 'rr-on' : undefined} onClick={() => setRange(value)}>{value === 'custom' ? 'Özel' : label.replace('Son ', '')}</button>)}</div>
       </div></div>
-        <div className="rr-dbody"><div className="rr-ctotal"><small>{periodLabel(chartRange)}{chartPlatform === 'ALL' ? '' : ` · ${platformName(chartPlatform)}`}</small><strong className="rr-num">{chartQuery.isLoading ? '—' : money(chartTotal, chartCurrency)}</strong><span className={`rr-trend ${chartDelta[1] ? 'rr-up' : 'rr-down'}`}>{chartDelta[1] ? ICONS.up : ICONS.down}{chartDelta[0]}<em>önceki döneme göre</em></span></div>
-          {chartSeries.some(point => point.amount > 0) ? <RevenueChart points={chartSeries} previous={chartPreviousSeries} currency={chartCurrency} /> : <div className="rr-empty"><span className="rr-ei"><RrIcon name="box" /></span><b>Gelir Verisi Yok</b><span className="rr-lead">Bu dönem için gelir verisi bulunmuyor.</span></div>}
-          <div className="rr-legend"><span><i className="rr-lg-cur" />Bu Dönem</span><span><i className="rr-lg-prev" />Önceki Dönem</span></div></div></article>
-      <article className="rr-panel rr-dcard"><div className="rr-panel-h"><div><h2>Satış Kanalları</h2><p>Seçilen dönemin gelir dağılımı</p></div><Link className="rr-btn rr-link" to="/integrations">Kanalları Yönet <RrIcon name="arrowR" /></Link></div>
-        {channelShares.length ? <div className="rr-dbody rr-chan"><div className="rr-donut" style={{ background: donut }}><div><small>Toplam Sipariş</small><strong className="rr-num">{count(channelOrders)}</strong><span>{range === 'custom' ? 'Seçilen Dönem' : periodLabel(range)}</span></div></div><ul className="rr-clist">{channelShares.map(channel => <li key={channel.platform}><i style={{ background: channel.color }} /><RrLogo code={platformCode(channel.platform)} /><span>{platformName(channel.platform)}</span><b className="rr-num">%{channel.share.toLocaleString('tr-TR', { maximumFractionDigits: 1 })}</b></li>)}</ul></div> : <div className="rr-dbody"><div className="rr-empty"><span className="rr-ei"><RrIcon name="box" /></span><b>Kanal Dağılımı Yok</b><span className="rr-lead">Bu dönem için kanal dağılımı bulunmuyor.</span></div></div>}
-        <div className="rr-dfoot"><span>{channelShares.length} kanal · {range === 'custom' ? 'Seçilen Dönem' : periodLabel(range)}</span><Link className="rr-btn rr-link" to="/integrations">Bağlantıları Yönet <RrIcon name="arrowR" /></Link></div></article>
-    </div></section>
+      <div className="rr-kgrid" role="tablist" aria-label="Grafikte gösterilecek metrik">
+        <KpiCell label="Toplam Gelir" value={reportQuery.isLoading ? '—' : money(total, currency)} delta={trend(total, previousTotal)} {...revenueStats} on={metric === 0} onPick={() => setMetric(0)} />
+        <KpiCell label="Toplam Sipariş" value={loadingValue(reportQuery.isLoading, orders)} delta={trend(orders, previousOrders)} {...orderStats} on={metric === 1} onPick={() => setMetric(1)} />
+        <KpiCell label="Ortalama Sepet" value={reportQuery.isLoading ? '—' : money(basket, currency)} delta={trend(basket, previousBasket)} {...basketStats} on={metric === 2} onPick={() => setMetric(2)} />
+        <KpiCell label="Aktif Ürün" value={loadingValue(productSummary.isLoading, products?.activeCount)} delta={null} note={platform === 'ALL' ? 'Katalogdaki güncel durum' : 'Tüm platformlar'} avgLabel="Stoksuz ürün" avg={count(products?.outOfStockCount ?? 0)} min={`Düşük stok ${count(products?.lowStockCount ?? 0)}`} max={`Toplam ${count(products?.totalCount ?? 0)}`} position={products?.totalCount ? products.activeCount / products.totalCount : 0} />
+      </div>
+      <div className="rr-pf-body">
+        <div className="rr-pf-chart"><b className="rr-pf-label">{chartValues[metric][2]}{platform === 'ALL' ? '' : ` · ${platformName(platform)}`}</b>
+          {series.some(point => chartValues[metric][0](point) > 0) ? <RevenueChart key={metric} points={series} previous={previousSeries} currency={currency} value={chartValues[metric][0]} axis={chartValues[metric][1]} /> : <div className="rr-empty"><span className="rr-ei"><RrIcon name="box" /></span><b>Gelir Verisi Yok</b><span className="rr-lead">Bu dönem için gelir verisi bulunmuyor.</span></div>}
+          <div className="rr-legend"><span><i className="rr-lg-cur" />Bu Dönem</span><span><i className="rr-lg-prev" />Önceki Dönem</span></div></div>
+        <div className="rr-pf-chan">
+          <div className="rr-pf-chan-h"><b>Kanallara Göre Ciro</b>{platform !== 'ALL' && <span className="rr-ftag"><RrLogo code={platformCode(platform)} />{platformName(platform)}<button type="button" onClick={() => setPlatform('ALL')} aria-label="Platform süzgecini kaldır"><RrIcon name="close" /></button></span>}</div>
+          {channelShares.length ? <>
+            <span className="rr-stack" aria-hidden="true">{channelShares.map(channel => <i key={channel.platform} style={{ width: `${channel.share}%`, background: channel.color }} />)}</span>
+            <div className="rr-crows">{channelShares.map(channel => { const on = platform === channel.platform; const previousAmount = previousByChannel.get(channel.platform) ?? 0; const delta = trend(channel.amount, previousAmount); return <button key={channel.platform} type="button" className={`rr-crow${on ? ' rr-on' : platform !== 'ALL' ? ' rr-dim' : ''}`} aria-pressed={on} onClick={() => setPlatform(on ? 'ALL' : channel.platform)}><RrLogo code={platformCode(channel.platform)} /><span className="rr-ct"><span><b>{platformName(channel.platform)}</b><small className="rr-num">{money(channel.amount, currency)}</small></span><span className="rr-cbar"><i style={{ width: `${channel.share}%`, background: channel.color }} /></span></span><span className="rr-cv"><b className="rr-num">%{channel.share.toLocaleString('tr-TR', { maximumFractionDigits: 0 })}</b><small className={`rr-num ${delta[1] ? 'rr-up' : 'rr-down'}`}>{delta[1] ? '+' : ''}{delta[0]}</small></span></button> })}</div>
+          </> : <div className="rr-empty"><span className="rr-ei"><RrIcon name="box" /></span><b>Kanal Dağılımı Yok</b><span className="rr-lead">Bu dönem için kanal dağılımı bulunmuyor.</span></div>}
+          <Link className="rr-btn rr-link" to="/integrations">Kanalları Yönet <RrIcon name="arrowR" /></Link>
+        </div>
+      </div>
+    </section>
     <section className="rr-panel"><div className="rr-panel-h"><div><h2>Entegrasyon Durumu</h2><p>Pazaryerleriyle bağlantının son 7 günü</p></div><span className={`rr-hpill${attention ? ' rr-attn' : ''}`}><InvoiceGlyph kind={attention ? 'waiting' : 'done'} />{attention ? `${attention} konu dikkatinizi bekliyor` : 'Her şey yolunda'}</span></div>
       <div className="rr-mxwrap"><table className="rr-mxt"><thead><tr><th>Pazar Yeri</th>{DATA_KEYS.map(([, label]) => <th key={label}>{label}</th>)}<th /></tr></thead><tbody>
         {!rows.length && <tr><td colSpan={DATA_KEYS.length + 2}><span className="rr-lead">{matrix.isLoading ? 'Bağlantılar yükleniyor…' : 'Aktif pazar yeri bağlantısı bulunmuyor.'}</span></td></tr>}
