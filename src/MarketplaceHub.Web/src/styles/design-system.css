@@ -3733,7 +3733,7 @@ button,
 .dashboard-section-bridge span:last-child { background: linear-gradient(90deg, var(--rv-color-border-strong), transparent); }
 .dashboard-section-bridge small { color: var(--rv-color-muted); font-size: 10px; font-weight: 800; letter-spacing: .16em; white-space: nowrap; }
 .dashboard-section-bridge-operational { margin-bottom: 0; }
-.dashboard-section-bridge-detail { margin-top: var(--rv-space-6); }
+.dashboard-section-bridge-detail { margin-top: 0; }
 .dashboard-summary-value-row { display: flex; min-width: 0; align-items: baseline; gap: var(--rv-space-3); }
 .dashboard-summary-value-row > strong { min-width: 0; }
 .dashboard-summary-value-row > .dashboard-summary-trend { flex: 0 0 auto; margin: 0; }
