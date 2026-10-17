@@ -170,3 +170,12 @@
 /* live-only additions */
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-sortbtn.rr-on { color: var(--rr-violet); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-bulk-menu > .rr-menu { position: absolute; right: 0; bottom: calc(100% + 6px); top: auto; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metric-btn { justify-content: stretch; font-weight: 400 !important; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metric-btn small { font-weight: 400 !important; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metric-btn strong { font-weight: 600 !important; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metric-btn span { font-weight: 500 !important; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qbtn { justify-content: stretch; font-weight: 400 !important; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qbtn b { font-weight: 600 !important; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qbtn small { font-weight: 400 !important; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vhover > .rr-vtip { display: none; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vhover:hover > .rr-vtip, :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vhover:focus-within > .rr-vtip { display: grid; }
