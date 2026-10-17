@@ -16,7 +16,7 @@
 .app-shell.stitch-shell main .qi-page .qi-head h1 { margin: 2px 0 0; font-size: 22px; font-weight: 600; text-transform: none; }
 .qi-page .qi-head p:not(.qi-crumb) { margin: 4px 0 0; color: var(--rv-color-muted); font-size: 13px; }
 .qi-page .qi-acts { display: flex; align-items: center; gap: 8px; }
-.app-shell.stitch-shell main .qi-page .qi-acts > button { display: inline-flex; align-items: center; gap: 8px; height: 34px; min-height: 34px; padding: 0 12px; border-radius: 7px; font-size: 14px; text-transform: none; }
+.app-shell.stitch-shell main .qi-page .qi-acts > button { display: inline-flex; align-items: center; gap: 8px; height: 36px; min-height: 36px; padding: 0 12px; border-radius: 7px; font-size: 14px; text-transform: none; }
 
 /* Sources card: one column per store */
 .app-shell.stitch-shell main .qi-page .qi-sync { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0; margin: 0; padding: 0; overflow: hidden; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; box-shadow: none; }
@@ -63,7 +63,7 @@
 .app-shell.stitch-shell main .qi-page .qi-popover select { box-sizing: border-box; height: 36px; min-height: 36px; padding: 0 12px; color: var(--rv-color-ink); background-color: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 14px; }
 .qi-page .qi-range { display: grid; grid-template-columns: minmax(0, 1fr) 36px; gap: 6px; }
 .qi-page .qi-seg { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); overflow: hidden; height: 36px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; }
-.app-shell.stitch-shell main .qi-page .qi-seg > button { min-width: 0; height: 34px; min-height: 34px; padding: 0 4px; color: var(--rv-color-muted); background: none; border: 0; border-left: 1px solid var(--rv-color-border); border-radius: 0; box-shadow: none; font-size: 12px; font-weight: 500 !important; text-transform: none; white-space: nowrap; }
+.app-shell.stitch-shell main .qi-page .qi-seg > button { min-width: 0; height: 36px; min-height: 36px; padding: 0 4px; color: var(--rv-color-muted); background: none; border: 0; border-left: 1px solid var(--rv-color-border); border-radius: 0; box-shadow: none; font-size: 12px; font-weight: 500 !important; text-transform: none; white-space: nowrap; }
 .qi-page .qi-seg > button:first-child { border-left: 0; }
 .app-shell.stitch-shell main .qi-page .qi-seg > button:hover { color: var(--rv-color-ink); background: var(--rv-color-surface-raised); }
 .app-shell.stitch-shell main .qi-page .qi-seg > button.is-on { color: var(--rv-color-ink); background: var(--rv-color-primary-soft); box-shadow: inset 0 -2px 0 var(--rv-color-primary); }
@@ -72,7 +72,7 @@
 .app-shell.stitch-shell main .qi-page .qi-range-picker .date-range-picker-trigger { display: grid; width: 36px; min-width: 36px; height: 36px; min-height: 36px; place-items: center; padding: 0; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 0; }
 .qi-page .qi-range-picker .date-range-picker-trigger > :not(.ui-icon-calendar) { display: none; }
 .qi-page .qi-popover footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 12px; border-top: 1px solid var(--rv-color-border); }
-.app-shell.stitch-shell main .qi-page .qi-popover footer > .rv-button { height: 34px; min-height: 34px; }
+.app-shell.stitch-shell main .qi-page .qi-popover footer > .rv-button { height: 36px; min-height: 36px; }
 .qi-page .qi-list { flex: 1; min-height: 0; overflow-y: auto; }
 .app-shell.stitch-shell main .qi-page .qi-item { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 4px 12px; width: 100%; height: auto; min-height: 0; margin: 0; padding: 12px 14px 12px 12px; color: var(--rv-color-ink); text-align: left; background: none; border: 0; border-bottom: 1px solid var(--rv-color-border); border-left: 2px solid transparent; border-radius: 0; box-shadow: none; font-weight: 400 !important; text-transform: none; cursor: pointer; }
 .app-shell.stitch-shell main .qi-page .qi-item:hover { background: var(--rv-color-surface-raised); }
@@ -140,7 +140,7 @@
 .qi-page .qi-composer-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
 .qi-page .qi-composer-foot .rv-answer-bar-meta { color: var(--rv-color-subtle); font-size: 12px; }
 .qi-page .qi-composer-foot > div { display: flex; gap: 8px; }
-.app-shell.stitch-shell main .qi-page .qi-composer-foot .rv-button { height: 34px; min-height: 34px; }
+.app-shell.stitch-shell main .qi-page .qi-composer-foot .rv-button { height: 36px; min-height: 36px; }
 .qi-page .rv-question-send-error { margin: 0; color: var(--rv-color-danger); font-size: 13px; }
 .qi-page .qi-closed { display: flex; align-items: center; gap: 10px; padding: 14px 20px; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border-top: 1px solid var(--rv-color-border); font-size: 13px; }
 .qi-page .qi-empty { display: grid; flex: 1; place-items: center; padding: 24px; }
@@ -166,7 +166,7 @@
 .qi-templates-modal .rv-question-template-card p { margin: 0; color: var(--rv-color-muted); font-size: 13px; line-height: 1.5; }
 .qi-templates-modal .rv-question-template-card small { color: var(--rv-color-subtle); font-size: 12px; }
 .qi-templates-modal .rv-question-template-card > div:last-child { display: flex; align-items: center; gap: 6px; }
-.app-shell.stitch-shell main .qi-templates-modal .rv-button { height: 34px; min-height: 34px; text-transform: none; }
+.app-shell.stitch-shell main .qi-templates-modal .rv-button { height: 36px; min-height: 36px; text-transform: none; }
 
 @media (max-width: 900px) {
   .app-shell.stitch-shell main .qi-page .qi-inbox { grid-template-columns: minmax(0, 1fr); height: auto; min-height: 520px; }

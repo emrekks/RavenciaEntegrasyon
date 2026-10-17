@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
 
 export type AppearanceFontFamily = 'inter' | 'system' | 'segoe' | 'arial'
-export type AppearanceFontSize = 'compact' | 'small' | 'normal' | 'large' | 'extra-large' | 'huge'
+export type AppearanceFontSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl'
 export type AppearanceThemeMode = 'dark'
 export type AppearanceColorTheme = 'dark' | 'light'
 export type AppearanceColorToken = 'bg' | 'sidebar' | 'surface' | 'surfaceRaised' | 'surfaceSoft' | 'border' | 'borderStrong' | 'ink' | 'muted' | 'subtle' | 'primary' | 'primaryHover' | 'primarySoft' | 'accent' | 'accentSoft' | 'warning' | 'warningSoft' | 'danger' | 'dangerSoft' | 'info'
@@ -74,7 +74,7 @@ export function matchingColorThemeId(settings: AppearanceSettings) {
 
 export const defaultAppearanceSettings: AppearanceSettings = {
   fontFamily: 'inter',
-  fontSize: 'small',
+  fontSize: 'md',
   themeMode: 'dark',
   colors: {
     dark: { ...defaultDarkPalette },
@@ -118,12 +118,12 @@ export const appearanceFontFamilyOptions: Array<{ value: AppearanceFontFamily; l
 ]
 
 export const appearanceFontSizeOptions: Array<{ value: AppearanceFontSize; label: string; description: string }> = [
-  { value: 'compact', label: 'Çok Küçük', description: 'En fazla içerik için en sıkı görünüm' },
-  { value: 'small', label: 'Küçük', description: 'Normal ve varsayılan çalışma görünümü' },
-  { value: 'normal', label: 'Normal', description: 'Daha rahat okuma için biraz daha geniş görünüm' },
-  { value: 'large', label: 'Büyük', description: 'Yoğun tablolarda daha rahat okuma' },
-  { value: 'extra-large', label: 'Çok Büyük', description: 'Yüksek okunabilirlik için ferah görünüm' },
-  { value: 'huge', label: 'Ekstra Büyük', description: 'Maksimum okunabilirlik ve daha belirgin metinler' }
+  { value: 'xs', label: 'Çok Küçük', description: 'En fazla içerik için en sıkı görünüm' },
+  { value: 'sm', label: 'Küçük', description: 'Normalden biraz daha sıkı görünüm' },
+  { value: 'md', label: 'Normal', description: 'Varsayılan çalışma görünümü' },
+  { value: 'lg', label: 'Büyük', description: 'Normalden biraz daha rahat okuma' },
+  { value: 'xl', label: 'Çok Büyük', description: 'Yüksek okunabilirlik için ferah görünüm' },
+  { value: 'xxl', label: 'Ekstra Büyük', description: 'Maksimum okunabilirlik ve daha belirgin metinler' }
 ]
 
 export const appearanceThemeModeOptions: Array<{ value: AppearanceThemeMode; label: string; description: string }> = [
@@ -138,12 +138,20 @@ export const appearanceFontFamilyCss: Record<AppearanceFontFamily, string> = {
 }
 
 export const appearanceFontScale: Record<AppearanceFontSize, number> = {
-  compact: 0.92,
-  small: 1,
-  normal: 1.08,
-  large: 1.16,
-  'extra-large': 1.25,
-  huge: 1.34
+  xs: 0.86,
+  sm: 0.93,
+  md: 1,
+  lg: 1.08,
+  xl: 1.16,
+  xxl: 1.25
+}
+
+// Sizes saved before the scale was re-centred on the working view ("small" was the default) keep their look.
+const formerFontSizes: Record<string, AppearanceFontSize> = { compact: 'sm', small: 'md', normal: 'lg', large: 'xl', 'extra-large': 'xxl', huge: 'xxl' }
+function normalizeFontSize(value: unknown): AppearanceFontSize {
+  if (typeof value !== 'string') return defaultAppearanceSettings.fontSize
+  const current = formerFontSizes[value] ?? value
+  return fontSizes.has(current as AppearanceFontSize) ? current as AppearanceFontSize : defaultAppearanceSettings.fontSize
 }
 
 const fontFamilies = new Set<AppearanceFontFamily>(appearanceFontFamilyOptions.map(option => option.value))
@@ -200,7 +208,7 @@ export function normalizeAppearanceSettings(value: unknown): AppearanceSettings 
   const candidate = value as Partial<AppearanceSettings>
   return {
     fontFamily: typeof candidate.fontFamily === 'string' && fontFamilies.has(candidate.fontFamily as AppearanceFontFamily) ? candidate.fontFamily as AppearanceFontFamily : defaultAppearanceSettings.fontFamily,
-    fontSize: typeof candidate.fontSize === 'string' && fontSizes.has(candidate.fontSize as AppearanceFontSize) ? candidate.fontSize as AppearanceFontSize : defaultAppearanceSettings.fontSize,
+    fontSize: normalizeFontSize(candidate.fontSize),
     themeMode: typeof candidate.themeMode === 'string' && themeModes.has(candidate.themeMode as AppearanceThemeMode) ? candidate.themeMode as AppearanceThemeMode : defaultAppearanceSettings.themeMode,
     colors: normalizeColors(candidate.colors, !(Array.isArray(candidate.colorThemes) && candidate.colorThemes.some(theme => (theme as Partial<AppearanceColorThemeProfile> | null)?.id === grafitAppearanceColorTheme.id))),
     colorThemes: normalizeColorThemes(candidate.colorThemes)

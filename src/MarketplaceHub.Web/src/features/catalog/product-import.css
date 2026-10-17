@@ -21,7 +21,7 @@
 
 .app-shell.stitch-shell main .product-import-modal > footer { display: flex; align-items: center; gap: 12px; padding: 16px 28px; }
 .product-import-summary { margin-right: auto; color: var(--rv-color-muted); font-size: 13px; }
-.app-shell.stitch-shell main .product-import-modal > footer > button { height: 34px; min-height: 34px; padding-block: 0; white-space: nowrap; }
+.app-shell.stitch-shell main .product-import-modal > footer > button { height: 36px; min-height: 36px; padding-block: 0; white-space: nowrap; }
 
 @media (max-width: 720px) {
   .app-shell.stitch-shell main .product-import-body, .app-shell.stitch-shell main .product-import-modal > header, .app-shell.stitch-shell main .product-import-modal > footer { padding-inline: 16px; }

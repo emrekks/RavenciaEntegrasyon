@@ -41,7 +41,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-st { width: 16px; height: 16px; flex: none; display: block; color: var(--rr-subtle); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-st.rr-done { color: var(--rr-ink); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-st.rr-bad { color: var(--rr-bad); }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 34px; padding: 0 12px; white-space: nowrap; color: var(--rr-ink); background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: 500; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 36px; padding: 0 12px; white-space: nowrap; color: var(--rr-ink); background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: 500; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-btn:hover { background: var(--rr-soft); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-btn.rr-primary { color: #fff; background: var(--rr-primary); border-color: var(--rr-primary); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-btn.rr-primary:hover { filter: brightness(1.08); }
@@ -210,7 +210,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-panel-h h2 { font-size: 16px; font-weight: 600; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-panel-h p { color: var(--rr-muted); font-size: 13px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-psize { display: flex; align-items: center; gap: 8px; color: var(--rr-muted); font-size: 13px; }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-psize .rr-in { width: 86px; height: 34px; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-psize .rr-in { width: 86px; height: 36px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tblwrap { border-top: 1px solid var(--rr-line); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl col.rr-c-order { width: 17%; }
@@ -312,8 +312,8 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-ptext b { display: block; font-weight: 500; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-ptext small { display: block; color: var(--rr-muted); font-size: 12px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-apr-side { display: grid; gap: 8px; justify-items: stretch; }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-apr-side .rr-in { height: 34px; }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-qty-static { display: flex; align-items: center; height: 34px; padding: 0 12px; color: var(--rr-muted); background: var(--rr-raised); border: 1px solid var(--rr-line); border-radius: 7px; font-size: 13px; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-apr-side .rr-in { height: 36px; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-qty-static { display: flex; align-items: center; height: 36px; padding: 0 12px; color: var(--rr-muted); background: var(--rr-raised); border: 1px solid var(--rr-line); border-radius: 7px; font-size: 13px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pcards { display: grid; gap: 10px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pcard { display: grid; gap: 10px; padding: 12px 14px; border: 1px solid var(--rr-line); border-radius: 12px; cursor: pointer; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pcard.rr-on { background: var(--rr-primary-soft); border-color: var(--rr-violet-line); }
@@ -538,7 +538,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tone-bad { --rr-tone: var(--rr-bad); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tone-off { --rr-tone: var(--rr-subtle); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-actcell { display: grid; gap: 8px; justify-items: center; }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-actcell .rr-trigger { width: auto; height: 34px; padding: 0 10px 0 12px; font-weight: 500; font-size: 13px; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-actcell .rr-trigger { width: auto; height: 36px; padding: 0 10px 0 12px; font-weight: 500; font-size: 13px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-actcell .rr-btn.rr-link { font-size: 12.5px; font-weight: 600; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-actcell .rr-menu { right: 0; left: auto; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-m-id { display: flex; align-items: center; gap: 12px; }

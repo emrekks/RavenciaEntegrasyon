@@ -15,7 +15,15 @@ public static class SettingsEndpoints
     private const string DefaultAppearanceColorThemeId = "default-dark";
     private const string DefaultAppearanceColorThemeName = "Ravencia — Grafit";
     private static readonly HashSet<string> AppearanceFontFamilies = new(StringComparer.OrdinalIgnoreCase) { "inter", "system", "segoe", "arial" };
-    private static readonly HashSet<string> AppearanceFontSizes = new(StringComparer.OrdinalIgnoreCase) { "compact", "small", "normal", "large", "extra-large", "huge" };
+    private static readonly HashSet<string> AppearanceFontSizes = new(StringComparer.OrdinalIgnoreCase) { "xs", "sm", "md", "lg", "xl", "xxl" };
+    // Sizes saved before the scale was re-centred on the working view ("small" was the default) keep their look.
+    private static readonly IReadOnlyDictionary<string, string> FormerAppearanceFontSizes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["compact"] = "sm", ["small"] = "md", ["normal"] = "lg", ["large"] = "xl", ["extra-large"] = "xxl", ["huge"] = "xxl"
+    };
+
+    private static string? CurrentFontSize(string? fontSize) =>
+        fontSize is not null && FormerAppearanceFontSizes.TryGetValue(fontSize, out var current) ? current : fontSize;
     private static readonly HashSet<string> AppearanceThemeModes = new(StringComparer.OrdinalIgnoreCase) { "dark" };
     private static readonly IReadOnlyDictionary<string, string> DefaultDarkAppearanceColors = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
@@ -143,14 +151,14 @@ public static class SettingsEndpoints
     private static object NormalizeAppearance(JsonElement? value)
     {
         var fontFamily = value is { ValueKind: JsonValueKind.Object } ? ReadString(value.Value, "fontFamily") : null;
-        var fontSize = value is { ValueKind: JsonValueKind.Object } ? ReadString(value.Value, "fontSize") : null;
+        var fontSize = CurrentFontSize(value is { ValueKind: JsonValueKind.Object } ? ReadString(value.Value, "fontSize") : null);
         var themeMode = value is { ValueKind: JsonValueKind.Object } ? ReadString(value.Value, "themeMode") : null;
         var colors = NormalizeAppearanceColors(value);
         var colorThemes = NormalizeAppearanceColorThemes(value);
         return new
         {
             fontFamily = AppearanceFontFamilies.Contains(fontFamily ?? string.Empty) ? fontFamily!.ToLowerInvariant() : "inter",
-            fontSize = AppearanceFontSizes.Contains(fontSize ?? string.Empty) ? fontSize!.ToLowerInvariant() : "normal",
+            fontSize = AppearanceFontSizes.Contains(fontSize ?? string.Empty) ? fontSize!.ToLowerInvariant() : "md",
             themeMode = "dark",
             colors,
             colorThemes
@@ -160,7 +168,7 @@ public static class SettingsEndpoints
     private static bool TryNormalizeAppearance(JsonElement value, out object normalized)
     {
         var fontFamily = ReadString(value, "fontFamily");
-        var fontSize = ReadString(value, "fontSize");
+        var fontSize = CurrentFontSize(ReadString(value, "fontSize"));
         var themeMode = ReadString(value, "themeMode") ?? "dark";
         if (fontFamily is null || fontSize is null || !AppearanceFontFamilies.Contains(fontFamily) || !AppearanceFontSizes.Contains(fontSize) || !AppearanceThemeModes.Contains(themeMode))
         {

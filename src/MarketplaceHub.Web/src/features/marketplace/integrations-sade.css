@@ -117,7 +117,7 @@
 .app-shell.stitch-shell main .integrations-reference-page .integration-filter-menu { width: 260px; min-width: 260px; gap: 2px; padding: 8px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; box-shadow: 0 16px 40px rgb(0 0 0 / 45%); }
 .app-shell.stitch-shell main .integrations-reference-page .integration-filter-menu strong { margin: 6px 8px 4px; color: var(--rv-color-muted); font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; }
 .app-shell.stitch-shell main .integrations-reference-page .integration-filter-menu .integration-filter-menu-group { margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--rv-color-border); }
-.app-shell.stitch-shell main .integrations-reference-page .integration-filter-menu button { display: flex; align-items: center; gap: 10px; height: 34px; min-height: 34px; padding: 0 10px; color: var(--rv-color-ink); background: none; border: 0; border-radius: 7px; box-shadow: none; font-size: 14px; font-weight: 400 !important; text-align: left; text-transform: none; }
+.app-shell.stitch-shell main .integrations-reference-page .integration-filter-menu button { display: flex; align-items: center; gap: 10px; height: 36px; min-height: 36px; padding: 0 10px; color: var(--rv-color-ink); background: none; border: 0; border-radius: 7px; box-shadow: none; font-size: 14px; font-weight: 400 !important; text-align: left; text-transform: none; }
 .app-shell.stitch-shell main .integrations-reference-page .integration-filter-menu button:hover { background: var(--rv-color-surface-soft); }
 .app-shell.stitch-shell main .integrations-reference-page .integration-filter-menu button.active { color: var(--rv-color-ink); background: var(--rv-color-primary-soft); }
 .app-shell.stitch-shell main .integrations-reference-page .integration-filter-menu button i { box-sizing: border-box; flex: 0 0 14px; width: 14px; height: 14px; background: none; border: 1.5px solid var(--rv-color-border-strong); border-radius: 50%; }
@@ -143,7 +143,7 @@
 .app-shell.stitch-shell main .im-sade .im-fields :is(input, select):focus { border-color: var(--rv-color-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--rv-color-primary) 18%, transparent); outline: none; }
 .app-shell.stitch-shell main .im-sade .im-fields small { color: var(--rv-color-subtle); font-size: 12px; font-weight: 400; line-height: 1.45; }
 .app-shell.stitch-shell main .im-sade .im-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 24px; border-top: 1px solid var(--rv-color-border); }
-.app-shell.stitch-shell main .im-sade .im-foot > button { width: auto; height: 34px; min-height: 34px; padding: 0 14px; border-radius: 7px; font-size: 14px; text-transform: none; }
+.app-shell.stitch-shell main .im-sade .im-foot > button { width: auto; height: 36px; min-height: 36px; padding: 0 14px; border-radius: 7px; font-size: 14px; text-transform: none; }
 @media (max-width: 640px) {
   .app-shell.stitch-shell main .im-sade .im-platforms { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 16px 16px 0; }
   .app-shell.stitch-shell main .im-sade .im-fields { grid-template-columns: minmax(0, 1fr); padding: 16px; }

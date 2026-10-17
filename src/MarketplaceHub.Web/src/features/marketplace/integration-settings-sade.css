@@ -122,7 +122,7 @@
 .app-shell.stitch-shell main .cs-workspace .connection-settings-panel { gap: 18px; }
 .app-shell.stitch-shell main .cs-workspace .connection-settings-panel :is(input:not([type="checkbox"]), select) { height: 36px; min-height: 36px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; }
 .app-shell.stitch-shell main .cs-workspace .connection-settings-panel label { color: var(--rv-color-muted); font-size: 12px; font-weight: 500; }
-.app-shell.stitch-shell main .cs-workspace .cs-pane button:not(.cs-chip):not(.cs-fname):not(.cs-quiet) { height: 34px; min-height: 34px; padding: 0 12px; border-radius: 7px; font-size: 14px; text-transform: none; }
+.app-shell.stitch-shell main .cs-workspace .cs-pane button:not(.cs-chip):not(.cs-fname):not(.cs-quiet) { height: 36px; min-height: 36px; padding: 0 12px; border-radius: 7px; font-size: 14px; text-transform: none; }
 
 @media (max-width: 860px) {
   .cs-workspace .cs-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
@@ -167,7 +167,7 @@
 .app-shell.stitch-shell main .cs-workspace .cs-pane .panel :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) { box-sizing: border-box; min-height: 36px; padding: 0 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 14px; }
 .app-shell.stitch-shell main .cs-workspace .cs-pane .panel :is(input:not([type="checkbox"]):not([type="radio"]), select) { height: 36px; }
 .app-shell.stitch-shell main .cs-workspace .cs-pane .panel :is(input, select, textarea):focus { border-color: var(--rv-color-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--rv-color-primary) 18%, transparent); outline: none; }
-.app-shell.stitch-shell main .cs-workspace .cs-pane .panel button:not(.cs-chip):not(.cs-fname):not(.cs-quiet) { height: 34px; min-height: 34px; padding: 0 12px; border-radius: 7px; font-size: 14px; }
+.app-shell.stitch-shell main .cs-workspace .cs-pane .panel button:not(.cs-chip):not(.cs-fname):not(.cs-quiet) { height: 36px; min-height: 36px; padding: 0 12px; border-radius: 7px; font-size: 14px; }
 
 /* Centred popup instead of the side drawer. */
 .app-shell.stitch-shell main .integration-settings-modal-backdrop { align-items: center; justify-content: center; padding: 24px; }
@@ -237,7 +237,7 @@
 .app-shell.stitch-shell main .sp-sade .sync-policy-modal-telemetry dt { color: var(--rv-color-muted); font-size: 12px; }
 .app-shell.stitch-shell main .sp-sade .sync-policy-modal-telemetry dd { color: var(--rv-color-ink); font-size: 13px; font-weight: 500; text-align: right; font-variant-numeric: tabular-nums; }
 .app-shell.stitch-shell main .sp-sade .sync-policy-modal-form > footer { gap: 8px; padding: 14px 24px; }
-.app-shell.stitch-shell main .sp-sade .sync-policy-modal-form > footer > button { height: 34px; min-height: 34px; padding: 0 14px; border-radius: 7px; font-size: 14px; text-transform: none; }
+.app-shell.stitch-shell main .sp-sade .sync-policy-modal-form > footer > button { height: 36px; min-height: 36px; padding: 0 14px; border-radius: 7px; font-size: 14px; text-transform: none; }
 @media (max-width: 560px) {
   .app-shell.stitch-shell main .sp-sade .sync-policy-modal-telemetry dl { grid-template-columns: minmax(0, 1fr); }
   .app-shell.stitch-shell main .sp-sade .sync-policy-modal-telemetry dl > div { border-right: 0 !important; border-bottom: 1px solid var(--rv-color-border) !important; }

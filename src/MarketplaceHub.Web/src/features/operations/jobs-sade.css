@@ -2,14 +2,14 @@
    the detail as a centred popup with plain sections. */
 
 /* Head actions: secondary 34px buttons and quiet popovers */
-.app-shell.stitch-shell main .jobs-reference-page :is(.jobs-reference-range, .jobs-reference-filter-toggle) { display: inline-flex; align-items: center; gap: 8px; height: 34px; min-height: 34px; padding: 0 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 14px; font-weight: 500 !important; text-transform: none; }
+.app-shell.stitch-shell main .jobs-reference-page :is(.jobs-reference-range, .jobs-reference-filter-toggle) { display: inline-flex; align-items: center; gap: 8px; height: 36px; min-height: 36px; padding: 0 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 14px; font-weight: 500 !important; text-transform: none; }
 .app-shell.stitch-shell main .jobs-reference-page :is(.jobs-reference-range, .jobs-reference-filter-toggle):hover { background: var(--rv-color-surface-soft); }
 .app-shell.stitch-shell main .jobs-reference-page :is(.jobs-reference-range, .jobs-reference-filter-toggle) svg { width: 16px; height: 16px; color: var(--rv-color-muted); }
 .app-shell.stitch-shell main .jobs-reference-page :is(.jobs-reference-range-menu, .jobs-reference-filter-panel) { gap: 2px; width: 240px; min-width: 240px; padding: 8px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; box-shadow: 0 16px 40px rgb(0 0 0 / 45%); }
-.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-range-menu button { height: 34px; min-height: 34px; padding: 0 10px; color: var(--rv-color-ink); background: none; border: 0; border-radius: 7px; box-shadow: none; font-size: 14px; font-weight: 400 !important; text-transform: none; }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-range-menu button { height: 36px; min-height: 36px; padding: 0 10px; color: var(--rv-color-ink); background: none; border: 0; border-radius: 7px; box-shadow: none; font-size: 14px; font-weight: 400 !important; text-transform: none; }
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-range-menu button:hover { background: var(--rv-color-surface-soft); }
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-range-menu button.active { color: var(--rv-color-ink); background: var(--rv-color-primary-soft); }
-.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-filter-panel { gap: 12px; padding: 14px; }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-filter-panel { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 12px; width: min(340px, calc(100vw - 32px)); min-width: 0; padding: 14px; overflow: visible; }
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-filter-panel label { display: grid; gap: 6px; color: var(--rv-color-muted); font-size: 12px; font-weight: 500; text-transform: none; }
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-filter-panel select { box-sizing: border-box; height: 36px; min-height: 36px; padding: 0 12px; color: var(--rv-color-ink); background-color: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 14px; }
 
@@ -96,7 +96,7 @@
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-attempts-section td { padding: 8px 10px; border: 0; border-top: 1px solid var(--rv-color-border); font-size: 13px; vertical-align: top; }
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-attempts-section td small { display: block; color: var(--rv-color-muted); font-size: 12px; }
 .app-shell.stitch-shell main .jobs-reference-page .job-detail-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
-.app-shell.stitch-shell main .jobs-reference-page :is(.job-detail-actions, .jobs-reference-one-time-invoice) button { height: 34px; min-height: 34px; padding: 0 14px; border-radius: 7px; font-size: 14px; text-transform: none; }
+.app-shell.stitch-shell main .jobs-reference-page :is(.job-detail-actions, .jobs-reference-one-time-invoice) button { height: 36px; min-height: 36px; padding: 0 14px; border-radius: 7px; font-size: 14px; text-transform: none; }
 
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-toolbar { flex-direction: column; align-items: stretch; }

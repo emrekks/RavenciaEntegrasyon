@@ -75,7 +75,7 @@
 .app-shell.stitch-shell main .reference-invoices-page .order-column-filter-popover { min-width: 230px; padding: 6px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; box-shadow: 0 18px 50px rgb(0 0 0 / 45%); }
 .reference-invoices-page .invoice-filter-choices { display: grid; gap: 2px; }
 .reference-invoices-page .invoice-filter-choices-label { padding: 6px 8px 8px; color: var(--rv-color-muted); font-size: 12px; font-weight: 600; }
-.app-shell.stitch-shell main .reference-invoices-page .invoice-filter-choices > button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 34px; height: auto; padding: 6px 10px; color: var(--rv-color-ink); text-align: left; background: none; border: 0; border-radius: 7px; box-shadow: none; font-size: 13px; font-weight: 400 !important; white-space: normal; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-filter-choices > button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 36px; height: auto; padding: 6px 10px; color: var(--rv-color-ink); text-align: left; background: none; border: 0; border-radius: 7px; box-shadow: none; font-size: 13px; font-weight: 400 !important; white-space: normal; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-filter-choices > button:hover { background: var(--rv-color-surface-soft); }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-filter-choices > button.is-on { background: var(--rv-color-primary-soft); }
 .reference-invoices-page .invoice-filter-radio { position: relative; flex: none; width: 16px; height: 16px; border: 1.5px solid var(--rv-color-border-strong); border-radius: 50%; }
@@ -86,7 +86,7 @@
 
 /* Row actions menu (rendered on the body) */
 body .invoice-reference-actions-popover { min-width: 300px; padding: 6px !important; background: var(--rv-color-surface) !important; border: 1px solid var(--rv-color-border-strong) !important; border-radius: 12px !important; box-shadow: 0 18px 50px rgb(0 0 0 / 45%) !important; }
-body .invoice-reference-actions-popover > button { display: flex; align-items: center; width: 100%; min-height: 34px; height: auto; padding: 6px 10px; color: var(--rv-color-ink); text-align: left; background: none; border: 0; border-radius: 7px; box-shadow: none; font-size: 13px; font-weight: 400 !important; }
+body .invoice-reference-actions-popover > button { display: flex; align-items: center; width: 100%; min-height: 36px; height: auto; padding: 6px 10px; color: var(--rv-color-ink); text-align: left; background: none; border: 0; border-radius: 7px; box-shadow: none; font-size: 13px; font-weight: 400 !important; }
 body .invoice-reference-actions-popover > button:hover:not(:disabled) { background: var(--rv-color-surface-soft); }
 body .invoice-reference-actions-popover > button:disabled { opacity: .45; }
 
@@ -161,11 +161,11 @@ body .invoice-reference-actions-popover > button:disabled { opacity: .45; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-platform-heading > strong { flex: none; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-platform-heading .platform-multi-select-field { margin-left: -6px; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filters :is(.platform-multi-select > button, .date-range-picker-trigger, .invoice-sort-trigger) * { font-weight: 400 !important; }
-.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-page-size select { height: 34px; min-height: 34px; padding: 0 30px 0 10px; font-size: 13px; border-radius: 7px; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-page-size select { height: 36px; min-height: 36px; padding: 0 30px 0 10px; font-size: 13px; border-radius: 7px; }
 .app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-select, .invoice-reference-select-all input) { width: 16px; min-width: 16px; height: 16px; min-height: 16px; appearance: none; -webkit-appearance: none; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 4px; box-shadow: none; cursor: pointer; }
 .app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-select, .invoice-reference-select-all input):checked { background: var(--rv-color-primary-soft); border-color: var(--inv-violet-line); }
 .app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-select, .invoice-reference-select-all input):checked::after { content: ""; position: absolute; left: 4.5px; top: 1.5px; width: 4px; height: 8px; border: solid var(--inv-violet); border-width: 0 1.8px 1.8px 0; transform: rotate(45deg); }
-.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-actions-trigger { height: 34px; min-height: 34px; padding: 0 10px 0 12px; gap: 6px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 13px; font-weight: 500 !important; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-actions-trigger { height: 36px; min-height: 36px; padding: 0 10px 0 12px; gap: 6px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 13px; font-weight: 500 !important; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-actions-trigger:hover { background: var(--rv-color-surface-soft); }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head .order-column-filter-trigger { width: 24px; min-width: 24px; height: 24px; min-height: 24px; padding: 0; color: var(--rv-color-subtle); background: none; border: 0; border-radius: 5px; box-shadow: none; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head .order-column-filter-trigger:hover { color: var(--rv-color-ink); background: var(--rv-color-surface-soft); }
@@ -230,7 +230,7 @@ body .invoice-reference-actions-popover > button:disabled { opacity: .45; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-addresses span strong { color: var(--rv-color-muted); font-weight: 400; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 14px 24px 16px; }
 .reference-invoices-page .invoice-detail-footer-gap { flex: 1; }
-.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-footer :is(button, .button-link) { display: inline-flex; align-items: center; gap: 6px; height: 34px; min-height: 34px; padding: 0 12px; border-radius: 7px; box-shadow: none; font-size: 13px; font-weight: 500 !important; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-detail-footer :is(button, .button-link) { display: inline-flex; align-items: center; gap: 6px; height: 36px; min-height: 36px; padding: 0 12px; border-radius: 7px; box-shadow: none; font-size: 13px; font-weight: 500 !important; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-footer button.secondary { color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-footer .invoice-detail-platform-refresh { color: var(--rv-color-muted); background: none; border-color: transparent; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-footer .invoice-detail-platform-refresh:hover:not(:disabled) { color: var(--rv-color-ink); background: var(--rv-color-surface-soft); }
