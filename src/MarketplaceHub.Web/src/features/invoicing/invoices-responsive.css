@@ -332,3 +332,19 @@
   .app-shell.stitch-shell main .invoices-page.invoices-page .invoice-reference-row > :is(.invoice-reference-products, .invoice-reference-status, .invoice-reference-shipment) { justify-self: stretch !important; width: auto !important; }
   .app-shell.stitch-shell main .invoices-page.invoices-page .invoice-reference-row > :is(.invoice-reference-products, .invoice-reference-status, .invoice-reference-shipment) > * { margin: 0 !important; }
 }
+
+/* Phones: the four summary tiles of the invoice detail sit 2×2 (they were squeezed into four columns, cutting the state
+   badges and breaking the amount and tracking number mid-word). */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-modal .invoice-detail-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-modal .invoice-detail-summary > div { padding: 10px 12px; border-left: 0; border-top: 1px solid var(--rv-color-border); }
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-modal .invoice-detail-summary > div:nth-child(even) { border-left: 1px solid var(--rv-color-border); }
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-modal .invoice-detail-summary > div:nth-child(-n+2) { border-top: 0; }
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-modal .invoice-detail-summary > div > strong { word-break: normal; overflow-wrap: anywhere; white-space: nowrap; }
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-modal .invoice-detail-summary > div > :is(span, button, .status-badge, [class*="badge"]) { max-width: 100%; }
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-modal .invoice-detail-summary :is(small:not(:first-child), code) { font-size: 12px; white-space: normal; overflow-wrap: anywhere; word-break: normal; }
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-modal .invoice-detail-summary .cargo-provider-icon { width: 96px; height: 22px; }
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-modal .invoice-detail-summary > div:nth-child(n+3) { grid-column: 1 / -1; border-left: 0; }
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-modal .invoice-detail-summary > div:nth-child(4) { display: flex; flex-wrap: wrap; align-items: center; column-gap: 12px; }
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-modal .invoice-detail-summary > div:nth-child(4) > :first-child { flex-basis: 100%; }
+}
