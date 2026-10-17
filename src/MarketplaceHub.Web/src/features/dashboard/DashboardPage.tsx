@@ -213,7 +213,8 @@ export function DashboardPage() {
   const chartTotal = chartSeries.reduce((sum, point) => sum + point.amount, 0)
   const chartPreviousTotal = chartPreviousSeries.reduce((sum, point) => sum + point.amount, 0)
   const chartDelta = trend(chartTotal, chartPreviousTotal)
-  const rows = matrix.data ?? []
+  // Only marketplaces: invoicing providers are connections too, but they carry no orders, stock or prices.
+  const rows = (matrix.data ?? []).filter(row => PLATFORMS.some(([code]) => code === row.platformCode.toUpperCase()))
   const attention = rows.filter(row => row.issue || Object.values(row.cells).some(cell => cell.state === 'bad' || cell.state === 'warn')).length
   const errors = [bootstrap.error, productSummary.error, reportQuery.error, reportPreviousQuery.error, chartQuery.error, chartPreviousQuery.error, channelQuery.error, matrix.error].filter(Boolean)
   const loadingValue = (loading: boolean, value: number | undefined) => loading ? '—' : count(value ?? 0)
@@ -241,7 +242,7 @@ export function DashboardPage() {
     window.setTimeout(() => URL.revokeObjectURL(url), 0)
     setToast(`${name} indirildi (Tarih, Ciro, Sipariş, Para Birimi).`)
   }
-  const storeLabel = (row: MatrixRow) => /^\d+$/.test(row.externalStoreId) ? `Mağaza ${row.externalStoreId}` : row.externalStoreId
+  const storeLabel = (row: MatrixRow) => /^\d+$/.test(row.externalStoreId) ? `Mağaza ${row.externalStoreId}` : row.externalStoreId.length > 24 ? `Mağaza ${row.externalStoreId.slice(0, 8)}…` : row.externalStoreId
 
   return <section className="content f3 rr rr-dashboard" aria-label="Genel Bakış">
     <div className="rr-ph"><div><div className="rr-crumb">Operasyon Merkezi</div><h1>Genel Bakış</h1><p>Siparişler, iadeler, faturalar ve stok için bugün ilgilenmeniz gerekenler ve satış performansınız.</p></div><div className="rr-acts">

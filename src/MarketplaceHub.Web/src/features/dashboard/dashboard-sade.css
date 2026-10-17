@@ -171,3 +171,4 @@
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip td, :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip th { font-weight: inherit; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip td b { font-weight: 600; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard > .rr-ico { color: var(--rr-subtle); }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mx-nm small { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
