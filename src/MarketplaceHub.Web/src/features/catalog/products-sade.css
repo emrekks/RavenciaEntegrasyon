@@ -169,8 +169,18 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl th .rr-hf > .rr-sortbtn { width: 24px; height: 24px; flex: none; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl th:has(.rr-sortbtn):has(.rr-anchor) { padding-right: 40px; }
 /* live-only additions */
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-srcs .rr-src > .rr-badge { display: inline-flex; flex: none; justify-content: center; min-width: 76px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-srcs .rr-src small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-conns .rr-src b { display: flex; align-items: center; gap: 6px; min-width: 0; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-conns .rr-src b > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-conns .rr-src small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-src-ok { display: inline-grid; place-items: center; flex: none; width: 16px; height: 16px; color: #fff; background: var(--rr-ok); border-radius: 50%; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-src-ok .rr-ico { width: 11px; height: 11px; stroke-width: 2.2; }
+@media (max-width: 760px) {
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-conns.rr-conns { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-conns .rr-src { gap: 7px; padding: 9px 8px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-conns .rr-src .rr-logo { width: 22px; height: 22px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-conns .rr-src b { font-size: 12.5px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-conns .rr-src small { display: none; }
+}
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-sortbtn.rr-on { color: var(--rr-violet); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-bulk-menu > .rr-menu { position: absolute; right: 0; bottom: calc(100% + 6px); top: auto; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metric-btn { justify-content: stretch; font-weight: 400 !important; }

@@ -929,7 +929,7 @@ body.rr-sheet-lock { overflow: hidden; }
 @media (max-width: 760px) {
 .rr.rr-returns .rr-panel { background: none; border: 0; }
 .rr.rr-returns .rr-panel-h { padding: 0 0 10px; }
-.rr.rr-returns .rr-tblwrap { overflow: visible; border: 0; }
+main .rr.rr-returns .rr-tblwrap.rr-tblwrap { overflow: visible; padding-top: 12px; border: 0; }
 .rr.rr-returns .rr-tbl thead { display: none; }
 .rr.rr-returns .rr-pager { padding: 12px 0; }
 .rr.rr-returns .rr-tbl.rr-tbl tbody tr { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "o o" "s s" "b c" "p p" "r r" "i i" "a a"; gap: 10px 12px; margin: 0 0 10px; padding: 12px; background: var(--rr-surface); border: 1px solid var(--rr-line); border-radius: 14px; }

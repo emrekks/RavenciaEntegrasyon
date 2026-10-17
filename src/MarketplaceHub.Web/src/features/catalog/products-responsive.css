@@ -320,3 +320,42 @@
   .app-shell.stitch-shell main .products-page .product-selection-bar .orders-selection-cancel { color: var(--rv-color-danger); }
   .app-shell.stitch-shell main .products-page .product-selection-bar .orders-selection-all { color: var(--rv-color-primary); }
 }
+
+/* New/edit product on phones: Desi sits beside Model Kodu and Stok Kodu beside Barkod (the identifier box opens into
+   the form grid); Hesapla becomes a link on the Desi label; the two submit buttons share one row; the per-marketplace
+   price cards read as a header row, a checkbox row and two price fields side by side; the page head is a round back
+   button beside a quiet eyebrow and the title. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .product-add-page .product-basics-grid > .product-identifiers-grid { display: contents; }
+  .app-shell.stitch-shell main .product-add-page .product-basics-grid .product-identifiers-grid > .desi-input-field { order: 1; }
+  .app-shell.stitch-shell main .product-add-page .product-basics-grid .product-identifiers-grid > label:not(.desi-input-field),
+  .app-shell.stitch-shell main .product-add-page .product-basics-grid > .product-description-field { order: 2; }
+  .app-shell.stitch-shell main .product-add-page .desi-input-field { position: relative; }
+  .app-shell.stitch-shell main .product-add-page .desi-inline-control { display: block; }
+  .app-shell.stitch-shell main .product-add-page .desi-inline-control > button { position: absolute; top: 0; right: 0; min-width: 0; height: auto; min-height: 0; padding: 0; color: var(--rv-color-primary); background: none; border: 0; box-shadow: none; font-size: 12.5px; font-weight: 600; line-height: 1.3; }
+  .app-shell.stitch-shell main .product-add-page .desi-inline-control > button:hover { text-decoration: underline; background: none; }
+
+  .app-shell.stitch-shell main .product-add-page .product-submit-actions { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); }
+  .app-shell.stitch-shell main .product-add-page .product-submit-actions.product-submit-actions > * { grid-column: auto; min-width: 0; padding-inline: 10px; white-space: nowrap; }
+
+  .app-shell.stitch-shell main .product-add-page #marketplace-pricing-panel .marketplace-pricing-bar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: none; align-items: end; gap: 10px; padding: 12px; }
+  .app-shell.stitch-shell main .product-add-page #marketplace-pricing-panel .marketplace-pricing-bar > * { grid-area: auto; }
+  .app-shell.stitch-shell main .product-add-page #marketplace-pricing-panel .marketplace-pricing-bar-heading { display: flex; grid-column: 1 / -1; flex-wrap: nowrap; align-items: center; gap: 10px; padding: 0 0 10px; }
+  .app-shell.stitch-shell main .product-add-page #marketplace-pricing-panel .marketplace-pricing-bar-heading > .publish-platform-mark { width: 32px; height: 32px; flex: none; }
+  .app-shell.stitch-shell main .product-add-page #marketplace-pricing-panel .marketplace-pricing-bar-heading > .publish-platform-mark img { width: 100%; height: 100%; object-fit: contain; }
+  .app-shell.stitch-shell main .product-add-page #marketplace-pricing-panel .marketplace-pricing-bar-heading > span:nth-child(2) { display: grid; flex: 1; min-width: 0; gap: 2px; }
+  .app-shell.stitch-shell main .product-add-page #marketplace-pricing-panel .marketplace-pricing-bar-heading strong { font-size: 14px; }
+  .app-shell.stitch-shell main .product-add-page #marketplace-pricing-panel .marketplace-pricing-bar-heading small { font-size: 12px; }
+  .app-shell.stitch-shell main .product-add-page #marketplace-pricing-panel .marketplace-pricing-bar-heading > .marketplace-pricing-toggle { flex: none; width: auto; min-width: 0; height: 32px; min-height: 32px; margin-left: auto; padding: 0 10px; white-space: nowrap; font-size: 12.5px; }
+  .app-shell.stitch-shell main .product-add-page #marketplace-pricing-panel .marketplace-pricing-custom { display: flex; grid-column: 1 / -1; align-items: center; gap: 8px; font-size: 13px; }
+  .app-shell.stitch-shell main .product-add-page #marketplace-pricing-panel .marketplace-pricing-custom > input { width: 16px; height: 16px; min-height: 0; flex: none; margin: 0; }
+  .app-shell.stitch-shell main .product-add-page #marketplace-pricing-panel .marketplace-pricing-fields { display: grid; grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .app-shell.stitch-shell main .product-add-page #marketplace-pricing-panel .marketplace-pricing-fields > label { display: grid; gap: 4px; min-width: 0; color: var(--rv-color-muted); font-size: 12px; }
+
+  .app-shell.stitch-shell main .product-add-page .product-page-heading-copy { display: grid; grid-template-columns: 36px minmax(0, 1fr); align-items: center; gap: 12px; }
+  .app-shell.stitch-shell main .product-add-page .product-heading-back { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 1px solid var(--rv-color-border-strong); border-radius: 10px; }
+  .app-shell.stitch-shell main .product-add-page .product-heading-back > span { display: none; }
+  .app-shell.stitch-shell main .product-add-page .product-page-heading-title { display: grid; gap: 2px; min-width: 0; }
+  .app-shell.stitch-shell main .product-add-page .product-page-heading-title .eyebrow { margin: 0; color: var(--rv-color-muted); font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+  .app-shell.stitch-shell main .product-add-page .product-page-heading-title h1 { margin: 0; font-size: 20px; line-height: 1.2; }
+}
