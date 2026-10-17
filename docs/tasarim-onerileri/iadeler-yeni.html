@@ -471,6 +471,12 @@
   /* the ring sits at the vertical middle of its label, also when the label takes two lines */
   .ring { align-items: center; } .ring svg { margin-top: 0; }
   .tbl td[data-l="Durum"] .ring { text-align: left; }
+  /* order number and its copy button stay on one line */
+  .ordercell .on-no { flex-wrap: nowrap; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .ordercell .on-no .icon-btn { flex: none; }
+  /* with the selection checkboxes the order column needs a little more room */
+  .tbl.has-select col.c-order { width: 18%; } .tbl.has-select col.c-prod { width: 21%; } .tbl.has-select col.c-status { width: 11%; } .tbl.has-select col.c-act { width: 11%; }
+  @media (min-width: 1101px) and (max-width: 1280px) { .tbl.has-select col.c-order { width: 17%; } .tbl.has-select col.c-prod { width: 22%; } .tbl.has-select col.c-status { width: 12%; } .tbl.has-select col.c-act { width: 12%; } }
   .tone-prog { --tone: var(--violet); } .tone-move { --tone: var(--info); } .tone-wait { --tone: var(--warn); } .tone-ok { --tone: var(--ok); } .tone-bad { --tone: var(--bad); } .tone-off { --tone: var(--subtle); }
   /* actions column: "İşlemler" menu and the detail link */
   .actcell { display: grid; gap: 8px; justify-items: center; }
@@ -537,13 +543,37 @@
     .tbl td { padding: 16px 8px; font-size: 12.5px; }
     .tbl td:first-child { padding-left: 12px; }
     .tbl th { padding: 0 30px 0 8px; font-size: 12px; }
-    .tbl .cust b { overflow-wrap: anywhere; }
+    .tbl col.c-buyer { width: 9%; } .tbl .cust b { overflow-wrap: normal; word-break: normal; }
     .tbl .actcell .trigger { padding: 0 6px 0 8px; font-size: 12.5px; }
     .tbl .actcell .btn.link { font-size: 12px; }
     .tbl col.c-order { width: 14%; } .tbl col.c-buyer { width: 8%; } .tbl col.c-prod { width: 25%; } .tbl col.c-cargo { width: 9%; } .tbl col.c-inv { width: 12%; } .tbl col.c-reason { width: 9%; } .tbl col.c-status { width: 12%; } .tbl col.c-act { width: 12%; }
     .pline { grid-template-columns: 48px minmax(0, 1fr); gap: 10px; } .tbl .thumb { width: 48px; height: 72px; }
     .tbl th { padding-right: 28px; } .tbl th .hf { white-space: nowrap; }
   }
+
+  /* column widths: the order column has a fixed width so the order number and its copy button always fit on one line */
+  @media (min-width: 1101px) {
+    .tbl col.c-order { width: 172px; } .tbl.has-select col.c-order { width: 200px; }
+    .tbl col.c-buyer { width: 8%; } .tbl col.c-prod { width: 23%; } .tbl col.c-cargo { width: 9%; } .tbl col.c-inv { width: 12%; } .tbl col.c-reason { width: 10%; } .tbl col.c-status { width: 11%; } .tbl col.c-act { width: 11%; }
+    .tbl.has-select col.c-prod { width: 22%; } .tbl.has-select col.c-status { width: 11%; } .tbl.has-select col.c-act { width: 11%; }
+    .tbl .cust b { overflow-wrap: anywhere; }
+    .invcell .m, .invcell .reason-tip { max-width: 100%; min-width: 0; }
+  }
+
+  .ordercell .buyer-inline { color: var(--muted); } .ordercell .buyer-inline b { color: var(--subtle); }
+  /* without the buyer column (1101-1240px) the freed space goes to products, status and actions */
+  .tbl.no-buyer col.c-prod { width: 27%; } .tbl.no-buyer col.c-status { width: 13%; } .tbl.no-buyer col.c-act { width: 13%; } .tbl.no-buyer col.c-inv { width: 13%; }
+  .pline small b, .ring small { overflow-wrap: anywhere; }
+  /* several products in one return: a hairline between them */
+  .plines { gap: 0; }
+  .plines > .pline + .pline { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+  /* final column balance: status gets enough room for its longest word next to the ring */
+  @media (min-width: 1101px) {
+    .tbl col.c-buyer { width: 8%; } .tbl col.c-prod { width: 22%; } .tbl col.c-cargo { width: 9%; } .tbl col.c-inv { width: 12%; } .tbl col.c-reason { width: 9%; } .tbl col.c-status { width: 13%; } .tbl col.c-act { width: 11%; }
+    .tbl.has-select col.c-prod { width: 21%; } .tbl.has-select col.c-status { width: 13%; } .tbl.has-select col.c-act { width: 11%; }
+    .tbl.no-buyer col.c-prod { width: 22%; } .tbl.no-buyer col.c-cargo { width: 10%; } .tbl.no-buyer col.c-inv { width: 13%; } .tbl.no-buyer col.c-reason { width: 10%; } .tbl.no-buyer col.c-status { width: 15%; } .tbl.no-buyer col.c-act { width: 14%; }
+  }
+  @media (min-width: 1101px) and (max-width: 1280px) { .ring { gap: 7px; } .ring b { font-size: 12.5px; } .ring svg { width: 16px; height: 16px; } }
 </style>
 </head>
 <body>
@@ -718,6 +748,8 @@ function popColumn(k, st) {
 const prodTip = (l, st) => `<div class="tip" ${st ? 'style="position:static"' : ''}><div class="li"><i></i><span><b>${esc(l.t)}</b><small>${l.qty} adet · Birim Fiyatı ${l.price}<br>${facts(l).map(([a, b]) => `${a}: ${esc(b)}`).join(' · ')}</small></span></div></div>`
 
 /* ---------- table ---------- */
+// On 1101-1240px screens the buyer column folds into the order cell so the remaining columns keep their room.
+const NO_BUYER = () => window.innerWidth > 1100 && window.innerWidth <= 1240
 function headCell(label, k, extra = '', popFn) {
   const f = k === 'status' ? S.tab !== 'ALL' : k === 'plat' ? S.plats.length < PLATFORMS.length : k && S.cf[k]
   const pk = 'cf-' + k
@@ -727,7 +759,7 @@ function rowHtml(r, selectCol) {
   const sel = selectCol && r.bulk && S.sel.has(r.id)
   const cb = selectCol ? (r.bulk ? `<input type="checkbox" class="cb" data-row="${r.id}" ${sel ? 'checked' : ''} aria-label="#${r.no} iadesini toplu onaya dahil et">` : '<span style="width:16px;flex:none"></span>') : ''
   const trackLine = r.track ? r.track : 'Henüz platformdan iletilmedi'
-  const order = `<div class="ordercell">${cb}<div><img class="wordmark" src="${MARKS[r.p]}" alt="${pname(r.p)}"${MARK_SIZE[r.p] ? ` style="width:${MARK_SIZE[r.p].w}px;height:${MARK_SIZE[r.p].h}px"` : ""}><span class="on-no ${r.crit ? 'crit' : ''}">#${r.no}<button class="icon-btn" title="Kopyala" aria-label="Sipariş numarası ${r.no} kopyala" style="width:22px;height:22px">${I.copy}</button></span><small class="num"><b>Sipariş Tarihi:</b> ${r.date}</small><small class="num"><b>Paket No:</b> ${r.pkg}</small><small class="num"><b>İade Kargo Teslimat No:</b> ${trackLine}</small></div></div>`
+  const order = `<div class="ordercell">${cb}<div><img class="wordmark" src="${MARKS[r.p]}" alt="${pname(r.p)}"${MARK_SIZE[r.p] ? ` style="width:${MARK_SIZE[r.p].w}px;height:${MARK_SIZE[r.p].h}px"` : ""}><span class="on-no ${r.crit ? 'crit' : ''}">#${r.no}<button class="icon-btn" title="Kopyala" aria-label="Sipariş numarası ${r.no} kopyala" style="width:22px;height:22px">${I.copy}</button></span>${NO_BUYER() ? `<small class="buyer-inline"><b>Alıcı:</b> ${r.cust}</small>` : ""}<small class="num"><b>Sipariş Tarihi:</b> ${r.date}</small><small class="num"><b>Paket No:</b> ${r.pkg}</small><small class="num"><b>Kargo Teslimat No:</b> ${trackLine}</small></div></div>`
   const cust = `<div class="cust"><b>${r.cust}</b></div>`
   const prod = `<div class="plines">${r.lines.map(l => `<div class="pline">${thumb(l.qty)}<div><b title="${esc(l.t)}">${esc(l.t)}</b><small>Birim Fiyatı: <b class="num">${l.price}</b></small>${facts(l).map(([k, v]) => `<small>${k}: <b class="num">${esc(v)}</b></small>`).join("")}</div></div>`).join('')}</div>`
   const cargo = `<div class="cargocell">${cargoImg(r.cargo[0], r.cargo[1])}<small class="num">${r.track || '—'}</small>${r.link ? `<button class="btn link" style="font-size:12px">${r.link} ${I.open}</button>` : ''}</div>`
@@ -736,7 +768,7 @@ function rowHtml(r, selectCol) {
   const reason = `<div class="reasoncell"><b>${esc(r.reason)}</b>${r.note ? `<small title="${esc(r.note[1])}"><strong>${r.note[0]}:</strong> ${esc(r.note[1])}</small>` : ''}</div>`
   const status = ring(r.st, r.due ? r.due.replace(/^.*?:\s*/, '') + ' kaldı' : '', r.crit ? 'crit' : '')
   const acts = `<div class="actcell"><span class="anchor"><button class="trigger ${S.pop === 'act-' + r.id ? 'on' : ''}" data-a="pop" data-k="act-${r.id}" aria-haspopup="menu" aria-expanded="${S.pop === 'act-' + r.id}"><span>İşlemler</span>${I.chev}</button>${S.pop === 'act-' + r.id ? actMenu(r) : ''}</span><button class="btn link" data-a="m" data-k="detail">Detayları Aç ${I.open}</button></div>`
-  return `<tr class="${sel ? 'sel' : ''} ${r.crit ? 'due' : ''}"><td class="wide">${order}</td><td class="mid" data-l="Alıcı">${cust}</td><td class="wide" data-l="Bilgiler">${prod}</td><td class="mid" data-l="Kargo">${cargo}</td><td data-l="Fatura">${inv}</td><td data-l="İade Sebebi">${reason}</td><td class="mid" data-l="Durum">${status}</td><td class="mid" data-l="İşlemler">${acts}</td></tr>`
+  return `<tr class="${sel ? 'sel' : ''} ${r.crit ? 'due' : ''}"><td class="wide">${order}</td>${NO_BUYER() ? "" : `<td class="mid" data-l="Alıcı">${cust}</td>`}<td class="wide" data-l="Bilgiler">${prod}</td><td class="mid" data-l="Kargo">${cargo}</td><td data-l="Fatura">${inv}</td><td data-l="İade Sebebi">${reason}</td><td class="mid" data-l="Durum">${status}</td><td class="mid" data-l="İşlemler">${acts}</td></tr>`
 }
 function visibleRows() {
   return ROWS.filter(r => (S.tab === 'ALL' || r.g === S.tab) && S.plats.includes(r.p)
@@ -749,7 +781,7 @@ function table() {
   const eligible = rows.filter(r => r.bulk)
   const all = eligible.length > 0 && eligible.every(r => S.sel.has(r.id))
   const allCb = selectCol ? `<input type="checkbox" class="cb" data-a="all" ${all ? 'checked' : ''} aria-label="Tüm iadeleri seç" style="margin-right:8px">` : ''
-  return `<table class="tbl"><colgroup><col class="c-order"><col class="c-buyer"><col class="c-prod"><col class="c-cargo"><col class="c-inv"><col class="c-reason"><col class="c-status"><col class="c-act"></colgroup><thead><tr>${headCell('Sipariş Bilgileri', 'plat', allCb, () => popPlatforms())}${headCell('Alıcı')}${headCell('Bilgiler')}${headCell('Kargo', 'cargo')}${headCell('Fatura', 'inv')}${headCell('İade Sebebi', 'reason')}${headCell('Durum', 'status')}${headCell('İşlemler')}</tr></thead><tbody>${rows.length ? rows.map(r => rowHtml(r, selectCol)).join('') : `<tr><td colspan="8" class="empty-row">${emptyState('Seçili filtreyle eşleşen gösterilebilir iade yok.')}</td></tr>`}</tbody></table>`
+  return `<table class="tbl ${selectCol ? "has-select" : ""} ${NO_BUYER() ? "no-buyer" : ""}"><colgroup><col class="c-order">${NO_BUYER() ? "" : "<col class=\"c-buyer\">"}<col class="c-prod"><col class="c-cargo"><col class="c-inv"><col class="c-reason"><col class="c-status"><col class="c-act"></colgroup><thead><tr>${headCell('Sipariş Bilgileri', 'plat', allCb, () => popPlatforms())}${NO_BUYER() ? '' : headCell('Alıcı')}${headCell('Bilgiler')}${headCell('Kargo', 'cargo')}${headCell('Fatura', 'inv')}${headCell('İade Sebebi', 'reason')}${headCell('Durum', 'status')}${headCell('İşlemler')}</tr></thead><tbody>${rows.length ? rows.map(r => rowHtml(r, selectCol)).join('') : `<tr><td colspan="${NO_BUYER() ? 7 : 8}" class="empty-row">${emptyState('Seçili filtreyle eşleşen gösterilebilir iade yok.')}</td></tr>`}</tbody></table>`
 }
 const pager = n => `<div class="pager"><span>Toplam <b style="color:var(--ink)">${n}</b> adet</span><div class="pages"><button aria-label="Önceki">${I.left}</button><button class="on">1</button><button>2</button><button>3</button><button>4</button><button aria-label="Sonraki">${I.right}</button></div><label class="jump">Sayfaya Git<input class="in" type="number" min="1" max="8" placeholder="1–8" aria-label="Sayfa numarası"><button class="btn">Git</button></label></div>`
 const platTrigger = () => `<span class="anchor"><button class="trigger ${S.pop === 'plat' ? 'on' : ''}" data-a="pop" data-k="plat"><span>${S.plats.length === PLATFORMS.length || !S.plats.length ? 'Tüm Platformlar' : S.plats.length === 1 ? pname(S.plats[0]) : `${S.plats.length} Platform Seçili`}</span>${I.chev}</button>${S.pop === 'plat' ? popPlatforms() : ''}</span>`
