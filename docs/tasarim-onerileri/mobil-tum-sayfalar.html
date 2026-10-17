@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mobil Görünüm · Tüm Sayfalar</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #111115; --surface: #17171c; --raised: #1d1d23; --soft: #22222a;
+    --line: #2a2a32; --line-strong: #383842;
+    --ink: #ececf0; --muted: #a3a3b0; --subtle: #6f6f7c;
+    --primary: #8b5cf6; --primary-soft: #272139;
+    --violet: color-mix(in srgb, var(--primary) 55%, white);
+    --warn: #e2aa4b; --bad: #e4636f; --ok: #46b98f; --info: #83b4ff;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 Inter, "Segoe UI", system-ui, sans-serif; color: var(--ink); background: #0b0b0e; -webkit-font-smoothing: antialiased; }
+  h1, h2, h3, p { margin: 0; }
+  button { font: inherit; color: inherit; }
+  .num { font-variant-numeric: tabular-nums; }
+  .wrap { display: grid; gap: 28px; max-width: 1640px; margin: 0 auto; padding: 32px 24px 80px; }
+  .head h1 { font-size: 18px; font-weight: 600; } .head p { margin-top: 4px; color: var(--muted); font-size: 13px; max-width: 110ch; } .head .crumb { color: var(--subtle); font-size: 12px; font-weight: 500; }
+  .rules { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+  .rule { padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; font-size: 12.5px; color: var(--muted); } .rule b { display: block; margin-bottom: 2px; color: var(--ink); font-size: 13px; }
+  .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(392px, 1fr)); gap: 28px 20px; justify-items: center; }
+  .frame { display: grid; gap: 10px; width: 392px; }
+  .frame > header b { font-size: 14px; font-weight: 600; } .frame > header p { color: var(--muted); font-size: 12.5px; }
+  /* phone */
+  .phone { position: relative; width: 392px; height: 820px; padding: 8px; background: #2a2a31; border-radius: 44px; box-shadow: 0 30px 60px rgb(0 0 0 / 50%), inset 0 0 0 1px #3a3a44; }
+  .screen { position: relative; width: 376px; height: 804px; overflow: hidden; background: var(--bg); border-radius: 36px; }
+  .status { display: flex; justify-content: space-between; align-items: center; height: 36px; padding: 0 26px; font-size: 12.5px; font-weight: 600; }
+  .scroll { position: absolute; top: 36px; bottom: 0; left: 0; right: 0; overflow-y: auto; scrollbar-width: none; }
+  .scroll::-webkit-scrollbar { display: none; }
+  .page { display: grid; gap: 12px; padding: 12px 16px 120px; }
+  /* top bar */
+  .tb { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 8px; height: 52px; padding: 0 12px; background: color-mix(in srgb, var(--bg) 92%, transparent); border-bottom: 1px solid var(--line); backdrop-filter: blur(8px); }
+  .tb .t { flex: 1; min-width: 0; font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ib { display: grid; place-items: center; width: 40px; height: 40px; flex: none; color: var(--ink); background: none; border: 1px solid transparent; border-radius: 10px; cursor: pointer; position: relative; }
+  .ib.b { border-color: var(--line-strong); background: var(--surface); }
+  .ib .dotc { position: absolute; top: 6px; right: 6px; min-width: 16px; height: 16px; padding: 0 4px; color: #fff; background: var(--bad); border-radius: 8px; font-size: 10px; font-weight: 700; line-height: 16px; text-align: center; }
+  .ico { width: 18px; height: 18px; flex: none; } .ico.s { width: 14px; height: 14px; } .ico.l { width: 20px; height: 20px; }
+  /* page head */
+  .ph { display: grid; gap: 4px; } .ph .crumb { color: var(--subtle); font-size: 12px; font-weight: 500; } .ph h1 { font-size: 20px; font-weight: 600; line-height: 1.25; } .ph p { color: var(--muted); font-size: 13px; }
+  .acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; } .acts.one { grid-template-columns: 1fr; } .acts.three { grid-template-columns: 1fr 1fr 1fr; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 40px; padding: 0 12px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 10px; font-size: 13.5px; font-weight: 500; white-space: nowrap; cursor: pointer; min-width: 0; }
+  .btn.primary { color: #fff; background: var(--primary); border-color: var(--primary); } .btn.quiet { background: none; border-color: transparent; color: var(--muted); } .btn.link { height: auto; padding: 0; border: 0; background: none; color: var(--violet); font-size: 13px; }
+  .btn.danger { color: var(--bad); }
+  /* metrics */
+  .mets { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .met { display: grid; gap: 1px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+  .met small { color: var(--muted); font-size: 12px; } .met strong { font-size: 20px; font-weight: 600; line-height: 1.3; } .met span { color: var(--subtle); font-size: 11.5px; }
+  .met.warn strong { color: var(--warn); } .met.bad strong { color: var(--bad); }
+  /* tabs */
+  .tabs { display: flex; gap: 6px; margin: 0 -16px; padding: 0 16px; overflow-x: auto; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { display: inline-flex; flex: none; align-items: center; gap: 6px; height: 36px; padding: 0 12px; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; font-size: 13px; font-weight: 500; white-space: nowrap; cursor: pointer; }
+  .tab.on { color: var(--ink); background: var(--primary-soft); border-color: color-mix(in srgb, var(--primary) 60%, transparent); }
+  .tab .c { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 1px 5px 0; color: var(--ink); background: var(--soft); border-radius: 6px; font-size: 11px; line-height: 1; } .tab .c.warn { color: var(--warn); }
+  /* toolbar */
+  .tools { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; }
+  .search { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px; color: var(--subtle); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 10px; font-size: 13.5px; min-width: 0; overflow: hidden; white-space: nowrap; }
+  .fbtn { position: relative; } .fbtn .n { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; color: #fff; background: var(--primary); border-radius: 9px; font-size: 10.5px; font-weight: 700; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; } .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 6px 0 10px; color: var(--ink); background: var(--raised); border: 1px solid var(--line-strong); border-radius: 999px; font-size: 12px; } .chip .x { display: grid; place-items: center; width: 18px; height: 18px; color: var(--muted); }
+  .listhead { display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: 12.5px; } .listhead b { color: var(--ink); font-weight: 600; }
+  /* cards */
+  .card { display: grid; gap: 10px; padding: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+  .card.sel { border-color: color-mix(in srgb, var(--primary) 70%, transparent); background: color-mix(in srgb, var(--primary-soft) 45%, var(--surface)); }
+  .row { display: flex; align-items: center; gap: 8px; min-width: 0; } .row .grow { flex: 1; min-width: 0; }
+  .between { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .logo { display: grid; place-items: center; width: 22px; height: 22px; flex: none; border-radius: 6px; color: #fff; font-size: 10px; font-weight: 700; }
+  .wm { height: 18px; padding: 1px 6px; border-radius: 5px; color: #fff; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; }
+  .ono { font-weight: 600; font-size: 14px; } .meta { color: var(--subtle); font-size: 12px; } .muted { color: var(--muted); } .ink { color: var(--ink); }
+  .strip { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; font-size: 12.5px; font-weight: 500; }
+  .strip.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); } .strip.bad { color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, transparent); } .strip.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); } .strip.info { color: var(--info); background: color-mix(in srgb, var(--info) 12%, transparent); }
+  .strip b { margin-left: auto; font-weight: 600; }
+  .pl { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 10px; align-items: start; }
+  .img { position: relative; width: 52px; aspect-ratio: 3 / 4; border-radius: 8px; background: linear-gradient(160deg, #3a3346, #22222a 70%); border: 1px solid var(--line); }
+  .img .q { position: absolute; top: -6px; right: -6px; display: grid; place-items: center; width: 18px; height: 18px; color: #fff; background: var(--primary); border-radius: 50%; font-size: 10.5px; font-weight: 700; }
+  .pt { font-size: 13px; font-weight: 500; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .kv { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 8px; font-size: 12px; } .kv span { color: var(--subtle); } .kv b { font-weight: 500; overflow-wrap: anywhere; }
+  .price { font-weight: 600; font-size: 13.5px; text-align: right; white-space: nowrap; }
+  .sep { height: 1px; background: var(--line); }
+  .badge { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; color: var(--muted); background: var(--raised); border: 1px solid var(--line-strong); border-radius: 999px; font-size: 11.5px; font-weight: 500; white-space: nowrap; }
+  .badge.ok { color: var(--ok); } .badge.bad { color: var(--bad); } .badge.warn { color: var(--warn); } .badge.info { color: var(--info); }
+  .badge i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .ring { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; } .ring svg { width: 18px; height: 18px; }
+  .cacts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; } .cacts .btn { height: 38px; }
+  .pm { display: flex; gap: 6px; } .pm span { position: relative; } .pm .logo { width: 26px; height: 26px; } .pm .off { opacity: .28; filter: grayscale(1); } .pm i { position: absolute; right: -3px; bottom: -3px; width: 10px; height: 10px; border: 2px solid var(--surface); border-radius: 50%; background: var(--ok); }
+  /* bottom bars & sheets */
+  .bottombar { position: absolute; left: 0; right: 0; bottom: 0; z-index: 8; display: grid; gap: 8px; padding: 10px 16px 22px; background: color-mix(in srgb, var(--raised) 96%, transparent); border-top: 1px solid var(--line-strong); backdrop-filter: blur(10px); }
+  .bottombar .between b { font-size: 13.5px; } .bottombar small { color: var(--muted); font-size: 12px; }
+  .scrim { position: absolute; inset: 0; z-index: 10; background: rgb(0 0 0 / 55%); }
+  .sheet { position: absolute; left: 0; right: 0; bottom: 0; z-index: 11; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; max-height: 86%; background: var(--surface); border: 1px solid var(--line-strong); border-bottom: 0; border-radius: 20px 20px 0 0; }
+  .sheet.full { top: 36px; max-height: none; border-radius: 0; }
+  .grab { width: 36px; height: 4px; margin: 8px auto 0; border-radius: 2px; background: var(--line-strong); }
+  .sh { display: flex; align-items: center; gap: 8px; padding: 8px 16px 12px; border-bottom: 1px solid var(--line); } .sh h3 { flex: 1; font-size: 16px; font-weight: 600; } .sh small { display: block; color: var(--muted); font-size: 12px; font-weight: 400; }
+  .sb { display: grid; gap: 14px; align-content: start; padding: 14px 16px; overflow-y: auto; scrollbar-width: none; }
+  .sf { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 12px 16px 22px; border-top: 1px solid var(--line); }
+  .fld { display: grid; gap: 6px; } .fld > small { color: var(--subtle); font-size: 12px; font-weight: 500; }
+  .in { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 44px; padding: 0 12px; color: var(--ink); background: var(--bg); border: 1px solid var(--line-strong); border-radius: 10px; font-size: 15px; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .in.ph { color: var(--subtle); }
+  .opts { display: grid; gap: 6px; } .opt { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 12px; background: var(--bg); border: 1px solid var(--line-strong); border-radius: 10px; font-size: 14px; } .opt.on { border-color: color-mix(in srgb, var(--primary) 70%, transparent); background: var(--primary-soft); }
+  .radio { width: 18px; height: 18px; flex: none; border: 1.5px solid var(--line-strong); border-radius: 50%; } .opt.on .radio { border: 5px solid var(--primary); }
+  .cbx { width: 20px; height: 20px; flex: none; border: 1.5px solid var(--line-strong); border-radius: 6px; background: var(--bg); } .cbx.on { background: var(--primary); border-color: var(--primary); box-shadow: inset 0 0 0 3px var(--primary); position: relative; } .cbx.on::after { content: ""; position: absolute; left: 6px; top: 2px; width: 5px; height: 10px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+  .sec { display: grid; gap: 10px; } .sec > h4 { margin: 0; font-size: 13px; font-weight: 600; color: var(--muted); }
+  .kvt { display: grid; gap: 0; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; }
+  .kvt > div { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; font-size: 13px; border-bottom: 1px solid var(--line); } .kvt > div:last-child { border-bottom: 0; } .kvt span { color: var(--muted); } .kvt b { font-weight: 500; text-align: right; overflow-wrap: anywhere; }
+  .kvt > div.total b { font-weight: 700; }
+  /* drawer */
+  .drawer { position: absolute; top: 0; bottom: 0; left: 0; z-index: 11; width: 300px; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; background: var(--surface); border-right: 1px solid var(--line-strong); }
+  .dnav { display: grid; gap: 2px; align-content: start; padding: 8px; overflow-y: auto; }
+  .dnav a { display: flex; align-items: center; gap: 12px; height: 46px; padding: 0 12px; color: var(--muted); border-radius: 10px; font-size: 14.5px; text-decoration: none; } .dnav a.on { color: #fff; background: var(--primary); } .dnav a .c { margin-left: auto; display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 1.5px 6px 0; color: var(--ink); background: var(--soft); border: 1px solid var(--line-strong); border-radius: 6px; font-size: 11.5px; line-height: 1; } .dnav a.on .c { background: rgb(255 255 255 / 18%); border-color: transparent; color: #fff; }
+  .dnav .grp { padding: 12px 12px 4px; color: var(--subtle); font-size: 11.5px; font-weight: 600; }
+  /* misc */
+  .chart { display: block; width: 100%; height: auto; }
+  .seg { display: flex; gap: 2px; padding: 3px; background: var(--bg); border: 1px solid var(--line-strong); border-radius: 10px; } .seg button { flex: 1; height: 32px; color: var(--muted); background: none; border: 1px solid transparent; border-radius: 7px; font-size: 12.5px; font-weight: 500; } .seg button.on { color: var(--ink); background: var(--raised); border-color: var(--line-strong); }
+  .bar { display: block; height: 6px; overflow: hidden; border-radius: 3px; background: var(--line); } .bar b { display: block; height: 100%; border-radius: 3px; }
+  .mx { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); } .mx i { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); } .mx.warn { color: var(--warn); } .mx.warn i { background: var(--warn); } .mx.bad { color: var(--bad); } .mx.bad i { background: var(--bad); } .mx.off i { background: none; border: 1px dashed var(--line-strong); }
+  .g3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 10px; }
+  .vtab { width: 100%; border-collapse: collapse; font-size: 12px; } .vtab th, .vtab td { padding: 4px 4px; text-align: center; } .vtab thead th { color: var(--subtle); font-weight: 500; border-bottom: 1px solid var(--line); } .vtab tbody th { text-align: left; color: var(--muted); font-weight: 500; } .vtab td { font-weight: 600; } .vtab .z { color: var(--bad); } .vtab .l { color: var(--warn); }
+  .msg { padding: 10px 12px; background: var(--raised); border: 1px solid var(--line); border-radius: 12px 12px 12px 4px; font-size: 13px; } .msg.me { justify-self: end; background: var(--primary-soft); border-radius: 12px 12px 4px 12px; }
+  .stepper { display: flex; gap: 6px; } .stepper span { flex: 1; height: 4px; border-radius: 2px; background: var(--line); } .stepper span.on { background: var(--primary); }
+  @media (max-width: 860px) { .wrap { padding: 16px 8px 60px; } .gallery { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap" id="root"></div>
+<script>
+const ico = (p, c = 'ico') => `<svg class="${c}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`
+const I = {
+  menu: ico('<path d="M2.5 4h11M2.5 8h11M2.5 12h11"/>'), bell: ico('<path d="M4 11V7a4 4 0 0 1 8 0v4l1 1.5H3z"/><path d="M6.5 14h3"/>'), search: ico('<circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/>'),
+  filter: ico('<path d="M2.5 4h11M4.5 8h7M6.5 12h3"/>'), sort: ico('<path d="M5 3v10M2.8 10.8 5 13l2.2-2.2M11 13V3M8.8 5.2 11 3l2.2 2.2"/>'), back: ico('<path d="M10 3 5 8l5 5"/>'), close: ico('<path d="M4 4l8 8M12 4l-8 8"/>'),
+  more: ico('<circle cx="3.5" cy="8" r="1"/><circle cx="8" cy="8" r="1"/><circle cx="12.5" cy="8" r="1"/>'), chev: ico('<path d="m4.5 6 3.5 3.5L11.5 6"/>', 'ico s'), right: ico('<path d="m6 3.5 4.5 4.5L6 12.5"/>', 'ico s'),
+  print: ico('<path d="M4.5 6V2.5h7V6"/><rect x="2" y="6" width="12" height="5.5" rx="1.2"/><path d="M4.5 9.5h7v4h-7z"/>'), clock: ico('<circle cx="8" cy="8" r="6"/><path d="M8 4.8V8l2 1.3"/>', 'ico s'), copy: ico('<rect x="5" y="5" width="8.5" height="8.5" rx="1.5"/><path d="M11 5V3.5a1 1 0 0 0-1-1H3.5a1 1 0 0 0-1 1V10a1 1 0 0 0 1 1H5"/>', 'ico s'),
+  plus: ico('<path d="M8 3v10M3 8h10"/>'), sync: ico('<path d="M13 8a5 5 0 1 1-1.5-3.5"/><path d="M13 2.5v3h-3"/>'), dl: ico('<path d="M8 2.5v8M4.8 7.5 8 10.7l3.2-3.2"/><path d="M2.5 10.5v3h11v-3"/>'), up: ico('<path d="M8 10.5V2.5M4.8 5.5 8 2.5l3.2 3"/><path d="M2.5 10.5v3h11v-3"/>'),
+  truck: ico('<path d="M1.8 4h7.7v7H1.8zM9.5 6.5h2.8l2 2.3V11H9.5"/><circle cx="4.5" cy="11.8" r="1.2"/><circle cx="11.8" cy="11.8" r="1.2"/>', 'ico s'), check: ico('<path d="m3.5 8.5 3 3 6-6.5"/>', 'ico s'), alert: ico('<path d="M8 2.5 14 13H2z"/><path d="M8 6.5v3M8 11.5h.01"/>', 'ico s'),
+  home: ico('<rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="9" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="2.5" y="9" width="4.5" height="4.5" rx="1"/><rect x="9" y="9" width="4.5" height="4.5" rx="1"/>'), bag: ico('<path d="M3 5.5h10l-1 8H4z"/><path d="M5.5 5.5V4a2.5 2.5 0 0 1 5 0v1.5"/>'), box: ico('<path d="M2.5 5 8 2.2 13.5 5v6L8 13.8 2.5 11z"/><path d="M2.5 5 8 7.8 13.5 5M8 7.8v6"/>'),
+  ret: ico('<path d="M5.5 4 2.5 7l3 3"/><path d="M2.5 7h7a4 4 0 0 1 0 8H7"/>'), inv: ico('<path d="M4 2h5l3 3v9H4z"/><path d="M9 2v3h3M6 8.5h4M6 11h3"/>'), q: ico('<circle cx="8" cy="8" r="6"/><path d="M6.3 6.3a1.8 1.8 0 1 1 2.4 1.7c-.5.2-.7.6-.7 1.1M8 11.5h.01"/>'), link: ico('<path d="M6.5 9.5 9.5 6.5"/><path d="M7 4.5 8.3 3.2a2.5 2.5 0 0 1 3.5 3.5L10.5 8M9 11.5l-1.3 1.3a2.5 2.5 0 0 1-3.5-3.5L5.5 8"/>'),
+  layers: ico('<path d="m8 2.5 5.5 3L8 8.5 2.5 5.5z"/><path d="m2.5 8 5.5 3 5.5-3M2.5 10.5l5.5 3 5.5-3"/>'), jobs: ico('<rect x="2.5" y="3" width="11" height="10" rx="1.5"/><path d="M5 6.5h6M5 9.5h4"/>'), gear: ico('<circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1"/>'),
+  send: ico('<path d="M2.5 8 13.5 3 9 13.5 7.5 9z"/>'), cam: ico('<rect x="2" y="4.5" width="12" height="8.5" rx="1.5"/><circle cx="8" cy="8.7" r="2.3"/><path d="M5.5 4.5 6.5 3h3l1 1.5"/>'),
+}
+const P = { TY: ['#f27a1a', 'T', 'trendyol'], HB: ['#e8457c', 'H', 'hepsiburada'], N11: ['#7c5cff', 'n', 'n11'], PZ: ['#2f9bd8', 'P', 'pazarama'], SH: ['#5e8e3e', 'S', 'shopify'] }
+const logo = k => `<span class="logo" style="background:${P[k][0]}">${P[k][1]}</span>`
+const wm = k => `<span class="wm" style="background:${P[k][0]}">${P[k][2]}</span>`
+const ring = (label, tone, p = .3) => { const c = { prog: 'var(--violet)', ok: 'var(--ok)', wait: 'var(--warn)', bad: 'var(--bad)', move: 'var(--info)', off: 'var(--subtle)' }[tone]; return `<span class="ring"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.5" fill="none" stroke="var(--line-strong)" stroke-width="2.4"/><circle cx="10" cy="10" r="7.5" fill="none" stroke="${c}" stroke-width="2.4" pathLength="100" stroke-dasharray="${p * 100} 100" transform="rotate(-90 10 10)" stroke-linecap="round"/></svg>${label}</span>` }
+const topbar = (title, opts = {}) => `<div class="tb">${opts.back ? `<button class="ib">${I.back}</button>` : `<button class="ib" data-a="drawer">${I.menu}</button>`}<span class="t">${title}</span>${opts.right ?? `<button class="ib">${I.search}</button><button class="ib">${I.bell}<span class="dotc">3</span></button>`}</div>`
+const ph = (crumb, title, desc, acts = '') => `<div class="ph"><span class="crumb">${crumb}</span><h1>${title}</h1>${desc ? `<p>${desc}</p>` : ''}</div>${acts}`
+const tabs = (items, on = 0) => `<div class="tabs">${items.map(([l, c, w], i) => `<button class="tab ${i === on ? 'on' : ''}">${l}${c != null ? `<span class="c ${w ? 'warn' : ''}">${c}</span>` : ''}</button>`).join('')}</div>`
+const toolbar = (ph, n = 0) => `<div class="tools"><span class="search">${I.search}${ph}</span><button class="btn fbtn" data-a="filter">${I.filter}${n ? `<span class="n">${n}</span>` : 'Filtre'}</button><button class="btn" style="width:40px;padding:0">${I.sort}</button></div>`
+const phone = (inner, overlay = '') => `<div class="phone"><div class="screen"><div class="status"><span>9:41</span><span>●●● ▮</span></div><div class="scroll">${inner}</div>${overlay}</div></div>`
+
+/* ---------- order card (Trendyol seller app style) ---------- */
+const orderCard = (o, sel) => `<article class="card ${sel ? 'sel' : ''}">
+  <div class="between"><span class="row">${sel != null ? `<span class="cbx ${sel ? 'on' : ''}"></span>` : ''}${wm(o.p)}<span class="ono num">#${o.no}</span>${I.copy}</span><span class="meta">${o.date}</span></div>
+  ${o.strip ? `<div class="strip ${o.strip[0]}">${I.clock}${o.strip[1]}<b>${o.strip[2]}</b></div>` : ''}
+  <div class="between"><span class="muted" style="font-size:13px">${o.buyer}</span><span class="row" style="gap:6px;font-size:12px" class="meta">${I.truck}<span class="meta">${o.cargo}</span></span></div>
+  ${o.lines.map(([t, kv, q, pr]) => `<div class="pl"><span class="img">${q > 1 ? `<span class="q">${q}</span>` : '<span class="q">1</span>'}</span><div style="display:grid;gap:4px;min-width:0"><span class="pt">${t}</span><span class="kv">${kv.map(([k, v]) => `<span>${k}</span><b class="num">${v}</b>`).join('')}</span></div><span class="price num">${pr}</span></div>`).join('<div class="sep"></div>')}
+  <div class="sep"></div>
+  <div class="between">${ring(o.inv[0], o.inv[1], o.inv[2])}<span class="row" style="gap:6px"><span class="meta">Toplam</span><b class="num">${o.total}</b></span></div>
+  <div class="cacts">${o.acts.map(([l, primary, icon]) => `<button class="btn ${primary ? 'primary' : ''}">${icon ? I[icon] : ''}${l}</button>`).join('')}</div>
+</article>`
+const ORDERS = [
+  { p: 'TY', no: '11720684592', date: '17.10 22:15', strip: ['warn', 'Kargoya verme süresi', '2 gün 3 sa'], buyer: 'Melike nur Bayoğlu', cargo: 'Trendyol Express', lines: [['Kadın Bordo Dik Çizgi Desenli Dantel Detaylı Bluz', [['Barkod', 'MZ043DDC12'], ['Renk · Beden', 'Bordo · 2XL']], 1, '₺890,01']], inv: ['Fatura Bekliyor', 'wait', .2], total: '₺890,01', acts: [['Etiket', false, 'print'], ['İşlemler', true]] },
+  { p: 'HB', no: '4736002251', date: '17.10 21:09', strip: ['bad', 'Süre doldu', '3 sa gecikti'], buyer: 'Gülser Karakoç', cargo: 'HepsiJet', lines: [['Kadın Yeşil Polo Yaka Kaşkorse Bluz', [['Barkod', '1101010103531'], ['Renk · Beden', 'Yeşil · Standart']], 1, '₺274,37'], ['Kışlık Saç Örgü Triko Düğmeli Yumuşak Bluz', [['Barkod', 'MZ051BYC-34'], ['Renk · Beden', 'Siyah · 3XL']], 2, '₺549,65']], inv: ['Faturası Mevcut', 'ok', 1], total: '₺824,02', acts: [['Etiket', false, 'print'], ['İşlemler', true]] },
+  { p: 'N11', no: '205530018', date: '16.10 14:02', strip: ['info', 'Kargoda', 'Takip: 7330038110'], buyer: 'Ayşe Demir', cargo: 'Yurtiçi Kargo', lines: [['Kadın Siyah Büyük Beden Renkli Yaprak Desenli Bluz', [['Barkod', 'MZ031YRYD00'], ['Renk · Beden', 'Siyah · 3XL']], 1, '₺692,01']], inv: ['Faturası Mevcut', 'ok', 1], total: '₺692,01', acts: [['Kargo Takip', false, 'truck'], ['İşlemler', true]] },
+]
+
+/* ---------- frames ---------- */
+const F = []
+const add = (title, note, html) => F.push([title, note, html])
+
+add('Menü', 'Sol üstteki menü düğmesi tam yükseklikte çekmece açar. Sayılar menüde de görünür; alttaki ayarlar ve çıkış her zaman yerinde.', phone(topbar('Genel Bakış') + `<div class="page">${ph('Operasyon Merkezi', 'Genel Bakış', '')}</div>`, `<div class="scrim"></div><aside class="drawer"><div class="row" style="height:64px;padding:0 16px;gap:10px;border-bottom:1px solid var(--line)"><span class="logo" style="width:32px;height:32px;background:var(--primary);border-radius:9px">R</span><b style="flex:1">Ravencia</b><button class="ib">${I.close}</button></div><nav class="dnav"><a class="on">${I.home}Genel Bakış</a><a>${I.bag}Ürünler</a><a>${I.box}Siparişler<span class="c">13</span></a><a>${I.ret}İadeler<span class="c">1</span></a><a>${I.inv}Faturalar<span class="c">0</span></a><a>${I.q}Ürün Soruları<span class="c">2</span></a><span class="grp">Entegrasyon</span><a>${I.link}Entegrasyonlar</a><a>${I.layers}Eşleştirmeler</a><a>${I.jobs}İşlem Takibi</a></nav><div style="display:grid;gap:2px;padding:8px;border-top:1px solid var(--line)"><a class="dnav" style="padding:0"><a style="display:flex;align-items:center;gap:12px;height:44px;padding:0 12px;color:var(--muted);font-size:14.5px">${I.gear}Sistem Ayarları</a></a><div class="row" style="padding:10px 12px"><span class="logo" style="width:32px;height:32px;background:var(--primary-soft);color:var(--violet);border-radius:50%">RA</span><b class="grow" style="font-size:13.5px">Ravencia Admin</b><span class="badge bad">Çıkış</span></div></div></aside>`))
+
+add('Genel Bakış', 'Operasyon kartları 2×3, performans tek kart: dönem seçimi tam genişlikte, metrikler yatay kaydırılır, grafik kart genişliğinde; kanallar grafiğin altında. Entegrasyon durumu pazar yeri başına kart.', phone(topbar('Genel Bakış') + `<div class="page">${ph('Operasyon Merkezi', 'Genel Bakış', '', `<div class="acts one"><button class="btn">${I.dl}Raporu İndir</button></div>`)}
+  <div class="mets" style="grid-template-columns:1fr 1fr">${[['Bekleyen Sipariş', 10, 'warn'], ['Geciken Sipariş', 0, ''], ['Bekleyen İade', 1, 'warn'], ['Bekleyen Fatura', 59, ''], ['Yaklaşan Fatura', 0, ''], ['Düşük Stok', 241, 'warn']].map(([l, v, t]) => `<div class="met ${t}"><small>${l}</small><strong class="num">${v}</strong></div>`).join('')}</div>
+  <section class="card" style="padding:0;gap:0"><div style="display:grid;gap:10px;padding:12px"><div class="between"><b>Performans</b><span class="meta">Tüm Platformlar</span></div><div class="seg"><button>7 Gün</button><button class="on">30 Gün</button><button>90 Gün</button><button>Özel</button></div></div>
+  <div class="tabs" style="margin:0;padding:0 12px 12px;gap:8px">${[['Toplam Gelir', '₺476.997', '-%4,1', 1], ['Toplam Sipariş', '500', '-%1'], ['Ortalama Sepet', '₺954', '-%3,1'], ['Aktif Ürün', '962', '']].map(([l, v, t, on]) => `<div class="met" style="flex:none;width:150px;${on ? 'border-color:color-mix(in srgb,var(--primary) 70%,transparent);background:var(--primary-soft)' : ''}"><small>${l}</small><strong class="num" style="font-size:18px">${v}</strong><span style="color:var(--bad)">${t}</span></div>`).join('')}</div>
+  <div style="padding:0 12px 12px;display:grid;gap:8px"><b style="font-size:13px">Günlük Ciro</b><svg class="chart" viewBox="0 0 340 150"><g stroke="var(--line)">${[20, 52, 84, 116].map(y => `<line x1="34" x2="336" y1="${y}" y2="${y}"/>`).join('')}</g><g fill="var(--subtle)" font-size="9">${['₺24B', '₺16B', '₺8B', '₺0'].map((t, i) => `<text x="30" y="${23 + i * 32}" text-anchor="end">${t}</text>`).join('')}</g><path d="M36 60 L66 40 L96 46 L126 30 L156 72 L186 54 L216 80 L246 62 L276 44 L306 68 L336 52 L336 116 L36 116Z" fill="color-mix(in srgb,#8b5cf6 18%,transparent)"/><path d="M36 60 L66 40 L96 46 L126 30 L156 72 L186 54 L216 80 L246 62 L276 44 L306 68 L336 52" fill="none" stroke="var(--violet)" stroke-width="2"/><g fill="var(--subtle)" font-size="9" text-anchor="middle"><text x="36" y="132">18</text><text x="126" y="132">23</text><text x="216" y="132">1 Eki</text><text x="306" y="132">13</text></g></svg></div>
+  <div style="display:grid;gap:8px;padding:12px;border-top:1px solid var(--line)"><b style="font-size:13px">Kanallara Göre Ciro</b>${[['TY', 'Trendyol', 93, '₺443.329'], ['HB', 'Hepsiburada', 5, '₺25.251'], ['N11', 'N11', 1, '₺5.720']].map(([k, n, s, v]) => `<div class="row">${logo(k)}<span class="grow" style="display:grid;gap:4px"><span class="between" style="font-size:13px"><span>${n}</span><span class="meta num">${v}</span></span><span class="bar"><b style="width:${s}%;background:${P[k][0]}"></b></span></span><b class="num" style="font-size:13px;width:36px;text-align:right">%${s}</b></div>`).join('')}</div></section>
+  <section class="card"><div class="between"><b>Entegrasyon Durumu</b><span class="badge warn"><i></i>3 konu</span></div>${[['HB', 'Hepsiburada', [['Sipariş', 'ok', 'Az önce'], ['Stok', 'warn', '23 sa'], ['Fatura', 'ok', '2 dk']]], ['PZ', 'Pazarama', [['Sipariş', 'ok', 'Az önce'], ['Stok', 'bad', 'Durdu'], ['Fiyat', 'bad', 'Durdu']]]].map(([k, n, cells]) => `<div style="display:grid;gap:8px;padding:10px;background:var(--bg);border:1px solid var(--line);border-radius:12px"><div class="row">${logo(k)}<b class="grow" style="font-size:13.5px">${n}</b>${I.right}</div><div class="g3">${cells.map(([l, s, v]) => `<span style="display:grid;gap:2px"><span class="meta">${l}</span><span class="mx ${s}"><i></i>${v}</span></span>`).join('')}</div></div>`).join('')}</section>
+</div>`))
+
+add('Siparişler · Liste', 'Satır yerine kart: üstte pazar yeri, sipariş no ve tarih; renkli süre şeridi; ürün satırları 2 satır başlık ve kodlarla; fatura durumu ve toplam; iki eylem yan yana. Filtreler tek düğmede, seçilenler çip olarak görünür.', phone(topbar('Siparişler') + `<div class="page">${ph('Pazaryeri Operasyonu', 'Siparişler', '', `<div class="acts"><button class="btn">${I.dl}Dışa Aktar</button><button class="btn primary">${I.sync}Senkronize Et</button></div>`)}
+  <div class="mets">${[['Yeni', '10', 'warn'], ['Geciken', '0', 'bad'], ['Kargoda', '63', ''], ['Fatura Bekleyen', '59', '']].map(([l, v, t]) => `<div class="met ${t}"><small>${l}</small><strong class="num">${v}</strong></div>`).join('')}</div>
+  ${tabs([['Tümü', '1.880'], ['Yeni', '10', 1], ['İşleme Alınan', '0'], ['Kargoda', '63'], ['Teslim Edildi', '1.738'], ['İptal', '67']], 1)}
+  ${toolbar('Sipariş no, müşteri, barkod', 2)}
+  <div class="chips"><span class="chip">Trendyol<span class="x">${I.close}</span></span><span class="chip">Fatura Bekliyor<span class="x">${I.close}</span></span></div>
+  <div class="listhead"><span><b>1.874</b> sipariş</span><button class="btn link">Seç</button></div>
+  ${ORDERS.map(o => orderCard(o)).join('')}
+</div>`))
+
+add('Siparişler · Toplu Seçim', 'Karta uzun basınca seçim modu açılır: kartlarda onay kutusu, üstte seçim sayısı ve Tümünü Seç, altta sabit eylem çubuğu (etiket yazdır, kargo değiştir, diğer).', phone(`<div class="tb"><button class="ib">${I.close}</button><span class="t">2 sipariş seçildi</span><button class="btn quiet" style="height:36px">Tümünü Seç</button></div><div class="page">${orderCard(ORDERS[0], true)}${orderCard(ORDERS[1], true)}${orderCard(ORDERS[2], false)}</div>`, `<div class="bottombar"><div class="between"><span><b>2 sipariş</b> <small>· ₺1.714,03</small></span><button class="btn link">Temizle</button></div><div class="acts three"><button class="btn">${I.truck}Kargo</button><button class="btn">${I.more}Diğer</button><button class="btn primary">${I.print}Etiket (2)</button></div></div>`))
+
+add('Siparişler · Filtre', 'Filtre düğmesi alttan sayfa açar: platform, tarih, kargo, fatura durumu ve sıralama tek listede; büyük dokunma alanları; altta Temizle ve sonuç sayılı Uygula.', phone(topbar('Siparişler') + `<div class="page">${ph('Pazaryeri Operasyonu', 'Siparişler', '')}${toolbar('Sipariş no, müşteri, barkod', 2)}</div>`, `<div class="scrim"></div><div class="sheet"><div><div class="grab"></div><div class="sh"><h3>Filtrele<small>2 filtre seçili</small></h3><button class="ib">${I.close}</button></div></div><div class="sb">
+  <div class="sec"><h4>Platform</h4><div class="chips">${['TY', 'HB', 'N11', 'PZ', 'SH'].map((k, i) => `<span class="chip" style="height:36px;padding:0 12px;${i === 0 ? 'border-color:var(--primary);background:var(--primary-soft)' : ''}">${logo(k)}${['Trendyol', 'Hepsiburada', 'N11', 'Pazarama', 'Shopify'][i]}</span>`).join('')}</div></div>
+  <div class="sec"><h4>Sipariş Tarihi</h4><div class="fld"><span class="in ph">Başlangıç – Bitiş ${I.chev}</span></div></div>
+  <div class="sec"><h4>Fatura Durumu</h4><div class="opts">${['Tümü', 'Fatura Bekliyor', 'Faturası Mevcut', 'Fatura İletilemedi'].map((l, i) => `<span class="opt ${i === 1 ? 'on' : ''}"><span class="radio"></span>${l}</span>`).join('')}</div></div>
+  <div class="sec"><h4>Sıralama</h4><div class="opts">${['En Yeni Siparişler', 'Teslim Tarihi Yaklaşanlar'].map((l, i) => `<span class="opt ${i === 0 ? 'on' : ''}"><span class="radio"></span>${l}</span>`).join('')}</div></div>
+</div><div class="sf"><button class="btn">Temizle</button><button class="btn primary">48 Sonucu Göster</button></div></div>`))
+
+add('Sipariş Detayı', 'Kart tıklanınca tam ekran ayrıntı: üstte durum ve süre, alıcı ve teslimat, ürünler, tutarlar, fatura ve kargo bölümleri; altta sabit “Kargo Etiketini Yazdır” ve “İşlemler”.', phone(`<div class="tb"><button class="ib">${I.back}</button><span class="t">#11720684592</span><button class="ib">${I.more}</button></div><div class="page">
+  <div class="row">${wm('TY')}<span class="badge info"><i></i>Yeni</span><span class="grow"></span><span class="meta">17.10.2026 22:15</span></div>
+  <div class="strip warn">${I.clock}Kargoya verme süresi<b>2 gün 3 sa 39 dk</b></div>
+  <div class="sec"><h4>Alıcı ve Teslimat</h4><div class="kvt"><div><span>Alıcı</span><b>Melike nur Bayoğlu</b></div><div><span>Teslimat Adresi</span><b>Kadıköy / İstanbul</b></div><div><span>Kargo</span><b>Trendyol Express</b></div><div><span>Takip No</span><b class="num">7330038110398301</b></div></div></div>
+  <div class="sec"><h4>Ürünler · 1</h4><div class="card" style="padding:10px"><div class="pl"><span class="img"><span class="q">1</span></span><div style="display:grid;gap:4px;min-width:0"><span class="pt">Kadın Bordo Dik Çizgi Desenli Dantel Detaylı Bluz</span><span class="kv"><span>Barkod</span><b class="num">MZ043DDC12</b><span>Stok Kodu</span><b class="num">MZ043DDC12</b><span>Renk · Beden</span><b>Bordo · 2XL</b></span></div><span class="price num">₺890,01</span></div></div></div>
+  <div class="sec"><h4>Tutarlar</h4><div class="kvt"><div><span>Satış Tutarı</span><b class="num">₺899,00</b></div><div><span>Satıcı İndirimi</span><b class="num">−₺8,99</b></div><div class="total"><span>Faturalanacak Tutar</span><b class="num">₺890,01</b></div></div></div>
+  <div class="sec"><h4>Fatura</h4><div class="card" style="padding:10px"><div class="between">${ring('Fatura Bekliyor', 'wait', .2)}<button class="btn" style="height:34px">Fatura Oluştur</button></div></div></div>
+</div>`, `<div class="bottombar"><div class="acts"><button class="btn">${I.more}İşlemler</button><button class="btn primary">${I.print}Kargo Etiketi</button></div></div>`))
+
+add('Ürünler · Liste', 'Ürün kartı: görsel, ad, model kodu; altında fiyat · stok · varyant üçlüsü dokununca hızlı düzenleme açar; platform işaretleri ve durum tek satırda. Düşük stok kartı ayrıntıya götürür.', phone(topbar('Ürünler') + `<div class="page">${ph('Katalog', 'Ürünler', '', `<div class="acts"><button class="btn">${I.up}Platformdan Aktar</button><button class="btn primary">${I.plus}Yeni Ürün</button></div>`)}
+  <div class="mets">${[['Toplam Ürün', '962', ''], ['Aktif Ürün', '962', ''], ['Stoksuz', '385', 'bad'], ['Düşük Stoklu', '240', 'warn']].map(([l, v, t]) => `<div class="met ${t}"><small>${l}</small><strong class="num">${v}</strong>${t === 'warn' ? '<span style="color:var(--violet)">Ayrıntıları Gör →</span>' : ''}</div>`).join('')}</div>
+  ${tabs([['Tüm Ürünler', '962'], ['Satışa Açık', '962'], ['Taslak', '0'], ['Satışa Kapalı', '0']])}
+  ${toolbar('Ürün adı, SKU, barkod')}
+  <div class="listhead"><span><b>225</b> ürün kartı</span><button class="btn link">Seç</button></div>
+  ${[['Kışlık Yonca Çiçek Desenli Taşlı Yırtmaçlı Likralı Bluz', 'RYP005', '₺599,00', '41', '18', true], ['Kadın Likralı Orta Yaş ve Üzeri Dört Mevsim Siyah Bluz', 'ANNE0024', '₺0,00', '0', '7', false], ['Kadın Dik Yaka Asimetrik Kesim Vatkalı Zebra Desenli Bluz', 'TK210344', '₺549,00', '3', '1', true]].map(([t, m, pr, st, v, ty]) => `<article class="card"><div class="pl" style="grid-template-columns:52px minmax(0,1fr) auto"><span class="img"></span><div style="display:grid;gap:4px;min-width:0"><span class="pt">${t}</span><span class="meta">Model Kodu: <b class="ink num">${m}</b></span></div><button class="ib" style="width:32px;height:32px">${I.more}</button></div>
+  <div class="g3" style="padding:8px;background:var(--bg);border:1px solid var(--line);border-radius:10px"><span style="display:grid"><span class="meta">Fiyat</span><b class="num">${pr}</b></span><span style="display:grid"><span class="meta">Stok</span><b class="num" style="${st === '0' ? 'color:var(--bad)' : ''}">${st === '0' ? 'Stoksuz' : st + ' adet'}</b></span><span style="display:grid"><span class="meta">Varyant</span><b class="num">${v}</b></span></div>
+  <div class="between"><span class="pm">${['TY', 'HB', 'N11', 'PZ', 'SH'].map((k, i) => `<span>${logo(k).replace('class="logo"', `class="logo ${(i === 0 && ty) || i === 4 ? '' : 'off'}"`)}${(i === 0 && ty) || i === 4 ? '<i></i>' : ''}</span>`).join('')}</span>${ring('Satışa Açık', 'ok', 1)}</div></article>`).join('')}
+</div>`))
+
+add('Ürünler · Hızlı Fiyat ve Stok', 'Fiyat veya stok kutusuna dokununca alttan sayfa: renk grupları açılır kapanır, her varyantta stok ve fiyat yan yana büyük kutularda; altta “Seçilenlere Uygula”.', phone(topbar('Ürünler') + `<div class="page">${ph('Katalog', 'Ürünler', '')}</div>`, `<div class="scrim"></div><div class="sheet" style="max-height:90%"><div><div class="grab"></div><div class="sh"><h3>Fiyat ve Stok<small>RYP005 · 18 varyant</small></h3><button class="ib">${I.close}</button></div></div><div class="sb">
+  <div class="sec"><h4>Varyantlar</h4>${['Haki', 'Mor'].map((c, gi) => `<div style="display:grid;border:1px solid var(--line);border-radius:12px;overflow:hidden"><div class="row" style="height:46px;padding:0 12px;background:var(--raised)"><span class="cbx ${gi === 0 ? 'on' : ''}"></span><b class="grow">${c}</b><span class="meta">3 varyant</span>${I.chev}</div>${gi === 0 ? ['M', 'L', 'XL'].map((s, i) => `<div style="display:grid;grid-template-columns:20px minmax(0,1fr) 72px 92px;gap:8px;align-items:center;padding:8px 12px;border-top:1px solid var(--line)"><span class="cbx on"></span><span style="display:grid;min-width:0"><b style="font-weight:500">${s}</b><span class="meta">RYP005-HAK-${s}</span></span><span class="in num" style="height:40px;font-size:14px">${[4, 5, 5][i]}</span><span class="in num" style="height:40px;font-size:14px">599,00</span></div>`).join('') : ''}</div>`).join('')}</div>
+  <div class="sec"><h4>Seçilenlere Uygula · 3 varyant</h4><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div class="fld"><small>Satış Fiyatı</small><span class="in ph">Değiştirme</span></div><div class="fld"><small>Stok</small><span class="in ph">Miktar</span></div></div></div>
+</div><div class="sf"><button class="btn">Vazgeç</button><button class="btn primary">Uygula</button></div></div>`))
+
+add('Ürün Düzenle', 'Sihirbaz yerine bölüm sekmeleri (yatay kaydırma, eksik sayısı kırmızı); alanlar tek sütun ve büyük; varyantlar renk grubu kartları; altta sabit Kaydet ve Yayınla.', phone(`<div class="tb"><button class="ib">${I.back}</button><span class="t">Ürün Düzenle</span><span class="badge ok"><i></i>Kaydedildi</span></div><div class="page">
+  ${tabs([['Genel', '✓'], ['Görseller', '6'], ['Özellikler', '2', 1], ['Varyantlar', '18'], ['Yayınlama', '2/5']])}
+  <div class="sec"><h4>Temel Bilgiler</h4><div class="fld"><small>Ürün Adı</small><span class="in" style="height:auto;min-height:44px;padding:10px 12px;white-space:normal;line-height:1.4">Kışlık Yonca Çiçek Desenli Taşlı Yırtmaçlı Likralı Kadın Anne Penye Bluz</span></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div class="fld"><small>Satış Durumu</small><span class="in">Satışa Açık ${I.chev}</span></div><div class="fld"><small>Marka</small><span class="in">Ravencia ${I.chev}</span></div><div class="fld"><small>Kategori</small><span class="in">Bluz ${I.chev}</span></div><div class="fld"><small>Model Kodu</small><span class="in num">RYP005</span></div></div></div>
+  <div class="sec"><h4>Fiyat ve Stok</h4><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div class="fld"><small>Liste Fiyatı</small><span class="in num">649,00</span></div><div class="fld"><small>Satış Fiyatı</small><span class="in num">599,00</span></div><div class="fld"><small>KDV Oranı</small><span class="in">%10 ${I.chev}</span></div><div class="fld"><small>Desi</small><span class="in num">1</span></div></div></div>
+  <div class="sec"><h4>Görseller</h4><div style="display:flex;gap:8px;overflow-x:auto;margin:0 -16px;padding:0 16px">${Array.from({ length: 5 }, () => '<span class="img" style="width:72px;flex:none"></span>').join('')}<span class="img" style="width:72px;flex:none;display:grid;place-items:center;background:none;border-style:dashed;color:var(--subtle)">${I.cam}</span></div></div>
+</div>`, `<div class="bottombar"><div class="between"><span><b>3 alan değişti</b> <small>· Özellikler: 2 eksik</small></span></div><div class="acts"><button class="btn">Kaydet</button><button class="btn primary">Yayınlamaya Geç</button></div></div>`))
+
+add('İadeler', 'Sipariş kartıyla aynı düzen: iade nedeni ve müşteri notu kartta, kalan karar süresi şeritte; Onayla / Reddet yan yana, ayrıntı tam ekranda.', phone(topbar('İadeler') + `<div class="page">${ph('Pazaryeri Operasyonu', 'İadeler', '')}
+  <div class="mets">${[['Aksiyon Bekleyen', '1', 'warn'], ['Taşımada', '4', ''], ['Bu Ay Onaylanan', '23', ''], ['İhtilaflı', '0', '']].map(([l, v, t]) => `<div class="met ${t}"><small>${l}</small><strong class="num">${v}</strong></div>`).join('')}</div>
+  ${tabs([['Tümü', '311'], ['Aksiyon Bekliyor', '1', 1], ['Kargoda', '4'], ['Onaylandı', '290'], ['Reddedildi', '16']], 1)}
+  ${toolbar('İade no, sipariş no, müşteri')}
+  <article class="card"><div class="between"><span class="row">${wm('TY')}<span class="ono num">#R-88412</span></span><span class="meta">16.10 18:40</span></div><div class="strip warn">${I.clock}Karar için kalan süre<b>1 gün 6 sa</b></div><div class="between"><span class="muted" style="font-size:13px">Fatma Yıldız</span><span class="meta">Sipariş #11698245520</span></div><div class="pl"><span class="img"><span class="q">1</span></span><div style="display:grid;gap:4px;min-width:0"><span class="pt">Kadın Bordo Dik Çizgi Desenli Dantel Detaylı Bluz</span><span class="kv"><span>Neden</span><b>Beden büyük geldi</b><span>Not</span><b>“Bir beden küçüğü ile değişim istiyorum.”</b></span></div><span class="price num">₺890,01</span></div><div class="between">${ring('Aksiyon Bekliyor', 'wait', .6)}<button class="btn link">Ayrıntı ${I.right}</button></div><div class="cacts"><button class="btn danger">Reddet</button><button class="btn primary">${I.check}Onayla</button></div></article>
+</div>`))
+
+add('Faturalar', 'Fatura kartı: sipariş ve müşteri, tutar, belge durumu; e-Arşiv/e-Fatura etiketi; Görüntüle ve İndir yan yana. Yaklaşan son tarih kırmızı şeritte.', phone(topbar('Faturalar') + `<div class="page">${ph('Muhasebe', 'Faturalar', '', `<div class="acts"><button class="btn">${I.up}Fatura Yükle</button><button class="btn primary">${I.plus}Toplu Oluştur</button></div>`)}
+  ${tabs([['Tümü', '1.912'], ['Faturasız', '59', 1], ['Faturalı', '1.840'], ['Süresi Yaklaşan', '0'], ['Gizli', '13']], 1)}
+  ${toolbar('Fatura no, sipariş no, müşteri')}
+  ${[['GIB2026000184', 'Melike nur Bayoğlu', '₺890,01', 'Fatura Bekliyor', 'wait', 'Son gün: 24.10', 'e-Arşiv'], ['RAV2026001833', 'Gülser Karakoç', '₺824,02', 'Faturası Mevcut', 'ok', '', 'e-Fatura']].map(([no, b, t, s, tone, due, kind], i) => `<article class="card"><div class="between"><span class="row">${wm(i ? 'HB' : 'TY')}<span class="ono num">${i ? no : 'Taslak'}</span></span><span class="badge">${kind}</span></div>${due ? `<div class="strip bad">${I.clock}Fatura son tarihi<b>${due}</b></div>` : ''}<div class="kvt"><div><span>Müşteri</span><b>${b}</b></div><div><span>Sipariş</span><b class="num">#1172068459${i}</b></div><div class="total"><span>Tutar</span><b class="num">${t}</b></div></div><div class="between">${ring(s, tone, i ? 1 : .2)}</div><div class="cacts">${i ? '<button class="btn">Görüntüle</button><button class="btn">' + I.dl + 'İndir</button>' : '<button class="btn">Bilgiler</button><button class="btn primary">Fatura Oluştur</button>'}</div></article>`).join('')}
+</div>`))
+
+add('Ürün Soruları', 'Gelen kutusu gibi: soru kartında ürün, müşteri ve süre; açınca sohbet görünümü ve altta sabit yanıt kutusu, hazır yanıt seçimi tek dokunuş.', phone(`<div class="tb"><button class="ib">${I.back}</button><span class="t">Soru · Trendyol</span><span class="badge warn"><i></i>Yanıt bekliyor</span></div><div class="page" style="gap:10px">
+  <div class="card" style="padding:10px"><div class="pl"><span class="img"></span><div style="display:grid;gap:4px;min-width:0"><span class="pt">Kışlık Yonca Çiçek Desenli Taşlı Yırtmaçlı Likralı Bluz</span><span class="meta">Model Kodu: <b class="ink">RYP005</b></span></div><span></span></div></div>
+  <div class="strip warn">${I.clock}Yanıt süresi<b>14 sa 20 dk</b></div>
+  <span class="meta" style="text-align:center">Bugün 09:12 · Ayşe K.</span>
+  <div class="msg">Merhaba, 1,65 boy 70 kg için hangi bedeni önerirsiniz? Kumaşı esniyor mu?</div>
+  <div class="msg me">Merhaba Ayşe Hanım, likralı penye kumaşı esnektir; ölçüleriniz için L beden uygun olacaktır. İyi günler dileriz.</div>
+  <span class="meta" style="text-align:right">Taslak · gönderilmedi</span>
+</div>`, `<div class="bottombar"><div class="chips"><span class="chip" style="padding-right:10px">Beden önerisi</span><span class="chip" style="padding-right:10px">Kargo süresi</span><span class="chip" style="padding-right:10px">Stok bilgisi</span></div><div style="display:grid;grid-template-columns:minmax(0,1fr) 44px;gap:8px"><span class="in ph" style="height:44px">Yanıtınızı yazın…</span><button class="btn primary" style="height:44px;padding:0">${I.send}</button></div></div>`))
+
+add('Entegrasyonlar', 'Her bağlantı bir kart: durum, son eşitleme ve veri türlerinin durum noktaları; Test Et ve Ayarlar yan yana. Yeni bağlantı üstte tek düğme.', phone(topbar('Entegrasyonlar') + `<div class="page">${ph('Bağlantılar', 'Entegrasyonlar', '', `<div class="acts one"><button class="btn primary">${I.plus}Pazar Yeri Bağla</button></div>`)}
+  ${[['TY', 'Trendyol', 'Mağaza 930112', 'ok', 'Aktif', [['Sipariş', 'ok', '1 dk'], ['Ürün', 'ok', '24 sa'], ['Stok', 'ok', '51 dk']]], ['HB', 'Hepsiburada', 'Mağaza 62201bf1…', 'ok', 'Aktif', [['Sipariş', 'ok', 'Az önce'], ['Ürün', 'off', 'Yok'], ['Stok', 'warn', '23 sa']]], ['PZ', 'Pazarama', 'Mağaza Pazarama', 'bad', 'Hata', [['Sipariş', 'ok', 'Az önce'], ['Stok', 'bad', 'Durdu'], ['Fiyat', 'bad', 'Durdu']]]].map(([k, n, s, t, l, cells]) => `<article class="card"><div class="row">${logo(k).replace('class="logo"', 'class="logo" style="width:36px;height:36px;font-size:14px;border-radius:9px;background:' + P[k][0] + '"')}<span class="grow" style="display:grid"><b>${n}</b><span class="meta">${s}</span></span><span class="badge ${t}"><i></i>${l}</span></div>${t === 'bad' ? `<div class="strip bad">${I.alert}İstek reddedildi: fiyat ve stok değişmemiş<b></b></div>` : ''}<div class="g3">${cells.map(([cl, cs, cv]) => `<span style="display:grid;gap:2px"><span class="meta">${cl}</span><span class="mx ${cs}"><i></i>${cv}</span></span>`).join('')}</div><div class="cacts"><button class="btn">Test Et</button><button class="btn">Ayarlar</button></div></article>`).join('')}
+</div>`))
+
+add('Eşleştirmeler', 'Kategori ve özellik eşleştirmesi iki adımlı: önce panel kategorisi listesi (eşlenmemişler üstte), dokununca pazar yeri karşılığını arama sayfası.', phone(topbar('Eşleştirmeler') + `<div class="page">${ph('Katalog', 'Eşleştirmeler', '')}
+  ${tabs([['Kategoriler', '19'], ['Özellikler', '42', 1], ['Değerler', '310']])}
+  <div class="seg">${['TY', 'HB', 'N11', 'PZ'].map((k, i) => `<button class="${i === 1 ? 'on' : ''}" style="display:inline-flex;align-items:center;justify-content:center;gap:6px">${logo(k).replace('class="logo"', 'class="logo" style="width:16px;height:16px;font-size:8px;border-radius:4px;background:' + P[k][0] + '"')}${['Trendyol', 'HB', 'N11', 'PZ'][i]}</button>`).join('')}</div>
+  ${toolbar('Kategori ara')}
+  ${[['Bluz', 'Kadın > Giyim > Bluz', 'bad', '2 özellik eksik'], ['Tunik', 'Kadın > Giyim > Tunik', 'ok', 'Tamamı eşli'], ['Elbise', 'Kadın > Giyim > Elbise', 'warn', 'Önerilen 3 değer'], ['Pantolon', 'Eşlenmedi', 'bad', 'Kategori seçin']].map(([n, m, t, s]) => `<article class="card" style="grid-template-columns:minmax(0,1fr) auto;align-items:center"><span style="display:grid;gap:2px;min-width:0"><b>${n}</b><span class="meta">${m}</span><span class="badge ${t}" style="justify-self:start;margin-top:4px"><i></i>${s}</span></span>${I.right}</article>`).join('')}
+</div>`))
+
+add('İşlem Takibi', 'İş kartı: tür, bağlantı, ilerleme çubuğu ve sayılar; hatalılar üstte kırmızı şeritle, nedeni ve Yeniden Dene düğmesiyle.', phone(topbar('İşlem Takibi') + `<div class="page">${ph('Sistem', 'İşlem Takibi', '')}
+  <div class="mets">${[['Çalışan', '3', ''], ['Sırada', '12', ''], ['Tamamlanamayan', '268', 'bad'], ['Karar Bekleyen', '63', 'warn']].map(([l, v, t]) => `<div class="met ${t}"><small>${l}</small><strong class="num">${v}</strong></div>`).join('')}</div>
+  ${tabs([['Tümü', null], ['Çalışan', '3'], ['Hatalı', '268', 1], ['Karar Bekleyen', '63']], 0)}
+  <article class="card"><div class="row">${logo('TY')}<span class="grow" style="display:grid"><b style="font-size:13.5px">Ürün Aktarımı</b><span class="meta">Trendyol · 2 dk önce başladı</span></span><span class="badge info"><i></i>Çalışıyor</span></div><span class="bar"><b style="width:64%;background:var(--primary)"></b></span><div class="g3"><span style="display:grid"><span class="meta">Alınan</span><b class="num">612</b></span><span style="display:grid"><span class="meta">İşlenen</span><b class="num">598</b></span><span style="display:grid"><span class="meta">Hatalı</span><b class="num" style="color:var(--bad)">4</b></span></div><div class="cacts"><button class="btn">Ayrıntı</button><button class="btn danger">Durdur</button></div></article>
+  <article class="card"><div class="row">${logo('PZ')}<span class="grow" style="display:grid"><b style="font-size:13.5px">Fiyat ve Stok Gönderimi</b><span class="meta">Pazarama · 18 dk önce</span></span><span class="badge bad"><i></i>Tamamlanamadı</span></div><div class="strip bad">${I.alert}İndirimli fiyat ve stok önceki değerle aynı<b></b></div><div class="cacts"><button class="btn">Ayrıntı</button><button class="btn primary">${I.sync}Yeniden Dene</button></div></article>
+</div>`))
+
+add('Ayarlar', 'Ayar grupları liste olarak; dokununca alt sayfa açılır. Her satırda kısa açıklama ve mevcut değer; arama üstte.', phone(topbar('Sistem Ayarları') + `<div class="page">${ph('Sistem', 'Ayarlar', '')}
+  <span class="search">${I.search}Ayar ara</span>
+  ${[['Genel', [['Firma Bilgileri', 'Ravencia Tekstil'], ['Görünüm', 'Koyu tema'], ['Bildirimler', '4 kanal açık']]], ['Operasyon', [['Kargo ve Etiket', 'Sticker · 100×100'], ['Fatura Entegratörü', 'GİB e-Arşiv'], ['Stok Kuralları', 'Güvenlik stoğu 2']]], ['Güvenlik', [['Kullanıcılar ve Roller', '6 kullanıcı'], ['İki Adımlı Doğrulama', 'Açık']]]].map(([g, items]) => `<div class="sec"><h4>${g}</h4><div class="kvt">${items.map(([l, v]) => `<div style="align-items:center"><span style="display:grid;color:var(--ink)">${l}<small class="meta">${v}</small></span>${I.right}</div>`).join('')}</div></div>`).join('')}
+</div>`))
+
+const RULES = [
+  ['Tek kural seti', 'Telefon ≤760px, tablet 761–1100px. Tablet iki sütun kart, telefon tek sütun; masaüstü tablosu değişmez.'],
+  ['Dokunma alanı', 'Düğmeler 40px, form alanları 44px yüksek, 16px yazı (iOS yakınlaştırmaz). Simge düğmeleri 40×40.'],
+  ['Yan yana düğmeler', 'Sayfa başı ve kart eylemleri ikişer yan yana; en önemli eylem sağda ve mor. Az kaydırma.'],
+  ['Sabit alt çubuk', 'Seçim, ayrıntı ve düzenleme ekranlarında ana eylemler altta sabit; parmağın erişeceği yerde.'],
+  ['Filtre sayfası', 'Filtreler tek düğmede toplanır, alttan açılan sayfada tek liste; seçilenler listenin üstünde çip.'],
+  ['Kart düzeni', 'Satır = kart: kimlik, süre şeridi, ürünler, durum, iki eylem. Kodlar kesilmez, gerekiyorsa alt satıra iner.'],
+]
+
+document.getElementById('root').innerHTML = `<header class="head"><div class="crumb">Tüm Panel · Telefon</div><h1>Mobil Görünüm · Tüm Sayfalar</h1><p>Panelin bütün sayfalarının telefon (375px) tasarımı, yeni tasarım dilinde. Tablolar karta, açılır menüler alttan açılan sayfaya, toplu işlemler sabit alt çubuğa dönüşür. Telefon çerçevelerinin içi kaydırılabilir. Onaylarsanız sayfa sayfa canlıya uygulanır.</p></header><div class="rules">${RULES.map(([t, d]) => `<div class="rule"><b>${t}</b>${d}</div>`).join('')}</div><div class="gallery">${F.map(([t, n, h]) => `<section class="frame"><header><b>${t}</b><p>${n}</p></header>${h}</section>`).join('')}</div>`
+</script>
+</body>
+</html>
