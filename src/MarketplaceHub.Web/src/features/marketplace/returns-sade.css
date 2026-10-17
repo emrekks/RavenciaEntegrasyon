@@ -879,8 +879,8 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl .rr-cargocell .rr-cargo-img { max-width: 100%; object-position: center; }
 @media (max-width: 1100px) { :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl .rr-cargocell .rr-cargo-img { object-position: left center; } }
 /* the page frame of the proposal (28px 24px 96px; 16px sides on phones) */
-.app-shell.stitch-shell > main > .content.f3.rr { padding: 28px 24px 96px; }
-@media (max-width: 760px) { .app-shell.stitch-shell > main > .content.f3.rr { padding: 16px 16px 96px; } }
+.app-shell.stitch-shell > main > .content.f3.rr { padding: 28px 24px; }
+@media (max-width: 760px) { .app-shell.stitch-shell > main > .content.f3.rr { padding: 16px; } }
 /* the panel's global control rules (44px fields, 500 weight on every button) give way to the proposal's sizes */
 :is(main .rr.rr, .rr-layer.rr-layer) :is(.rr-in, .rr-trigger, .rr-btn, .rr-icon-btn, .rr-fbtn, .rr-switch) { min-height: 0; }
 :is(main .rr.rr, .rr-layer.rr-layer) :is(.rr-opt, .rr-menu > button) { justify-content: flex-start; }
