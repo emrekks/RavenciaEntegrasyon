@@ -6,7 +6,7 @@ import './returns-sade.css'
 // Building blocks of the returns page, as drawn in docs/tasarim-onerileri/iadeler-yeni.html. Class names carry the
 // "rr-" prefix of returns-sade.css.
 
-type IconName = 'search' | 'chev' | 'left' | 'right' | 'cal' | 'down' | 'up' | 'filter' | 'copy' | 'open' | 'close' | 'doc' | 'check' | 'box' | 'refresh' | 'upload' | 'alert' | 'info' | 'print' | 'arrowR' | 'image' | 'clock'
+type IconName = 'search' | 'chev' | 'left' | 'right' | 'cal' | 'down' | 'up' | 'filter' | 'copy' | 'open' | 'close' | 'doc' | 'check' | 'box' | 'refresh' | 'upload' | 'alert' | 'info' | 'print' | 'arrowR' | 'image' | 'clock' | 'truck' | 'play' | 'edit' | 'ban' | 'export' | 'import' | 'plus' | 'trash' | 'dup' | 'price' | 'on' | 'off' | 'sortv'
 
 const iconPaths: Record<IconName, [ReactNode, number]> = {
   search: [<><circle cx="7" cy="7" r="4.5" /><path d="m10.5 10.5 3 3" /></>, 16],
@@ -31,6 +31,19 @@ const iconPaths: Record<IconName, [ReactNode, number]> = {
   arrowR: [<path d="M3 8h10M9 4l4 4-4 4" />, 14],
   image: [<><rect x="2" y="3" width="12" height="10" rx="1.5" /><circle cx="6" cy="6.5" r="1.2" /><path d="m2.5 12 4-4 3 3 2-2 2.5 2.5" /></>, 28],
   clock: [<><circle cx="8" cy="8" r="6" /><path d="M8 4.8V8l2 1.3" /></>, 14],
+  truck: [<><path d="M1.8 4h7.7v7H1.8zM9.5 6.5h2.8l2 2.3V11H9.5" /><circle cx="4.5" cy="11.8" r="1.2" /><circle cx="11.8" cy="11.8" r="1.2" /></>, 16],
+  play: [<path d="M5 3.5v9l7-4.5z" />, 16],
+  edit: [<path d="M10.5 2.8 13.2 5.5 6 12.7l-3.2.5.5-3.2z" />, 16],
+  ban: [<><circle cx="8" cy="8" r="5.8" /><path d="m4 12 8-8" /></>, 16],
+  export: [<><path d="M8 2.5v8M4.8 7.5 8 10.7l3.2-3.2" /><path d="M2.5 10.5v3h11v-3" /></>, 16],
+  import: [<><path d="M8 10.5V2.5M4.8 5.5 8 2.5l3.2 3" /><path d="M2.5 10.5v3h11v-3" /></>, 16],
+  plus: [<path d="M8 3v10M3 8h10" />, 16],
+  trash: [<path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 9h5.8l.6-9" />, 16],
+  dup: [<><rect x="5" y="5" width="8.5" height="8.5" rx="1.5" /><path d="M11 5V3.5a1 1 0 0 0-1-1H3.5a1 1 0 0 0-1 1V10a1 1 0 0 0 1 1H5" /></>, 16],
+  price: [<><path d="M2.5 8.6V2.5h6.1l5 5-6.1 6.1z" /><circle cx="5.6" cy="5.6" r="1" /></>, 16],
+  on: [<><circle cx="8" cy="8" r="5.8" /><path d="m5.5 8.2 1.7 1.7 3.4-3.6" /></>, 16],
+  off: [<><circle cx="8" cy="8" r="5.8" /><path d="M6.6 5.8v4.4M9.4 5.8v4.4" /></>, 16],
+  sortv: [<path d="M5 3v10M2.8 10.8 5 13l2.2-2.2M11 13V3M8.8 5.2 11 3l2.2 2.2" />, 14],
 }
 
 export function RrIcon({ name, size, className, style }: { name: IconName; size?: number; className?: string; style?: CSSProperties }) {
@@ -123,10 +136,10 @@ export function RrAnchor({ trigger, children, className }: { trigger: (open: boo
 // Popups: overlay, framed window with head, body and footer. Only the top window answers Escape.
 const modalStack: number[] = []
 let modalSeed = 0
-export function RrModal({ crumb, title, desc, size, flush, head, foot, onClose, children, label }: { crumb?: ReactNode; title: ReactNode; desc?: ReactNode; size?: 'sm' | 'md' | 'lg' | 'xl' | 'img'; flush?: boolean; head?: ReactNode; foot?: ReactNode; onClose: () => void; children: ReactNode; label?: string }) {
+export function RrModal({ crumb, title, desc, size, flush, head, foot, onClose, children, label, layerClass, modalClass, locked = false }: { crumb?: ReactNode; title: ReactNode; desc?: ReactNode; size?: 'sm' | 'md' | 'lg' | 'xl' | 'img'; flush?: boolean; head?: ReactNode; foot?: ReactNode; onClose: () => void; children: ReactNode; label?: string; layerClass?: string; modalClass?: string; locked?: boolean }) {
   const id = useRef(0)
   const close = useRef(onClose)
-  close.current = onClose
+  close.current = () => { if (!locked) onClose() }
   const dialog = useRef<HTMLDivElement>(null)
   useEffect(() => {
     id.current = ++modalSeed
@@ -136,9 +149,9 @@ export function RrModal({ crumb, title, desc, size, flush, head, foot, onClose, 
     dialog.current?.focus()
     return () => { document.removeEventListener('keydown', key); const index = modalStack.indexOf(id.current); if (index >= 0) modalStack.splice(index, 1) }
   }, [])
-  return createPortal(<div className="rr-layer">
+  return createPortal(<div className={['rr-layer', layerClass].filter(Boolean).join(' ')}>
     <div className="rr-overlay" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) close.current() }}>
-      <div ref={dialog} tabIndex={-1} className={`rr-modal${size ? ` rr-${size}` : ''}`} role="dialog" aria-modal="true" aria-label={label ?? (typeof title === 'string' ? title : undefined)}>
+      <div ref={dialog} tabIndex={-1} className={['rr-modal', size ? `rr-${size}` : '', modalClass].filter(Boolean).join(' ')} role="dialog" aria-modal="true" aria-label={label ?? (typeof title === 'string' ? title : undefined)}>
         <header className="rr-m-head"><div>{head ?? <>{crumb && <div className="rr-crumb">{crumb}</div>}<h2>{title}</h2>{desc && <p>{desc}</p>}</>}</div><button type="button" className="rr-icon-btn" onClick={() => close.current()} aria-label="Pencereyi Kapat"><RrIcon name="close" /></button></header>
         <div className={`rr-m-body${flush ? ' rr-flush' : ''}`}>{children}</div>
         {foot && <footer className="rr-m-foot">{foot}</footer>}
@@ -164,4 +177,11 @@ export function RrThumb({ src, quantity, large, small, onOpen, alt }: { src: str
   const content = <>{src && !failed ? <img src={src} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(true)} /> : null}{quantity ? <span className="rr-qb" role="img" aria-label={`${quantity} adet`}>{quantity}</span> : null}</>
   const className = `rr-thumb${large ? ' rr-lg' : ''}${small ? ' rr-sm' : ''}`
   return onOpen ? <button type="button" className={className} onClick={event => { event.preventDefault(); event.stopPropagation(); onOpen() }} aria-label={`${alt} görselini büyüt`}>{content}</button> : <span className={className} role="img" aria-label={alt}>{content}</span>
+}
+
+// Product photo preview (2:3): the title first, its codes under it; the next source is tried when one fails to load.
+export function RrImagePreview({ title, crumb, sources, onClose }: { title: string; crumb?: string; sources: string[]; onClose: () => void }) {
+  const [index, setIndex] = useState(0)
+  const source = sources[index]
+  return <RrModal crumb={crumb || undefined} title={title} size="img" onClose={onClose} foot={<><span className="rr-note" /><button type="button" className="rr-btn" onClick={onClose}>Kapat</button></>}><div className="rr-img-preview">{source ? <img src={source} alt={title} referrerPolicy="no-referrer" onError={() => setIndex(value => value + 1)} /> : <RrIcon name="image" />}</div></RrModal>
 }
