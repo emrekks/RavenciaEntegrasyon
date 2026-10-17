@@ -1,7 +1,8 @@
-import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
+import { Suspense, useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { lazyPage } from '../shared/lazy-page'
 import { api, ApiRequestError, hubApi, type Me, type TenantOption } from '../shared/api'
 import { Drawer, Modal, UiIcon, type UiIconName } from '../shared/components'
 import { AttributesPage, AttributeMappingPage, BrandsPage, CategoriesPage, ImportDetailPage, ImportsPage, NewProductPage, ProductDetailPage, ProductsPage, IntegrationDetailPage, IntegrationsPage, MappingPage, OrdersPage, QuestionsPage, ReturnDetailPage, ReturnsPage, ShipmentDetailPage, ShipmentsPage, InvoiceDetailPage, InvoicesPage, JobsPage } from './route-components'
@@ -12,9 +13,9 @@ import { orderNavigationCount, type OrderNavigationSummary } from '../shared/ord
 import { questionWaitingSummaryPath } from './questionNavigationSummary'
 import { readVisualThemePreference, setVisualThemePreference, visualThemeChangeEvent, type VisualTheme } from '../features/settings/visual-theme'
 
-const NotificationPanel = lazy(() => import('./NotificationPanel').then(module => ({ default: module.NotificationPanel })))
-const Dashboard = lazy(() => import('../features/dashboard/DashboardPage').then(module => ({ default: module.DashboardPage })))
-const SystemSettingsPage = lazy(() => import('../features/settings/SystemSettingsPage').then(module => ({ default: module.SystemSettingsPage })))
+const NotificationPanel = lazyPage(() => import('./NotificationPanel').then(module => ({ default: module.NotificationPanel })))
+const Dashboard = lazyPage(() => import('../features/dashboard/DashboardPage').then(module => ({ default: module.DashboardPage })))
+const SystemSettingsPage = lazyPage(() => import('../features/settings/SystemSettingsPage').then(module => ({ default: module.SystemSettingsPage })))
 
 function Shell({ me }: { me: Me }) {
   const appearanceSettings = useAppearanceSettings()
