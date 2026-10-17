@@ -677,7 +677,7 @@
   .metric-btn span { display: inline-flex; align-items: center; gap: 4px; color: var(--violet); font-size: 12px; font-weight: 500; }
   /* table */
   @media (min-width: 1101px) {
-    .ptbl col.c-pd { width: 30%; } .ptbl col.c-var { width: 10%; } .ptbl col.c-pr { width: 10%; } .ptbl col.c-st { width: 9%; } .ptbl col.c-pl { width: 17%; } .ptbl col.c-status { width: 11%; } .ptbl col.c-act { width: 13%; }
+    .ptbl col.c-pd { width: 27%; } .ptbl col.c-var { width: 9%; } .ptbl col.c-pr { width: 11%; } .ptbl col.c-st { width: 13%; } .ptbl col.c-pl { width: 16%; } .ptbl col.c-status { width: 11%; } .ptbl col.c-act { width: 13%; }
   }
   .prodcell { display: grid; grid-template-columns: 16px auto minmax(0, 1fr); gap: 12px; align-items: center; }
   .prodcell > div { min-width: 0; }
@@ -725,9 +725,17 @@
   .stepn { display: grid; place-items: center; width: 22px; height: 22px; color: var(--ink); background: var(--soft); border: 1px solid var(--line-strong); border-radius: 6px; font-size: 12px; font-weight: 600; }
   .step-tools { display: flex; gap: 8px; margin-left: auto; } .trigger.sm { width: auto; height: 32px; font-size: 13px; }
   .vgroup { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
-  .vg-h { display: flex; align-items: center; gap: 10px; padding: 9px 12px; background: var(--raised); border-bottom: 1px solid var(--line); font-size: 13px; cursor: pointer; } .vg-h b { font-weight: 600; } .vg-h small { color: var(--muted); }
+  .vgroup + .vgroup { margin-top: 8px; }
+  .vg-h { display: flex; align-items: center; gap: 10px; padding: 0 0 0 12px; background: var(--raised); font-size: 13px; }
+  .vgroup.open .vg-h { border-bottom: 1px solid var(--line); }
+  .vg-t { display: flex; flex: 1; align-items: center; gap: 10px; min-width: 0; height: 40px; padding: 0 12px 0 0; color: var(--ink); text-align: left; background: none; border: 0; cursor: pointer; font: inherit; }
+  .vg-t:hover small { color: var(--ink); } .vg-t b { font-weight: 600; } .vg-t small { color: var(--muted); }
+  .vg-t .ico { margin-left: auto; color: var(--muted); transition: transform .15s; } .vgroup.open .vg-t .ico { transform: rotate(180deg); }
+  .vg-t:focus-visible { outline: 2px solid color-mix(in srgb, var(--primary) 70%, transparent); outline-offset: -2px; border-radius: 6px; }
+  .cb[data-mixed]:not(:checked)::after { content: ""; position: absolute; left: 3px; right: 3px; top: 6.5px; height: 1.6px; background: var(--violet); }
+  .cb[data-mixed] { border-color: var(--violet-line); }
   .vline { display: grid; grid-template-columns: 16px minmax(0, 1fr) 96px 120px; gap: 12px; align-items: center; padding: 8px 12px; border-top: 1px solid var(--line); font-size: 13px; }
-  .vline:first-of-type { border-top: 0; } .vline.off { color: var(--muted); }
+  .vg-h + .vline { border-top: 0; } .vline.off { color: var(--muted); }
   .vline > span { display: grid; min-width: 0; } .vline b { font-weight: 500; } .vline small { color: var(--subtle); font-size: 12px; }
   .mini { display: grid; gap: 2px; } .mini small { color: var(--subtle); font-size: 11px; } .mini .in { height: 32px; padding: 0 8px; }
   /* import */
@@ -768,6 +776,10 @@
     .step-tools { margin-left: 0; width: 100%; } .metric-btn strong { font-size: 22px; }
   }
   @media (min-width: 1101px) and (max-width: 1280px) { .filters.has-sort { grid-template-columns: repeat(4, minmax(0, 1fr)); } .filters.has-sort .fbtns { grid-column: 1 / -1; justify-content: flex-end; } }
+  /* sortable headings: label, then the sort icon with room around it; the filter icon keeps its place at the right edge */
+  .ptbl th .hf { gap: 6px; }
+  .ptbl th .hf > .sortbtn { width: 24px; height: 24px; flex: none; }
+  .ptbl th:has(.sortbtn):has(.anchor) { padding-right: 40px; }
 </style>
 </head>
 <body>
@@ -954,7 +966,7 @@ const ROWS = [
   { id: 'p5', ...P('Seramik Kupa Seti 4’lü — Mat Beyaz', 'KP-400', 1, [['Renk', 'Beyaz']], 1, ['₺389,90'], 120, 'Bekliyor', { trendyol: 'none', hepsiburada: 'none', n11: 'on', pazarama: 'part', shopify: 'none' }), variants: [['Tek Ebat', 120]] },
   { id: 'p6', ...P('Spor Çorap 6’lı Paket — Karışık', 'CRP-6', 1, [['Renk', 'Karışık'], ['Beden', '36-40 · 40-44']], 2, ['₺219,00'], 17, 'Hatalı', { trendyol: 'err', hepsiburada: 'none', n11: 'none', pazarama: 'on', shopify: 'none' }), variants: [['36-40', 9], ['40-44', 8]] },
 ]
-const S = { tab: 'ALL', sel: new Set(['p1', 'p2']), pop: null, modal: null, cf: {}, plats: PLATFORMS.map(p => p[0]), sort: 'Varsayılan', toast: null, imp: 'bulk', impMode: 'new', qeStep: 2 }
+const S = { tab: 'ALL', sel: new Set(['p1', 'p2']), pop: null, modal: null, cf: {}, plats: PLATFORMS.map(p => p[0]), sort: 'Varsayılan', toast: null, imp: 'bulk', impMode: 'new', qeStep: 2, vg: { Siyah: true, Lacivert: false } }
 const PSTATE = { on: ['Yayında', 'ok'], part: ['Kısmen Yayında', 'warn'], link: ['Bağlı', 'info'], busy: ['Güncelleniyor', 'info'], err: ['Hatalı', 'bad'], none: ['Eşleşme Yok', 'off'] }
 const PTIP = { on: '{P} üzerinde tüm varyantlar yayında (4/4)', part: '{P} üzerinde ürün kısmen yayında (2/4) · Eşleşmeyen barkodlar: RYP00104, RYP00105', link: '{P} bağlantısı var (4/4 varyant)', busy: '{P} yayın durumu güncelleniyor', err: '{P} yayın işlemi başarısız veya incelemede', none: '{P} ürün eşleşmesi bulunamadı' }
 
@@ -1033,10 +1045,10 @@ function page() {
 /* ---------- popups ---------- */
 const modal = ({ crumb, title, desc, body, foot, w = '', flush }) => `<div class="modal ${w}" role="dialog" aria-modal="true"><header class="m-head"><div>${crumb ? `<div class="crumb">${crumb}</div>` : ''}<h2>${title}</h2>${desc ? `<p>${desc}</p>` : ''}</div><button class="icon-btn" data-a="close" aria-label="Pencereyi Kapat">${I.close}</button></header><div class="m-body ${flush ? 'flush' : ''}">${body}</div>${foot ? `<footer class="m-foot">${foot}</footer>` : ''}</div>`
 function mQuickEdit(kind = 'both', r = row('p1')) {
-  const vs = [['Siyah', 'M', 'RYP00101', 12, '₺519,75', true], ['Siyah', 'L', 'RYP00102', 9, '₺519,75', true], ['Siyah', 'XL', 'RYP00103', 3, '₺519,75', false], ['Siyah', '2XL', 'RYP00104', 14, '₺525,00', true]]
+  const vs = [['Siyah', 'M', 'RYP00101', 12, '₺519,75', true], ['Siyah', 'L', 'RYP00102', 9, '₺519,75', true], ['Siyah', 'XL', 'RYP00103', 3, '₺519,75', false], ['Siyah', '2XL', 'RYP00104', 14, '₺525,00', true], ['Lacivert', 'M', 'RYP00111', 6, '₺519,75', false], ['Lacivert', 'L', 'RYP00112', 0, '₺519,75', false], ['Lacivert', 'XL', 'RYP00113', 4, '₺519,75', false]]
   const n = vs.filter(v => v[5]).length
   return modal({ crumb: kind === 'stock' ? 'Hızlı Stok Güncelleme' : 'Toplu Düzenleme', title: esc(r.t), desc: `Model Kodu: ${r.model}`, w: 'lg',
-    body: `<section class="step"><header><span class="stepn">1</span><div class="h3">Varyantları Seç</div><div class="step-tools"><span class="anchor"><button class="trigger sm"><span>Renk: Tümü</span>${I.chev}</button></span><span class="anchor"><button class="trigger sm"><span>Beden: Tümü</span>${I.chev}</button></span></div></header><div class="vgroup"><label class="vg-h"><input type="checkbox" class="cb" checked><b>Siyah</b><small>${n}/4 seçili</small><span class="grow"></span>${I.chev}</label>${vs.map(([c, s, sku, st, pr, on]) => `<div class="vline ${on ? '' : 'off'}"><input type="checkbox" class="cb" ${on ? 'checked' : ''} aria-label="${c} ${s} seç"><span><b>${c} · ${s}</b><small>Stok Kodu: ${sku}</small></span><label class="mini"><small>Stok</small><input class="in num" value="${st}"></label>${kind !== 'stock' ? `<label class="mini"><small>Fiyat</small><input class="in num" value="${pr}"></label>` : ''}</div>`).join('')}</div></section>
+    body: `<section class="step"><header><span class="stepn">1</span><div class="h3">Varyantları Seç</div><div class="step-tools"><span class="anchor"><button class="trigger sm"><span>Renk: Tümü</span>${I.chev}</button></span><span class="anchor"><button class="trigger sm"><span>Beden: Tümü</span>${I.chev}</button></span></div></header>${[...new Set(vs.map(v => v[0]))].map(color => { const g = vs.filter(v => v[0] === color), sel = g.filter(v => v[5]).length, open = S.vg[color]; return `<div class="vgroup ${open ? 'open' : ''}"><div class="vg-h"><input type="checkbox" class="cb" ${sel === g.length ? 'checked' : ''} ${sel && sel < g.length ? 'data-mixed' : ''} aria-label="${color} varyantlarının tümünü seç"><button class="vg-t" data-a="vg" data-k="${color}" aria-expanded="${!!open}"><b>${color}</b><small>${sel ? `${sel}/${g.length} seçili` : `${g.length} varyant`}</small>${I.chev}</button></div>${open ? g.map(([c, s, sku, st, pr, on]) => `<div class="vline ${on ? '' : 'off'}"><input type="checkbox" class="cb" ${on ? 'checked' : ''} aria-label="${c} ${s} seç"><span><b>${c} · ${s}</b><small>Stok Kodu: ${sku}</small></span><label class="mini"><small>Stok</small><input class="in num" value="${st}"></label>${kind !== 'stock' ? `<label class="mini"><small>Fiyat</small><input class="in num" value="${pr}"></label>` : ''}</div>`).join('') : ''}</div>` }).join('')}</section>
       <section class="step"><header><span class="stepn">2</span><div class="h3">${kind === 'stock' ? 'Stok Değerini Düzenle' : kind === 'price' ? 'Fiyat Değerini Düzenle' : 'Fiyat ve Stok Değerini Düzenle'}</div><small class="lead">${n} seçili varyanta uygulanacak</small></header><div class="chips">${vs.filter(v => v[5]).map(v => `<span class="chip">${v[0]} · ${v[1]}</span>`).join('')}</div><div class="dgrid">${kind !== 'stock' ? `<label class="fld"><small>Liste Fiyatı</small><input class="in" placeholder="Değiştirme"></label><label class="fld"><small>Satış Fiyatı</small><input class="in" placeholder="Değiştirme" value="₺499,90"></label>` : ''}${kind !== 'price' ? `<label class="fld"><small>Stok İşlemi</small><select class="in"><option>Bu Sayıya Eşitle</option><option selected>Bu Kadar Ekle (+)</option><option>Bu Kadar Çıkar (−)</option></select></label><label class="fld"><small>Miktar</small><input class="in num" value="5"></label>` : ''}</div></section>`,
     foot: `<span class="note"><b>${n} varyant</b> seçildi</span><button class="btn" data-a="close">Vazgeç</button><button class="btn primary" data-a="done" data-k="qe">Seçilenlere Uygula</button>` })
 }
@@ -1122,6 +1134,7 @@ document.addEventListener('click', e => {
   else if (a === 'close' || a === 'overlay') S.modal = null
   else if (a === 'done') { S.modal = null; showToast(k) }
   else if (a === 'toast-x') S.toast = null
+  else if (a === 'vg') S.vg[k] = !S.vg[k]
   else if (a === 'imp') S.imp = k
   else if (a === 'imp-mode') S.impMode = k
   else if (a === 'pg') { S.cf.pg = k; render(); return }
