@@ -148,3 +148,9 @@
 .jobs-reference-status-hero h3 .jb-glyph { width: 18px; height: 18px; }
 @keyframes jb-glyph-turn { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .jb-glyph.is-running { animation: none; } }
+
+/* Phones (mobil-tum-sayfalar.html): the four state counters sit in a tidy 2×2 grid. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .jobs-reference-toolbar .jobs-reference-status-summary.jobs-reference-status-summary { display: grid !important; grid-template-columns: 1fr 1fr; gap: 10px 12px; }
+  .app-shell.stitch-shell main .jobs-reference-toolbar .jobs-reference-status-summary.jobs-reference-status-summary > * { margin: 0 !important; min-width: 0; }
+}
