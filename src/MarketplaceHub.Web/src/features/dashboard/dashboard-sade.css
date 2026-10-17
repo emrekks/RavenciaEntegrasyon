@@ -246,3 +246,8 @@
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pf-tools .rr-date { width: 100%; }
 }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc, :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc * { text-transform: none !important; }
+/* a picked platform lends its colour to the chart and the picked metric */
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pf .rr-chart .rr-cur, :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pf .rr-chart .rr-hp { stroke: var(--pf-accent, var(--rr-violet)); }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pf .rr-chart .rr-area { fill: color-mix(in srgb, var(--pf-accent, var(--rr-primary)) 16%, transparent); }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pf .rr-kc.rr-on::after { background: var(--pf-accent, var(--rr-primary)); }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pf .rr-legend .rr-lg-cur { border-top-color: var(--pf-accent, var(--rr-violet)); }

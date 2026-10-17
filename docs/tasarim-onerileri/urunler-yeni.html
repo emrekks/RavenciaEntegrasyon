@@ -1004,7 +1004,7 @@ function headCell(label, k, extra = '', popFn, sortable) {
 const pmark = (k, s, tipOpen) => `<span class="pm ${s}" tabindex="0" data-tip="${PTIP[s].replace('{P}', pname(k))}">${logo(k)}<i aria-hidden="true"></i></span>`
 function rowHtml(r) {
   const sel = S.sel.has(r.id)
-  const prod = `<div class="prodcell"><input type="checkbox" class="cb" data-row="${r.id}" ${sel ? 'checked' : ''} aria-label="${esc(r.t)} seç">${thumb(0)}<div><b title="${esc(r.t)}">${esc(r.t)}</b><small><span>Model Kodu:</span> <b class="num">${r.model}</b></small>${r.opts.map(([k, v]) => `<small><span>${k}:</span> ${v}</small>`).join('')}</div></div>`
+  const prod = `<div class="prodcell"><input type="checkbox" class="cb" data-row="${r.id}" ${sel ? 'checked' : ''} aria-label="${esc(r.t)} seç">${thumb(0)}<div><b title="${esc(r.t)}">${esc(r.t)}</b><small><span>Model Kodu:</span> <b class="num">${r.model}</b></small></div></div>`
   const variant = `<span class="vhover" tabindex="0"><span class="varcell"><b>${r.opts.length} seçenek</b><small>${r.vars} varyant</small></span>${S.pop === 'vt-' + r.id ? variantTip(r) : ''}</span>`
   const price = `<button class="qbtn" data-a="m" data-k="qe-price" title="Fiyatı hızlı düzenle"><b class="num">${r.price[0]}</b>${r.price[1] ? `<small class="num">${r.price[1]}</small>` : ''}</button>`
   const stock = `<button class="qbtn ${r.stock === 0 ? 'zero' : r.low ? 'low' : ''}" data-a="m" data-k="qe-stock" title="Stoğu hızlı düzenle"><b class="num">${r.stock}</b><small>${r.stock === 0 ? 'Stoksuz' : r.low ? 'Düşük Stok' : 'adet'}</small></button>`

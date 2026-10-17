@@ -21,7 +21,7 @@ type Range = '7' | '30' | '90' | 'custom'
 
 const PERIODS: Array<[Range, string]> = [['7', 'Son 7 Gün'], ['30', 'Son 30 Gün'], ['90', 'Son 90 Gün'], ['custom', 'Özel Tarih']]
 const periodLabel = (range: Range) => PERIODS.find(([value]) => value === range)?.[1] ?? ''
-const PLATFORMS: Array<[string, string, string]> = [['TRENDYOL', 'Trendyol', '#f27a1a'], ['HEPSIBURADA', 'Hepsiburada', '#ff6000'], ['SHOPIFY', 'Shopify', '#5e8e3e'], ['N11', 'N11', '#7c5cff'], ['PAZARAMA', 'Pazarama', '#2f9bd8']]
+const PLATFORMS: Array<[string, string, string]> = [['TRENDYOL', 'Trendyol', '#f27a1a'], ['HEPSIBURADA', 'Hepsiburada', '#e8457c'], ['SHOPIFY', 'Shopify', '#5e8e3e'], ['N11', 'N11', '#7c5cff'], ['PAZARAMA', 'Pazarama', '#2f9bd8']]
 const platformCode = (name: string) => PLATFORMS.find(([code]) => name.toLocaleUpperCase('tr-TR').replace(/İ/g, 'I').includes(code))?.[0] ?? name.toUpperCase()
 const platformName = (name: string) => PLATFORMS.find(([code]) => code === platformCode(name))?.[1] ?? name
 const platformColor = (name: string, index: number) => PLATFORMS.find(([code]) => code === platformCode(name))?.[2] ?? ['#9b7aff', '#59d6bd', '#79a4ff', '#f0b15a'][index % 4]
@@ -244,7 +244,7 @@ export function DashboardPage() {
     </div></div>
     {errors.length > 0 && !noticeClosed && <div className="rr-callout rr-warn" role="status"><RrIcon name="alert" /><span><b>Bazı rapor verileri alınamadı.</b> Görünen değerler kısmi olabilir; birkaç dakika içinde tekrar denenir.</span><button type="button" className="rr-icon-btn" onClick={() => setNoticeClosed(true)} aria-label="Uyarıyı kapat"><RrIcon name="close" /></button></div>}
     <section className="rr-dsect"><header><h2>Operasyon Metrikleri</h2><p>Bugün ilgilenmeniz gereken işler</p></header><div className="rr-opgrid">{ops.map(([kind, label, value, tone, to, byPlatform]) => <Link key={kind} className={`rr-opcard${tone && value ? ` rr-${tone}` : ''}`} to={to}><span className="rr-op-ic">{ICONS[kind]}</span><span className="rr-op-t"><strong className="rr-num">{value == null ? '—' : count(value)}</strong><small>{label}</small></span><RrIcon name="arrowR" /><Breakdown rows={breakdownRows(byPlatform)} /></Link>)}</div></section>
-    <section className="rr-panel rr-pf">
+    <section className="rr-panel rr-pf" style={platform === 'ALL' ? undefined : { ['--pf-accent' as string]: platformColor(platform, 0) }}>
       <div className="rr-pf-h"><div><h2>Performans</h2><p>{periodText} · {platform === 'ALL' ? 'Tüm Platformlar' : platformName(platform)} · önceki eşit dönemle karşılaştırma</p></div><div className="rr-pf-tools">
         {range === 'custom' && <DateRangePicker className="rr-date" from={from} to={to} onChange={value => { setFrom(value.from); setTo(value.to) }} label="Rapor Tarihi" placeholder="Başlangıç – Bitiş" chevron={<RrIcon name="chev" />} />}
         <div className="rr-seg" role="radiogroup" aria-label="Dönem">{PERIODS.map(([value, label]) => <button key={value} type="button" role="radio" aria-checked={range === value} className={range === value ? 'rr-on' : undefined} onClick={() => setRange(value)}>{value === 'custom' ? 'Özel' : label.replace('Son ', '')}</button>)}</div>

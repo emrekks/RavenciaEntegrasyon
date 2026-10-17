@@ -802,30 +802,10 @@ function ProductColorRows({ group, selected, onSelect, selectionMode, onEnterSel
       platformStatusAggregates.set(key, { platform, platformCode, statuses: [item.status], matchedVariantCount: item.matchedVariantCount ?? 0, variantCount: item.variantCount ?? 0, isChecking: Boolean(item.isChecking) })
     }
   }
-  const unmatchedVariantDetails = new Map<string, { barcodes: string[]; missingBarcodeCount: number }>()
-  for (const { variant } of group.variants) {
-    for (const item of variant.platformStatuses ?? []) {
-      if (item.isLinked) continue
-      const key = `${item.platformCode.trim().toUpperCase()}:${item.platform}`
-      const current = unmatchedVariantDetails.get(key) ?? { barcodes: [], missingBarcodeCount: 0 }
-      const barcode = variant.barcode?.trim()
-      if (barcode && !current.barcodes.includes(barcode)) current.barcodes.push(barcode)
-      else if (!barcode) current.missingBarcodeCount += 1
-      unmatchedVariantDetails.set(key, current)
-    }
-  }
   const platformCards = [...platformStatusAggregates.entries()].map(([key, item]) => {
     const state = productPlatformDisplayState(item.statuses, item.isChecking, item.matchedVariantCount)
-    const unmatched = unmatchedVariantDetails.get(key)
-    // Keep the hover summary compact. The complete list made the native
-    // browser tooltip span the whole product row and cover the controls.
-    const visibleBarcodes = unmatched?.barcodes.slice(0, 3) ?? []
-    const remainingBarcodeCount = Math.max(0, (unmatched?.barcodes.length ?? 0) - visibleBarcodes.length)
-    const unmatchedBarcodeLabel = unmatched && (visibleBarcodes.length || unmatched.missingBarcodeCount)
-      ? ` · Eşleşmeyen barkodlar: ${visibleBarcodes.join(', ')}${remainingBarcodeCount ? `, +${remainingBarcodeCount} barkod` : ''}${unmatched.missingBarcodeCount ? ` · ${unmatched.missingBarcodeCount} varyantta barkod yok` : ''}`
-      : ''
     const label = productPlatformDisplayLabel(item.platform, item.statuses, item.matchedVariantCount, item.variantCount, state)
-    return { key, platform: item.platform, platformCode: item.platformCode, state, label: `${label}${unmatchedBarcodeLabel}` }
+    return { key, platform: item.platform, platformCode: item.platformCode, state, label }
   })
   const totalStock = group.products.reduce((sum, item) => sum + item.totalStock, 0)
   const prices = group.products.map(item => item.startingPrice).filter((price): price is number => price != null)
@@ -851,17 +831,11 @@ function ProductColorRows({ group, selected, onSelect, selectionMode, onEnterSel
     const state = card ? ({ active: 'on', partial: 'part', linked: 'link', processing: 'busy', error: 'err', inactive: 'none' } as Record<string, string>)[card.state] ?? 'none' : 'none'
     return { code, state, label: card?.label ?? `${name} ürün eşleşmesi bulunamadı` }
   })
-  const optionLines = (() => {
-    const values = new Map<string, string[]>()
-    for (const { variant } of group.variants) for (const option of variantOptionEntries(variant)) { const list = values.get(option.name) ?? []; if (!list.includes(option.value)) list.push(option.value); values.set(option.name, list) }
-    const isColor = (name: string) => /renk|color/iu.test(name)
-    return [...values.entries()].sort(([left], [right]) => Number(isColor(right)) - Number(isColor(left))).slice(0, 2).map(([name, list]) => [formatCatalogOptionLabel(name), list.join(' · ')] as [string, string])
-  })()
   const [ringTone, ringProgress] = ({ ACTIVE: ['ok', 1], DRAFT: ['prog', 0.3], ARCHIVED: ['off', 0], MIXED: ['bad', 0.66] } as Record<string, [RingTone, number]>)[status] ?? ['off', 0]
   const statusLabelText = status === 'MIXED' ? 'Hatalı' : titleTr(statusLabel)
   const menuItems: Array<['edit' | 'price' | 'dup' | 'on' | 'off' | 'trash', string, () => void, string?] | 'hr'> = [['edit', 'Ürünü Düzenle', () => navigate(`/products/${product.id}`)], ['price', 'Fiyat ve Stok Düzenle', () => onQuickEdit('both')], ['dup', 'Yeni Ürün Olarak Düzenle', onDuplicate], 'hr', status === 'ACTIVE' ? ['off', 'Satışa Kapat', () => onSetStatus('ARCHIVED')] : ['on', 'Satışa Aç', () => onSetStatus('ACTIVE')], ['trash', group.products.length > 1 ? 'Ürün Grubunu Sil' : 'Ürünü Sil', onDelete, 'rr-danger']]
   return <tr className={selected ? 'rr-sel' : undefined} onPointerDown={event => { if (event.pointerType !== 'mouse' && isPhone() && !(event.target as Element).closest('button, a, input, select, textarea, label')) { pressFired.current = false; clearPress(); pressTimer.current = window.setTimeout(() => { pressFired.current = true; flushSync(() => { onEnterSelection(); onSelect() }); navigator.vibrate?.(15) }, 480) } }} onPointerUp={clearPress} onPointerLeave={clearPress} onPointerCancel={clearPress} onContextMenu={event => { if (isPhone()) event.preventDefault() }} onClick={event => { if (!isPhone()) return; if (pressFired.current) { pressFired.current = false; return } if ((event.target as Element).closest('button, a, input, select, textarea, label')) return; if (selectionMode) onSelect() }}>
-    <td className="rr-wide"><div className="rr-prodcell"><input type="checkbox" className="rr-cb" aria-label={`${product.title} ürün grubunu seç`} checked={selected} onChange={onSelect} /><RrThumb src={product.primaryImageUrl} alt={product.title} onOpen={product.primaryImageUrl ? () => onImageClick(product.primaryImageUrl!, product.title) : undefined} /><div><b title={product.title}>{product.title}</b><small><span>Model Kodu:</span> <b className="rr-num">{modelCode}</b></small>{optionLines.map(([name, value]) => <small key={name} title={`${name}: ${value}`}><span>{name}:</span> {value}</small>)}</div></div></td>
+    <td className="rr-wide"><div className="rr-prodcell"><input type="checkbox" className="rr-cb" aria-label={`${product.title} ürün grubunu seç`} checked={selected} onChange={onSelect} /><RrThumb src={product.primaryImageUrl} alt={product.title} onOpen={product.primaryImageUrl ? () => onImageClick(product.primaryImageUrl!, product.title) : undefined} /><div><b title={product.title}>{product.title}</b><small><span>Model Kodu:</span> <b className="rr-num">{modelCode}</b></small></div></div></td>
     <td className="rr-mid" data-l="Varyant"><span className="rr-vhover" tabIndex={0}><span className="rr-varcell"><b>{group.products.length} seçenek</b><small>{group.variants.length} varyant</small></span>{variantDisplayGroups.length > 0 && <span className="rr-tip rr-vtip" role="tooltip"><table className="rr-vtab"><thead><tr><th />{variantSizes.map(size => <th key={size}>{size}</th>)}</tr></thead><tbody>{variantDisplayGroups.map(item => <tr key={item.label}><th title={item.label}>{item.label}</th>{variantSizes.map(size => { const value = item.values.find(entry => entry.label === size); return <td key={size} className={value == null ? 'rr-none' : value.quantity === 0 ? 'rr-empty' : value.quantity < 5 ? 'rr-low' : undefined}>{value == null ? '—' : value.quantity}</td> })}</tr>)}</tbody></table></span>}</span></td>
     <td className="rr-mid" data-l="Fiyat"><button type="button" className="rr-qbtn" title="Fiyatı hızlı düzenle" aria-label={`${product.title}: fiyatı düzenle`} onClick={() => onQuickEdit('price')}><b className="rr-num">{money(startingPrice ?? 0, product.currency)}</b>{listPrice != null && <small className="rr-num">{money(listPrice, product.currency)}</small>}</button></td>
     <td className="rr-mid" data-l="Stok"><button type="button" className={`rr-qbtn${totalStock === 0 ? ' rr-zero' : ''}`} title="Stoğu hızlı düzenle" aria-label={`${product.title}: stoğu düzenle`} onClick={() => onQuickEdit('stock')}><b className="rr-num">{totalStock}</b><small>{totalStock === 0 ? 'Stoksuz' : 'adet'}</small></button></td>

@@ -217,3 +217,11 @@
 @media (max-width: 760px) {
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-lowgrid { grid-template-columns: 1fr; }
 }
+/* the product table's own cell rules must not reach the stock table nested in it */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-vtab { width: auto !important; table-layout: auto; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-vtab tr { display: table-row !important; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-vtab thead { display: table-header-group !important; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-vtab tbody { display: table-row-group !important; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-vtab :is(th, td) { display: table-cell !important; position: static !important; width: auto !important; min-width: 28px; padding: 3px 6px !important; background: none !important; border-right: 0 !important; border-left: 0 !important; vertical-align: middle !important; text-align: center !important; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-vtab tbody th { padding-left: 0 !important; text-align: left !important; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-vtab :is(th, td)::before { content: none !important; }
