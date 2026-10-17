@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fatura Sekmeleri 2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #111115; --surface: #17171c; --raised: #1d1d23; --soft: #22222a; --sunk: #101014;
+    --line: #2a2a32; --line-strong: #383842;
+    --ink: #ececf0; --muted: #a3a3b0; --subtle: #6f6f7c;
+    --primary: #8b5cf6; --primary-soft: #272139;
+    --violet: color-mix(in srgb, var(--primary) 55%, white);
+    --violet-line: color-mix(in srgb, var(--primary) 55%, transparent);
+    --warn: #e2aa4b; --bad: #e4636f; --ok: #46b98f; --info: #83b4ff;
+  }
+  * { box-sizing: border-box; }
+  html, body { overflow-x: clip; }
+  body { margin: 0; font: 14px/1.5 Inter, "Segoe UI", system-ui, sans-serif; color: var(--ink); background: var(--bg); -webkit-font-smoothing: antialiased; }
+  h1, h2, p { margin: 0; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  .num { font-variant-numeric: tabular-nums; }
+  .wrap { max-width: 1160px; margin: 0 auto; padding: 32px 16px 96px; display: grid; gap: 28px; }
+  .intro h1 { font-size: 22px; font-weight: 600; }
+  .intro p { color: var(--muted); margin-top: 6px; max-width: 74ch; }
+  .picker { display: flex; flex-wrap: wrap; gap: 6px; position: sticky; top: 0; z-index: 5; padding: 10px 0; background: var(--bg); }
+  .picker button { height: 34px; padding: 0 14px; color: var(--muted); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 7px; font-size: 13px; }
+  .picker button[aria-pressed="true"] { color: var(--ink); background: var(--primary-soft); border-color: var(--violet-line); }
+  .option { display: grid; gap: 12px; margin-bottom: 40px; }
+  .option-head h2 { font-size: 17px; font-weight: 600; }
+  .option-head p { color: var(--muted); font-size: 13px; margin-top: 4px; max-width: 84ch; }
+  .shell { display: grid; gap: 16px; padding: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+  .ico { width: 16px; height: 16px; flex: none; display: block; }
+
+  /* the filter row that sits under every tab design, unchanged */
+  .filters { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(150px, .85fr) minmax(220px, 1.1fr) minmax(170px, .85fr) auto; gap: 12px; align-items: end; }
+  .filters label { display: grid; gap: 6px; color: var(--muted); font-size: 12px; min-width: 0; }
+  .field { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 7px; font-size: 13.5px; white-space: nowrap; overflow: hidden; }
+  .field.ph { color: var(--subtle); }
+  .field .chev { margin-left: auto; color: var(--muted); }
+  .reset { height: 36px; padding: 0 8px; color: var(--subtle); background: none; border: 0; font-size: 13px; white-space: nowrap; }
+
+  .tone-un { --tone: var(--warn); } .tone-in { --tone: var(--ok); } .tone-due { --tone: var(--bad); } .tone-all { --tone: var(--violet); } .tone-hid { --tone: var(--subtle); }
+
+  /* 6 — vertical list beside the filters */
+  .s6 { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 16px; align-items: start; }
+  .s6 .list { display: grid; gap: 2px; padding-right: 16px; border-right: 1px solid var(--line); }
+  .s6 .list button { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 10px; color: var(--muted); background: none; border: 0; border-radius: 7px; font-size: 13px; text-align: left; }
+  .s6 .list button:hover { color: var(--ink); background: var(--raised); }
+  .s6 .list button .c { margin-left: auto; color: var(--subtle); font-size: 12px; }
+  .s6 .list button.on { color: var(--ink); background: var(--primary-soft); box-shadow: inset 2px 0 0 var(--primary); }
+  .s6 .list button.on .c { color: var(--violet); }
+  .s6 .list hr { margin: 6px 4px; border: 0; border-top: 1px solid var(--line); }
+  .s6 .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+  /* 7 — number on top, dividers between */
+  .t7 { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border: 1px solid var(--line-strong); border-radius: 10px; overflow: hidden; }
+  .t7 button { display: grid; gap: 2px; justify-items: center; padding: 10px 8px; background: none; border: 0; border-left: 1px solid var(--line); color: var(--muted); }
+  .t7 button:first-child { border-left: 0; }
+  .t7 button b { color: var(--ink); font-size: 18px; font-weight: 600; line-height: 1.2; }
+  .t7 button span { font-size: 12.5px; white-space: nowrap; }
+  .t7 button:hover { background: var(--raised); }
+  .t7 button.on { background: var(--primary-soft); color: var(--ink); box-shadow: inset 0 -2px 0 var(--primary); }
+
+  /* 8 — share bar under each tab */
+  .t8 { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+  .t8 button { display: grid; gap: 8px; padding: 10px 12px; text-align: left; background: none; border: 1px solid transparent; border-radius: 9px; color: var(--muted); font-size: 13px; }
+  .t8 button:hover { background: var(--raised); }
+  .t8 button .top { display: flex; align-items: baseline; gap: 8px; white-space: nowrap; }
+  .t8 button .top .c { margin-left: auto; color: var(--ink); font-weight: 500; }
+  .t8 button .bar { height: 4px; border-radius: 4px; background: var(--soft); overflow: hidden; }
+  .t8 button .bar i { display: block; height: 100%; min-width: 3px; border-radius: 4px; background: var(--tone); }
+  .t8 button.on { color: var(--ink); background: var(--primary-soft); border-color: var(--violet-line); }
+
+  /* 9 — tone dots */
+  .t9 { display: flex; flex-wrap: wrap; gap: 6px; }
+  .t9 button { display: inline-flex; align-items: center; gap: 9px; height: 36px; padding: 0 14px; color: var(--muted); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 8px; font-size: 13px; white-space: nowrap; }
+  .t9 button::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--tone); }
+  .t9 button .c { color: var(--ink); font-weight: 500; }
+  .t9 button.on { color: var(--ink); background: color-mix(in srgb, var(--tone) 12%, var(--surface)); border-color: color-mix(in srgb, var(--tone) 55%, transparent); }
+
+  /* 10 — folder tabs attached to the filter panel */
+  .s10 { padding: 0; background: none; border: 0; gap: 0; }
+  .t10 { display: flex; gap: 4px; padding-left: 12px; }
+  .t10 button { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px; color: var(--muted); background: var(--sunk); border: 1px solid var(--line); border-bottom: 0; border-radius: 10px 10px 0 0; font-size: 13px; white-space: nowrap; }
+  .t10 button .c { color: var(--subtle); font-size: 12px; }
+  .t10 button.on { position: relative; z-index: 1; height: 44px; margin-top: -4px; color: var(--ink); font-weight: 500; background: var(--surface); border-color: var(--line-strong); }
+  .t10 button.on::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--surface); }
+  .t10 button.on .c { color: var(--violet); }
+  .s10 .panel { padding: 16px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 12px; }
+
+  /* 11 — two primary views plus secondary links */
+  .t11 { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .t11 .duo { display: grid; grid-template-columns: 1fr 1fr; padding: 3px; background: var(--sunk); border: 1px solid var(--line-strong); border-radius: 10px; }
+  .t11 .duo button { display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 18px; color: var(--muted); background: none; border: 0; border-radius: 8px; font-size: 13.5px; white-space: nowrap; }
+  .t11 .duo button b { font-weight: 600; color: var(--ink); }
+  .t11 .duo button.on { color: var(--ink); background: var(--primary); }
+  .t11 .duo button.on b { color: #fff; }
+  .t11 .links { display: flex; gap: 4px; margin-left: auto; }
+  .t11 .links button { height: 32px; padding: 0 10px; color: var(--muted); background: none; border: 0; border-radius: 7px; font-size: 13px; white-space: nowrap; }
+  .t11 .links button .c { margin-left: 6px; color: var(--subtle); }
+  .t11 .links button:hover { color: var(--ink); background: var(--raised); }
+  .t11 .links button.on { color: var(--ink); background: var(--primary-soft); }
+  .t11 .links button.on .c { color: var(--violet); }
+
+  /* 12 — icon tabs with underline */
+  .t12 { display: flex; gap: 2px; border-bottom: 1px solid var(--line); }
+  .t12 button { position: relative; display: inline-flex; align-items: center; gap: 8px; height: 46px; padding: 0 14px; color: var(--muted); background: none; border: 0; font-size: 13.5px; white-space: nowrap; }
+  .t12 button svg { color: var(--subtle); }
+  .t12 button .c { min-width: 22px; height: 20px; padding: 0 6px; display: inline-grid; place-items: center; background: var(--soft); border: 1px solid var(--line-strong); border-radius: 6px; color: var(--ink); font-size: 11.5px; }
+  .t12 button.on { color: var(--ink); font-weight: 500; }
+  .t12 button.on svg { color: var(--violet); }
+  .t12 button.on::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--primary); }
+
+  /* 13 — superscript counts */
+  .t13 { display: flex; gap: 22px; padding: 4px 4px 0; }
+  .t13 button { position: relative; padding: 6px 0; color: var(--muted); background: none; border: 0; font-size: 15px; font-weight: 500; white-space: nowrap; }
+  .t13 button sup { margin-left: 3px; color: var(--subtle); font-size: 11px; font-weight: 500; vertical-align: 6px; }
+  .t13 button:hover { color: var(--ink); }
+  .t13 button.on { color: var(--violet); }
+  .t13 button.on sup { color: var(--violet); }
+  .t13 button.on::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; border-radius: 2px; background: var(--primary); }
+
+  /* 14 — joined button group, solid active */
+  .t14 { display: inline-flex; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .t14 button { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; color: var(--muted); background: var(--surface); border: 1px solid var(--line-strong); border-left-width: 0; font-size: 13px; white-space: nowrap; }
+  .t14 button:first-child { border-left-width: 1px; border-radius: 8px 0 0 8px; }
+  .t14 button:last-child { border-radius: 0 8px 8px 0; }
+  .t14 button .c { color: var(--subtle); font-size: 12px; }
+  .t14 button:hover { color: var(--ink); background: var(--raised); }
+  .t14 button.on { color: #fff; background: var(--primary); border-color: var(--primary); }
+  .t14 button.on .c { color: rgb(255 255 255 / 75%); }
+
+  /* 15 — summary sentence */
+  .t15 { font-size: 15px; color: var(--muted); line-height: 1.9; }
+  .t15 button { padding: 2px 8px; margin: 0 1px; color: var(--ink); background: none; border: 0; border-radius: 6px; font-size: 15px; }
+  .t15 button b { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .t15 button:hover { background: var(--raised); }
+  .t15 button.on { color: #fff; background: var(--primary); }
+  .t15 .warn-text { color: var(--warn); }
+
+  @media (max-width: 900px) {
+    .filters, .f5 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+    .t2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .t3 { grid-template-columns: repeat(5, minmax(120px, 1fr)); overflow-x: auto; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="intro">
+    <h1>Fatura Görünüm Sekmeleri · 10 Öneri Daha</h1>
+    <p>İlk beş öneriden farklı on yön. Her öneride altındaki filtre satırı aynı kalıyor; sekmelere tıklayarak deneyebilirsin.</p>
+  </div>
+  <div class="picker" role="group" aria-label="Öneri seç" id="picker"></div>
+  <div id="options"></div>
+</div>
+<script>
+const views = [
+  { key: 'all', label: 'Tümü', count: 1795, note: 'tüm paketler' },
+  { key: 'un', label: 'Faturalandırılmamışlar', count: 63, note: 'kesilmeyi bekliyor' },
+  { key: 'in', label: 'Faturalandırılmışlar', count: 1732, note: 'faturası mevcut' },
+  { key: 'due', label: 'Süresi Yaklaşanlar', count: 0, note: 'teslimden 5 gün geçen', warn: true },
+  { key: 'hid', label: 'Gizlenenler', count: 7, note: 'listeden çıkarılan', quiet: true }
+];
+const fmt = n => n.toLocaleString('tr-TR');
+const chev = '<svg class="ico chev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m4.5 6.5 3.5 3.5 3.5-3.5"/></svg>';
+const search = '<svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg>';
+const cal = '<svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><rect x="2.5" y="3.5" width="11" height="10" rx="1.5"/><path d="M5.5 2v3M10.5 2v3M2.5 7h11"/></svg>';
+const sortI = '<svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v10M4.5 9.5 8 13l3.5-3.5"/></svg>';
+const baseFields = `
+  <label>Fatura Ara<span class="field ph">${search}Sipariş, müşteri, fatura veya takip no</span></label>
+  <label>Platform<span class="field">Tüm Platformlar${chev}</span></label>
+  <label>Sipariş Tarihi<span class="field">${cal}Tarih Aralığı Seçin${chev}</span></label>
+  <label>Sıralama<span class="field">Sipariş Tarihi<span style="margin-left:auto;display:flex;gap:6px;color:var(--muted)">${sortI}${chev.replace('ico chev', 'ico')}</span></span></label>
+  <button class="reset" type="button" disabled>Filtreleri Temizle</button>`;
+const filters = `<div class="filters">${baseFields}</div>`;
+
+const total = 1795;
+const ic = {
+  all: '<path d="M2.5 3.5h11v9h-11z"/><path d="M2.5 6.5h11"/>',
+  un: '<path d="M4 2h5l3 3v9H4z"/><path d="M9 2v3h3"/><path d="M8 8v3M8 12.6v.1" />',
+  in: '<path d="M4 2h5l3 3v9H4z"/><path d="M9 2v3h3"/><path d="m6.2 10 1.4 1.4 2.4-2.6"/>',
+  due: '<circle cx="8" cy="8" r="5.8"/><path d="M8 5v3.2l2 1.3"/>',
+  hid: '<path d="M2 8s2.2-4 6-4 6 4 6 4-2.2 4-6 4-6-4-6-4z"/><path d="m3 13 10-10"/>'
+};
+const tIco = k => `<svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ic[k]}</svg>`;
+const tab = (v, active, inner, extra = '') => `<button type="button" role="tab" data-k="${v.key}" class="tone-${v.key}${v.key === active ? ' on' : ''}${extra}">${inner}</button>`;
+
+const designs = [
+  { n: 6, title: 'Solda Dikey Liste',
+    text: 'Görünümler filtre kutusunun solunda dikey bir liste olur; seçili olanın solunda mor bir çizgi. Gizlenenler ince bir çizgiyle ayrılır. Filtreler sağda iki sütuna yerleşir. Sekme adları ne kadar uzun olursa olsun sığar.',
+    render: a => `<div class="s6"><div class="list" role="tablist">${views.map((v, i) => `${i === 4 ? '<hr>' : ''}${tab(v, a, `${tIco(v.key)}${v.label}<span class="c num">${fmt(v.count)}</span>`)}`).join('')}</div>${filters}</div>` },
+  { n: 7, title: 'Önce Sayı',
+    text: 'Her görünüm eşit bir hücre; üstte büyük sayı, altında adı. Hücreler ince çizgilerle ayrılır, seçili olan mor zemin ve alt çizgiyle belirginleşir. Sayılar sekmenin en önemli bilgisi olarak öne çıkar.',
+    render: a => `<div class="t7" role="tablist">${views.map(v => tab(v, a, `<b class="num">${fmt(v.count)}</b><span>${v.label}</span>`)).join('')}</div>${filters}` },
+  { n: 8, title: 'Pay Çubuğu',
+    text: 'Her sekmenin altında, o görünümün toplam paket içindeki payını gösteren ince bir çubuk var: 63 bekleyen paket küçük, 1.732 faturalı paket neredeyse dolu. Çubuk rengi görünümün anlamından gelir (bekleyen turuncu, faturalı yeşil).',
+    render: a => `<div class="t8" role="tablist">${views.map(v => tab(v, a, `<span class="top">${v.label}<span class="c num">${fmt(v.count)}</span></span><span class="bar"><i style="width:${Math.max(1, Math.round(v.count / total * 100))}%"></i></span>`)).join('')}</div>${filters}` },
+  { n: 9, title: 'Renk Noktalı Sekmeler',
+    text: 'Her görünümün kendi rengi var ve sekmenin başında küçük bir nokta olarak durur; seçili sekme kendi renginde hafifçe boyanır. Hangi görünümde olduğun renkten anlaşılır.',
+    render: a => `<div class="t9" role="tablist">${views.map(v => tab(v, a, `${v.label}<span class="c num">${fmt(v.count)}</span>`)).join('')}</div>${filters}` },
+  { n: 10, title: 'Klasör Sekmeleri',
+    text: 'Sekmeler filtre kutusunun üst kenarına bağlı klasör sekmeleri gibi durur; seçili sekme kutuyla birleşir ve öne çıkar. Sekme ile altındaki filtrelerin birbirine ait olduğu net görünür.',
+    shellClass: 's10',
+    render: a => `<div class="t10" role="tablist">${views.map(v => tab(v, a, `${v.label}<span class="c num">${fmt(v.count)}</span>`)).join('')}</div><div class="panel">${filters}</div>` },
+  { n: 11, title: 'İki Ana Görünüm ve Kısayollar',
+    text: 'Asıl iş iki görünümde: faturalandırılmamış ve faturalandırılmış. Bunlar solda büyük ikili seçici olur; Tümü, Süresi Yaklaşanlar ve Gizlenenler sağda sade kısayol bağlantıları olarak kalır.',
+    render: a => `<div class="t11"><div class="duo" role="tablist">${views.filter(v => ['un', 'in'].includes(v.key)).map(v => tab(v, a, `${v.label}<b class="num">${fmt(v.count)}</b>`)).join('')}</div><div class="links">${views.filter(v => !['un', 'in'].includes(v.key)).map(v => tab(v, a, `${v.label}<span class="c num">${fmt(v.count)}</span>`)).join('')}</div></div>${filters}` },
+  { n: 12, title: 'Simgeli Sekmeler',
+    text: 'Her sekmenin başında görünümü anlatan bir simge (belge, onaylı belge, saat, gizli göz), seçili olanın altında mor çizgi ve simgesi mor. Sayılar çerçeveli küçük kutularda.',
+    render: a => `<div class="t12" role="tablist">${views.map(v => tab(v, a, `${tIco(v.key)}${v.label}<span class="c num">${fmt(v.count)}</span>`)).join('')}</div>${filters}` },
+  { n: 13, title: 'Büyük Yazı, Üst Simge Sayı',
+    text: 'Sekme adları daha büyük ve kalın; sayı adın sağ üstünde küçük üst simge olarak durur. Seçili sekme mor yazı ve alt çizgiyle belirginleşir. Başlık gibi okunan, sade bir görünüm.',
+    render: a => `<div class="t13" role="tablist">${views.map(v => tab(v, a, `${v.label}<sup class="num">${fmt(v.count)}</sup>`)).join('')}</div>${filters}` },
+  { n: 14, title: 'Birleşik Düğme Grubu',
+    text: 'Dış kutu kalkar; sekmeler yan yana yapışık düğmeler olur. Seçili düğme dolu mor zeminle en güçlü vurguyu alır. Klasik ve tanıdık bir araç çubuğu görünümü.',
+    render: a => `<div class="t14" role="tablist">${views.map(v => tab(v, a, `${v.label}<span class="c num">${fmt(v.count)}</span>`)).join('')}</div>${filters}` },
+  { n: 15, title: 'Özet Cümlesi',
+    text: 'Sekmeler bir özet cümlesine dönüşür: her sayı ve görünüm adı tıklanabilir bir parçadır. Durum tek bakışta okunur; seçili parça mor zeminle işaretlenir.',
+    render: a => { const p = (k, t) => { const v = views.find(x => x.key === k); return tab(v, a, `<b>${fmt(v.count)}</b>${t ? " " + t : ""}`) }; return `<div class="t15" role="tablist">Toplam ${p("all", "paketin")} ${p("un", "tanesi faturalandırılmamış")}, ${p("in", "tanesi faturalandırılmış")}. ${p("due", "paketin")} süresi yaklaşıyor, ${p("hid", "paket")} listeden gizli.</div>${filters}` } }
+];
+
+document.getElementById("picker").innerHTML = '<button type="button" data-show="all" aria-pressed="true">Hepsi</button>' + designs.map(d => `<button type="button" data-show="${d.n}" aria-pressed="false">${d.n} · ${d.title}</button>`).join("");
+const state = Object.fromEntries(designs.map(d => [d.n, { active: 'un', open: false }]));
+function draw(n) {
+  const d = designs.find(x => x.n === n), st = state[n];
+  document.querySelector(`[data-n="${n}"] .shell`).innerHTML = d.render(st.active, st.open);
+}
+document.getElementById('options').innerHTML = designs.map(d => `
+  <section class="option" data-n="${d.n}">
+    <div class="option-head"><h2>Öneri ${d.n} · ${d.title}</h2><p>${d.text}</p></div>
+    <div class="shell ${d.shellClass || ""}"></div>
+  </section>`).join('');
+designs.forEach(d => draw(d.n));
+document.getElementById('options').addEventListener('click', e => {
+  const sec = e.target.closest('.option'); if (!sec) return;
+  const n = Number(sec.dataset.n), st = state[n];
+  const tab = e.target.closest('[data-k]'), toggle = e.target.closest('[data-toggle]');
+  if (tab) { st.active = tab.dataset.k; st.open = false; draw(n); }
+  else if (toggle) { st.open = !st.open; draw(n); }
+});
+document.querySelectorAll('.picker button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('.picker button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  document.querySelectorAll('.option').forEach(s => s.hidden = b.dataset.show !== 'all' && s.dataset.n !== b.dataset.show);
+}));
+</script>
+</body>
+</html>
