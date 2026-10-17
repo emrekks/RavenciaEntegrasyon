@@ -407,3 +407,5 @@
   .ss-page .ss-bar-actions { flex-wrap: nowrap; }
   .app-shell.stitch-shell main .ss-page .ss-bar-actions .ss-btn.is-icon { flex: none; width: 40px; }
 }
+.app-shell.stitch-shell main .ss-page .ss-btn.is-quiet.is-icon { color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border-color: var(--rv-color-border-strong); }
+.app-shell.stitch-shell main .ss-page .ss-btn.is-quiet.is-icon:hover { background: var(--rv-color-surface-soft); }

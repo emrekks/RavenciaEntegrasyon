@@ -185,4 +185,7 @@
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-attempts-section :is(th, td) { padding-inline: 8px; }
   .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-attempts-section :is(th, td):first-child { width: 30px; }
+  /* job cards: one even gap between the title, state and time rows (the time row had its own top padding and line) */
+  .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table tbody .jobs-reference-row { row-gap: 10px !important; }
+  .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table tbody .jobs-reference-row > td { padding: 0 !important; border-top: 0 !important; }
 }
