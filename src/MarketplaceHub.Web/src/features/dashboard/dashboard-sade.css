@@ -245,3 +245,4 @@
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-seg > button { flex: 1; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pf-tools .rr-date { width: 100%; }
 }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc, :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc * { text-transform: none !important; }
