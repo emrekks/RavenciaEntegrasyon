@@ -12053,3 +12053,12 @@ h1, h2, h3, h4, :is(.orders-control-bar, .invoice-reference-filters, .return-ref
 .is-scrolling::-webkit-scrollbar-thumb, .is-scrollbar-hover::-webkit-scrollbar-thumb { background-color: var(--rv-color-border-strong); }
 .is-scrollbar-hover::-webkit-scrollbar-thumb:hover { background-color: var(--rv-color-subtle); }
 @supports (-moz-appearance: none) { * { scrollbar-width: thin; scrollbar-color: transparent transparent; } .is-scrolling, .is-scrollbar-hover { scrollbar-color: var(--rv-color-border-strong) transparent; } }
+
+
+/* One page gutter for every screen, as on the new-design pages: 28px top, 24px sides, room for the bulk bar at the bottom. */
+.app-shell.stitch-shell > main > .content { padding: 28px 24px 96px !important; }
+@media (max-width: 760px) { .app-shell.stitch-shell > main > .content { padding: 16px 16px 96px !important; } }
+
+/* One page gutter for every screen, as on the new-design pages: 28px top, 24px sides, room for the bulk bar at the bottom. */
+.app-shell.stitch-shell > main > .content { padding: 28px 24px 96px !important; }
+@media (max-width: 760px) { .app-shell.stitch-shell > main > .content { padding: 16px 16px 96px !important; } }
