@@ -169,6 +169,8 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl th .rr-hf > .rr-sortbtn { width: 24px; height: 24px; flex: none; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl th:has(.rr-sortbtn):has(.rr-anchor) { padding-right: 40px; }
 /* live-only additions */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-srcs .rr-src > .rr-badge { display: inline-flex; flex: none; justify-content: center; min-width: 76px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-srcs .rr-src small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-sortbtn.rr-on { color: var(--rr-violet); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-bulk-menu > .rr-menu { position: absolute; right: 0; bottom: calc(100% + 6px); top: auto; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metric-btn { justify-content: stretch; font-weight: 400 !important; }
