@@ -17,6 +17,17 @@ const NotificationPanel = lazyPage(() => import('./NotificationPanel').then(modu
 const Dashboard = lazyPage(() => import('../features/dashboard/DashboardPage').then(module => ({ default: module.DashboardPage })))
 const SystemSettingsPage = lazyPage(() => import('../features/settings/SystemSettingsPage').then(module => ({ default: module.SystemSettingsPage })))
 
+// Unlocks the page when nothing that holds it is open: no dialog, backdrop, filter sheet or full-screen order sheet.
+function releaseStaleScrollLocks() {
+  if (document.querySelector('[aria-modal="true"], [class*="modal-backdrop"], .rr-fopen, .mfs.is-open, .rr-sheet-full')) return
+  document.body.style.overflow = ''
+  document.documentElement.style.overflow = ''
+  document.body.classList.remove('rr-sheet-lock', 'mobile-filters-open', 'rv-auth-lock')
+  document.documentElement.classList.remove('rv-auth-lock')
+  const main = document.querySelector<HTMLElement>('.app-shell.stitch-shell > main')
+  if (main) main.style.overflow = ''
+}
+
 function Shell({ me }: { me: Me }) {
   const appearanceSettings = useAppearanceSettings()
   const [topbarHidden, setTopbarHidden] = useState(false)
@@ -39,18 +50,20 @@ function Shell({ me }: { me: Me }) {
   }, [])
   const location = useLocation()
   const navigate = useNavigate()
-  // A page change with no window open clears any scroll lock a closed overlay may have left behind.
+  // A page or tab change with no window open clears any scroll lock a closing overlay may have left behind. The side
+  // menu closes a moment after the link is tapped, so the check runs again shortly after; it also runs when the
+  // browser tab comes back (iPhone browsers kept a stale lock until a reload).
   useEffect(() => {
-    const frame = requestAnimationFrame(() => {
-      if (document.querySelector('[aria-modal="true"], [class*="modal-backdrop"], .rr-fopen')) return
-      document.body.style.overflow = ''
-      document.body.classList.remove('rr-sheet-lock', 'mobile-filters-open', 'rv-auth-lock')
-      document.documentElement.classList.remove('rv-auth-lock')
-      const main = document.querySelector<HTMLElement>('.app-shell.stitch-shell > main')
-      if (main) main.style.overflow = ''
-    })
-    return () => cancelAnimationFrame(frame)
-  }, [location.pathname])
+    const timers = [0, 250, 800].map(delay => window.setTimeout(releaseStaleScrollLocks, delay))
+    return () => timers.forEach(timer => window.clearTimeout(timer))
+  }, [location.pathname, location.search])
+  useEffect(() => {
+    const onReturn = () => { if (document.visibilityState === 'visible') releaseStaleScrollLocks() }
+    document.addEventListener('visibilitychange', onReturn)
+    window.addEventListener('pageshow', onReturn)
+    window.addEventListener('focus', onReturn)
+    return () => { document.removeEventListener('visibilitychange', onReturn); window.removeEventListener('pageshow', onReturn); window.removeEventListener('focus', onReturn) }
+  }, [])
   const navigationSummary = useQuery({ queryKey: ['dashboard-bootstrap'], queryFn: () => hubApi<DashboardBootstrap>('/dashboard/bootstrap'), staleTime: 30_000, refetchOnWindowFocus: true })
   const invoiceWorkspaceSummary = useQuery({ queryKey: ['invoice-workspace-summary'], queryFn: () => hubApi<{ dueSoonCount: number; uninvoicedCount?: number }>('/invoice-workspace/summary'), staleTime: 30_000, refetchOnWindowFocus: true })
   const orderSummary = useQuery({ queryKey: ['orders', 'summary', []], queryFn: () => hubApi<OrderNavigationSummary>('/orders/summary'), staleTime: 30_000, refetchOnMount: 'always', refetchOnWindowFocus: true, refetchInterval: 15_000, refetchIntervalInBackground: true })
