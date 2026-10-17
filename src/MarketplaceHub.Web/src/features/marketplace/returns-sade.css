@@ -920,3 +920,55 @@ body.rr-sheet-lock { overflow: hidden; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-fopen .rr-pop { position: static !important; width: 100% !important; min-width: 0 !important; max-width: none !important; margin-top: 6px; box-shadow: none; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-fopen :is(.rr-in, .rr-trigger, .date-range-picker-trigger) { height: 44px; min-height: 44px; font-size: 16px; }
 }
+/* ---------- phones: each return is a compact card (mobil-tum-sayfalar.html) ----------
+   identity · status strip · buyer and carrier · products · reason · invoice and total · actions */
+@media (max-width: 760px) {
+.rr.rr-returns .rr-panel { background: none; border: 0; }
+.rr.rr-returns .rr-panel-h { padding: 0 0 10px; }
+.rr.rr-returns .rr-tblwrap { overflow: visible; border: 0; }
+.rr.rr-returns .rr-tbl thead { display: none; }
+.rr.rr-returns .rr-pager { padding: 12px 0; }
+.rr.rr-returns .rr-tbl.rr-tbl tbody tr { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "o o" "s s" "b c" "p p" "r r" "i i" "a a"; gap: 10px 12px; margin: 0 0 10px; padding: 12px; background: var(--rr-surface); border: 1px solid var(--rr-line); border-radius: 14px; }
+.rr.rr-returns .rr-tbl.rr-tbl tbody tr.rr-sel { border-color: color-mix(in srgb, var(--rr-primary) 70%, transparent); background: color-mix(in srgb, var(--rr-primary-soft) 45%, var(--rr-surface)); }
+.rr.rr-returns .rr-tbl.rr-tbl tbody tr > td { min-width: 0; padding: 0 !important; border: 0 !important; background: none !important; }
+.rr.rr-returns .rr-tbl.rr-tbl tbody tr > td::before { display: none !important; }
+.rr.rr-returns .rr-tbl.rr-tbl tbody tr > td:first-child { grid-area: o; }
+.rr.rr-returns .rr-tbl.rr-tbl tbody tr > td[data-l="Durum"] { grid-area: s; }
+.rr.rr-returns .rr-tbl.rr-tbl tbody tr > td[data-l="Alıcı"] { grid-area: b; align-self: center; text-align: left; }
+.rr.rr-returns .rr-tbl.rr-tbl tbody tr > td[data-l="Kargo"] { grid-area: c; align-self: center; justify-self: end; }
+.rr.rr-returns .rr-tbl.rr-tbl tbody tr > td[data-l="Bilgiler"] { grid-area: p; }
+.rr.rr-returns .rr-tbl.rr-tbl tbody tr > td[data-l="Birim Fiyat"] { display: none !important; }
+.rr.rr-returns .rr-tbl.rr-tbl tbody tr > td[data-l="İade Sebebi"] { grid-area: r; padding: 8px 10px !important; background: var(--rr-bg) !important; border: 1px solid var(--rr-line) !important; border-radius: 10px; }
+.rr.rr-returns .rr-tbl.rr-tbl tbody tr > td[data-l="Fatura"] { grid-area: i; padding-top: 10px !important; border-top: 1px solid var(--rr-line) !important; }
+.rr.rr-returns .rr-tbl.rr-tbl tbody tr > td[data-l="İşlemler"] { grid-area: a; }
+.rr.rr-returns .rr-ordercell { align-items: center; }
+.rr.rr-returns .rr-ordercell > div { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 2px 8px; min-width: 0; }
+.rr.rr-returns .rr-ordercell > div > :is(.rr-wordmark, .rr-wordmark-text) { grid-row: 1; grid-column: 1; }
+.rr.rr-returns .rr-ordercell > div > .rr-on-no { grid-row: 1; grid-column: 2; min-width: 0; }
+.rr.rr-returns .rr-ordercell > div > small:first-of-type { grid-column: 1 / -1; }
+.rr.rr-returns .rr-ordercell > div > small:not(:first-of-type) { display: none; }
+.rr.rr-returns .rr-cust b { color: var(--rr-muted); font-size: 13px; font-weight: 400; text-align: left; }
+.rr.rr-returns .rr-cargocell { display: flex; align-items: center; gap: 8px; }
+.rr.rr-returns .rr-cargocell img { width: auto; height: 16px; }
+.rr.rr-returns .rr-cargocell small { display: none; }
+.rr.rr-returns td[data-l="Durum"] .rr-ring { display: flex !important; width: 100%; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: color-mix(in srgb, var(--rr-violet) 12%, transparent); }
+.rr.rr-returns td[data-l="Durum"] .rr-ring > span { display: flex !important; flex: 1; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.rr.rr-returns td[data-l="Durum"] .rr-ring small { font-size: 12px; font-weight: 600; text-align: right; color: inherit; }
+.rr.rr-returns td[data-l="Durum"] .rr-ring.rr-tone-wait { color: var(--rr-warn); background: color-mix(in srgb, var(--rr-warn) 12%, transparent); }
+.rr.rr-returns td[data-l="Durum"] .rr-ring.rr-tone-bad { color: var(--rr-bad); background: color-mix(in srgb, var(--rr-bad) 12%, transparent); }
+.rr.rr-returns td[data-l="Durum"] .rr-ring.rr-tone-ok { color: var(--rr-ok); background: color-mix(in srgb, var(--rr-ok) 12%, transparent); }
+.rr.rr-returns td[data-l="Durum"] .rr-ring.rr-tone-move { color: var(--rr-info); background: color-mix(in srgb, var(--rr-info) 12%, transparent); }
+.rr.rr-returns td[data-l="Durum"] .rr-ring.rr-tone-off { color: var(--rr-muted); background: var(--rr-raised); }
+.rr.rr-returns td[data-l="Durum"] .rr-ring b { color: var(--rr-ink); }
+.rr.rr-returns .rr-invcell.rr-invcell { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px 10px; width: 100%; max-width: none; }
+.rr.rr-returns .rr-invcell .rr-m:not(.rr-pay) { display: none; }
+.rr.rr-returns .rr-invcell .rr-m.rr-pay { grid-column: 2; grid-row: 1; justify-items: end; text-align: right; }
+.rr.rr-returns .rr-invcell > :is(.rr-ring, .rr-reason-tip) { grid-column: 1; grid-row: 1; }
+.rr.rr-returns .rr-invcell > .rr-anchor { grid-column: 1 / -1; }
+.rr.rr-returns .rr-actcell.rr-actcell { display: grid !important; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; }
+.rr.rr-returns .rr-actcell.rr-actcell > *, .rr.rr-returns .rr-actcell.rr-actcell > .rr-anchor > :is(.rr-trigger, .rr-btn) { width: 100% !important; min-width: 0; }
+.rr.rr-returns .rr-actcell :is(.rr-btn, .rr-trigger) { height: 40px !important; justify-content: center; }
+.rr.rr-returns .rr-actcell .rr-btn.rr-link { border: 1px solid var(--rr-line-strong); border-radius: 10px; }
+.rr.rr-returns .rr-actcell .rr-trigger > span { flex: none; }
+.rr.rr-returns .rr-actcell > :only-child { grid-column: 1 / -1; }
+}
