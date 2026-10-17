@@ -724,17 +724,10 @@
   /* integration health */
   .hpill { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px 0 7px; color: var(--ink); border: 1px solid var(--line-strong); border-radius: 999px; font-size: 12.5px; font-weight: 500; }
   .hpill .st { width: 15px; height: 15px; }
-  .hgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--line); }
-  .htile { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; padding: 16px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
-  .htile:nth-child(3n) { border-right: 0; } .htile:nth-last-child(-n+3) { border-bottom: 0; }
-  .htile small { color: var(--muted); font-size: 12.5px; } .htile strong { display: block; font-size: 18px; font-weight: 600; line-height: 1.35; } .htile p { margin-top: 2px; color: var(--subtle); font-size: 12px; }
-  .htile .btn.link { margin-top: 6px; gap: 4px; font-size: 12.5px; font-weight: 600; }
-  .htile.attn .op-ic { color: var(--warn); } .htile.attn strong { color: var(--warn); }
-  @media (max-width: 1100px) { .detail-grid { grid-template-columns: 1fr; } .hgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .htile:nth-child(3n) { border-right: 1px solid var(--line); } .htile:nth-child(2n) { border-right: 0; } .htile:nth-last-child(-n+3) { border-bottom: 1px solid var(--line); } .htile:nth-last-child(-n+2) { border-bottom: 0; } }
+  @media (max-width: 1100px) { .detail-grid { grid-template-columns: 1fr; } }
   @media (max-width: 760px) {
     .opgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .opcard { grid-template-columns: minmax(0, 1fr) auto; } .opcard .op-ic { display: none; }
     .chan { grid-template-columns: 1fr; justify-items: center; } .clist { width: 100%; }
-    .hgrid { grid-template-columns: 1fr; } .htile, .htile:nth-child(3n) { border-right: 0; } .htile:nth-last-child(-n+2) { border-bottom: 1px solid var(--line); } .htile:last-child { border-bottom: 0; }
     .ctools { width: 100%; } .ctools .anchor { flex: 1; } .ctools .trigger { min-width: 0; width: 100%; }
     .ph .acts .anchor { flex: 1; } .ph .acts .trigger { width: 100%; min-width: 0; }
     .ctip { width: 250px; }
@@ -755,6 +748,36 @@
   .pcardm .ends { display: flex; justify-content: space-between; gap: 8px; }
   .pcardm .ends span { display: grid; } .pcardm .ends span + span { text-align: right; }
   .pcardm .ends small { color: var(--subtle); font-size: 11.5px; white-space: nowrap; } .pcardm .ends b { color: var(--muted); font-size: 12px; font-weight: 500; white-space: nowrap; }
+  /* integration status (option 1): marketplace × data matrix */
+  .mxwrap { border-top: 1px solid var(--line); }
+  .mxt { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
+  .mxt th { padding: 9px 12px; color: var(--muted); font-size: 12px; font-weight: 500; text-align: left; background: var(--raised); border-bottom: 1px solid var(--line); white-space: nowrap; }
+  .mxt td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  .mxt th:first-child, .mxt td:first-child { padding-left: 16px; } .mxt td.mx-act { padding-right: 16px; text-align: right; }
+  .mxt tr:last-child td { border-bottom: 0; } .mxt tbody tr:hover td { background: var(--hover); }
+  .mxt tr.attn td:first-child { box-shadow: inset 2px 0 0 var(--warn); }
+  .mx-nm { display: flex; align-items: center; gap: 10px; min-width: 0; } .mx-nm .logo { width: 28px; height: 28px; }
+  .mx-nm > span { display: grid; min-width: 0; } .mx-nm b { font-weight: 500; } .mx-nm small { color: var(--subtle); font-size: 12px; }
+  .mxt tr.attn .mx-nm small { color: var(--warn); }
+  .mx { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .mx i, .mx-l { display: inline-block; width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--subtle); }
+  .mx.ok i, .mx-l.ok { background: var(--ok); } .mx.warn i, .mx-l.warn { background: var(--warn); } .mx.bad i, .mx-l.bad { background: var(--bad); }
+  .mx.warn { color: var(--warn); } .mx.bad { color: var(--bad); font-weight: 500; } .mx.off { color: var(--subtle); }
+  .mx.off i, .mx-l.off { background: none; border: 1px dashed var(--line-strong); }
+  .mx-act .btn.link { font-size: 12.5px; font-weight: 600; }
+  .mx-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 12px 16px; color: var(--muted); border-top: 1px solid var(--line); font-size: 12.5px; }
+  .mx-foot b { color: var(--ink); font-weight: 600; } .mx-foot .legend { gap: 14px; font-size: 12px; }
+  /* narrow pages: every marketplace becomes a card with its data types in a grid */
+  @media (max-width: 1100px) {
+    .mxt thead { display: none; } .mxt, .mxt tbody, .mxt tr { display: block; width: 100%; }
+    .mxt tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 12px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+    .mxt tr:last-child { border-bottom: 0; } .mxt td { display: block; padding: 0 !important; border: 0; }
+    .mxt td:first-child { grid-column: 1 / -1; } .mxt td.mx-act { grid-column: 1 / -1; text-align: left; } .mxt td.mx-act:empty { display: none; }
+    .mxt td[data-l]::before { content: attr(data-l); display: block; margin-bottom: 2px; color: var(--subtle); font-size: 11.5px; }
+    .mxt tr.attn { box-shadow: inset 2px 0 0 var(--warn); } .mxt tr.attn td:first-child { box-shadow: none; }
+  }
+  @media (max-width: 760px) { .mxt tr { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .mx-foot .legend i.mx-l { width: 8px; height: 8px; border-top: 0; } .mx-foot .legend i.mx-l.off { border: 1px dashed var(--line-strong); }
 </style>
 </head>
 <body>
@@ -970,15 +993,19 @@ function donut() {
   const stops = CHANNELS.map(([, , p, c]) => { const s = `${c} ${acc}% ${acc + p}%`; acc += p; return s }).join(', ')
   return `<div class="donut" style="background:conic-gradient(${stops})"><div><small>Toplam Sipariş</small><strong class="num">1.084</strong><span>${S.chartPeriod}</span></div></div>`
 }
-const HEALTH = [
-  ['sync', 'Pazaryerleriyle Son Veri Alışverişi', '2 dk önce', 'Trendyol, Hepsiburada, N11 ve Shopify güncel.', null],
-  ['queue', 'Sıradaki İşlemler', 'Bekleyen yok', 'Kuyruk boş; yeni işler anında işleniyor.', null],
-  ['fail', 'Tamamlanamayan İşlemler', '2', '1 fatura iletimi ve 1 stok güncellemesi tekrar denenmeyi bekliyor.', 'Nedenleri İncele'],
-  ['hand', 'Kararınızı Bekleyenler', '1', 'Bir iade için onay veya ret kararı gerekiyor.', 'Karar Ver'],
-  ['gauge', 'Pazaryeri Hız Sınırı', '%0,4', 'Son 24 saatte 18.240 istekten 73 tanesi pazaryeri sınırına takıldı.', null],
-  ['scale', 'Stok Karşılaştırması', '1 sa önce', 'Panel ve pazar yeri stokları eşleşiyor.', null],
+// Option 1 of genel-bakis-entegrasyon.html: one row per marketplace, one column per data type; each cell shows how long
+// ago that data last synced and its state.
+const DATA_KEYS = ['Sipariş', 'Ürün', 'Stok', 'Fiyat', 'İade', 'Fatura']
+const CONNS = [
+  ['trendyol', 'Trendyol', 'Mağaza 1188201', { Sipariş: ['ok', '2 dk'], Ürün: ['ok', '1 sa'], Stok: ['ok', '6 dk'], Fiyat: ['ok', '6 dk'], İade: ['ok', '4 dk'], Fatura: ['ok', '12 dk'] }, null],
+  ['hepsiburada', 'Hepsiburada', 'Mağaza 77120', { Sipariş: ['ok', '4 dk'], Ürün: ['ok', '2 sa'], Stok: ['warn', '48 dk'], Fiyat: ['ok', '9 dk'], İade: ['ok', '7 dk'], Fatura: ['bad', '3 sa'] }, 'Fatura iletilemedi; stok gönderimi gecikiyor.'],
+  ['n11', 'N11', 'ravencia', { Sipariş: ['ok', '6 dk'], Ürün: ['ok', '3 sa'], Stok: ['ok', '15 dk'], Fiyat: ['ok', '15 dk'], İade: ['ok', '11 dk'], Fatura: ['off'] }, null],
+  ['pazarama', 'Pazarama', 'Mağaza 5501', { Sipariş: ['ok', '9 dk'], Ürün: ['ok', '5 sa'], Stok: ['ok', '20 dk'], Fiyat: ['ok', '20 dk'], İade: ['ok', '16 dk'], Fatura: ['off'] }, null],
+  ['shopify', 'Shopify', 'ravencia.myshopify.com', { Sipariş: ['bad', '2 sa'], Ürün: ['ok', '1 sa'], Stok: ['warn', '1 sa'], Fiyat: ['ok', '1 sa'], İade: ['off'], Fatura: ['off'] }, 'Bağlantı anahtarı reddedildi (401); siparişler gelmiyor.'],
 ]
-const hTile = ([ic, t, v, d, link]) => `<article class="htile ${link ? 'attn' : ''}"><span class="op-ic">${I[ic]}</span><div><small>${t}</small><strong class="num">${v}</strong><p>${d}</p>${link ? `<button class="btn link">${link} ${I.arrowR}</button>` : ''}</div></article>`
+const CELL_STATE = { ok: 'Güncel', warn: 'Gecikiyor', bad: 'Durdu', off: 'Bu pazar yerinde yok' }
+const mCell = (k, [st, age]) => `<td data-l="${k}"><span class="mx ${st}" title="${k} · ${CELL_STATE[st]}"><i></i>${st === 'off' ? 'Yok' : `${age} önce`}</span></td>`
+const matrixRow = ([k, n, store, data, issue]) => `<tr class="${issue ? 'attn' : ''}"><td><span class="mx-nm">${logo(k)}<span><b>${n}</b><small>${issue || store}</small></span></span></td>${DATA_KEYS.map(d => mCell(d, data[d])).join('')}<td class="mx-act">${issue ? '<button class="btn link">İncele</button>' : ''}</td></tr>`
 
 /* ---------- page ---------- */
 function page() {
@@ -993,7 +1020,7 @@ function page() {
       <article class="panel dcard"><div class="panel-h"><div><h2>Satış Kanalları</h2><p>Seçilen dönemin gelir dağılımı</p></div><button class="btn link">Kanalları Yönet ${I.arrowR}</button></div>
         <div class="dbody chan">${donut()}<ul class="clist">${CHANNELS.map(([k, l, p, c]) => `<li><i style="background:${c}"></i>${logo(k)}<span>${l}</span><b class="num">%${p}</b></li>`).join('')}</ul></div><div class="dfoot"><span>5 kanal · ${S.chartPeriod}</span><button class="btn link">Bağlantıları Yönet ${I.arrowR}</button></div></article>
     </div></section>
-    <section class="panel"><div class="panel-h"><div><h2>Entegrasyon Durumu</h2><p>Pazaryerleriyle bağlantının son 24 saati</p></div><span class="hpill ${S.issues ? 'attn' : ''}">${S.issues ? `${G.waiting}2 konu dikkatinizi bekliyor` : `${G.delivered}Her şey yolunda`}</span></div><div class="hgrid">${HEALTH.map(hTile).join('')}</div></section>
+    <section class="panel"><div class="panel-h"><div><h2>Entegrasyon Durumu</h2><p>Pazaryerleriyle bağlantının son 24 saati</p></div><span class="hpill ${S.issues ? 'attn' : ''}">${S.issues ? `${G.waiting}2 konu dikkatinizi bekliyor` : `${G.delivered}Her şey yolunda`}</span></div><div class="mxwrap"><table class="mxt"><thead><tr><th>Pazar Yeri</th>${DATA_KEYS.map(d => `<th>${d}</th>`).join('')}<th></th></tr></thead><tbody>${CONNS.map(matrixRow).join('')}</tbody></table></div><div class="mx-foot"><span>Son 24 saatte <b class="num">18.240</b> istek · <b class="num">2</b> tamamlanamayan iş · <b class="num">1</b> karar bekleyen iade</span><span class="legend"><span><i class="mx-l ok"></i>Güncel</span><span><i class="mx-l warn"></i>Gecikiyor</span><span><i class="mx-l bad"></i>Durdu</span><span><i class="mx-l off"></i>Yok</span></span></div></section>
     ${mocks()}</div>`
 }
 const TOASTS = { report: ['success', 'Rapor İndirildi', 'ravencia-rapor-son-30-gun.csv indirildi (Tarih, Ciro, Sipariş, Para Birimi).'] }
