@@ -31,3 +31,9 @@
   .app-shell.stitch-shell main .return-reference-filters .return-filter-actions { grid-column: auto; }
   .app-shell.stitch-shell main .return-reference-filters .return-filter-actions { justify-self: stretch; }
 }
+
+/* Orders and returns: the status tabs are the top row of the filter card, as on the invoices page
+   (docs/tasarim-onerileri/siparisler-sekmeler.html, option 1). */
+.app-shell.stitch-shell main :is(.orders-reference-filter-shell, .returns-reference-filter-shell) { display: grid; min-width: 0; overflow: visible; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; }
+.app-shell main :is(.orders-reference-filter-shell, .returns-reference-filter-shell) > .rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs { padding: 0 8px !important; border-radius: 12px 12px 0 0 !important; }
+.app-shell.stitch-shell main :is(.orders-reference-filter-shell, .returns-reference-filter-shell) > :is(.orders-control-bar, .return-reference-filters) { margin: 0 !important; padding: 16px !important; background: none !important; border: 0 !important; border-radius: 0 0 12px 12px !important; box-shadow: none !important; }

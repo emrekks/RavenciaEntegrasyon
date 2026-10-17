@@ -148,3 +148,7 @@
 .jobs-reference-status-hero h3 .jb-glyph { width: 18px; height: 18px; }
 @keyframes jb-glyph-turn { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .jb-glyph.is-running { animation: none; } }
+
+/* Category tabs are the top row of the toolbar card, as on the invoices and orders pages. */
+.app-shell main .jobs-reference-canvas > .rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs:has(+ .jobs-reference-toolbar) { border-bottom: 1px solid var(--rv-color-border) !important; border-radius: 12px 12px 0 0 !important; }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-canvas > .rv-view-tabs + .jobs-reference-toolbar { margin-top: -16px; border-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
