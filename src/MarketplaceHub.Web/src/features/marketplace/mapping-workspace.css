@@ -562,3 +562,10 @@
 .app-shell.stitch-shell main section.mapping-page .brand-mapping-saved-card .mapping-record-count { color: var(--rv-color-muted); font-size: 13px; }
 .app-shell.stitch-shell main section.mapping-page .brand-mapping-saved-card .mapping-icon-button { display: grid; width: 30px !important; min-width: 30px; height: 30px !important; min-height: 30px !important; place-items: center; padding: 0 !important; color: var(--rv-color-muted); background: none; border: 0; box-shadow: none; }
 @media (max-width: 760px) { .app-shell.stitch-shell main section.mapping-page .brand-mapping-pair-grid { grid-template-columns: minmax(0, 1fr); row-gap: 12px; } .app-shell.stitch-shell main section.mapping-page .brand-mapping-pair-grid > .mapping-link-rail { display: none; } }
+
+/* Phones: Dışa Aktar and İçe Aktar share the full width side by side instead of squeezing into half of it. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main section.mapping-page .mapping-transfer-actions { grid-template-columns: minmax(0, 1fr) !important; width: 100%; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-transfer-actions .mam { width: 100%; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-transfer-actions .mam button { width: 100%; min-height: 40px; justify-content: center; }
+}
