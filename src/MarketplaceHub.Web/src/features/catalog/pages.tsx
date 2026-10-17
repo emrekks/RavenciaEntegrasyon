@@ -705,7 +705,10 @@ function lowStockProductImage(product: Product, fallback: Product | null = null)
 // list is only a fallback for variants that carry no options.
 function lowStockSizeLabel(variant: Variant) {
   const parts = variantOptionParts(variant.optionSignature).filter(part => !isColorOptionName(part.name))
-  return parts.length ? parts.map(part => `${part.name}: ${part.value}`).join(' · ') : lowStockVariantLabel(variant)
+  if (parts.length) return parts.map(part => `${part.name}: ${part.value}`).join(' · ')
+  // Imported variants may carry every product attribute; only the variant-defining ones (size) name the variant.
+  const sizes = variantOptionEntries(variant).filter(option => isVariantOptionName(option.name) && !isColorOptionName(option.name))
+  return sizes.length ? sizes.map(option => `${formatCatalogOptionLabel(option.name)}: ${option.value}`).join(' · ') : variant.sku
 }
 
 function useMediaQuery(query: string) {
