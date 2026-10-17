@@ -1021,3 +1021,6 @@ main .rr.rr:is(.rr-orders, .rr-returns) > .rr-panel { min-width: 0; }
 /* key/value boxes: the label column is a quiet tinted strip in a smaller semibold type, so it never reads as a value */
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-kv.rr-kv > dt { color: var(--rr-muted); background: color-mix(in srgb, var(--rr-raised) 75%, transparent); font-size: 12.5px; font-weight: 500; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-kv.rr-kv > dd { color: var(--rr-ink); font-weight: 500; }
+/* detail facts: the carrier logo sits over its tracking number */
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-facts .rr-fact-cargo.rr-fact-cargo { display: block; width: auto; max-width: 96px; height: 20px; margin: 2px 0 4px; object-fit: contain; object-position: left center; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-facts .rr-fact-track { font-size: 13px; }
