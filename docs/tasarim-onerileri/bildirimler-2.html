@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bildirim Paneli 2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #111115; --surface: #17171c; --raised: #1d1d23; --soft: #22222a; --sunk: #101014;
+    --line: #2a2a32; --line-strong: #383842;
+    --ink: #ececf0; --muted: #a3a3b0; --subtle: #6f6f7c;
+    --primary: #8b5cf6; --primary-soft: #272139;
+    --violet: color-mix(in srgb, var(--primary) 55%, white);
+    --violet-line: color-mix(in srgb, var(--primary) 55%, transparent);
+    --warn: #e2aa4b; --bad: #e4636f; --ok: #46b98f; --info: #83b4ff;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { overflow-x: clip; }
+  body { margin: 0; font: 14px/1.5 Inter, "Segoe UI", system-ui, sans-serif; color: var(--ink); background: var(--bg); -webkit-font-smoothing: antialiased; }
+  h1, h2, h3, p { margin: 0; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  .num { font-variant-numeric: tabular-nums; }
+  .ico { width: 16px; height: 16px; flex: none; display: block; }
+  .wrap { max-width: 1160px; margin: 0 auto; padding: 32px 16px 96px; display: grid; gap: 28px; }
+  .intro h1 { font-size: 22px; font-weight: 600; }
+  .intro p { color: var(--muted); margin-top: 6px; max-width: 74ch; }
+  .picker { display: flex; flex-wrap: wrap; gap: 6px; position: sticky; top: 0; z-index: 5; padding: 10px 0; background: var(--bg); }
+  .picker button { height: 34px; padding: 0 14px; color: var(--muted); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 7px; font-size: 13px; }
+  .picker button[aria-pressed="true"] { color: var(--ink); background: var(--primary-soft); border-color: var(--violet-line); }
+  .option { display: grid; grid-template-columns: minmax(0, 1fr) 460px; gap: 28px; align-items: start; margin-bottom: 44px; }
+  .option-head h2 { font-size: 17px; font-weight: 600; }
+  .option-head p { color: var(--muted); font-size: 13px; margin-top: 6px; }
+  .option-head ul { margin: 12px 0 0; padding-left: 18px; color: var(--muted); font-size: 13px; display: grid; gap: 4px; }
+  .stage { padding: 10px; border-radius: 16px; background: repeating-linear-gradient(135deg, #131317 0 10px, #151519 10px 20px); border: 1px solid var(--line); }
+  @media (max-width: 980px) { .option { grid-template-columns: minmax(0, 1fr); } .stage { max-width: 460px; } }
+
+  /* panel shell shared by every option */
+  .panel { width: 100%; max-height: 560px; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; overflow: hidden; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 14px; box-shadow: 0 24px 60px rgb(0 0 0 / 50%); }
+  .p-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px 10px; }
+  .p-head h3 { font-size: 15px; font-weight: 600; }
+  .p-head .cnt { display: inline-grid; min-width: 22px; height: 20px; place-items: center; padding: 0 6px; background: var(--primary-soft); border: 1px solid var(--violet-line); border-radius: 6px; color: var(--violet); font-size: 11.5px; font-weight: 600; }
+  .p-head .acts { margin-left: auto; display: flex; gap: 2px; }
+  .ghost { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; color: var(--muted); background: none; border: 0; border-radius: 7px; font-size: 12.5px; white-space: nowrap; }
+  .ghost:hover { color: var(--ink); background: var(--raised); }
+  .icon-btn { display: grid; width: 30px; height: 30px; place-items: center; color: var(--muted); background: none; border: 0; border-radius: 7px; }
+  .icon-btn:hover { color: var(--ink); background: var(--raised); }
+  .p-body { overflow: auto; scrollbar-width: thin; scrollbar-color: transparent transparent; }
+  .p-body:hover { scrollbar-color: var(--line-strong) transparent; }
+  .p-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 16px; border-top: 1px solid var(--line); color: var(--subtle); font-size: 12px; }
+  .p-foot a { color: var(--violet); text-decoration: none; font-size: 12.5px; }
+
+  /* view tabs, same as the pages */
+  .vtabs { display: flex; padding: 0 8px; border-bottom: 1px solid var(--line); }
+  .vtabs button { position: relative; display: inline-flex; align-items: center; gap: 7px; height: 40px; padding: 0 10px; color: var(--muted); background: none; border: 0; font-size: 13px; white-space: nowrap; }
+  .vtabs button + button::before { content: ""; position: absolute; left: 0; top: 50%; width: 1px; height: 16px; background: var(--line-strong); transform: translateY(-50%); }
+  .vtabs button svg { color: var(--subtle); }
+  .vtabs button .c { min-width: 20px; height: 18px; padding: 0 5px; display: inline-grid; place-items: center; background: var(--soft); border: 1px solid var(--line-strong); border-radius: 5px; color: var(--ink); font-size: 11px; }
+  .vtabs button.on { color: var(--ink); font-weight: 500; }
+  .vtabs button.on svg { color: var(--violet); }
+  .vtabs button.on::after { content: ""; position: absolute; left: 6px; right: 6px; bottom: 0; height: 2px; border-radius: 2px; background: var(--primary); }
+
+  /* tone glyphs */
+  .tone-error { --tone: var(--bad); } .tone-warn { --tone: var(--warn); } .tone-ok { --tone: var(--ok); } .tone-info { --tone: var(--info); }
+  .glyph { display: grid; width: 32px; height: 32px; flex: none; place-items: center; color: var(--tone); background: color-mix(in srgb, var(--tone) 13%, var(--surface)); border-radius: 9px; }
+  .glyph.round { border-radius: 50%; }
+  .unread-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--primary); }
+  .btn { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 7px; font-size: 12.5px; white-space: nowrap; }
+  .btn:hover { background: var(--raised); }
+  .btn.primary { color: #fff; background: var(--primary); border-color: var(--primary); }
+  .btn.danger { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, var(--line-strong)); }
+  .empty { display: grid; justify-items: center; gap: 6px; padding: 40px 16px; color: var(--muted); font-size: 13px; text-align: center; }
+  .empty b { color: var(--ink); font-weight: 500; }
+
+  /* shared timeline rail */
+  .tl { position: relative; padding: 6px 16px 14px; }
+  .tl::before { content: ""; position: absolute; left: var(--rail, 31px); top: 0; bottom: 0; width: 1px; background: var(--line-strong); }
+  .tday { position: relative; display: flex; align-items: center; gap: 10px; margin: 12px 0 8px; color: var(--subtle); font-size: 12px; }
+  .tday i { width: 32px; flex: none; display: grid; place-items: center; }
+  .tday i::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--surface); border: 2px solid var(--line-strong); }
+  .tday.today i::before { border-color: var(--primary); }
+  .tday b { color: var(--ink); font-weight: 500; font-size: 13px; }
+  .tday .n { margin-left: auto; min-width: 22px; height: 20px; padding: 0 6px; display: inline-grid; place-items: center; color: var(--ink); background: var(--soft); border: 1px solid var(--line-strong); border-radius: 6px; font-size: 11.5px; }
+  .ti { position: relative; display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 10px; padding: 5px 0; }
+  .ti .glyph { position: relative; z-index: 1; border: 2px solid var(--surface); }
+  .ti h4 { margin: 0; font-size: 13px; font-weight: 500; }
+  .ti p { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+  .ti time { color: var(--subtle); font-size: 11.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .ti .top { display: flex; align-items: baseline; gap: 8px; } .ti .top time { margin-left: auto; }
+  .row-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .card { padding: 10px 12px; background: var(--sunk); border: 1px solid var(--line); border-radius: 10px; }
+  .ti.is-unread .card { border-color: var(--violet-line); }
+
+  /* 6 — no cards */
+  .o6 .ti { padding: 8px 0; }
+  .o6 .ti .body { padding: 5px 0 6px; border-bottom: 1px solid var(--line); }
+  .o6 .ti.is-unread h4::after { content: ""; display: inline-block; width: 6px; height: 6px; margin-left: 7px; border-radius: 50%; background: var(--primary); vertical-align: 2px; }
+
+  /* 7 — time column on the left of the rail */
+  .o7 { --rail: 87px; }
+  .o7 .tday { padding-left: 56px; }
+  .o7 .ti { grid-template-columns: 48px 32px minmax(0, 1fr); gap: 8px; }
+  .o7 .ti > time { padding-top: 8px; text-align: right; }
+
+  /* 8 — rail segments in the tone */
+  .o8 .tl::before { display: none; }
+  .o8 .ti::before { content: ""; position: absolute; left: 15px; top: -6px; bottom: -6px; width: 2px; border-radius: 2px; background: color-mix(in srgb, var(--tone) 55%, transparent); }
+  .o8 .tday i::before { border-color: var(--line-strong); }
+  .o8 .card { border-left: 2px solid var(--tone); border-radius: 4px 10px 10px 4px; }
+
+  /* 9 — progress rings as nodes */
+  .o9 .ring { position: relative; z-index: 1; width: 32px; height: 32px; display: grid; place-items: center; background: var(--surface); border-radius: 50%; }
+  .o9 .ring svg.r { position: absolute; inset: 4px; width: 24px; height: 24px; transform: rotate(-90deg); }
+  .o9 .ring .ico { width: 12px; height: 12px; color: var(--tone); }
+
+  /* 10 — compact one-line cards, expand */
+  .o10 .card { padding: 8px 10px; }
+  .o10 button.card { width: 100%; text-align: left; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; color: inherit; }
+  .o10 button.card .t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
+  .o10 button.card .t b { font-weight: 500; } .o10 button.card .t small { color: var(--subtle); margin-left: 6px; }
+  .o10 .ti .glyph { width: 26px; height: 26px; margin: 3px; } .o10 .ti .glyph .ico { width: 14px; height: 14px; }
+  .o10 .more { padding: 8px 2px 2px; }
+
+  /* 11 — every day its own card */
+  .o11 .daycard { margin: 12px 12px 0; background: var(--sunk); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .o11 .daycard header { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--subtle); }
+  .o11 .daycard header b { color: var(--ink); font-size: 13px; font-weight: 500; }
+  .o11 .daycard .tl { padding: 4px 12px 10px; --rail: 27px; }
+  .o11 .ti .body { padding-top: 6px; }
+
+  /* 12 — tone edge cards, small dots */
+  .o12 { --rail: 23px; }
+  .o12 .tday i { width: 16px; }
+  .o12 .ti { grid-template-columns: 16px minmax(0, 1fr); }
+  .o12 .ti .dot { position: relative; z-index: 1; width: 10px; height: 10px; margin: 14px auto 0; border-radius: 50%; background: var(--tone); box-shadow: 0 0 0 3px var(--surface); }
+  .o12 .card { background: color-mix(in srgb, var(--tone) 6%, var(--sunk)); border-color: color-mix(in srgb, var(--tone) 30%, var(--line)); }
+  .o12 .card h4 { display: flex; align-items: center; gap: 6px; } .o12 .card h4 svg { color: var(--tone); }
+
+  /* 13 — sticky day labels riding on the rail */
+  .o13 .tday { position: sticky; top: 0; z-index: 2; margin: 0 -16px; padding: 8px 16px; background: color-mix(in srgb, var(--surface) 94%, transparent); backdrop-filter: blur(6px); border-bottom: 1px solid var(--line); }
+
+  /* 14 — mixed density: errors big, the rest small */
+  .o14 .ti.small { grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; padding: 3px 0; }
+  .o14 .ti.small .mini { position: relative; z-index: 1; width: 32px; display: grid; place-items: center; }
+  .o14 .ti.small .mini i { width: 8px; height: 8px; border-radius: 50%; background: var(--tone); box-shadow: 0 0 0 3px var(--surface); }
+  .o14 .ti.small span { font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .o14 .ti.small span b { color: var(--ink); font-weight: 500; margin-right: 6px; }
+  .o14 .card.big { background: color-mix(in srgb, var(--bad) 7%, var(--sunk)); border-color: color-mix(in srgb, var(--bad) 35%, transparent); }
+
+  /* 15 — repeats grouped */
+  .o15 .stack { position: relative; }
+  .o15 .stack .card { position: relative; z-index: 1; }
+  .o15 .stack.multi::after { content: ""; position: absolute; left: 6px; right: 6px; bottom: -5px; height: 10px; background: var(--sunk); border: 1px solid var(--line); border-top: 0; border-radius: 0 0 10px 10px; }
+  .o15 .times { display: inline-grid; min-width: 22px; height: 20px; padding: 0 6px; place-items: center; margin-left: 6px; color: var(--ink); background: var(--soft); border: 1px solid var(--line-strong); border-radius: 6px; font-size: 11.5px; font-weight: 500; vertical-align: 1px; }
+  .o15 .sub { margin-top: 8px; display: grid; gap: 4px; padding: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; font-size: 12px; color: var(--muted); }
+  .o15 .sub div { display: flex; justify-content: space-between; gap: 8px; } .o15 .sub time { color: var(--subtle); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="intro">
+    <h1>Bildirim Paneli · 10 Öneri Daha</h1>
+    <p>Öneri 2 (Zaman Çizelgesi) temel alınarak on farklı yön. Sekmeler sayfalardakiyle aynı; panellerde sekmelere, kartlara ve "Okundu" düğmelerine tıklayarak deneyebilirsin.</p>
+  </div>
+  <div class="picker" role="group" aria-label="Öneri seç" id="picker"></div>
+  <div id="options"></div>
+</div>
+<script>
+const P = {
+  all: '<path d="M2.5 3.5h11v9h-11z"/><path d="M2.5 6.5h11"/>',
+  unread: '<path d="M3 8.5V12a1.5 1.5 0 0 0 1.5 1.5h7A1.5 1.5 0 0 0 13 12V8.5"/><path d="M3 8.5h3l1 1.5h2l1-1.5h3L11 3H5z"/>',
+  attention: '<path d="M8 2 14.5 13.5h-13z"/><path d="M8 6.5v3M8 11.6v.1"/>',
+  x: '<circle cx="8" cy="8" r="5.8"/><path d="m6 6 4 4M10 6l-4 4"/>',
+  check: '<circle cx="8" cy="8" r="5.8"/><path d="m5.5 8.2 1.7 1.7 3.4-3.6"/>',
+  clock: '<circle cx="8" cy="8" r="5.8"/><path d="M8 5v3.2l2 1.3"/>',
+  info: '<circle cx="8" cy="8" r="5.8"/><path d="M8 7.3v3.4M8 5.2v.1"/>',
+  arrow: '<path d="M3 8h9.5M9 4.5 12.5 8 9 11.5"/>',
+  chevron: '<path d="m4.5 6.5 3.5 3.5 3.5-3.5"/>',
+  checkAll: '<path d="m1.8 8.4 2.6 2.6 5-5.4M7.6 10.4l.6.6 5-5.4"/>',
+  trash: '<path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 9h5.8l.6-9"/>',
+  gear: '<circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1"/>',
+  link: '<path d="M6.8 9.2a2.6 2.6 0 0 0 3.7 0l2-2a2.6 2.6 0 0 0-3.7-3.7l-.6.6"/><path d="M9.2 6.8a2.6 2.6 0 0 0-3.7 0l-2 2a2.6 2.6 0 0 0 3.7 3.7l.6-.6"/>',
+  order: '<path d="M2.5 3h2l1.6 7.4a1 1 0 0 0 1 .8h5.6a1 1 0 0 0 1-.8L14.5 6H5.2"/><circle cx="7" cy="13.5" r=".9"/><circle cx="12.5" cy="13.5" r=".9"/>',
+  invoice: '<path d="M4 2h5l3 3v9H4z"/><path d="M9 2v3h3M6 8.5h4M6 11h3"/>',
+  product: '<path d="M5.5 2.5 2.5 4.5l1.3 2.6 1.2-.5V13.5h6V6.6l1.2.5 1.3-2.6-3-2"/><path d="M5.5 2.5a2.5 2.5 0 0 0 5 0"/>',
+  map: '<path d="M2.5 2.5h4.5v4.5H2.5zM9 2.5h4.5v4.5H9zM2.5 9h4.5v4.5H2.5zM9 9h4.5v4.5H9z"/>'
+};
+const ic = (n, cls = 'ico') => `<svg class="${cls}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n]}</svg>`;
+const toneIcon = { error: 'x', warn: 'attention', ok: 'check', info: 'info' };
+
+const data = [
+  { id: 1, day: 'Bugün', date: '17 Ekim Cumartesi', tone: 'error', area: 'map', areaLabel: 'Eşleştirme', title: 'İşlem Başarısız', text: 'Yeni eşleşen başlık bulunamadı.', time: '18 dk önce', unread: true, cta: 'Eşleştirmelere Git', meta: [['İşlem', 'Kategori eşleştirme taraması'], ['Deneme', '3 / 3'], ['Kod', 'NO_MATCH']] },
+  { id: 2, day: 'Bugün', date: '17 Ekim Cumartesi', tone: 'warn', area: 'invoice', areaLabel: 'Fatura', title: 'Fatura Süresi Yaklaşıyor', text: '#11717650981 siparişinin faturası için 1 gün kaldı.', time: '1 sa önce', unread: true, cta: 'Faturayı Aç', meta: [['Sipariş', '#11717650981'], ['Son Tarih', '18.10.2026']] },
+  { id: 3, day: 'Dün', date: '16 Ekim Cuma', tone: 'ok', area: 'order', areaLabel: 'Sipariş', title: 'Siparişler Aktarıldı', text: 'Trendyol mağazasından 12 yeni sipariş alındı.', time: '22:14', unread: false, meta: [['Mağaza', 'Trendyol'], ['Adet', '12']] },
+  { id: 4, day: 'Dün', date: '16 Ekim Cuma', tone: 'error', area: 'invoice', areaLabel: 'Fatura', title: 'Fatura İletilemedi', text: 'Pazaryeri dosyayı reddetti: fatura numarası daha önce kullanılmış.', time: '18:05', unread: false, cta: 'Faturayı Aç', meta: [['Sipariş', '#11717712403'], ['Kod', 'DUPLICATE_NUMBER']] },
+  { id: 5, day: 'Dün', date: '16 Ekim Cuma', tone: 'info', area: 'product', areaLabel: 'Ürün', title: 'Fiyat ve Stok Gönderildi', text: '248 ürünün fiyat ve stok bilgisi Hepsiburada’ya iletildi.', time: '15:30', unread: false, meta: [['Mağaza', 'Hepsiburada'], ['Ürün', '248']] },
+  { id: 7, day: 'Dün', date: '16 Ekim Cuma', tone: 'error', area: 'invoice', areaLabel: 'Fatura', title: 'Fatura İletilemedi', text: 'Pazaryeri dosyayı reddetti: fatura numarası daha önce kullanılmış.', time: '17:48', unread: false, cta: 'Faturayı Aç', meta: [['Sipariş', '#11717701266'], ['Kod', 'DUPLICATE_NUMBER']] },
+  { id: 6, day: '15 Ekim', date: '15 Ekim Perşembe', tone: 'error', area: 'order', areaLabel: 'Sipariş', title: 'Bağlantı Hatası', text: 'N11 mağazasına bağlanılamadı; anahtarın süresi dolmuş olabilir.', time: '09:12', unread: false, cta: 'Entegrasyona Git', meta: [['Mağaza', 'N11'], ['Kod', 'AUTH_EXPIRED']] }
+];
+
+function makeState() { return { tab: 'all', items: data.map(d => ({ ...d })), open: 1, area: 'all' } }
+const filtered = st => st.items.filter(d => st.tab === 'all' || (st.tab === 'unread' ? d.unread : d.tone === 'error')).filter(d => !st.area || st.area === 'all' || d.area === st.area);
+const counts = st => ({ all: st.items.length, unread: st.items.filter(d => d.unread).length, error: st.items.filter(d => d.tone === 'error').length });
+const head = st => { const c = counts(st); return `<div class="p-head"><h3>Bildirimler</h3>${c.unread ? `<span class="cnt num">${c.unread}</span>` : ''}<div class="acts"><button class="ghost" data-act="readall" type="button" ${c.unread ? '' : 'disabled'}>${ic('checkAll')}Tümünü Okundu Yap</button><button class="icon-btn" type="button" aria-label="Bildirim ayarları">${ic('gear')}</button></div></div>` };
+const tabs = st => { const c = counts(st); return `<div class="vtabs" role="tablist">${[['all', 'all', 'Tümü'], ['unread', 'unread', 'Okunmamış'], ['error', 'attention', 'Hatalar']].map(([k, i, l]) => `<button type="button" role="tab" data-tab="${k}" class="${st.tab === k ? 'on' : ''}">${ic(i)}${l}<span class="c num">${c[k]}</span></button>`).join('')}</div>` };
+const foot = (left = 'Son 30 günün bildirimleri gösteriliyor') => `<div class="p-foot"><span>${left}</span><a href="#" onclick="return false">Tüm Geçmişi Aç</a></div>`;
+const empty = '<div class="empty">' + ic('check', 'ico') + '<b>Her şey yolunda</b>Bu görünümde bildirim yok.</div>';
+const actions = d => `${d.cta ? `<button class="btn ${d.tone === 'error' ? 'danger' : ''}" type="button">${d.cta}${ic('arrow')}</button>` : ''}${d.unread ? `<button class="btn" type="button" data-read="${d.id}">${ic('check')}Okundu</button>` : ''}`;
+const byDay = list => list.reduce((acc, d) => { (acc[d.day] ||= { date: d.date, items: [] }).items.push(d); return acc }, {});
+
+const ringOf = { ok: 1, info: .75, warn: .5, error: .25 };
+const ringSvg = p => { const r = 10, c = 2 * Math.PI * r; return `<svg class="r" viewBox="0 0 24 24"><circle cx="12" cy="12" r="${r}" fill="none" stroke="var(--line-strong)" stroke-width="2.4"/><circle cx="12" cy="12" r="${r}" fill="none" stroke="var(--tone)" stroke-width="2.4" stroke-linecap="round" stroke-dasharray="${(c * p).toFixed(1)} ${c.toFixed(1)}"/></svg>` };
+const days = (st, item, wrap = (k, g, inner) => `<div class="tday${k === 'Bugün' ? ' today' : ''}"><i></i><b>${k}</b><span>${g.date}</span></div>${inner}`) => { const g = byDay(filtered(st)); const keys = Object.keys(g); return keys.length ? `<div class="tl">${keys.map(k => wrap(k, g[k], g[k].items.map(item).join(''))).join('')}</div>` : empty };
+const acts = d => d.cta || d.unread ? `<div class="row-acts">${actions(d)}</div>` : '';
+const glyph = d => `<span class="glyph round">${ic(toneIcon[d.tone])}</span>`;
+const cardBody = d => `<div class="top"><h4>${d.title}</h4><time>${d.time}</time></div><p>${d.text}</p>${acts(d)}`;
+
+const designs = [
+  { n: 6, title: 'Kartsız Çizelge',
+    text: 'Zaman çizgisi ve yuvarlak simgeler kalır, kartlar kalkar: bildirim metni doğrudan çizginin yanında, altında ince bir ayırıcıyla. Daha hafif ve daha çok bildirim sığar.',
+    bullets: ['Öneri 2’nin en sade hâli', 'Okunmamış bildirim başlığın yanında mor noktayla', 'Çerçeve gürültüsü yok'],
+    body: st => days(st, d => `<div class="ti tone-${d.tone}${d.unread ? ' is-unread' : ''}">${glyph(d)}<div class="body">${cardBody(d)}</div></div>`) },
+  { n: 7, title: 'Saat Sütunlu Çizelge',
+    text: 'Saatler çizginin solunda ayrı bir sütunda durur; bir yolculuk planı gibi okunur. Kartın içinde yalnızca başlık, mesaj ve düğmeler kalır.',
+    bullets: ['Ne zaman olduğu ilk bakışta görünür', 'Saatler alt alta hizalı', 'Kart başlıkları daha geniş'],
+    body: st => days(st, d => `<div class="ti tone-${d.tone}${d.unread ? ' is-unread' : ''}"><time>${d.time.replace(' önce', '')}</time>${glyph(d)}<div class="card"><h4>${d.title}</h4><p>${d.text}</p>${acts(d)}</div></div>`) },
+  { n: 8, title: 'Renkli Çizgi Parçaları',
+    text: 'Zaman çizgisi her bildirimin hizasında o bildirimin rengini alır; kartın sol kenarı da aynı renkte. Hataların yoğunlaştığı zaman aralığı çizgiye bakınca anlaşılır.',
+    bullets: ['Hata kümeleri çizgide kırmızı görünür', 'Kart ile çizgi aynı renk dilinde', 'Kartlar ince, sol kenarlı'],
+    body: st => days(st, d => `<div class="ti tone-${d.tone}${d.unread ? ' is-unread' : ''}">${glyph(d)}<div class="card">${cardBody(d)}</div></div>`) },
+  { n: 9, title: 'Halka Düğümler',
+    text: 'Çizgi üzerindeki düğümler faturalar tablosundaki ilerleme halkalarıyla aynı: başarılı işlem tam dolu yeşil, bilgi dörtte üç mavi, uyarı yarım turuncu, hata çeyrek kırmızı. Ortadaki küçük simge türü gösterir.',
+    bullets: ['Tablodaki durum halkalarıyla aynı dil', 'Durum hem renkten hem doluluktan okunur', 'Kartlar Öneri 2’deki gibi'],
+    body: st => days(st, d => `<div class="ti tone-${d.tone}${d.unread ? ' is-unread' : ''}"><span class="ring">${ringSvg(ringOf[d.tone])}${ic(toneIcon[d.tone])}</span><div class="card">${cardBody(d)}</div></div>`) },
+  { n: 10, title: 'Kompakt Çizelge',
+    text: 'Her kart tek satır: başlık ve kısaltılmış mesaj, sağda saat. Karta tıklayınca açılır ve mesajın tamamı ile düğmeler görünür. Çizgi ve simgeler daha küçük.',
+    bullets: ['En çok bildirim sığan çizelge', 'Ayrıntı tıklayınca açılır', 'İlk açılışta en yeni bildirim açık'],
+    body: st => days(st, d => `<div class="ti tone-${d.tone}${d.unread ? ' is-unread' : ''}">${glyph(d)}<div>${st.open === d.id ? `<div class="card"><div class="top"><h4>${d.title}</h4><time>${d.time}</time></div><p>${d.text}</p>${acts(d)}</div>` : `<button type="button" class="card" data-open="${d.id}"><span class="t"><b>${d.title}</b><small>${d.text}</small></span><time>${d.time}</time></button>`}</div></div>`) },
+  { n: 11, title: 'Gün Kartlarında Çizelge',
+    text: 'Her gün kendi kartında; kartın başlığında gün, tarih ve bildirim sayısı. Çizelge kartın içinde akar. Bugünkü yapıya en yakın, ama içi zaman çizgisi.',
+    bullets: ['Günler net biçimde ayrılır', 'Şu anki panele en yakın düzen', 'Sayılar gün başlığında'],
+    body: st => { const g = byDay(filtered(st)); const keys = Object.keys(g); return keys.length ? keys.map(k => `<section class="daycard"><header><b>${k}</b>${g[k].date}<span class="tday" style="margin:0 0 0 auto"><span class="n num">${g[k].items.length}</span></span></header><div class="tl">${g[k].items.map(d => `<div class="ti tone-${d.tone}${d.unread ? ' is-unread' : ''}">${glyph(d)}<div class="body">${cardBody(d)}</div></div>`).join('')}</div></section>`).join('') + '<div style="height:12px"></div>' : empty } },
+  { n: 12, title: 'Renkli Kartlar ve Nokta Düğümler',
+    text: 'Çizgi üzerinde yalnızca küçük renkli noktalar; renk ve simge kartın kendisine taşınır: kart zemini durum renginde çok hafif boyalı, başlığın başında küçük simge.',
+    bullets: ['Çizgi sade, kartlar renkli', 'Hatalı kart uzaktan fark edilir', 'Simgeler başlıkla aynı satırda'],
+    body: st => days(st, d => `<div class="ti tone-${d.tone}${d.unread ? ' is-unread' : ''}"><i class="dot"></i><div class="card"><div class="top"><h4>${ic(toneIcon[d.tone])}${d.title}</h4><time>${d.time}</time></div><p>${d.text}</p>${acts(d)}</div></div>`) },
+  { n: 13, title: 'Yapışkan Gün Başlıkları',
+    text: 'Öneri 2’nin aynısı; tek fark gün başlıklarının kaydırırken panelin üstüne yapışması. Uzun listede hangi günde olduğun hep görünür.',
+    bullets: ['Uzun geçmişte kaybolmazsın', 'Başlık hafif buzlu cam zeminli', 'Diğer her şey Öneri 2 ile aynı'],
+    body: st => days(st, d => `<div class="ti tone-${d.tone}${d.unread ? ' is-unread' : ''}">${glyph(d)}<div class="card">${cardBody(d)}</div></div>`, (k, g, inner) => `<div class="tday${k === 'Bugün' ? ' today' : ''}"><i></i><b>${k}</b><span>${g.date}</span><span class="n num">${g.items.length}</span></div>${inner}`) },
+  { n: 14, title: 'Karışık Yoğunluk',
+    text: 'Hatalar ve uyarılar büyük kart olarak, başarılı ve bilgi bildirimleri çizgi üzerinde küçük bir nokta ve tek satır olarak durur. Göz önce müdahale gerekenlere gider.',
+    bullets: ['Önemli olan büyük, gerisi küçük', 'Panel uzun listede bile kısa kalır', 'Hata kartı hafif kırmızı zeminli'],
+    body: st => days(st, d => ['error', 'warn'].includes(d.tone) ? `<div class="ti tone-${d.tone}${d.unread ? ' is-unread' : ''}">${glyph(d)}<div class="card${d.tone === 'error' ? ' big' : ''}">${cardBody(d)}</div></div>` : `<div class="ti small tone-${d.tone}"><span class="mini"><i></i></span><span><b>${d.title}</b>${d.text}</span><time>${d.time}</time></div>`) },
+  { n: 15, title: 'Tekrarlar Birleşik',
+    text: 'Aynı gün içinde aynı türden tekrar eden bildirimler tek kartta birleşir; kartın başlığında kaç kez olduğu yazar, altında her birinin kısa satırı. Kart arkasında üst üste binmiş kart gölgesi var.',
+    bullets: ['Aynı hata onlarca kez gelirse liste şişmez', 'Her tekrarın saati yine görünür', 'Tek tekrar normal kart gibi'],
+    body: st => days(st, d => d, (k, g) => { const groups = Object.values(g.items.reduce((m, d) => { (m[d.title] ||= []).push(d); return m }, {})); return `<div class="tday${k === 'Bugün' ? ' today' : ''}"><i></i><b>${k}</b><span>${g.date}</span></div>` + groups.map(list => { const d = list[0]; return `<div class="ti tone-${d.tone}${list.some(x => x.unread) ? ' is-unread' : ''}">${glyph(d)}<div class="stack${list.length > 1 ? ' multi' : ''}"><div class="card"><div class="top"><h4>${d.title}${list.length > 1 ? `<span class="times num">${list.length}×</span>` : ''}</h4><time>${d.time}</time></div><p>${list.length > 1 ? 'Aynı hata birden çok pakette tekrarlandı.' : d.text}</p>${list.length > 1 ? `<div class="sub">${list.map(x => `<div><span>${x.meta[0][1]}</span><time>${x.time}</time></div>`).join('')}</div>` : ''}${acts(d)}</div></div></div>` }).join('') }) }
+];
+
+const states = Object.fromEntries(designs.map(d => [d.n, makeState()]));
+function draw(n) {
+  const d = designs.find(x => x.n === n), st = states[n], out = d.body(st);
+  const html = typeof out === 'string' ? out : out.html;
+  document.querySelector(`[data-n="${n}"] .stage`).innerHTML = `<div class="panel o${n}" role="dialog" aria-label="Bildirimler">${head(st)}<div>${tabs(st)}${typeof out === 'string' ? '' : out.chips}</div><div class="p-body">${html}</div>${foot()}</div>`;
+}
+document.getElementById('picker').innerHTML = '<button type="button" data-show="all" aria-pressed="true">Hepsi</button>' + designs.map(d => `<button type="button" data-show="${d.n}" aria-pressed="false">${d.n} · ${d.title}</button>`).join('');
+document.getElementById('options').innerHTML = designs.map(d => `<section class="option" data-n="${d.n}"><div class="option-head"><h2>Öneri ${d.n} · ${d.title}</h2><p>${d.text}</p><ul>${d.bullets.map(b => `<li>${b}</li>`).join('')}</ul></div><div class="stage"></div></section>`).join('');
+designs.forEach(d => draw(d.n));
+document.getElementById('options').addEventListener('click', e => {
+  const sec = e.target.closest('.option'); if (!sec) return;
+  const n = Number(sec.dataset.n), st = states[n];
+  const t = e.target.closest('[data-tab]'), r = e.target.closest('[data-read]'), o = e.target.closest('[data-open]'), a = e.target.closest('[data-area]'), all = e.target.closest('[data-act="readall"]');
+  if (t) st.tab = t.dataset.tab;
+  else if (r) st.items.find(d => d.id === Number(r.dataset.read)).unread = false;
+  else if (all) st.items.forEach(d => d.unread = false);
+  else if (a) st.area = a.dataset.area;
+  else if (o) st.open = st.open === Number(o.dataset.open) ? null : Number(o.dataset.open);
+  else return;
+  draw(n);
+});
+document.querySelectorAll('#picker button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('#picker button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  document.querySelectorAll('.option').forEach(s => s.hidden = b.dataset.show !== 'all' && s.dataset.n !== b.dataset.show);
+}));
+</script>
+</body>
+</html>
