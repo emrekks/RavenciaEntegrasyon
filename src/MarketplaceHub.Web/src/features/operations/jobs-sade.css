@@ -177,3 +177,12 @@
   .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-filter-wrap .jobs-reference-filter-panel { right: 0; left: auto; }
   .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-range-wrap .jobs-reference-range-menu { left: 0; right: auto; }
 }
+
+/* Attempt history: the box clips the shaded head row to its rounded corners, and the column titles stay whole on one
+   line (cells still wrap long error text). */
+.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-attempts-section .table-wrap { overflow: hidden; }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-attempts-section th { overflow: hidden; overflow-wrap: normal; white-space: nowrap; text-overflow: ellipsis; }
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-attempts-section :is(th, td) { padding-inline: 8px; }
+  .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-attempts-section :is(th, td):first-child { width: 30px; }
+}
