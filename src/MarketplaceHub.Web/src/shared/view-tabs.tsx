@@ -78,9 +78,11 @@ export function ViewTabsWithMore({ items, more, value, onChange, ariaLabel, clas
     const element = row.current
     if (!element || typeof ResizeObserver === 'undefined') return
     let width = element.clientWidth
-    const observer = new ResizeObserver(() => { if (element.clientWidth !== width) { width = element.clientWidth; setOverflow([]) } })
+    const refit = () => { if (element.clientWidth !== width) { width = element.clientWidth; setOverflow([]) } }
+    const observer = new ResizeObserver(refit)
     observer.observe(element)
-    return () => observer.disconnect()
+    window.addEventListener('resize', refit)
+    return () => { observer.disconnect(); window.removeEventListener('resize', refit) }
   }, [])
   const selectedExtra = extra.find(item => item.value === value)
   useEffect(() => {

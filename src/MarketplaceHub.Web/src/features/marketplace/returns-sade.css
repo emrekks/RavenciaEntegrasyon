@@ -19,7 +19,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) :is(b, strong) { font-weight: bolder; }
 :is(main .rr.rr, .rr-layer.rr-layer) small { font-size: smaller; }
 :is(main .rr.rr, .rr-layer.rr-layer) :is(button, input, select, textarea) { font: inherit; color: inherit; letter-spacing: normal; }
-:is(main .rr.rr, .rr-layer.rr-layer) button { line-height: normal; min-height: 0; box-shadow: none; text-transform: none; }
+:is(main .rr.rr, .rr-layer.rr-layer) button { line-height: normal; min-height: 0; min-width: 0; padding: 1px 6px; border-radius: 0; box-shadow: none; text-transform: none; }
 :is(main .rr.rr, .rr-layer.rr-layer) button :where(span:not(.rr-c):not(.rr-count):not(.rr-qb), small) { font-weight: inherit !important; }
 :is(main .rr.rr, .rr-layer.rr-layer) button :where(.rr-c, .rr-count) { font-weight: 500 !important; }
 :is(main .rr.rr, .rr-layer.rr-layer) button .rr-qb { font-weight: 600 !important; }
@@ -882,8 +882,9 @@ main .rr, .rr-layer {
 .app-shell.stitch-shell > main > .content.f3.rr { padding: 28px 24px 96px; }
 @media (max-width: 760px) { .app-shell.stitch-shell > main > .content.f3.rr { padding: 16px 16px 96px; } }
 /* the panel's global control rules (44px fields, 500 weight on every button) give way to the proposal's sizes */
-:is(main .rr.rr, .rr-layer.rr-layer) :is(.rr-in, .rr-trigger, .rr-btn, .rr-icon-btn, .rr-fbtn, .rr-switch, .rr-opt) { min-height: 0; }
+:is(main .rr.rr, .rr-layer.rr-layer) :is(.rr-in, .rr-trigger, .rr-btn, .rr-icon-btn, .rr-fbtn, .rr-switch) { min-height: 0; }
+:is(main .rr.rr, .rr-layer.rr-layer) :is(.rr-opt, .rr-menu > button) { justify-content: flex-start; }
 :is(main .rr.rr, .rr-layer.rr-layer) :is(.rr-icon-btn, .rr-fbtn) { min-width: 0; }
-:is(main .rr.rr, .rr-layer.rr-layer) :is(.rr-trigger, .rr-opt, .rr-pages button, .rr-thumb, .rr-icon-btn, .rr-fbtn), :is(main .rr.rr, .rr-layer.rr-layer) .rr-date .date-range-picker-trigger { font-weight: 400 !important; }
+:is(main .rr.rr, .rr-layer.rr-layer) :is(.rr-trigger, .rr-opt, .rr-pages button, .rr-thumb, .rr-icon-btn, .rr-fbtn), :is(main .rr.rr, .rr-layer.rr-layer) .rr-date .date-range-picker-trigger { font-weight: inherit !important; }
 :is(main .rr.rr, .rr-layer.rr-layer) :is(.rr-btn, .rr-switch, .rr-menu > button, .rr-actcell .rr-trigger) { font-weight: 500 !important; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-actcell .rr-btn.rr-link { font-weight: 600 !important; }

@@ -2149,7 +2149,7 @@ function ReturnHeadCell({ label, active, extra, pop }: { label: string; active?:
 }
 function useMediaQuery(query: string) {
   const [matches, setMatches] = useState(() => typeof window !== 'undefined' && window.matchMedia(query).matches)
-  useEffect(() => { const list = window.matchMedia(query); const update = () => setMatches(list.matches); update(); list.addEventListener('change', update); return () => list.removeEventListener('change', update) }, [query])
+  useEffect(() => { const list = window.matchMedia(query); const update = () => setMatches(list.matches); update(); list.addEventListener('change', update); window.addEventListener('resize', update); return () => { list.removeEventListener('change', update); window.removeEventListener('resize', update) } }, [query])
   return matches
 }
 

@@ -122,7 +122,7 @@ export function ReturnApproveDialog({ open, claimId, version, marketplaceName, o
   const allSelected = groups.length > 0 && selected.length === groups.length
   const orderFacts = [
     ['Müşteri', order.customer],
-    ['Sipariş Tarihi', order.orderedAt ? new Date(order.orderedAt).toLocaleString('tr-TR') : null],
+    ['Sipariş Tarihi', order.orderedAt ? new Date(order.orderedAt).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : null],
     ['Paket No', order.packageNumber],
     ['İade Kodu', order.claimCode],
     ['İade Sebebi', order.reason]
