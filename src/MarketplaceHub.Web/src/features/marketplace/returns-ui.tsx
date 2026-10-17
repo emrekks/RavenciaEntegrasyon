@@ -131,7 +131,9 @@ export function RrAnchor({ trigger, children, className }: { trigger: (open: boo
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLSpanElement>(null)
   useOutsideClose(open, ref, () => setOpen(false))
-  return <span ref={ref} className={['rr-anchor', className].filter(Boolean).join(' ')}>{trigger(open, () => setOpen(value => !value))}{open && children(() => setOpen(false))}</span>
+  // On phones the popover is a bottom sheet; the scrim (shown there only) takes the tap that closes it, so the tap
+  // never reaches the button underneath (a label print, say).
+  return <span ref={ref} className={['rr-anchor', className].filter(Boolean).join(' ')}>{trigger(open, () => setOpen(value => !value))}{open && <span className="rr-anchor-scrim" aria-hidden="true" onClick={event => { event.stopPropagation(); setOpen(false) }} />}{open && children(() => setOpen(false))}</span>
 }
 
 // Single-choice filter popover used under table heads and filter fields.
