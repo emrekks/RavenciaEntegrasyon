@@ -148,8 +148,8 @@
   html body .app-shell.stitch-shell main .mfs:not(.is-open) > [data-mfs-search] > span:first-child:not(.order-search-control):not(.invoice-reference-search-control) { display: none; }
   html body .app-shell.stitch-shell main .mfs:not(.is-open) > [data-mfs-keep] { grid-column: 1 / -1; order: 3; }
   html body .app-shell.stitch-shell main .mfs:not(.is-open) > .mfs-open {
-    position: relative; display: inline-grid; grid-column: 2; order: 2; width: 44px; height: 44px; min-height: 44px; place-items: center; padding: 0;
-    color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md);
+    position: relative; display: inline-grid; grid-column: 2; order: 2; width: 36px; height: 36px; min-height: 36px; place-items: center; padding: 0;
+    color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: 7px;
   }
   html body .app-shell.stitch-shell main .mfs > .mfs-open > b {
     position: absolute; top: -6px; right: -6px; display: grid; min-width: 18px; height: 18px; place-items: center; padding: 0 5px;
@@ -219,8 +219,8 @@
   html body .app-shell.stitch-shell main .mfs:not(.is-open):has(> .mfs-sort) { grid-template-columns: minmax(0, 1fr) auto auto; }
   html body .app-shell.stitch-shell main .mfs:not(.is-open):has(> .mfs-sort) > .mfs-open { grid-column: 3; }
   html body .app-shell.stitch-shell main .mfs:not(.is-open) > .mfs-sort {
-    display: inline-grid; grid-column: 2; order: 2; width: 44px; height: 44px; min-height: 44px; place-items: center; padding: 0;
-    color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md);
+    display: inline-grid; grid-column: 2; order: 2; width: 36px; height: 36px; min-height: 36px; place-items: center; padding: 0;
+    color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: 7px;
   }
   html body .app-shell.stitch-shell main .mfs.is-open > .mfs-sort { display: none; }
 }
