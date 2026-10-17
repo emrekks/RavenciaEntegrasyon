@@ -709,7 +709,7 @@
   .chart .cur { fill: none; stroke: var(--violet); stroke-width: 2; stroke-linejoin: round; }
   .chart .prev { fill: none; stroke: var(--subtle); stroke-width: 1.5; stroke-dasharray: 4 4; }
   .chart .hl { stroke: var(--line-strong); } .chart .hp { fill: var(--surface); stroke: var(--violet); stroke-width: 2; }
-  .ctip { position: absolute; z-index: 20; top: 0; width: 290px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 12px; box-shadow: 0 18px 50px rgb(0 0 0 / 45%); font-size: 12.5px; transform: translateX(-50%); pointer-events: none; }
+  .ctip { position: absolute; z-index: 20; top: 0; left: 0; width: 290px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 12px; box-shadow: 0 18px 50px rgb(0 0 0 / 45%); font-size: 12.5px; pointer-events: none; }
   .ctip > b { display: block; margin-bottom: 6px; font-weight: 600; }
   .ctip table { width: 100%; border-collapse: collapse; } .ctip th { color: var(--subtle); font-size: 11.5px; font-weight: 500; text-align: right; } .ctip td { padding: 3px 0; color: var(--muted); } .ctip td + td { color: var(--ink); text-align: right; } .ctip td:last-child { color: var(--muted); }
   .legend { display: flex; gap: 18px; color: var(--muted); font-size: 12.5px; } .legend span { display: inline-flex; align-items: center; gap: 6px; }
@@ -957,7 +957,7 @@ function chart() {
   const hov = h == null ? '' : `<line class="hl" x1="${x(h)}" x2="${x(h)}" y1="${T}" y2="${H - B}"/><circle class="hp" cx="${x(h)}" cy="${y(CUR[h])}" r="4.5"/>`
   return `<div class="chart" data-w="${W}" data-l="${L}" data-r="${R}"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Günlük ciro grafiği"><g class="grid">${grid}</g><g class="xax">${xs}</g><path class="area" d="${line(CUR)} L${x(CUR.length - 1)} ${y(0)} L${x(0)} ${y(0)} Z"/><path class="prev" d="${line(PREV)}"/><path class="cur" d="${line(CUR)}"/>${hov}</svg>${h == null ? '' : chartTip(h, x(h) / W)}</div>`
 }
-const chartTip = (h, fx, st) => `<div class="ctip" style="${st ? 'position:static' : `left:${(fx * 100).toFixed(1)}%`}"><b>${dlong(DAYS[h])}</b><table><thead><tr><th></th><th>Seçilen Gün</th><th>Önceki Gün</th></tr></thead><tbody><tr><td>Sipariş</td><td class="num">${Math.round(CUR[h] / 560)}</td><td class="num">${Math.round(CUR[Math.max(0, h - 1)] / 560)}</td></tr><tr><td>Ürün (Adet)</td><td class="num">${Math.round(CUR[h] / 430)}</td><td class="num">${Math.round(CUR[Math.max(0, h - 1)] / 430)}</td></tr><tr><td>Kargo (Paket)</td><td class="num">${Math.round(CUR[h] / 590)}</td><td class="num">${Math.round(CUR[Math.max(0, h - 1)] / 590)}</td></tr><tr><td>Ciro</td><td class="num"><b>${tl(CUR[h])}</b></td><td class="num">${tl(CUR[Math.max(0, h - 1)])}</td></tr></tbody></table></div>`
+const chartTip = (h, fx, st) => `<div class="ctip" style="${st ? 'position:static' : 'visibility:hidden'}"><b>${dlong(DAYS[h])}</b><table><thead><tr><th></th><th>Seçilen Gün</th><th>Önceki Gün</th></tr></thead><tbody><tr><td>Sipariş</td><td class="num">${Math.round(CUR[h] / 560)}</td><td class="num">${Math.round(CUR[Math.max(0, h - 1)] / 560)}</td></tr><tr><td>Ürün (Adet)</td><td class="num">${Math.round(CUR[h] / 430)}</td><td class="num">${Math.round(CUR[Math.max(0, h - 1)] / 430)}</td></tr><tr><td>Kargo (Paket)</td><td class="num">${Math.round(CUR[h] / 590)}</td><td class="num">${Math.round(CUR[Math.max(0, h - 1)] / 590)}</td></tr><tr><td>Ciro</td><td class="num"><b>${tl(CUR[h])}</b></td><td class="num">${tl(CUR[Math.max(0, h - 1)])}</td></tr></tbody></table></div>`
 function donut() {
   let acc = 0
   const stops = CHANNELS.map(([, , p, c]) => { const s = `${c} ${acc}% ${acc + p}%`; acc += p; return s }).join(', ')
@@ -1008,10 +1008,22 @@ function mocks() {
   add('Bildirim · Rapor İndirildi', toastHtml('report', true))
   return `<section class="mocks"><h3>Açılır Menüler ve Durumlar</h3><p>Bu sayfadaki her düğmenin açtığı menünün ve ipuçlarının görünümü. Yukarıdaki düğmeler aynılarını canlı açar.</p><div class="mock-grid">${m.join('')}</div></section>`
 }
+// The day tooltip follows the pointer: above it when the page has room there, otherwise below; never past the chart's sides.
+function placeTip() {
+  const tip = document.querySelector('#root .chart .ctip'), ch = tip && tip.parentElement
+  if (!tip || !S.mouse) return
+  const c = ch.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight, gap = 14
+  const x = Math.max(0, Math.min(c.width - w, S.mouse.x - c.left - w / 2))
+  const above = S.mouse.y - h - gap >= 8
+  const y = above ? S.mouse.y - c.top - h - gap : S.mouse.y - c.top + gap + 4
+  tip.style.left = x + 'px'; tip.style.top = y + 'px'; tip.style.visibility = ''
+  tip.classList.toggle('below', !above)
+}
 function render() {
   document.getElementById('root').innerHTML = page()
   document.getElementById('layer').innerHTML = S.toast ? toastHtml(S.toast) : ''
   addGlyphs()
+  placeTip()
 }
 let toastTimer
 document.addEventListener('click', e => {
@@ -1034,11 +1046,12 @@ document.addEventListener('mouseover', e => {
   else if (!c && S.pop && (S.pop.startsWith('op') || S.pop.startsWith('pf'))) { S.pop = null; render() }
 })
 document.addEventListener('mousemove', e => {
-  const ch = e.target.closest('#root .chart'); if (!ch) { if (S.hover != null) { S.hover = null; render() } return }
+  const ch = e.target.closest('#root .chart'); if (!ch || e.target.closest('.ctip')) { if (!ch && S.hover != null) { S.hover = null; render() } return }
   const r = ch.getBoundingClientRect(), W = +ch.dataset.w, L = +ch.dataset.l, R = +ch.dataset.r
   const px = (e.clientX - r.left) / r.width * W
   const i = Math.max(0, Math.min(CUR.length - 1, Math.round((px - L) / (W - L - R) * (CUR.length - 1))))
-  if (i !== S.hover) { S.hover = i; render() }
+  S.mouse = { x: e.clientX, y: e.clientY }
+  if (i !== S.hover) { S.hover = i; render() } else placeTip()
 })
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { S.pop = null; render() } })
 render()

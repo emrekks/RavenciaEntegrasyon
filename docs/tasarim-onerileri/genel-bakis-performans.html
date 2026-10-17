@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Performans Metrikleri · 10 Öneri</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #111115; --surface: #17171c; --raised: #1d1d23; --soft: #22222a;
+    --line: #2a2a32; --line-strong: #383842;
+    --ink: #ececf0; --muted: #a3a3b0; --subtle: #6f6f7c;
+    --primary: #8b5cf6; --primary-soft: #272139;
+    --violet: color-mix(in srgb, var(--primary) 55%, white);
+    --warn: #e2aa4b; --bad: #e4636f; --ok: #46b98f; --info: #83b4ff;
+    --hover: color-mix(in srgb, var(--raised) 60%, transparent);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 Inter, "Segoe UI", system-ui, sans-serif; color: var(--ink); background: var(--bg); -webkit-font-smoothing: antialiased; }
+  h1, h2, h3, p { margin: 0; }
+  .num { font-variant-numeric: tabular-nums; }
+  .wrap { display: grid; gap: 28px; max-width: 1180px; margin: 0 auto; padding: 32px 24px 96px; }
+  .head h1 { font-size: 18px; font-weight: 600; } .head p { margin-top: 2px; color: var(--muted); font-size: 13px; }
+  .head .crumb { color: var(--subtle); font-size: 12px; font-weight: 500; }
+  .opt { display: grid; gap: 12px; }
+  .opt > header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+  .opt > header h2 { font-size: 15px; font-weight: 600; } .opt > header p { color: var(--muted); font-size: 13px; }
+  .card { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+  .label { color: var(--muted); font-size: 13px; }
+  .big { font-size: 24px; font-weight: 600; line-height: 1.3; }
+  .trend { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; } .trend em { color: var(--subtle); font-style: normal; font-weight: 400; }
+  .trend.up { color: var(--ok); } .trend.down { color: var(--bad); }
+  .trend svg { width: 12px; height: 12px; }
+  .g4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+  .logo { width: 20px; height: 20px; flex: none; border-radius: 5px; display: grid; place-items: center; color: #fff; font-size: 9px; font-weight: 700; }
+  @media (max-width: 1100px) { .g4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 760px) { .wrap { padding: 16px 16px 96px; } .g4 { grid-template-columns: 1fr; } }
+
+  /* 1 · platform strip */
+  .o1 .card { display: grid; gap: 10px; padding: 14px 16px; }
+  .o1 .bar { display: flex; height: 8px; overflow: hidden; border-radius: 4px; background: var(--line); }
+  .o1 .bar i { display: block; height: 100%; } .o1 .bar i + i { border-left: 2px solid var(--surface); }
+  .o1 .lg { display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--muted); font-size: 12px; } .o1 .lg span { display: inline-flex; align-items: center; gap: 5px; } .o1 .lg i { width: 7px; height: 7px; border-radius: 50%; }
+  .o1 .note { color: var(--subtle); font-size: 12px; }
+  /* 2 · daily bars */
+  .o2 .card { display: grid; gap: 4px; padding: 14px 16px 12px; }
+  .o2 .bars { display: flex; align-items: flex-end; gap: 2px; height: 44px; margin-top: 8px; }
+  .o2 .bars span { position: relative; flex: 1; min-width: 0; border-radius: 2px 2px 0 0; background: color-mix(in srgb, var(--violet) 70%, transparent); }
+  .o2 .bars span i { position: absolute; left: 0; right: 0; bottom: 0; border-top: 1.5px solid var(--subtle); }
+  .o2 .bars span:hover { background: var(--violet); }
+  .o2 .axis { display: flex; justify-content: space-between; color: var(--subtle); font-size: 11px; }
+  /* 3 · this vs previous */
+  .o3 .card { display: grid; gap: 10px; padding: 14px 16px; }
+  .o3 .cmp { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .o3 .cmp div { display: grid; padding: 8px 10px; } .o3 .cmp div + div { border-left: 1px solid var(--line); background: var(--raised); }
+  .o3 .cmp small { color: var(--subtle); font-size: 11.5px; } .o3 .cmp b { font-size: 15px; font-weight: 600; } .o3 .cmp div + div b { color: var(--muted); font-weight: 500; }
+  .o3 .top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .o3 .pill { flex: none; white-space: nowrap; display: inline-flex; align-items: center; gap: 3px; height: 24px; padding: 0 8px; border: 1px solid; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .o3 .pill.up { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, var(--line-strong)); } .o3 .pill.down { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, var(--line-strong)); }
+  /* 4 · target ring */
+  .o4 .card { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 14px; padding: 14px 16px; }
+  .o4 .ring { position: relative; width: 64px; height: 64px; } .o4 .ring svg { width: 64px; height: 64px; transform: rotate(-90deg); }
+  .o4 .ring circle { fill: none; stroke-width: 6; } .o4 .ring .t { stroke: var(--line-strong); } .o4 .ring .v { stroke-linecap: round; }
+  .o4 .ring b { position: absolute; inset: 0; display: grid; place-items: center; font-size: 12.5px; font-weight: 600; }
+  .o4 .meta { display: grid; gap: 1px; min-width: 0; } .o4 .trend em { display: none; } .o4 small.goal { color: var(--subtle); font-size: 12px; }
+  /* 5 · one strip with dividers */
+  .o5 .card { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .o5 .cell { display: grid; gap: 2px; padding: 16px 18px; } .o5 .cell + .cell { border-left: 1px solid var(--line); }
+  .o5 .cell:hover { background: var(--hover); }
+  .o5 svg.sp { width: 100%; height: 28px; margin-top: 8px; }
+  @media (max-width: 1100px) { .o5 .card { grid-template-columns: 1fr 1fr; } .o5 .cell:nth-child(3) { border-left: 0; } .o5 .cell:nth-child(n+3) { border-top: 1px solid var(--line); } }
+  @media (max-width: 760px) { .o5 .card { grid-template-columns: 1fr; } .o5 .cell + .cell { border-left: 0; border-top: 1px solid var(--line); } }
+  /* 6 · hero revenue + three compact */
+  .o6 .grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 12px; }
+  .o6 .hero { display: grid; gap: 4px; padding: 16px 18px; }
+  .o6 .hero .big { font-size: 30px; }
+  .o6 .hero > svg { width: 100%; height: 92px; margin-top: 6px; }
+  .o6 .side { display: grid; gap: 12px; }
+  .o6 .mini { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; }
+  .o6 .mini > div { display: grid; } .o6 .mini .big { font-size: 20px; }
+  @media (max-width: 760px) { .o6 .grid { grid-template-columns: 1fr; } }
+  /* 7 · top platforms */
+  .o7 .card { display: grid; gap: 10px; padding: 14px 16px; }
+  .o7 .rows { display: grid; gap: 6px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .o7 .row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; font-size: 12.5px; }
+  .o7 .row .t { display: grid; gap: 3px; min-width: 0; } .o7 .row .t span { color: var(--muted); }
+  .o7 .row .t i { display: block; height: 4px; border-radius: 2px; background: var(--line); } .o7 .row .t i b { display: block; height: 100%; border-radius: 2px; }
+  .o7 .row > b { font-weight: 600; }
+  .o7 .none { color: var(--subtle); font-size: 12px; }
+  /* 8 · change first */
+  .o8 .card { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 14px; align-items: center; padding: 14px 16px; }
+  .o8 .tile { grid-row: span 3; display: grid; place-items: center; width: 52px; height: 52px; border-radius: 12px; }
+  .o8 .tile.up { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, var(--surface)); border: 1px solid color-mix(in srgb, var(--ok) 35%, transparent); }
+  .o8 .tile.down { color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, var(--surface)); border: 1px solid color-mix(in srgb, var(--bad) 35%, transparent); }
+  .o8 .tile svg { width: 20px; height: 20px; }
+  .o8 .delta { font-size: 22px; font-weight: 600; line-height: 1.2; } .o8 .delta.up { color: var(--ok); } .o8 .delta.down { color: var(--bad); }
+  .o8 .val { color: var(--muted); font-size: 13px; } .o8 .val b { color: var(--ink); font-weight: 600; }
+  /* 9 · daily average and range */
+  .o9 .card { display: grid; gap: 8px; padding: 14px 16px; }
+  .o9 .avg { color: var(--muted); font-size: 12.5px; } .o9 .avg b { color: var(--ink); font-weight: 600; }
+  .o9 .range { position: relative; height: 6px; margin: 10px 0 2px; border-radius: 3px; background: linear-gradient(90deg, color-mix(in srgb, var(--violet) 25%, transparent), color-mix(in srgb, var(--violet) 75%, transparent)); }
+  .o9 .range i { position: absolute; top: 50%; width: 12px; height: 12px; border: 2px solid var(--surface); border-radius: 50%; background: var(--ink); transform: translate(-50%, -50%); }
+  .o9 .ends { display: flex; justify-content: space-between; color: var(--subtle); font-size: 11.5px; }
+  /* 10 · heat strip */
+  .o10 .card { display: grid; gap: 8px; padding: 14px 16px; }
+  .o10 .heat { display: grid; grid-template-columns: repeat(15, minmax(0, 1fr)); gap: 3px; margin-top: 6px; }
+  .o10 .heat i { aspect-ratio: 1; border-radius: 3px; background: var(--violet); }
+  .o10 .scale { display: flex; align-items: center; justify-content: flex-end; gap: 4px; color: var(--subtle); font-size: 11px; } .o10 .scale i { width: 9px; height: 9px; border-radius: 2px; background: var(--violet); }
+
+  /* hover breakdown, shared */
+  .bd { position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; display: none; width: 250px; padding: 8px 10px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 12px; box-shadow: 0 18px 50px rgb(0 0 0 / 45%); }
+  .has-bd:hover > .bd, .has-bd:focus-within > .bd { display: grid; gap: 6px; }
+  .bd-r { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; font-size: 12.5px; } .bd-r span { color: var(--muted); } .bd-r b { font-weight: 600; }
+  .has-bd { cursor: default; } .has-bd:hover { border-color: var(--line-strong); }
+</style>
+</head>
+<body>
+<div class="wrap" id="root"></div>
+<script>
+const P = [['Trendyol', '#f27a1a', 'T'], ['Hepsiburada', '#ff6000', 'H'], ['Shopify', '#5e8e3e', 'S'], ['N11', '#7c5cff', 'n'], ['Pazarama', '#2f9bd8', 'P']]
+const M = [
+  { k: 'rev', l: 'Toplam Gelir', v: '₺612.480', prev: '₺545.380', t: '%12,3', up: true, avg: '₺20.416', min: '₺11.820', max: '₺38.940', pos: .38, goal: ['₺750.000 hedef', .82], split: [58, 21, 11, 7, 3], bd: ['₺355.200', '₺128.600', '₺67.400', '₺42.900', '₺18.380'] },
+  { k: 'ord', l: 'Toplam Sipariş', v: '1.084', prev: '1.003', t: '%8,1', up: true, avg: '36', min: '18', max: '71', pos: .34, goal: ['1.300 hedef', .83], split: [58, 21, 11, 7, 3], bd: ['629 adet', '228 adet', '119 adet', '76 adet', '32 adet'] },
+  { k: 'avg', l: 'Ortalama Sepet', v: '₺565', prev: '₺544', t: '%3,9', up: true, avg: '₺565', min: '₺412', max: '₺748', pos: .45, goal: ['₺600 hedef', .94], split: null, bd: null },
+  { k: 'act', l: 'Aktif Ürün', v: '356', prev: '360', t: '-%1,2', up: false, avg: '356', min: '349', max: '363', pos: .5, goal: ['400 hedef', .89], split: null, bd: null },
+]
+const days = n => Array.from({ length: n }, (_, i) => Math.max(.12, .5 + .25 * Math.sin(i / 3.1) + .18 * Math.sin(i / 1.3 + 1) + i * .008))
+const prevDays = n => Array.from({ length: n }, (_, i) => Math.max(.1, .45 + .2 * Math.sin(i / 2.6 + 2) + .12 * Math.cos(i / 1.7)))
+const up = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4-4 4 4"/></svg>'
+const down = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg>'
+const arrowUp = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l4-4 2.5 2.5L13 6M10 6h3v3"/></svg>'
+const arrowDown = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5l4 4 2.5-2.5L13 10M10 10h3V7"/></svg>'
+const trend = m => `<span class="trend ${m.up ? 'up' : 'down'}">${m.up ? up : down}${m.t}<em>önceki döneme göre</em></span>`
+const logo = i => `<span class="logo" style="background:${P[i][1]}">${P[i][2]}</span>`
+const bd = m => m.bd ? `<div class="bd" role="tooltip">${m.bd.map((v, i) => `<div class="bd-r">${logo(i)}<span>${P[i][0]}</span><b class="num">${v}</b></div>`).join('')}</div>` : ''
+const line = (vals, w, h, pad = 2) => { const max = Math.max(...vals), min = Math.min(...vals); return vals.map((v, i) => `${i ? 'L' : 'M'}${(i / (vals.length - 1) * w).toFixed(1)} ${(pad + (1 - (v - min) / (max - min || 1)) * (h - pad * 2)).toFixed(1)}`).join(' ') }
+const card = (m, cls, inner) => `<article class="card ${m.bd ? 'has-bd' : ''} ${cls || ''}" tabindex="0">${inner}${bd(m)}</article>`
+const opts = []
+const add = (n, title, desc, html) => opts.push(`<section class="opt o${n}"><header><h2>Öneri ${n} · ${title}</h2><p>${desc}</p></header>${html}</section>`)
+
+add(1, 'Platform Şeridi', 'Sayının altında dönemin platform dağılımı tek şeritte; üzerine gelmeden okunur.', `<div class="g4">${M.map(m => card(m, '', `<span class="label">${m.l}</span><strong class="big num">${m.v}</strong>${trend(m)}${m.split ? `<div class="bar">${m.split.map((s, i) => `<i style="width:${s}%;background:${P[i][1]}" title="${P[i][0]} %${s}"></i>`).join('')}</div><div class="lg">${m.split.slice(0, 3).map((s, i) => `<span><i style="background:${P[i][1]}"></i>${P[i][0]} %${s}</span>`).join('')}</div>` : `<span class="note">Önceki dönem ${m.prev}</span>`}`)).join('')}</div>`)
+
+add(2, 'Günlük Çubuklar', 'Eğri yerine 30 günün çubukları; önceki dönemin aynı günü ince çizgiyle işaretli.', `<div class="g4">${M.map((m, j) => { const d = days(30).map(v => v + j * .03), p = prevDays(30); return card(m, '', `<span class="label">${m.l}</span><strong class="big num">${m.v}</strong>${trend(m)}<div class="bars">${d.map((v, i) => `<span style="height:${Math.min(100, v * 90)}%"><i style="bottom:${Math.min(100, p[i] * 90) / Math.min(100, v * 90) * 100}%"></i></span>`).join('')}</div><div class="axis"><span>18 Eyl</span><span>17 Eki</span></div>`) }).join('')}</div>`)
+
+add(3, 'Bu Dönem · Önceki Dönem', 'İki dönem yan yana; değişim sağ üstte tek rozet.', `<div class="g4">${M.map(m => card(m, '', `<div class="top"><span class="label">${m.l}</span><span class="pill ${m.up ? 'up' : 'down'}">${m.up ? up : down}${m.t}</span></div><div class="cmp"><div><small>Bu Dönem</small><b class="num">${m.v}</b></div><div><small>Önceki Dönem</small><b class="num">${m.prev}</b></div></div>`)).join('')}</div>`)
+
+add(4, 'Hedef Halkası', 'Dönem hedefine ne kadar yaklaşıldığı halkada; değişim altında.', `<div class="g4">${M.map(m => { const v = Math.round(m.goal[1] * 100), c = m.goal[1] >= .9 ? 'var(--ok)' : m.goal[1] >= .75 ? 'var(--violet)' : 'var(--warn)'; return card(m, '', `<div class="ring"><svg viewBox="0 0 64 64"><circle class="t" cx="32" cy="32" r="27"/><circle class="v" cx="32" cy="32" r="27" pathLength="100" stroke-dasharray="${v} 100" stroke="${c}"/></svg><b class="num">%${v}</b></div><div class="meta"><span class="label">${m.l}</span><strong class="big num">${m.v}</strong><small class="goal">${m.goal[0]}</small>${trend(m)}</div>`) }).join('')}</div>`)
+
+add(5, 'Tek Şerit', 'Dört metrik tek kartta, aralarında ince çizgi; daha sakin ve az kenarlık.', `<article class="card">${M.map((m, j) => `<div class="cell ${m.bd ? 'has-bd' : ''}" style="position:relative" tabindex="0"><span class="label">${m.l}</span><strong class="big num">${m.v}</strong>${trend(m)}<svg class="sp" viewBox="0 0 200 28" preserveAspectRatio="none"><path d="${line(days(20).map(v => v + j * .05), 200, 28)}" fill="none" stroke="${m.up ? 'color-mix(in srgb, var(--ok) 80%, transparent)' : 'color-mix(in srgb, var(--bad) 80%, transparent)'}" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg>${bd(m)}</div>`).join('')}</article>`)
+
+add(6, 'Gelir Öne Çıkar', 'Toplam gelir büyük kartta alan grafiğiyle; diğer üçü sağda kısa satırlar.', `<div class="grid">${card(M[0], 'hero', `<span class="label">${M[0].l}</span><strong class="big num">${M[0].v}</strong>${trend(M[0])}<svg viewBox="0 0 600 92" preserveAspectRatio="none"><defs><linearGradient id="g6" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8b5cf6" stop-opacity=".35"/><stop offset="1" stop-color="#8b5cf6" stop-opacity="0"/></linearGradient></defs><path d="${line(days(30), 600, 92, 4)} L600 92 L0 92 Z" fill="url(#g6)"/><path d="${line(days(30), 600, 92, 4)}" fill="none" stroke="color-mix(in srgb, #8b5cf6 55%, white)" stroke-width="2" vector-effect="non-scaling-stroke"/><path d="${line(prevDays(30), 600, 92, 4)}" fill="none" stroke="#6f6f7c" stroke-width="1.4" stroke-dasharray="4 4" vector-effect="non-scaling-stroke"/></svg>`)}<div class="side">${M.slice(1).map(m => card(m, 'mini', `<div><span class="label">${m.l}</span><strong class="big num">${m.v}</strong></div>${trend(m).replace('<em>önceki döneme göre</em>', '')}`)).join('')}</div></div>`)
+
+add(7, 'En Çok Satan Platformlar', 'İlk üç platform kartın içinde oranlarıyla; dağılımı olmayan metrikte önceki dönem yazılı.', `<div class="g4">${M.map(m => card(m, '', `<span class="label">${m.l}</span><strong class="big num">${m.v}</strong>${trend(m)}${m.split ? `<div class="rows">${m.split.slice(0, 3).map((s, i) => `<div class="row">${logo(i)}<span class="t"><span>${P[i][0]}</span><i><b style="width:${s}%;background:${P[i][1]}"></b></i></span><b class="num">${m.bd[i]}</b></div>`).join('')}</div>` : `<div class="rows"><span class="none">Önceki dönem: <b class="num" style="color:var(--ink)">${m.prev}</b></span></div>`}`)).join('')}</div>`)
+
+add(8, 'Değişim Önde', 'Önce değişim yüzdesi ve yönü, sonra değer; düşüşler hemen göze çarpar.', `<div class="g4">${M.map(m => card(m, '', `<span class="tile ${m.up ? 'up' : 'down'}">${m.up ? arrowUp : arrowDown}</span><span class="label">${m.l}</span><span class="delta ${m.up ? 'up' : 'down'} num">${m.up ? '+' : ''}${m.t.replace('-', '−')}</span><span class="val"><b class="num">${m.v}</b> · önceki ${m.prev}</span>`)).join('')}</div>`)
+
+add(9, 'Günlük Ortalama ve Aralık', 'Toplamın altında günlük ortalama; en düşük ve en yüksek gün arasında bugünün yeri.', `<div class="g4">${M.map(m => card(m, '', `<span class="label">${m.l}</span><strong class="big num">${m.v}</strong>${trend(m)}<span class="avg">Günlük ortalama <b class="num">${m.avg}</b></span><div class="range"><i style="left:${m.pos * 100}%" title="Bugün"></i></div><div class="ends"><span class="num">En düşük ${m.min}</span><span class="num">En yüksek ${m.max}</span></div>`)).join('')}</div>`)
+
+add(10, 'Isı Şeridi', '30 gün iki sıra küçük kare; koyu kare yoğun gün. Hangi günlerin güçlü olduğu bir bakışta görünür.', `<div class="g4">${M.map((m, j) => card(m, '', `<span class="label">${m.l}</span><strong class="big num">${m.v}</strong>${trend(m)}<div class="heat">${days(30).map(v => `<i style="opacity:${Math.min(1, .15 + (v + j * .04) * .85).toFixed(2)}"></i>`).join('')}</div><div class="scale">Az<i style="opacity:.2"></i><i style="opacity:.5"></i><i style="opacity:.8"></i><i></i>Çok</div>`)).join('')}</div>`)
+
+document.getElementById('root').innerHTML = `<header class="head"><div class="crumb">Genel Bakış</div><h1>Performans Metrikleri · 10 Öneri</h1><p>Toplam Gelir ve Toplam Sipariş kartlarının üzerine gelince platform dağılımı açılır (tüm önerilerde aynı). Son 30 gün, önceki eşit dönemle karşılaştırma.</p></header>${opts.join('')}`
+</script>
+</body>
+</html>
