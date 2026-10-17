@@ -740,6 +740,14 @@
     .ph .acts .anchor { flex: 1; } .ph .acts .trigger { width: 100%; min-width: 0; }
     .ctip { width: 250px; }
   }
+  /* channels: donut and list side by side only when the card has room, otherwise the list goes under the donut */
+  .dcard { container-type: inline-size; }
+  .clist span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .clist b { padding-left: 8px; text-align: right; }
+  @container (max-width: 440px) {
+    .chan { grid-template-columns: 1fr; justify-items: center; gap: 16px; }
+    .chan .clist { width: 100%; }
+  }
 </style>
 </head>
 <body>
