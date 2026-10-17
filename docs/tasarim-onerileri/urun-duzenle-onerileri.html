@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ürün Düzenle · 10 Öneri</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #111115; --surface: #17171c; --raised: #1d1d23; --soft: #22222a;
+    --line: #2a2a32; --line-strong: #383842;
+    --ink: #ececf0; --muted: #a3a3b0; --subtle: #6f6f7c;
+    --primary: #8b5cf6; --primary-soft: #272139;
+    --violet: color-mix(in srgb, var(--primary) 55%, white);
+    --warn: #e2aa4b; --bad: #e4636f; --ok: #46b98f; --info: #83b4ff;
+    --hover: color-mix(in srgb, var(--raised) 60%, transparent);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 Inter, "Segoe UI", system-ui, sans-serif; color: var(--ink); background: var(--bg); -webkit-font-smoothing: antialiased; }
+  h1, h2, h3, h4, p { margin: 0; }
+  button { font: inherit; }
+  .num { font-variant-numeric: tabular-nums; }
+  .wrap { display: grid; gap: 40px; max-width: 1240px; margin: 0 auto; padding: 32px 24px 96px; }
+  .head h1 { font-size: 18px; font-weight: 600; } .head p { margin-top: 2px; color: var(--muted); font-size: 13px; max-width: 100ch; } .head .crumb { color: var(--subtle); font-size: 12px; font-weight: 500; }
+  .opt { display: grid; gap: 12px; }
+  .opt > header h2 { font-size: 15px; font-weight: 600; } .opt > header p { margin-top: 2px; color: var(--muted); font-size: 13px; max-width: 100ch; }
+  /* screen frame */
+  .screen { position: relative; display: grid; gap: 16px; padding: 24px 24px 88px; background: var(--bg); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  .ph { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 16px; }
+  .back { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; text-decoration: none; }
+  .back svg { width: 14px; height: 14px; }
+  .ph h1 { font-size: 18px; font-weight: 600; } .ph .crumb { color: var(--subtle); font-size: 12px; font-weight: 500; } .ph p { color: var(--muted); font-size: 13px; }
+  .acts { display: flex; flex-wrap: wrap; gap: 8px; }
+  .card { min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+  .ch { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 14px 16px; }
+  .ch h3 { font-size: 15px; font-weight: 600; } .ch p { color: var(--muted); font-size: 12.5px; }
+  .cb { display: grid; gap: 14px; padding: 0 16px 16px; min-width: 0; }
+  .ch + .cb.sep { padding-top: 14px; border-top: 1px solid var(--line); }
+  .grid { display: grid; gap: 12px; }
+  .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); } .g4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .span2 { grid-column: span 2; } .spanall { grid-column: 1 / -1; }
+  .fld { display: grid; gap: 6px; min-width: 0; } .fld > small { color: var(--subtle); font-size: 12px; font-weight: 500; }
+  .in { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 7px; font-size: 14px; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .in.ph-t { color: var(--subtle); } .in.sel::after { content: ""; margin-left: auto; width: 7px; height: 7px; border-right: 1.6px solid var(--muted); border-bottom: 1.6px solid var(--muted); transform: rotate(45deg) translateY(-2px); flex: none; }
+  .in.err { border-color: color-mix(in srgb, var(--bad) 70%, transparent); } .in.warn { border-color: color-mix(in srgb, var(--warn) 70%, transparent); }
+  .hint { color: var(--subtle); font-size: 12px; } .hint.bad { color: var(--bad); } .hint.warn { color: var(--warn); }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 34px; padding: 0 12px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 7px; font-size: 13px; font-weight: 500; white-space: nowrap; cursor: pointer; }
+  .btn:hover { background: var(--raised); } .btn.primary { color: #fff; background: var(--primary); border-color: var(--primary); } .btn.quiet { background: none; border-color: transparent; color: var(--muted); } .btn.link { height: auto; padding: 0; background: none; border: 0; color: var(--violet); }
+  .btn svg { width: 14px; height: 14px; }
+  .badge { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; color: var(--muted); background: var(--raised); border: 1px solid var(--line-strong); border-radius: 999px; font-size: 11.5px; font-weight: 500; white-space: nowrap; }
+  .badge.ok { color: var(--ok); } .badge.bad { color: var(--bad); } .badge.warn { color: var(--warn); } .badge.info { color: var(--info); }
+  .badge i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .logo { display: grid; place-items: center; width: 22px; height: 22px; flex: none; border-radius: 6px; color: #fff; font-size: 10px; font-weight: 700; }
+  .rte { display: grid; border: 1px solid var(--line-strong); border-radius: 10px; overflow: hidden; }
+  .rte-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 6px 8px; background: var(--raised); border-bottom: 1px solid var(--line); }
+  .rte-bar span { display: grid; place-items: center; min-width: 26px; height: 26px; padding: 0 6px; color: var(--muted); border-radius: 6px; font-size: 12px; font-weight: 600; } .rte-bar .grow { flex: 1; } .rte-bar .seg { display: inline-flex; gap: 2px; padding: 2px; background: var(--bg); border-radius: 7px; } .rte-bar .seg span.on { color: var(--ink); background: var(--soft); }
+  .rte-body { padding: 12px 14px; color: var(--muted); font-size: 13px; line-height: 1.6; min-height: 88px; } .rte-body b { color: var(--ink); }
+  .media { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+  .ph-img { position: relative; aspect-ratio: 3 / 4; border-radius: 8px; background: linear-gradient(160deg, #3a3346, #22222a 70%); border: 1px solid var(--line); }
+  .ph-img.main::after { content: "Ana"; position: absolute; left: 6px; top: 6px; padding: 1px 6px; color: #fff; background: var(--primary); border-radius: 5px; font-size: 10.5px; font-weight: 600; }
+  .ph-img.add { display: grid; place-items: center; background: none; border-style: dashed; border-color: var(--line-strong); color: var(--subtle); font-size: 22px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; color: var(--ink); background: var(--raised); border: 1px solid var(--line-strong); border-radius: 999px; font-size: 12.5px; }
+  .chip.off { color: var(--subtle); background: none; } .chip .sw { width: 10px; height: 10px; border-radius: 50%; border: 1px solid rgb(255 255 255 / 20%); }
+  table.t { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
+  table.t th { padding: 9px 10px; color: var(--muted); font-size: 12px; font-weight: 500; text-align: left; background: var(--raised); border-bottom: 1px solid var(--line); white-space: nowrap; }
+  table.t td { padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  table.t tr:last-child td { border-bottom: 0; } table.t td.r, table.t th.r { text-align: right; }
+  table.t .cell { display: inline-flex; align-items: center; min-width: 72px; height: 30px; padding: 0 8px; background: var(--bg); border: 1px solid var(--line-strong); border-radius: 6px; } table.t .cell.zero { color: var(--bad); }
+  .twrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+  .actionbar { position: absolute; left: 16px; right: 16px; bottom: 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 12px 10px 16px; background: var(--raised); border: 1px solid var(--line-strong); border-radius: 12px; box-shadow: 0 16px 40px rgb(0 0 0 / 45%); }
+  .actionbar .grow { flex: 1; min-width: 160px; } .actionbar b { display: block; font-weight: 600; font-size: 13.5px; } .actionbar small { color: var(--muted); font-size: 12px; }
+  .ico { width: 16px; height: 16px; flex: none; }
+  .ok-t { color: var(--ok); } .bad-t { color: var(--bad); } .warn-t { color: var(--warn); } .muted { color: var(--muted); } .subtle { color: var(--subtle); font-size: 12px; }
+  .tabs { display: flex; gap: 0; padding: 0 8px; overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; scrollbar-width: none; }
+  .tabs button { position: relative; display: inline-flex; flex: none; align-items: center; gap: 8px; height: 46px; padding: 0 12px; color: var(--muted); background: none; border: 0; font-size: 13.5px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+  .tabs button.on { color: var(--ink); } .tabs button.on::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: 0; height: 2px; border-radius: 2px; background: var(--primary); }
+  .tabs .c { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 1.5px 6px 0; color: var(--ink); background: var(--soft); border: 1px solid var(--line-strong); border-radius: 6px; font-size: 11.5px; line-height: 1; }
+  .tabs .c.bad { color: var(--bad); } .tabs .c.ok { color: var(--ok); }
+  .navlist { display: grid; gap: 2px; padding: 8px; }
+  .navlist a { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 8px 10px; color: var(--muted); text-decoration: none; border-radius: 8px; font-size: 13px; cursor: pointer; }
+  .navlist a:hover { background: var(--hover); color: var(--ink); } .navlist a.on { color: var(--ink); background: var(--raised); }
+  .dot { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--line-strong); font-size: 11px; color: var(--subtle); }
+  .dot.ok { border-color: var(--ok); background: var(--ok); color: #0c2a20; } .dot.bad { border-color: var(--bad); color: var(--bad); } .dot.cur { border-color: var(--primary); color: var(--violet); }
+  .steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+  .step { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 10px; align-items: center; padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; cursor: pointer; text-align: left; color: var(--ink); }
+  .step b { font-size: 13.5px; font-weight: 600; } .step small { grid-column: 2; color: var(--subtle); font-size: 12px; }
+  .step.on { border-color: color-mix(in srgb, var(--primary) 70%, transparent); background: color-mix(in srgb, var(--primary-soft) 55%, var(--surface)); }
+  .bar { display: block; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; } .bar b { display: block; height: 100%; border-radius: 3px; background: var(--primary); }
+  .acc { display: grid; }
+  .acc-h { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 12px; padding: 14px 16px; color: var(--ink); background: none; border: 0; text-align: left; cursor: pointer; width: 100%; }
+  .acc-h h3 { font-size: 15px; font-weight: 600; } .acc-h p { color: var(--muted); font-size: 12.5px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .chev { width: 16px; height: 16px; color: var(--muted); transition: transform .15s; } .acc.open .chev { transform: rotate(180deg); }
+  .acc .cb { padding-top: 14px; border-top: 1px solid var(--line); }
+  .pf { display: grid; gap: 10px; padding: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+  .pf-h { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13.5px; } .pf-h .grow { flex: 1; }
+  .chk { display: grid; gap: 6px; font-size: 12.5px; } .chk span { display: flex; align-items: center; gap: 8px; color: var(--muted); } .chk span::before { content: ""; width: 14px; height: 14px; flex: none; border-radius: 50%; background: var(--ok); box-shadow: inset 0 0 0 3px var(--surface); border: 1px solid var(--ok); } .chk span.no::before { background: none; border: 1.5px solid var(--bad); box-shadow: none; } .chk span.no { color: var(--ink); } .chk span.wa::before { background: none; border: 1.5px solid var(--warn); box-shadow: none; }
+  .preview { display: grid; gap: 10px; padding: 14px; background: #fff; color: #333; border-radius: 12px; }
+  .preview .pimg { aspect-ratio: 3 / 4; border-radius: 8px; background: linear-gradient(160deg, #d9d2e6, #b9b2c6); }
+  .preview .pt { font-size: 13px; line-height: 1.4; } .preview .pt b { color: #111; } .preview .pp { font-size: 18px; font-weight: 700; color: #f27a1a; } .preview .pp s { margin-left: 6px; color: #999; font-size: 12.5px; font-weight: 400; }
+  .preview .psz { display: flex; gap: 6px; flex-wrap: wrap; } .preview .psz span { padding: 4px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; } .preview .psz span.x { color: #bbb; text-decoration: line-through; }
+  .preview .pcta { padding: 10px; color: #fff; background: #f27a1a; border-radius: 8px; text-align: center; font-weight: 700; font-size: 13px; }
+  .issue { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 10px 12px; background: var(--raised); border: 1px solid var(--line); border-radius: 10px; font-size: 13px; cursor: pointer; }
+  .issue:hover { border-color: var(--line-strong); } .issue b { font-weight: 500; } .issue small { display: block; color: var(--subtle); font-size: 12px; }
+  .issue.bad { box-shadow: inset 2px 0 0 var(--bad); } .issue.warn { box-shadow: inset 2px 0 0 var(--warn); }
+  .ring { width: 54px; height: 54px; }
+  .flash { animation: flash 1.2s ease-out; border-radius: 12px; } @keyframes flash { 0% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 80%, transparent); } 100% { box-shadow: 0 0 0 3px transparent; } }
+  .lay { display: grid; gap: 16px; align-items: start; }
+  @media (max-width: 1100px) { .lay { grid-template-columns: 1fr !important; } .sticky { position: static !important; } .media { grid-template-columns: repeat(4, minmax(0, 1fr)); } .steps { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 760px) { .wrap { padding: 16px 16px 96px; } .screen { padding: 16px 12px 150px; } .g2, .g3, .g4 { grid-template-columns: 1fr; } .span2 { grid-column: auto; } .media { grid-template-columns: repeat(3, minmax(0, 1fr)); } .steps { grid-template-columns: 1fr; } .acc-h { grid-template-columns: auto minmax(0, 1fr) auto; } .acc-h .badge { display: none; } }
+</style>
+</head>
+<body>
+<div class="wrap" id="root"></div>
+<script>
+/* ---------- sample product ---------- */
+const PRODUCT = { title: 'Kışlık Yonca Çiçek Desenli Taşlı Yırtmaçlı Likralı Kadın Anne Penye Bluz', model: 'RYP005', brand: 'Ravencia', cat: 'Bluz', sku: 'RAV-BLUZ', desi: '1' }
+const COLORS = [['Mor', '#6b3fa0'], ['Kahverengi', '#7a5235'], ['Zümrüt', '#1f7a5a']]
+const SIZES = ['L', 'XL', 'M']
+const STOCK = { 'Mor': [5, 0, 4], 'Kahverengi': [5, 5, 5], 'Zümrüt': [4, 0, 5] }
+const P = [['Trendyol', '#f27a1a', 'T'], ['Hepsiburada', '#e8457c', 'H'], ['N11', '#7c5cff', 'n'], ['Pazarama', '#2f9bd8', 'P'], ['Shopify', '#5e8e3e', 'S']]
+const READY = [
+  ['Trendyol', 'live', 'Yayında · 9/9 varyant', [['ok', 'Kategori eşleşti'], ['ok', 'Zorunlu özellikler'], ['ok', 'Görseller (6)'], ['ok', 'Barkodlar']]],
+  ['Hepsiburada', 'bad', '2 eksik', [['ok', 'Kategori eşleşti'], ['no', 'Kumaş Tipi değeri eşleşmedi'], ['no', '3 varyantta barkod yok'], ['ok', 'Görseller (6)']]],
+  ['N11', 'warn', 'Hazır · yayınlanmadı', [['ok', 'Kategori eşleşti'], ['ok', 'Zorunlu özellikler'], ['wa', 'Kargo şablonu seçilmedi'], ['ok', 'Görseller (6)']]],
+  ['Pazarama', 'off', 'Bağlı değil', [['no', 'Kategori eşlenmedi'], ['no', 'Zorunlu özellikler']]],
+  ['Shopify', 'live', 'Yayında · 9/9 varyant', [['ok', 'Ürün tipi'], ['ok', 'Görseller (6)'], ['ok', 'Fiyat']]],
+]
+const ATTRS = [['Kumaş Tipi', 'Örme', ''], ['Materyal', 'Likra', ''], ['Desen', 'Çiçekli', ''], ['Yaka Tipi', 'Bisiklet Yaka', ''], ['Kol Tipi', 'Uzun Kol', ''], ['Kalıp', 'Regular', ''], ['Boy', 'Regular', ''], ['Menşei', 'TR', ''], ['Astar Durumu', 'Seçilmedi', 'bad'], ['Ortam', 'Casual/Günlük', ''], ['Siluet', 'Basic', ''], ['Yaş Grubu', 'Yetişkin', '']]
+
+/* ---------- pieces ---------- */
+const ico = (p, c = 'ico') => `<svg class="${c}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`
+const I = {
+  back: ico('<path d="M13 8H3M7 4 3 8l4 4"/>'), chev: ico('<path d="m4.5 6 3.5 3.5L11.5 6"/>', 'chev'), save: ico('<path d="M3 3h8l2 2v8H3z"/><path d="M5 3v3h5V3M5 13V9h6v4"/>'),
+  sync: ico('<path d="M13 8a5 5 0 1 1-1.5-3.5"/><path d="M13 2.5v3h-3"/>'), arrow: ico('<path d="M3 8h10M9 4l4 4-4 4"/>'), eye: ico('<path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/>'),
+  alert: ico('<path d="M8 2.5 14 13H2z"/><path d="M8 6.5v3M8 11.5h.01"/>'), check: ico('<path d="m3.5 8.5 3 3 6-6.5"/>'), plus: ico('<path d="M8 3v10M3 8h10"/>'), dup: ico('<rect x="5" y="5" width="8.5" height="8.5" rx="1.5"/><path d="M11 5V3.5a1 1 0 0 0-1-1H3.5a1 1 0 0 0-1 1V10a1 1 0 0 0 1 1H5"/>'),
+}
+const logo = n => { const p = P.find(x => x[0] === n); return `<span class="logo" style="background:${p[1]}">${p[2]}</span>` }
+const fld = (l, v, o = {}) => `<label class="fld ${o.cls || ''}"><small>${l}</small><span class="in ${o.sel ? 'sel' : ''} ${o.state || ''} ${o.ph ? 'ph-t' : ''}">${v}</span>${o.hint ? `<span class="hint ${o.hintCls || ''}">${o.hint}</span>` : ''}</label>`
+const card = (t, d, body, o = {}) => `<section class="card ${o.cls || ''}" ${o.id ? `data-sec="${o.id}"` : ''}><div class="ch"><div><h3>${t}</h3>${d ? `<p>${d}</p>` : ''}</div>${o.right || ''}</div><div class="cb ${o.sep ? 'sep' : ''}">${body}</div></section>`
+const page = (title, right = '', sub = 'Katalog') => `<div class="ph"><div style="display:grid;gap:6px"><a class="back" href="#">${I.back}Ürünler</a><div><div class="crumb">${sub}</div><h1>${title}</h1></div></div><div class="acts">${right}</div></div>`
+const actionbar = (t = 'Ürün düzenlemeye hazır', s = '9 varyant · 3 kanal seçili', extra = '') => `<div class="actionbar"><span class="grow"><b>${t}</b><small>${s}</small></span>${extra}<button class="btn">${I.save}Kaydet</button><button class="btn">${I.sync}Hızlı Güncelle</button><button class="btn primary">Yayınlamaya Devam Et${I.arrow}</button></div>`
+
+const basics = (cols = 'g3') => `<div class="grid ${cols}">${fld('Ürün Adı', PRODUCT.title, { cls: cols === 'g3' ? 'span2' : 'spanall' })}${fld('Satış Durumu', 'Satışa Açık', { sel: 1 })}${fld('Marka', PRODUCT.brand, { sel: 1 })}${fld('Panel Kategorisi', PRODUCT.cat, { sel: 1 })}${fld('Model Kodu', PRODUCT.model)}${fld('Stok Kodu', PRODUCT.sku)}${fld('Barkod', 'Varyantlarda tanımlı', { ph: 1 })}${fld('Desi', PRODUCT.desi, { hint: 'Hesaplamak için ölçüleri girin' })}</div>`
+const pricing = (cols = 'g4') => `<div class="grid ${cols}">${fld('Liste Fiyatı', '₺649,00')}${fld('Satış Fiyatı', '₺599,00')}${fld('Maliyet', '₺210,00')}${fld('Para Birimi', 'TRY', { sel: 1 })}${fld('KDV Oranı', '%10', { sel: 1 })}${fld('KDV Dahil', 'Evet', { sel: 1 })}${fld('Toplam Stok', '33', { hint: '9 varyantın toplamı' })}${fld('Güvenlik Stoğu', '2')}</div>`
+const rte = `<div class="rte"><div class="rte-bar"><span>B</span><span><i>I</i></span><span>H2</span><span>•</span><span>1.</span><span class="grow"></span><span class="subtle">1.673 karakter</span><span class="seg"><span class="on">Görsel</span><span>HTML</span></span></div><div class="rte-body"><b>Kışlık Yonca Çiçek Desenli</b> bluz, likralı penye kumaşı ile gün boyu rahatlık sağlar. Taş işlemeli yaka detayı ve yırtmaçlı etek ucuyla şık bir görünüm sunar. Makinede 30°'de yıkanabilir…</div></div>`
+const media = `<div class="media">${Array.from({ length: 6 }, (_, i) => `<span class="ph-img ${i === 0 ? 'main' : ''}"></span>`).join('')}</div><span class="hint">Sürükleyerek sıralayın · ilk görsel ana görseldir · renk varyantlarına görsel atamak için görsele tıklayın</span>`
+const attrs = (cols = 'g4') => `<div class="grid ${cols}">${ATTRS.map(([l, v, s]) => fld(l, v, { sel: 1, state: s === 'bad' ? 'err' : '', ph: s === 'bad', hint: s === 'bad' ? 'Hepsiburada için zorunlu' : '', hintCls: 'bad' })).join('')}</div>`
+const options = `<div class="grid g2"><div class="fld"><small>Renk</small><div class="chips">${COLORS.map(([c, h]) => `<span class="chip"><i class="sw" style="background:${h}"></i>${c}</span>`).join('')}<span class="chip off">${I.plus}Renk Ekle</span></div></div><div class="fld"><small>Beden</small><div class="chips">${['M', 'L', 'XL'].map(s => `<span class="chip">${s}</span>`).join('')}<span class="chip off">2XL</span><span class="chip off">3XL</span></div></div></div><span class="hint">Seçtiğiniz değerlerin tüm kombinasyonları varyant satırı olur: 3 renk × 3 beden = 9 varyant.</span>`
+const variants = (dense = false) => `<div class="twrap"><table class="t"><thead><tr><th>Varyant</th><th>Stok Kodu</th><th>Barkod</th><th class="r">Satış Fiyatı</th><th class="r">Stok</th>${dense ? '' : '<th>Görsel</th><th>Kanallar</th>'}</tr></thead><tbody>${COLORS.flatMap(([c]) => SIZES.map((s, i) => { const st = STOCK[c][i]; const nobc = c === 'Zümrüt'; return `<tr><td><b style="font-weight:500">${c} · ${s}</b></td><td class="num muted">RYP005-${c.slice(0, 3).toUpperCase()}-${s}</td><td class="num ${nobc ? 'bad-t' : 'muted'}">${nobc ? 'Eksik' : '8683' + (412000 + i * 7 + c.length)}</td><td class="r"><span class="cell num">₺599,00</span></td><td class="r"><span class="cell num ${st ? '' : 'zero'}">${st}</span></td>${dense ? '' : `<td><span class="ph-img" style="display:inline-block;width:22px;aspect-ratio:3/4;vertical-align:middle"></span></td><td>${['Trendyol', 'Shopify'].map(logo).join('')}</td>`}</tr>` })).join('')}</tbody></table></div>`
+const readyCards = (cols = 'g3') => `<div class="grid ${cols}">${READY.map(([n, st, s, items]) => `<div class="pf"><div class="pf-h">${logo(n)}<span class="grow">${n}</span><span class="badge ${st === 'live' ? 'ok' : st === 'bad' ? 'bad' : st === 'warn' ? 'warn' : ''}"><i></i>${s}</span></div><div class="chk">${items.map(([k, t]) => `<span class="${k === 'no' ? 'no' : k === 'wa' ? 'wa' : ''}">${t}</span>`).join('')}</div><div style="display:flex;gap:8px">${st === 'live' ? '<button class="btn">Güncelle</button>' : st === 'off' ? '<button class="btn">Bağla</button>' : `<button class="btn ${st === 'warn' ? 'primary' : ''}">${st === 'bad' ? 'Eksikleri Tamamla' : 'Yayınla'}</button>`}</div></div>`).join('')}</div>`
+const summary = `<div class="card"><div class="cb" style="padding-top:16px"><div style="display:grid;grid-template-columns:72px minmax(0,1fr);gap:12px;align-items:center"><span class="ph-img"></span><div style="display:grid;gap:2px;min-width:0"><b style="font-size:13.5px;line-height:1.35">${PRODUCT.title}</b><span class="subtle">Model Kodu: ${PRODUCT.model} · 9 varyant</span><span class="badge ok" style="justify-self:start"><i></i>Satışa Açık</span></div></div><div class="grid g2" style="gap:8px">${[['Satış Fiyatı', '₺599,00'], ['Toplam Stok', '33'], ['Stoksuz Varyant', '<span class="bad-t">2</span>'], ['Kanal', '2 / 5 yayında']].map(([l, v]) => `<div style="padding:10px 12px;background:var(--raised);border:1px solid var(--line);border-radius:10px"><small class="subtle">${l}</small><div style="font-weight:600" class="num">${v}</div></div>`).join('')}</div></div></div>`
+const channelsMini = `<div class="card"><div class="ch"><div><h3>Kanallar</h3><p>Yayın durumu ve eksikler</p></div></div><div class="cb" style="gap:8px">${READY.map(([n, st, s]) => `<div style="display:flex;align-items:center;gap:10px;font-size:13px">${logo(n)}<span style="flex:1">${n}</span><span class="badge ${st === 'live' ? 'ok' : st === 'bad' ? 'bad' : st === 'warn' ? 'warn' : ''}"><i></i>${s}</span></div>`).join('')}</div></div>`
+const issues = [['bad', 'Hepsiburada: Kumaş Tipi değeri eşleşmedi', 'Kategori özellikleri', 'attrs'], ['bad', '3 varyantta barkod yok (Zümrüt)', 'Varyantlar', 'variants'], ['bad', 'Astar Durumu seçilmedi', 'Kategori özellikleri', 'attrs'], ['warn', 'N11 kargo şablonu seçilmedi', 'Yayınlama', 'publish'], ['warn', 'Desi hesaplanmadı', 'Temel bilgiler', 'basics']]
+const issueList = k => issues.map(([t, l, s, sec]) => `<div class="issue ${t}" data-k="${k}" data-jump="${sec}">${t === 'bad' ? `<span class="bad-t">${I.alert}</span>` : `<span class="warn-t">${I.alert}</span>`}<span><b>${l}</b><small>${s}</small></span>${I.arrow}</div>`).join('')
+const SECS = [['basics', 'Temel Bilgiler', 'ok', ''], ['desc', 'Açıklama', 'ok', ''], ['price', 'Fiyat, Stok ve Vergi', 'ok', ''], ['media', 'Görseller', 'ok', '6'], ['attrs', 'Kategori Özellikleri', 'bad', '2'], ['options', 'Seçenekler', 'ok', ''], ['variants', 'Varyantlar', 'bad', '9'], ['publish', 'Yayınlama', 'warn', '2/5']]
+const secBody = id => ({ basics: basics(), desc: rte, price: pricing(), media, attrs: attrs(), options, variants: variants(), publish: readyCards() })[id]
+const secDesc = { basics: 'Ürün kartının başlığı ve katalog bilgileri', desc: 'Pazar yerlerinde görünecek ürün açıklaması', price: 'Başlangıç değerleri varyantlara uygulanır', media: 'Ürün ve renk görselleri', attrs: 'Panel kategorisinin zorunlu ve önerilen özellikleri', options: 'Varyantları oluşturan renk ve beden değerleri', variants: 'Her varyantın kodu, barkodu, fiyatı ve stoğu', publish: 'Kanallara göre hazırlık ve yayın' }
+const secSum = { basics: 'Ravencia · Bluz · RYP005 · 1 desi', desc: '1.673 karakter', price: '₺599,00 · %10 KDV dahil · 33 adet', media: '6 görsel · 3 renge atanmış', attrs: '10 / 12 dolu · 2 eksik', options: '3 renk × 3 beden', variants: '9 varyant · 2 stoksuz · 3 barkodsuz', publish: '2 yayında · 1 hazır · 1 eksik' }
+
+/* ---------- state ---------- */
+const S = {}
+const st = k => (S[k] ??= { tab: 'basics', step: 0, open: ['basics'], ch: 'Trendyol' })
+
+/* ---------- options ---------- */
+const OPTS = [
+  ['İki Sütun ve Yapışkan Özet', 'Form solda tek akışta; sağda kaydırırken yerinde duran özet: görsel, durum, fiyat ve stok özeti, kanalların yayın durumu. Ne düzenlediğinizi ve sonucunu aynı anda görürsünüz.',
+    k => page('Ürün Düzenle', `<span class="badge ok"><i></i>Kaydedildi · 2 dk önce</span>`) + `<div class="lay" style="grid-template-columns:minmax(0,1fr) 320px">
+      <div style="display:grid;gap:16px">${card('Temel Bilgiler', secDesc.basics, basics())}${card('Açıklama', secDesc.desc, rte)}${card('Fiyat, Stok ve Vergi', secDesc.price, pricing())}${card('Görseller', secDesc.media, media)}${card('Kategori Özellikleri', secDesc.attrs, attrs('g3'), { right: '<span class="badge bad"><i></i>2 eksik</span>' })}${card('Seçenekler ve Varyantlar', secDesc.variants, options + variants())}</div>
+      <div class="sticky" style="position:sticky;top:16px;display:grid;gap:16px">${summary}${channelsMini}</div></div>` + actionbar()],
+  ['Solda Bölüm Gezgini', 'Solda sabit bölüm listesi; her bölümün yanında tamam/eksik işareti ve sayısı. Tıklanan bölüme kaydırır, okunan bölüm listede işaretlenir. Uzun formda yön kaybolmaz.',
+    k => { const s = st(k); return page('Ürün Düzenle', '<button class="btn">' + I.eye + 'Önizle</button>') + `<div class="lay" style="grid-template-columns:230px minmax(0,1fr)"><nav class="card sticky navlist" style="position:sticky;top:16px">${SECS.map(([id, l, state, n]) => `<a data-k="${k}" data-tab="${id}" class="${s.tab === id ? 'on' : ''}"><span class="dot ${state === 'ok' ? 'ok' : state === 'bad' ? 'bad' : 'cur'}">${state === 'ok' ? '✓' : state === 'bad' ? '!' : '•'}</span><span>${l}</span><span class="subtle">${n}</span></a>`).join('')}<div style="padding:10px 10px 4px;display:grid;gap:6px"><span class="subtle">Tamamlanma %84</span><span class="bar"><b style="width:84%"></b></span></div></nav><div style="display:grid;gap:16px">${SECS.map(([id, l]) => card(l, secDesc[id], secBody(id), { id, cls: s.tab === id ? 'flash' : '' })).join('')}</div></div>` + actionbar() }],
+  ['Sekmeli Düzen', 'Bölümler sayfa yerine sekmede: Genel, Görseller, Özellikler, Varyantlar, Yayınlama. Sekmedeki sayı kutusu eksik sayısını kırmızı gösterir. Ekranda her an tek konu var, sayfa kısa kalır.',
+    k => { const s = st(k); const T = [['basics', 'Genel', 'ok'], ['media', 'Görseller', '6'], ['attrs', 'Özellikler', '2'], ['variants', 'Varyantlar', '9'], ['publish', 'Yayınlama', '2/5']]; const t = T.some(x => x[0] === s.tab) ? s.tab : 'basics'; const body = t === 'basics' ? card('Temel Bilgiler', secDesc.basics, basics()) + card('Açıklama', '', rte) + card('Fiyat, Stok ve Vergi', '', pricing()) : t === 'variants' ? card('Seçenekler', secDesc.options, options) + card('Varyantlar', secDesc.variants, variants()) : card(T.find(x => x[0] === t)[1], secDesc[t], secBody(t)); return page('Ürün Düzenle', `<span class="badge warn"><i></i>Kaydedilmemiş değişiklik</span>`) + `<div class="tabs">${T.map(([id, l, c]) => `<button data-k="${k}" data-tab="${id}" class="${t === id ? 'on' : ''}">${l}<span class="c ${id === 'attrs' ? 'bad' : c === 'ok' ? 'ok' : ''}">${c === 'ok' ? '✓' : c}</span></button>`).join('')}</div><div style="display:grid;gap:16px">${body}</div>` + actionbar() }],
+  ['Geliştirilmiş Sihirbaz', 'Bugünkü iki adım dörde ayrılır: Ürün, Görsel ve Özellik, Varyantlar, Yayınlama. Her adım kartı kendi durumunu yazar; ilerleme çubuğu toplam hazırlığı gösterir, geri dönmek serbest.',
+    k => { const s = st(k); const ST = [['Ürün Bilgileri', 'Ad, kategori, fiyat ve açıklama', 'ok'], ['Görsel ve Özellik', '6 görsel · 2 özellik eksik', 'bad'], ['Varyantlar', '9 varyant · 3 barkod eksik', 'bad'], ['Yayınlama', '2 kanal yayında', 'warn']]; const bodies = [card('Temel Bilgiler', '', basics()) + card('Fiyat, Stok ve Vergi', '', pricing()) + card('Açıklama', '', rte), card('Görseller', secDesc.media, media) + card('Kategori Özellikleri', secDesc.attrs, attrs()), card('Seçenekler', '', options) + card('Varyantlar', '', variants()), card('Yayınlama', secDesc.publish, readyCards())]; return page('Ürün Düzenle') + `<div style="display:grid;gap:10px"><div class="steps">${ST.map(([l, d, x], i) => `<button class="step ${s.step === i ? 'on' : ''}" data-k="${k}" data-step="${i}"><span class="dot ${x === 'ok' ? 'ok' : s.step === i ? 'cur' : x === 'bad' ? 'bad' : ''}">${x === 'ok' ? '✓' : i + 1}</span><b>${l}</b><small>${d}</small></button>`).join('')}</div><span class="bar"><b style="width:${(s.step + 1) * 25}%"></b></span></div><div style="display:grid;gap:16px">${bodies[s.step]}</div>` + actionbar(`Adım ${s.step + 1} / 4`, ST[s.step][0], `<button class="btn quiet" data-k="${k}" data-step="${Math.max(0, s.step - 1)}">Geri</button><button class="btn" data-k="${k}" data-step="${Math.min(3, s.step + 1)}">İleri${I.arrow}</button>`) }],
+  ['Açılır Kartlar', 'Tek sütun; her bölüm kapalıyken başlığında özetini taşır (fiyat, stok, eksik sayısı). Yalnızca düzenlenecek bölüm açılır, gerisi tek satır. Mevcut düzene en yakın, en kısa hâli.',
+    k => { const s = st(k); return page('Ürün Düzenle', '<button class="btn quiet" data-k="' + k + '" data-all="1">Tümünü Aç</button>') + `<div style="display:grid;gap:10px">${SECS.map(([id, l, state, n], i) => { const open = s.open.includes(id); return `<section class="card acc ${open ? 'open' : ''}"><button class="acc-h" data-k="${k}" data-acc="${id}"><span class="dot ${state === 'ok' ? 'ok' : state === 'bad' ? 'bad' : 'cur'}">${state === 'ok' ? '✓' : state === 'bad' ? '!' : i + 1}</span><span style="min-width:0"><h3>${l}</h3><p>${secSum[id]}</p></span><span class="badge ${state === 'bad' ? 'bad' : state === 'warn' ? 'warn' : 'ok'}"><i></i>${state === 'bad' ? 'Eksik var' : state === 'warn' ? 'Kontrol et' : 'Tamam'}</span>${I.chev}</button>${open ? `<div class="cb">${secBody(id)}</div>` : ''}</section>` }).join('')}</div>` + actionbar() }],
+  ['Varyant Odaklı', 'Sayfanın merkezi varyant tablosu: fiyat ve stok doğrudan tabloda düzenlenir, renk satırları gruplanır. Ürün bilgileri sağdaki dar sütunda; seyrek değişen alanlar ikinci planda kalır.',
+    k => page('Ürün Düzenle', '<button class="btn">' + I.dup + 'Toplu Düzenle</button>') + `<div class="lay" style="grid-template-columns:minmax(0,1fr) 340px"><div style="display:grid;gap:16px">${card('Varyantlar', '9 varyant · 2 stoksuz · 3 barkodsuz', `<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><span class="subtle">Seçilenlere uygula:</span>${fld('', 'Fiyat', { ph: 1 }).replace('<small></small>', '')}${fld('', 'Stok', { ph: 1 }).replace('<small></small>', '')}<button class="btn">Uygula</button></div>` + variants(), { right: '<div class="chips">' + COLORS.map(([c, h]) => `<span class="chip"><i class="sw" style="background:${h}"></i>${c}</span>`).join('') + '</div>' })}${card('Görseller', '', media)}</div><div class="sticky" style="position:sticky;top:16px;display:grid;gap:16px">${card('Ürün', '', basics('g2'))}${card('Fiyat Varsayılanları', '', pricing('g2'))}${channelsMini}</div></div>` + actionbar()],
+  ['Canlı Önizleme', 'Form solda, sağda ürünün pazar yerinde nasıl görüneceği: görsel, ad, fiyat, beden seçimi. Kanal değiştirerek her pazar yerinin görünümüne bakılır; stoksuz bedenler üstü çizili görünür.',
+    k => { const s = st(k); return page('Ürün Düzenle') + `<div class="lay" style="grid-template-columns:minmax(0,1fr) 340px"><div style="display:grid;gap:16px">${card('Temel Bilgiler', '', basics())}${card('Fiyat, Stok ve Vergi', '', pricing())}${card('Açıklama', '', rte)}${card('Görseller', '', media)}${card('Varyantlar', '', variants(true))}</div><div class="sticky" style="position:sticky;top:16px;display:grid;gap:10px"><div class="tabs" style="padding:0 4px">${['Trendyol', 'Hepsiburada', 'Shopify'].map(n => `<button data-k="${k}" data-ch="${n}" class="${s.ch === n ? 'on' : ''}">${logo(n)}${n}</button>`).join('')}</div><div class="preview"><span class="pimg"></span><span class="pt"><b>${PRODUCT.brand}</b> ${PRODUCT.title}</span><span class="pp" style="color:${P.find(p => p[0] === s.ch)[1]}">₺599,00<s>₺649,00</s></span><span style="font-size:12px;color:#666">Renk: Mor</span><span class="psz"><span>M</span><span>L</span><span class="x">XL</span></span><span class="pcta" style="background:${P.find(p => p[0] === s.ch)[1]}">Sepete Ekle</span></div><span class="subtle">Önizleme ${s.ch} ürün sayfasının sadeleştirilmiş hâlidir.</span></div></div>` + actionbar() }],
+  ['Kanal Hazırlık Panosu', 'Sayfanın başında her kanal için hazırlık kartı: neyin tamam, neyin eksik olduğu ve tek tıkla yayınla/güncelle. Altında ortak form. Ürün çok kanalda satılıyorsa en verimlisi.',
+    k => page('Ürün Düzenle', '<span class="badge ok"><i></i>2 kanalda yayında</span>') + readyCards('g3').replace('class="grid g3"', 'class="grid g3" style="grid-template-columns:repeat(5,minmax(0,1fr))"') + `<div class="lay" style="grid-template-columns:minmax(0,1.4fr) minmax(0,1fr)"><div style="display:grid;gap:16px">${card('Temel Bilgiler', '', basics())}${card('Açıklama', '', rte)}${card('Varyantlar', '', variants(true))}</div><div style="display:grid;gap:16px">${card('Fiyat, Stok ve Vergi', '', pricing('g2'))}${card('Kategori Özellikleri', 'Hepsiburada için 2 eksik', attrs('g2'))}${card('Görseller', '', media.replace('repeat(6', 'repeat(3'))}</div></div><style>@media (max-width:1100px){.opt .grid.g3[style]{grid-template-columns:repeat(2,minmax(0,1fr))!important}}@media (max-width:760px){.opt .grid.g3[style]{grid-template-columns:1fr!important}}</style>` + actionbar()],
+  ['Yoğun Düzenleyici', 'Kenar boşlukları ve kartlar azaltılmış, alanlar dörtlü ızgarada; varyantlar tablo gibi, hücreler doğrudan düzenlenir. Çok ürünü hızlı güncelleyen ekip için en az kaydırma.',
+    k => page('Ürün Düzenle', '<button class="btn quiet">Önceki Ürün</button><button class="btn quiet">Sonraki Ürün</button>') + `<section class="card"><div class="cb" style="padding-top:16px;gap:12px">${basics().replace('grid g3', 'grid g4')}<div style="border-top:1px solid var(--line)"></div>${pricing()}<div style="border-top:1px solid var(--line)"></div>${attrs()}</div></section><section class="card"><div class="ch"><div><h3>Varyantlar</h3><p>Hücreye tıklayıp yazın · Tab ile sonraki hücreye geçin</p></div><div class="chips">${COLORS.map(([c, h]) => `<span class="chip"><i class="sw" style="background:${h}"></i>${c}</span>`).join('')}</div></div><div class="cb">${variants()}</div></section><div class="grid g2">${card('Açıklama', '', rte)}${card('Görseller', '', media.replace('repeat(6', 'repeat(3'))}</div>` + actionbar('3 alan değişti', 'Satış Fiyatı · Güvenlik Stoğu · Mor · XL stok')],
+  ['Kontrol Listesi Rehberli', 'Solda yayın için gereken eksikler listesi (kanala göre); bir eksiğe tıklayınca ilgili alan açılır ve vurgulanır. Liste boşaldığında Yayınla düğmesi açılır. Ne yapılacağını sayfa söyler.',
+    k => { const s = st(k); return page('Ürün Düzenle') + `<div class="lay" style="grid-template-columns:320px minmax(0,1fr)"><div class="sticky" style="position:sticky;top:16px;display:grid;gap:12px"><section class="card"><div class="ch"><div style="display:flex;align-items:center;gap:12px"><svg class="ring" viewBox="0 0 36 36"><circle cx="18" cy="18" r="15" fill="none" stroke="var(--line)" stroke-width="4"/><circle cx="18" cy="18" r="15" fill="none" stroke="var(--primary)" stroke-width="4" stroke-dasharray="${0.72 * 94.2} 94.2" transform="rotate(-90 18 18)" stroke-linecap="round"/><text x="18" y="22" text-anchor="middle" fill="var(--ink)" font-size="10" font-weight="600">%72</text></svg><div><h3>Yayına Hazırlık</h3><p>3 eksik · 2 uyarı</p></div></div></div><div class="cb" style="gap:8px">${issueList(k)}</div></section>${channelsMini}</div><div style="display:grid;gap:16px">${['basics', 'price', 'attrs', 'variants', 'publish', 'media', 'desc'].map(id => card(SECS.find(x => x[0] === id)[1], secDesc[id], secBody(id), { id, cls: s.tab === id ? 'flash' : '' })).join('')}</div></div>` + actionbar('3 eksik kaldı', 'Hepsiburada için barkod ve özellik değerleri') }],
+]
+
+function render() {
+  document.getElementById('root').innerHTML = `<header class="head"><div class="crumb">Katalog · Ürün Düzenle</div><h1>Ürün Düzenle · 10 Öneri</h1><p>Ürün düzenleme sayfası için yeni tasarım dilinde on yerleşim. Hepsi aynı ürünü (RYP005, 3 renk × 3 beden) ve aynı alanları gösterir: temel bilgiler, açıklama, fiyat/stok/vergi, görseller, kategori özellikleri, seçenekler, varyantlar ve yayınlama. Sekmeler, adımlar, bölüm listesi, açılır kartlar ve eksik listesi tıklanabilir.</p></header>` + OPTS.map(([t, d, fn], i) => `<section class="opt"><header><h2>Öneri ${i + 1} · ${t}</h2><p>${d}</p></header><div class="screen">${fn('o' + i)}</div></section>`).join('')
+}
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-k]'); if (!t) return
+  e.preventDefault()
+  const s = st(t.dataset.k)
+  if (t.dataset.tab) s.tab = t.dataset.tab
+  if (t.dataset.step) s.step = +t.dataset.step
+  if (t.dataset.ch) s.ch = t.dataset.ch
+  if (t.dataset.acc) { const id = t.dataset.acc; s.open = s.open.includes(id) ? s.open.filter(x => x !== id) : [...s.open, id] }
+  if (t.dataset.all) s.open = s.open.length === SECS.length ? [] : SECS.map(x => x[0])
+  if (t.dataset.jump) s.tab = t.dataset.jump
+  render()
+  const target = (t.dataset.tab || t.dataset.jump) && document.querySelector(`.opt:nth-of-type(${+t.dataset.k.slice(1) + 1}) [data-sec="${s.tab}"]`)
+  if (target && (t.closest('.navlist') || t.dataset.jump)) target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+})
+render()
+</script>
+</body>
+</html>
