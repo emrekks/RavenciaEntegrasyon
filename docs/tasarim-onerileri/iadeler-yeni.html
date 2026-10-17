@@ -425,7 +425,7 @@
   .menu > button:disabled { color: var(--subtle); opacity: .6; cursor: default; }
   .menu > hr { height: 1px; margin: 6px 12px; background: var(--line); border: 0; }
   /* table: column dividers, centered headings, filter icons 8px from each column's right edge */
-  .tbl col.c-order { width: 16%; } .tbl col.c-buyer { width: 9%; } .tbl col.c-prod { width: 18%; } .tbl col.c-cargo { width: 11%; } .tbl col.c-inv { width: 13%; } .tbl col.c-reason { width: 10%; } .tbl col.c-status { width: 11%; } .tbl col.c-act { width: 12%; }
+  .tbl col.c-order { width: 15%; } .tbl col.c-buyer { width: 8%; } .tbl col.c-prod { width: 23%; } .tbl col.c-cargo { width: 10%; } .tbl col.c-inv { width: 13%; } .tbl col.c-reason { width: 10%; } .tbl col.c-status { width: 10%; } .tbl col.c-act { width: 11%; }
   .tbl .cust b { overflow-wrap: normal; word-break: normal; hyphens: auto; }
   .tbl .cargocell { width: 100%; justify-items: center; } .tbl .cargocell .cargo-img { max-width: 100%; object-position: center; }
   .tbl .cargocell small { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; text-align: center; }
@@ -456,6 +456,10 @@
   .reason-tip .ring b { text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; }
   /* product facts listed one per line, as on the live page */
   .pline small { line-height: 1.55; overflow-wrap: anywhere; } .pline small b { font-weight: 500; }
+  /* the filter anchor is transformed, so it forms its own layer: lift it above the rows so its menu is not covered */
+  .tbl th .hf > .anchor { z-index: 70; }
+  .tbl td { vertical-align: middle; }
+  .tbl td.wide:first-child { vertical-align: top; }
   .tone-prog { --tone: var(--violet); } .tone-move { --tone: var(--info); } .tone-wait { --tone: var(--warn); } .tone-ok { --tone: var(--ok); } .tone-bad { --tone: var(--bad); } .tone-off { --tone: var(--subtle); }
   /* actions column: "İşlemler" menu and the detail link */
   .actcell { display: grid; gap: 8px; justify-items: center; }
