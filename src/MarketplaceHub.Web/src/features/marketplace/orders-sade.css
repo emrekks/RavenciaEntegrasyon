@@ -138,3 +138,15 @@
   .rr-layer .rr-screen-only { display: none !important; }
   .rr-layer .rr-print-only { display: block !important; }
 }
+/* invoice cell: amounts, state and actions centred in the column; ring captions sit left beside their ring */
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-invcell { justify-items: center; text-align: center; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-invcell .rr-m { justify-items: center; justify-content: center; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ring, :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ring > span { justify-items: start; text-align: left; }
+@media (max-width: 1100px) {
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-invcell { justify-items: start; text-align: left; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-invcell .rr-m { justify-items: start; justify-content: start; }
+}
+/* a label that was already printed fades back; it still prints again on press */
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-actcell .rr-btn.rr-lbl.rr-printed { color: var(--rr-subtle); background: transparent; border-color: var(--rr-line); opacity: .6; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-actcell .rr-btn.rr-lbl.rr-printed:hover { opacity: 1; color: var(--rr-muted); }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl td.rr-mid > .rr-ring { justify-items: start; }
