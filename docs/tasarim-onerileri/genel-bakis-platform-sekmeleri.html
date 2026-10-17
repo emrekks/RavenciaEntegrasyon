@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Platform Sekmeleri · 6 Öneri</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #111115; --surface: #17171c; --raised: #1d1d23; --soft: #22222a;
+    --line: #2a2a32; --line-strong: #383842;
+    --ink: #ececf0; --muted: #a3a3b0; --subtle: #6f6f7c;
+    --primary: #8b5cf6; --primary-soft: #272139;
+    --violet: color-mix(in srgb, var(--primary) 55%, white);
+    --warn: #e2aa4b; --bad: #e4636f; --ok: #46b98f; --info: #83b4ff;
+    --hover: color-mix(in srgb, var(--raised) 60%, transparent);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 Inter, "Segoe UI", system-ui, sans-serif; color: var(--ink); background: var(--bg); -webkit-font-smoothing: antialiased; }
+  h1, h2, h3, p { margin: 0; }
+  .num { font-variant-numeric: tabular-nums; }
+  .wrap { display: grid; gap: 36px; max-width: 1196px; margin: 0 auto; padding: 32px 24px 96px; }
+  .head h1 { font-size: 18px; font-weight: 600; } .head p { margin-top: 2px; color: var(--muted); font-size: 13px; } .head .crumb { color: var(--subtle); font-size: 12px; font-weight: 500; }
+  .opt { display: grid; gap: 12px; }
+  .opt > header h2 { font-size: 15px; font-weight: 600; } .opt > header p { margin-top: 2px; color: var(--muted); font-size: 13px; max-width: 90ch; }
+  .card { position: relative; min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+  .ch { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 10px 16px; padding: 16px 16px 0; }
+  .ch h3 { font-size: 16px; font-weight: 600; } .ch p { color: var(--muted); font-size: 13px; }
+  .cb { padding: 14px 16px 16px; display: grid; gap: 12px; min-width: 0; }
+  .tools { display: flex; flex-wrap: wrap; gap: 8px; }
+  .sel { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px 0 12px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 7px; font-size: 13px; cursor: pointer; }
+  .sel svg { width: 14px; height: 14px; color: var(--muted); }
+  .seg { display: inline-flex; gap: 2px; padding: 3px; background: var(--bg); border: 1px solid var(--line-strong); border-radius: 9px; }
+  .seg button { height: 28px; padding: 0 10px; color: var(--muted); background: none; border: 1px solid transparent; border-radius: 6px; font: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer; }
+  .seg button.on { color: var(--ink); background: var(--raised); border-color: var(--line-strong); }
+  .total small { display: block; color: var(--muted); font-size: 13px; } .total strong { font-size: 26px; font-weight: 600; line-height: 1.25; }
+  .trend { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; } .trend em { color: var(--subtle); font-style: normal; font-weight: 400; }
+  .trend.up { color: var(--ok); } .trend.down { color: var(--bad); }
+  .trend svg { width: 12px; height: 12px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--muted); font-size: 12.5px; } .legend span { display: inline-flex; align-items: center; gap: 6px; } .legend i { width: 10px; height: 10px; border-radius: 3px; }
+  .legend .ln { width: 16px; height: 0; border-radius: 0; border-top: 2px solid var(--violet); } .legend .dash { border-top: 2px dashed var(--subtle); }
+  svg.chart { display: block; width: 100%; height: auto; overflow: visible; }
+  svg.chart text { fill: var(--subtle); font-size: 11px; font-family: inherit; }
+  svg.chart .g { stroke: var(--line); }
+  .logo { width: 22px; height: 22px; flex: none; border-radius: 6px; display: grid; place-items: center; color: #fff; font-size: 10px; font-weight: 700; }
+  .link { display: inline-flex; align-items: center; gap: 4px; color: var(--violet); font-size: 13px; font-weight: 500; text-decoration: none; white-space: nowrap; }
+  .link svg { width: 14px; height: 14px; }
+  .split { display: grid; grid-template-columns: minmax(0, 1.75fr) minmax(0, 1fr); gap: 16px; }
+  .rows { display: grid; gap: 8px; }
+  .chrow { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; font-size: 13px; }
+  .chrow .t { display: grid; gap: 4px; min-width: 0; } .chrow .t > span { display: flex; justify-content: space-between; gap: 8px; } .chrow .t small { color: var(--subtle); font-size: 12px; }
+  .bar { display: block; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; } .bar b { display: block; height: 100%; border-radius: 3px; }
+  .pct { font-weight: 600; } .delta { font-size: 12px; font-weight: 600; } .delta.up { color: var(--ok); } .delta.down { color: var(--bad); }
+  .foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 16px; color: var(--muted); border-top: 1px solid var(--line); font-size: 13px; }
+  .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-bottom: 1px solid var(--line); }
+  .kpi { display: grid; gap: 1px; padding: 12px 16px; text-align: left; color: var(--ink); background: none; border: 0; border-right: 1px solid var(--line); font: inherit; cursor: pointer; position: relative; }
+  .kpi:last-child { border-right: 0; } .kpi:hover { background: var(--hover); }
+  .kpi small { color: var(--muted); font-size: 12.5px; } .kpi strong { font-size: 18px; font-weight: 600; }
+  .kpi.on::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--primary); }
+  table.t { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
+  table.t th { padding: 9px 12px; color: var(--muted); font-size: 12px; font-weight: 500; text-align: right; background: var(--raised); border-bottom: 1px solid var(--line); white-space: nowrap; }
+  table.t td { padding: 10px 12px; text-align: right; border-bottom: 1px solid var(--line); }
+  table.t tr:last-child td { border-bottom: 0; } table.t tr:hover td { background: var(--hover); }
+  table.t th:first-child, table.t td:first-child { text-align: left; }
+  table.t td .nm { display: flex; align-items: center; gap: 8px; font-weight: 500; }
+  .ins { display: grid; gap: 8px; }
+  .insi { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: start; padding: 10px 12px; background: var(--raised); border: 1px solid var(--line); border-radius: 10px; font-size: 13px; }
+  .insi .ic { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: var(--soft); color: var(--violet); }
+  .insi .ic svg { width: 16px; height: 16px; } .insi b { display: block; font-weight: 600; } .insi span { color: var(--muted); font-size: 12.5px; }
+  .tip { position: absolute; z-index: 10; padding: 8px 10px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 10px; box-shadow: 0 18px 50px rgb(0 0 0 / 45%); font-size: 12px; pointer-events: none; white-space: nowrap; }
+  .tip b { display: block; margin-bottom: 2px; font-weight: 600; } .tip span { color: var(--muted); }
+  .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; color: var(--muted); background: none; border: 1px solid var(--line-strong); border-radius: 999px; font: inherit; font-size: 12.5px; cursor: pointer; }
+  .chip i { width: 8px; height: 8px; border-radius: 50%; } .chip.on { color: var(--ink); background: var(--raised); } .chip.off { opacity: .45; }
+  @media (max-width: 1100px) { .split { grid-template-columns: 1fr; } .kpis { grid-template-columns: 1fr 1fr; } .kpi:nth-child(2) { border-right: 0; } .kpi:nth-child(-n+2) { border-bottom: 1px solid var(--line); } }
+  @media (max-width: 760px) { .wrap { padding: 16px 16px 96px; } .table-wrap { overflow-x: auto; } }
+  /* combined performance block */
+  .kgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .kgrid .kc { border-right: 1px solid var(--line); } .kgrid .kc:last-child { border-right: 0; }
+  .kgrid.tabs .kc { cursor: pointer; } .kgrid.tabs .kc:hover { background: var(--hover); }
+  .kc { position: relative; display: grid; gap: 4px; align-content: start; padding: 14px 16px; min-width: 0; }
+  .kc small { color: var(--muted); font-size: 13px; } .kc > strong { font-size: 24px; font-weight: 600; line-height: 1.25; } .kc .avg { margin-top: 2px; color: var(--muted); font-size: 12.5px; } .kc .avg b { color: var(--ink); font-weight: 600; }
+  .kc.on { background: color-mix(in srgb, var(--raised) 70%, transparent); } .kc.on::after { content: ""; position: absolute; left: 14px; right: 14px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--primary); }
+  .g4c { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+  .ptabs, .vtab { display: flex; gap: 0; padding: 0 8px; overflow-x: auto; border-bottom: 1px solid var(--line); scrollbar-width: none; }
+  .ptabs button, .vtab button { position: relative; display: inline-flex; flex: none; align-items: center; gap: 8px; height: 46px; padding: 0 12px; color: var(--muted); background: none; border: 0; font: inherit; font-size: 13.5px; cursor: pointer; white-space: nowrap; }
+  .ptabs button.on, .vtab button.on { color: var(--ink); font-weight: 500; } .ptabs button.on::after, .vtab button.on::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: 0; height: 2px; border-radius: 2px; background: var(--primary); }
+  .ptabs .logo { width: 20px; height: 20px; font-size: 9px; } .subtle { color: var(--subtle); font-size: 12px; }
+  @media (max-width: 1100px) { .kgrid, .g4c { grid-template-columns: 1fr 1fr; } .kgrid .kc:nth-child(2) { border-right: 0; } .kgrid .kc:nth-child(-n+2) { border-bottom: 1px solid var(--line); } }
+  @media (max-width: 760px) { .kgrid, .g4c { grid-template-columns: 1fr; } .kgrid .kc { border-right: 0; border-bottom: 1px solid var(--line); } }
+
+  /* ---------- platform tabs ---------- */
+  .opt .card { overflow: visible; }
+  .vt { display: flex; align-items: center; gap: 0; padding: 0 8px; overflow-x: auto; scrollbar-width: none; }
+  .vt.boxed { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+  .vt.lined { border-bottom: 1px solid var(--line); }
+  .vt button { position: relative; display: inline-flex; flex: none; align-items: center; gap: 8px; height: 46px; padding: 0 12px; color: var(--muted); background: none; border: 0; font: inherit; font-size: 13.5px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+  .vt button:hover { color: var(--ink); }
+  .vt button.on { color: var(--ink); } .vt button.on::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: 0; height: 2px; border-radius: 2px; background: var(--primary); }
+  .vt .logo { width: 20px; height: 20px; font-size: 9px; }
+  .vt .all { display: grid; place-items: center; width: 20px; height: 20px; color: var(--muted); } .vt .all svg { width: 16px; height: 16px; }
+  .vt .c { display: inline-grid; box-sizing: border-box; min-width: 22px; height: 22px; place-items: center; padding: 0 6px; color: var(--ink); background: var(--soft); border: 1px solid var(--line-strong); border-radius: 6px; font-size: 11.5px; font-weight: 500; line-height: 1; font-variant-numeric: tabular-nums; text-box: trim-both cap alphabetic; }
+  .vt .sep { flex: none; width: 1px; height: 18px; margin: 0 4px; background: var(--line-strong); }
+  .vt .end { margin-left: auto; padding-left: 12px; flex: none; }
+  /* channel cards as tabs */
+  .pcards { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+  .pc { position: relative; display: grid; gap: 6px; padding: 12px 14px; color: var(--ink); text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; font: inherit; cursor: pointer; min-width: 0; }
+  .pc:hover { border-color: var(--line-strong); background: color-mix(in srgb, var(--raised) 60%, var(--surface)); }
+  .pc.on { border-color: color-mix(in srgb, var(--primary) 70%, transparent); background: color-mix(in srgb, var(--primary-soft) 55%, var(--surface)); }
+  .pc .top { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; min-width: 0; } .pc .top span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pc strong { font-size: 17px; font-weight: 600; line-height: 1.2; }
+  .pc .meta { display: flex; justify-content: space-between; gap: 6px; font-size: 12px; color: var(--subtle); }
+  .pc .bar { height: 4px; }
+  /* channel list as selector */
+  .crow { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 10px; color: var(--ink); text-align: left; background: none; border: 1px solid transparent; border-radius: 10px; font: inherit; font-size: 13px; cursor: pointer; }
+  .crow:hover { background: var(--hover); } .crow.on { background: var(--raised); border-color: var(--line-strong); }
+  .crow .t { display: grid; gap: 4px; min-width: 0; } .crow .t > span { display: flex; justify-content: space-between; gap: 8px; } .crow .t small { color: var(--subtle); font-size: 12px; }
+  .crow.dim { opacity: .5; }
+  .focus { display: grid; gap: 10px; padding: 12px; background: var(--raised); border: 1px solid var(--line); border-radius: 10px; font-size: 13px; }
+  .focus .fr { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); } .focus .fr b { color: var(--ink); font-weight: 600; }
+  /* clickable stacked share bar */
+  .sbar { display: flex; height: 34px; gap: 3px; }
+  .sbar button { position: relative; display: flex; align-items: center; gap: 6px; min-width: 0; padding: 0 10px; color: #fff; border: 0; border-radius: 7px; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; overflow: hidden; white-space: nowrap; opacity: .82; }
+  .sbar button:hover { opacity: 1; } .sbar.has-on button { opacity: .35; } .sbar.has-on button.on { opacity: 1; box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--primary); }
+  .sbar button span { overflow: hidden; text-overflow: ellipsis; }
+  .kgrid.tabs .kc { cursor: pointer; }
+  .ftag { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px 0 4px; color: var(--ink); background: var(--raised); border: 1px solid var(--line-strong); border-radius: 999px; font-size: 12px; font-weight: 500; }
+  .ftag .logo { width: 16px; height: 16px; font-size: 8px; border-radius: 4px; }
+  .ftag button { display: grid; place-items: center; width: 16px; height: 16px; padding: 0; color: var(--muted); background: none; border: 0; cursor: pointer; } .ftag button svg { width: 12px; height: 12px; }
+  @media (max-width: 1100px) { .pcards { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  @media (max-width: 760px) { .pcards { grid-template-columns: repeat(2, minmax(0, 1fr)); } .sbar button span { display: none; } }
+</style>
+</head>
+<body>
+<div class="wrap" id="root"></div>
+<script>
+/* ---------- data ---------- */
+const P = [['Trendyol', '#f27a1a', 'T'], ['Hepsiburada', '#ff6000', 'H'], ['Shopify', '#5e8e3e', 'S'], ['N11', '#7c5cff', 'n'], ['Pazarama', '#2f9bd8', 'P']]
+const SHARE = [58, 21, 11, 7, 3], REV = ['₺348.500', '₺126.180', '₺66.090', '₺42.060', '₺18.028'], ORD = [629, 228, 119, 76, 32], AOV = ['₺554', '₺553', '₺555', '₺553', '₺563'], DLT = [14.2, 9.8, 21.4, -3.1, 6.0]
+const N = 30
+const D = Array.from({ length: N }, (_, i) => new Date(2026, 8, 18 + i))
+const cur = Array.from({ length: N }, (_, i) => Math.round(14000 + 6000 * Math.sin(i / 3.2) + 4200 * Math.sin(i / 1.3 + 1) + i * 260 + (i % 7 === 5 ? 6500 : 0)))
+const prev = Array.from({ length: N }, (_, i) => Math.round(12500 + 5000 * Math.sin(i / 2.7 + 2) + 3000 * Math.cos(i / 1.6) + i * 140))
+const byP = cur.map((v, i) => SHARE.map((s, j) => Math.max(0, v * s / 100 * (1 + .25 * Math.sin(i / (2 + j) + j)))))
+const tl = n => '₺' + Math.round(n).toLocaleString('tr-TR')
+const sum = a => a.reduce((x, y) => x + y, 0)
+const ds = d => d.getDate() === 1 ? `1 ${['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'][d.getMonth()]}` : `${d.getDate()}`
+const ico = p => `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`
+const I = { chev: ico('<path d="m4.5 6 3.5 3.5L11.5 6"/>'), up: ico('<path d="M4 10l4-4 4 4"/>'), down: ico('<path d="M4 6l4 4 4-4"/>'), arrow: ico('<path d="M3 8h10M9 4l4 4-4 4"/>'), star: ico('<path d="M8 2.2 9.7 5.7l3.8.5-2.8 2.7.7 3.8L8 10.9l-3.4 1.8.7-3.8-2.8-2.7 3.8-.5z"/>'), dip: ico('<path d="M3 5l4 4 2.5-2.5L13 10M10 10h3V7"/>'), cal: ico('<rect x="2.5" y="3.5" width="11" height="10" rx="1.5"/><path d="M2.5 6.5h11M5.5 2v3M10.5 2v3"/>'), cart: ico('<path d="M1.5 2.5h2l1.6 7.4a1 1 0 0 0 1 .8h5.6a1 1 0 0 0 1-.8L14.5 5.5H4.4"/>'), bolt: ico('<path d="M9 1.5 3.5 9H8l-1 5.5L12.5 7H8z"/>'), dl: ico('<path d="M8 2.5v8M4.8 7.5 8 10.7l3.2-3.2"/><path d="M2.5 10.5v3h11v-3"/>') }
+const logo = j => `<span class="logo" style="background:${P[j][1]}">${P[j][2]}</span>`
+const sel = l => `<button class="sel">${l}${I.chev}</button>`
+const trend = (t, up = true) => `<span class="trend ${up ? 'up' : 'down'}">${up ? I.up : I.down}${t}<em>önceki döneme göre</em></span>`
+const totalBlock = (l = 'Son 30 Gün', v = tl(sum(cur)), t = '%12,3') => `<div class="total"><small>${l}</small><strong class="num">${v}</strong>${trend(t)}</div>`
+const head = (t, d, right = '') => `<div class="ch"><div><h3>${t}</h3><p>${d}</p></div>${right}</div>`
+
+/* ---------- svg helpers ---------- */
+function frame(W, H, max, { L = 56, R = 8, T = 10, B = 26, ticks = 5, money = true } = {}) {
+  const x = i => L + i / (N - 1) * (W - L - R), y = v => T + (1 - v / max) * (H - T - B)
+  const grid = Array.from({ length: ticks + 1 }, (_, i) => { const v = max / ticks * i; return `<line class="g" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/><text x="${L - 8}" y="${y(v) + 4}" text-anchor="end">${money ? (v ? '₺' + Math.round(v / 1000) + ' B' : '₺0') : Math.round(v)}</text>` }).join('')
+  const xs = D.map((d, i) => i % 5 === 0 || d.getDate() === 1 ? `<text x="${x(i)}" y="${H - 6}" text-anchor="middle">${ds(d)}</text>` : '').join('')
+  return { x, y, grid: grid + xs, W, H, L, R, T, B }
+}
+const path = (arr, f) => arr.map((v, i) => `${i ? 'L' : 'M'}${f.x(i).toFixed(1)} ${f.y(v).toFixed(1)}`).join(' ')
+const smooth = (arr, f) => { let d = `M${f.x(0)} ${f.y(arr[0])}`; for (let i = 1; i < arr.length; i++) { const x0 = f.x(i - 1), x1 = f.x(i), y0 = f.y(arr[i - 1]), y1 = f.y(arr[i]), cx = (x0 + x1) / 2; d += ` C${cx} ${y0} ${cx} ${y1} ${x1} ${y1}` } return d }
+const maxOf = (...a) => Math.ceil(Math.max(...a.flat()) / 10000) * 10000
+let gid = 0
+function areaChart({ W = 760, H = 260, series = cur, prevSeries = prev, markers = false, target = null, smoothLine = false, color = 'var(--violet)' } = {}) {
+  const f = frame(W, H, maxOf(series, prevSeries || [0], target ? [target] : [0])), id = 'ag' + (++gid)
+  const ln = smoothLine ? smooth(series, f) : path(series, f)
+  const mk = markers ? (() => { const hi = series.indexOf(Math.max(...series)), lo = series.indexOf(Math.min(...series)); return `<circle cx="${f.x(hi)}" cy="${f.y(series[hi])}" r="4.5" fill="var(--surface)" stroke="var(--ok)" stroke-width="2"/><text x="${f.x(hi)}" y="${f.y(series[hi]) - 10}" text-anchor="middle" style="fill:var(--ok);font-weight:600">En yüksek ${tl(series[hi])}</text><circle cx="${f.x(lo)}" cy="${f.y(series[lo])}" r="4.5" fill="var(--surface)" stroke="var(--bad)" stroke-width="2"/><text x="${f.x(lo)}" y="${f.y(series[lo]) + 20}" text-anchor="middle" style="fill:var(--bad);font-weight:600">En düşük ${tl(series[lo])}</text>` })() : ''
+  const tg = target ? `<line x1="${f.L}" x2="${W - f.R}" y1="${f.y(target)}" y2="${f.y(target)}" stroke="var(--warn)" stroke-dasharray="6 4"/><text x="${W - f.R}" y="${f.y(target) - 6}" text-anchor="end" style="fill:var(--warn)">Günlük hedef ${tl(target)}</text>` : ''
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}"><defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8b5cf6" stop-opacity=".32"/><stop offset="1" stop-color="#8b5cf6" stop-opacity="0"/></linearGradient></defs>${f.grid}${tg}<path d="${ln} L${f.x(N - 1)} ${f.y(0)} L${f.x(0)} ${f.y(0)} Z" fill="url(#${id})"/>${prevSeries ? `<path d="${smoothLine ? smooth(prevSeries, f) : path(prevSeries, f)}" fill="none" stroke="var(--subtle)" stroke-width="1.5" stroke-dasharray="4 4"/>` : ''}<path d="${ln}" fill="none" stroke="${color}" stroke-width="2.2" stroke-linejoin="round"/>${mk}</svg>`
+}
+function stackedArea({ W = 760, H = 260, hidden = [] } = {}) {
+  const tops = byP.map(r => r.reduce((a, v, j) => a + (hidden.includes(j) ? 0 : v), 0))
+  const f = frame(W, H, maxOf(tops))
+  let base = Array(N).fill(0), out = ''
+  SHARE.forEach((_, j) => { if (hidden.includes(j)) return; const top = byP.map((r, i) => base[i] + r[j]); out += `<path d="${path(top, f)} ${[...base].reverse().map((v, k) => `L${f.x(N - 1 - k).toFixed(1)} ${f.y(v).toFixed(1)}`).join(' ')} Z" fill="${P[j][1]}" fill-opacity=".72" stroke="${P[j][1]}" stroke-width="1"/>`; base = top })
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}">${f.grid}${out}</svg>`
+}
+function barsChart({ W = 760, H = 240, series = cur, prevSeries = prev, highlight = -1 } = {}) {
+  const f = frame(W, H, maxOf(series, prevSeries)), bw = (W - f.L - f.R) / N * .62
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}">${f.grid}${series.map((v, i) => `<rect x="${f.x(i) - bw / 2}" y="${f.y(v)}" width="${bw}" height="${f.y(0) - f.y(v)}" rx="2" fill="${i === highlight ? 'var(--violet)' : 'color-mix(in srgb, var(--violet) 55%, transparent)'}"><title>${D[i].toLocaleDateString('tr-TR')} · ${tl(v)}</title></rect>`).join('')}<path d="${path(prevSeries, f)}" fill="none" stroke="var(--subtle)" stroke-width="1.5" stroke-dasharray="4 4"/></svg>`
+}
+const spark = (arr, c, w = 120, h = 28) => { const mx = Math.max(...arr), mn = Math.min(...arr); return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" preserveAspectRatio="none"><path d="${arr.map((v, i) => `${i ? 'L' : 'M'}${(i / (arr.length - 1) * w).toFixed(1)} ${(2 + (1 - (v - mn) / (mx - mn || 1)) * (h - 4)).toFixed(1)}`).join(' ')}" fill="none" stroke="${c}" stroke-width="1.6"/></svg>` }
+const chanRows = (withDelta = true) => `<div class="rows">${SHARE.map((s, j) => `<div class="chrow">${logo(j)}<span class="t"><span><b style="font-weight:500">${P[j][0]}</b><small class="num">${REV[j]}</small></span><span class="bar"><b style="width:${s}%;background:${P[j][1]}"></b></span></span><span style="display:grid;justify-items:end"><span class="pct num">%${s}</span>${withDelta ? `<span class="delta ${DLT[j] >= 0 ? 'up' : 'down'} num">${DLT[j] >= 0 ? '+' : ''}%${Math.abs(DLT[j]).toLocaleString('tr-TR')}</span>` : ''}</span></div>`).join('')}</div>`
+const donut = (size = 150, inner = 104, label = 'Toplam Sipariş', val = '1.084') => { let a = 0; const st = SHARE.map((s, j) => { const r = `${P[j][1]} ${a}% ${a + s}%`; a += s; return r }).join(', '); return `<div style="display:grid;place-items:center;width:${size}px;height:${size}px;border-radius:50%;background:conic-gradient(${st});flex:none"><div style="display:grid;justify-items:center;align-content:center;width:${inner}px;height:${inner}px;border-radius:50%;background:var(--surface);text-align:center"><small style="color:var(--muted);font-size:11.5px">${label}</small><strong class="num" style="font-size:20px;font-weight:600;line-height:1.2">${val}</strong></div></div>` }
+const stack100 = (h = 12) => `<span style="display:flex;height:${h}px;border-radius:${h / 2}px;overflow:hidden">${SHARE.map((s, j) => `<i style="width:${s}%;background:${P[j][1]}" title="${P[j][0]} %${s}"></i>`).join('')}</span>`
+const chips = (hidden = []) => `<div class="tools">${SHARE.map((_, j) => `<button class="chip ${hidden.includes(j) ? 'off' : 'on'}"><i style="background:${P[j][1]}"></i>${P[j][0]}</button>`).join('')}</div>`
+
+/* ---------- metrics (performance row) ---------- */
+const M = [
+  { l: 'Toplam Gelir', v: tl(612480), prev: tl(545380), t: '%12,3', up: true, avg: '₺20.416', min: '₺11.820', max: '₺38.940', pos: .38, goal: ['₺750.000', .82], ser: cur, unit: 'ciro' },
+  { l: 'Toplam Sipariş', v: '1.084', prev: '1.003', t: '%8,1', up: true, avg: '36', min: '18', max: '71', pos: .34, goal: ['1.300', .83], ser: cur.map(v => v / 560), unit: 'sipariş' },
+  { l: 'Ortalama Sepet', v: '₺565', prev: '₺544', t: '%3,9', up: true, avg: '₺565', min: '₺412', max: '₺748', pos: .45, goal: ['₺600', .94], ser: cur.map((v, i) => 520 + 60 * Math.sin(i / 2.5)), unit: 'sepet' },
+  { l: 'Aktif Ürün', v: '356', prev: '360', t: '-%1,2', up: false, avg: '356', min: '349', max: '363', pos: .5, goal: ['400', .89], ser: cur.map((v, i) => 356 + 4 * Math.sin(i / 4)), unit: 'ürün' },
+]
+const tr = (m, short) => `<span class="trend ${m.up ? 'up' : 'down'}">${m.up ? I.up : I.down}${m.t}${short ? '' : '<em>önceki döneme göre</em>'}</span>`
+const range = m => `<div style="display:grid;gap:4px"><span style="position:relative;display:block;height:6px;border-radius:3px;background:linear-gradient(90deg,color-mix(in srgb,var(--violet) 25%,transparent),color-mix(in srgb,var(--violet) 75%,transparent))"><i style="position:absolute;top:50%;left:${m.pos * 100}%;width:12px;height:12px;border:2px solid var(--surface);border-radius:50%;background:var(--ink);transform:translate(-50%,-50%)"></i></span><span style="display:flex;justify-content:space-between;color:var(--subtle);font-size:11.5px"><span class="num">${m.min}</span><span class="num">${m.max}</span></span></div>`
+const kpiCell = (m, { on, rangeBar = true, sp = false, compact = false } = {}) => `<div class="kc ${on ? 'on' : ''}" ${compact ? 'style="padding:12px 14px"' : ''}><small>${m.l}</small><strong class="num">${m.v}</strong>${tr(m, compact)}${rangeBar ? `<span class="avg">Günlük ortalama <b class="num">${m.avg}</b></span>${range(m)}` : ''}${sp ? spark(m.ser, m.up ? 'color-mix(in srgb, var(--ok) 80%, transparent)' : 'color-mix(in srgb, var(--bad) 80%, transparent)', 200, 26).replace('width="200"', 'width="100%"') : ''}</div>`
+const periodSeg = `<div class="seg"><button>7 Gün</button><button class="on">30 Gün</button><button>90 Gün</button><button>Özel</button></div>`
+const legendCur = `<div class="legend"><span><i class="ln"></i>Bu Dönem</span><span><i class="ln dash"></i>Önceki Dönem</span></div>`
+
+/* ---------- options ---------- */
+
+/* ---------- per-platform data ---------- */
+const ACT = [312, 268, 141, 96, 54]
+const allI = ico('<rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="9" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="2.5" y="9" width="4.5" height="4.5" rx="1"/><rect x="9" y="9" width="4.5" height="4.5" rx="1"/>')
+const xI = ico('<path d="M4 4l8 8M12 4l-8 8"/>')
+const pct = v => '%' + v.toLocaleString('tr-TR', { maximumFractionDigits: 1 })
+const sgn = v => (v < 0 ? '-' : '') + '%' + Math.abs(v).toLocaleString('tr-TR', { maximumFractionDigits: 1 })
+function seriesFor(p) { return p < 0 ? cur : byP.map(r => r[p]) }
+function prevFor(p) { return p < 0 ? prev : prev.map(v => v * SHARE[p] / 100 / (1 + DLT[p] / 100) * 1.05) }
+function metricsFor(p) {
+  if (p < 0) return M
+  const s = seriesFor(p), rev = sum(s), mn = Math.min(...s), mx = Math.max(...s), last = s[N - 1]
+  const up = DLT[p] >= 0, t = sgn(DLT[p])
+  return [
+    { l: 'Toplam Gelir', v: tl(rev), t, up, avg: tl(rev / N), min: tl(mn), max: tl(mx), pos: (last - mn) / (mx - mn || 1), ser: s, unit: 'ciro' },
+    { l: 'Toplam Sipariş', v: ORD[p].toLocaleString('tr-TR'), t: sgn(DLT[p] * .7), up, avg: Math.round(ORD[p] / N).toLocaleString('tr-TR'), min: Math.round(mn / 560).toLocaleString('tr-TR'), max: Math.round(mx / 520).toLocaleString('tr-TR'), pos: (last - mn) / (mx - mn || 1), ser: s.map(v => v / 560), unit: 'sipariş' },
+    { l: 'Ortalama Sepet', v: AOV[p], t: sgn(DLT[p] * .3), up, avg: AOV[p], min: tl(parseInt(AOV[p].replace(/\D/g, '')) * .74), max: tl(parseInt(AOV[p].replace(/\D/g, '')) * 1.32), pos: .45, ser: s.map((v, i) => 520 + 60 * Math.sin(i / 2.5 + p)), unit: 'sepet' },
+    { l: 'Aktif Ürün', v: String(ACT[p]), t: sgn(p === 3 ? -2.1 : 1.4), up: p !== 3, avg: String(ACT[p]), min: String(ACT[p] - 6), max: String(ACT[p] + 5), pos: .5, ser: s.map((v, i) => ACT[p] + 3 * Math.sin(i / 4 + p)), unit: 'ürün' },
+  ]
+}
+// chart with its own scale so orders, basket and product counts read right too
+function niceMax(v) { const m = 10 ** Math.floor(Math.log10(Math.max(1, v) / 5)); return Math.ceil(v / 5 / m) * m * 5 }
+function chart({ series, prevSeries, money = true, H = 250, W = 760, color = '#8b5cf6' }) {
+  const max = niceMax(Math.max(...series, ...(prevSeries || [0])))
+  const L = 56, R = 8, T = 10, B = 26, x = i => L + i / (N - 1) * (W - L - R), y = v => T + (1 - v / max) * (H - T - B)
+  const fmt = v => money ? (v >= 1000 ? '₺' + (v / 1000).toLocaleString('tr-TR', { maximumFractionDigits: 1 }) + ' B' : '₺' + Math.round(v)) : Math.round(v).toLocaleString('tr-TR')
+  const grid = Array.from({ length: 6 }, (_, i) => { const v = max / 5 * i; return '<line class="g" x1="' + L + '" x2="' + (W - R) + '" y1="' + y(v) + '" y2="' + y(v) + '"/><text x="' + (L - 8) + '" y="' + (y(v) + 4) + '" text-anchor="end">' + fmt(v) + '</text>' }).join('')
+  const xs = D.map((d, i) => i % 5 === 0 || d.getDate() === 1 ? '<text x="' + x(i) + '" y="' + (H - 6) + '" text-anchor="middle">' + ds(d) + '</text>' : '').join('')
+  const ln = a => a.map((v, i) => (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1)).join(' ')
+  const id = 'pg' + (++gid)
+  return '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '"><defs><linearGradient id="' + id + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + color + '" stop-opacity=".32"/><stop offset="1" stop-color="' + color + '" stop-opacity="0"/></linearGradient></defs>' + grid + xs + '<path d="' + ln(series) + ' L' + x(N - 1) + ' ' + y(0) + ' L' + x(0) + ' ' + y(0) + ' Z" fill="url(#' + id + ')"/>' + (prevSeries ? '<path d="' + ln(prevSeries) + '" fill="none" stroke="var(--subtle)" stroke-width="1.5" stroke-dasharray="4 4"/>' : '') + '<path d="' + ln(series) + '" fill="none" stroke="' + (color === '#8b5cf6' ? 'var(--violet)' : color) + '" stroke-width="2" stroke-linejoin="round"/></svg>'
+}
+const pColor = p => p < 0 ? '#8b5cf6' : P[p][1]
+const pName = p => p < 0 ? 'Tüm Platformlar' : P[p][0]
+const metricChart = (st, H) => { const ms = metricsFor(st.p), m = ms[st.m]; const prevS = st.m === 0 ? prevFor(st.p) : m.ser.map((v, i) => v * (0.9 + .08 * Math.sin(i / 3))); return chart({ series: m.ser, prevSeries: prevS, money: st.m < 3 && st.m !== 1, H, color: pColor(st.p) }) }
+
+/* ---------- tab strips ---------- */
+// The panel's own tab look (as on the orders page): logo, name, a count box with the platform's revenue share.
+const vtabs = (k, st, cls = 'lined', end = '') => '<div class="vt ' + cls + '" role="tablist">' + [-1, 0, 1, 2, 3, 4].map(p => '<button role="tab" aria-selected="' + (st.p === p) + '" class="' + (st.p === p ? 'on' : '') + '" data-k="' + k + '" data-p="' + p + '">' + (p < 0 ? '<span class="all">' + allI + '</span>' : logo(p)) + pName(p) + '<span class="c">' + (p < 0 ? '%100' : '%' + SHARE[p]) + '</span></button>' + (p < 0 ? '<span class="sep"></span>' : '')).join('') + (end ? '<span class="end">' + end + '</span>' : '') + '</div>'
+// Mini channel cards that work as tabs: revenue, share and change on each.
+const pcards = (k, st) => '<div class="pcards" role="tablist">' + [-1, 0, 1, 2, 3, 4].map(p => { const rev = p < 0 ? tl(sum(cur)) : REV[p], share = p < 0 ? 100 : SHARE[p], d = p < 0 ? 12.3 : DLT[p]; return '<button class="pc ' + (st.p === p ? 'on' : '') + '" role="tab" aria-selected="' + (st.p === p) + '" data-k="' + k + '" data-p="' + p + '"><span class="top">' + (p < 0 ? '<span class="all" style="display:grid;place-items:center;width:22px;height:22px;color:var(--muted)">' + allI + '</span>' : logo(p)) + '<span>' + pName(p) + '</span></span><strong class="num">' + rev + '</strong><span class="bar"><b style="width:' + share + '%;background:' + pColor(p) + '"></b></span><span class="meta"><span class="num">%' + share + ' pay</span><span class="delta ' + (d >= 0 ? 'up' : 'down') + ' num">' + (d >= 0 ? '+' : '−') + '%' + Math.abs(d).toLocaleString('tr-TR') + '</span></span></button>' }).join('') + '</div>'
+const ftag = (k, st) => st.p < 0 ? '' : '<span class="ftag">' + logo(st.p) + pName(st.p) + '<button data-k="' + k + '" data-p="-1" aria-label="Platform süzgecini kaldır">' + xI + '</button></span>'
+const kpis = (k, st, opts = {}) => '<div class="kgrid ' + (opts.tabs ? 'tabs' : 'strip') + '">' + metricsFor(st.p).map((m, i) => opts.tabs ? kpiCell(m, { on: i === st.m, ...opts }).replace('<div class="kc', '<div data-k="' + k + '" data-m="' + i + '" class="kc') : kpiCell(m, opts)).join('') + '</div>'
+// channel rows: with a platform chosen the row is highlighted and the others dim
+const chanSel = (k, st) => '<div class="rows" style="gap:2px">' + SHARE.map((s, j) => '<button class="crow ' + (st.p === j ? 'on' : st.p >= 0 ? 'dim' : '') + '" data-k="' + k + '" data-p="' + (st.p === j ? -1 : j) + '">' + logo(j) + '<span class="t"><span><b style="font-weight:500">' + P[j][0] + '</b><small class="num">' + REV[j] + '</small></span><span class="bar"><b style="width:' + s + '%;background:' + P[j][1] + '"></b></span></span><span style="display:grid;justify-items:end"><span class="pct num">%' + s + '</span><span class="delta ' + (DLT[j] >= 0 ? 'up' : 'down') + ' num">' + (DLT[j] >= 0 ? '+' : '−') + '%' + Math.abs(DLT[j]).toLocaleString('tr-TR') + '</span></span></button>').join('') + '</div>'
+// what the chosen platform means for the whole: share of revenue, orders and products
+const focus = st => st.p < 0 ? '' : '<div class="focus"><b style="font-size:13px">' + pName(st.p) + ' · Toplamdaki Yeri</b><div class="fr"><span>Ciro payı</span><b class="num">%' + SHARE[st.p] + '</b></div><div class="fr"><span>Sipariş payı</span><b class="num">' + pct(ORD[st.p] / sum(ORD) * 100) + '</b></div><div class="fr"><span>Aktif ürünlerin</span><b class="num">' + pct(ACT[st.p] / 356 * 100) + '</b></div></div>'
+const sbar = (k, st) => '<div class="sbar ' + (st.p >= 0 ? 'has-on' : '') + '">' + SHARE.map((s, j) => '<button class="' + (st.p === j ? 'on' : '') + '" style="flex:' + s + ' 1 0;background:' + P[j][1] + '" data-k="' + k + '" data-p="' + (st.p === j ? -1 : j) + '" title="' + P[j][0] + ' %' + s + '"><span>' + P[j][0] + ' %' + s + '</span></button>').join('') + '</div>'
+const mLabel = st => ['Günlük Ciro', 'Günlük Sipariş', 'Günlük Ortalama Sepet', 'Aktif Ürün'][st.m] + (st.p < 0 ? '' : ' · ' + pName(st.p))
+
+/* ---------- options ---------- */
+const S = {}
+const st = k => (S[k] ??= { p: -1, m: 0 })
+const OPTS = [
+  ['A', 'Sekmeli Kart · Metrikler Grafiği Yönetir', 'Öneri 1 görünüşü: kartın başında platform sekmeleri (panelin sekme görünümünde, sayı kutusunda ciro payı), altında tıklanabilir metrik şeridi, solda seçili metriğin grafiği, sağda kanallar. Seçilen platform metrikleri, grafiği ve kanal panelini birlikte süzer; kanal listesinde o platform öne çıkar, yanında toplamdaki yeri yazar.',
+    k => { const s = st(k); return '<article class="card"><div class="ch" style="padding-bottom:12px"><div><h3>Performans</h3><p>Son 30 gün · ' + pName(s.p) + ' · önceki eşit dönemle karşılaştırma</p></div><div class="tools">' + periodSeg + '</div></div>' + vtabs(k, s, 'lined') + kpis(k, s, { tabs: true }) + '<div class="cb split" style="padding-top:16px;align-items:start"><div style="display:grid;gap:10px"><b style="font-size:13px">' + mLabel(s) + '</b>' + metricChart(s, 250) + legendCur + '</div><div style="display:grid;gap:12px;padding-left:16px;border-left:1px solid var(--line)"><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:13px">Kanallara Göre Ciro</b>' + ftag(k, s) + '</div>' + stack100(10) + chanSel(k, s) + focus(s) + '<a class="link" href="#">Kanalları Yönet ' + I.arrow + '</a></div></div></article>' }],
+  ['B', 'Kanal Kartları Sekme · Metrikler Grafiği Yönetir', 'Öneri 1 görünüşü, sekmeler kart hâlinde: her platform kendi küçük kartında cirosu, payı ve değişimiyle durur; kart tıklanınca alttaki metrikler, grafik ve kanal paneli o platforma geçer. Sekmeler bilgiyi kendisi taşıdığı için zayıf kalmaz.',
+    k => { const s = st(k); return pcards(k, s) + '<article class="card" style="margin-top:12px"><div class="ch" style="padding-bottom:12px"><div><h3>' + (s.p < 0 ? 'Tüm Platformlar' : pName(s.p)) + ' · Performans</h3><p>Son 30 gün · önceki eşit dönemle karşılaştırma</p></div><div class="tools">' + periodSeg + '</div></div>' + kpis(k, s, { tabs: true }) + '<div class="cb split" style="padding-top:16px;align-items:start"><div style="display:grid;gap:10px"><b style="font-size:13px">' + mLabel(s) + '</b>' + metricChart(s, 250) + legendCur + '</div><div style="display:grid;gap:12px;padding-left:16px;border-left:1px solid var(--line)"><b style="font-size:13px">Kanallara Göre Ciro</b>' + chanSel(k, s) + focus(s) + '</div></div></article>' }],
+  ['C', 'Sekme Kartı · Solda Metrik Sütunu', 'Öneri 2 görünüşü: üstte ayrı bir sekme kartı (sipariş sayfasındaki sekme kartıyla aynı), altında üç sütun: solda metrik kartları, ortada grafik, sağda halka ve kanallar. Seçilen platform halkada öne çıkar, diğer dilimler söner.',
+    k => { const s = st(k); const ms = metricsFor(s.p); const d = donut(150, 104, s.p < 0 ? 'Sipariş' : pName(s.p), s.p < 0 ? '1.084' : String(ORD[s.p])); const dn = s.p < 0 ? d : d.replace(/conic-gradient\(([^)]*)\)/, (m0, stops) => 'conic-gradient(' + stops.split(', ').map((x, j) => j === s.p ? x : x.replace(/#[0-9a-f]{6}/, c => c + '40')).join(', ') + ')'); return vtabs(k, s, 'boxed', '<span class="subtle">Son 30 Gün</span>') + '<div style="display:grid;grid-template-columns:240px minmax(0,1fr) 300px;gap:16px;margin-top:12px" class="c3"><div style="display:grid;gap:10px">' + ms.map((m, i) => '<article class="card" data-k="' + k + '" data-m="' + i + '" style="cursor:pointer;' + (i === s.m ? 'border-color:color-mix(in srgb,var(--primary) 70%,transparent)' : '') + '">' + kpiCell(m, { rangeBar: false, sp: true, compact: true }) + '</article>').join('') + '</div><article class="card">' + head(mLabel(s), 'Son 30 gün', '<div class="tools">' + sel('Son 30 Gün') + '</div>') + '<div class="cb">' + totalBlock('Son 30 Gün · ' + pName(s.p), ms[0].v, ms[0].t) + metricChart(s, 280) + legendCur + '</div></article><article class="card">' + head('Satış Kanalları', 'Ciro payı', ftag(k, s)) + '<div class="cb" style="justify-items:center">' + dn + '<div style="width:100%">' + chanSel(k, s) + '</div></div></article></div>' }],
+  ['D', 'Kanal Listesi Sekme · Solda Metrik Sütunu', 'Öneri 2 görünüşü, ayrı sekme yok: sağdaki kanal listesi aynı zamanda seçici. Bir kanala tıklayınca soldaki metrikler ve ortadaki grafik o kanala geçer; tekrar tıklayınca hepsine döner. Ekranda tek seçim yeri, sıfır tekrar.',
+    k => { const s = st(k); const ms = metricsFor(s.p); return '<div style="display:grid;grid-template-columns:240px minmax(0,1fr) 300px;gap:16px" class="c3"><div style="display:grid;gap:10px">' + ms.map((m, i) => '<article class="card" data-k="' + k + '" data-m="' + i + '" style="cursor:pointer;' + (i === s.m ? 'border-color:color-mix(in srgb,var(--primary) 70%,transparent)' : '') + '">' + kpiCell(m, { rangeBar: false, sp: true, compact: true }) + '</article>').join('') + '</div><article class="card">' + head(mLabel(s), 'Son 30 gün', '<div class="tools">' + ftag(k, s) + sel('Son 30 Gün') + '</div>') + '<div class="cb">' + totalBlock('Son 30 Gün · ' + pName(s.p), ms[0].v, ms[0].t) + metricChart(s, 280) + legendCur + '</div></article><article class="card">' + head('Satış Kanalları', 'Süzmek için kanala tıklayın') + '<div class="cb" style="gap:8px"><button class="crow ' + (s.p < 0 ? 'on' : '') + '" data-k="' + k + '" data-p="-1"><span class="all" style="display:grid;place-items:center;width:22px;height:22px;color:var(--muted)">' + allI + '</span><span class="t"><span><b style="font-weight:500">Tüm Platformlar</b><small class="num">' + tl(sum(cur)) + '</small></span>' + stack100(6) + '</span><span class="pct num">%100</span></button>' + chanSel(k, s) + focus(s) + '</div></article></div>' }],
+  ['E', 'Tek Kart · Sekmeler Başlıkta', 'Öneri 3 görünüşü: tek kart; platform sekmeleri kartın başlık satırı, dönem seçimi sekmelerin sağında. Altında metrik şeridi, grafik ve en altta kanal payı şeridi. Seçilen platformun rengi grafiğe ve şeride geçer.',
+    k => { const s = st(k); return '<article class="card">' + vtabs(k, s, 'lined', periodSeg) + kpis(k, s, {}) + '<div class="cb" style="padding-top:16px">' + metricChart({ p: s.p, m: 0 }, 240) + '<div style="display:grid;gap:8px;padding-top:12px;border-top:1px solid var(--line)"><div style="display:flex;justify-content:space-between;font-size:13px"><b style="font-weight:600">Satış Kanalları</b><a class="link" href="#">Kanalları Yönet ' + I.arrow + '</a></div>' + sbar(k, s) + '<div class="legend">' + SHARE.map((x, j) => '<span style="' + (s.p >= 0 && s.p !== j ? 'opacity:.45' : '') + '"><i style="background:' + P[j][1] + '"></i>' + P[j][0] + ' %' + x + ' · ' + REV[j] + '</span>').join('') + '</div></div></div></article>' }],
+  ['F', 'Tek Kart · Pay Şeridi Sekme', 'Öneri 3 görünüşü, sekme yerine pay şeridi: kartın başındaki renkli kanal şeridi tıklanabilir; dilime basınca o platform seçilir, metrik şeridi, grafik ve özet ona göre yenilenir. Hem pay hem seçim tek göstergede.',
+    k => { const s = st(k); return '<article class="card"><div class="ch" style="padding-bottom:12px"><div><h3>Performans · ' + pName(s.p) + '</h3><p>Son 30 gün · süzmek için şeritte bir kanala tıklayın</p></div><div class="tools">' + ftag(k, s) + periodSeg + '</div></div><div style="padding:0 16px 14px">' + sbar(k, s) + '</div>' + kpis(k, s, {}) + '<div class="cb split" style="padding-top:16px;align-items:start"><div>' + metricChart({ p: s.p, m: 0 }, 240) + legendCur + '</div><div style="display:grid;gap:12px;padding-left:16px;border-left:1px solid var(--line)">' + (s.p < 0 ? '<b style="font-size:13px">Kanallar</b>' + chanSel(k, s) : focus(s) + '<b style="font-size:13px">Diğer Kanallar</b>' + chanSel(k, s)) + '</div></div></article>' }],
+]
+function render() {
+  gid = 0
+  document.getElementById('root').innerHTML = '<header class="head"><div class="crumb">Genel Bakış</div><h1>Platform Sekmeleri · 6 Öneri</h1><p>Öneri 5\'in mantığı (seçilen platform metrikleri, grafiği ve kanal payını birlikte süzer) Öneri 1-3\'ün görünüşleriyle. Sekmelere, kartlara veya kanallara tıklayın; değerler gerçekten değişir. Veriler örnektir.</p></header>' + OPTS.map(([k, t, d, fn]) => '<section class="opt"><header><h2>Öneri ' + k + ' · ' + t + '</h2><p>' + d + '</p></header>' + fn(k) + '</section>').join('') + '<style>@media (max-width:1100px){.c3{grid-template-columns:1fr!important}}</style>'
+}
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-k]'); if (!t) return
+  e.preventDefault()
+  const s = st(t.dataset.k)
+  if (t.dataset.p != null) s.p = +t.dataset.p
+  if (t.dataset.m != null) s.m = +t.dataset.m
+  render()
+})
+render()
+</script>
+</body>
+</html>

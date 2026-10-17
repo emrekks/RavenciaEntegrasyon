@@ -780,6 +780,13 @@
   .ptbl th .hf { gap: 6px; }
   .ptbl th .hf > .sortbtn { width: 24px; height: 24px; flex: none; }
   .ptbl th:has(.sortbtn):has(.anchor) { padding-right: 40px; }
+  .vtip { width: auto; min-width: 0; max-width: 360px; max-height: 260px; overflow: auto; padding: 8px 10px; gap: 0; }
+  .vtab { border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .vtab th, .vtab td { padding: 3px 6px; text-align: center; white-space: nowrap; font-weight: 500; }
+  .vtab thead th { color: var(--subtle); font-size: 11.5px; border-bottom: 1px solid var(--line); }
+  .vtab tbody th { max-width: 110px; overflow: hidden; text-overflow: ellipsis; color: var(--muted); text-align: left; padding-left: 0; }
+  .vtab td { color: var(--ink); font-weight: 600; min-width: 28px; }
+  .vtab td.low { color: var(--warn); } .vtab td.empty { color: var(--bad); }
 </style>
 </head>
 <body>
@@ -986,7 +993,7 @@ function popPlatState(st) {
 }
 const bulkMenu = (st) => `<div class="menu ${st ? 'static' : ''}" role="menu" aria-label="Toplu işlemler" style="min-width:290px">${[['price', 'Toplu Fiyat ve Stok Düzenle', 'Seçili ürünlerin varyantları', 'qe'], ['price', 'Toplu Fiyat Düzenle', 'Fiyatları tek seferde güncelle', 'qe-price'], ['stock', 'Toplu Stok Düzenle', 'Stokları artır, azalt veya eşitle', 'qe-stock'], 'hr', ['on', 'Toplu Satışa Aç', 'Seçili ürünleri satışa aç', 'bulk-on'], ['off', 'Toplu Satışa Kapat', 'Seçili ürünleri arşive al', 'bulk-off', 'danger'], ['trash', 'Seçili Ürünleri Sil', 'Yerel katalogdan kalıcı olarak kaldır', 'del-bulk', 'danger']].map(it => it === 'hr' ? '<hr>' : `<button role="menuitem" class="two ${it[4] || ''}" data-a="m" data-k="${it[3]}">${I[it[0]]}<span><b>${it[1]}</b><small>${it[2]}</small></span></button>`).join('')}</div>`
 const actMenu = (r, st) => `<div class="menu ${st ? 'static' : ''}" role="menu" aria-label="${esc(r.t)} işlemleri">${[['edit', 'Ürünü Düzenle', 'edit'], ['price', 'Fiyat ve Stok Düzenle', 'qe'], ['dup', 'Yeni Ürün Olarak Düzenle', 'dup'], 'hr', [r.st === 'Satışa Açık' ? 'off' : 'on', r.st === 'Satışa Açık' ? 'Satışa Kapat' : 'Satışa Aç', r.st === 'Satışa Açık' ? 'bulk-off' : 'bulk-on'], ['trash', 'Ürünü Sil', 'del', 'danger']].map(it => it === 'hr' ? '<hr>' : `<button role="menuitem" class="${it[3] || ''}" data-a="m" data-k="${it[2]}">${I[it[0]]}${it[1]}</button>`).join('')}</div>`
-const variantTip = (r, st) => `<div class="tip vtip" ${st ? 'style="position:static"' : ''}><b class="vt-h">${r.opts.map(o => o[1]).join(' · ').split(' · ')[0]}</b><div class="vrow">${r.variants.map(([v, n]) => `<span class="${n === 0 ? 'empty' : n < 5 ? 'low' : ''}"><small>${v}</small><b class="num">${n}</b></span>`).join('')}</div></div>`
+const variantTip = (r, st) => { const c = r.opts.map(o => o[1]).join(' · ').split(' · ')[0]; return `<div class="tip vtip" ${st ? 'style="position:static"' : ''}><table class="vtab"><thead><tr><th></th>${r.variants.map(([v]) => `<th>${v}</th>`).join('')}</tr></thead><tbody><tr><th>${c}</th>${r.variants.map(([, n]) => `<td class="${n === 0 ? 'empty' : n < 5 ? 'low' : ''}">${n}</td>`).join('')}</tr></tbody></table></div>` }
 
 /* ---------- table ---------- */
 function headCell(label, k, extra = '', popFn, sortable) {
