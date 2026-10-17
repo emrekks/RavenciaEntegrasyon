@@ -254,3 +254,11 @@
   .app-shell.stitch-shell main .qi-page .qi-acts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; width: 100%; }
   .app-shell.stitch-shell main .qi-page .qi-acts > button { width: 100%; min-width: 0; justify-content: center; }
 }
+/* Phones: the history state is a small tip that opens on the platform name (tap or hover) instead of a line of its own. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync { overflow: visible; }
+  .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item { position: relative; cursor: pointer; outline: none; }
+  .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item > div > small:not(.qi-sync-time) { position: absolute; top: calc(100% - 4px); left: 8px; z-index: 20; display: none; width: max-content; max-width: none; overflow: visible; text-overflow: clip; white-space: nowrap; padding: 6px 8px; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: 8px; box-shadow: 0 8px 20px rgb(0 0 0 / 18%); }
+  .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item:is(:hover, :focus, :focus-within) > div > small:not(.qi-sync-time) { display: flex; }
+  .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item:nth-child(even) > div > small:not(.qi-sync-time) { left: auto; right: 8px; }
+}
