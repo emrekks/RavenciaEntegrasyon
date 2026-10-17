@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Seçili Sekme</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #101014; --surface: #17171c; --raised: #1d1d23; --soft: #22222a;
+    --line: #2a2a32; --line-strong: #383842;
+    --ink: #ececf0; --muted: #a3a3b0; --subtle: #6f6f7c;
+    --primary: #8b5cf6; --primary-soft: #272139;
+    --violet: color-mix(in srgb, var(--primary) 55%, white);
+    --violet-line: color-mix(in srgb, var(--primary) 55%, transparent);
+    --ok: #46b98f; --info: #83b4ff; --warn: #e2aa4b; --bad: #e4636f;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { overflow-x: clip; }
+  body { margin: 0; font: 14px/1.5 Inter, "Segoe UI", system-ui, sans-serif; color: var(--ink); background: var(--bg); -webkit-font-smoothing: antialiased; }
+  h1, h2, p { margin: 0; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  .ico { width: 16px; height: 16px; flex: none; display: block; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 32px 16px 96px; display: grid; gap: 28px; }
+  .intro h1 { font-size: 22px; font-weight: 600; }
+  .intro p { color: var(--muted); margin-top: 6px; max-width: 76ch; }
+  .picker { display: flex; flex-wrap: wrap; gap: 6px; position: sticky; top: 0; z-index: 9; padding: 10px 0; background: var(--bg); }
+  .picker button { height: 34px; padding: 0 12px; color: var(--muted); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 7px; font-size: 13px; }
+  .picker button[aria-pressed="true"] { color: var(--ink); background: var(--primary-soft); border-color: var(--violet-line); }
+  .option { display: grid; gap: 12px; margin-bottom: 40px; }
+  .option h2 { font-size: 17px; font-weight: 600; }
+  .option > p { color: var(--muted); font-size: 13px; max-width: 86ch; }
+  .page { display: grid; gap: 12px; padding: 20px; border: 1px solid var(--line); border-radius: 14px; }
+  .bar { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 0 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; font-size: 13px; color: var(--muted); }
+  .bar b { color: var(--ink); font-weight: 600; }
+  .bar .st { display: inline-flex; align-items: center; gap: 6px; margin-right: 12px; }
+  .bar .st b { font-weight: 600; }
+  .bar .search { margin-left: auto; width: 300px; height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 12px; color: var(--subtle); border: 1px solid var(--line-strong); border-radius: 7px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; }
+
+  /* the tab card, identical base everywhere */
+  .tabs { display: flex; padding: 0 8px; overflow-x: auto; scrollbar-width: none; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+  .tabs button { position: relative; display: inline-flex; flex: none; align-items: center; gap: 8px; height: 46px; padding: 0 12px; color: var(--muted); background: none; border: 0; font-size: 13.5px; white-space: nowrap; }
+  .tabs button + button::before { content: ""; position: absolute; left: 0; top: 50%; width: 1px; height: 18px; background: var(--line-strong); transform: translateY(-50%); }
+  .tabs button svg { color: var(--subtle); }
+  .tabs button .c { min-width: 22px; height: 20px; padding: 0 6px; display: inline-grid; place-items: center; background: var(--soft); border: 1px solid var(--line-strong); border-radius: 6px; color: var(--ink); font-size: 11.5px; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .tabs button:hover { color: var(--ink); }
+
+  /* current live state, for comparison */
+  .s0 button.on { color: var(--ink); font-weight: 500; }
+  .s0 button.on svg { color: var(--violet); }
+  .s0 button.on::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: 0; height: 2px; border-radius: 2px; background: var(--primary); }
+
+  /* 1 — violet text, thick underline, filled count */
+  .s1 button.on { color: var(--violet); font-weight: 600; }
+  .s1 button.on svg { color: var(--violet); }
+  .s1 button.on .c { color: #fff; background: var(--primary); border-color: var(--primary); }
+  .s1 button.on::after { content: ""; position: absolute; left: 6px; right: 6px; bottom: 0; height: 3px; border-radius: 3px 3px 0 0; background: var(--primary); }
+
+  /* 2 — selected pill (the panel's selection rule: primary-soft + 55% violet border) */
+  .s2 { padding: 5px; gap: 2px; }
+  .s2 button { height: 36px; border-radius: 8px; border: 1px solid transparent; }
+  .s2 button + button::before { left: -2px; }
+  .s2 button.on { color: var(--ink); font-weight: 500; background: var(--primary-soft); border-color: var(--violet-line); }
+  .s2 button.on::before, .s2 button.on + button::before { display: none; }
+  .s2 button.on svg { color: var(--violet); }
+  .s2 button.on .c { color: var(--violet); background: color-mix(in srgb, var(--primary) 18%, transparent); border-color: var(--violet-line); }
+
+  /* 3 — raised tab with a top accent */
+  .s3 { padding: 0 8px; }
+  .s3 button.on { color: var(--ink); font-weight: 500; background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 16%, var(--raised)), var(--raised)); box-shadow: inset 0 2px 0 var(--primary), inset 1px 0 0 var(--line-strong), inset -1px 0 0 var(--line-strong); }
+  .s3 button.on::before, .s3 button.on + button::before { display: none; }
+  .s3 button.on svg { color: var(--violet); }
+
+  /* 4 — icon tile + filled count + underline */
+  .s4 button .tile { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 7px; }
+  .s4 button.on { color: var(--ink); font-weight: 600; }
+  .s4 button.on .tile { color: #fff; background: var(--primary); }
+  .s4 button.on .tile svg { color: #fff; }
+  .s4 button.on .c { color: var(--violet); background: var(--primary-soft); border-color: var(--violet-line); }
+  .s4 button.on::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: 0; height: 2px; border-radius: 2px; background: var(--primary); }
+
+  /* 5 — glow from the underline */
+  .s5 button.on { color: var(--ink); font-weight: 500; background: radial-gradient(70% 90% at 50% 100%, color-mix(in srgb, var(--primary) 26%, transparent), transparent 70%); }
+  .s5 button.on svg { color: var(--violet); }
+  .s5 button.on .c { color: var(--ink); background: color-mix(in srgb, var(--primary) 30%, var(--soft)); border-color: var(--violet-line); }
+  .s5 button.on::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: 0; height: 2px; border-radius: 2px; background: var(--primary); box-shadow: 0 0 10px 1px color-mix(in srgb, var(--primary) 80%, transparent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="intro">
+    <h1>Seçili Sekme · 5 Öneri</h1>
+    <p>Şu an seçili sekme yalnızca biraz kalın yazı ve ince mor alt çizgiyle ayrılıyor; bir bakışta seçilmiş olan zor seçiliyor. Her öneri İşlem Takibi sayfasındaki gibi üst ve alt çubuklarla birlikte gösteriliyor. En üstteki "Şu anki hâli" karşılaştırma için. Sekmelere tıklayarak deneyebilirsin.</p>
+  </div>
+  <div class="picker" role="group" aria-label="Öneri seç" id="picker"></div>
+  <div id="options"></div>
+</div>
+<script>
+const P = {
+  all: '<path d="M2.5 3.5h11v9h-11z"/><path d="M2.5 6.5h11"/>',
+  order: '<path d="M2.5 3h2l1.6 7.4a1 1 0 0 0 1 .8h5.6a1 1 0 0 0 1-.8L14.5 6H5.2"/><circle cx="7" cy="13.5" r=".9"/><circle cx="12.5" cy="13.5" r=".9"/>',
+  price: '<path d="M2.5 8.6V2.5h6.1l5 5-6.1 6.1z"/><circle cx="5.6" cy="5.6" r="1"/>',
+  product: '<path d="M5.5 2.5 2.5 4.5l1.3 2.6 1.2-.5V13.5h6V6.6l1.2.5 1.3-2.6-3-2"/><path d="M5.5 2.5a2.5 2.5 0 0 0 5 0"/>',
+  invoice: '<path d="M4 2h5l3 3v9H4z"/><path d="M9 2v3h3M6 8.5h4M6 11h3"/>',
+  ret: '<path d="M5.5 4 2.5 7l3 3"/><path d="M2.5 7h7a4 4 0 0 1 0 8H7"/>',
+  search: '<circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/>'
+};
+const ic = n => `<svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n]}</svg>`;
+const tabs = [['ALL', 'Tüm İşlemler', 'all', 2000], ['ORDERS', 'Sipariş/Kargo', 'order', 978], ['PRICE', 'Fiyat/Stok', 'price', 24], ['CATALOG', 'Ürün/Yayın', 'product', 0], ['INVOICES', 'Faturalar', 'invoice', 93], ['RETURNS', 'İadeler', 'ret', 376]];
+const designs = [
+  { n: 0, title: 'Şu Anki Hâli', text: 'Karşılaştırma için: seçili sekme biraz kalın yazı, mor simge ve 2 px mor alt çizgiyle ayrılıyor.' },
+  { n: 1, title: 'Mor Yazı ve Dolu Sayı', text: 'Seçili sekmenin yazısı ve simgesi mor, sayı kutusu dolu mor zeminli beyaz rakam, alt çizgi 3 px. Diğer sekmeler gri kaldığı için seçili olan renginden hemen ayrılır.' },
+  { n: 2, title: 'Seçim Hapı', text: 'Panelin genel seçim kuralı: seçili sekme açık mor zeminli, %55 mor kenarlı bir hap olur (filtre seçimleri ve platform seçimleriyle aynı dil). Alt çizgi yok; yanındaki ayırıcılar gizlenir.' },
+  { n: 3, title: 'Kabarık Sekme', text: 'Seçili sekme kartın içinden yükselmiş gibi daha açık bir zemine, iki yanında ince kenarlara ve üstte mor bir çizgiye sahip olur. Klasik "açık sekme" hissi.' },
+  { n: 4, title: 'Simge Karosu', text: 'Seçili sekmenin simgesi dolu mor bir karonun içine girer; sayı kutusu mor tonlu olur, alt çizgi kalır. Simge karosu uzaktan bile seçili sekmeyi işaret eder.' },
+  { n: 5, title: 'Işıyan Alt Çizgi', text: 'Alt çizgi hafifçe parlar ve sekmenin altından yukarı doğru yumuşak bir mor ışık yayılır; sayı kutusu mor tonlu. Sakin ama belirgin.' }
+];
+const state = Object.fromEntries(designs.map(d => [d.n, 'ALL']));
+const draw = n => {
+  const a = state[n];
+  document.querySelector(`[data-n="${n}"] .tabs`).innerHTML = tabs.map(([k, l, i, c]) => `<button type="button" role="tab" data-k="${k}" class="${k === a ? 'on' : ''}">${n === 4 ? `<span class="tile">${ic(i)}</span>` : ic(i)}${l}<span class="c">${c.toLocaleString('tr-TR')}</span></button>`).join('');
+};
+document.getElementById('picker').innerHTML = '<button type="button" data-show="all" aria-pressed="true">Hepsi</button>' + designs.map(d => `<button type="button" data-show="${d.n}" aria-pressed="false">${d.n ? d.n + ' · ' : ''}${d.title}</button>`).join('');
+document.getElementById('options').innerHTML = designs.map(d => `<section class="option" data-n="${d.n}"><h2>${d.n ? `Öneri ${d.n} · ` : ''}${d.title}</h2><p>${d.text}</p><div class="page">
+  <div class="bar"><b>Kuyruk Performansı</b>Bekleme, çalışma süresi ve hata oranı · son 24 saat</div>
+  <div class="tabs s${d.n}" role="tablist"></div>
+  <div class="bar"><span class="st"><span class="dot" style="background:var(--ok)"></span>Başarılı <b>1.988</b></span><span class="st"><span class="dot" style="border:2px solid var(--violet)"></span>Çalışıyor <b>3</b></span><span class="st"><span class="dot" style="border:2px solid var(--muted)"></span>Bekliyor <b>8</b></span><span class="st"><span class="dot" style="border:2px solid var(--bad)"></span>Hata <b>1</b></span><span class="search">${ic('search')}Correlation ID…</span></div>
+</div></section>`).join('');
+designs.forEach(d => draw(d.n));
+document.getElementById('options').addEventListener('click', e => { const b = e.target.closest('[data-k]'); if (!b) return; const n = Number(b.closest('.option').dataset.n); state[n] = b.dataset.k; draw(n); });
+document.querySelectorAll('#picker button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('#picker button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  document.querySelectorAll('.option').forEach(s => s.hidden = b.dataset.show !== 'all' && s.dataset.n !== b.dataset.show);
+}));
+</script>
+</body>
+</html>
