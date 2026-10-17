@@ -64,6 +64,16 @@ function formatDate(value?: string | null) {
   return Number.isNaN(date.getTime()) ? '—' : new Intl.DateTimeFormat('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(date).replace(' ', ' · ')
 }
 
+// The sync strip is narrow: a date from this year leaves the year out (the full date stays in the tooltip).
+function formatShortDate(value?: string | null) {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+  if (date.getFullYear() !== new Date().getFullYear()) return formatDate(value)
+  const pad = (part: number) => String(part).padStart(2, '0')
+  return `${pad(date.getDate())}.${pad(date.getMonth() + 1)} · ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
 function displayPlatform(code: string) { return code === 'HEPSIBURADA' ? 'Hepsiburada' : code === 'N11' ? 'N11' : code === 'PAZARAMA' ? 'Pazarama' : 'Trendyol' }
 function QuestionProductImage({ src, connectionId, sku, barcode, modelCode, productName }: { src?: string | null; connectionId: string; sku?: string | null; barcode?: string | null; modelCode?: string | null; productName: string }) {
   const sources = [...new Set([src, ...productImageFallbackUrls([barcode, sku, modelCode], connectionId, productName), ...(productName.trim() ? productImageFallbackUrls([], connectionId, productName) : [])].filter((value): value is string => Boolean(value)))]
@@ -235,7 +245,7 @@ export function QuestionsPage() {
   return <section className="content rv-questions-page qi-page">
     <header className="qi-head rv-page-head"><div><p className="qi-crumb">Müşteri İletişimi</p><h1>Ürün Soruları</h1><p>Ürün sorularını ve Hepsiburada ile Pazarama sipariş sorularını yönetin.</p></div><div className="qi-acts"><Button variant="secondary" onClick={() => setTemplatesOpen(true)}><UiIcon name="list" size={16} />Hazır Cevaplar<span className="qi-count">{templates.data?.length ?? 0}</span></Button><Button variant="secondary" onClick={() => sync.mutate({ kind })} loading={sync.isPending}><UiIcon name="refresh" size={16} /> Yenile</Button></div></header>
     <section className="rv-questions-sync qi-sync" aria-label="Soru aktarım durumu">
-      {(syncStates.data ?? []).filter(item => tab !== 'ORDER' || ORDER_QUESTION_PLATFORMS.includes(item.platformCode)).map(item => { const summary = syncSummary(item, tab); return <div className="rv-questions-sync-item" data-platform={item.platformCode.toLowerCase()} key={item.connectionId} title={item.historyStartedAt ? `Aktarım başlangıcı: ${formatDate(item.historyStartedAt)}` : undefined}><img className={`rv-question-platform-logo ${platformLogoClass(item.platformCode)}`} src={platformLogoSource(item.platformCode) ?? undefined} alt="" aria-hidden="true" /><div><b>{item.storeName} <em>{summary.records}</em></b><small><StateGlyph state={summary.glyph} />{summary.state}</small><small className="qi-sync-time">{item.lastSuccessAt ? `Son aktarım ${formatDate(item.lastSuccessAt)}` : item.lastError ?? ''}</small></div></div> })}
+      {(syncStates.data ?? []).filter(item => tab !== 'ORDER' || ORDER_QUESTION_PLATFORMS.includes(item.platformCode)).map(item => { const summary = syncSummary(item, tab); return <div className="rv-questions-sync-item" data-platform={item.platformCode.toLowerCase()} key={item.connectionId} title={item.historyStartedAt ? `Aktarım başlangıcı: ${formatDate(item.historyStartedAt)}` : undefined}><img className={`rv-question-platform-logo ${platformLogoClass(item.platformCode)}`} src={platformLogoSource(item.platformCode) ?? undefined} alt="" aria-hidden="true" /><div><b>{item.storeName} <em>{summary.records}</em></b><small><StateGlyph state={summary.glyph} />{summary.state}</small><small className="qi-sync-time" title={item.lastSuccessAt ? `Son aktarım ${formatDate(item.lastSuccessAt)}` : item.lastError ?? undefined}>{item.lastSuccessAt ? `Son aktarım ${formatShortDate(item.lastSuccessAt)}` : item.lastError ?? ''}</small></div></div> })}
       {!syncStates.data?.length && <span className="qi-sync-empty">Soru geçmişi bağlantılarınızdan arka planda alınır. İlk senkronizasyon sonrası aktarım durumu burada görünür.</span>}
     </section>
     {notice && <MessageToast message={notice} onClose={() => setNotice('')} />}
