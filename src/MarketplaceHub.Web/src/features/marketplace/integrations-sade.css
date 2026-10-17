@@ -149,7 +149,3 @@
   .app-shell.stitch-shell main .im-sade .im-fields { grid-template-columns: minmax(0, 1fr); padding: 16px; }
   .app-shell.stitch-shell main .im-sade :is(.integration-modal-header, .im-foot) { padding-inline: 16px; }
 }
-
-/* View tabs and the filter summary form one card, as on the invoices and orders pages. */
-.app-shell main .integrations-reference-page > .rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs:has(+ .integration-filter-summary) { border-bottom: 1px solid var(--rv-color-border) !important; border-radius: 12px 12px 0 0 !important; }
-.app-shell.stitch-shell main .integrations-reference-page > .rv-view-tabs + .integration-filter-summary { margin-top: -20px; padding: 12px 16px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-top: 0; border-radius: 0 0 12px 12px; }
