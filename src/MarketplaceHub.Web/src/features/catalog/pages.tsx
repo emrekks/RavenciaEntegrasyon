@@ -1958,6 +1958,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const [barcodeSkuMenuOpen, setBarcodeSkuMenuOpen] = useState(false)
   const barcodeSkuActionRef = useRef<HTMLDivElement>(null)
   const [barcodePasteMenuOpen, setBarcodePasteMenuOpen] = useState(false)
+  // Phones show the option column beside one group of fields at a time; the other columns stay in the grid, hidden.
+  const [variantMobileGroup, setVariantMobileGroup] = useState<'codes' | 'stock' | 'cost' | 'actions'>('stock')
   const barcodePasteActionRef = useRef<HTMLDivElement>(null)
   const [pendingVariantCodeGeneration, setPendingVariantCodeGeneration] = useState<{ target: 'barcode' | 'sku'; codes: string[] } | null>(null)
   const variantRowsRef = useRef(variantRows)
@@ -3631,7 +3633,8 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           </div>
             <div className="variant-table-toolbar"><span>Varyant görsellerini tek tek veya seçenek değerine göre toplu atayın.</span><div className="variant-table-toolbar-actions"><button type="button" className="secondary variant-clear-button" onClick={clearVariants}>Oluşan varyantları temizle</button><button type="button" className="secondary variant-media-bulk-button" onClick={openBulkVariantMediaPicker} title="Seçenek değerine görsel ata"><VariantImageIcon /> Seçeneklere görsel ata</button></div></div>
         </>}
-            <div className="variant-table-editor">
+            {variantRows.length > 0 && <div className="variant-mobile-groups" role="tablist" aria-label="Görünen varyant alanları">{([['codes', 'Kodlar'], ['stock', 'Stok · Fiyat'], ['cost', 'Maliyet'], ['actions', 'İşlemler']] as const).map(([group, label]) => <button key={group} type="button" role="tab" aria-selected={variantMobileGroup === group} className={variantMobileGroup === group ? 'is-on' : undefined} onClick={() => setVariantMobileGroup(group)}>{label}</button>)}</div>}
+            <div className={`variant-table-editor is-mobile-${variantMobileGroup}`}>
               <div className="variant-table-head">
                 <span>#</span><span>Seçenek</span>
                 <span className="variant-table-header-with-action"><span>Barkod</span><div className="variant-header-action-shell" ref={barcodePasteActionRef}><button type="button" className="variant-header-action" onClick={() => { setBarcodeSkuMenuOpen(false); setBarcodePasteMenuOpen(current => !current) }} aria-label="Panodan barkod yapıştırma seçenekleri" aria-haspopup="menu" aria-expanded={barcodePasteMenuOpen} title="Panodan barkod yapıştırma seçenekleri"><BarcodePasteIcon /></button>{barcodePasteMenuOpen && <div className="variant-header-action-menu" role="menu"><button type="button" role="menuitem" disabled={!emptyBarcodeRowCount} onClick={() => void pasteBarcodesFromClipboard('missing')}><span><strong>Boş barkodlara yapıştır</strong><small>Sadece boş satırlar · {emptyBarcodeRowCount} hedef</small></span><UiIcon name="externalLink" /></button><button type="button" role="menuitem" disabled={!variantRows.length} onClick={() => void pasteBarcodesFromClipboard('all')}><span><strong>Tüm barkodları panodan değiştir</strong><small>Varyant sırası · {variantRows.length} hedef</small></span><i aria-hidden="true">!</i></button><p>Satır sayısı hedefle aynı olmalı; sekmeli tabloda ilk sütun kullanılır. Boş veya yinelenen barkodda işlem yapılmaz.</p></div>}</div></span>

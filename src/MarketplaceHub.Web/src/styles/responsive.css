@@ -265,6 +265,7 @@ html body .mfs-sort-sheet [role="listbox"] > button.is-selected { color: var(--r
 
 /* Mobile menu: the logo replaces the text title, and every link/group is spaced evenly. */
 .rv-drawer-logo { display: block; width: auto; height: 28px; max-width: 170px; object-fit: contain; }
+html[data-theme="light"] .rv-drawer-logo { filter: invert(1); }
 .rv-mobile-drawer > header { min-height: 0; padding: 16px 20px; }
 .rv-mobile-drawer > header h2 { line-height: 0; }
 .rv-mobile-navigation, .rv-mobile-navigation .nav-group { display: grid; gap: 4px; margin: 0; padding: 0; }
@@ -380,3 +381,21 @@ html body .mfs-sort-sheet [role="listbox"] > button.is-selected { color: var(--r
 }
 .app-shell.stitch-shell > aside .nav-count.is-warn { color: var(--rv-color-warning); background: color-mix(in srgb, var(--rv-color-warning) 14%, transparent); border-color: transparent; }
 .app-shell.stitch-shell main button:hover .rv-tab-count, .app-shell.stitch-shell main .rv-button:hover :is(.qi-count, .cs-count) { background: var(--rv-color-border-strong); }
+
+/* Phones and tablets: the side menu slides in from the left, bottom sheets and windows rise from the bottom and their
+   backdrops fade in. `translate` is used (not transform) so rules that pin transform: none still animate. */
+@keyframes rv-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes rv-slide-in-left { from { translate: -100% 0; } to { translate: 0 0; } }
+@keyframes rv-rise { from { translate: 0 100%; } to { translate: 0 0; } }
+@media (prefers-reduced-motion: no-preference) {
+  html body .rv-overlay:has(.rv-mobile-navigation) { animation: rv-fade-in .2s ease-out; }
+  html body .rv-drawer:has(.rv-mobile-navigation) { animation: rv-slide-in-left .28s cubic-bezier(.2, .8, .2, 1); }
+}
+@media (max-width: 760px) and (prefers-reduced-motion: no-preference) {
+  html body :is(.rv-overlay:not(:has(.rv-mobile-navigation)), .workspace-modal-backdrop, .rr-overlay) { animation: rv-fade-in .18s ease-out; }
+  html body :is(.rv-overlay > .rv-modal, .workspace-modal-backdrop > .workspace-modal, .rr-overlay > .rr-modal) { animation: rv-rise .26s cubic-bezier(.2, .8, .2, 1); }
+  html body .rr-anchor > :is(.rr-menu, .rr-pop):not(.rr-static) { animation: rv-rise .24s cubic-bezier(.2, .8, .2, 1); }
+  html body .rr-fopen .rr-anchor > .rr-pop { animation: rv-fade-in .15s ease-out; }
+  html body :is(.rr-anchor-scrim, .rr-fopen > .rr-fscrim) { animation: rv-fade-in .18s ease-out; }
+  html body .rr-fopen > .rr-filters { animation: rv-rise .26s cubic-bezier(.2, .8, .2, 1); }
+}

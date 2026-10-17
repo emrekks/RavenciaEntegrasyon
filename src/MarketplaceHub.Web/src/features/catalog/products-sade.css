@@ -271,3 +271,6 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-vtip { left: 0; transform: none; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-actcell .rr-trigger > span { flex: none; }
 }
+/* quick stock/price buttons in the list: the hover tint has room around the text and no frame, like every other hover */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-qbtn.rr-qbtn { margin: -4px -8px; padding: 4px 8px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qbtn.rr-qbtn:hover { border-color: transparent; }

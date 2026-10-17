@@ -170,3 +170,10 @@
   .app-shell.stitch-shell main .jobs-reference-page .job-queue-metrics > summary { flex-direction: column; flex-wrap: nowrap; align-items: flex-start; justify-content: center; gap: 2px; min-height: 0; padding: 12px 16px; }
   .app-shell.stitch-shell main .jobs-reference-page .job-queue-metrics > summary small { font-size: 12.5px; line-height: 1.4; }
 }
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-heading-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; }
+  .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-heading-actions > div { min-width: 0; }
+  .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-heading-actions :is(.jobs-reference-range, .jobs-reference-filter-toggle) { width: 100%; justify-content: center; }
+  .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-filter-wrap .jobs-reference-filter-panel { right: 0; left: auto; }
+  .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-range-wrap .jobs-reference-range-menu { left: 0; right: auto; }
+}
