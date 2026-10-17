@@ -343,3 +343,9 @@ body .invoice-reference-actions-popover > button:disabled { color: var(--rv-colo
 body .invoice-reference-actions-popover > .invoice-reference-actions-separator { height: 1px; margin: 6px 12px; background: var(--rv-color-border); border: 0; }
 /* Actions heading: the label keeps its room instead of shrinking to "İşleml…" */
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head > .order-column-filter:last-child { padding-left: 12px; }
+/* Narrower screens: tracking numbers stay on one line, status headings keep their full label */
+@media (min-width: 1101px) {
+  .app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-head, .invoice-reference-row) { grid-template-columns: minmax(0, 18fr) minmax(0, 12fr) minmax(0, 13fr) minmax(0, 16fr) minmax(0, 17fr) minmax(0, 11fr) minmax(0, 12fr); }
+}
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-row > :nth-child(3) small { overflow: hidden; max-width: 100%; font-size: 11.5px; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head > .order-column-filter { padding-left: 20px; padding-right: 36px; }
