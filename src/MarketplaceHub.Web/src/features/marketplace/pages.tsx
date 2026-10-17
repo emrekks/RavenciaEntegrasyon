@@ -1786,8 +1786,11 @@ function ReturnInvoiceRing({ status, isMicroExport }: { status: string; isMicroE
   const base = invoiceStatusDisplayLabel(status, false)
   const label = invoiceStatusDisplayLabel(status, isMicroExport)
   const [tone, progress] = invoiceRing[base] ?? ['off', 0]
-  // Short states ("Faturası Mevcut") stay on one line; long ones may still wrap in the narrow column.
-  const ring = <RrRing tone={tone} progress={progress} label={label.length <= 18 ? label.replace(/ /g, ' ') : label} />
+  // Short states ("Faturası Mevcut") stay on one line; long ones break only between word pairs, so
+  // "Mikro İhracat Faturası Bekliyor" takes two lines in the narrow column instead of three.
+  const words = label.split(' ')
+  const shown = label.length <= 18 ? label.replace(/ /g, ' ') : words.length >= 4 ? words.reduce<string[]>((pairs, word, index) => index % 2 ? [...pairs.slice(0, -1), `${pairs[pairs.length - 1]} ${word}`] : [...pairs, word], []).join(' ') : label
+  const ring = <RrRing tone={tone} progress={progress} label={shown} />
   return invoiceFailureText[base] ? <span className="rr-reason-tip" tabIndex={0}>{ring}<span className="rr-reason-pop" role="tooltip"><b>{label}</b>{invoiceFailureText[base]}</span></span> : ring
 }
 // Codes first (barcode, stock code, model code), then the variant (colour, size).
