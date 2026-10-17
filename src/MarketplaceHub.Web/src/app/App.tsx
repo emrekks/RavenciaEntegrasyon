@@ -38,6 +38,18 @@ function Shell({ me }: { me: Me }) {
   }, [])
   const location = useLocation()
   const navigate = useNavigate()
+  // A page change with no window open clears any scroll lock a closed overlay may have left behind.
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      if (document.querySelector('[aria-modal="true"], [class*="modal-backdrop"], .rr-fopen')) return
+      document.body.style.overflow = ''
+      document.body.classList.remove('rr-sheet-lock', 'mobile-filters-open', 'rv-auth-lock')
+      document.documentElement.classList.remove('rv-auth-lock')
+      const main = document.querySelector<HTMLElement>('.app-shell.stitch-shell > main')
+      if (main) main.style.overflow = ''
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [location.pathname])
   const navigationSummary = useQuery({ queryKey: ['dashboard-bootstrap'], queryFn: () => hubApi<DashboardBootstrap>('/dashboard/bootstrap'), staleTime: 30_000, refetchOnWindowFocus: true })
   const invoiceWorkspaceSummary = useQuery({ queryKey: ['invoice-workspace-summary'], queryFn: () => hubApi<{ dueSoonCount: number; uninvoicedCount?: number }>('/invoice-workspace/summary'), staleTime: 30_000, refetchOnWindowFocus: true })
   const orderSummary = useQuery({ queryKey: ['orders', 'summary', []], queryFn: () => hubApi<OrderNavigationSummary>('/orders/summary'), staleTime: 30_000, refetchOnMount: 'always', refetchOnWindowFocus: true, refetchInterval: 15_000, refetchIntervalInBackground: true })
@@ -205,6 +217,12 @@ const authActivity = [
 ] as const
 
 function AuthPageFrame({ ariaLabel, accessLabel, accessMeta, cardTitle, cardDescription, progressStep = 1, children, footerMeta = 'Ravencia Workspace', topAction }: { ariaLabel: string; accessLabel: string; accessMeta: string; cardTitle: string; cardDescription: string; progressStep?: 1 | 2 | 3; children: ReactNode; footerMeta?: string; topAction?: ReactNode }) {
+  // Phones: the sign-in screen holds the page still. A class set here (not html:has(.rv-auth-page)) is removed for sure
+  // when the screen goes; iOS Safari kept the :has() lock after signing in, so pages did not scroll until a reload.
+  useEffect(() => {
+    document.documentElement.classList.add('rv-auth-lock'); document.body.classList.add('rv-auth-lock')
+    return () => { document.documentElement.classList.remove('rv-auth-lock'); document.body.classList.remove('rv-auth-lock') }
+  }, [])
   return <main className="rv-auth-page rv-auth-single">
     <div className="rv-auth-atmosphere" aria-hidden="true">
       <span className="auth-aurora auth-aurora-primary" />

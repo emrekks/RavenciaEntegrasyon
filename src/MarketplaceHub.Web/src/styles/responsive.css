@@ -373,7 +373,7 @@ html body .mfs-sort-sheet [role="listbox"] > button.is-selected { color: var(--r
 
 /* Phone sign-in fits one screen: no page scroll, decorative copy dropped. */
 @media (max-width: 640px) and (min-height: 560px) {
-  html:has(.rv-auth-page), body:has(.rv-auth-page) { height: 100%; overflow: hidden; overscroll-behavior: none; }
+  html.rv-auth-lock, body.rv-auth-lock { height: 100%; overflow: hidden; overscroll-behavior: none; }
   .rv-auth-page { box-sizing: border-box; height: 100dvh; min-height: 0; overflow: hidden; }
   .rv-auth-page :is(.rv-auth-lede, .rv-auth-kicker, .rv-auth-page-footer) { display: none; }
   .rv-auth-page .rv-auth-hero-brand { min-height: 0; margin-bottom: 8px; }
