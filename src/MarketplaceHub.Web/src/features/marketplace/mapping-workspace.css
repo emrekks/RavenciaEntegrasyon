@@ -569,3 +569,12 @@
   .app-shell.stitch-shell main section.mapping-page .mapping-transfer-actions .mam { width: 100%; }
   .app-shell.stitch-shell main section.mapping-page .mapping-transfer-actions .mam button { width: 100%; min-height: 40px; justify-content: center; }
 }
+
+/* Phones: Dışa Aktar and İçe Aktar fill the head row as two equal buttons. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main section.mapping-page .mapping-header-tools > .mapping-reference-heading-actions { grid-template-columns: minmax(0, 1fr); justify-content: stretch; width: 100%; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-reference-heading .mapping-transfer-actions { grid-template-columns: minmax(0, 1fr); width: 100%; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-reference-heading .mapping-transfer-actions .mam { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; width: 100%; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-reference-heading .mapping-transfer-actions .mam { align-items: stretch; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-reference-heading .mapping-transfer-actions .mam :is(button, .mapping-transfer-upload) { box-sizing: border-box; width: 100%; min-width: 0; height: 40px; min-height: 40px; margin: 0; justify-content: center; }
+}
