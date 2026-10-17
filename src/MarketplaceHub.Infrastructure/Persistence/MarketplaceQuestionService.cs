@@ -27,8 +27,9 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         {
             var statuses = query.Status.Trim().ToUpperInvariant() switch
             {
-                "WAITING" => new[] { "WAITING_FOR_ANSWER", "ANSWER_SUBMITTED" },
-                "ANSWERED" => new[] { "ANSWERED" },
+                // A sent answer waiting for the marketplace's confirmation is no longer the seller's to do: it counts as answered.
+                "WAITING" => new[] { "WAITING_FOR_ANSWER" },
+                "ANSWERED" => new[] { "ANSWERED", "ANSWER_SUBMITTED" },
                 "EXPIRED" => new[] { "EXPIRED", "UNANSWERED", "AUTOCLOSED" },
                 "OTHER" => new[] { "REPORTED", "REJECTED" },
                 _ => [query.Status.Trim().ToUpperInvariant()]
