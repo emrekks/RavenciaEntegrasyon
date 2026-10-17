@@ -686,7 +686,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) small.rr-pair { display: flex; flex-wrap: wrap; align-items: center; column-gap: 0; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-sep-v { display: inline-block; width: 1px; height: 11px; margin: 0 8px; background: var(--rr-line-strong); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pline small span { color: var(--rr-muted); }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-ring { display: inline-grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 9px; row-gap: 2px; align-items: center; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-ring { display: inline-grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 6px; row-gap: 2px; align-items: center; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-ring > span { display: contents; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-ring > svg { grid-column: 1; grid-row: 1; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-ring b,
