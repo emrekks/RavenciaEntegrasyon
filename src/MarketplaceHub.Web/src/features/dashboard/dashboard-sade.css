@@ -164,6 +164,9 @@
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mx-foot .rr-legend i.rr-mx-l.rr-off { border: 1px dashed var(--rr-line-strong); }
 /* live-only additions */
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard > .rr-bd, :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pcardm > .rr-bd { display: none; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-crows.rr-crows { gap: 7px; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-crows > .rr-crow { position: relative; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-crows > .rr-crow + .rr-crow::before { content: ""; position: absolute; left: 10px; right: 10px; top: -4px; height: 1px; background: var(--rr-line); pointer-events: none; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard:hover > .rr-bd, :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard:focus-visible > .rr-bd, :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pcardm:hover > .rr-bd, :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pcardm:focus-visible > .rr-bd { display: grid; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-hpill .inv-glyph { width: 15px; height: 15px; flex: none; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ph .rr-date .date-range-picker-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }

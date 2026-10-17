@@ -2375,6 +2375,8 @@ function CategoryMappingWorkspace() {
     }
   }, [externalPickerOpen])
   const activeMappingConnections = connections.data?.items.filter(item => mappingPlatformDefinitions.some(platform => platform.code === item.platformCode.toUpperCase()) && ['ACTIVE', 'VERIFIED'].includes(item.status.toUpperCase())) ?? []
+  // Platforms without an active connection are hidden from the tabs; until any connection is known every tab stays.
+  const shownMappingPlatforms = mappingPlatformDefinitions.filter(platform => !activeMappingConnections.length || activeMappingConnections.some(item => item.platformCode.toUpperCase() === platform.code))
   const selectedPlatform = mappingPlatformDefinitions.find(platform => platform.code === selectedPlatformCode) ?? mappingPlatformDefinitions[0]
   const selectedPlatformConnections = activeMappingConnectionsForPlatform(activeMappingConnections, selectedPlatform.code)
   const firstSelectedConnectionId = selectedPlatformConnections[0]?.id ?? ''
@@ -2541,7 +2543,7 @@ function CategoryMappingWorkspace() {
   const mappingPlatformTabs = (
     <>
       <div className="mapping-category-platform-tabs mapping-platform-tabs rv-tabs rv-view-tabs" role="tablist" aria-label="Kategori eşleştirme pazaryeri">
-        {mappingPlatformDefinitions.map(platform => {
+        {shownMappingPlatforms.map(platform => {
           const available = activeMappingConnections.some(item => item.platformCode.toUpperCase() === platform.code)
           return <button type="button" role="tab" aria-selected={selectedPlatformCode === platform.code} className={`${selectedPlatformCode === platform.code ? 'active is-active' : ''}${available ? '' : ' is-unavailable'}`} title={available ? `${platform.label} kategorilerini göster` : `${platform.label} için aktif bağlantı yok`} onClick={() => selectMappingPlatform(platform.code)}><span className="rv-tab-label">{platformLogoSource(platform.code) && <img className="rv-view-tab-logo" src={platformLogoSource(platform.code)!} alt="" aria-hidden="true" />}{platform.label}</span></button>
         })}
@@ -2558,7 +2560,7 @@ function CategoryMappingWorkspace() {
         <h2><UiIcon name="equal" />5. Kayıtlı Kategori Eşleştirmeleri</h2>
         <div className="mapping-saved-header-tools">
           <div className="mapping-saved-tabs mapping-platform-tabs rv-tabs rv-view-tabs" role="tablist" aria-label="Kayıtlı eşleştirme platformları">
-            {mappingPlatformDefinitions.filter(platform => platform.code !== 'SHOPIFY').map(platform => {
+            {shownMappingPlatforms.filter(platform => platform.code !== 'SHOPIFY').map(platform => {
               const available = activeMappingConnections.some(item => item.platformCode.toUpperCase() === platform.code)
               return <button type="button" role="tab" aria-selected={selectedPlatformCode === platform.code} className={`${selectedPlatformCode === platform.code ? 'active is-active' : ''}${available ? '' : ' is-unavailable'}`} title={available ? `${platform.label} eşleştirmelerini göster` : `${platform.label} için aktif bağlantı yok`} onClick={() => { setSelectedPlatformCode(platform.code); setSavedPage(1); setLocalId(''); setExternalId(''); setExternalSearch(''); setNotice('') }}><span className="rv-tab-label">{platformLogoSource(platform.code) && <img className="rv-view-tab-logo" src={platformLogoSource(platform.code)!} alt="" aria-hidden="true" />}{platform.label}</span></button>
             })}
