@@ -379,7 +379,7 @@
   @media (max-width: 760px) {
     .page { padding: 16px 16px 96px; }
     .topbar { padding: 0 16px; }
-    .kv, .dgrid { grid-template-columns: 1fr; } .dgrid .full { grid-column: auto; }
+    .kv { grid-template-columns: minmax(128px, 40%) minmax(0, 1fr); } .dgrid { grid-template-columns: 1fr; } .dgrid .full { grid-column: auto; }
     .cal { grid-template-columns: 1fr; } .cal .presets { grid-template-columns: repeat(3, 1fr); border-right: 0; padding-right: 0; }
     .apr-h, .apr-r { grid-template-columns: 1fr; } .apr-h > span:last-child { display: none; } .apr-side { padding-left: 28px; }
     .bcard-p { grid-template-columns: 52px minmax(0, 1fr); } .bcard-p .stockctl { grid-column: 1 / -1; justify-items: start; }

@@ -402,7 +402,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-dpage .rr-two { grid-template-columns: 1fr; }
 }
 @media (max-width: 760px) {
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-kv,
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-kv { grid-template-columns: minmax(128px, 40%) minmax(0, 1fr); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-dgrid { grid-template-columns: 1fr; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-dgrid .rr-full { grid-column: auto; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-cal { grid-template-columns: 1fr; }
