@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Detaylı Görünüm · 15 Öneri</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #111115; --surface: #17171c; --raised: #1d1d23; --soft: #22222a;
+    --line: #2a2a32; --line-strong: #383842;
+    --ink: #ececf0; --muted: #a3a3b0; --subtle: #6f6f7c;
+    --primary: #8b5cf6; --primary-soft: #272139;
+    --violet: color-mix(in srgb, var(--primary) 55%, white);
+    --warn: #e2aa4b; --bad: #e4636f; --ok: #46b98f; --info: #83b4ff;
+    --hover: color-mix(in srgb, var(--raised) 60%, transparent);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 Inter, "Segoe UI", system-ui, sans-serif; color: var(--ink); background: var(--bg); -webkit-font-smoothing: antialiased; }
+  h1, h2, h3, p { margin: 0; }
+  .num { font-variant-numeric: tabular-nums; }
+  .wrap { display: grid; gap: 36px; max-width: 1196px; margin: 0 auto; padding: 32px 24px 96px; }
+  .head h1 { font-size: 18px; font-weight: 600; } .head p { margin-top: 2px; color: var(--muted); font-size: 13px; } .head .crumb { color: var(--subtle); font-size: 12px; font-weight: 500; }
+  .opt { display: grid; gap: 12px; }
+  .opt > header h2 { font-size: 15px; font-weight: 600; } .opt > header p { margin-top: 2px; color: var(--muted); font-size: 13px; max-width: 90ch; }
+  .card { position: relative; min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+  .ch { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 10px 16px; padding: 16px 16px 0; }
+  .ch h3 { font-size: 16px; font-weight: 600; } .ch p { color: var(--muted); font-size: 13px; }
+  .cb { padding: 14px 16px 16px; display: grid; gap: 12px; min-width: 0; }
+  .tools { display: flex; flex-wrap: wrap; gap: 8px; }
+  .sel { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px 0 12px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 7px; font-size: 13px; cursor: pointer; }
+  .sel svg { width: 14px; height: 14px; color: var(--muted); }
+  .seg { display: inline-flex; gap: 2px; padding: 3px; background: var(--bg); border: 1px solid var(--line-strong); border-radius: 9px; }
+  .seg button { height: 28px; padding: 0 10px; color: var(--muted); background: none; border: 1px solid transparent; border-radius: 6px; font: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer; }
+  .seg button.on { color: var(--ink); background: var(--raised); border-color: var(--line-strong); }
+  .total small { display: block; color: var(--muted); font-size: 13px; } .total strong { font-size: 26px; font-weight: 600; line-height: 1.25; }
+  .trend { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; } .trend em { color: var(--subtle); font-style: normal; font-weight: 400; }
+  .trend.up { color: var(--ok); } .trend.down { color: var(--bad); }
+  .trend svg { width: 12px; height: 12px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--muted); font-size: 12.5px; } .legend span { display: inline-flex; align-items: center; gap: 6px; } .legend i { width: 10px; height: 10px; border-radius: 3px; }
+  .legend .ln { width: 16px; height: 0; border-radius: 0; border-top: 2px solid var(--violet); } .legend .dash { border-top: 2px dashed var(--subtle); }
+  svg.chart { display: block; width: 100%; height: auto; overflow: visible; }
+  svg.chart text { fill: var(--subtle); font-size: 11px; font-family: inherit; }
+  svg.chart .g { stroke: var(--line); }
+  .logo { width: 22px; height: 22px; flex: none; border-radius: 6px; display: grid; place-items: center; color: #fff; font-size: 10px; font-weight: 700; }
+  .link { display: inline-flex; align-items: center; gap: 4px; color: var(--violet); font-size: 13px; font-weight: 500; text-decoration: none; white-space: nowrap; }
+  .link svg { width: 14px; height: 14px; }
+  .split { display: grid; grid-template-columns: minmax(0, 1.75fr) minmax(0, 1fr); gap: 16px; }
+  .rows { display: grid; gap: 8px; }
+  .chrow { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; font-size: 13px; }
+  .chrow .t { display: grid; gap: 4px; min-width: 0; } .chrow .t > span { display: flex; justify-content: space-between; gap: 8px; } .chrow .t small { color: var(--subtle); font-size: 12px; }
+  .bar { display: block; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; } .bar b { display: block; height: 100%; border-radius: 3px; }
+  .pct { font-weight: 600; } .delta { font-size: 12px; font-weight: 600; } .delta.up { color: var(--ok); } .delta.down { color: var(--bad); }
+  .foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 16px; color: var(--muted); border-top: 1px solid var(--line); font-size: 13px; }
+  .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-bottom: 1px solid var(--line); }
+  .kpi { display: grid; gap: 1px; padding: 12px 16px; text-align: left; color: var(--ink); background: none; border: 0; border-right: 1px solid var(--line); font: inherit; cursor: pointer; position: relative; }
+  .kpi:last-child { border-right: 0; } .kpi:hover { background: var(--hover); }
+  .kpi small { color: var(--muted); font-size: 12.5px; } .kpi strong { font-size: 18px; font-weight: 600; }
+  .kpi.on::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--primary); }
+  table.t { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
+  table.t th { padding: 9px 12px; color: var(--muted); font-size: 12px; font-weight: 500; text-align: right; background: var(--raised); border-bottom: 1px solid var(--line); white-space: nowrap; }
+  table.t td { padding: 10px 12px; text-align: right; border-bottom: 1px solid var(--line); }
+  table.t tr:last-child td { border-bottom: 0; } table.t tr:hover td { background: var(--hover); }
+  table.t th:first-child, table.t td:first-child { text-align: left; }
+  table.t td .nm { display: flex; align-items: center; gap: 8px; font-weight: 500; }
+  .ins { display: grid; gap: 8px; }
+  .insi { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: start; padding: 10px 12px; background: var(--raised); border: 1px solid var(--line); border-radius: 10px; font-size: 13px; }
+  .insi .ic { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: var(--soft); color: var(--violet); }
+  .insi .ic svg { width: 16px; height: 16px; } .insi b { display: block; font-weight: 600; } .insi span { color: var(--muted); font-size: 12.5px; }
+  .tip { position: absolute; z-index: 10; padding: 8px 10px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 10px; box-shadow: 0 18px 50px rgb(0 0 0 / 45%); font-size: 12px; pointer-events: none; white-space: nowrap; }
+  .tip b { display: block; margin-bottom: 2px; font-weight: 600; } .tip span { color: var(--muted); }
+  .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; color: var(--muted); background: none; border: 1px solid var(--line-strong); border-radius: 999px; font: inherit; font-size: 12.5px; cursor: pointer; }
+  .chip i { width: 8px; height: 8px; border-radius: 50%; } .chip.on { color: var(--ink); background: var(--raised); } .chip.off { opacity: .45; }
+  @media (max-width: 1100px) { .split { grid-template-columns: 1fr; } .kpis { grid-template-columns: 1fr 1fr; } .kpi:nth-child(2) { border-right: 0; } .kpi:nth-child(-n+2) { border-bottom: 1px solid var(--line); } }
+  @media (max-width: 760px) { .wrap { padding: 16px 16px 96px; } .table-wrap { overflow-x: auto; } }
+</style>
+</head>
+<body>
+<div class="wrap" id="root"></div>
+<script>
+/* ---------- data ---------- */
+const P = [['Trendyol', '#f27a1a', 'T'], ['Hepsiburada', '#ff6000', 'H'], ['Shopify', '#5e8e3e', 'S'], ['N11', '#7c5cff', 'n'], ['Pazarama', '#2f9bd8', 'P']]
+const SHARE = [58, 21, 11, 7, 3], REV = ['₺348.500', '₺126.180', '₺66.090', '₺42.060', '₺18.028'], ORD = [629, 228, 119, 76, 32], AOV = ['₺554', '₺553', '₺555', '₺553', '₺563'], DLT = [14.2, 9.8, 21.4, -3.1, 6.0]
+const N = 30
+const D = Array.from({ length: N }, (_, i) => new Date(2026, 8, 18 + i))
+const cur = Array.from({ length: N }, (_, i) => Math.round(14000 + 6000 * Math.sin(i / 3.2) + 4200 * Math.sin(i / 1.3 + 1) + i * 260 + (i % 7 === 5 ? 6500 : 0)))
+const prev = Array.from({ length: N }, (_, i) => Math.round(12500 + 5000 * Math.sin(i / 2.7 + 2) + 3000 * Math.cos(i / 1.6) + i * 140))
+const byP = cur.map((v, i) => SHARE.map((s, j) => Math.max(0, v * s / 100 * (1 + .25 * Math.sin(i / (2 + j) + j)))))
+const tl = n => '₺' + Math.round(n).toLocaleString('tr-TR')
+const sum = a => a.reduce((x, y) => x + y, 0)
+const ds = d => d.getDate() === 1 ? `1 ${['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'][d.getMonth()]}` : `${d.getDate()}`
+const ico = p => `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`
+const I = { chev: ico('<path d="m4.5 6 3.5 3.5L11.5 6"/>'), up: ico('<path d="M4 10l4-4 4 4"/>'), down: ico('<path d="M4 6l4 4 4-4"/>'), arrow: ico('<path d="M3 8h10M9 4l4 4-4 4"/>'), star: ico('<path d="M8 2.2 9.7 5.7l3.8.5-2.8 2.7.7 3.8L8 10.9l-3.4 1.8.7-3.8-2.8-2.7 3.8-.5z"/>'), dip: ico('<path d="M3 5l4 4 2.5-2.5L13 10M10 10h3V7"/>'), cal: ico('<rect x="2.5" y="3.5" width="11" height="10" rx="1.5"/><path d="M2.5 6.5h11M5.5 2v3M10.5 2v3"/>'), cart: ico('<path d="M1.5 2.5h2l1.6 7.4a1 1 0 0 0 1 .8h5.6a1 1 0 0 0 1-.8L14.5 5.5H4.4"/>'), bolt: ico('<path d="M9 1.5 3.5 9H8l-1 5.5L12.5 7H8z"/>'), dl: ico('<path d="M8 2.5v8M4.8 7.5 8 10.7l3.2-3.2"/><path d="M2.5 10.5v3h11v-3"/>') }
+const logo = j => `<span class="logo" style="background:${P[j][1]}">${P[j][2]}</span>`
+const sel = l => `<button class="sel">${l}${I.chev}</button>`
+const trend = (t, up = true) => `<span class="trend ${up ? 'up' : 'down'}">${up ? I.up : I.down}${t}<em>önceki döneme göre</em></span>`
+const totalBlock = (l = 'Son 30 Gün', v = tl(sum(cur)), t = '%12,3') => `<div class="total"><small>${l}</small><strong class="num">${v}</strong>${trend(t)}</div>`
+const head = (t, d, right = '') => `<div class="ch"><div><h3>${t}</h3><p>${d}</p></div>${right}</div>`
+
+/* ---------- svg helpers ---------- */
+function frame(W, H, max, { L = 56, R = 8, T = 10, B = 26, ticks = 5, money = true } = {}) {
+  const x = i => L + i / (N - 1) * (W - L - R), y = v => T + (1 - v / max) * (H - T - B)
+  const grid = Array.from({ length: ticks + 1 }, (_, i) => { const v = max / ticks * i; return `<line class="g" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/><text x="${L - 8}" y="${y(v) + 4}" text-anchor="end">${money ? (v ? '₺' + Math.round(v / 1000) + ' B' : '₺0') : Math.round(v)}</text>` }).join('')
+  const xs = D.map((d, i) => i % 5 === 0 || d.getDate() === 1 ? `<text x="${x(i)}" y="${H - 6}" text-anchor="middle">${ds(d)}</text>` : '').join('')
+  return { x, y, grid: grid + xs, W, H, L, R, T, B }
+}
+const path = (arr, f) => arr.map((v, i) => `${i ? 'L' : 'M'}${f.x(i).toFixed(1)} ${f.y(v).toFixed(1)}`).join(' ')
+const smooth = (arr, f) => { let d = `M${f.x(0)} ${f.y(arr[0])}`; for (let i = 1; i < arr.length; i++) { const x0 = f.x(i - 1), x1 = f.x(i), y0 = f.y(arr[i - 1]), y1 = f.y(arr[i]), cx = (x0 + x1) / 2; d += ` C${cx} ${y0} ${cx} ${y1} ${x1} ${y1}` } return d }
+const maxOf = (...a) => Math.ceil(Math.max(...a.flat()) / 10000) * 10000
+let gid = 0
+function areaChart({ W = 760, H = 260, series = cur, prevSeries = prev, markers = false, target = null, smoothLine = false, color = 'var(--violet)' } = {}) {
+  const f = frame(W, H, maxOf(series, prevSeries || [0], target ? [target] : [0])), id = 'ag' + (++gid)
+  const ln = smoothLine ? smooth(series, f) : path(series, f)
+  const mk = markers ? (() => { const hi = series.indexOf(Math.max(...series)), lo = series.indexOf(Math.min(...series)); return `<circle cx="${f.x(hi)}" cy="${f.y(series[hi])}" r="4.5" fill="var(--surface)" stroke="var(--ok)" stroke-width="2"/><text x="${f.x(hi)}" y="${f.y(series[hi]) - 10}" text-anchor="middle" style="fill:var(--ok);font-weight:600">En yüksek ${tl(series[hi])}</text><circle cx="${f.x(lo)}" cy="${f.y(series[lo])}" r="4.5" fill="var(--surface)" stroke="var(--bad)" stroke-width="2"/><text x="${f.x(lo)}" y="${f.y(series[lo]) + 20}" text-anchor="middle" style="fill:var(--bad);font-weight:600">En düşük ${tl(series[lo])}</text>` })() : ''
+  const tg = target ? `<line x1="${f.L}" x2="${W - f.R}" y1="${f.y(target)}" y2="${f.y(target)}" stroke="var(--warn)" stroke-dasharray="6 4"/><text x="${W - f.R}" y="${f.y(target) - 6}" text-anchor="end" style="fill:var(--warn)">Günlük hedef ${tl(target)}</text>` : ''
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}"><defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8b5cf6" stop-opacity=".32"/><stop offset="1" stop-color="#8b5cf6" stop-opacity="0"/></linearGradient></defs>${f.grid}${tg}<path d="${ln} L${f.x(N - 1)} ${f.y(0)} L${f.x(0)} ${f.y(0)} Z" fill="url(#${id})"/>${prevSeries ? `<path d="${smoothLine ? smooth(prevSeries, f) : path(prevSeries, f)}" fill="none" stroke="var(--subtle)" stroke-width="1.5" stroke-dasharray="4 4"/>` : ''}<path d="${ln}" fill="none" stroke="${color}" stroke-width="2.2" stroke-linejoin="round"/>${mk}</svg>`
+}
+function stackedArea({ W = 760, H = 260, hidden = [] } = {}) {
+  const tops = byP.map(r => r.reduce((a, v, j) => a + (hidden.includes(j) ? 0 : v), 0))
+  const f = frame(W, H, maxOf(tops))
+  let base = Array(N).fill(0), out = ''
+  SHARE.forEach((_, j) => { if (hidden.includes(j)) return; const top = byP.map((r, i) => base[i] + r[j]); out += `<path d="${path(top, f)} ${[...base].reverse().map((v, k) => `L${f.x(N - 1 - k).toFixed(1)} ${f.y(v).toFixed(1)}`).join(' ')} Z" fill="${P[j][1]}" fill-opacity=".72" stroke="${P[j][1]}" stroke-width="1"/>`; base = top })
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}">${f.grid}${out}</svg>`
+}
+function barsChart({ W = 760, H = 240, series = cur, prevSeries = prev, highlight = -1 } = {}) {
+  const f = frame(W, H, maxOf(series, prevSeries)), bw = (W - f.L - f.R) / N * .62
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}">${f.grid}${series.map((v, i) => `<rect x="${f.x(i) - bw / 2}" y="${f.y(v)}" width="${bw}" height="${f.y(0) - f.y(v)}" rx="2" fill="${i === highlight ? 'var(--violet)' : 'color-mix(in srgb, var(--violet) 55%, transparent)'}"><title>${D[i].toLocaleDateString('tr-TR')} · ${tl(v)}</title></rect>`).join('')}<path d="${path(prevSeries, f)}" fill="none" stroke="var(--subtle)" stroke-width="1.5" stroke-dasharray="4 4"/></svg>`
+}
+const spark = (arr, c, w = 120, h = 28) => { const mx = Math.max(...arr), mn = Math.min(...arr); return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" preserveAspectRatio="none"><path d="${arr.map((v, i) => `${i ? 'L' : 'M'}${(i / (arr.length - 1) * w).toFixed(1)} ${(2 + (1 - (v - mn) / (mx - mn || 1)) * (h - 4)).toFixed(1)}`).join(' ')}" fill="none" stroke="${c}" stroke-width="1.6"/></svg>` }
+const chanRows = (withDelta = true) => `<div class="rows">${SHARE.map((s, j) => `<div class="chrow">${logo(j)}<span class="t"><span><b style="font-weight:500">${P[j][0]}</b><small class="num">${REV[j]}</small></span><span class="bar"><b style="width:${s}%;background:${P[j][1]}"></b></span></span><span style="display:grid;justify-items:end"><span class="pct num">%${s}</span>${withDelta ? `<span class="delta ${DLT[j] >= 0 ? 'up' : 'down'} num">${DLT[j] >= 0 ? '+' : ''}%${Math.abs(DLT[j]).toLocaleString('tr-TR')}</span>` : ''}</span></div>`).join('')}</div>`
+const donut = (size = 150, inner = 104, label = 'Toplam Sipariş', val = '1.084') => { let a = 0; const st = SHARE.map((s, j) => { const r = `${P[j][1]} ${a}% ${a + s}%`; a += s; return r }).join(', '); return `<div style="display:grid;place-items:center;width:${size}px;height:${size}px;border-radius:50%;background:conic-gradient(${st});flex:none"><div style="display:grid;justify-items:center;align-content:center;width:${inner}px;height:${inner}px;border-radius:50%;background:var(--surface);text-align:center"><small style="color:var(--muted);font-size:11.5px">${label}</small><strong class="num" style="font-size:20px;font-weight:600;line-height:1.2">${val}</strong></div></div>` }
+const stack100 = (h = 12) => `<span style="display:flex;height:${h}px;border-radius:${h / 2}px;overflow:hidden">${SHARE.map((s, j) => `<i style="width:${s}%;background:${P[j][1]}" title="${P[j][0]} %${s}"></i>`).join('')}</span>`
+const chips = (hidden = []) => `<div class="tools">${SHARE.map((_, j) => `<button class="chip ${hidden.includes(j) ? 'off' : 'on'}"><i style="background:${P[j][1]}"></i>${P[j][0]}</button>`).join('')}</div>`
+
+/* ---------- options ---------- */
+const opts = []
+const add = (n, t, d, html) => opts.push(`<section class="opt"><header><h2>Öneri ${n} · ${t}</h2><p>${d}</p></header>${html}</section>`)
+
+add(1, 'Birleşik Kart', 'Gelir ve kanallar tek kartta, tek dönem ve platform seçimi ikisini birden yönetir. Sağdaki kanal satırına tıklamak grafiği o kanala süzer; aynı seçim iki yerde tekrarlanmaz.',
+  `<article class="card">${head('Gelir Performansı', 'Ciro ve kanal dağılımı aynı dönem için', `<div class="tools"><div class="seg"><button>7 Gün</button><button class="on">30 Gün</button><button>90 Gün</button></div>${sel('Tüm Platformlar')}</div>`)}<div class="cb split" style="align-items:start"><div style="display:grid;gap:12px">${totalBlock()}${areaChart()}<div class="legend"><span><i class="ln"></i>Bu Dönem</span><span><i class="ln dash"></i>Önceki Dönem</span></div></div><div style="display:grid;gap:14px;padding-left:16px;border-left:1px solid var(--line)"><div class="total"><small>Kanal Dağılımı</small><strong class="num">5 kanal</strong></div>${stack100()}${chanRows()}<a class="link" href="#">Kanalları Yönet ${I.arrow}</a></div></div></article>`)
+
+add(2, 'Kanallara Göre Yığılı Alan', 'Ciro grafiği kanallara bölünmüş katmanlar halinde; hangi kanalın hangi günü taşıdığı grafikte okunur. Kanal etiketlerine tıklayarak katman gizlenir.',
+  `<article class="card">${head('Gelir Performansı', 'Günlük ciro, kanallara göre', `<div class="tools">${sel('Son 30 Gün')}</div>`)}<div class="cb">${totalBlock()}${chips([4])}${stackedArea({ hidden: [4] })}</div></article>`)
+
+add(3, 'Metrik Sekmeleri', 'Grafiğin üstünde dört metrik sekme; tıklanan metrik grafikte çizilir. Kanal payı altta tek şeritte. Aynı alan dört ayrı grafiğin işini görür.',
+  `<article class="card"><div class="kpis">${[['Ciro', tl(sum(cur)), '%12,3', true, 1], ['Sipariş', '1.084', '%8,1', true], ['Satılan Ürün', '1.392', '%6,4', true], ['Ortalama Sepet', '₺565', '%3,9', true]].map(([l, v, t, up, on]) => `<button class="kpi ${on ? 'on' : ''}"><small>${l}</small><strong class="num">${v}</strong>${trend(t, up).replace('<em>önceki döneme göre</em>', '')}</button>`).join('')}</div><div class="cb">${areaChart({ smoothLine: true })}<div style="display:grid;gap:8px">${stack100(10)}<div class="legend">${SHARE.map((s, j) => `<span><i style="background:${P[j][1]}"></i>${P[j][0]} %${s}</span>`).join('')}</div></div></div></article>`)
+
+add(4, 'Günlük Çubuklar ve Kanal Değişimi', 'Ciro günlük çubuklarla, önceki dönem kesik çizgiyle. Kanallar ciro, pay ve önceki döneme göre değişimle sıralı; düşen kanal kırmızıyla öne çıkar.',
+  `<div class="split"><article class="card">${head('Gelir Performansı', 'Günlük ciro ve önceki dönem', `<div class="tools">${sel('Son 30 Gün')}${sel('Tüm Platformlar')}</div>`)}<div class="cb">${totalBlock()}${barsChart({ highlight: 26 })}</div></article><article class="card">${head('Satış Kanalları', 'Ciro, pay ve değişim', `<a class="link" href="#">Yönet ${I.arrow}</a>`)}<div class="cb">${chanRows()}</div><div class="foot"><span>5 kanal · Son 30 Gün</span><a class="link" href="#">Bağlantılar ${I.arrow}</a></div></article></div>`)
+
+add(5, 'Kanal Tablosu', 'Grafiğin altında kanal tablosu: ciro, pay, sipariş, ortalama sepet, değişim ve kanalın kendi eğrisi. Halka grafik yerine karşılaştırılabilir sayılar.',
+  `<article class="card">${head('Gelir Performansı', 'Ciro ve kanal kırılımı', `<div class="tools">${sel('Son 30 Gün')}<button class="sel">${I.dl}Dışa Aktar</button></div>`)}<div class="cb">${totalBlock()}${areaChart({ H: 220 })}</div><div class="table-wrap"><table class="t"><thead><tr><th>Kanal</th><th>Ciro</th><th>Pay</th><th>Sipariş</th><th>Ortalama Sepet</th><th>Değişim</th><th>Son 30 Gün</th></tr></thead><tbody>${SHARE.map((s, j) => `<tr><td><span class="nm">${logo(j)}${P[j][0]}</span></td><td class="num">${REV[j]}</td><td class="num">%${s}</td><td class="num">${ORD[j]}</td><td class="num">${AOV[j]}</td><td class="num"><span class="delta ${DLT[j] >= 0 ? 'up' : 'down'}">${DLT[j] >= 0 ? '+' : '−'}%${Math.abs(DLT[j]).toLocaleString('tr-TR')}</span></td><td>${spark(byP.map(r => r[j]), P[j][1], 110, 24)}</td></tr>`).join('')}</tbody></table></div></article>`)
+
+add(6, 'Kanal Başına Küçük Grafikler', 'Toplam grafiğin altında her kanalın kendi küçük grafiği aynı ölçekte; kanallar arası eğilim farkı bir bakışta görülür.',
+  `<article class="card">${head('Gelir Performansı', 'Toplam ve kanal kanal', `<div class="tools">${sel('Son 30 Gün')}</div>`)}<div class="cb">${totalBlock()}${areaChart({ H: 200 })}<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px">${SHARE.map((s, j) => `<div style="display:grid;gap:4px;padding:10px 12px;background:var(--raised);border:1px solid var(--line);border-radius:10px"><span style="display:flex;align-items:center;gap:8px;font-size:13px">${logo(j)}<b style="font-weight:500;flex:1">${P[j][0]}</b><span class="delta ${DLT[j] >= 0 ? 'up' : 'down'} num">${DLT[j] >= 0 ? '+' : '−'}%${Math.abs(DLT[j]).toLocaleString('tr-TR')}</span></span><strong class="num" style="font-size:15px;font-weight:600">${REV[j]}</strong>${spark(byP.map(r => r[j]), P[j][1], 150, 30)}</div>`).join('')}</div></div></article>`)
+
+add(7, 'Öne Çıkanlar', 'Grafiğin yanında kısa çıkarımlar: en iyi gün, en zayıf gün, hafta sonu payı, en hızlı büyüyen kanal. Rakamları yorumlama işini panel yapar.',
+  `<div class="split"><article class="card">${head('Gelir Performansı', 'Günlük ciro', `<div class="tools">${sel('Son 30 Gün')}${sel('Tüm Platformlar')}</div>`)}<div class="cb">${totalBlock()}${areaChart({ markers: true })}</div></article><article class="card">${head('Öne Çıkanlar', 'Seçilen dönemden')}<div class="cb ins">${[[I.star, 'En iyi gün: 13 Ekim Pazartesi', `${tl(Math.max(...cur))} ciro · 69 sipariş`], [I.dip, 'En zayıf gün: 1 Ekim Çarşamba', `${tl(Math.min(...cur))} ciro · 14 sipariş`], [I.cal, 'Hafta sonu payı %31', 'Cumartesi ve pazar cironun üçte birini getiriyor.'], [I.bolt, 'En hızlı büyüyen: Shopify', '+%21,4 · ₺66.090 ciro'], [I.cart, 'Trendyol payı %58', 'Tek kanala bağımlılık geçen döneme göre 2 puan arttı.']].map(([ic, b, s]) => `<div class="insi"><span class="ic">${ic}</span><div><b>${b}</b><span>${s}</span></div></div>`).join('')}</div></article></div>`)
+
+add(8, 'Kümülatif ve Hedef', 'Dönem başından bugüne biriken ciro; önceki dönemle aradaki fark ve dönem hedefine göre durum çizgide. "Hedefe yetişir miyiz?" sorusunu yanıtlar.',
+  (() => { const cc = cur.reduce((a, v) => [...a, (a.at(-1) || 0) + v], []), cp = prev.reduce((a, v) => [...a, (a.at(-1) || 0) + v], []), goal = 750000; const W = 760, H = 260, f = frame(W, H, Math.ceil(Math.max(goal, cc.at(-1)) / 100000) * 100000); return `<article class="card">${head('Kümülatif Ciro', 'Dönem başından bugüne', `<div class="tools">${sel('Bu Ay')}</div>`)}<div class="cb"><div style="display:flex;flex-wrap:wrap;gap:12px 32px">${totalBlock('Bugüne Kadar', tl(cc.at(-1)))}<div class="total"><small>Önceki Dönemin Aynı Günü</small><strong class="num" style="color:var(--muted)">${tl(cp.at(-1))}</strong><span class="trend up">${I.up}${tl(cc.at(-1) - cp.at(-1))} önde</span></div><div class="total"><small>Dönem Hedefi</small><strong class="num" style="color:var(--warn)">${tl(goal)}</strong><span class="trend" style="color:var(--muted)">%${Math.round(cc.at(-1) / goal * 100)} tamamlandı</span></div></div><svg class="chart" viewBox="0 0 ${W} ${H}">${f.grid}<line x1="${f.L}" x2="${W - f.R}" y1="${f.y(goal)}" y2="${f.y(goal)}" stroke="var(--warn)" stroke-dasharray="6 4"/><text x="${W - f.R}" y="${f.y(goal) - 6}" text-anchor="end" style="fill:var(--warn)">Hedef</text><path d="${path(cp, f)}" fill="none" stroke="var(--subtle)" stroke-width="1.5" stroke-dasharray="4 4"/><path d="${path(cc, f)} L${f.x(N - 1)} ${f.y(cp.at(-1))} ${[...cp].reverse().map((v, k) => `L${f.x(N - 1 - k).toFixed(1)} ${f.y(v).toFixed(1)}`).join(' ')} Z" fill="color-mix(in srgb, var(--ok) 14%, transparent)"/><path d="${path(cc, f)}" fill="none" stroke="var(--violet)" stroke-width="2.2"/></svg><div class="legend"><span><i class="ln"></i>Bu Dönem</span><span><i class="ln dash"></i>Önceki Dönem</span><span><i style="background:color-mix(in srgb, var(--ok) 40%, transparent)"></i>Fark</span></div></div></article>` })())
+
+add(9, 'Kanal Ağacı Haritası', 'Halka yerine alan oranlı kutular: büyük kanal büyük kutu, içinde ciro ve değişim yazılı. Küçük payları okumak halkadan daha kolay.',
+  `<div class="split"><article class="card">${head('Gelir Performansı', 'Günlük ciro', `<div class="tools">${sel('Son 30 Gün')}</div>`)}<div class="cb">${totalBlock()}${areaChart()}</div></article><article class="card">${head('Satış Kanalları', 'Ciro payına göre')}<div class="cb"><div style="display:grid;grid-template-columns:58fr 42fr;grid-template-rows:1fr 1fr;gap:6px;height:270px">${[[0, 'grid-row:1/3'], [1, ''], [-1, '']].map(([j, st]) => j >= 0 ? `<div style="${st};display:grid;align-content:space-between;padding:12px;border-radius:10px;background:color-mix(in srgb, ${P[j][1]} 28%, var(--surface));border:1px solid color-mix(in srgb, ${P[j][1]} 45%, transparent)"><span style="display:flex;align-items:center;gap:8px;font-weight:500">${logo(j)}${P[j][0]}</span><span><strong class="num" style="display:block;font-size:${j ? 16 : 22}px;font-weight:600">${REV[j]}</strong><small class="num" style="color:var(--muted)">%${SHARE[j]} · ${DLT[j] >= 0 ? '+' : '−'}%${Math.abs(DLT[j]).toLocaleString('tr-TR')}</small></span></div>` : `<div style="display:grid;grid-template-columns:11fr 7fr 3fr;gap:6px">${[2, 3, 4].map(k => `<div title="${P[k][0]} %${SHARE[k]}" style="display:grid;align-content:space-between;min-width:0;padding:8px;border-radius:10px;background:color-mix(in srgb, ${P[k][1]} 28%, var(--surface));border:1px solid color-mix(in srgb, ${P[k][1]} 45%, transparent);overflow:hidden">${k < 4 ? `<span style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${P[k][0]}</span><small class="num" style="color:var(--muted)">%${SHARE[k]}</small>` : ''}</div>`).join('')}</div>`).join('')}</div></div><div class="foot"><span>Pazarama %3 · en küçük kutu</span><a class="link" href="#">Kanalları Yönet ${I.arrow}</a></div></article></div>`)
+
+add(10, 'Takvim Isı Haritası', 'Günler haftalara dizilmiş takvim kareleri; koyu kare yoğun gün. Hafta içi ve hafta sonu düzeni grafiğe bakmadan görülür. Kanal payları sağda.',
+  `<div class="split"><article class="card">${head('Günlük Ciro Takvimi', '18 Eylül – 17 Ekim 2026', `<div class="tools">${sel('Son 30 Gün')}</div>`)}<div class="cb">${totalBlock()}<div style="display:grid;grid-template-columns:auto repeat(7,minmax(0,1fr));gap:6px;align-items:center;font-size:11.5px;color:var(--subtle)"><span></span>${['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'].map(d => `<span style="text-align:center">${d}</span>`).join('')}${(() => { const off = (D[0].getDay() + 6) % 7, cells = [...Array(off).fill(null), ...cur.map((v, i) => [v, D[i]])], mx = Math.max(...cur), mn = Math.min(...cur); let h = ''; for (let w = 0; w < cells.length; w += 7) { h += `<span>${w / 7 + 1}. hf</span>` + cells.slice(w, w + 7).map(c => c ? `<span title="${c[1].toLocaleDateString('tr-TR')} · ${tl(c[0])}" style="display:grid;place-items:center;height:42px;border-radius:7px;background:color-mix(in srgb, var(--primary) ${Math.round(15 + (c[0] - mn) / (mx - mn) * 75)}%, var(--raised));color:var(--ink);font-size:12px">${c[1].getDate()}</span>` : '<span></span>').join('') } return h })()}</div><div class="legend" style="justify-content:flex-end"><span>Az</span>${[20, 40, 65, 90].map(p => `<i style="background:color-mix(in srgb, var(--primary) ${p}%, var(--raised))"></i>`).join('')}<span>Çok</span></div></div></article><article class="card">${head('Satış Kanalları', 'Ciro payı')}<div class="cb">${chanRows(false)}</div></article></div>`)
+
+add(11, 'Saat ve Gün Yoğunluğu', 'Siparişlerin haftanın hangi gün ve saatinde yoğunlaştığı; kampanya ve kargo çıkış saatini planlamak için. Ciro grafiği solda kalır.',
+  `<div class="split"><article class="card">${head('Gelir Performansı', 'Günlük ciro', `<div class="tools">${sel('Son 30 Gün')}</div>`)}<div class="cb">${totalBlock()}${areaChart({ smoothLine: true })}</div></article><article class="card">${head('Sipariş Saatleri', 'Gün ve saat bazında yoğunluk')}<div class="cb"><div style="display:grid;grid-template-columns:auto repeat(8,minmax(0,1fr));gap:3px;font-size:11px;color:var(--subtle);align-items:center"><span></span>${['00', '03', '06', '09', '12', '15', '18', '21'].map(h => `<span style="text-align:center">${h}</span>`).join('')}${['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'].map((d, r) => `<span>${d}</span>` + Array.from({ length: 8 }, (_, c) => { const v = Math.max(.05, Math.sin((c - 1.2) / 2.4) * .8 + (r > 4 ? .25 : 0) + (c === 7 ? .3 : 0)); return `<i style="height:26px;border-radius:4px;background:color-mix(in srgb, var(--primary) ${Math.round(Math.min(1, v) * 85 + 8)}%, var(--raised))"></i>` }).join('')).join('')}</div><div class="insi"><span class="ic">${I.bolt}</span><div><b>En yoğun: Pazar 21:00–24:00</b><span>Siparişlerin %18’i bu üç saatte geliyor.</span></div></div></div></article></div>`)
+
+add(12, 'Aralık Seçicili Grafik', 'Ana grafiğin altında 90 günlük küçük özet şerit; şeritteki pencere sürüklenerek incelenen aralık seçilir. Dönem menüsüne gerek kalmaz.',
+  (() => { const long = Array.from({ length: 90 }, (_, i) => 12000 + 6000 * Math.sin(i / 4) + 3000 * Math.sin(i / 1.4) + i * 120), W = 760, mx = Math.max(...long), mn = Math.min(...long); return `<article class="card">${head('Gelir Performansı', '18 Eylül – 17 Ekim 2026 · 30 gün seçili', `<div class="tools"><div class="seg"><button>7 Gün</button><button class="on">30 Gün</button><button>90 Gün</button><button>Özel</button></div></div>`)}<div class="cb">${totalBlock()}${areaChart({ H: 230 })}<div style="position:relative;height:54px;margin-left:56px;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--raised)"><svg viewBox="0 0 ${W} 54" preserveAspectRatio="none" style="width:100%;height:100%;display:block"><path d="${long.map((v, i) => `${i ? 'L' : 'M'}${(i / 89 * W).toFixed(1)} ${(6 + (1 - (v - mn) / (mx - mn)) * 42).toFixed(1)}`).join(' ')}" fill="none" stroke="var(--subtle)" stroke-width="1.4" vector-effect="non-scaling-stroke"/></svg><div style="position:absolute;top:0;bottom:0;left:66.6%;right:0;background:color-mix(in srgb, var(--primary) 18%, transparent);border-left:2px solid var(--violet);border-right:2px solid var(--violet);cursor:grab"></div></div><div class="legend" style="margin-left:56px;justify-content:space-between"><span>20 Temmuz</span><span>Pencereyi sürükleyin veya kenarlarından genişletin</span><span>17 Ekim</span></div></div></article>` })())
+
+add(13, 'Haftalara Göre Kanal Payı', 'Halka yerine haftalık %100 çubuklar: kanal paylarının dönem içinde nasıl kaydığı görünür. Ciro grafiği üstte, kanal payı akışı altta.',
+  `<article class="card">${head('Gelir ve Kanal Payı', 'Günlük ciro ve haftalık kanal dağılımı', `<div class="tools">${sel('Son 30 Gün')}</div>`)}<div class="cb">${totalBlock()}${areaChart({ H: 200 })}<div style="display:grid;gap:8px">${['18–24 Eyl', '25 Eyl – 1 Eki', '2–8 Eki', '9–15 Eki', '16–17 Eki'].map((w, k) => { const sh = SHARE.map((s, j) => Math.max(1, s + Math.round(Math.sin(k + j) * (j ? 3 : 4)))), t = sum(sh); return `<div style="display:grid;grid-template-columns:110px minmax(0,1fr) 70px;gap:12px;align-items:center;font-size:12.5px"><span style="color:var(--muted)">${w}</span><span style="display:flex;height:14px;border-radius:4px;overflow:hidden">${sh.map((s, j) => `<i title="${P[j][0]} %${Math.round(s / t * 100)}" style="width:${s / t * 100}%;background:${P[j][1]}"></i>`).join('')}</span><span class="num" style="text-align:right">${tl(sum(cur.slice(k * 7, k * 7 + 7)))}</span></div>` }).join('')}<div class="legend">${SHARE.map((s, j) => `<span><i style="background:${P[j][1]}"></i>${P[j][0]}</span>`).join('')}</div></div></div></article>`)
+
+add(14, 'Özet Cümlesiyle', 'Kartın başında panelin yazdığı tek cümlelik özet; grafikte en yüksek ve en düşük gün işaretli, hedef çizgisi yerinde. Kanallar halka ve listeyle sağda.',
+  `<div class="split"><article class="card">${head('Gelir Performansı', '', `<div class="tools">${sel('Son 30 Gün')}${sel('Tüm Platformlar')}</div>`)}<div class="cb"><p style="font-size:15px;line-height:1.55;max-width:62ch">Son 30 günde <b class="num">${tl(sum(cur))}</b> ciro yaptınız; önceki döneme göre <b style="color:var(--ok)">%12,3 fazla</b>. Artışı en çok <b>Shopify</b> (+%21,4) sağladı; <b>N11</b> %3,1 geriledi.</p>${areaChart({ markers: true, target: 20000 })}<div class="legend"><span><i class="ln"></i>Bu Dönem</span><span><i class="ln dash"></i>Önceki Dönem</span><span><i class="ln" style="border-color:var(--warn);border-top-style:dashed"></i>Günlük Hedef</span></div></div></article><article class="card">${head('Satış Kanalları', 'Seçilen dönemin ciro payı')}<div class="cb" style="justify-items:center">${donut(160, 112, 'Toplam Ciro', '₺600 B')}<div style="width:100%">${chanRows()}</div></div></article></div>`)
+
+add(15, 'Üç Sütunlu Pano', 'Gelir, kanal payı ve en çok satan ürünler yan yana; her biri kendi işini yapar, ekranın tamamı kullanılır.',
+  `<div style="display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr) minmax(0,1fr);gap:16px" class="tri"><article class="card">${head('Gelir Performansı', 'Günlük ciro', `<div class="tools">${sel('30 Gün')}</div>`)}<div class="cb">${totalBlock()}${areaChart({ W: 560, H: 240, smoothLine: true })}</div></article><article class="card">${head('Satış Kanalları', 'Ciro payı')}<div class="cb" style="justify-items:center">${donut(140, 98, 'Sipariş', '1.084')}<div style="width:100%">${chanRows(false)}</div></div></article><article class="card">${head('En Çok Satanlar', 'Ciroya göre ilk beş ürün')}<div class="cb rows">${[['Kadın Siyah Baskılı Simli Bluz', 'RYP001', '₺48.200', 92], ['Viskon Yapraklı Desen Bluz', 'MZ025DY', '₺39.640', 58], ['Leopar Desen Simli Bluz', 'SLR005LD', '₺31.900', 50], ['Örme Hırka Uzun Kollu', 'HRK-04', '₺22.050', 35], ['Keten Gömlek Oversize', 'GML-22', '₺18.270', 31]].map(([t, m, v, n], k) => `<div style="display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:10px;align-items:center;font-size:13px"><span style="display:grid;place-items:center;width:28px;height:42px;border-radius:6px;background:linear-gradient(135deg,#3a3a46,#24242c);border:1px solid var(--line)"></span><span style="display:grid;min-width:0"><b style="font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t}</b><small style="color:var(--subtle);font-size:12px">${m} · ${n} adet</small></span><b class="num" style="font-weight:600">${v}</b></div>`).join('')}<a class="link" href="#">Tüm Ürünler ${I.arrow}</a></div></article></div><style>@media (max-width:1100px){.tri{grid-template-columns:1fr!important}}</style>`)
+
+document.getElementById('root').innerHTML = `<header class="head"><div class="crumb">Genel Bakış</div><h1>Detaylı Görünüm · 15 Öneri</h1><p>Gelir Performansı ve Satış Kanalları alanı için daha uyumlu, daha çok bilgi veren ve daha az yer kaplayan yerleşimler. Veriler örnektir (son 30 gün).</p></header>${opts.join('')}`
+</script>
+</body>
+</html>
