@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kategori eşleştirme tasarım önerileri</title>
+<style>
+  :root {
+    --bg: #0f0f14; --surface: #18181f; --raised: #20202a; --soft: #2a2a36;
+    --border: #303039; --border-strong: #41414d; --ink: #f4f4f7; --muted: #aaaab9;
+    --primary: #8b5cf6; --primary-soft: #302443; --ok: #3ccf91; --ok-soft: #12352a;
+    --warn: #f5b942; --warn-soft: #3a2d10; --bad: #ff7b86; --bad-soft: #3a1a20;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 "Segoe UI", system-ui, sans-serif; color: var(--ink); background: var(--bg); }
+  button, select { font: inherit; color: inherit; }
+  .switcher { position: sticky; top: 0; z-index: 10; display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 20px; background: color-mix(in srgb, var(--bg) 92%, transparent); border-bottom: 1px solid var(--border); backdrop-filter: blur(10px); }
+  .switcher button { padding: 8px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; }
+  .switcher button[aria-selected="true"] { color: #fff; background: var(--primary); border-color: var(--primary); }
+  .intro { max-width: 1180px; margin: 20px auto 0; padding: 0 20px; color: var(--muted); }
+  .intro strong { color: var(--ink); }
+  main { max-width: 1180px; margin: 16px auto 60px; padding: 0 20px; }
+  .variant { display: none; }
+  .variant.active { display: block; }
+  .frame { padding: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; }
+  .frame > header h2 { margin: 0 0 2px; font-size: 18px; }
+  .frame > header p { margin: 0 0 16px; color: var(--muted); }
+  .note { margin: 14px 2px 0; color: var(--muted); font-size: 13px; }
+  .note b { color: var(--ink); }
+
+  /* shared bits */
+  .ctx { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 12px 14px; background: var(--raised); border: 1px solid var(--border); border-radius: var(--radius); }
+  .ctx .sel { min-width: 200px; padding: 8px 10px; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 8px; }
+  .ctx .path { flex: 1 1 240px; font-weight: 700; }
+  .ctx .path small { display: block; color: var(--muted); font-weight: 400; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px; border: 1px solid transparent; font-size: 12px; font-weight: 700; white-space: nowrap; }
+  .chip.ok { color: var(--ok); background: var(--ok-soft); border-color: #1f5e49; }
+  .chip.warn { color: var(--warn); background: var(--warn-soft); border-color: #6a5220; }
+  .chip.bad { color: var(--bad); background: var(--bad-soft); border-color: #6a2c35; }
+  .chip.mute { color: var(--muted); background: var(--soft); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--muted); }
+  .dot.ok { background: var(--ok); } .dot.warn { background: var(--warn); } .dot.bad { background: var(--bad); }
+  .btn { padding: 7px 12px; background: var(--raised); border: 1px solid var(--border-strong); border-radius: 8px; cursor: pointer; font-weight: 600; }
+  .btn:hover { background: var(--soft); }
+  .btn.primary { color: #fff; background: var(--primary); border-color: var(--primary); }
+  .btn.ghost { background: none; border-color: transparent; color: var(--muted); }
+  .btn.ghost:hover { color: var(--ink); background: var(--soft); }
+  select.field { width: 100%; padding: 7px 10px; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 8px; }
+  .bar { height: 6px; border-radius: 99px; background: var(--soft); overflow: hidden; }
+  .bar > i { display: block; height: 100%; background: var(--primary); }
+  .bar.ok > i { background: var(--ok); }
+  .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 14px 0; }
+  .toolbar .grow { flex: 1; }
+
+  /* A: table */
+  .rows { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .rows .head, .rows .row { display: grid; grid-template-columns: 22px minmax(150px, 1.2fr) minmax(180px, 1.3fr) minmax(140px, 1fr) 160px 34px; align-items: center; gap: 12px; padding: 10px 14px; }
+  .rows .head { color: var(--muted); font-size: 12px; background: var(--raised); }
+  .rows .row { border-top: 1px solid var(--border); }
+  .rows .row:hover { background: color-mix(in srgb, var(--soft) 40%, transparent); }
+  .rows .row strong small { display: block; color: var(--muted); font-weight: 400; }
+  .rows .detail { display: none; padding: 12px 14px 16px 48px; background: var(--raised); border-top: 1px solid var(--border); }
+  .rows .detail.open { display: block; }
+  .vmap { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 14px; }
+  .vmap div { display: grid; grid-template-columns: 1fr 14px 1fr; align-items: center; gap: 6px; padding: 6px 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; font-size: 13px; }
+  .vmap div span:nth-child(2) { color: var(--muted); text-align: center; }
+  .vmap .miss { border-color: #6a5220; }
+  .chev { width: 28px; height: 28px; border: 0; background: none; color: var(--muted); border-radius: 8px; cursor: pointer; }
+  .chev:hover { background: var(--soft); color: var(--ink); }
+
+  /* B: master detail */
+  .md { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 14px; min-height: 480px; }
+  .md .list { display: grid; align-content: start; gap: 4px; padding: 8px; background: var(--raised); border: 1px solid var(--border); border-radius: var(--radius); }
+  .md .list h4 { margin: 8px 8px 4px; color: var(--muted); font-size: 12px; font-weight: 600; }
+  .md .item { display: grid; grid-template-columns: 10px 1fr auto; align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid transparent; border-radius: 8px; cursor: pointer; background: none; text-align: left; }
+  .md .item:hover { background: var(--soft); }
+  .md .item.sel { background: var(--primary-soft); border-color: var(--primary); }
+  .md .item small { color: var(--muted); }
+  .md .pane { padding: 16px; background: var(--raised); border: 1px solid var(--border); border-radius: var(--radius); }
+  .md .pane h3 { display: flex; align-items: center; gap: 10px; margin: 0 0 4px; font-size: 17px; }
+  .md .pane > p { margin: 0 0 14px; color: var(--muted); }
+  .link-line { display: grid; grid-template-columns: 1fr 24px 1fr auto; align-items: center; gap: 10px; margin-bottom: 14px; padding: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+  table { width: 100%; border-collapse: collapse; }
+  th { padding: 8px 10px; color: var(--muted); font-size: 12px; font-weight: 600; text-align: left; border-bottom: 1px solid var(--border); }
+  td { padding: 7px 10px; border-bottom: 1px solid var(--border); }
+  tr.miss td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
+
+  /* C: grouped */
+  .summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+  .summary div { padding: 12px 14px; background: var(--raised); border: 1px solid var(--border); border-radius: var(--radius); }
+  .summary b { display: block; font-size: 22px; line-height: 1.1; }
+  .summary span { color: var(--muted); font-size: 12px; }
+  .summary .act { cursor: pointer; }
+  .summary .act.on { border-color: var(--primary); background: var(--primary-soft); }
+  .group { margin-top: 14px; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .group > summary { display: flex; align-items: center; gap: 10px; padding: 11px 14px; cursor: pointer; background: var(--raised); font-weight: 700; list-style: none; }
+  .group > summary::-webkit-details-marker { display: none; }
+  .group > summary .count { margin-left: auto; color: var(--muted); font-weight: 500; }
+  .group .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; padding: 12px; }
+  .mini { display: grid; gap: 8px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+  .mini header { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-weight: 700; }
+  .mini footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 12px; }
+  .mini footer a { color: var(--primary); cursor: pointer; font-weight: 600; }
+
+  /* D: connector */
+  .bridge { display: grid; grid-template-columns: minmax(0, 1fr) 120px minmax(0, 1fr); gap: 0; }
+  .bridge .col { display: grid; align-content: start; gap: 10px; }
+  .bridge .col h4 { margin: 0 0 2px; color: var(--muted); font-size: 12px; font-weight: 600; }
+  .bridge .node { display: flex; align-items: center; justify-content: space-between; gap: 10px; height: 48px; padding: 0 14px; background: var(--raised); border: 1px solid var(--border); border-radius: 10px; font-weight: 600; }
+  .bridge .node small { color: var(--muted); font-weight: 400; }
+  .bridge .node.need { border-color: #6a5220; }
+  .bridge .node.linked { border-color: #1f5e49; }
+  .bridge svg { width: 100%; height: 100%; }
+  .bridge .wire { fill: none; stroke: var(--ok); stroke-width: 2; }
+  .bridge .wire.dash { stroke: var(--warn); stroke-dasharray: 5 5; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 14px; color: var(--muted); font-size: 12px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+
+  @media (max-width: 860px) {
+    .rows .head { display: none; }
+    .rows .row { grid-template-columns: 22px 1fr 34px; }
+    .rows .row > :nth-child(3), .rows .row > :nth-child(4), .rows .row > :nth-child(5) { grid-column: 2 / -1; }
+    .vmap { grid-template-columns: 1fr; }
+    .md { grid-template-columns: 1fr; }
+    .summary { grid-template-columns: repeat(2, 1fr); }
+    .bridge { grid-template-columns: 1fr 50px 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="switcher" role="tablist" aria-label="Tasarım önerileri">
+  <button role="tab" aria-selected="true" data-v="a">A · Tek satırlı liste</button>
+  <button role="tab" aria-selected="false" data-v="b">B · Sol liste + sağ detay</button>
+  <button role="tab" aria-selected="false" data-v="c">C · Duruma göre gruplar</button>
+  <button role="tab" aria-selected="false" data-v="d">D · Eşleme hattı</button>
+</nav>
+
+<p class="intro"><strong>Sorun:</strong> şu an her özellik büyük bir kart; 3 sütunlu 40+ kart, hangisinin eksik olduğunu bulmayı zorlaştırıyor ve sayfa çok uzuyor.
+Dört öneride de üst bölüm (panel kategorisi → Hepsiburada kategorisi, otomatik eşleme düğmeleri) aynı; değişen şey özelliklerin gösterimi. Hepsi örnek veridir, tıklanabilir.</p>
+
+<main>
+
+<!-- ============ A ============ -->
+<section class="variant active" id="v-a">
+  <div class="frame">
+    <header><h2>Kategori eşleştirmeleri</h2><p>Her özellik tek satır; değer eşlemeleri satırın altında açılır.</p></header>
+    <div class="ctx">
+      <select class="sel"><option>Gömlek (Hepsiburada)</option></select>
+      <div class="path"><small>Hepsiburada kategorisi</small>Giyim › Kadın › Gömlek</div>
+      <span class="chip warn">3 zorunlu alan eksik</span>
+    </div>
+    <div class="toolbar">
+      <button class="btn">Başlıkları eşle</button><button class="btn">Tüm değerleri birebir eşle</button><button class="btn">Diğer kategorilerden doldur</button>
+      <span class="grow"></span>
+      <button class="btn ghost">Kategori alanlarını yenile</button>
+    </div>
+    <div class="rows" id="rowsA"></div>
+    <p class="note"><b>Artıları:</b> 14 özellik tek ekrana sığar, eksikler renkli noktadan hemen görülür, tablo gibi taranır. <b>Eksisi:</b> değer eşlemesi satır içinde açılınca sayfa uzar.</p>
+  </div>
+</section>
+
+<!-- ============ B ============ -->
+<section class="variant" id="v-b">
+  <div class="frame">
+    <header><h2>Kategori eşleştirmeleri</h2><p>Solda özellikler, sağda seçili özelliğin başlık ve değer eşlemesi.</p></header>
+    <div class="ctx">
+      <select class="sel"><option>Gömlek (Hepsiburada)</option></select>
+      <div class="path"><small>Hepsiburada kategorisi</small>Giyim › Kadın › Gömlek</div>
+      <button class="btn">Başlıkları eşle</button><button class="btn">Değerleri birebir eşle</button>
+    </div>
+    <div class="md" style="margin-top:14px">
+      <div class="list" id="listB"></div>
+      <div class="pane" id="paneB"></div>
+    </div>
+    <p class="note"><b>Artıları:</b> bir seferde tek özelliğe odaklanılır, değer tablosu geniş ve rahat; uzun listelerde (Beden 27, Desen 74 değer) en iyisi. <b>Eksisi:</b> özellikler arasında gezmek için bir tık daha gerekir.</p>
+  </div>
+</section>
+
+<!-- ============ C ============ -->
+<section class="variant" id="v-c">
+  <div class="frame">
+    <header><h2>Kategori eşleştirmeleri</h2><p>Önce ne kadarının hazır olduğu, sonra sadece ilgilenmen gerekenler açık.</p></header>
+    <div class="ctx">
+      <select class="sel"><option>Gömlek (Hepsiburada)</option></select>
+      <div class="path"><small>Hepsiburada kategorisi</small>Giyim › Kadın › Gömlek</div>
+      <button class="btn">Otomatik eşle ▾</button>
+    </div>
+    <div class="summary" style="margin-top:14px">
+      <div><b>9 / 14</b><span>özellik eşlendi</span><div class="bar ok" style="margin-top:8px;padding:0;border:0;background:var(--soft)"><i style="width:64%"></i></div></div>
+      <div class="act on"><b style="color:var(--warn)">3</b><span>zorunlu eksik</span></div>
+      <div class="act"><b style="color:var(--primary)">63</b><span>gözden geçirilecek değer</span></div>
+      <div class="act"><b>2</b><span>platform varsayılanı</span></div>
+    </div>
+    <div id="groupsC"></div>
+    <p class="note"><b>Artıları:</b> “ne yapmalıyım?” sorusunu cevaplar; eşlenenler kapalı kalır, dikkat isteyenler üstte. <b>Eksisi:</b> tüm özellikleri tek bakışta alt alta görmek için grupları açmak gerekir.</p>
+  </div>
+</section>
+
+<!-- ============ D ============ -->
+<section class="variant" id="v-d">
+  <div class="frame">
+    <header><h2>Kategori eşleştirmeleri</h2><p>Hepsiburada’nın istediği alanlar solda, panel özelliklerin sağda; çizgi eşleşmeyi gösterir.</p></header>
+    <div class="ctx">
+      <select class="sel"><option>Gömlek (Hepsiburada)</option></select>
+      <div class="path"><small>Hepsiburada kategorisi</small>Giyim › Kadın › Gömlek</div>
+      <button class="btn">Başlıkları eşle</button>
+    </div>
+    <div class="bridge" style="margin-top:16px">
+      <div class="col" id="colL"><h4>Hepsiburada alanı</h4></div>
+      <div id="wires"></div>
+      <div class="col" id="colR"><h4>Panel özelliği</h4></div>
+    </div>
+    <div class="legend"><span><i class="dot ok"></i> eşlendi</span><span><i class="dot warn"></i> zorunlu, eşleme bekliyor (kesikli çizgi)</span><span>Bir düğüme tıklayınca değer eşlemesi yan panelde açılır</span></div>
+    <p class="note"><b>Artıları:</b> eşlemenin ne olduğu görsel olarak anlaşılır, yeni başlayan biri için en öğretici olan. <b>Eksisi:</b> çok alanlı kategorilerde çizgiler kalabalıklaşır.</p>
+  </div>
+</section>
+
+</main>
+
+<script>
+  const attrs = [
+    { name: 'Beden', req: true, panel: 'Beden', values: 27, mapped: 27 },
+    { name: 'Cinsiyet', req: true, panel: 'Cinsiyet', values: 4, mapped: 4 },
+    { name: 'Kesim Kalıbı', req: true, panel: null, values: 0, mapped: 0 },
+    { name: 'Kumaş Tipi', req: true, panel: null, values: 0, mapped: 0 },
+    { name: 'Renk', req: true, panel: 'Renk', values: 38, mapped: 35 },
+    { name: 'Yaka Stili', req: true, panel: null, values: 0, mapped: 0 },
+    { name: 'Kol Tipi', req: false, panel: 'Kol Boyu', values: 6, mapped: 6 },
+    { name: 'Desen', req: false, panel: 'Desen', values: 74, mapped: 70 },
+    { name: 'Kalıp', req: false, panel: 'Kalıp', values: 8, mapped: 8 },
+    { name: 'Cep', req: false, panel: 'Cep', values: 31, mapped: 31 },
+    { name: 'Boy', req: false, panel: 'Boy', values: 12, mapped: 12 },
+    { name: 'Sezon', req: false, panel: 'Sezon', values: 5, mapped: 5 },
+    { name: 'Materyal', req: false, panel: 'Kumaş', values: 22, mapped: 20 },
+    { name: 'Ek Özellik', req: false, panel: null, values: 0, mapped: 0 }
+  ]
+  const panelOptions = ['Beden', 'Cinsiyet', 'Renk', 'Kol Boyu', 'Desen', 'Kalıp', 'Cep', 'Boy', 'Sezon', 'Kumaş', 'Yaka', 'Kesim']
+  const sampleValues = [['S', 'S'], ['M', 'M'], ['L', 'L'], ['XL', 'XL'], ['2XL', '2XL'], ['36', '36'], ['38', '38'], ['40', '40'], ['Standart', '—']]
+  const state = a => !a.panel ? (a.req ? 'bad' : 'warn') : a.mapped < a.values ? 'warn' : 'ok'
+  const stateText = a => !a.panel ? (a.req ? 'Zorunlu, eşlenmedi' : 'Eşlenmedi') : a.mapped < a.values ? `${a.values - a.mapped} değer eksik` : 'Tamam'
+  const options = selected => `<select class="field"><option value="">Panel özelliği seç…</option>${panelOptions.map(o => `<option ${o === selected ? 'selected' : ''}>${o}</option>`).join('')}</select>`
+  const valueGrid = a => `<div class="vmap">${sampleValues.map((v, i) => `<div class="${a.mapped < a.values && i > 6 ? 'miss' : ''}"><span>${v[0]}</span><span>→</span><span>${v[1]}</span></div>`).join('')}</div>`
+
+  // A
+  document.getElementById('rowsA').innerHTML = `<div class="head"><span></span><span>Hepsiburada alanı</span><span>Panel özelliği</span><span>Değerler</span><span>Durum</span><span></span></div>` +
+    attrs.map((a, i) => `<div class="row"><i class="dot ${state(a)}"></i><strong>${a.name}<small>${a.req ? 'Zorunlu' : 'İsteğe bağlı'}</small></strong>${options(a.panel)}
+      <span>${a.values ? `<div class="bar ${a.mapped === a.values ? 'ok' : ''}"><i style="width:${a.mapped / a.values * 100}%"></i></div><small style="color:var(--muted)">${a.mapped} / ${a.values} değer</small>` : '<small style="color:var(--muted)">—</small>'}</span>
+      <span class="chip ${state(a)}">${stateText(a)}</span>
+      <button class="chev" data-toggle="${i}" aria-label="Değer eşlemelerini aç">▾</button></div>
+      <div class="detail" id="detailA${i}">${a.values ? valueGrid(a) : '<span style="color:var(--muted)">Önce bir panel özelliği seçin.</span>'}</div>`).join('')
+  document.getElementById('rowsA').addEventListener('click', e => {
+    const t = e.target.closest('[data-toggle]'); if (!t) return
+    document.getElementById('detailA' + t.dataset.toggle).classList.toggle('open')
+  })
+
+  // B
+  let selectedB = 2
+  function renderB() {
+    const groups = [['Zorunlu', attrs.filter(a => a.req)], ['İsteğe bağlı', attrs.filter(a => !a.req)]]
+    document.getElementById('listB').innerHTML = groups.map(([title, items]) => `<h4>${title}</h4>` + items.map(a => { const i = attrs.indexOf(a); return `<button class="item ${i === selectedB ? 'sel' : ''}" data-i="${i}"><i class="dot ${state(a)}"></i><span>${a.name}</span><small>${a.values ? `${a.mapped}/${a.values}` : ''}</small></button>` }).join('')).join('')
+    const a = attrs[selectedB]
+    document.getElementById('paneB').innerHTML = `<h3>${a.name} <span class="chip ${state(a)}">${stateText(a)}</span></h3><p>${a.req ? 'Hepsiburada bu alan olmadan ürünü kabul etmez.' : 'İsteğe bağlı alan; boş bırakılabilir.'}</p>
+      <div class="link-line"><div><small style="color:var(--muted)">Hepsiburada</small><div><b>${a.name}</b></div></div><span style="color:var(--muted)">→</span><div><small style="color:var(--muted)">Panel özelliği</small>${options(a.panel)}</div><button class="btn">Eşlemeyi kaldır</button></div>
+      ${a.values ? `<div class="toolbar" style="margin-top:0"><b>Değer eşlemeleri</b><span class="grow"></span><button class="btn">Birebir eşle</button><button class="btn primary">Kaydet</button></div>
+      <table><thead><tr><th>Panel değeri</th><th>Hepsiburada değeri</th><th></th></tr></thead><tbody>${sampleValues.map((v, i) => `<tr class="${a.mapped < a.values && i > 6 ? 'miss' : ''}"><td>${v[0]}</td><td>${v[1] === '—' ? '<span style="color:var(--warn)">Eşleme seç…</span>' : v[1]}</td><td style="text-align:right">${v[1] === '—' ? '<span class="chip warn">Eksik</span>' : '<i class="dot ok" style="display:inline-block"></i>'}</td></tr>`).join('')}</tbody></table>` : '<p style="color:var(--muted)">Bir panel özelliği seçtiğinde değer eşlemesi burada listelenir.</p>'}`
+  }
+  renderB()
+  document.getElementById('listB').addEventListener('click', e => { const t = e.target.closest('[data-i]'); if (t) { selectedB = +t.dataset.i; renderB() } })
+
+  // C
+  const section = (title, open, items) => `<details class="group" ${open ? 'open' : ''}><summary><i class="dot ${title === 'Zorunlu eksik' ? 'bad' : title === 'Değer eksik' ? 'warn' : 'ok'}"></i>${title}<span class="count">${items.length}</span></summary><div class="cards">${items.map(a => `<div class="mini"><header>${a.name}<span class="chip ${state(a)}">${a.req ? 'Zorunlu' : 'İsteğe bağlı'}</span></header>${options(a.panel)}<footer><span>${a.values ? `${a.mapped} / ${a.values} değer` : 'Değer yok'}</span><a>${a.panel ? 'Değerleri aç' : 'Eşle'}</a></footer></div>`).join('')}</div></details>`
+  document.getElementById('groupsC').innerHTML =
+    section('Zorunlu eksik', true, attrs.filter(a => !a.panel && a.req)) +
+    section('Değer eksik', true, attrs.filter(a => a.panel && a.mapped < a.values)) +
+    section('Eşlendi', false, attrs.filter(a => a.panel && a.mapped === a.values)) +
+    section('İsteğe bağlı, eşlenmedi', false, attrs.filter(a => !a.panel && !a.req))
+
+  // D
+  const right = ['Beden', 'Cinsiyet', 'Renk', 'Kol Boyu', 'Desen']
+  const rowsD = [['Beden', 0, 'ok'], ['Cinsiyet', 1, 'ok'], ['Kesim Kalıbı', null, 'warn'], ['Kumaş Tipi', null, 'warn'], ['Renk', 2, 'ok'], ['Kol Tipi', 3, 'ok'], ['Desen', 4, 'ok']]
+  const H = 58
+  document.getElementById('colL').innerHTML += rowsD.map(r => `<div class="node ${r[2] === 'ok' ? 'linked' : 'need'}"><span>${r[0]}</span><small>${r[2] === 'ok' ? 'Eşlendi' : 'Zorunlu'}</small></div>`).join('')
+  document.getElementById('colR').innerHTML += rowsD.map(r => r[1] === null ? `<div class="node" style="border-style:dashed;color:var(--muted)"><span>Panel özelliği seç…</span><small>▾</small></div>` : `<div class="node linked"><span>${right[r[1]]}</span><small>${r[0] === 'Renk' ? '35/38 değer' : 'değerleri aç'}</small></div>`).join('')
+  document.getElementById('wires').innerHTML = `<svg viewBox="0 0 120 ${H * rowsD.length + 20}" preserveAspectRatio="none" style="margin-top:22px;height:${H * rowsD.length}px">${rowsD.map((r, i) => `<path class="wire ${r[1] === null ? 'dash' : ''}" d="M0 ${i * H + 24} C 60 ${i * H + 24}, 60 ${i * H + 24}, 120 ${i * H + 24}" />`).join('')}</svg>`
+
+  // switcher
+  document.querySelectorAll('.switcher button').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('.switcher button').forEach(x => x.setAttribute('aria-selected', String(x === b)))
+    document.querySelectorAll('.variant').forEach(v => v.classList.toggle('active', v.id === 'v-' + b.dataset.v))
+  }))
+</script>
+</body>
+</html>

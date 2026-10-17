@@ -1,0 +1,873 @@
+<!doctype html>
+<html lang="tr" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ürün Soruları Önerileri</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #111115; --surface: #17171c; --raised: #1d1d23; --soft: #22222a;
+    --line: #2a2a32; --line-strong: #383842;
+    --ink: #ececf0; --muted: #a3a3b0; --subtle: #6f6f7c;
+    --primary: #8b5cf6; --primary-soft: #272139;
+    --violet: color-mix(in srgb, var(--primary) 55%, white);
+    --violet-line: color-mix(in srgb, var(--primary) 55%, transparent);
+    --warn: #e2aa4b; --bad: #e4636f; --ok: #34d399;
+    --r-ctl: 7px; --r-card: 12px; --r-pop: 14px;
+  }
+  * { box-sizing: border-box; }
+  html, body { overflow-x: hidden; }
+  body { margin: 0; font: 14px/1.5 Inter, "Segoe UI", system-ui, sans-serif; color: var(--ink); background: var(--bg); -webkit-font-smoothing: antialiased; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  a { color: inherit; }
+  .grow { flex: 1; } .muted { color: var(--muted); } .faint { color: var(--subtle); } .num { font-variant-numeric: tabular-nums; }
+  [hidden] { display: none !important; }
+
+  /* framed-thumb scrollbars */
+  ::-webkit-scrollbar { width: 12px; height: 12px; background: var(--raised); }
+  ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: var(--raised); }
+  ::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+  ::-webkit-scrollbar-thumb { background: var(--soft); background-clip: padding-box; border: 3px solid transparent; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--line-strong); }
+  ::-webkit-scrollbar-thumb:hover { background-color: var(--line-strong); }
+  @supports (-moz-appearance: none) { * { scrollbar-width: thin; scrollbar-color: var(--line-strong) var(--raised); } }
+
+  /* ---------- shared controls ---------- */
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 34px; padding: 0 12px; white-space: nowrap; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-ctl); cursor: pointer; font-size: 13px; font-weight: 500; }
+  .btn:hover { background: var(--soft); }
+  .btn.primary { color: #fff; background: var(--primary); border-color: var(--primary); }
+  .btn.primary:hover { filter: brightness(1.08); }
+  .btn.quiet { color: var(--muted); background: none; border-color: transparent; }
+  .btn.quiet:hover { color: var(--ink); background: var(--raised); }
+  .btn.danger { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, var(--line-strong)); }
+  .btn.danger.quiet { border-color: transparent; }
+  .btn.on { color: var(--violet); background: var(--primary-soft); border-color: var(--violet-line); }
+  .btn:disabled { opacity: .45; cursor: default; filter: none; }
+  .btn:focus-visible, .in:focus, .tab:focus-visible, .chip:focus-visible { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgb(139 92 246 / 18%); }
+  .icon-btn { display: grid; width: 34px; height: 34px; flex: none; place-items: center; color: var(--muted); background: none; border: 0; border-radius: var(--r-ctl); cursor: pointer; }
+  .icon-btn:hover { color: var(--ink); background: var(--raised); }
+  .in { width: 100%; height: 36px; padding: 0 12px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-ctl); outline: none; }
+  select.in { padding-right: 34px; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='%23a3a3b0' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4.5 6 3.5 3.5L11.5 6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; cursor: pointer; }
+  .in-ico { position: relative; display: block; }
+  .in-ico > svg { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--subtle); pointer-events: none; }
+  .in-ico > .in { padding-left: 34px; }
+  .in-btn { display: flex; align-items: center; gap: 8px; text-align: left; cursor: pointer; }
+  .in-btn svg { color: var(--subtle); flex: none; }
+  textarea.in { height: auto; min-height: 104px; padding: 10px 12px; resize: vertical; line-height: 1.5; }
+  .fld { display: grid; gap: 6px; min-width: 0; } .fld > small { color: var(--subtle); font-size: 12px; font-weight: 500; }
+
+  /* tabs & chips: selected = primary-soft + violet 55% border */
+  .tab, .chip { display: inline-flex; align-items: center; gap: 8px; padding: 0 12px; white-space: nowrap; color: var(--muted); background: none; border: 1px solid transparent; border-radius: var(--r-ctl); cursor: pointer; font-weight: 500; }
+  .tab { height: 36px; font-size: 14px; }
+  .chip { height: 34px; font-size: 13px; background: var(--surface); border-color: var(--line-strong); }
+  .tab:hover, .chip:hover { color: var(--ink); background: var(--raised); }
+  .tab.on, .chip.on { color: var(--violet); background: var(--primary-soft); border-color: var(--violet-line); }
+  .count { display: inline-grid; min-width: 20px; height: 18px; place-items: center; padding: 0 5px; color: var(--muted); background: var(--soft); border-radius: 5px; font-size: 11px; font-weight: 500; line-height: 1; font-variant-numeric: tabular-nums; }
+  .on > .count { color: var(--violet); background: color-mix(in srgb, var(--primary) 22%, transparent); }
+  .count.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+
+  .tag { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px 0 6px; color: var(--muted); border: 1px solid var(--line-strong); border-radius: 5px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+  .tag.ink { color: var(--ink); }
+  .st { width: 16px; height: 16px; flex: none; display: block; color: var(--subtle); }
+  .st.done { color: var(--ink); } .st.bad { color: var(--bad); }
+  .deadline { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; font-weight: 500; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .deadline.urgent { color: var(--warn); }
+  .pl { display: inline-grid; width: 28px; height: 28px; flex: none; place-items: center; color: #fff; border-radius: var(--r-ctl); font-size: 11px; font-weight: 600; letter-spacing: -.01em; }
+  .pl.sm { width: 22px; height: 22px; border-radius: 6px; font-size: 10px; }
+  .pl.TRENDYOL { background: #f27a1a; } .pl.HEPSIBURADA { background: #ff6000; } .pl.N11 { background: #5b2a86; } .pl.PAZARAMA { background: #1f4fe0; }
+  .thumb { display: grid; width: 44px; height: 44px; flex: none; place-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: 8px; }
+  .thumb.lg { width: 56px; height: 68px; } .thumb.sm { width: 32px; height: 32px; border-radius: 6px; }
+  .thumb svg { width: 20px; height: 20px; } .thumb.sm svg { width: 16px; height: 16px; }
+  .plink { color: var(--ink); text-decoration: none; font-weight: 500; }
+  .plink:hover { text-decoration: underline; text-underline-offset: 3px; }
+  .plink svg { vertical-align: -2px; margin-left: 4px; color: var(--subtle); }
+  .codes { color: var(--subtle); font-size: 12px; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .callout { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: var(--r-ctl); color: var(--muted); font-size: 13px; background: var(--raised); }
+  .callout svg { flex: none; margin-top: 2px; }
+  .callout.warn { color: var(--ink); border-color: color-mix(in srgb, var(--warn) 40%, var(--line-strong)); background: color-mix(in srgb, var(--warn) 10%, var(--surface)); }
+  .callout.warn svg { color: var(--warn); }
+  .callout b { font-weight: 600; }
+  .live { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .live i { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 18%, transparent); }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); }
+
+  /* messages */
+  .msg { display: grid; gap: 4px; min-width: 0; }
+  .msg > header { display: flex; align-items: baseline; gap: 10px; font-size: 12px; color: var(--subtle); }
+  .msg > header b { color: var(--ink); font-size: 13px; font-weight: 600; }
+  .msg p { margin: 0; overflow-wrap: anywhere; }
+  .msg.seller { margin-left: 18px; padding-left: 12px; border-left: 2px solid var(--line-strong); }
+  .msg.seller > header b { color: var(--muted); }
+  .msg .rej { display: inline-flex; align-items: center; gap: 6px; color: var(--bad); font-size: 12px; }
+  .msg.bubble { padding: 10px 12px; background: var(--raised); border: 1px solid var(--line); border-radius: 10px; }
+  .msg.bubble.seller { margin-left: 32px; border-left: 1px solid var(--line); background: var(--primary-soft); border-color: color-mix(in srgb, var(--primary) 28%, var(--line)); }
+
+  /* empty */
+  .empty { display: grid; justify-items: center; gap: 6px; padding: 44px 16px; text-align: center; }
+  .empty .st { width: 22px; height: 22px; margin-bottom: 4px; }
+  .empty b { font-weight: 600; } .empty span { color: var(--muted); max-width: 440px; }
+
+  /* modal / popups */
+  .overlay { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 24px 16px; overflow: auto; background: rgb(5 6 12 / 62%); }
+  .overlay.side { place-items: stretch end; padding: 0; }
+  .modal { display: flex; flex-direction: column; width: min(680px, 100%); max-height: calc(100vh - 48px); background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-pop); box-shadow: 0 30px 80px rgb(0 0 0 / 45%); }
+  .modal.w-sm { width: min(460px, 100%); } .modal.w-lg { width: min(860px, 100%); }
+  .m-head { display: flex; align-items: flex-start; gap: 12px; padding: 18px 20px 16px 24px; border-bottom: 1px solid var(--line); }
+  .m-head h2 { margin: 0; font-size: 18px; font-weight: 600; } .m-head p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+  .m-head .icon-btn { margin: -4px -6px 0 auto; }
+  .m-body { display: grid; gap: 16px; align-content: start; padding: 20px 24px; overflow-y: auto; min-height: 0; }
+  .m-foot { display: grid; gap: 10px; padding: 14px 24px 16px; border-top: 1px solid var(--line); background: var(--raised); border-radius: 0 0 var(--r-pop) var(--r-pop); }
+  .m-actions { display: flex; align-items: center; gap: 8px; }
+  .drawer { display: flex; flex-direction: column; width: min(560px, 100%); height: 100%; background: var(--surface); border-left: 1px solid var(--line-strong); box-shadow: -24px 0 60px rgb(0 0 0 / 45%); }
+  .drawer .m-body { flex: 1; } .drawer .m-foot { border-radius: 0; }
+
+  .pband { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 12px 14px; background: var(--raised); border: 1px solid var(--line); border-radius: 10px; }
+  .pband .pl-side { display: grid; justify-items: end; gap: 4px; color: var(--muted); font-size: 12px; text-align: right; }
+  .pband strong { display: block; font-weight: 600; line-height: 1.35; }
+  .thread { display: grid; gap: 12px; }
+  .note { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--muted); font-size: 12px; }
+  .note svg { color: var(--subtle); flex: none; }
+
+  /* composer */
+  .composer { display: grid; gap: 10px; }
+  .tpl-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .tpl-row > small { margin-right: 4px; color: var(--subtle); font-size: 12px; font-weight: 500; }
+  .tpl-chip { height: 28px; padding: 0 10px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-ctl); cursor: pointer; font-size: 12px; font-weight: 500; white-space: nowrap; }
+  .tpl-chip:hover { background: var(--soft); }
+  .tpl-chip.on { color: var(--violet); background: var(--primary-soft); border-color: var(--violet-line); }
+  .c-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; color: var(--subtle); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .c-meta .lo { color: var(--warn); }
+  .kbd { padding: 1px 5px; color: var(--muted); background: var(--soft); border: 1px solid var(--line-strong); border-radius: 4px; font-size: 11px; }
+
+  /* template manager */
+  .tm-split { display: grid; grid-template-columns: 280px minmax(0, 1fr); min-height: 420px; }
+  .tm-list { display: flex; flex-direction: column; border-right: 1px solid var(--line); min-height: 0; }
+  .tm-list .tools { display: grid; gap: 8px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+  .tm-list .items { overflow-y: auto; max-height: 420px; }
+  .tm-it { display: grid; gap: 2px; width: 100%; padding: 10px 16px 10px 14px; text-align: left; background: none; border: 0; border-left: 2px solid transparent; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .tm-it:hover { background: var(--soft); }
+  .tm-it.on { background: var(--primary-soft); border-left-color: var(--primary); }
+  .tm-it b { font-weight: 500; } .tm-it span { overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+  .tm-edit { display: grid; gap: 16px; align-content: start; padding: 20px 24px; }
+  .tm-edit h3 { margin: 0; font-size: 16px; font-weight: 600; }
+  .tm-edit .lead { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+  .tm-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 16px; padding: 14px 16px; border-top: 1px solid var(--line); }
+  .tm-card:first-child { border-top: 0; }
+  .tm-card b { font-weight: 600; } .tm-card p { grid-column: 1; margin: 0; color: var(--muted); font-size: 13px; }
+  .tm-card small { grid-column: 1; color: var(--subtle); font-size: 12px; }
+  .tm-card .acts { grid-row: 1 / span 3; grid-column: 2; display: flex; align-items: flex-start; gap: 6px; }
+  .tm-card.on { background: var(--primary-soft); box-shadow: inset 2px 0 0 var(--primary); }
+  .tm-table .tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.8fr) 132px 84px; align-items: center; gap: 14px; min-height: 52px; padding: 6px 20px; border-top: 1px solid var(--line); }
+  .tm-table .tr.hd { min-height: 34px; color: var(--muted); font-size: 12px; background: var(--raised); border-top: 0; }
+  .tm-table .tr .pv { overflow: hidden; color: var(--muted); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+  .tm-table .tr .acts { display: flex; justify-content: flex-end; gap: 2px; }
+  .tm-table .tr.on { background: var(--primary-soft); }
+
+  /* static mock stages */
+  .mocks { display: grid; gap: 16px; margin-top: 28px; }
+  .mocks > h3 { margin: 0; font-size: 16px; font-weight: 600; } .mocks > p { margin: -12px 0 0; color: var(--muted); font-size: 13px; }
+  .mock-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+  .mock { display: grid; gap: 8px; min-width: 0; }
+  .mock.full { grid-column: 1 / -1; }
+  .mock > span { color: var(--muted); font-size: 13px; font-weight: 500; }
+  .stage { position: relative; display: grid; place-items: center; padding: 28px 20px; overflow: hidden; background: linear-gradient(rgb(5 6 12 / 62%), rgb(5 6 12 / 62%)), repeating-linear-gradient(135deg, var(--surface) 0 14px, var(--bg) 14px 28px); border: 1px solid var(--line); border-radius: var(--r-card); }
+  .stage .modal { max-height: none; box-shadow: 0 18px 50px rgb(0 0 0 / 40%); }
+  .stage.side { place-items: stretch end; padding: 0; min-height: 640px; }
+  .stage.side .drawer { height: auto; }
+
+  /* ---------- page chrome ---------- */
+  .switcher { position: sticky; top: 0; z-index: 50; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 20px; background: color-mix(in srgb, var(--bg) 92%, transparent); border-bottom: 1px solid var(--line); backdrop-filter: blur(10px); }
+  .switcher > b { margin-right: 8px; font-weight: 600; }
+  .switcher .seg { display: inline-flex; gap: 4px; padding: 3px; background: var(--surface); border: 1px solid var(--line); border-radius: 9px; }
+  .switcher .seg .tab { height: 30px; font-size: 13px; }
+  .intro { max-width: 1180px; margin: 16px auto 0; padding: 0 20px; color: var(--muted); font-size: 13px; }
+  .intro b { color: var(--ink); font-weight: 600; }
+  .variant { max-width: 1180px; margin: 18px auto 0; padding: 0 20px 56px; }
+  .variant + .variant { border-top: 1px solid var(--line); padding-top: 28px; }
+  .v-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 0 0 16px; }
+  .v-title b { font-size: 13px; font-weight: 600; color: var(--violet); }
+  .v-title span { color: var(--muted); font-size: 13px; }
+
+  .ph { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px 16px; margin-bottom: 16px; }
+  .ph .crumb { color: var(--subtle); font-size: 12px; font-weight: 500; }
+  .ph h1 { margin: 0; font-size: 18px; font-weight: 600; }
+  .ph p { margin: 2px 0 0; color: var(--muted); }
+  .ph .acts { display: flex; gap: 8px; margin-left: auto; }
+
+  /* ---------- Öneri 1 ---------- */
+  .sync1 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 16px; overflow: hidden; }
+  .sync1 > div { display: grid; grid-template-columns: 28px minmax(0, 1fr); align-items: center; gap: 2px 12px; padding: 12px 16px; border-left: 1px solid var(--line); }
+  .sync1 > div:first-child { border-left: 0; }
+  .sync1 .pl { grid-row: span 3; align-self: start; margin-top: 2px; }
+  .sync1 b { display: flex; align-items: center; gap: 8px; font-weight: 600; } .sync1 b em { color: var(--muted); font-style: normal; font-weight: 400; font-size: 13px; }
+  .sync1 small { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sync1 small .st { width: 13px; height: 13px; }
+  .v1-panel { margin-bottom: 16px; }
+  .v1-tabs { display: flex; flex-wrap: wrap; gap: 4px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  .v1-status { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 16px 0; }
+  .v1-filters { display: grid; grid-template-columns: minmax(0, 2fr) repeat(3, minmax(0, 1fr)); gap: 12px; padding: 12px 16px 16px; }
+  .res-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+  .res-head h2 { margin: 0; font-size: 16px; font-weight: 600; }
+  .res-head .muted { font-size: 13px; }
+  .res-head .live { margin-left: auto; }
+  .qc { display: grid; gap: 12px; padding: 16px; border-top: 1px solid var(--line); }
+  .qc:first-child { border-top: 0; }
+  .qc-head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; }
+  .qc-prod { display: grid; gap: 1px; min-width: 0; }
+  .qc-prod .plink { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .qc-side { display: flex; align-items: center; gap: 12px; }
+  .qc-side .stk { display: grid; justify-items: end; gap: 4px; }
+  .qc-body { display: grid; gap: 10px; padding-left: 56px; }
+  .qc-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding-left: 56px; color: var(--subtle); font-size: 12px; }
+  .qc-foot a { color: var(--muted); }
+  .draft-mark { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+  .pager { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+
+  /* ---------- Öneri 2 ---------- */
+  .sync2 { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+  .sync2 span { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px 0 6px; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-ctl); font-size: 12px; white-space: nowrap; }
+  .sync2 span b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .sync2 .st { width: 14px; height: 14px; }
+  .inbox { display: grid; grid-template-columns: 380px minmax(0, 1fr); height: min(680px, calc(100vh - 140px)); min-height: 560px; overflow: hidden; }
+  .ib-left { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); }
+  .ib-tabs { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 4px; padding: 10px; border-bottom: 1px solid var(--line); }
+  .ib-tabs .tab { justify-content: center; min-width: 0; padding: 0 8px; overflow: hidden; }
+  .ib-tools { position: relative; display: grid; gap: 10px; padding: 12px; border-bottom: 1px solid var(--line); }
+  .ib-tools .row { display: flex; gap: 8px; }
+  .ib-tools .row .in-ico { flex: 1; min-width: 0; }
+  .ib-status { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); overflow: hidden; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-ctl); }
+  .sd { position: relative; }
+  .sd-btn { display: flex; align-items: center; gap: 8px; width: 100%; height: 36px; padding: 0 10px 0 12px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-ctl); cursor: pointer; font: inherit; font-size: 13px; }
+  .sd-btn small { color: var(--muted); font-size: 12px; }
+  .sd-btn b { flex: 1; font-weight: 500; text-align: left; }
+  .sd-btn svg { color: var(--muted); transition: transform .15s; }
+  .sd-btn.on { border-color: var(--violet-line); }
+  .sd-btn.on svg { transform: rotate(180deg); }
+  .sd-menu { position: absolute; z-index: 25; top: calc(100% + 6px); left: 0; right: 0; display: grid; gap: 2px; padding: 6px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 12px; box-shadow: 0 18px 50px rgb(0 0 0 / 45%); }
+  .sd-opt { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 34px; padding: 0 10px; color: var(--ink); background: none; border: 0; border-radius: 7px; cursor: pointer; font: inherit; font-size: 13px; text-align: left; }
+  .sd-opt:hover { background: var(--soft); }
+  .sd-opt.on { background: var(--primary-soft); }
+  .ib-status .seg { display: grid; gap: 1px; justify-items: center; min-width: 0; padding: 7px 4px 6px; color: var(--muted); background: none; border: 0; border-left: 1px solid var(--line); border-bottom: 2px solid transparent; cursor: pointer; font: inherit; }
+  .ib-status .seg:first-child { border-left: 0; }
+  .ib-status .seg b { color: var(--ink); font-size: 15px; font-weight: 600; line-height: 1.2; font-variant-numeric: tabular-nums; }
+  .ib-status .seg small { max-width: 100%; overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+  .ib-status .seg:hover { background: var(--raised); }
+  .ib-status .seg.on { background: var(--primary-soft); border-bottom-color: var(--primary); }
+  .ib-status .seg.on small { color: var(--ink); }
+  .ib-status .seg.warn b { color: var(--warn); }
+  .ib-status .seg:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--violet-line); }
+  .ib-tabs .btn { height: 36px; }
+  .ib-status .chip { height: 30px; padding: 0 10px; }
+  .ib-list { flex: 1; min-height: 0; overflow-y: auto; }
+  .ir { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 4px 12px; width: 100%; padding: 12px 14px 12px 12px; text-align: left; background: none; border: 0; border-left: 2px solid transparent; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .ir { transition: background .12s ease; }
+  .ir:hover { background: var(--raised); }
+  .ir.on { background: var(--primary-soft); border-left-color: var(--primary); }
+  .ir .pl { grid-row: span 3; }
+  .ir .l1 { display: flex; gap: 6px; min-width: 0; font-size: 12px; color: var(--muted); }
+  .ir .l1 b { color: var(--ink); font-weight: 600; font-size: 13px; white-space: nowrap; }
+  .ir .l1 span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ir time { color: var(--subtle); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .ir p { grid-column: 2 / -1; margin: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .ir .l3 { grid-column: 2 / -1; display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; }
+  .ir .l3 .st { width: 14px; height: 14px; }
+  .ib-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--line); color: var(--subtle); font-size: 12px; }
+  .ib-right { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  .ib-right .d-head { display: grid; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--line); }
+  .ib-right .d-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; color: var(--muted); font-size: 12px; }
+  .ib-right .d-body { flex: 1; display: grid; gap: 14px; align-content: start; padding: 20px; overflow-y: auto; min-height: 0; }
+  .ib-right .d-comp { padding: 14px 20px 16px; border-top: 1px solid var(--line); background: var(--raised); }
+  .ib-right .d-closed { display: flex; align-items: center; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; background: var(--raised); }
+  .popover { position: absolute; z-index: 20; display: grid; gap: 14px; width: 300px; padding: 16px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 12px; box-shadow: 0 18px 50px rgb(0 0 0 / 45%); }
+  .ib-tools .popover { top: 56px; right: 12px; }
+  .popover .quick { display: flex; flex-wrap: wrap; gap: 6px; }
+  .popover .quick .chip { height: 28px; padding: 0 10px; font-size: 12px; }
+  .popover footer { display: flex; justify-content: space-between; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
+  .back-btn { display: none; }
+
+  /* ---------- Öneri 3 ---------- */
+  .metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); margin-bottom: 12px; overflow: hidden; }
+  .metric { display: grid; gap: 2px; padding: 12px 16px; text-align: left; background: none; border: 0; border-left: 1px solid var(--line); cursor: pointer; }
+  .metric:first-child { border-left: 0; }
+  .metric:hover { background: var(--raised); }
+  .metric small { color: var(--muted); font-size: 12px; font-weight: 500; }
+  .metric b { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.3; }
+  .metric em { color: var(--subtle); font-size: 12px; font-style: normal; }
+  .metric.on { background: var(--primary-soft); box-shadow: inset 0 0 0 1px var(--violet-line); border-radius: 0; }
+  .metric.on small, .metric.on em { color: var(--violet); }
+  .metric.warn b { color: var(--warn); }
+  .syncline { margin-bottom: 16px; }
+  .syncline summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 16px; list-style: none; cursor: pointer; color: var(--muted); font-size: 13px; }
+  .syncline summary::-webkit-details-marker { display: none; }
+  .syncline summary b { color: var(--ink); font-weight: 500; }
+  .syncline summary .chev { margin-left: auto; color: var(--subtle); transition: transform .15s; }
+  .syncline[open] summary .chev { transform: rotate(180deg); }
+  .syncline .rows { border-top: 1px solid var(--line); }
+  .syncline .sr { display: grid; grid-template-columns: 22px minmax(0, 1fr) 110px minmax(0, 1.2fr) minmax(0, 1.2fr); align-items: center; gap: 12px; min-height: 44px; padding: 4px 16px; border-top: 1px solid var(--line); font-size: 13px; }
+  .syncline .sr:first-child { border-top: 0; }
+  .syncline .sr span { color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .queue-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  .queue-tools .seg { display: inline-flex; gap: 4px; }
+  .queue-tools .in-ico { flex: 1 1 200px; min-width: 0; }
+  .queue-tools select.in, .queue-tools .in-btn { width: auto; height: 34px; }
+  .qt { --cols: 24px minmax(0, 2fr) minmax(0, 1.35fr) 132px 150px 92px; }
+  .qt .tr { display: grid; grid-template-columns: var(--cols); align-items: center; gap: 14px; min-height: 56px; padding: 6px 16px; border-top: 1px solid var(--line); cursor: pointer; }
+  .qt .tr:hover { background: var(--soft); }
+  .qt .tr.on { background: var(--primary-soft); box-shadow: inset 2px 0 0 var(--primary); }
+  .qt .tr.hd { min-height: 34px; color: var(--muted); font-size: 12px; background: var(--raised); border-top: 0; border-bottom: 1px solid var(--line); cursor: default; }
+  .qt .tr.hd + .tr { border-top: 0; }
+  .qt .q { display: grid; gap: 1px; min-width: 0; }
+  .qt .q p { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .qt .q small { color: var(--subtle); font-size: 12px; }
+  .qt .q small b { color: var(--muted); font-weight: 500; }
+  .qt .prod { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .qt .prod > div { min-width: 0; display: grid; }
+  .qt .prod span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+  .qt .store { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--muted); font-size: 13px; }
+  .qt .when { display: grid; gap: 1px; }
+  .qt .when small { color: var(--subtle); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .qt .act { display: flex; justify-content: flex-end; }
+  .qt-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+
+  .toast { position: fixed; right: 20px; bottom: 20px; z-index: 200; display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: var(--raised); border: 1px solid var(--line-strong); border-radius: 10px; opacity: 0; transform: translateY(6px); transition: .2s; pointer-events: none; }
+  .toast.on { opacity: 1; transform: none; }
+
+  /* ---------- responsive ---------- */
+  @media (max-width: 1000px) {
+    .sync1 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .sync1 > div:nth-child(3) { border-left: 0; } .sync1 > div:nth-child(n+3) { border-top: 1px solid var(--line); }
+    .v1-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } .v1-filters > :first-child { grid-column: 1 / -1; }
+    .inbox { grid-template-columns: 320px minmax(0, 1fr); }
+    .qt { --cols: 24px minmax(0, 1fr) 150px 92px; }
+    .qt .prod-c, .qt .store-c { display: none; }
+    .metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .metric:nth-child(4) { border-left: 0; } .metric:nth-child(n+4) { border-top: 1px solid var(--line); }
+    .mock-grid { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 760px) {
+    .switcher, .intro, .variant { padding-left: 16px; padding-right: 16px; }
+    .switcher > b { width: 100%; } .switcher .seg { flex-wrap: wrap; }
+    .ph .acts { margin-left: 0; }
+    .sync1 { grid-template-columns: 1fr; } .sync1 > div { border-left: 0 !important; } .sync1 > div + div { border-top: 1px solid var(--line); }
+    .v1-filters { grid-template-columns: 1fr; }
+    .qc-head { grid-template-columns: auto minmax(0, 1fr); }
+    .qc-side { grid-column: 1 / -1; justify-content: space-between; }
+    .qc-side .stk { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 6px 10px; min-width: 0; }
+    .qc-body, .qc-foot { padding-left: 0; }
+    .qc-foot .btn.primary { margin-left: auto; }
+    .res-head .live { margin-left: 0; width: 100%; }
+    .inbox { grid-template-columns: 1fr; height: auto; }
+    .ib-left { border-right: 0; } .ib-list { max-height: 520px; }
+    .ib-tabs .tab { font-size: 13px; gap: 6px; padding: 0 6px; }
+    .inbox.detail .ib-left { display: none; } .inbox:not(.detail) .ib-right { display: none; }
+    .back-btn { display: inline-flex; }
+    .ib-tools .popover { left: 12px; right: 12px; width: auto; }
+    .sync2 { margin-left: 0; }
+    .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .metric { border-left: 0 !important; border-top: 1px solid var(--line); } .metric:nth-child(-n+2) { border-top: 0; } .metric:nth-child(even) { border-left: 1px solid var(--line) !important; }
+    .syncline .sr { grid-template-columns: 22px minmax(0, 1fr) auto; } .syncline .sr > :nth-child(4), .syncline .sr > :nth-child(5) { display: none; }
+    .queue-tools .seg { width: 100%; } .queue-tools .seg .tab { flex: 1; justify-content: center; }
+    .queue-tools select.in, .queue-tools .in-btn { flex: 1 1 140px; }
+    .qt .tr.hd { display: none; }
+    .qt .tr { grid-template-columns: 20px minmax(0, 1fr) auto; gap: 6px 10px; padding: 12px 16px; }
+    .qt .q { grid-column: 2 / -1; } .qt .q p { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+    .qt .when { grid-column: 2; } .qt .act { grid-column: 3; grid-row: 2; }
+    .tm-split { grid-template-columns: 1fr; } .tm-list { border-right: 0; border-bottom: 1px solid var(--line); } .tm-list .items { max-height: 220px; }
+    .tm-table .tr { grid-template-columns: minmax(0, 1fr) auto; } .tm-table .tr .pv, .tm-table .tr .upd { display: none; }
+    .pband { grid-template-columns: auto minmax(0, 1fr); } .pband .pl-side { grid-column: 1 / -1; justify-items: start; text-align: left; grid-auto-flow: column; align-items: center; justify-content: start; gap: 8px; }
+    .m-head { padding: 16px 16px 14px; } .m-body { padding: 16px; } .m-foot { padding: 12px 16px 14px; }
+    .overlay { padding: 12px; }
+    .stage { padding: 16px 10px; }
+    .m-actions { flex-wrap: wrap; }
+  }
+
+  /* Öneri 2 · head: title left, sync strip + actions right, all on one 34px line */
+  [data-variant="2"] .ph { align-items: center; }
+  [data-variant="2"] .ph .acts { align-items: center; }
+  [data-variant="2"] .sync2 { display: inline-flex; flex-wrap: nowrap; gap: 0; margin-left: auto; overflow: hidden; height: 34px; border: 1px solid var(--line-strong); border-radius: var(--r-ctl); }
+  [data-variant="2"] .sync2 > span { height: 32px; padding: 0 10px 0 8px; border: 0; border-left: 1px solid var(--line); border-radius: 0; background: var(--surface); }
+  [data-variant="2"] .sync2 > span:first-child { border-left: 0; }
+  [data-variant="2"] .ph .acts { margin-left: 0; }
+  /* Öneri 2 · selected question head: product row and a fact strip in one card */
+  .ib-right .d-head { gap: 10px; }
+  .d-card { overflow: hidden; background: var(--raised); border: 1px solid var(--line); border-radius: 12px; }
+  .d-card .pband { grid-template-columns: 48px minmax(0, 1fr) auto; gap: 14px; padding: 12px 14px; background: none; border: 0; border-radius: 0; }
+  .d-card .pband .thumb { width: 48px; height: 48px; border-radius: 8px; }
+  .d-card .pband strong { font-size: 15px; }
+  .d-card .pband .codes { margin-top: 2px; }
+  .d-card .pband .pl-side { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+  .d-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; border-top: 1px solid var(--line); }
+  .d-facts > div { display: grid; align-content: center; gap: 4px; min-height: 56px; padding: 8px 14px; border-left: 1px solid var(--line); }
+  .d-facts > div:first-child { border-left: 0; }
+  .d-facts dt { color: var(--subtle); font-size: 12px; }
+  .d-facts dd { margin: 0; color: var(--ink); font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .d-facts dd .tag { vertical-align: middle; }
+  .d-facts dd.urgent { color: var(--warn); }
+  @media (max-width: 760px) { .d-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } .d-facts > div:nth-child(3) { border-left: 0; } .d-facts > div:nth-child(n + 3) { border-top: 1px solid var(--line); } [data-variant="2"] .sync2 { margin-left: 0; } }
+
+  .sd-btn .st, .sd-opt .st { width: 15px; height: 15px; flex: none; color: var(--muted); }
+  .sd-opt .sd-l { display: inline-flex; align-items: center; gap: 8px; }
+  .sd-btn .st.done, .sd-opt .st.done { color: var(--ink); }
+  .range-row { display: grid; grid-template-columns: minmax(0, 1fr) 36px; gap: 6px; }
+  .seg-range { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); overflow: hidden; height: 36px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-ctl); }
+  .seg-range button { min-width: 0; padding: 0 4px; color: var(--muted); background: none; border: 0; border-left: 1px solid var(--line); cursor: pointer; font: inherit; font-size: 12px; white-space: nowrap; }
+  .seg-range button:first-child { border-left: 0; }
+  .seg-range button:hover { color: var(--ink); background: var(--raised); }
+  .seg-range button.on { color: var(--ink); background: var(--primary-soft); box-shadow: inset 0 -2px 0 var(--primary); }
+  .btn.icon-only { width: 36px; height: 36px; padding: 0; justify-content: center; }
+
+  .tm-card { column-gap: 28px !important; align-items: center !important; }
+  .tm-card .acts { align-self: center !important; align-items: center !important; grid-row: 1 / -1 !important; }
+</style>
+</head>
+<body>
+<nav class="switcher" aria-label="Öneri seçimi">
+  <b>Ürün Soruları · Tasarım Önerileri</b>
+  <span class="seg" id="vsw">
+    <button class="tab on" data-v="1">Öneri 1 · Düzenli Liste</button>
+    <button class="tab" data-v="2">Öneri 2 · Gelen Kutusu</button>
+    <button class="tab" data-v="3">Öneri 3 · İş Kuyruğu</button>
+    <button class="tab" data-v="all">Hepsi Alt Alta</button>
+  </span>
+  <span class="seg" id="msw" title="Veri görünümü">
+    <button class="tab on" data-mode="sample">Örnek Sorular</button>
+    <button class="tab" data-mode="real">Bugünkü Durum</button>
+  </span>
+</nav>
+<p class="intro"><b>Gerçek içerik, üç yerleşim.</b> Sayfadaki her şey korunur: Yenile, mağaza başına aktarım durumu, Ürün / Sipariş / Hazır Cevaplar sekmeleri, beş durum filtresi, Metin Ara · Mağaza · Tarih Aralığı · Sıralama, 30 saniyelik yenileme, soru kartı, cevap penceresi (hazır cevap, karakter sınırı, N11 tek cevap ve Pazarama onay uyarısı) ve Hazır Cevaplar yönetimi. “Bugünkü Durum” panelin şu anki sayılarını gösterir (0 bekleyen · 740 cevaplanan · 3 diğer · 743 toplam). Her önerinin altında popupların statik görünümleri var; listedeki düğmeler canlı popupları da açar.</p>
+<div id="root"></div>
+<div id="layer"></div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+/* ---------------- data ---------------- */
+const PLATFORM = { TRENDYOL: ['Trendyol', 'ty'], HEPSIBURADA: ['Hepsiburada', 'hb'], N11: ['N11', 'n11'], PAZARAMA: ['Pazarama', 'p'] }
+const SYNC = [
+  { p: 'N11', n: 2, at: '16.10.2026 · 18:36' },
+  { p: 'PAZARAMA', n: 1, at: '16.10.2026 · 18:35' },
+  { p: 'TRENDYOL', n: 708, at: '16.10.2026 · 18:36' },
+  { p: 'HEPSIBURADA', n: 32, at: '16.10.2026 · 18:34' },
+]
+const ORDER_PLATFORMS = ['HEPSIBURADA', 'PAZARAMA']
+const mkQ = o => Object.assign({ kind: 'PRODUCT', conv: [], model: '', bc: '', order: '', dl: null }, o)
+const Q = [
+  mkQ({ id: 'q1', ext: '78213654', p: 'TRENDYOL', st: 'WAITING_FOR_ANSWER', name: 'Kadın Oversize Basic Tişört – Ekru', sku: 'RV-TS-1042', model: 'TS1042', bc: '8682145010427', cust: 'A*** Y***', at: '16.10.2026 · 17:52', short: '17:52', text: 'Merhaba, 1,68 boyundayım ve 60 kiloyum. M mi L mi almalıyım? Kalıbı bol mu?', dl: ['2 gün 3 saat', false], hue: '#c9a978', ico: 'shirt' }),
+  mkQ({ id: 'q2', ext: '41982277', p: 'HEPSIBURADA', st: 'WAITING_FOR_ANSWER', name: 'Paslanmaz Çelik Termos 750 ml – Antrasit', sku: 'RV-TM-0750', bc: '8682145007502', cust: 'M*** K***', at: '16.10.2026 · 15:08', short: '15:08', text: 'Sıcak suyu kaç saat koruyor? Kapağı çantada sızdırıyor mu?', dl: ['5 saat 12 dakika', true], hue: '#7f8a99', ico: 'bottle' }),
+  mkQ({ id: 'q3', ext: '1093345', p: 'N11', st: 'WAITING_FOR_ANSWER', name: 'Bambu Kesme Tahtası 3’lü Set', sku: 'RV-KT-0303', model: 'KT303', cust: 'S*** D***', at: '16.10.2026 · 11:41', short: '11:41', text: 'Bulaşık makinesinde yıkanabilir mi? En büyüğünün ölçüsü nedir?', dl: ['1 gün 4 saat', false], hue: '#b98a52', ico: 'board' }),
+  mkQ({ id: 'q4', ext: '78209981', p: 'TRENDYOL', st: 'WAITING_FOR_ANSWER', name: 'Kadın Keten Gömlek – Beyaz', sku: 'RV-GM-2210', model: 'GM2210', bc: '8682145022109', cust: 'Z*** Ö***', at: '16.10.2026 · 09:15', short: '09:15', text: 'Ürün terletir mi, astarı var mı? 38 beden giyiyorum, S olur mu?', dl: ['3 gün 1 saat', false], hue: '#9aa3ad', ico: 'shirt' }),
+  mkQ({ id: 'a1', ext: '78177420', p: 'TRENDYOL', st: 'ANSWERED', name: 'Pamuklu Bebek Battaniyesi 90×120 – Gri', sku: 'RV-BB-0912', cust: 'H*** Ç***', at: '15.10.2026 · 21:37', short: '15.10', text: 'Yıkamada çeker mi? Kaç derecede yıkanmalı?', hue: '#8c95a6', ico: 'box', conv: [{ s: true, at: '16.10.2026 · 08:44', t: 'Merhaba, ürünümüz %100 pamuktur; 30 derecede yıkandığında çekme yapmaz. İyi günlerde kullanın.' }] }),
+  mkQ({ id: 'a2', ext: '41966013', p: 'HEPSIBURADA', st: 'ANSWERED', name: 'Akıllı Saat Kordonu 22 mm – Siyah', sku: 'RV-KR-2201', cust: 'O*** B***', at: '15.10.2026 · 18:02', short: '15.10', text: 'Samsung Galaxy Watch 3 ile uyumlu mu?', hue: '#6c7480', ico: 'watch', conv: [{ s: true, at: '15.10.2026 · 19:10', t: 'Merhaba, 22 mm pim bağlantılı tüm saatlerle uyumludur; Galaxy Watch 3 (45 mm) modelinde sorunsuz kullanılır.' }] }),
+  mkQ({ id: 'e1', ext: '1091880', p: 'N11', st: 'EXPIRED', name: 'Seramik Kupa 350 ml – Mat Yeşil', sku: 'RV-KP-0350', cust: 'F*** E***', at: '12.10.2026 · 13:26', short: '12.10', text: 'Mikrodalgada ve bulaşık makinesinde kullanılabilir mi?', hue: '#6f9a7c', ico: 'cup' }),
+  mkQ({ id: 'r1', ext: '78150732', p: 'TRENDYOL', st: 'REJECTED', name: 'Silikon Spatula Seti 5’li', sku: 'RV-SP-0005', cust: 'C*** G***', at: '14.10.2026 · 10:12', short: '14.10', text: 'Kaç dereceye kadar dayanıklı? Teflon tavada çizer mi?', hue: '#c07a7a', ico: 'box', conv: [{ s: true, at: '14.10.2026 · 11:03', t: 'Merhaba, 230 °C’ye kadar dayanıklıdır ve teflonu çizmez. Detaylı bilgi için bize WhatsApp hattımızdan ulaşabilirsiniz.', rej: 'Cevap platform dışı iletişim yönlendirmesi içeriyor' }] }),
+  mkQ({ id: 'o1', ext: 'PZQ-30117', p: 'PAZARAMA', kind: 'ORDER', st: 'WAITING_FOR_ANSWER', name: 'Erkek Slim Fit Chino Pantolon – Lacivert', sku: 'RV-PN-3302', order: 'PZ-58201447', cust: 'E*** T***', at: '16.10.2026 · 16:20', short: '16:20', text: 'Siparişim üç gündür hazırlanıyor görünüyor, ne zaman kargoya verilecek?', dl: ['1 gün 22 saat', false], hue: '#4f5f86', ico: 'shirt' }),
+  mkQ({ id: 'o2', ext: '4736002251-1', p: 'HEPSIBURADA', kind: 'ORDER', st: 'ANSWER_SUBMITTED', name: '', sku: '', order: '4736002251', cust: 'B*** A***', at: '16.10.2026 · 13:47', short: '13:47', text: 'Faturayı şirket adına düzenleyebilir misiniz? Vergi numaramı iletebilirim.', hue: '#7a7f8c', ico: 'bag', conv: [{ s: true, at: '16.10.2026 · 14:02', t: 'Merhaba, vergi bilgilerinizi bu mesaja yanıt olarak iletmeniz yeterli; kurumsal faturanız 24 saat içinde e-posta adresinize gönderilecektir.' }] }),
+]
+let TPL = [
+  { id: 't1', title: 'Kargo Süresi', text: 'Merhaba, siparişleriniz 1–2 iş günü içinde kargoya teslim edilmektedir. Kargo takip numaranız sipariş detayınızda yer alacaktır. İyi alışverişler dileriz.', at: '02.10.2026 · 14:20' },
+  { id: 't2', title: 'Beden Önerisi', text: 'Merhaba, ürünümüz standart kalıptır. Boyunuza ve kilonuza göre normalde giydiğiniz bedeni tercih edebilirsiniz; ölçü tablosu ürün görsellerinde yer almaktadır. İyi alışverişler dileriz.', at: '09.10.2026 · 10:05' },
+  { id: 't3', title: 'Yıkama Talimatı', text: 'Merhaba, ürünü 30 derecede, benzer renklerle ters çevirerek yıkamanızı ve kurutma makinesi kullanmamanızı öneririz.', at: '11.10.2026 · 16:48' },
+  { id: 't4', title: 'Fatura Talebi', text: 'Merhaba, kurumsal fatura için şirket unvanı ve vergi numaranızı iletmeniz yeterlidir. Faturanız 24 saat içinde e-posta adresinize gönderilecektir.', at: '14.10.2026 · 09:31' },
+]
+const BASE = { PRODUCT: { WAITING: 0, ANSWERED: 738, EXPIRED: 0, OTHER: 2 }, ORDER: { WAITING: 0, ANSWERED: 31, EXPIRED: 0, OTHER: 0 } }
+const STATUSES = [['WAITING', 'Cevap Bekleyenler'], ['ANSWERED', 'Cevaplananlar'], ['EXPIRED', 'Süresi Dolanlar'], ['OTHER', 'Diğer Durumlar'], ['ALL', 'Tümü']]
+
+/* ---------------- state ---------------- */
+const S = { v: '1', mode: 'sample', tab: 'PRODUCT', status: 'WAITING', search: '', store: 'ALL', sort: 'NEWEST', range: 'Tüm Tarihler', sel: { 2: 'q1', 3: null }, detail2: false, filters2: false, modal: null, drafts: { o1: '' }, tpl: { id: 't1', title: '', text: '', q: '' } }
+const group = st => st === 'WAITING_FOR_ANSWER' ? 'WAITING' : st === 'ANSWERED' ? 'ANSWERED' : st === 'EXPIRED' ? 'EXPIRED' : 'OTHER'
+const visibleQ = () => Q.filter(q => S.mode === 'sample' || !['WAITING', 'EXPIRED'].includes(group(q.st)))
+const templates = () => S.mode === 'sample' ? TPL : TPL.slice(0, 1)
+function counts(kind) {
+  const c = Object.assign({}, BASE[kind])
+  visibleQ().filter(q => q.kind === kind).forEach(q => c[group(q.st)]++)
+  c.ALL = c.WAITING + c.ANSWERED + c.EXPIRED + c.OTHER
+  return c
+}
+function rows() {
+  const needle = S.search.trim().toLocaleLowerCase('tr')
+  let r = visibleQ().filter(q => q.kind === S.tab && (S.status === 'ALL' || group(q.st) === S.status) && (S.store === 'ALL' || q.p === S.store))
+  if (needle) r = r.filter(q => [q.text, q.name, q.sku, q.order, q.cust].join(' ').toLocaleLowerCase('tr').includes(needle))
+  if (S.sort === 'OLDEST') r = r.slice().reverse()
+  return r
+}
+const byId = id => Q.find(q => q.id === id)
+
+/* ---------------- icons & glyphs ---------------- */
+const ico = (p, s = 16) => `<svg width="${s}" height="${s}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`
+const I = {
+  refresh: ico('<path d="M13 6.5A5 5 0 0 0 4 4.5L3 6"/><path d="M3 2.5V6h3.5"/><path d="M3 9.5a5 5 0 0 0 9 2l1-1.5"/><path d="M13 13.5V10H9.5"/>', 15),
+  search: ico('<circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/>', 15),
+  cal: ico('<rect x="2.5" y="3.5" width="11" height="10" rx="2"/><path d="M2.5 6.5h11M5.5 2v3M10.5 2v3"/>', 15),
+  close: ico('<path d="m4 4 8 8M12 4l-8 8"/>'),
+  chev: ico('<path d="m4.5 6 3.5 3.5L11.5 6"/>'),
+  back: ico('<path d="M10 3.5 5.5 8l4.5 4.5"/>'),
+  ext: ico('<path d="M9.5 2.5h4v4M13.5 2.5 8 8M11.5 9.5v3a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3"/>', 13),
+  info: ico('<circle cx="8" cy="8" r="6.2"/><path d="M8 7.2v3.6M8 5h.01"/>', 14),
+  warn: ico('<path d="M8 2.5 14 13H2z"/><path d="M8 6.5v3M8 11.5h.01"/>'),
+  clock: ico('<circle cx="8" cy="8" r="6"/><path d="M8 5v3.2l2 1.2"/>', 13),
+  filter: ico('<path d="M2.5 4h11M4.5 8h7M6.5 12h3"/>', 15),
+  tpl: ico('<path d="M3 3.5h10v7H7l-3 2.5v-2.5H3z"/><path d="M5.5 6.5h5M5.5 8.5h3"/>', 15),
+  edit: ico('<path d="M3 13h3l7-7-3-3-7 7z"/>', 15),
+  trash: ico('<path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5"/>', 15),
+  plus: ico('<path d="M8 3.5v9M3.5 8h9"/>', 15),
+  send: ico('<path d="M2.5 8 13.5 2.5 11 13.5 8 9z"/><path d="m8 9 5.5-6.5"/>', 15),
+  draft: ico('<path d="M3 13h3l7-7-3-3-7 7z"/>', 13),
+  order: ico('<path d="M3 5h10l-1 8.5H4z"/><path d="M5.5 5a2.5 2.5 0 0 1 5 0"/>', 13),
+}
+const THUMB = {
+  shirt: '<path d="M5.5 2.5 3 4 1.8 7l2 1v5.5h8.4V8l2-1L13 4l-2.5-1.5C10 3.6 9 4.3 8 4.3S6 3.6 5.5 2.5z"/>',
+  bottle: '<path d="M6 1.8h4v2H6zM5.2 3.8h5.6v10a.8.8 0 0 1-.8.8H6a.8.8 0 0 1-.8-.8z"/><path d="M5.2 7h5.6"/>',
+  board: '<rect x="2" y="3.5" width="10" height="9" rx="1.6"/><path d="M12 7h1.6a.6.6 0 0 1 0 2H12"/>',
+  box: '<path d="M2.5 5 8 2.5 13.5 5v6L8 13.5 2.5 11z"/><path d="M2.5 5 8 7.5 13.5 5M8 7.5v6"/>',
+  watch: '<rect x="4" y="4.5" width="8" height="7" rx="2"/><path d="M5.5 4.5 6 1.8h4l.5 2.7M5.5 11.5l.5 2.7h4l.5-2.7"/>',
+  cup: '<path d="M3 4h8v6a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3z"/><path d="M11 6h1.2a1.6 1.6 0 0 1 0 3.2H11"/>',
+  bag: '<path d="M3 5h10l-1 8.5H4z"/><path d="M5.5 5a2.5 2.5 0 0 1 5 0"/>',
+}
+const thumb = (q, cls = '') => `<span class="thumb ${cls}" style="background:color-mix(in srgb, ${q.hue} 20%, var(--raised));color:color-mix(in srgb, ${q.hue} 70%, white)" aria-hidden="true">${ico(THUMB[q.ico] || THUMB.box)}</span>`
+const glyph = s => s === 'done' ? '<svg class="st done" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="currentColor"/><path d="m5 8.2 2.1 2.1 3.9-4.2" fill="none" stroke="var(--surface)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+  : s === 'partial' ? '<svg class="st" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.2" opacity=".35"/><path d="M8 1.8a6.2 6.2 0 0 1 5.9 4.3"/><path d="M8 5.6v2.6l1.8 1.1"/></svg>'
+  : s === 'bad' ? '<svg class="st bad" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.2"/><path d="m5.8 5.8 4.4 4.4M10.2 5.8l-4.4 4.4"/></svg>'
+  : '<svg class="st" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2.6 2.2" aria-hidden="true"><circle cx="8" cy="8" r="6.2"/></svg>'
+const STATUS = {
+  WAITING_FOR_ANSWER: ['partial', 'Cevap Bekliyor'], ANSWER_SUBMITTED: ['partial', 'Cevap Gönderildi · Doğrulanıyor'], ANSWERED: ['done', 'Cevaplandı'],
+  EXPIRED: ['none', 'Süresi Doldu'], REJECTED: ['bad', 'Reddedildi'], REPORTED: ['partial', 'İnceleniyor'],
+}
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+const pl = (p, sm) => `<span class="pl ${p} ${sm ? 'sm' : ''}" title="${PLATFORM[p][0]}" aria-hidden="true">${PLATFORM[p][1]}</span>`
+const stag = q => { const [g, l] = STATUS[q.st]; return `<span class="tag ${g === 'done' ? 'ink' : ''}">${glyph(g)}${l}</span>` }
+const dline = q => q.dl ? `<span class="deadline ${q.dl[1] ? 'urgent' : ''}" title="Son cevap tarihi">${I.clock}Kalan Süre: ${q.dl[0]}</span>` : ''
+const codes = q => [q.sku && `SKU ${q.sku}`, q.model && `Model ${q.model}`, q.bc && `Barkod ${q.bc}`].filter(Boolean).join(' · ') || (q.kind === 'ORDER' ? `Sipariş #${q.order}` : 'Ürün kodu bilgisi yok')
+const pname = q => q.name ? `<a class="plink" href="#" onclick="return false" title="Pazaryerinde aç">${esc(q.name)}${I.ext}</a>` : `<span class="plink">Sipariş Sorusu</span>`
+const isWaiting = q => q.st === 'WAITING_FOR_ANSWER'
+const minLen = q => q.p === 'TRENDYOL' ? 10 : 1
+const rangeTxt = q => q.p === 'TRENDYOL' ? '10–2000' : '1–2000'
+const storeOpts = () => `<option value="ALL">Tüm Mağazalar</option>${Object.keys(PLATFORM).filter(p => S.tab !== 'ORDER' || ORDER_PLATFORMS.includes(p)).map(p => `<option value="${p}" ${S.store === p ? 'selected' : ''}>${PLATFORM[p][0]}</option>`).join('')}`
+const sortOpts = () => [['NEWEST', 'En Yeni'], ['OLDEST', 'En Eski'], ['UPDATED', 'Son Güncellenen']].map(([v, l]) => `<option value="${v}" ${S.sort === v ? 'selected' : ''}>${l}</option>`).join('')
+const syncs = () => SYNC.filter(s => S.tab !== 'ORDER' || ORDER_PLATFORMS.includes(s.p))
+const tabTitle = () => S.tab === 'ORDER' ? 'Sipariş Soruları' : 'Ürün Soruları'
+
+function thread(q, bubble) {
+  const c = bubble ? 'bubble' : ''
+  return `<div class="msg ${c}"><header><b>${esc(q.cust || 'Müşteri Sorusu')}</b><time>${q.at}</time></header><p>${esc(q.text)}</p></div>`
+    + q.conv.map(m => `<div class="msg seller ${c}"><header><b>Satıcı Cevabı</b><time>${m.at}</time></header><p>${esc(m.t)}</p>${m.rej ? `<span class="rej">${glyph('bad')}Ret Nedeni: ${esc(m.rej)}</span>` : ''}</div>`).join('')
+}
+function emptyState() {
+  if (S.status === 'WAITING' && !S.search) return `<div class="empty">${glyph('done')}<b>Cevap Bekleyen Soru Yok</b><span>Tüm sorular cevaplandı. Yeni sorular her 30 saniyede bir kontrol edilir.</span></div>`
+  return `<div class="empty">${glyph('none')}<b>Bu Filtrelerde Soru Bulunamadı</b><span>Geçmiş aktarımı tamamlandıkça erişilebilen sorular listelenir.</span></div>`
+}
+
+/* ---------------- composer & popups ---------------- */
+function platformNote(q) {
+  if (q.p === 'N11') return `<div class="callout warn">${I.warn}<span><b>N11’de cevap bir kez verilir.</b> Gönderdikten sonra değiştirilemez veya silinemez.</span></div>`
+  if (q.p === 'PAZARAMA') return `<div class="callout">${I.info}<span>Pazarama’da cevap önce Pazarama onayına düşer; onaylanmadan müşteriye görünmez ve reddedilebilir.</span></div>`
+  return ''
+}
+function composer(q, draft, opts = {}) {
+  const len = draft.trim().length, ok = len >= minLen(q) && len <= 2000, tpls = templates()
+  const tplPart = tpls.length ? `<div class="tpl-row"><small>Hazır Cevap</small>${tpls.map(t => `<button class="tpl-chip ${draft === t.text ? 'on' : ''}" data-fill="${t.id}" data-q="${q.id}" title="${esc(t.text)}">${esc(t.title)}</button>`).join('')}<button class="btn quiet" style="height:28px;padding:0 8px;font-size:12px" data-tpl-open>${I.edit}Yönet</button></div>`
+    : `<div class="tpl-row"><small>Hazır cevap yok.</small><button class="btn quiet" style="height:28px;padding:0 8px;font-size:12px" data-tpl-open>${I.plus}Hazır Cevap Ekle</button></div>`
+  return `<div class="composer">
+    ${tplPart}
+    <textarea class="in" rows="${opts.rows || 4}" maxlength="2000" data-draft="${q.id}" placeholder="Cevabınızı yazın…" aria-label="Soruya cevap">${esc(draft)}</textarea>
+    ${platformNote(q)}
+    <div class="c-meta"><span data-cnt="${q.id}" class="${len && len < minLen(q) ? 'lo' : ''}">${len} / ${rangeTxt(q)} karakter</span><span><span class="kbd">Ctrl</span> + <span class="kbd">Enter</span> ile gönderin</span><span class="grow"></span>${opts.noDeadline ? '' : dline(q)}</div>
+    <div class="m-actions">${opts.left || ''}<span class="grow"></span>${opts.cancel ? `<button class="btn" data-close>Vazgeç</button>` : ''}<button class="btn primary" data-send="${q.id}" ${ok ? '' : 'disabled'}>${I.send}Gönder</button></div>
+  </div>`
+}
+const pband = q => `<div class="pband">${thumb(q, 'lg')}<div style="min-width:0"><strong>${pname(q)}</strong><div class="codes">${codes(q)}</div>${q.order ? `<div class="codes" style="margin-top:2px">${I.order} <a href="#" onclick="return false" style="color:var(--muted)">Sipariş #${q.order}</a></div>` : ''}</div><div class="pl-side">${pl(q.p)}<span>${PLATFORM[q.p][0]}</span></div></div>`
+
+function answerModal(q, draft) {
+  return `<div class="modal" role="dialog" aria-label="Soru Detayı">
+    <header class="m-head"><div><h2>Soru Detayı</h2><p>#${q.ext} · ${PLATFORM[q.p][0]} · ${q.at}</p></div><button class="icon-btn" data-close aria-label="Kapat">${I.close}</button></header>
+    <div class="m-body">${pband(q)}<div class="thread">${thread(q, true)}</div><p class="note">${I.info}Cevabınız yalnızca soruyu soran müşteri tarafından görüntülenir.</p></div>
+    <footer class="m-foot">${composer(q, draft, { cancel: true })}</footer>
+  </div>`
+}
+function answerDrawer(q, draft) {
+  return `<aside class="drawer" role="dialog" aria-label="Soruyu Cevapla">
+    <header class="m-head"><div><h2>Soruyu Cevapla</h2><p>#${q.ext} · ${PLATFORM[q.p][0]} · ${q.dl ? 'Kalan süre ' + q.dl[0] : q.at}</p></div><button class="icon-btn" data-close aria-label="Kapat">${I.close}</button></header>
+    <div class="m-body">${pband(q)}<div style="display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center">${stag(q)}${dline(q)}</div><div class="thread">${thread(q)}</div><p class="note">${I.info}Cevabınız yalnızca soruyu soran müşteri tarafından görüntülenir.</p></div>
+    <footer class="m-foot">${isWaiting(q) ? composer(q, draft, { rows: 5, noDeadline: true, left: '<button class="btn quiet" data-next>Sonraki Soru</button>' }) : `<div class="m-actions"><span class="muted" style="font-size:13px">Bu soru için cevap gönderilemez.</span><span class="grow"></span><button class="btn" data-close>Kapat</button></div>`}</footer>
+  </aside>`
+}
+function confirmModal(q, draft) {
+  const n11 = q.p === 'N11'
+  return `<div class="modal w-sm" role="alertdialog" aria-label="Cevap onayı">
+    <header class="m-head"><div><h2>${n11 ? 'Cevap Bir Kez Gönderilir' : 'Cevap Pazarama Onayına Düşer'}</h2><p>${n11 ? 'N11’de bir soruya yalnızca bir kez cevap verilir ve sonradan değiştirilemez.' : 'Onaylanmadan müşteriye görünmez ve reddedilebilir.'}</p></div><button class="icon-btn" data-close aria-label="Kapat">${I.close}</button></header>
+    <div class="m-body"><div class="fld"><small>Gönderilecek Cevap</small><div class="callout" style="color:var(--ink)">${esc(draft || '—')}</div></div></div>
+    <footer class="m-foot"><div class="m-actions"><span class="grow"></span><button class="btn" data-confirm-back>Düzenlemeye Dön</button><button class="btn primary" data-confirm-send="${q.id}">Cevabı Gönder</button></div></footer>
+  </div>`
+}
+
+/* templates manager: three layouts */
+function tplCurrent() { const t = TPL.find(x => x.id === S.tpl.id); return t ? { title: t.title, text: t.text, t } : { title: S.tpl.title, text: S.tpl.text, t: null } }
+function tplEditor(compactHead) {
+  const c = tplCurrent()
+  return `<div class="tm-edit">
+    ${compactHead ? '' : `<div><h3>${c.t ? 'Hazır Cevabı Düzenle' : 'Yeni Hazır Cevap'}</h3><p class="lead">${c.t ? 'Güncellendi: ' + c.t.at : 'Bu cevaplar Trendyol, Hepsiburada, N11 ve Pazarama için ortak kullanılır.'}</p></div>`}
+    <label class="fld"><small>Başlık</small><input class="in" maxlength="120" data-tpl-title value="${esc(c.title)}" placeholder="Örn. Ürün Ölçü Tablosu"></label>
+    <label class="fld"><small>Cevap Metni</small><textarea class="in" rows="6" maxlength="2000" data-tpl-text placeholder="Müşteriye gönderilecek cevabı yazın">${esc(c.text)}</textarea></label>
+    <div class="c-meta"><span data-tpl-cnt>${c.text.length} / 2000 karakter</span></div>
+    <div class="m-actions">${c.t ? `<button class="btn danger quiet" data-tpl-del>${I.trash}Sil</button>` : ''}<span class="grow"></span><button class="btn" data-tpl-clear>Temizle</button><button class="btn primary" data-tpl-save>${c.t ? 'Değişiklikleri Kaydet' : 'Hazır Cevabı Oluştur'}</button></div>
+  </div>`
+}
+function tplModal(layout) {
+  const list = templates().filter(t => !S.tpl.q || (t.title + ' ' + t.text).toLocaleLowerCase('tr').includes(S.tpl.q.toLocaleLowerCase('tr')))
+  const head = `<header class="m-head"><div><h2>Hazır Cevaplar</h2><p>${templates().length} kayıtlı cevap · Tüm pazaryerlerinde ortak kullanılır.</p></div><button class="icon-btn" data-close aria-label="Kapat">${I.close}</button></header>`
+  if (layout === 'stack') {
+    return `<div class="modal" role="dialog" aria-label="Hazır Cevaplar">${head}
+      <div class="m-body" style="padding:0;gap:0">
+        <div style="border-bottom:1px solid var(--line);background:var(--raised)">${tplEditor()}</div>
+        <div style="display:flex;align-items:center;gap:10px;padding:14px 16px 6px"><b style="font-weight:600">Kaydedilmiş Cevaplar</b><span class="count">${templates().length}</span><span class="grow"></span><button class="btn" data-tpl-new>${I.plus}Yeni</button></div>
+        <div>${list.length ? list.map(t => `<div class="tm-card ${t.id === S.tpl.id ? 'on' : ''}"><b>${esc(t.title)}</b><p>${esc(t.text)}</p><small>Güncellendi: ${t.at}</small><div class="acts"><button class="btn" data-tpl-row="${t.id}">Düzenle</button><button class="icon-btn" data-tpl-del="${t.id}" aria-label="Sil" style="color:var(--bad)">${I.trash}</button></div></div>`).join('') : '<div class="empty"><b>Henüz Hazır Cevap Oluşturulmadı</b><span>Sık verdiğiniz cevapları kaydedip tek tıkla kullanın.</span></div>'}</div>
+      </div></div>`
+  }
+  if (layout === 'table') {
+    return `<div class="modal w-lg" role="dialog" aria-label="Hazır Cevaplar">${head}
+      <div class="m-body" style="padding:0;gap:0">
+        <div class="queue-tools" style="border-bottom:1px solid var(--line)"><label class="in-ico">${I.search}<input class="in" style="height:34px" data-tpl-q value="${esc(S.tpl.q)}" placeholder="Başlık veya metinde ara"></label><button class="btn primary" data-tpl-new>${I.plus}Yeni Hazır Cevap</button></div>
+        <div class="tm-table"><div class="tr hd"><span>Başlık</span><span class="pv">Önizleme</span><span class="upd">Güncellendi</span><span></span></div>
+        ${list.map(t => `<div class="tr ${t.id === S.tpl.id ? 'on' : ''}"><span>${esc(t.title)}</span><span class="pv">${esc(t.text)}</span><span class="upd faint num" style="font-size:12px">${t.at}</span><span class="acts"><button class="icon-btn" data-tpl-row="${t.id}" aria-label="Düzenle">${I.edit}</button><button class="icon-btn" data-tpl-del="${t.id}" aria-label="Sil" style="color:var(--bad)">${I.trash}</button></span></div>`).join('') || '<div class="empty"><b>Sonuç Yok</b><span>Aramayı değiştirin veya yeni bir hazır cevap oluşturun.</span></div>'}</div>
+        <div style="border-top:1px solid var(--line);background:var(--raised)">${tplEditor()}</div>
+      </div></div>`
+  }
+  return `<div class="modal w-lg" role="dialog" aria-label="Hazır Cevaplar">${head}
+    <div class="m-body" style="padding:0;gap:0"><div class="tm-split">
+      <div class="tm-list"><div class="tools"><label class="in-ico">${I.search}<input class="in" style="height:34px" data-tpl-q value="${esc(S.tpl.q)}" placeholder="Hazır cevap ara"></label><button class="btn" data-tpl-new>${I.plus}Yeni Hazır Cevap</button></div>
+        <div class="items">${list.map(t => `<button class="tm-it ${t.id === S.tpl.id ? 'on' : ''}" data-tpl-row="${t.id}"><b>${esc(t.title)}</b><span>${esc(t.text)}</span></button>`).join('') || '<div class="empty" style="padding:28px 12px"><span>Sonuç yok.</span></div>'}</div></div>
+      ${tplEditor()}
+    </div></div></div>`
+}
+const tplLayout = () => S.v === '2' ? 'stack' : S.v === '3' ? 'table' : 'split'
+
+/* ---------------- shared page parts ---------------- */
+const head = (extra = '', acts = '') => `<header class="ph"><div><div class="crumb">Müşteri İletişimi</div><h1>Ürün Soruları</h1><p>Ürün sorularını ve Hepsiburada ile Pazarama sipariş sorularını yönetin.</p></div>${extra}<div class="acts">${acts}<button class="btn" data-refresh>${I.refresh}Yenile</button></div></header>`
+const tabsHtml = (cls = '', withTpl = true) => { const p = counts('PRODUCT'), o = counts('ORDER')
+  return `<button class="tab ${cls} ${S.tab === 'PRODUCT' ? 'on' : ''}" data-tab="PRODUCT">Ürün Soruları<span class="count ${p.WAITING ? 'warn' : ''}">${p.WAITING}</span></button><button class="tab ${cls} ${S.tab === 'ORDER' ? 'on' : ''}" data-tab="ORDER">Sipariş Soruları<span class="count ${o.WAITING ? 'warn' : ''}">${o.WAITING}</span></button>${withTpl ? `<button class="tab ${cls}" data-tpl-open>Hazır Cevaplar<span class="count">${templates().length}</span></button>` : ''}` }
+const SHORT = { WAITING: 'Bekleyen', ANSWERED: 'Cevaplanan', EXPIRED: 'Süresi Dolan', OTHER: 'Diğer', ALL: 'Tümü' }
+const segHtml = () => { const c = counts(S.tab); return STATUSES.map(([k, l]) => `<button class="seg ${S.status === k ? 'on' : ''} ${k === 'WAITING' && c[k] ? 'warn' : ''}" data-status="${k}" title="${l}"><b>${c[k].toLocaleString('tr-TR')}</b><small>${SHORT[k]}</small></button>`).join('') }
+const SD_ICON = { WAITING: 'partial', ANSWERED: 'done', EXPIRED: 'bad', OTHER: 'none', ALL: 'none' }
+const statusDrop = () => { const c = counts(S.tab); const cur = STATUSES.find(([k]) => k === S.status) || STATUSES[0]; return `<div class="sd"><button class="sd-btn ${S.statusMenu ? 'on' : ''}" data-status-menu aria-haspopup="listbox" aria-expanded="${!!S.statusMenu}">${glyph(SD_ICON[cur[0]])}<b>${cur[1]}</b><span class="count ${cur[0] === 'WAITING' && c[cur[0]] ? 'warn' : ''}">${c[cur[0]].toLocaleString('tr-TR')}</span>${I.chev}</button>${S.statusMenu ? `<div class="sd-menu" role="listbox">${STATUSES.map(([k, l]) => `<button class="sd-opt sd-ico-${SD_ICON[k]} ${S.status === k ? 'on' : ''}" role="option" aria-selected="${S.status === k}" data-status="${k}"><span class="sd-l">${glyph(SD_ICON[k])}${l}</span><span class="count ${k === 'WAITING' && c[k] ? 'warn' : ''}">${c[k].toLocaleString('tr-TR')}</span></button>`).join('')}</div>` : ''}</div>` }
+const chipsHtml = () => { const c = counts(S.tab); return STATUSES.map(([k, l]) => `<button class="chip ${S.status === k ? 'on' : ''}" data-status="${k}">${l}<span class="count ${k === 'WAITING' && c[k] ? 'warn' : ''}">${c[k].toLocaleString('tr-TR')}</span></button>`).join('') }
+const totalTxt = () => counts(S.tab)[S.status].toLocaleString('tr-TR')
+const pages = () => Math.max(1, Math.ceil(counts(S.tab)[S.status] / 50))
+const sampleQ = () => byId('q3')
+const sampleDraft = 'Merhaba, tahtalarımız doğal bambudur; şeklini korumak için elde yıkamanızı öneririz. En büyük tahta 38×28 cm ölçüsündedir. İyi alışverişler dileriz.'
+const mocksHtml = (items, note) => `<section class="mocks" inert aria-label="Popup durumları"><h3>Popup ve Pencere Durumları</h3><p>${note}</p><div class="mock-grid">${items.map(([label, html, cls]) => `<div class="mock ${cls && cls.includes('full') ? 'full' : ''}"><span>${label}</span><div class="stage ${cls && cls.includes('side') ? 'side' : ''}">${html}</div></div>`).join('')}</div></section>`
+
+/* ---------------- Öneri 1 · Düzenli Liste ---------------- */
+function v1() {
+  const r = rows()
+  const card = q => `<article class="qc">
+    <header class="qc-head">${thumb(q)}<div class="qc-prod">${pname(q)}<span class="codes">${codes(q)}</span></div>
+      <div class="qc-side">${pl(q.p)}<div class="stk">${isWaiting(q) ? dline(q) : `<span class="deadline">Soru Tarihi: ${q.at}</span>`}${stag(q)}</div></div></header>
+    <div class="qc-body">${thread(q)}</div>
+    ${q.order || isWaiting(q) ? `<footer class="qc-foot">${q.order ? `<a href="#" onclick="return false">${I.order} Sipariş #${q.order}</a>` : ''}<span class="grow"></span>${(S.drafts[q.id] || '').trim() ? `<span class="draft-mark">${I.draft}Taslak Kayıtlı</span>` : ''}${isWaiting(q) ? `<button class="btn primary" data-answer="${q.id}">Cevapla</button>` : ''}</footer>` : ''}
+  </article>`
+  return `<section class="variant" data-variant="1">
+    <div class="v-title"><b>Öneri 1 · Düzenli Liste</b><span>Bugünkü yapı korunur; aktarım durumu tek kart, sekme–durum–filtre tek panel, sorular çizgiyle ayrılmış tek liste kartında.</span></div>
+    ${head()}
+    <div class="card sync1" aria-label="Soru aktarım durumu">${syncs().map(s => `<div>${pl(s.p)}<b>${PLATFORM[s.p][0]} <em>${s.n.toLocaleString('tr-TR')} kayıt</em></b><small>${glyph('done')}Geçmiş tamamlandı</small><small class="num" style="padding-left:19px">Son aktarım ${s.at}</small></div>`).join('')}</div>
+    <div class="card v1-panel">
+      <div class="v1-tabs" role="tablist">${tabsHtml()}</div>
+      <div class="v1-status">${chipsHtml()}</div>
+      <div class="v1-filters">
+        <label class="fld"><small>Metin Ara</small><span class="in-ico">${I.search}<input class="in" data-search value="${esc(S.search)}" placeholder="Soru, ürün, SKU veya sipariş no"></span></label>
+        <label class="fld"><small>Mağaza</small><select class="in" data-store>${storeOpts()}</select></label>
+        <div class="fld"><small>Tarih Aralığı</small><button class="in in-btn" data-range-cycle>${I.cal}<span>${S.range}</span></button></div>
+        <label class="fld"><small>Sıralama</small><select class="in" data-sort>${sortOpts()}</select></label>
+      </div>
+    </div>
+    <div class="card">
+      <header class="res-head"><h2>${tabTitle()}</h2><span class="muted">${totalTxt()} soru</span><span class="live"><i></i>Her 30 saniyede bir yenilenir</span></header>
+      ${r.length ? r.map(card).join('') : emptyState()}
+      ${r.length && pages() > 1 ? `<nav class="pager"><button class="btn" disabled>Önceki</button><span class="num">Sayfa 1 / ${pages()}</span><button class="btn" data-page>Sonraki</button></nav>` : ''}
+    </div>
+    ${mocksHtml([
+      ['Cevap Penceresi · N11 (Taslak Yazılmış)', answerModal(sampleQ(), sampleDraft), 'full'],
+      ['N11 Tek Cevap Onayı', confirmModal(sampleQ(), sampleDraft)],
+      ['Cevap Penceresi · Trendyol (Alt Sınırın Altında)', answerModal(byId('q1'), 'Merhaba,')],
+      ['Hazır Cevaplar · Liste ve Düzenleyici', tplModal('split'), 'full'],
+    ], 'Cevapla düğmesi ortalı pencereyi açar; hazır cevaplar metni tek tıkla doldurur. Hazır Cevaplar sekmesi ayrı sayfa yerine yönetim penceresini açar.')}
+  </section>`
+}
+
+/* ---------------- Öneri 2 · Gelen Kutusu ---------------- */
+function v2() {
+  const r = rows()
+  if (!r.find(q => q.id === S.sel[2])) S.sel[2] = r[0] ? r[0].id : null
+  const cur = byId(S.sel[2])
+  const activeF = (S.store !== 'ALL') + (S.range !== 'Tüm Tarihler') + (S.sort !== 'NEWEST')
+  const item = q => `<button class="ir ${q.id === S.sel[2] ? 'on' : ''}" data-sel2="${q.id}">${pl(q.p)}<span class="l1"><b>${esc(q.cust)}</b><span>· ${esc(q.name || 'Sipariş #' + q.order)}</span></span><time>${q.short}</time><p>${esc(q.text)}</p><span class="l3">${glyph(STATUS[q.st][0])}${isWaiting(q) && q.dl ? `<span class="deadline ${q.dl[1] ? 'urgent' : ''}">${q.dl[0]} kaldı</span>` : STATUS[q.st][1]}${(S.drafts[q.id] || '').trim() ? `<span class="draft-mark">${I.draft}Taslak</span>` : ''}</span></button>`
+  const filterPop = (live) => `<div class="popover" ${live ? '' : 'style="position:static;width:min(320px,100%)"'} role="dialog" aria-label="Filtreler">
+    <label class="fld"><small>Mağaza</small><select class="in" data-store>${storeOpts()}</select></label>
+    <div class="fld"><small>Tarih Aralığı</small><div class="range-row"><div class="seg-range" role="radiogroup">${[['Tüm Tarihler', 'Tümü'], ['Bugün', 'Bugün'], ['Son 7 Gün', '7 Gün'], ['Son 30 Gün', '30 Gün']].map(([x, l]) => `<button class="${S.range === x ? 'on' : ''}" role="radio" aria-checked="${S.range === x}" data-range="${x}" title="${x}">${l}</button>`).join('')}</div><button class="btn icon-only" title="Özel aralık seçin" aria-label="Özel aralık seçin">${I.cal}</button></div></div>
+    <label class="fld"><small>Sıralama</small><select class="in" data-sort>${sortOpts()}</select></label>
+    <footer><button class="btn quiet" data-clear-f>Temizle</button><button class="btn primary" data-filters2>Uygula</button></footer></div>`
+  const detail = cur ? `
+      <div class="d-head"><button class="btn quiet back-btn" data-back2 style="justify-self:start;margin:-6px 0 -4px -8px">${I.back}Sorular</button><div class="d-card">${pband(cur)}<dl class="d-facts"><div><dt>Durum</dt><dd>${stag(cur)}</dd></div><div><dt>Kalan Süre</dt><dd class="${cur.dl && cur.dl[1] ? 'urgent' : ''}">${cur.dl ? cur.dl[0] : '—'}</dd></div><div><dt>Soru No</dt><dd>#${cur.ext}</dd></div><div><dt>Soru Tarihi</dt><dd>${cur.at}</dd></div></dl></div></div>
+      <div class="d-body"><div class="thread">${thread(cur, true)}</div><p class="note">${I.info}Cevabınız yalnızca soruyu soran müşteri tarafından görüntülenir.</p></div>
+      ${isWaiting(cur) ? `<div class="d-comp">${composer(cur, S.drafts[cur.id] || '', { rows: 3, noDeadline: true, left: '<button class="btn quiet" data-next>Sonraki Soru</button>' })}</div>` : `<div class="d-closed">${glyph(STATUS[cur.st][0])}${cur.st === 'ANSWERED' ? 'Bu soru cevaplandı; cevap değiştirilemez.' : cur.st === 'EXPIRED' ? 'Cevap süresi doldu; pazaryeri yeni cevap kabul etmiyor.' : cur.st === 'REJECTED' ? 'Cevap reddedildi. Pazaryeri yeniden cevap izni verirse burada açılır.' : 'Cevap pazaryerinde doğrulanıyor.'}</div>`}`
+    : emptyState()
+  return `<section class="variant" data-variant="2">
+    <div class="v-title"><b>Öneri 2 · Gelen Kutusu</b><span>Solda soru listesi, sağda seçili soru ve altta yerleşik cevap kutusu. Pencere açmadan art arda cevaplanır; telefonda liste ve detay ayrı ekran.</span></div>
+    ${head(`<div class="sync2" aria-label="Aktarım durumu">${syncs().map(s => `<span title="${PLATFORM[s.p][0]} · Geçmiş tamamlandı · Son aktarım ${s.at}">${pl(s.p, true)}<b>${s.n.toLocaleString('tr-TR')}</b>${glyph('done')}</span>`).join('')}</div>`, `<button class="btn" data-tpl-open>${I.tpl}Hazır Cevaplar<span class="count">${templates().length}</span></button>`)}
+    <div class="card inbox ${S.detail2 ? 'detail' : ''}">
+      <div class="ib-left">
+        <div class="ib-tabs" role="tablist">${tabsHtml('', false)}</div>
+        <div class="ib-tools">
+          <div class="row"><label class="in-ico">${I.search}<input class="in" style="height:34px" data-search value="${esc(S.search)}" placeholder="Soru, ürün, SKU veya sipariş no"></label><button class="btn ${S.filters2 ? 'on' : ''}" data-filters2 aria-expanded="${S.filters2}">${I.filter}Filtre${activeF ? `<span class="count">${activeF}</span>` : ''}</button></div>
+          ${statusDrop()}
+          ${S.filters2 ? filterPop(true) : ''}
+        </div>
+        <div class="ib-list">${r.length ? r.map(item).join('') : emptyState()}</div>
+        <div class="ib-foot"><span class="num">${totalTxt()} soru${pages() > 1 ? ` · Sayfa 1 / ${pages()}` : ''}</span><span class="live"><i></i>30 sn’de bir yenilenir</span></div>
+      </div>
+      <div class="ib-right">${detail}</div>
+    </div>
+    ${mocksHtml([
+      ['Yerleşik Cevap Kutusu · N11 (Taslak Yazılmış)', `<div class="card" style="width:min(640px,100%);overflow:hidden"><div class="d-comp" style="padding:14px 20px 16px;background:var(--raised)">${composer(sampleQ(), sampleDraft, { rows: 3, noDeadline: true, left: '<button class="btn quiet">Sonraki Soru</button>' })}</div></div>`],
+      ['N11 Tek Cevap Onayı', confirmModal(sampleQ(), sampleDraft)],
+      ['Filtre Açılır Paneli', filterPop(false)],
+      ['Pazarama Onay Uyarısı', confirmModal(byId('o1'), TPL[0].text)],
+      ['Hazır Cevaplar · Üstte Düzenleyici, Altta Liste', tplModal('stack'), 'full'],
+    ], 'Cevap kutusu detayın altına yapışık durur; N11 ve Pazarama için gönderimden önce kısa onay penceresi açılır.')}
+  </section>`
+}
+
+/* ---------------- Öneri 3 · İş Kuyruğu ---------------- */
+function v3() {
+  const r = rows(), c = counts(S.tab)
+  const urgent = visibleQ().filter(q => q.kind === S.tab && isWaiting(q) && q.dl && q.dl[1]).length
+  const metric = (k, l, em) => `<button class="metric ${S.status === k ? 'on' : ''} ${k === 'WAITING' && c[k] ? 'warn' : ''}" data-status="${k}"><small>${l}</small><b>${c[k].toLocaleString('tr-TR')}</b><em>${em}</em></button>`
+  const totalSync = syncs().reduce((a, s) => a + s.n, 0)
+  const row = q => `<div class="tr ${S.modal && S.modal.id === q.id ? 'on' : ''}" data-open3="${q.id}" role="row">${glyph(STATUS[q.st][0])}
+      <div class="q"><p>${esc(q.text)}</p><small><b>${esc(q.cust)}</b> · ${q.at}${(S.drafts[q.id] || '').trim() ? ' · Taslak kayıtlı' : ''}</small></div>
+      <div class="prod prod-c">${thumb(q, 'sm')}<div><span>${esc(q.name || 'Sipariş #' + q.order)}</span><span class="codes">${q.sku ? 'SKU ' + q.sku : 'Sipariş #' + q.order}</span></div></div>
+      <div class="store store-c">${pl(q.p, true)}${PLATFORM[q.p][0]}</div>
+      <div class="when">${isWaiting(q) && q.dl ? `<span class="deadline ${q.dl[1] ? 'urgent' : ''}">${I.clock}${q.dl[0]}</span><small>Son cevap süresi</small>` : `<span class="deadline">${STATUS[q.st][1]}</span><small>${q.short}</small>`}</div>
+      <div class="act">${isWaiting(q) ? `<button class="btn" data-open3="${q.id}">Cevapla</button>` : `<button class="btn quiet" data-open3="${q.id}">Görüntüle</button>`}</div></div>`
+  return `<section class="variant" data-variant="3">
+    <div class="v-title"><b>Öneri 3 · İş Kuyruğu</b><span>Durum sayıları tıklanabilir özet kartı, aktarım tek satır, sorular 56 px satırlı tabloda; cevap sağdan açılan panelde, “Sonraki Soru” ile kuyruk boyunca ilerlenir.</span></div>
+    ${head('', `<button class="btn" data-tpl-open>${I.tpl}Hazır Cevaplar<span class="count">${templates().length}</span></button>`)}
+    <div class="card metrics" role="tablist" aria-label="Durum">${metric('WAITING', 'Cevap Bekleyenler', urgent ? urgent + ' soru 24 saatten az' : 'Süresi yaklaşan yok')}${metric('ANSWERED', 'Cevaplananlar', 'Tüm zamanlar')}${metric('EXPIRED', 'Süresi Dolanlar', 'Cevap verilemez')}${metric('OTHER', 'Diğer Durumlar', 'Doğrulanan, reddedilen')}${metric('ALL', 'Tümü', tabTitle())}</div>
+    <details class="card syncline"><summary>${glyph('done')}<b>Aktarım Güncel</b><span>${syncs().length} mağaza · ${totalSync.toLocaleString('tr-TR')} kayıt · Geçmiş tamamlandı · Son aktarım 16.10.2026 · 18:36</span><span class="chev">${I.chev}</span></summary>
+      <div class="rows">${syncs().map(s => `<div class="sr">${pl(s.p, true)}<b style="font-weight:500">${PLATFORM[s.p][0]}</b><span class="num">${s.n.toLocaleString('tr-TR')} kayıt</span><span>${glyph('done')}Geçmiş tamamlandı</span><span class="num">Son aktarım ${s.at}</span></div>`).join('')}</div></details>
+    <div class="card qt">
+      <div class="queue-tools">
+        <span class="seg">${tabsHtml('', false)}</span>
+        <label class="in-ico">${I.search}<input class="in" style="height:34px" data-search value="${esc(S.search)}" placeholder="Metin Ara: soru, ürün, SKU veya sipariş no"></label>
+        <select class="in" data-store aria-label="Mağaza">${storeOpts()}</select>
+        <button class="in in-btn" data-range-cycle aria-label="Tarih Aralığı">${I.cal}<span>${S.range}</span></button>
+        <select class="in" data-sort aria-label="Sıralama">${sortOpts()}</select>
+
+      </div>
+      <div class="tr hd" role="row"><span></span><span>Soru</span><span class="prod-c">Ürün</span><span class="store-c">Mağaza</span><span>Kalan Süre</span><span></span></div>
+      ${r.length ? r.map(row).join('') : emptyState()}
+      <div class="qt-foot"><span class="num">${STATUSES.find(s => s[0] === S.status)[1]} · ${totalTxt()} soru</span><span class="grow"></span><span class="live"><i></i>Her 30 saniyede bir yenilenir</span>${pages() > 1 ? `<button class="btn" disabled>Önceki</button><span class="num">1 / ${pages()}</span><button class="btn" data-page>Sonraki</button>` : ''}</div>
+    </div>
+    ${mocksHtml([
+      ['Sağ Cevap Paneli · N11 (Taslak Yazılmış)', answerDrawer(sampleQ(), sampleDraft), 'full side'],
+      ['N11 Tek Cevap Onayı', confirmModal(sampleQ(), sampleDraft)],
+      ['Sağ Panel · Reddedilmiş Cevap', `<div style="width:100%;display:grid;justify-items:center"><div class="modal" style="width:min(520px,100%)"><div class="m-body"><div class="thread">${thread(byId('r1'))}</div></div><footer class="m-foot"><div class="m-actions"><span class="muted" style="font-size:13px">Bu soru için cevap gönderilemez.</span><span class="grow"></span><button class="btn">Kapat</button></div></footer></div></div>`],
+      ['Hazır Cevaplar · Tablo ve Alt Düzenleyici', tplModal('table'), 'full'],
+    ], 'Satıra veya Cevapla düğmesine tıklayınca liste yerinde kalır, cevap sağdan gelen panelde yazılır.')}
+  </section>`
+}
+
+/* ---------------- render ---------------- */
+function render() {
+  const keep = document.activeElement && document.activeElement.matches && document.activeElement.matches('[data-search],[data-tpl-q]') ? [document.activeElement.hasAttribute('data-search') ? '[data-search]' : '[data-tpl-q]', document.activeElement.selectionStart, document.activeElement.closest('[data-variant]')?.dataset.variant] : null
+  const vs = S.v === 'all' ? ['1', '2', '3'] : [S.v]
+  document.getElementById('root').innerHTML = vs.map(v => ({ 1: v1, 2: v2, 3: v3 })[v]()).join('')
+  renderLayer()
+  if (keep) { const scope = keep[2] ? document.querySelector(`[data-variant="${keep[2]}"]`) : document.getElementById('layer'); const el = (scope || document).querySelector(keep[0]); if (el) { el.focus(); el.setSelectionRange(keep[1], keep[1]) } }
+}
+function renderLayer() {
+  const m = S.modal, L = document.getElementById('layer')
+  if (!m) { L.innerHTML = ''; return }
+  const q = m.id && byId(m.id), draft = q ? (S.drafts[q.id] || '') : ''
+  let html = '', side = false
+  if (m.type === 'answer') html = answerModal(q, draft)
+  else if (m.type === 'drawer') { html = answerDrawer(q, draft); side = true }
+  else if (m.type === 'confirm') html = confirmModal(q, draft)
+  else if (m.type === 'tpl') html = tplModal(tplLayout())
+  L.innerHTML = `<div class="overlay ${side ? 'side' : ''}" data-scrim>${html}</div>`
+  const ta = L.querySelector('[data-draft]'); if (ta && m.type !== 'tpl' && !m.noFocus) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length) }
+}
+const toast = m => { const t = document.getElementById('toast'); t.innerHTML = glyph('done') + '<span>' + m + '</span>'; t.classList.add('on'); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove('on'), 1900) }
+
+function send(id) {
+  const q = byId(id), d = (S.drafts[id] || '').trim()
+  if (d.length < minLen(q) || d.length > 2000) return
+  if ((q.p === 'N11' || q.p === 'PAZARAMA') && !(S.modal && S.modal.type === 'confirm')) { S.modal = { type: 'confirm', id, back: S.modal }; renderLayer(); return }
+  q.st = q.p === 'PAZARAMA' ? 'ANSWER_SUBMITTED' : 'ANSWER_SUBMITTED'
+  q.conv.push({ s: true, at: '16.10.2026 · 18:40', t: d }); S.drafts[id] = ''
+  S.modal = null; toast(q.p === 'PAZARAMA' ? 'Cevap Pazarama onayına gönderildi' : 'Cevap gönderildi · doğrulanıyor'); render()
+}
+function nextWaiting(id) { const w = rows().filter(isWaiting); const i = w.findIndex(q => q.id === id); return (w[i + 1] || w[0] || {}).id }
+
+document.addEventListener('click', e => {
+  const t = e.target.closest('button, [data-open3], [data-scrim], a')
+  if (!t) return
+  const d = t.dataset
+  if (t.hasAttribute('data-scrim') && e.target !== t) return
+  if (d.v) { S.v = d.v; S.modal = null; document.querySelectorAll('#vsw .tab').forEach(b => b.classList.toggle('on', b === t)); render(); scrollTo({ top: 0 }); return }
+  if (d.mode) { S.mode = d.mode; document.querySelectorAll('#msw .tab').forEach(b => b.classList.toggle('on', b === t)); render(); return }
+  if (t.hasAttribute('data-scrim') || t.hasAttribute('data-close')) { S.modal = S.modal && S.modal.back ? S.modal.back : null; render(); return }
+  if (d.tab) { S.tab = d.tab; S.store = 'ALL'; render(); return }
+  if (t.hasAttribute('data-status-menu')) { S.statusMenu = !S.statusMenu; render(); return }
+  if (d.status) { S.status = d.status; S.statusMenu = false; render(); return }
+  if (t.hasAttribute('data-tpl-open')) { const back = S.modal && S.modal.type !== 'tpl' ? S.modal : null; S.modal = { type: 'tpl', back }; S.tpl.q = ''; renderLayer(); return }
+  if (d.answer) { S.modal = { type: 'answer', id: d.answer }; renderLayer(); return }
+  if (d.sel2) { S.sel[2] = d.sel2; S.detail2 = true; render(); return }
+  if (t.hasAttribute('data-back2')) { S.detail2 = false; render(); return }
+  if (d.open3) { S.modal = { type: 'drawer', id: d.open3 }; render(); return }
+  if (d.fill) { const tp = TPL.find(x => x.id === d.fill); S.drafts[d.q] = tp.text; if (S.modal) renderLayer(); else render(); return }
+  if (d.send) { send(d.send); return }
+  if (t.hasAttribute('data-confirm-back')) { S.modal = S.modal.back; render(); return }
+  if (d.confirmSend) { send(d.confirmSend); return }
+  if (t.hasAttribute('data-next')) { const cur = S.modal ? S.modal.id : S.sel[2], n = nextWaiting(cur); if (S.modal) S.modal = { type: 'drawer', id: n }; else S.sel[2] = n; render(); return }
+  if (t.hasAttribute('data-filters2')) { S.filters2 = !S.filters2; render(); return }
+  if (d.range) { S.range = d.range; render(); return }
+  if (t.hasAttribute('data-range-cycle')) { const o = ['Tüm Tarihler', 'Bugün', 'Son 7 Gün', 'Son 30 Gün']; S.range = o[(o.indexOf(S.range) + 1) % o.length]; render(); return }
+  if (t.hasAttribute('data-clear-f')) { S.store = 'ALL'; S.range = 'Tüm Tarihler'; S.sort = 'NEWEST'; render(); return }
+  if (t.hasAttribute('data-refresh')) { toast('Aktarım kuyruğa alındı'); return }
+  if (t.hasAttribute('data-page')) { toast('Sonraki sayfa yükleniyor'); return }
+  if (d.tplRow) { S.tpl.id = d.tplRow; renderLayer(); return }
+  if (t.hasAttribute('data-tpl-new') || t.hasAttribute('data-tpl-clear')) { S.tpl = { id: null, title: '', text: '', q: S.tpl.q }; renderLayer(); return }
+  if (t.hasAttribute('data-tpl-save')) {
+    const c = tplCurrent(), title = document.querySelector('#layer [data-tpl-title]').value.trim(), text = document.querySelector('#layer [data-tpl-text]').value.trim()
+    if (!title || !text) { toast('Başlık ve cevap metni gerekli'); return }
+    if (c.t) Object.assign(c.t, { title, text, at: '16.10.2026 · 18:40' }); else { const n = { id: 't' + Date.now(), title, text, at: '16.10.2026 · 18:40' }; TPL.unshift(n); S.tpl.id = n.id }
+    toast(c.t ? 'Hazır cevap güncellendi' : 'Hazır cevap oluşturuldu'); render(); return
+  }
+  if (t.hasAttribute('data-tpl-del')) { const id = d.tplDel || S.tpl.id; TPL = TPL.filter(x => x.id !== id); if (S.tpl.id === id) S.tpl = { id: (TPL[0] || {}).id || null, title: '', text: '', q: S.tpl.q }; toast('Hazır cevap silindi'); render(); return }
+})
+document.addEventListener('input', e => {
+  const t = e.target
+  if (t.hasAttribute('data-draft')) {
+    const q = byId(t.dataset.draft); S.drafts[q.id] = t.value
+    const len = t.value.trim().length, ok = len >= minLen(q) && len <= 2000, scope = t.closest('.composer')
+    const cnt = scope.querySelector('[data-cnt]'); cnt.textContent = `${len} / ${rangeTxt(q)} karakter`; cnt.classList.toggle('lo', len > 0 && len < minLen(q))
+    scope.querySelector('[data-send]').disabled = !ok
+    scope.querySelectorAll('.tpl-chip').forEach(c => c.classList.toggle('on', TPL.find(x => x.id === c.dataset.fill)?.text === t.value))
+  } else if (t.hasAttribute('data-search')) { S.search = t.value; render() }
+  else if (t.hasAttribute('data-tpl-q')) { S.tpl.q = t.value; renderLayer(); const el = document.querySelector('#layer [data-tpl-q]'); el.focus(); el.setSelectionRange(el.value.length, el.value.length) }
+  else if (t.hasAttribute('data-tpl-text')) { const c = document.querySelector('#layer [data-tpl-cnt]'); if (c) c.textContent = `${t.value.length} / 2000 karakter`; if (!tplCurrent().t) S.tpl.text = t.value }
+  else if (t.hasAttribute('data-tpl-title')) { if (!tplCurrent().t) S.tpl.title = t.value }
+})
+document.addEventListener('change', e => {
+  const t = e.target
+  if (t.hasAttribute('data-store')) { S.store = t.value; render() }
+  else if (t.hasAttribute('data-sort')) { S.sort = t.value; render() }
+})
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && S.modal) { S.modal = S.modal.back || null; render() }
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && e.target.hasAttribute && e.target.hasAttribute('data-draft')) { e.preventDefault(); send(e.target.dataset.draft) }
+})
+render()
+</script>
+</body>
+</html>

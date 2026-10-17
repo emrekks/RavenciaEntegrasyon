@@ -1,0 +1,1183 @@
+<!doctype html>
+<html lang="tr" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sistem Ayarları Önerileri</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #111115; --surface: #17171c; --raised: #1d1d23; --soft: #22222a;
+    --line: #2a2a32; --line-strong: #383842;
+    --ink: #ececf0; --muted: #a3a3b0; --subtle: #6f6f7c;
+    --primary: #8b5cf6; --primary-soft: #272139;
+    --violet: color-mix(in srgb, var(--primary) 55%, white);
+    --violet-line: color-mix(in srgb, var(--primary) 55%, transparent);
+    --warn: #e2aa4b; --bad: #e4636f; --ok: #34d399;
+    --r-ctl: 7px; --r-card: 12px; --r-pop: 14px;
+  }
+  * { box-sizing: border-box; }
+  html, body { overflow-x: clip; }
+  body { margin: 0; font: 14px/1.5 Inter, "Segoe UI", system-ui, sans-serif; color: var(--ink); background: var(--bg); -webkit-font-smoothing: antialiased; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  h1, h2, h3, h4, p { margin: 0; }
+  .grow { flex: 1; } .muted { color: var(--muted); } .faint { color: var(--subtle); } .num { font-variant-numeric: tabular-nums; }
+  [hidden] { display: none !important; }
+
+  /* framed-thumb scrollbars */
+  ::-webkit-scrollbar { width: 12px; height: 12px; background: var(--raised); }
+  ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: var(--raised); }
+  ::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+  ::-webkit-scrollbar-thumb { background: var(--soft); background-clip: padding-box; border: 3px solid transparent; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--line-strong); }
+  ::-webkit-scrollbar-thumb:hover { background-color: var(--line-strong); }
+  @supports (-moz-appearance: none) { * { scrollbar-width: thin; scrollbar-color: var(--line-strong) var(--raised); } }
+
+  /* ---------- controls ---------- */
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 34px; padding: 0 12px; white-space: nowrap; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-ctl); cursor: pointer; font-size: 13px; font-weight: 500; }
+  .btn:hover { background: var(--soft); }
+  .btn.primary { color: #fff; background: var(--primary); border-color: var(--primary); }
+  .btn.primary:hover { filter: brightness(1.08); }
+  .btn.quiet { color: var(--muted); background: none; border-color: transparent; }
+  .btn.quiet:hover { color: var(--ink); background: var(--raised); }
+  .btn.danger { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, var(--line-strong)); }
+  .btn.danger:hover { background: color-mix(in srgb, var(--bad) 10%, var(--surface)); }
+  .btn.danger.quiet { border-color: transparent; background: none; }
+  .btn.danger.quiet:hover { background: color-mix(in srgb, var(--bad) 10%, transparent); }
+  .btn.danger.solid { color: #fff; background: var(--bad); border-color: var(--bad); }
+  .btn.on { color: var(--violet); background: var(--primary-soft); border-color: var(--violet-line); }
+  .btn:disabled { opacity: .45; cursor: default; filter: none; }
+  .btn:disabled:hover { background: var(--surface); } .btn.primary:disabled:hover { background: var(--primary); } .btn.danger.solid:disabled:hover { background: var(--bad); }
+  .btn svg { flex: none; }
+  .btn:focus-visible, .in:focus, .tab:focus-visible, .chip:focus-visible { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgb(139 92 246 / 18%); }
+  .icon-btn { display: grid; width: 34px; height: 34px; flex: none; place-items: center; color: var(--muted); background: none; border: 0; border-radius: var(--r-ctl); cursor: pointer; }
+  .icon-btn:hover { color: var(--ink); background: var(--raised); }
+  .in { width: 100%; height: 36px; padding: 0 12px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-ctl); outline: none; }
+  .in.sm { height: 34px; }
+  select.in { padding-right: 34px; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='%23a3a3b0' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4.5 6 3.5 3.5L11.5 6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; cursor: pointer; text-overflow: ellipsis; }
+  textarea.in { height: auto; min-height: 76px; padding: 8px 12px; resize: vertical; line-height: 1.5; }
+  input[type=number].in { font-variant-numeric: tabular-nums; }
+  .fld { display: grid; gap: 6px; min-width: 0; align-content: start; } .fld > small { color: var(--subtle); font-size: 12px; font-weight: 500; }
+  .fld > .hint { color: var(--subtle); font-size: 12px; }
+
+  /* switch: soft violet, with Açık / Kapalı word */
+  .swl { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+  .swl > span { min-width: 38px; color: var(--muted); font-size: 13px; font-weight: 500; }
+  .swl.is-on > span { color: var(--ink); }
+  .sw { position: relative; flex: none; width: 34px; height: 20px; margin: 0; appearance: none; background: var(--soft); border: 1px solid var(--line-strong); border-radius: 99px; cursor: pointer; transition: background .15s, border-color .15s; }
+  .sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 12px; height: 12px; background: var(--subtle); border-radius: 50%; transition: transform .15s, background .15s; }
+  .sw:checked { background: var(--primary-soft); border-color: var(--violet-line); }
+  .sw:checked::after { transform: translateX(14px); background: var(--violet); }
+  .sw:focus-visible { outline: none; box-shadow: 0 0 0 3px rgb(139 92 246 / 18%); }
+  .swfld { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 36px; padding: 0 12px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-ctl); }
+  .swfld b { font-weight: 400; font-size: 13px; }
+
+  /* checkbox */
+  .cb { position: relative; flex: none; width: 16px; height: 16px; margin: 2px 0 0; appearance: none; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 4px; cursor: pointer; }
+  .cb:checked { background: var(--primary-soft); border-color: var(--violet-line); }
+  .cb:checked::after { content: ""; position: absolute; left: 4.5px; top: 1.5px; width: 4px; height: 8px; border: solid var(--violet); border-width: 0 1.8px 1.8px 0; transform: rotate(45deg); }
+
+  .tab, .chip { display: inline-flex; align-items: center; gap: 8px; padding: 0 12px; white-space: nowrap; color: var(--muted); background: none; border: 1px solid transparent; border-radius: var(--r-ctl); cursor: pointer; font-weight: 500; }
+  .tab { height: 36px; font-size: 14px; }
+  .chip { height: 34px; font-size: 13px; background: var(--surface); border-color: var(--line-strong); }
+  .tab:hover, .chip:hover { color: var(--ink); background: var(--raised); }
+  .tab.on, .chip.on { color: var(--violet); background: var(--primary-soft); border-color: var(--violet-line); }
+  .tab svg { flex: none; }
+  .count { display: inline-grid; min-width: 20px; height: 18px; place-items: center; padding: 0 5px; color: var(--ink); background: var(--line-strong); border-radius: 5px; font-size: 11px; font-weight: 500; line-height: 1; font-variant-numeric: tabular-nums; }
+  .count.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 16%, var(--line-strong)); }
+  .tag { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; color: var(--muted); border: 1px solid var(--line-strong); border-radius: 5px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+  .tag.has-g { padding-left: 5px; } .tag .st { width: 13px; height: 13px; }
+  .tag.ink { color: var(--ink); }
+  .tag.danger { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, var(--line-strong)); }
+  .st { width: 16px; height: 16px; flex: none; display: block; color: var(--subtle); }
+  .st.done { color: var(--ink); } .st.bad { color: var(--bad); }
+  .callout { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: var(--r-ctl); color: var(--muted); font-size: 13px; background: var(--raised); }
+  .callout svg { flex: none; margin-top: 2px; }
+  .callout b { color: var(--ink); font-weight: 600; }
+  .callout.danger { border-color: color-mix(in srgb, var(--bad) 40%, var(--line-strong)); background: color-mix(in srgb, var(--bad) 8%, var(--surface)); }
+  .callout.danger svg { color: var(--bad); }
+  .callout.warn { border-color: color-mix(in srgb, var(--warn) 40%, var(--line-strong)); background: color-mix(in srgb, var(--warn) 8%, var(--surface)); }
+  .callout.warn svg { color: var(--warn); }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); }
+  .card-h { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px 16px; padding: 16px 20px; border-bottom: 1px solid var(--line); }
+  .card-h > div:first-child { flex: 1 1 260px; min-width: 0; }
+  .card-h h2 { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 600; }
+  .card-h p { margin-top: 2px; color: var(--muted); font-size: 13px; }
+  .card-h .acts { display: flex; flex-wrap: wrap; gap: 8px; }
+  .card-b { padding: 16px 20px; }
+  .h3 { font-size: 14px; font-weight: 600; } .lead { color: var(--muted); font-size: 13px; }
+  .stack { display: grid; gap: 16px; align-content: start; }
+  .ico-tile { display: grid; width: 32px; height: 32px; flex: none; place-items: center; color: var(--muted); background: var(--raised); border: 1px solid var(--line); border-radius: var(--r-ctl); }
+  .ico-tile.lg { width: 40px; height: 40px; }
+
+  /* ---------- shared blocks ---------- */
+  .auth { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 4px 16px; }
+  .auth .ico-tile { grid-row: span 2; align-self: start; }
+  .auth h3 { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; }
+  .auth p { color: var(--muted); font-size: 13px; }
+  .auth .meta { display: flex; flex-wrap: wrap; gap: 4px 16px; grid-column: 2; color: var(--subtle); font-size: 12px; }
+  .auth .meta b { color: var(--ink); font-weight: 500; }
+  .auth .side { grid-column: 3; grid-row: 1 / span 2; display: flex; gap: 8px; }
+
+  .sess { display: grid; }
+  .ses { display: grid; grid-template-columns: 32px minmax(0, 1fr) minmax(0, 1fr) auto; align-items: center; gap: 4px 14px; min-height: 58px; padding: 10px 20px; border-top: 1px solid var(--line); }
+  .ses:first-child { border-top: 0; }
+  .ses.current { background: var(--primary-soft); box-shadow: inset 2px 0 0 var(--primary); }
+  .ses .who { display: grid; gap: 1px; min-width: 0; }
+  .ses .who b { display: flex; align-items: center; gap: 8px; font-weight: 500; }
+  .ses .who small, .ses .when small { color: var(--muted); font-size: 12px; }
+  .ses .when { display: grid; gap: 1px; color: var(--ink); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .ses .when small { font-variant-numeric: tabular-nums; }
+  .ses .act { display: flex; justify-content: flex-end; }
+  .ses-state { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; font-weight: 400; }
+  .ses-state .st { width: 13px; height: 13px; }
+  .sess-sub { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 20px; color: var(--muted); font-size: 12px; font-weight: 500; background: var(--raised); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .sess-sub:first-child { border-top: 0; }
+
+  .scopes { display: grid; }
+  .sg { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 12px 24px; padding: 16px 20px; border-top: 1px solid var(--line); }
+  .sg:first-child { border-top: 0; }
+  .sg > div:first-child h3 { font-size: 14px; font-weight: 600; } .sg > div:first-child p { color: var(--muted); font-size: 13px; }
+  .sg-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .sc { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-ctl); cursor: pointer; }
+  .sc:hover { background: var(--raised); }
+  .sc.on { background: var(--primary-soft); border-color: var(--violet-line); }
+  .sc b { display: block; font-weight: 500; } .sc small { display: block; color: var(--muted); font-size: 12px; line-height: 1.45; }
+  .sel-all { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; cursor: pointer; }
+
+  /* sticky apply bar */
+  .sbar { position: sticky; bottom: 0; z-index: 6; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 20px; background: var(--raised); border-top: 1px solid var(--line); border-radius: 0 0 var(--r-card) var(--r-card); }
+  .sbar.float { margin-top: 0; border: 1px solid var(--line-strong); border-radius: var(--r-card); box-shadow: 0 -12px 30px rgb(0 0 0 / 30%); }
+  .sbar .copy { flex: 1 1 260px; display: grid; min-width: 0; }
+  .sbar .copy strong { font-weight: 600; font-size: 14px; }
+  .sbar .copy span { color: var(--muted); font-size: 13px; }
+  .sbar .copy span.dirty { color: var(--ink); }
+  .sbar .copy span.dirty::before { content: ""; display: inline-block; width: 6px; height: 6px; margin: 0 8px 1px 0; background: var(--warn); border-radius: 50%; }
+  .sbar .btns { display: flex; flex-wrap: wrap; gap: 8px; }
+
+  /* shipping groups */
+  .shipg { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .shipg > section { display: grid; gap: 12px; align-content: start; padding: 16px 20px; border-left: 1px solid var(--line); }
+  .shipg > section:first-child { border-left: 0; }
+  .shipg header h3 { font-size: 14px; font-weight: 600; } .shipg header p { color: var(--muted); font-size: 13px; }
+  .pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+
+  /* designer */
+  .dz { display: grid; }
+  .dz-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  .dz-bar .in { width: 190px; }
+  .seg2 { display: inline-flex; padding: 3px; gap: 3px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 9px; }
+  .seg2 button { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; color: var(--muted); background: none; border: 1px solid transparent; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; white-space: nowrap; }
+  .seg2 button small { color: var(--subtle); font-size: 12px; font-weight: 400; }
+  .seg2 button:hover { color: var(--ink); }
+  .seg2 button.on { color: var(--violet); background: var(--primary-soft); border-color: var(--violet-line); }
+  .seg2 button.on small { color: var(--violet); opacity: .8; }
+  .dz-work { display: grid; grid-template-columns: 236px minmax(0, 1fr) 264px; min-height: 560px; }
+  .dz-lib, .dz-insp { display: flex; flex-direction: column; min-width: 0; background: var(--surface); }
+  .dz-lib { border-right: 1px solid var(--line); } .dz-insp { border-left: 1px solid var(--line); }
+  .dz-head { display: grid; gap: 1px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  .dz-head b { font-weight: 600; font-size: 13px; } .dz-head small { color: var(--subtle); font-size: 12px; }
+  .lib-list { display: grid; }
+  .lib-it { display: grid; grid-template-columns: 28px minmax(0, 1fr) 16px; align-items: center; gap: 10px; padding: 8px 14px; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); cursor: grab; }
+  .lib-it:hover { background: var(--soft); }
+  .lib-it .ico-tile { width: 28px; height: 28px; }
+  .lib-it b { display: block; font-weight: 500; font-size: 13px; } .lib-it small { display: block; color: var(--subtle); font-size: 12px; line-height: 1.35; }
+  .lib-it > svg { color: var(--subtle); }
+  .lib-custom { display: grid; gap: 10px; padding: 14px 16px; }
+  .dz-stage { display: flex; flex-direction: column; min-width: 0; background: var(--bg); }
+  .dz-sbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 16px; color: var(--muted); font-size: 12px; border-bottom: 1px solid var(--line); }
+  .dz-sbar b { color: var(--ink); font-weight: 500; font-size: 13px; }
+  .dz-canvas { flex: 1; display: grid; place-items: center; padding: 24px 16px; background-image: radial-gradient(var(--line) 1px, transparent 1px); background-size: 14px 14px; }
+  .paper { position: relative; width: min(100%, 330px); background: #f6f6f8; border-radius: 4px; box-shadow: 0 0 0 1px rgb(0 0 0 / 30%), 0 12px 30px rgb(0 0 0 / 40%); color: #111; touch-action: none; }
+  .paper.sticker { width: min(100%, 280px); }
+  .blk { position: absolute; padding: 3px 5px; overflow: hidden; border: 1px dashed rgb(17 17 17 / 28%); border-radius: 2px; cursor: move; line-height: 1.25; user-select: none; }
+  .blk:hover { border-color: rgb(91 68 210 / 70%); }
+  .blk.on { border: 1.5px solid #6d4ae0; background: rgb(109 74 224 / 7%); overflow: visible; }
+  .blk.on::before, .blk.on::after { content: ""; position: absolute; width: 7px; height: 7px; background: #fff; border: 1.5px solid #6d4ae0; border-radius: 2px; }
+  .blk.on::before { left: -4px; top: -4px; } .blk.on::after { right: -4px; bottom: -4px; }
+  .blk .bt { display: block; font-weight: 600; } .blk span { display: block; }
+  .blk span b { margin-right: 4px; color: #555; font-weight: 500; }
+  .bars { display: flex; align-items: stretch; height: 62%; min-height: 14px; gap: 0; }
+  .bars i { flex: 1; } .bars i.k { background: #111; }
+  .blk .bc-num { margin-top: 2px; font-size: .9em; font-weight: 600; letter-spacing: .04em; text-align: center; }
+  .dz-help { padding: 10px 16px; color: var(--subtle); font-size: 12px; border-top: 1px solid var(--line); background: var(--surface); }
+  .itabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+  .itabs .tab { justify-content: center; height: 30px; padding: 0 6px; font-size: 13px; }
+  .ibody { display: grid; gap: 14px; align-content: start; padding: 14px 16px 16px; }
+  .ibody p.help { color: var(--subtle); font-size: 12px; }
+  .seg3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); height: 36px; overflow: hidden; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-ctl); }
+  .seg3 button { color: var(--muted); background: none; border: 0; border-left: 1px solid var(--line); cursor: pointer; font-size: 13px; }
+  .seg3 button:first-child { border-left: 0; }
+  .seg3 button:hover { color: var(--ink); background: var(--raised); }
+  .seg3 button.on { color: var(--violet); background: var(--primary-soft); }
+  .fchips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .fchip { display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 6px 0 10px; color: var(--ink); background: var(--raised); border: 1px solid var(--line-strong); border-radius: 6px; cursor: pointer; font-size: 12px; }
+  .fchip svg { color: var(--subtle); width: 13px; height: 13px; } .fchip:hover svg { color: var(--ink); }
+  .rng { display: grid; gap: 6px; }
+  .rng .hd { display: flex; justify-content: space-between; color: var(--subtle); font-size: 12px; font-weight: 500; }
+  .rng output { color: var(--ink); font-variant-numeric: tabular-nums; }
+  .rng input { width: 100%; accent-color: var(--primary); }
+  .rng .sc2 { display: flex; justify-content: space-between; color: var(--subtle); font-size: 11px; }
+  .rot { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .rot .btn { padding: 0 6px; }
+  .empty-s { padding: 28px 16px; color: var(--muted); text-align: center; font-size: 13px; }
+
+  /* appearance */
+  .app-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .picker { position: relative; min-width: 0; }
+  .pick-btn { min-width: 0; display: flex; align-items: center; gap: 10px; width: 100%; height: 36px; padding: 0 10px; text-align: left; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-ctl); cursor: pointer; }
+  .pick-btn.on { border-color: var(--violet-line); }
+  .pick-btn > span:nth-child(2) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pick-btn small { color: var(--muted); font-size: 12px; }
+  .pick-btn > svg { color: var(--muted); transition: transform .15s; } .pick-btn.on > svg { transform: rotate(180deg); }
+  .pick-menu { position: absolute; z-index: 30; top: calc(100% + 6px); left: 0; right: 0; min-width: 280px; display: grid; gap: 2px; padding: 6px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-card); box-shadow: 0 18px 50px rgb(0 0 0 / 45%); }
+  .pick-menu.static { position: static; box-shadow: none; }
+  .pick-opt { display: grid; grid-template-columns: auto minmax(0, 1fr) 16px; align-items: center; gap: 10px; padding: 7px 10px; text-align: left; background: none; border: 0; border-radius: 7px; cursor: pointer; }
+  .pick-opt:hover { background: var(--soft); }
+  .pick-opt.on { background: var(--primary-soft); }
+  .pick-opt b { display: block; font-weight: 500; font-size: 13px; } .pick-opt small { display: block; color: var(--muted); font-size: 12px; }
+  .pick-opt .st { color: var(--violet); }
+  .pick-sep { height: 1px; margin: 4px 6px; background: var(--line); }
+  .sws { display: inline-flex; flex: none; overflow: hidden; border: 1px solid var(--line-strong); border-radius: 5px; }
+  .sws i { display: block; width: 10px; height: 18px; }
+  .sws.lg i { width: 16px; height: 26px; }
+  .themes { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
+  .th { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 8px 10px 8px 8px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-ctl); }
+  .th.on { background: var(--primary-soft); border-color: var(--violet-line); }
+  .th > button.pickt { display: flex; flex: 1; align-items: center; gap: 10px; min-width: 0; padding: 0; text-align: left; background: none; border: 0; cursor: pointer; }
+  .th > button.pickt > span:last-child { min-width: 0; }
+  .th b { display: block; overflow: hidden; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; } .th small { display: block; color: var(--muted); font-size: 12px; }
+  .th .prot { color: var(--subtle); font-size: 12px; white-space: nowrap; }
+  .th-new { display: flex; gap: 8px; }
+  .th-new .in { height: 34px; }
+  .cgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 24px; }
+  .cf { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; min-height: 52px; padding: 7px 0; border-top: 1px solid var(--line); }
+  .cgrid > .cf:nth-child(-n+2) { border-top: 0; }
+  .cf b { display: block; font-weight: 500; font-size: 13px; } .cf small { display: block; color: var(--muted); font-size: 12px; }
+  .cctl { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px 0 4px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-ctl); cursor: pointer; }
+  .cctl input { width: 28px; height: 26px; padding: 0; background: none; border: 0; cursor: pointer; }
+  .cctl input::-webkit-color-swatch-wrapper { padding: 0; } .cctl input::-webkit-color-swatch { border: 1px solid rgb(255 255 255 / 14%); border-radius: 5px; }
+  .cctl code { width: 62px; color: var(--ink); font: 500 12px/1 ui-monospace, Consolas, monospace; }
+  .ntest { display: flex; flex-wrap: wrap; gap: 8px; }
+  .ntest .btn .st { width: 14px; height: 14px; }
+  .pv { display: grid; gap: 10px; padding: 16px; color: var(--p-ink); background: var(--p-bg); border: 1px solid var(--line); border-radius: var(--r-card); }
+  .pv > small { color: var(--p-subtle); font-size: 12px; font-weight: 500; }
+  .pv .pv-card { display: grid; gap: 8px; padding: 14px; background: var(--p-surface); border: 1px solid var(--p-border); border-radius: 10px; }
+  .pv strong { font-size: 1.15em; font-weight: 600; } .pv p { color: var(--p-muted); font-size: .93em; }
+  .pv .pv-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .pv .pv-btn { height: 30px; padding: 0 12px; color: #fff; background: var(--p-primary); border: 0; border-radius: 7px; font-size: .93em; font-weight: 500; }
+  .pv .pv-btn2 { height: 30px; padding: 0 12px; color: var(--p-ink); background: var(--p-surface); border: 1px solid var(--p-borderStrong); border-radius: 7px; font-size: .93em; }
+  .pv .pv-tag { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 5px; font-size: .85em; font-weight: 500; }
+  .pv .pv-sel { color: var(--p-primary); background: var(--p-primarySoft); }
+  .pv .pv-ok { color: var(--p-accent); background: var(--p-accentSoft); } .pv .pv-warn { color: var(--p-warning); background: var(--p-warningSoft); } .pv .pv-bad { color: var(--p-danger); background: var(--p-dangerSoft); }
+  .pv .pv-line { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 8px 10px; background: var(--p-surfaceRaised); border: 1px solid var(--p-border); border-radius: 7px; font-size: .93em; }
+  .pv .pv-line span:last-child { color: var(--p-muted); }
+
+  /* toasts (panel NoticeToast) */
+  .toasts { position: fixed; top: 16px; right: 16px; z-index: 300; display: grid; gap: 8px; width: min(380px, calc(100vw - 32px)); pointer-events: none; }
+  .nt { position: relative; display: grid; grid-template-columns: 34px minmax(0, 1fr) 28px; gap: 12px; padding: 12px 10px 14px 12px; overflow: hidden; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-card); box-shadow: 0 18px 50px rgb(0 0 0 / 45%); pointer-events: auto; }
+  .nt .ti { display: grid; width: 34px; height: 34px; place-items: center; background: var(--raised); border: 1px solid var(--line); border-radius: 9px; }
+  .nt .ti .st { width: 18px; height: 18px; }
+  .nt strong { display: block; font-weight: 600; } .nt p { color: var(--muted); font-size: 13px; }
+  .nt .icon-btn { width: 28px; height: 28px; }
+  .nt .track { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--line); }
+  .nt .track i { display: block; height: 100%; width: 100%; background: var(--muted); transform-origin: left; animation: nt-run 5.5s linear forwards; }
+  .nt.err .track i { background: var(--bad); } .nt.pend .track i { width: 35%; animation: nt-pend 1.4s ease-in-out infinite; }
+  .nt.static .track i { animation: none; transform: scaleX(.62); } .nt.pend.static .track i { transform: none; margin-left: 30%; }
+  @keyframes nt-run { to { transform: scaleX(0); } }
+  @keyframes nt-pend { 0% { margin-left: -35%; } 100% { margin-left: 100%; } }
+  .spin { animation: spin 1s linear infinite; } @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ---------- modal / popups ---------- */
+  .overlay { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 24px 16px; overflow: auto; background: rgb(5 6 12 / 62%); }
+  .overlay.side { place-items: stretch end; padding: 0; }
+  .modal { display: flex; flex-direction: column; width: min(560px, 100%); max-height: calc(100vh - 48px); background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-pop); box-shadow: 0 30px 80px rgb(0 0 0 / 45%); }
+  .modal.w-sm { width: min(460px, 100%); } .modal.w-md { width: min(640px, 100%); } .modal.w-lg { width: min(880px, 100%); } .modal.w-xl { width: min(1240px, 100%); }
+  .m-head { display: flex; align-items: flex-start; gap: 12px; padding: 18px 20px 16px 24px; border-bottom: 1px solid var(--line); }
+  .m-head > div { min-width: 0; }
+  .m-head h2 { font-size: 18px; font-weight: 600; } .m-head p { margin-top: 2px; color: var(--muted); font-size: 13px; }
+  .m-head .icon-btn { margin: -4px -6px 0 auto; }
+  .m-body { display: grid; gap: 16px; align-content: start; padding: 20px 24px; overflow-y: auto; min-height: 0; }
+  .m-body.flush { padding: 0; gap: 0; }
+  .m-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 14px 24px 16px; border-top: 1px solid var(--line); background: var(--raised); border-radius: 0 0 var(--r-pop) var(--r-pop); }
+  .m-foot .note { flex: 1 1 200px; color: var(--muted); font-size: 13px; }
+  .m-foot .note.dirty { color: var(--ink); }
+  .drawer { display: flex; flex-direction: column; width: min(600px, 100%); height: 100%; background: var(--surface); border-left: 1px solid var(--line-strong); box-shadow: -24px 0 60px rgb(0 0 0 / 45%); }
+  .drawer.w-lg { width: min(820px, 100%); }
+  .drawer .m-body { flex: 1; } .drawer .m-foot { border-radius: 0; }
+  .m-tabs { display: flex; gap: 4px; padding: 8px 20px; overflow-x: auto; border-bottom: 1px solid var(--line); }
+  .m-tabs .tab { height: 32px; font-size: 13px; }
+  .confirm-sum { display: grid; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .confirm-sum > div { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 9px 12px; border-top: 1px solid var(--line); font-size: 13px; }
+  .confirm-sum > div:first-child { border-top: 0; }
+  .confirm-sum small { display: block; color: var(--muted); font-size: 12px; }
+  .confirm-sum .r { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .typed { display: grid; gap: 6px; } .typed small { color: var(--muted); font-size: 13px; } .typed small b { color: var(--ink); font-weight: 600; }
+  .typed .in.match { border-color: var(--violet-line); }
+
+  /* MFA */
+  .steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .step { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 10px; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-ctl); font-size: 12px; font-weight: 500; }
+  .step span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .step.on { color: var(--violet); background: var(--primary-soft); border-color: var(--violet-line); }
+  .step.on .st { color: var(--violet); } .step.done { color: var(--ink); }
+  .mfa-split { display: grid; grid-template-columns: 190px minmax(0, 1fr); }
+  .mfa-rail { display: grid; align-content: start; gap: 2px; padding: 14px 0; background: var(--raised); border-right: 1px solid var(--line); }
+  .mfa-rail .rs { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 2px 10px; padding: 8px 16px; color: var(--muted); border-left: 2px solid transparent; font-size: 13px; }
+  .mfa-rail .rs small { grid-column: 2; color: var(--subtle); font-size: 12px; }
+  .mfa-rail .rs.on { color: var(--ink); background: var(--primary-soft); border-left-color: var(--primary); }
+  .mfa-rail .rs.on .st { color: var(--violet); } .mfa-rail .rs.done { color: var(--ink); }
+  .mfa-pane { display: grid; gap: 16px; align-content: start; padding: 20px 24px; min-width: 0; }
+  .qrrow { display: grid; grid-template-columns: 168px minmax(0, 1fr); gap: 20px; align-items: start; }
+  .qr { width: 168px; height: 168px; padding: 10px; background: #fff; border-radius: 10px; }
+  .qr svg { display: block; width: 100%; height: 100%; }
+  .qrrow .copy { display: grid; gap: 12px; align-content: start; }
+  details.man summary { color: var(--muted); font-size: 13px; cursor: pointer; }
+  details.man code { display: block; margin-top: 8px; padding: 8px 10px; overflow-wrap: anywhere; color: var(--ink); background: var(--raised); border: 1px solid var(--line); border-radius: var(--r-ctl); font: 12px/1.5 ui-monospace, Consolas, monospace; }
+  .otp { display: grid; grid-template-columns: repeat(6, 40px); gap: 6px; }
+  .otp input { width: 40px; height: 44px; padding: 0; text-align: center; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-ctl); font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; outline: none; }
+  .otp input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgb(139 92 246 / 18%); }
+  .codes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; padding: 12px; background: var(--raised); border: 1px solid var(--line); border-radius: 10px; }
+  .codes code { padding: 6px 10px; text-align: center; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; font: 500 13px/1.4 ui-monospace, Consolas, monospace; letter-spacing: .06em; }
+  .ferr { display: flex; align-items: center; gap: 6px; color: var(--bad); font-size: 12px; }
+  .ferr .st { width: 14px; height: 14px; }
+
+  /* static mock stages */
+  .mocks { display: grid; gap: 16px; margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--line); }
+  .mocks > h3 { font-size: 16px; font-weight: 600; } .mocks > p { margin-top: -12px; color: var(--muted); font-size: 13px; }
+  .mock-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+  .mock { display: grid; gap: 8px; min-width: 0; }
+  .mock.full { grid-column: 1 / -1; }
+  .mock > span { color: var(--muted); font-size: 13px; font-weight: 500; }
+  .stage { position: relative; display: grid; place-items: center; padding: 28px 20px; overflow: hidden; background: linear-gradient(rgb(5 6 12 / 62%), rgb(5 6 12 / 62%)), repeating-linear-gradient(135deg, var(--surface) 0 14px, var(--bg) 14px 28px); border: 1px solid var(--line); border-radius: var(--r-card); }
+  .stage .modal { max-height: none; box-shadow: 0 18px 50px rgb(0 0 0 / 40%); }
+  .stage.side { place-items: stretch end; padding: 0; }
+  .stage.side .drawer { height: auto; min-height: 560px; }
+  .stage.plain { place-items: start stretch; padding: 20px; }
+  .stage .toasts { position: static; width: min(380px, 100%); margin: 0 auto; }
+
+  /* ---------- page chrome ---------- */
+  .switcher { position: sticky; top: 0; z-index: 50; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 20px; background: color-mix(in srgb, var(--bg) 92%, transparent); border-bottom: 1px solid var(--line); backdrop-filter: blur(10px); }
+  .switcher > b { margin-right: 8px; font-weight: 600; }
+  .switcher .seg { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 3px; background: var(--surface); border: 1px solid var(--line); border-radius: 9px; }
+  .switcher .seg .tab { height: 30px; font-size: 13px; }
+  .intro { max-width: 1240px; margin: 16px auto 0; padding: 0 20px; color: var(--muted); font-size: 13px; }
+  .intro b { color: var(--ink); font-weight: 600; }
+  .variant { max-width: 1240px; margin: 18px auto 0; padding: 0 20px 56px; }
+  .variant + .variant { border-top: 1px solid var(--line); padding-top: 28px; }
+  .v-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 0 0 16px; }
+  .v-title b { font-size: 13px; font-weight: 600; color: var(--violet); }
+  .v-title span { color: var(--muted); font-size: 13px; }
+  .ph { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 16px; margin-bottom: 16px; }
+  .ph .crumb { color: var(--subtle); font-size: 12px; font-weight: 500; }
+  .ph h1 { font-size: 18px; font-weight: 600; }
+  .ph p { margin-top: 2px; color: var(--muted); }
+  .ph .acts { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+
+  /* ---------- Öneri 1 ---------- */
+  .p1-tabs { display: flex; gap: 4px; margin-bottom: 16px; padding: 4px; overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+  .p1-tabs .tab { flex: 1 0 auto; justify-content: center; }
+  .p1-app-bottom { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .p1-app-bottom > section { display: grid; gap: 12px; align-content: start; padding: 16px 20px; }
+  .p1-app-bottom > section + section { border-left: 1px solid var(--line); }
+
+  /* ---------- Öneri 2 ---------- */
+  .p2 { display: grid; grid-template-columns: 248px minmax(0, 1fr); min-height: 720px; overflow: clip; }
+  .p2-nav { display: grid; align-content: start; padding: 10px 0 14px; border-right: 1px solid var(--line); background: var(--surface); border-radius: var(--r-card) 0 0 var(--r-card); }
+  .p2-nav .grp { padding: 12px 18px 4px; color: var(--muted); font-size: 12px; font-weight: 600; }
+  .p2-nav .grp:first-child { padding-top: 4px; }
+  .p2-nav button { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: 10px; height: 38px; padding: 0 16px 0 18px; color: var(--muted); text-align: left; background: none; border: 0; border-left: 2px solid transparent; cursor: pointer; }
+  .p2-nav button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .p2-nav button:hover { color: var(--ink); background: var(--soft); }
+  .p2-nav button.on { color: var(--ink); background: var(--primary-soft); border-left-color: var(--primary); }
+  .p2-nav button.on .st:not(.done) { color: var(--violet); }
+  .p2-nav .sep { height: 1px; margin: 10px 18px 4px; background: var(--line); }
+  .p2-pane { display: flex; flex-direction: column; min-width: 0; }
+  .p2-head { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 16px; padding: 18px 24px 16px; border-bottom: 1px solid var(--line); }
+  .p2-head > div:first-child { flex: 1 1 260px; }
+  .p2-head .crumb { color: var(--subtle); font-size: 12px; font-weight: 500; }
+  .p2-head h2 { font-size: 18px; font-weight: 600; } .p2-head p { color: var(--muted); font-size: 13px; }
+  .p2-body { flex: 1; display: grid; gap: 16px; align-content: start; padding: 20px 24px; }
+  .p2-body.flush { padding: 0; gap: 0; }
+  .p2 .sbar { border-radius: 0 0 var(--r-card) 0; }
+  .p2-mnav { display: none; }
+
+  /* ---------- Öneri 3 ---------- */
+  .p3 { display: grid; grid-template-columns: 232px minmax(0, 1fr); gap: 24px; align-items: start; }
+  .p3-toc { position: sticky; top: calc(var(--sw, 58px) + 16px); display: grid; gap: 2px; padding: 8px 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); }
+  .p3-toc a { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 34px; padding: 0 14px 0 14px; color: var(--muted); text-decoration: none; border-left: 2px solid transparent; font-size: 13px; }
+  .p3-toc a.sub { grid-template-columns: minmax(0, 1fr) auto; min-height: 30px; padding-left: 40px; font-size: 12px; }
+  .p3-toc a:hover { color: var(--ink); background: var(--soft); }
+  .p3-toc a.on { color: var(--ink); background: var(--primary-soft); border-left-color: var(--primary); }
+  .p3-toc a.sub.on { color: var(--violet); background: none; border-left-color: transparent; }
+  .p3-toc .tfoot { display: grid; gap: 8px; margin-top: 6px; padding: 12px 14px 6px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+  .p3-toc .tfoot b { color: var(--ink); font-weight: 500; }
+  .p3-main { display: grid; gap: 28px; min-width: 0; }
+  .p3-sec { display: grid; gap: 12px; scroll-margin-top: calc(var(--sw, 58px) + 16px); }
+  .p3-sec > header { display: flex; align-items: center; gap: 12px; }
+  .p3-sec > header h2 { font-size: 18px; font-weight: 600; } .p3-sec > header p { color: var(--muted); font-size: 13px; }
+  .p3-sub { scroll-margin-top: calc(var(--sw, 58px) + 16px); }
+  .p3-sec.danger .card { border-color: color-mix(in srgb, var(--bad) 32%, var(--line)); }
+  .gbar { position: sticky; bottom: 12px; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 16px; padding: 12px 16px 12px 20px; background: var(--raised); border: 1px solid var(--line-strong); border-radius: var(--r-card); box-shadow: 0 16px 40px rgb(0 0 0 / 45%); }
+  .gbar .copy { flex: 1 1 240px; display: grid; } .gbar .copy strong { font-weight: 600; } .gbar .copy span { color: var(--muted); font-size: 13px; }
+  .p3-mtoc { display: none; }
+
+  /* ---------- Öneri 4 ---------- */
+  .p4 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .oc { display: flex; flex-direction: column; min-width: 0; }
+  .oc-h { display: flex; align-items: center; gap: 12px; padding: 16px 20px 14px; }
+  .oc-h > div { flex: 1; min-width: 0; } .oc-h h2 { font-size: 16px; font-weight: 600; } .oc-h p { color: var(--muted); font-size: 13px; }
+  .oc-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0 20px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .oc-facts > div { display: grid; gap: 2px; align-content: start; min-width: 0; padding: 10px 12px; border-left: 1px solid var(--line); }
+  .oc-facts > div:first-child { border-left: 0; }
+  .oc-facts dt { color: var(--subtle); font-size: 12px; }
+  .oc-facts dd { display: flex; align-items: center; gap: 6px; margin: 0; overflow: hidden; font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; text-overflow: ellipsis; }
+  .oc-facts dd .st { width: 14px; height: 14px; }
+  .oc-extra { padding: 14px 20px 0; }
+  .oc-f { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: auto; padding: 14px 20px 16px; }
+  .oc-f .btn.open { margin-left: auto; }
+  .oc.danger { border-color: color-mix(in srgb, var(--bad) 28%, var(--line)); }
+  .mini-paper { display: flex; gap: 12px; align-items: center; }
+  .mini-paper .pp { position: relative; flex: none; width: 54px; height: 76px; background: #f6f6f8; border-radius: 3px; }
+  .mini-paper .pp i { position: absolute; left: 5px; right: 5px; background: #bfc0c8; border-radius: 1px; }
+  .mini-paper p { color: var(--muted); font-size: 13px; }
+  .recent { margin-top: 16px; }
+  .recent .rr { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: 12px; min-height: 42px; padding: 6px 20px; border-top: 1px solid var(--line); font-size: 13px; }
+  .recent .rr:first-of-type { border-top: 0; }
+  .recent .rr time { color: var(--subtle); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+  /* ---------- Öneri 5 ---------- */
+  .p5 { max-width: 920px; margin: 0 auto; }
+  .p5-tabs { display: flex; gap: 4px; margin-bottom: 20px; overflow-x: auto; border-bottom: 1px solid var(--line); }
+  .p5-tabs button { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px; color: var(--muted); white-space: nowrap; background: none; border: 0; border-bottom: 2px solid transparent; cursor: pointer; font-weight: 500; }
+  .p5-tabs button:hover { color: var(--ink); }
+  .p5-tabs button.on { color: var(--violet); border-bottom-color: var(--primary); }
+  .p5-g { margin-bottom: 20px; }
+  .p5-g > h3 { margin: 0 0 8px 2px; font-size: 14px; font-weight: 600; }
+  .p5-g > p { margin: -6px 0 8px 2px; color: var(--muted); font-size: 13px; }
+  .srow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 300px); align-items: center; gap: 8px 24px; min-height: 60px; padding: 12px 20px; border-top: 1px solid var(--line); }
+  .srow:first-child { border-top: 0; }
+  .srow.auto { grid-template-columns: minmax(0, 1fr) auto; }
+  .srow > div:first-child { min-width: 0; }
+  .srow b { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-weight: 500; }
+  .srow small { display: block; color: var(--muted); font-size: 13px; }
+  .srow .ctl { display: flex; justify-content: flex-end; align-items: center; gap: 8px; min-width: 0; }
+  .srow .ctl > .in, .srow .ctl > .picker { width: 100%; }
+  .srow.top { align-items: start; }
+  .srow.ses-r .ctl { gap: 12px; }
+  .srow.ses-r.current { background: var(--primary-soft); box-shadow: inset 2px 0 0 var(--primary); }
+  .p5-bar { position: sticky; bottom: 12px; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 12px 10px 18px; background: var(--raised); border: 1px solid var(--line-strong); border-radius: var(--r-card); box-shadow: 0 16px 40px rgb(0 0 0 / 45%); }
+  .p5-bar span { flex: 1 1 200px; font-size: 13px; }
+
+  /* ---------- responsive ---------- */
+  @media (max-width: 1100px) {
+    .dz-work { grid-template-columns: minmax(0, 1fr) 264px; }
+    .dz-lib { grid-column: 1 / -1; grid-row: 2; border-right: 0; border-top: 1px solid var(--line); }
+    .lib-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .lib-it { border-right: 1px solid var(--line); }
+    .lib-custom { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .shipg { grid-template-columns: 1fr; } .shipg > section { border-left: 0; border-top: 1px solid var(--line); } .shipg > section:first-child { border-top: 0; }
+    .p4 { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 1000px) {
+    .mock-grid { grid-template-columns: 1fr; }
+    .p3 { grid-template-columns: 1fr; }
+    .p3-toc { display: none; }
+    .p3-mtoc { position: sticky; top: calc(var(--sw, 58px) + 8px); z-index: 15; display: flex; gap: 4px; padding: 6px; overflow-x: auto; background: color-mix(in srgb, var(--bg) 94%, transparent); border: 1px solid var(--line); border-radius: 10px; backdrop-filter: blur(8px); }
+    .p3-mtoc a { display: inline-flex; align-items: center; height: 30px; padding: 0 10px; color: var(--muted); text-decoration: none; white-space: nowrap; border: 1px solid transparent; border-radius: 6px; font-size: 13px; font-weight: 500; }
+    .p3-mtoc a.on { color: var(--violet); background: var(--primary-soft); border-color: var(--violet-line); }
+    .p2 { grid-template-columns: 1fr; }
+    .p2-nav { display: none; }
+    .p2-mnav { display: flex; gap: 4px; padding: 8px; overflow-x: auto; border-bottom: 1px solid var(--line); }
+    .p2-mnav .tab { height: 32px; font-size: 13px; }
+    .p2 .sbar { border-radius: 0 0 var(--r-card) var(--r-card); }
+    .app-grid { grid-template-columns: 1fr 1fr; } .app-grid > :last-child { grid-column: 1 / -1; }
+    .sg { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 760px) {
+    .switcher, .intro, .variant { padding-left: 16px; padding-right: 16px; }
+    .switcher { position: static; }
+    .switcher > b { width: 100%; }
+    .switcher .seg { flex-wrap: nowrap; max-width: 100%; overflow-x: auto; }
+    .ph .acts { margin-left: 0; }
+    .card-h, .card-b, .sbar, .ses, .sg, .shipg > section, .sess-sub { padding-left: 16px; padding-right: 16px; }
+    .auth { grid-template-columns: 40px minmax(0, 1fr); }
+    .auth .side { grid-column: 1 / -1; grid-row: auto; }
+    .auth .side .btn { flex: 1; }
+    .ses { grid-template-columns: 32px minmax(0, 1fr); }
+    .ses .when, .ses .act { grid-column: 2; justify-content: flex-start; }
+    .sg-list, .pair, .app-grid, .cgrid, .p1-app-bottom { grid-template-columns: 1fr; }
+    .cgrid > .cf:nth-child(2) { border-top: 1px solid var(--line); }
+    .p1-app-bottom > section + section { border-left: 0; border-top: 1px solid var(--line); }
+    .sbar .btns { width: 100%; } .sbar .btns .btn { flex: 1; }
+    .dz-bar .in { width: 100%; flex: 1 1 100%; }
+    .dz-work { grid-template-columns: 1fr; }
+    .dz-insp { border-left: 0; border-top: 1px solid var(--line); }
+    .dz-lib { grid-row: auto; }
+    .lib-list, .lib-custom { grid-template-columns: 1fr; }
+    .lib-it { border-right: 0; }
+    .p2-head, .p2-body { padding-left: 16px; padding-right: 16px; }
+    .oc-facts { grid-template-columns: 1fr; } .oc-facts > div { border-left: 0; border-top: 1px solid var(--line); } .oc-facts > div:first-child { border-top: 0; }
+    .oc-h, .oc-f, .oc-extra { padding-left: 16px; padding-right: 16px; } .oc-facts { margin: 0 16px; }
+    .oc-f .btn { flex: 1; } .oc-f .btn.open { margin-left: 0; }
+    .srow { grid-template-columns: 1fr; padding: 12px 16px; }
+    .srow .ctl { justify-content: flex-start; flex-wrap: wrap; }
+    .srow.auto { grid-template-columns: 1fr; }
+    .m-head { padding: 16px 16px 14px; } .m-body, .mfa-pane { padding: 16px; } .m-foot { padding: 12px 16px 14px; }
+    .m-foot .btn { flex: 1; }
+    .mfa-split { grid-template-columns: 1fr; } .mfa-rail { grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); padding: 0; border-right: 0; border-bottom: 1px solid var(--line); }
+    .mfa-rail .rs { border-left: 0; border-bottom: 2px solid transparent; padding: 8px 10px; } .mfa-rail .rs.on { border-bottom-color: var(--primary); } .mfa-rail .rs small { display: none; }
+    .steps { grid-template-columns: 1fr 1fr 1fr; } .step { padding: 6px 8px; }
+    .qrrow { grid-template-columns: 1fr; justify-items: center; } .qrrow .copy { justify-items: stretch; width: 100%; }
+    .otp { grid-template-columns: repeat(6, minmax(0, 1fr)); } .otp input { width: 100%; }
+    .overlay { padding: 12px; }
+    .stage { padding: 16px 10px; } .stage.plain { padding: 12px; }
+    .th-new { flex-wrap: wrap; } .th-new .btn { flex: 1; }
+  }
+</style>
+</head>
+<body>
+<nav class="switcher" aria-label="Öneri seçimi">
+  <b>Sistem Ayarları · Tasarım Önerileri</b>
+  <span class="seg" id="vsw">
+    <button class="tab on" data-v="1">Öneri 1 · Sekmeler ve Kartlar</button>
+    <button class="tab" data-v="2">Öneri 2 · Bölüm Listesi</button>
+    <button class="tab" data-v="3">Öneri 3 · Tek Sayfa ve İçindekiler</button>
+    <button class="tab" data-v="4">Öneri 4 · Genel Bakış Kartları</button>
+    <button class="tab" data-v="5">Öneri 5 · Ayar Satırları</button>
+    <button class="tab" data-v="all">Hepsi Alt Alta</button>
+  </span>
+  <span class="seg" id="msw" title="Authenticator örnek durumu">
+    <button class="tab on" data-totp="off">Authenticator Kapalı</button>
+    <button class="tab" data-totp="on">Authenticator Etkin</button>
+  </span>
+</nav>
+<p class="intro"><b>Gerçek içerik, beş yerleşim.</b> Sayfadaki her şey korunur: dört sekme (Güvenlik ve Oturumlar · Veritabanı Temizliği · Kargo Ayarları · Görünüm), Authenticator kurulumu (parola → QR ve 6 haneli kod → kurtarma kodları), oturum listesi ve dört oturum onayı, sekiz temizlik kapsamı ve “Verileri sil” onayı, gönderici · yazdırma · ölçü ayarları ile etiket tasarımcısı (kütüphane, kâğıt, Genel / Yazı / Barkod özellikleri, şablon kaydet / sil, varsayılanı yükle), okunabilirlik, tema seçici, kayıtlı temalar, 20 renklik palet, bildirim denemesi, önizleme ve yapışık “Görünüm Ayarlarını Uygula” çubuğu. Her önerinin altında popupların statik görünümleri var; düğmeler canlı popupları da açar. Kâğıttaki bloklar sürüklenebilir.</p>
+<div id="root"></div>
+<div id="layer"></div>
+<div class="toasts" id="toasts"></div>
+
+<script>
+/* ================= data ================= */
+const SCOPES = {
+  PRODUCTS: ['Ürünler Listesi', 'Ürünleri, varyantları ve bu ürünlere bağlı görsel, stok ve kanal kayıtlarını temizler.'],
+  CATEGORIES: ['Kategori Listesi', 'Panel kategori ağacını ve kategori-pazaryeri eşleştirmelerini kaldırır; ürünlerin kategori bağlantısını boşaltır.'],
+  CATEGORY_ATTRIBUTES: ['Kategori Özellikleri', 'Kategori özellik başlıklarını, değerlerini, kategori atamalarını, ürün değerlerini ve pazaryeri özellik eşleştirmelerini kaldırır.'],
+  BRANDS: ['Marka Listesi', 'Marka kayıtlarını ve marka-pazaryeri eşleştirmelerini kaldırır; ürünlerin marka bağlantısını boşaltır.'],
+  OPTIONS: ['Ürün Seçenekleri', 'Ürün seçenek gruplarını, seçenek değerlerini ve varyantlarla olan seçenek bağlantılarını temizler.'],
+  ORDERS: ['Siparişler Listesi', 'Siparişleri ve siparişe bağlı kargo, satır, durum geçmişi ve finansal kayıtları temizler; ilişkili iadeleri ve faturaları da kaldırır.'],
+  RETURNS: ['İadeler Listesi', 'İade taleplerini, iade satırlarını, kararlarını, kanıtlarını ve stok işlemlerini temizler.'],
+  INVOICES: ['Faturalar Listesi', 'Faturaları ve bunlara bağlı belge, satır, teslimat ve gönderim denemelerini temizler.'],
+}
+const SCOPE_GROUPS = [
+  ['Katalog', 'Ürün kataloğunda kullanılan temel listeleri temizleyin.', ['PRODUCTS', 'CATEGORIES', 'CATEGORY_ATTRIBUTES', 'BRANDS']],
+  ['Ürün Seçenekleri', 'Ürün seçeneklerini ve seçenek değerlerini temizleyin.', ['OPTIONS']],
+  ['Operasyon', 'İşlem ve satış kayıtlarını temizleyin.', ['ORDERS', 'RETURNS', 'INVOICES']],
+]
+const RESULT = { PRODUCTS: '1.284 ürün', CATEGORIES: '312 kategori', CATEGORY_ATTRIBUTES: '4.920 kategori özelliği', BRANDS: '186 marka', OPTIONS: '64 ürün seçeneği', ORDERS: '9.412 sipariş', RETURNS: '621 iade', INVOICES: '7.905 fatura' }
+const SESSIONS0 = [
+  { id: 's1', current: true, state: 'ACTIVE', last: '16.10.2026 18:42', exp: '23.10.2026 18:42' },
+  { id: 's2', current: false, state: 'ACTIVE', last: '16.10.2026 17:05', exp: '23.10.2026 09:12' },
+  { id: 's3', current: false, state: 'ACTIVE', last: '15.10.2026 22:18', exp: '22.10.2026 22:18' },
+  { id: 's4', current: false, state: 'REVOKED', last: '12.10.2026 09:31', exp: '19.10.2026 09:31' },
+  { id: 's5', current: false, state: 'REVOKED', last: '08.10.2026 14:07', exp: '15.10.2026 14:07' },
+]
+const BLOCK_CATALOG = [
+  ['trackingBarcode', 'Takip Barkodu', 'Takip numarası ve barkod', ['trackingNumber']],
+  ['address', 'Teslimat Adresi', 'Alıcı ve teslimat adresi', ['customerName', 'address']],
+  ['orderInfo', 'Paket / Sipariş Bilgileri', 'Paket, sipariş ve iletişim bilgileri', ['packageNumber', 'orderNumber', 'customerEmail']],
+  ['packageBarcode', 'Paket Barkodu', 'Paket numarası barkodu', ['packageNumber']],
+  ['sender', 'Gönderici ve Kargo Bilgileri', 'Gönderici, adres ve kargo firması', ['cargoProvider', 'senderName', 'senderAddress']],
+  ['custom', 'Özel İçerik Bloğu', 'Elle yazılan başlık ve metin', []],
+]
+const FIELDS = { trackingNumber: 'Takip numarası', packageNumber: 'Paket numarası', orderNumber: 'Sipariş numarası', customerName: 'Alıcı adı', address: 'Teslimat adresi', cargoProvider: 'Kargo firması', senderName: 'Gönderici adı', senderAddress: 'Gönderici adresi', customerEmail: 'Müşteri e-postası' }
+const VALUES = { trackingNumber: '73300036563130080', packageNumber: '9236253', orderNumber: '#1972215187', customerName: 'FEHİME MAT', address: 'KARAKÖPRÜ / ŞANLIURFA', cargoProvider: 'Trendyol Express', senderName: 'RAVENCIA', senderAddress: '403.CAD.NO:24/2', customerEmail: 'musteri@example.com' }
+const defaultBlocks = () => [
+  { id: 'b1', kind: 'trackingBarcode', title: 'Takip Barkodu', fields: ['trackingNumber'], x: 6, y: 4, w: 88, h: 16, align: 'center', fs: 14, rot: 0, text: '' },
+  { id: 'b2', kind: 'address', title: 'Teslimat Adresi', fields: ['customerName', 'address'], x: 6, y: 23, w: 88, h: 17, align: 'left', fs: 16, rot: 0, text: '' },
+  { id: 'b3', kind: 'orderInfo', title: 'Paket / Sipariş Bilgileri', fields: ['packageNumber', 'orderNumber', 'customerEmail'], x: 6, y: 43, w: 52, h: 20, align: 'left', fs: 12, rot: 0, text: '' },
+  { id: 'b4', kind: 'packageBarcode', title: 'Paket Barkodu', fields: ['packageNumber'], x: 61, y: 43, w: 33, h: 20, align: 'center', fs: 12, rot: 0, text: '' },
+  { id: 'b5', kind: 'sender', title: 'Gönderici ve Kargo Bilgileri', fields: ['cargoProvider', 'senderName', 'senderAddress'], x: 6, y: 67, w: 88, h: 18, align: 'left', fs: 12, rot: 0, text: '' },
+]
+const TOKENS = [['bg', 'Arka Plan', 'Sayfanın ana zemini'], ['sidebar', 'Menü Zemini', 'Ana menünün zemini'], ['surface', 'Yüzey', 'Kart ve panel zemini'], ['surfaceRaised', 'Yükseltilmiş Yüzey', 'Alan ve kontrol zemini'], ['surfaceSoft', 'Yumuşak Yüzey', 'İkincil yüzey ve rozet zemini'], ['border', 'Kenarlık', 'Standart ayırıcı çizgiler'], ['borderStrong', 'Güçlü Kenarlık', 'Input ve belirgin çerçeveler'], ['ink', 'Ana Metin', 'Başlık ve önemli metinler'], ['muted', 'İkincil Metin', 'Açıklama ve yardımcı metinler'], ['subtle', 'Soluk Metin', 'Düşük öncelikli metinler'], ['primary', 'Ana Renk', 'Birincil buton ve aktif durum'], ['primaryHover', 'Ana Renk Hover', 'Birincil etkileşim hover durumu'], ['primarySoft', 'Ana Renk Yumuşak', 'Seçili ve hafif vurgulu alanlar'], ['accent', 'Accent', 'Başarı ve ikincil vurgu'], ['accentSoft', 'Accent Yumuşak', 'Başarı arka planları'], ['warning', 'Uyarı', 'Uyarı ve dikkat durumları'], ['warningSoft', 'Uyarı Yumuşak', 'Uyarı arka planları'], ['danger', 'Hata', 'Hata ve tehlikeli işlemler'], ['dangerSoft', 'Hata Yumuşak', 'Hata arka planları'], ['info', 'Bilgi', 'Bilgilendirme vurgusu']]
+const PAL = {
+  sade: { bg: '#101014', sidebar: '#17171c', surface: '#17171c', surfaceRaised: '#1d1d23', surfaceSoft: '#22222a', border: '#2a2a32', borderStrong: '#383842', ink: '#ececf0', muted: '#a3a3b0', subtle: '#6f6f7c', primary: '#8b5cf6', primaryHover: '#7c3aed', primarySoft: '#272139', accent: '#46b98f', accentSoft: '#1e2e2c', warning: '#e2aa4b', warningSoft: '#332c23', danger: '#e4636f', dangerSoft: '#342228', info: '#83b4ff' },
+  grafit: { bg: '#101014', sidebar: '#18181f', surface: '#18181f', surfaceRaised: '#202028', surfaceSoft: '#272730', border: '#303039', borderStrong: '#41414d', ink: '#f4f4f7', muted: '#aaaab9', subtle: '#858595', primary: '#8b5cf6', primaryHover: '#7c3aed', primarySoft: '#302443', accent: '#4adea0', accentSoft: '#1c332c', warning: '#f6c16b', warningSoft: '#382f22', danger: '#fb858b', dangerSoft: '#3c252b', info: '#83b4ff' },
+  gece: { bg: '#0f1219', sidebar: '#151a24', surface: '#151a24', surfaceRaised: '#1b2130', surfaceSoft: '#222a3b', border: '#2a3244', borderStrong: '#3a4458', ink: '#e8ecf4', muted: '#9ea8bb', subtle: '#6c7689', primary: '#5b8def', primaryHover: '#4a7ae0', primarySoft: '#1d2a44', accent: '#46b98f', accentSoft: '#1b2e2b', warning: '#e2aa4b', warningSoft: '#322b22', danger: '#e4636f', dangerSoft: '#33222a', info: '#83b4ff' },
+  light: { bg: '#e1e4eb', sidebar: '#eaedf2', surface: '#eaedf2', surfaceRaised: '#f0f2f6', surfaceSoft: '#dfe3ea', border: '#c9d0dc', borderStrong: '#a4aec0', ink: '#2f3a4f', muted: '#525e77', subtle: '#69758d', primary: '#5b44d2', primaryHover: '#4b36bb', primarySoft: '#e0dcf6', accent: '#0f7864', accentSoft: '#d3e8df', warning: '#8a560d', warningSoft: '#efe1c0', danger: '#a2344f', dangerSoft: '#efd5dc', info: '#2f5aa8' },
+}
+const THEMES0 = [
+  { id: 'sade', name: 'Ravencia — Sade', builtIn: true, desc: 'Çalışma alanının varsayılan koyu teması' },
+  { id: 'grafit', name: 'Ravencia — Grafit', builtIn: true, desc: 'Önceki varsayılan koyu tema' },
+  { id: 'gece', name: 'Gece Mavisi', builtIn: false, desc: 'Kayıtlı özel tema' },
+]
+const FONTS = [['inter', 'Inter', 'Inter, sans-serif'], ['system', 'Sistem Yazı Tipi', 'system-ui, sans-serif'], ['segoe', 'Segoe UI', '"Segoe UI", sans-serif'], ['arial', 'Arial', 'Arial, sans-serif']]
+const SIZES = [['compact', 'Çok Küçük', 'En fazla içerik için en sıkı görünüm', .92], ['small', 'Küçük', 'Normal ve varsayılan çalışma görünümü', 1], ['normal', 'Normal', 'Daha rahat okuma için biraz daha geniş görünüm', 1.07], ['large', 'Büyük', 'Yoğun tablolarda daha rahat okuma', 1.14], ['extra-large', 'Çok Büyük', 'Yüksek okunabilirlik için ferah görünüm', 1.22], ['huge', 'Ekstra Büyük', 'Maksimum okunabilirlik ve daha belirgin metinler', 1.3]]
+const RECOVERY = ['7KQ4-M2XD', 'P9VA-3HTR', 'Z6NE-8WQF', 'B3LC-T5YU', 'H8JM-2KPS', 'R4XG-9DVN', 'C7WB-6QEA', 'N2FT-4ZLM', 'Y5UK-7RHC', 'E9SD-1PGX']
+const LAB0 = { senderName: 'RAVENCIA', senderAddress: '403. Cad. No:24/2\nKaraköprü / Şanlıurfa', a4: 2, def: 'a4', showA4: true, showSticker: true, w: 100, h: 150, gap: 3, phone: false }
+const clone = o => JSON.parse(JSON.stringify(o))
+
+/* ================= state ================= */
+const S = {
+  v: '1', tab: { 1: 'security', 2: 'auth', 4: '', 5: 'security' }, p3: 'p3-security', p4tab: { shipping: 'general', appearance: 'read' },
+  totp: false, recovery: 10, mfaStep: 'password', mfaErr: '', otp: '',
+  sessions: clone(SESSIONS0), scopes: ['PRODUCTS', 'ORDERS'], confirm: '',
+  lab: clone(LAB0), savedLab: clone(LAB0), fmt: 'a4', blocks: defaultBlocks(), sel: 'b1', itab: 'general',
+  tpls: [{ id: 'tp1', name: 'Trendyol A4 Şablonu' }, { id: 'tp2', name: 'Sticker 100 × 150' }], tpl: '', tplName: 'A4 şablonu', customTitle: '', customText: '',
+  app: { font: 'inter', size: 'small', theme: 'sade', palette: clone(PAL.sade), themes: clone(THEMES0) }, newTheme: '',
+  dirty: { ship: false, app: false }, stack: [], menu: null,
+}
+const activeOthers = () => S.sessions.filter(s => !s.current && s.state === 'ACTIVE')
+const closed = () => S.sessions.filter(s => s.state !== 'ACTIVE')
+const blockById = id => S.blocks.find(b => b.id === id)
+const themeById = id => id === 'light' ? { id: 'light', name: 'Ravencia — Aydınlık', desc: 'Açık çalışma alanı görünümü', builtIn: true } : S.app.themes.find(t => t.id === id)
+const paletteOf = id => PAL[id] || PAL.sade
+
+/* ================= icons & glyphs ================= */
+const ico = (p, s = 16) => `<svg width="${s}" height="${s}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`
+const I = {
+  shield: ico('<path d="M8 1.8 13 3.6v4.1c0 3-2.1 5.4-5 6.5-2.9-1.1-5-3.5-5-6.5V3.6z"/><path d="m5.8 8 1.6 1.6 2.9-3"/>'),
+  phone: ico('<rect x="4.5" y="1.8" width="7" height="12.4" rx="1.6"/><path d="M7.2 12h1.6"/>'),
+  device: ico('<rect x="2" y="3" width="12" height="8" rx="1.5"/><path d="M5.5 13.5h5M8 11v2.5"/>'),
+  db: ico('<ellipse cx="8" cy="3.8" rx="5" ry="2"/><path d="M3 3.8v8.4c0 1.1 2.2 2 5 2s5-.9 5-2V3.8"/><path d="M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>'),
+  truck: ico('<path d="M1.8 4h7.7v7H1.8z"/><path d="M9.5 6.5h2.7l2 2.3V11H9.5"/><circle cx="4.5" cy="11.8" r="1.3"/><circle cx="11.5" cy="11.8" r="1.3"/>'),
+  palette: ico('<path d="M8 2a6 6 0 1 0 0 12c.9 0 1.3-.6 1.3-1.2 0-.8-.6-1-.6-1.7 0-.6.5-1.1 1.1-1.1h1.4A2.8 2.8 0 0 0 14 7.2C14 4.3 11.3 2 8 2z"/><circle cx="5" cy="7.2" r=".7"/><circle cx="7.4" cy="4.8" r=".7"/><circle cx="10.4" cy="5.4" r=".7"/>'),
+  lock: ico('<rect x="3" y="7" width="10" height="7" rx="1.6"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/>'),
+  bell: ico('<path d="M4 11V7.5a4 4 0 0 1 8 0V11l1 1.5H3z"/><path d="M6.6 14a1.5 1.5 0 0 0 2.8 0"/>'),
+  type: ico('<path d="M3 4.5V3h10v1.5M8 3v10M6 13h4"/>'),
+  barcode: ico('<path d="M2.5 3v10M4.8 3v10M7.4 3v10M9.6 3v10M11.4 3v10M13.5 3v10"/>'),
+  layout: ico('<rect x="2.5" y="2.5" width="11" height="11" rx="1.5"/><path d="M2.5 6.5h11M7 6.5v7"/>'),
+  sparkle: ico('<path d="M8 2.5 9.3 6.7 13.5 8 9.3 9.3 8 13.5 6.7 9.3 2.5 8l4.2-1.3z"/>'),
+  user: ico('<circle cx="8" cy="5.5" r="2.7"/><path d="M2.8 13.6a5.4 5.4 0 0 1 10.4 0"/>'),
+  copy: ico('<rect x="5" y="5" width="8.5" height="8.5" rx="1.5"/><path d="M11 5V3.5a1 1 0 0 0-1-1H3.5a1 1 0 0 0-1 1V10a1 1 0 0 0 1 1H5"/>', 15),
+  alert: ico('<path d="M8 2.5 14 13H2z"/><path d="M8 6.5v3M8 11.5h.01"/>'),
+  info: ico('<circle cx="8" cy="8" r="6.2"/><path d="M8 7.2v3.6M8 5h.01"/>'),
+  close: ico('<path d="m4 4 8 8M12 4l-8 8"/>'),
+  chev: ico('<path d="m4.5 6 3.5 3.5L11.5 6"/>'),
+  right: ico('<path d="m6 3.5 4.5 4.5L6 12.5"/>'),
+  back: ico('<path d="M10 3.5 5.5 8l4.5 4.5"/>'),
+  plus: ico('<path d="M8 3.5v9M3.5 8h9"/>', 15),
+  trash: ico('<path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5"/>', 15),
+  logout: ico('<path d="M6 2.5H3.5v11H6"/><path d="M10 5l3 3-3 3M13 8H6.5"/>', 15),
+  reset: ico('<path d="M3 3v3.5h3.5"/><path d="M3.4 6.5a5 5 0 1 1-.3 3"/>', 15),
+  save: ico('<path d="M3 2.5h8l2.5 2.5v8.5H3z"/><path d="M5.5 2.5v3h4v-3M5.5 13.5V9.5h5v4"/>', 15),
+  key: ico('<circle cx="5.5" cy="10.5" r="3"/><path d="m7.6 8.4 5.4-5.4M11 5l1.5 1.5"/>'),
+  print: ico('<path d="M4.5 6V2.5h7V6"/><rect x="2.5" y="6" width="11" height="5.5" rx="1.2"/><path d="M4.5 9.5h7v4h-7z"/>'),
+  ruler: ico('<rect x="1.8" y="5" width="12.4" height="6" rx="1"/><path d="M4.5 5v2.2M7 5v3M9.5 5v2.2M12 5v3"/>'),
+  open: ico('<path d="M9.5 2.5h4v4M13.5 2.5 8 8M11.5 9.5v3a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3"/>', 15),
+  eye: ico('<path d="M1.8 8S4 3.8 8 3.8 14.2 8 14.2 8 12 12.2 8 12.2 1.8 8 1.8 8z"/><circle cx="8" cy="8" r="2"/>'),
+}
+const G = {
+  done: '<svg class="st done" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="currentColor"/><path d="m5 8.2 2.1 2.1 3.9-4.2" fill="none" stroke="var(--surface)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  pending: '<svg class="st" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.2" opacity=".35"/><path d="M8 1.8a6.2 6.2 0 0 1 5.9 4.3"/><path d="M8 5.6v2.6l1.8 1.1"/></svg>',
+  none: '<svg class="st" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2.6 2.2" aria-hidden="true"><circle cx="8" cy="8" r="6.2"/></svg>',
+  bad: '<svg class="st bad" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.2"/><path d="m5.8 5.8 4.4 4.4M10.2 5.8l-4.4 4.4"/></svg>',
+  spin: '<svg class="st spin" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6" opacity=".25"/><path d="M8 2a6 6 0 0 1 6 6"/></svg>',
+}
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+const sw = (k, on, word = true) => `<label class="swl ${on ? 'is-on' : ''}"><input type="checkbox" class="sw" data-sw="${k}" ${on ? 'checked' : ''}>${word ? `<span>${on ? 'Açık' : 'Kapalı'}</span>` : ''}</label>`
+const swatches = (id, lg) => { const p = id === 'custom' ? S.app.palette : paletteOf(id); return `<span class="sws ${lg ? 'lg' : ''}" data-sws="${id}">${[p.bg, p.surface, p.primary, p.accent].map(c => `<i style="background:${c}"></i>`).join('')}</span>` }
+
+/* ================= shared blocks ================= */
+const totpState = () => S.totp ? `<span class="tag ink has-g">${G.done}Etkin</span>` : `<span class="tag has-g">${G.none}Kapalı</span>`
+function authBlock() {
+  return `<div class="auth"><span class="ico-tile lg">${I.shield}</span>
+    <h3>Authenticator ${totpState()}</h3>
+    <p>Giriş sırasında telefonunuzdaki tek kullanımlık kodla hesabınızı koruyun.</p>
+    <div class="meta">${S.totp ? `<span>Kalan kurtarma kodu <b class="num">${S.recovery} / 10</b></span><span>Etkinleştirme <b class="num">16.10.2026 18:44</b></span>` : '<span>Google Authenticator, Microsoft Authenticator veya uyumlu bir uygulama gerekir.</span>'}</div>
+    <div class="side">${S.totp ? `<span class="tag ink has-g" style="height:34px;padding:0 12px 0 9px">${G.done}Hesabınız korunuyor</span>` : `<button class="btn primary" data-a="mfa-open">${I.shield}Authenticator’ı Etkinleştir</button>`}</div></div>`
+}
+const sesState = s => s.state === 'ACTIVE' ? `<span class="ses-state">${G.done}Aktif</span>` : `<span class="ses-state">${G.none}Sonlandırıldı</span>`
+const sesAction = s => s.current ? `<span class="tag ink has-g" style="height:34px;padding:0 12px 0 9px">${G.done}Mevcut Oturum</span>` : s.state === 'ACTIVE' ? `<button class="btn danger" data-a="sess" data-act="revoke" data-id="${s.id}">${I.logout}Oturumu Sonlandır</button>` : `<button class="btn danger quiet" data-a="sess" data-act="delete" data-id="${s.id}">${I.trash}Kaydı Sil</button>`
+function sessionsBulk() {
+  const a = activeOthers().length, c = closed().length
+  return `${a ? `<button class="btn danger" data-a="sess" data-act="revoke-others">Diğer Tüm Oturumları Kapat <span class="count">${a}</span></button>` : ''}${c ? `<button class="btn" data-a="sess" data-act="delete-closed">Kapalı Oturumları Sil <span class="count">${c}</span></button>` : ''}`
+}
+function sessionRow(s) {
+  return `<div class="ses ${s.current ? 'current' : ''}"><span class="ico-tile">${s.current ? I.device : I.phone}</span>
+    <div class="who"><b>${s.current ? 'Bu Cihaz' : 'Diğer Oturum'}</b><small>${sesState(s)}</small></div>
+    <div class="when"><span>Son etkinlik ${s.last}</span><small>Bitiş ${s.exp}</small></div>
+    <div class="act">${sesAction(s)}</div></div>`
+}
+function sessionsList(grouped = true) {
+  if (!grouped) return `<div class="sess">${S.sessions.map(sessionRow).join('')}</div>`
+  const act = S.sessions.filter(s => s.state === 'ACTIVE'), cl = closed()
+  return `<div class="sess"><div class="sess-sub">Aktif <span class="count">${act.length}</span></div>${act.map(sessionRow).join('')}${cl.length ? `<div class="sess-sub">Kapalı <span class="count">${cl.length}</span></div>${cl.map(sessionRow).join('')}` : ''}</div>`
+}
+const sessionsCard = () => `<div class="card"><div class="card-h"><div><h2>Oturumlar</h2><p>Hesabınıza bağlı cihazları ve son etkinliklerini görüntüleyin.</p></div><div class="acts">${sessionsBulk()}</div></div>${sessionsList()}</div>`
+
+function scopeItem(k) { const on = S.scopes.includes(k); return `<label class="sc ${on ? 'on' : ''}"><input type="checkbox" class="cb" data-scope="${k}" ${on ? 'checked' : ''}><span><b>${SCOPES[k][0]}</b><small>${SCOPES[k][1]}</small></span></label>` }
+const scopeGroups = () => `<div class="scopes">${SCOPE_GROUPS.map(([t, d, ks]) => `<section class="sg"><div><h3>${t}</h3><p>${d}</p><label class="sel-all" style="margin-top:8px"><input type="checkbox" class="cb" data-scopeall="${ks.join(',')}" ${ks.every(k => S.scopes.includes(k)) ? 'checked' : ''}>Tümünü Seç</label></div><div class="sg-list">${ks.map(scopeItem).join('')}</div></section>`).join('')}</div>`
+const dbIntro = () => `<div class="card-h"><div><h2>Yerel Veritabanı Listelerini Sıfırla <span class="tag danger has-g">${I.lock}Yetkili İşlemi</span></h2><p>Yalnız seçtiğiniz alanlar bu hesabın yerel veritabanından silinir. Her başlığın kapsam ve bağlı kayıt ayrıntılarını görebilirsiniz.</p></div></div>`
+
+/* sticky bars (re-rendered in place by data-bar) */
+const BAR = {
+  ship: cls => `<div class="sbar ${cls || ''}" data-bar="ship" data-cls="${cls || ''}"><div class="copy"><strong>Etiket Düzenini Yayınla</strong>${S.dirty.ship ? '<span class="dirty">Kaydedilmemiş değişiklikler var</span>' : '<span>Gönderici bilgileri ve kâğıt yerleşimi tüm yazdırma akışlarında kullanılır.</span>'}</div><div class="btns">${S.dirty.ship ? '<button class="btn" data-a="ship-undo">Vazgeç</button>' : ''}<button class="btn primary" data-a="ship-save" ${S.dirty.ship ? '' : 'disabled'}>${I.save}Ayarları Kaydet</button></div></div>`,
+  app: cls => `<div class="sbar ${cls || ''}" data-bar="app" data-cls="${cls || ''}"><div class="copy"><strong>Görünüm Ayarlarını Uygula</strong>${S.dirty.app ? '<span class="dirty">Önizlemedesiniz · kaydedilmemiş değişiklikler var</span>' : '<span>Değişiklikleri hesabınıza kaydetmeden önce önizleyin.</span>'}</div><div class="btns"><button class="btn" data-a="app-default">${I.reset}Varsayılanlara Dön</button><button class="btn primary" data-a="app-save" ${S.dirty.app ? '' : 'disabled'}>${I.save}Görünüm Ayarlarını Kaydet</button></div></div>`,
+  db: cls => `<div class="sbar ${cls || ''}" data-bar="db" data-cls="${cls || ''}"><div class="copy"><strong>Seçili Listeleri Kalıcı Olarak Temizle</strong><span>${S.scopes.length ? `<b style="color:var(--ink);font-weight:500">${S.scopes.length} liste seçildi</b> · ` : ''}Bu işlem seçtiğiniz kayıtları geri alınamayacak şekilde kaldırır.</span></div><div class="btns">${S.scopes.length ? '<button class="btn quiet" data-a="scope-clear">Seçimi Temizle</button>' : ''}<button class="btn danger solid" data-a="db-open" ${S.scopes.length ? '' : 'disabled'}>${I.trash}Seçili Listeleri Kalıcı Sil</button></div></div>`,
+}
+
+/* shipping controls */
+const C = {
+  senderName: () => `<input class="in" data-t="senderName" value="${esc(S.lab.senderName)}" maxlength="120">`,
+  senderAddress: () => `<textarea class="in" data-t="senderAddress" rows="3" maxlength="500" placeholder="İsteğe bağlı">${esc(S.lab.senderAddress)}</textarea>`,
+  a4: () => `<select class="in" data-s="a4">${[1, 2, 4].map(n => `<option value="${n}" ${S.lab.a4 == n ? 'selected' : ''}>Sayfada ${n} Etiket</option>`).join('')}</select>`,
+  def: () => `<select class="in" data-s="def"><option value="a4" ${S.lab.def === 'a4' ? 'selected' : ''}>Kargo Etiketi · A4</option><option value="sticker" ${S.lab.def === 'sticker' ? 'selected' : ''}>Kargo Etiketi · Sticker</option></select>`,
+  showA4: () => sw('showA4', S.lab.showA4), showSticker: () => sw('showSticker', S.lab.showSticker), phone: () => sw('phone', S.lab.phone),
+  w: () => `<input class="in" type="number" min="40" max="300" data-n="w" value="${S.lab.w}">`,
+  h: () => `<input class="in" type="number" min="40" max="300" data-n="h" value="${S.lab.h}">`,
+  gap: () => `<input class="in" type="number" min="0" max="20" data-n="gap" value="${S.lab.gap}">`,
+}
+const SHIP = [
+  ['sender', 'Gönderici Bilgileri', 'Etiketin üzerinde görünen gönderici.', I.user, [['senderName', 'Gönderici Adı', 'Etikette “Gönderici” alanında yazar.'], ['senderAddress', 'Gönderici Adresi', 'İsteğe bağlı; boş kalırsa adres satırı basılmaz.']]],
+  ['print', 'Yazdırma Tercihleri', 'Varsayılan çıktı ve görünen yazdırma düğmeleri.', I.print, [['a4', 'A4 Sayfa Düzeni', 'Bir A4 sayfaya kaç etiket basılacağı.'], ['def', 'Varsayılan Çıktı', 'Siparişte “Etiket Yazdır” bu biçimle açılır.'], ['showA4', 'A4 Yazdırma Butonunu Göster', 'Sipariş ekranında A4 düğmesi görünür.'], ['showSticker', 'Sticker Yazdırma Butonunu Göster', 'Sipariş ekranında Sticker düğmesi görünür.']]],
+  ['dims', 'Etiket Ölçüleri', 'Sticker boyutu ve alan aralıkları.', I.ruler, [['w', 'Sticker Genişliği (mm)', '40–300 mm arası.'], ['h', 'Sticker Yüksekliği (mm)', '40–300 mm arası.'], ['gap', 'Bloklar Arası Boşluk (mm)', '0–20 mm arası.'], ['phone', 'Müşteri İletişim Alanını Göster', 'Alıcı telefonu adres bloğunda yazar.']]],
+]
+const isSw = k => ['showA4', 'showSticker', 'phone'].includes(k)
+const fld = ([k, l]) => isSw(k) ? `<div class="swfld"><b>${l}</b>${C[k]()}</div>` : `<label class="fld"><small>${l}</small>${C[k]()}</label>`
+function shipGroupFields(g) {
+  const f = g[4]
+  if (g[0] === 'dims') return `<div class="pair">${fld(f[0])}${fld(f[1])}</div>${fld(f[2])}${fld(f[3])}`
+  if (g[0] === 'print') return `<div class="pair">${fld(f[0])}${fld(f[1])}</div>${fld(f[2])}${fld(f[3])}`
+  return f.map(fld).join('')
+}
+const shipGroups = () => `<div class="shipg">${SHIP.map(g => `<section><header><h3>${g[1]}</h3><p>${g[2]}</p></header>${shipGroupFields(g)}</section>`).join('')}</div>`
+
+/* designer */
+function bars(v) { let h = 0; for (const c of v) h = (h * 31 + c.charCodeAt(0)) >>> 0; const out = []; for (let i = 0; i < 58; i++) { h = (h * 1103515245 + 12345) >>> 0; out.push((h >> 16) % 3 !== 0 || i % 9 === 0) } out[0] = out[1] = out[56] = out[57] = true; return out }
+function blockPreview(b) {
+  if (b.kind === 'trackingBarcode' || b.kind === 'packageBarcode') { const v = VALUES[b.fields[0] || 'trackingNumber']; return `<div class="bars">${bars(v).map(k => `<i class="${k ? 'k' : ''}"></i>`).join('')}</div><div class="bc-num">${v}</div>` }
+  return `${b.kind === 'custom' ? `<span class="bt">${esc(b.title)}</span>` : ''}${b.text ? `<span class="bt">${esc(b.text)}</span>` : ''}${b.fields.map(f => `<span><b>${FIELDS[f]}</b>${f === 'senderName' ? esc(S.lab.senderName) : VALUES[f]}</span>`).join('')}`
+}
+const paperAspect = () => S.fmt === 'a4' ? '210 / 297' : `${S.lab.w} / ${S.lab.h}`
+function paper() {
+  return `<div class="paper ${S.fmt === 'sticker' ? 'sticker' : ''}" style="aspect-ratio:${paperAspect()}" data-paper>${S.blocks.map(b => `<article class="blk ${S.sel === b.id ? 'on' : ''}" data-blk="${b.id}" style="left:${b.x}%;top:${b.y}%;width:${b.w}%;height:${b.h}%;text-align:${b.align};font-size:calc(${b.fs}px * .58);${b.rot ? `transform:rotate(${b.rot}deg);` : ''}">${blockPreview(b)}</article>`).join('')}${S.blocks.length ? '' : '<div class="empty-s" style="position:absolute;inset:0;display:grid;place-content:center;color:#555"><b>İçerik Bırakın</b><span>Kütüphaneden bir alanı buraya sürükleyin.</span></div>'}</div>`
+}
+function inspector() {
+  const b = blockById(S.sel)
+  const head = `<div class="dz-head"><b>Özellikler</b><small>${b ? `Seçili: ${esc(b.title)}` : 'Bir alan seçin'}</small></div>`
+  const tabs = `<div class="itabs">${[['general', 'Genel'], ['text', 'Yazı'], ['barcode', 'Barkod']].map(([k, t]) => `<button class="tab ${S.itab === k ? 'on' : ''}" data-a="itab" data-k="${k}">${t}</button>`).join('')}</div>`
+  if (!b) return head + tabs + '<div class="empty-s">Düzenlemek için kâğıt üzerindeki bir bloğa tıklayın.</div>'
+  const align = `<div class="seg3">${[['left', 'Sol'], ['center', 'Orta'], ['right', 'Sağ']].map(([k, t]) => `<button class="${b.align === k ? 'on' : ''}" data-a="align" data-k="${k}">${t}</button>`).join('')}</div>`
+  let body = ''
+  if (S.itab === 'general') body = `<label class="fld"><small>Blok Türü</small><select class="in" data-s="kind">${BLOCK_CATALOG.map(c => `<option value="${c[0]}" ${b.kind === c[0] ? 'selected' : ''}>${c[1]}</option>`).join('')}</select></label>
+      <div class="fld"><small>Hizalama</small>${align}</div>
+      <p class="help">Boyutu doğrudan kâğıt üzerindeki tutamaçlardan ayarlayın.</p>
+      <label class="fld"><small>Alana Ekle</small><select class="in" data-s="addField"><option value="">Bir alan seçin…</option>${Object.entries(FIELDS).filter(([k]) => !b.fields.includes(k)).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select></label>
+      <div class="fchips">${b.fields.length ? b.fields.map(f => `<button class="fchip" data-a="field-rm" data-k="${f}" title="Alanı çıkar">${FIELDS[f]}${I.close}</button>`).join('') : '<span class="faint" style="font-size:12px">Alan eklenmedi</span>'}</div>`
+  if (S.itab === 'text') body = `<div class="fld"><small>Yazı Hizası</small>${align}</div>
+      <div class="rng"><div class="hd"><span>Yazı Boyutu</span><output data-fs-out>${b.fs} px</output></div><input type="range" min="8" max="72" value="${b.fs}" data-range="fs"><div class="sc2"><span>8 px</span><span>72 px</span></div></div>
+      <p class="help">Yazı rengi sabit olarak siyahtır.</p>
+      ${b.kind === 'custom' ? `<label class="fld"><small>Metin</small><textarea class="in" rows="5" maxlength="500" data-bt="text">${esc(b.text)}</textarea></label>` : ''}
+      <p class="help">Alanların gerçek değerleri sipariş yazdırılırken otomatik doldurulur.</p>`
+  if (S.itab === 'barcode') body = `<div class="fld"><b style="font-weight:600">${b.kind === 'packageBarcode' ? 'Paket Barkodu' : b.kind === 'trackingBarcode' ? 'Takip Barkodu' : 'Barkod Ayarı'}</b><p class="help">Barkod genişliği tuvaldeki blok genişliğine göre otomatik ölçeklenir. Modül aralıkları tarayıcı okunabilirliğini korur.</p></div>
+      <label class="fld"><small>Alan</small><select class="in" data-s="bcField"><option value="">Alan seçin…</option>${['trackingNumber', 'packageNumber'].map(k => `<option value="${k}" ${b.fields[0] === k ? 'selected' : ''}>${FIELDS[k]}</option>`).join('')}</select></label>`
+  return head + tabs + `<div class="ibody">${body}
+    <div class="rng"><div class="hd"><span>Döndürme</span><output>${b.rot}°</output></div><div class="rot"><button class="btn" data-a="rot" data-k="-90">−90°</button><button class="btn" data-a="rot" data-k="90">+90°</button><button class="btn" data-a="rot" data-k="0" ${b.rot ? '' : 'disabled'}>0°</button></div></div>
+    <button class="btn danger quiet" data-a="blk-del" style="justify-self:start">${I.trash}Bloğu Kaldır</button></div>`
+}
+function designer() {
+  return `<div class="dz">
+    <div class="dz-bar"><span class="seg2"><button class="${S.fmt === 'a4' ? 'on' : ''}" data-a="fmt" data-k="a4">A4 <small>${S.lab.a4} Etiket</small></button><button class="${S.fmt === 'sticker' ? 'on' : ''}" data-a="fmt" data-k="sticker">Sticker <small>${S.lab.w} × ${S.lab.h} mm</small></button></span>
+      <span class="grow"></span>
+      <select class="in sm" data-s="tpl" aria-label="Kayıtlı şablon seçin"><option value="">Şablon Seçin…</option>${S.tpls.map(t => `<option value="${t.id}" ${S.tpl === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>
+      <button class="btn" data-a="tpl-save-open">${I.save}Şablon Kaydet</button>
+      <button class="btn" data-a="tpl-del-open" ${S.tpl ? '' : 'disabled'}>${I.trash}Şablonu Sil</button>
+      <button class="btn quiet" data-a="layout-reset-open">${I.reset}Varsayılanı Yükle</button></div>
+    <div class="dz-work">
+      <aside class="dz-lib"><div class="dz-head"><b>İçerik Kütüphanesi</b><small>Sürükleyip kâğıda bırakın veya tıklayıp ekleyin</small></div>
+        <div class="lib-list">${BLOCK_CATALOG.map(c => `<button class="lib-it" data-a="lib-add" data-k="${c[0]}"><span class="ico-tile">${c[0].includes('Barcode') ? I.barcode : c[0] === 'custom' ? I.sparkle : I.layout}</span><span><b>${c[1]}</b><small>${c[2]} · birden fazla eklenebilir</small></span>${I.plus}</button>`).join('')}</div>
+        <div class="lib-custom"><label class="fld"><small>Özel Blok Başlığı</small><input class="in" data-t="customTitle" value="${esc(S.customTitle)}" placeholder="Örn. mağaza notu"></label><label class="fld"><small>Özel Blok İçeriği</small><textarea class="in" rows="3" data-t="customText" placeholder="Bu blokta görünecek metin">${esc(S.customText)}</textarea></label></div></aside>
+      <main class="dz-stage"><div class="dz-sbar"><b>${S.fmt === 'a4' ? 'A4 Çalışma Yüzeyi' : 'Sticker Çalışma Yüzeyi'}</b><span class="num">${S.blocks.length} blok yerleşti</span></div>
+        <div class="dz-canvas">${paper()}</div>
+        <div class="dz-help">Bloğu sürükleyerek taşıyın · köşe tutamaçlarıyla boyutlandırın · döndürmeyi ve yazıyı sağdaki panelden düzenleyin.</div></main>
+      <aside class="dz-insp">${inspector()}</aside>
+    </div></div>`
+}
+
+/* appearance */
+const selectableThemes = () => [{ id: 'light', name: 'Ravencia — Aydınlık', desc: 'Açık çalışma alanı görünümü' }, ...S.app.themes]
+function themePicker(key, staticOpen) {
+  const t = themeById(S.app.theme), open = staticOpen || S.menu === key
+  const menu = `<div class="pick-menu ${staticOpen ? 'static' : ''}" role="listbox">${selectableThemes().map((o, i) => `${i === 1 ? '<div class="pick-sep"></div>' : ''}<button class="pick-opt ${o.id === S.app.theme ? 'on' : ''}" data-a="theme-pick" data-k="${o.id}" role="option">${swatches(o.id)}<span><b>${esc(o.name)}</b><small>${o.desc}</small></span>${o.id === S.app.theme ? G.done : '<span></span>'}</button>`).join('')}</div>`
+  return `<div class="picker">${staticOpen ? '' : `<button class="pick-btn ${open ? 'on' : ''}" data-a="menu" data-k="${key}" aria-haspopup="listbox" aria-expanded="${open}">${swatches(t.id)}<span>${esc(t.name)} <small>— ${t.desc}</small></span>${I.chev}</button>`}${open ? menu : ''}</div>`
+}
+const fontSel = () => `<select class="in" data-s="font">${FONTS.map(f => `<option value="${f[0]}" ${S.app.font === f[0] ? 'selected' : ''}>${f[1]}</option>`).join('')}</select>`
+const sizeSel = () => `<select class="in" data-s="size">${SIZES.map(f => `<option value="${f[0]}" ${S.app.size === f[0] ? 'selected' : ''}>${f[1]} — ${f[2]}</option>`).join('')}</select>`
+const readability = k => `<div class="app-grid"><label class="fld"><small>Font Tipi</small>${fontSel()}</label><label class="fld"><small>Yazı Boyutu</small>${sizeSel()}</label><div class="fld"><small>Tema</small>${themePicker(k)}</div></div>`
+function savedThemes() {
+  return `<div class="themes">${S.app.themes.map(t => `<div class="th ${S.app.theme === t.id ? 'on' : ''}"><button class="pickt" data-a="theme-pick" data-k="${t.id}">${swatches(t.id, true)}<span><b>${esc(t.name)}</b><small>${t.builtIn ? 'Varsayılan tema' : 'Kayıtlı özel tema'}</small></span></button>${t.builtIn ? `<span class="prot" title="Varsayılan tema korunur ve silinemez">${I.lock}</span>` : `<button class="btn danger quiet" style="height:28px;padding:0 8px" data-a="theme-del-open" data-k="${t.id}">Sil</button>`}</div>`).join('')}</div>`
+}
+const newThemeRow = () => `<div class="th-new"><input class="in" data-t="newTheme" maxlength="60" placeholder="Yeni tema adı" value="${esc(S.newTheme)}" aria-label="Yeni tema adı"><button class="btn primary" data-a="theme-save" data-need="newTheme" ${S.newTheme.trim() ? '' : 'disabled'}>${I.plus}Renk Temasını Kaydet</button></div>`
+const colorGrid = () => S.app.theme === 'light' ? `<div class="callout">${I.info}<span>Açık tema renkleri ayrı tutulur. <b>Varsayılana Döndür</b> açık paleti fabrika değerlerine getirir.</span></div>` : `<div class="cgrid">${TOKENS.map(([k, l, d]) => `<div class="cf"><span><b>${l}</b><small>${d}</small></span><label class="cctl"><input type="color" value="${S.app.palette[k]}" data-color="${k}" aria-label="${l} rengi"><code data-hex="${k}">${S.app.palette[k].toUpperCase()}</code></label></div>`).join('')}</div>`
+const activeThemeLabel = () => `<span class="tag ink">${esc(themeById(S.app.theme).name)}${S.dirty.app ? ' · Düzenlendi' : ''}</span>`
+const ntest = () => `<div class="ntest"><button class="btn" data-a="toast" data-k="success">${G.done}Başarılı</button><button class="btn" data-a="toast" data-k="pending">${G.pending}Bekliyor</button><button class="btn" data-a="toast" data-k="error">${G.bad}Başarısız</button></div>`
+function pvStyle() { const p = S.app.theme === 'light' ? PAL.light : S.app.palette; const f = FONTS.find(x => x[0] === S.app.font)[2]; const sc = SIZES.find(x => x[0] === S.app.size)[3]; return Object.entries(p).map(([k, v]) => `--p-${k}:${v}`).join(';') + `;font-family:${f};font-size:${(14 * sc).toFixed(1)}px` }
+const preview = () => `<div class="pv" data-pv style="${pvStyle()}"><small>Önizleme</small><div class="pv-card"><strong>Ravencia MarketplaceHub</strong><p>Bu ayar sipariş, iade, ürün ve diğer çalışma ekranlarındaki metinleri etkiler.</p><div class="pv-line"><span>#1972215187 · Fehime Mat</span><span>16.10.2026 18:36</span></div><div class="pv-row"><button class="pv-btn">Kaydet</button><button class="pv-btn2">Vazgeç</button><span class="pv-tag pv-sel">Seçili</span><span class="pv-tag pv-ok">Teslim edildi</span><span class="pv-tag pv-warn">Gecikiyor</span><span class="pv-tag pv-bad">Hata</span></div></div></div>`
+const paletteHead = () => `<div><h2>Renk Paleti ${activeThemeLabel()}</h2><p>${S.app.theme === 'light' ? 'Açık tema renklerini düzenleyin. Varsayılan palet parlamayan, gözü yormayan yumuşak tonlardadır.' : 'Değişiklikler kaydetmeden önce anlık önizlenir. Hazır paletleri saklayabilir, daha sonra yeniden uygulayabilirsiniz.'}</p></div>${S.app.theme === 'light' ? '<div class="acts"><button class="btn" data-a="toast-msg" data-k="Açık tema renkleri varsayılana döndürüldü.">Varsayılana Döndür</button></div>' : ''}`
+
+/* ================= popups ================= */
+const modal = ({ title, desc, body, foot, w = '', flush = false, drawer = false }) => `<${drawer ? 'aside' : 'div'} class="${drawer ? 'drawer' : 'modal'} ${w}" role="dialog" aria-modal="true"><header class="m-head"><div><h2>${title}</h2>${desc ? `<p>${desc}</p>` : ''}</div><button class="icon-btn" data-a="close" aria-label="Kapat">${I.close}</button></header><div class="m-body ${flush ? 'flush' : ''}">${body}</div>${foot ? `<footer class="m-foot">${foot}</footer>` : ''}</${drawer ? 'aside' : 'div'}>`
+function qrSvg() { let h = 7; const n = 25, cells = []; const finder = (x, y) => [[x, y], [x + 4, y]].length && `<rect x="${x}" y="${y}" width="7" height="7" fill="#111"/><rect x="${x + 1}" y="${y + 1}" width="5" height="5" fill="#fff"/><rect x="${x + 2}" y="${y + 2}" width="3" height="3" fill="#111"/>`
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) { if ((x < 8 && y < 8) || (x > 16 && y < 8) || (x < 8 && y > 16)) continue; h = (h * 1103515245 + 12345) >>> 0; if ((h >> 16) & 1) cells.push(`<rect x="${x}" y="${y}" width="1" height="1"/>`) }
+  return `<svg viewBox="0 0 25 25" shape-rendering="crispEdges"><g fill="#111">${cells.join('')}</g>${finder(0, 0)}${finder(18, 0)}${finder(0, 18)}</svg>` }
+const MFA_STEPS = [['password', 'Parola', 'Hesabı doğrula'], ['verify', 'QR Kod', 'Uygulamaya ekle'], ['recovery', 'Kurtarma Kodları', 'Güvenle sakla']]
+function mfaContent(step, err, st) {
+  if (step === 'password') return { desc: 'Önce hesabın size ait olduğunu doğrulayın.', body: `<label class="fld"><small>Mevcut Parola</small><input class="in" type="password" autocomplete="current-password" data-t="mfaPass" placeholder="••••••••"></label><p class="lead">Parolanız yalnız bu kurulum için doğrulanır; kaydedilmez.</p>`, foot: `<span class="note">Adım 1 / 3</span><button class="btn" data-a="close">Vazgeç</button><button class="btn primary" data-a="mfa-next">Devam Et</button>` }
+  if (step === 'verify') return { desc: 'QR kodu uygulamanıza ekleyip üretilen kodu girin.', body: `<div class="qrrow"><div class="qr">${qrSvg()}</div><div class="copy"><p>QR kodu Google Authenticator, Microsoft Authenticator veya uyumlu uygulamanızla tarayın.</p><details class="man"><summary>Kurulum Anahtarını Elle Göster</summary><code>otpauth://totp/Ravencia:yonetici?secret=JBSWY3DPEHPK3PXP&amp;issuer=Ravencia</code></details><div class="fld"><small>6 Haneli Doğrulama Kodu</small><div class="otp">${[0, 1, 2, 3, 4, 5].map(i => `<input inputmode="numeric" maxlength="1" data-otp="${i}" value="${st ? '' : S.otp[i] || ''}" aria-label="${i + 1}. hane">`).join('')}</div>${err ? `<span class="ferr">${G.bad}${err}</span>` : ''}</div></div></div>`, foot: `<span class="note">Adım 2 / 3</span><button class="btn" data-a="mfa-back">${I.back}Geri</button><button class="btn primary" data-a="mfa-next">Etkinleştir</button>` }
+  return { desc: 'Kurtarma kodlarını şimdi güvenli bir yerde saklayın.', body: `<div class="codes">${RECOVERY.map(c => `<code>${c}</code>`).join('')}</div><div class="callout warn">${I.alert}<span><b>Bu kodlar yalnızca bir kez gösterilir.</b> Her kod tek kullanımlıktır; telefonunuza erişemediğinizde giriş için kullanılır.</span></div>`, foot: `<button class="btn quiet" data-a="toast-msg" data-k="Kurtarma kodları panoya kopyalandı.">${I.copy}Kopyala</button><span class="note"></span><button class="btn primary" data-a="mfa-done">Kodları Sakladım</button>` }
+}
+function popMfa(a, fl) {
+  const step = a.step || S.mfaStep, c = mfaContent(step, a.static ? '' : S.mfaErr, a.static), idx = MFA_STEPS.findIndex(s => s[0] === step)
+  const g = i => i < idx ? G.done : i === idx ? G.pending : G.none
+  if (fl === 'left') return modal({ title: 'Authenticator Kurulumu', desc: c.desc, w: 'w-lg', flush: true, body: `<div class="mfa-split"><nav class="mfa-rail">${MFA_STEPS.map((s, i) => `<div class="rs ${i === idx ? 'on' : i < idx ? 'done' : ''}">${g(i)}<span>${s[1]}</span><small>${s[2]}</small></div>`).join('')}</nav><div class="mfa-pane">${c.body}</div></div>`, foot: c.foot })
+  return modal({ title: 'Authenticator Kurulumu', desc: c.desc, w: step === 'verify' ? 'w-md' : '', body: `<div class="steps">${MFA_STEPS.map((s, i) => `<div class="step ${i === idx ? 'on' : i < idx ? 'done' : ''}">${g(i)}<span>${s[1]}</span></div>`).join('')}</div>${c.body}`, foot: c.foot })
+}
+function popSess(a) {
+  const act = a.action, s = S.sessions.find(x => x.id === a.id) || S.sessions[1]
+  const nA = activeOthers().length || 2, nC = closed().length || 2
+  const copy = { revoke: ['Oturumu Sonlandır', 'Bu cihazın bağlantısı sonlandırılacak. Devam etmek istiyor musunuz?', 'Oturumu Sonlandır'], 'revoke-others': ['Diğer Oturumları Kapat', `${nA} aktif oturum sonlandırılacak. Devam etmek istiyor musunuz?`, 'Oturumları Kapat'], delete: ['Kapalı Oturum Kaydını Sil', 'Bu kapalı oturum kaydı kalıcı olarak silinecek. Devam etmek istiyor musunuz?', 'Kaydı Sil'], 'delete-closed': ['Kapalı Oturumları Sil', `${nC} kapalı oturum kaydı kalıcı olarak silinecek. Devam etmek istiyor musunuz?`, 'Kayıtları Sil'] }[act]
+  const list = act === 'revoke' || act === 'delete' ? [s] : act === 'revoke-others' ? (activeOthers().length ? activeOthers() : SESSIONS0.filter(x => !x.current && x.state === 'ACTIVE')) : (closed().length ? closed() : SESSIONS0.filter(x => x.state !== 'ACTIVE'))
+  return modal({ title: copy[0], desc: copy[1], w: 'w-sm', body: `<div class="callout ${act.startsWith('delete') ? '' : 'warn'}">${I.alert}<span><b>Bu işlem hesap oturumlarını etkiler.</b> Devam etmeden önce yapmak istediğiniz işlemi kontrol edin.</span></div><div class="confirm-sum">${list.map(x => `<div>${x.state === 'ACTIVE' ? G.done : G.none}<span>Diğer Oturum<small>Son etkinlik ${x.last}</small></span><span class="r">Bitiş ${x.exp}</span></div>`).join('')}</div>`, foot: `<span class="note"></span><button class="btn" data-a="close">Vazgeç</button><button class="btn danger solid" data-a="sess-ok" data-act="${act}" data-id="${s.id}">${copy[2]}</button>` })
+}
+function popDb(a) {
+  const sel = S.scopes.length ? S.scopes : ['PRODUCTS', 'ORDERS'], ok = !a.static && S.confirm === 'Verileri sil'
+  return modal({ title: 'Seçili Listeleri Kalıcı Sil', desc: 'Seçtiğiniz kayıtlar bu hesabın yerel veritabanından geri alınamayacak şekilde silinir.', w: 'w-md', body: `<div class="confirm-sum">${sel.map(k => `<div>${G.bad}<span>${SCOPES[k][0]}<small>${SCOPES[k][1]}</small></span><span></span></div>`).join('')}</div>${sel.includes('ORDERS') && !sel.includes('RETURNS') ? `<div class="callout warn">${I.alert}<span><b>Siparişler listesi</b> seçili olduğu için ilişkili iadeler ve faturalar da kaldırılır.</span></div>` : ''}<label class="typed"><small>Onay için <b>Verileri sil</b> yazın</small><input class="in ${ok ? 'match' : ''}" data-t="confirm" value="${a.static ? '' : esc(S.confirm)}" placeholder="Verileri sil" autocomplete="off"></label>`, foot: `<span class="note">${sel.length} liste silinecek</span><button class="btn" data-a="close">Vazgeç</button><button class="btn danger solid" data-a="db-ok" data-need="confirm" ${ok ? '' : 'disabled'}>${I.trash}Seçili Listeleri Kalıcı Sil</button>` })
+}
+function popThemeDel(a) { const t = S.app.themes.find(x => x.id === a.id) || { id: 'gece', name: 'Gece Mavisi' }; return modal({ title: 'Renk Temasını Sil', desc: `“${esc(t.name)}” renk teması kalıcı olarak silinecek. Devam etmek istiyor musunuz?`, w: 'w-sm', body: `<div class="th">${swatches(t.id, true)}<span><b>${esc(t.name)}</b><small>Kayıtlı özel tema${S.app.theme === t.id ? ' · şu an seçili' : ''}</small></span></div><div class="callout">${I.alert}<span><b>Bu işlem geri alınamaz.</b> Seçili tema silinirse görünüm Ravencia — Sade’ye döner.</span></div>`, foot: `<span class="note"></span><button class="btn" data-a="close">Vazgeç</button><button class="btn danger solid" data-a="theme-del-ok" data-k="${t.id}">Temayı Sil</button>` }) }
+const popTplSave = () => modal({ title: 'Şablon Kaydet', desc: 'Geçerli kâğıt yerleşimini bir adla saklayın; sonra tek seçimle geri yükleyin.', w: 'w-sm', body: `<label class="fld"><small>Şablon Adı</small><input class="in" data-t="tplName" maxlength="80" value="${esc(S.tplName)}"></label><div class="confirm-sum"><div>${I.layout}<span>${S.fmt === 'a4' ? `A4 · Sayfada ${S.lab.a4} Etiket` : `Sticker · ${S.lab.w} × ${S.lab.h} mm`}<small>${S.blocks.length} blok · gönderici ${esc(S.lab.senderName)}</small></span><span></span></div></div><p class="lead">Şablonlar bu tarayıcıda saklanır.</p>`, foot: `<span class="note"></span><button class="btn" data-a="close">Vazgeç</button><button class="btn primary" data-a="tpl-save-ok" data-need="tplName">Kaydet</button>` })
+const popTplDel = () => { const t = S.tpls.find(x => x.id === S.tpl) || S.tpls[0] || { name: 'Trendyol A4 Şablonu' }; return modal({ title: 'Şablonu Sil', desc: `“${esc(t.name)}” şablonu bu tarayıcıdan silinecek. Kâğıttaki yerleşim değişmez.`, w: 'w-sm', body: `<div class="callout">${I.alert}<span><b>Bu işlem geri alınamaz.</b> Aynı yerleşimi yeniden kullanmak için önce yeni adla kaydedin.</span></div>`, foot: `<span class="note"></span><button class="btn" data-a="close">Vazgeç</button><button class="btn danger solid" data-a="tpl-del-ok">Şablonu Sil</button>` }) }
+const popLayoutReset = () => modal({ title: 'Varsayılan Yerleşimi Yükle', desc: 'Kâğıttaki blokların yerine varsayılan yerleşim gelir. Kaydedene kadar hesabınızdaki düzen değişmez.', w: 'w-sm', body: `<div class="confirm-sum"><div>${G.none}<span>Şu anki yerleşim<small>${S.blocks.length} blok · ${S.blocks.filter(b => b.rot).length} döndürülmüş</small></span><span></span></div><div>${G.done}<span>Varsayılan yerleşim<small>5 blok · takip barkodu, adres, paket bilgisi, paket barkodu, gönderici</small></span><span></span></div></div>`, foot: `<span class="note"></span><button class="btn" data-a="close">Vazgeç</button><button class="btn primary" data-a="layout-reset-ok">Varsayılanı Yükle</button>` })
+/* P4 area popups */
+function popArea(a) {
+  const k = a.k
+  if (k === 'security') return modal({ drawer: true, title: 'Güvenlik ve Oturumlar', desc: 'İki adımlı doğrulama ve hesabınıza bağlı cihazlar.', flush: true, body: `<div class="card-b">${authBlock()}</div><div class="card-h" style="border-top:1px solid var(--line)"><div><h2>Oturumlar</h2><p>Hesabınıza bağlı cihazlar ve son etkinlikleri.</p></div><div class="acts">${sessionsBulk()}</div></div>${sessionsList()}` })
+  if (k === 'database') return modal({ title: 'Veritabanı Temizliği', desc: 'Yalnız seçtiğiniz alanlar bu hesabın yerel veritabanından silinir.', w: 'w-lg', flush: true, body: `<div class="card-b" style="border-bottom:1px solid var(--line)"><div class="callout danger">${I.lock}<span><b>Yetkili işlemi.</b> Bağlı alt kayıtlar güvenli sırayla temizlenir; işlem geri alınamaz.</span></div></div>${scopeGroups()}`, foot: `<span class="note">${S.scopes.length} liste seçildi</span><button class="btn" data-a="close">Kapat</button><button class="btn danger solid" data-a="db-open" ${S.scopes.length ? '' : 'disabled'}>${I.trash}Seçili Listeleri Kalıcı Sil</button>` })
+  if (k === 'shipping') { const t = S.p4tab.shipping; return modal({ title: 'Kargo Ayarları', desc: 'Gönderici, yazdırma tercihleri ve etiket yerleşimi.', w: 'w-xl', flush: true, body: `<div class="m-tabs">${[['general', 'Genel Ayarlar'], ['designer', 'Etiket Tasarımı']].map(([x, l]) => `<button class="tab ${t === x ? 'on' : ''}" data-a="p4tab" data-area="shipping" data-k="${x}">${l}</button>`).join('')}</div>${t === 'general' ? shipGroups() : designer()}`, foot: `<span class="note ${S.dirty.ship ? 'dirty' : ''}">${S.dirty.ship ? 'Kaydedilmemiş değişiklikler var' : 'Tüm değişiklikler kaydedildi'}</span><button class="btn" data-a="close">Kapat</button><button class="btn primary" data-a="ship-save" ${S.dirty.ship ? '' : 'disabled'}>${I.save}Ayarları Kaydet</button>` }) }
+  const t = S.p4tab.appearance
+  return modal({ drawer: true, w: 'w-lg', title: 'Görünüm', desc: 'Yazı, tema ve renk paleti. Değişiklikler kaydetmeden önce önizlenir.', flush: true, body: `<div class="m-tabs">${[['read', 'Okunabilirlik ve Tema'], ['palette', 'Renk Paleti'], ['notify', 'Bildirimler']].map(([x, l]) => `<button class="tab ${t === x ? 'on' : ''}" data-a="p4tab" data-area="appearance" data-k="${x}">${l}</button>`).join('')}</div><div class="card-b stack">${t === 'read' ? readability('p4d') + '<div class="h3">Kayıtlı Temalar</div>' + savedThemes() + newThemeRow() + preview() : t === 'palette' ? `<div class="card-h" style="padding:0;border:0">${paletteHead()}</div>${colorGrid()}` : `<p class="lead">Sağ üstte çıkan bildirimlerin seçili temadaki görünümünü deneyin.</p>${ntest()}${preview()}`}</div>`, foot: `<span class="note ${S.dirty.app ? 'dirty' : ''}">${S.dirty.app ? 'Önizlemedesiniz · kaydedilmemiş değişiklikler var' : 'Değişiklikleri kaydetmeden önce önizleyin.'}</span><button class="btn" data-a="app-default">${I.reset}Varsayılanlara Dön</button><button class="btn primary" data-a="app-save" ${S.dirty.app ? '' : 'disabled'}>Görünüm Ayarlarını Kaydet</button>` })
+}
+/* P5 popups */
+const popPalette = () => modal({ title: 'Renk Paletini Düzenle', desc: `${esc(themeById(S.app.theme).name)} · değişiklikler anlık önizlenir.`, w: 'w-lg', body: `<div style="display:grid;grid-template-columns:minmax(0,1fr);gap:16px">${preview()}${colorGrid()}</div>`, foot: `<span class="note ${S.dirty.app ? 'dirty' : ''}">${S.dirty.app ? 'Kaydedilmemiş değişiklikler var' : '20 renk'}</span><button class="btn" data-a="close">Kapat</button><button class="btn primary" data-a="app-save" ${S.dirty.app ? '' : 'disabled'}>Görünüm Ayarlarını Kaydet</button>` })
+const popDesigner = () => modal({ title: 'Etiket Tasarımcısı', desc: 'Alanları kütüphaneden kâğıda sürükleyin; seçili alanı sağ panelden düzenleyin.', w: 'w-xl', flush: true, body: designer(), foot: `<span class="note ${S.dirty.ship ? 'dirty' : ''}">${S.dirty.ship ? 'Kaydedilmemiş değişiklikler var' : 'Tüm değişiklikler kaydedildi'}</span><button class="btn" data-a="close">Kapat</button><button class="btn primary" data-a="ship-save" ${S.dirty.ship ? '' : 'disabled'}>${I.save}Ayarları Kaydet</button>` })
+const POP = { mfa: popMfa, sess: popSess, db: popDb, themeDel: popThemeDel, tplSave: popTplSave, tplDel: popTplDel, layoutReset: popLayoutReset, area: popArea, palette: popPalette, designer: popDesigner }
+const FL = { 1: 'top', 2: 'left', 3: 'top', 4: 'left', 5: 'top' }
+
+/* toasts */
+const TOAST = { success: ['İşlem Başarılı', '#4574136713 için fatura oluşturuldu ve Hepsiburada’ya iletildi.', G.done, ''], pending: ['İşlem Sürüyor', 'Fatura Hepsiburada’ya iletiliyor, sonuç birkaç saniye içinde görünecek.', G.spin, 'pend'], error: ['İşlem Başarısız', 'Fatura oluşturulamadı: sağlayıcı isteği reddetti.', G.bad, 'err'] }
+const toastHtml = (k, msg, st) => { const t = TOAST[k]; return `<div class="nt ${t[3]} ${st ? 'static' : ''}"><span class="ti">${k === 'pending' && st ? G.pending : t[2]}</span><div><strong>${t[0]}</strong><p>${msg || t[1]}</p></div><button class="icon-btn" data-a="toast-x" aria-label="Kapat">${I.close}</button><span class="track"><i></i></span></div>` }
+function toast(k, msg) { const box = document.getElementById('toasts'); const d = document.createElement('div'); d.innerHTML = toastHtml(k, msg); const el = d.firstElementChild; box.prepend(el); while (box.children.length > 3) box.lastElementChild.remove(); if (k !== 'pending') setTimeout(() => el.remove(), 5500) }
+
+/* static mocks */
+function mocks(v) {
+  const fl = FL[v], m = []
+  const add = (label, html, cls = '', st = '') => m.push(`<div class="mock ${cls}"><span>${label}</span><div class="stage ${st}" inert>${html}</div></div>`)
+  if (v === 4) {
+    add('Güvenlik ve Oturumlar · Sağ Panel', popArea({ k: 'security' }), '', 'side')
+    add('Görünüm · Sağ Panel', popArea({ k: 'appearance' }), '', 'side')
+    add('Kargo Ayarları · Geniş Pencere (Genel Ayarlar sekmesi; Etiket Tasarımı sekmesi tasarımcıyı açar)', popArea({ k: 'shipping' }), 'full')
+    add('Veritabanı Temizliği · Pencere', popArea({ k: 'database' }), 'full')
+  }
+  if (v === 5) { add('Renk Paletini Düzenle', popPalette(), 'full'); add('Etiket Tasarımcısı', popDesigner(), 'full') }
+  add('Authenticator Kurulumu · 1. Parola', popMfa({ step: 'password', static: true }, fl), fl === 'left' ? 'full' : '')
+  add('Authenticator Kurulumu · 2. QR ve Kod', popMfa({ step: 'verify', static: true }, fl), fl === 'left' ? 'full' : '')
+  add('Authenticator Kurulumu · 3. Kurtarma Kodları', popMfa({ step: 'recovery', static: true }, fl), fl === 'left' ? 'full' : '')
+  add('Oturumu Sonlandır', popSess({ action: 'revoke', id: 's2' }))
+  add('Diğer Oturumları Kapat', popSess({ action: 'revoke-others' }))
+  add('Kapalı Oturum Kaydını Sil', popSess({ action: 'delete', id: 's4' }))
+  add('Kapalı Oturumları Sil', popSess({ action: 'delete-closed' }))
+  add('Seçili Listeleri Kalıcı Sil · “Verileri sil” onayı', popDb({ static: true }))
+  add('Renk Temasını Sil', popThemeDel({ id: 'gece' }))
+  add('Şablon Kaydet', popTplSave())
+  add('Şablonu Sil', popTplDel())
+  add('Varsayılan Yerleşimi Yükle', popLayoutReset())
+  add('Tema Seçici · Açık Menü', `<div style="width:min(420px,100%)">${themePicker('static', true)}</div>`)
+  add('Bildirim Denemesi · Başarılı / Bekliyor / Başarısız', `<div class="toasts">${['success', 'pending', 'error'].map(k => toastHtml(k, '', true)).join('')}</div>`)
+  return `<section class="mocks"><h3>Popuplar ve Onaylar</h3><p>Bu önerideki her düğmenin açtığı pencerenin statik görünümü. Yukarıdaki düğmeler aynı pencereleri canlı açar.</p><div class="mock-grid">${m.join('')}</div></section>`
+}
+
+/* ================= proposals ================= */
+const pageHead = (acts = '') => `<div class="ph"><div><div class="crumb">Ayarlar</div><h1>Sistem Ayarları</h1><p>Hesap güvenliği, yerel veri, kargo etiketi ve görünüm.</p></div>${acts ? `<div class="acts">${acts}</div>` : ''}</div>`
+const TABS = [['security', 'Güvenlik ve Oturumlar', I.shield], ['database', 'Veritabanı Temizliği', I.db], ['shipping', 'Kargo Ayarları', I.truck], ['appearance', 'Görünüm', I.palette]]
+const tabMeta = k => k === 'security' ? `<span class="count">${S.sessions.filter(s => s.state === 'ACTIVE').length}</span>` : k === 'database' && S.scopes.length ? `<span class="count">${S.scopes.length}</span>` : (k === 'shipping' && S.dirty.ship) || (k === 'appearance' && S.dirty.app) ? '<span class="count warn">•</span>' : ''
+
+/* Öneri 1 */
+function p1() {
+  const t = S.tab[1]
+  let body = ''
+  if (t === 'security') body = `<div class="stack"><div class="card card-b">${authBlock()}</div>${sessionsCard()}</div>`
+  if (t === 'database') body = `<div class="card">${dbIntro()}${scopeGroups()}${BAR.db()}</div>`
+  if (t === 'shipping') body = `<div class="stack"><div class="card"><div class="card-h"><div><h2>Kargo Etiketi</h2><p>Bu ayarlar hesabınıza kaydedilir ve tüm tarayıcılarda aynı uygulanır.</p></div></div>${shipGroups()}</div><div class="card" style="overflow:clip"><div class="card-h"><div><h2>Etiket Tasarımı</h2><p>Alanları kütüphaneden kâğıda sürükleyin. Seçili alanı taşıyın, boyutlandırın ve özelliklerini anında düzenleyin.</p></div></div>${designer()}${BAR.ship()}</div></div>`
+  if (t === 'appearance') body = `<div class="stack"><div class="card"><div class="card-h"><div><h2>Okunabilirlik</h2><p>Tablo ve işlem ekranlarındaki yazıları hesabınız için özelleştirin.</p></div></div><div class="card-b">${readability('p1')}</div></div>
+    <div class="card"><div class="card-h">${paletteHead()}</div>${S.app.theme === 'light' ? '' : `<div class="card-b stack" style="border-bottom:1px solid var(--line)"><div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px"><div style="flex:1 1 220px"><div class="h3">Kayıtlı Temalar</div><p class="lead">Varsayılan tema korunur ve silinemez.</p></div><div style="flex:1 1 360px">${newThemeRow()}</div></div>${savedThemes()}</div>`}<div class="card-b">${colorGrid()}</div></div>
+    <div class="card"><div class="p1-app-bottom"><section><div><div class="h3">Bildirimler</div><p class="lead">Sağ üstte çıkan bildirimlerin seçili temadaki görünümünü deneyin.</p></div>${ntest()}</section><section>${preview()}</section></div></div>${BAR.app('float')}</div>`
+  return `${pageHead()}<div class="p1-tabs" role="tablist">${TABS.map(([k, l, i]) => `<button class="tab ${t === k ? 'on' : ''}" data-a="tab" data-p="1" data-k="${k}" role="tab">${i}${l}${tabMeta(k)}</button>`).join('')}</div>${body}`
+}
+
+/* Öneri 2 */
+const P2 = [
+  ['Güvenlik ve Oturumlar', [['auth', 'Authenticator', () => S.totp ? G.done : G.none], ['sessions', 'Oturumlar', () => `<span class="count">${S.sessions.length}</span>`]]],
+  ['Veri', [['database', 'Veritabanı Temizliği', () => S.scopes.length ? `<span class="count warn">${S.scopes.length}</span>` : '']]],
+  ['Kargo Ayarları', [['sender', 'Gönderici ve Yazdırma', () => ''], ['dims', 'Etiket Ölçüleri', () => ''], ['designer', 'Etiket Tasarımı', () => `<span class="count">${S.blocks.length}</span>`]]],
+  ['Görünüm', [['read', 'Okunabilirlik ve Tema', () => ''], ['palette', 'Renk Paleti', () => S.dirty.app ? G.pending : ''], ['themes', 'Kayıtlı Temalar', () => `<span class="count">${S.app.themes.length}</span>`], ['notify', 'Bildirimler', () => '']]],
+]
+const P2ICON = { auth: I.shield, sessions: I.device, database: I.db, sender: I.user, dims: I.ruler, designer: I.layout, read: I.type, palette: I.palette, themes: I.save, notify: I.bell }
+function p2() {
+  const k = S.tab[2], grp = P2.find(g => g[1].some(x => x[0] === k)), item = grp[1].find(x => x[0] === k)
+  const META = {
+    auth: ['İki adımlı doğrulama ile girişte telefonunuzdaki kod da istenir.', `${authBlock()}${S.totp ? '' : `<div class="callout">${I.info}<span>Kurulum üç adımdır: <b>parolanızı doğrulayın</b>, <b>QR kodu tarayıp 6 haneli kodu girin</b>, <b>kurtarma kodlarını saklayın</b>.</span></div>`}`, ''],
+    sessions: ['Hesabınıza bağlı cihazları ve son etkinliklerini görüntüleyin.', sessionsList(), '', sessionsBulk()],
+    database: ['Yalnız seçtiğiniz alanlar bu hesabın yerel veritabanından silinir.', `<div class="card-b" style="border-bottom:1px solid var(--line)"><div class="callout danger">${I.lock}<span><b>Yetkili işlemi.</b> Bağlı alt kayıtlar güvenli sırayla temizlenir; işlem geri alınamaz.</span></div></div>${scopeGroups()}`, 'db', '', true],
+    sender: ['Etiketin üzerinde görünen gönderici ve varsayılan çıktı.', `<div class="pair">${fld(SHIP[0][4][0])}${fld(SHIP[1][4][1])}</div>${fld(SHIP[0][4][1])}${fld(SHIP[1][4][0])}<div class="pair">${fld(SHIP[1][4][2])}${fld(SHIP[1][4][3])}</div>`, 'ship'],
+    dims: ['Sticker boyutu ve alan aralıkları.', `<div class="pair">${fld(SHIP[2][4][0])}${fld(SHIP[2][4][1])}</div><div class="pair">${fld(SHIP[2][4][2])}${fld(SHIP[2][4][3])}</div>`, 'ship'],
+    designer: ['Alanları kütüphaneden kâğıda sürükleyin; seçili alanı sağ panelden düzenleyin.', designer(), 'ship', '', true],
+    read: ['Tablo ve işlem ekranlarındaki yazıları hesabınız için özelleştirin.', `${readability('p2')}${preview()}`, 'app'],
+    palette: [S.app.theme === 'light' ? 'Açık tema renklerini düzenleyin.' : 'Değişiklikler kaydetmeden önce anlık önizlenir.', `${colorGrid()}`, 'app', activeThemeLabel()],
+    themes: ['Hazır paletleri saklayın, daha sonra yeniden uygulayın. Varsayılan tema korunur ve silinemez.', `${newThemeRow()}${savedThemes()}`, 'app'],
+    notify: ['Sağ üstte çıkan bildirimlerin seçili temadaki görünümünü deneyin.', `${ntest()}${preview()}`, ''],
+  }[k]
+  const nav = P2.map(([g, items], gi) => `${gi ? '<div class="sep"></div>' : ''}<div class="grp">${g}</div>${items.map(([id, l, m]) => `<button class="${k === id ? 'on' : ''}" data-a="tab" data-p="2" data-k="${id}">${P2ICON[id]}<span>${l}</span>${m()}</button>`).join('')}`).join('')
+  const mnav = P2.flatMap(g => g[1]).map(([id, l]) => `<button class="tab ${k === id ? 'on' : ''}" data-a="tab" data-p="2" data-k="${id}">${l}</button>`).join('')
+  return `${pageHead()}<div class="card p2"><nav class="p2-nav">${nav}</nav><div class="p2-pane"><div class="p2-mnav">${mnav}</div><div class="p2-head"><div><div class="crumb">${grp[0]}</div><h2>${item[1]}</h2><p>${META[0]}</p></div>${META[3] ? `<div class="acts" style="display:flex;flex-wrap:wrap;gap:8px">${META[3]}</div>` : ''}</div><div class="p2-body ${META[4] ? 'flush' : ''}">${META[1]}</div>${META[2] ? BAR[META[2]]() : ''}</div></div>`
+}
+
+/* Öneri 3 */
+const P3 = [['p3-security', 'Güvenlik ve Oturumlar', I.shield, [['p3-auth', 'Authenticator'], ['p3-sessions', 'Oturumlar']]], ['p3-shipping', 'Kargo Ayarları', I.truck, [['p3-shipgen', 'Gönderici ve Yazdırma'], ['p3-designer', 'Etiket Tasarımı']]], ['p3-appearance', 'Görünüm', I.palette, [['p3-read', 'Okunabilirlik'], ['p3-palette', 'Renk Paleti'], ['p3-notify', 'Bildirimler']]], ['p3-database', 'Veritabanı Temizliği', I.db, []]]
+function p3() {
+  const on = S.p3
+  const toc = `<nav class="p3-toc">${P3.map(([id, l, i, subs]) => `<a href="#${id}" class="${on === id ? 'on' : ''}" data-toc="${id}">${i}<span>${l}</span>${id === 'p3-shipping' && S.dirty.ship || id === 'p3-appearance' && S.dirty.app ? '<span class="count warn">•</span>' : id === 'p3-database' && S.scopes.length ? `<span class="count">${S.scopes.length}</span>` : '<span></span>'}</a>${subs.map(([sid, sl]) => `<a href="#${sid}" class="sub ${on === sid ? 'on' : ''}" data-toc="${sid}"><span>${sl}</span><span></span></a>`).join('')}`).join('')}<div class="tfoot" data-bar="p3toc">${p3tocFoot()}</div></nav>`
+  const mtoc = `<nav class="p3-mtoc">${P3.map(([id, l]) => `<a href="#${id}" class="${on === id || (P3.find(x => x[0] === id)[3].some(s => s[0] === on)) ? 'on' : ''}" data-toc="${id}">${l}</a>`).join('')}</nav>`
+  const sec = (id, title, desc, i, inner, cls = '') => `<section class="p3-sec ${cls}" id="${id}" data-spy="${id}"><header><span class="ico-tile">${i}</span><div><h2>${title}</h2><p>${desc}</p></div></header>${inner}</section>`
+  const main = `<div class="p3-main">${mtoc}
+    ${sec('p3-security', 'Güvenlik ve Oturumlar', 'İki adımlı doğrulama ve bağlı cihazlar.', I.shield, `<div class="card card-b p3-sub" id="p3-auth" data-spy="p3-auth">${authBlock()}</div><div class="p3-sub" id="p3-sessions" data-spy="p3-sessions">${sessionsCard()}</div>`)}
+    ${sec('p3-shipping', 'Kargo Ayarları', 'Gönderici, yazdırma tercihleri ve etiket yerleşimi. Hesaba kaydedilir, tüm tarayıcılarda aynı uygulanır.', I.truck, `<div class="card p3-sub" id="p3-shipgen" data-spy="p3-shipgen">${shipGroups()}</div><div class="card p3-sub" id="p3-designer" data-spy="p3-designer" style="overflow:clip"><div class="card-h"><div><h2>Etiket Tasarımı</h2><p>Alanları kütüphaneden kâğıda sürükleyin; seçili alanı sağ panelden düzenleyin.</p></div></div>${designer()}</div>`)}
+    ${sec('p3-appearance', 'Görünüm', 'Yazı, tema ve renkler. Değişiklikler kaydetmeden önce anlık önizlenir.', I.palette, `<div class="card p3-sub" id="p3-read" data-spy="p3-read"><div class="card-h"><div><h2>Okunabilirlik</h2><p>Tablo ve işlem ekranlarındaki yazıları hesabınız için özelleştirin.</p></div></div><div class="card-b">${readability('p3')}</div></div>
+      <div class="card p3-sub" id="p3-palette" data-spy="p3-palette"><div class="card-h">${paletteHead()}</div>${S.app.theme === 'light' ? '' : `<div class="card-b stack" style="border-bottom:1px solid var(--line)">${savedThemes()}${newThemeRow()}</div>`}<div class="card-b">${colorGrid()}</div></div>
+      <div class="card p3-sub" id="p3-notify" data-spy="p3-notify"><div class="p1-app-bottom"><section><div><div class="h3">Bildirimler</div><p class="lead">Sağ üstte çıkan bildirimlerin seçili temadaki görünümünü deneyin.</p></div>${ntest()}</section><section>${preview()}</section></div></div>`)}
+    ${sec('p3-database', 'Veritabanı Temizliği', 'Tehlikeli bölge. Seçilen listeler kalıcı olarak silinir.', I.db, `<div class="card">${dbIntro()}${scopeGroups()}${BAR.db()}</div>`, 'danger')}
+    <div data-bar="p3g">${p3bar()}</div></div>`
+  return `${pageHead()}<div class="p3">${toc}${main}</div>`
+}
+const p3tocFoot = () => { const d = [S.dirty.ship && 'Kargo Ayarları', S.dirty.app && 'Görünüm'].filter(Boolean); return d.length ? `<span><b>${d.join(' ve ')}</b> bölümünde kaydedilmemiş değişiklik var.</span><button class="btn primary" data-a="save-all">Tümünü Kaydet</button>` : '<span>Tüm değişiklikler kaydedildi.</span>' }
+const p3bar = () => { const d = [S.dirty.ship && 'Kargo Ayarları', S.dirty.app && 'Görünüm'].filter(Boolean); return d.length ? `<div class="gbar"><div class="copy"><strong>Kaydedilmemiş Değişiklikler</strong><span>${d.join(' ve ')} bölümünde değişiklik var. Görünüm şu an önizlemede.</span></div><button class="btn" data-a="undo-all">Vazgeç</button>${S.dirty.app ? `<button class="btn" data-a="app-default">${I.reset}Varsayılanlara Dön</button>` : ''}<button class="btn primary" data-a="save-all">${I.save}Tümünü Kaydet</button></div>` : '' }
+
+/* Öneri 4 */
+function p4() {
+  const act = S.sessions.filter(s => s.state === 'ACTIVE').length, t = themeById(S.app.theme)
+  const card = (k, icon, title, desc, facts, extra, acts, cls = '') => `<article class="card oc ${cls}"><div class="oc-h"><span class="ico-tile lg">${icon}</span><div><h2>${title}</h2><p>${desc}</p></div></div><dl class="oc-facts">${facts.map(([a, b]) => `<div><dt>${a}</dt><dd>${b}</dd></div>`).join('')}</dl>${extra ? `<div class="oc-extra">${extra}</div>` : ''}<div class="oc-f">${acts}<button class="btn open" data-a="area" data-k="${k}">Aç${I.right}</button></div></article>`
+  const mini = `<div class="mini-paper"><span class="pp">${S.blocks.slice(0, 6).map(b => `<i style="top:${b.y}%;height:${Math.max(4, b.h * .6)}%;left:${5 + b.x * .4}px;width:${b.w * .44}px"></i>`).join('')}</span><p>Gönderici <b style="color:var(--ink);font-weight:500">${esc(S.lab.senderName)}</b> · ${S.lab.showA4 ? 'A4' : ''}${S.lab.showA4 && S.lab.showSticker ? ' ve ' : ''}${S.lab.showSticker ? 'Sticker' : ''} yazdırma düğmeleri açık. Şablon: ${S.tpls.length} kayıtlı.</p></div>`
+  return `${pageHead()}<div class="p4">
+    ${card('security', I.shield, 'Güvenlik ve Oturumlar', 'İki adımlı doğrulama ve bağlı cihazlar.', [['Authenticator', S.totp ? `${G.done}Etkin` : `${G.none}Kapalı`], ['Aktif Oturum', `${act}`], ['Kapalı Kayıt', `${closed().length}`]], '', `${S.totp ? '' : `<button class="btn primary" data-a="mfa-open">${I.shield}Authenticator’ı Etkinleştir</button>`}${activeOthers().length ? `<button class="btn danger" data-a="sess" data-act="revoke-others">Diğer Oturumları Kapat <span class="count">${activeOthers().length}</span></button>` : ''}`)}
+    ${card('appearance', I.palette, 'Görünüm', 'Yazı, tema ve renk paleti.', [['Tema', esc(t.name)], ['Font Tipi', FONTS.find(f => f[0] === S.app.font)[1]], ['Yazı Boyutu', SIZES.find(f => f[0] === S.app.size)[1]]], `<div style="display:flex;align-items:center;gap:12px">${swatches(S.app.theme === 'light' ? 'light' : 'custom', true)}<span class="lead">${S.dirty.app ? 'Önizlemede kaydedilmemiş değişiklik var.' : `${S.app.themes.length} kayıtlı tema · 20 renk`}</span></div>`, `<div style="flex:1 1 240px;min-width:0">${themePicker('p4')}</div>`)}
+    ${card('shipping', I.truck, 'Kargo Ayarları', 'Gönderici, yazdırma ve etiket yerleşimi.', [['Varsayılan Çıktı', S.lab.def === 'a4' ? `A4 · ${S.lab.a4} Etiket` : 'Sticker'], ['Sticker', `${S.lab.w} × ${S.lab.h} mm`], ['Etiket Tasarımı', `${S.blocks.length} blok`]], mini, `<button class="btn" data-a="area" data-k="shipping" data-tab="designer">${I.layout}Etiketi Tasarla</button>`)}
+    ${card('database', I.db, 'Veritabanı Temizliği', 'Yerel listeleri seçerek kalıcı olarak silin.', [['Kapsam', '8 liste · 3 grup'], ['Seçili', `${S.scopes.length} liste`], ['Yetki', `${I.lock}Yetkili işlemi`]], `<div class="callout danger">${I.alert}<span>Seçilen kayıtlar geri alınamayacak şekilde silinir; önce “Verileri sil” onayı istenir.</span></div>`, `<button class="btn danger" data-a="area" data-k="database">${I.trash}Listeleri Seç</button>`, 'danger')}
+  </div>
+  <div class="card recent"><div class="card-h"><div><h2>Son Değişiklikler</h2><p>Bu sayfada yapılan son kayıtlar.</p></div></div>
+    <div class="rr">${G.done}<span>Kargo etiketi ayarları hesaba kaydedildi.</span><time>16.10.2026 17:20</time></div>
+    <div class="rr">${G.done}<span>“Gece Mavisi” renk teması kaydedildi.</span><time>14.10.2026 11:02</time></div>
+    <div class="rr">${G.done}<span>Diğer aktif oturumlar sonlandırıldı.</span><time>12.10.2026 09:33</time></div></div>`
+}
+
+/* Öneri 5 */
+const srow = (title, desc, ctl, cls = '') => `<div class="srow ${cls}"><div><b>${title}</b><small>${desc}</small></div><div class="ctl">${ctl}</div></div>`
+const sgrp = (title, rows, desc = '') => `<div class="p5-g"><h3>${title}</h3>${desc ? `<p>${desc}</p>` : ''}<div class="card">${rows}</div></div>`
+function p5() {
+  const t = S.tab[5]; let body = ''
+  if (t === 'security') body = sgrp('İki Adımlı Doğrulama', srow(`Authenticator ${totpState()}`, S.totp ? `Kalan kurtarma kodu ${S.recovery} / 10 · Etkinleştirme 16.10.2026 18:44` : 'Giriş sırasında telefonunuzdaki tek kullanımlık kodla hesabınızı koruyun.', S.totp ? `<span class="tag ink has-g" style="height:34px;padding:0 12px 0 9px">${G.done}Hesabınız korunuyor</span>` : `<button class="btn primary" data-a="mfa-open">Authenticator’ı Etkinleştir</button>`, 'auto'))
+    + sgrp('Oturumlar', S.sessions.map(s => srow(`${s.current ? 'Bu Cihaz' : 'Diğer Oturum'} ${sesState(s)}`, `Son etkinlik ${s.last} · Bitiş ${s.exp}`, sesAction(s), `auto ses-r ${s.current ? 'current' : ''}`)).join('') + (activeOthers().length || closed().length ? srow('Toplu İşlemler', 'Bu cihaz dışındaki oturumları kapatın veya kapalı kayıtları temizleyin.', sessionsBulk(), 'auto') : ''), 'Hesabınıza bağlı cihazlar ve son etkinlikleri.')
+  if (t === 'database') body = SCOPE_GROUPS.map(([g, d, ks]) => sgrp(g, ks.map(k => srow(SCOPES[k][0], SCOPES[k][1], `<input type="checkbox" class="cb" data-scope="${k}" ${S.scopes.includes(k) ? 'checked' : ''} aria-label="${SCOPES[k][0]} seç" style="width:18px;height:18px">`, 'auto')).join(''), d)).join('')
+    + sgrp('Kalıcı Silme', srow(`Seçili Listeleri Kalıcı Sil <span class="tag danger has-g">${I.lock}Yetkili İşlemi</span>`, `${S.scopes.length} liste seçildi · onay için “Verileri sil” yazmanız istenir.`, `<button class="btn danger solid" data-a="db-open" ${S.scopes.length ? '' : 'disabled'}>${I.trash}Seçili Listeleri Kalıcı Sil</button>`, 'auto'))
+  if (t === 'shipping') body = SHIP.map(g => sgrp(g[1], g[4].map(([k, l, d]) => srow(l, d, C[k](), k === 'senderAddress' ? 'top' : '')).join(''), g[2])).join('')
+    + sgrp('Etiket Tasarımı', srow('Kâğıt Yerleşimi', `${S.fmt === 'a4' ? `A4 · Sayfada ${S.lab.a4} Etiket` : `Sticker · ${S.lab.w} × ${S.lab.h} mm`} · ${S.blocks.length} blok`, `<button class="btn" data-a="designer-open">${I.layout}Tasarımcıyı Aç</button>`, 'auto')
+      + srow('Kayıtlı Şablon', `${S.tpls.length} şablon bu tarayıcıda saklanıyor.`, `<select class="in" data-s="tpl"><option value="">Şablon Seçin…</option>${S.tpls.map(x => `<option value="${x.id}" ${S.tpl === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select><button class="icon-btn" data-a="tpl-del-open" ${S.tpl ? '' : 'disabled'} title="Şablonu sil">${I.trash}</button>`)
+      + srow('Varsayılan Yerleşim', 'Kâğıttaki blokları ilk düzene getirir.', `<button class="btn" data-a="layout-reset-open">${I.reset}Varsayılanı Yükle</button>`, 'auto'))
+  if (t === 'appearance') body = sgrp('Okunabilirlik', srow('Font Tipi', 'Panelin tüm ekranlarında kullanılan yazı tipi.', fontSel()) + srow('Yazı Boyutu', SIZES.find(x => x[0] === S.app.size)[2] + '.', `<select class="in" data-s="size">${SIZES.map(f => `<option value="${f[0]}" ${S.app.size === f[0] ? 'selected' : ''}>${f[1]}</option>`).join('')}</select>`) + srow('Tema', themeById(S.app.theme).desc + '.', themePicker('p5')))
+    + sgrp('Renkler', srow('Renk Paleti', `${esc(themeById(S.app.theme).name)} · 20 renk${S.dirty.app ? ' · düzenlendi' : ''}`, `${swatches(S.app.theme === 'light' ? 'light' : 'custom', true)}<button class="btn" data-a="palette-open">${I.palette}Paleti Düzenle</button>`, 'auto')
+      + S.app.themes.map(x => srow(esc(x.name), x.builtIn ? 'Varsayılan tema · korunur, silinemez' : 'Kayıtlı özel tema', `${swatches(x.id)}${S.app.theme === x.id ? `<span class="tag ink has-g">${G.done}Seçili</span>` : `<button class="btn" data-a="theme-pick" data-k="${x.id}">Uygula</button>`}${x.builtIn ? `<span class="icon-btn" style="cursor:default;color:var(--subtle)" title="Korunuyor">${I.lock}</span>` : `<button class="icon-btn" data-a="theme-del-open" data-k="${x.id}" title="Temayı sil">${I.trash}</button>`}`, 'auto')).join('')
+      + srow('Yeni Renk Teması', 'Geçerli paleti bir adla saklayın.', newThemeRow()))
+    + sgrp('Bildirimler', srow('Bildirim Görünümü', 'Sağ üstte çıkan bildirimleri seçili temada deneyin.', ntest(), 'auto'))
+    + sgrp('Önizleme', `<div class="card-b">${preview()}</div>`)
+  const dirty = (t === 'shipping' && S.dirty.ship) || (t === 'appearance' && S.dirty.app)
+  return `<div class="p5">${pageHead()}<div class="p5-tabs" role="tablist">${TABS.map(([k, l, i]) => `<button class="${t === k ? 'on' : ''}" data-a="tab" data-p="5" data-k="${k}">${i}${l}${tabMeta(k)}</button>`).join('')}</div>${body}<div data-bar="p5">${p5bar()}</div></div>`
+}
+const p5bar = () => { const t = S.tab[5]; if (t === 'shipping' && S.dirty.ship) return `<div class="p5-bar"><span class="dirty">Kargo ayarlarında kaydedilmemiş değişiklikler var.</span><button class="btn" data-a="ship-undo">Vazgeç</button><button class="btn primary" data-a="ship-save">Ayarları Kaydet</button></div>`; if (t === 'appearance' && S.dirty.app) return `<div class="p5-bar"><span>Görünüm önizlemede · kaydedilmedi.</span><button class="btn" data-a="app-default">Varsayılanlara Dön</button><button class="btn primary" data-a="app-save">Görünüm Ayarlarını Kaydet</button></div>`; return '' }
+
+/* ================= render ================= */
+const V = {
+  1: ['Öneri 1 · Sekmeler ve Kartlar', 'Bugünkü düzenin toparlanmış hali: üstte sayaçlı sekme şeridi, her alan kendi kartında, kaydet çubuğu kartın altına yapışık. Temizlik açıklamaları ipucundan karta çıktı; oturumlar Aktif / Kapalı diye gruplandı.', p1],
+  2: ['Öneri 2 · Bölüm Listesi', 'Bağlantı ayarları penceresindeki gibi solda bölüm listesi, sağda tek bölüm. Dört sekme on küçük bölüme ayrılır; listedeki ikon ve sayaçlar durumu gösterir (Authenticator kapalı, seçili liste, düzenlenen palet).', p2],
+  3: ['Öneri 3 · Tek Sayfa ve İçindekiler', 'Tüm ayarlar tek sayfada alt alta, solda yapışık içindekiler (kaydırdıkça işaretlenir). Kaydetme tek yerde: değişiklik olunca altta “Tümünü Kaydet” çubuğu çıkar. Veritabanı temizliği en sonda, tehlikeli bölge olarak.', p3],
+  4: ['Öneri 4 · Genel Bakış Kartları', 'Açılışta dört özet kart: durum, en önemli üç bilgi ve hızlı işlem. Ayrıntı sağ panelde (Güvenlik, Görünüm) veya geniş pencerede (Kargo, Veritabanı) açılır. Altta son değişiklikler.', p4],
+  5: ['Öneri 5 · Ayar Satırları', 'macOS / Linear tarzı: dar sütun, her ayar bir satır — solda ad ve açıklama, sağda kontrol. Büyük düzenleyiciler (renk paleti, etiket tasarımcısı) satırdaki düğmeyle pencerede açılır.', p5],
+}
+function render() {
+  const list = S.v === 'all' ? ['1', '2', '3', '4', '5'] : [S.v]
+  document.getElementById('root').innerHTML = list.map(v => `<section class="variant" data-variant="${v}"><div class="v-title"><b>${V[v][0]}</b><span>${V[v][1]}</span></div>${V[v][2]()}${mocks(+v)}</section>`).join('')
+  renderLayer(); setupSpy()
+}
+function renderLayer() {
+  const L = document.getElementById('layer')
+  L.innerHTML = S.stack.map((p, i) => { const html = POP[p.pid](p, FL[p.v] || 'top'); const side = html.startsWith('<aside'); return `<div class="overlay ${side ? 'side' : ''}" data-ov="${i}" style="z-index:${100 + i * 10}">${html}</div>` }).join('')
+  document.body.style.overflow = S.stack.length ? 'hidden' : ''
+}
+function refreshBars() {
+  document.querySelectorAll('[data-bar]').forEach(el => {
+    const k = el.dataset.bar
+    if (BAR[k]) el.outerHTML = BAR[k](el.dataset.cls)
+    else if (k === 'p3g') el.innerHTML = p3bar()
+    else if (k === 'p5') el.innerHTML = p5bar()
+    else if (k === 'p3toc') el.innerHTML = p3tocFoot()
+  })
+  document.querySelectorAll('[data-need="newTheme"]').forEach(b => b.disabled = !S.newTheme.trim())
+  document.querySelectorAll('[data-need="tplName"]').forEach(b => b.disabled = !S.tplName.trim())
+  document.querySelectorAll('#layer [data-need="confirm"]').forEach(b => b.disabled = S.confirm !== 'Verileri sil')
+  document.querySelectorAll('#layer [data-t="confirm"]').forEach(i => i.classList.toggle('match', S.confirm === 'Verileri sil'))
+}
+const swH = () => { const sw = document.querySelector('.switcher'); return getComputedStyle(sw).position === 'sticky' ? sw.offsetHeight : 0 }
+function setSw() { document.documentElement.style.setProperty('--sw', swH() + 'px') }
+window.addEventListener('resize', setSw)
+function spy() {
+  const els = [...document.querySelectorAll('[data-spy]')]; if (!els.length) return
+  const line = swH() + 90
+  const vis = els.filter(e => { const r = e.getBoundingClientRect(); return r.top < line && r.bottom > line })
+  const pick = vis.length ? vis[vis.length - 1].dataset.spy : null
+  if (!pick || pick === S.p3) return
+  S.p3 = pick
+  document.querySelectorAll('[data-toc]').forEach(a => { const parent = P3.find(x => x[0] === a.dataset.toc); a.classList.toggle('on', a.dataset.toc === pick || (!!parent && !!a.closest('.p3-mtoc') && parent[3].some(s => s[0] === pick))) })
+}
+function setupSpy() { setSw(); spy() }
+window.addEventListener('scroll', spy, { passive: true })
+
+/* ================= actions ================= */
+const open = (id, args = {}) => { S.menu = null; S.stack.push(Object.assign({ v: S.v === 'all' ? (args._v || '1') : S.v }, args, { pid: id })); render() }
+const closeTop = () => { S.stack.pop(); render() }
+const closeAll = () => { S.stack = []; render() }
+const markShip = () => { S.dirty.ship = true }
+const markApp = () => { S.dirty.app = true }
+function act(a, el) {
+  const k = el.dataset.k, v = el.closest('[data-variant]')?.dataset.variant
+  switch (a) {
+    case 'tab': S.tab[el.dataset.p] = k; S.menu = null; render(); break
+    case 'close': closeTop(); break
+    case 'mfa-open': S.mfaStep = 'password'; S.mfaErr = ''; S.otp = ''; open('mfa', { _v: v }); break
+    case 'mfa-next':
+      if (S.mfaStep === 'password') { S.mfaStep = 'verify'; S.mfaErr = '' }
+      else if (S.mfaStep === 'verify') { if (!/^\d{6}$/.test(S.otp)) { S.mfaErr = 'Doğrulama kodu geçersiz veya kurulum süresi dolmuş.' } else { S.mfaStep = 'recovery'; S.mfaErr = '' } }
+      renderLayer(); break
+    case 'mfa-back': S.mfaStep = 'password'; S.mfaErr = ''; renderLayer(); break
+    case 'mfa-done': S.totp = true; S.recovery = 10; syncTotpSeg(); closeTop(); toast('success', 'Authenticator etkinleştirildi. Sonraki girişte kod istenecek.'); break
+    case 'sess': open('sess', { action: el.dataset.act, id: el.dataset.id, _v: v }); break
+    case 'sess-ok': {
+      const x = el.dataset.act, id = el.dataset.id
+      if (x === 'revoke') { const s = S.sessions.find(q => q.id === id); if (s) s.state = 'REVOKED' }
+      if (x === 'revoke-others') activeOthers().forEach(s => s.state = 'REVOKED')
+      if (x === 'delete') S.sessions = S.sessions.filter(s => s.id !== id)
+      if (x === 'delete-closed') S.sessions = S.sessions.filter(s => s.state === 'ACTIVE')
+      closeTop(); toast('success', { revoke: 'Oturum sonlandırıldı.', 'revoke-others': 'Diğer aktif oturumlar sonlandırıldı.', delete: 'Kapalı oturum silindi.', 'delete-closed': 'Kapalı oturumlar silindi.' }[x]); break }
+    case 'scope-clear': S.scopes = []; render(); break
+    case 'db-open': S.confirm = ''; open('db', { _v: v }); break
+    case 'db-ok': { const done = S.scopes.map(s => RESULT[s]).join(', '); S.scopes = []; S.confirm = ''; closeAll(); toast('success', `Temizlik tamamlandı: ${done}.`); break }
+    case 'menu': S.menu = S.menu === k ? null : k; render(); break
+    case 'theme-pick': S.app.theme = k; if (k !== 'light') S.app.palette = clone(PAL[k] || PAL.sade); S.menu = null; markApp(); render(); toast('success', `${themeById(k).name} önizlemeye uygulandı. Kalıcı yapmak için değişiklikleri kaydedin.`); break
+    case 'theme-del-open': open('themeDel', { id: k, _v: v }); break
+    case 'theme-del-ok': { const t = S.app.themes.find(x => x.id === k); S.app.themes = S.app.themes.filter(x => x.id !== k); if (S.app.theme === k) { S.app.theme = 'sade'; S.app.palette = clone(PAL.sade) } closeTop(); toast('success', `“${t.name}” renk teması silindi.`); break }
+    case 'theme-save': { const name = S.newTheme.trim(); if (!name) return; const id = 'c' + Date.now(); PAL[id] = clone(S.app.palette); S.app.themes.push({ id, name: name.slice(0, 60), builtIn: false, desc: 'Kayıtlı özel tema' }); S.app.theme = id; S.newTheme = ''; render(); toast('success', `“${name}” renk teması kaydedildi.`); break }
+    case 'toast': toast(k); break
+    case 'toast-msg': toast('success', k); break
+    case 'toast-x': el.closest('.nt').remove(); break
+    case 'app-default': S.app.font = 'inter'; S.app.size = 'small'; S.app.theme = 'sade'; S.app.palette = clone(PAL.sade); S.dirty.app = true; render(); toast('success', 'Varsayılan görünüm önizlemeye uygulandı. Kalıcı yapmak için değişiklikleri kaydedin.'); break
+    case 'app-save': S.dirty.app = false; render(); toast('success', 'Görünüm ayarları hesabınıza kaydedildi.'); break
+    case 'ship-save': S.dirty.ship = false; S.savedLab = clone(S.lab); render(); toast('success', 'Kargo etiketi ayarları hesaba kaydedildi.'); break
+    case 'ship-undo': S.lab = clone(S.savedLab); S.dirty.ship = false; render(); break
+    case 'save-all': S.dirty.ship = false; S.dirty.app = false; render(); toast('success', 'Kargo ve görünüm ayarları hesabınıza kaydedildi.'); break
+    case 'undo-all': S.lab = clone(S.savedLab); S.dirty.ship = false; S.dirty.app = false; S.app.theme = 'sade'; S.app.palette = clone(PAL.sade); render(); break
+    case 'fmt': S.fmt = k; render(); break
+    case 'tpl-save-open': S.tplName = `${S.fmt === 'a4' ? 'A4' : 'Sticker'} şablonu`; open('tplSave', { _v: v }); break
+    case 'tpl-save-ok': { const id = 'tp' + Date.now(); S.tpls.push({ id, name: S.tplName.trim() }); S.tpl = id; closeTop(); toast('success', `“${S.tplName.trim()}” şablonu kaydedildi.`); break }
+    case 'tpl-del-open': if (S.tpl) open('tplDel', { _v: v }); break
+    case 'tpl-del-ok': { const t = S.tpls.find(x => x.id === S.tpl); S.tpls = S.tpls.filter(x => x.id !== S.tpl); S.tpl = ''; closeTop(); toast('success', `“${t ? t.name : 'Şablon'}” silindi.`); break }
+    case 'layout-reset-open': open('layoutReset', { _v: v }); break
+    case 'layout-reset-ok': S.blocks = defaultBlocks(); S.sel = 'b1'; markShip(); closeTop(); break
+    case 'lib-add': { const c = BLOCK_CATALOG.find(x => x[0] === k); const id = 'b' + Date.now(); S.blocks.push({ id, kind: k, title: k === 'custom' ? (S.customTitle.trim() || 'Özel içerik') : c[1], fields: [...c[3]], x: 10, y: 86 - Math.min(80, S.blocks.length * 2), w: 60, h: 10, align: 'left', fs: 12, rot: 0, text: k === 'custom' ? S.customText : '' }); S.sel = id; markShip(); render(); break }
+    case 'itab': S.itab = k; render(); break
+    case 'align': blockById(S.sel).align = k; markShip(); render(); break
+    case 'rot': { const b = blockById(S.sel); b.rot = k === '0' ? 0 : ((b.rot + +k) % 360 + 360) % 360; markShip(); render(); break }
+    case 'blk-del': S.blocks = S.blocks.filter(b => b.id !== S.sel); S.sel = S.blocks[0]?.id || null; markShip(); render(); break
+    case 'field-rm': { const b = blockById(S.sel); b.fields = b.fields.filter(f => f !== k); markShip(); render(); break }
+    case 'area': if (el.dataset.tab) S.p4tab.shipping = el.dataset.tab; open('area', { k, _v: '4' }); break
+    case 'p4tab': S.p4tab[el.dataset.area] = k; renderLayer(); break
+    case 'palette-open': open('palette', { _v: '5' }); break
+    case 'designer-open': open('designer', { _v: '5' }); break
+  }
+}
+function syncTotpSeg() { document.querySelectorAll('#msw .tab').forEach(b => b.classList.toggle('on', (b.dataset.totp === 'on') === S.totp)) }
+
+document.addEventListener('click', e => {
+  const vb = e.target.closest('#vsw .tab'); if (vb) { S.v = vb.dataset.v; document.querySelectorAll('#vsw .tab').forEach(b => b.classList.toggle('on', b === vb)); S.stack = []; render(); window.scrollTo({ top: 0 }); return }
+  const tb = e.target.closest('#msw .tab'); if (tb) { S.totp = tb.dataset.totp === 'on'; syncTotpSeg(); render(); return }
+  const toc = e.target.closest('[data-toc]'); if (toc) { e.preventDefault(); const t = document.getElementById(toc.dataset.toc); if (t) window.scrollTo({ top: t.getBoundingClientRect().top + window.scrollY - swH() - 16, behavior: 'smooth' }); return }
+  const ov = e.target.closest('.overlay'); if (ov && e.target === ov) { closeTop(); return }
+  const a = e.target.closest('[data-a]'); if (a && !a.disabled) { act(a.dataset.a, a); return }
+  if (S.menu && !e.target.closest('.picker')) { S.menu = null; render() }
+})
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (S.menu) { S.menu = null; render() } else if (S.stack.length) closeTop() } })
+document.addEventListener('change', e => {
+  const t = e.target
+  if (t.dataset.sw) { S.lab[t.dataset.sw] = t.checked; markShip(); render(); return }
+  if (t.dataset.scope) { S.scopes = t.checked ? [...new Set([...S.scopes, t.dataset.scope])] : S.scopes.filter(s => s !== t.dataset.scope); render(); return }
+  if (t.dataset.scopeall) { const ks = t.dataset.scopeall.split(','); S.scopes = t.checked ? [...new Set([...S.scopes, ...ks])] : S.scopes.filter(s => !ks.includes(s)); render(); return }
+  if (t.dataset.n) { const lim = t.dataset.n === 'gap' ? [0, 20] : [40, 300]; S.lab[t.dataset.n] = Math.min(lim[1], Math.max(lim[0], Number(t.value) || lim[0])); markShip(); render(); return }
+  if (t.dataset.range) { render(); return }
+  const s = t.dataset.s; if (!s) return
+  const b = blockById(S.sel)
+  if (s === 'a4') { S.lab.a4 = +t.value; markShip() } else if (s === 'def') { S.lab.def = t.value; markShip() }
+  else if (s === 'font' || s === 'size') { S.app[s] = t.value; markApp() }
+  else if (s === 'tpl') { S.tpl = t.value; if (t.value) toast('success', `“${S.tpls.find(x => x.id === t.value).name}” kâğıda uygulandı.`) }
+  else if (s === 'kind' && b) { const c = BLOCK_CATALOG.find(x => x[0] === t.value); Object.assign(b, { kind: c[0], title: c[0] === 'custom' ? b.title : c[1], fields: [...c[3]] }); markShip() }
+  else if (s === 'addField' && b && t.value) { b.fields.push(t.value); markShip() }
+  else if (s === 'bcField' && b && t.value) { b.fields = [t.value]; markShip() }
+  render()
+})
+document.addEventListener('input', e => {
+  const t = e.target
+  if (t.dataset.t) {
+    const k = t.dataset.t
+    if (k === 'senderName' || k === 'senderAddress') { S.lab[k] = t.value; S.dirty.ship = true }
+    else if (k in S) S[k] = t.value
+    refreshBars(); return
+  }
+  if (t.dataset.bt) { const b = blockById(S.sel); b.text = t.value; S.dirty.ship = true; document.querySelectorAll(`[data-blk="${b.id}"]`).forEach(el => el.innerHTML = blockPreview(b)); refreshBars(); return }
+  if (t.dataset.range) { const b = blockById(S.sel); b.fs = +t.value; S.dirty.ship = true; document.querySelectorAll(`[data-blk="${b.id}"]`).forEach(el => el.style.fontSize = `calc(${b.fs}px * .58)`); document.querySelectorAll('[data-fs-out]').forEach(o => o.textContent = b.fs + ' px'); return }
+  if (t.dataset.color) { const k = t.dataset.color; S.app.palette[k] = t.value; S.dirty.app = true; document.querySelectorAll(`[data-hex="${k}"]`).forEach(c => c.textContent = t.value.toUpperCase()); document.querySelectorAll('[data-pv]').forEach(p => p.style.setProperty('--p-' + k, t.value)); refreshBars(); return }
+  if (t.dataset.otp !== undefined) { t.value = t.value.replace(/\D/g, '').slice(0, 1); const arr = [...document.querySelectorAll('#layer [data-otp]')]; S.otp = arr.map(i => i.value).join(''); if (t.value && arr[+t.dataset.otp + 1]) arr[+t.dataset.otp + 1].focus() }
+})
+
+/* drag blocks on paper */
+let drag = null
+document.addEventListener('pointerdown', e => {
+  const blk = e.target.closest('[data-blk]'); if (!blk || blk.closest('[inert]')) return
+  const paperEl = blk.closest('[data-paper]'), r = paperEl.getBoundingClientRect(), b = blockById(blk.dataset.blk)
+  drag = { el: blk, b, r, sx: e.clientX, sy: e.clientY, x0: b.x, y0: b.y, moved: false }
+  document.querySelectorAll('.blk.on').forEach(x => x.classList.remove('on')); blk.classList.add('on')
+  blk.setPointerCapture(e.pointerId)
+})
+document.addEventListener('pointermove', e => {
+  if (!drag) return
+  const dx = (e.clientX - drag.sx) / drag.r.width * 100, dy = (e.clientY - drag.sy) / drag.r.height * 100
+  if (Math.abs(dx) + Math.abs(dy) > .5) drag.moved = true
+  drag.nx = Math.max(0, Math.min(100 - drag.b.w, drag.x0 + dx)); drag.ny = Math.max(0, Math.min(100 - drag.b.h, drag.y0 + dy))
+  drag.el.style.left = drag.nx + '%'; drag.el.style.top = drag.ny + '%'
+})
+document.addEventListener('pointerup', () => {
+  if (!drag) return
+  const d = drag; drag = null
+  if (d.moved) { d.b.x = Math.round(d.nx * 10) / 10; d.b.y = Math.round(d.ny * 10) / 10; S.dirty.ship = true }
+  S.sel = d.b.id
+  render()
+})
+
+render()
+</script>
+</body>
+</html>

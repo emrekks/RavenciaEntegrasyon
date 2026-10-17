@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="tr" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kategori eşleştirme · sade SaaS</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #101014; --surface: #17171c; --subtle: #1d1d23; --hover: #22222a;
+    --line: #2a2a32; --line-strong: #383842;
+    --ink: #ececf0; --ink-2: #a3a3b0; --ink-3: #6f6f7c;
+    --accent: #8b5cf6; --accent-ink: #ffffff; --accent-soft: rgb(139 92 246 / 14%);
+    --radius: 8px;
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --bg: #f6f6f8; --surface: #ffffff; --subtle: #f4f4f6; --hover: #eeeef2;
+    --line: #e4e4ea; --line-strong: #d3d3dc;
+    --ink: #17171c; --ink-2: #5b5b68; --ink-3: #8c8c99;
+    --accent: #6d3df0; --accent-ink: #ffffff; --accent-soft: rgb(109 61 240 / 9%);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 "Segoe UI", system-ui, sans-serif; color: var(--ink); background: var(--bg); }
+  button, select, input { font: inherit; color: inherit; }
+  .topbar { display: flex; align-items: center; gap: 12px; max-width: 1180px; margin: 0 auto; padding: 14px 20px; color: var(--ink-2); }
+  .topbar .grow { flex: 1; }
+  main { max-width: 1180px; margin: 0 auto 60px; padding: 0 20px; }
+
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+  .page-head { display: flex; align-items: flex-start; gap: 16px; padding: 20px 24px; border-bottom: 1px solid var(--line); }
+  .page-head h1 { margin: 0; font-size: 18px; font-weight: 600; }
+  .page-head p { margin: 2px 0 0; color: var(--ink-2); }
+  .cat { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; padding: 14px 24px; border-bottom: 1px solid var(--line); background: var(--subtle); border-radius: 0; }
+  .cat .f { display: grid; gap: 2px; }
+  .cat .f small, label.fld > small { color: var(--ink-3); font-size: 12px; }
+  .cat .path { font-weight: 600; }
+  .progress { display: grid; gap: 6px; min-width: 220px; }
+  .progress .top { display: flex; justify-content: space-between; color: var(--ink-2); font-size: 12px; }
+  .progress .top b { color: var(--ink); font-weight: 600; }
+  .track { height: 4px; border-radius: 99px; background: var(--line); overflow: hidden; }
+  .track i { display: block; height: 100%; background: var(--ink-2); border-radius: 99px; transition: width .25s; }
+
+  .btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 7px; cursor: pointer; font-weight: 500; white-space: nowrap; }
+  .btn:hover { background: var(--hover); }
+  .btn.primary { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+  .btn.primary:hover { filter: brightness(1.08); }
+  .btn.quiet { border-color: transparent; background: none; color: var(--ink-2); }
+  .btn.quiet:hover { background: var(--hover); color: var(--ink); }
+  .btn:disabled { opacity: .45; cursor: default; }
+  select.in, input.in { height: 32px; width: 100%; padding: 0 10px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 7px; outline: none; }
+  select.in:focus, input.in:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+  .body { display: grid; grid-template-columns: 300px minmax(0, 1fr); min-height: 560px; }
+  .nav { border-right: 1px solid var(--line); }
+  .nav .sec { display: flex; align-items: baseline; justify-content: space-between; padding: 14px 20px 6px; color: var(--ink-2); font-size: 12px; font-weight: 600; letter-spacing: .02em; }
+  .nav .sec span:last-child { font-weight: 400; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+  .nav .sec + .it, .nav .it + .sec { }
+  .nav .it { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; height: 38px; padding: 0 20px; background: none; border: 0; border-left: 2px solid transparent; cursor: pointer; text-align: left; }
+  .nav .it:hover { background: var(--hover); }
+  .nav .it.sel { background: var(--accent-soft); border-left-color: var(--accent); }
+  .nav .it .meta { color: var(--ink-3); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .nav .it.sel .meta { color: var(--ink-2); }
+  .nav .divider { height: 1px; margin: 10px 20px 0; background: var(--line); }
+  /* status glyphs: shape, not colour */
+  .st { width: 16px; height: 16px; display: block; color: var(--ink-3); }
+  .st.done { color: var(--ink); }
+
+  .detail { padding: 22px 28px 0; display: flex; flex-direction: column; min-width: 0; }
+  .detail h2 { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 18px; font-weight: 600; }
+  .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; color: var(--ink-2); border: 1px solid var(--line-strong); border-radius: 5px; font-size: 12px; font-weight: 500; }
+  .detail .lead { margin: 4px 0 20px; color: var(--ink-2); }
+  .form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px 24px; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
+  label.fld { display: grid; gap: 6px; }
+  label.fld .ro { display: flex; align-items: center; height: 32px; font-weight: 600; }
+  .vtools { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); align-items: center; gap: 16px; margin: 20px 0 12px; padding: 0 61px 0 17px; }
+  .vtools .left { display: flex; align-items: baseline; gap: 10px; }
+  .vtools .right { display: flex; align-items: center; gap: 14px; }
+  .vtools h3 { margin: 0; font-size: 14px; font-weight: 600; }
+  .vtools .count { color: var(--ink-3); font-variant-numeric: tabular-nums; }
+  .vtools .in.s { flex: 1; min-width: 0; }
+  .vtools .chk { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-2); cursor: pointer; }
+  .sw { position: relative; flex: none; width: 32px; height: 18px; margin: 0; appearance: none; background: var(--line-strong); border-radius: 99px; cursor: pointer; transition: background .15s; }
+  .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: transform .15s; }
+  .sw:checked { background: var(--accent); }
+  .sw:checked::after { transform: translateX(14px); }
+  .sw:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .vtable { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  .vtable .scroll { max-height: 330px; overflow: auto; }
+  .vrow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) 28px; align-items: center; gap: 16px; min-height: 42px; padding: 5px 16px; border-top: 1px solid var(--line); }
+  .vrow:first-child { border-top: 0; }
+  .vrow.head { position: sticky; top: 0; z-index: 1; min-height: 34px; color: var(--ink-3); font-size: 12px; background: var(--subtle); }
+  .vrow.gap .pv { font-weight: 600; }
+  .vrow .ok { justify-self: end; }
+  .foot { position: sticky; bottom: 0; display: flex; align-items: center; gap: 12px; margin: 20px -28px 0; padding: 14px 28px; background: var(--surface); border-top: 1px solid var(--line); }
+  .foot .grow, .grow { flex: 1; }
+  .foot .hint { color: var(--ink-2); }
+  .empty { padding: 28px 10px; text-align: center; color: var(--ink-3); }
+  .toast { position: fixed; right: 20px; bottom: 20px; padding: 9px 14px; background: var(--ink); color: var(--bg); border-radius: 8px; opacity: 0; transform: translateY(6px); transition: .2s; pointer-events: none; }
+  .toast.on { opacity: 1; transform: none; }
+  .legend { display: flex; flex-wrap: wrap; gap: 18px; padding: 12px 24px; border-top: 1px solid var(--line); color: var(--ink-3); font-size: 12px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+
+  @media (max-width: 900px) {
+    .body { grid-template-columns: 1fr; }
+    .nav { border-right: 0; border-bottom: 1px solid var(--line); }
+    .form { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar"><b style="color:var(--ink)">Sade SaaS önerisi</b><span>Renk yalnızca seçili satırda ve ana düğmede; durumlar şekille gösterilir.</span><span class="grow"></span><button class="btn" id="theme">Açık temayı gör</button></div>
+
+<main>
+  <div class="card" id="app"></div>
+</main>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+  const PANEL_ATTRS = ['Beden', 'Cinsiyet', 'Renk', 'Kol Boyu', 'Desen', 'Kalıp', 'Cep', 'Boy', 'Sezon', 'Kumaş', 'Yaka', 'Kesim']
+  const HB = {
+    sizes: ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '36', '38', '40', '42', '44', '46', '48', 'Standart'],
+    colors: ['Siyah', 'Beyaz', 'Lacivert', 'Kırmızı', 'Bordo', 'Gri', 'Bej', 'Haki', 'Yeşil', 'Mavi', 'Pembe', 'Mor', 'Kahverengi', 'Ekru'],
+    gender: ['Kadın', 'Erkek', 'Unisex', 'Kız Çocuk'], sleeve: ['Kısa Kol', 'Uzun Kol', 'Kolsuz', '3/4 Kol'],
+    pattern: ['Düz', 'Çizgili', 'Kareli', 'Çiçekli', 'Puantiyeli', 'Baskılı', 'Desenli', 'Leopar'],
+  }
+  const same = l => l.map(v => ({ p: v, h: v }))
+  const gaps = (l, n) => l.map((v, i) => ({ p: v, h: i % n === n - 1 ? null : v }))
+  const mk = (name, req, panel, values) => ({ name, req, panel, values })
+  const ATTRS = [
+    mk('Beden', true, 'Beden', same(HB.sizes)), mk('Cinsiyet', true, 'Cinsiyet', same(HB.gender)),
+    mk('Kesim Kalıbı', true, null, []), mk('Kumaş Tipi', true, null, []),
+    mk('Renk', true, 'Renk', gaps(HB.colors, 5)), mk('Yaka Stili', true, null, []),
+    mk('Kol Tipi', false, 'Kol Boyu', same(HB.sleeve)), mk('Desen', false, 'Desen', gaps(HB.pattern, 4)),
+    mk('Kalıp', false, 'Kalıp', same(['Regular', 'Slim', 'Oversize', 'Geniş'])), mk('Cep', false, 'Cep', same(['Cepli', 'Cepsiz', 'Kapaklı Cep'])),
+    mk('Boy', false, 'Boy', same(['Mini', 'Midi', 'Maxi', 'Normal'])), mk('Sezon', false, 'Sezon', same(['İlkbahar/Yaz', 'Sonbahar/Kış', '4 Mevsim'])),
+    mk('Materyal', false, 'Kumaş', gaps(['Pamuk', 'Polyester', 'Viskon', 'Keten', 'Elastan', 'Yün', 'Akrilik'], 4)), mk('Ek Özellik', false, null, []),
+  ]
+  const PANEL_VALUES = { Beden: HB.sizes, Renk: HB.colors, Cinsiyet: HB.gender, 'Kol Boyu': HB.sleeve, Desen: HB.pattern }
+  const SEED = { 'Kesim Kalıbı': ['Regular', 'Slim Fit', 'Oversize', 'Geniş Kesim'], 'Kumaş Tipi': ['Dokuma', 'Örme', 'Triko'], 'Yaka Stili': ['Gömlek Yaka', 'Polo Yaka', 'Bisiklet Yaka', 'V Yaka', 'Hakim Yaka'], 'Ek Özellik': ['Nakışlı', 'Taşlı', 'Pullu'] }
+  const hbOptions = a => ({ Beden: HB.sizes, Renk: HB.colors, Cinsiyet: HB.gender, 'Kol Tipi': HB.sleeve, Desen: HB.pattern }[a.name] || a.values.map(v => v.p).concat(['Diğer']))
+
+  let selected = 2, dirty = false
+  const q = { vq: '', onlyMiss: false }
+  const total = a => a.values.length, done = a => a.values.filter(v => v.h).length
+  const state = a => !a.panel ? 'none' : done(a) < total(a) ? 'partial' : 'done'
+  const meta = a => state(a) === 'none' ? 'Eşlenmedi' : state(a) === 'partial' ? `${done(a)}/${total(a)} değer` : `${total(a)} değer`
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+  const req = () => ATTRS.filter(a => a.req), opt = () => ATTRS.filter(a => !a.req)
+  const ready = l => l.filter(a => state(a) === 'done').length
+  const open = l => l.filter(a => state(a) !== 'done')
+
+  const glyph = s => ({
+    done: '<svg class="st done" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="currentColor"/><path d="m5 8.2 2.1 2.1 3.9-4.2" fill="none" stroke="var(--surface)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    partial: '<svg class="st" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="8" r="6.2" opacity=".35"/><path d="M8 1.8a6.2 6.2 0 0 1 5.9 4.3"/><path d="M8 5.6v2.6l1.8 1.1"/></svg>',
+    none: '<svg class="st" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="2.2" y="2.2" width="11.6" height="11.6" rx="3.2"/><path d="M8 5.4v5.2M5.4 8h5.2"/></svg>',
+  }[s])
+  const toast = m => { const t = document.getElementById('toast'); t.textContent = m; t.classList.add('on'); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove('on'), 1700) }
+
+  function item(a) {
+    const k = ATTRS.indexOf(a)
+    return `<button class="it ${k === selected ? 'sel' : ''}" data-sel="${k}">${glyph(state(a))}<span>${esc(a.name)}</span><span class="meta">${meta(a)}</span></button>`
+  }
+  function nextOpen() {
+    const order = req().concat(opt()), at = order.indexOf(ATTRS[selected])
+    for (let k = 1; k <= order.length; k++) { const c = order[(at + k) % order.length]; if (state(c) !== 'done') return ATTRS.indexOf(c) }
+    return selected
+  }
+  function values(a) {
+    const rows = a.values.map((x, k) => ({ x, k })).filter(r => (!q.vq || r.x.p.toLocaleLowerCase('tr').includes(q.vq.toLocaleLowerCase('tr'))) && (!q.onlyMiss || !r.x.h))
+    return `<div class="vtools"><div class="left"><h3>Değer eşlemeleri</h3><span class="count">${done(a)} / ${total(a)}</span></div><div class="right">
+      <input class="in s" data-vq placeholder="Değer ara" value="${esc(q.vq)}">
+      <label class="chk"><input type="checkbox" class="sw" role="switch" data-miss ${q.onlyMiss ? 'checked' : ''}> Yalnızca eksikler</label>
+      <button class="btn" data-act="same">Birebir eşle</button></div></div>
+      <div class="vtable"><div class="vrow head"><span>Panel değeri</span><span>Hepsiburada değeri</span><span></span></div><div class="scroll">
+      ${rows.length ? rows.map(({ x, k }) => `<div class="vrow ${x.h ? '' : 'gap'}"><span class="pv">${esc(x.p)}</span><select class="in" data-val="${k}"><option value="">Seçin…</option>${hbOptions(a).map(o => `<option ${o === x.h ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select><span class="ok">${x.h ? glyph('done') : glyph('none')}</span></div>`).join('') : '<div class="empty">Gösterilecek değer yok.</div>'}</div></div>`
+  }
+
+  function render() {
+    const a = ATTRS[selected], r = req(), pct = Math.round(ready(r) / r.length * 100)
+    const keep = document.activeElement && document.activeElement.hasAttribute && document.activeElement.hasAttribute('data-vq') ? document.activeElement.selectionStart : null
+    document.getElementById('app').innerHTML = `
+      <div class="page-head"><div><h1>Kategori eşleştirmeleri</h1><p>Hepsiburada alanlarını panel özellikleri ve değerleriyle eşleyin.</p></div></div>
+      <div class="cat"><div class="f"><small>Panel kategorisi</small><select class="in" style="width:220px"><option>Gömlek (Hepsiburada)</option></select></div>
+        <div class="f"><small>Hepsiburada kategorisi</small><span class="path">Giyim › Kadın › Gömlek</span></div><span class="grow"></span>
+        <div class="progress"><div class="top"><span>Zorunlu alanlar</span><b>${ready(r)} / ${r.length}</b></div><div class="track"><i style="width:${pct}%"></i></div></div>
+        <button class="btn">Başlıkları eşle</button></div>
+      <div class="body"><nav class="nav" aria-label="Özellikler">
+        <div class="sec"><span>ZORUNLU</span><span>${ready(r)} / ${r.length}</span></div>${r.map(item).join('')}
+        <div class="divider"></div><div class="sec"><span>İSTEĞE BAĞLI</span><span>${ready(opt())} / ${opt().length}</span></div>${opt().map(item).join('')}<div style="height:10px"></div></nav>
+        <section class="detail"><h2>${esc(a.name)} <span class="tag">${a.req ? 'Zorunlu' : 'İsteğe bağlı'}</span></h2>
+          <p class="lead">${a.req ? 'Hepsiburada bu alan olmadan ürünü kabul etmez.' : 'Boş bırakılabilir; doldurmak ürün sayfasını güçlendirir.'}</p>
+          <div class="form"><label class="fld"><small>Hepsiburada alanı</small><span class="ro">${esc(a.name)}</span></label>
+            <label class="fld"><small>Panel özelliği</small><span style="display:flex;gap:8px"><select class="in" data-pick><option value="">Seçin…</option>${PANEL_ATTRS.map(o => `<option ${o === a.panel ? 'selected' : ''}>${o}</option>`).join('')}</select><button class="btn quiet" data-act="clear" ${a.panel ? '' : 'disabled'}>Kaldır</button></span></label></div>
+          ${a.panel ? values(a) : '<div class="empty" style="margin-top:12px">Bir panel özelliği seçtiğinizde değerleri burada eşlersiniz.</div>'}
+          <div class="grow"></div>
+          <div class="foot"><span class="hint">${dirty ? 'Kaydedilmemiş değişiklikler var' : 'Tüm değişiklikler kaydedildi'}</span><span class="grow"></span>
+            ${open(ATTRS).length ? `<button class="btn" data-act="skip">Sonraki eksik</button>` : ''}<button class="btn primary" data-act="save" ${dirty ? '' : 'disabled'}>Kaydet</button></div>
+        </section></div>
+      <div class="legend"><span>${glyph('done')} Tamam</span><span>${glyph('partial')} Değerleri eksik</span><span>${glyph('none')} Eşlenmedi</span></div>`
+    if (keep !== null) { const el = document.querySelector('[data-vq]'); if (el) { el.focus(); el.setSelectionRange(keep, keep) } }
+  }
+
+  document.addEventListener('click', e => {
+    const s = e.target.closest('[data-sel]'); if (s) { selected = Number(s.dataset.sel); render(); return }
+    const b = e.target.closest('[data-act]'); if (!b || b.disabled) return
+    const a = ATTRS[selected], act = b.dataset.act
+    if (act === 'same') { let n = 0; a.values.forEach(v => { if (!v.h) { v.h = v.p; n++ } }); dirty = true; toast(n ? `${n} değer eşlendi` : 'Eşlenecek değer kalmadı') }
+    else if (act === 'clear') { a.panel = null; a.values = []; dirty = true }
+    else if (act === 'save') { dirty = false; toast('Kaydedildi') }
+    else if (act === 'skip') { selected = nextOpen() }
+    render()
+  })
+  document.addEventListener('change', e => {
+    const t = e.target, a = ATTRS[selected]
+    if (t.hasAttribute('data-pick')) { a.panel = t.value || null; if (!a.panel) a.values = []; else if (!a.values.length) a.values = (PANEL_VALUES[a.panel] || SEED[a.name] || []).map(p => ({ p, h: null })); dirty = true; render() }
+    else if (t.hasAttribute('data-val')) { a.values[Number(t.dataset.val)].h = t.value || null; dirty = true; render() }
+    else if (t.hasAttribute('data-miss')) { q.onlyMiss = t.checked; render() }
+  })
+  document.addEventListener('input', e => { if (e.target.hasAttribute('data-vq')) { q.vq = e.target.value; render() } })
+  document.getElementById('theme').addEventListener('click', e => {
+    const html = document.documentElement, light = html.dataset.theme !== 'light'
+    html.dataset.theme = light ? 'light' : 'dark'; e.target.textContent = light ? 'Koyu temayı gör' : 'Açık temayı gör'
+  })
+  render()
+</script>
+</body>
+</html>

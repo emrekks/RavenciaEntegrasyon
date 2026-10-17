@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bildirim Paneli</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #111115; --surface: #17171c; --raised: #1d1d23; --soft: #22222a; --sunk: #101014;
+    --line: #2a2a32; --line-strong: #383842;
+    --ink: #ececf0; --muted: #a3a3b0; --subtle: #6f6f7c;
+    --primary: #8b5cf6; --primary-soft: #272139;
+    --violet: color-mix(in srgb, var(--primary) 55%, white);
+    --violet-line: color-mix(in srgb, var(--primary) 55%, transparent);
+    --warn: #e2aa4b; --bad: #e4636f; --ok: #46b98f; --info: #83b4ff;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { overflow-x: clip; }
+  body { margin: 0; font: 14px/1.5 Inter, "Segoe UI", system-ui, sans-serif; color: var(--ink); background: var(--bg); -webkit-font-smoothing: antialiased; }
+  h1, h2, h3, p { margin: 0; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  .num { font-variant-numeric: tabular-nums; }
+  .ico { width: 16px; height: 16px; flex: none; display: block; }
+  .wrap { max-width: 1160px; margin: 0 auto; padding: 32px 16px 96px; display: grid; gap: 28px; }
+  .intro h1 { font-size: 22px; font-weight: 600; }
+  .intro p { color: var(--muted); margin-top: 6px; max-width: 74ch; }
+  .picker { display: flex; flex-wrap: wrap; gap: 6px; position: sticky; top: 0; z-index: 5; padding: 10px 0; background: var(--bg); }
+  .picker button { height: 34px; padding: 0 14px; color: var(--muted); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 7px; font-size: 13px; }
+  .picker button[aria-pressed="true"] { color: var(--ink); background: var(--primary-soft); border-color: var(--violet-line); }
+  .option { display: grid; grid-template-columns: minmax(0, 1fr) 460px; gap: 28px; align-items: start; margin-bottom: 44px; }
+  .option-head h2 { font-size: 17px; font-weight: 600; }
+  .option-head p { color: var(--muted); font-size: 13px; margin-top: 6px; }
+  .option-head ul { margin: 12px 0 0; padding-left: 18px; color: var(--muted); font-size: 13px; display: grid; gap: 4px; }
+  .stage { padding: 10px; border-radius: 16px; background: repeating-linear-gradient(135deg, #131317 0 10px, #151519 10px 20px); border: 1px solid var(--line); }
+  @media (max-width: 980px) { .option { grid-template-columns: minmax(0, 1fr); } .stage { max-width: 460px; } }
+
+  /* panel shell shared by every option */
+  .panel { width: 100%; max-height: 560px; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; overflow: hidden; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 14px; box-shadow: 0 24px 60px rgb(0 0 0 / 50%); }
+  .p-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px 10px; }
+  .p-head h3 { font-size: 15px; font-weight: 600; }
+  .p-head .cnt { display: inline-grid; min-width: 22px; height: 20px; place-items: center; padding: 0 6px; background: var(--primary-soft); border: 1px solid var(--violet-line); border-radius: 6px; color: var(--violet); font-size: 11.5px; font-weight: 600; }
+  .p-head .acts { margin-left: auto; display: flex; gap: 2px; }
+  .ghost { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; color: var(--muted); background: none; border: 0; border-radius: 7px; font-size: 12.5px; white-space: nowrap; }
+  .ghost:hover { color: var(--ink); background: var(--raised); }
+  .icon-btn { display: grid; width: 30px; height: 30px; place-items: center; color: var(--muted); background: none; border: 0; border-radius: 7px; }
+  .icon-btn:hover { color: var(--ink); background: var(--raised); }
+  .p-body { overflow: auto; scrollbar-width: thin; scrollbar-color: transparent transparent; }
+  .p-body:hover { scrollbar-color: var(--line-strong) transparent; }
+  .p-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 16px; border-top: 1px solid var(--line); color: var(--subtle); font-size: 12px; }
+  .p-foot a { color: var(--violet); text-decoration: none; font-size: 12.5px; }
+
+  /* view tabs, same as the pages */
+  .vtabs { display: flex; padding: 0 8px; border-bottom: 1px solid var(--line); }
+  .vtabs button { position: relative; display: inline-flex; align-items: center; gap: 7px; height: 40px; padding: 0 10px; color: var(--muted); background: none; border: 0; font-size: 13px; white-space: nowrap; }
+  .vtabs button + button::before { content: ""; position: absolute; left: 0; top: 50%; width: 1px; height: 16px; background: var(--line-strong); transform: translateY(-50%); }
+  .vtabs button svg { color: var(--subtle); }
+  .vtabs button .c { min-width: 20px; height: 18px; padding: 0 5px; display: inline-grid; place-items: center; background: var(--soft); border: 1px solid var(--line-strong); border-radius: 5px; color: var(--ink); font-size: 11px; }
+  .vtabs button.on { color: var(--ink); font-weight: 500; }
+  .vtabs button.on svg { color: var(--violet); }
+  .vtabs button.on::after { content: ""; position: absolute; left: 6px; right: 6px; bottom: 0; height: 2px; border-radius: 2px; background: var(--primary); }
+
+  /* tone glyphs */
+  .tone-error { --tone: var(--bad); } .tone-warn { --tone: var(--warn); } .tone-ok { --tone: var(--ok); } .tone-info { --tone: var(--info); }
+  .glyph { display: grid; width: 32px; height: 32px; flex: none; place-items: center; color: var(--tone); background: color-mix(in srgb, var(--tone) 13%, var(--surface)); border-radius: 9px; }
+  .glyph.round { border-radius: 50%; }
+  .unread-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--primary); }
+  .btn { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 7px; font-size: 12.5px; white-space: nowrap; }
+  .btn:hover { background: var(--raised); }
+  .btn.primary { color: #fff; background: var(--primary); border-color: var(--primary); }
+  .btn.danger { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, var(--line-strong)); }
+  .empty { display: grid; justify-items: center; gap: 6px; padding: 40px 16px; color: var(--muted); font-size: 13px; text-align: center; }
+  .empty b { color: var(--ink); font-weight: 500; }
+
+  /* 1 — quiet list with day labels */
+  .o1 .day { position: sticky; top: 0; z-index: 1; display: flex; justify-content: space-between; padding: 10px 16px 6px; color: var(--subtle); font-size: 12px; background: var(--surface); }
+  .o1 .day b { color: var(--muted); font-weight: 500; }
+  .o1 .item { position: relative; display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 12px; padding: 10px 16px; border-top: 1px solid var(--line); }
+  .o1 .day + .item { border-top: 0; }
+  .o1 .item:hover { background: var(--raised); }
+  .o1 .item h4 { margin: 0; font-size: 13.5px; font-weight: 500; }
+  .o1 .item p { color: var(--muted); font-size: 12.5px; }
+  .o1 .item time { color: var(--subtle); font-size: 12px; white-space: nowrap; display: flex; align-items: center; gap: 6px; height: 20px; }
+  .o1 .item .row-acts { grid-column: 2 / -1; display: flex; gap: 6px; margin-top: 4px; }
+  .o1 .item.is-unread { background: color-mix(in srgb, var(--primary) 6%, transparent); }
+
+  /* 2 — timeline */
+  .o2 .tl { position: relative; padding: 6px 16px 12px 16px; }
+  .o2 .tl::before { content: ""; position: absolute; left: 31px; top: 0; bottom: 0; width: 1px; background: var(--line-strong); }
+  .o2 .tday { position: relative; display: flex; align-items: center; gap: 10px; margin: 12px 0 8px; color: var(--muted); font-size: 12px; }
+  .o2 .tday i { width: 32px; display: grid; place-items: center; }
+  .o2 .tday i::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--surface); border: 2px solid var(--line-strong); }
+  .o2 .tday b { color: var(--ink); font-weight: 500; }
+  .o2 .titem { position: relative; display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 10px; padding: 6px 0; }
+  .o2 .titem .glyph { position: relative; z-index: 1; width: 32px; height: 32px; border: 2px solid var(--surface); }
+  .o2 .tcard { padding: 10px 12px; background: var(--sunk); border: 1px solid var(--line); border-radius: 10px; }
+  .o2 .titem.is-unread .tcard { border-color: var(--violet-line); }
+  .o2 .tcard .top { display: flex; align-items: baseline; gap: 8px; }
+  .o2 .tcard h4 { margin: 0; font-size: 13px; font-weight: 500; }
+  .o2 .tcard time { margin-left: auto; color: var(--subtle); font-size: 11.5px; white-space: nowrap; }
+  .o2 .tcard p { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+  .o2 .tcard .row-acts { display: flex; gap: 6px; margin-top: 8px; }
+
+  /* 3 — attention first */
+  .o3 .focus { margin: 12px 12px 4px; padding: 12px; background: color-mix(in srgb, var(--bad) 8%, var(--surface)); border: 1px solid color-mix(in srgb, var(--bad) 35%, transparent); border-radius: 12px; display: grid; gap: 10px; }
+  .o3 .focus header { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; }
+  .o3 .focus header svg { color: var(--bad); }
+  .o3 .focus header small { margin-left: auto; color: var(--muted); font-weight: 400; font-size: 12px; }
+  .o3 .fitem { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; padding: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 9px; }
+  .o3 .fitem h4 { margin: 0; font-size: 13px; font-weight: 500; }
+  .o3 .fitem p { grid-column: 1; color: var(--muted); font-size: 12.5px; }
+  .o3 .fitem .btn { grid-column: 2; grid-row: 1 / 3; }
+  .o3 .sec { padding: 12px 16px 6px; color: var(--subtle); font-size: 12px; }
+  .o3 .crow { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 16px; font-size: 13px; }
+  .o3 .crow:hover { background: var(--raised); }
+  .o3 .crow svg { color: var(--tone); }
+  .o3 .crow span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .o3 .crow span small { color: var(--subtle); margin-left: 6px; }
+  .o3 .crow time { color: var(--subtle); font-size: 12px; }
+
+  /* 4 — compact inbox, expand on click */
+  .o4 .irow { position: relative; display: grid; grid-template-columns: 8px 16px minmax(0, 1fr) auto; gap: 10px; align-items: center; width: 100%; padding: 11px 16px; text-align: left; background: none; border: 0; border-top: 1px solid var(--line); font-size: 13px; }
+  .o4 .irow:first-child { border-top: 0; }
+  .o4 .irow:hover { background: var(--raised); }
+  .o4 .irow svg { color: var(--tone); }
+  .o4 .irow .t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .o4 .irow .t b { font-weight: 500; }
+  .o4 .irow .t small { color: var(--subtle); margin-left: 8px; font-size: 12.5px; }
+  .o4 .irow time { color: var(--subtle); font-size: 12px; }
+  .o4 .irow:not(.is-unread) .unread-dot { visibility: hidden; }
+  .o4 .irow.open { background: var(--raised); }
+  .o4 .detail { padding: 2px 16px 14px 50px; background: var(--raised); display: grid; gap: 10px; }
+  .o4 .detail p { color: var(--muted); font-size: 12.5px; }
+  .o4 .detail dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; padding: 10px; background: var(--sunk); border: 1px solid var(--line); border-radius: 8px; font-size: 12px; }
+  .o4 .detail dt { color: var(--subtle); } .o4 .detail dd { margin: 0; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .o4 .detail .row-acts { display: flex; gap: 6px; }
+
+  /* 5 — grouped by area */
+  .o5 .chips { display: flex; gap: 6px; padding: 10px 16px; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--line); }
+  .o5 .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; color: var(--muted); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 999px; font-size: 12.5px; white-space: nowrap; }
+  .o5 .chip.on { color: var(--ink); background: var(--primary-soft); border-color: var(--violet-line); }
+  .o5 .chip .c { color: var(--subtle); font-size: 11.5px; }
+  .o5 .group { border-bottom: 1px solid var(--line); }
+  .o5 .ghead { display: flex; align-items: center; gap: 10px; padding: 12px 16px 8px; }
+  .o5 .ghead svg { color: var(--muted); }
+  .o5 .ghead b { font-size: 13px; font-weight: 500; }
+  .o5 .ghead .ring { margin-left: auto; display: flex; align-items: center; gap: 6px; color: var(--subtle); font-size: 12px; }
+  .o5 .ghead .ring svg { width: 16px; height: 16px; transform: rotate(-90deg); }
+  .o5 .gitem { display: grid; grid-template-columns: 6px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 8px 16px 8px 18px; }
+  .o5 .gitem i { width: 6px; height: 6px; margin-top: 7px; border-radius: 50%; background: var(--tone); }
+  .o5 .gitem h4 { margin: 0; font-size: 13px; font-weight: 500; }
+  .o5 .gitem p { color: var(--muted); font-size: 12.5px; }
+  .o5 .gitem time { color: var(--subtle); font-size: 12px; white-space: nowrap; }
+  .o5 .gitem .row-acts { display: flex; gap: 6px; margin-top: 6px; }
+  .o5 .gitem.is-unread h4::after { content: ""; display: inline-block; width: 6px; height: 6px; margin-left: 6px; border-radius: 50%; background: var(--primary); vertical-align: 2px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="intro">
+    <h1>Bildirim Paneli · 5 Öneri</h1>
+    <p>Sayfalardaki yeni tasarım dili panele taşınıyor: simgeli ve alt çizgili sekmeler, durum renginde simge kareleri, Title Case etiketler, 14 px köşeli açılır pencere. Panellerde sekmelere, satırlara ve "Okundu" düğmelerine tıklayarak deneyebilirsin.</p>
+  </div>
+  <div class="picker" role="group" aria-label="Öneri seç" id="picker"></div>
+  <div id="options"></div>
+</div>
+<script>
+const P = {
+  all: '<path d="M2.5 3.5h11v9h-11z"/><path d="M2.5 6.5h11"/>',
+  unread: '<path d="M3 8.5V12a1.5 1.5 0 0 0 1.5 1.5h7A1.5 1.5 0 0 0 13 12V8.5"/><path d="M3 8.5h3l1 1.5h2l1-1.5h3L11 3H5z"/>',
+  attention: '<path d="M8 2 14.5 13.5h-13z"/><path d="M8 6.5v3M8 11.6v.1"/>',
+  x: '<circle cx="8" cy="8" r="5.8"/><path d="m6 6 4 4M10 6l-4 4"/>',
+  check: '<circle cx="8" cy="8" r="5.8"/><path d="m5.5 8.2 1.7 1.7 3.4-3.6"/>',
+  clock: '<circle cx="8" cy="8" r="5.8"/><path d="M8 5v3.2l2 1.3"/>',
+  info: '<circle cx="8" cy="8" r="5.8"/><path d="M8 7.3v3.4M8 5.2v.1"/>',
+  arrow: '<path d="M3 8h9.5M9 4.5 12.5 8 9 11.5"/>',
+  chevron: '<path d="m4.5 6.5 3.5 3.5 3.5-3.5"/>',
+  checkAll: '<path d="m1.8 8.4 2.6 2.6 5-5.4M7.6 10.4l.6.6 5-5.4"/>',
+  trash: '<path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 9h5.8l.6-9"/>',
+  gear: '<circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1"/>',
+  link: '<path d="M6.8 9.2a2.6 2.6 0 0 0 3.7 0l2-2a2.6 2.6 0 0 0-3.7-3.7l-.6.6"/><path d="M9.2 6.8a2.6 2.6 0 0 0-3.7 0l-2 2a2.6 2.6 0 0 0 3.7 3.7l.6-.6"/>',
+  order: '<path d="M2.5 3h2l1.6 7.4a1 1 0 0 0 1 .8h5.6a1 1 0 0 0 1-.8L14.5 6H5.2"/><circle cx="7" cy="13.5" r=".9"/><circle cx="12.5" cy="13.5" r=".9"/>',
+  invoice: '<path d="M4 2h5l3 3v9H4z"/><path d="M9 2v3h3M6 8.5h4M6 11h3"/>',
+  product: '<path d="M5.5 2.5 2.5 4.5l1.3 2.6 1.2-.5V13.5h6V6.6l1.2.5 1.3-2.6-3-2"/><path d="M5.5 2.5a2.5 2.5 0 0 0 5 0"/>',
+  map: '<path d="M2.5 2.5h4.5v4.5H2.5zM9 2.5h4.5v4.5H9zM2.5 9h4.5v4.5H2.5zM9 9h4.5v4.5H9z"/>'
+};
+const ic = (n, cls = 'ico') => `<svg class="${cls}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n]}</svg>`;
+const toneIcon = { error: 'x', warn: 'attention', ok: 'check', info: 'info' };
+
+const data = [
+  { id: 1, day: 'Bugün', date: '17 Ekim Cumartesi', tone: 'error', area: 'map', areaLabel: 'Eşleştirme', title: 'İşlem Başarısız', text: 'Yeni eşleşen başlık bulunamadı.', time: '18 dk önce', unread: true, cta: 'Eşleştirmelere Git', meta: [['İşlem', 'Kategori eşleştirme taraması'], ['Deneme', '3 / 3'], ['Kod', 'NO_MATCH']] },
+  { id: 2, day: 'Bugün', date: '17 Ekim Cumartesi', tone: 'warn', area: 'invoice', areaLabel: 'Fatura', title: 'Fatura Süresi Yaklaşıyor', text: '#11717650981 siparişinin faturası için 1 gün kaldı.', time: '1 sa önce', unread: true, cta: 'Faturayı Aç', meta: [['Sipariş', '#11717650981'], ['Son Tarih', '18.10.2026']] },
+  { id: 3, day: 'Dün', date: '16 Ekim Cuma', tone: 'ok', area: 'order', areaLabel: 'Sipariş', title: 'Siparişler Aktarıldı', text: 'Trendyol mağazasından 12 yeni sipariş alındı.', time: '22:14', unread: false, meta: [['Mağaza', 'Trendyol'], ['Adet', '12']] },
+  { id: 4, day: 'Dün', date: '16 Ekim Cuma', tone: 'error', area: 'invoice', areaLabel: 'Fatura', title: 'Fatura İletilemedi', text: 'Pazaryeri dosyayı reddetti: fatura numarası daha önce kullanılmış.', time: '18:05', unread: false, cta: 'Faturayı Aç', meta: [['Sipariş', '#11717712403'], ['Kod', 'DUPLICATE_NUMBER']] },
+  { id: 5, day: 'Dün', date: '16 Ekim Cuma', tone: 'info', area: 'product', areaLabel: 'Ürün', title: 'Fiyat ve Stok Gönderildi', text: '248 ürünün fiyat ve stok bilgisi Hepsiburada’ya iletildi.', time: '15:30', unread: false, meta: [['Mağaza', 'Hepsiburada'], ['Ürün', '248']] },
+  { id: 6, day: '15 Ekim', date: '15 Ekim Perşembe', tone: 'error', area: 'order', areaLabel: 'Sipariş', title: 'Bağlantı Hatası', text: 'N11 mağazasına bağlanılamadı; anahtarın süresi dolmuş olabilir.', time: '09:12', unread: false, cta: 'Entegrasyona Git', meta: [['Mağaza', 'N11'], ['Kod', 'AUTH_EXPIRED']] }
+];
+
+function makeState() { return { tab: 'all', items: data.map(d => ({ ...d })), open: 1, area: 'all' } }
+const filtered = st => st.items.filter(d => st.tab === 'all' || (st.tab === 'unread' ? d.unread : d.tone === 'error')).filter(d => !st.area || st.area === 'all' || d.area === st.area);
+const counts = st => ({ all: st.items.length, unread: st.items.filter(d => d.unread).length, error: st.items.filter(d => d.tone === 'error').length });
+const head = st => { const c = counts(st); return `<div class="p-head"><h3>Bildirimler</h3>${c.unread ? `<span class="cnt num">${c.unread}</span>` : ''}<div class="acts"><button class="ghost" data-act="readall" type="button" ${c.unread ? '' : 'disabled'}>${ic('checkAll')}Tümünü Okundu Yap</button><button class="icon-btn" type="button" aria-label="Bildirim ayarları">${ic('gear')}</button></div></div>` };
+const tabs = st => { const c = counts(st); return `<div class="vtabs" role="tablist">${[['all', 'all', 'Tümü'], ['unread', 'unread', 'Okunmamış'], ['error', 'attention', 'Hatalar']].map(([k, i, l]) => `<button type="button" role="tab" data-tab="${k}" class="${st.tab === k ? 'on' : ''}">${ic(i)}${l}<span class="c num">${c[k]}</span></button>`).join('')}</div>` };
+const foot = (left = 'Son 30 günün bildirimleri gösteriliyor') => `<div class="p-foot"><span>${left}</span><a href="#" onclick="return false">Tüm Geçmişi Aç</a></div>`;
+const empty = '<div class="empty">' + ic('check', 'ico') + '<b>Her şey yolunda</b>Bu görünümde bildirim yok.</div>';
+const actions = d => `${d.cta ? `<button class="btn ${d.tone === 'error' ? 'danger' : ''}" type="button">${d.cta}${ic('arrow')}</button>` : ''}${d.unread ? `<button class="btn" type="button" data-read="${d.id}">${ic('check')}Okundu</button>` : ''}`;
+const byDay = list => list.reduce((acc, d) => { (acc[d.day] ||= { date: d.date, items: [] }).items.push(d); return acc }, {});
+
+const designs = [
+  { n: 1, title: 'Sade Liste ve Gün Başlıkları',
+    text: 'Gün grupları kutulu akordeonlar yerine kayarken üstte sabit kalan ince başlıklar olur; bildirimler çizgiyle ayrılmış düz satırlar. Okunmamışlar hafif mor zeminle ayrılır, işlem düğmeleri yalnızca ilgili satırda görünür.',
+    bullets: ['Sekmeler sayfalardakiyle aynı: simge, sayı kutusu, mor alt çizgi', 'Simge kareleri durum renginde (hata kırmızı, uyarı turuncu)', 'Ekranda aynı anda daha çok bildirim görünür'],
+    body: st => { const g = byDay(filtered(st)); const keys = Object.keys(g); return keys.length ? keys.map(k => `<div class="day"><b>${k}</b><span>${g[k].date}</span></div>${g[k].items.map(d => `<article class="item tone-${d.tone}${d.unread ? ' is-unread' : ''}"><span class="glyph">${ic(toneIcon[d.tone])}</span><div><h4>${d.title}</h4><p>${d.text}</p></div><time>${d.unread ? '<i class="unread-dot"></i>' : ''}${d.time}</time>${d.cta || d.unread ? `<div class="row-acts">${actions(d)}</div>` : ''}</article>`).join('')}`).join('') : empty } },
+  { n: 2, title: 'Zaman Çizelgesi',
+    text: 'Bildirimler dikey bir zaman çizgisi üzerinde akar; günler çizgi üzerindeki düğümlerdir, her bildirim kendi küçük kartında. Ne zaman ne olduğu sırasıyla okunur.',
+    bullets: ['Gün ayrımı çok net', 'Kartlar çerçeveli, okunmamış kart mor kenarlı', 'Biraz daha fazla yer kaplar'],
+    body: st => { const g = byDay(filtered(st)); const keys = Object.keys(g); return keys.length ? `<div class="tl">${keys.map(k => `<div class="tday"><i></i><b>${k}</b><span>${g[k].date}</span></div>${g[k].items.map(d => `<div class="titem tone-${d.tone}${d.unread ? ' is-unread' : ''}"><span class="glyph round">${ic(toneIcon[d.tone])}</span><div class="tcard"><div class="top"><h4>${d.title}</h4><time>${d.time}</time></div><p>${d.text}</p>${d.cta || d.unread ? `<div class="row-acts">${actions(d)}</div>` : ''}</div></div>`).join('')}`).join('')}</div>` : empty } },
+  { n: 3, title: 'Önce Müdahale Gerekenler',
+    text: 'Panelin en üstünde, çözülmesi gereken hatalar kırmızı bir çerçeve içinde tek tek ve işlem düğmesiyle durur. Geri kalan bilgilendirmeler altta tek satırlık sakin bir listedir.',
+    bullets: ['Açılır açılmaz ne yapılması gerektiği görünür', 'Bilgilendirmeler yer kaplamaz', 'Hata yoksa üst kutu hiç görünmez'],
+    body: st => { const list = filtered(st); const errs = list.filter(d => d.tone === 'error'); const rest = list.filter(d => d.tone !== 'error'); if (!list.length) return empty; return `${errs.length ? `<section class="focus"><header>${ic('attention')}Müdahale Gerekiyor<small>${errs.length} hata</small></header>${errs.map(d => `<div class="fitem"><h4>${d.title}</h4><p>${d.text}</p>${d.cta ? `<button class="btn danger" type="button">${d.cta}${ic('arrow')}</button>` : ''}</div>`).join('')}</section>` : ''}${rest.length ? `<div class="sec">Bilgilendirmeler</div>${rest.map(d => `<div class="crow tone-${d.tone}">${ic(toneIcon[d.tone])}<span>${d.title}<small>${d.text}</small></span><time>${d.time}</time></div>`).join('')}` : ''}` } },
+  { n: 4, title: 'Kompakt Gelen Kutusu',
+    text: 'Her bildirim tek satır: durum simgesi, başlık ve kısaltılmış mesaj, saat. Satıra tıklayınca altında ayrıntılar (işlem, kod, deneme sayısı) ve işlem düğmeleri açılır. Okunmamışların başında mor nokta.',
+    bullets: ['En yoğun liste, en çok bildirim sığar', 'Ayrıntılar tıklayınca açılır', 'Hata kodu ve deneme bilgisi panelde okunur'],
+    body: st => { const list = filtered(st); return list.length ? list.map(d => `<button type="button" class="irow tone-${d.tone}${d.unread ? ' is-unread' : ''}${st.open === d.id ? ' open' : ''}" data-open="${d.id}"><i class="unread-dot"></i>${ic(toneIcon[d.tone])}<span class="t"><b>${d.title}</b><small>${d.text}</small></span><time>${d.time}</time></button>${st.open === d.id ? `<div class="detail"><p>${d.text}</p><dl>${d.meta.map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('')}</dl>${d.cta || d.unread ? `<div class="row-acts">${actions(d)}</div>` : ''}</div>` : ''}`).join('') : empty } },
+  { n: 5, title: 'Alana Göre Gruplu',
+    text: 'Sekmelerin altında alan çipleri (Sipariş, Fatura, Ürün, Eşleştirme) olur; bildirimler bu alanlara göre gruplanır. Her grup başlığında o alandaki hataların payını gösteren küçük bir halka var, faturalar tablosundaki halkalarla aynı dil.',
+    bullets: ['Hangi alanda sorun olduğu tek bakışta görünür', 'Halkalar tablodaki durum halkalarıyla uyumlu', 'Bir alanı seçip yalnız onu görmek mümkün'],
+    body: st => { const list = filtered(st); const areas = [['all', 'all', 'Tümü'], ['order', 'order', 'Sipariş'], ['invoice', 'invoice', 'Fatura'], ['product', 'product', 'Ürün'], ['map', 'map', 'Eşleştirme']]; const chips = `<div class="chips">${areas.map(([k, i, l]) => `<button type="button" class="chip${st.area === k ? ' on' : ''}" data-area="${k}">${ic(i)}${l}<span class="c num">${k === 'all' ? st.items.filter(d => filtered({ ...st, area: 'all' }).includes(d)).length : filtered({ ...st, area: k }).length}</span></button>`).join('')}</div>`;
+      const groups = areas.slice(1).map(([k, i, l]) => { const items = list.filter(d => d.area === k); if (!items.length) return ''; const err = items.filter(d => d.tone === 'error').length / items.length; const r = 6, c = 2 * Math.PI * r; return `<section class="group"><div class="ghead">${ic(i)}<b>${l}</b><span class="ring"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="${r}" fill="none" stroke="var(--line-strong)" stroke-width="2.2"/>${err ? `<circle cx="8" cy="8" r="${r}" fill="none" stroke="var(--bad)" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="${(c * err).toFixed(1)} ${c.toFixed(1)}"/>` : ''}</svg>${items.filter(d => d.tone === 'error').length} hata · ${items.length} bildirim</span></div>${items.map(d => `<div class="gitem tone-${d.tone}${d.unread ? ' is-unread' : ''}"><i></i><div><h4>${d.title}</h4><p>${d.text}</p>${d.cta || d.unread ? `<div class="row-acts">${actions(d)}</div>` : ''}</div><time>${d.time}</time></div>`).join('')}</section>` }).join('');
+      return { chips, html: groups || empty } } }
+];
+
+const states = Object.fromEntries(designs.map(d => [d.n, makeState()]));
+function draw(n) {
+  const d = designs.find(x => x.n === n), st = states[n], out = d.body(st);
+  const html = typeof out === 'string' ? out : out.html;
+  document.querySelector(`[data-n="${n}"] .stage`).innerHTML = `<div class="panel o${n}" role="dialog" aria-label="Bildirimler">${head(st)}<div>${tabs(st)}${typeof out === 'string' ? '' : out.chips}</div><div class="p-body">${html}</div>${foot()}</div>`;
+}
+document.getElementById('picker').innerHTML = '<button type="button" data-show="all" aria-pressed="true">Hepsi</button>' + designs.map(d => `<button type="button" data-show="${d.n}" aria-pressed="false">${d.n} · ${d.title}</button>`).join('');
+document.getElementById('options').innerHTML = designs.map(d => `<section class="option" data-n="${d.n}"><div class="option-head"><h2>Öneri ${d.n} · ${d.title}</h2><p>${d.text}</p><ul>${d.bullets.map(b => `<li>${b}</li>`).join('')}</ul></div><div class="stage"></div></section>`).join('');
+designs.forEach(d => draw(d.n));
+document.getElementById('options').addEventListener('click', e => {
+  const sec = e.target.closest('.option'); if (!sec) return;
+  const n = Number(sec.dataset.n), st = states[n];
+  const t = e.target.closest('[data-tab]'), r = e.target.closest('[data-read]'), o = e.target.closest('[data-open]'), a = e.target.closest('[data-area]'), all = e.target.closest('[data-act="readall"]');
+  if (t) st.tab = t.dataset.tab;
+  else if (r) st.items.find(d => d.id === Number(r.dataset.read)).unread = false;
+  else if (all) st.items.forEach(d => d.unread = false);
+  else if (a) st.area = a.dataset.area;
+  else if (o) st.open = st.open === Number(o.dataset.open) ? null : Number(o.dataset.open);
+  else return;
+  draw(n);
+});
+document.querySelectorAll('#picker button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('#picker button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  document.querySelectorAll('.option').forEach(s => s.hidden = b.dataset.show !== 'all' && s.dataset.n !== b.dataset.show);
+}));
+</script>
+</body>
+</html>

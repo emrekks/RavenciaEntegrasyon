@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kategori eşleştirme · Zorunlu / isteğe bağlı ailesi</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0f0f14; --surface: #18181f; --raised: #20202a; --soft: #2a2a36;
+    --border: #303039; --border-strong: #41414d; --ink: #f4f4f7; --muted: #aaaab9;
+    --primary: #8b5cf6; --primary-soft: #302443;
+    --ok: #3ccf91; --ok-soft: #12352a; --ok-line: #1f5e49;
+    --warn: #f5b942; --warn-soft: #3a2d10; --warn-line: #6a5220;
+    --bad: #ff7b86; --bad-soft: #3a1a20; --bad-line: #6a2c35;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 "Segoe UI", system-ui, sans-serif; color: var(--ink); background: var(--bg); }
+  button, select, input { font: inherit; color: inherit; }
+  .switcher { position: sticky; top: 0; z-index: 20; display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 20px; background: color-mix(in srgb, var(--bg) 92%, transparent); border-bottom: 1px solid var(--border); backdrop-filter: blur(10px); }
+  .switcher button { padding: 8px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; }
+  .switcher button[aria-selected="true"] { color: #fff; background: var(--primary); border-color: var(--primary); }
+  .intro { max-width: 1240px; margin: 18px auto 0; padding: 0 20px; color: var(--muted); }
+  .intro strong { color: var(--ink); }
+  main { max-width: 1240px; margin: 14px auto 60px; padding: 0 20px; }
+  .variant { display: none; }
+  .variant.active { display: block; }
+  .frame { padding: 18px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; }
+  .frame > h2 { margin: 0 0 2px; font-size: 18px; }
+  .frame > p.sub { margin: 0 0 14px; color: var(--muted); }
+  .note { margin: 14px 2px 0; color: var(--muted); font-size: 13px; }
+  .note b { color: var(--ink); }
+  .muted { color: var(--muted); }
+  .grow { flex: 1; }
+  .row { display: flex; align-items: center; gap: 8px; }
+
+  .ctx { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; padding: 12px 14px; background: var(--raised); border: 1px solid var(--border); border-radius: var(--radius); }
+  .ctx .path { flex: 1 1 240px; font-weight: 700; }
+  .ctx .path small { display: block; color: var(--muted); font-weight: 400; }
+  .ctx .tot { min-width: 200px; }
+  .ctx .tot small { color: var(--muted); }
+
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border-radius: 999px; border: 1px solid transparent; font-size: 12px; font-weight: 700; white-space: nowrap; }
+  .chip.ok { color: var(--ok); background: var(--ok-soft); border-color: var(--ok-line); }
+  .chip.warn { color: var(--warn); background: var(--warn-soft); border-color: var(--warn-line); }
+  .chip.bad { color: var(--bad); background: var(--bad-soft); border-color: var(--bad-line); }
+  .chip.mute { color: var(--muted); background: var(--soft); }
+  .chip.pri { color: #cdb8ff; background: var(--primary-soft); border-color: #5b3fa3; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--border-strong); }
+  .dot.ok { background: var(--ok); } .dot.warn { background: var(--warn); } .dot.bad { background: var(--bad); }
+  .btn { padding: 7px 12px; background: var(--raised); border: 1px solid var(--border-strong); border-radius: 8px; cursor: pointer; font-weight: 600; }
+  .btn:hover { background: var(--soft); }
+  .btn.primary { color: #fff; background: var(--primary); border-color: var(--primary); }
+  .btn.primary:hover { filter: brightness(1.08); }
+  .btn.ghost { background: none; border-color: transparent; color: var(--muted); }
+  .btn.ghost:hover { color: var(--ink); background: var(--soft); }
+  .btn.sm { padding: 4px 9px; font-size: 12px; }
+  .btn:disabled { opacity: .45; cursor: default; }
+  select.field, input.field { width: 100%; padding: 7px 10px; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 8px; outline: none; }
+  select.field:focus, input.field:focus { border-color: var(--primary); }
+  .bar { height: 6px; border-radius: 99px; background: var(--soft); overflow: hidden; }
+  .bar > i { display: block; height: 100%; background: var(--primary); transition: width .25s; }
+  .bar.ok > i { background: var(--ok); }
+
+  /* ---------- aligned attribute list (shared by 1, 2, 4) ---------- */
+  .layout { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 14px; margin-top: 14px; align-items: start; }
+  .list { background: var(--raised); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .list .grp { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; padding: 9px 14px; background: var(--surface); border-bottom: 1px solid var(--border); border-top: 1px solid var(--border); font-weight: 700; }
+  .list .grp:first-child { border-top: 0; }
+  .list .grp small { color: var(--muted); font-weight: 500; }
+  .list .grp .bar { grid-column: 1 / -1; height: 4px; }
+  .list .item { display: grid; grid-template-columns: 18px minmax(0, 1fr) 96px; align-items: center; gap: 10px; width: 100%; padding: 9px 14px; background: none; border: 0; border-left: 3px solid transparent; text-align: left; cursor: pointer; }
+  .list .item:hover { background: var(--soft); }
+  .list .item.sel { background: var(--primary-soft); border-left-color: var(--primary); }
+  .list .item .ic { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; font-size: 11px; font-weight: 800; background: var(--soft); color: var(--muted); }
+  .list .item .ic.ok { background: var(--ok-soft); color: var(--ok); }
+  .list .item .ic.warn { background: var(--warn-soft); color: var(--warn); }
+  .list .item .ic.bad { background: var(--bad-soft); color: var(--bad); }
+  .list .item .st { justify-self: end; font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .list .item .st.warn { color: var(--warn); } .list .item .st.bad { color: var(--bad); } .list .item .st.ok { color: var(--ok); }
+  .pane { padding: 16px; background: var(--raised); border: 1px solid var(--border); border-radius: var(--radius); min-width: 0; }
+  .pane .head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 4px; }
+  .pane .head h3 { margin: 0; font-size: 19px; }
+  .pane .lead { margin: 0 0 14px; color: var(--muted); }
+  .link-line { display: grid; grid-template-columns: minmax(0, 1fr) 24px minmax(0, 1fr) 70px; align-items: end; gap: 10px; margin-bottom: 14px; padding: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+  .link-line small { display: block; margin-bottom: 4px; color: var(--muted); }
+  .link-line .name { padding: 7px 0; font-weight: 700; }
+  .link-line .arrow-x { padding-bottom: 7px; text-align: center; color: var(--muted); }
+  .vhead { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .vhead .search { flex: 1 1 160px; max-width: 240px; }
+  .tbl { border: 1px solid var(--border); border-radius: 8px; overflow-y: auto; max-height: 340px; background: var(--surface); }
+  .tbl .r { display: grid; grid-template-columns: minmax(0, 1fr) 22px minmax(0, 1.2fr) 76px; align-items: center; gap: 10px; padding: 6px 12px; border-top: 1px solid var(--border); }
+  .tbl .r:first-child { border-top: 0; }
+  .tbl .r.hd { position: sticky; top: 0; z-index: 1; padding-block: 8px; color: var(--muted); font-size: 12px; background: var(--raised); }
+  .tbl .r.miss { box-shadow: inset 3px 0 0 var(--warn); background: color-mix(in srgb, var(--warn-soft) 35%, transparent); }
+  .tbl .arrow { color: var(--muted); text-align: center; }
+  .tbl .end { justify-self: end; }
+  .empty { padding: 20px 10px; text-align: center; color: var(--muted); }
+  .foot { display: flex; align-items: center; gap: 10px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+
+  /* ---------- 2: tabs ---------- */
+  .seg { display: inline-grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; margin-top: 14px; background: var(--raised); border: 1px solid var(--border); border-radius: 12px; }
+  .seg button { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; min-width: 250px; padding: 10px 14px; background: none; border: 1px solid transparent; border-radius: 9px; cursor: pointer; text-align: left; }
+  .seg button.on { background: var(--primary-soft); border-color: var(--primary); }
+  .seg button b { display: block; }
+  .seg button small { color: var(--muted); }
+  .ring { --p: 0; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 800; background: conic-gradient(var(--ok) calc(var(--p) * 1%), var(--soft) 0); }
+  .ring i { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; font-style: normal; background: var(--raised); }
+  .seg button.on .ring i { background: var(--primary-soft); }
+
+  /* ---------- 3: table + drawer ---------- */
+  .atable { margin-top: 14px; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--raised); }
+  .atable .tr { display: grid; grid-template-columns: 22px minmax(150px, 1.1fr) minmax(190px, 1.3fr) minmax(140px, 1fr) 130px 110px; align-items: center; gap: 14px; padding: 9px 16px; border-top: 1px solid var(--border); }
+  .atable .tr.hd { border-top: 0; padding-block: 8px; color: var(--muted); font-size: 12px; background: var(--surface); }
+  .atable .tr.sec { display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: var(--surface); font-weight: 700; border-top: 1px solid var(--border); }
+  .atable .tr:not(.hd):not(.sec):hover { background: color-mix(in srgb, var(--soft) 45%, transparent); }
+  .atable .tr.sel { background: var(--primary-soft); }
+  .atable .nm small { display: block; color: var(--muted); font-size: 12px; }
+  .scrim { position: fixed; inset: 0; z-index: 40; display: none; background: rgb(5 6 12 / 55%); }
+  .scrim.on { display: block; }
+  .drawer { position: fixed; inset: 0 0 0 auto; z-index: 41; display: none; width: min(560px, 100vw); overflow: auto; padding: 18px; background: var(--raised); border-left: 1px solid var(--border-strong); box-shadow: -20px 0 50px rgb(0 0 0 / 45%); }
+  .drawer.on { display: block; }
+  .drawer .top { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+
+  /* ---------- 4: checklist ---------- */
+  .banner { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 14px; padding: 14px 16px; border: 1px solid var(--warn-line); border-radius: var(--radius); background: var(--warn-soft); }
+  .banner.ok { border-color: var(--ok-line); background: var(--ok-soft); }
+  .banner b { font-size: 15px; }
+  .check { display: grid; gap: 0; background: var(--raised); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .check .ci { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--border); background: none; border-left: 3px solid transparent; border-right: 0; border-bottom: 0; text-align: left; cursor: pointer; width: 100%; }
+  .check .ci:first-of-type { border-top: 0; }
+  .check .ci:hover { background: var(--soft); }
+  .check .ci.sel { background: var(--primary-soft); border-left-color: var(--primary); }
+  .check h4 { margin: 0; padding: 10px 14px; font-size: 12px; font-weight: 700; color: var(--muted); background: var(--surface); border-top: 1px solid var(--border); }
+  .check h4:first-child { border-top: 0; }
+  .check details > summary { list-style: none; cursor: pointer; }
+  .check details > summary::-webkit-details-marker { display: none; }
+  .toast { position: fixed; right: 20px; bottom: 20px; z-index: 60; padding: 10px 14px; background: var(--raised); border: 1px solid var(--ok-line); border-radius: 10px; box-shadow: 0 10px 30px rgb(0 0 0 / 40%); opacity: 0; transform: translateY(8px); transition: .2s; pointer-events: none; }
+  .toast.on { opacity: 1; transform: none; }
+
+  @media (max-width: 1000px) {
+    .layout { grid-template-columns: 1fr; }
+    .link-line { grid-template-columns: 1fr; }
+    .link-line .arrow-x { display: none; }
+    .atable .tr { grid-template-columns: 22px 1fr; }
+    .atable .tr.hd { display: none; }
+    .atable .tr > :nth-child(n+3) { grid-column: 2; }
+    .seg { display: grid; width: 100%; }
+    .seg button { min-width: 0; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="switcher" role="tablist" aria-label="Öneriler">
+  <button role="tab" aria-selected="true" data-v="1">1 · Rehberli akış (düzeltilmiş)</button>
+  <button role="tab" aria-selected="false" data-v="2">2 · Zorunlu / isteğe bağlı sekmeleri</button>
+  <button role="tab" aria-selected="false" data-v="3">3 · Gruplu tablo + yan çekmece</button>
+  <button role="tab" aria-selected="false" data-v="4">4 · Yayın hazırlığı kontrol listesi</button>
+</nav>
+
+<p class="intro"><strong>Değişiklik:</strong> adım numaraları kalktı. Özellikler artık <strong>Zorunlu</strong> ve <strong>İsteğe bağlı</strong> diye iki başlık altında; her satırda aynı hizada durum simgesi, ad ve durum yazısı var (sağa hizalı).
+1 numara istediğiniz düzeltilmiş akış, 2–4 aynı fikri farklı kullanım şekilleriyle sunan üç yeni öneri. Hepsi tıklanabilir.</p>
+
+<main>
+  <section class="variant active" id="v1"></section>
+  <section class="variant" id="v2"></section>
+  <section class="variant" id="v3"></section>
+  <section class="variant" id="v4"></section>
+</main>
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-label="Değer eşlemeleri"></aside>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+  const PANEL_ATTRS = ['Beden', 'Cinsiyet', 'Renk', 'Kol Boyu', 'Desen', 'Kalıp', 'Cep', 'Boy', 'Sezon', 'Kumaş', 'Yaka', 'Kesim']
+  const HB = {
+    sizes: ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '36', '38', '40', '42', '44', '46', '48', 'Standart'],
+    colors: ['Siyah', 'Beyaz', 'Lacivert', 'Kırmızı', 'Bordo', 'Gri', 'Bej', 'Haki', 'Yeşil', 'Mavi', 'Pembe', 'Mor', 'Kahverengi', 'Ekru'],
+    gender: ['Kadın', 'Erkek', 'Unisex', 'Kız Çocuk'],
+    sleeve: ['Kısa Kol', 'Uzun Kol', 'Kolsuz', '3/4 Kol'],
+    pattern: ['Düz', 'Çizgili', 'Kareli', 'Çiçekli', 'Puantiyeli', 'Baskılı', 'Desenli', 'Leopar'],
+  }
+  const same = l => l.map(v => ({ p: v, h: v }))
+  const gaps = (l, n) => l.map((v, i) => ({ p: v, h: i % n === n - 1 ? null : v }))
+  const mk = (name, req, panel, values) => ({ name, req, panel, values })
+  const ATTRS = [
+    mk('Beden', true, 'Beden', same(HB.sizes)),
+    mk('Cinsiyet', true, 'Cinsiyet', same(HB.gender)),
+    mk('Kesim Kalıbı', true, null, []),
+    mk('Kumaş Tipi', true, null, []),
+    mk('Renk', true, 'Renk', gaps(HB.colors, 5)),
+    mk('Yaka Stili', true, null, []),
+    mk('Kol Tipi', false, 'Kol Boyu', same(HB.sleeve)),
+    mk('Desen', false, 'Desen', gaps(HB.pattern, 4)),
+    mk('Kalıp', false, 'Kalıp', same(['Regular', 'Slim', 'Oversize', 'Geniş'])),
+    mk('Cep', false, 'Cep', same(['Cepli', 'Cepsiz', 'Kapaklı Cep'])),
+    mk('Boy', false, 'Boy', same(['Mini', 'Midi', 'Maxi', 'Normal'])),
+    mk('Sezon', false, 'Sezon', same(['İlkbahar/Yaz', 'Sonbahar/Kış', '4 Mevsim'])),
+    mk('Materyal', false, 'Kumaş', gaps(['Pamuk', 'Polyester', 'Viskon', 'Keten', 'Elastan', 'Yün', 'Akrilik'], 4)),
+    mk('Ek Özellik', false, null, []),
+  ]
+  const PANEL_VALUES = { Beden: HB.sizes, Renk: HB.colors, Cinsiyet: HB.gender, 'Kol Boyu': HB.sleeve, Desen: HB.pattern }
+  const SEED = {
+    'Kesim Kalıbı': ['Regular', 'Slim Fit', 'Oversize', 'Geniş Kesim'], 'Kumaş Tipi': ['Dokuma', 'Örme', 'Triko'],
+    'Yaka Stili': ['Gömlek Yaka', 'Polo Yaka', 'Bisiklet Yaka', 'V Yaka', 'Hakim Yaka'], 'Ek Özellik': ['Nakışlı', 'Taşlı', 'Pullu'],
+  }
+  const hbOptions = a => ({ Beden: HB.sizes, Renk: HB.colors, Cinsiyet: HB.gender, 'Kol Tipi': HB.sleeve, Desen: HB.pattern }[a.name] || a.values.map(v => v.p).concat(['Diğer']))
+
+  const sel = { 1: 2, 2: 2, 3: 4, 4: 2 }
+  const tab2 = { v: 'req' }
+  const dirty = new Set()
+  const q = { vq: '', onlyMiss: false }
+
+  const total = a => a.values.length
+  const done = a => a.values.filter(v => v.h).length
+  const status = a => !a.panel ? (a.req ? 'bad' : 'none') : done(a) < total(a) ? 'warn' : 'ok'
+  const stText = a => !a.panel ? (a.req ? 'Eşlenmedi' : 'Eşlenmedi') : done(a) < total(a) ? `${total(a) - done(a)} değer eksik` : 'Tamam'
+  const icon = a => ({ ok: '✓', warn: '!', bad: '✕', none: '–' }[status(a)])
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+  const req = () => ATTRS.filter(a => a.req), opt = () => ATTRS.filter(a => !a.req)
+  const groupDone = list => list.filter(a => status(a) === 'ok').length
+  const pct = list => Math.round(groupDone(list) / list.length * 100)
+  const todo = list => list.filter(a => status(a) === 'bad' || status(a) === 'warn')
+
+  function toast(m) { const t = document.getElementById('toast'); t.textContent = m; t.classList.add('on'); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove('on'), 1800) }
+
+  /* ---------- actions ---------- */
+  function choosePanel(a, name) {
+    a.panel = name || null
+    if (!name) a.values = []
+    else if (!a.values.length) a.values = (PANEL_VALUES[name] || SEED[a.name] || []).map(p => ({ p, h: null }))
+    dirty.add(a.name); render()
+  }
+  const setValue = (a, k, h) => { a.values[k].h = h || null; dirty.add(a.name); render() }
+  function matchSame(a) { let n = 0; a.values.forEach(v => { if (!v.h) { v.h = v.p; n++ } }); dirty.add(a.name); toast(n ? `${n} değer birebir eşlendi` : 'Eşlenecek değer kalmadı'); render() }
+  function nextTodo(from) {
+    const order = req().concat(opt())
+    const at = order.indexOf(ATTRS[from])
+    for (let k = 1; k <= order.length; k++) { const c = order[(at + k) % order.length]; if (status(c) === 'bad' || status(c) === 'warn') return ATTRS.indexOf(c) }
+    return from
+  }
+
+  /* ---------- shared parts ---------- */
+  function ctxBar(extra = '') {
+    const r = req(), all = pct(ATTRS)
+    return `<div class="ctx"><select class="field" style="width:220px"><option>Gömlek (Hepsiburada)</option></select>
+      <div class="path"><small>Hepsiburada kategorisi</small>Giyim › Kadın › Gömlek</div>
+      <div class="tot"><small>Zorunlu ${groupDone(r)} / ${r.length} hazır</small><div class="bar ${groupDone(r) === r.length ? 'ok' : ''}" style="margin-top:5px"><i style="width:${pct(r)}%"></i></div></div>
+      ${extra}<button class="btn">Başlıkları eşle</button></div>`
+  }
+  const panelSelect = (a, tag) => `<select class="field" data-pick="${tag}"><option value="">Panel özelliği seç…</option>${PANEL_ATTRS.map(o => `<option ${o === a.panel ? 'selected' : ''}>${o}</option>`).join('')}</select>`
+  function listGroup(v, title, items, key) {
+    return `<div class="grp"><span>${title} <small>${groupDone(items)} / ${items.length}</small></span><span class="chip ${todo(items).length ? 'warn' : 'ok'}">${todo(items).length ? todo(items).length + ' eksik' : 'Tamam'}</span><div class="bar ${pct(items) === 100 ? 'ok' : ''}"><i style="width:${pct(items)}%"></i></div></div>` +
+      items.map(a => { const k = ATTRS.indexOf(a); return `<button class="item ${k === sel[v] ? 'sel' : ''}" data-sel="${v}:${k}"><span class="ic ${status(a) === 'none' ? '' : status(a)}">${icon(a)}</span><span>${esc(a.name)}</span><span class="st ${status(a) === 'none' ? '' : status(a)}">${stText(a)}</span></button>` }).join('')
+  }
+  function pane(a, v, withFoot) {
+    const miss = total(a) - done(a)
+    return `<div class="pane"><div class="head"><h3>${esc(a.name)}</h3><span class="chip ${a.req ? 'pri' : 'mute'}">${a.req ? 'Zorunlu' : 'İsteğe bağlı'}</span><span class="chip ${status(a) === 'none' ? 'mute' : status(a)}">${stText(a)}</span></div>
+      <p class="lead">${a.req ? 'Hepsiburada bu alan olmadan ürünü kabul etmez.' : 'Boş bırakılabilir; doldurursanız ürün sayfası daha iyi sıralanır.'}</p>
+      <div class="link-line"><div><small>Hepsiburada alanı</small><div class="name">${esc(a.name)}</div></div><span class="arrow-x">→</span><div><small>Panel özelliği</small>${panelSelect(a, v)}</div><button class="btn ghost" data-act="clear:${v}" ${a.panel ? '' : 'disabled'}>Kaldır</button></div>
+      ${a.panel ? valuesBlock(a, v) : '<p class="muted">Bir panel özelliği seçtiğinizde değerleri burada eşlersiniz.</p>'}
+      ${withFoot ? foot(v, miss) : ''}</div>`
+  }
+  function valuesBlock(a, v) {
+    let rows = a.values.map((x, k) => ({ x, k })).filter(r => (!q.vq || r.x.p.toLocaleLowerCase('tr').includes(q.vq.toLocaleLowerCase('tr'))) && (!q.onlyMiss || !r.x.h))
+    return `<div class="vhead"><b>Değer eşlemeleri</b><span class="muted">${done(a)} / ${total(a)}</span><span class="grow"></span>
+      <input class="field search" data-vq placeholder="Değer ara…" value="${esc(q.vq)}">
+      <label class="row muted" style="cursor:pointer"><input type="checkbox" data-miss ${q.onlyMiss ? 'checked' : ''}> Sadece eksikler</label>
+      <button class="btn" data-act="same:${v}">Birebir eşle</button></div>
+      <div class="tbl"><div class="r hd"><span>Panel değeri</span><span></span><span>Hepsiburada değeri</span><span class="end">Durum</span></div>
+      ${rows.length ? rows.map(({ x, k }) => `<div class="r ${x.h ? '' : 'miss'}"><span>${esc(x.p)}</span><span class="arrow">→</span><select class="field" data-val="${v}:${k}"><option value="">Eşleme seç…</option>${hbOptions(a).map(o => `<option ${o === x.h ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select><span class="end">${x.h ? '<i class="dot ok"></i>' : '<span class="chip warn">Eksik</span>'}</span></div>`).join('') : '<div class="empty">Gösterilecek değer yok.</div>'}</div>`
+  }
+  function foot(v, miss) {
+    const nxt = nextTodo(sel[v]), more = todo(ATTRS).length
+    return `<div class="foot"><span class="chip ${dirty.size ? 'pri' : 'mute'}">${dirty.size ? dirty.size + ' değişiklik kaydedilmedi' : 'Değişiklik yok'}</span><span class="grow"></span>
+      ${more ? `<span class="muted">Sonraki eksik: <b style="color:var(--ink)">${esc(ATTRS[nxt].name)}</b></span>` : ''}<button class="btn primary" data-act="next:${v}">${more ? 'Kaydet ve sıradaki eksik →' : 'Kaydet'}</button></div>`
+  }
+
+  /* ---------- variants ---------- */
+  function v1() {
+    const a = ATTRS[sel[1]]
+    return `<div class="frame"><h2>Kategori eşleştirmeleri</h2><p class="sub">Sıra numarası yok; zorunlu alanlar ayrı başlıkta, durumlar aynı sütunda hizalı.</p>${ctxBar()}
+      <div class="layout"><div class="list">${listGroup(1, 'Zorunlu', req())}${listGroup(1, 'İsteğe bağlı', opt())}</div>${pane(a, 1, true)}</div>
+      <p class="note"><b>Düzeltmeler:</b> numaralı adımlar yerine iki başlık, her başlıkta kendi ilerleme çubuğu; simge–ad–durum üç sabit sütunda; sağdaki bölüm de aynı sütun düzenini kullanıyor.</p></div>`
+  }
+
+  function v2() {
+    const list = tab2.v === 'req' ? req() : opt()
+    if (!list.includes(ATTRS[sel[2]])) sel[2] = ATTRS.indexOf(list[0])
+    const a = ATTRS[sel[2]]
+    const seg = (key, label, items, hint) => `<button class="${tab2.v === key ? 'on' : ''}" data-tab="${key}"><span class="ring" style="--p:${pct(items)}"><i>${groupDone(items)}/${items.length}</i></span><span><b>${label}</b><small>${hint}</small></span><span class="chip ${todo(items).length ? 'warn' : 'ok'}">${todo(items).length ? todo(items).length + ' eksik' : 'Tamam'}</span></button>`
+    return `<div class="frame"><h2>Kategori eşleştirmeleri</h2><p class="sub">Önce zorunlu sekme açılır; isteğe bağlı olanlar ayrı sekmede, gözünüzü yormaz.</p>${ctxBar()}
+      <div class="seg" role="tablist">${seg('req', 'Zorunlu', req(), 'Yayın için gerekli')}${seg('opt', 'İsteğe bağlı', opt(), 'Ürün kalitesini artırır')}</div>
+      <div class="layout"><div class="list">${listGroup(2, tab2.v === 'req' ? 'Zorunlu alanlar' : 'İsteğe bağlı alanlar', list)}</div>${pane(a, 2, true)}</div>
+      <p class="note"><b>Neden kullanışlı:</b> ekranda her zaman tek tür alan var; zorunlular bitince “Tamam” rozeti çıkıyor ve isteğe bağlıya geçmek tamamen kullanıcının tercihi.</p></div>`
+  }
+
+  function v3() {
+    const row = a => { const k = ATTRS.indexOf(a); return `<div class="tr ${k === sel[3] && drawerOpen ? 'sel' : ''}" data-open="${k}"><span class="ic dot ${status(a) === 'none' ? '' : status(a)}"></span><span class="nm"><b>${esc(a.name)}</b></span><span>${panelSelect(a, 'row' + k)}</span>
+      <span>${total(a) ? `<div class="bar ${done(a) === total(a) ? 'ok' : ''}"><i style="width:${done(a) / total(a) * 100}%"></i></div><small class="muted">${done(a)} / ${total(a)} değer</small>` : '<small class="muted">Değer yok</small>'}</span>
+      <span class="chip ${status(a) === 'none' ? 'mute' : status(a)}" style="justify-self:start">${stText(a)}</span><span style="justify-self:end"><button class="btn sm" data-open="${k}" ${a.panel ? '' : 'disabled'}>Değerler ›</button></span></div>` }
+    const sec = (t, items) => `<div class="tr sec"><span>${t}</span><span class="chip ${todo(items).length ? 'warn' : 'ok'}">${todo(items).length ? todo(items).length + ' eksik' : 'Tamam'}</span><span class="muted" style="font-weight:500">${groupDone(items)} / ${items.length} hazır</span></div>`
+    return `<div class="frame"><h2>Kategori eşleştirmeleri</h2><p class="sub">Tüm özellikler tek tabloda, iki başlık altında; panel özelliği satırdan, değerler sağdan açılan çekmeceden eşlenir.</p>${ctxBar()}
+      <div class="atable"><div class="tr hd"><span></span><span>Hepsiburada alanı</span><span>Panel özelliği</span><span>Değerler</span><span>Durum</span><span></span></div>
+      ${sec('Zorunlu', req())}${req().map(row).join('')}${sec('İsteğe bağlı', opt())}${opt().map(row).join('')}</div>
+      <p class="note"><b>Neden kullanışlı:</b> en sık iş (özellik seçmek) için hiçbir yere girmeye gerek yok; uzun değer listeleri ana sayfayı uzatmıyor. Satıra tıklayınca çekmece açılır.</p></div>`
+  }
+
+  function v4() {
+    const a = ATTRS[sel[4]], r = req(), left = todo(r)
+    const first = left[0] ? ATTRS.indexOf(left[0]) : null
+    const item = x => { const k = ATTRS.indexOf(x); return `<button class="ci ${k === sel[4] ? 'sel' : ''}" data-sel="4:${k}"><span class="ic ${status(x) === 'none' ? '' : status(x)}" style="display:grid;place-items:center;width:20px;height:20px;border-radius:50%;font-size:11px;font-weight:800;background:var(--soft)">${icon(x)}</span><span>${esc(x.name)}</span><span class="st ${status(x) === 'none' ? 'muted' : ''}" style="font-size:12px;color:var(--${status(x) === 'ok' ? 'ok' : status(x) === 'warn' ? 'warn' : status(x) === 'bad' ? 'bad' : 'muted'})">${stText(x)}</span></button>` }
+    return `<div class="frame"><h2>Kategori eşleştirmeleri</h2><p class="sub">Yayına hazır olmak için neyin kaldığını söyleyen üst şerit ve kontrol listesi.</p>${ctxBar()}
+      <div class="banner ${left.length ? '' : 'ok'}"><span style="font-size:22px">${left.length ? '⚠' : '✓'}</span><div><b>${left.length ? `Yayın için ${left.length} zorunlu alan eksik` : 'Zorunlu alanların hepsi hazır'}</b><div class="muted">${left.length ? left.map(x => esc(x.name)).join(', ') : 'İsteğe bağlı alanları doldurmak ürün sayfasını güçlendirir.'}</div></div><span class="grow"></span>${left.length ? `<button class="btn primary" data-sel="4:${first}">İlk eksiğe git →</button>` : '<button class="btn primary">Yayına geç →</button>'}</div>
+      <div class="layout"><div class="check"><h4>YAYIN İÇİN GEREKLİ (${groupDone(r)}/${r.length})</h4>${r.map(item).join('')}
+        <details ${todo(opt()).length ? '' : ''}><summary><h4 style="display:flex;justify-content:space-between">İSTEĞE BAĞLI (${groupDone(opt())}/${opt().length}) <span>▾</span></h4></summary>${opt().map(item).join('')}</details></div>${pane(a, 4, true)}</div>
+      <p class="note"><b>Neden kullanışlı:</b> “bitti mi?” sorusunun cevabı hep üstte; isteğe bağlılar katlanmış durduğu için liste kısa, zorunlulara odak kalıyor.</p></div>`
+  }
+
+  /* ---------- drawer (variant 3) ---------- */
+  let drawerOpen = false
+  function renderDrawer() {
+    const a = ATTRS[sel[3]], d = document.getElementById('drawer')
+    d.classList.toggle('on', drawerOpen && active === 3); document.getElementById('scrim').classList.toggle('on', drawerOpen && active === 3)
+    if (!drawerOpen || active !== 3) return
+    d.innerHTML = `<div class="top"><h3 style="margin:0;font-size:18px">${esc(a.name)}</h3><span class="chip ${a.req ? 'pri' : 'mute'}">${a.req ? 'Zorunlu' : 'İsteğe bağlı'}</span><span class="grow"></span><button class="btn ghost" data-act="closedrawer">✕ Kapat</button></div>
+      <div class="link-line" style="grid-template-columns:1fr"><div><small>Panel özelliği</small>${panelSelect(a, 3)}</div></div>${a.panel ? valuesBlock(a, 3) : ''}
+      <div class="foot"><span class="chip ${dirty.size ? 'pri' : 'mute'}">${dirty.size ? dirty.size + ' değişiklik kaydedilmedi' : 'Değişiklik yok'}</span><span class="grow"></span><button class="btn primary" data-act="savedrawer">Kaydet ve kapat</button></div>`
+  }
+
+  /* ---------- render + events ---------- */
+  let active = 1
+  function render() {
+    const keep = document.activeElement && document.activeElement.hasAttribute && document.activeElement.hasAttribute('data-vq') ? document.activeElement.selectionStart : null
+    document.getElementById('v' + active).innerHTML = ({ 1: v1, 2: v2, 3: v3, 4: v4 })[active]()
+    renderDrawer()
+    if (keep !== null) { const el = document.querySelector('[data-vq]'); if (el) { el.focus(); el.setSelectionRange(keep, keep) } }
+  }
+  document.addEventListener('click', e => {
+    const tb = e.target.closest('[data-tab]'); if (tb) { tab2.v = tb.dataset.tab; render(); return }
+    const op = e.target.closest('[data-open]'); if (op && !e.target.closest('select')) { const k = Number(op.dataset.open); if (ATTRS[k].panel) { sel[3] = k; drawerOpen = true; render() } return }
+    const s = e.target.closest('[data-sel]'); if (s) { const [i, k] = s.dataset.sel.split(':').map(Number); sel[i] = k; render(); return }
+    if (e.target.id === 'scrim') { drawerOpen = false; render(); return }
+    const b = e.target.closest('[data-act]'); if (!b || b.disabled) return
+    const [act, vi] = b.dataset.act.split(':'); const v = Number(vi) || active, a = ATTRS[sel[v]]
+    if (act === 'same') matchSame(a)
+    else if (act === 'clear') choosePanel(a, null)
+    else if (act === 'next') { dirty.clear(); sel[v] = nextTodo(sel[v]); if (v === 2) tab2.v = ATTRS[sel[2]].req ? 'req' : 'opt'; toast('Kaydedildi'); render() }
+    else if (act === 'closedrawer') { drawerOpen = false; render() }
+    else if (act === 'savedrawer') { dirty.clear(); drawerOpen = false; toast('Kaydedildi'); render() }
+  })
+  document.addEventListener('change', e => {
+    const t = e.target
+    if (t.dataset.pick) { if (String(t.dataset.pick).startsWith('row')) { const k = Number(t.dataset.pick.slice(3)); sel[3] = k; choosePanel(ATTRS[k], t.value) } else choosePanel(ATTRS[sel[Number(t.dataset.pick)]], t.value) }
+    else if (t.dataset.val) { const [i, k] = t.dataset.val.split(':').map(Number); setValue(ATTRS[sel[i]], k, t.value) }
+    else if (t.hasAttribute('data-miss')) { q.onlyMiss = t.checked; render() }
+  })
+  document.addEventListener('input', e => { if (e.target.hasAttribute('data-vq')) { q.vq = e.target.value; render() } })
+  document.querySelectorAll('.switcher button').forEach(b => b.addEventListener('click', () => {
+    active = Number(b.dataset.v); drawerOpen = false; q.vq = ''; q.onlyMiss = false
+    document.querySelectorAll('.switcher button').forEach(x => x.setAttribute('aria-selected', String(x === b)))
+    document.querySelectorAll('.variant').forEach(x => x.classList.toggle('active', x.id === 'v' + active))
+    render()
+  }))
+  render()
+</script>
+</body>
+</html>

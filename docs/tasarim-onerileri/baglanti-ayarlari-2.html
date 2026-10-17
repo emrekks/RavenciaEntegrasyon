@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="tr" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bağlantı ayarları · A / D / E ailesi</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #101014; --surface: #17171c; --subtle: #1d1d23; --hover: #22222a;
+    --line: #2a2a32; --line-strong: #383842;
+    --ink: #ececf0; --ink-2: #a3a3b0; --ink-3: #6f6f7c;
+    --accent: #8b5cf6; --accent-soft: #272139; --ok: #46b98f; --warn: #e2aa4b; --bad: #e4636f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 "Segoe UI", system-ui, sans-serif; color: var(--ink); background: var(--bg); }
+  button, input, select { font: inherit; color: inherit; }
+  .grow { flex: 1; } .muted { color: var(--ink-2); } .faint { color: var(--ink-3); } .num { font-variant-numeric: tabular-nums; }
+  .switcher { position: sticky; top: 0; z-index: 50; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 20px; background: color-mix(in srgb, var(--bg) 92%, transparent); border-bottom: 1px solid var(--line); backdrop-filter: blur(10px); }
+  .switcher b { margin-right: 8px; }
+  .switcher button { height: 34px; padding: 0 12px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 7px; cursor: pointer; font-weight: 500; }
+  .switcher button.on { color: var(--accent); background: var(--accent-soft); border-color: var(--accent); }
+  .intro { max-width: 1180px; margin: 16px auto 0; padding: 0 20px; color: var(--ink-2); } .intro b { color: var(--ink); }
+  .stage { max-width: 1180px; margin: 14px auto 60px; padding: 0 20px; }
+  .variant { display: none; } .variant.on { display: block; }
+  .verdict { margin: 12px 2px 0; color: var(--ink-2); font-size: 13px; } .verdict b { color: var(--ink); }
+
+  .page { position: relative; min-height: 780px; overflow: hidden; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; }
+  .page .ghost { padding: 24px; opacity: .3; } .page .ghost h1 { margin: 0 0 16px; font-size: 22px; font-weight: 600; }
+  .page .ghost div { height: 150px; margin-bottom: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+  .scrim { position: absolute; inset: 0; background: rgb(5 6 12 / 55%); }
+  .drawer { position: absolute; top: 0; right: 0; bottom: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; width: min(900px, 94%); background: var(--surface); border-left: 1px solid var(--line-strong); box-shadow: -20px 0 50px rgb(0 0 0 / 45%); }
+  .drawer .body { display: grid; grid-template-columns: 220px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); min-height: 0; overflow: hidden; }
+  .drawer .body > .pane, .drawer .body > .vnav { min-height: 0; overflow-y: auto; }
+  .pane { grid-auto-rows: max-content; }
+  .pane { display: grid; gap: 16px; align-content: start; padding: 22px 28px 28px; overflow-y: auto; }
+
+  .btn { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; white-space: nowrap; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 7px; cursor: pointer; font-weight: 500; }
+  .btn:hover { background: var(--hover); } .btn.sm { height: 28px; padding: 0 10px; font-size: 13px; }
+  .btn.primary { color: #fff; background: var(--accent); border-color: var(--accent); }
+  .btn.quiet { color: var(--ink-2); background: none; border-color: transparent; } .btn.quiet:hover { color: var(--ink); background: var(--hover); }
+  .btn.danger { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, var(--line-strong)); }
+  .chip { height: 28px; padding: 0 10px; color: var(--ink-2); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: 500; }
+  .chip.on { color: var(--accent); background: var(--accent-soft); border-color: var(--accent); }
+  .chip b { margin-left: 4px; font-weight: 600; }
+  .icon-btn { display: grid; width: 32px; height: 32px; place-items: center; color: var(--ink-2); background: none; border: 0; border-radius: 7px; cursor: pointer; } .icon-btn:hover { color: var(--ink); background: var(--hover); }
+  .in { width: 100%; height: 36px; padding: 0 12px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 7px; outline: none; }
+  .in:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgb(139 92 246 / 18%); }
+  .fld { display: grid; gap: 6px; } .fld small { color: var(--ink-2); font-size: 12px; font-weight: 500; }
+  .tag { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px 0 6px; color: var(--ink-2); border: 1px solid var(--line-strong); border-radius: 5px; font-size: 12px; font-weight: 500; white-space: nowrap; text-transform: capitalize; }
+  .tag.on { color: var(--ink); }
+  .count { display: inline-grid; min-width: 20px; height: 18px; place-items: center; padding: 0 5px; color: var(--ink); background: var(--line-strong); border-radius: 5px; font-size: 11px; font-weight: 600; }
+  .count { line-height: 1; text-align: center; font-variant-numeric: tabular-nums; }
+  .count.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+  .st { width: 15px; height: 15px; flex: none; }
+  .st.done { color: var(--ink); } .st.partial, .st.late, .st.none { color: var(--ink-3); } .st.bad { color: var(--bad); }
+  .sw { position: relative; flex: none; width: 34px; height: 20px; margin: 0; appearance: none; background: var(--line-strong); border-radius: 99px; cursor: pointer; transition: background .15s; }
+  .sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; background: #fff; border-radius: 50%; transition: transform .15s; }
+  .sw:checked { background: var(--accent); } .sw:checked::after { transform: translateX(14px); } .sw:disabled { opacity: .4; }
+  .h2 { margin: 0; font-size: 16px; font-weight: 600; } .lead { margin: 2px 0 0; color: var(--ink-2); font-size: 13px; }
+  .sec-label { margin: 0; color: var(--ink-2); font-size: 12px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; }
+
+  .head { display: flex; align-items: center; gap: 12px; padding: 18px 24px; border-bottom: 1px solid var(--line); }
+  .logo { display: grid; width: 42px; height: 42px; flex: none; place-items: center; color: #fff; background: #f27a1a; border-radius: 8px; font-weight: 700; }
+  .head h2 { margin: 0; font-size: 18px; font-weight: 600; } .head p { margin: 2px 0 0; color: var(--ink-2); font-size: 13px; }
+  .foot { display: flex; align-items: center; gap: 8px; padding: 14px 24px; background: var(--surface); border-top: 1px solid var(--line); }
+  .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .stats > div { display: grid; gap: 2px; padding: 14px 16px; border-left: 1px solid var(--line); } .stats > div:first-child { border-left: 0; }
+  .stats small { color: var(--ink-2); font-size: 12px; } .stats b { font-size: 15px; font-weight: 600; } .stats span { color: var(--ink-2); font-size: 12px; }
+
+  .group { padding: 0 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+  .row { display: flex; align-items: center; gap: 14px; padding: 14px 0; border-top: 1px solid var(--line); }
+  .row:first-child { border-top: 0; } .row > div:first-child { flex: 1; min-width: 0; }
+  .row b { display: block; font-weight: 600; } .row small { display: block; color: var(--ink-2); font-size: 13px; }
+  .row.child { padding-left: 22px; }
+
+  /* flow table (aligned columns) */
+  .ftable { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--surface); }
+  .fgroup { display: flex; align-items: center; gap: 10px; height: 46px; padding: 0 16px; background: var(--subtle); border-top: 1px solid var(--line); }
+  .fgroup:first-child { border-top: 0; } .fgroup b { font-size: 13px; font-weight: 600; } .fgroup .grow + * { margin-left: auto; }
+  .frow { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) 150px 44px; align-items: center; gap: 14px; min-height: 46px; padding: 6px 16px; border-top: 1px solid var(--line); }
+  .frow .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .frow .state { display: flex; align-items: center; gap: 8px; color: var(--ink-2); font-size: 13px; }
+  .frow .state.bad { color: var(--bad); } .frow .state.warn { color: var(--warn); }
+  .frow .time { color: var(--ink-2); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .frow.hd { min-height: 34px; color: var(--ink-3); font-size: 12px; background: var(--subtle); border-top: 0; border-bottom: 1px solid var(--line); }
+
+  .vnav { display: grid; align-content: start; padding: 12px 0; overflow-y: auto; border-right: 1px solid var(--line); }
+  .vnav button { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: 10px; height: 38px; padding: 0 16px 0 18px; color: var(--ink-2); text-align: left; background: none; border: 0; border-left: 2px solid transparent; cursor: pointer; }
+  .vnav button:hover { color: var(--ink); background: var(--hover); }
+  .vnav button.on { color: var(--ink); background: var(--accent-soft); border-left-color: var(--accent); }
+  .vnav .sep { height: 1px; margin: 8px 18px; background: var(--line); }
+
+  /* D list */
+  .list-page { max-width: 780px; margin: 0 auto; display: grid; gap: 22px; padding: 0 0 20px; }
+  .lcard { overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+  .lrow { display: flex; align-items: center; gap: 14px; padding: 12px 18px; border-top: 1px solid var(--line); }
+  .lrow:first-child { border-top: 0; } .lrow.link { cursor: pointer; } .lrow.link:hover { background: var(--hover); }
+  .lrow .ico { display: grid; width: 30px; height: 30px; flex: none; place-items: center; color: var(--ink-2); background: var(--subtle); border: 1px solid var(--line); border-radius: 7px; }
+  .lrow > div { flex: 1; min-width: 0; } .lrow b { display: block; font-weight: 500; } .lrow small { display: block; color: var(--ink-2); font-size: 13px; }
+  .lsub { padding: 0 18px 8px 62px; background: var(--subtle); border-top: 1px solid var(--line); }
+  .lsub .row { padding: 10px 0; }
+
+  /* E */
+  .ov { display: grid; gap: 16px; padding: 0 0 20px; }
+  .ov-top { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 16px; }
+  .ov-card { padding: 18px 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+  .health { display: grid; gap: 10px; margin-top: 12px; }
+  .health > div { display: flex; align-items: center; gap: 10px; } .health span { flex: 1; } .health em { font-style: normal; color: var(--ink-2); font-size: 13px; }
+  .meter { display: flex; gap: 2px; height: 6px; margin-top: 14px; overflow: hidden; border-radius: 99px; }
+  .meter i { display: block; height: 100%; } .meter .g { background: var(--ink-2); } .meter .w { background: var(--warn); } .meter .r { background: var(--bad); } .meter .n { background: var(--line-strong); }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 8px; color: var(--ink-2); font-size: 12px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; } .legend i { width: 8px; height: 8px; border-radius: 2px; }
+  details.acc { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+  details.acc > summary { display: flex; align-items: center; gap: 12px; padding: 14px 20px; list-style: none; cursor: pointer; }
+  details.acc > summary::-webkit-details-marker { display: none; }
+  details.acc > summary b { flex: 1; font-weight: 600; }
+  details.acc > summary .chev { color: var(--ink-3); transition: transform .15s; } details.acc[open] > summary .chev { transform: rotate(180deg); }
+  details.acc .acc-body { padding: 12px 20px 16px; border-top: 1px solid var(--line); }
+  .issue-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+  .issue { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+  .issue:first-child { border-top: 0; } .issue small { display: block; color: var(--ink-2); font-size: 12px; }
+  .toast { position: fixed; right: 20px; bottom: 20px; z-index: 60; padding: 10px 14px; background: var(--subtle); border: 1px solid var(--line-strong); border-radius: 10px; opacity: 0; transform: translateY(6px); transition: .2s; pointer-events: none; }
+  .toast.on { opacity: 1; transform: none; }
+  @media (max-width: 860px) {
+    .drawer .body { grid-template-columns: 1fr; } .vnav { display: flex; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 0; }
+    .vnav button { grid-template-columns: 16px auto auto; border-left: 0; border-bottom: 2px solid transparent; } .vnav .sep { display: none; }
+    .frow { grid-template-columns: minmax(0, 1fr) 44px; } .frow .state, .frow .time { grid-column: 1; } .frow.hd { display: none; }
+    .ov-top, .stats { grid-template-columns: 1fr; }
+  }
+
+  /* macOS-style scrollbars: no arrows, transparent track, slim rounded thumb. */
+  ::-webkit-scrollbar { width: 10px; height: 10px; background: transparent; }
+  ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+  ::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+  ::-webkit-scrollbar-thumb { background: rgb(236 236 240 / 22%); background-clip: padding-box; border: 3px solid transparent; border-radius: 999px; }
+  ::-webkit-scrollbar-thumb:hover { background-color: rgb(236 236 240 / 38%); }
+  @supports (-moz-appearance: none) { * { scrollbar-width: thin; scrollbar-color: rgb(236 236 240 / 25%) transparent; } }
+</style>
+</head>
+<body>
+<nav class="switcher"><b>Bağlantı ayarları · gerçek içerik</b>
+  <button data-v="1" class="on">1 · Yan panel + akış tablosu</button>
+  <button data-v="2">2 · Yan panel + sorun önceliği</button>
+  <button data-v="3">3 · Ayar listesi</button>
+  <button data-v="4">4 · Özet + sağlık + bölümler</button>
+  <button data-v="5">5 · Yan panel, özet ilk bölüm</button>
+</nav>
+<p class="intro"><b>A, D ve E’nin gerçek içeriğe uyarlanmış hali.</b> Trendyol (Production · mağaza 930112 · API V2) bağlantısının akışları: sipariş (3), iade (2), uzlaştırma (9), dış yazma (2), faturalama (1), referans veri (1). Durumlar ekrandakiyle aynı: Güncel, Güncelleme gecikti, Kısmi hata, İlk çalışma bekliyor, Kapalı.</p>
+<div class="stage">
+  <section class="variant on" id="v-1"></section><section class="variant" id="v-2"></section><section class="variant" id="v-3"></section><section class="variant" id="v-4"></section><section class="variant" id="v-5"></section>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+const FLOWS = [
+  ['orders', 'Sipariş akışları', [['Açık sipariş yaşam döngüsü', 'ok', '16.10 15:54'], ['Sipariş geçmişi kurtarma', 'late', '16.10 14:50'], ['Siparişler ve paket durumları', 'ok', '16.10 15:56']]],
+  ['returns', 'İade akışları', [['Açık iade yaşam döngüsü', 'ok', '16.10 15:54'], ['İade talepleri', 'ok', '16.10 15:54']]],
+  ['reconcile', 'Uzlaştırma akışları', [['Günlük sipariş uzlaştırması', 'ok', '16.10 15:27'], ['Orta sipariş uzlaştırması', 'ok', '16.10 15:27'], ['Kısa sipariş uzlaştırması', 'partial', '16.10 15:27'], ['Günlük iade uzlaştırması', 'wait', ''], ['Orta iade uzlaştırması', 'ok', '16.10 15:10'], ['Kısa iade uzlaştırması', 'ok', '16.10 15:40'], ['Günlük fiyat-stok uzlaştırması', 'ok', '16.10 03:00'], ['Orta fiyat-stok uzlaştırması', 'ok', '16.10 15:00'], ['Kısa fiyat-stok uzlaştırması', 'ok', '16.10 15:45']]],
+  ['writes', 'Dış yazma akışları', [['Otomatik: fiyat ve stok', 'off', ''], ['Manuel: kargo, etiket, iade kararı', 'off', '']]],
+  ['invoices', 'Faturalama akışları', [['Fatura durumu uzlaştırması', 'ok', '16.10 15:30']]],
+  ['reference', 'Referans veri akışları', [['Kategori ve marka listeleri', 'ok', '16.10 03:12']]],
+].map(([k, t, rows]) => ({ k, t, rows: rows.map(([n, s, last], i) => ({ id: k + i, n, s, last, on: s !== 'off' })) }))
+const S = { writes: false, invoice: true, dirty: false }
+const STATE = { ok: ['done', 'Güncel', ''], late: ['late', 'Güncelleme gecikti', 'warn'], partial: ['partial', 'Kısmi hata', 'warn'], wait: ['none', 'İlk çalışma bekliyor', ''], off: ['none', 'Kapalı', ''], bad: ['bad', 'Hata', 'bad'] }
+const isIssue = f => f.on && (f.s === 'late' || f.s === 'partial' || f.s === 'bad')
+const all = () => FLOWS.flatMap(g => g.rows)
+const glyph = s => s === 'done' ? '<svg class="st done" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="currentColor"/><path d="m5 8.2 2.1 2.1 3.9-4.2" fill="none" stroke="var(--surface)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+  : s === 'late' || s === 'partial' ? `<svg class="st ${s}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="8" r="6.2" opacity=".35"/><path d="M8 1.8a6.2 6.2 0 0 1 5.9 4.3"/><path d="M8 5.6v2.6l1.8 1.1"/></svg>`
+  : s === 'bad' ? '<svg class="st bad" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="8" r="6.2"/><path d="m5.8 5.8 4.4 4.4M10.2 5.8l-4.4 4.4"/></svg>'
+  : '<svg class="st none" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2.6 2.2"><circle cx="8" cy="8" r="6.2"/></svg>'
+const stateOf = f => f.on ? STATE[f.s === 'off' ? 'wait' : f.s] : STATE.off
+const ico = p => `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`
+const I = { info: ico('<circle cx="8" cy="8" r="6.2"/><path d="M8 7.2v3.6M8 5h.01"/>'), write: ico('<path d="M3 13h3l7-7-3-3-7 7z"/>'), inv: ico('<path d="M4 2.5h6l2 2V13.5H4z"/><path d="M6 7h4M6 9.5h4"/>'), sync: ico('<path d="M13 6.5A5 5 0 0 0 4 4.5L3 6"/><path d="M3 2.5V6h3.5"/><path d="M3 9.5a5 5 0 0 0 9 2l1-1.5"/><path d="M13 13.5V10H9.5"/>'), key: ico('<circle cx="5.5" cy="10.5" r="3"/><path d="m7.6 8.4 5.4-5.4M11 5l1.5 1.5"/>'), tool: ico('<path d="M10.5 2.5a3 3 0 0 0-3.4 4l-4.6 4.6 2.4 2.4 4.6-4.6a3 3 0 0 0 4-3.4l-1.8 1.8-1.6-.4-.4-1.6z"/>'), danger: ico('<path d="M8 2.5 14 13H2z"/><path d="M8 6.5v3M8 11.5h.01"/>'), chev: ico('<path d="m4.5 6 3.5 3.5L11.5 6"/>'), right: ico('<path d="m6 3.5 4.5 4.5L6 12.5"/>'), close: ico('<path d="m4 4 8 8M12 4l-8 8"/>') }
+const sw = (k, on, dis = false) => `<input type="checkbox" class="sw" data-k="${k}" ${on ? 'checked' : ''} ${dis ? 'disabled' : ''}>`
+const toast = m => { const t = document.getElementById('toast'); t.textContent = m; t.classList.add('on'); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove('on'), 1600) }
+const counts = () => { const a = all(); return { ok: a.filter(f => f.on && f.s === 'ok').length, issue: a.filter(isIssue).length, wait: a.filter(f => f.on && f.s === 'wait').length, off: a.filter(f => !f.on).length, total: a.length } }
+
+/* shared blocks */
+const header = (extra = '') => `<div class="head"><span class="logo">T</span><div><h2>Trendyol</h2><p>Production · Mağaza 930112 · API V2</p></div><span class="grow"></span><span class="tag on">${glyph('done')}Aktif</span><span class="tag">Canlı akış</span>${extra}</div>`
+const overview = () => `<div class="stats"><div><small>Kimlik bilgisi</small><b>Şifreli kayıtlı</b><span>Değerler tekrar gösterilmez</span></div><div><small>Son doğrulama</small><b class="num">19.09.2026 01:22</b><span>Hata kaydı yok</span></div><div><small>Pazaryerine yazma</small><b>${S.writes ? 'Açık' : 'Kapalı'}</b><span>Ana anahtar ve bağlantı anahtarıyla korunur</span></div></div>`
+const flowTable = (filter = 'all', groupSwitch = true) => {
+  const pass = f => filter === 'all' || (filter === 'issue' && isIssue(f)) || (filter === 'off' && !f.on) || (filter === 'wait' && f.on && f.s === 'wait')
+  const groups = FLOWS.map(g => ({ ...g, rows: g.rows.filter(pass) })).filter(g => g.rows.length)
+  if (!groups.length) return '<p class="muted" style="margin:0;padding:24px;text-align:center">Bu filtrede akış yok.</p>'
+  return `<div class="ftable"><div class="frow hd"><span>Akış</span><span>Durum</span><span>Son başarılı</span><span></span></div>${groups.map(g => `<div class="fgroup"><b>${g.t}</b><span class="count">${g.rows.length}</span><span class="grow"></span>${groupSwitch ? `<button class="btn quiet sm" data-group="${g.k}">${g.rows.every(r => r.on) ? 'Tümünü kapat' : 'Tümünü aç'}</button>` : ''}</div>${g.rows.map(f => { const [gl, label, tone] = stateOf(f); return `<div class="frow"><span class="name">${f.n}</span><span class="state ${tone}">${glyph(gl)}${label}</span><span class="time">${f.last || '—'}</span>${sw('flow:' + f.id, f.on, g.k === 'writes' && !S.writes)}</div>` }).join('')}`).join('')}</div>`
+}
+const writeRows = () => `<div class="row"><div><b>Trendyol’a yazma</b><small>${S.writes ? 'Açık. Otomatik ve manuel akışlar ayrı ayrı yönetilir.' : 'Kapalı. Panel yalnız veri çeker, Trendyol’a bir şey göndermez.'}</small></div>${sw('writes', S.writes)}</div>
+  ${FLOWS.find(g => g.k === 'writes').rows.map(f => `<div class="row child"><div><b>${f.n}</b><small>${f.n.startsWith('Otomatik') ? 'Paneldeki değişiklikler birkaç dakika içinde gönderilir.' : 'Yalnız sizin başlattığınız işlemler gönderilir.'}</small></div>${sw('flow:' + f.id, f.on, !S.writes)}</div>`).join('')}`
+const invoiceRows = () => `<div class="row"><div><b>Fatura oluşturma</b><small>Bu bağlantıdaki siparişler için panelden fatura kesilebilir.</small></div>${sw('invoice', S.invoice)}</div>`
+const storeForm = () => `<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px 16px;padding:16px 0">
+  <label class="fld"><small>Bağlantı adı</small><input class="in" value="Trendyol" data-d></label><label class="fld"><small>Mağaza kimliği (Seller ID)</small><input class="in" value="930112" data-d></label>
+  <label class="fld"><small>API anahtarı</small><input class="in" placeholder="Değiştirmek için yeni değer girin" data-d></label><label class="fld"><small>API gizli anahtarı</small><input class="in" type="password" placeholder="Değiştirmek için yeni değer girin" data-d></label>
+  <p class="muted" style="grid-column:1/-1;margin:0;font-size:13px">Kayıtlı anahtarlar şifreli tutulur. Boş bıraktığınız alan değişmez.</p></div>`
+const tools = () => `<div class="row"><div><b>Verileri çek</b><small>Son 90 günün sipariş, iade ve ürünlerini yeniden okur.</small></div><button class="btn" data-t="Veri çekme kuyruğa alındı">Verileri çek</button></div><div class="row"><div><b>Bağlantıyı test et</b><small>Kimlik bilgisiyle salt-okunur bir istek atar.</small></div><button class="btn" data-t="Bağlantı testi başlatıldı">Test et</button></div>`
+const danger = () => `<div class="row"><div><b>Bağlantıyı pasife al</b><small>Veri akışı durur, kayıtlar korunur.</small></div><button class="btn">Pasife al</button></div><div class="row"><div><b>Verileri sıfırla</b><small>Seçtiğiniz kayıt türlerini siler, bağlantı kalır.</small></div><button class="btn danger">Sıfırla</button></div><div class="row"><div><b>Bağlantıyı sil</b><small>Bağlantı ve tüm kayıtları kalıcı olarak silinir.</small></div><button class="btn danger">Sil</button></div>`
+const foot = () => `<div class="foot"><span class="${S.dirty ? '' : 'muted'}">${S.dirty ? 'Kaydedilmemiş değişiklikler var' : 'Tüm değişiklikler kaydedildi'}</span><span class="grow"></span><button class="btn" data-a="cancel">Vazgeç</button><button class="btn primary" data-a="save" ${S.dirty ? '' : 'disabled style="opacity:.45"'}>Kaydet</button></div>`
+const healthCard = () => { const c = counts(); const pct = n => (n / c.total * 100).toFixed(1) + '%'
+  return `<div class="ov-card"><p class="sec-label">Akış sağlığı</p><div style="display:flex;align-items:baseline;gap:10px;margin-top:8px"><b style="font-size:22px;font-weight:600" class="num">${c.ok} / ${c.total}</b><span class="muted">akış güncel</span></div>
+  <div class="meter"><i class="g" style="width:${pct(c.ok)}"></i><i class="w" style="width:${pct(c.issue)}"></i><i class="n" style="width:${pct(c.wait + c.off)}"></i></div>
+  <div class="legend"><span><i style="background:var(--ink-2)"></i>Güncel ${c.ok}</span><span><i style="background:var(--warn)"></i>Dikkat ${c.issue}</span><span><i style="background:var(--line-strong)"></i>Bekleyen / kapalı ${c.wait + c.off}</span></div></div>` }
+const issues = () => { const list = all().filter(f => isIssue(f) || (f.on && f.s === 'wait')); return list.length ? list.map(f => { const [gl, label, tone] = stateOf(f); return `<div class="issue">${glyph(gl)}<div><b style="font-weight:600">${f.n}</b><small>${label}${f.last ? ' · son başarılı ' + f.last : ''}</small></div><span class="issue-actions"><button class="btn sm" data-t="${f.n} yeniden kuyruğa alındı">Şimdi çalıştır</button><button class="btn quiet sm" data-t="Ayrıntılar İşlem Takibi’nde açılır">Ayrıntı</button></span></div>` }).join('') : '<p class="muted" style="margin:0">Dikkat isteyen akış yok.</p>' }
+
+const SECTIONS = [
+  ['genel', 'Genel bakış', I.info, () => `${overview()}${healthCard()}<div class="ov-card"><p class="sec-label">Dikkat isteyenler</p><div style="margin-top:8px">${issues()}</div></div>`, () => counts().issue],
+  ['akis', 'Veri eşitleme', I.sync, () => `<div style="display:flex;align-items:center;gap:8px"><div class="grow"><h3 class="h2">Veri eşitleme akışları</h3><p class="lead">Kapalı akış veri çekmez; açınca kaldığı yerden devam eder.</p></div></div>${filterChips()}${flowTable(filter)}`, () => counts().issue],
+  ['yaz', 'Pazaryerine yazma', I.write, () => `<div><h3 class="h2">Pazaryerine yazma</h3><p class="lead">Panelin Trendyol’a ne gönderebileceğini belirler.</p></div><div class="group">${writeRows()}</div>`],
+  ['fatura', 'Faturalama', I.inv, () => `<div><h3 class="h2">Faturalama</h3><p class="lead">Yalnız bu bağlantının siparişlerini etkiler.</p></div><div class="group">${invoiceRows()}</div>`],
+  ['magaza', 'Mağaza ve kimlik', I.key, () => `<div><h3 class="h2">Mağaza ve kimlik bilgileri</h3><p class="lead">Ad, mağaza kimliği ve API anahtarları.</p></div><div class="group">${storeForm()}</div>`],
+  ['arac', 'Araçlar', I.tool, () => `<div><h3 class="h2">Araçlar</h3><p class="lead">Tek seferlik işlemler.</p></div><div class="group">${tools()}</div>`],
+  ['tehlike', 'Tehlikeli işlemler', I.danger, () => `<div><h3 class="h2">Tehlikeli işlemler</h3><p class="lead">Geri alınamayabilir; onay ister.</p></div><div class="group">${danger()}</div>`],
+]
+let filter = 'all'
+const filterChips = () => { const c = counts(); return `<div style="display:flex;flex-wrap:wrap;gap:6px">${[['all', 'Tümü', c.total], ['issue', 'Dikkat', c.issue], ['wait', 'Bekleyen', c.wait], ['off', 'Kapalı', c.off]].map(([k, t, n]) => `<button class="chip ${filter === k ? 'on' : ''}" data-f="${k}">${t}<b>${n}</b></button>`).join('')}</div>` }
+const sel = { 1: 'akis', 2: 'akis', 5: 'genel' }
+const vnav = (v, list) => `<nav class="vnav">${list.map(([k, t, i, , badge], n) => `${k === 'tehlike' ? '<div class="sep"></div>' : ''}<button data-sec="${v}:${k}" class="${sel[v] === k ? 'on' : ''}">${i}<span>${t}</span>${badge && badge() ? `<span class="count warn">${badge()}</span>` : '<span></span>'}</button>`).join('')}</nav>`
+const drawer = (v, list) => `<div class="page"><div class="ghost"><h1>Entegrasyonlar</h1><div></div><div></div><div></div></div><div class="scrim"></div><aside class="drawer">${header('<button class="icon-btn" title="Kapat">' + I.close + '</button>')}<div class="body">${vnav(v, list)}<div class="pane">${list.find(s => s[0] === sel[v])[3]()}</div></div>${foot()}</aside></div>`
+
+let openSub = 'orders'
+const V = {
+  1: () => drawer(1, SECTIONS.filter(s => s[0] !== 'genel')) + `<p class="verdict"><b>A’nın uyarlaması:</b> akış kartları yerine hizalı bir tablo (akış · durum · son başarılı · anahtar); 18 akış bir ekrana sığar. Her grubun yanında “Tümünü aç/kapat”, üstte durum filtresi. Özet bilgiler üst şeritte değil “Mağaza ve kimlik” bölümündedir.</p>`,
+  2: () => drawer(2, SECTIONS.filter(s => s[0] !== 'genel')) + `<p class="verdict"><b>A + sorun önceliği:</b> sol menüde sorunlu akış sayısı turuncu sayaçla görünür; “Dikkat” filtresi tek tıkla yalnız geciken ve hatalı akışları listeler. (Bu örnekte 1 ile aynı düzen, fark: menüdeki sayaç ve filtreyle açılış.)</p>`,
+  3: () => `<div class="list-page">${header('')}
+    ${[['Genel', [['info', 'Durum', 'Son doğrulama 19.09.2026 01:22 · hata kaydı yok', `<span class="tag on">${glyph('done')}Aktif</span>`], ['key', 'Mağaza ve kimlik', 'Trendyol · 930112 · anahtarlar şifreli', '', 'magaza']]],
+       ['İzinler', [['write', 'Trendyol’a yazma', S.writes ? 'Açık' : 'Kapalı · yalnız okuma', sw('writes', S.writes), 'yaz'], ['inv', 'Fatura oluşturma', 'Bu bağlantının siparişleri için', sw('invoice', S.invoice)]]],
+       ['Veri eşitleme', FLOWS.filter(g => g.k !== 'writes').map(g => { const issue = g.rows.filter(isIssue).length; const on = g.rows.filter(r => r.on).length; return ['sync', g.t, `${on} / ${g.rows.length} açık${issue ? ` · ${issue} dikkat` : ''}`, issue ? `<span class="count warn">${issue}</span>` : '', 'flow:' + g.k] })],
+       ['Araçlar', [['sync', 'Verileri çek', 'Son 90 gün', '<button class="btn sm" data-t="Veri çekme kuyruğa alındı">Çek</button>'], ['tool', 'Bağlantıyı test et', 'Salt-okunur deneme isteği', '<button class="btn sm" data-t="Test başlatıldı">Test et</button>']]],
+       ['Tehlikeli', [['danger', 'Pasife al, sıfırla veya sil', 'Onay ister', '', 'tehlike']]]]
+      .map(([g, rows]) => `<div><p class="sec-label" style="margin:0 0 8px 4px">${g}</p><div class="lcard">${rows.map(([i, t, d, right, sub]) => `<div class="lrow ${sub ? 'link' : ''}" ${sub ? `data-sub="${sub}"` : ''}><span class="ico">${I[i]}</span><div><b>${t}</b><small>${d}</small></div>${right || ''}${sub ? `<span class="faint">${openSub === sub ? I.chev : I.right}</span>` : ''}</div>${sub && openSub === sub ? `<div class="lsub">${sub === 'magaza' ? storeForm() : sub === 'yaz' ? writeRows().split('</div>').slice(2).join('</div>') : sub === 'tehlike' ? danger() : FLOWS.find(x => 'flow:' + x.k === sub).rows.map(f => { const [gl, label, tone] = stateOf(f); return `<div class="row"><div><b style="font-weight:500">${f.n}</b><small class="${tone}" style="display:flex;align-items:center;gap:6px">${glyph(gl)}${label}${f.last ? ' · ' + f.last : ''}</small></div>${sw('flow:' + f.id, f.on)}</div>` }).join('')}</div>` : ''}`).join('')}</div></div>`).join('')}
+    ${foot()}</div><p class="verdict" style="max-width:780px;margin:12px auto 0"><b>D’nin uyarlaması:</b> her akış grubu tek satır (“3 / 3 açık · 1 dikkat”); tıklayınca altında akışlar listelenir. Uzlaştırmanın 9 akışı sayfayı uzatmaz.</p>`,
+  4: () => `<div class="ov">${header('<button class="btn">Test et</button><button class="btn">Verileri çek</button>')}
+    <div class="ov-top">${healthCard()}<div class="ov-card"><p class="sec-label">Hızlı ayarlar</p><div style="margin-top:6px">
+      <div class="row"><div><b>Trendyol’a yazma</b><small>${S.writes ? 'Açık' : 'Kapalı · yalnız okuma'}</small></div>${sw('writes', S.writes)}</div>
+      <div class="row"><div><b>Fatura oluşturma</b><small>Bu bağlantının siparişleri</small></div>${sw('invoice', S.invoice)}</div></div></div></div>
+    <div class="ov-card"><p class="sec-label">Dikkat isteyen akışlar</p><div style="margin-top:6px">${issues()}</div></div>
+    ${[['Veri eşitleme akışları', () => filterChips() + '<div style="height:12px"></div>' + flowTable(filter)], ['Pazaryerine yazma ayrıntıları', writeRows], ['Mağaza ve kimlik bilgileri', storeForm], ['Tehlikeli işlemler', danger]].map(([t, f], n) => `<details class="acc" ${n === 0 ? 'open' : ''}><summary><b>${t}</b><span class="chev">${I.chev}</span></summary><div class="acc-body">${f()}</div></details>`).join('')}
+    ${foot()}</div><p class="verdict"><b>E’nin uyarlaması:</b> üstte “18 akıştan 15’i güncel” çubuğu ve sorunlu akışların listesi (her birinde “Şimdi çalıştır”); en sık iki anahtar sağda. Tüm akışlar altta katlanır bölümde tablo olarak.</p>`,
+  5: () => drawer(5, SECTIONS) + `<p class="verdict"><b>A + E birleşimi:</b> yan panel, ilk bölüm “Genel bakış” = E’nin özeti (durum, akış sağlığı, dikkat isteyenler). Sorun yoksa kullanıcı başka bölüme hiç geçmeden kapatır; varsa menüdeki turuncu sayaç doğru bölüme götürür.</p>`,
+}
+let active = '1'
+function render() { if (active === '2' && !render.f2) { filter = 'issue'; render.f2 = true } document.getElementById('v-' + active).innerHTML = V[active]() }
+document.addEventListener('click', e => {
+  const s = e.target.closest('[data-sec]'); if (s) { const [v, k] = s.dataset.sec.split(':'); sel[v] = k; render(); return }
+  const f = e.target.closest('[data-f]'); if (f) { filter = f.dataset.f; render(); return }
+  const g = e.target.closest('[data-group]'); if (g) { const grp = FLOWS.find(x => x.k === g.dataset.group); const target = !grp.rows.every(r => r.on); grp.rows.forEach(r => r.on = target); S.dirty = true; render(); return }
+  const sub = e.target.closest('[data-sub]'); if (sub && !e.target.closest('input,button')) { openSub = openSub === sub.dataset.sub ? '' : sub.dataset.sub; render(); return }
+  const a = e.target.closest('[data-a]'); if (a) { if (a.dataset.a === 'save' && S.dirty) toast('Kaydedildi'); S.dirty = false; render(); return }
+  const t = e.target.closest('[data-t]'); if (t) { toast(t.dataset.t); return }
+  const v = e.target.closest('.switcher button'); if (v) { active = v.dataset.v; filter = active === '2' ? 'issue' : 'all'; document.querySelectorAll('.switcher button').forEach(b => b.classList.toggle('on', b === v)); document.querySelectorAll('.variant').forEach(x => x.classList.toggle('on', x.id === 'v-' + active)); render() }
+})
+document.addEventListener('change', e => {
+  const k = e.target.dataset.k; if (!k) return
+  if (k.startsWith('flow:')) { const f = all().find(r => r.id === k.slice(5)); f.on = e.target.checked; if (f.on && f.s === 'off') f.s = 'wait' } else S[k] = e.target.checked
+  S.dirty = true; render()
+})
+document.addEventListener('input', e => { if (e.target.hasAttribute('data-d') && !S.dirty) { S.dirty = true; const ft = document.querySelector('#v-' + active + ' .foot'); if (ft) ft.outerHTML = foot() } })
+render()
+</script>
+</body>
+</html>
