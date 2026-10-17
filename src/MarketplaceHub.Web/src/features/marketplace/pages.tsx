@@ -2423,10 +2423,10 @@ function CategoryMappingWorkspace() {
   }
   const mappingPlatformTabs = (
     <>
-      <div className="mapping-category-platform-tabs mapping-platform-tabs" role="tablist" aria-label="Kategori eşleştirme pazaryeri">
+      <div className="mapping-category-platform-tabs mapping-platform-tabs rv-tabs rv-view-tabs" role="tablist" aria-label="Kategori eşleştirme pazaryeri">
         {mappingPlatformDefinitions.map(platform => {
           const available = activeMappingConnections.some(item => item.platformCode.toUpperCase() === platform.code)
-          return <button type="button" role="tab" aria-selected={selectedPlatformCode === platform.code} className={`${selectedPlatformCode === platform.code ? 'active' : ''}${available ? '' : ' is-unavailable'}`} title={available ? `${platform.label} kategorilerini göster` : `${platform.label} için aktif bağlantı yok`} onClick={() => selectMappingPlatform(platform.code)}>{platform.label}</button>
+          return <button type="button" role="tab" aria-selected={selectedPlatformCode === platform.code} className={`${selectedPlatformCode === platform.code ? 'active is-active' : ''}${available ? '' : ' is-unavailable'}`} title={available ? `${platform.label} kategorilerini göster` : `${platform.label} için aktif bağlantı yok`} onClick={() => selectMappingPlatform(platform.code)}><span className="rv-tab-label">{platformLogoSource(platform.code) && <img className="rv-view-tab-logo" src={platformLogoSource(platform.code)!} alt="" aria-hidden="true" />}{platform.label}</span></button>
         })}
       </div>
       {!connectionId ? <div className="unknown mapping-connection-empty" role="status"><strong>{selectedPlatform.label} bağlantısı gerekli</strong><p>Kategori referanslarını alıp eşleme yapabilmek için önce aktif bir {selectedPlatform.label} bağlantısı kurun.</p><Link className="button-link" to="/integrations">Entegrasyonlara git</Link></div> : <div className="mapping-reference-refresh-row">{selectedPlatformConnections.length > 1 && <label className="mapping-reference-connection-select">Bağlantı<select aria-label="Mağaza bağlantısı" value={connectionId} onChange={event => selectMappingConnection(event.target.value)}>{selectedPlatformConnections.map(item => <option value={item.id} key={item.id}>{item.displayName} · {item.environment === 'PRODUCTION' ? 'Canlı' : 'Stage'} · {item.externalStoreId}</option>)}</select></label>}</div>}
@@ -2440,10 +2440,10 @@ function CategoryMappingWorkspace() {
       <header>
         <h2><UiIcon name="equal" />5. Kayıtlı Kategori Eşleştirmeleri</h2>
         <div className="mapping-saved-header-tools">
-          <div className="mapping-saved-tabs mapping-platform-tabs" role="tablist" aria-label="Kayıtlı eşleştirme platformları">
+          <div className="mapping-saved-tabs mapping-platform-tabs rv-tabs rv-view-tabs" role="tablist" aria-label="Kayıtlı eşleştirme platformları">
             {mappingPlatformDefinitions.filter(platform => platform.code !== 'SHOPIFY').map(platform => {
               const available = activeMappingConnections.some(item => item.platformCode.toUpperCase() === platform.code)
-              return <button type="button" role="tab" aria-selected={selectedPlatformCode === platform.code} className={`${selectedPlatformCode === platform.code ? 'active' : ''}${available ? '' : ' is-unavailable'}`} title={available ? `${platform.label} eşleştirmelerini göster` : `${platform.label} için aktif bağlantı yok`} onClick={() => { setSelectedPlatformCode(platform.code); setSavedPage(1); setLocalId(''); setExternalId(''); setExternalSearch(''); setNotice('') }}>{platform.label}</button>
+              return <button type="button" role="tab" aria-selected={selectedPlatformCode === platform.code} className={`${selectedPlatformCode === platform.code ? 'active is-active' : ''}${available ? '' : ' is-unavailable'}`} title={available ? `${platform.label} eşleştirmelerini göster` : `${platform.label} için aktif bağlantı yok`} onClick={() => { setSelectedPlatformCode(platform.code); setSavedPage(1); setLocalId(''); setExternalId(''); setExternalSearch(''); setNotice('') }}><span className="rv-tab-label">{platformLogoSource(platform.code) && <img className="rv-view-tab-logo" src={platformLogoSource(platform.code)!} alt="" aria-hidden="true" />}{platform.label}</span></button>
             })}
           </div>
           <input aria-label="Kayıtlı eşleştirmelerde ara" value={savedSearch} onChange={event => { setSavedSearch(event.target.value); setSavedPage(1) }} placeholder="Eşleştirme ara..." />
@@ -3243,8 +3243,8 @@ export function AttributeMappingPage() {
     <div className="page-heading"><div><p className="eyebrow">Eşleştirme ayarları</p><h1>Özellik eşlemeleri</h1></div><Badge value="SAFE READ" /></div>
     {notice && <MessageToast message={notice} onClose={() => setNotice('')} />}
     <div className="button-row"><Link className="button-link secondary" to="/mappings/categories">Kategoriler</Link><Link className="button-link secondary" to="/mappings/categories?view=brands">Markalar</Link><Link className="button-link" to="/mappings/attributes">Özellikler</Link></div>
-    <div className="mapping-category-platform-tabs mapping-platform-tabs" role="tablist" aria-label="Özellik eşleştirme pazaryeri">
-      {supportedAttributeMappingPlatforms.map(platform => <button type="button" role="tab" aria-selected={selectedPlatformCode === platform.code} className={`${selectedPlatformCode === platform.code ? 'active' : ''}${activeMappingConnectionsForPlatform(connections.data?.items ?? [], platform.code).length ? '' : ' is-unavailable'}`} title={activeMappingConnectionsForPlatform(connections.data?.items ?? [], platform.code).length ? `${platform.label} özelliği eşlemelerini göster` : `${platform.label} için aktif bağlantı yok`} key={platform.code} onClick={() => selectPlatform(platform.code)}>{platform.label}</button>)}
+    <div className="mapping-category-platform-tabs mapping-platform-tabs rv-tabs rv-view-tabs" role="tablist" aria-label="Özellik eşleştirme pazaryeri">
+      {supportedAttributeMappingPlatforms.map(platform => <button type="button" role="tab" aria-selected={selectedPlatformCode === platform.code} className={`${selectedPlatformCode === platform.code ? 'active is-active' : ''}${activeMappingConnectionsForPlatform(connections.data?.items ?? [], platform.code).length ? '' : ' is-unavailable'}`} title={activeMappingConnectionsForPlatform(connections.data?.items ?? [], platform.code).length ? `${platform.label} özelliği eşlemelerini göster` : `${platform.label} için aktif bağlantı yok`} key={platform.code} onClick={() => selectPlatform(platform.code)}><span className="rv-tab-label">{platformLogoSource(platform.code) && <img className="rv-view-tab-logo" src={platformLogoSource(platform.code)!} alt="" aria-hidden="true" />}{platform.label}</span></button>)}
     </div>
     <article className="panel mapping-step">
       <div className="editor-section-title"><span>1</span><div><h2>Kategori kapsamını seçin</h2><p>Özellik kimlikleri seçili ve doğrulanmış {selectedPlatformLabel} yaprak kategorisi kapsamında tutulur.</p></div></div>

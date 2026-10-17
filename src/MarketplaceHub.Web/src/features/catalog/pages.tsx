@@ -49,6 +49,7 @@ import { productImportConnection, productImportIdentityLabel, singleProductLooku
 import { productImportOptionVisibility as getProductImportOptionVisibility, type ProductImportMethod, type ProductImportMode } from './product-import-options'
 import { productPlatformFilterGroups } from './product-platform-filter'
 import { formatPanelColorValue } from '../marketplace/color-value-format'
+import { viewTabLabel } from '../../shared/view-tabs'
 
 type Versioned = { id: string; version: number }
 type Category = Versioned & { name: string; path: string; depth: number; isLeaf: boolean; isActive: boolean }
@@ -1448,9 +1449,9 @@ export function ProductsPage() {
                 </label>
               })}</div> : <p className="product-import-empty">Aktarıma uygun, aktif veya doğrulanmış bir pazar yeri bağlantısı bulunamadı.</p>}
             </fieldset>
-            <div className="product-import-tabs" role="tablist" aria-label="Ürün aktarım türü">
-              <button type="button" role="tab" aria-selected={productImportMethod === 'BULK'} className={'product-import-tab' + (productImportMethod === 'BULK' ? ' selected' : '')} title="Seçtiğiniz bağlantıların kataloğunu toplu olarak tarar." onClick={() => setProductImportMethod('BULK')}>Toplu aktarım</button>
-              <button type="button" role="tab" aria-selected={productImportMethod === 'SINGLE'} className={'product-import-tab' + (productImportMethod === 'SINGLE' ? ' selected' : '')} title={`${singleLookupLabel} ile yalnızca tek ürün aktarır.`} onClick={() => { setProductImportMethod('SINGLE'); setProductImportConnectionIds(ids => ids.slice(0, 1)) }}>Tek ürün aktarımı</button>
+            <div className="product-import-tabs rv-tabs rv-view-tabs" role="tablist" aria-label="Ürün aktarım türü">
+              <button type="button" role="tab" aria-selected={productImportMethod === 'BULK'} className={'product-import-tab' + (productImportMethod === 'BULK' ? ' selected is-active' : '')} title="Seçtiğiniz bağlantıların kataloğunu toplu olarak tarar." onClick={() => setProductImportMethod('BULK')}><span className="rv-tab-label">{viewTabLabel('all', 'Toplu Aktarım')}</span></button>
+              <button type="button" role="tab" aria-selected={productImportMethod === 'SINGLE'} className={'product-import-tab' + (productImportMethod === 'SINGLE' ? ' selected is-active' : '')} title={`${singleLookupLabel} ile yalnızca tek ürün aktarır.`} onClick={() => { setProductImportMethod('SINGLE'); setProductImportConnectionIds(ids => ids.slice(0, 1)) }}><span className="rv-tab-label">{viewTabLabel('product', 'Tek Ürün Aktarımı')}</span></button>
             </div>
             {productImportMethod === 'SINGLE' ? <fieldset>
               <legend>Aktarılacak ürün</legend>

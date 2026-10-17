@@ -9,6 +9,7 @@ import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFont
 import { SettingsNotice } from './SettingsNotifications'
 import { readVisualThemePreference, setVisualThemePreference, visualThemeChangeEvent, type VisualTheme } from './visual-theme'
 import './settings-sade.css'
+import '../../shared/view-tabs.css'
 
 type SecurityStatus = { totpState: string; recoveryCodesRemaining: number }
 type SecuritySession = { id: string; state: string; current: boolean; issuedAt: string; lastSeenAt: string; expiresAt: string }
@@ -280,8 +281,8 @@ export function SystemSettingsPage() {
 
   function navMeta(key: SettingsSectionKey) {
     if (key === 'auth') return status.data ? <SettingsGlyph state={totpEnabled ? 'done' : 'none'} /> : null
-    if (key === 'sessions') return sessions.data ? <span className="ss-count">{sessions.data.length}</span> : null
-    if (key === 'database') return resetScopes.length ? <span className="ss-count is-warn">{resetScopes.length}</span> : null
+    if (key === 'sessions') return sessions.data ? <span className="ss-count rv-tab-count">{sessions.data.length}</span> : null
+    if (key === 'database') return resetScopes.length ? <span className="ss-count rv-tab-count is-warn">{resetScopes.length}</span> : null
     if (key === 'designer') return <span className="ss-count">{labelSettings.layout[labelFormat].length}</span>
     if (key === 'palette') return appearanceStatus.dirty ? <SettingsGlyph state="pending" /> : null
     if (key === 'themes') return appearanceStatus.themeCount ? <span className="ss-count">{appearanceStatus.themeCount}</span> : null
@@ -319,9 +320,9 @@ export function SystemSettingsPage() {
   return <section className="content ss-page">
     {message && <SettingsNotice message={message} />}
     <header className="ss-page-head"><span className="ss-crumb">Ayarlar</span><h1>Sistem Ayarları</h1><p>Hesap güvenliği, yerel veri, kargo etiketi ve görünüm.</p></header>
-    <nav className="ss-gtabs" role="tablist" aria-label="Ayar grupları">{settingsSectionGroups.map(group => <button type="button" role="tab" key={group.label} aria-selected={group === activeGroup} className={group === activeGroup ? 'is-on' : undefined} onClick={() => selectSection(group.items[0].key)}><SettingsIcon name={group.icon} />{group.label}</button>)}</nav>
+    <nav className="ss-gtabs rv-tabs rv-view-tabs" role="tablist" aria-label="Ayar grupları">{settingsSectionGroups.map(group => <button type="button" role="tab" key={group.label} aria-selected={group === activeGroup} className={group === activeGroup ? 'is-on is-active' : undefined} onClick={() => selectSection(group.items[0].key)}><span className="rv-tab-label"><SettingsIcon name={group.icon} />{group.label}</span></button>)}</nav>
     <div className="ss-card">
-      {activeGroup.items.length > 1 && <div className="ss-stabs"><span className="ss-seg" role="tablist" aria-label={`${activeGroup.label} bölümleri`}>{activeGroup.items.map(item => <button type="button" role="tab" key={item.key} aria-selected={section === item.key} className={section === item.key ? 'is-on' : undefined} onClick={() => selectSection(item.key)}>{item.label}{navMeta(item.key)}</button>)}</span></div>}
+      {activeGroup.items.length > 1 && <div className="ss-stabs"><span className="ss-seg rv-tabs rv-view-tabs" role="tablist" aria-label={`${activeGroup.label} bölümleri`}>{activeGroup.items.map(item => <button type="button" role="tab" key={item.key} aria-selected={section === item.key} className={section === item.key ? 'is-on is-active' : undefined} onClick={() => selectSection(item.key)}><span className="rv-tab-label"><SettingsIcon name={item.icon} />{item.label}</span>{navMeta(item.key)}</button>)}</span></div>}
       <div className="ss-pane">
         {section === 'auth' && <>
           <SettingsPaneHead section="auth" description="İki adımlı doğrulama ile girişte telefonunuzdaki kod da istenir." />
@@ -891,7 +892,7 @@ function ShippingLabelSettingsPanel({ section, settings, saved, dirty, saving, l
       <SettingsPaneHead section="designer" description="Alanları kütüphaneden kâğıda sürükleyin; seçili alanı sağ panelden düzenleyin." />
       <div className="ss-body is-flush"><div className="ss-dz">
         <div className="ss-dz-bar">
-          <span className="ss-seg2" role="tablist" aria-label="Kâğıt biçimi"><button type="button" role="tab" aria-selected={format === 'a4'} className={format === 'a4' ? 'is-on' : undefined} onClick={() => setFormat('a4')}>A4 <small>{settings.a4LabelsPerPage} Etiket</small></button><button type="button" role="tab" aria-selected={format === 'sticker'} className={format === 'sticker' ? 'is-on' : undefined} onClick={() => setFormat('sticker')}>Sticker <small>{settings.stickerWidthMm} × {settings.stickerHeightMm} mm</small></button></span>
+          <span className="ss-seg2 rv-tabs rv-view-tabs" role="tablist" aria-label="Kâğıt biçimi"><button type="button" role="tab" aria-selected={format === 'a4'} className={format === 'a4' ? 'is-on is-active' : undefined} onClick={() => setFormat('a4')}><span className="rv-tab-label"><SettingsIcon name="copy" />A4 <small>{settings.a4LabelsPerPage} Etiket</small></span></button><button type="button" role="tab" aria-selected={format === 'sticker'} className={format === 'sticker' ? 'is-on is-active' : undefined} onClick={() => setFormat('sticker')}><span className="rv-tab-label"><SettingsIcon name="barcode" />Sticker <small>{settings.stickerWidthMm} × {settings.stickerHeightMm} mm</small></span></button></span>
           <span className="ss-grow" />
           <select className="ss-in is-sm ss-dz-template" aria-label="Kayıtlı şablon seçin" value={selectedTemplateId} onChange={event => applyTemplate(event.target.value)}><option value="">Şablon Seçin…</option>{templates.map(template => <option key={template.id} value={template.id}>{template.name}</option>)}</select>
           <button type="button" className="ss-btn" onClick={() => { setTemplateNameDraft(`${format === 'a4' ? 'A4' : 'Sticker'} şablonu`); setTemplateMessage(''); setTemplateNameOpen(true) }}><SettingsIcon name="save" />Şablon Kaydet</button>
@@ -911,7 +912,7 @@ function ShippingLabelSettingsPanel({ section, settings, saved, dirty, saving, l
           </main>
           <aside className="ss-dz-insp">
             <div className="ss-dz-head"><b>Özellikler</b><small>{activeBlock ? `Seçili: ${blockTitle(activeBlock)}` : 'Bir alan seçin'}</small></div>
-            <div className="ss-itabs" role="tablist" aria-label="Özellik grupları">{([['general', 'Genel'], ['text', 'Yazı'], ['barcode', 'Barkod']] as const).map(([value, label]) => <button type="button" role="tab" key={value} aria-selected={designerTab === value} className={designerTab === value ? 'is-on' : undefined} onClick={() => setDesignerTab(value)}>{label}</button>)}</div>
+            <div className="ss-itabs rv-tabs rv-view-tabs" role="tablist" aria-label="Özellik grupları">{([['general', 'Genel', 'layout'], ['text', 'Yazı', 'type'], ['barcode', 'Barkod', 'barcode']] as const).map(([value, label, icon]) => <button type="button" role="tab" key={value} aria-selected={designerTab === value} className={designerTab === value ? 'is-on is-active' : undefined} onClick={() => setDesignerTab(value)}><span className="rv-tab-label"><SettingsIcon name={icon} />{label}</span></button>)}</div>
             {!activeBlock ? <div className="ss-empty">Düzenlemek için kâğıt üzerindeki bir bloğa tıklayın.</div> : <div className="ss-ibody">
               {designerTab === 'general' && <>
                 <label className="ss-fld"><small>Blok Türü</small><select className="ss-in" value={activeBlock.kind} onChange={event => { const kind = event.target.value as ShippingLabelBlockKind; const catalog = shippingLabelBlockCatalog.find(item => item.kind === kind); if (catalog) updateBlock(activeBlock.id, { kind, title: kind === 'custom' ? activeBlock.title : catalog.label, fields: [...catalog.fields], text: kind === 'custom' ? activeBlock.text : '' }) }}>{shippingLabelBlockCatalog.map(item => <option key={item.kind} value={item.kind}>{shippingBlockLabels[item.kind]}</option>)}</select></label>

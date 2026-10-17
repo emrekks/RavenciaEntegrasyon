@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ToneIcon, UiIcon } from '../shared/components'
 import './notification-panel.css'
 import { describeNotification } from '../shared/notification-describe'
+import { ViewTabIcon, type ViewTabIconName } from '../shared/view-tabs'
 import { clearNotificationHistory, markAllNotificationsRead, markNotificationRead, type AppNotification } from '../shared/notifications'
 
 type Filter = 'ALL' | 'UNREAD' | 'ERROR'
@@ -51,8 +52,8 @@ function NotificationItem({ notification, expanded, onToggle, onOpen }: ItemProp
   const presentation = notificationPresentation(notification)
   const unread = !notification.read
   return <article className={`rv-notification-history-item is-${notification.kind} ${unread ? 'is-unread' : 'is-read'}${expanded ? ' is-expanded' : ''}`}>
-    <span className="rv-notification-icon" aria-hidden="true"><ToneIcon kind={notification.kind} size={20} /></span>
-    <div className="rv-notification-history-copy">
+    <span className="rv-notification-icon" aria-hidden="true"><ToneIcon kind={notification.kind} size={18} /></span>
+    <div className="rv-notification-history-copy rv-notification-card">
       <div className="rv-notification-history-top">
         <strong>{presentation.title}</strong>
         {unread && <i className="rv-notification-unread-dot" aria-label="Okunmadı" />}<time dateTime={notification.createdAt} title={new Date(notification.createdAt).toLocaleString('tr-TR')}>{relativeTime(notification.createdAt)}</time>
@@ -77,8 +78,6 @@ type PanelProps = { notifications: AppNotification[]; onNavigate: (href: string)
 export function NotificationPanel({ notifications, onNavigate, onCleared }: PanelProps) {
   const [filter, setFilter] = useState<Filter>('ALL')
   const [expandedId, setExpandedId] = useState<string | null>(null)
-  // Only today starts open; every other day opens on demand. A day the user toggled keeps that choice.
-  const [toggledDays, setToggledDays] = useState<Record<string, boolean>>({})
   const unread = notifications.filter(notification => !notification.read)
   const errors = notifications.filter(notification => notification.kind === 'error')
   const visible = filter === 'UNREAD' ? unread : filter === 'ERROR' ? errors : notifications
@@ -87,7 +86,7 @@ export function NotificationPanel({ notifications, onNavigate, onCleared }: Pane
     return map.set(label, [...(map.get(label) ?? []), notification])
   }, new Map<string, AppNotification[]>()))
   const dayKind = (label: string) => label === 'Bugün' ? 'is-today' : label === 'Dün' ? 'is-yesterday' : 'is-older'
-  const filters: Array<[Filter, string, number]> = [['ALL', 'Tümü', notifications.length], ['UNREAD', 'Okunmamış', unread.length], ['ERROR', 'Hatalar', errors.length]]
+  const filters: Array<[Filter, string, number, ViewTabIconName]> = [['ALL', 'Tümü', notifications.length, 'all'], ['UNREAD', 'Okunmamış', unread.length, 'unread'], ['ERROR', 'Hatalar', errors.length, 'attention']]
 
   const open = (notification: AppNotification) => (href: string) => {
     markNotificationRead(notification.id)
@@ -98,19 +97,19 @@ export function NotificationPanel({ notifications, onNavigate, onCleared }: Pane
     <div className="rv-notification-history-heading">
       <span className="rv-notification-history-title"><strong>Bildirimler</strong>{unread.length > 0 && <b aria-label={`${unread.length} okunmamış bildirim`}>{unread.length}</b>}</span>
       <div className="rv-notification-history-actions">
-        <button type="button" className="rv-notification-mark-all" onClick={() => markAllNotificationsRead()} disabled={unread.length === 0} title="Tüm bildirimleri okundu olarak işaretle">Tümünü Okundu Yap</button>
-        <button type="button" className="rv-notification-clear" onClick={() => { clearNotificationHistory(); onCleared() }} disabled={notifications.length === 0}>Temizle</button>
+        <button type="button" className="rv-notification-mark-all" onClick={() => markAllNotificationsRead()} disabled={unread.length === 0} title="Tüm bildirimleri okundu olarak işaretle"><UiIcon name="check" size={14} />Tümünü Okundu Yap</button>
+        <button type="button" className="rv-notification-clear" onClick={() => { clearNotificationHistory(); onCleared() }} disabled={notifications.length === 0}><UiIcon name="trash" size={14} />Temizle</button>
       </div>
     </div>
-    <div className="rv-notification-filters" role="tablist" aria-label="Bildirim filtresi">
-      {filters.map(([value, label, count]) => <button key={value} type="button" role="tab" aria-selected={filter === value} className={filter === value ? 'is-active' : undefined} onClick={() => setFilter(value)}>{label}<span>{count}</span></button>)}
+    <div className="rv-notification-filters rv-tabs rv-view-tabs" role="tablist" aria-label="Bildirim filtresi">
+      {filters.map(([value, label, count, icon]) => <button key={value} type="button" role="tab" aria-selected={filter === value} className={filter === value ? 'is-active' : undefined} onClick={() => setFilter(value)}><span className="rv-tab-label"><ViewTabIcon name={icon} />{label}</span><span className="rv-tab-count">{count}</span></button>)}
     </div>
     {visible.length === 0
       ? <p className="rv-notification-history-empty">{notifications.length === 0 ? 'Henüz kaydedilmiş bildirim yok.' : filter === 'UNREAD' ? 'Okunmamış bildirim yok.' : 'Hata bildirimi yok.'}</p>
-      : <div className="rv-notification-history-list">
+      : <div className="rv-notification-history-list rv-notification-timeline">
         {groups.map(([label, items]) => <section key={label} className={`rv-notification-day ${dayKind(label)}`} aria-label={label}>
-          <h4 className="rv-notification-group"><button type="button" aria-expanded={toggledDays[label] ?? label === 'Bugün'} aria-controls={`rv-notification-day-${label}`} onClick={() => setToggledDays(current => ({ ...current, [label]: !(current[label] ?? label === 'Bugün') }))}><UiIcon name="chevronDown" size={16} /><span>{label}</span><small>{dayDate(items[0].createdAt)}</small><b>{items.length}</b></button></h4>
-          {(toggledDays[label] ?? label === 'Bugün') && <div className="rv-notification-day-body" id={`rv-notification-day-${label}`}>{items.map(notification => <NotificationItem key={notification.id} notification={notification} expanded={expandedId === notification.id} onToggle={() => setExpandedId(current => current === notification.id ? null : notification.id)} onOpen={open(notification)} />)}</div>}
+          <h4 className="rv-notification-group"><i aria-hidden="true" /><span>{label}</span><small>{dayDate(items[0].createdAt)}</small><b>{items.length}</b></h4>
+          <div className="rv-notification-day-body">{items.map(notification => <NotificationItem key={notification.id} notification={notification} expanded={expandedId === notification.id} onToggle={() => setExpandedId(current => current === notification.id ? null : notification.id)} onOpen={open(notification)} />)}</div>
         </section>)}
       </div>}
   </>

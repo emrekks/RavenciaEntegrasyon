@@ -6,7 +6,7 @@ import './view-tabs.css'
 // whichever page they are on ("all", "waiting", "done", "cancelled", "paused"...).
 export type ViewTabIconName =
   | 'all' | 'new' | 'processing' | 'shipping' | 'done' | 'cancelled' | 'partial' | 'resend' | 'paused'
-  | 'waiting' | 'due' | 'attention' | 'review' | 'disputed' | 'hidden' | 'connected'
+  | 'waiting' | 'unread' | 'due' | 'attention' | 'review' | 'disputed' | 'hidden' | 'connected'
   | 'order' | 'product' | 'price' | 'invoice' | 'invoiceMissing' | 'invoiceDone' | 'return' | 'category' | 'brand'
 
 const line = (d: string) => <path d={d} fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" />
@@ -24,6 +24,7 @@ const icons: Record<ViewTabIconName, ReactNode> = {
   resend: <>{line('M13 8a5 5 0 1 1-1.5-3.6')}{line('M13 2.5V5h-2.5')}</>,
   paused: <>{circle}{line('M6.6 5.8v4.4M9.4 5.8v4.4')}</>,
   waiting: <>{circle}{line('M8 5v3.2l2 1.3')}</>,
+  unread: <>{line('M2.5 8.5V12a1.5 1.5 0 0 0 1.5 1.5h8a1.5 1.5 0 0 0 1.5-1.5V8.5')}{line('M2.5 8.5h3l1 1.5h3l1-1.5h3L11.5 3h-7z')}</>,
   due: <>{line('M13.6 9.3A5.8 5.8 0 1 1 9.3 2.4')}{line('M8 5v3.2l2 1.3')}{line('M12.6 2.6v2.6M12.6 7.1v.1')}</>,
   attention: <>{line('M8 2 14.5 13.5h-13z')}{line('M8 6.5v3M8 11.6v.1')}</>,
   review: <><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" strokeWidth={1.4} />{line('m10.5 10.5 3 3')}</>,
