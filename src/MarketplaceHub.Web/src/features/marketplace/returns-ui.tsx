@@ -127,20 +127,30 @@ export function useOutsideClose(open: boolean, ref: RefObject<HTMLElement | null
 }
 
 // One trigger with its popover beneath it.
-// A table that scrolls sideways would clip a popover that hangs below its row, so there the popover is pinned to the
-// screen where it would have opened (above its trigger when there is no room below) and closes once anything scrolls.
+// A table that scrolls sideways would clip a popover that hangs below its row, and inside the phone filter sheet an
+// inline popover pushed the sheet's fields down. In both places the popover is pinned to the screen instead: in the
+// sheet above its field (below only when there is no room above), in a table below its trigger (above when there is
+// no room below). It closes once anything scrolls.
 function useScrollAreaPopover(open: boolean, ref: RefObject<HTMLElement | null>, close: () => void) {
   useLayoutEffect(() => {
     const host = ref.current
     if (!open || !host) return
-    const area = host.closest('.rr-tblwrap')
+    const sheet = host.closest('.rr-fopen')
+    const area = sheet ?? host.closest('.rr-tblwrap')
     const pop = host.querySelector<HTMLElement>(':scope > .rr-menu, :scope > .rr-pop')
-    if (!area || !pop || getComputedStyle(area).overflowX === 'visible') return
-    const box = pop.getBoundingClientRect()
+    if (!area || !pop || (!sheet && getComputedStyle(area).overflowX === 'visible')) return
+    const pin = (styles: Record<string, string>) => Object.entries(styles).forEach(([key, value]) => pop.style.setProperty(key, value, 'important'))
     const anchor = host.getBoundingClientRect()
-    const top = box.bottom > window.innerHeight - 8 && anchor.top - box.height - 6 > 8 ? anchor.top - box.height - 6 : box.top
-    const left = Math.max(8, Math.min(box.left, window.innerWidth - box.width - 8))
-    Object.assign(pop.style, { position: 'fixed', top: `${top}px`, left: `${left}px`, right: 'auto', bottom: 'auto', width: `${box.width}px`, transform: 'none', zIndex: '80' })
+    if (sheet) pin({ position: 'fixed', 'max-height': `${Math.max(160, Math.min(320, anchor.top - 16))}px`, 'overflow-y': 'auto', margin: '0', 'box-shadow': '0 16px 40px rgb(0 0 0 / 35%)' })
+    const box = pop.getBoundingClientRect()
+    const above = anchor.top - box.height - 6
+    const below = anchor.bottom + 6
+    const top = sheet
+      ? (above > 8 ? above : below)
+      : (box.bottom > window.innerHeight - 8 && above > 8 ? above : box.top)
+    const width = sheet ? anchor.width : box.width
+    const left = Math.max(8, Math.min(sheet ? anchor.left : box.left, window.innerWidth - width - 8))
+    pin({ position: 'fixed', top: `${top}px`, left: `${left}px`, right: 'auto', bottom: 'auto', width: `${width}px`, transform: 'none', 'z-index': '1000' })
     const onScroll = (event: Event) => { if (!(event.target instanceof Node && pop.contains(event.target))) close() }
     window.addEventListener('scroll', onScroll, true)
     window.addEventListener('resize', close)

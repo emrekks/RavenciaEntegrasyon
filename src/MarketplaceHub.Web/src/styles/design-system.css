@@ -12062,3 +12062,11 @@ h1, h2, h3, h4, :is(.orders-control-bar, .invoice-reference-filters, .return-ref
 /* One page gutter for every screen, as on the new-design pages: 28px top and bottom, 24px sides. */
 .app-shell.stitch-shell > main > .content { padding: 28px 24px !important; }
 @media (max-width: 760px) { .app-shell.stitch-shell > main > .content { padding: 16px !important; } }
+
+/* Platform update window: the selection count reads as one sentence, store ids stay on one line and the notes use the
+   same small size, so the text runs straight instead of breaking into a column. */
+.platform-update-modal-body .platform-update-scope { display: block; font-size: 13px; line-height: 1.5; }
+.platform-update-modal-body .platform-update-target-copy > strong { font-size: 14px; }
+.platform-update-modal-body .platform-update-target-copy > small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
+.platform-update-modal-body .platform-update-content-toggle small,
+.platform-update-modal-body .platform-update-capability-note { font-size: 12.5px; line-height: 1.5; }

@@ -932,14 +932,14 @@ body.rr-sheet-lock { overflow: hidden; }
 main .rr.rr-returns .rr-tblwrap.rr-tblwrap { overflow: visible; padding-top: 12px; border: 0; }
 .rr.rr-returns .rr-tbl thead { display: none; }
 .rr.rr-returns .rr-pager { padding: 12px 0; }
-.rr.rr-returns .rr-tbl.rr-tbl tbody tr { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "o o" "s s" "b c" "p p" "r r" "i i" "a a"; gap: 10px 12px; margin: 0 0 10px; padding: 12px; background: var(--rr-surface); border: 1px solid var(--rr-line); border-radius: 14px; }
+.rr.rr-returns .rr-tbl.rr-tbl tbody tr { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "o o" "b b" "s s" "p p" "c c" "r r" "i i" "a a"; gap: 10px 12px; margin: 0 0 10px; padding: 12px; background: var(--rr-surface); border: 1px solid var(--rr-line); border-radius: 14px; }
 .rr.rr-returns .rr-tbl.rr-tbl tbody tr.rr-sel { border-color: color-mix(in srgb, var(--rr-primary) 70%, transparent); background: color-mix(in srgb, var(--rr-primary-soft) 45%, var(--rr-surface)); }
 .rr.rr-returns .rr-tbl.rr-tbl tbody tr > td { min-width: 0; padding: 0 !important; border: 0 !important; background: none !important; }
 .rr.rr-returns .rr-tbl.rr-tbl tbody tr > td::before { display: none !important; }
 .rr.rr-returns .rr-tbl.rr-tbl tbody tr > td:first-child { grid-area: o; }
 .rr.rr-returns .rr-tbl.rr-tbl tbody tr > td[data-l="Durum"] { grid-area: s; }
-.rr.rr-returns .rr-tbl.rr-tbl tbody tr > td[data-l="Alıcı"] { grid-area: b; align-self: center; text-align: left; }
-.rr.rr-returns .rr-tbl.rr-tbl tbody tr > td[data-l="Kargo"] { grid-area: c; align-self: center; justify-self: end; }
+.rr.rr-returns .rr-tbl.rr-tbl tbody tr > td[data-l="Alıcı"] { grid-area: b; align-self: center; margin-top: -6px !important; text-align: left; }
+.rr.rr-returns .rr-tbl.rr-tbl tbody tr > td[data-l="Kargo"] { grid-area: c; align-self: stretch; justify-self: stretch; }
 .rr.rr-returns .rr-tbl.rr-tbl tbody tr > td[data-l="Bilgiler"] { grid-area: p; }
 .rr.rr-returns .rr-tbl.rr-tbl tbody tr > td[data-l="Birim Fiyat"] { display: none !important; }
 .rr.rr-returns .rr-tbl.rr-tbl tbody tr > td[data-l="İade Sebebi"] { grid-area: r; padding: 8px 10px !important; background: var(--rr-bg) !important; border: 1px solid var(--rr-line) !important; border-radius: 10px; }
@@ -951,10 +951,12 @@ main .rr.rr-returns .rr-tblwrap.rr-tblwrap { overflow: visible; padding-top: 12p
 .rr.rr-returns .rr-ordercell > div > .rr-on-no { grid-row: 1; grid-column: 2; min-width: 0; }
 .rr.rr-returns .rr-ordercell > div > small:first-of-type { grid-column: 1 / -1; }
 .rr.rr-returns .rr-ordercell > div > small:not(:first-of-type) { display: none; }
-.rr.rr-returns .rr-cust b { color: var(--rr-muted); font-size: 13px; font-weight: 400; text-align: left; }
-.rr.rr-returns .rr-cargocell { display: flex; align-items: center; gap: 8px; }
+.rr.rr-returns .rr-cust b { color: var(--rr-ink); font-size: 12.5px; font-weight: 500; text-align: left; }
+.rr.rr-returns .rr-cust b::before { content: "Alıcı: "; color: var(--rr-muted); font-weight: 400; }
+.rr.rr-returns .rr-cargocell.rr-cargocell { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; background: var(--rr-raised); border: 1px solid var(--rr-line); border-radius: 10px; }
 .rr.rr-returns .rr-cargocell img { width: auto; height: 16px; }
-.rr.rr-returns .rr-cargocell small { display: none; }
+.rr.rr-returns .rr-cargocell small { display: inline; color: var(--rr-muted); font-size: 12px; }
+.rr.rr-returns .rr-cargocell > :is(a, .rr-link) { margin-left: auto; }
 .rr.rr-returns td[data-l="Durum"] .rr-ring { display: flex !important; width: 100%; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: color-mix(in srgb, var(--rr-violet) 12%, transparent); }
 .rr.rr-returns td[data-l="Durum"] .rr-ring > span { display: flex !important; flex: 1; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
 .rr.rr-returns td[data-l="Durum"] .rr-ring small { font-size: 12px; font-weight: 600; text-align: right; color: inherit; }
@@ -1001,4 +1003,11 @@ main .rr.rr:is(.rr-orders, .rr-returns) .rr-tblwrap.rr-tblwrap { overflow-x: aut
 main .rr.rr-orders .rr-tbl.rr-tbl { min-width: 1060px; }
 main .rr.rr-returns .rr-tbl.rr-tbl { min-width: 1120px; }
 main .rr.rr:is(.rr-orders, .rr-returns) > .rr-panel { min-width: 0; }
+}
+/* a checkbox explanation folds behind an info button on phones */
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-hint-btn { display: none; }
+@media (max-width: 760px) {
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-cklabel .rr-hint-btn { display: inline-grid; place-items: center; width: 28px; height: 28px; min-height: 0; margin: -4px -4px -4px auto; padding: 0; color: var(--rr-muted); background: none; border: 0; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-cklabel .rr-hint-btn[aria-expanded="true"] { color: var(--rr-violet); }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-lead.rr-hint:not(.rr-on) { display: none; }
 }

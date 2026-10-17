@@ -154,3 +154,19 @@
   .app-shell.stitch-shell main .jobs-reference-toolbar .jobs-reference-status-summary.jobs-reference-status-summary { display: grid !important; grid-template-columns: 1fr 1fr; gap: 10px 12px; }
   .app-shell.stitch-shell main .jobs-reference-toolbar .jobs-reference-status-summary.jobs-reference-status-summary > * { margin: 0 !important; min-width: 0; }
 }
+
+/* Row hover matches every other table (the shared raised tint on the cells, nothing on the row); phone cards keep
+   their own surface like the order and return cards. */
+.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table tbody .jobs-reference-row:hover { background: transparent; }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table tbody .jobs-reference-row:hover td { background: color-mix(in srgb, var(--rv-color-surface-raised) 60%, transparent); }
+
+/* Phones: the toolbar stacks (status counts, then the search across the full width) without wrapping into a second
+   column off the screen, and the queue summary reads as a title over its one-line note. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table tbody .jobs-reference-row:hover { background: var(--rv-color-surface); }
+  .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table tbody .jobs-reference-row:hover td { background: none; }
+  .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-toolbar { flex-wrap: nowrap; gap: 12px; padding: 12px; }
+  .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-toolbar-actions { flex: none; width: 100%; max-width: none; }
+  .app-shell.stitch-shell main .jobs-reference-page .job-queue-metrics > summary { flex-direction: column; flex-wrap: nowrap; align-items: flex-start; justify-content: center; gap: 2px; min-height: 0; padding: 12px 16px; }
+  .app-shell.stitch-shell main .jobs-reference-page .job-queue-metrics > summary small { font-size: 12.5px; line-height: 1.4; }
+}

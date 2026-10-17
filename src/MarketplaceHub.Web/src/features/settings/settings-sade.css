@@ -400,3 +400,10 @@
 /* Custom block fields: title and content are the same size. */
 .ss-page .ss-lib-custom { align-items: start; }
 .ss-page .ss-lib-custom :is(input, textarea).ss-in { box-sizing: border-box; height: 36px; min-height: 36px; padding: 8px 12px; font-size: 14px; line-height: 18px; resize: vertical; }
+
+/* Icon-only buttons in the action bar (Seçimi Temizle) stay square beside the main action, on one row on phones too. */
+.app-shell.stitch-shell main .ss-page .ss-btn.is-icon { flex: none; width: 36px; padding: 0; justify-content: center; }
+@media (max-width: 760px) {
+  .ss-page .ss-bar-actions { flex-wrap: nowrap; }
+  .app-shell.stitch-shell main .ss-page .ss-bar-actions .ss-btn.is-icon { flex: none; width: 40px; }
+}

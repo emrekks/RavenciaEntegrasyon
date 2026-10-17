@@ -162,14 +162,14 @@
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tblwrap { overflow: visible; border: 0; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl thead { display: none; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-pager { padding: 12px 0; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-tbl tbody tr { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "o o" "s s" "b c" "p p" "i i" "a a"; gap: 10px 12px; margin: 0 0 10px; padding: 12px; background: var(--rr-surface); border: 1px solid var(--rr-line); border-radius: 14px; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-tbl tbody tr { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "o o" "b b" "s s" "p p" "c c" "i i" "a a"; gap: 10px 12px; margin: 0 0 10px; padding: 12px; background: var(--rr-surface); border: 1px solid var(--rr-line); border-radius: 14px; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-tbl tbody tr.rr-sel { border-color: color-mix(in srgb, var(--rr-primary) 70%, transparent); background: color-mix(in srgb, var(--rr-primary-soft) 45%, var(--rr-surface)); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-tbl tbody tr > td { min-width: 0; padding: 0 !important; border: 0 !important; background: none !important; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-tbl tbody tr > td::before { display: none !important; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-tbl tbody tr > td:first-child { grid-area: o; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-tbl tbody tr > td[data-l="Durum"] { grid-area: s; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-tbl tbody tr > td[data-l="Alıcı"] { grid-area: b; align-self: center; text-align: left; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-tbl tbody tr > td[data-l="Kargo"] { grid-area: c; align-self: center; justify-self: end; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-tbl tbody tr > td[data-l="Alıcı"] { grid-area: b; align-self: center; margin-top: -6px !important; padding-left: 27px !important; text-align: left; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-tbl tbody tr > td[data-l="Kargo"] { grid-area: c; align-self: stretch; justify-self: stretch; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-tbl tbody tr > td[data-l="Bilgiler"] { grid-area: p; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-tbl tbody tr > td[data-l="Birim Fiyat"] { display: none !important; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-tbl tbody tr > td[data-l="Fatura"] { grid-area: i; padding-top: 10px !important; border-top: 1px solid var(--rr-line) !important; }
@@ -180,10 +180,12 @@
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ordercell > div > .rr-on-no { grid-row: 1; grid-column: 2; min-width: 0; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ordercell > div > small:first-of-type { grid-column: 1 / -1; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ordercell > div > small:not(:first-of-type) { display: none; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-cust b { color: var(--rr-muted); font-size: 13px; font-weight: 400; text-align: left; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-cargocell { display: flex; align-items: center; gap: 6px; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-cust b { color: var(--rr-ink); font-size: 12.5px; font-weight: 500; text-align: left; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-cust b::before { content: "Alıcı: "; color: var(--rr-muted); font-weight: 400; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-cargocell.rr-cargocell { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; background: var(--rr-raised); border: 1px solid var(--rr-line); border-radius: 10px; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-cargocell img { width: auto; height: 16px; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-cargocell small { display: none; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-cargocell small { display: inline; color: var(--rr-muted); font-size: 12px; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-cargocell > :is(a, .rr-link) { margin-left: auto; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) td[data-l="Durum"] .rr-ring { display: flex !important; width: 100%; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: color-mix(in srgb, var(--rr-violet) 12%, transparent); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) td[data-l="Durum"] .rr-ring > span { display: flex !important; flex: 1; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) td[data-l="Durum"] .rr-ring small { font-size: 12px; font-weight: 600; text-align: right; color: inherit; }
