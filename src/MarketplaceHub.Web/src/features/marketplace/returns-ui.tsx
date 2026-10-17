@@ -140,8 +140,11 @@ function useScrollAreaPopover(open: boolean, ref: RefObject<HTMLElement | null>,
     const pop = host.querySelector<HTMLElement>(':scope > .rr-menu, :scope > .rr-pop')
     if (!area || !pop || (!sheet && getComputedStyle(area).overflowX === 'visible')) return
     const pin = (styles: Record<string, string>) => Object.entries(styles).forEach(([key, value]) => pop.style.setProperty(key, value, 'important'))
+    // In the sheet the popover first leaves the flow (the open list had grown the sheet and lifted the field), then
+    // the field is measured where it really sits.
+    if (sheet) pin({ position: 'fixed', 'overflow-y': 'auto', margin: '0', 'box-shadow': '0 16px 40px rgb(0 0 0 / 35%)' })
     const anchor = host.getBoundingClientRect()
-    if (sheet) pin({ position: 'fixed', 'max-height': `${Math.max(160, Math.min(320, anchor.top - 16))}px`, 'overflow-y': 'auto', margin: '0', 'box-shadow': '0 16px 40px rgb(0 0 0 / 35%)' })
+    if (sheet) pin({ 'max-height': `${Math.max(160, Math.min(320, anchor.top - 16))}px` })
     const box = pop.getBoundingClientRect()
     const above = anchor.top - box.height - 6
     const below = anchor.bottom + 6
