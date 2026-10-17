@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import './view-tabs.css'
 
@@ -53,17 +53,35 @@ export function viewTabLabel(name: ViewTabIconName, label: ReactNode) {
   return <><ViewTabIcon name={name} />{label}</>
 }
 
-type ViewTabItem = { value: string; label: ReactNode; count?: ReactNode }
+type ViewTabItem = { value: string; label: ReactNode; count?: ReactNode; countTone?: 'warn' }
 
 // Tabs with a "Diğer" menu: the values listed in `more` leave the row and open from a menu at its end, so long tab sets
 // (orders and returns have nine) fit on one line. When one of them is selected, the menu button shows it as active.
+// Tabs that still do not fit the row move into the menu too, last first (never the first tab or the selected one).
 export function ViewTabsWithMore({ items, more, value, onChange, ariaLabel, className }: { items: ViewTabItem[]; more: string[]; value: string; onChange: (value: string) => void; ariaLabel: string; className?: string }) {
   const [open, setOpen] = useState(false)
   const [position, setPosition] = useState<{ top: number; right: number } | null>(null)
   const trigger = useRef<HTMLButtonElement>(null)
   const menu = useRef<HTMLDivElement>(null)
-  const main = items.filter(item => !more.includes(item.value))
-  const extra = items.filter(item => more.includes(item.value))
+  const [overflow, setOverflow] = useState<string[]>([])
+  const row = useRef<HTMLDivElement>(null)
+  const moved = [...overflow, ...more]
+  const main = items.filter(item => !moved.includes(item.value))
+  const extra = items.filter(item => moved.includes(item.value))
+  useLayoutEffect(() => {
+    const element = row.current
+    if (!element || element.scrollWidth <= element.clientWidth + 1) return
+    const next = items.map(item => item.value).filter((candidate, index) => index > 0 && !moved.includes(candidate) && candidate !== value).pop()
+    if (next) setOverflow(current => [next, ...current])
+  })
+  useEffect(() => {
+    const element = row.current
+    if (!element || typeof ResizeObserver === 'undefined') return
+    let width = element.clientWidth
+    const observer = new ResizeObserver(() => { if (element.clientWidth !== width) { width = element.clientWidth; setOverflow([]) } })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
   const selectedExtra = extra.find(item => item.value === value)
   useEffect(() => {
     if (!open) return
@@ -73,8 +91,8 @@ export function ViewTabsWithMore({ items, more, value, onChange, ariaLabel, clas
     window.addEventListener('resize', place); window.addEventListener('scroll', place, true); document.addEventListener('pointerdown', close); document.addEventListener('keydown', close)
     return () => { window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true); document.removeEventListener('pointerdown', close); document.removeEventListener('keydown', close) }
   }, [open])
-  const tab = (item: ViewTabItem) => <button key={item.value} type="button" role="tab" tabIndex={item.value === value ? 0 : -1} aria-selected={item.value === value} className={item.value === value ? 'is-active' : ''} onClick={() => onChange(item.value)}><span className="rv-tab-label">{item.label}</span>{item.count !== undefined ? <span className="rv-tab-count">{item.count}</span> : null}</button>
-  return <div className={['rv-tabs', 'rv-view-tabs', className].filter(Boolean).join(' ')} role="tablist" aria-label={ariaLabel}>
+  const tab = (item: ViewTabItem) => <button key={item.value} type="button" role="tab" tabIndex={item.value === value ? 0 : -1} aria-selected={item.value === value} className={item.value === value ? 'is-active' : ''} onClick={() => onChange(item.value)}><span className="rv-tab-label">{item.label}</span>{item.count !== undefined ? <span className={`rv-tab-count${item.countTone === 'warn' ? ' is-warn' : ''}`}>{item.count}</span> : null}</button>
+  return <div ref={row} className={['rv-tabs', 'rv-view-tabs', className].filter(Boolean).join(' ')} role="tablist" aria-label={ariaLabel}>
     {main.map(tab)}
     {extra.length > 0 && <button ref={trigger} type="button" role="tab" aria-selected={Boolean(selectedExtra)} aria-haspopup="menu" aria-expanded={open} tabIndex={selectedExtra ? 0 : -1} className={`rv-view-tabs-more${selectedExtra ? ' is-active' : ''}`} onClick={() => setOpen(current => !current)}>
       {selectedExtra ? <><span className="rv-tab-label">{selectedExtra.label}</span>{selectedExtra.count !== undefined && <span className="rv-tab-count">{selectedExtra.count}</span>}</> : <span className="rv-tab-label"><ViewTabIcon name="more" />Diğer</span>}

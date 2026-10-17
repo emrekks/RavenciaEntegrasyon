@@ -1,11 +1,9 @@
 import { useState } from 'react'
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
-import { Modal } from '../../shared/components'
-import { PlatformMark } from '../../shared/platform-mark'
+import { RrBadge, RrIcon, RrLogo, RrModal, RrThumb } from './returns-ui'
 import { integrationNotificationTarget, isExternalWriteMessage, type NotificationTarget } from '../../shared/notifications'
 import { allocateStock, totalUnits } from './return-stock-allocation'
-import './return-bulk-approve.css'
 
 export type BulkDecisionLine = {
   id: string
@@ -149,72 +147,67 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
 
   const toggleStock = (key: string) => setStockKeys(current => current.includes(key) ? current.filter(value => value !== key) : [...current, key])
 
-  return <Modal
-    open
+  const mixedReject = !approving && !singlePlatform && !finished
+  return <RrModal
+    crumb="Aksiyon Bekleyen İadeler"
     title={approving ? 'Toplu İade Onayı' : 'Toplu İade Reddi'}
-    description={`${items.length} iade seçildi. ${approving ? 'Onayla' : 'Reddet'} dediğinizde her iade sırayla pazar yerine gönderilir.`}
+    desc={`${items.length} iade seçildi. ${approving ? 'Onayla' : 'Reddet'} dediğinizde her iade sırayla pazar yerine gönderilir.`}
+    size={mixedReject ? 'md' : 'lg'}
     onClose={() => { if (!running) onClose() }}
-    className="return-bulk-modal"
-    footer={<>
-      {!finished && approving && stockTotal > 0 && <span className="return-approve-stock-summary">Stoğa Eklenecek: +{stockTotal.toLocaleString('tr-TR')} adet</span>}
-      {finished
-        ? <button type="button" onClick={onClose}>Kapat</button>
-        : <><button type="button" className="secondary" onClick={onClose} disabled={running}>Vazgeç</button><button type="button" className={approving ? undefined : 'destructive'} disabled={running || !canSubmit} onClick={() => void run()}>{running ? `Gönderiliyor… (${outcomes.length}/${items.length})` : approving ? `${items.length} İadeyi Onayla` : `${items.length} İadeyi Reddet`}</button></>}
-    </>}
+    foot={finished
+      ? <><span className="rr-note" /><button type="button" className="rr-btn rr-primary" onClick={onClose}>Kapat</button></>
+      : <><span className="rr-note">{approving && stockTotal > 0 && <>Stoğa Eklenecek: <b>+{stockTotal.toLocaleString('tr-TR')} adet</b></>}</span><button type="button" className="rr-btn" onClick={onClose} disabled={running}>Vazgeç</button><button type="button" className={`rr-btn ${approving ? 'rr-primary' : 'rr-solid'}`} disabled={running || !canSubmit} onClick={() => void run()}>{running ? `Gönderiliyor… (${outcomes.length}/${items.length})` : approving ? `${items.length} İadeyi Onayla` : `${items.length} İadeyi Reddet`}</button></>}
   >
-    {!finished && !approving && !singlePlatform && <p className="return-bulk-note is-error">Toplu ret için tek bir pazar yerinin iadelerini seçin. Ret nedenleri pazar yerine göre değişir.</p>}
-    {!finished && !approving && singlePlatform && <div className="return-bulk-reject">
-      <label><span>Ret Nedeni</span>
-        <select value={reasonId} onChange={event => setReasonId(event.target.value)} disabled={running || reasons.isLoading}>
-          <option value="">{reasons.isLoading ? 'Nedenler yükleniyor…' : 'Ret nedeni seçin'}</option>
-          {usableReasons.map(reason => <option key={reason.id} value={reason.id}>{reason.name}</option>)}
-        </select>
-      </label>
-      <label><span>Açıklama</span>
-        <textarea value={explanation} maxLength={500} rows={3} disabled={running} onChange={event => setExplanation(event.target.value)} placeholder="Müşteriye iletilecek ret açıklaması" />
-        <small>{explanation.trim().length} / 500</small>
-      </label>
-      {reasons.isError && <p className="return-bulk-note is-error">Ret nedenleri alınamadı. Pencereyi kapatıp tekrar deneyin.</p>}
-      {reasons.data && usableReasons.length === 0 && <p className="return-bulk-note is-error">Bu iadeler için kanıt dosyası gerektirmeyen bir ret nedeni yok. Bu iadeleri tek tek reddedin.</p>}
-      {usableReasons.length > 0 && <p className="return-bulk-note">Kanıt dosyası gerektiren nedenler toplu retle kullanılamaz, bu yüzden listede görünmez.</p>}
-    </div>}
-    {finished && <p className={`return-bulk-note${failed.length ? ' is-error' : ''}`}>{failed.length === 0 ? `${outcomes.length} iade ${approving ? 'onaylandı' : 'reddedildi'}.` : `${outcomes.length - failed.length} iade ${approving ? 'onaylandı' : 'reddedildi'}, ${failed.length} iade ${approving ? 'onaylanamadı' : 'reddedilemedi'}.`}</p>}
-    <div className="return-bulk-cards">
-      {items.map((item, index) => {
-        const outcome = outcomes.find(entry => entry.id === item.id)
-        const groups = allGroups[index] ?? []
-        const loadingDetail = approving && details[index]?.isLoading
-        const stockLocked = running || finished
-        const products = groups.length > 0
-          ? groups.map(group => ({ group, line: group.display ?? { id: group.key, title: group.fallbackTitle, imageUrl: group.fallbackImage, quantity: group.units, sku: '', barcode: null, color: null, size: null, modelCode: null } }))
-          : item.lines.map(line => ({ group: undefined, line }))
-        return <article className="return-bulk-card" key={item.id}>
-          <header>
-            <span className="return-bulk-order"><span className="return-bulk-logo"><PlatformMark code={item.platformCode} name={item.platformName} /></span><strong>{item.orderNumber}</strong></span>
-            <dl>
-              <div><dt>Müşteri</dt><dd>{item.customerName}</dd></div>
-              {item.orderedAt && <div><dt>Sipariş Tarihi</dt><dd>{new Date(item.orderedAt).toLocaleString('tr-TR')}</dd></div>}
-              {item.packageNumber && <div><dt>Paket No</dt><dd>{item.packageNumber}</dd></div>}
-            </dl>
-            <span className={`return-bulk-status${outcome ? (outcome.ok ? ' is-ok' : ' is-error') : ''}`} title={outcome?.message}>{outcome ? (outcome.ok ? (approving ? 'Onaylandı' : 'Reddedildi') : outcome.message) : running ? 'Sırada' : 'Bekliyor'}</span>
-          </header>
-          <div className="return-bulk-products">
-            {products.map(({ group, line }) => {
-              const facts = [['Stok Kodu', line.sku], ['Renk', line.color], ['Beden', line.size], ['Barkod', line.barcode], ['Model Kodu', line.modelCode]].filter((fact): fact is [string, string] => Boolean(fact[1]))
-              const units = group?.units ?? line.quantity
-              const stockOn = Boolean(group && stockKeys.includes(group.key) && group.mapped)
-              return <div className="return-bulk-product" key={group?.key ?? line.id}>
-                <span className="reference-product-media return-approve-image">{line.imageUrl ? <img src={line.imageUrl} alt="" /> : <span className="reference-product-placeholder">↩</span>}<span className="quantity-bubble" role="img" aria-label={`${units} adet`} title={`${units} adet`}>{units}</span></span>
-                <span className="return-approve-text"><strong>{line.title}</strong>{facts.map(([label, value]) => <small key={label}>{label}: {value}</small>)}</span>
-                {approving && <div className="return-bulk-stock-control">
-                  <button type="button" role="switch" aria-checked={stockOn} disabled={stockLocked || !group || !group.mapped} className={`return-approve-switch${stockOn ? ' is-on' : ''}`} onClick={() => group && toggleStock(group.key)} title={loadingDetail ? 'İade ayrıntıları yükleniyor…' : group && !group.mapped ? 'Bu ürün yerel stok kaydıyla eşleşmiyor.' : undefined}><i aria-hidden="true" /><span>Stoğa Ekle</span></button>
-                  {stockOn && group && group.units > 1 && <select className="return-approve-quantity" aria-label={`${line.title} stoğa eklenecek adet`} disabled={stockLocked} value={unitsFor(group)} onChange={event => setStockUnits(current => ({ ...current, [group.key]: Number(event.target.value) }))}>{Array.from({ length: group.units }, (_, number) => <option key={number + 1} value={number + 1}>{number + 1} Adet Stoğa Ekle</option>)}</select>}
-                </div>}
-              </div>
-            })}
-          </div>
-        </article>
-      })}
-    </div>
-  </Modal>
+    {finished && <div className={`rr-callout${failed.length ? ' rr-danger' : ''}`}><RrIcon name={failed.length ? 'alert' : 'info'} /><span><b>{failed.length === 0 ? `${outcomes.length} iade ${approving ? 'onaylandı' : 'reddedildi'}.` : `${outcomes.length - failed.length} iade ${approving ? 'onaylandı' : 'reddedildi'}, ${failed.length} iade ${approving ? 'onaylanamadı' : 'reddedilemedi'}.`}</b> Ayrıntılar bildirimde listelendi.</span></div>}
+    {mixedReject && <div className="rr-callout rr-danger"><RrIcon name="alert" /><span>Toplu ret için tek bir pazar yerinin iadelerini seçin. Ret nedenleri pazar yerine göre değişir.</span></div>}
+    {!finished && !approving && singlePlatform && <>
+      <div className="rr-dgrid">
+        <label className="rr-fld"><small>Ret Nedeni</small>
+          <select className="rr-in" value={reasonId} onChange={event => setReasonId(event.target.value)} disabled={running || reasons.isLoading}>
+            <option value="">{reasons.isLoading ? 'Nedenler yükleniyor…' : 'Ret nedeni seçin'}</option>
+            {usableReasons.map(reason => <option key={reason.id} value={reason.id}>{reason.name}</option>)}
+          </select>
+        </label>
+        <label className="rr-fld rr-full"><small>Açıklama</small>
+          <textarea className="rr-in" value={explanation} maxLength={500} rows={3} disabled={running} onChange={event => setExplanation(event.target.value)} placeholder="Müşteriye iletilecek ret açıklaması" />
+          <em className="rr-num">{explanation.trim().length} / 500</em>
+        </label>
+      </div>
+      {reasons.isError && <div className="rr-callout rr-danger"><RrIcon name="alert" /><span>Ret nedenleri alınamadı. Pencereyi kapatıp tekrar deneyin.</span></div>}
+      {reasons.data && usableReasons.length === 0 && <div className="rr-callout rr-danger"><RrIcon name="alert" /><span>Bu iadeler için kanıt dosyası gerektirmeyen bir ret nedeni yok. Bu iadeleri tek tek reddedin.</span></div>}
+      {usableReasons.length > 0 && <div className="rr-callout"><RrIcon name="info" /><span>Kanıt dosyası gerektiren nedenler toplu retle kullanılamaz, bu yüzden listede görünmez.</span></div>}
+    </>}
+    {!mixedReject && items.map((item, index) => {
+      const outcome = outcomes.find(entry => entry.id === item.id)
+      const groups = allGroups[index] ?? []
+      const loadingDetail = approving && details[index]?.isLoading
+      const stockLocked = running || finished
+      const products = groups.length > 0
+        ? groups.map(group => ({ group, line: group.display ?? { id: group.key, title: group.fallbackTitle, imageUrl: group.fallbackImage, quantity: group.units, sku: '', barcode: null, color: null, size: null, modelCode: null } }))
+        : item.lines.map(line => ({ group: undefined, line }))
+      const state = outcome ? (outcome.ok ? (approving ? 'Onaylandı' : 'Reddedildi') : null) : running ? 'Sırada' : 'Bekliyor'
+      return <article className="rr-ocard" key={item.id}>
+        <header>
+          <RrLogo code={item.platformCode} />
+          <div><b>{item.orderNumber}</b><span className="rr-osfacts"><span>Müşteri: <b>{item.customerName}</b></span>{item.orderedAt && <span>Sipariş Tarihi: <b className="rr-num">{new Date(item.orderedAt).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</b></span>}{item.packageNumber && <span>Paket No: <b className="rr-num">{item.packageNumber}</b></span>}</span></div>
+          {state ? <RrBadge label={state} /> : <span className="rr-reason-tip" tabIndex={0}><RrBadge label="İşlem Tamamlanamadı" tone="bad" /><span className="rr-reason-pop" role="tooltip"><b>İşlem Tamamlanamadı</b>{outcome?.message}</span></span>}
+        </header>
+        <section>
+          {products.map(({ group, line }) => {
+            const facts = [['Barkod', line.barcode], ['Stok Kodu', line.sku], ['Model Kodu', line.modelCode], ['Renk', line.color], ['Beden', line.size]].filter((fact): fact is [string, string] => Boolean(fact[1]))
+            const units = group?.units ?? line.quantity
+            const stockOn = Boolean(group && stockKeys.includes(group.key) && group.mapped)
+            return <div className="rr-bcard-p" key={group?.key ?? line.id}>
+              <RrThumb src={line.imageUrl} quantity={units} large alt={line.title} />
+              <span className="rr-ptext"><b>{line.title}</b>{facts.map(([label, value]) => <small key={label}>{label}: {value}</small>)}</span>
+              {approving && <div className="rr-stockctl">
+                <button type="button" role="switch" aria-checked={stockOn} disabled={stockLocked || !group || !group.mapped} className={`rr-switch${stockOn ? ' rr-on' : ''}`} onClick={() => group && toggleStock(group.key)} title={loadingDetail ? 'İade ayrıntıları yükleniyor…' : group && !group.mapped ? 'Bu ürün yerel stok kaydıyla eşleşmiyor.' : undefined}><i aria-hidden="true" /><span>Stoğa Ekle</span></button>
+                {stockOn && group && group.units > 1 && <select className="rr-in" aria-label={`${line.title} stoğa eklenecek adet`} disabled={stockLocked} value={unitsFor(group)} onChange={event => setStockUnits(current => ({ ...current, [group.key]: Number(event.target.value) }))}>{Array.from({ length: group.units }, (_, number) => <option key={number + 1} value={number + 1}>{number + 1} Adet Stoğa Ekle</option>)}</select>}
+              </div>}
+            </div>
+          })}
+        </section>
+      </article>
+    })}
+  </RrModal>
 }

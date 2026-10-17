@@ -1,11 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
-import { Busy, ErrorBox, Modal } from '../../shared/components'
-import { PlatformMark } from '../../shared/platform-mark'
+import { RrError, RrIcon, RrLoading, RrLogo, RrModal, RrThumb } from './returns-ui'
 import { integrationNotificationTarget, isExternalWriteMessage, type NotificationTarget } from '../../shared/notifications'
 import { allocateStock } from './return-stock-allocation'
-import './return-approve-dialog.css'
 
 export type ReturnApproveRow = {
   id: string
@@ -130,24 +128,26 @@ export function ReturnApproveDialog({ open, claimId, version, marketplaceName, o
     ['İade Sebebi', order.reason]
   ].filter((fact): fact is [string, string] => Boolean(fact[1]))
 
-  return <Modal
-    open={open}
+  if (!open) return null
+  return <RrModal
+    crumb={`${order.platformName} İade`}
     title="Onaylamak İstediğiniz Ürünleri Seçiniz"
-    onClose={onClose}
-    className="return-approve-modal"
-    footer={<>
-      {stockRequests.length > 0 && <span className="return-approve-stock-summary">Stoğa Eklenecek: +{stockQuantity.toLocaleString('tr-TR')} adet</span>}
-      <button type="button" className="secondary" onClick={onClose} disabled={approve.isPending}>Vazgeç</button>
-      <button type="button" disabled={approve.isPending || loading || !canSubmit} onClick={() => approve.mutate()}>{approve.isPending ? 'Gönderiliyor…' : 'Onayla'}</button>
+    size="lg"
+    onClose={() => { if (!approve.isPending) onClose() }}
+    foot={<>
+      <span className="rr-note">{stockRequests.length > 0 && <>Stoğa Eklenecek: <b>+{stockQuantity.toLocaleString('tr-TR')} adet</b></>}</span>
+      <button type="button" className="rr-btn" onClick={onClose} disabled={approve.isPending}>Vazgeç</button>
+      <button type="button" className="rr-btn rr-primary" disabled={approve.isPending || loading || !canSubmit} onClick={() => approve.mutate()}>{approve.isPending ? 'Gönderiliyor…' : 'Onayla'}</button>
     </>}
   >
-    <section className="return-approve-order" aria-label="Sipariş bilgileri">
-      <span className="return-approve-order-id"><span className="return-approve-order-logo"><PlatformMark code={order.platformCode} name={order.platformName} /></span><strong>{order.orderNumber}</strong></span>
+    <section className="rr-osum" aria-label="Sipariş bilgileri">
+      <span><RrLogo code={order.platformCode} />{order.orderNumber}</span>
       <dl>{orderFacts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
     </section>
-    {loading ? <Busy text="İade ürünleri yükleniyor…" /> : error ? <ErrorBox error={error} /> : groups.length === 0 ? <p className="return-approve-empty">Bu iadede işlem bekleyen ürün kalmadı.</p> : <div className="return-approve-table" role="table">
-      <div className="return-approve-head" role="row">
-        <span role="columnheader"><label className="return-approve-check"><input type="checkbox" checked={allSelected} disabled={wholeClaim} onChange={() => setSelected(allSelected ? [] : groups.map(group => group.key))} aria-label="Tüm ürünleri seç" /><span>Bilgiler</span></label></span>
+    {wholeClaim && <div className="rr-callout"><RrIcon name="info" /><span>Hepsiburada kararı bu talepteki tüm ürün satırlarına ücret iadesi olarak uygulanır.</span></div>}
+    {loading ? <RrLoading text="İade ürünleri yükleniyor…" /> : error ? <RrError error={error} /> : groups.length === 0 ? <p className="rr-lead">Bu iadede işlem bekleyen ürün kalmadı.</p> : <div className="rr-apr" role="table">
+      <div className="rr-apr-h" role="row">
+        <span role="columnheader"><label><input type="checkbox" className="rr-cb" checked={allSelected} disabled={wholeClaim} onChange={() => setSelected(allSelected ? [] : groups.map(group => group.key))} aria-label="Tüm ürünleri seç" />Bilgiler</label></span>
         <span role="columnheader">Adet ve Stok</span>
       </div>
       {groups.map(group => {
@@ -158,26 +158,28 @@ export function ReturnApproveDialog({ open, claimId, version, marketplaceName, o
         const mapped = picked.every(row => row.hasInventoryMapping)
         const stockOn = isSelected && stockKeys.includes(group.key) && mapped
         const canPickCount = group.rows.length > 1 && !wholeClaim
-        const facts = [['Stok Kodu', first.sku], ['Renk', first.color], ['Beden', first.size], ['Barkod', first.barcode], ['Model Kodu', first.modelCode]]
+        // Codes first (barcode, stock code, model code), then the variant (colour, size).
+        const facts = [['Barkod', first.barcode], ['Stok Kodu', first.sku], ['Model Kodu', first.modelCode], ['Renk', first.color], ['Beden', first.size]]
           .filter((fact): fact is [string, string] => Boolean(fact[1]))
-        return <div className="return-approve-row" role="row" key={group.key}>
-          <label className="return-approve-info" role="cell">
-            <input type="checkbox" checked={isSelected} disabled={wholeClaim} onChange={() => toggle(group.key)} aria-label={`${first.title} işleme dahil`} />
-            <span className="reference-product-media return-approve-image">{first.imageUrl ? <img src={first.imageUrl} alt="" /> : <span className="reference-product-placeholder">↩</span>}<span className="quantity-bubble" role="img" aria-label={`${unitCount(group.rows)} adet`} title={`${unitCount(group.rows)} adet`}>{unitCount(group.rows)}</span></span>
-            <span className="return-approve-text"><strong>{first.title}</strong>{facts.map(([label, value]) => <small key={label}>{label}: {value}</small>)}</span>
+        return <div className="rr-apr-r" role="row" key={group.key}>
+          <label className="rr-apr-info" role="cell">
+            <input type="checkbox" className="rr-cb" checked={isSelected} disabled={wholeClaim} onChange={() => toggle(group.key)} aria-label={`${first.title} işleme dahil`} />
+            <RrThumb src={first.imageUrl} quantity={unitCount(group.rows)} large alt={first.title} />
+            <span className="rr-ptext"><b>{first.title}</b>{facts.map(([label, value]) => <small key={label}>{label}: {value}</small>)}</span>
           </label>
-          <div className="return-approve-side" role="cell">
+          <div className="rr-apr-side" role="cell">
             {canPickCount
-              ? <select className="return-approve-quantity" aria-label={`${first.title} onaylanacak adet`} value={count} disabled={!isSelected} onChange={event => setCounts(current => ({ ...current, [group.key]: Number(event.target.value) }))}>{group.rows.map((_, index) => <option key={index + 1} value={index + 1}>{index + 1} Adet</option>)}</select>
-              : <span className="return-approve-quantity">{unitCount(picked)} Adet</span>}
-            <button type="button" role="switch" aria-checked={stockOn} disabled={!isSelected || !mapped} className={`return-approve-switch${stockOn ? ' is-on' : ''}`} onClick={() => toggleStock(group.key)} title={mapped ? undefined : 'Bu ürün yerel stok kaydıyla eşleşmiyor.'}>
+              ? <select className="rr-in" aria-label={`${first.title} onaylanacak adet`} value={count} disabled={!isSelected} onChange={event => setCounts(current => ({ ...current, [group.key]: Number(event.target.value) }))}>{group.rows.map((_, index) => <option key={index + 1} value={index + 1}>{index + 1} Adet</option>)}</select>
+              : <span className="rr-qty-static">{unitCount(picked)} Adet</span>}
+            <button type="button" role="switch" aria-checked={stockOn} disabled={!isSelected || !mapped} className={`rr-switch${stockOn ? ' rr-on' : ''}`} onClick={() => toggleStock(group.key)} title={mapped ? undefined : 'Bu ürün yerel stok kaydıyla eşleşmiyor.'}>
               <i aria-hidden="true" />
               <span>Stoğa Ekle</span>
             </button>
-            {stockOn && unitCount(picked) > 1 && <select className="return-approve-quantity" aria-label={`${first.title} stoğa eklenecek adet`} value={Math.max(1, Math.min(stockUnits[group.key] ?? unitCount(picked), unitCount(picked)))} onChange={event => setStockUnits(current => ({ ...current, [group.key]: Number(event.target.value) }))}>{Array.from({ length: unitCount(picked) }, (_, index) => <option key={index + 1} value={index + 1}>{index + 1} Adet Stoğa Ekle</option>)}</select>}
+            {stockOn && unitCount(picked) > 1 && <select className="rr-in" aria-label={`${first.title} stoğa eklenecek adet`} value={Math.max(1, Math.min(stockUnits[group.key] ?? unitCount(picked), unitCount(picked)))} onChange={event => setStockUnits(current => ({ ...current, [group.key]: Number(event.target.value) }))}>{Array.from({ length: unitCount(picked) }, (_, index) => <option key={index + 1} value={index + 1}>{index + 1} Adet Stoğa Ekle</option>)}</select>}
+            {!mapped && <small style={{ color: 'var(--rr-subtle)', fontSize: 12 }}>Yerel stok kaydıyla eşleşmiyor.</small>}
           </div>
         </div>
       })}
     </div>}
-  </Modal>
+  </RrModal>
 }

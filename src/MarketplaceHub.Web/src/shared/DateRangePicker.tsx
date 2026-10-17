@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { UiIcon } from './components'
 import { formatDateRange, selectDateRangeDay, type DateRange } from './date-range'
@@ -6,7 +6,8 @@ import { formatDateRange, selectDateRangeDay, type DateRange } from './date-rang
 function dateKey(date: Date) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}` }
 function monthStart(value: string) { const date = value ? new Date(`${value}T12:00:00`) : new Date(); return new Date(date.getFullYear(), date.getMonth(), 1) }
 
-export function DateRangePicker({ from, to, onChange, label = 'Tarih aralığı', className }: { from: string; to: string; onChange: (range: DateRange) => void; label?: string; className?: string }) {
+// placeholder, icon and chevron let a page draw the trigger in its own style (the returns page uses the proposal's icons).
+export function DateRangePicker({ from, to, onChange, label = 'Tarih aralığı', className, placeholder, icon, chevron }: { from: string; to: string; onChange: (range: DateRange) => void; label?: string; className?: string; placeholder?: string; icon?: ReactNode; chevron?: ReactNode }) {
   const [open, setOpen] = useState(false)
   const [month, setMonth] = useState(() => monthStart(from))
   const [popoverPosition, setPopoverPosition] = useState<{ left: number; top: number; maxHeight: number } | null>(null)
@@ -74,7 +75,7 @@ export function DateRangePicker({ from, to, onChange, label = 'Tarih aralığı'
   }
   return <div className={`date-range-picker${className ? ` ${className}` : ''}`} ref={root}>
     <span className="date-range-picker-label">{label}</span>
-    <button type="button" className="date-range-picker-trigger" aria-haspopup="dialog" aria-expanded={open} onClick={toggleOpen}><UiIcon name="calendar" size={16} /><span>{formatDateRange({ from, to })}</span><UiIcon name="chevronDown" size={15} /></button>
+    <button type="button" className="date-range-picker-trigger" aria-haspopup="dialog" aria-expanded={open} onClick={toggleOpen}>{icon ?? <UiIcon name="calendar" size={16} />}<span className={!from && !to && placeholder ? 'is-empty' : undefined}>{!from && !to && placeholder ? placeholder : formatDateRange({ from, to })}</span>{chevron ?? <UiIcon name="chevronDown" size={15} />}</button>
     {open && createPortal(<section ref={popover} className="date-range-picker-popover" role="dialog" aria-label={`${label} seç`} style={popoverPosition ?? undefined}>
       <div className="date-range-picker-layout">
         <nav className="date-range-picker-presets" aria-label="Hazır tarih aralıkları">{presetRanges.map(preset => <button type="button" key={preset.label} onClick={() => { onChange(preset.range); setOpen(false) }}>{preset.label}</button>)}</nav>
