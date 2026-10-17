@@ -21,3 +21,6 @@
 .rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs > :is(button, a).is-unavailable { opacity: .55; }
 .rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs .rv-tab-label small { color: var(--rv-color-subtle); font-size: 12px; font-weight: 400; }
 .rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs .rv-tab-count.is-warn { color: var(--rv-color-warning) !important; }
+/* Tabs that sit straight on the page background (orders, returns, jobs, integrations, mappings) get the same card
+   surface as the invoices filter shell, so they do not dissolve into the dark page. */
+:is(.orders-reference-filter-shell, .returns-reference-filter-shell, .jobs-reference-canvas, .integrations-reference-page, .mapping-page) > .rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs { padding: 0 8px !important; background: var(--rv-color-surface) !important; border: 1px solid var(--rv-color-border) !important; border-radius: 12px !important; }
