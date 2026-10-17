@@ -18,6 +18,7 @@
     --violet-line: color-mix(in srgb, var(--primary) 55%, transparent);
     --warn: #e2aa4b; --bad: #e4636f; --ok: #46b98f; --info: #83b4ff;
     --side: 232px; --top: 70px;
+    --hover: #202027;
   }
   * { box-sizing: border-box; }
   html, body { overflow-x: clip; }
@@ -574,6 +575,36 @@
     .tbl.no-buyer col.c-prod { width: 22%; } .tbl.no-buyer col.c-cargo { width: 10%; } .tbl.no-buyer col.c-inv { width: 13%; } .tbl.no-buyer col.c-reason { width: 10%; } .tbl.no-buyer col.c-status { width: 15%; } .tbl.no-buyer col.c-act { width: 14%; }
   }
   @media (min-width: 1101px) and (max-width: 1280px) { .ring { gap: 7px; } .ring b { font-size: 12.5px; } .ring svg { width: 16px; height: 16px; } }
+  /* colour | size on one line */
+  small.pair { display: flex; flex-wrap: wrap; align-items: center; column-gap: 0; }
+  .sep-v { display: inline-block; width: 1px; height: 11px; margin: 0 8px; background: var(--line-strong); }
+  .pline small span { color: var(--muted); }
+  /* ring: centred against the state name; the detail line sits under the name */
+  .ring { display: inline-grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 9px; row-gap: 2px; align-items: center; }
+  .ring > span { display: contents; }
+  .ring > svg { grid-column: 1; grid-row: 1; }
+  .ring b, .ring small { grid-column: 2; }
+  /* every image column fits the 2:3 images, so text never runs under them */
+  .apr-info { grid-template-columns: 16px auto minmax(0, 1fr); }
+  .pcard .pc-h, .bcard-p { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .refline .rh, .dpage .disp { grid-template-columns: auto minmax(0, 1fr); }
+  .tip .li { grid-template-columns: auto minmax(0, 1fr); }
+  .sum > div { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .thumb.lg { width: 56px; height: 84px; }
+  @media (max-width: 760px) { .bcard-p, .pcard .pc-h { grid-template-columns: auto minmax(0, 1fr); } }
+  /* detail facts: borders only between cells, nothing half drawn in an incomplete last row */
+  .facts { gap: 0; overflow: hidden; }
+  .facts > div { border: 0; box-shadow: none; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); margin: 0 -1px -1px 0; }
+  .kv dd.empty { align-items: flex-start; }
+  /* one neutral hover colour everywhere; selection is shown by the checkbox and a thin edge, never a violet fill */
+  .btn:hover, .btn.quiet:hover, .icon-btn:hover, .opt:hover, .menu > button:hover:not(:disabled), .pages button:hover:not(.on), .cal .grid span:hover, .trigger:hover, .switch:hover, .ghost:hover { background: var(--hover); }
+  .tbl tbody tr:hover td { background: var(--hover); }
+  .pcard:hover { background: var(--hover); }
+  .pcard.on { background: var(--surface); border-color: var(--line-strong); }
+  .pcard.on:hover { background: var(--hover); }
+  .tbl tr.sel td { background: var(--hover); }
+  .opt.on, .menu > button.on { background: var(--hover); color: var(--ink); }
+  @media (max-width: 1100px) { .tbl tr.sel, .tbl tr.sel td { background: var(--hover); } }
 </style>
 </head>
 <body>
@@ -719,6 +750,8 @@ const invBadge = k => `<span class="badge ${INV[k][1]}">${INV[k][0]}</span>`
 const row = id => ROWS.find(r => r.id === id)
 const thumb = (qty, lg) => `<button class="thumb ${lg ? 'lg' : ''}" data-a="m" data-k="img" aria-label="Ürün görselini büyüt">${qty ? `<span class="qb" role="img" aria-label="${qty} adet">${qty}</span>` : ''}</button>`
 const facts = l => [['Stok Kodu', l.sku], ['Renk', l.color], ['Beden', l.size], ['Barkod', l.bc], ['Model Kodu', l.model]].filter(f => f[1])
+// Fact lines for product rows: colour and size share one line, split by a short divider.
+const factLines = (l, fmt) => { const f = facts(l), cs = f.filter(x => x[0] === 'Renk' || x[0] === 'Beden'); const out = []; let done = false; for (const x of f) { if (x[0] === 'Renk' || x[0] === 'Beden') { if (!done) { out.push(`<small class=\"pair\">${cs.map(([k, v]) => fmt(k, v)).join('<i class=\"sep-v\" aria-hidden=\"true\"></i>')}</small>`); done = true } } else out.push(`<small>${fmt(x[0], x[1])}</small>`) } return out.join('') }
 
 /* ---------- popovers ---------- */
 function popPlatforms(st, right) {
@@ -761,7 +794,7 @@ function rowHtml(r, selectCol) {
   const trackLine = r.track ? r.track : 'Henüz platformdan iletilmedi'
   const order = `<div class="ordercell">${cb}<div><img class="wordmark" src="${MARKS[r.p]}" alt="${pname(r.p)}"${MARK_SIZE[r.p] ? ` style="width:${MARK_SIZE[r.p].w}px;height:${MARK_SIZE[r.p].h}px"` : ""}><span class="on-no ${r.crit ? 'crit' : ''}">#${r.no}<button class="icon-btn" title="Kopyala" aria-label="Sipariş numarası ${r.no} kopyala" style="width:22px;height:22px">${I.copy}</button></span>${NO_BUYER() ? `<small class="buyer-inline"><b>Alıcı:</b> ${r.cust}</small>` : ""}<small class="num"><b>Sipariş Tarihi:</b> ${r.date}</small><small class="num"><b>Paket No:</b> ${r.pkg}</small><small class="num"><b>Kargo Teslimat No:</b> ${trackLine}</small></div></div>`
   const cust = `<div class="cust"><b>${r.cust}</b></div>`
-  const prod = `<div class="plines">${r.lines.map(l => `<div class="pline">${thumb(l.qty)}<div><b title="${esc(l.t)}">${esc(l.t)}</b><small>Birim Fiyatı: <b class="num">${l.price}</b></small>${facts(l).map(([k, v]) => `<small>${k}: <b class="num">${esc(v)}</b></small>`).join("")}</div></div>`).join('')}</div>`
+  const prod = `<div class="plines">${r.lines.map(l => `<div class="pline">${thumb(l.qty)}<div><b title="${esc(l.t)}">${esc(l.t)}</b><small>Birim Fiyatı: <b class="num">${l.price}</b></small>${factLines(l, (k, v) => `<span>${k}:</span> <b class="num">${esc(v)}</b>`)}</div></div>`).join('')}</div>`
   const cargo = `<div class="cargocell">${cargoImg(r.cargo[0], r.cargo[1])}<small class="num">${r.track || '—'}</small>${r.link ? `<button class="btn link" style="font-size:12px">${r.link} ${I.open}</button>` : ''}</div>`
   const invB = r.invReason ? `<span class="reason-tip" tabindex="0">${ring(INV[r.inv][0])}<span class="reason-pop" role="tooltip"><b>${INV[r.inv][0]}</b>${esc(r.invReason)}<small>Hata kodu: INV-REJECTED</small></span></span>` : ring(INV[r.inv][0])
   const inv = `<div class="invcell">${r.disc ? `<span class="m"><span>Satış Tutarı</span><b class="num">${r.sale}</b></span><span class="m"><span>Satıcı İndirimi</span><b class="num">${r.disc}</b></span>` : ''}<span class="m pay"><span>Faturalanacak Tutar</span><b class="num">${r.pay}</b></span>${invB}</div>`
@@ -879,7 +912,7 @@ function mDetail(r = row('r5'), pending) {
   const name = pname(r.p), l = r.lines[0]
   const fields = [['Onaylanma Tarihi', '06.10.2026 11:48'], ['Sistem Notu', 'Otomatik onay süresi dolmadan satıcı tarafından onaylandı.', 'sys'], ['Sebep', r.reason], ['Satıcı Açıklaması', '-', 'empty'], [`${name} Onay Nedeni`, 'Satıcı onayı'], [`${name} Açıklaması`, '-', 'empty']]
   return modal({ crumb: `${name} İade`, title: 'Detaylı Bilgi', desc: `Sipariş #${r.no} · ${r.cust}`, w: 'lg',
-    body: `${dfacts(r, true)}<div class="h3">Ürünler</div><article class="refline"><div class="rh">${thumb(l.qty, true)}<div><b>${esc(l.t)}<button class="icon-btn" title="Ürün adını kopyala" aria-label="Ürün adını kopyala" style="width:22px;height:22px">${I.copy}</button></b>${facts(l).map(([a, b]) => `<small><span>${a}:</span> ${esc(b)}</small>`).join('')}</div></div><dl class="kv">${fields.map(([a, b, c]) => `<dt>${a}</dt><dd class="${c || ''}">${esc(b)}</dd>`).join('')}</dl></article>${pending ? `<div class="callout">${I.info}<span><b>Karar ${name}’a Gönderildi.</b> Bu iade kararı ${name}’a anlık olarak iletildi. ${name}’dan kesin durum yanıtı gelene kadar yeni bir karar gönderilemez.</span></div>` : ''}`,
+    body: `${dfacts(r, true)}<div class="h3">Ürünler</div><article class="refline"><div class="rh">${thumb(l.qty, true)}<div><b>${esc(l.t)}<button class="icon-btn" title="Ürün adını kopyala" aria-label="Ürün adını kopyala" style="width:22px;height:22px">${I.copy}</button></b>${[factLines(l, (k, v) => `<span>${k}:</span> ${esc(v)}`)].join('')}</div></div><dl class="kv">${fields.map(([a, b, c]) => `<dt>${a}</dt><dd class="${c || ''}">${esc(b)}</dd>`).join('')}</dl></article>${pending ? `<div class="callout">${I.info}<span><b>Karar ${name}’a Gönderildi.</b> Bu iade kararı ${name}’a anlık olarak iletildi. ${name}’dan kesin durum yanıtı gelene kadar yeni bir karar gönderilemez.</span></div>` : ''}`,
     foot: `<span class="note"></span><button class="btn" data-a="close">Kapat</button>` })
 }
 // Bulk approve / reject over the selected "Aksiyon Bekleyen" returns
