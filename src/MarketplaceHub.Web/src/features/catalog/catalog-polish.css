@@ -73,3 +73,6 @@
 .app-shell.stitch-shell .quick-edit-variant-option small { color: var(--rv-color-muted); font-size: 12px; font-weight: 500; }
 .app-shell.stitch-shell .quick-edit-variant-option strong { color: var(--rv-color-ink); font-size: 15px; font-weight: 700; }
 .app-shell.stitch-shell .quick-edit-variant-sku { color: var(--rv-color-muted); font-family: var(--rv-font-mono, ui-monospace, monospace); font-size: 12px; }
+
+/* 16px block rhythm: the workspace sits right under the toolbar, the page grid supplies the gap. */
+.app-shell.stitch-shell main .products-page > .product-catalog-workspace { margin-top: 0; }

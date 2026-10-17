@@ -38,3 +38,6 @@
 .app-shell main .rv-page-head.rv-page-head .eyebrow, .app-shell main .rv-page-head.rv-page-head .qi-crumb { margin: 0; color: var(--rv-color-subtle) !important; font-size: 12px !important; font-weight: 500 !important; letter-spacing: 0 !important; text-transform: none !important; }
 .app-shell main .rv-page-head.rv-page-head h1 { margin: 0; font-size: 18px !important; font-weight: 600 !important; line-height: 1.35 !important; letter-spacing: 0; }
 .app-shell main .rv-page-head.rv-page-head :is(.rv-page-lead, h1 + p) { margin: 2px 0 0; color: var(--rv-color-muted); font-size: 13px !important; }
+/* One vertical rhythm: 16px between every block, inside the filter shells too. */
+.app-shell main :is(.invoice-reference-filter-shell, .orders-reference-filter-shell, .returns-reference-filter-shell).invoice-reference-filter-shell, .app-shell main :is(.orders-reference-filter-shell, .returns-reference-filter-shell, .invoice-reference-filter-shell) { gap: 16px !important; }
+.app-shell main .orders-page .orders-control-bar, .app-shell main .orders-page .orders-reference-filter-shell { margin-bottom: 0 !important; }
