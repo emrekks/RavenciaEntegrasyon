@@ -49,3 +49,28 @@ export function invoiceGlyphKind(status: string | null | undefined): InvoiceGlyp
   if (label === 'Fatura İptal') return 'cancelled'
   return 'idle'
 }
+
+// Progress ring of the invoices table (docs/tasarim-onerileri/faturalar-durum-sutunlari-4.html, option M): how far the
+// order or its invoice has moved along its flow; colour follows the same kind as the glyphs.
+const orderProgress: Partial<Record<InvoiceGlyphKind, number>> = { placed: 0.25, packing: 0.5, carrier: 0.75, done: 1, failed: 0.75 }
+
+export function orderStatusProgress(kind: InvoiceGlyphKind) {
+  return orderProgress[kind] ?? 0
+}
+
+export function invoiceStatusProgress(status: string | null | undefined) {
+  const label = invoiceStatusLabel(status)
+  if (label === 'Fatura Bekliyor') return 0.2
+  if (label === 'Fatura İletiliyor' || label === 'Fatura İletilemedi') return 0.66
+  if (label === 'Fatura Oluşturulamadı') return 0.33
+  if (label === 'Faturası Mevcut') return 1
+  return 0
+}
+
+export function StatusRing({ kind, progress, label, detail, detailClassName, title }: { kind: InvoiceGlyphKind; progress: number; label: string; detail?: ReactNode; detailClassName?: string; title?: string }) {
+  const value = Math.max(0, Math.min(1, progress)) * 100
+  return <span className={`status-ring is-${kind}`} role="status" title={title} aria-label={label}>
+    <svg viewBox="0 0 20 20" aria-hidden="true"><circle className="status-ring-track" cx="10" cy="10" r="7.5" />{value > 0 && <circle className="status-ring-value" cx="10" cy="10" r="7.5" pathLength={100} strokeDasharray={`${value} 100`} />}</svg>
+    <span><strong>{label}</strong>{detail && <small className={detailClassName}>{detail}</small>}</span>
+  </span>
+}

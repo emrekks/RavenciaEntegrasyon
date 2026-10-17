@@ -98,7 +98,7 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
 
     expect(row?.querySelector('.invoice-reference-document-link')).toBeNull()
     expect(row?.querySelector('.invoice-reference-status')?.textContent).toContain('Faturası Mevcut')
-    expect(row?.querySelector('.invoice-reference-status .rv-badge-success')).not.toBeNull()
+    expect(row?.querySelector('.invoice-reference-status .status-ring.is-done')).not.toBeNull()
     expect(row?.querySelector('.invoice-reference-status')?.textContent).not.toContain('Fatura Bekliyor')
     expect(row?.querySelector('.invoice-reference-shipment')?.textContent).not.toContain('Henüz teslim edilmedi')
 
