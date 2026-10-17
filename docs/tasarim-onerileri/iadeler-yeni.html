@@ -454,6 +454,8 @@
   .ring small.crit { color: var(--warn); } .ring small.bad { color: color-mix(in srgb, var(--bad) 78%, var(--muted)); }
   .ring { align-items: flex-start; } .ring svg { margin-top: 1px; } .ring b, .ring small { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
   .reason-tip .ring b { text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; }
+  /* product facts listed one per line, as on the live page */
+  .pline small { line-height: 1.55; overflow-wrap: anywhere; } .pline small b { font-weight: 500; }
   .tone-prog { --tone: var(--violet); } .tone-move { --tone: var(--info); } .tone-wait { --tone: var(--warn); } .tone-ok { --tone: var(--ok); } .tone-bad { --tone: var(--bad); } .tone-off { --tone: var(--subtle); }
   /* actions column: "İşlemler" menu and the detail link */
   .actcell { display: grid; gap: 8px; justify-items: center; }
@@ -662,7 +664,7 @@ function rowHtml(r, selectCol) {
   const trackLine = r.track ? r.track : 'Henüz platformdan iletilmedi'
   const order = `<div class="ordercell">${cb}<div><img class="wordmark" src="${MARKS[r.p]}" alt="${pname(r.p)}"><span class="on-no ${r.crit ? 'crit' : ''}">#${r.no}<button class="icon-btn" title="Kopyala" aria-label="Sipariş numarası ${r.no} kopyala" style="width:22px;height:22px">${I.copy}</button></span><small class="num"><b>Sipariş Tarihi:</b> ${r.date}</small><small class="num"><b>Paket No:</b> ${r.pkg}</small><small class="num"><b>İade Kargo Teslimat No:</b> ${trackLine}</small></div></div>`
   const cust = `<div class="cust"><b>${r.cust}</b></div>`
-  const prod = `<div class="plines">${r.lines.map(l => `<div class="pline">${thumb(l.qty)}<div><b title="${esc(l.t)}">${esc(l.t)}</b><small>Birim Fiyatı: <b class="num">${l.price}</b></small><span class="prod-hover" tabindex="0"><span class="prodsum">Stok Kodu: ${esc(l.sku)}</span>${prodTip(l)}</span></div></div>`).join('')}</div>`
+  const prod = `<div class="plines">${r.lines.map(l => `<div class="pline">${thumb(l.qty)}<div><b title="${esc(l.t)}">${esc(l.t)}</b><small>Birim Fiyatı: <b class="num">${l.price}</b></small>${facts(l).map(([k, v]) => `<small>${k}: <b class="num">${esc(v)}</b></small>`).join("")}</div></div>`).join('')}</div>`
   const cargo = `<div class="cargocell">${cargoImg(r.cargo[0], r.cargo[1])}<small class="num">${r.track || '—'}</small>${r.link ? `<button class="btn link" style="font-size:12px">${r.link} ${I.open}</button>` : ''}</div>`
   const invB = r.invReason ? `<span class="reason-tip" tabindex="0">${ring(INV[r.inv][0])}<span class="reason-pop" role="tooltip"><b>${INV[r.inv][0]}</b>${esc(r.invReason)}<small>Hata kodu: INV-REJECTED</small></span></span>` : ring(INV[r.inv][0])
   const inv = `<div class="invcell">${r.disc ? `<span class="m"><span>Satış Tutarı</span><b class="num">${r.sale}</b></span><span class="m"><span>Satıcı İndirimi</span><b class="num">${r.disc}</b></span>` : ''}<span class="m pay"><span>Faturalanacak Tutar</span><b class="num">${r.pay}</b></span>${invB}</div>`
