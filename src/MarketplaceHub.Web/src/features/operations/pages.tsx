@@ -520,9 +520,11 @@ export function JobsPage({ me }: { me: Me }) {
   }
 
   return <section className="content jobs-page jobs-reference-page">
-    <div className="jobs-reference-heading">
+    <div className="jobs-reference-heading rv-page-head">
       <div>
-        <h1>Arka Plan İşlemleri</h1>
+        <p className="eyebrow">Sistem İzleme</p>
+        <h1>İşlem Takibi</h1>
+        <p className="rv-page-lead">Arka plan işlemlerinin durumunu, hatalarını ve kuyruk performansını izleyin.</p>
       </div>
       <div className="jobs-reference-heading-actions">
         <div className="jobs-reference-range-wrap">

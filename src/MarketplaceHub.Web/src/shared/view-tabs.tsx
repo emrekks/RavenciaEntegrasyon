@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import './view-tabs.css'
 
 // View tabs across the panel (docs/tasarim-onerileri/faturalar-sekmeler-2.html, option 12): unframed tabs with an icon,
@@ -7,7 +8,7 @@ import './view-tabs.css'
 export type ViewTabIconName =
   | 'all' | 'new' | 'processing' | 'shipping' | 'done' | 'cancelled' | 'partial' | 'resend' | 'paused'
   | 'waiting' | 'unread' | 'due' | 'attention' | 'review' | 'disputed' | 'hidden' | 'connected'
-  | 'order' | 'product' | 'price' | 'invoice' | 'invoiceMissing' | 'invoiceDone' | 'return' | 'category' | 'brand'
+  | 'order' | 'product' | 'price' | 'invoice' | 'invoiceMissing' | 'invoiceDone' | 'return' | 'category' | 'brand' | 'more'
 
 const line = (d: string) => <path d={d} fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" />
 const circle = <circle cx="8" cy="8" r="5.8" fill="none" stroke="currentColor" strokeWidth={1.4} />
@@ -39,6 +40,7 @@ const icons: Record<ViewTabIconName, ReactNode> = {
   invoiceDone: <>{page}{line('m6.2 10 1.4 1.4 2.4-2.6')}</>,
   return: <>{line('M5.5 4 2.5 7l3 3')}{line('M2.5 7h7a4 4 0 0 1 0 8H7')}</>,
   category: <>{line('M2.5 2.5h4.5v4.5H2.5zM9 2.5h4.5v4.5H9zM2.5 9h4.5v4.5H2.5zM9 9h4.5v4.5H9z')}</>,
+  more: <><circle cx="3.8" cy="8" r="1" fill="currentColor" /><circle cx="8" cy="8" r="1" fill="currentColor" /><circle cx="12.2" cy="8" r="1" fill="currentColor" /></>,
   brand: <>{line('M8 2.2 9.7 5.7l3.8.5-2.8 2.7.7 3.8L8 10.9l-3.4 1.8.7-3.8-2.8-2.7 3.8-.5z')}</>,
 }
 
@@ -49,4 +51,37 @@ export function ViewTabIcon({ name }: { name: ViewTabIconName }) {
 // Shorthand for a Tabs item: the label with its icon in front.
 export function viewTabLabel(name: ViewTabIconName, label: ReactNode) {
   return <><ViewTabIcon name={name} />{label}</>
+}
+
+type ViewTabItem = { value: string; label: ReactNode; count?: ReactNode }
+
+// Tabs with a "Diğer" menu: the values listed in `more` leave the row and open from a menu at its end, so long tab sets
+// (orders and returns have nine) fit on one line. When one of them is selected, the menu button shows it as active.
+export function ViewTabsWithMore({ items, more, value, onChange, ariaLabel, className }: { items: ViewTabItem[]; more: string[]; value: string; onChange: (value: string) => void; ariaLabel: string; className?: string }) {
+  const [open, setOpen] = useState(false)
+  const [position, setPosition] = useState<{ top: number; right: number } | null>(null)
+  const trigger = useRef<HTMLButtonElement>(null)
+  const menu = useRef<HTMLDivElement>(null)
+  const main = items.filter(item => !more.includes(item.value))
+  const extra = items.filter(item => more.includes(item.value))
+  const selectedExtra = extra.find(item => item.value === value)
+  useEffect(() => {
+    if (!open) return
+    const place = () => { const rect = trigger.current?.getBoundingClientRect(); if (rect) setPosition({ top: rect.bottom + 6, right: Math.max(12, window.innerWidth - rect.right) }) }
+    place()
+    const close = (event: Event) => { if (event instanceof KeyboardEvent) { if (event.key === 'Escape') setOpen(false); return } const target = event.target as Node; if (!trigger.current?.contains(target) && !menu.current?.contains(target)) setOpen(false) }
+    window.addEventListener('resize', place); window.addEventListener('scroll', place, true); document.addEventListener('pointerdown', close); document.addEventListener('keydown', close)
+    return () => { window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true); document.removeEventListener('pointerdown', close); document.removeEventListener('keydown', close) }
+  }, [open])
+  const tab = (item: ViewTabItem) => <button key={item.value} type="button" role="tab" tabIndex={item.value === value ? 0 : -1} aria-selected={item.value === value} className={item.value === value ? 'is-active' : ''} onClick={() => onChange(item.value)}><span className="rv-tab-label">{item.label}</span>{item.count !== undefined ? <span className="rv-tab-count">{item.count}</span> : null}</button>
+  return <div className={['rv-tabs', 'rv-view-tabs', className].filter(Boolean).join(' ')} role="tablist" aria-label={ariaLabel}>
+    {main.map(tab)}
+    {extra.length > 0 && <button ref={trigger} type="button" role="tab" aria-selected={Boolean(selectedExtra)} aria-haspopup="menu" aria-expanded={open} tabIndex={selectedExtra ? 0 : -1} className={`rv-view-tabs-more${selectedExtra ? ' is-active' : ''}`} onClick={() => setOpen(current => !current)}>
+      {selectedExtra ? <><span className="rv-tab-label">{selectedExtra.label}</span>{selectedExtra.count !== undefined && <span className="rv-tab-count">{selectedExtra.count}</span>}</> : <span className="rv-tab-label"><ViewTabIcon name="more" />Diğer</span>}
+      <svg className="rv-view-tabs-chevron" viewBox="0 0 16 16" aria-hidden="true">{line('m4.5 6.5 3.5 3.5 3.5-3.5')}</svg>
+    </button>}
+    {open && position && createPortal(<div ref={menu} className="rv-view-tabs-menu" role="menu" aria-label={`${ariaLabel}: diğer`} style={{ top: position.top, right: position.right }}>
+      {extra.map(item => <button key={item.value} type="button" role="menuitemradio" aria-checked={item.value === value} className={item.value === value ? 'is-active' : ''} onClick={() => { onChange(item.value); setOpen(false) }}><span className="rv-tab-label">{item.label}</span>{item.count !== undefined && <span className="rv-tab-count">{item.count}</span>}</button>)}
+    </div>, document.body)}
+  </div>
 }
