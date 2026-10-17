@@ -665,6 +665,8 @@
   }
   /* popups: product image (and its checkbox) centred against the product text */
   .apr-info, .refline .rh, .pcard .pc-h, .bcard-p, .sum > div { align-items: center; }
+  .pcard dl.pairs { grid-template-columns: none; grid-auto-flow: column; grid-template-rows: repeat(2, auto); grid-auto-columns: minmax(0, 1fr); }
+  @media (max-width: 760px) { .pcard dl.pairs { grid-auto-flow: row; grid-template-rows: none; grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 </style>
 </head>
 <body>
@@ -811,6 +813,8 @@ const row = id => ROWS.find(r => r.id === id)
 const thumb = (qty, lg) => `<button class="thumb ${lg ? 'lg' : ''}" data-a="m" data-k="img" aria-label="Ürün görselini büyüt">${qty ? `<span class="qb" role="img" aria-label="${qty} adet">${qty}</span>` : ''}</button>`
 // Grouped by kind: the codes first (barcode, stock code, model code), then the variant (colour, size).
 const facts = l => [['Barkod', l.bc], ['Stok Kodu', l.sku], ['Model Kodu', l.model], ['Renk', l.color], ['Beden', l.size]].filter(f => f[1])
+// Product cards in popups read in column pairs: Barkod over Stok Kodu, Renk over Beden, Model Kodu over Sebep.
+const CARD_ORDER = ['Barkod', 'Stok Kodu', 'Renk', 'Beden', 'Model Kodu']
 // Fact lines for product rows: colour and size share one line, split by a short divider.
 const factLines = (l, fmt) => { const f = facts(l), cs = f.filter(x => x[0] === 'Renk' || x[0] === 'Beden'); const out = []; let done = false; for (const x of f) { if (x[0] === 'Renk' || x[0] === 'Beden') { if (!done) { out.push(`<small class=\"pair\">${cs.map(([k, v]) => fmt(k, v)).join('<i class=\"sep-v\" aria-hidden=\"true\"></i>')}</small>`); done = true } } else out.push(`<small>${fmt(x[0], x[1])}</small>`) } return out.join('') }
 
@@ -952,7 +956,7 @@ function decisionForm(r, action, picker) {
   const submit = reject ? 'Ret Kararını Gönder' : picker && r.preapproval ? 'İnceleme Talebi Oluştur' : 'İadeyi Onayla'
   return `<section class="dsec">${head}${selnote}<div class="dgrid">${actionField}${fields}</div>${hint}<div style="display:flex;justify-content:flex-end"><button class="btn ${reject ? 'solid' : 'primary'}" data-a="m" data-k="${reject ? 'reject-confirm' : picker && r.preapproval ? 'preapproval-confirm' : 'approve-confirm'}">${submit}</button></div></section>`
 }
-const productCards = (r, selectable) => `<div class="pcards">${r.lines.map(l => `<article class="pcard ${selectable ? 'on' : ''}"><div class="pc-h">${thumb(l.qty, true)}<span class="ptext"><b>${esc(l.t)}</b><small>${l.qty} adet · ${l.price}</small></span>${selectable ? `<label class="cklabel"><input type="checkbox" class="cb" checked>İşleme Dahil</label>` : ''}</div><dl>${facts(l).map(([a, b]) => `<div><dt>${a}</dt><dd>${esc(b)}</dd></div>`).join('')}${r.note ? `<div><dt>Sebep</dt><dd>${esc(r.reason)}</dd></div>` : ''}</dl></article>`).join('')}</div>`
+const productCards = (r, selectable) => `<div class="pcards">${r.lines.map(l => `<article class="pcard ${selectable ? 'on' : ''}"><div class="pc-h">${thumb(l.qty, true)}<span class="ptext"><b>${esc(l.t)}</b><small>${l.qty} adet · ${l.price}</small></span>${selectable ? `<label class="cklabel"><input type="checkbox" class="cb" checked>İşleme Dahil</label>` : ''}</div><dl class="pairs">${CARD_ORDER.map(k => facts(l).find(f => f[0] === k)).filter(Boolean).map(([a, b]) => `<div><dt>${a}</dt><dd>${esc(b)}</dd></div>`).join('')}${r.note ? `<div><dt>Sebep</dt><dd>${esc(r.reason)}</dd></div>` : ''}</dl></article>`).join('')}</div>`
 function mDecision(r, action) {
   const name = pname(r.p)
   return modal({ crumb: `${name} İade`, title: action === 'REJECT' ? 'İade Ret Talebi' : 'İade Onayı', desc: `Sipariş #${r.no} · ${r.cust}`, w: 'lg',
