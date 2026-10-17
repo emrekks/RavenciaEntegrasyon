@@ -238,3 +238,13 @@
   .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item b { display: flex; flex-wrap: wrap; column-gap: 4px; font-size: 13px; white-space: normal; }
   .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item > div { min-width: 0; overflow: hidden; }
 }
+
+/* Phones: the platform logo sits small beside the store name, so the history state below runs across the whole card
+   on one line. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item { grid-template-columns: 20px minmax(0, 1fr) !important; row-gap: 4px; align-items: center; }
+  .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item > img { width: 20px; height: 20px; border-radius: 5px; }
+  .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item > div { display: contents; }
+  .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item > div > b { grid-column: 2 !important; grid-row: 1; }
+  .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item > div > small { grid-column: 1 / -1 !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}

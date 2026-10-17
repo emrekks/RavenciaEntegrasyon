@@ -578,3 +578,30 @@
   .app-shell.stitch-shell main section.mapping-page .mapping-reference-heading .mapping-transfer-actions .mam { align-items: stretch; }
   .app-shell.stitch-shell main section.mapping-page .mapping-reference-heading .mapping-transfer-actions .mam :is(button, .mapping-transfer-upload) { box-sizing: border-box; width: 100%; min-width: 0; height: 40px; min-height: 40px; margin: 0; justify-content: center; }
 }
+
+/* Phones, new category mapping: title over a full-width refresh button, the panel and platform pickers one under the
+   other (the link rail between them is a desktop device), and the summary over a full-width save button. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main section.mapping-page .mapping-category-builder > .mapping-builder-head { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-category-builder > .mapping-builder-head > button { width: 100%; height: 36px; min-height: 36px; justify-content: center; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-reference-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-reference-grid > * { grid-column: 1; grid-row: auto; width: 100%; min-width: 0; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-reference-grid > .mapping-link-rail { display: none; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-category-builder > footer { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-category-builder > footer > button { width: 100%; justify-content: center; }
+
+  /* Saved mappings as cards: panel category and state on top, the platform path under it, the platform on the left of
+     the actions at the bottom; cells lose their table lines, and a card keeps its look under the finger (no hover). */
+  .app-shell.stitch-shell main section.mapping-page .mapping-saved-table tbody tr { grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: "panel panel status" "target target target" "platform actions actions"; gap: 8px 10px; padding: 12px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); }
+  .app-shell.stitch-shell main section.mapping-page .mapping-saved-table tbody tr:hover { background: var(--rv-color-surface); border-color: var(--rv-color-border); box-shadow: none; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-saved-table tbody tr { grid-template-rows: none; grid-auto-rows: auto; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-saved-table tbody tr > td { display: flex; align-items: center; height: auto; min-width: 0; min-height: 0; padding: 0; background: none !important; border: 0 !important; box-shadow: none !important; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-saved-table tbody tr > td::before,
+  .app-shell.stitch-shell main section.mapping-page .mapping-saved-table tbody tr > td::after { display: none !important; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-saved-table tbody tr > td:nth-child(1) { font-weight: 600; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-saved-table tbody tr > td:nth-child(3) { color: var(--rv-color-muted); font-size: 13px; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-saved-table tbody tr > td:nth-child(2) { align-self: center; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-saved-table tbody tr > td:nth-child(2) .ms-platform { display: inline-flex; align-items: center; gap: 0; min-width: 0; font-size: 0; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-saved-table tbody tr > td:nth-child(2) .ms-platform img { width: 22px; height: 22px; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-saved-table tbody tr > td:nth-child(5) .mapping-row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+}
