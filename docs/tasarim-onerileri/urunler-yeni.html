@@ -952,7 +952,7 @@ Object.assign(I, {
   off: ico('<circle cx="8" cy="8" r="5.8"/><path d="M6.6 5.8v4.4M9.4 5.8v4.4"/>'),
   sortv: ico('<path d="M5 3v10M2.8 10.8 5 13l2.2-2.2M11 13V3M8.8 5.2 11 3l2.2 2.2"/>', 14),
 })
-const TABS = [['ALL', 'Tüm Ürünler', 412], ['ACTIVE', 'Satışa Açık', 356], ['DRAFT', 'Taslak', 31], ['ARCHIVED', 'Bekliyor', 21], ['MIXED', 'Hatalı', 4]]
+const TABS = [['ALL', 'Tüm Ürünler', 412], ['ACTIVE', 'Satışa Açık', 356], ['DRAFT', 'Taslak', 31], ['ARCHIVED', 'Satışa Kapalı', 21], ['MIXED', 'Hatalı', 4]]
 const BASE_MORE = []
 let MORE_TABS = []
 function fitTabs() {
@@ -961,7 +961,7 @@ function fitTabs() {
   if (vt.scrollWidth > vt.clientWidth + 1) { const next = order.find(k => !MORE_TABS.includes(k) && k !== S.tab); if (next) { MORE_TABS = [next, ...MORE_TABS]; return true } }
   return false
 }
-const RING = { 'Satışa Açık': ['ok', 1], 'Taslak': ['prog', .3], 'Bekliyor': ['off', 0], 'Hatalı': ['bad', .66] }
+const RING = { 'Satışa Açık': ['ok', 1], 'Taslak': ['prog', .3], 'Satışa Kapalı': ['off', 0], 'Hatalı': ['bad', .66] }
 const PLATFORMS = [['trendyol', 'Trendyol'], ['hepsiburada', 'Hepsiburada'], ['n11', 'N11'], ['pazarama', 'Pazarama'], ['shopify', 'Shopify']]
 // platform state per product: on (all variants live), part (some), link (linked, not live), busy, err, none
 const P = (t, model, img, opts, vars, price, stock, st, plat, low) => ({ t, model, img, opts, vars, price, stock, st, plat, low })
@@ -970,7 +970,7 @@ const ROWS = [
   { id: 'p2', ...P('Kadın Orta Yaş Viskon Yapraklı Desen Taşlı İşlemeli Anne Bluz', 'MZ025DY', 1, [['Renk', 'Siyah · Bordo'], ['Beden', 'L · XL · 2XL · 3XL']], 8, ['₺676,07', '₺682,90'], 4, 'Satışa Açık', { trendyol: 'on', hepsiburada: 'on', n11: 'busy', pazarama: 'none', shopify: 'none' }, true), variants: [['L', 0], ['XL', 1], ['2XL', 0], ['3XL', 3]] },
   { id: 'p3', ...P('Kadın Leopar Desen Baskılı Simli Likralı Anne Penye Bluz', 'SLR005LD', 1, [['Renk', 'Mor'], ['Beden', 'XL · 2XL · 3XL']], 3, ['₺636,10'], 0, 'Satışa Açık', { trendyol: 'on', hepsiburada: 'err', n11: 'none', pazarama: 'none', shopify: 'none' }), variants: [['XL', 0], ['2XL', 0], ['3XL', 0]] },
   { id: 'p4', ...P('Örme Hırka Uzun Kollu', 'HRK-04', 1, [['Renk', 'Bej · Siyah'], ['Beden', 'S · M · L']], 6, ['₺629,90'], 61, 'Taslak', { trendyol: 'none', hepsiburada: 'none', n11: 'none', pazarama: 'none', shopify: 'link' }), variants: [['S', 10], ['M', 22], ['L', 29]] },
-  { id: 'p5', ...P('Seramik Kupa Seti 4’lü — Mat Beyaz', 'KP-400', 1, [['Renk', 'Beyaz']], 1, ['₺389,90'], 120, 'Bekliyor', { trendyol: 'none', hepsiburada: 'none', n11: 'on', pazarama: 'part', shopify: 'none' }), variants: [['Tek Ebat', 120]] },
+  { id: 'p5', ...P('Seramik Kupa Seti 4’lü — Mat Beyaz', 'KP-400', 1, [['Renk', 'Beyaz']], 1, ['₺389,90'], 120, 'Satışa Kapalı', { trendyol: 'none', hepsiburada: 'none', n11: 'on', pazarama: 'part', shopify: 'none' }), variants: [['Tek Ebat', 120]] },
   { id: 'p6', ...P('Spor Çorap 6’lı Paket — Karışık', 'CRP-6', 1, [['Renk', 'Karışık'], ['Beden', '36-40 · 40-44']], 2, ['₺219,00'], 17, 'Hatalı', { trendyol: 'err', hepsiburada: 'none', n11: 'none', pazarama: 'on', shopify: 'none' }), variants: [['36-40', 9], ['40-44', 8]] },
 ]
 const S = { tab: 'ALL', sel: new Set(['p1', 'p2']), pop: null, modal: null, cf: {}, plats: PLATFORMS.map(p => p[0]), sort: 'Varsayılan', toast: null, imp: 'bulk', impMode: 'new', qeStep: 2, vg: { Siyah: true, Lacivert: false } }
@@ -1095,7 +1095,7 @@ const toastHtml = (k, st) => { const [kind, t, p] = TOASTS[k]; return `<div clas
 function mocks() {
   const m = []
   const add = (l, h, full) => m.push(`<div class="mock ${full ? 'full' : ''}"><span>${l}</span><div class="stage" inert>${h}</div></div>`)
-  add('Durum Halkaları ve Platform İşaretleri', `<div style="display:grid;gap:12px;justify-items:start">${['Satışa Açık', 'Taslak', 'Bekliyor', 'Hatalı'].map(l => ring(l)).join('')}<hr style="width:100%;border:0;border-top:1px solid var(--line)"><div style="display:grid;gap:8px">${Object.entries(PSTATE).map(([k, [l]]) => `<span style="display:flex;align-items:center;gap:10px">${pmark('trendyol', k)}<small style="color:var(--muted)">${l} — ${PTIP[k].replace('{P}', 'Trendyol')}</small></span>`).join('')}</div></div>`)
+  add('Durum Halkaları ve Platform İşaretleri', `<div style="display:grid;gap:12px;justify-items:start">${['Satışa Açık', 'Taslak', 'Satışa Kapalı', 'Hatalı'].map(l => ring(l)).join('')}<hr style="width:100%;border:0;border-top:1px solid var(--line)"><div style="display:grid;gap:8px">${Object.entries(PSTATE).map(([k, [l]]) => `<span style="display:flex;align-items:center;gap:10px">${pmark('trendyol', k)}<small style="color:var(--muted)">${l} — ${PTIP[k].replace('{P}', 'Trendyol')}</small></span>`).join('')}</div></div>`)
   add('Varyant Dağılımı İpucu', `<div style="width:300px">${variantTip(row('p2'), true)}</div>`)
   add('İşlemler Menüsü', actMenu(row('p1'), true))
   add('Toplu İşlemler Menüsü', bulkMenu(true))
