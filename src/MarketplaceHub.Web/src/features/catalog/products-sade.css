@@ -225,3 +225,36 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-vtab :is(th, td) { display: table-cell !important; position: static !important; width: auto !important; min-width: 28px; padding: 3px 6px !important; background: none !important; border-right: 0 !important; border-left: 0 !important; vertical-align: middle !important; text-align: center !important; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-vtab tbody th { padding-left: 0 !important; text-align: left !important; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-vtab :is(th, td)::before { content: none !important; }
+/* ---------- phones: each product is a compact card (mobil-tum-sayfalar.html) ----------
+   identity · price, stock and variants in one box · platform marks and status · two actions */
+@media (max-width: 760px) {
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-panel { background: none; border: 0; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-panel-h { padding: 0 0 10px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-tblwrap { overflow: visible; border: 0; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl thead { display: none; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pager { padding: 12px 0; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl tbody tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-areas: "p p p" "pr st v" "pl pl s" "a a a"; gap: 10px 0; margin: 0 0 10px; padding: 12px; background: var(--rr-surface); border: 1px solid var(--rr-line); border-radius: 14px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl tbody tr.rr-sel { border-color: color-mix(in srgb, var(--rr-primary) 70%, transparent); background: color-mix(in srgb, var(--rr-primary-soft) 45%, var(--rr-surface)); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl tbody tr > td { min-width: 0; padding: 0 !important; border: 0 !important; background: none !important; text-align: left; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl tbody tr > td::before { display: none !important; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl tbody tr > td:first-child { grid-area: p; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl tbody tr > td[data-l="Fiyat"] { grid-area: pr; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl tbody tr > td[data-l="Stok"] { grid-area: st; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl tbody tr > td[data-l="Varyant"] { grid-area: v; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl tbody tr > td[data-l="Platform Durumu"] { grid-area: pl; align-self: center; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl tbody tr > td[data-l="Durum"] { grid-area: s; align-self: center; justify-self: end; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl tbody tr > td[data-l="İşlemler"] { grid-area: a; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl tbody tr > td:is([data-l="Fiyat"], [data-l="Stok"], [data-l="Varyant"]) { display: grid; align-content: start; gap: 2px; padding: 8px 10px !important; background: var(--rr-bg) !important; border-top: 1px solid var(--rr-line) !important; border-bottom: 1px solid var(--rr-line) !important; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl tbody tr > td:is([data-l="Fiyat"], [data-l="Stok"], [data-l="Varyant"])::before { display: block !important; margin: 0; color: var(--rr-subtle); font-size: 11.5px; font-weight: 500; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl tbody tr > td[data-l="Fiyat"] { border-left: 1px solid var(--rr-line) !important; border-radius: 10px 0 0 10px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl tbody tr > td[data-l="Varyant"] { border-right: 1px solid var(--rr-line) !important; border-radius: 0 10px 10px 0; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-qbtn, :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-varcell { justify-items: start; padding: 0; text-align: left; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-vhover { display: block; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-pmarks { justify-content: flex-start; flex-wrap: nowrap; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-actcell { display: grid !important; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-actcell > *, :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-actcell > .rr-anchor > .rr-trigger { width: 100% !important; min-width: 0; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-actcell :is(.rr-btn, .rr-trigger) { height: 40px !important; justify-content: center; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-actcell .rr-btn.rr-link { border: 1px solid var(--rr-line-strong); border-radius: 10px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-vtip { left: 0; transform: none; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-actcell .rr-trigger > span { flex: none; }
+}

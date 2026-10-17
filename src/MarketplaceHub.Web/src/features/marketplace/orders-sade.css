@@ -198,4 +198,5 @@
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-actcell.rr-actcell > *, :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-actcell.rr-actcell > .rr-anchor > .rr-trigger { width: 100% !important; min-width: 0; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-actcell :is(.rr-btn, .rr-trigger) { width: 100%; height: 40px !important; justify-content: center; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-actcell > :only-child { grid-column: 1 / -1; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-actcell .rr-trigger > span { flex: none; }
 }
