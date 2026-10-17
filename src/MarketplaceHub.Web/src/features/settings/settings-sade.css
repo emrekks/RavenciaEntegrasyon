@@ -386,6 +386,6 @@
 /* The settings content has its own frame: a card under the group tabs card. The section tabs are the card's top row
    and the pane gets inner padding. */
 .ss-page .ss-card { flex: 0 1 auto; margin-top: -8px; overflow: clip; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; }
-.ss-page .ss-stabs { display: block; padding: 0; }
+.ss-page .ss-stabs { display: block; padding: 16px 20px 0; }
 .ss-page .ss-stabs > .ss-seg.rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs { width: 100% !important; padding: 0 8px !important; }
 .ss-page .ss-card > .ss-pane { padding: 0 20px 20px; }

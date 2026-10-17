@@ -19,7 +19,7 @@
 .rv-notification-mark-all:disabled, .rv-notification-clear:disabled { cursor: not-allowed; opacity: .4; }
 
 /* The filter row uses the shared view tabs (shared/view-tabs.css); only a little side room here. */
-.rv-notification-filters.rv-view-tabs { padding: 0 8px !important; }
+.rv-notification-history .rv-notification-filters.rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs { width: auto !important; margin: 0 12px 4px; }
 
 /* Timeline */
 .rv-notification-timeline { position: relative; display: block; overflow-y: auto; overscroll-behavior: contain; padding: 4px 16px 16px; scrollbar-gutter: stable; }
