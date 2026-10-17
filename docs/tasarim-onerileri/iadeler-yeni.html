@@ -476,6 +476,28 @@
   @keyframes turn { to { transform: rotate(360deg); } }
   @keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
   @media (prefers-reduced-motion: reduce) { .state.loading .mark::after, .state .bar i { animation-duration: 3s; } }
+
+  /* card layout on narrow pages, after the new table rules so they do not leak into the cards */
+  @container page (max-width: 979px) {
+    .tbl th, .tbl td, .tbl td:first-child, .tbl td:last-child { padding: 0; border: 0; }
+    .tbl tbody tr { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px 20px; padding: 16px; }
+    .tbl td.mid { text-align: left; }
+    .tbl td.mid > *, .tbl .cargocell, .tbl .actcell { justify-items: start; margin-inline: 0; }
+    .tbl .cargocell small { text-align: left; }
+    .tbl .cargocell .cargo-img { object-position: left center; }
+    .tbl td[data-l="Bilgiler"], .tbl td[data-l="İade Sebebi"] { grid-column: 1 / -1; }
+    .tbl td[data-l="İşlemler"] { grid-column: 1 / -1; padding-top: 12px; border-top: 1px solid var(--line); }
+    .tbl td[data-l="İşlemler"]::before { display: none !important; }
+    .tbl .actcell { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; width: 100%; }
+    .tbl .actcell .anchor { width: auto; }
+    .tbl .invcell { max-width: 360px; }
+    .tbl td[data-l]::before { margin-bottom: 6px; }
+    /* card order: order info; buyer + status; products; cargo + invoice; reason; actions */
+    .tbl td.wide:first-child { order: 1; } .tbl td[data-l="Alıcı"] { order: 2; } .tbl td[data-l="Durum"] { order: 3; } .tbl td[data-l="Bilgiler"] { order: 4; } .tbl td[data-l="Kargo"] { order: 5; } .tbl td[data-l="Fatura"] { order: 6; } .tbl td[data-l="İade Sebebi"] { order: 7; } .tbl td[data-l="İşlemler"] { order: 8; }
+  }
+  @container page (max-width: 500px) {
+    .tbl tbody tr { grid-template-columns: minmax(0, 1fr); }
+  }
 </style>
 </head>
 <body>
