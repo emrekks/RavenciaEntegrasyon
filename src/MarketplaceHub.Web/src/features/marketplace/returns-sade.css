@@ -1011,3 +1011,13 @@ main .rr.rr:is(.rr-orders, .rr-returns) > .rr-panel { min-width: 0; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-cklabel .rr-hint-btn[aria-expanded="true"] { color: var(--rr-violet); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-lead.rr-hint:not(.rr-on) { display: none; }
 }
+/* detail page state: a pill tinted by its state (green when approved), like the state strip on the list cards */
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-dpage .rr-ph .rr-acts .rr-badge { gap: 8px; height: 40px; padding: 0 16px; color: var(--rr-violet); background: color-mix(in srgb, var(--rr-violet) 14%, transparent); border: 0; border-radius: 999px; font-size: 13.5px; font-weight: 600; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-dpage .rr-ph .rr-acts .rr-badge[data-state="done"] { color: var(--rr-ok); background: color-mix(in srgb, var(--rr-ok) 16%, transparent); }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-dpage .rr-ph .rr-acts .rr-badge:is([data-state="failed"], .rr-bad) { color: var(--rr-bad); background: color-mix(in srgb, var(--rr-bad) 14%, transparent); }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-dpage .rr-ph .rr-acts .rr-badge:is([data-state="waiting"], [data-state="packing"]) { color: var(--rr-warn); background: color-mix(in srgb, var(--rr-warn) 16%, transparent); }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-dpage .rr-ph .rr-acts .rr-badge:is([data-state="sending"], [data-state="carrier"]) { color: var(--rr-info); background: color-mix(in srgb, var(--rr-info) 14%, transparent); }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-dpage .rr-ph .rr-acts .rr-badge .inv-glyph { color: currentColor; }
+/* key/value boxes: the label column is a quiet tinted strip in a smaller semibold type, so it never reads as a value */
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-kv.rr-kv > dt { color: var(--rr-muted); background: color-mix(in srgb, var(--rr-raised) 75%, transparent); font-size: 12.5px; font-weight: 500; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-kv.rr-kv > dd { color: var(--rr-ink); font-weight: 500; }

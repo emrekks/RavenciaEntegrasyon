@@ -248,3 +248,9 @@
   .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item > div > b { grid-column: 2 !important; grid-row: 1; }
   .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item > div > small { grid-column: 1 / -1 !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 }
+
+/* Phones: Hazır Cevaplar and Yenile fill the head row as two equal buttons. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .qi-page .qi-acts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; width: 100%; }
+  .app-shell.stitch-shell main .qi-page .qi-acts > button { width: 100%; min-width: 0; justify-content: center; }
+}
