@@ -731,17 +731,19 @@
   @media (max-width: 760px) { .srcs, .two-cards { grid-template-columns: 1fr; } .ph .acts { width: 100%; } }
   /* final column balance (the widths must leave room for the fixed order column) */
   @media (min-width: 1281px) {
-    .tbl col.c-buyer { width: 8%; } .tbl col.c-prod, .tbl.has-select col.c-prod { width: 21%; } .tbl col.c-price { width: 7%; } .tbl col.c-cargo { width: 9%; } .tbl col.c-inv { width: 12%; } .tbl col.c-status { width: 10%; } .tbl col.c-act, .tbl.has-select col.c-act { width: 12%; }
+    .tbl col.c-buyer { width: 8%; } .tbl col.c-prod, .tbl.has-select col.c-prod { width: 20%; } .tbl col.c-price { width: 7%; } .tbl col.c-cargo { width: 9%; } .tbl col.c-inv { width: 14%; } .tbl col.c-status { width: 10%; } .tbl col.c-act, .tbl.has-select col.c-act { width: 11%; }
   }
   @media (min-width: 1101px) and (max-width: 1280px) {
     .tbl col.c-order, .tbl.has-select col.c-order { width: 176px; }
-    .tbl col.c-buyer { width: 7%; } .tbl col.c-prod, .tbl.has-select col.c-prod { width: 20%; } .tbl col.c-price { width: 7%; } .tbl col.c-cargo { width: 9%; } .tbl col.c-inv { width: 12%; } .tbl col.c-status { width: 10%; } .tbl col.c-act, .tbl.has-select col.c-act { width: 12%; }
-    .tbl.no-buyer col.c-prod { width: 22%; } .tbl.no-buyer col.c-price { width: 8%; } .tbl.no-buyer col.c-cargo { width: 9%; } .tbl.no-buyer col.c-inv { width: 13%; } .tbl.no-buyer col.c-status { width: 11%; } .tbl.no-buyer col.c-act { width: 13%; }
+    .tbl col.c-buyer { width: 7%; } .tbl col.c-prod, .tbl.has-select col.c-prod { width: 19%; } .tbl col.c-price { width: 7%; } .tbl col.c-cargo { width: 9%; } .tbl col.c-inv { width: 15%; } .tbl col.c-status { width: 9%; } .tbl col.c-act, .tbl.has-select col.c-act { width: 11%; }
+    .tbl.no-buyer col.c-prod { width: 21%; } .tbl.no-buyer col.c-price { width: 8%; } .tbl.no-buyer col.c-cargo { width: 9%; } .tbl.no-buyer col.c-inv { width: 15%; } .tbl.no-buyer col.c-status { width: 11%; } .tbl.no-buyer col.c-act { width: 12%; }
     .filters.has-sort { grid-template-columns: repeat(4, minmax(0, 1fr)); }
     .filters.has-sort .fbtns { grid-column: 1 / -1; justify-content: flex-end; }
   }
   .actcell .btn.lbl { min-width: 0; }
-  .invcell .inv-trigger { white-space: normal; text-align: left; }
+  .invcell .inv-trigger { white-space: nowrap; text-align: left; }
+  .invcell .m > span { white-space: nowrap; }
+  .pline small:not(.card-only) { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
   @media (max-width: 760px) { .ltbl :is(th, td):nth-child(n+3):not(:last-child) { display: none; } .ltbl td:first-child { overflow-wrap: anywhere; } }
 </style>
 </head>

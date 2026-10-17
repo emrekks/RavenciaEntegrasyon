@@ -84,37 +84,39 @@
 @media (min-width: 1281px) {
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-buyer { width: 8%; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-prod,
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-has-select col.rr-c-prod { width: 21%; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-has-select col.rr-c-prod { width: 20%; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-price { width: 7%; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-cargo { width: 9%; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-inv { width: 12%; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-inv { width: 14%; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-status { width: 10%; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-act,
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-has-select col.rr-c-act { width: 12%; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-has-select col.rr-c-act { width: 11%; }
 }
 @media (min-width: 1101px) and (max-width: 1280px) {
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-order,
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-has-select col.rr-c-order { width: 176px; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-buyer { width: 7%; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-prod,
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-has-select col.rr-c-prod { width: 20%; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-has-select col.rr-c-prod { width: 19%; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-price { width: 7%; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-cargo { width: 9%; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-inv { width: 12%; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-status { width: 10%; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-inv { width: 15%; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-status { width: 9%; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-act,
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-has-select col.rr-c-act { width: 12%; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-no-buyer col.rr-c-prod { width: 22%; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-has-select col.rr-c-act { width: 11%; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-no-buyer col.rr-c-prod { width: 21%; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-no-buyer col.rr-c-price { width: 8%; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-no-buyer col.rr-c-cargo { width: 9%; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-no-buyer col.rr-c-inv { width: 13%; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-no-buyer col.rr-c-inv { width: 15%; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-no-buyer col.rr-c-status { width: 11%; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-no-buyer col.rr-c-act { width: 13%; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-no-buyer col.rr-c-act { width: 12%; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-filters.rr-has-sort { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-filters.rr-has-sort .rr-fbtns { grid-column: 1 / -1; justify-content: flex-end; }
 }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-actcell .rr-btn.rr-lbl { min-width: 0; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-invcell .rr-inv-trigger { white-space: normal; text-align: left; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-invcell .rr-inv-trigger { white-space: nowrap; text-align: left; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-invcell .rr-m > span { white-space: nowrap; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-pline small:not(.rr-card-only) { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
 @media (max-width: 760px) {
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ltbl :is(th, td):nth-child(n+3):not(:last-child) { display: none; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ltbl td:first-child { overflow-wrap: anywhere; }
