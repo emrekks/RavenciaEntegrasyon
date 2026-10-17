@@ -18,7 +18,8 @@
     --violet-line: color-mix(in srgb, var(--primary) 55%, transparent);
     --warn: #e2aa4b; --bad: #e4636f; --ok: #46b98f; --info: #83b4ff;
     --side: 232px; --top: 70px;
-    --hover: #202027;
+    /* same hover as the live invoices table rows: raised surface at 60% */
+    --hover: color-mix(in srgb, var(--raised) 60%, transparent);
   }
   * { box-sizing: border-box; }
   html, body { overflow-x: clip; }
