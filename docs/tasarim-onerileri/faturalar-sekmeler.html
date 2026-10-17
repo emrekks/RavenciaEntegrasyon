@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fatura Sekmeleri</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #111115; --surface: #17171c; --raised: #1d1d23; --soft: #22222a; --sunk: #101014;
+    --line: #2a2a32; --line-strong: #383842;
+    --ink: #ececf0; --muted: #a3a3b0; --subtle: #6f6f7c;
+    --primary: #8b5cf6; --primary-soft: #272139;
+    --violet: color-mix(in srgb, var(--primary) 55%, white);
+    --violet-line: color-mix(in srgb, var(--primary) 55%, transparent);
+    --warn: #e2aa4b; --bad: #e4636f; --ok: #46b98f; --info: #83b4ff;
+  }
+  * { box-sizing: border-box; }
+  html, body { overflow-x: clip; }
+  body { margin: 0; font: 14px/1.5 Inter, "Segoe UI", system-ui, sans-serif; color: var(--ink); background: var(--bg); -webkit-font-smoothing: antialiased; }
+  h1, h2, p { margin: 0; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  .num { font-variant-numeric: tabular-nums; }
+  .wrap { max-width: 1160px; margin: 0 auto; padding: 32px 16px 96px; display: grid; gap: 28px; }
+  .intro h1 { font-size: 22px; font-weight: 600; }
+  .intro p { color: var(--muted); margin-top: 6px; max-width: 74ch; }
+  .picker { display: flex; flex-wrap: wrap; gap: 6px; position: sticky; top: 0; z-index: 5; padding: 10px 0; background: var(--bg); }
+  .picker button { height: 34px; padding: 0 14px; color: var(--muted); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 7px; font-size: 13px; }
+  .picker button[aria-pressed="true"] { color: var(--ink); background: var(--primary-soft); border-color: var(--violet-line); }
+  .option { display: grid; gap: 12px; margin-bottom: 40px; }
+  .option-head h2 { font-size: 17px; font-weight: 600; }
+  .option-head p { color: var(--muted); font-size: 13px; margin-top: 4px; max-width: 84ch; }
+  .shell { display: grid; gap: 16px; padding: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+  .ico { width: 16px; height: 16px; flex: none; display: block; }
+
+  /* the filter row that sits under every tab design, unchanged */
+  .filters { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(150px, .85fr) minmax(220px, 1.1fr) minmax(170px, .85fr) auto; gap: 12px; align-items: end; }
+  .filters label { display: grid; gap: 6px; color: var(--muted); font-size: 12px; min-width: 0; }
+  .field { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 7px; font-size: 13.5px; white-space: nowrap; overflow: hidden; }
+  .field.ph { color: var(--subtle); }
+  .field .chev { margin-left: auto; color: var(--muted); }
+  .reset { height: 36px; padding: 0 8px; color: var(--subtle); background: none; border: 0; font-size: 13px; white-space: nowrap; }
+
+  /* 1 — underline */
+  .t1 { display: flex; gap: 4px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+  .t1 button { position: relative; display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 12px; color: var(--muted); background: none; border: 0; font-size: 13.5px; white-space: nowrap; }
+  .t1 button:hover { color: var(--ink); }
+  .t1 button .c { color: var(--subtle); font-size: 12.5px; }
+  .t1 button.on { color: var(--ink); font-weight: 500; }
+  .t1 button.on .c { color: var(--violet); }
+  .t1 button.on::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--primary); }
+  .t1 .spacer { flex: 1; }
+
+  /* 2 — counter cards (replace the metric cards above) */
+  .t2 { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+  .t2 button { display: grid; gap: 2px; padding: 12px 14px; text-align: left; background: var(--sunk); border: 1px solid var(--line-strong); border-radius: 10px; }
+  .t2 button:hover { border-color: var(--subtle); }
+  .t2 button small { color: var(--muted); font-size: 12.5px; }
+  .t2 button b { font-size: 22px; font-weight: 600; line-height: 1.2; }
+  .t2 button span { color: var(--subtle); font-size: 11.5px; }
+  .t2 button.on { background: var(--primary-soft); border-color: var(--violet-line); }
+  .t2 button.on small { color: var(--ink); }
+  .t2 button.is-warn b { color: var(--warn); }
+  .note { color: var(--subtle); font-size: 12px; }
+
+  /* 3 — equal segmented with sliding thumb */
+  .t3 { position: relative; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); padding: 3px; background: var(--sunk); border: 1px solid var(--line-strong); border-radius: 9px; }
+  .t3 .thumb { position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc((100% - 6px) / 5); border-radius: 7px; background: var(--raised); border: 1px solid var(--line-strong); box-shadow: 0 1px 0 rgb(255 255 255 / 4%) inset, 0 4px 14px rgb(0 0 0 / 30%); transition: transform .22s cubic-bezier(.2, .7, .2, 1); }
+  .t3 button { position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; gap: 8px; height: 34px; min-width: 0; color: var(--muted); background: none; border: 0; font-size: 13px; white-space: nowrap; }
+  .t3 button .c { min-width: 22px; height: 20px; padding: 0 6px; display: inline-grid; place-items: center; color: var(--muted); background: var(--soft); border-radius: 6px; font-size: 11.5px; }
+  .t3 button.on { color: var(--ink); font-weight: 500; }
+  .t3 button.on .c { color: #fff; background: var(--primary); }
+  @media (prefers-reduced-motion: reduce) { .t3 .thumb { transition: none; } }
+
+  /* 4 — pills, main views left, hidden on the right */
+  .t4 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .t4 button { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 8px 0 14px; color: var(--muted); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 999px; font-size: 13px; white-space: nowrap; }
+  .t4 button:hover { color: var(--ink); }
+  .t4 button .c { min-width: 24px; height: 22px; padding: 0 7px; display: inline-grid; place-items: center; background: var(--soft); border-radius: 999px; font-size: 11.5px; color: var(--ink); }
+  .t4 button.on { color: var(--ink); background: var(--primary-soft); border-color: var(--violet-line); }
+  .t4 button.on .c { color: #fff; background: var(--primary); }
+  .t4 button.is-warn .c { color: #1a1406; background: var(--warn); }
+  .t4 button.is-warn.zero .c { color: var(--muted); background: var(--soft); }
+  .t4 .sep { width: 1px; height: 22px; margin: 0 4px; background: var(--line-strong); }
+  .t4 .push { margin-left: auto; }
+  .t4 .ghost { background: none; border-style: dashed; }
+
+  /* 5 — view picker inside the filter row */
+  .f5 { grid-template-columns: minmax(210px, 1fr) minmax(170px, 1fr) minmax(140px, .75fr) minmax(200px, 1fr) minmax(150px, .75fr) auto; }
+  .view { position: relative; }
+  .view .field { cursor: pointer; background: var(--primary-soft); border-color: var(--violet-line); }
+  .view .field b { font-weight: 500; }
+  .view .field .c { color: var(--violet); font-size: 12.5px; }
+  .menu { position: absolute; z-index: 4; top: calc(100% + 6px); left: 0; width: 100%; min-width: 250px; padding: 6px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 12px; box-shadow: 0 18px 50px rgb(0 0 0 / 45%); display: grid; gap: 2px; }
+  .menu button { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 10px; background: none; border: 0; border-radius: 7px; color: var(--ink); font-size: 13px; text-align: left; }
+  .menu button:hover { background: var(--raised); }
+  .menu button .c { margin-left: auto; color: var(--subtle); font-size: 12px; }
+  .menu button.on { background: var(--primary-soft); }
+  .menu button.on .c { color: var(--violet); }
+  .menu hr { margin: 4px 6px; border: 0; border-top: 1px solid var(--line); }
+  .menu .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line-strong); flex: none; }
+  .menu .on .dot { background: var(--primary); }
+
+  @media (max-width: 900px) {
+    .filters, .f5 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+    .t2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .t3 { grid-template-columns: repeat(5, minmax(120px, 1fr)); overflow-x: auto; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="intro">
+    <h1>Fatura Görünüm Sekmeleri · 5 Öneri</h1>
+    <p>Şu anki sekmeler çerçeveli bir kutunun içinde küçük duruyor, sağ tarafta boşluk kalıyor ve hangi görünümün önemli olduğu ayırt edilmiyor. Her öneride altındaki filtre satırı aynı kalıyor; sekmelere tıklayarak deneyebilirsin.</p>
+  </div>
+  <div class="picker" role="group" aria-label="Öneri seç">
+    <button type="button" data-show="all" aria-pressed="true">Hepsi</button>
+    <button type="button" data-show="1" aria-pressed="false">1 · Alt Çizgi</button>
+    <button type="button" data-show="2" aria-pressed="false">2 · Sayaç Kartları</button>
+    <button type="button" data-show="3" aria-pressed="false">3 · Eşit Segment</button>
+    <button type="button" data-show="4" aria-pressed="false">4 · Hap Sekmeler</button>
+    <button type="button" data-show="5" aria-pressed="false">5 · Görünüm Seçici</button>
+  </div>
+  <div id="options"></div>
+</div>
+<script>
+const views = [
+  { key: 'all', label: 'Tümü', count: 1795, note: 'tüm paketler' },
+  { key: 'un', label: 'Faturalandırılmamışlar', count: 63, note: 'kesilmeyi bekliyor' },
+  { key: 'in', label: 'Faturalandırılmışlar', count: 1732, note: 'faturası mevcut' },
+  { key: 'due', label: 'Süresi Yaklaşanlar', count: 0, note: 'teslimden 5 gün geçen', warn: true },
+  { key: 'hid', label: 'Gizlenenler', count: 7, note: 'listeden çıkarılan', quiet: true }
+];
+const fmt = n => n.toLocaleString('tr-TR');
+const chev = '<svg class="ico chev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m4.5 6.5 3.5 3.5 3.5-3.5"/></svg>';
+const search = '<svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg>';
+const cal = '<svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><rect x="2.5" y="3.5" width="11" height="10" rx="1.5"/><path d="M5.5 2v3M10.5 2v3M2.5 7h11"/></svg>';
+const sortI = '<svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v10M4.5 9.5 8 13l3.5-3.5"/></svg>';
+const baseFields = `
+  <label>Fatura Ara<span class="field ph">${search}Sipariş, müşteri, fatura veya takip no</span></label>
+  <label>Platform<span class="field">Tüm Platformlar${chev}</span></label>
+  <label>Sipariş Tarihi<span class="field">${cal}Tarih Aralığı Seçin${chev}</span></label>
+  <label>Sıralama<span class="field">Sipariş Tarihi<span style="margin-left:auto;display:flex;gap:6px;color:var(--muted)">${sortI}${chev.replace('ico chev', 'ico')}</span></span></label>
+  <button class="reset" type="button" disabled>Filtreleri Temizle</button>`;
+const filters = `<div class="filters">${baseFields}</div>`;
+
+const designs = [
+  { n: 1, title: 'Alt Çizgili Sekmeler',
+    text: 'Kutu ve çerçeve kalkar; sekmeler sade metin olur, seçili olanın altında mor bir çizgi durur. Sayılar etiketin yanında sade rakam olarak yazar. Satırın altındaki ince çizgi filtrelerle sekmeleri ayırır. En hafif ve en "sayfa başlığı" gibi görünen seçenek.',
+    render: active => `<div class="t1" role="tablist">${views.map(v => `<button type="button" role="tab" data-k="${v.key}" class="${v.key === active ? 'on' : ''}">${v.label}<span class="c num">${fmt(v.count)}</span></button>`).join('')}</div>${filters}` },
+  { n: 2, title: 'Sayaç Kartları',
+    text: 'Sekmeler, üstteki dört metrik kartın yerini alan büyük sayaç kartlarına dönüşür: hem sayıyı gösterir hem de tıklanınca o görünümü açar. Böylece sayfada aynı sayıyı iki kez gösteren tekrar ortadan kalkar. Süresi yaklaşan varsa sayı turuncu olur.',
+    render: active => `<div class="t2" role="tablist">${views.map(v => `<button type="button" role="tab" data-k="${v.key}" class="${v.key === active ? 'on' : ''}${v.warn && v.count ? ' is-warn' : ''}"><small>${v.label}</small><b class="num">${fmt(v.count)}</b><span>${v.note}</span></button>`).join('')}</div><p class="note">Bu öneride sayfanın üstündeki dört metrik kart kaldırılır.</p>${filters}` },
+  { n: 3, title: 'Tam Genişlikte Eşit Segment',
+    text: 'Beş görünüm satırı eşit parçalara böler, sağda boşluk kalmaz. Seçili parçanın arkasındaki zemin tıklanan sekmeye kayarak gider. Seçili sekmenin sayısı mor zemine geçer.',
+    render: active => `<div class="t3" role="tablist"><i class="thumb" style="transform:translateX(${views.findIndex(v => v.key === active) * 100}%)"></i>${views.map(v => `<button type="button" role="tab" data-k="${v.key}" class="${v.key === active ? 'on' : ''}">${v.label}<span class="c num">${fmt(v.count)}</span></button>`).join('')}</div>${filters}` },
+  { n: 4, title: 'Ayrık Hap Sekmeler',
+    text: 'Her görünüm ayrı, yuvarlak bir hap. Ana görünümler solda; "Gizlenenler" ayrı bir görünüm olduğu için sağa ve kesik çizgili olarak ayrılır. Süresi yaklaşan paket varsa sayısı turuncu dolguyla dikkat çeker.',
+    render: active => `<div class="t4" role="tablist">${views.slice(0, 4).map((v, i) => `${i === 3 ? '<i class="sep"></i>' : ''}<button type="button" role="tab" data-k="${v.key}" class="${v.key === active ? 'on' : ''}${v.warn ? ' is-warn' : ''}${v.warn && !v.count ? ' zero' : ''}">${v.label}<span class="c num">${fmt(v.count)}</span></button>`).join('')}<button type="button" role="tab" data-k="hid" class="push ghost${active === 'hid' ? ' on' : ''}">Gizlenenler<span class="c num">7</span></button></div>${filters}` },
+  { n: 5, title: 'Filtre Satırında Görünüm Seçici',
+    text: 'Sekme satırı tamamen kalkar; görünüm, filtre satırının en başında mor vurgulu bir seçici olur. Açılınca beş görünüm sayılarıyla listelenir. Sayfada bir satır kazanılır ve tablo daha yukarıdan başlar.',
+    render: (active, open) => { const v = views.find(x => x.key === active); return `<div class="filters f5"><label class="view">Görünüm<span class="field" data-toggle="1"><b>${v.label}</b><span class="c num">${fmt(v.count)}</span>${chev}</span>${open ? `<div class="menu" role="listbox">${views.map((x, i) => `${i === 4 ? '<hr>' : ''}<button type="button" role="option" data-k="${x.key}" class="${x.key === active ? 'on' : ''}"><i class="dot"></i>${x.label}<span class="c num">${fmt(x.count)}</span></button>`).join('')}</div>` : ''}</label>${baseFields}</div>` } }
+];
+
+const state = Object.fromEntries(designs.map(d => [d.n, { active: 'un', open: false }]));
+function draw(n) {
+  const d = designs.find(x => x.n === n), st = state[n];
+  document.querySelector(`[data-n="${n}"] .shell`).innerHTML = d.render(st.active, st.open);
+}
+document.getElementById('options').innerHTML = designs.map(d => `
+  <section class="option" data-n="${d.n}">
+    <div class="option-head"><h2>Öneri ${d.n} · ${d.title}</h2><p>${d.text}</p></div>
+    <div class="shell"></div>
+  </section>`).join('');
+designs.forEach(d => draw(d.n));
+document.getElementById('options').addEventListener('click', e => {
+  const sec = e.target.closest('.option'); if (!sec) return;
+  const n = Number(sec.dataset.n), st = state[n];
+  const tab = e.target.closest('[data-k]'), toggle = e.target.closest('[data-toggle]');
+  if (tab) { st.active = tab.dataset.k; st.open = false; draw(n); }
+  else if (toggle) { st.open = !st.open; draw(n); }
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && state[5].open) { state[5].open = false; draw(5); } });
+document.querySelectorAll('.picker button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('.picker button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  document.querySelectorAll('.option').forEach(s => s.hidden = b.dataset.show !== 'all' && s.dataset.n !== b.dataset.show);
+}));
+</script>
+</body>
+</html>
