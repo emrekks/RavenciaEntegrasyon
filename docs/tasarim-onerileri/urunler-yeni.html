@@ -762,7 +762,7 @@
   .lowv .zero { color: var(--bad); font-weight: 500; font-size: 12.5px; } .lowv .low { color: var(--warn); font-size: 12.5px; }
   /* cards on narrow pages */
   @media (max-width: 1100px) {
-    .ptbl td.wide:first-child { grid-column: 1 / -1; }
+    .ptbl td.wide:first-child { grid-column: 1 / -1; order: -1; }
     .ptbl td[data-l="İşlemler"] { grid-column: 1 / -1; padding-top: 12px; border-top: 1px solid var(--line); }
     .ptbl td[data-l="İşlemler"]::before { display: none !important; }
     .ptbl .varcell, .ptbl .qbtn { justify-items: start; padding-left: 0; } .ptbl .pmarks { justify-content: flex-start; }

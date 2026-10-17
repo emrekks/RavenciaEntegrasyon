@@ -140,7 +140,7 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-lowv .rr-zero { color: var(--rr-bad); font-weight: 500; font-size: 12.5px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-lowv .rr-low { color: var(--rr-warn); font-size: 12.5px; }
 @media (max-width: 1100px) {
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl td.rr-wide:first-child { grid-column: 1 / -1; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl td.rr-wide:first-child { grid-column: 1 / -1; order: -1; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl td[data-l="İşlemler"] { grid-column: 1 / -1; padding-top: 12px; border-top: 1px solid var(--rr-line); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl td[data-l="İşlemler"]::before { display: none !important; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-varcell,
