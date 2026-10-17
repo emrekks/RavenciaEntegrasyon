@@ -908,7 +908,6 @@ body.rr-sheet-lock { overflow: hidden; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-fcard:not(.rr-fopen) .rr-search > small { display: none; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-fcard:not(.rr-fopen) .rr-search .rr-in { height: 40px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-fcount { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 1.5px 5px 0; color: #fff; background: var(--rr-primary); border-radius: 9px; font-size: 11px; font-weight: 700; line-height: 1; }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-in { font-size: 16px; }
 .rr-fshell:has(.rr-fopen) { container-type: normal !important; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-fopen > .rr-fscrim { display: block; position: fixed; inset: 0; z-index: 900; background: rgb(0 0 0 / 55%); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-fopen > .rr-filters { position: fixed; left: 0; right: 0; bottom: 0; z-index: 901; display: grid !important; grid-template-columns: minmax(0, 1fr) !important; gap: 14px; max-height: 86vh; overflow-y: auto; padding: 48px 16px 0; background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-bottom: 0; border-radius: 20px 20px 0 0; box-shadow: 0 -20px 50px rgb(0 0 0 / 45%); }
@@ -918,7 +917,7 @@ body.rr-sheet-lock { overflow: hidden; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-fopen .rr-fbtns { position: sticky; bottom: 0; display: grid !important; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0 -16px; padding: 12px 16px 20px; background: var(--rr-surface); border-top: 1px solid var(--rr-line); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-fopen .rr-fbtns .rr-btn { height: 44px; justify-content: center; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-fopen .rr-pop { position: static !important; width: 100% !important; min-width: 0 !important; max-width: none !important; margin-top: 6px; box-shadow: none; }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-fopen :is(.rr-in, .rr-trigger, .date-range-picker-trigger) { height: 44px; min-height: 44px; font-size: 16px; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-fopen :is(.rr-in, .rr-trigger, .date-range-picker-trigger) { height: 44px; min-height: 44px; font-size: 14px; }
 }
 /* ---------- phones: each return is a compact card (mobil-tum-sayfalar.html) ----------
    identity · status strip · buyer and carrier · products · reason · invoice and total · actions */
