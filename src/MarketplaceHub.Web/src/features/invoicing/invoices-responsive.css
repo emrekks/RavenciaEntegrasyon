@@ -348,3 +348,17 @@
   .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-modal .invoice-detail-summary > div:nth-child(4) { display: flex; flex-wrap: wrap; align-items: center; column-gap: 12px; }
   .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-modal .invoice-detail-summary > div:nth-child(4) > :first-child { flex-basis: 100%; }
 }
+
+/* Invoice detail on phones: a product line is the picture beside its text (name, codes, then quantity and price under
+   them) instead of three columns that squeezed the name to one word per line; the footer puts the platform refresh on
+   its own row over two equal buttons. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-line.invoice-detail-line { grid-template-columns: 44px minmax(0, 1fr); align-items: start; gap: 3px 12px; }
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-line.invoice-detail-line > :first-child { grid-row: 1 / span 3; }
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-line.invoice-detail-line > div > :is(strong, small) { grid-column: 2; grid-row: auto; overflow-wrap: normal; word-break: normal; }
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-line.invoice-detail-line > div > small:last-child { align-self: start; white-space: normal; color: var(--rv-color-ink); }
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-footer.invoice-detail-footer { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); }
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-footer.invoice-detail-footer > .invoice-detail-footer-gap { display: none; }
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-footer.invoice-detail-footer > .invoice-detail-platform-refresh { grid-column: 1 / -1; justify-content: center; }
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-footer.invoice-detail-footer > :is(button, .button-link) { width: 100%; min-width: 0; justify-content: center; }
+}
