@@ -648,6 +648,20 @@
   .modal.img .m-head { padding-left: 16px; padding-right: 12px; } .modal.img .m-foot { padding-left: 16px; padding-right: 12px; }
   /* image preview: product name first, its codes under it */
   .modal.img .m-head > div { display: flex; flex-direction: column-reverse; gap: 2px; }
+  /* the price column must hold a full amount (₺1.669,40) */
+  @media (min-width: 1101px) { .tbl col.c-price, .tbl.no-buyer col.c-price { width: 8%; } .tbl col.c-inv { width: 10%; } .tbl.no-buyer col.c-inv { width: 11%; } .tbl td.price-col { --cp: 8px; } .prices .pr { min-width: 0; } .prices .pr b { white-space: nowrap; } }
+  /* headings: room for the filter icon on the right, long names wrap to two short lines instead of running under the icon */
+  .tbl th { height: auto; min-height: 44px; padding-top: 8px; padding-bottom: 8px; padding-left: 10px; padding-right: 34px; white-space: normal; line-height: 1.25; }
+  .tbl th .hf { white-space: normal !important; text-align: center; }
+  .tbl th:not(:has(.anchor)) { padding-right: 10px; }
+  .tbl th:first-child { padding-left: 16px; }
+  /* final balance for 1101px and up: names and tracking numbers do not break mid-word */
+  @media (min-width: 1101px) {
+    .tbl col.c-buyer { width: 8%; } .tbl col.c-prod { width: 22%; } .tbl col.c-price { width: 8%; } .tbl col.c-cargo { width: 9%; } .tbl col.c-inv { width: 10%; } .tbl col.c-reason { width: 8%; } .tbl col.c-status { width: 11%; } .tbl col.c-act { width: 10%; }
+    .tbl.has-select col.c-prod { width: 21%; }
+    .tbl td[data-l="Alıcı"], .tbl td[data-l="Kargo"] { padding-left: 8px; padding-right: 8px; }
+    .tbl .cust b { overflow-wrap: normal !important; word-break: normal !important; hyphens: manual; }
+  }
 </style>
 </head>
 <body>
