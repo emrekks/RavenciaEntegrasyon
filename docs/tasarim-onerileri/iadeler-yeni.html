@@ -468,6 +468,8 @@
   .stage .modal.img .img-preview { height: 420px; }
   /* the filter area and its menus stay above the table (whose filter icons are lifted above the rows) */
   .fshell { position: relative; z-index: 80; }
+  /* the ring sits at the vertical middle of its label, also when the label takes two lines */
+  .ring { align-items: center; } .ring svg { margin-top: 0; }
   .tone-prog { --tone: var(--violet); } .tone-move { --tone: var(--info); } .tone-wait { --tone: var(--warn); } .tone-ok { --tone: var(--ok); } .tone-bad { --tone: var(--bad); } .tone-off { --tone: var(--subtle); }
   /* actions column: "İşlemler" menu and the detail link */
   .actcell { display: grid; gap: 8px; justify-items: center; }
