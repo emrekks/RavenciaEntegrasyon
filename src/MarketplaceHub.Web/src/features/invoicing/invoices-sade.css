@@ -333,3 +333,13 @@ body .invoice-reference-actions-popover > button:disabled { opacity: .45; }
   .app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-head, .invoice-reference-row) { grid-template-columns: minmax(0, 19fr) minmax(0, 12fr) minmax(0, 12fr) minmax(0, 16fr) minmax(0, 17fr) minmax(0, 11fr) minmax(0, 12fr); }
 }
 .reference-invoices-page .status-ring svg { width: 18px; height: 18px; }
+
+/* Actions menu as in the proposal: a leading icon on every item, a divider before the manual-invoice group */
+body .invoice-reference-actions-popover { min-width: 290px; padding: 8px !important; }
+body .invoice-reference-actions-popover > button { gap: 12px; min-height: 40px; padding: 8px 12px; font-size: 14px; font-weight: 500 !important; }
+body .invoice-reference-actions-popover > button > .ui-icon { flex: none; color: var(--rv-color-muted); }
+body .invoice-reference-actions-popover > button:hover:not(:disabled) > .ui-icon { color: var(--rv-color-ink); }
+body .invoice-reference-actions-popover > button:disabled { color: var(--rv-color-subtle); opacity: .6; }
+body .invoice-reference-actions-popover > .invoice-reference-actions-separator { height: 1px; margin: 6px 12px; background: var(--rv-color-border); border: 0; }
+/* Actions heading: the label keeps its room instead of shrinking to "İşleml…" */
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head > .order-column-filter:last-child { padding-left: 12px; }
