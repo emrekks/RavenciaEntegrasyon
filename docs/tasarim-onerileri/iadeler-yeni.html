@@ -667,6 +667,8 @@
   .apr-info, .refline .rh, .pcard .pc-h, .bcard-p, .sum > div { align-items: center; }
   .pcard dl.pairs { grid-template-columns: none; grid-auto-flow: column; grid-template-rows: repeat(2, auto); grid-auto-columns: minmax(0, 1fr); }
   @media (max-width: 760px) { .pcard dl.pairs { grid-auto-flow: row; grid-template-rows: none; grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  /* the price list spans the whole cell so its divider meets the product divider at the column line */
+  .tbl td.price-col .prices { width: 100% !important; margin-inline: 0 !important; justify-items: stretch !important; }
 </style>
 </head>
 <body>
@@ -690,8 +692,8 @@ const MARKS = {"trendyol":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAJgAAAA
 // mark like Pazarama and a compact one like N11 look equally big.
 const MARK_SIZE = {}
 // Heavy, solid marks read bigger than thin ones at the same area; these factors even that out by eye.
-const MARK_WEIGHT = { trendyol: 1.12, hepsiburada: .9, pazarama: .9, n11: .96, shopify: 1 }
-const MARK_AREA = 1250, MARK_MAX_H = 24, MARK_MAX_W = 96
+const MARK_WEIGHT = { trendyol: 1.25, hepsiburada: 1.08, pazarama: .95, n11: .92, shopify: 1 }
+const MARK_AREA = 1350, MARK_MAX_H = 26, MARK_MAX_W = 104
 async function equalizeMarks() {
   for (const [k, src] of Object.entries(MARKS)) {
     const img = new Image(); img.src = src; await img.decode()
