@@ -392,3 +392,11 @@
 
 /* The paper tabs fill the first row; the template controls wrap below them, aligned left. */
 .ss-page .ss-dz-bar > .ss-grow { display: none; }
+
+/* Group tabs scroll with the page, they are not sticky. */
+.ss-page .ss-gtabs.rv-view-tabs { position: static; top: auto; z-index: auto; }
+/* Inspector tabs (Genel / Yazı / Barkod) sit inside the panel with the same 12px gap on every side. */
+.ss-page .ss-dz-insp > .ss-itabs.rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs { width: auto !important; margin: 12px; }
+/* Custom block fields: title and content are the same size. */
+.ss-page .ss-lib-custom { align-items: start; }
+.ss-page .ss-lib-custom :is(input, textarea).ss-in { box-sizing: border-box; height: 36px; min-height: 36px; padding: 8px 12px; font-size: 14px; line-height: 18px; resize: vertical; }
