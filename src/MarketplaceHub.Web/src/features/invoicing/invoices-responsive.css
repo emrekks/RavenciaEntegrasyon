@@ -362,3 +362,34 @@
   .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-footer.invoice-detail-footer > .invoice-detail-platform-refresh { grid-column: 1 / -1; justify-content: center; }
   .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-footer.invoice-detail-footer > :is(button, .button-link) { width: 100%; min-width: 0; justify-content: center; }
 }
+
+/* Phones: an invoice card reads like a return card. Order line on top (logo, number, date), the buyer with the item
+   summary, the shipment state as a tinted strip, the carrier in its own box, the invoice state beside the total and the
+   two actions; cells drop the lines and paddings the older table rules gave them. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row {
+    display: grid !important; grid-template-columns: minmax(0, 1fr) auto !important; grid-template-areas: "order order" "buyer buyer" "shipment shipment" "products products" "status amount" "actions actions" !important;
+    gap: 10px 12px; padding: 12px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 14px;
+  }
+  .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > * { min-width: 0; margin: 0; padding: 0 !important; background: none; border: 0 !important; box-shadow: none; }
+  .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-order { grid-area: order; display: grid; grid-template-columns: auto auto minmax(0, 1fr); align-items: center; gap: 10px; }
+  .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-order > div:last-child { display: grid; gap: 2px; min-width: 0; }
+  .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-order small { color: var(--rv-color-muted); font-size: 12.5px; }
+  .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-buyer { grid-area: buyer; display: flex !important; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+  .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-buyer > strong { font-size: 12.5px; font-weight: 500; }
+  .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-buyer > strong::before { content: "Alıcı: "; color: var(--rv-color-muted); font-weight: 400; }
+  .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-buyer small { color: var(--rv-color-muted); font-size: 12px; }
+  .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-shipment { grid-area: shipment; display: flex; align-items: center; padding: 8px 10px !important; background: color-mix(in srgb, var(--rv-color-primary) 12%, transparent); border-radius: 10px; }
+  .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-products { grid-area: products; display: flex !important; align-items: center; gap: 10px; padding: 8px 10px !important; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border) !important; border-radius: 10px; }
+  .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-products small { color: var(--rv-color-muted); font-size: 12px; }
+  .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-status { grid-area: status; display: flex; align-items: center; justify-content: flex-start; }
+  .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-amount { grid-area: amount; display: grid; justify-items: end; align-self: center; text-align: right; }
+  .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-actions { grid-area: actions; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-order { display: grid !important; grid-template-columns: auto auto minmax(0, 1fr) !important; grid-template-areas: none !important; }
+  .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-order > *,
+  .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-order > div > * { grid-area: auto !important; position: static !important; margin: 0 !important; transform: none !important; }
+  .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-order > div:last-child { display: grid !important; justify-items: start; }
+  .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-buyer { justify-content: flex-start !important; text-align: left !important; }
+  .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-buyer > * { grid-area: auto !important; margin: 0 !important; text-align: left !important; }
+  .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-shipment { justify-content: flex-start !important; background: color-mix(in srgb, var(--rv-color-primary) 12%, transparent) !important; }
+}
