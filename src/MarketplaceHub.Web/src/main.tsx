@@ -6,6 +6,7 @@ import { App } from './app/App'
 import './app.css'
 import responsiveStylesheet from './styles/responsive.css?url'
 import { installScrollbarVisibility } from './shared/scrollbar-visibility'
+import { installDialogScrollLock } from './shared/hooks/useScrollLock'
 
 // Phone and tablet rules for the main-bundle screens live in their own file, linked for small
 // screens only, so desktop never applies them and the main CSS budget stays as it is.
@@ -16,6 +17,7 @@ responsiveLink.media = '(max-width: 1100px)'
 document.head.appendChild(responsiveLink)
 
 installScrollbarVisibility()
+installDialogScrollLock()
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 60_000, refetchOnWindowFocus: false } } })
 createRoot(document.getElementById('root')!).render(<StrictMode><QueryClientProvider client={queryClient}><BrowserRouter><App /></BrowserRouter></QueryClientProvider></StrictMode>)

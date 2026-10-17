@@ -1124,6 +1124,7 @@ function render() {
   MORE_TABS = [...BASE_MORE]
   document.getElementById('root').innerHTML = page()
   for (let i = 0; i < 5 && fitTabs(); i++) document.getElementById('root').innerHTML = page()
+  document.body.style.overflow = S.modal ? 'hidden' : ''
   document.getElementById('layer').innerHTML = (S.modal ? `<div class="overlay" data-a="overlay">${POP[S.modal]()}</div>` : '') + (S.toast ? toastHtml(S.toast) : '')
   addGlyphs()
   if (window.innerWidth > 1100) alignPrices()
