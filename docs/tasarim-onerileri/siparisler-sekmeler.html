@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sipariş Sekmeleri</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #101014; --surface: #17171c; --raised: #1d1d23; --soft: #22222a; --sunk: #121216;
+    --line: #2a2a32; --line-strong: #383842;
+    --ink: #ececf0; --muted: #a3a3b0; --subtle: #6f6f7c;
+    --primary: #8b5cf6; --primary-soft: #272139;
+    --violet: color-mix(in srgb, var(--primary) 55%, white);
+    --violet-line: color-mix(in srgb, var(--primary) 55%, transparent);
+    --warn: #e2aa4b; --bad: #e4636f; --ok: #46b98f; --info: #83b4ff;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { overflow-x: clip; }
+  body { margin: 0; font: 14px/1.5 Inter, "Segoe UI", system-ui, sans-serif; color: var(--ink); background: var(--bg); -webkit-font-smoothing: antialiased; }
+  h1, h2, h3, p { margin: 0; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  .num { font-variant-numeric: tabular-nums; }
+  .ico { width: 16px; height: 16px; flex: none; display: block; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 32px 16px 96px; display: grid; gap: 28px; }
+  .intro h1 { font-size: 22px; font-weight: 600; }
+  .intro p { color: var(--muted); margin-top: 6px; max-width: 76ch; }
+  .picker { display: flex; flex-wrap: wrap; gap: 6px; position: sticky; top: 0; z-index: 9; padding: 10px 0; background: var(--bg); }
+  .picker button { height: 34px; padding: 0 12px; color: var(--muted); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 7px; font-size: 13px; }
+  .picker button[aria-pressed="true"] { color: var(--ink); background: var(--primary-soft); border-color: var(--violet-line); }
+  .option { display: grid; gap: 12px; margin-bottom: 44px; }
+  .option-head h2 { font-size: 17px; font-weight: 600; }
+  .option-head p { color: var(--muted); font-size: 13px; margin-top: 4px; max-width: 86ch; }
+  .page { display: grid; gap: 16px; padding: 24px; background: var(--bg); border: 1px solid var(--line); border-radius: 14px; }
+  .ph { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
+  .ph small { color: var(--subtle); font-size: 12px; }
+  .ph h3 { font-size: 22px; font-weight: 600; }
+  .ph .btn.primary { height: 36px; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 7px; font-size: 13px; white-space: nowrap; }
+  .btn.primary { color: #fff; background: var(--primary); border-color: var(--primary); }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+  .filters { display: grid; grid-template-columns: minmax(180px, 1.2fr) minmax(140px, .8fr) minmax(150px, .8fr) minmax(190px, 1fr) auto; gap: 12px; align-items: end; padding: 16px; }
+  .filters label { display: grid; gap: 6px; color: var(--muted); font-size: 12px; min-width: 0; }
+  .field { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 7px; font-size: 13.5px; white-space: nowrap; overflow: hidden; }
+  .field.ph2 { color: var(--subtle); }
+  .field .chev { margin-left: auto; color: var(--muted); }
+  .table { overflow: hidden; }
+  .thead { display: grid; grid-template-columns: 2fr 1.2fr 2.4fr 1fr 1.2fr 1.3fr 1.2fr; height: 44px; align-items: center; color: var(--muted); font-size: 12.5px; background: var(--raised); border-bottom: 1px solid var(--line); }
+  .thead span { padding: 0 14px; }
+  .trow { height: 64px; border-bottom: 1px solid var(--line); background: linear-gradient(90deg, transparent 14px, var(--soft) 14px, var(--soft) 30%, transparent 30%) 0 50% / 100% 10px no-repeat; opacity: .45; }
+  .trow:last-child { border-bottom: 0; }
+  .note { color: var(--subtle); font-size: 12px; }
+
+  /* base view tab, same as the live panel */
+  .vt { display: flex; overflow-x: auto; scrollbar-width: none; }
+  .vt button { position: relative; display: inline-flex; flex: none; align-items: center; gap: 8px; height: 46px; padding: 0 12px; color: var(--muted); background: none; border: 0; font-size: 13.5px; white-space: nowrap; }
+  .vt button + button::before { content: ""; position: absolute; left: 0; top: 50%; width: 1px; height: 18px; background: var(--line-strong); transform: translateY(-50%); }
+  .vt button svg { color: var(--subtle); }
+  .vt button .c { min-width: 22px; height: 20px; padding: 0 6px; display: inline-grid; place-items: center; background: var(--soft); border: 1px solid var(--line-strong); border-radius: 6px; color: var(--ink); font-size: 11.5px; font-weight: 500; }
+  .vt button:hover { color: var(--ink); }
+  .vt button.on { color: var(--ink); font-weight: 500; }
+  .vt button.on svg { color: var(--violet); }
+  .vt button.on::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: 0; height: 2px; border-radius: 2px; background: var(--primary); }
+
+  /* 1 — tabs and filters in one card */
+  .o1 .vt { padding: 0 8px; border-bottom: 1px solid var(--line); }
+
+  /* 2 — wrap onto two rows */
+  .o2 .vt { flex-wrap: wrap; padding: 4px 8px; overflow: visible; }
+  .o2 .vt button { height: 40px; }
+  .o2 .vt button.on::after { bottom: 2px; }
+
+  /* 3 — main tabs + more menu */
+  .o3 .bar { position: relative; display: flex; align-items: center; padding: 0 8px; border-bottom: 1px solid var(--line); }
+  .o3 .more { margin-left: 4px; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; color: var(--muted); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 7px; font-size: 13px; }
+  .o3 .more.on { color: var(--ink); background: var(--primary-soft); border-color: var(--violet-line); }
+  .o3 .menu { position: absolute; z-index: 3; top: calc(100% - 4px); right: 8px; width: 250px; padding: 6px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 12px; box-shadow: 0 18px 50px rgb(0 0 0 / 45%); }
+  .o3 .menu button { display: flex; width: 100%; align-items: center; gap: 10px; height: 38px; padding: 0 10px; background: none; border: 0; border-radius: 7px; font-size: 13.5px; color: var(--ink); }
+  .o3 .menu button:hover { background: var(--raised); }
+  .o3 .menu button svg { color: var(--muted); }
+  .o3 .menu button .c { margin-left: auto; color: var(--subtle); font-size: 12px; }
+  .o3 .menu button.on { background: var(--primary-soft); }
+
+  /* 4 — secondary tabs collapse to icon + count */
+  .o4 .vt { padding: 0 8px; }
+  .o4 .vt button.compact .lbl { display: none; }
+  .o4 .vt button.compact { padding: 0 10px; }
+  .o4 .vt .gap { flex: 1; }
+  .tip { position: relative; }
+  .tip:hover::after { content: attr(data-tip); position: absolute; z-index: 4; top: calc(100% + 4px); left: 50%; transform: translateX(-50%); padding: 5px 9px; color: var(--ink); background: var(--soft); border: 1px solid var(--line-strong); border-radius: 7px; font-size: 12px; font-weight: 400; white-space: nowrap; }
+
+  /* 5 — grouped with small group labels */
+  .o5 .groups { display: flex; gap: 0; padding: 8px 8px 0; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--line); }
+  .o5 .grp { display: grid; flex: none; }
+  .o5 .grp + .grp { margin-left: 10px; padding-left: 10px; border-left: 1px solid var(--line); }
+  .o5 .grp small { padding: 0 12px; color: var(--subtle); font-size: 11.5px; }
+  .o5 .grp .vt button { height: 40px; }
+
+  /* 6 — fit nine across, equal and smaller */
+  .o6 .vt { display: grid; grid-template-columns: repeat(9, minmax(0, auto)); justify-content: space-between; padding: 0 6px; }
+  .o6 .vt button { justify-content: center; gap: 6px; padding: 0 8px; font-size: 12.5px; }
+  .o6 .vt button .c { min-width: 20px; height: 18px; font-size: 11px; }
+  .o6 .vt button svg { width: 14px; height: 14px; }
+
+  /* 7 — vertical list beside the table */
+  .o7 .split { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 16px; align-items: start; }
+  .o7 .side { padding: 8px; display: grid; gap: 2px; }
+  .o7 .side button { display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 10px; color: var(--muted); background: none; border: 0; border-radius: 7px; font-size: 13.5px; text-align: left; }
+  .o7 .side button:hover { color: var(--ink); background: var(--raised); }
+  .o7 .side button svg { color: var(--subtle); }
+  .o7 .side button .c { margin-left: auto; min-width: 22px; height: 20px; padding: 0 6px; display: inline-grid; place-items: center; background: var(--soft); border: 1px solid var(--line-strong); border-radius: 6px; font-size: 11.5px; color: var(--ink); }
+  .o7 .side button.on { color: var(--ink); font-weight: 500; background: var(--primary-soft); box-shadow: inset 2px 0 0 var(--primary); }
+  .o7 .side button.on svg { color: var(--violet); }
+  .o7 .side hr { margin: 6px 4px; border: 0; border-top: 1px solid var(--line); }
+  .o7 .side small { padding: 6px 10px 2px; color: var(--subtle); font-size: 11.5px; }
+  .o7 .filters { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+
+  /* 8 — scroll with arrows and edge fade */
+  .o8 .scroller { position: relative; display: grid; grid-template-columns: 34px minmax(0, 1fr) 34px; align-items: center; border-bottom: 1px solid var(--line); }
+  .o8 .scroller .vt { mask-image: linear-gradient(90deg, transparent, #000 24px, #000 calc(100% - 24px), transparent); scroll-behavior: smooth; }
+  .o8 .arrow { display: grid; width: 28px; height: 28px; place-items: center; margin: 0 auto; color: var(--muted); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 7px; }
+  .o8 .arrow:hover { color: var(--ink); background: var(--raised); }
+
+  /* 9 — two levels: segmented phase + status chips */
+  .o9 .lv1 { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .o9 .seg { display: inline-grid; grid-auto-flow: column; padding: 3px; background: var(--sunk); border: 1px solid var(--line-strong); border-radius: 9px; }
+  .o9 .seg button { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 14px; color: var(--muted); background: none; border: 0; border-radius: 7px; font-size: 13px; }
+  .o9 .seg button.on { color: var(--ink); background: var(--raised); box-shadow: inset 0 0 0 1px var(--line-strong); }
+  .o9 .seg button .c { color: var(--subtle); font-size: 12px; }
+  .o9 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .o9 .chip { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 10px; color: var(--muted); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 999px; font-size: 12.5px; }
+  .o9 .chip svg { width: 14px; height: 14px; color: var(--subtle); }
+  .o9 .chip .c { color: var(--ink); font-weight: 500; }
+  .o9 .chip.on { color: var(--ink); background: var(--primary-soft); border-color: var(--violet-line); }
+  .o9 .chip.on svg { color: var(--violet); }
+
+  /* 10 — tabs in the page header */
+  .o10 .ph { flex-wrap: wrap; align-items: center; border-bottom: 1px solid var(--line); padding-bottom: 0; }
+  .o10 .ph .title { display: flex; align-items: baseline; gap: 12px; padding-bottom: 12px; }
+  .o10 .ph .vt { order: 3; flex-basis: 100%; margin: 0 -12px; }
+  .o10 .page { gap: 18px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="intro">
+    <h1>Sipariş Sekmeleri · 10 Öneri</h1>
+    <p>Siparişlerde dokuz sekme var; tek satıra sığmıyor ve ayrı kartta sayfadan kopuk duruyor. Her öneri sayfanın başı, filtreler ve tablonun üst kısmıyla birlikte gösteriliyor. Sekmelere tıklayarak deneyebilirsin.</p>
+  </div>
+  <div class="picker" role="group" aria-label="Öneri seç" id="picker"></div>
+  <div id="options"></div>
+</div>
+<script>
+const P = {
+  all: '<path d="M2.5 3.5h11v9h-11z"/><path d="M2.5 6.5h11"/>',
+  new: '<circle cx="8" cy="8" r="5.8"/><path d="M8 5.4v5.2M5.4 8h5.2"/>',
+  processing: '<path d="M2.5 5.2 8 2.5l5.5 2.7v5.6L8 13.5l-5.5-2.7z"/><path d="M2.5 5.2 8 8l5.5-2.8M8 8v5.5"/>',
+  shipping: '<path d="M1.8 4h7.7v7H1.8zM9.5 6.5h2.8l2 2.3V11H9.5"/><circle cx="4.5" cy="11.8" r="1.2"/><circle cx="11.8" cy="11.8" r="1.2"/>',
+  done: '<circle cx="8" cy="8" r="5.8"/><path d="m5.5 8.2 1.7 1.7 3.4-3.6"/>',
+  cancelled: '<circle cx="8" cy="8" r="5.8"/><path d="m6 6 4 4M10 6l-4 4"/>',
+  resend: '<path d="M13 8a5 5 0 1 1-1.5-3.6"/><path d="M13 2.5V5h-2.5"/>',
+  paused: '<circle cx="8" cy="8" r="5.8"/><path d="M6.6 5.8v4.4M9.4 5.8v4.4"/>',
+  partial: '<circle cx="8" cy="8" r="5.8"/><path d="M5.4 8h5.2"/>',
+  chev: '<path d="m4.5 6.5 3.5 3.5 3.5-3.5"/>', left: '<path d="m9.5 4-4 4 4 4"/>', right: '<path d="m6.5 4 4 4-4 4"/>',
+  dots: '<circle cx="4" cy="8" r=".9"/><circle cx="8" cy="8" r=".9"/><circle cx="12" cy="8" r=".9"/>',
+  search: '<circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/>', cal: '<rect x="2.5" y="3.5" width="11" height="10" rx="1.5"/><path d="M5.5 2v3M10.5 2v3M2.5 7h11"/>',
+  sync: '<path d="M13 8a5 5 0 1 1-1.5-3.6"/><path d="M13 2.5V5h-2.5"/>'
+};
+const ic = n => `<svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n]}</svg>`;
+const tabs = [
+  { k: 'ALL', l: 'Tümü', i: 'all', c: 1869, g: 'all' },
+  { k: 'NEW', l: 'Yeni', i: 'new', c: 12, g: 'open' },
+  { k: 'PROCESSING', l: 'İşleme Alınanlar', i: 'processing', c: 0, g: 'open' },
+  { k: 'SHIPPED', l: 'Kargoda', i: 'shipping', c: 62, g: 'open' },
+  { k: 'DELIVERED', l: 'Teslim Edildi', i: 'done', c: 1725, g: 'closed' },
+  { k: 'CANCELLED', l: 'İptal', i: 'cancelled', c: 67, g: 'closed' },
+  { k: 'PARTIALLY_CANCELLED', l: 'Kısmi İptal', i: 'partial', c: 3, g: 'closed' },
+  { k: 'RESENT', l: 'Yeniden Gönderimler', i: 'resend', c: 0, g: 'exception' },
+  { k: 'ON_HOLD', l: 'Askıdaki', i: 'paused', c: 0, g: 'exception' }
+];
+const fmt = n => n.toLocaleString('tr-TR');
+const tab = (t, a, extra = '') => `<button type="button" role="tab" data-k="${t.k}" class="${t.k === a ? 'on' : ''}${extra}">${ic(t.i)}<span class="lbl">${t.l}</span><span class="c num">${fmt(t.c)}</span></button>`;
+const head = () => `<div class="ph"><div><small>Sipariş Yönetimi</small><h3>Siparişler</h3></div><button class="btn primary" type="button">${ic('sync')}Siparişleri Senkronize Et</button></div>`;
+const filters = (cls = '') => `<div class="filters ${cls}"><label>Sipariş Ara<span class="field ph2">${ic('search')}Sipariş no, müşteri veya barkod</span></label><label>Platform<span class="field">Tüm Platformlar<span class="chev">${ic('chev')}</span></span></label><label>Sıralama<span class="field">En Yeni Siparişler<span class="chev">${ic('chev')}</span></span></label><label>Sipariş Tarihi<span class="field">${ic('cal')}Tarih Aralığı Seçin<span class="chev">${ic('chev')}</span></span></label><button class="btn" type="button">Filtreleri Temizle</button></div>`;
+const table = () => `<div class="card table"><div class="thead"><span>Sipariş Bilgileri</span><span>Alıcı</span><span>Bilgiler</span><span>Birim Fiyat</span><span>Kargo</span><span>Fatura</span><span>Etiket</span></div><div class="trow"></div><div class="trow"></div></div>`;
+const vt = (list, a, extra = () => '') => `<div class="vt" role="tablist">${list.map(t => tab(t, a, extra(t))).join('')}</div>`;
+
+const designs = [
+  { n: 1, title: 'Filtrelerle Tek Kart', text: 'Faturalar sayfasındaki gibi: sekmeler filtrelerle aynı kartın üst satırı olur. Sekme satırı kartın içinde bir başlık şeridi gibi durur, sayfadan kopmaz. Sığmayan sekmeler yana kayar.',
+    render: s => `${head()}<div class="card">${vt(tabs, s.a)}${filters()}</div>${table()}` },
+  { n: 2, title: 'İki Satıra Kırılan Sekmeler', text: 'Sekmeler kartın içinde sığmadığında alt satıra geçer; kaydırma hiç yok, dokuz sekmenin hepsi her zaman görünür. Filtrelerle aynı kartta.',
+    render: s => `${head()}<div class="card"><div class="o2">${vt(tabs, s.a)}</div><div style="border-top:1px solid var(--line)">${filters()}</div></div>${table()}` },
+  { n: 3, title: 'Ana Sekmeler ve "Diğer" Menüsü', text: 'Sık kullanılan altı sekme görünür; Kısmi İptal, Yeniden Gönderimler ve Askıdaki "Diğer" menüsüne girer. Menüden biri seçilince düğme o sekmenin adını alır ve vurgulanır.',
+    render: s => { const main = tabs.slice(0, 6), rest = tabs.slice(6); const sel = rest.find(t => t.k === s.a); return `${head()}<div class="card"><div class="bar">${vt(main, s.a)}<button type="button" class="more${sel ? ' on' : ''}" data-toggle="1">${sel ? ic(sel.i) + sel.l + `<span class="num" style="color:var(--violet)">${fmt(sel.c)}</span>` : ic('dots') + 'Diğer <span class="num" style="color:var(--subtle)">3</span>'}${ic('chev')}</button>${s.open ? `<div class="menu" role="menu">${rest.map(t => `<button type="button" data-k="${t.k}" class="${t.k === s.a ? 'on' : ''}">${ic(t.i)}${t.l}<span class="c num">${fmt(t.c)}</span></button>`).join('')}</div>` : ''}</div>${filters()}</div>${table()}` } },
+  { n: 4, title: 'İkincil Sekmeler Simgeye İner', text: 'Ana dört-beş sekme adıyla yazılır; az kullanılan sekmeler sağda yalnızca simge ve sayı olarak durur, üzerine gelince adı balonla çıkar. Seçilince adı da görünür. Hepsi tek satıra sığar.',
+    render: s => `${head()}<div class="card"><div class="o4"><div class="vt" role="tablist">${tabs.slice(0, 6).map(t => tab(t, s.a)).join('')}<span class="gap"></span>${tabs.slice(6).map(t => tab(t, s.a, t.k === s.a ? '' : ' compact tip').replace('<button', `<button data-tip="${t.l}"`)).join('')}</div></div><div style="border-top:1px solid var(--line)">${filters()}</div></div>${table()}` },
+  { n: 5, title: 'Gruplu Sekmeler', text: 'Sekmeler anlamına göre gruplanır: Açık Siparişler (Yeni, İşleme Alınanlar, Kargoda), Kapananlar (Teslim, İptal, Kısmi İptal) ve İstisnalar (Yeniden Gönderim, Askıda). Grup adları küçük yazıyla üstte.',
+    render: s => { const grp = (label, g) => `<div class="grp"><small>${label}</small>${vt(tabs.filter(t => t.g === g), s.a)}</div>`; return `${head()}<div class="card"><div class="o5"><div class="groups">${grp('Genel', 'all')}${grp('Açık Siparişler', 'open')}${grp('Kapananlar', 'closed')}${grp('İstisnalar', 'exception')}</div></div>${filters()}</div>${table()}` } },
+  { n: 6, title: 'Satıra Sığdırılmış Eşit Dağılım', text: 'Yazı ve simge biraz küçülür, dokuz sekme satıra eşit aralıklarla yayılır; kaydırma yok, kartın iki ucu dolu. Ayrı bir kart yerine filtre kartının üst satırı.',
+    render: s => `${head()}<div class="card"><div class="o6" style="border-bottom:1px solid var(--line)">${vt(tabs, s.a)}</div>${filters()}</div>${table()}` },
+  { n: 7, title: 'Solda Dikey Liste', text: 'Sekmeler tablonun solunda dikey bir menü olur; gruplar ince çizgilerle ayrılır. Dokuz sekme rahatça sığar, sayılar hizalı durur. Tablo biraz daralır.',
+    render: s => { const g = (label, key) => `<small>${label}</small>${tabs.filter(t => t.g === key).map(t => `<button type="button" data-k="${t.k}" class="${t.k === s.a ? 'on' : ''}">${ic(t.i)}${t.l}<span class="c num">${fmt(t.c)}</span></button>`).join('')}`; return `${head()}<div class="o7"><div class="split"><nav class="card side" role="tablist">${g('Genel', 'all')}<hr>${g('Açık Siparişler', 'open')}<hr>${g('Kapananlar', 'closed')}<hr>${g('İstisnalar', 'exception')}</nav><div style="display:grid;gap:16px"><div class="card">${filters()}</div>${table()}</div></div></div>` } },
+  { n: 8, title: 'Oklarla Kayan Sekmeler', text: 'Sekmeler tek satırda kalır; iki uçta kaydırma okları ve kenarlarda yumuşak geçiş var. Sağda daha fazla sekme olduğu belli olur, tıklayınca kayar.',
+    render: s => `${head()}<div class="card"><div class="o8"><div class="scroller"><button type="button" class="arrow" data-scroll="-1" aria-label="Sola kaydır">${ic('left')}</button>${vt(tabs, s.a)}<button type="button" class="arrow" data-scroll="1" aria-label="Sağa kaydır">${ic('right')}</button></div></div>${filters()}</div>${table()}` },
+  { n: 9, title: 'Aşama ve Durum Çipleri', text: 'Üstte üç aşamalı seçici: Açık, Kapanan, Tümü. Yanında seçili aşamanın durumları yuvarlak çipler olarak. Dokuz sekme yerine önce aşama, sonra durum seçilir.',
+    render: s => { const phase = s.phase || 'open'; const list = phase === 'all' ? tabs : tabs.filter(t => t.g === phase || (phase === 'open' && t.g === 'exception')); const sum = k => fmt(tabs.filter(t => k === 'all' ? t.k === 'ALL' : t.g === k || (k === 'open' && t.g === 'exception')).reduce((a, t) => a + t.c, 0)); return `${head()}<div class="card"><div class="o9"><div class="lv1"><div class="seg" role="tablist">${[['open', 'Açık', 'new'], ['closed', 'Kapanan', 'done'], ['all', 'Tümü', 'all']].map(([k, l, i]) => `<button type="button" data-phase="${k}" class="${phase === k ? 'on' : ''}">${ic(i)}${l}<span class="c num">${sum(k)}</span></button>`).join('')}</div><div class="chips">${list.filter(t => t.k !== 'ALL').map(t => `<button type="button" class="chip${t.k === s.a ? ' on' : ''}" data-k="${t.k}">${ic(t.i)}${t.l}<span class="c num">${fmt(t.c)}</span></button>`).join('')}</div></div></div>${filters()}</div>${table()}` } },
+  { n: 10, title: 'Sayfa Başlığında Sekmeler', text: 'Sekmeler kart içinde değil, sayfa başlığının hemen altında, başlıkla aynı çizgi üzerinde durur; sayfanın kendi gezinme satırı gibi. Filtreler ve tablo altında ayrı kartlarda.',
+    render: s => `<div class="o10"><div class="ph"><div class="title"><div><small>Sipariş Yönetimi</small><h3>Siparişler</h3></div></div><button class="btn primary" type="button" style="margin-bottom:12px">${ic('sync')}Siparişleri Senkronize Et</button>${vt(tabs, s.a)}</div></div><div class="card">${filters()}</div>${table()}` }
+];
+
+const state = Object.fromEntries(designs.map(d => [d.n, { a: 'ALL', open: false, phase: 'open' }]));
+const draw = n => { document.querySelector(`[data-n="${n}"] .page`).innerHTML = designs.find(d => d.n === n).render(state[n]) };
+document.getElementById('picker').innerHTML = '<button type="button" data-show="all" aria-pressed="true">Hepsi</button>' + designs.map(d => `<button type="button" data-show="${d.n}" aria-pressed="false">${d.n} · ${d.title}</button>`).join('');
+document.getElementById('options').innerHTML = designs.map(d => `<section class="option o${d.n}" data-n="${d.n}"><div class="option-head"><h2>Öneri ${d.n} · ${d.title}</h2><p>${d.text}</p></div><div class="page"></div></section>`).join('');
+designs.forEach(d => draw(d.n));
+document.getElementById('options').addEventListener('click', e => {
+  const sec = e.target.closest('.option'); if (!sec) return;
+  const n = Number(sec.dataset.n), st = state[n];
+  const k = e.target.closest('[data-k]'), tg = e.target.closest('[data-toggle]'), ph = e.target.closest('[data-phase]'), sc = e.target.closest('[data-scroll]');
+  if (sc) { sec.querySelector('.vt').scrollBy({ left: Number(sc.dataset.scroll) * 240 }); return }
+  if (k) { st.a = k.dataset.k; st.open = false }
+  else if (tg) st.open = !st.open;
+  else if (ph) { st.phase = ph.dataset.phase; st.a = ph.dataset.phase === 'all' ? 'ALL' : st.a }
+  else return;
+  draw(n);
+});
+document.querySelectorAll('#picker button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('#picker button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  document.querySelectorAll('.option').forEach(s => s.hidden = b.dataset.show !== 'all' && s.dataset.n !== b.dataset.show);
+}));
+</script>
+</body>
+</html>
