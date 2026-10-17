@@ -193,7 +193,7 @@ function orderRingDetail(item: InvoiceWorkspace, kind: InvoiceGlyphKind) {
 }
 function invoiceRingDetail(item: InvoiceWorkspace, kind: InvoiceGlyphKind, failed: boolean) {
   if (failed) return invoiceFailureReason(item.invoiceErrorCode ?? null)
-  if (kind === 'waiting') return item.invoiceDueAt ? `Son Tarih: ${new Date(item.invoiceDueAt).toLocaleDateString('tr-TR')}` : 'Kesilmedi'
+  if (kind === 'waiting') return item.invoiceDueAt ? `Son Tarih: ${new Date(item.invoiceDueAt).toLocaleDateString('tr-TR')}` : undefined
   if (kind === 'sending') return 'Yanıt bekleniyor'
   if (kind === 'done') return item.invoiceNumber || item.manualInvoiceNumber || 'Pazaryerinde'
   if (kind === 'cancelled') return 'İptal edildi'
