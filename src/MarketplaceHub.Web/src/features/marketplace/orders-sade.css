@@ -204,3 +204,5 @@
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-actcell > :only-child { grid-column: 1 / -1; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-actcell .rr-trigger > span { flex: none; }
 }
+/* the unit price column keeps room for a four-digit amount with breathing space on both sides */
+@media (min-width: 761px) { main .rr.rr-orders .rr-tbl.rr-tbl col.rr-c-price { width: 90px; } }
