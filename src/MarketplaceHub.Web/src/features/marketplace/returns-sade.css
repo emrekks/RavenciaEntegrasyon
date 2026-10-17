@@ -875,7 +875,15 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-menu > button:focus-visible, :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt:focus-visible { outline: 2px solid color-mix(in srgb, var(--rr-primary) 70%, transparent); outline-offset: -2px; }
 /* the drop zone opens the file picker */
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-drop { cursor: pointer; }
-/* the toast keeps its own place above the page */
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-cargo-img { display: block; width: auto; max-width: min(112px, 100%); height: 28px; object-fit: contain; object-position: left center; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl .rr-cargocell .rr-cargo-img { max-width: 100%; object-position: center; }
 @media (max-width: 1100px) { :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl .rr-cargocell .rr-cargo-img { object-position: left center; } }
+/* the page frame of the proposal (28px 24px 96px; 16px sides on phones) */
+.app-shell.stitch-shell > main > .content.f3.rr { padding: 28px 24px 96px; }
+@media (max-width: 760px) { .app-shell.stitch-shell > main > .content.f3.rr { padding: 16px 16px 96px; } }
+/* the panel's global control rules (44px fields, 500 weight on every button) give way to the proposal's sizes */
+:is(main .rr.rr, .rr-layer.rr-layer) :is(.rr-in, .rr-trigger, .rr-btn, .rr-icon-btn, .rr-fbtn, .rr-switch, .rr-opt) { min-height: 0; }
+:is(main .rr.rr, .rr-layer.rr-layer) :is(.rr-icon-btn, .rr-fbtn) { min-width: 0; }
+:is(main .rr.rr, .rr-layer.rr-layer) :is(.rr-trigger, .rr-opt, .rr-pages button, .rr-thumb, .rr-icon-btn, .rr-fbtn), :is(main .rr.rr, .rr-layer.rr-layer) .rr-date .date-range-picker-trigger { font-weight: 400 !important; }
+:is(main .rr.rr, .rr-layer.rr-layer) :is(.rr-btn, .rr-switch, .rr-menu > button, .rr-actcell .rr-trigger) { font-weight: 500 !important; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-actcell .rr-btn.rr-link { font-weight: 600 !important; }
