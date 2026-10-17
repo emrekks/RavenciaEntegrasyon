@@ -65,12 +65,20 @@ export function ViewTabsWithMore({ items, more, value, onChange, ariaLabel, clas
   const menu = useRef<HTMLDivElement>(null)
   const [overflow, setOverflow] = useState<string[]>([])
   const row = useRef<HTMLDivElement>(null)
-  const moved = [...overflow, ...more]
+  // On phones every tab stays in one strip that scrolls sideways; the Diğer menu is for wider screens.
+  const [phone, setPhone] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 760px)').matches)
+  useEffect(() => {
+    const list = window.matchMedia('(max-width: 760px)')
+    const update = () => setPhone(list.matches)
+    list.addEventListener('change', update); window.addEventListener('resize', update)
+    return () => { list.removeEventListener('change', update); window.removeEventListener('resize', update) }
+  }, [])
+  const moved = phone ? [] : [...overflow, ...more]
   const main = items.filter(item => !moved.includes(item.value))
   const extra = items.filter(item => moved.includes(item.value))
   useLayoutEffect(() => {
     const element = row.current
-    if (!element || element.scrollWidth <= element.clientWidth + 1) return
+    if (phone || !element || element.scrollWidth <= element.clientWidth + 1) return
     const next = items.map(item => item.value).filter((candidate, index) => index > 0 && !moved.includes(candidate) && candidate !== value).pop()
     if (next) setOverflow(current => [next, ...current])
   })
@@ -85,6 +93,7 @@ export function ViewTabsWithMore({ items, more, value, onChange, ariaLabel, clas
     return () => { observer.disconnect(); window.removeEventListener('resize', refit) }
   }, [])
   const selectedExtra = extra.find(item => item.value === value)
+  useEffect(() => { if (phone) row.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'center' }) }, [phone, value])
   useEffect(() => {
     if (!open) return
     const place = () => { const rect = trigger.current?.getBoundingClientRect(); if (rect) setPosition({ top: rect.bottom + 6, right: Math.max(12, window.innerWidth - rect.right) }) }
@@ -94,7 +103,7 @@ export function ViewTabsWithMore({ items, more, value, onChange, ariaLabel, clas
     return () => { window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true); document.removeEventListener('pointerdown', close); document.removeEventListener('keydown', close) }
   }, [open])
   const tab = (item: ViewTabItem) => <button key={item.value} type="button" role="tab" tabIndex={item.value === value ? 0 : -1} aria-selected={item.value === value} className={item.value === value ? 'is-active' : ''} onClick={() => onChange(item.value)}><span className="rv-tab-label">{item.label}</span>{item.count !== undefined ? <span className={`rv-tab-count${item.countTone === 'warn' ? ' is-warn' : ''}`}>{item.count}</span> : null}</button>
-  return <div ref={row} className={['rv-tabs', 'rv-view-tabs', className].filter(Boolean).join(' ')} role="tablist" aria-label={ariaLabel}>
+  return <div ref={row} className={['rv-tabs', 'rv-view-tabs', phone ? 'is-strip' : '', className].filter(Boolean).join(' ')} role="tablist" aria-label={ariaLabel}>
     {main.map(tab)}
     {extra.length > 0 && <button ref={trigger} type="button" role="tab" aria-selected={Boolean(selectedExtra)} aria-haspopup="menu" aria-expanded={open} tabIndex={selectedExtra ? 0 : -1} className={`rv-view-tabs-more${selectedExtra ? ' is-active' : ''}`} onClick={() => setOpen(current => !current)}>
       {selectedExtra ? <><span className="rv-tab-label">{selectedExtra.label}</span>{selectedExtra.count !== undefined && <span className="rv-tab-count">{selectedExtra.count}</span>}</> : <span className="rv-tab-label"><ViewTabIcon name="more" />Diğer</span>}

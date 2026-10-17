@@ -145,6 +145,24 @@ export function RrHeadCell({ label, active, extra, pop, sort, onSort }: { label:
   return <th className={active ? 'rr-has-filter' : undefined}><span className="rr-hf">{extra}{label}{onSort && <button type="button" className={`rr-sortbtn${sort ? ' rr-on' : ''}`} onClick={onSort} aria-pressed={Boolean(sort)} aria-label={`${label} sırala${sort === 'asc' ? ', düşükten yükseğe' : sort === 'desc' ? ', yüksekten düşüğe' : ''}`}><RrIcon name="sortv" /></button>}{pop && <RrAnchor trigger={(_open, toggle) => <button type="button" className="rr-fbtn" onClick={toggle} aria-label={`${label} filtresini aç`}><RrIcon name="filter" /></button>}>{pop}</RrAnchor>}</span></th>
 }
 
+// The filter card. On phones only the search field stays in the page; a "Filtre" button (with the number of active
+// filters) opens every other field in a sheet from the bottom, which closes again on Filtrele, Temizle or a tap outside.
+export function RrFilterCard({ active, children }: { active: number; children: ReactNode }) {
+  const [open, setOpen] = useState(false)
+  useEffect(() => {
+    if (!open) return
+    const key = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false) }
+    document.addEventListener('keydown', key)
+    document.body.classList.add('rr-sheet-lock')
+    return () => { document.removeEventListener('keydown', key); document.body.classList.remove('rr-sheet-lock') }
+  }, [open])
+  return <div className={`rr-fcard${open ? ' rr-fopen' : ''}`} onClick={event => { if (open && (event.target as Element).closest('.rr-fbtns button')) setOpen(false) }}>
+    <button type="button" className="rr-btn rr-ftoggle" aria-expanded={open} onClick={() => setOpen(true)}><RrIcon name="filter" />Filtre{active > 0 && <span className="rr-fcount">{active}</span>}</button>
+    {open && <div className="rr-fscrim" aria-hidden="true" onClick={() => setOpen(false)} />}
+    {children}
+  </div>
+}
+
 // Popups: overlay, framed window with head, body and footer. Only the top window answers Escape.
 const modalStack: number[] = []
 let modalSeed = 0
