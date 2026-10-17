@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>İadeler · Yeni Tasarım</title>
+<!-- Breakpoints follow the panel: phone ≤760px, tablet 761–1100px (viewport), desktop above. -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -348,7 +349,7 @@
   .dpage .disp form { grid-column: 2; display: grid; grid-template-columns: minmax(0, 1.4fr) 90px minmax(0, 1fr) auto; gap: 8px; }
 
   /* ---------- table as cards when the page is narrow ---------- */
-  @container page (max-width: 979px) {
+  @media (max-width: 1100px) {
     .tbl colgroup, .tbl thead { display: none; }
     .tbl, .tbl tbody, .tbl tr, .tbl td { display: block; width: 100%; }
     .tbl tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px 16px; padding: 16px; border-bottom: 1px solid var(--line); }
@@ -362,18 +363,18 @@
     .tbl td.empty-row { grid-column: 1 / -1; }
     .filters .sheet-only { display: grid; }
   }
-  @container page (max-width: 500px) {
+  @media (max-width: 760px) {
     .tbl tbody tr { grid-template-columns: minmax(0, 1fr); }
   }
-  @container fshell (max-width: 900px) { .filters, .filters.has-sort { grid-template-columns: 1fr 1fr; } .filters .search { grid-column: 1 / -1; } .filters .fbtns { grid-column: 1 / -1; justify-content: flex-end; } }
-  @container fshell (max-width: 480px) { .filters, .filters.has-sort { grid-template-columns: 1fr; } }
-  @media (max-width: 1000px) {
+  @media (max-width: 1100px) { .filters, .filters.has-sort { grid-template-columns: 1fr 1fr; } .filters .search { grid-column: 1 / -1; } .filters .fbtns { grid-column: 1 / -1; justify-content: flex-end; } }
+  @media (max-width: 760px) { .filters, .filters.has-sort { grid-template-columns: 1fr; } }
+  @media (max-width: 1100px) {
     .shell { grid-template-columns: 1fr; } .side { display: none; }
     .metrics { grid-template-columns: 1fr 1fr; }
     .mock-grid { grid-template-columns: 1fr; }
     .dpage .two { grid-template-columns: 1fr; }
   }
-  @media (max-width: 700px) {
+  @media (max-width: 760px) {
     .page { padding: 16px 16px 96px; }
     .topbar { padding: 0 16px; }
     .kv, .dgrid { grid-template-columns: 1fr; } .dgrid .full { grid-column: auto; }
@@ -387,7 +388,7 @@
     .m-head { padding: 16px 16px 14px 18px; } .m-body { padding: 16px 18px; } .m-foot { padding: 12px 18px 14px; }
     .stage { padding: 16px 8px; }
   }
-  @media (max-width: 420px) { .metrics { grid-template-columns: 1fr; } }
+  @media (max-width: 760px) { .metrics { grid-template-columns: 1fr 1fr; } }
 
   /* ================= new design pass (matches the live invoices page) ================= */
   .page { gap: 16px; }
@@ -484,7 +485,7 @@
   @media (prefers-reduced-motion: reduce) { .state.loading .mark::after, .state .bar i { animation-duration: 3s; } }
 
   /* card layout on narrow pages, after the new table rules so they do not leak into the cards */
-  @container page (max-width: 979px) {
+  @media (max-width: 1100px) {
     .tbl th, .tbl td, .tbl td:first-child, .tbl td:last-child { padding: 0; border: 0; }
     .tbl tbody tr { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px 20px; padding: 16px; }
     .tbl td.mid { text-align: left; }
@@ -501,8 +502,20 @@
     /* card order: order info; buyer + status; products; cargo + invoice; reason; actions */
     .tbl td.wide:first-child { order: 1; } .tbl td[data-l="Alıcı"] { order: 2; } .tbl td[data-l="Durum"] { order: 3; } .tbl td[data-l="Bilgiler"] { order: 4; } .tbl td[data-l="Kargo"] { order: 5; } .tbl td[data-l="Fatura"] { order: 6; } .tbl td[data-l="İade Sebebi"] { order: 7; } .tbl td[data-l="İşlemler"] { order: 8; }
   }
-  @container page (max-width: 500px) {
+  @media (max-width: 760px) {
     .tbl tbody tr { grid-template-columns: minmax(0, 1fr); }
+  }
+
+  /* small desktops (1101–1280px): the table gets about 900px, so cells tighten instead of overflowing */
+  @media (min-width: 1101px) and (max-width: 1280px) {
+    .tbl td { padding: 16px 8px; font-size: 12.5px; }
+    .tbl td:first-child { padding-left: 12px; }
+    .tbl th { padding: 0 30px 0 8px; font-size: 12px; }
+    .tbl .cust b { overflow-wrap: anywhere; }
+    .tbl .actcell .trigger { padding: 0 6px 0 8px; font-size: 12.5px; }
+    .tbl .actcell .btn.link { font-size: 12px; }
+    .tbl col.c-prod { width: 20%; } .tbl col.c-reason { width: 10%; } .tbl col.c-act { width: 14%; }
+    .tbl th { padding-right: 28px; } .tbl th .hf { white-space: nowrap; }
   }
 </style>
 </head>
