@@ -507,6 +507,24 @@
     .tbl tbody tr { grid-template-columns: minmax(0, 1fr); }
   }
 
+
+  /* invoice amounts: label above, amount below */
+  .invcell { gap: 8px; }
+  .invcell .m { display: grid; justify-content: start; gap: 1px; }
+  .invcell .m b { font-size: 13px; }
+  /* product images in 2:3, as large as the column allows */
+  .pline { grid-template-columns: 64px minmax(0, 1fr); gap: 12px; }
+  .thumb { width: 64px; height: 96px; border-radius: 8px; }
+  .thumb.lg { width: 72px; height: 108px; }
+  .pcard .thumb, .sum .thumb { width: 40px; height: 60px; }
+  /* words are never split mid-word; status sits as ring above its label so long names fit narrow columns */
+  .ring b, .ring small { overflow-wrap: normal; word-break: normal; }
+  .tbl td[data-l="Durum"] .ring { flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+  .tbl td[data-l="Durum"] .ring > span { justify-items: center; }
+  .ordercell small { overflow-wrap: normal; word-break: normal; }
+  .ordercell small.num { overflow-wrap: anywhere; }
+  .tbl col.c-order { width: 15%; } .tbl col.c-buyer { width: 8%; } .tbl col.c-prod { width: 24%; } .tbl col.c-cargo { width: 10%; } .tbl col.c-inv { width: 12%; } .tbl col.c-reason { width: 11%; } .tbl col.c-status { width: 10%; } .tbl col.c-act { width: 10%; }
+  @media (max-width: 1100px) { .tbl td[data-l="Durum"] .ring { flex-direction: row; align-items: flex-start; text-align: left; } .tbl td[data-l="Durum"] .ring > span { justify-items: start; } }
   /* small desktops (1101–1280px): the table gets about 900px, so cells tighten instead of overflowing */
   @media (min-width: 1101px) and (max-width: 1280px) {
     .tbl td { padding: 16px 8px; font-size: 12.5px; }
@@ -515,7 +533,8 @@
     .tbl .cust b { overflow-wrap: anywhere; }
     .tbl .actcell .trigger { padding: 0 6px 0 8px; font-size: 12.5px; }
     .tbl .actcell .btn.link { font-size: 12px; }
-    .tbl col.c-prod { width: 20%; } .tbl col.c-reason { width: 10%; } .tbl col.c-act { width: 14%; }
+    .tbl col.c-order { width: 14%; } .tbl col.c-buyer { width: 8%; } .tbl col.c-prod { width: 25%; } .tbl col.c-cargo { width: 10%; } .tbl col.c-inv { width: 12%; } .tbl col.c-reason { width: 10%; } .tbl col.c-status { width: 9%; } .tbl col.c-act { width: 12%; }
+    .pline { grid-template-columns: 48px minmax(0, 1fr); gap: 10px; } .tbl .thumb { width: 48px; height: 72px; }
     .tbl th { padding-right: 28px; } .tbl th .hf { white-space: nowrap; }
   }
 </style>
