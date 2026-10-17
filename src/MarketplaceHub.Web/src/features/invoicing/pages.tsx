@@ -22,7 +22,7 @@ import './invoice-detail-ui.css'
 import './manual-invoice-document.css'
 import './invoices-responsive.css'
 import './invoices-sade.css'
-import { InvoiceGlyph, StatusRing, badgeGlyphKind, invoiceGlyphKind, invoiceStatusProgress, orderStatusProgress } from './invoice-state-glyph'
+import { InvoiceGlyph, StatusRing, type InvoiceGlyphKind, badgeGlyphKind, invoiceGlyphKind, invoiceStatusProgress, orderStatusProgress } from './invoice-state-glyph'
 
 type Invoice = { id: string; orderNumber: string; invoiceType: string; status: string; currency: string; payableTotal: number; invoiceNumber: string | null; dueAt: string | null; createdAt: string; version: number }
 type InvoiceWorkspaceLine = { sku: string; barcode: string | null; description: string; quantity: number; unitPrice: number; vatRate: number; imageUrl: string | null }
@@ -175,6 +175,31 @@ function invoiceFailureGuidance(code: string | null) {
 function Badge({ value, tone, label }: { value: string; tone?: 'good' | 'warn' | 'neutral'; label?: string }) { const normalized = value.trim().toUpperCase(); const resolvedTone = tone ?? (['READY', 'ACCEPTED', 'COMPLETED', 'ACTIVE', 'SUPPORTED', 'CANCELLED', 'DELIVERED', 'SUCCESS', 'CONFIRMED'].includes(normalized) ? 'good' : ['UNKNOWN_RESULT', 'VALIDATION_FAILED', 'MANUAL_REVIEW', 'UNAPPROVED', 'UNKNOWN', 'CANCELLATION_PENDING', 'FAILED', 'RETRYABLE_FAILURE', 'MARKETPLACE_FAILED'].includes(normalized) ? 'warn' : 'neutral'); return <span className={`badge ${resolvedTone}`}><InvoiceGlyph kind={badgeGlyphKind(value, resolvedTone)} />{label ?? statusLabel(value)}</span> }
 function isInvoiceFailureStatus(value: string | null | undefined) {
   return ['FATURA_REDDEDILDI', 'FATURA_PLATFORMA_AKTARILMADI', 'REJECTED', 'VALIDATION_FAILED', 'MANUAL_REVIEW', 'MARKETPLACE_FAILED'].includes(value?.trim().toUpperCase() ?? '')
+}
+// Detail line under the status rings of the table (proposal M): how long it has waited, who carries it, which invoice it got.
+function elapsedLabel(value: string) {
+  const minutes = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 60_000))
+  if (minutes < 5) return 'Az önce'
+  if (minutes < 60) return `${minutes} dk önce`
+  if (minutes < 1_440) return `${Math.round(minutes / 60)} sa önce`
+  return `${Math.round(minutes / 1_440)} gün önce`
+}
+function orderRingDetail(item: InvoiceWorkspace, kind: InvoiceGlyphKind) {
+  if (kind === 'placed') return elapsedLabel(item.orderedAt)
+  if (kind === 'packing') return 'Paketleniyor'
+  if (kind === 'carrier') return item.cargoProviderName || 'Kargo firmasında'
+  if (kind === 'done') return item.deliveredAt ? `Teslim: ${new Date(item.deliveredAt).toLocaleDateString('tr-TR')}` : undefined
+  if (kind === 'failed') return item.cargoProviderName || undefined
+  if (kind === 'cancelled') return 'Sipariş kapandı'
+  return undefined
+}
+function invoiceRingDetail(item: InvoiceWorkspace, kind: InvoiceGlyphKind, failed: boolean) {
+  if (failed) return invoiceFailureReason(item.invoiceErrorCode ?? null)
+  if (kind === 'waiting') return item.invoiceDueAt ? `Son Tarih: ${new Date(item.invoiceDueAt).toLocaleDateString('tr-TR')}` : 'Kesilmedi'
+  if (kind === 'sending') return 'Yanıt bekleniyor'
+  if (kind === 'done') return item.invoiceNumber || item.manualInvoiceNumber || 'Pazaryerinde'
+  if (kind === 'cancelled') return 'İptal edildi'
+  return undefined
 }
 function invoiceWorkspaceStatus(item: Pick<InvoiceWorkspace, 'invoiceId' | 'invoiceStatus' | 'canCreateInvoice' | 'platformInvoiceStatus'>) {
   if (['INVOICED', 'RECEIVED'].includes(item.platformInvoiceStatus?.trim().toUpperCase() ?? '')) return { value: 'FATURA_KONTROLDE', tone: 'success' as const }
@@ -559,8 +584,8 @@ export function InvoicesPage() {
           <div className="invoice-reference-order"><input className="invoice-reference-select" type="checkbox" aria-label={`${item.platformDisplayName} ${displayInvoiceOrderNumber(item.orderNumber)} siparişini seç`} checked={selectedPackages.has(item.packageId)} onChange={() => setSelectedPackages(current => { const next = new Set(current); if (next.has(item.packageId)) next.delete(item.packageId); else next.add(item.packageId); return next })} /><div className="order-reference-platform"><PlatformMark code={item.platformCode} name={item.platformDisplayName} /></div><div><InvoiceOrderNumber item={item} /><small>{new Date(item.orderedAt).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}{item.invoiceNumber?.trim() ? ` · ${item.invoiceNumber}` : ''}</small></div></div>
           <div className="invoice-reference-buyer"><strong>{invoiceCustomerDisplayName(item)}</strong><InvoiceProductSummary item={item} /></div>
           <div className="invoice-reference-products"><div className="cargo-provider-display invoice-cargo-provider"><CargoProviderIcon value={item.cargoProviderName ?? 'Kargo bilgisi yok'} fallbackText /></div><small>{item.cargoTrackingNumber ?? 'Takip numarası yok'}</small></div>
-          <div className="invoice-reference-shipment">{(() => { const kind = badgeGlyphKind(item.shipmentStatus, 'neutral'); return <StatusRing kind={kind} progress={orderStatusProgress(kind)} label={statusLabel(item.shipmentStatus)} detail={item.deliveredAt && invoiceWorkspaceStatus(item).value !== 'FATURA_KONTROLDE' ? `Teslim: ${new Date(item.deliveredAt).toLocaleDateString('tr-TR')}` : undefined} /> })()}</div>
-          <div className="invoice-reference-status">{(() => { const invoiceState = invoiceWorkspaceStatus(item); const failed = ['FATURA_REDDEDILDI', 'FATURA_PLATFORMA_AKTARILMADI'].includes(invoiceState.value); const due = item.invoiceDueAt ? new Date(item.invoiceDueAt) : null; return <StatusRing kind={invoiceGlyphKind(invoiceState.value)} progress={invoiceStatusProgress(invoiceState.value)} label={invoiceStatusLabel(invoiceState.value)} title={failed ? invoiceFailureReason(item.invoiceErrorCode ?? null) : undefined} detail={failed ? invoiceFailureReason(item.invoiceErrorCode ?? null) : due ? `Son Tarih: ${due.toLocaleDateString('tr-TR')}` : undefined} detailClassName={failed ? 'is-danger' : due && due.getTime() - Date.now() <= 86_400_000 ? 'deadline critical' : undefined} /> })()}{item.marketplaceInvoiceReadErrorCode && <small className="invoice-marketplace-read-error" title={item.marketplaceInvoiceReadErrorSummary ?? undefined}>{item.marketplaceInvoiceReadErrorCode === 'REMOTE_PACKAGE_NOT_FOUND' ? 'Paket bilgisi pazaryerinden alınamadı; kayıtlı fatura durumu gösteriliyor.' : 'Pazaryeri fatura durumu yenilenemedi.'}</small>}</div>
+          <div className="invoice-reference-shipment">{(() => { const kind = badgeGlyphKind(item.shipmentStatus, 'neutral'); return <StatusRing kind={kind} progress={orderStatusProgress(kind)} label={statusLabel(item.shipmentStatus)} detail={orderRingDetail(item, kind)} /> })()}</div>
+          <div className="invoice-reference-status">{(() => { const invoiceState = invoiceWorkspaceStatus(item); const failed = ['FATURA_REDDEDILDI', 'FATURA_PLATFORMA_AKTARILMADI'].includes(invoiceState.value); const due = item.invoiceDueAt ? new Date(item.invoiceDueAt) : null; return <StatusRing kind={invoiceGlyphKind(invoiceState.value)} progress={invoiceStatusProgress(invoiceState.value)} label={invoiceStatusLabel(invoiceState.value)} title={failed ? invoiceFailureReason(item.invoiceErrorCode ?? null) : undefined} detail={invoiceRingDetail(item, invoiceGlyphKind(invoiceState.value), failed)} detailClassName={failed ? 'is-danger' : due && due.getTime() - Date.now() <= 86_400_000 ? 'deadline critical' : undefined} /> })()}{item.marketplaceInvoiceReadErrorCode && <small className="invoice-marketplace-read-error" title={item.marketplaceInvoiceReadErrorSummary ?? undefined}>{item.marketplaceInvoiceReadErrorCode === 'REMOTE_PACKAGE_NOT_FOUND' ? 'Paket bilgisi pazaryerinden alınamadı; kayıtlı fatura durumu gösteriliyor.' : 'Pazaryeri fatura durumu yenilenemedi.'}</small>}</div>
           <div className="invoice-reference-amount"><strong>{item.amount.toLocaleString('tr-TR', { style: 'currency', currency: item.currency })}</strong><small>{item.isDueSoon ? 'Öncelikli Takip' : 'Sipariş Toplamı'}</small></div>
           <div className="invoice-reference-actions">
             <InvoiceReferenceActionsMenu

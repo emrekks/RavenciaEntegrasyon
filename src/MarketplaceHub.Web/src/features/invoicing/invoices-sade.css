@@ -329,3 +329,7 @@ body .invoice-reference-actions-popover > button:disabled { opacity: .45; }
 .reference-invoices-page .status-ring.is-failed { --ring: var(--rv-color-danger); }
 .app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-shipment, .invoice-reference-status) { place-content: center; place-items: center; }
 .app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-shipment, .invoice-reference-status) > * { justify-self: center !important; }
+@media (min-width: 1101px) {
+  .app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-head, .invoice-reference-row) { grid-template-columns: minmax(0, 19fr) minmax(0, 12fr) minmax(0, 12fr) minmax(0, 16fr) minmax(0, 17fr) minmax(0, 11fr) minmax(0, 12fr); }
+}
+.reference-invoices-page .status-ring svg { width: 18px; height: 18px; }
