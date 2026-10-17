@@ -743,7 +743,7 @@
   .actcell .btn.lbl { min-width: 0; }
   .invcell .inv-trigger { white-space: nowrap; text-align: left; }
   .invcell .m > span { white-space: nowrap; }
-  .pline small:not(.card-only) { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+  .pline small:not(.card-only) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   @media (max-width: 760px) { .ltbl :is(th, td):nth-child(n+3):not(:last-child) { display: none; } .ltbl td:first-child { overflow-wrap: anywhere; } }
 </style>
 </head>

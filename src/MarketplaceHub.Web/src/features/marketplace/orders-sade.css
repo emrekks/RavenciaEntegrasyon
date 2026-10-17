@@ -116,7 +116,7 @@
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-actcell .rr-btn.rr-lbl { min-width: 0; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-invcell .rr-inv-trigger { white-space: nowrap; text-align: left; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-invcell .rr-m > span { white-space: nowrap; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-pline small:not(.rr-card-only) { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-pline small:not(.rr-card-only) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 760px) {
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ltbl :is(th, td):nth-child(n+3):not(:last-child) { display: none; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ltbl td:first-child { overflow-wrap: anywhere; }
