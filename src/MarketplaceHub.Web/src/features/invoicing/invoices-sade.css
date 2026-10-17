@@ -350,18 +350,3 @@ body .invoice-reference-actions-popover > .invoice-reference-actions-separator {
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-row > :nth-child(3) small { overflow: hidden; max-width: 100%; font-size: 11.5px; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head > .order-column-filter { padding-left: 20px; padding-right: 36px; }
 
-/* View tabs, proposal 12: no frame, icon + label + boxed count, violet underline on the active tab */
-.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-tabs { display: flex; width: auto; gap: 2px; padding: 0; overflow-x: auto; background: none; border: 0; border-bottom: 1px solid var(--rv-color-border); border-radius: 0; }
-.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-tabs > button { position: relative; gap: 8px; height: 46px; min-height: 46px; padding: 0 14px; color: var(--rv-color-muted); background: none !important; border: 0; border-radius: 0; font-size: 13.5px; font-weight: 400 !important; }
-.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-tabs > button:hover { color: var(--rv-color-ink); }
-.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-tabs > button .rv-tab-label { display: inline-flex; align-items: center; gap: 8px; }
-.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-tabs .invoice-tab-icon { width: 16px; height: 16px; flex: none; color: var(--rv-color-subtle); }
-.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-tabs > button .rv-tab-count { display: inline-grid; min-width: 22px; height: 20px; place-items: center; padding: 0 6px; color: var(--rv-color-ink); background: var(--rv-color-surface-soft, #22222a); border: 1px solid var(--rv-color-border-strong); border-radius: 6px; font-size: 11.5px; font-weight: 500; font-variant-numeric: tabular-nums; }
-.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-tabs > button.is-active { color: var(--rv-color-ink); font-weight: 500 !important; background: none; border: 0; }
-.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-tabs > button.is-active .invoice-tab-icon { color: var(--inv-violet); }
-.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-tabs > button.is-active::after { content: ""; display: block; position: absolute; left: 8px; right: 8px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--rv-color-primary); }
-.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-tabs { scrollbar-width: none; }
-.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-tabs > button { padding: 0 12px; gap: 7px; }
-/* A short divider between neighbouring view tabs */
-.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-tabs { gap: 0; }
-.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-tabs > button + button::before { content: ""; position: absolute; top: 50%; left: 0; width: 1px; height: 18px; background: var(--rv-color-border-strong); transform: translateY(-50%); }

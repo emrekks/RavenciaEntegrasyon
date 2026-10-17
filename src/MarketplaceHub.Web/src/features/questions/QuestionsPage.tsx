@@ -12,6 +12,7 @@ import { DateRangePicker } from '../../shared/DateRangePicker'
 import { Modal } from '../../shared/components'
 import { MessageToast } from '../../shared/components/NoticeToast'
 import './questions-inbox.css'
+import { viewTabLabel } from '../../shared/view-tabs'
 
 type MarketplaceQuestion = {
   id: string; connectionId: string; platformCode: string; storeName: string; externalQuestionId: string; kind: string; status: string
@@ -240,7 +241,7 @@ export function QuestionsPage() {
     {notice && <MessageToast message={notice} onClose={() => setNotice('')} />}
     <div className={`qi-inbox${detailOpen ? ' is-detail' : ''}`}>
       <div className="qi-left">
-        <Tabs className="rv-questions-tabs qi-tabs" ariaLabel="Soru türü" value={tab} onChange={value => { setTab(value as WorkspaceTab); setConnectionId('ALL'); setPlatform('ALL'); setStatus('WAITING'); setSelectedId(null); setDetailOpen(false) }} items={[{ value: 'PRODUCT', label: 'Ürün Soruları', count: formatCount(waitingCounts[0].data) }, { value: 'ORDER', label: 'Sipariş Soruları', count: formatCount(waitingCounts[1].data) }]} />
+        <Tabs className="rv-questions-tabs qi-tabs rv-view-tabs" ariaLabel="Soru türü" value={tab} onChange={value => { setTab(value as WorkspaceTab); setConnectionId('ALL'); setPlatform('ALL'); setStatus('WAITING'); setSelectedId(null); setDetailOpen(false) }} items={[{ value: 'PRODUCT', label: viewTabLabel('product', 'Ürün Soruları'), count: formatCount(waitingCounts[0].data) }, { value: 'ORDER', label: viewTabLabel('order', 'Sipariş Soruları'), count: formatCount(waitingCounts[1].data) }]} />
         <div className="qi-tools" aria-label="Soru filtreleri">
           <div className="qi-tools-row">
             <label className="rv-questions-search qi-search"><UiIcon name="search" size={15} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Soru, ürün, SKU veya sipariş no" aria-label="Metin ara" /></label>

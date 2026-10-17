@@ -75,15 +75,3 @@ export function StatusRing({ kind, progress, label, detail, detailClassName, tit
   </span>
 }
 
-// View tab icons (docs/tasarim-onerileri/faturalar-sekmeler-2.html, option 12).
-const tabIcons: Record<string, ReactNode> = {
-  ALL: <>{line('M2.5 3.5h11v9h-11z')}{line('M2.5 6.5h11')}</>,
-  UNINVOICED: <>{line('M4 2h5l3 3v9H4z')}{line('M9 2v3h3')}{line('M8 8v3M8 12.6v.1')}</>,
-  INVOICED: <>{line('M4 2h5l3 3v9H4z')}{line('M9 2v3h3')}{line('m6.2 10 1.4 1.4 2.4-2.6')}</>,
-  DUE_SOON: <><circle cx="8" cy="8" r="5.8" fill="none" stroke="currentColor" strokeWidth={1.4} />{line('M8 5v3.2l2 1.3')}</>,
-  HIDDEN: <>{line('M2 8s2.2-4 6-4 6 4 6 4-2.2 4-6 4-6-4-6-4z')}{line('m3 13 10-10')}</>,
-}
-
-export function InvoiceTabIcon({ view }: { view: string }) {
-  return <svg className="invoice-tab-icon" viewBox="0 0 16 16" aria-hidden="true">{tabIcons[view] ?? tabIcons.ALL}</svg>
-}

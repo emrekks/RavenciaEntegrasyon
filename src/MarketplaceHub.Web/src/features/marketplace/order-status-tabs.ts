@@ -1,13 +1,13 @@
 export const orderStatusTabs = [
   ['ALL', 'Tümü'],
   ['NEW', 'Yeni'],
-  ['PROCESSING', 'İşleme alınanlar'],
+  ['PROCESSING', 'İşleme Alınanlar'],
   ['SHIPPED', 'Kargoda'],
-  ['DELIVERED', 'Teslim edildi'],
+  ['DELIVERED', 'Teslim Edildi'],
   ['CANCELLED', 'İptal'],
   ['RESENT', 'Yeniden Gönderimler'],
   ['ON_HOLD', 'Askıdaki'],
-  ['PARTIALLY_CANCELLED', 'Kısmi iptal'],
+  ['PARTIALLY_CANCELLED', 'Kısmi İptal'],
 ] as const
 
 export function resolveOrderStatusTab(status: string | null | undefined) {
