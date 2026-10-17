@@ -329,7 +329,7 @@
   .refline .rh small { display: block; color: var(--muted); font-size: 12px; } .refline .rh small span { color: var(--subtle); }
   .bcard-p { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 12px; align-items: start; }
   .bcard-p .stockctl { display: grid; gap: 6px; justify-items: end; } .bcard-p .stockctl .in { height: 32px; width: 170px; }
-  .osfacts { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12px; color: var(--muted); } .osfacts b { color: var(--ink); font-weight: 500; }
+  .osfacts { display: flex; flex-wrap: wrap; gap: 4px 16px; min-width: 0; font-size: 12px; color: var(--muted); } .osfacts > span { min-width: 0; overflow-wrap: anywhere; } .ocard > header > div > b { overflow-wrap: anywhere; } .ocard > header > div { flex: 1 1 220px; min-width: 0; } .osfacts b { color: var(--ink); font-weight: 500; }
   .img-preview { display: grid; place-items: center; aspect-ratio: 4 / 3; background: linear-gradient(135deg, #3a3a46, #1d1d23); border: 1px solid var(--line); border-radius: 12px; color: var(--subtle); }
   .rlabel { width: min(520px, 100%); padding: 18px; color: #111; background: #fff; border: 2px solid #111; border-radius: 4px; font-size: 13px; }
   .rlabel .hd { display: flex; justify-content: space-between; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid #999; }
@@ -398,6 +398,8 @@
   .count.warn { color: var(--warn); background: var(--soft); }
   /* filter shell only stacks: tabs card above the filter card */
   .fshell { gap: 16px; padding: 0; background: none; border: 0; border-radius: 0; }
+  .fshell { grid-template-columns: minmax(0, 1fr); } .fshell > * { min-width: 0; }
+  .vt { min-width: 0; overflow-x: auto; scrollbar-width: none; } .vt::-webkit-scrollbar { display: none; }
   .fcard { padding: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; container: fshell / inline-size; }
   /* view tabs: own card, 48px, icon + label + count box, dividers, violet underline */
   .vt { display: flex; height: 48px; padding: 0 8px; overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
@@ -423,7 +425,13 @@
   .menu > button:disabled { color: var(--subtle); opacity: .6; cursor: default; }
   .menu > hr { height: 1px; margin: 6px 12px; background: var(--line); border: 0; }
   /* table: column dividers, centered headings, filter icons 8px from each column's right edge */
-  .tbl col.c-order { width: 16%; } .tbl col.c-buyer { width: 8%; } .tbl col.c-prod { width: 19%; } .tbl col.c-cargo { width: 10%; } .tbl col.c-inv { width: 13%; } .tbl col.c-reason { width: 11%; } .tbl col.c-status { width: 12%; } .tbl col.c-act { width: 11%; }
+  .tbl col.c-order { width: 16%; } .tbl col.c-buyer { width: 9%; } .tbl col.c-prod { width: 18%; } .tbl col.c-cargo { width: 11%; } .tbl col.c-inv { width: 13%; } .tbl col.c-reason { width: 10%; } .tbl col.c-status { width: 11%; } .tbl col.c-act { width: 12%; }
+  .tbl .cust b { overflow-wrap: normal; word-break: normal; hyphens: auto; }
+  .tbl .cargocell { width: 100%; justify-items: center; } .tbl .cargocell .cargo-img { max-width: 100%; object-position: center; }
+  .tbl .cargocell small { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; text-align: center; }
+  .tbl .cargocell .btn.link, .tbl .actcell .btn.link { white-space: normal; text-align: center; }
+  .tbl td:last-child { padding-inline: 8px; } .tbl .actcell .trigger { gap: 6px; padding: 0 8px 0 10px; }
+  .tbl .actcell { width: 100%; } .tbl .actcell .anchor { max-width: 100%; } .tbl .actcell .trigger { max-width: 100%; }
   .tbl th, .tbl td { border-right: 1px solid var(--line); }
   .tbl th:last-child, .tbl td:last-child { border-right: 0; }
   .tbl th { padding: 0 32px 0 12px; text-align: center; font-size: 12.5px; }
@@ -523,7 +531,15 @@ const TI = {
   SUSPENDED: ico('<circle cx="8" cy="8" r="5.8"/><path d="M6.6 5.8v4.4M9.4 5.8v4.4"/>'),
   more: ico('<circle cx="3.8" cy="8" r=".6"/><circle cx="8" cy="8" r=".6"/><circle cx="12.2" cy="8" r=".6"/>'),
 }
-const MORE_TABS = ['REJECTED', 'REVIEW', 'DISPUTED', 'SUSPENDED']
+const BASE_MORE = ['REJECTED', 'REVIEW', 'DISPUTED', 'SUSPENDED']
+let MORE_TABS = [...BASE_MORE]
+// Tabs that do not fit move into the Diğer menu, last first, so the row never overflows.
+function fitTabs() {
+  const vt = document.querySelector('#root .vt'); if (!vt) return false
+  const order = TABS.map(t => t[0]).filter(k => k !== 'ALL' && !BASE_MORE.includes(k)).reverse()
+  if (vt.scrollWidth > vt.clientWidth + 1) { const next = order.find(k => !MORE_TABS.includes(k) && k !== S.tab); if (next) { MORE_TABS = [next, ...MORE_TABS]; return true } }
+  return false
+}
 // progress ring: how far the return has come, coloured by its state
 const RING = { 'Talep Oluşturuldu': ['prog', .2], 'Kargoya Verildi': ['move', .45], 'Aksiyon Bekliyor': ['wait', .7], 'Onaylandı': ['ok', 1], 'Reddedildi': ['bad', 1], 'Fatura Bekliyor': ['wait', .2], 'Fatura İletiliyor': ['move', .66], 'Faturası Mevcut': ['ok', 1], 'Fatura İletilemedi': ['bad', .66], 'Fatura Oluşturulamadı': ['bad', .33], 'Fatura İptal': ['off', 0] }
 const ring = (label, detail, cls = '') => { const [tone, p] = RING[label] || ['off', 0]; const v = Math.round(p * 100); return `<span class="ring tone-${tone}"><svg viewBox="0 0 20 20" aria-hidden="true"><circle class="trk" cx="10" cy="10" r="7.5"/>${v ? `<circle class="val" cx="10" cy="10" r="7.5" pathLength="100" stroke-dasharray="${v} 100"/>` : ''}</svg><span><b>${label}</b>${detail ? `<small class="${cls}">${detail}</small>` : ''}</span></span>` }
@@ -877,7 +893,9 @@ function addGlyphs() {
   })
 }
 function render() {
+  MORE_TABS = [...BASE_MORE]
   document.getElementById('root').innerHTML = page()
+  for (let i = 0; i < 5 && fitTabs(); i++) document.getElementById('root').innerHTML = page()
   document.getElementById('layer').innerHTML = (S.modal ? `<div class="overlay" data-a="overlay">${POP[S.modal]()}</div>` : '') + (S.toast ? toastHtml(S.toast) : '')
   addGlyphs()
 }
@@ -911,6 +929,7 @@ document.addEventListener('change', e => {
 })
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { S.modal = null; S.pop = null; render() } })
 render()
+let fitTimer; window.addEventListener('resize', () => { clearTimeout(fitTimer); fitTimer = setTimeout(render, 120) })
 </script>
 </body>
 </html>
