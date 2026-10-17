@@ -256,3 +256,7 @@
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pf-tools .rr-date .date-range-picker-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pf-tools .rr-date .date-range-picker-trigger { height: 36px; min-height: 36px; font-size: 13px; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pf .rr-kbar { background: linear-gradient(90deg, color-mix(in srgb, var(--pf-accent, var(--rr-violet)) 25%, transparent), color-mix(in srgb, var(--pf-accent, var(--rr-violet)) 75%, transparent)); }
+/* chart tooltip: headings and row names stay on one line, the box takes its content's width */
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip { width: max-content; min-width: 260px; max-width: calc(100vw - 32px); }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip th, :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip td { white-space: nowrap; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip th + th, :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip td + td { padding-left: 16px; }
