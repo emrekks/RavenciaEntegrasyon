@@ -461,6 +461,11 @@
   .tbl th .hf > .anchor { z-index: 70; }
   .tbl td { vertical-align: middle; }
   .ordercell .wordmark { max-width: none; object-fit: contain; object-position: left center; margin-bottom: 6px; }
+  /* image preview keeps the 2:3 product photo ratio; the window fits the photo */
+  .modal.img { width: auto; max-width: calc(100vw - 32px); }
+  .modal.img .img-preview { aspect-ratio: 2 / 3; width: auto; height: min(calc(100vh - 230px), 600px); min-height: 240px; margin-inline: auto; }
+  .modal.img .m-head h2 { max-width: 34ch; }
+  .stage .modal.img .img-preview { height: 420px; }
   .tone-prog { --tone: var(--violet); } .tone-move { --tone: var(--info); } .tone-wait { --tone: var(--warn); } .tone-ok { --tone: var(--ok); } .tone-bad { --tone: var(--bad); } .tone-off { --tone: var(--subtle); }
   /* actions column: "İşlemler" menu and the detail link */
   .actcell { display: grid; gap: 8px; justify-items: center; }
@@ -856,7 +861,7 @@ function mBulk(mode, finished) {
     foot: finished ? `<span class="note"></span><button class="btn primary" data-a="close">Kapat</button>` : `<span class="note">${approving ? 'Stoğa Eklenecek: <b>+2 adet</b>' : ''}</span><button class="btn" data-a="close">Vazgeç</button><button class="btn ${approving ? 'primary' : 'solid'}" data-a="done" data-k="bulk-${approving ? 'approve' : 'reject'}">${items.length} İadeyi ${approving ? 'Onayla' : 'Reddet'}</button>` })
 }
 const mBulkMixed = () => modal({ crumb: 'Aksiyon Bekleyen İadeler', title: 'Toplu İade Reddi', desc: '3 iade seçildi. Reddet dediğinizde her iade sırayla pazar yerine gönderilir.', w: 'md', body: `<div class="callout danger">${I.alert}<span>Toplu ret için tek bir pazar yerinin iadelerini seçin. Ret nedenleri pazar yerine göre değişir.</span></div>`, foot: `<span class="note"></span><button class="btn" data-a="close">Vazgeç</button><button class="btn solid" disabled>3 İadeyi Reddet</button>` })
-const mImage = () => modal({ crumb: 'Model Kodu: BLZ-01 · Renk: Siyah · Beden: S', title: 'Kadın Triko Bluz Bisiklet Yaka — Siyah', w: 'md', body: `<div class="img-preview">${I.image}</div>`, foot: `<span class="note"></span><button class="btn" data-a="close">Kapat</button>` })
+const mImage = () => modal({ crumb: 'Model Kodu: BLZ-01 · Renk: Siyah · Beden: S', title: 'Kadın Triko Bluz Bisiklet Yaka — Siyah', w: 'img', body: `<div class="img-preview">${I.image}</div>`, foot: `<span class="note"></span><button class="btn" data-a="close">Kapat</button>` })
 function mLabel(r = row('r6')) {
   return modal({ crumb: 'Yazdırma Önizlemesi', title: 'İade Etiketi Yazdır', desc: `#${r.no} · Etiket yeni pencerede açılır ve yazdırma başlar.`, w: 'md',
     body: `<div style="display:grid;place-items:center"><div class="rlabel"><div class="hd"><div><small>${pname(r.p)} · İade Paketi</small><h4>Sipariş #${r.no}</h4></div><b>${r.st}</b></div><div class="mt"><div><small>İade Kayıt No</small><b>${r.claim}</b></div><div><small>Kargo Firması</small><b>${r.cargo[1]}</b></div><div><small>Kargo Takip No</small><b>${r.track || r.pkg}</b></div><div><small>Müşteri</small><b>${r.cust}</b></div></div><div class="bars"></div><div class="no">${r.pkg}</div><ul>${r.lines.map(l => `<li>${esc(l.t)} · ${l.qty} adet · ${esc(l.sku)}</li>`).join('')}</ul></div></div>`,
