@@ -153,6 +153,10 @@
 /* ---------- phones: each order is a compact card (mobil-tum-sayfalar.html) ----------
    identity · time strip · buyer and carrier · products · invoice and total · two actions */
 @media (max-width: 760px) {
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet-f.rr-sheet-f { flex-wrap: nowrap; gap: 6px; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet-f.rr-sheet-f > .rr-btn { min-width: 0; flex: none; height: 40px; padding-inline: 10px; gap: 6px; font-size: 13px; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet-f.rr-sheet-f > .rr-btn:not(.rr-primary) > .rr-ico:first-child { display: none; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet-f.rr-sheet-f > .rr-btn.rr-primary { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-panel { background: none; border: 0; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-panel-h { padding: 0 0 10px; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tblwrap { overflow: visible; border: 0; }
