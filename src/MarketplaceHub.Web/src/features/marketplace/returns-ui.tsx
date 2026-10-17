@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { InvoiceGlyph, type InvoiceGlyphKind } from '../invoicing/invoice-state-glyph'
 import './returns-sade.css'
@@ -127,10 +127,32 @@ export function useOutsideClose(open: boolean, ref: RefObject<HTMLElement | null
 }
 
 // One trigger with its popover beneath it.
+// A table that scrolls sideways would clip a popover that hangs below its row, so there the popover is pinned to the
+// screen where it would have opened (above its trigger when there is no room below) and closes once anything scrolls.
+function useScrollAreaPopover(open: boolean, ref: RefObject<HTMLElement | null>, close: () => void) {
+  useLayoutEffect(() => {
+    const host = ref.current
+    if (!open || !host) return
+    const area = host.closest('.rr-tblwrap')
+    const pop = host.querySelector<HTMLElement>(':scope > .rr-menu, :scope > .rr-pop')
+    if (!area || !pop || getComputedStyle(area).overflowX === 'visible') return
+    const box = pop.getBoundingClientRect()
+    const anchor = host.getBoundingClientRect()
+    const top = box.bottom > window.innerHeight - 8 && anchor.top - box.height - 6 > 8 ? anchor.top - box.height - 6 : box.top
+    const left = Math.max(8, Math.min(box.left, window.innerWidth - box.width - 8))
+    Object.assign(pop.style, { position: 'fixed', top: `${top}px`, left: `${left}px`, right: 'auto', bottom: 'auto', width: `${box.width}px`, transform: 'none', zIndex: '80' })
+    const onScroll = (event: Event) => { if (!(event.target instanceof Node && pop.contains(event.target))) close() }
+    window.addEventListener('scroll', onScroll, true)
+    window.addEventListener('resize', close)
+    return () => { window.removeEventListener('scroll', onScroll, true); window.removeEventListener('resize', close) }
+  }, [open])
+}
+
 export function RrAnchor({ trigger, children, className }: { trigger: (open: boolean, toggle: () => void) => ReactNode; children: (close: () => void) => ReactNode; className?: string }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLSpanElement>(null)
   useOutsideClose(open, ref, () => setOpen(false))
+  useScrollAreaPopover(open, ref, () => setOpen(false))
   // On phones the popover is a bottom sheet; the scrim (shown there only) takes the tap that closes it, so the tap
   // never reaches the button underneath (a label print, say).
   return <span ref={ref} className={['rr-anchor', className].filter(Boolean).join(' ')}>{trigger(open, () => setOpen(value => !value))}{open && <span className="rr-anchor-scrim" aria-hidden="true" onClick={event => { event.stopPropagation(); setOpen(false) }} />}{open && children(() => setOpen(false))}</span>

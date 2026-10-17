@@ -995,3 +995,10 @@ main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-inv { width: 136px; }
 main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-order { width: 152px; }
 main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-prod { width: 16%; }
 }
+/* when the screen is too narrow for the order and return tables they keep a readable width and scroll sideways in their panel */
+@media (min-width: 1101px) {
+main .rr.rr:is(.rr-orders, .rr-returns) .rr-tblwrap.rr-tblwrap { overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; }
+main .rr.rr-orders .rr-tbl.rr-tbl { min-width: 1060px; }
+main .rr.rr-returns .rr-tbl.rr-tbl { min-width: 1120px; }
+main .rr.rr:is(.rr-orders, .rr-returns) > .rr-panel { min-width: 0; }
+}
