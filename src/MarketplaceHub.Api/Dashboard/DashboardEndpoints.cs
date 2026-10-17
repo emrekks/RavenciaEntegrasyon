@@ -20,6 +20,8 @@ public static class DashboardEndpoints
             if (span > TimeSpan.FromDays(366)) return Results.BadRequest(new { code = "REVENUE_RANGE_TOO_LARGE", title = "Ciro aralığı en fazla 366 gün olabilir." });
             return Results.Ok(await service.RevenueSeriesAsync(tenant.TenantId, start, end, platform, http.RequestAborted));
         });
+        api.MapGet("/dashboard/integration-matrix", async (HttpContext http, AppDbContext db, TimeProvider timeProvider) =>
+            Tenant(http) is { } tenant ? Results.Ok(await DashboardIntegrationMatrix.QueryAsync(db, tenant.TenantId, timeProvider.GetUtcNow(), http.RequestAborted)) : Results.Unauthorized());
         return endpoints;
     }
 

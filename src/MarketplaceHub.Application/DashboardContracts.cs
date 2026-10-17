@@ -27,6 +27,8 @@ public sealed record DashboardMetricsView(
 public sealed record DashboardLowStockView(Guid Id, string Title, decimal TotalStock, string? PrimaryImageUrl);
 public sealed record DashboardPlatformView(string Name, string Status);
 public sealed record DashboardSyncStatusView(string ResourceType, string Label, string Kind, string Status, DateTimeOffset? LastAttemptAt, DateTimeOffset? LastSuccessAt, string? LastErrorCode);
+public sealed record DashboardIntegrationCellView(string State, DateTimeOffset? LastSuccessAt, DateTimeOffset? LastProblemAt);
+public sealed record DashboardIntegrationRowView(Guid ConnectionId, string PlatformCode, string DisplayName, string ExternalStoreId, string Status, IReadOnlyDictionary<string, DashboardIntegrationCellView> Cells, string? Issue);
 public sealed record DashboardBootstrapView(
     DashboardMetricsView Metrics,
     IReadOnlyList<DashboardLowStockView> LowStock,
