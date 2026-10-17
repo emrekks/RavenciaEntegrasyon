@@ -19,7 +19,12 @@ public static class SettingsEndpoints
     // Sizes saved before the scale was re-centred on the working view ("small" was the default) keep their look.
     private static readonly IReadOnlyDictionary<string, string> FormerAppearanceFontSizes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
-        ["compact"] = "sm", ["small"] = "md", ["normal"] = "lg", ["large"] = "xl", ["extra-large"] = "xxl", ["huge"] = "xxl"
+        ["compact"] = "sm",
+        ["small"] = "md",
+        ["normal"] = "lg",
+        ["large"] = "xl",
+        ["extra-large"] = "xxl",
+        ["huge"] = "xxl"
     };
 
     private static string? CurrentFontSize(string? fontSize) =>
