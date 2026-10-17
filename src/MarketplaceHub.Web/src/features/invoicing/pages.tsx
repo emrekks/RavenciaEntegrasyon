@@ -22,7 +22,7 @@ import './invoice-detail-ui.css'
 import './manual-invoice-document.css'
 import './invoices-responsive.css'
 import './invoices-sade.css'
-import { InvoiceGlyph, StatusRing, type InvoiceGlyphKind, badgeGlyphKind, invoiceGlyphKind, invoiceStatusProgress, orderStatusProgress } from './invoice-state-glyph'
+import { InvoiceGlyph, InvoiceTabIcon, StatusRing, type InvoiceGlyphKind, badgeGlyphKind, invoiceGlyphKind, invoiceStatusProgress, orderStatusProgress } from './invoice-state-glyph'
 
 type Invoice = { id: string; orderNumber: string; invoiceType: string; status: string; currency: string; payableTotal: number; invoiceNumber: string | null; dueAt: string | null; createdAt: string; version: number }
 type InvoiceWorkspaceLine = { sku: string; barcode: string | null; description: string; quantity: number; unitPrice: number; vatRate: number; imageUrl: string | null }
@@ -555,7 +555,7 @@ export function InvoicesPage() {
       <article className="invoice-metric-total"><small>Toplam Paket</small><strong>{pageData ? pageData.totalPackageCount.toLocaleString('tr-TR') : '—'}</strong><span>fatura çalışma alanı</span></article>
     </div>
     <div className="invoice-reference-filter-shell">
-      <Tabs className="invoice-reference-tabs" ariaLabel="Fatura görünümleri" value={tab} onChange={selectTab} items={tabs.map(([value, label]) => ({ value, label, count: !pageData ? undefined : (value === 'ALL' ? counts.all : value === 'UNINVOICED' ? counts.unInvoiced : value === 'INVOICED' ? counts.invoiced : value === 'DUE_SOON' ? counts.dueSoon : counts.hidden).toLocaleString('tr-TR') }))} />
+      <Tabs className="invoice-reference-tabs" ariaLabel="Fatura görünümleri" value={tab} onChange={selectTab} items={tabs.map(([value, label]) => ({ value, label: <><InvoiceTabIcon view={value} />{label}</>, count: !pageData ? undefined : (value === 'ALL' ? counts.all : value === 'UNINVOICED' ? counts.unInvoiced : value === 'INVOICED' ? counts.invoiced : value === 'DUE_SOON' ? counts.dueSoon : counts.hidden).toLocaleString('tr-TR') }))} />
       <MobileFilterShell as="section" className="invoice-reference-filters" aria-label="Fatura filtreleri" sort={{ title: 'Sıralama', value: sortOrder, options: invoiceSortOptions.map(option => ({ value: option.value, label: `${option.label} · ${option.direction === 'down' ? 'Azalan' : 'Artan'}` })), onChange: setSortOrder }} activeCount={(search.trim() ? 1 : 0) + (selectedPlatforms?.length && selectedPlatforms.length < platformOptions.length ? 1 : 0) + (shipmentStatusFilter !== 'ALL' ? 1 : 0) + (cargoFilter !== 'ALL' ? 1 : 0) + (invoiceStatusFilter !== 'ALL' ? 1 : 0) + (invoiceActionFilter !== 'ALL' ? 1 : 0) + (dateFrom || dateTo ? 1 : 0) + (sortOrder !== 'ORDER_DESC' ? 1 : 0)} onClear={() => { setSearch(''); setSelectedPlatforms(null); setShipmentStatusFilter('ALL'); setCargoFilter('ALL'); setInvoiceStatusFilter('ALL'); setInvoiceActionFilter('ALL'); setDateFrom(''); setDateTo(''); setColumnFilterOpen(null); setSortOrder('ORDER_DESC') }}>
         <label className="invoice-reference-search" data-mfs-search><span>Fatura Ara</span><span className="invoice-reference-search-control"><UiIcon name="search" size={18} /><input aria-label="Fatura Ara" placeholder="Sipariş, müşteri, fatura veya takip no ara…" value={search} onChange={event => setSearch(event.target.value)} /></span></label>
         <PlatformMultiSelect label="Platform" options={platformOptions} selectedCodes={selectedPlatforms} onChange={setSelectedPlatforms} />
