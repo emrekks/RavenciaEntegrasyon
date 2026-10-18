@@ -322,3 +322,9 @@
   /* the frame takes 2px of the strip, so the tabs are 46px and nothing is left to scroll up and down */
   .app-shell.stitch-shell main .cs-workspace .cs-nav > button { height: 46px; min-height: 46px; }
 }
+
+/* Anlık Bildirimler: one action under the status, and the terms the confirmation window lists. */
+.instant-notifications-actions { display: flex; gap: 8px; margin-top: 12px; }
+.instant-notifications-actions > button { min-height: 36px; }
+.instant-notifications-terms { margin: 0; padding-left: 18px; display: grid; gap: 8px; line-height: 1.5; }
+.instant-notifications-terms small { color: var(--rv-color-muted); }

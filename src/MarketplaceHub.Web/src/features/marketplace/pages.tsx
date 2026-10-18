@@ -1044,6 +1044,61 @@ function pazaramaActionWarning(action: string) {
 }
 
 // Pazarama: close mapped products for sale (or reopen them) by barcode. A closed product takes no orders and no price/stock updates.
+type InstantNotificationStatus = { state: 'UNSUPPORTED' | 'OFF' | 'ACTIVE' | 'PASSIVE' | 'MISSING' | 'UNKNOWN'; endpoint: string | null; registeredAt: string | null; lastReceivedAt: string | null; receivedLast24Hours: number; message: string | null }
+const instantNotificationStateLabels: Record<InstantNotificationStatus['state'], string> = { UNSUPPORTED: 'Desteklenmiyor', OFF: 'Kapalı', ACTIVE: 'Açık', PASSIVE: 'Trendyol durdurdu', MISSING: 'Trendyol’da kayıt yok', UNKNOWN: 'Durum okunamadı' }
+
+// Trendyol order notifications (webhook): turning them on registers the panel's address at
+// Trendyol, so it is done only here, after the user confirms what will be registered.
+function InstantNotificationsPanel({ connectionId, connectionActive }: { connectionId: string; connectionActive: boolean }) {
+  const client = useQueryClient()
+  const status = useQuery({ queryKey: ['instant-notifications', connectionId], queryFn: () => hubApi<InstantNotificationStatus>(`/connections/${connectionId}/instant-notifications`), staleTime: 30_000 })
+  const [confirm, setConfirm] = useState<'on' | 'off' | null>(null)
+  const [feedback, setFeedback] = useState<IntegrationFeedback | null>(null)
+  const change = useMutation({
+    mutationFn: (on: boolean) => hubApi<InstantNotificationStatus>(`/connections/${connectionId}/instant-notifications`, on ? { method: 'POST', headers: { 'Idempotency-Key': idempotency() } } : { method: 'DELETE' }),
+    onSuccess: (next, on) => {
+      client.setQueryData(['instant-notifications', connectionId], next)
+      setConfirm(null)
+      setFeedback({ kind: 'success', message: on ? 'Anlık bildirimler açıldı. Trendyol yeni siparişleri ve durum değişikliklerini artık doğrudan panele gönderecek.' : 'Anlık bildirimler kapatıldı. Siparişler düzenli kontrolle gelmeye devam ediyor.' })
+    },
+    onError: reason => { setConfirm(null); setFeedback({ kind: 'error', message: reason instanceof Error ? reason.message : 'Anlık bildirim ayarı değiştirilemedi.' }) }
+  })
+  const data = status.data
+  const registered = data != null && data.state !== 'OFF' && data.state !== 'UNSUPPORTED'
+  const time = (value: string | null) => value ? new Date(value).toLocaleString('tr-TR', { dateStyle: 'medium', timeStyle: 'short' }) : '—'
+  return <section className="panel instant-notifications-panel">
+    <div className="cs-sec-head"><h3>Anlık Bildirimler</h3><p>Açıkken Trendyol yeni siparişleri ve sipariş durumu değişikliklerini beklemeden panele gönderir. Düzenli kontrol yedek olarak sürer.</p></div>
+    {status.isLoading && <Busy />}
+    {status.isError && <ErrorBox error={status.error} onRetry={() => void status.refetch()} />}
+    {data && <>
+      <dl className="details instant-notifications-details">
+        <dt>Durum</dt><dd><strong>{instantNotificationStateLabels[data.state]}</strong></dd>
+        {registered && <><dt>Açıldığı Tarih</dt><dd>{time(data.registeredAt)}</dd>
+          <dt>Son Bildirim</dt><dd>{time(data.lastReceivedAt)}</dd>
+          <dt>Son 24 Saat</dt><dd>{data.receivedLast24Hours.toLocaleString('tr-TR')} bildirim</dd></>}
+      </dl>
+      {data.message && <p role="status">{data.message}</p>}
+      {data.state !== 'UNSUPPORTED' && <div className="instant-notifications-actions">
+        {registered
+          ? <button type="button" className="secondary" disabled={change.isPending} onClick={() => setConfirm('off')}>Bildirimleri Kapat</button>
+          : <button type="button" disabled={!connectionActive || change.isPending || !data.endpoint} title={!connectionActive ? 'Bağlantı aktif olmalı.' : !data.endpoint ? 'Panelin dışarıdan erişilen HTTPS adresi tanımlı değil.' : undefined} onClick={() => setConfirm('on')}>Bildirimleri Aç</button>}
+      </div>}
+    </>}
+    {confirm === 'on' && data && <RrModal title="Anlık Bildirimleri Aç" desc="Trendyol’a bir bildirim adresi kaydedilecek." size="sm" locked={change.isPending} onClose={() => setConfirm(null)} foot={<><span className="rr-note" /><button type="button" className="rr-btn" disabled={change.isPending} onClick={() => setConfirm(null)}>Vazgeç</button><button type="button" className="rr-btn rr-primary" disabled={change.isPending} onClick={() => change.mutate(true)}>{change.isPending ? 'Açılıyor…' : 'Bildirimleri Aç'}</button></>}>
+      <ul className="instant-notifications-terms">
+        <li><strong>Adres:</strong> {data.endpoint} <small>(gizli bağlantı anahtarı ve kullanıcı adı/şifre panel tarafından üretilir)</small></li>
+        <li><strong>Olaylar:</strong> tüm sipariş durumları (oluşturuldu, hazırlanıyor, faturalandı, kargoda, teslim edildi, teslim edilemedi, iptal, iade ve diğerleri)</li>
+        <li><strong>Ülkeler:</strong> tüm vitrinler (Türkiye ve yurt dışı)</li>
+        <li>Trendyol bildirimleri durdurursa (örneğin sunucu kapalıyken) panel bir saat içinde yeniden açar; aradaki değişiklikler düzenli kontrolle alınır.</li>
+      </ul>
+    </RrModal>}
+    {confirm === 'off' && <RrModal title="Anlık Bildirimleri Kapat" desc="Trendyol’daki bildirim kaydı silinecek." size="sm" locked={change.isPending} onClose={() => setConfirm(null)} foot={<><span className="rr-note" /><button type="button" className="rr-btn" disabled={change.isPending} onClick={() => setConfirm(null)}>Vazgeç</button><button type="button" className="rr-btn rr-primary" disabled={change.isPending} onClick={() => change.mutate(false)}>{change.isPending ? 'Kapatılıyor…' : 'Bildirimleri Kapat'}</button></>}>
+      <p>Siparişler ve durum değişiklikleri düzenli kontrolle (dakikada bir) gelmeye devam eder.</p>
+    </RrModal>}
+    <IntegrationFeedbackToast feedback={feedback} onClose={() => setFeedback(null)} />
+  </section>
+}
+
 function PazaramaSaleStatusPanel({ connectionId, writesEnabled, connectionActive }: { connectionId: string; writesEnabled: boolean; connectionActive: boolean }) {
   const [barcodes, setBarcodes] = useState('')
   const [feedback, setFeedback] = useState<IntegrationFeedback | null>(null)
@@ -1145,10 +1200,11 @@ function N11PublishSettingsPanel({ connectionId, displayName, version, shipmentT
   </section>
 }
 
-type SettingsIconName = 'info' | 'sync' | 'write' | 'invoice' | 'key' | 'tool'
+type SettingsIconName = 'info' | 'sync' | 'bell' | 'write' | 'invoice' | 'key' | 'tool'
 const settingsIconPaths: Record<SettingsIconName, string[]> = {
   info: ['M8 7.2v3.6', 'M8 5h.01'],
   sync: ['M13 6.5A5 5 0 0 0 4 4.5L3 6', 'M3 2.5V6h3.5', 'M3 9.5a5 5 0 0 0 9 2l1-1.5', 'M13 13.5V10H9.5'],
+  bell: ['M4.5 11V7a3.5 3.5 0 0 1 7 0v4l1 1.5h-9z', 'M6.8 14a1.3 1.3 0 0 0 2.4 0'],
   write: ['M3 13h3l7-7-3-3-7 7z'],
   invoice: ['M4 2.5h6l2 2V13.5H4z', 'M6 7h4', 'M6 9.5h4'],
   key: ['m7.6 8.4 5.4-5.4', 'M11 5l1.5 1.5'],
@@ -1330,6 +1386,7 @@ function IntegrationDetailWorkspace({ id, inline = false, onClose }: { id: strin
   const settingsSections: Array<{ key: string; label: string; icon: SettingsIconName; badge?: number; node: ReactNode }> = [
     { key: 'genel', label: 'Genel Bakış', icon: 'info', badge: flowCounts.issue, node: overview },
     ...(flowsAvailable ? [{ key: 'akis', label: 'Veri Eşitleme', icon: 'sync' as const, badge: flowCounts.issue, node: <><div className="cs-sec-head"><h3>Veri Eşitleme Akışları</h3><p>Kapalı akış veri çekmez; açınca kaldığı yerden devam eder. Çalışma sıklığı için akışın adına tıklayın.</p></div>{flowTable}</> }] : []),
+    ...(item.platformCode === 'TRENDYOL' ? [{ key: 'bildirim', label: 'Anlık Bildirimler', icon: 'bell' as const, node: <InstantNotificationsPanel connectionId={id} connectionActive={item.status === 'ACTIVE' || item.status === 'VERIFIED'} /> }] : []),
     ...(writeSupported ? [{ key: 'yaz', label: 'Pazaryerine Yazma', icon: 'write' as const, node: <>{(item.platformCode === 'TRENDYOL' || item.platformCode === 'HEPSIBURADA' || item.platformCode === 'SHOPIFY' || item.platformCode === 'N11' || item.platformCode === 'PAZARAMA' || efaturam) && <section className={`panel integration-detail-write-panel${item.platformCode === 'SHOPIFY' ? ' shopify-write-controls' : ''}`}><div className="integration-detail-write-heading"><div><h2>{externalWritePlatform}’a Dış Yazma</h2><p>{item.platformCode === 'SHOPIFY' ? 'Ürün, fiyat/stok ve manuel kargo/iade izinlerini ayrı ayrı yönetin. Ana anahtar kapalıysa Shopify’a hiçbir veri gönderilmez. Taşıyıcı etiketi üretimi desteklenmez.' : efaturam ? 'Fatura yalnızca siz önizlemeyi onayladığınızda, sipariş başına bir kez kesilir; hiçbir zaman otomatik oluşturulmaz. Anahtar kapalıyken E-Faturam’a fatura gönderilmez.' : item.platformCode === 'PAZARAMA' ? 'Otomatik dış yazmalar fiyat ve stok değişikliklerini yönetir. Anahtar kapalıyken Pazarama’ya hiçbir veri gönderilmez; iade kararı ve ürün açma sonraki aşamalarda eklenecek.' : item.platformCode === 'N11' ? 'Otomatik dış yazmalar fiyat ve stok değişikliklerini, manuel dış yazmalar ise sipariş işleme alma, paket bölme ve iade kararlarını yönetir.' : item.platformCode === 'HEPSIBURADA' ? 'Ürün/fiyat/stok otomatik gönderimleri varsayılan olarak kapalıdır. Manuel dış yazmalar yalnızca destek kanıtı olan paket veya iade işlemlerinde ayrıca açılabilir.' : 'Otomatik dış yazmalar fiyat ve stok değişikliklerini, manuel dış yazmalar ise kargo, etiket ve iade kararlarını yönetir.'}</p></div><span className={`integration-detail-write-status ${externalWritesEnabled ? 'is-enabled' : ''}`}>{externalWritesEnabled ? 'Açık' : 'Kapalı'}</span></div><label className="integration-write-toggle"><em className="cs-switch-state">{externalWritesEnabled ? 'Açık' : 'Kapalı'}</em><input type="checkbox" role="switch" checked={externalWritesEnabled} disabled={saveExternalWrites.isPending || !readConnectionReady} onChange={event => saveExternalWrites.mutate(event.target.checked)} /><span><strong>{item.platformCode === 'SHOPIFY' ? 'Shopify Dış Yazma Ana Anahtarı' : `${externalWritePlatform}’a Dış Yazma`}</strong><small>{item.platformCode === 'SHOPIFY' ? externalWritesEnabled ? 'Ana anahtar açık. Otomatik ve manuel izinleri aşağıda ayrı ayrı yönetin.' : 'Kapalıyken ürün ve diğer dış yazma grupları devre dışı kalır.' : efaturam ? (externalWritesEnabled ? 'Açık. Onayladığınız fatura istekleri E-Faturam’a gönderilir.' : 'Kapalıyken panel E-Faturam’dan veri okur; fatura oluşturmaz.') : externalWritesEnabled ? 'Açık akışlar aşağıdaki otomatik ve manuel seçeneklerden ayrı ayrı yönetilir.' : `Panel ${externalWritePlatform}’dan veri çeker; platforma dışarı veri göndermez.`}</small></span></label>{item.platformCode === 'SHOPIFY' && (syncPolicies.isLoading ? <Busy text="Shopify dış yazma seçenekleri yükleniyor…" /> : syncPolicies.isError ? <ErrorBox error={syncPolicies.error} onRetry={() => void syncPolicies.refetch()} /> : <div className="shopify-write-toggle-list" aria-label="Shopify otomatik ve manuel dış yazma seçenekleri">{externalWriteGroups.map(renderExternalWriteGroup)}</div>)}</section>}
         {item.platformCode !== 'SHOPIFY' && flowsAvailable && syncPolicyGroups.some(group => group.kind === 'external-write-parent') && <div className="cs-write-groups">{externalWriteGroups.map(renderExternalWriteGroup)}</div>}</> }] : []),
     ...(invoiceSupported ? [{ key: 'fatura', label: 'Faturalama', icon: 'invoice' as const, node: <>{(item.platformCode === 'TRENDYOL' || item.platformCode === 'SHOPIFY' || item.platformCode === 'N11' || item.platformCode === 'PAZARAMA') && <section className="panel integration-detail-write-panel invoice-creation-setting-panel" aria-labelledby="invoice-creation-setting-title"><div className="integration-detail-write-heading"><div><p className="eyebrow">FATURALAMA</p><h2 id="invoice-creation-setting-title">Fatura Oluşturma</h2><p>Bu ayar yalnızca {item.displayName} bağlantısındaki siparişleri etkiler.</p></div></div><label className="integration-write-toggle"><em className="cs-switch-state">{item.invoiceCreationEnabled ? 'Açık' : 'Kapalı'}</em><input type="checkbox" role="switch" checked={item.invoiceCreationEnabled} disabled={saveInvoiceCreation.isPending} onChange={event => saveInvoiceCreation.mutate(event.target.checked)} /><span><strong>Bu Bağlantıda Fatura Oluşturma</strong><small>{item.invoiceCreationEnabled ? 'Fatura oluşturma ve yeni fatura takip kaydı açma kullanılabilir.' : 'Kapalıyken fatura oluşturma düğmeleri pasif olur. Mevcut fatura kayıtları ve yüklenmiş belgeler etkilenmez.'}</small></span></label></section>}</> }] : []),
