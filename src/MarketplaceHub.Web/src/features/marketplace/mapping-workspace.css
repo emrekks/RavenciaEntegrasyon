@@ -589,6 +589,7 @@
   .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-reference-grid > .mapping-link-rail { display: none; }
   .app-shell.stitch-shell main section.mapping-page .mapping-category-builder > footer { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
   .app-shell.stitch-shell main section.mapping-page .mapping-category-builder > footer > button { width: 100%; justify-content: center; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-category-builder > footer > span { min-height: 3em; }
 
   /* Saved mappings as cards: panel category and state on top, the platform path under it, the platform on the left of
      the actions at the bottom; cells lose their table lines, and a card keeps its look under the finger (no hover). */
