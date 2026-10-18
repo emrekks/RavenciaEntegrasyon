@@ -434,3 +434,6 @@
   .app-shell.stitch-shell main .panel.mapping-step.cm-card.cm-card .cm-webcolor .cm-webcolor-actions > button { width: 100%; min-width: 0; padding: 0 8px; overflow: hidden; font-size: 13px; white-space: nowrap; text-overflow: ellipsis; }
   .app-shell .panel.mapping-step.cm-card.cm-card .cm-foot > button { flex: none; white-space: nowrap; }
 }
+
+/* The field detail has the same 18px on every side. */
+@media (min-width: 761px) { .app-shell .panel.mapping-step.cm-card.cm-card .cm-detail { padding: 18px; } }

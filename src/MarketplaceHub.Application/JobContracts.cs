@@ -166,8 +166,13 @@ public sealed record JobTypeMetricView(
     int Queued,
     int Running);
 
+// Job counts by status and type over the requested window. The job list returns only the newest jobs, so the tab and
+// status counts come from here to show real totals.
+public sealed record JobCountView(string Status, string JobType, int Count);
+
 public interface IJobOperationsService
 {
+    Task<IReadOnlyList<JobCountView>> CountAsync(Guid tenantId, DateTimeOffset? since, CancellationToken cancellationToken);
     Task<IReadOnlyList<JobTypeMetricView>> MetricsAsync(Guid tenantId, TimeSpan window, CancellationToken cancellationToken);
     Task<IReadOnlyList<JobSummaryView>> ListAsync(Guid tenantId, JobListQuery query, CancellationToken cancellationToken);
     Task<ServiceResult<JobDetailView>> GetAsync(Guid tenantId, Guid jobId, CancellationToken cancellationToken);

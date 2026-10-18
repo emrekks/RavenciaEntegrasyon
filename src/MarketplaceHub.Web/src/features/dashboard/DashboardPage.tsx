@@ -21,7 +21,7 @@ type Range = '7' | '30' | '90' | 'custom'
 
 const PERIODS: Array<[Range, string]> = [['7', 'Son 7 Gün'], ['30', 'Son 30 Gün'], ['90', 'Son 90 Gün'], ['custom', 'Özel Tarih']]
 const periodLabel = (range: Range) => PERIODS.find(([value]) => value === range)?.[1] ?? ''
-const PLATFORMS: Array<[string, string, string]> = [['TRENDYOL', 'Trendyol', '#f27a1a'], ['HEPSIBURADA', 'Hepsiburada', '#e8457c'], ['SHOPIFY', 'Shopify', '#5e8e3e'], ['N11', 'N11', '#7c5cff'], ['PAZARAMA', 'Pazarama', '#2f9bd8']]
+const PLATFORMS: Array<[string, string, string]> = [['TRENDYOL', 'Trendyol', '#f27a1a'], ['HEPSIBURADA', 'Hepsiburada', '#f5b301'], ['SHOPIFY', 'Shopify', '#5e8e3e'], ['N11', 'N11', '#7c5cff'], ['PAZARAMA', 'Pazarama', '#2f9bd8']]
 const platformCode = (name: string) => PLATFORMS.find(([code]) => name.toLocaleUpperCase('tr-TR').replace(/İ/g, 'I').includes(code))?.[0] ?? name.toUpperCase()
 const platformName = (name: string) => PLATFORMS.find(([code]) => code === platformCode(name))?.[1] ?? name
 const platformColor = (name: string, index: number) => PLATFORMS.find(([code]) => code === platformCode(name))?.[2] ?? ['#9b7aff', '#59d6bd', '#79a4ff', '#f0b15a'][index % 4]
@@ -274,7 +274,7 @@ export function DashboardPage() {
         {!rows.length && <tr><td colSpan={DATA_KEYS.length + 2}><span className="rr-lead">{matrix.isLoading ? 'Bağlantılar yükleniyor…' : 'Aktif pazar yeri bağlantısı bulunmuyor.'}</span></td></tr>}
         {rows.map(row => <tr key={row.connectionId} className={row.issue ? 'rr-attn' : undefined}><td><span className="rr-mx-nm"><RrLogo code={row.platformCode} /><span><b>{row.displayName}</b><small title={row.issue ?? undefined}>{row.issue ?? storeLabel(row)}</small></span></span></td>
           {DATA_KEYS.map(([key, label]) => { const cell = row.cells[key] ?? { state: 'off', lastSuccessAt: null, lastProblemAt: null }; const when = age(cell.lastSuccessAt); return <td key={key} data-l={label}><span className={`rr-mx rr-${cell.state}`} title={`${label} · ${CELL_STATE[cell.state]}`}><i />{cell.state === 'off' ? 'İşlem Yok' : when ?? 'Durdu'}</span></td> })}
-          <td className="rr-mx-act">{row.issue && <Link className="rr-btn rr-link" to="/jobs">İncele</Link>}</td></tr>)}
+          <td className="rr-mx-act">{row.issue && <Link className="rr-btn rr-link" to="/jobs?durum=hata">İncele</Link>}</td></tr>)}
       </tbody></table></div>
       <div className="rr-mx-foot"><span>Son 24 saatte <b className="rr-num">{count(metrics?.recentJobCount ?? 0)}</b> istek · <b className="rr-num">{count(metrics?.deadJobCount ?? 0)}</b> tamamlanamayan iş · <b className="rr-num">{count(metrics?.manualReviewJobCount ?? 0)}</b> karar bekleyen iş</span><span className="rr-legend"><span><i className="rr-mx-l rr-ok" />Güncel</span><span><i className="rr-mx-l rr-warn" />Gecikiyor</span><span><i className="rr-mx-l rr-bad" />Durdu</span><span><i className="rr-mx-l rr-off" />İşlem Yok</span></span></div>
     </section>

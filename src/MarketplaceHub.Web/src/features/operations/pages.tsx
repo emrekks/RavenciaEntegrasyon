@@ -418,7 +418,8 @@ export function JobsPage({ me }: { me: Me }) {
   const [category, setCategory] = useState<JobCategory>('ALL')
   const [status, setStatus] = useState<'' | JobStatus>('')
   const [search, setSearch] = useState('')
-  const [statusChips, setStatusChips] = useState<JobStatusChip[]>([])
+  // ?durum=hata opens the list with the error filter on (the overview's İncele link uses it).
+  const [statusChips, setStatusChips] = useState<JobStatusChip[]>(() => new URLSearchParams(window.location.search).get('durum') === 'hata' ? ['error'] : [])
   const [filterOpen, setFilterOpen] = useState(false)
   const [timeRange, setTimeRange] = useState<JobTimeRange>('24h')
   const [timeRangeOpen, setTimeRangeOpen] = useState(false)
@@ -523,15 +524,21 @@ export function JobsPage({ me }: { me: Me }) {
   const retryable = selected && ['BLOCKED', 'MANUAL_REVIEW', 'DEAD'].includes(selected.status)
   const cancellable = selected && !['SUCCEEDED', 'DEAD', 'CANCELLED'].includes(selected.status)
   const selectedIsRunning = selected?.status === 'LEASED'
-  const statusSummary = useMemo(() => ({
-    success: rangeFiltered.filter(job => job.status === 'SUCCEEDED').length,
-    running: rangeFiltered.filter(job => job.status === 'LEASED').length,
-    waiting: rangeFiltered.filter(job => job.status === 'PENDING' || job.status === 'RETRY_SCHEDULED').length,
-    error: rangeFiltered.filter(job => ['BLOCKED', 'MANUAL_REVIEW', 'DEAD'].includes(job.status)).length,
-    cancelled: rangeFiltered.filter(job => job.status === 'CANCELLED').length
-  }), [rangeFiltered])
+  // The list holds only the newest jobs (2.000), so the counts come from the server's real totals; until they arrive
+  // the loaded list is counted instead.
+  const serverCounts = useQuery({
+    queryKey: ['jobs', 'counts', timeRange],
+    queryFn: () => hubApi<Array<{ status: JobStatus; jobType: string; count: number }>>(`/jobs/counts${jobListQueryString('', timeRange)}`),
+    refetchInterval: 5000
+  })
+  const countRows = useMemo(() => serverCounts.data ?? rangeFiltered.map(job => ({ status: job.status, jobType: job.jobType, count: 1 })), [serverCounts.data, rangeFiltered])
+  const statusSummary = useMemo(() => {
+    const summary = { success: 0, running: 0, waiting: 0, error: 0, cancelled: 0 }
+    for (const row of countRows) summary[jobStatusChip(row.status)] += row.count
+    return summary
+  }, [countRows])
   const [successCount, runningCount, waitingCount, errorCount] = useRememberedTabCounts('İşlem durum özeti', (['success', 'running', 'waiting', 'error'] as const).map(key => ({ value: key, count: list.isLoading ? undefined : statusSummary[key] })))
-  const categoryCounts = useMemo(() => new Map(categoryTabs.map(tab => [tab.key, rangeFiltered.filter(job => tab.match(job.jobType)).length])), [rangeFiltered])
+  const categoryCounts = useMemo(() => new Map(categoryTabs.map(tab => [tab.key, countRows.reduce((total, row) => total + (tab.match(row.jobType) ? row.count : 0), 0)])), [countRows])
   const refreshJobs = () => {
     void Promise.all([
       client.invalidateQueries({ queryKey: ['jobs'] }),

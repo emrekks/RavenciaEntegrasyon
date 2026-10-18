@@ -10,6 +10,17 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvider) : IJobOperationsService
 {
+    public async Task<IReadOnlyList<JobCountView>> CountAsync(Guid tenantId, DateTimeOffset? since, CancellationToken cancellationToken)
+    {
+        var query = db.IntegrationJobs.AsNoTracking().Where(x => x.TenantId == tenantId);
+        if (since is { } from) query = query.Where(x => x.CreatedAt >= from);
+        var groups = await query
+            .GroupBy(x => new { x.Status, x.JobType })
+            .Select(group => new { group.Key.Status, group.Key.JobType, Count = group.Count() })
+            .ToListAsync(cancellationToken);
+        return groups.Select(group => new JobCountView(JobStatusText(group.Status), group.JobType, group.Count)).ToList();
+    }
+
     public async Task<IReadOnlyList<JobSummaryView>> ListAsync(Guid tenantId, JobListQuery listQuery, CancellationToken cancellationToken)
     {
         var query = db.IntegrationJobs.AsNoTracking().Where(x => x.TenantId == tenantId);

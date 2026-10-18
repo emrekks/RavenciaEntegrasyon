@@ -1034,11 +1034,12 @@ main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl col.rr-c-prod { width: 27
 main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl .rr-pline { grid-template-columns: 76px minmax(0, 1fr); gap: 10px; }
 main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl .rr-thumb { width: 76px; height: 114px; }
 main .rr.rr-orders .rr-tbl.rr-tbl { min-width: 1146px; }
-main .rr.rr-returns .rr-tbl.rr-tbl { min-width: 1240px; }
+main .rr.rr-returns .rr-tbl.rr-tbl { min-width: 1308px; }
 /* returns: each column gets the width its values need (the status column had far more than its badge) so tracking
    numbers, reasons and headings stay on one line; the table scrolls sideways like orders when the screen is narrower */
-main .rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) { min-width: 1344px; }
-main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-order { width: 172px; }
+main .rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) { min-width: 1412px; }
+main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-order { width: 240px; }
+main .rr.rr-returns .rr-tbl.rr-tbl .rr-ordercell :is(small, .rr-on-no) { white-space: nowrap; }
 main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-buyer { width: 104px; }
 main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-price { width: 100px; }
 main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-cargo { width: 140px; }

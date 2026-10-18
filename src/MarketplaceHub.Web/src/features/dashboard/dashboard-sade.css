@@ -299,3 +299,6 @@
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt.rr-mxt tbody tr:hover { background: var(--rr-hover); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt.rr-mxt tbody tr:hover td { background: none; }
 }
+/* the period buttons share the width equally and keep their labels in the middle */
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pf-tools .rr-seg.rr-seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pf-tools .rr-seg.rr-seg > button { justify-content: center; padding-inline: 12px; text-align: center; }

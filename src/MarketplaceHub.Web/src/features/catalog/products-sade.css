@@ -314,3 +314,5 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl thead th:first-child { padding-left: 12px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl td.rr-mid > .rr-qbtn { margin-inline: auto; }
 }
+/* the actions button sits in the middle of its column, over Düzenle */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl .rr-actcell { align-items: center; justify-items: center; }

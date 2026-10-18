@@ -12094,3 +12094,30 @@ html { scrollbar-gutter: stable; }
    Warning counts keep their own colours and only take the shape. */
 html body :is(.nav-count, .rv-tab-count, .ss-count, .cs-count, .cm-count, .qi-count, .rr-count, .mc-count, .jobs-reference-tab-count, .category-attribute-count, .low-stock-family-count) { box-sizing: border-box !important; min-width: 22px !important; height: 22px !important; align-items: center; justify-content: center; place-items: center; padding: 1.5px 6px 0 !important; border: 1px solid var(--rv-color-border-strong) !important; border-radius: 6px !important; font-size: 11.5px !important; font-weight: 500 !important; line-height: 1 !important; font-variant-numeric: tabular-nums; }
 html body :is(.nav-count, .rv-tab-count, .ss-count, .cs-count, .cm-count, .qi-count, .rr-count, .jobs-reference-tab-count, .category-attribute-count, .low-stock-family-count):not(.is-warn, .rr-warn) { color: var(--rv-color-ink) !important; background: var(--rv-color-surface-soft) !important; }
+
+/* Page headings, one look on every page: the line under the title is left out, the small label and the title are
+   larger, and the heading buttons sit on the title's line. */
+.app-shell.stitch-shell main :is(section.content > .rr-ph, .page-heading, .rv-page-head, .qi-head, .ss-page-head, .mapping-reference-heading) :is(h1 + p) { display: none !important; }
+.app-shell.stitch-shell main :is(section.content > .rr-ph, .page-heading, .rv-page-head, .qi-head, .ss-page-head, .mapping-reference-heading) :is(.rr-crumb, .eyebrow, .qi-crumb, .ss-crumb) { font-size: 13px !important; }
+.app-shell.stitch-shell main :is(section.content > .rr-ph, .page-heading, .rv-page-head, .qi-head, .ss-page-head, .mapping-reference-heading) h1 { margin: 2px 0 0 !important; font-size: 24px !important; line-height: 1.25 !important; }
+.app-shell.stitch-shell main :is(section.content > .rr-ph, .page-heading, .rv-page-head, .qi-head) { align-items: flex-end !important; }
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main :is(section.content > .rr-ph, .page-heading, .rv-page-head, .qi-head, .ss-page-head, .mapping-reference-heading) h1 { font-size: 22px !important; }
+}
+
+/* Table heads are a shade darker than the rows in both themes, and a hovered row takes a quiet fill of the same tone. */
+.app-shell.stitch-shell main :is(.rr-tbl, .rr-mxt, .jobs-reference-table, .mapping-saved-table table) thead th,
+.app-shell.stitch-shell :is(.rr-layer) .rr-tbl thead th,
+.app-shell.stitch-shell main .cs-workspace .cs-frow.is-head { background-color: var(--rv-color-surface-soft) !important; }
+@media (min-width: 761px) { .app-shell.stitch-shell main :is(.rr-tbl, .jobs-reference-table, .mapping-saved-table table) tbody tr:hover > td { background-color: color-mix(in srgb, var(--rv-color-surface-soft) 55%, transparent) !important; } }
+
+/* Saved mapping delete button is 36×36 like every icon button. */
+.app-shell.stitch-shell main .mapping-saved-table .mapping-row-actions .mapping-delete-button { width: 36px !important; min-width: 36px !important; height: 36px !important; min-height: 36px !important; padding: 0 !important; }
+
+/* Phones: a little less space between and inside the blocks of every page; settings save bars sit in the page instead
+   of sticking to the bottom. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main section.content { row-gap: 12px; }
+  .app-shell.stitch-shell main section.content :is(.panel, .rr-panel, .product-step-card) { padding: 12px; }
+  .app-shell.stitch-shell main .ss-page .ss-bar { position: static; }
+}

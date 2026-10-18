@@ -268,3 +268,10 @@
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item.is-placeholder > .rv-question-platform-logo { width: 20px; height: 20px; }
 }
+
+/* Question type tabs fill the bar so the space on the left and on the right is the same. Phones: each import card
+   reads on one line (name and record count side by side). */
+.rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.qi-tabs > :is(button, a) { flex: 1 1 0; }
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item b { flex-wrap: nowrap; white-space: nowrap; }
+}
