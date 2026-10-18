@@ -348,6 +348,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         {
             entity.ToTable("external_effect_records", "integration"); entity.HasKey(x => x.Id);
             entity.HasIndex(x => new { x.TenantId, x.EffectType, x.IdempotencyKey }).IsUnique();
+            entity.Property(x => x.Action).HasMaxLength(64); entity.Property(x => x.ExpectedValue).HasMaxLength(256); entity.Property(x => x.Outcome).HasMaxLength(32);
+            entity.HasIndex(x => x.CreatedAt).HasFilter("\"CompletedAt\" IS NULL");
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
         });
         builder.Entity<IntegrationOutboxEvent>(entity =>

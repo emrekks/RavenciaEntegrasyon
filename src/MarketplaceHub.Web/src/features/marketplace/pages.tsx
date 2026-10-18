@@ -198,6 +198,11 @@ function MappingViewTabs({ active }: { active: 'category' | 'brand' | 'attribute
   return <nav className="mapping-view-tabs rv-tabs rv-view-tabs" aria-label="Eşleştirme türü" role="tablist"><Link role="tab" aria-selected={active === 'category'} className={active === 'category' ? 'active is-active' : ''} to="/mappings/categories"><span className="rv-tab-label">{viewTabLabel('category', 'Kategori Eşleme')}</span></Link><Link role="tab" aria-selected={active === 'brand'} className={active === 'brand' ? 'active is-active' : ''} to="/mappings/categories?view=brands"><span className="rv-tab-label">{viewTabLabel('brand', 'Marka Eşleme')}</span></Link></nav>
 }
 function idempotency() { return crypto.randomUUID() }
+// The server could not confirm an action yet (it reads the marketplace and updates the panel) or
+// queued it because the marketplace quota was full: neither is a failure, and neither should be resent.
+function isPendingAction(error: unknown): error is ApiRequestError {
+  return error instanceof ApiRequestError && (error.code === 'EXTERNAL_EFFECT_VERIFYING' || error.code === 'ACTION_QUEUED')
+}
 function wait(milliseconds: number) { return new Promise(resolve => window.setTimeout(resolve, milliseconds)) }
 function displayAttributeName(value: string) { return value.replace(/\[(?:A-)?TDG\][\s_-]*/gi, '').replace(/^\(?(?:A-)?TDG\)?[\s_-]*/gi, '').replace(/_/g, ' ').replace(/\s+/g, ' ').trim() }
 function normalizedAttributeKey(value: string) { return value.replace(/[\s_-]+/g, '').toLocaleUpperCase('tr-TR') }
@@ -459,7 +464,7 @@ function CourierChangeModal({ item, items, onClose, onConfirmed }: { item: Order
       for (const target of targets) {
         const updatedShipment = await hubApi<Shipment>(`/shipments/${target.shipment.id}/instant-cargo-provider`, {
           method: 'POST',
-          headers: { 'Idempotency-Key': idempotency(), 'If-Match': `"v${target.shipment.version}"` },
+          headers: { 'Idempotency-Key': `instant-cargo:${target.shipment.id}:v${target.shipment.version}:${chosen.code}`, 'If-Match': `"v${target.shipment.version}"` },
           body: JSON.stringify({ action: 'CHANGE_CARGO_PROVIDER', payloadJson: JSON.stringify({ cargoProvider: chosen.code }) })
         })
         updatedShipments.push(updatedShipment)
@@ -469,6 +474,7 @@ function CourierChangeModal({ item, items, onClose, onConfirmed }: { item: Order
       void client.invalidateQueries({ queryKey: ['orders'] })
       onClose()
     } catch (err) {
+      if (isPendingAction(err)) { setProgressMsg(err.message); void client.invalidateQueries({ queryKey: ['orders'] }); return }
       setErrorMsg(err instanceof Error ? `Kargo firması güncellenemedi: ${err.message}` : 'Kargo firması güncellenemedi. Paneldeki mevcut bilgi korundu.')
     } finally {
       setIsSubmitting(false)
@@ -1694,7 +1700,8 @@ export function OrdersPage() {
     try {
       const updatedShipment = await hubApi<Shipment>(`/orders/${item.id}/instant-process`, {
         method: 'POST',
-        headers: { 'Idempotency-Key': `instant-picking:${item.id}:${Date.now()}` }
+        // One key per order version: a double click or a retry reaches the same request record.
+        headers: { 'Idempotency-Key': `instant-picking:${item.id}:v${item.version}` }
       })
       moveOrderAcrossStatusCaches(client, item, updatedShipment)
       setSelectedIds(current => current.filter(id => id !== item.id))
@@ -1702,7 +1709,8 @@ export function OrdersPage() {
       await client.refetchQueries({ queryKey: ['orders'], type: 'active' })
       showBulkNotice(`Sipariş ${displayOrderNumber(item.orderNumber)} anlık olarak işleme alındı ve panelde güncellendi.`)
     } catch (error) {
-      showBulkNotice(error instanceof Error ? error.message : 'Sipariş işleme alınamadı.', 'error')
+      if (isPendingAction(error)) { showBulkNotice(error.message, 'info'); void client.invalidateQueries({ queryKey: ['orders'] }) }
+      else showBulkNotice(error instanceof Error ? error.message : 'Sipariş işleme alınamadı.', 'error')
     } finally {
       setProcessingOrderId(current => current === item.id ? null : current)
     }

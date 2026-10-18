@@ -946,9 +946,11 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
         // (order reads are spaced 5 s apart and shared by every job) used to count towards it, so
         // queued reads were cancelled as REMOTE_TIMEOUT before they were ever sent. The timer starts
         // when the resilience handler releases the request; a long cap still bounds the quota wait.
-        var timeout = RequestTimeout(trendyolOptions.Value.Timeout);
-        linked.CancelAfter(timeout + MaximumQuotaWait);
-        request.Options.Set(TrendyolResilienceHandler.QuotaAcquiredKey, () => linked.CancelAfter(timeout));
+        var instantLimits = TrendyolQuotaLane.Limits;
+        var timeout = instantLimits?.RequestTimeout ?? RequestTimeout(trendyolOptions.Value.Timeout);
+        linked.CancelAfter(instantLimits is null ? timeout + MaximumQuotaWait : instantLimits.MaximumQuotaWait);
+        var quotaAcquired = false;
+        request.Options.Set(TrendyolResilienceHandler.QuotaAcquiredKey, () => { quotaAcquired = true; linked.CancelAfter(timeout); });
         try
         {
             using var response = await clients.CreateClient("Trendyol").SendAsync(request, HttpCompletionOption.ResponseHeadersRead, linked.Token); var retryAfter = response.Headers.RetryAfter?.Delta; var rate = new RateLimitMetadata(null, response.Headers.RetryAfter?.Date, retryAfter); var remoteRequestId = response.Headers.TryGetValues("x-request-id", out var values) ? values.FirstOrDefault() : null;
@@ -961,6 +963,9 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
+            // An instant action that never got a quota token was not sent; it is queued instead.
+            if (instantLimits is not null && !quotaAcquired)
+                return AdapterResult<string>.Failure(new(AdapterErrorClass.RateLimit, "LOCAL_QUOTA_BUSY", "Pazaryeri istek kotası şu an dolu.", 429, TimeSpan.FromSeconds(10), null));
             logger.LogWarning("Trendyol {Method} {Path} (storefront {StoreFront}) timed out after the quota wait", method.Method, request.RequestUri?.AbsolutePath, includeStoreFrontCode ? storeFrontCode : "none");
             return AdapterResult<string>.Failure(new(AdapterErrorClass.TransientNetwork, "REMOTE_TIMEOUT", "Platform isteği zaman aşımına uğradı.", null, TimeSpan.FromSeconds(5), null));
         }

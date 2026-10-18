@@ -74,6 +74,14 @@ public sealed class ExternalEffectRecord
     public required string IdempotencyKey { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? CompletedAt { get; set; }
+    // What the effect changes, so an unclear outcome can be checked by reading the marketplace:
+    // the connection, the local package, order or claim, the action and the value it should leave.
+    public Guid? ConnectionId { get; set; }
+    public Guid? TargetId { get; set; }
+    public string? Action { get; set; }
+    public string? ExpectedValue { get; set; }
+    // APPLIED, or UNRESOLVED when the marketplace could not confirm it in time; null while open.
+    public string? Outcome { get; set; }
 }
 
 public sealed class AuditLog

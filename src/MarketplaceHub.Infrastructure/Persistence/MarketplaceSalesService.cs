@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
+using MarketplaceHub.Infrastructure.Adapters.Trendyol;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 
@@ -1007,7 +1008,8 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var compatibleIds = eligibleLines.Select(line => line.LineItemId).Append(seed.LineItemId).ToHashSet(StringComparer.Ordinal);
         if (remoteLines.Skip(1).Any(line => !compatibleIds.Contains(line.LineItemId))) return ServiceResult<CreateOrderPackageResult>.Fail("HEPSIBURADA_PACKAGE_LINES_NOT_COMPATIBLE", "Seçili kalemlerden biri Hepsiburada yanıtına göre aynı pakete eklenemez.", 422);
 
-        var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = effectPrefix, IdempotencyKey = effectPrefix, CreatedAt = timeProvider.GetUtcNow() };
+        var packagesBefore = await db.ShipmentPackages.AsNoTracking().CountAsync(x => x.TenantId == tenantId && x.OrderId == order.Id && x.Status != ShipmentPackageStatus.Cancelled, cancellationToken);
+        var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = effectPrefix, IdempotencyKey = effectPrefix, CreatedAt = timeProvider.GetUtcNow(), ConnectionId = connection.Id, TargetId = order.Id, Action = "CREATE_PACKAGE", ExpectedValue = packagesBefore.ToString(System.Globalization.CultureInfo.InvariantCulture) };
         db.ExternalEffectRecords.Add(effect);
         try { await db.SaveChangesAsync(cancellationToken); }
         catch (DbUpdateException)
@@ -1024,7 +1026,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         if (!result.IsSuccess)
         {
             var error = result.Error;
-            if (error is null || IsAmbiguous(error)) return ServiceResult<CreateOrderPackageResult>.Fail("EXTERNAL_EFFECT_AMBIGUOUS", error?.SafeMessage ?? "Hepsiburada paket oluşturma isteğine yanıt vermedi; tekrar gönderim engellendi.", 409);
+            if (error is null || IsAmbiguous(error)) return await VerifyLaterAsync<CreateOrderPackageResult>(effect, cancellationToken);
             db.ExternalEffectRecords.Remove(effect);
             await db.SaveChangesAsync(cancellationToken);
             return ServiceResult<CreateOrderPackageResult>.Fail(error.Code, error.SafeMessage, error.HttpStatus is >= 400 and <= 599 ? error.HttpStatus.Value : 502);
@@ -1253,19 +1255,23 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var existing = await db.ExternalEffectRecords.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.EffectType == effectType && x.IdempotencyKey == normalizedKey, cancellationToken);
         if (existing is not null)
         {
-            if (existing.CompletedAt is null) return ServiceResult<ShipmentView>.Fail("EXTERNAL_EFFECT_AMBIGUOUS", "Önceki işleme alma sonucunun kesinleşmesi bekleniyor.", 409);
+            if (existing.CompletedAt is null) return Verifying<ShipmentView>();
             return ServiceResult<ShipmentView>.Ok(Map(package, orderNumber));
         }
-        var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = effectType, IdempotencyKey = normalizedKey, CreatedAt = timeProvider.GetUtcNow() };
+        var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = effectType, IdempotencyKey = normalizedKey, CreatedAt = timeProvider.GetUtcNow(), ConnectionId = package.ConnectionId, TargetId = package.Id, Action = "PICKING" };
         db.ExternalEffectRecords.Add(effect);
         await db.SaveChangesAsync(cancellationToken);
-        var result = await orders.ExecutePackageActionAsync(new AdapterContext(tenantId, package.ConnectionId, correlationId, normalizedKey, timeProvider.GetUtcNow().AddSeconds(30)), new(package.ExternalPackageId, action, payload), cancellationToken);
+        AdapterResult<PackageActionResult> result;
+        using (TrendyolQuotaLane.Instant()) result = await orders.ExecutePackageActionAsync(new AdapterContext(tenantId, package.ConnectionId, correlationId, normalizedKey, timeProvider.GetUtcNow().AddSeconds(30)), new(package.ExternalPackageId, action, payload), cancellationToken);
         if (!result.IsSuccess)
         {
             var error = result.Error;
-            if (error is null || IsAmbiguous(error)) return ServiceResult<ShipmentView>.Fail(error is null ? "PICKING_FAILED" : "EXTERNAL_EFFECT_AMBIGUOUS", error?.SafeMessage ?? "Trendyol işleme alma isteğine yanıt vermedi; paneldeki mevcut bilgi korundu.", error is null ? 502 : 409);
+            if (error is null || IsAmbiguous(error)) return await VerifyLaterAsync<ShipmentView>(effect, cancellationToken);
             db.ExternalEffectRecords.Remove(effect);
             await db.SaveChangesAsync(cancellationToken);
+            // The marketplace quota was full and nothing was sent: the action waits in the user lane instead.
+            if (error.Class == AdapterErrorClass.RateLimit)
+                return await QueueInsteadAsync<ShipmentView>(EnqueueShipmentActionAsync(tenantId, package.Id, package.Version, new ShipmentActionCommand(action, "{}"), normalizedKey, correlationId, cancellationToken));
             return ServiceResult<ShipmentView>.Fail("PICKING_FAILED", error.SafeMessage, error.HttpStatus is >= 400 and <= 599 ? error.HttpStatus.Value : 502);
         }
 
@@ -1331,8 +1337,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var existing = await db.ExternalEffectRecords.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.EffectType == effectType && x.IdempotencyKey == normalizedKey, cancellationToken);
         if (existing is not null)
         {
-            if (existing.CompletedAt is null)
-                return ServiceResult<ShipmentView>.Fail("EXTERNAL_EFFECT_AMBIGUOUS", "Önceki kargo firması değişikliğinin sonucu kesinleştirilemedi; paneldeki mevcut bilgi korundu.", 409);
+            if (existing.CompletedAt is null) return Verifying<ShipmentView>();
 
             if (!string.Equals(package.CargoProviderExternalId, cargoProvider, StringComparison.OrdinalIgnoreCase))
             {
@@ -1344,23 +1349,25 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             return ServiceResult<ShipmentView>.Ok(Map(package, orderNumber));
         }
 
-        var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = effectType, IdempotencyKey = normalizedKey, CreatedAt = timeProvider.GetUtcNow() };
+        var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = effectType, IdempotencyKey = normalizedKey, CreatedAt = timeProvider.GetUtcNow(), ConnectionId = package.ConnectionId, TargetId = package.Id, Action = "CHANGE_CARGO_PROVIDER", ExpectedValue = cargoProvider };
         db.ExternalEffectRecords.Add(effect);
         await db.SaveChangesAsync(cancellationToken);
 
-        var result = await orders.ExecutePackageActionAsync(
-            new AdapterContext(tenantId, package.ConnectionId, correlationId, normalizedKey, timeProvider.GetUtcNow().AddSeconds(30)),
-            new(package.ExternalPackageId, action, command.PayloadJson),
-            cancellationToken);
+        AdapterResult<PackageActionResult> result;
+        using (TrendyolQuotaLane.Instant())
+            result = await orders.ExecutePackageActionAsync(
+                new AdapterContext(tenantId, package.ConnectionId, correlationId, normalizedKey, timeProvider.GetUtcNow().AddSeconds(30)),
+                new(package.ExternalPackageId, action, command.PayloadJson),
+                cancellationToken);
         if (!result.IsSuccess)
         {
             var error = result.Error;
-            if (error is null) return ServiceResult<ShipmentView>.Fail("CARGO_PROVIDER_CHANGE_FAILED", "Trendyol kargo firması değişikliğine yanıt vermedi; paneldeki mevcut bilgi korundu.", 502);
-            if (IsAmbiguous(error))
-                return ServiceResult<ShipmentView>.Fail("EXTERNAL_EFFECT_AMBIGUOUS", "Trendyol’a gönderilen kargo firması değişikliğinin sonucu kesinleştirilemedi; paneldeki mevcut bilgi korundu.", 409);
+            if (error is null || IsAmbiguous(error)) return await VerifyLaterAsync<ShipmentView>(effect, cancellationToken);
 
             db.ExternalEffectRecords.Remove(effect);
             await db.SaveChangesAsync(cancellationToken);
+            if (error.Class == AdapterErrorClass.RateLimit)
+                return await QueueInsteadAsync<ShipmentView>(EnqueueShipmentActionAsync(tenantId, package.Id, package.Version, command, normalizedKey, correlationId, cancellationToken));
             var status = error.HttpStatus is >= 400 and <= 599 ? error.HttpStatus.Value : 502;
             return ServiceResult<ShipmentView>.Fail("CARGO_PROVIDER_CHANGE_FAILED", error.SafeMessage, status);
         }
@@ -1940,7 +1947,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             totalBytes += bytes.LongLength;
         }
 
-        var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = effectType, IdempotencyKey = normalizedKey, CreatedAt = now };
+        var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = effectType, IdempotencyKey = normalizedKey, CreatedAt = now, ConnectionId = claim.ConnectionId, TargetId = claim.Id, Action = $"RETURN_{action}" };
         db.ExternalEffectRecords.Add(effect);
         await db.SaveChangesAsync(cancellationToken);
 
@@ -1957,7 +1964,7 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
             {
                 decision.Status = "MANUAL_REVIEW";
                 await db.SaveChangesAsync(cancellationToken);
-                return ServiceResult<ReturnDetailView>.Fail("EXTERNAL_EFFECT_AMBIGUOUS", error?.SafeMessage ?? "Pazaryeri iade isteğine yanıt vermedi; tekrar gönderim engellendi.", 409);
+                return await VerifyLaterAsync<ReturnDetailView>(effect, cancellationToken);
             }
             db.ExternalEffectRecords.Remove(effect);
             decision.Status = "FAILED";
@@ -2809,6 +2816,31 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     private PageResult<T> Page<T>(List<T> rows, int limit, Func<T, Guid> id) { var hasMore = rows.Count > limit; var items = rows.Take(limit).ToList(); return new(items, hasMore ? cursors.Encode(id(items[^1])) : null, hasMore); }
     private static ShipmentView Map(ShipmentPackage x, string orderNumber) => new(x.Id, x.OrderId, orderNumber, x.ExternalPackageId, Wire(x.Status), x.RawStatus, x.CargoTrackingNumber, x.StatusOccurredAt, x.Version, x.CargoProviderExternalId, ShipmentPackageClassification.IsResend(x.CreatedBy, x.OriginExternalPackageId));
     private static string Wire<T>(T value) where T : Enum => string.Concat(value.ToString().Select((ch, index) => char.IsUpper(ch) && index > 0 ? "_" + ch : ch.ToString())).ToUpperInvariant();
+    private const string VerifyingCode = "EXTERNAL_EFFECT_VERIFYING";
+    private const string VerifyingMessage = "Pazaryerinin yanıtı kesinleşmedi; sonuç birkaç saniye içinde pazaryerinden okunup panel güncellenecek. İşlemi yeniden göndermeyin.";
+
+    private static ServiceResult<T> Verifying<T>() => ServiceResult<T>.Fail(VerifyingCode, VerifyingMessage, 409);
+
+    // The marketplace's answer was unclear: the action is not sent again; a verification job
+    // reads the marketplace and settles the effect (see MarketplaceJobProcessor.ReconcileExternalEffect).
+    private async Task<ServiceResult<T>> VerifyLaterAsync<T>(ExternalEffectRecord effect, CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        var dedup = ExternalEffectReconcilePolicy.JobDedupKey(effect.Id);
+        if (!await db.IntegrationJobs.AnyAsync(x => x.TenantId == effect.TenantId && x.JobDedupKey == dedup, cancellationToken))
+            db.IntegrationJobs.Add(ExternalEffectReconcilePolicy.NewJob(effect, now, now + ExternalEffectReconcilePolicy.FirstCheckDelay));
+        await db.SaveChangesAsync(cancellationToken);
+        return Verifying<T>();
+    }
+
+    private static async Task<ServiceResult<T>> QueueInsteadAsync<T>(Task<ServiceResult<Guid>> enqueue)
+    {
+        var queued = await enqueue;
+        return queued.Error is { } error
+            ? ServiceResult<T>.Fail(error.Code, error.Message, error.Status, error.FieldErrors)
+            : ServiceResult<T>.Fail("ACTION_QUEUED", "Pazaryeri istek kotası şu an dolu; işlem sıraya alındı ve birkaç saniye içinde gönderilecek.", 409);
+    }
+
     private static bool IsAmbiguous(AdapterError error) => error.Class is AdapterErrorClass.TransientNetwork or AdapterErrorClass.Remote5xx or AdapterErrorClass.ContractViolation or AdapterErrorClass.InternalBug;
     private static ServiceResult<T> Invalid<T>(string field, string message) => ServiceResult<T>.Fail("VALIDATION_FAILED", message, 422, new Dictionary<string, string[]> { [field] = [message] });
     private static ServiceResult<T> NotFound<T>() => ServiceResult<T>.Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", 404);

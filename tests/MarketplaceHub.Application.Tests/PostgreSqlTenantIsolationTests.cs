@@ -2050,6 +2050,94 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task ExternalEffectReconcile_ReadsTheMarketplaceAndCompletesOrReleasesThePickingEffect()
+    {
+        var tenant = NewTenant("external-effect-reconcile");
+        var connection = NewQuestionConnection(tenant);
+        RemoteOrder RemoteWith(string rawStatus, int minutesAgo)
+        {
+            var package = new RemotePackage("effect-package", null, rawStatus, fixture.Now.AddMinutes(-minutesAgo), null, null,
+                [new RemotePackageAllocation("effect-line", 1m, 0m, 0m, 0m, 0m)], GrossAmount: 100m, NetAmount: 100m);
+            return new RemoteOrder("effect-order", "effect-order", fixture.Now.AddDays(-1), fixture.Now.AddMinutes(-minutesAgo), "TRY", 100m, 0m, 100m, "{}", "{}", "{}",
+                [new RemoteOrderLine("effect-line", "SKU-1", "SKU-1", "Test ürün", 1m, 100m, 10m, rawStatus)], [package], "{}");
+        }
+        var port = new SwitchableOrderPort(RemoteWith("Created", 10));
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            async Task<JobExecutionResult> RunAsync(string jobType, string payload)
+            {
+                await using var processorDb = fixture.CreateContext();
+                var processor = new MarketplaceJobProcessor(
+                    processorDb,
+                    null!, null!, null!, null!, port, null!, null!, null!, null!, null!,
+                    new ConfigurationBuilder().Build(), fixture.TimeProvider);
+                return await processor.ProcessAsync(tenant.Id, connection.Id, jobType, payload, "external-effect-reconcile", CancellationToken.None);
+            }
+            async Task<ExternalEffectRecord> EffectAsync(string key)
+            {
+                await using var db = fixture.CreateContext();
+                var packageId = await db.ShipmentPackages.Where(x => x.TenantId == tenant.Id && x.ExternalPackageId == "effect-package").Select(x => x.Id).SingleAsync();
+                var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenant.Id, EffectType = "TRENDYOL_INSTANT_PICKING", IdempotencyKey = key, CreatedAt = fixture.Now.AddMinutes(-5), ConnectionId = connection.Id, TargetId = packageId, Action = "PICKING" };
+                db.ExternalEffectRecords.Add(effect);
+                await db.SaveChangesAsync();
+                return effect;
+            }
+
+            Assert.True((await RunAsync(MarketplaceJobTypes.OrderSync, """{"externalOrderId":"effect-order","full":false}""")).Succeeded);
+
+            // Trendyol still shows the package as new five minutes later: the effect is released.
+            var notApplied = await EffectAsync("not-applied");
+            Assert.True((await RunAsync(MarketplaceJobTypes.ExternalEffectReconcile, $$"""{"effectId":"{{notApplied.Id}}"}""")).Succeeded);
+            await using (var db = fixture.CreateContext())
+                Assert.False(await db.ExternalEffectRecords.AnyAsync(x => x.Id == notApplied.Id));
+
+            // Trendyol shows the package being picked: the effect is completed and the package updated.
+            var applied = await EffectAsync("applied");
+            port.Order = RemoteWith("Picking", 1);
+            Assert.True((await RunAsync(MarketplaceJobTypes.ExternalEffectReconcile, $$"""{"effectId":"{{applied.Id}}"}""")).Succeeded);
+            await using (var db = fixture.CreateContext())
+            {
+                var settled = await db.ExternalEffectRecords.AsNoTracking().SingleAsync(x => x.Id == applied.Id);
+                Assert.Equal("APPLIED", settled.Outcome);
+                Assert.NotNull(settled.CompletedAt);
+                Assert.Equal(ShipmentPackageStatus.Processing, (await db.ShipmentPackages.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ExternalPackageId == "effect-package")).Status);
+            }
+        }
+        finally
+        {
+            await using var cleanupDb = fixture.CreateContext();
+            await cleanupDb.ExternalEffectRecords.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    private sealed class SwitchableOrderPort(RemoteOrder order) : IOrderPort
+    {
+        public RemoteOrder Order { get; set; } = order;
+
+        public Task<AdapterResult<AdapterPageResult<RemoteOrder>>> PollAsync(AdapterContext context, OrderPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+        public Task<AdapterResult<RemoteOrder>> GetAsync(AdapterContext context, string externalOrderId, CancellationToken cancellationToken) =>
+            Task.FromResult(AdapterResult<RemoteOrder>.Success(Order));
+        public Task<AdapterResult<PackageActionResult>> ExecutePackageActionAsync(AdapterContext context, PackageActionCommand command, CancellationToken cancellationToken) =>
+            throw new NotSupportedException("Verification must never send the action again.");
+        public Task<AdapterResult<IReadOnlyList<RemoteCargoCompany>>> GetChangeableCargoCompaniesAsync(AdapterContext context, string externalPackageId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<IReadOnlyList<RemotePackageableLine>>> GetPackageableLineItemsAsync(AdapterContext context, string externalLineItemId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<CreateOrderPackageResult>> CreateOrderPackageAsync(AdapterContext context, CreateOrderPackageCommand command, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<bool>> CreateCommonLabelAsync(AdapterContext context, CommonLabelRequest request, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<CommonLabelDocument>> GetCommonLabelAsync(AdapterContext context, string cargoTrackingNumber, CancellationToken cancellationToken, string format = "ZPL") => throw new NotSupportedException();
+        public Task<AdapterResult<StageTestOrderResult>> CreateStageTestOrderAsync(AdapterContext context, string barcode, CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
+
+    [PostgreSqlFact]
     public async Task TargetedTrendyolOrderSync_UsesOrderNumberBeforeSuppliedPackage()
     {
         var tenant = NewTenant("trendyol-package-first-sync");

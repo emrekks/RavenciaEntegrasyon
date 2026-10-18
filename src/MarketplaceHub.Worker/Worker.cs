@@ -79,6 +79,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         if (schedulerEnabled) loops.Add(RunSchedulerAsync(stoppingToken));
         if (schedulerEnabled && configuration.GetValue("Worker:JobRetention:Enabled", true)) loops.Add(RunJobRetentionAsync(stoppingToken));
         if (schedulerEnabled) loops.Add(RunWebhookUpkeepAsync(stoppingToken));
+        if (schedulerEnabled) loops.Add(RunExternalEffectSweepAsync(stoppingToken));
         await Task.WhenAll(loops);
     }
 
@@ -431,6 +432,31 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
                 catch (Exception exception) when (exception is not OperationCanceledException)
                 {
                     logger.LogError(exception, "Webhook upkeep pass failed");
+                }
+            }
+            while (await timer.WaitForNextTickAsync(stoppingToken));
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
+    }
+
+    // Every two minutes, marketplace actions whose outcome is still open get a verification job.
+    private async Task RunExternalEffectSweepAsync(CancellationToken stoppingToken)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
+            using var timer = new PeriodicTimer(TimeSpan.FromMinutes(2));
+            do
+            {
+                try
+                {
+                    await using var scope = scopeFactory.CreateAsyncScope();
+                    var changed = await scope.ServiceProvider.GetRequiredService<ExternalEffectSweep>().SweepAsync(stoppingToken);
+                    if (changed > 0) logger.LogInformation("External effect sweep queued or closed {Count} open marketplace action(s)", changed);
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    logger.LogError(exception, "External effect sweep failed");
                 }
             }
             while (await timer.WaitForNextTickAsync(stoppingToken));

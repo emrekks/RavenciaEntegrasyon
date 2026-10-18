@@ -27,6 +27,7 @@ public static class MarketplaceJobTypes
     public const string ReturnStatusSync = "RETURN_STATUS_SYNC";
     public const string ReturnReconciliation = "RETURN_RECONCILIATION";
     public const string ReturnAction = "RETURN_ACTION";
+    public const string ExternalEffectReconcile = "EXTERNAL_EFFECT_RECONCILE";
     public const string WebhookIngest = "TRENDYOL_WEBHOOK_INGEST";
     public const string ProductCreate = "PRODUCT_CREATE";
     public const string ProductApprovalReconcile = "PRODUCT_APPROVAL_RECONCILE";
@@ -74,7 +75,7 @@ public static class MarketplaceJobTypes
         ReferenceSync, HepsiburadaReferenceSync, N11ReferenceSync, PazaramaReferenceSync,
         ProductSync, ShopifyProductSync, HepsiburadaProductSync,
         ProductCreate, ProductApprovalReconcile, ProductUpdate, ProductArchive,
-        PriceInventorySync, StockProjectionDispatch,
+        PriceInventorySync, StockProjectionDispatch, ExternalEffectReconcile,
         OrderSync, ShopifyOrderSync, HepsiburadaOrderSync, N11OrderSync, PazaramaOrderSync,
         OrderRecoverySync, ShopifyOrderRecoverySync, HepsiburadaOrderRecoverySync, N11OrderRecoverySync, PazaramaOrderRecoverySync,
         OrderStatusSync, ShopifyOrderStatusSync, HepsiburadaOrderStatusSync, PazaramaOrderStatusSync, TrendyolOrderCargoInfoReconciliation,

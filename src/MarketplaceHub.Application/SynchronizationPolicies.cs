@@ -614,3 +614,51 @@ public static class WebhookPollingPolicy
     public static bool CountsAsGap(DateTimeOffset? registeredAt, DateTimeOffset now) =>
         registeredAt is { } registered && now - registered >= RegistrationGrace;
 }
+
+public enum EffectVerdict { Applied, NotApplied, Unknown }
+public enum ExternalEffectOutcome { Applied, NotApplied, Unresolved, Wait }
+
+// How an unclear marketplace action is settled by reading the marketplace. "Not applied" is
+// trusted only two minutes after the request (marketplaces apply some actions asynchronously);
+// an action the marketplace cannot confirm within 30 minutes is closed as unresolved.
+public static class ExternalEffectReconcilePolicy
+{
+    public static readonly TimeSpan MinimumAgeForNotApplied = TimeSpan.FromMinutes(2);
+    public static readonly TimeSpan UnresolvedAfter = TimeSpan.FromMinutes(30);
+    public static readonly TimeSpan FirstCheckDelay = TimeSpan.FromSeconds(15);
+    // Records written before effects carried their context cannot be checked; they are closed after a week.
+    public static readonly TimeSpan LegacyCloseAfter = TimeSpan.FromDays(7);
+
+    public static ExternalEffectOutcome Decide(EffectVerdict verdict, TimeSpan age) => verdict switch
+    {
+        EffectVerdict.Applied => ExternalEffectOutcome.Applied,
+        EffectVerdict.NotApplied when age >= MinimumAgeForNotApplied => ExternalEffectOutcome.NotApplied,
+        EffectVerdict.Unknown when age >= UnresolvedAfter => ExternalEffectOutcome.Unresolved,
+        _ => ExternalEffectOutcome.Wait
+    };
+
+    public static string JobDedupKey(Guid effectId) => $"effect-reconcile:{effectId:N}";
+
+    public static IntegrationJob NewJob(ExternalEffectRecord effect, DateTimeOffset now, DateTimeOffset availableAt)
+    {
+        var payload = System.Text.Json.JsonSerializer.Serialize(new { effectId = effect.Id });
+        return new IntegrationJob
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = effect.TenantId,
+            ConnectionId = effect.ConnectionId,
+            JobType = MarketplaceJobTypes.ExternalEffectReconcile,
+            PayloadJson = payload,
+            PayloadVersion = 1,
+            PayloadHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(payload))),
+            JobDedupKey = JobDedupKey(effect.Id),
+            EffectIdempotencyKey = JobDedupKey(effect.Id),
+            Priority = JobPriorityPolicy.UserAction,
+            TriggerType = "user",
+            AvailableAt = availableAt,
+            CorrelationId = $"effect-reconcile:{effect.Id:N}",
+            CreatedAt = now,
+            Version = 1
+        };
+    }
+}
