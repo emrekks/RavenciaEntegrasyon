@@ -414,6 +414,8 @@
    corner button instead of a 32×44 block over the picture. */
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .product-add-page .media-preview-strip :is(img, figure) { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; -webkit-user-drag: none; }
+  /* no browser pan or zoom starts on a picture, so nothing can cancel the hold; the page still scrolls by hand from it */
+  .app-shell.stitch-shell main .product-add-page .media-preview-strip figure { touch-action: none; }
   .app-shell.stitch-shell main .product-add-page .media-preview-strip .is-media-drag-over { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }
   .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-remove-btn { top: 4px; right: 4px; width: 26px; min-width: 26px; height: 26px; min-height: 26px; padding: 0; border-radius: 7px; }
   .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-remove-btn .ui-icon { width: 14px; height: 14px; }

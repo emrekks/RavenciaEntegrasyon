@@ -1,0 +1,89 @@
+/* Phones: one spacing scale for every page and window, so blocks line up and the screen keeps its room.
+     --m-gutter  screen edge to blocks, the top bar and windows   12px
+     --m-gap     between blocks, and between the cards of a list   8px
+     --m-pad     inside a framed block, or each of its sections    12px
+   This is the last word on phone spacing: it is linked for phones only (see main.tsx), and every rule starts at :root
+   so it outranks the page sheets that load after it. */
+@media (max-width: 760px) {
+  :root { --m-gutter: 12px; --m-gap: 8px; --m-pad: 12px; }
+
+  /* Page frame */
+  :root .app-shell.stitch-shell main section.content { padding: 12px var(--m-gutter) 16px !important; row-gap: var(--m-gap) !important; }
+  :root .app-shell.stitch-shell .rv-topbar { padding-inline: var(--m-gutter) !important; }
+
+  /* Groups of blocks */
+  :root .app-shell.stitch-shell main :is(.rr-fshell, .invoice-reference-filter-shell, .jobs-reference-canvas, .integration-grid, .invoice-reference-metrics, .rr-metrics, .rr-opgrid, .rr-dsect) { gap: var(--m-gap) !important; }
+  :root .app-shell.stitch-shell main :is(.rv-page-head, .rr-ph, .page-heading, .qi-head) { gap: var(--m-gap) !important; }
+  :root .app-shell.stitch-shell main .product-add-page :is(.product-layout-grid, .product-main-stack, .product-side-stack, .attribute-builder-list) { gap: var(--m-gap) !important; row-gap: var(--m-gap) !important; }
+
+  /* Metric tiles */
+  :root .app-shell.stitch-shell main :is(.rr-metrics > *, .invoice-reference-metrics > article) { padding: 10px var(--m-pad) !important; }
+
+  /* Card lists: orders, products, returns, invoices, jobs, categories */
+  :root .app-shell.stitch-shell main .rr-tbl tbody > tr { margin-bottom: var(--m-gap) !important; }
+  :root .app-shell.stitch-shell main .invoice-reference-table { display: grid; gap: var(--m-gap) !important; }
+  :root .app-shell.stitch-shell main .invoice-reference-table > .invoice-reference-row { margin: 0 !important; }
+  :root .app-shell.stitch-shell main .jobs-reference-table-scroll { padding: 0 !important; background: none !important; border: 0 !important; box-shadow: none !important; }
+  :root .app-shell.stitch-shell main .jobs-reference-table { margin: 0 !important; background: none !important; border: 0 !important; box-shadow: none !important; }
+  :root .app-shell.stitch-shell main .jobs-reference-table tbody > tr { margin: 0 0 var(--m-gap) !important; }
+  :root .app-shell.stitch-shell main .category-library-list { gap: var(--m-gap) !important; grid-auto-rows: min-content !important; align-content: start !important; }
+  :root .app-shell.stitch-shell main .category-library-list > * { margin: 0 !important; }
+
+  /* Lists without a frame: the page gutter is their edge */
+  :root .app-shell.stitch-shell main section.content.rr.rr:is(.rr-products, .rr-orders, .rr-returns) > .rr-panel { padding: 0 !important; background: none !important; border: 0 !important; }
+  :root .app-shell.stitch-shell main section.content.rr.rr:is(.rr-products, .rr-orders, .rr-returns) > .rr-panel > .rr-panel-h { padding: 4px 0 10px !important; }
+  :root .app-shell.stitch-shell main section.content.rr.rr:is(.rr-products, .rr-orders, .rr-returns) > .rr-panel > .rr-tblwrap { padding: 0 !important; }
+  :root .app-shell.stitch-shell main section.content.rr.rr:is(.rr-products, .rr-orders, .rr-returns) > .rr-panel > .rr-pager { padding-inline: 0 !important; }
+
+  /* Framed blocks whose content sits right inside */
+  :root .app-shell.stitch-shell main :is(.invoice-reference-filters, .jobs-reference-toolbar, .qi-tools, .mapping-reference-card, .panel:not(.rr-panel):not(.job-detail-drawer):not(.cm-card)) { padding: var(--m-pad) !important; }
+  :root .app-shell.stitch-shell main .product-add-page :is(.attribute-variant-action, .variant-filter-panel) { padding: var(--m-pad) !important; }
+  :root .app-shell.stitch-shell main .product-add-page .product-submit-sticky { padding: 10px var(--m-pad) !important; }
+  :root .app-shell.stitch-shell main .rv-questions-sync-item { min-width: 0; padding: 10px 8px !important; }
+
+  /* Framed blocks made of sections: no padding on the frame, the block padding on every section */
+  :root .app-shell.stitch-shell main section.content.rr-dashboard > .rr-panel { padding: 0 !important; }
+  :root .app-shell.stitch-shell main section.content.rr-dashboard > .rr-panel > .rr-panel-h { padding: var(--m-pad) !important; }
+  :root .app-shell.stitch-shell main .rr-mx-foot { padding: var(--m-pad) !important; }
+  :root .app-shell.stitch-shell main .rr-pf-body { gap: var(--m-pad) !important; }
+  :root .app-shell.stitch-shell main .reference-integration-card > :is(header, div, footer) { padding: var(--m-pad) !important; }
+  :root .app-shell.stitch-shell main .reference-integration-card > footer { padding-block: 10px !important; }
+  :root .app-shell.stitch-shell main .job-queue-metrics > summary { padding: var(--m-pad) !important; }
+  :root .app-shell.stitch-shell main :is(.order-pagination, .rr-pager) { padding-inline: var(--m-pad) !important; }
+  :root .app-shell.stitch-shell main .qi-foot { padding: 10px var(--m-pad) !important; }
+  :root .app-shell.stitch-shell main .ss-card > .ss-stabs { padding: var(--m-pad) var(--m-pad) 0 !important; }
+  :root .app-shell.stitch-shell main .ss-card > .ss-pane { padding: 0 var(--m-pad) var(--m-pad) !important; }
+  :root .app-shell.stitch-shell main .ss-card > .ss-pane > .ss-head { padding: var(--m-pad) 0 10px !important; }
+
+  /* Centred windows: 12px from the screen edges, filling the width between */
+  :root body :is(.rr-overlay, .workspace-modal-backdrop:not(.image-lightbox-backdrop), .invoice-detail-backdrop, .panel-attribute-modal, .missing-value-mapping-backdrop, .brand-mapping-modal-backdrop, .integration-modal-backdrop),
+  :root .app-shell.stitch-shell main :is(.rr-overlay, .workspace-modal-backdrop:not(.image-lightbox-backdrop), .invoice-detail-backdrop, .panel-attribute-modal, .missing-value-mapping-backdrop, .brand-mapping-modal-backdrop, .integration-modal-backdrop) { padding-inline: var(--m-gutter) !important; }
+  :root body .rr-overlay.rr-overlay { grid-template-columns: minmax(0, 1fr) !important; }
+  :root body :is(.rr-overlay > .rr-modal, .workspace-modal-backdrop:not(.image-lightbox-backdrop) > .workspace-modal, .invoice-detail-backdrop > .workspace-modal, .panel-attribute-modal > .panel-attribute-modal-card, .missing-value-mapping-backdrop > *, .brand-mapping-modal-backdrop > *, .integration-modal-backdrop > *),
+  :root .app-shell.stitch-shell main :is(.rr-overlay > .rr-modal, .workspace-modal-backdrop:not(.image-lightbox-backdrop) > .workspace-modal, .invoice-detail-backdrop > .workspace-modal, .panel-attribute-modal > .panel-attribute-modal-card, .missing-value-mapping-backdrop > *, .brand-mapping-modal-backdrop > *, .integration-modal-backdrop > *) { width: 100% !important; max-width: 100% !important; margin-inline: 0 !important; justify-self: stretch !important; }
+
+  /* Window parts */
+  :root .rr-layer.rr-layer .rr-modal > .rr-m-head { padding: var(--m-pad) !important; }
+  :root .rr-layer.rr-layer .rr-modal > .rr-m-body { padding: var(--m-pad) !important; gap: var(--m-pad) !important; }
+  :root .rr-layer.rr-layer .rr-modal > .rr-m-foot { padding: var(--m-pad) !important; }
+  :root .rr-layer.rr-layer .rr-modal .rr-dsec { padding: var(--m-pad) !important; gap: 10px !important; }
+  :root .rr-layer.rr-layer .rr-modal .rr-two-cards { gap: var(--m-gap) !important; }
+  :root body .workspace-modal > :is(header, footer) { padding: var(--m-pad) !important; }
+  :root body .workspace-modal > :is(.invoice-detail-body, .workspace-modal-body) { padding: var(--m-pad) !important; gap: var(--m-pad) !important; }
+  :root body .workspace-modal .invoice-detail-addresses { gap: var(--m-gap) !important; }
+  :root body .workspace-modal .invoice-detail-addresses > article { padding: 10px var(--m-pad) !important; }
+  :root .app-shell.stitch-shell main .job-detail-drawer.panel { padding: 0 !important; }
+  :root .app-shell.stitch-shell main .jobs-reference-drawer-header { padding: var(--m-pad) !important; }
+  :root .app-shell.stitch-shell main .jobs-reference-drawer-body { padding: 0 var(--m-pad) var(--m-pad) !important; gap: var(--m-gap) !important; }
+  :root .app-shell.stitch-shell main .jobs-reference-drawer-body > section { padding: var(--m-pad) !important; gap: 10px !important; }
+  :root .app-shell.stitch-shell main .cs-workspace .cs-head { padding: var(--m-pad) !important; }
+  :root .app-shell.stitch-shell main .cs-workspace .cs-nav { margin: var(--m-pad) var(--m-pad) 0 !important; }
+  :root .app-shell.stitch-shell main .cs-workspace .cs-pane { padding: var(--m-pad) !important; gap: var(--m-pad) !important; }
+  :root .app-shell.stitch-shell main .panel-attribute-modal-card > header { padding: var(--m-pad) !important; }
+  :root .app-shell.stitch-shell main .panel-attribute-modal-card > .panel-attribute-add-value { padding: var(--m-pad) !important; }
+  :root .app-shell.stitch-shell main .panel-attribute-modal-card > .panel-attribute-value-editor { padding: 4px var(--m-pad) var(--m-pad) !important; }
+  :root .app-shell.stitch-shell main .panel.cm-card.cm-card { padding: 0 !important; }
+  :root .app-shell.stitch-shell main .cm-card.cm-card > :is(.cm-context, .cm-legend) { padding: var(--m-pad) !important; gap: 10px !important; }
+  :root .app-shell.stitch-shell main .cm-card.cm-card .cm-nav { padding: 10px var(--m-pad) !important; }
+  :root .app-shell.stitch-shell main .cm-card.cm-card .cm-detail { padding: var(--m-pad) !important; }
+}

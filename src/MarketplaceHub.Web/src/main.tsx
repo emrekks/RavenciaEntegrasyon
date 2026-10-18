@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { App } from './app/App'
 import './app.css'
 import responsiveStylesheet from './styles/responsive.css?url'
+import phoneSpacingStylesheet from './styles/phone-spacing.css?url'
 import { installScrollbarVisibility } from './shared/scrollbar-visibility'
 import { installDialogScrollLock } from './shared/hooks/useScrollLock'
 import { reloadForNewBuild } from './shared/lazy-page'
@@ -16,6 +17,12 @@ responsiveLink.rel = 'stylesheet'
 responsiveLink.href = responsiveStylesheet
 responsiveLink.media = '(max-width: 1100px)'
 document.head.appendChild(responsiveLink)
+// The phone spacing scale (gutter, gaps, block padding) for every page and window, phones only.
+const phoneSpacingLink = document.createElement('link')
+phoneSpacingLink.rel = 'stylesheet'
+phoneSpacingLink.href = phoneSpacingStylesheet
+phoneSpacingLink.media = '(max-width: 760px)'
+document.head.appendChild(phoneSpacingLink)
 
 // A preload of the next screen's code failed (an older build is running after a deploy): load the new build.
 window.addEventListener('vite:preloadError', event => { if (reloadForNewBuild()) event.preventDefault() })

@@ -711,6 +711,15 @@ function lowStockSizeLabel(variant: Variant) {
   return sizes.length ? sizes.map(option => `${formatCatalogOptionLabel(option.name)}: ${option.value}`).join(' · ') : variant.sku
 }
 
+// The element that scrolls the page around a node: its nearest scrolling ancestor, or the document.
+function scrollingParent(node: Element) {
+  for (let current = node.parentElement; current; current = current.parentElement) {
+    const overflow = getComputedStyle(current).overflowY
+    if ((overflow === 'auto' || overflow === 'scroll') && current.scrollHeight > current.clientHeight) return current
+  }
+  return document.scrollingElement ?? document.documentElement
+}
+
 function useMediaQuery(query: string) {
   const [matches, setMatches] = useState(() => window.matchMedia(query).matches)
   useEffect(() => {
@@ -1979,7 +1988,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   // On touch screens a long press on a picture would start the browser's own drag (which scrolls the page towards the
   // edge it nears); the pictures are reordered by the press-and-hold handling below instead.
   const touchPointer = useMediaQuery('(pointer: coarse)')
-  const mediaTouch = useRef<{ kind: 'file' | 'url'; index: number; target: number; x: number; y: number; timer: number; dragging: boolean } | null>(null)
+  const mediaTouch = useRef<{ kind: 'file' | 'url'; index: number; target: number; x: number; y: number; lastY: number; timer: number; dragging: boolean; scroller: Element | null } | null>(null)
   const suppressMediaClick = useRef(false)
   const mediaStripCleanup = useRef<(() => void) | null>(null)
   const mediaStripRef = useCallback((node: HTMLDivElement | null) => {
@@ -2318,7 +2327,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     if (!card || target.closest('button')) return
     const kind = card.dataset.mediaKind === 'file' ? 'file' : 'url'
     const index = Number(card.dataset.mediaIndex)
-    const state = { kind, index, target: index, x: event.clientX, y: event.clientY, timer: 0, dragging: false } as NonNullable<typeof mediaTouch.current>
+    const state = { kind, index, target: index, x: event.clientX, y: event.clientY, lastY: event.clientY, timer: 0, dragging: false, scroller: null } as NonNullable<typeof mediaTouch.current>
     state.timer = window.setTimeout(() => {
       state.dragging = true
       setDraggedMedia({ kind, index })
@@ -2331,7 +2340,14 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     const state = mediaTouch.current
     if (!state) return
     if (!state.dragging) {
-      if (Math.hypot(event.clientX - state.x, event.clientY - state.y) > 8) cancelMediaTouch()
+      // The pictures take no browser gestures on phones (they would cancel the hold), so a finger that moves before the
+      // hold completes scrolls the page by hand.
+      if (state.scroller || Math.hypot(event.clientX - state.x, event.clientY - state.y) > 8) {
+        window.clearTimeout(state.timer)
+        state.scroller ??= scrollingParent(event.currentTarget)
+        state.scroller.scrollBy(0, state.lastY - event.clientY)
+        state.lastY = event.clientY
+      }
       return
     }
     const card = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('[data-media-index]')
