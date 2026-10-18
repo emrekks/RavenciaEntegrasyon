@@ -281,3 +281,23 @@
   .cs-workspace .cs-card { padding: 14px; }
   .cs-workspace .cs-health-big b { font-size: 20px; }
 }
+
+/* Phones, data sync: a flow row is the name on top, its state and last success under it and the switch on the right
+   (a later four-column rule squeezed the name to one letter); the filter chips share one line; the section tabs use the
+   project's tab look: no filled selected tab, a violet underline, short dividers between tabs. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .cs-workspace .cs-frow:not(.is-head) { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name switch" "meta switch"; align-items: center; gap: 4px 12px; padding: 10px 14px; }
+  .app-shell.stitch-shell main .cs-workspace .cs-frow:not(.is-head) > .cs-fname { grid-area: name; white-space: normal; overflow-wrap: anywhere; }
+  .app-shell.stitch-shell main .cs-workspace .cs-frow:not(.is-head) > .cs-fstate { grid-area: meta; justify-self: start; font-size: 12.5px; }
+  .app-shell.stitch-shell main .cs-workspace .cs-frow:not(.is-head) > .cs-ftime { grid-area: meta; justify-self: end; }
+  .app-shell.stitch-shell main .cs-workspace .cs-frow:not(.is-head) > .cs-switch-field { grid-area: switch; }
+  .cs-workspace .cs-chips { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); flex-wrap: nowrap; }
+  .app-shell.stitch-shell main .cs-workspace .cs-chip { justify-content: center; min-width: 0; padding: 0 6px; font-size: 12.5px; white-space: nowrap; }
+  .app-shell.stitch-shell main .cs-workspace .cs-nav { height: 48px; padding: 0 8px; scrollbar-width: none; }
+  .app-shell.stitch-shell main .cs-workspace .cs-nav > button { position: relative; height: 47px; min-height: 47px; padding: 0 12px; color: var(--rv-color-muted); background: none; border: 0; border-radius: 0; }
+  .app-shell.stitch-shell main .cs-workspace .cs-nav > button + button::before { content: ""; position: absolute; top: 50%; left: 0; width: 1px; height: 18px; background: var(--rv-color-border-strong); transform: translateY(-50%); }
+  .app-shell.stitch-shell main .cs-workspace .cs-nav > button:hover { color: var(--rv-color-ink); background: none; }
+  .app-shell.stitch-shell main .cs-workspace .cs-nav > button.is-on { color: var(--rv-color-ink); background: none; font-weight: 500; }
+  .app-shell.stitch-shell main .cs-workspace .cs-nav > button.is-on::after { content: ""; position: absolute; right: 8px; bottom: 0; left: 8px; height: 2px; background: var(--rv-color-primary); border-radius: 2px; }
+  .app-shell.stitch-shell main .cs-workspace .cs-nav > button > span:empty { display: none; }
+}

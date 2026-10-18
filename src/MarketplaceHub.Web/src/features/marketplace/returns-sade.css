@@ -1034,7 +1034,20 @@ main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl col.rr-c-prod { width: 27
 main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl .rr-pline { grid-template-columns: 76px minmax(0, 1fr); gap: 10px; }
 main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl .rr-thumb { width: 76px; height: 114px; }
 main .rr.rr-orders .rr-tbl.rr-tbl { min-width: 1146px; }
-main .rr.rr-returns .rr-tbl.rr-tbl { min-width: 1226px; }
+main .rr.rr-returns .rr-tbl.rr-tbl { min-width: 1240px; }
+/* returns: each column gets the width its values need (the status column had far more than its badge) so tracking
+   numbers, reasons and headings stay on one line; the table scrolls sideways like orders when the screen is narrower */
+main .rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) { min-width: 1344px; }
+main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-order { width: 172px; }
+main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-buyer { width: 104px; }
+main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-price { width: 100px; }
+main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-cargo { width: 140px; }
+main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-inv { width: 150px; }
+main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-reason { width: 150px; }
+main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-status { width: 120px; }
+main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-act { width: 130px; }
+main .rr.rr-returns .rr-tbl.rr-tbl .rr-cargocell > small.rr-num { white-space: nowrap; }
+main .rr.rr-returns .rr-tbl.rr-tbl th .rr-hf { white-space: nowrap !important; }
 }
 /* picture preview: no footer; the picture sits with the same 12px on every side and gets the footer's height */
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img .rr-m-body.rr-m-body { padding: 12px; }
@@ -1046,3 +1059,15 @@ main .rr.rr-returns .rr-tbl.rr-tbl { min-width: 1226px; }
 /* a state ring with a countdown: the countdown starts under the ring icon, not under the label */
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl .rr-ring > span:has(> small) { display: contents; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl .rr-ring > span > small { grid-column: 1 / -1; }
+/* column filter buttons are centred without a transform: a transform made the button box the frame for the popover's
+   fixed position, so the popover opened off the screen (to the right and below) and the filters seemed not to open */
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl th .rr-hf > .rr-anchor { top: calc(50% - 12px); transform: none; }
+/* quantity badge on product pictures: a little larger, and each count has its own colour so a multi-piece line stands
+   out at a glance (1 violet, 2 blue, 3 green, 4 orange, 5 and more red) */
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-thumb .rr-qb.rr-qb { top: -7px; right: -7px; min-width: 22px; height: 22px; padding: 0 5px; color: #fff; background: #6d4fd8; border: 2px solid var(--rr-surface); border-radius: 999px; font-size: 11.5px; font-weight: 700; line-height: 1; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-thumb .rr-qb[data-q="2"] { background: #2f7fd8; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-thumb .rr-qb[data-q="3"] { background: #13906f; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-thumb .rr-qb[data-q="4"] { background: #d4660f; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-thumb .rr-qb[data-q="5"] { background: #c8364f; }
+/* a picture fills its frame: the dark placeholder behind it no longer shows at the rounded corners */
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-thumb:has(> img) { background: none; }

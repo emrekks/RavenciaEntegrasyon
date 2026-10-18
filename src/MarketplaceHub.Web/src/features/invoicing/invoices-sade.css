@@ -353,3 +353,16 @@ body .invoice-reference-actions-popover > .invoice-reference-actions-separator {
 /* The view tabs are a card of their own; the shell only stacks them above the filter card. */
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filter-shell { gap: 12px; padding: 0; background: none; border: 0; border-radius: 0; box-shadow: none; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filter-shell > .invoice-reference-filters { padding: 16px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; }
+
+/* Wide screens: the invoice detail fits without scrolling. The four invoice facts sit two by two, the summary and
+   the address cards use tighter padding and the sections sit 12px apart (the body needed ~730px and the window gave
+   ~680px on a laptop screen). */
+@media (min-width: 761px) {
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-body { gap: 12px; padding-block: 16px; }
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary > div { padding: 10px 14px; }
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary-facts.invoice-detail-summary-facts { grid-template-columns: 1fr 1fr; }
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary-facts > div:nth-child(2) { border-top: 0; }
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary-facts > div:nth-child(even) { border-left: 1px solid var(--rv-color-border); }
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary-facts > div > small:first-child { flex-basis: 140px; }
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-addresses > article { padding: 10px 14px; line-height: 1.4; }
+}

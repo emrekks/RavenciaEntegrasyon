@@ -154,6 +154,8 @@ function useScrollAreaPopover(open: boolean, ref: RefObject<HTMLElement | null>,
     const width = sheet ? anchor.width : box.width
     const left = Math.max(8, Math.min(sheet ? anchor.left : box.left, window.innerWidth - width - 8))
     pin({ position: 'fixed', top: `${top}px`, left: `${left}px`, right: 'auto', bottom: 'auto', width: `${width}px`, transform: 'none', 'z-index': '1000' })
+    // A tall list (İade Sebebi) stays inside the screen and scrolls within itself instead of running off the bottom.
+    if (!sheet && top + box.height > window.innerHeight - 8) pin({ 'max-height': `${Math.max(160, window.innerHeight - top - 12)}px`, 'overflow-y': 'auto' })
     const onScroll = (event: Event) => { if (!(event.target instanceof Node && pop.contains(event.target))) close() }
     window.addEventListener('scroll', onScroll, true)
     window.addEventListener('resize', close)
@@ -241,7 +243,7 @@ export function RrError({ error, onRetry }: { error: unknown; onRetry?: () => vo
 export function RrThumb({ src, quantity, large, small, onOpen, alt }: { src: string | null | undefined; quantity?: number; large?: boolean; small?: boolean; onOpen?: () => void; alt: string }) {
   const [failed, setFailed] = useState(false)
   useEffect(() => setFailed(false), [src])
-  const content = <>{src && !failed ? <img src={src} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(true)} /> : null}{quantity ? <span className="rr-qb" role="img" aria-label={`${quantity} adet`}>{quantity}</span> : null}</>
+  const content = <>{src && !failed ? <img src={src} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(true)} /> : null}{quantity ? <span className="rr-qb" data-q={Math.min(quantity, 5)} role="img" aria-label={`${quantity} adet`}>{quantity}</span> : null}</>
   const className = `rr-thumb${large ? ' rr-lg' : ''}${small ? ' rr-sm' : ''}`
   return onOpen ? <button type="button" className={className} onClick={event => { event.preventDefault(); event.stopPropagation(); onOpen() }} aria-label={`${alt} görselini büyüt`}>{content}</button> : <span className={className} role="img" aria-label={alt}>{content}</span>
 }
