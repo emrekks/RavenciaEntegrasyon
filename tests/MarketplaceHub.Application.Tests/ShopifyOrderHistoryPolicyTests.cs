@@ -34,6 +34,15 @@ public sealed class ShopifyOrderHistoryPolicyTests
     }
 
     [Fact]
+    public void RecoveryReadsThreeMonthsOnceADayAndOnlyChangesInBetween()
+    {
+        var watermark = Now.AddMinutes(-60);
+
+        Assert.Equal(watermark.AddMinutes(-10), ShopifyOrderHistoryPolicy.ModifiedAfter(false, true, watermark, Now.AddHours(-1), Now, lastBaselineAt: Now.AddHours(-5)));
+        Assert.Equal(Now.AddMonths(-3), ShopifyOrderHistoryPolicy.ModifiedAfter(false, true, watermark, Now.AddHours(-1), Now, lastBaselineAt: Now.AddHours(-25)));
+    }
+
+    [Fact]
     public void IncrementalScanKeepsItsOverlapWatermark()
     {
         var watermark = Now.AddMinutes(-5);

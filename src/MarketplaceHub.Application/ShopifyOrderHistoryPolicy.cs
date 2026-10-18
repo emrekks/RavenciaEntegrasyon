@@ -7,15 +7,22 @@ public static class ShopifyOrderHistoryPolicy
 
     public static DateTimeOffset InitialWindowStart(DateTimeOffset now) => now.AddMonths(-DefaultInitialLookbackMonths);
 
+    public static readonly TimeSpan BaselineInterval = TimeSpan.FromDays(1);
+
+    // The recovery run (allowBaseline) re-reads the three-month window once a day
+    // (lastBaselineAt); in between it reads only what changed since its watermark.
     public static DateTimeOffset? ModifiedAfter(
         bool fullScan,
         bool allowBaseline,
         DateTimeOffset? lastModifiedWatermark,
         DateTimeOffset? lastSuccessAt,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        DateTimeOffset? lastBaselineAt = null)
     {
         if (fullScan) return null;
-        if (allowBaseline) return InitialWindowStart(now);
+        if (allowBaseline && (lastBaselineAt is not { } baseline || now - baseline >= BaselineInterval || lastModifiedWatermark is null))
+            return InitialWindowStart(now);
+        if (allowBaseline) return lastModifiedWatermark!.Value.AddMinutes(-10);
         return lastModifiedWatermark?.AddMinutes(-10)
             ?? (lastSuccessAt is null ? InitialWindowStart(now) : null);
     }

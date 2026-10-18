@@ -2594,12 +2594,15 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
         var cursor = await Cursor(tenantId, connectionId, cursorResourceType, cancellationToken);
         var now = timeProvider.GetUtcNow();
+        var baselineCursor = allowBaseline ? await Cursor(tenantId, connectionId, $"{cursorResourceType}_BASELINE", cancellationToken) : null;
         var modifiedAfter = ShopifyOrderHistoryPolicy.ModifiedAfter(
             full,
             allowBaseline,
             cursor.LastModifiedWatermark,
             cursor.LastSuccessAt,
-            now);
+            now,
+            baselineCursor?.LastSuccessAt);
+        var readsBaseline = allowBaseline && modifiedAfter == ShopifyOrderHistoryPolicy.InitialWindowStart(now);
         do
         {
             TrackRequest();
@@ -2625,6 +2628,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             cursor.OpaqueCursor = null;
             cursor.LastModifiedWatermark = now.AddSeconds(-60);
             cursor.Version++;
+            if (readsBaseline && baselineCursor is not null)
+            {
+                baselineCursor.LastSuccessAt = now;
+                baselineCursor.Version++;
+            }
             await db.SaveChangesAsync(cancellationToken);
             break;
         } while (!cancellationToken.IsCancellationRequested);
