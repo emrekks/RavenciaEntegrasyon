@@ -34,6 +34,25 @@ public sealed class TrendyolLookupPolicyTests
     }
 
     [Fact]
+    public void PackageBatchesShareAStorefrontAndOneRequestWindowAndHoldAtMostFiftyPackages()
+    {
+        var recentTurkey = Enumerable.Range(1, 55).Select(index => new TrendyolPackageRef($"tr-{index}", Now.AddDays(-index % 10), "TR"));
+        var olderTurkey = new[] { new TrendyolPackageRef("tr-old-1", Now.AddDays(-28), "TR"), new TrendyolPackageRef("tr-old-2", Now.AddDays(-16), "TR") };
+        var gulf = new[] { new TrendyolPackageRef("ae-1", Now.AddDays(-2), "AE") };
+
+        var batches = TrendyolLookupPolicy.PackageBatches(recentTurkey.Concat(olderTurkey).Concat(gulf), Now);
+
+        Assert.All(batches, batch => Assert.True(batch.PackageIds.Count <= 50));
+        Assert.Equal(58, batches.Sum(batch => batch.PackageIds.Count));
+        var aeBatch = Assert.Single(batches, batch => batch.Hint.StoreFrontCode == "AE");
+        Assert.Equal(["ae-1"], aeBatch.PackageIds);
+        // 28 and 16 days old are twelve days apart, so one window from the older date covers both.
+        var olderBatch = Assert.Single(batches, batch => batch.PackageIds.Contains("tr-old-1"));
+        Assert.Contains("tr-old-2", olderBatch.PackageIds);
+        Assert.Equal(Now.AddDays(-28), olderBatch.Hint.OrderedAt);
+    }
+
+    [Fact]
     public void OrderBeyondTheStreamHistoryIsNotReadAndUnknownOrdersHaveNoStreamWindow()
     {
         Assert.Null(TrendyolLookupPolicy.StreamWindow(new(Now.AddDays(-120), Now.AddDays(-100), null), Now));

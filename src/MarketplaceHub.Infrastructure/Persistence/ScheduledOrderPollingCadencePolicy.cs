@@ -10,10 +10,16 @@ public static class ScheduledOrderPollingCadencePolicy
         int intervalSeconds,
         int jitterSeconds)
     {
-        if (string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase)
-            && resourceType is "ORDERS" or "ORDER_LIFECYCLE")
+        if (string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase) && resourceType == "ORDERS")
         {
             return (180, jitterSeconds);
+        }
+
+        // The Trendyol order stream brings every status change; the open-package scan is a
+        // half-hourly safety net that reads the packages fifty at a time.
+        if (string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase) && resourceType == "ORDER_LIFECYCLE")
+        {
+            return (1800, jitterSeconds);
         }
 
         if (string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase)

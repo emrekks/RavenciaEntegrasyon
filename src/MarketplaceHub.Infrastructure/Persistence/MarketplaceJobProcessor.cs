@@ -2692,6 +2692,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var isShopify = platformCode == "SHOPIFY";
         var isHepsiburada = platformCode == "HEPSIBURADA";
         var isTrendyol = string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase);
+        if (isTrendyol) return await SyncTrendyolOpenPackages(tenantId, connectionId, correlationId, cancellationToken);
         var lifecycleBatchSize = OpenOrderLifecyclePolicy.LifecycleBatchSize(
             platformCode,
             configuration.GetValue("MarketplaceSync:OrderLifecycle:BatchSize", 25),
@@ -2742,36 +2743,6 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 ? (lifecycleOffset + externalOrderIds.Count).ToString(CultureInfo.InvariantCulture)
                 : null;
         }
-        else if (platformCode == "TRENDYOL")
-        {
-            var lifecycleOrders = from package in db.ShipmentPackages.AsNoTracking()
-                                  join order in db.Orders.AsNoTracking()
-                                      on new { package.TenantId, package.OrderId } equals new { order.TenantId, OrderId = order.Id }
-                                  where package.TenantId == tenantId && package.ConnectionId == connectionId
-                                      && package.Status != ShipmentPackageStatus.Delivered
-                                      && package.Status != ShipmentPackageStatus.Cancelled
-                                      && package.Status != ShipmentPackageStatus.Returned
-                                  group package by order.ExternalOrderId into openOrder
-                                  select openOrder.Key;
-            var lifecycleOffset = int.TryParse(cursor.OpaqueCursor, NumberStyles.None, CultureInfo.InvariantCulture, out var savedOffset)
-                ? Math.Max(0, savedOffset)
-                : 0;
-            var orderedLifecycleOrders = lifecycleOrders.OrderBy(externalOrderId => externalOrderId);
-            externalOrderIds = await orderedLifecycleOrders
-                .Skip(lifecycleOffset)
-                .Take(lifecycleBatchSize)
-                .ToListAsync(cancellationToken);
-            if (externalOrderIds.Count == 0 && lifecycleOffset > 0)
-            {
-                lifecycleOffset = 0;
-                externalOrderIds = await orderedLifecycleOrders
-                    .Take(lifecycleBatchSize)
-                    .ToListAsync(cancellationToken);
-            }
-            cursor.OpaqueCursor = externalOrderIds.Count == lifecycleBatchSize
-                ? (lifecycleOffset + externalOrderIds.Count).ToString(CultureInfo.InvariantCulture)
-                : null;
-        }
         else
         {
             externalOrderIds = await (from package in db.ShipmentPackages.AsNoTracking()
@@ -2812,6 +2783,77 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             await ReconcileHepsiburadaPackageStatuses(tenantId, connectionId, correlationId, cancellationToken);
 
         cursor.LastModifiedWatermark = timeProvider.GetUtcNow();
+        cursor.Version++;
+        await db.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    // Trendyol open packages (not delivered, cancelled or returned). Those of the last month are
+    // read through Order V2 fifty at a time, grouped by storefront and date window; older open
+    // packages once a day, one order at a time from the stream around their last change. The
+    // order stream already brings every status change, so this is the safety net.
+    private async Task<bool> SyncTrendyolOpenPackages(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        var cursor = await Cursor(tenantId, connectionId, "ORDER_LIFECYCLE", cancellationToken);
+        var open = await (from package in db.ShipmentPackages.AsNoTracking()
+                          join order in db.Orders.AsNoTracking()
+                              on new { package.TenantId, package.OrderId } equals new { order.TenantId, OrderId = order.Id }
+                          where package.TenantId == tenantId && package.ConnectionId == connectionId
+                              && package.Status != ShipmentPackageStatus.Delivered
+                              && package.Status != ShipmentPackageStatus.Cancelled
+                              && package.Status != ShipmentPackageStatus.Returned
+                              && package.ExternalPackageId != ""
+                          select new { package.ExternalPackageId, order.ExternalOrderId, order.OrderedAt, order.LastRemoteModifiedAt, order.StoreFrontCode })
+            .ToListAsync(cancellationToken);
+        var v2Cutoff = now - TrendyolLookupPolicy.V2History;
+        var received = new List<RemoteOrder>();
+        var recent = open.Where(package => package.OrderedAt >= v2Cutoff).ToList();
+        foreach (var (packageIds, hint) in TrendyolLookupPolicy.PackageBatches(recent.Select(package => new TrendyolPackageRef(package.ExternalPackageId, package.OrderedAt, package.StoreFrontCode)), now))
+        {
+            TrackRequest();
+            var batch = await orders.GetShipmentPackagesAsync(Context(tenantId, connectionId, correlationId, $"order-lifecycle-batch:{packageIds[0]}"), packageIds, hint, cancellationToken);
+            if (batch.IsSuccess)
+            {
+                foreach (var _ in batch.Value!) TrackReceived();
+                received.AddRange(batch.Value!);
+                await ResolveIssue(tenantId, $"order-lifecycle-batch:{connectionId}", cancellationToken);
+                continue;
+            }
+            if (batch.Error?.Class == AdapterErrorClass.RateLimit) { TrackResultFailure(batch.Error); throw JobProcessingException.FromAdapter(batch.Error); }
+            TrackResultFailure(batch.Error);
+            await RecordIssue(tenantId, $"order-lifecycle-batch:{connectionId}", batch.Error!.Code,
+                $"Açık Trendyol paketleri toplu okunamadı; sonraki taramada tekrar denenecek. {batch.Error.SafeMessage}", cancellationToken);
+        }
+
+        var olderCursor = await Cursor(tenantId, connectionId, "ORDER_LIFECYCLE_OLDER", cancellationToken);
+        if (olderCursor.LastSuccessAt is not { } lastOlderRead || now - lastOlderRead >= TimeSpan.FromDays(1))
+        {
+            foreach (var order in open.Where(package => package.OrderedAt < v2Cutoff).GroupBy(package => package.ExternalOrderId).Select(group => group.First()))
+            {
+                TrackRequest();
+                var result = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"order-lifecycle:{order.ExternalOrderId}"), order.ExternalOrderId,
+                    new OrderLookupHint(order.OrderedAt, order.LastRemoteModifiedAt, order.StoreFrontCode), cancellationToken);
+                if (result.IsSuccess)
+                {
+                    TrackReceived();
+                    received.Add(result.Value!);
+                    await ResolveIssue(tenantId, $"order-lifecycle:{connectionId}:{order.ExternalOrderId}", cancellationToken);
+                    continue;
+                }
+                if (result.Error?.Class == AdapterErrorClass.NotFound) continue;
+                if (result.Error?.Class == AdapterErrorClass.RateLimit) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error); }
+                TrackResultFailure(result.Error);
+                await RecordIssue(tenantId, $"order-lifecycle:{connectionId}:{order.ExternalOrderId}", result.Error!.Code,
+                    $"Sipariş yaşam döngüsü yenilenemedi; sonraki otomatik taramada tekrar denenecek. {result.Error.SafeMessage}", cancellationToken);
+            }
+            olderCursor.LastSuccessAt = now;
+            olderCursor.Version++;
+        }
+
+        if (received.Count > 0) await UpsertOrders(tenantId, connectionId, received, cancellationToken);
+        cursor.OpaqueCursor = null;
+        cursor.LastModifiedWatermark = now;
         cursor.Version++;
         await db.SaveChangesAsync(cancellationToken);
         return true;

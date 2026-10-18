@@ -518,9 +518,12 @@ public static class TrendyolStorefrontPolicy
 
 // Where a targeted Trendyol read looks. Order V2 keeps one month of packages and takes at most
 // two weeks per request; the order stream keeps three months and filters by last change.
+public sealed record TrendyolPackageRef(string ExternalPackageId, DateTimeOffset OrderedAt, string? StoreFrontCode);
+
 public static class TrendyolLookupPolicy
 {
     public const string HomeStoreFront = "TR";
+    public const int PackageBatchSize = 50;
     public static readonly TimeSpan V2History = TimeSpan.FromDays(30);
     public static readonly TimeSpan V2MaximumSpan = TimeSpan.FromDays(14);
     public static readonly TimeSpan StreamMargin = TimeSpan.FromDays(6);
@@ -540,6 +543,33 @@ public static class TrendyolLookupPolicy
         if (start < oldest) start = oldest;
         var end = start + V2MaximumSpan;
         return (start, end > now ? now : end);
+    }
+
+    // Packages read together by Order V2: one storefront, at most 50 IDs, and order dates one
+    // request window covers (any dates within the last two weeks, otherwise a 13-day span).
+    public static IReadOnlyList<(IReadOnlyList<string> PackageIds, OrderLookupHint Hint)> PackageBatches(IEnumerable<TrendyolPackageRef> packages, DateTimeOffset now)
+    {
+        var batches = new List<(IReadOnlyList<string>, OrderLookupHint)>();
+        foreach (var storefront in packages.GroupBy(package => package.StoreFrontCode?.Trim().ToUpperInvariant()))
+        {
+            var batch = new List<TrendyolPackageRef>();
+            void Flush()
+            {
+                if (batch.Count == 0) return;
+                batches.Add((batch.Select(package => package.ExternalPackageId).ToArray(), new OrderLookupHint(batch[0].OrderedAt, null, storefront.Key)));
+                batch = [];
+            }
+            foreach (var package in storefront.OrderBy(package => package.OrderedAt))
+            {
+                var fits = batch.Count == 0
+                    || batch.Count < PackageBatchSize
+                        && (batch[0].OrderedAt >= now - V2MaximumSpan || package.OrderedAt - batch[0].OrderedAt <= V2MaximumSpan - TimeSpan.FromDays(1));
+                if (!fits) Flush();
+                batch.Add(package);
+            }
+            Flush();
+        }
+        return batches;
     }
 
     // A known order V2 cannot serve is read from the stream six days either side of its last

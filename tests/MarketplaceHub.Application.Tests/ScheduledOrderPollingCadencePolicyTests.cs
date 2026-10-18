@@ -7,7 +7,7 @@ public sealed class ScheduledOrderPollingCadencePolicyTests
 {
     [Theory]
     [InlineData("TRENDYOL", "ORDERS", 60, 5, 180, 5)]
-    [InlineData("TRENDYOL", "ORDER_LIFECYCLE", 180, 10, 180, 10)]
+    [InlineData("TRENDYOL", "ORDER_LIFECYCLE", 180, 10, 1800, 10)]
     [InlineData("SHOPIFY", "ORDERS", 60, 5, 540, 30)]
     [InlineData("SHOPIFY", "ORDER_LIFECYCLE", 180, 10, 540, 10)]
     [InlineData("TRENDYOL", "ORDER_RECOVERY", 900, 30, 900, 30)]

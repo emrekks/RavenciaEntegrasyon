@@ -362,6 +362,54 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
         return AdapterResult<RemoteOrder>.Failure(new(AdapterErrorClass.NotFound, "REMOTE_ORDER_NOT_FOUND", "Platform siparişi bulunamadı.", 404, null, null));
     }
 
+    // Order V2 takes up to 50 package IDs per request. The group shares one storefront and one
+    // date window (TrendyolLookupPolicy.PackageBatches); packages Trendyol does not return are
+    // left out, and a request Trendyol rejects (400) is reported so the caller can read one by one.
+    public async Task<AdapterResult<IReadOnlyList<RemoteOrder>>> GetShipmentPackagesAsync(AdapterContext context, IReadOnlyList<string> externalPackageIds, OrderLookupHint? hint, CancellationToken cancellationToken)
+    {
+        var ids = externalPackageIds.Where(id => !string.IsNullOrWhiteSpace(id)).Select(id => id.Trim()).Distinct(StringComparer.Ordinal).ToList();
+        if (ids.Count == 0) return AdapterResult<IReadOnlyList<RemoteOrder>>.Success([]);
+        if (ids.Count > TrendyolLookupPolicy.PackageBatchSize) return AdapterResult<IReadOnlyList<RemoteOrder>>.Failure(TrendyolErrorMapper.Contract());
+        var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
+        if (authorized is null) return AdapterResult<IReadOnlyList<RemoteOrder>>.Failure(TrendyolErrorMapper.Configuration());
+        if (TrendyolLookupPolicy.V2Window(hint, timeProvider.GetUtcNow()) is not { } window) return AdapterResult<IReadOnlyList<RemoteOrder>>.Success([]);
+
+        var missing = new HashSet<string>(ids, StringComparer.Ordinal);
+        var found = new List<RemoteOrder>();
+        RateLimitMetadata? rateLimit = null;
+        AdapterError? rejected = null;
+        foreach (var storeFrontCode in TrendyolLookupPolicy.Storefronts(hint, TrendyolReadStorefronts.Codes))
+        {
+            var query = $"?startDate={window.Start.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)}&endDate={window.End.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)}&shipmentPackageIds={Uri.EscapeDataString(string.Join(',', missing))}&page=0&size=200";
+            var response = await SendAsync(authorized, HttpMethod.Get, TrendyolEndpoints.Orders(authorized.Connection.ExternalStoreId) + query, null, cancellationToken, storeFrontCode: storeFrontCode);
+            if (!response.IsSuccess)
+            {
+                if (response.Error?.HttpStatus is 400 or 404) { rejected ??= response.Error; continue; }
+                return AdapterResult<IReadOnlyList<RemoteOrder>>.Failure(response.Error!, response.RateLimit);
+            }
+            rateLimit = response.RateLimit;
+            try
+            {
+                foreach (var order in TrendyolJsonMapper.Orders(response.Value!).Items)
+                {
+                    var packages = order.Packages.Where(package => missing.Contains(package.ExternalPackageId)).ToList();
+                    if (packages.Count == 0) continue;
+                    found.Add(order with { Packages = packages, StoreFrontCode = storeFrontCode });
+                    foreach (var package in packages) missing.Remove(package.ExternalPackageId);
+                }
+            }
+            catch (JsonException exception)
+            {
+                logger.LogWarning(exception, "Trendyol package batch response failed contract mapping.");
+                return AdapterResult<IReadOnlyList<RemoteOrder>>.Failure(TrendyolErrorMapper.Contract());
+            }
+            if (missing.Count == 0) break;
+        }
+        return found.Count == 0 && rejected is { HttpStatus: 400 }
+            ? AdapterResult<IReadOnlyList<RemoteOrder>>.Failure(rejected, rateLimit)
+            : AdapterResult<IReadOnlyList<RemoteOrder>>.Success(found, rateLimit);
+    }
+
     public async Task<AdapterResult<RemoteOrderPackage>> GetShipmentPackageAsync(AdapterContext context, string externalPackageId, CancellationToken cancellationToken)
         => await ReadShipmentPackageAsync(context, externalPackageId, new PackageLookup(null), cancellationToken);
 

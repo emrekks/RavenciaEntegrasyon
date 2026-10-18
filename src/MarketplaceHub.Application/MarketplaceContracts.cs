@@ -635,6 +635,10 @@ public interface IOrderPort
         GetAsync(context, externalOrderId, cancellationToken);
     Task<AdapterResult<RemoteOrderPackage>> GetShipmentPackageAsync(AdapterContext context, string externalPackageId, PackageLookup lookup, CancellationToken cancellationToken) =>
         GetShipmentPackageAsync(context, externalPackageId, lookup.StatusOccurredAt, cancellationToken);
+    // Packages of known orders that share a storefront and date window, read in one request
+    // where the marketplace allows it. A package the marketplace did not return is left out.
+    Task<AdapterResult<IReadOnlyList<RemoteOrder>>> GetShipmentPackagesAsync(AdapterContext context, IReadOnlyList<string> externalPackageIds, OrderLookupHint? hint, CancellationToken cancellationToken) =>
+        Task.FromResult(AdapterResult<IReadOnlyList<RemoteOrder>>.Failure(new(AdapterErrorClass.NotSupported, "ORDER_PACKAGE_BATCH_READ_UNSUPPORTED", "Bu pazaryerinde toplu paket okuması desteklenmiyor.", null, null, null)));
     Task<AdapterResult<PackageActionResult>> ExecutePackageActionAsync(AdapterContext context, PackageActionCommand command, CancellationToken cancellationToken);
     Task<AdapterResult<IReadOnlyList<RemoteCargoCompany>>> GetChangeableCargoCompaniesAsync(AdapterContext context, string externalPackageId, CancellationToken cancellationToken);
     Task<AdapterResult<IReadOnlyList<RemotePackageableLine>>> GetPackageableLineItemsAsync(AdapterContext context, string externalLineItemId, CancellationToken cancellationToken);

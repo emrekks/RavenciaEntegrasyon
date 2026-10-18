@@ -1798,6 +1798,62 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task TrendyolOpenPackageScan_ReadsRecentPackagesInOneBatchAndOlderOnesOnceADay()
+    {
+        var tenant = NewTenant("trendyol-open-package-scan");
+        var connection = NewQuestionConnection(tenant);
+        var orderPort = new StorefrontRecordingOrderPort();
+        var now = fixture.Now;
+        var ids = Enumerable.Range(1, 4).Select(index => Guid.Parse($"0199a5a1-1c00-7000-8000-00000000003{index}")).ToArray();
+        var orders = ids.Select((id, index) => NewInvoiceTestOrder(tenant.Id, connection.Id, id, $"open-order-{index}", isReturnClaim: false, now)).ToArray();
+        var packages = ids.Select((id, index) => NewInvoiceTestPackage(tenant.Id, connection.Id, id, Guid.CreateVersion7(), $"open-package-{index}", now)).ToArray();
+        // 0 and 1: shipped in Türkiye this week. 2: shipped, ordered 40 days ago. 3: delivered (not open).
+        foreach (var index in new[] { 0, 1, 2 }) { packages[index].Status = ShipmentPackageStatus.Shipped; packages[index].RawStatus = "Shipped"; orders[index].StoreFrontCode = "TR"; }
+        orders[2].OrderedAt = now.AddDays(-40);
+        orders[2].LastRemoteModifiedAt = now.AddDays(-35);
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.Orders.AddRange(orders);
+            seedDb.ShipmentPackages.AddRange(packages);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            async Task RunAsync()
+            {
+                await using var processorDb = fixture.CreateContext();
+                var processor = new MarketplaceJobProcessor(
+                    processorDb,
+                    null!, null!, null!, null!, orderPort, null!, null!, null!, null!, null!,
+                    new ConfigurationBuilder().Build(), fixture.TimeProvider);
+                var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.OrderStatusSync, "{}", "trendyol-open-package-scan", CancellationToken.None);
+                Assert.True(result.Succeeded, result.ErrorSummary);
+            }
+
+            await RunAsync();
+            var batch = Assert.Single(orderPort.PackageBatches);
+            Assert.Equal(["open-package-0", "open-package-1"], batch.PackageIds.Order());
+            Assert.Equal("TR", batch.Hint?.StoreFrontCode);
+            var olderRead = Assert.Single(orderPort.OrderReads);
+            Assert.Equal("open-order-2", olderRead.OrderId);
+            Assert.Equal(now.AddDays(-35), olderRead.Hint?.LastModifiedAt);
+
+            // Within a day the older order is not read again; the recent batch is.
+            await RunAsync();
+            Assert.Equal(2, orderPort.PackageBatches.Count);
+            Assert.Single(orderPort.OrderReads);
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
     public async Task TargetedTrendyolOrderSync_UsesOrderNumberBeforeSuppliedPackage()
     {
         var tenant = NewTenant("trendyol-package-first-sync");
@@ -4312,6 +4368,20 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     private sealed class StorefrontRecordingOrderPort : IOrderPort
     {
         public List<string?> PolledStorefronts { get; } = [];
+        public List<(IReadOnlyList<string> PackageIds, OrderLookupHint? Hint)> PackageBatches { get; } = [];
+        public List<(string OrderId, OrderLookupHint? Hint)> OrderReads { get; } = [];
+
+        public Task<AdapterResult<IReadOnlyList<RemoteOrder>>> GetShipmentPackagesAsync(AdapterContext context, IReadOnlyList<string> externalPackageIds, OrderLookupHint? hint, CancellationToken cancellationToken)
+        {
+            PackageBatches.Add((externalPackageIds, hint));
+            return Task.FromResult(AdapterResult<IReadOnlyList<RemoteOrder>>.Success([]));
+        }
+
+        public Task<AdapterResult<RemoteOrder>> GetAsync(AdapterContext context, string externalOrderId, OrderLookupHint? hint, CancellationToken cancellationToken)
+        {
+            OrderReads.Add((externalOrderId, hint));
+            return Task.FromResult(AdapterResult<RemoteOrder>.Failure(new(AdapterErrorClass.NotFound, "REMOTE_ORDER_NOT_FOUND", "Platform siparişi bulunamadı.", 404, null, null)));
+        }
 
         public Task<AdapterResult<AdapterPageResult<RemoteOrder>>> PollAsync(AdapterContext context, OrderPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken)
         {
