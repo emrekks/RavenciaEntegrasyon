@@ -5,11 +5,13 @@ import { formatDateRange, selectDateRangeDay, type DateRange } from './date-rang
 
 function dateKey(date: Date) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}` }
 function monthStart(value: string) { const date = value ? new Date(`${value}T12:00:00`) : new Date(); return new Date(date.getFullYear(), date.getMonth(), 1) }
+// The two calendars end at this month at the latest, so the second one is never a month that is all in the future.
+function firstShownMonth(value: string) { const start = monthStart(value); const now = new Date(); const latest = new Date(now.getFullYear(), now.getMonth() - 1, 1); return start > latest ? latest : start }
 
 // placeholder, icon and chevron let a page draw the trigger in its own style (the returns page uses the proposal's icons).
 export function DateRangePicker({ from, to, onChange, label = 'Tarih aralığı', className, placeholder, icon, chevron }: { from: string; to: string; onChange: (range: DateRange) => void; label?: string; className?: string; placeholder?: string; icon?: ReactNode; chevron?: ReactNode }) {
   const [open, setOpen] = useState(false)
-  const [month, setMonth] = useState(() => monthStart(from))
+  const [month, setMonth] = useState(() => firstShownMonth(from))
   const [popoverPosition, setPopoverPosition] = useState<{ left: number; top: number; maxHeight: number } | null>(null)
   const root = useRef<HTMLDivElement>(null)
   const popover = useRef<HTMLElement>(null)
@@ -50,7 +52,7 @@ export function DateRangePicker({ from, to, onChange, label = 'Tarih aralığı'
   }
   useEffect(() => {
     if (!open) return
-    setMonth(monthStart(from))
+    setMonth(firstShownMonth(from))
     const closeOnOutside = (event: PointerEvent) => { if (!root.current?.contains(event.target as Node) && !popover.current?.contains(event.target as Node)) setOpen(false) }
     const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false) }
     // The popover is fixed to the viewport, so it follows its field whenever the page scrolls or resizes.

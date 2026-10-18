@@ -60,6 +60,12 @@ describe('DateRangePicker presets', () => {
     expect(document.body.querySelector<HTMLButtonElement>('button[aria-label="Sonraki ay"]')!.disabled).toBe(true)
   })
 
+  it('shows the month before and this month when the range is in this month', () => {
+    act(() => root.render(<DateRangePicker from="2026-10-05" to="2026-10-11" onChange={vi.fn()} />))
+    act(() => container.querySelector<HTMLButtonElement>('.date-range-picker-trigger')!.click())
+    expect(Array.from(document.body.querySelectorAll('.date-range-picker-month > strong')).map(label => label.textContent)).toEqual(['Eylül 2026', 'Ekim 2026'])
+  })
+
   it('opens above the trigger when the viewport has more space there', () => {
     act(() => root.render(<DateRangePicker from="" to="" onChange={() => undefined} />))
     const picker = container.querySelector<HTMLDivElement>('.date-range-picker')!

@@ -12168,3 +12168,7 @@ html body :is(.nav-count, .rv-tab-count, .ss-count, .cs-count, .cm-count, .qi-co
 @media (max-width: 760px) {
   .app-shell :is(.rv-tabs, [role="tablist"], .cm-nav, .cs-nav) { overflow-y: hidden; }
 }
+
+/* Date range picker: days after today are greyed out and cannot be picked. */
+.date-range-picker-popover .date-range-picker-grid > button:disabled,
+.date-range-picker-popover .date-range-picker-grid > button:disabled:hover { color: var(--rv-color-subtle); background: none; border-color: transparent; opacity: .4; cursor: not-allowed; }
