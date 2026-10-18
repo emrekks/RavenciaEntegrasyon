@@ -339,3 +339,10 @@
 .instant-notifications-secret { display: grid; gap: 6px; margin-top: 12px; font-size: 13px; font-weight: 600; }
 .instant-notifications-secret input { min-height: 36px; padding: 0 10px; border: 1px solid var(--rv-color-border); border-radius: 7px; font: inherit; font-weight: 400; }
 .instant-notifications-secret small { color: var(--rv-color-muted); font-weight: 400; line-height: 1.45; }
+
+/* Şimdi Çalıştır sits at the start of the footer, apart from the save and cancel pair. */
+.app-shell.stitch-shell main .sp-sade .sync-policy-modal-form > footer > .sync-policy-run-now { margin-right: auto; }
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .sp-sade .sync-policy-modal-form > footer { flex-wrap: wrap; }
+  .app-shell.stitch-shell main .sp-sade .sync-policy-modal-form > footer > .sync-policy-run-now { flex: 1 1 100%; margin-right: 0; }
+}

@@ -1096,6 +1096,42 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task RunNow_StartsAFlowOnceAndRefusesStockWithoutWrites()
+    {
+        var tenant = NewTenant("run-now");
+        var connection = NewQuestionConnection(tenant);
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var producer = new ScheduledJobProducer(db, fixture.TimeProvider, new ConfigurationBuilder().Build());
+
+            var first = await producer.RunNowAsync(tenant.Id, connection.Id, "orders", "run-now-test", CancellationToken.None);
+            var second = await producer.RunNowAsync(tenant.Id, connection.Id, "ORDERS", "run-now-test", CancellationToken.None);
+            Assert.Null(first.Error);
+            Assert.Equal(first.Value, second.Value);
+            var job = await db.IntegrationJobs.AsNoTracking().SingleAsync(x => x.Id == first.Value);
+            Assert.Equal("user", job.TriggerType);
+            Assert.Equal(MarketplaceJobTypes.OrderSync, job.JobType);
+
+            Assert.Equal("EXTERNAL_WRITES_DISABLED", (await producer.RunNowAsync(tenant.Id, connection.Id, "STOCK_RECONCILE_SHORT", "run-now-test", CancellationToken.None)).Error!.Code);
+            Assert.Equal("SYNC_FLOW_NOT_RUNNABLE", (await producer.RunNowAsync(tenant.Id, connection.Id, "UNKNOWN_FLOW", "run-now-test", CancellationToken.None)).Error!.Code);
+        }
+        finally
+        {
+            await using var cleanupDb = fixture.CreateContext();
+            await cleanupDb.IntegrationJobs.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
     public async Task SharedRateLimiter_TakesTokensUntilTheBucketIsEmptyThenReportsTheWait()
     {
         var key = $"test:rate:{Guid.NewGuid():N}";

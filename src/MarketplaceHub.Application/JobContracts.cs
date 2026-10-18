@@ -200,4 +200,7 @@ public interface IJobOperationsService
 public interface IScheduledJobProducer
 {
     Task<int> EnqueueDueAsync(CancellationToken cancellationToken);
+
+    // A user starts a data sync flow now instead of waiting for its next scheduled run.
+    Task<ServiceResult<Guid>> RunNowAsync(Guid tenantId, Guid connectionId, string resourceType, string correlationId, CancellationToken cancellationToken);
 }

@@ -60,6 +60,10 @@ public static class MarketplaceEndpoints
                     ? WithEtag(http, await service.RecordCapabilityEvidenceAsync(tenant.TenantId, tenant.UserId, id, code, version, command, http.TraceIdentifier, http.RequestAborted), x => x.Version)
                     : failure!
                 : MissingContext(http));
+        api.MapPost("/connections/{id:guid}/sync-policies/{resourceType}/runs", async (Guid id, string resourceType, HttpContext http, IScheduledJobProducer producer) =>
+            Tenant(http) is { } tenant && RequireIdempotency(http) is null
+                ? Accepted(await producer.RunNowAsync(tenant.TenantId, id, resourceType, OperationCorrelation(http), http.RequestAborted))
+                : MissingContext(http));
         api.MapGet("/connections/{id:guid}/sync-policies", async (Guid id, HttpContext http, IMarketplaceConnectionService service) => Tenant(http) is { } tenant ? Result(await service.SyncPoliciesAsync(tenant.TenantId, id, http.RequestAborted), Results.Ok) : Unauthorized(http));
         api.MapPut("/connections/{id:guid}/sync-policies/{resourceType}", async (Guid id, string resourceType, UpdateSyncPolicyCommand command, HttpContext http, IMarketplaceConnectionService service) =>
         {

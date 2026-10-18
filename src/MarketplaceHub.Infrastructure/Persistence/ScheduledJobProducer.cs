@@ -507,6 +507,40 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         _ => null
     };
 
+    // The flow's own job, started now and ahead of scheduled work. A run of the same flow that is
+    // already running or due is returned instead of a second one. Flows that write to the
+    // marketplace start only while writes are enabled for the connection.
+    public async Task<ServiceResult<Guid>> RunNowAsync(Guid tenantId, Guid connectionId, string resourceType, string correlationId, CancellationToken cancellationToken)
+    {
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
+        if (connection is null) return ServiceResult<Guid>.Fail("RESOURCE_NOT_FOUND", "Bağlantı bulunamadı.", 404);
+        if (connection.Status is not ("ACTIVE" or "VERIFIED"))
+            return ServiceResult<Guid>.Fail("CONNECTION_INACTIVE", "Bağlantı aktif olmadığı için akış başlatılamaz.", 409);
+        var type = resourceType.Trim().ToUpperInvariant();
+        if (Definition(type, connectionId, connection.PlatformCode) is not { } definition)
+            return ServiceResult<Guid>.Fail("SYNC_FLOW_NOT_RUNNABLE", "Bu akış elle başlatılamaz.", 422);
+        if (type.StartsWith("STOCK_RECONCILE", StringComparison.Ordinal) && !WritesEnabled(connection.SettingsJson))
+            return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Pazaryerine yazma kapalı olduğu için stok eşitlemesi başlatılamaz.", 409);
+
+        var now = timeProvider.GetUtcNow();
+        var manualPrefix = $"manual:{definition.DedupPrefix}";
+        var waiting = await db.IntegrationJobs.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.JobType == definition.JobType
+                && (x.JobDedupKey.StartsWith(definition.DedupPrefix) || x.JobDedupKey.StartsWith(manualPrefix))
+                && (x.Status == JobStatus.Leased || (x.Status == JobStatus.Pending || x.Status == JobStatus.RetryScheduled) && x.AvailableAt <= now))
+            .OrderBy(x => x.CreatedAt)
+            .Select(x => (Guid?)x.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (waiting is { } existing) return ServiceResult<Guid>.Ok(existing);
+
+        var job = NewJob(tenantId, connectionId, definition.JobType, $"{manualPrefix}:{Guid.CreateVersion7():N}", definition.PayloadJson, now, correlationId);
+        job.TriggerType = "user";
+        job.Priority = JobPriorityPolicy.For(definition.JobType, userInitiated: true);
+        db.IntegrationJobs.Add(job);
+        await db.SaveChangesAsync(cancellationToken);
+        return ServiceResult<Guid>.Ok(job.Id);
+    }
+
     private int ConfigInt(string key, int fallback, int minimum, int maximum) => Math.Clamp(configuration.GetValue(key, fallback), minimum, maximum);
 
     internal static int InvoiceReconciliationBatchSize(string platformCode, IConfiguration configuration) =>
