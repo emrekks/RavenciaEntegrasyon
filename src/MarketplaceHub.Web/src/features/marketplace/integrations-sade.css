@@ -108,10 +108,10 @@
 
 /* Status tag: Title Case; an active connection reads in ink. */
 .app-shell.stitch-shell main .integrations-reference-page .reference-connection-state { text-transform: capitalize; }
-.app-shell.stitch-shell main .integrations-reference-page .reference-connection-state.connected { color: #ececf0; }
+.app-shell.stitch-shell main .integrations-reference-page .reference-connection-state.connected { color: var(--rv-color-ink); }
 .app-shell.stitch-shell main .integrations-reference-page .reference-connection-state { height: 22px; }
 /* The lighter-text :is() list above carries the specificity of its tab selector, so the active tag restates its ink colour with one more class. */
-.app-shell.stitch-shell main .integrations-reference-page .reference-integration-brand .reference-connection-state.connected { color: #ececf0; }
+.app-shell.stitch-shell main .integrations-reference-page .reference-integration-brand .reference-connection-state.connected { color: var(--rv-color-ink); }
 
 /* Filter popover: quiet group titles, 34px rows, radio marks, soft violet selection like the section lists. */
 .app-shell.stitch-shell main .integrations-reference-page .integration-filter-menu { width: 260px; min-width: 260px; gap: 2px; padding: 8px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; box-shadow: 0 16px 40px rgb(0 0 0 / 45%); }
@@ -150,7 +150,4 @@
   .app-shell.stitch-shell main .im-sade :is(.integration-modal-header, .im-foot) { padding-inline: 16px; }
 }
 
-/* Phones: the card's connection tag is left out; it read poorly on the small card. */
-@media (max-width: 760px) {
-  .app-shell.stitch-shell main .integrations-reference-page .reference-integration-brand .reference-connection-state { display: none; }
-}
+

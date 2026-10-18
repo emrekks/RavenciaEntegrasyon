@@ -308,3 +308,9 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pbulk .rr-lbl-long { display: none; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pbulk .rr-lbl-short { display: inline; }
 }
+/* Wide screens: the select-all box in the head lines up with the row boxes (the head cell had 4px more padding) and the
+   stock value sits in the middle of its column like its heading. */
+@media (min-width: 761px) {
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl thead th:first-child { padding-left: 12px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl td.rr-mid > .rr-qbtn { margin-inline: auto; }
+}

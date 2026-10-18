@@ -198,3 +198,10 @@
   .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table.jobs-reference-table { min-width: 1090px; }
   .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table :is(thead tr, tbody .jobs-reference-row, tbody > tr:not(.jobs-reference-row)) { grid-template-columns: minmax(240px, 1.9fr) minmax(150px, 1.05fr) minmax(86px, .6fr) minmax(164px, 1.05fr) minmax(300px, 1.1fr); }
 }
+
+/* Status counts are filters: each one toggles, several can be on, the chosen ones sit on a soft violet box. */
+.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-status-summary { gap: 4px 6px; }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-status-summary > span[role="button"] { height: 30px; padding: 0 10px; border: 1px solid transparent; border-radius: 7px; cursor: pointer; user-select: none; }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-status-summary > span[role="button"]:hover { background: var(--rv-color-surface-soft); }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-status-summary > span[role="button"].is-on { color: var(--rv-color-ink) !important; background: var(--rv-color-primary-soft); border-color: color-mix(in srgb, var(--rv-color-primary) 45%, transparent); }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-status-summary > span[role="button"]:focus-visible { outline: 2px solid color-mix(in srgb, var(--rv-color-primary) 70%, transparent); outline-offset: 1px; }

@@ -12089,3 +12089,8 @@ html { scrollbar-gutter: stable; }
 
 /* Sign-in header place name: shown on phones only (see responsive.css). */
 .rv-auth-page .rv-auth-context { display: none; }
+
+/* One count box everywhere, the side menu's: 22px high, soft fill, strong border, 6px corners, 11.5px medium figures.
+   Warning counts keep their own colours and only take the shape. */
+html body :is(.nav-count, .rv-tab-count, .ss-count, .cs-count, .cm-count, .qi-count, .rr-count, .mc-count, .jobs-reference-tab-count, .category-attribute-count, .low-stock-family-count) { box-sizing: border-box !important; min-width: 22px !important; height: 22px !important; align-items: center; justify-content: center; place-items: center; padding: 1.5px 6px 0 !important; border: 1px solid var(--rv-color-border-strong) !important; border-radius: 6px !important; font-size: 11.5px !important; font-weight: 500 !important; line-height: 1 !important; font-variant-numeric: tabular-nums; }
+html body :is(.nav-count, .rv-tab-count, .ss-count, .cs-count, .cm-count, .qi-count, .rr-count, .jobs-reference-tab-count, .category-attribute-count, .low-stock-family-count):not(.is-warn, .rr-warn) { color: var(--rv-color-ink) !important; background: var(--rv-color-surface-soft) !important; }

@@ -103,6 +103,16 @@ function jobStatusTone(status: JobStatus) {
   return 'neutral'
 }
 
+// The status counts above the list double as filters; each job falls in exactly one of them, the same way they are counted.
+type JobStatusChip = 'success' | 'running' | 'waiting' | 'error' | 'cancelled'
+function jobStatusChip(status: JobStatus): JobStatusChip {
+  if (status === 'SUCCEEDED') return 'success'
+  if (status === 'LEASED') return 'running'
+  if (status === 'PENDING' || status === 'RETRY_SCHEDULED') return 'waiting'
+  if (status === 'CANCELLED') return 'cancelled'
+  return 'error'
+}
+
 type JobTypeIconName = 'price' | 'order' | 'invoice' | 'return' | 'product' | 'connection' | 'generic'
 type JobPresentation = { title: string; icon: JobTypeIconName; description: string }
 
@@ -408,6 +418,7 @@ export function JobsPage({ me }: { me: Me }) {
   const [category, setCategory] = useState<JobCategory>('ALL')
   const [status, setStatus] = useState<'' | JobStatus>('')
   const [search, setSearch] = useState('')
+  const [statusChips, setStatusChips] = useState<JobStatusChip[]>([])
   const [filterOpen, setFilterOpen] = useState(false)
   const [timeRange, setTimeRange] = useState<JobTimeRange>('24h')
   const [timeRangeOpen, setTimeRangeOpen] = useState(false)
@@ -493,11 +504,18 @@ export function JobsPage({ me }: { me: Me }) {
     return rangeFiltered.filter(job => {
       const matchCategory = categoryMatcher(job.jobType)
       if (!matchCategory) return false
+      if (statusChips.length && !statusChips.includes(jobStatusChip(job.status))) return false
       if (!term) return true
       return [job.jobType, job.status, job.lastErrorCode, job.lastErrorSummary, job.correlationId].some(value => value?.toLocaleLowerCase('tr-TR').includes(term))
     })
-  }, [rangeFiltered, category, search])
-  useEffect(() => { setPageNumber(1) }, [category, status, search, pageSize, timeRange])
+  }, [rangeFiltered, category, search, statusChips])
+  useEffect(() => { setPageNumber(1) }, [category, status, search, pageSize, timeRange, statusChips])
+  // A count toggles its filter; several can be on at once and tapping one again takes it off.
+  const statusChipProps = (chip: JobStatusChip) => {
+    const on = statusChips.includes(chip)
+    const toggle = () => setStatusChips(current => current.includes(chip) ? current.filter(item => item !== chip) : [...current, chip])
+    return { role: 'button', tabIndex: 0, 'aria-pressed': on, className: `${chip}${on ? ' is-on' : ''}`, onClick: toggle, onKeyDown: (event: React.KeyboardEvent) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggle() } } } as const
+  }
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
   const currentPage = Math.min(pageNumber, totalPages)
   const pageJobs = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize)
@@ -549,11 +567,11 @@ export function JobsPage({ me }: { me: Me }) {
       <Tabs className="jobs-reference-tabs rv-view-tabs" ariaLabel="İşlem kategorileri" value={category} onChange={value => setCategory(value as JobCategory)} items={categoryTabs.filter(tab => tab.key !== 'SYSTEM').map(tab => ({ value: tab.key, label: viewTabLabel(({ ALL: 'all', ORDERS: 'order', PRICE_INVENTORY: 'price', CATALOG: 'product', INVOICES: 'invoice', RETURNS: 'return', SYSTEM: 'review' } as const)[tab.key], tab.label), count: list.isLoading ? undefined : categoryCounts.get(tab.key) ?? 0 }))} />
       <div className="jobs-reference-toolbar">
         <div className="jobs-reference-status-summary" aria-label="İşlem durum özeti">
-          <span className="success"><JobStateGlyph tone="success" />Başarılı <strong>{successCount.count ?? 0}</strong></span>
-          <span className="running"><JobStateGlyph tone="running" />Çalışıyor <strong>{runningCount.count ?? 0}</strong></span>
-          <span className="waiting"><JobStateGlyph tone="waiting" />Bekliyor <strong>{waitingCount.count ?? 0}</strong></span>
-          <span className="error"><JobStateGlyph tone="error" />Hata <strong>{errorCount.count ?? 0}</strong></span>
-          {statusSummary.cancelled > 0 && <span className="cancelled"><JobStateGlyph tone="cancelled" />İptal <strong>{statusSummary.cancelled}</strong></span>}
+          <span {...statusChipProps('success')}><JobStateGlyph tone="success" />Başarılı <strong>{successCount.count ?? 0}</strong></span>
+          <span {...statusChipProps('running')}><JobStateGlyph tone="running" />Çalışıyor <strong>{runningCount.count ?? 0}</strong></span>
+          <span {...statusChipProps('waiting')}><JobStateGlyph tone="waiting" />Bekliyor <strong>{waitingCount.count ?? 0}</strong></span>
+          <span {...statusChipProps('error')}><JobStateGlyph tone="error" />Hata <strong>{errorCount.count ?? 0}</strong></span>
+          {(statusSummary.cancelled > 0 || statusChips.includes('cancelled')) && <span {...statusChipProps('cancelled')}><JobStateGlyph tone="cancelled" />İptal <strong>{statusSummary.cancelled}</strong></span>}
         </div>
         <div className="jobs-reference-toolbar-actions">
           <label className="jobs-reference-search"><JobsIcon name="search" /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Correlation ID..." aria-label="Correlation ID ile işlem ara" /></label>
