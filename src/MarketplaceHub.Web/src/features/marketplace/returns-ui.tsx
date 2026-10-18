@@ -214,8 +214,20 @@ const modalStack: number[] = []
 let modalSeed = 0
 export function RrModal({ crumb, title, desc, size, flush, head, foot, onClose, children, label, layerClass, modalClass, locked = false }: { crumb?: ReactNode; title: ReactNode; desc?: ReactNode; size?: 'sm' | 'md' | 'lg' | 'xl' | 'img'; flush?: boolean; head?: ReactNode; foot?: ReactNode; onClose: () => void; children: ReactNode; label?: string; layerClass?: string; modalClass?: string; locked?: boolean }) {
   const id = useRef(0)
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
+  // Closing from the window itself (the cross, a tap outside, Escape) first plays the closing motion, then closes.
+  const [closing, setClosing] = useState(false)
+  const closingRef = useRef(false)
   const close = useRef(onClose)
-  close.current = () => { if (!locked) onClose() }
+  close.current = () => {
+    if (locked || closingRef.current) return
+    closingRef.current = true
+    const still = typeof window.matchMedia !== 'function' || window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (still) { onCloseRef.current(); return }
+    setClosing(true)
+    window.setTimeout(() => onCloseRef.current(), 180)
+  }
   const dialog = useRef<HTMLDivElement>(null)
   useEffect(() => {
     id.current = ++modalSeed
@@ -225,7 +237,7 @@ export function RrModal({ crumb, title, desc, size, flush, head, foot, onClose, 
     dialog.current?.focus()
     return () => { document.removeEventListener('keydown', key); const index = modalStack.indexOf(id.current); if (index >= 0) modalStack.splice(index, 1) }
   }, [])
-  return createPortal(<div className={['rr-layer', layerClass].filter(Boolean).join(' ')}>
+  return createPortal(<div className={['rr-layer', layerClass, closing ? 'rr-closing' : ''].filter(Boolean).join(' ')}>
     <div className="rr-overlay" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) close.current() }}>
       <div ref={dialog} tabIndex={-1} className={['rr-modal', size ? `rr-${size}` : '', modalClass].filter(Boolean).join(' ')} role="dialog" aria-modal="true" aria-label={label ?? (typeof title === 'string' ? title : undefined)}>
         <header className="rr-m-head"><div>{head ?? <>{crumb && <div className="rr-crumb">{crumb}</div>}<h2>{title}</h2>{desc && <p>{desc}</p>}</>}</div><button type="button" className="rr-icon-btn" onClick={() => close.current()} aria-label="Pencereyi Kapat"><RrIcon name="close" /></button></header>

@@ -5,10 +5,10 @@
    This is the last word on phone spacing: it is linked for phones only (see main.tsx), and every rule starts at :root
    so it outranks the page sheets that load after it. */
 @media (max-width: 760px) {
-  :root { --m-gutter: 12px; --m-gap: 8px; --m-pad: 12px; }
+  :root { --m-gutter: 12px; --m-gap: 8px; --m-pad: 12px; --m-safe-top: env(safe-area-inset-top, 0px); --m-safe-bottom: env(safe-area-inset-bottom, 0px); }
 
   /* Page frame */
-  :root .app-shell.stitch-shell main section.content { padding: 12px var(--m-gutter) 16px !important; row-gap: var(--m-gap) !important; }
+  :root .app-shell.stitch-shell main section.content { padding: 12px var(--m-gutter) calc(16px + var(--m-safe-bottom)) !important; row-gap: var(--m-gap) !important; }
   :root .app-shell.stitch-shell .rv-topbar { padding-inline: var(--m-gutter) !important; }
 
   /* Groups of blocks */
@@ -72,7 +72,7 @@
   :root body .workspace-modal > :is(.invoice-detail-body, .workspace-modal-body) { padding: var(--m-pad) !important; gap: var(--m-pad) !important; }
   :root body .workspace-modal .invoice-detail-addresses { gap: var(--m-gap) !important; }
   :root body .workspace-modal .invoice-detail-addresses > article { padding: 10px var(--m-pad) !important; }
-  :root .app-shell.stitch-shell main .job-detail-drawer.panel { padding: 0 !important; }
+  :root .app-shell.stitch-shell main .job-detail-drawer.panel { padding: var(--m-safe-top) 0 var(--m-safe-bottom) !important; }
   :root .app-shell.stitch-shell main .jobs-reference-drawer-header { padding: var(--m-pad) !important; }
   :root .app-shell.stitch-shell main .jobs-reference-drawer-body { padding: 0 var(--m-pad) var(--m-pad) !important; gap: var(--m-gap) !important; }
   :root .app-shell.stitch-shell main .jobs-reference-drawer-body > section { padding: var(--m-pad) !important; gap: 10px !important; }
@@ -95,4 +95,14 @@
   :root .rr-layer.rr-layer .rr-modal:has(#order-sync-form) .rr-src .rr-logo { width: 28px !important; height: 28px !important; }
   :root .rr-layer.rr-layer .rr-modal:has(#order-sync-form) .rr-src > span { min-width: 0; }
   :root .rr-layer.rr-layer .rr-modal:has(#order-sync-form) .rr-src small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Phones with rounded screen corners, a camera cut-out and a home bar (iPhone): nothing sits under them. The top
+     bar grows by the top inset, bottom sheets and bottom bars keep their content above the home bar, and windows stay
+     clear of both (the page is laid out edge to edge, see viewport-fit in index.html). */
+  :root .app-shell.stitch-shell .rv-topbar { padding-top: var(--m-safe-top) !important; min-height: calc(62px + var(--m-safe-top)) !important; }
+  :root body .rr-anchor > :is(.rr-menu, .rr-pop):not(.rr-static) { padding-bottom: calc(10px + var(--m-safe-bottom)) !important; }
+  :root body .rr-fopen .rr-fbtns { padding-bottom: calc(12px + var(--m-safe-bottom)) !important; }
+  :root body .rr-bulk { bottom: calc(12px + var(--m-safe-bottom)) !important; }
+  :root body :is(.rr-overlay, .workspace-modal-backdrop:not(.image-lightbox-backdrop), .invoice-detail-backdrop, .panel-attribute-modal, .missing-value-mapping-backdrop, .brand-mapping-modal-backdrop, .integration-modal-backdrop) { padding-top: max(24px, calc(var(--m-safe-top) + 12px)) !important; padding-bottom: max(24px, calc(var(--m-safe-bottom) + 12px)) !important; }
+  :root body :is(.integration-settings-modal, .job-detail-drawer, .rv-drawer) { padding-top: var(--m-safe-top) !important; padding-bottom: var(--m-safe-bottom) !important; }
 }

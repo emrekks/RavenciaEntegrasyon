@@ -12175,3 +12175,12 @@ html body :is(.nav-count, .rv-tab-count, .ss-count, .cs-count, .cm-count, .qi-co
 
 /* Phones: the menu button's icon reads a little larger than the other top bar icons. */
 .app-shell.stitch-shell .rv-mobile-menu-toggle .ui-icon-menu { width: 20px !important; height: 20px !important; }
+
+/* Windows closed from themselves (the cross, a tap outside, Escape) fade and drop slightly before they go; on phones
+   they sink back down the way they rose (responsive.css). */
+@keyframes rv-fade-out { to { opacity: 0; } }
+@keyframes rv-window-out { to { opacity: 0; translate: 0 12px; } }
+@media (prefers-reduced-motion: no-preference) {
+  .rr-layer.rr-closing .rr-overlay { animation: rv-fade-out .18s ease-in forwards; pointer-events: none; }
+  .rr-layer.rr-closing .rr-overlay > .rr-modal { animation: rv-window-out .18s ease-in forwards; }
+}

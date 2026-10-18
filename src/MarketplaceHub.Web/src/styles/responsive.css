@@ -398,7 +398,10 @@ html[data-theme="light"] .rv-drawer-logo { filter: invert(1); }
   html body .rr-fopen .rr-anchor > .rr-pop { animation: rv-fade-in .15s ease-out; }
   html body :is(.rr-anchor-scrim, .rr-fopen > .rr-fscrim) { animation: rv-fade-in .18s ease-out; }
   html body .rr-fopen > .rr-filters { animation: rv-rise .26s cubic-bezier(.2, .8, .2, 1); }
+  html body :is(.rr-overlay > .rr-modal, .rr-anchor > :is(.rr-menu, .rr-pop):not(.rr-static), .rr-fopen > .rr-filters) { will-change: translate; }
+  html body .rr-layer.rr-closing .rr-overlay > .rr-modal { animation: rv-sink .18s cubic-bezier(.4, 0, 1, 1) forwards; }
 }
+@keyframes rv-sink { to { translate: 0 100%; } }
 
 /* Sign-in on phones: the form sits under the logo at the top instead of being centred in the screen, so the password
    field and the sign-in button stay above the keyboard and the browser does not pan the page when a field is
