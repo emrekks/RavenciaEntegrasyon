@@ -35,7 +35,7 @@ public sealed class HepsiburadaWebhookVerifier(AppDbContext db, IDataProtectionP
         if (payload is null || !Authorized(subscription.AuthenticationType, payload, headers))
             return AdapterResult<VerifiedWebhookEnvelope>.Failure(new(AdapterErrorClass.Authentication, "WEBHOOK_AUTHENTICATION_FAILED", "Webhook kimlik doğrulaması başarısız.", 401, null, null));
 
-        var identity = HepsiburadaWebhookIdentity.Create(rawBody);
+        var identity = HepsiburadaWebhookIdentity.Create(rawBody, Header(headers, WebhookEventPath.Header));
         if (identity is null)
             return AdapterResult<VerifiedWebhookEnvelope>.Failure(TrendyolErrorMapper.Contract());
         return AdapterResult<VerifiedWebhookEnvelope>.Success(new(
@@ -74,7 +74,7 @@ public sealed class HepsiburadaWebhookVerifier(AppDbContext db, IDataProtectionP
 
 internal static class HepsiburadaWebhookIdentity
 {
-    public static HepsiburadaWebhookIdentityValue? Create(ReadOnlyMemory<byte> rawBody)
+    public static HepsiburadaWebhookIdentityValue? Create(ReadOnlyMemory<byte> rawBody, string? eventPath = null)
     {
         try
         {
@@ -82,7 +82,13 @@ internal static class HepsiburadaWebhookIdentity
             var root = document.RootElement;
             string identity;
             string resourceType;
-            if (HepsiburadaJsonMapper.IsClaimPackageNotification(root))
+            if (WebhookEventPath.IsHepsiburadaOrderEvent(eventPath))
+            {
+                // Order events only say which order changed; the order is then read from Hepsiburada.
+                identity = WebhookEventPath.Normalize(eventPath)!;
+                resourceType = "ORDER_EVENT";
+            }
+            else if (HepsiburadaJsonMapper.IsClaimPackageNotification(root))
             {
                 var package = HepsiburadaJsonMapper.ClaimPackageOrder(root);
                 identity = package.Packages.Single().ExternalPackageId;

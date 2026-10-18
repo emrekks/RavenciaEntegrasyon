@@ -26,13 +26,16 @@ public sealed class ShopifyWebhookVerifier(AppDbContext db, IDataProtectionProvi
             return AdapterResult<VerifiedWebhookEnvelope>.Failure(TrendyolErrorMapper.Configuration());
         }
 
-        var secret = payload?.ApiKey ?? payload?.ClientSecret;
+        // Shopify signs with the app's client secret; the API key field is an older place for it.
+        var secret = payload?.ClientSecret ?? payload?.ApiKey;
         var signature = Header(headers, "X-Shopify-Hmac-Sha256");
         if (string.IsNullOrWhiteSpace(secret) || string.IsNullOrWhiteSpace(signature) || !VerifySignature(rawBody.Span, signature, secret))
             return AdapterResult<VerifiedWebhookEnvelope>.Failure(new(AdapterErrorClass.Authentication, "SHOPIFY_WEBHOOK_SIGNATURE_INVALID", "Shopify webhook imzası doğrulanamadı.", 401, null, null));
 
-        var externalMessageId = Header(headers, "X-Shopify-Event-Id");
-        var topic = Header(headers, "X-Shopify-Topic") ?? "orders/update";
+        // X-Shopify-Webhook-Id is the same on every retry of one delivery; Event-Id is shared by
+        // the deliveries of one event to several subscriptions.
+        var externalMessageId = Header(headers, "X-Shopify-Webhook-Id") ?? Header(headers, "X-Shopify-Event-Id");
+        var topic = Header(headers, "X-Shopify-Topic") ?? "orders/updated";
         if (string.IsNullOrWhiteSpace(externalMessageId))
         {
             var digest = Convert.ToHexString(SHA256.HashData(rawBody.Span));

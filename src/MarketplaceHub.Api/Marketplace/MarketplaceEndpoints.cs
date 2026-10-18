@@ -189,7 +189,9 @@ public static class MarketplaceEndpoints
         api.MapGet("/connections/{id:guid}/instant-notifications", async (Guid id, HttpContext http, IInstantNotificationService service) => Tenant(http) is { } tenant ? Result(await service.StatusAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted), Results.Ok) : Unauthorized(http));
         api.MapPost("/connections/{id:guid}/instant-notifications", async (Guid id, HttpContext http, IInstantNotificationService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.EnableAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted), Results.Ok) : MissingContext(http));
         api.MapDelete("/connections/{id:guid}/instant-notifications", async (Guid id, HttpContext http, IInstantNotificationService service) => Tenant(http) is { } tenant ? Result(await service.DisableAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted), Results.Ok) : Unauthorized(http));
-        api.MapPost("/hooks/{connectionPublicId:guid}/{routeToken}", ReceiveWebhook).DisableAntiforgery().RequireRateLimiting("webhook");
+        // Hepsiburada sends every event kind to its own path below the base address, some with PUT.
+        api.MapMethods("/hooks/{connectionPublicId:guid}/{routeToken}", ["POST", "PUT"], ReceiveWebhook).DisableAntiforgery().RequireRateLimiting("webhook");
+        api.MapMethods("/hooks/{connectionPublicId:guid}/{routeToken}/{**eventPath}", ["POST", "PUT"], ReceiveWebhookEvent).DisableAntiforgery().RequireRateLimiting("webhook");
         return endpoints;
     }
 
@@ -315,16 +317,30 @@ public static class MarketplaceEndpoints
         : bytes.Length >= 8 && bytes[..8].SequenceEqual(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }) ? "image/png"
         : null;
 
-    internal static async Task<IResult> ReceiveWebhook(Guid connectionPublicId, string routeToken, HttpContext http, IMarketplaceWebhookService service)
+    internal static Task<IResult> ReceiveWebhookEvent(Guid connectionPublicId, string routeToken, string? eventPath, HttpContext http, IMarketplaceWebhookService service) =>
+        ReceiveWebhookCore(connectionPublicId, routeToken, http, service, eventPath);
+
+    internal static async Task<IResult> ReceiveWebhook(Guid connectionPublicId, string routeToken, HttpContext http, IMarketplaceWebhookService service) =>
+        await ReceiveWebhookCore(connectionPublicId, routeToken, http, service, null);
+
+    private static async Task<IResult> ReceiveWebhookCore(Guid connectionPublicId, string routeToken, HttpContext http, IMarketplaceWebhookService service, string? eventPath)
     {
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         var sizeFeature = http.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
         if (sizeFeature is { IsReadOnly: false }) sizeFeature.MaxRequestBodySize = WebhookBodyReader.MaximumBytes;
         var bodyRead = await WebhookBodyReader.ReadAsync(http.Request.Body, http.Request.ContentLength, http.RequestAborted);
         if (bodyRead.TooLarge) return Problem(http, new("WEBHOOK_TOO_LARGE", "Webhook gövdesi kabul edilen üst sınırı aşıyor.", 413));
 
         var headers = http.Request.Headers.ToDictionary(x => x.Key, x => x.Value.ToString(), StringComparer.OrdinalIgnoreCase);
+        // The event path comes from the route only; a sender cannot set it through a header.
+        headers.Remove(WebhookEventPath.Header);
+        if (WebhookEventPath.Normalize(eventPath) is { } path) headers[WebhookEventPath.Header] = path;
         using var body = bodyRead.Body!;
         var result = await service.ReceiveAsync(connectionPublicId, routeToken, body.Memory, headers, http.TraceIdentifier, http.RequestAborted);
+        // Hepsiburada blacklists a feed after 20 replies slower than five seconds in an hour.
+        if (stopwatch.Elapsed > TimeSpan.FromSeconds(4))
+            http.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("MarketplaceHub.Webhooks")
+                .LogWarning("Webhook reply took {ElapsedMs} ms (connection {ConnectionPublicId}, path {EventPath}).", (long)stopwatch.Elapsed.TotalMilliseconds, connectionPublicId, eventPath ?? "/");
         return result.Succeeded ? Results.Ok(new { accepted = true }) : Problem(http, result.Error!);
     }
     private static TenantContext? Tenant(HttpContext http) => http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;

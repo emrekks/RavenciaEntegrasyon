@@ -719,3 +719,22 @@ public static class PlatformHistoryLimits
     public static DateTimeOffset InitialStart(string? platformCode, PlatformHistoryKind kind, DateTimeOffset now) =>
         now.AddMonths(-InitialMonths(platformCode, kind));
 }
+
+// The path below a webhook's base address, which names the event kind for Hepsiburada
+// (orders, packages, cancel, unpack, intransit, deliver, undeliver, address change).
+public static class WebhookEventPath
+{
+    public const string Header = "X-Ravencia-Event-Path";
+    private static readonly string[] HepsiburadaOrderEvents =
+        ["orders", "packages", "cancel", "cancelled", "unpack", "unpacked", "intransit", "deliver", "delivered", "undeliver", "undelivered", "address", "addresschange", "address-change", "shipping-address"];
+
+    public static string? Normalize(string? path)
+    {
+        var value = path?.Trim().Trim('/').ToLowerInvariant();
+        return string.IsNullOrWhiteSpace(value) || value.Length > 120 ? null : value;
+    }
+
+    // The last segment decides: "order/cancel" and "cancel" are both a cancellation.
+    public static bool IsHepsiburadaOrderEvent(string? path) =>
+        Normalize(path) is { } value && HepsiburadaOrderEvents.Contains(value[(value.LastIndexOf('/') + 1)..], StringComparer.Ordinal);
+}

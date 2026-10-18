@@ -45,6 +45,28 @@ public sealed class MarketplaceWebhookEndpointTests
         Assert.Equal(context.TraceIdentifier, service.CorrelationId);
     }
 
+    [Fact]
+    public async Task ReceiveWebhookEvent_PassesTheRoutePathAndIgnoresASentPathHeader()
+    {
+        var body = Encoding.UTF8.GetBytes("{\"orderNumber\":\"4736002251\"}");
+        var service = new RecordingWebhookService();
+        var context = NewContext(body, body.Length);
+        context.Request.Method = "PUT";
+        context.Request.Headers[WebhookEventPath.Header] = "forged";
+
+        var result = await MarketplaceEndpoints.ReceiveWebhookEvent(Guid.CreateVersion7(), "route-token", "/Orders/Cancel/", context, service);
+        await result.ExecuteAsync(context);
+
+        Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
+        Assert.Equal("orders/cancel", service.Headers[WebhookEventPath.Header]);
+
+        var plain = new RecordingWebhookService();
+        var plainContext = NewContext(body, body.Length);
+        plainContext.Request.Headers[WebhookEventPath.Header] = "forged";
+        await (await MarketplaceEndpoints.ReceiveWebhook(Guid.CreateVersion7(), "route-token", plainContext, plain)).ExecuteAsync(plainContext);
+        Assert.False(plain.Headers.ContainsKey(WebhookEventPath.Header));
+    }
+
     private static DefaultHttpContext NewContext(byte[] body, long? contentLength)
     {
         var context = new DefaultHttpContext();

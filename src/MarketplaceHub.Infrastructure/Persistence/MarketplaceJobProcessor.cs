@@ -7156,6 +7156,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             try
             {
                 using var document = JsonDocument.Parse(raw);
+                if (string.Equals(resourceType, "ORDER_EVENT", StringComparison.Ordinal))
+                    return await ReadHepsiburadaOrderEvent(tenantId, connectionId, document.RootElement, correlationId, cancellationToken);
                 if (string.Equals(resourceType, "CLAIM_PACKAGE", StringComparison.Ordinal))
                 {
                     var order = HepsiburadaJsonMapper.ClaimPackageOrder(document.RootElement);

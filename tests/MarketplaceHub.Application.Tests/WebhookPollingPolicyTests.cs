@@ -94,3 +94,32 @@ public sealed class OrderBaselinePercentTests
         Assert.Null(MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.OrderBaselinePercent(null));
     }
 }
+
+public sealed class WebhookEventPathTests
+{
+    [Theory]
+    [InlineData("orders", true)]
+    [InlineData("/Packages/", true)]
+    [InlineData("order/cancel", true)]
+    [InlineData("intransit", true)]
+    [InlineData("undeliver", true)]
+    [InlineData("claims", false)]
+    [InlineData(null, false)]
+    [InlineData("", false)]
+    public void HepsiburadaOrderEventsAreKnownByTheirLastPathSegment(string? path, bool orderEvent) =>
+        Assert.Equal(orderEvent, WebhookEventPath.IsHepsiburadaOrderEvent(path));
+
+    [Fact]
+    public void AnOrderEventIsIdentifiedByItsPathAndContent()
+    {
+        var body = System.Text.Encoding.UTF8.GetBytes("""{"orderNumber":"4736002251","packages":[{"packageNumber":"57b1850c"}]}""");
+        var cancel = MarketplaceHub.Infrastructure.Adapters.Hepsiburada.HepsiburadaWebhookIdentity.Create(body, "cancel");
+        var deliver = MarketplaceHub.Infrastructure.Adapters.Hepsiburada.HepsiburadaWebhookIdentity.Create(body, "deliver");
+
+        Assert.Equal("ORDER_EVENT", cancel!.ResourceType);
+        Assert.NotEqual(cancel.ExternalMessageId, deliver!.ExternalMessageId);
+        using var document = System.Text.Json.JsonDocument.Parse(body);
+        Assert.Equal("4736002251", MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.FindString(document.RootElement, "OrderNumber"));
+        Assert.Equal("57b1850c", MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.FindString(document.RootElement, "packageNumber"));
+    }
+}
