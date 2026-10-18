@@ -1630,7 +1630,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 null!, null!, null!, null!, orderPort, null!, null!, null!, null!, null!,
                 new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
                 {
-                    ["MarketplaceSync:OrderInvoiceReconciliation:TimeBudgetSeconds"] = "600"
+                    ["MarketplaceSync:OrderInvoiceReconciliation:TrendyolSliceSeconds"] = "600"
                 }).Build(),
                 clock);
             var result = await processor.ProcessAsync(
@@ -1641,7 +1641,8 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 "invoice-time-budget",
                 CancellationToken.None);
 
-            Assert.True(result.Succeeded);
+            // The slice ran out with an order left, so the job continues shortly from its checkpoint.
+            Assert.True(result.Continues);
             Assert.Equal(["budget-package-0", "budget-package-1"], orderPort.PackageReadCalls);
 
             await using var verifyDb = fixture.CreateContext();
@@ -1896,6 +1897,61 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             Assert.All(orderPort.PolledStorefronts, storefront => Assert.Equal("TR", storefront));
             Assert.Equal(fixture.Now.AddDays(-90), orderPort.PolledWindows[^1].ModifiedAfter);
             Assert.Equal(orderPort.PolledWindows.Count, orderPort.PolledWindows.Select(window => window.ModifiedBefore).Distinct().Count());
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task TrendyolInvoiceSweep_ReadsRecentPackagesInBatchesAndOnlyTheRestOneByOne()
+    {
+        var tenant = NewTenant("trendyol-invoice-sweep-batch");
+        var connection = NewQuestionConnection(tenant);
+        connection.PlatformCode = "TRENDYOL";
+        var ids = Enumerable.Range(1, 2).Select(index => Guid.Parse($"0199a5a1-1c00-7000-8000-00000000004{index}")).ToArray();
+        var orders = ids.Select((id, index) => NewInvoiceTestOrder(tenant.Id, connection.Id, id, $"batch-order-{index}", isReturnClaim: false, fixture.Now)).ToArray();
+        var packages = ids.Select((id, index) => NewInvoiceTestPackage(tenant.Id, connection.Id, id, Guid.CreateVersion7(), $"batch-package-{index}", fixture.Now)).ToArray();
+        var orderPort = new ReadOnlyOrderTestPort(new RemotePackage(
+            "batch-package", null, "Delivered", fixture.Now, null, null, [],
+            GrossAmount: 100m, NetAmount: 100m,
+            Invoice: new RemotePackageInvoiceObservation("Invoiced", "INV-1", "https://example.test/invoice.pdf", fixture.Now)))
+        {
+            // Trendyol returns only the first package for the batch; the second is read on its own.
+            BatchReturns = new HashSet<string> { "batch-package-0" }
+        };
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.Orders.AddRange(orders);
+            seedDb.ShipmentPackages.AddRange(packages);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using (var processorDb = fixture.CreateContext())
+            {
+                var processor = new MarketplaceJobProcessor(
+                    processorDb,
+                    null!, null!, null!, null!, orderPort, null!, null!, null!, null!, null!,
+                    new ConfigurationBuilder().Build(), fixture.TimeProvider);
+                var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.OrderInvoiceReconciliation, "{}", "trendyol-invoice-sweep-batch", CancellationToken.None);
+                Assert.True(result.Succeeded, result.ErrorSummary);
+            }
+
+            var batch = Assert.Single(orderPort.BatchReadCalls);
+            Assert.Equal(["batch-package-0", "batch-package-1"], batch.Order());
+            Assert.Equal(["batch-package-1"], orderPort.PackageReadCalls);
+            await using var verifyDb = fixture.CreateContext();
+            var invoiced = await verifyDb.ShipmentPackages.AsNoTracking()
+                .Where(package => package.TenantId == tenant.Id)
+                .ToDictionaryAsync(package => package.ExternalPackageId, package => package.MarketplaceInvoiceStatus);
+            Assert.Equal(MarketplaceInvoiceStatus.Invoiced, invoiced["batch-package-0"]);
+            Assert.Equal(MarketplaceInvoiceStatus.Invoiced, invoiced["batch-package-1"]);
         }
         finally
         {
@@ -4374,6 +4430,19 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     {
         public int OrderReadCalls { get; private set; }
         public List<string> PackageReadCalls { get; } = [];
+        // Package IDs the batch read returns; null keeps batch reads unsupported.
+        public IReadOnlySet<string>? BatchReturns { get; init; }
+        public List<IReadOnlyList<string>> BatchReadCalls { get; } = [];
+
+        public Task<AdapterResult<IReadOnlyList<RemoteOrder>>> GetShipmentPackagesAsync(AdapterContext context, IReadOnlyList<string> externalPackageIds, OrderLookupHint? hint, CancellationToken cancellationToken)
+        {
+            if (BatchReturns is null)
+                return Task.FromResult(AdapterResult<IReadOnlyList<RemoteOrder>>.Failure(new(AdapterErrorClass.NotSupported, "ORDER_PACKAGE_BATCH_READ_UNSUPPORTED", "unsupported", null, null, null)));
+            BatchReadCalls.Add(externalPackageIds);
+            IReadOnlyList<RemoteOrder> found = [.. externalPackageIds.Where(BatchReturns.Contains).Select(id => new RemoteOrder(
+                id, id, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, "TRY", 0, 0, 0, "{}", "{}", "{}", [], [package with { ExternalPackageId = id }], "{}"))];
+            return Task.FromResult(AdapterResult<IReadOnlyList<RemoteOrder>>.Success(found));
+        }
 
         public Task<AdapterResult<AdapterPageResult<RemoteOrder>>> PollAsync(AdapterContext context, OrderPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken) =>
             throw new NotSupportedException("Invoice reconciliation test must not poll order pages.");

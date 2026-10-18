@@ -350,7 +350,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                 || current.IntervalSeconds == 180 && current.OverlapSeconds == 900 && (current.JitterSeconds == 0 || current.JitterSeconds == 10),
             "ORDER_LIFECYCLE" => current.IntervalSeconds == 180 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 10)
                 || (current.IntervalSeconds == 480 || current.IntervalSeconds == 540 || current.IntervalSeconds == 1800) && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 10),
-            "ORDER_CARGO_INFO" => current.IntervalSeconds == 300 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 15),
+            "ORDER_CARGO_INFO" => (current.IntervalSeconds == 300 || current.IntervalSeconds == 1800) && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 15),
             "RETURN_LIFECYCLE" => current.IntervalSeconds == 180 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 10),
             "ORDER_RECONCILE_SHORT" => (current.IntervalSeconds == 900 || current.IntervalSeconds == 2700 || current.IntervalSeconds == 3600) && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 30),
             "RETURN_RECONCILE_SHORT" or "STOCK_RECONCILE_SHORT" => current.IntervalSeconds == 900 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 30),
