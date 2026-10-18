@@ -53,7 +53,9 @@ public sealed class ShopifyWebhookVerifier(AppDbContext db, IDataProtectionProvi
         }
 
         var payloadHash = Convert.ToHexString(SHA256.HashData(rawBody.Span));
-        return AdapterResult<VerifiedWebhookEnvelope>.Success(new(externalMessageId.Trim(), payloadHash, "ORDERS", Encoding.UTF8.GetString(rawBody.Span)));
+        // A refund's id is the refund's; it names its order in order_id.
+        var resourceType = topic.StartsWith("refunds/", StringComparison.OrdinalIgnoreCase) ? "REFUNDS" : "ORDERS";
+        return AdapterResult<VerifiedWebhookEnvelope>.Success(new(externalMessageId.Trim(), payloadHash, resourceType, Encoding.UTF8.GetString(rawBody.Span)));
     }
 
     private static bool VerifySignature(ReadOnlySpan<byte> rawBody, string actualBase64, string secret)

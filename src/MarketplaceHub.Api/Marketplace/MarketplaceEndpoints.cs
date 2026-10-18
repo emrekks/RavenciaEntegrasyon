@@ -187,7 +187,7 @@ public static class MarketplaceEndpoints
         api.MapGet("/data-freshness", async (HttpContext http, IDataFreshnessService service) => Tenant(http) is { } tenant ? Results.Ok(await service.FreshnessAsync(tenant.TenantId, http.RequestAborted)) : Unauthorized(http));
         api.MapGet("/connections/{id:guid}/initial-import", async (Guid id, HttpContext http, IDataFreshnessService service) => Tenant(http) is { } tenant ? Result(await service.InitialImportAsync(tenant.TenantId, id, http.RequestAborted), Results.Ok) : Unauthorized(http));
         api.MapGet("/connections/{id:guid}/instant-notifications", async (Guid id, HttpContext http, IInstantNotificationService service) => Tenant(http) is { } tenant ? Result(await service.StatusAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted), Results.Ok) : Unauthorized(http));
-        api.MapPost("/connections/{id:guid}/instant-notifications", async (Guid id, HttpContext http, IInstantNotificationService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.EnableAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted), Results.Ok) : MissingContext(http));
+        api.MapPost("/connections/{id:guid}/instant-notifications", async (Guid id, InstantNotificationCommand? command, HttpContext http, IInstantNotificationService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.EnableAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted, command?.ClientSecret), Results.Ok) : MissingContext(http));
         api.MapDelete("/connections/{id:guid}/instant-notifications", async (Guid id, HttpContext http, IInstantNotificationService service) => Tenant(http) is { } tenant ? Result(await service.DisableAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted), Results.Ok) : Unauthorized(http));
         // Hepsiburada sends every event kind to its own path below the base address, some with PUT.
         api.MapMethods("/hooks/{connectionPublicId:guid}/{routeToken}", ["POST", "PUT"], ReceiveWebhook).DisableAntiforgery().RequireRateLimiting("webhook");
@@ -364,6 +364,7 @@ public static class MarketplaceEndpoints
     private static IResult Problem(HttpContext http, ServiceError error) => Results.Json(ToProblem(error, http.TraceIdentifier), statusCode: error.Status, contentType: "application/problem+json");
     private static object ToProblem(ServiceError error, string? correlationId) => new { type = $"https://marketplacehub.invalid/problems/{error.Code.ToLowerInvariant().Replace('_', '-')}", title = error.Message, status = error.Status, code = error.Code, correlationId, retryable = error.Status is 429 or >= 500, fieldErrors = error.FieldErrors };
     public sealed record ActiveCommand(bool Active);
+    public sealed record InstantNotificationCommand(string? ClientSecret);
     public sealed record OrderSyncCommand(string? ExternalOrderId, bool Full = false, string? PackageNumber = null);
     public sealed record CommonLabelCommand(int BoxQuantity, decimal VolumetricHeight, string Format = "ZPL");
     public sealed record LabelCapabilityProbeCommand(string CapabilityCode, int BoxQuantity, decimal VolumetricHeight);

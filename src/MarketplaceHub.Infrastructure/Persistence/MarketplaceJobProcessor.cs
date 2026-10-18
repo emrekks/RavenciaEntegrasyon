@@ -7198,7 +7198,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             try
             {
                 using var document = JsonDocument.Parse(raw);
-                if (document.RootElement.TryGetProperty("id", out var id))
+                var orderIdProperty = string.Equals(resourceType, "REFUNDS", StringComparison.Ordinal) ? "order_id" : "id";
+                if (document.RootElement.TryGetProperty(orderIdProperty, out var id))
                     externalOrderId = id.ValueKind == JsonValueKind.Number ? id.GetInt64().ToString(System.Globalization.CultureInfo.InvariantCulture) : id.GetString();
             }
             catch (Exception exception) when (exception is JsonException or InvalidOperationException or FormatException) { return false; }

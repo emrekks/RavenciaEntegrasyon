@@ -24,6 +24,25 @@ public sealed class InstantNotificationPolicyTests
         Assert.Equal(expected, service.PublicBaseUrl());
     }
 
+    [Fact]
+    public void ShopifyRegistrationIsActiveOnlyWhileEveryTopicIsListed()
+    {
+        RemoteWebhook Listed(string id) => new(id, "https://panel.ravencia.com/api/v1/hooks/x/y", "ACTIVE", null);
+
+        Assert.Equal("ACTIVE", InstantNotificationService.RemoteState("11,12", [Listed("11"), Listed("12"), Listed("99")]));
+        Assert.Equal("PASSIVE", InstantNotificationService.RemoteState("11,12", [Listed("12")]));
+        Assert.Equal("MISSING", InstantNotificationService.RemoteState("11,12", [Listed("99")]));
+        Assert.Equal("ACTIVE", InstantNotificationService.RemoteState("remote-webhook-1", [Listed("remote-webhook-1")]));
+    }
+
+    [Fact]
+    public void ShopifySubscriptionIdsAreKeptAsTheirNumber()
+    {
+        Assert.Equal("1234567890", MarketplaceHub.Infrastructure.Adapters.Shopify.ShopifyHttpClient.CompactWebhookId("gid://shopify/WebhookSubscription/1234567890"));
+        Assert.Equal("gid://shopify/WebhookSubscription/1234567890", MarketplaceHub.Infrastructure.Adapters.Shopify.ShopifyHttpClient.WebhookGid("1234567890"));
+        Assert.True(string.Join(',', Enumerable.Repeat("12345678901234", MarketplaceHub.Infrastructure.Adapters.Shopify.ShopifyHttpClient.WebhookTopics.Length)).Length <= 256);
+    }
+
     [Theory]
     [InlineData("""{"orderNumber":"1","orderCountryCode":"ro"}""", "RO")]
     [InlineData("""{"orderNumber":"1","orderCountryCode":"TR"}""", "TR")]

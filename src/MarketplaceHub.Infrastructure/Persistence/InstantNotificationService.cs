@@ -42,7 +42,7 @@ public sealed class InstantNotificationService(
     {
         var connection = await ConnectionAsync(tenantId, connectionId, cancellationToken);
         if (connection is null) return NotFound();
-        if (connection.PlatformCode is not ("TRENDYOL" or "HEPSIBURADA")) return ServiceResult<InstantNotificationView>.Ok(new("UNSUPPORTED", null, null, null, 0, "Bu pazaryeri için anlık bildirim henüz panelden açılamıyor."));
+        if (connection.PlatformCode is not ("TRENDYOL" or "HEPSIBURADA" or "SHOPIFY")) return ServiceResult<InstantNotificationView>.Ok(new("UNSUPPORTED", null, null, null, 0, "Bu pazaryeri için anlık bildirim henüz panelden açılamıyor."));
         var subscription = await ManagedSubscriptionAsync(tenantId, connectionId, cancellationToken);
         if (subscription is null) return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, null, "OFF", null, cancellationToken));
         if (subscription.ExternalSubscriptionId == ManualRegistration)
@@ -62,8 +62,7 @@ public sealed class InstantNotificationService(
         var remote = await registrations.ListWebhooksAsync(Context(tenantId, connectionId, correlationId, "webhook-status"), cancellationToken);
         if (!remote.IsSuccess)
             return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, subscription, "UNKNOWN", $"Trendyol'daki durum okunamadı: {remote.Error!.SafeMessage}", cancellationToken));
-        var match = remote.Value!.FirstOrDefault(webhook => webhook.Id == subscription.ExternalSubscriptionId);
-        var state = match is null ? "MISSING" : match.Status == "ACTIVE" ? "ACTIVE" : "PASSIVE";
+        var state = RemoteState(subscription.ExternalSubscriptionId!, remote.Value!);
         var gaps = ScheduledJobProducer.WebhookGaps(await db.SyncCursors.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == WebhookPollingPolicy.HealthCursorResource)
             .Select(x => x.OpaqueCursor)
@@ -71,20 +70,25 @@ public sealed class InstantNotificationService(
         var healthy = WebhookPollingPolicy.IsHealthy(subscription.LastReceivedAt, subscription.VerifiedAt, gaps, timeProvider.GetUtcNow());
         var message = state switch
         {
-            "MISSING" => "Trendyol'da bu bildirim kaydı bulunamadı; kapatıp yeniden açabilirsiniz.",
-            "PASSIVE" => "Trendyol bildirimleri durdurmuş; panel bir saat içinde yeniden açar.",
+            "MISSING" => $"{PlatformName(connection.PlatformCode)}'da bu bildirim kaydı bulunamadı; kapatıp yeniden açabilirsiniz.",
+            "PASSIVE" => connection.PlatformCode == "SHOPIFY"
+                ? "Shopify bildirim aboneliklerinin bir kısmını kaldırmış; panel bir saat içinde yeniden oluşturur."
+                : "Trendyol bildirimleri durdurmuş; panel bir saat içinde yeniden açar.",
             _ when !healthy => "Bildirimler son saatlerde beklenen siparişleri getirmedi; sipariş kontrolü dakikada bir sürüyor.",
             _ => "Bildirimler düzenli geliyor; sipariş kontrolü yedek olarak 15 dakikada bir yapılıyor."
         };
         return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, subscription, state, message, cancellationToken));
     }
 
-    public async Task<ServiceResult<InstantNotificationView>> EnableAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
+    public async Task<ServiceResult<InstantNotificationView>> EnableAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken, string? clientSecret = null)
     {
         var connection = await ConnectionAsync(tenantId, connectionId, cancellationToken);
         if (connection is null) return NotFound();
-        if (connection.PlatformCode is not ("TRENDYOL" or "HEPSIBURADA"))
+        if (connection.PlatformCode is not ("TRENDYOL" or "HEPSIBURADA" or "SHOPIFY"))
             return ServiceResult<InstantNotificationView>.Fail("INSTANT_NOTIFICATIONS_UNSUPPORTED", "Bu pazaryeri için anlık bildirim henüz panelden açılamıyor.", 422);
+        clientSecret = clientSecret?.Trim();
+        if (connection.PlatformCode == "SHOPIFY" && (string.IsNullOrWhiteSpace(clientSecret) || clientSecret.Length > 200))
+            return ServiceResult<InstantNotificationView>.Fail("SHOPIFY_CLIENT_SECRET_REQUIRED", "Shopify bildirimleri uygulamanın gizli anahtarıyla (client secret) imzalar; bildirimleri açmak için bu anahtarı girin.", 422);
         if (connection.Status is not ("ACTIVE" or "VERIFIED"))
             return ServiceResult<InstantNotificationView>.Fail("CONNECTION_INACTIVE", "Bağlantı pasif olduğu için anlık bildirim açılamaz.", 422);
         if (PublicBaseUrl() is not { } baseUrl)
@@ -97,14 +101,16 @@ public sealed class InstantNotificationService(
         var password = Convert.ToBase64String(RandomNumberGenerator.GetBytes(24)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
         // The receiver accepts only active subscriptions, so the row is active before Trendyol
         // is told about it; a first delivery that arrives meanwhile is not rejected.
+        var shopify = connection.PlatformCode == "SHOPIFY";
         var subscription = new WebhookSubscription
         {
             Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             ConnectionId = connectionId,
             RouteTokenHash = tokenHasher.Hash(routeToken),
-            AuthenticationType = "BASIC_AUTHENTICATION",
-            ProtectedVerifierSecret = protector.Protect(JsonSerializer.Serialize(new VerifierPayload(username, password, null, null))),
+            // Shopify signs each delivery (HMAC) with the client secret instead of Basic Auth.
+            AuthenticationType = shopify ? "HMAC_SHA256" : "BASIC_AUTHENTICATION",
+            ProtectedVerifierSecret = protector.Protect(JsonSerializer.Serialize(shopify ? new VerifierPayload(null, null, null, clientSecret) : new VerifierPayload(username, password, null, null))),
             Status = "ACTIVE",
             Version = 1
         };
@@ -126,13 +132,13 @@ public sealed class InstantNotificationService(
         {
             db.WebhookSubscriptions.Remove(subscription);
             await db.SaveChangesAsync(cancellationToken);
-            return ServiceResult<InstantNotificationView>.Fail("WEBHOOK_REGISTRATION_FAILED", $"Trendyol bildirim kaydını kabul etmedi: {created.Error!.SafeMessage}", created.Error.HttpStatus is >= 400 and < 500 ? 422 : 502);
+            return ServiceResult<InstantNotificationView>.Fail("WEBHOOK_REGISTRATION_FAILED", $"{PlatformName(connection.PlatformCode)} bildirim kaydını kabul etmedi: {created.Error!.SafeMessage}", created.Error.HttpStatus is >= 400 and < 500 ? 422 : 502);
         }
         subscription.ExternalSubscriptionId = created.Value;
         subscription.VerifiedAt = timeProvider.GetUtcNow();
         subscription.Version++;
         await db.SaveChangesAsync(cancellationToken);
-        logger.LogInformation("Trendyol order webhook {WebhookId} registered for connection {ConnectionId}", created.Value, connectionId);
+        logger.LogInformation("{Platform} order webhook {WebhookId} registered for connection {ConnectionId}", connection.PlatformCode, created.Value, connectionId);
         return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, subscription, "ACTIVE", null, cancellationToken));
     }
 
@@ -146,7 +152,7 @@ public sealed class InstantNotificationService(
         {
             var deleted = await registrations.DeleteWebhookAsync(Context(tenantId, connectionId, correlationId, "webhook-delete"), externalId, cancellationToken);
             if (!deleted.IsSuccess)
-                return ServiceResult<InstantNotificationView>.Fail("WEBHOOK_REMOVAL_FAILED", $"Trendyol bildirim kaydı silinemedi: {deleted.Error!.SafeMessage}", 502);
+                return ServiceResult<InstantNotificationView>.Fail("WEBHOOK_REMOVAL_FAILED", $"{PlatformName(connection.PlatformCode)} bildirim kaydı silinemedi: {deleted.Error!.SafeMessage}", 502);
         }
         subscription.Status = "DELETED";
         subscription.Version++;
@@ -158,14 +164,25 @@ public sealed class InstantNotificationService(
     {
         var subscriptions = await (from subscription in db.WebhookSubscriptions.AsNoTracking()
                                    join connection in db.PlatformConnections.AsNoTracking() on subscription.ConnectionId equals connection.Id
-                                   where subscription.Status == "ACTIVE" && subscription.ExternalSubscriptionId != null
-                                       && connection.PlatformCode == "TRENDYOL" && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")
-                                   select new { subscription.TenantId, subscription.ConnectionId, subscription.ExternalSubscriptionId })
+                                   where subscription.Status == "ACTIVE" && subscription.ExternalSubscriptionId != null && subscription.ExternalSubscriptionId != ManualRegistration
+                                       && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "SHOPIFY") && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")
+                                   select new { subscription.Id, subscription.TenantId, subscription.ConnectionId, subscription.ExternalSubscriptionId, connection.PlatformCode })
             .ToListAsync(cancellationToken);
         var reactivated = 0;
         foreach (var subscription in subscriptions)
         {
             var context = Context(subscription.TenantId, subscription.ConnectionId, $"webhook-upkeep:{subscription.ConnectionId:N}", "webhook-upkeep");
+            if (subscription.PlatformCode == "SHOPIFY")
+            {
+                // Shopify drops subscriptions after repeated failures; the dropped topics are made again.
+                var restored = await registrations.RestoreMissingWebhooksAsync(context, subscription.ExternalSubscriptionId!, cancellationToken);
+                if (!restored.IsSuccess) { logger.LogWarning("Shopify order webhooks of connection {ConnectionId} could not be restored: {Code}", subscription.ConnectionId, restored.Error?.Code); continue; }
+                if (restored.Value is not { } ids) continue;
+                await db.WebhookSubscriptions.Where(x => x.Id == subscription.Id).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.ExternalSubscriptionId, ids).SetProperty(x => x.Version, x => x.Version + 1), cancellationToken);
+                reactivated++;
+                logger.LogInformation("Shopify order webhooks of connection {ConnectionId} were restored", subscription.ConnectionId);
+                continue;
+            }
             var remote = await registrations.ListWebhooksAsync(context, cancellationToken);
             if (!remote.IsSuccess) continue;
             var match = remote.Value!.FirstOrDefault(webhook => webhook.Id == subscription.ExternalSubscriptionId);
@@ -180,6 +197,22 @@ public sealed class InstantNotificationService(
         }
         return reactivated;
     }
+
+    // Trendyol keeps one webhook; Shopify one subscription per topic, all of which must be listed.
+    internal static string RemoteState(string externalId, IReadOnlyList<RemoteWebhook> remote)
+    {
+        var ids = externalId.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var listed = remote.Where(webhook => ids.Contains(webhook.Id, StringComparer.Ordinal)).ToList();
+        if (listed.Count == 0) return "MISSING";
+        return listed.Count < ids.Length || listed.Any(webhook => webhook.Status != "ACTIVE") ? "PASSIVE" : "ACTIVE";
+    }
+
+    private static string PlatformName(string platformCode) => platformCode switch
+    {
+        "SHOPIFY" => "Shopify",
+        "HEPSIBURADA" => "Hepsiburada",
+        _ => "Trendyol"
+    };
 
     // The receiving address must be HTTPS and, for Trendyol, must not name Trendyol, Dolap or localhost.
     internal string? PublicBaseUrl()

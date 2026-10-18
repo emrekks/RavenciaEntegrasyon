@@ -760,7 +760,8 @@ public sealed record CreateWebhookSubscriptionCommand(string AuthenticationType,
 
 // A webhook as the marketplace lists it. Status: ACTIVE or PASSIVE (Trendyol passivates a
 // webhook whose deliveries keep failing).
-public sealed record RemoteWebhook(string Id, string? Url, string Status, string? Username);
+// Topic is the event a Shopify subscription delivers (Trendyol lists one webhook for all events).
+public sealed record RemoteWebhook(string Id, string? Url, string Status, string? Username, string? Topic = null);
 
 // Registers the panel's order-notification endpoint at a marketplace. Called only when a user
 // turns notifications on or off, and by the worker to reactivate a webhook the marketplace passivated.
@@ -770,6 +771,11 @@ public interface IWebhookRegistrationPort
     Task<AdapterResult<string>> CreateWebhookAsync(AdapterContext context, string url, string username, string password, CancellationToken cancellationToken);
     Task<AdapterResult<bool>> DeleteWebhookAsync(AdapterContext context, string externalId, CancellationToken cancellationToken);
     Task<AdapterResult<bool>> ActivateWebhookAsync(AdapterContext context, string externalId, CancellationToken cancellationToken);
+
+    // Recreates the parts of a registration the marketplace removed (Shopify drops a subscription
+    // after repeated failed deliveries). Returns the new external id, or null when nothing changed.
+    Task<AdapterResult<string?>> RestoreMissingWebhooksAsync(AdapterContext context, string externalId, CancellationToken cancellationToken) =>
+        Task.FromResult(AdapterResult<string?>.Success(null));
 }
 
 // State: UNSUPPORTED, OFF, ACTIVE, PASSIVE (the marketplace stopped delivering), MISSING (the
@@ -791,7 +797,8 @@ public sealed record WebhookSetupInstructions(string Environment, string BaseUrl
 public interface IInstantNotificationService
 {
     Task<ServiceResult<InstantNotificationView>> StatusAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken);
-    Task<ServiceResult<InstantNotificationView>> EnableAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken);
+    // clientSecret: the Shopify app's client secret, with which Shopify signs its notifications.
+    Task<ServiceResult<InstantNotificationView>> EnableAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken, string? clientSecret = null);
     Task<ServiceResult<InstantNotificationView>> DisableAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken);
     // Reactivates registered webhooks the marketplace passivated (for example after the server was off).
     Task<int> ReactivatePassiveAsync(CancellationToken cancellationToken);

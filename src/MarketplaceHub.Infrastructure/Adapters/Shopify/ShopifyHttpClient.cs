@@ -13,7 +13,7 @@ using Microsoft.Extensions.Options;
 
 namespace MarketplaceHub.Infrastructure.Adapters.Shopify;
 
-public sealed class ShopifyHttpClient(
+public sealed partial class ShopifyHttpClient(
     IHttpClientFactory clients,
     ShopifyAuthenticationHandler authentication,
     IOptions<ShopifyOptions> options,

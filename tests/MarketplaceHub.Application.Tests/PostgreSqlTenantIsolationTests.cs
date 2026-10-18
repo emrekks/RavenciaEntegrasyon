@@ -2074,7 +2074,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     [PostgreSqlFact]
     public async Task InstantNotifications_PrepareHepsiburadaWithoutCallingHepsiburada()
     {
-        var tenant = NewTenant("hepsiburada-instant-notifications");
+        var tenant = NewTenant("hb-notifications");
         var connection = NewQuestionConnection(tenant);
         connection.PlatformCode = "HEPSIBURADA";
         var port = new RecordingWebhookPort();
@@ -2122,6 +2122,60 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 Assert.Equal("OFF", (await Service(db).DisableAsync(tenant.Id, connection.Id, "disable", CancellationToken.None)).Value!.State);
             }
             Assert.Null(port.DeletedId);
+        }
+        finally
+        {
+            await using var cleanupDb = fixture.CreateContext();
+            await cleanupDb.InboxMessages.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanupDb.IntegrationJobs.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanupDb.WebhookSubscriptions.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task InstantNotifications_ShopifyNeedsTheClientSecretAndVerifiesWithIt()
+    {
+        var tenant = NewTenant("shopify-notifications");
+        var connection = NewQuestionConnection(tenant);
+        connection.PlatformCode = "SHOPIFY";
+        var port = new RecordingWebhookPort();
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Marketplace:PublicBaseUrl"] = "https://panel.ravencia.com" }).Build();
+        var dataProtection = new EphemeralDataProtectionProvider();
+        var hasher = new TokenHasher(new byte[32]);
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            InstantNotificationService Service(AppDbContext db) => new(db, port, hasher, dataProtection, configuration, fixture.TimeProvider, NullLogger<InstantNotificationService>.Instance);
+
+            await using (var db = fixture.CreateContext())
+            {
+                var withoutSecret = await Service(db).EnableAsync(tenant.Id, connection.Id, "enable", CancellationToken.None);
+                Assert.Equal("SHOPIFY_CLIENT_SECRET_REQUIRED", withoutSecret.Error!.Code);
+                Assert.Null(port.CreatedUrl);
+                var enabled = await Service(db).EnableAsync(tenant.Id, connection.Id, "enable", CancellationToken.None, "shpss_test_secret");
+                Assert.Null(enabled.Error);
+                Assert.Equal("ACTIVE", enabled.Value!.State);
+            }
+
+            // A refund delivery signed with the client secret is accepted and names its order by order_id.
+            await using (var db = fixture.CreateContext())
+            {
+                var receiver = new MarketplaceWebhookService(db, hasher, new MarketplaceHub.Infrastructure.Adapters.Shopify.ShopifyWebhookVerifier(db, dataProtection), fixture.TimeProvider);
+                var body = Encoding.UTF8.GetBytes("""{"id":987,"order_id":123}""");
+                var signature = Convert.ToBase64String(System.Security.Cryptography.HMACSHA256.HashData(Encoding.UTF8.GetBytes("shpss_test_secret"), body));
+                var headers = new Dictionary<string, string> { ["X-Shopify-Hmac-Sha256"] = signature, ["X-Shopify-Topic"] = "refunds/create", ["X-Shopify-Webhook-Id"] = "delivery-1" };
+                var received = await receiver.ReceiveAsync(connection.PublicId, port.CreatedUrl!.Split('/').Last(), body, headers, "webhook-test", CancellationToken.None);
+                Assert.Null(received.Error);
+                Assert.True(await db.IntegrationJobs.AnyAsync(job => job.TenantId == tenant.Id && job.PayloadJson.Contains("REFUNDS")));
+            }
         }
         finally
         {

@@ -334,3 +334,8 @@
 .instant-notifications-setup p { margin: 0; color: var(--rv-color-muted); font-size: 13px; }
 .instant-notifications-setup pre { margin: 0; padding: 12px; overflow-x: auto; border: 1px solid var(--rv-color-border); border-radius: 7px; background: var(--rv-color-surface-raised); font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
 .instant-notifications-setup button { justify-self: start; min-height: 36px; }
+
+/* Shopify: the app's client secret, typed in the confirmation window. */
+.instant-notifications-secret { display: grid; gap: 6px; margin-top: 12px; font-size: 13px; font-weight: 600; }
+.instant-notifications-secret input { min-height: 36px; padding: 0 10px; border: 1px solid var(--rv-color-border); border-radius: 7px; font: inherit; font-weight: 400; }
+.instant-notifications-secret small { color: var(--rv-color-muted); font-weight: 400; }
