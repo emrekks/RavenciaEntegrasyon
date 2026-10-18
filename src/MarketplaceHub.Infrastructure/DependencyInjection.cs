@@ -88,7 +88,9 @@ public static class DependencyInjection
         services.AddScoped<ShopifyAuthenticationHandler>();
         services.AddScoped<ShopifyHttpClient>();
         services.AddScoped<ShopifyWebhookVerifier>();
+        services.AddTransient<HepsiburadaRateLimitHandler>();
         services.AddHttpClient("Hepsiburada", client => client.Timeout = Timeout.InfiniteTimeSpan)
+            .AddHttpMessageHandler<HepsiburadaRateLimitHandler>()
             .AddHttpMessageHandler<MarketplaceCircuitBreakerHandler>()
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AutomaticDecompression = System.Net.DecompressionMethods.All, PooledConnectionLifetime = TimeSpan.FromMinutes(10) });
         services.AddScoped<HepsiburadaAuthenticationHandler>();
