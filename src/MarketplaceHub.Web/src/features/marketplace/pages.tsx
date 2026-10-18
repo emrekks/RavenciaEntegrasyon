@@ -2961,6 +2961,19 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
       onNotice(pairs ? `${headings} başlıkta ${pairs} değer aynı adlı karşılığıyla eşlendi.${extra}` : `Yeni birebir eşleşen değer bulunamadı.${extra}`)
     } finally { setBulkBusy('') }
   }
+  // On phones the field list is one sideways row; the chosen field (also when Sonraki Eksik picks it) is brought into
+  // view. The hooks sit above the early returns; the effect reads the chosen chip from the list and scrolls only when it changed.
+  const fieldNavRef = useRef<HTMLElement>(null)
+  const scrolledFieldRef = useRef<Element | null>(null)
+  useEffect(() => {
+    const nav = fieldNavRef.current
+    const item = nav?.querySelector<HTMLElement>('.cm-item.is-selected') ?? null
+    if (item === scrolledFieldRef.current) return
+    scrolledFieldRef.current = item
+    if (!nav || !item || nav.scrollWidth <= nav.clientWidth) return
+    const navBox = nav.getBoundingClientRect(), itemBox = item.getBoundingClientRect()
+    nav.scrollLeft += itemBox.left - navBox.left - (navBox.width - itemBox.width) / 2
+  })
   if (!connectionId) return <article className="panel mapping-step"><div className="editor-section-title"><span>4</span><div><h2>{platformLabel} kategori ve özellik eşlemeleri</h2><p>Önce 1. adımdaki kategori eşlemesini tamamlayın.</p></div></div><div className="unknown"><strong>Bağlantı seçilmedi</strong><p>Önce aktif {platformLabel} bağlantısını seçin.</p></div></article>
   if (categoryMappings.isLoading) return <article className="panel mapping-step"><div className="editor-section-title"><span>4</span><div><h2>{platformLabel} kategori ve özellik eşlemeleri</h2><p>1. adımdaki eşleşmiş kategoriler hazırlanıyor.</p></div></div><Busy text="Kategori eşlemeleri yükleniyor…" /></article>
   if (!matchedCategories.length) return <article className="panel mapping-step"><div className="editor-section-title"><span>4</span><div><h2>{platformLabel} kategori ve özellik eşlemeleri</h2><p>Yalnız 1. adımda eşleşen kategorilerin özellikleri burada açılır.</p></div></div><div className="unknown"><strong>Kategori eşlemesi bekleniyor</strong><p>Önce 1. adımda en az bir panel kategorisini {platformLabel} kategorisiyle eşleştirin.</p></div></article>
@@ -2994,15 +3007,6 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
   const openRequired = requiredEntries.length - requiredReady
   const footerHint = openRequired ? `${openRequired} zorunlu alan bekliyor` : 'Zorunlu alanların hepsi hazır'
   const goToNext = nextOpenEntry ? () => setSelectedEntryKey(nextOpenEntry.key) : undefined
-  // On phones the field list is one sideways row; the chosen field (also when Sonraki Eksik picks it) is brought into view.
-  const fieldNavRef = useRef<HTMLElement>(null)
-  useEffect(() => {
-    const nav = fieldNavRef.current
-    const item = nav?.querySelector<HTMLElement>('.cm-item.is-selected')
-    if (!nav || !item || nav.scrollWidth <= nav.clientWidth) return
-    const navBox = nav.getBoundingClientRect(), itemBox = item.getBoundingClientRect()
-    nav.scrollLeft += itemBox.left - navBox.left - (navBox.width - itemBox.width) / 2
-  }, [activeEntry?.key])
   const dataLoading = references.isLoading || mappings.isLoading || categoryRequirements.isLoading
   const dataFailed = references.isError || mappings.isError || categoryRequirements.isError
   return <article className="panel mapping-step cm-card">

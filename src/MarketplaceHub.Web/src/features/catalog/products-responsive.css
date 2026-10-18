@@ -370,7 +370,8 @@
   .app-shell.stitch-shell main .product-add-page .variant-mobile-groups > button.is-on { color: var(--rv-color-ink); background: var(--rv-color-surface); box-shadow: inset 0 0 0 1px var(--rv-color-border-strong); }
   .app-shell.stitch-shell main .product-add-page .variant-table-editor { overflow-x: visible; }
   .app-shell.stitch-shell main .product-add-page .variant-table-editor :is(.variant-table-head, .variant-table-row) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); min-width: 0; }
-  .app-shell.stitch-shell main .product-add-page .variant-table-editor .variant-table-row > :nth-child(2) { grid-column: 1 / -1; }
+  .app-shell.stitch-shell main .product-add-page .variant-table-editor .variant-table-row > :nth-child(2) { grid-column: 1 / -1; grid-row: 1; }
+  .app-shell.stitch-shell main .product-add-page .variant-table-editor .variant-table-row > :nth-child(n+3) { grid-row: 2; }
   .app-shell.stitch-shell main .product-add-page .variant-table-editor .variant-table-head > :nth-child(2) { display: none !important; }
   .app-shell.stitch-shell main .product-add-page .variant-table-editor :is(.variant-table-head, .variant-table-row) > :nth-child(1) { display: none !important; }
   .app-shell.stitch-shell main .product-add-page .variant-table-editor.is-mobile-codes :is(.variant-table-head, .variant-table-row) > :is(:nth-child(5), :nth-child(6), :nth-child(7), :nth-child(8), :nth-child(9)),
@@ -390,4 +391,13 @@
   .app-shell.stitch-shell main .product-add-page .variant-table-editor .variant-table-row > input:nth-child(2) { height: 28px; min-height: 28px; padding: 0 2px; color: var(--rv-color-ink); background: none; border-color: transparent; box-shadow: none; font-size: 14px; font-weight: 600; text-overflow: ellipsis; }
   .app-shell.stitch-shell main .product-add-page .variant-table-editor .variant-table-row > input:nth-child(2):focus { padding: 0 8px; background: var(--rv-color-surface); border-color: var(--rv-color-primary); }
   .app-shell.stitch-shell main .product-add-page .variant-table-row > input { height: 36px; min-height: 36px; font-size: 13px; }
+}
+
+/* Phones: the product save bar keeps Kaydet and the platform update side by side and gives the third action its own
+   full-width line (its label ran out of a half-width cell); every button is 36px like the rest of the panel. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .product-add-page .product-submit-actions > button:last-child:nth-child(3) { grid-column: 1 / -1; justify-content: center; }
+  .app-shell.stitch-shell main .product-add-page .product-submit-actions > button,
+  .app-shell.stitch-shell main .product-add-page .product-submit-actions .platform-update-split,
+  .app-shell.stitch-shell main .product-add-page .product-submit-actions .platform-update-split > button { box-sizing: border-box; height: 36px; min-height: 36px; }
 }
