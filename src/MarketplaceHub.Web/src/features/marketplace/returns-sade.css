@@ -1033,3 +1033,8 @@ main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl .rr-thumb { width: 60px; 
 main .rr.rr-orders .rr-tbl.rr-tbl { min-width: 1130px; }
 main .rr.rr-returns .rr-tbl.rr-tbl { min-width: 1210px; }
 }
+/* picture preview: no footer; the picture sits with the same 12px on every side and gets the footer's height */
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img .rr-m-body.rr-m-body { padding: 12px; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img.rr-img { width: calc(min(100vh - 170px, 640px) * 2 / 3 + 26px); max-width: calc(100vw - 32px); }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img .rr-img-preview.rr-img-preview { width: 100%; height: auto; max-height: min(calc(100vh - 170px), 640px); min-height: 0; aspect-ratio: 2 / 3; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img .rr-m-head h2 { max-width: none; }

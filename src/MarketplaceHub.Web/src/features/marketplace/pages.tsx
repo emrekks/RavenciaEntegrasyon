@@ -1811,7 +1811,7 @@ function ReturnFactLines({ facts }: { facts: Array<[string, string]> }) {
 }
 function ReturnImagePreview({ title, imageUrl, facts, onClose }: { title: string; imageUrl: string | null | undefined; facts: Array<[string, string]>; onClose: () => void }) {
   const crumb = facts.filter(([label]) => label === 'Model Kodu' || label === 'Renk' || label === 'Beden').map(([label, value]) => `${label}: ${value}`).join(' · ')
-  return <RrModal crumb={crumb || undefined} title={title} size="img" onClose={onClose} foot={<><span className="rr-note" /><button type="button" className="rr-btn" onClick={onClose}>Kapat</button></>}><div className="rr-img-preview">{imageUrl ? <img src={imageUrl} alt={title} referrerPolicy="no-referrer" /> : <RrIcon name="image" />}</div></RrModal>
+  return <RrModal crumb={crumb || undefined} title={title} size="img" onClose={onClose}><div className="rr-img-preview">{imageUrl ? <img src={imageUrl} alt={title} referrerPolicy="no-referrer" /> : <RrIcon name="image" />}</div></RrModal>
 }
 function ReturnLabelPreview({ item, lines, onClose }: { item: ReturnClaim; lines: OrderLine[]; onClose: () => void }) {
   const track = item.cargoTrackingNumber?.trim() || item.packageNumber?.trim() || item.externalClaimId

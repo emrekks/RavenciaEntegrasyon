@@ -250,5 +250,5 @@ export function RrThumb({ src, quantity, large, small, onOpen, alt }: { src: str
 export function RrImagePreview({ title, crumb, sources, onClose }: { title: string; crumb?: string; sources: string[]; onClose: () => void }) {
   const [index, setIndex] = useState(0)
   const source = sources[index]
-  return <RrModal crumb={crumb || undefined} title={title} size="img" onClose={onClose} foot={<><span className="rr-note" /><button type="button" className="rr-btn" onClick={onClose}>Kapat</button></>}><div className="rr-img-preview">{source ? <img src={source} alt={title} referrerPolicy="no-referrer" onError={() => setIndex(value => value + 1)} /> : <RrIcon name="image" />}</div></RrModal>
+  return <RrModal crumb={crumb || undefined} title={title} size="img" onClose={onClose}><div className="rr-img-preview">{source ? <img src={source} alt={title} referrerPolicy="no-referrer" onError={() => setIndex(value => value + 1)} /> : <RrIcon name="image" />}</div></RrModal>
 }
