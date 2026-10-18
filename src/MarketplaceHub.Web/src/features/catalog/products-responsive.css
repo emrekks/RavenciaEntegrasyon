@@ -400,10 +400,13 @@
   .app-shell.stitch-shell main .product-add-page .product-submit-actions > button { min-width: 0; justify-content: center; padding: 0 10px; white-space: nowrap; }
   .app-shell.stitch-shell main .product-add-page .product-submit-actions .platform-update-quick > span,
   .app-shell.stitch-shell main .product-add-page .product-submit-actions .submit-label-long { display: none; }
-  .app-shell.stitch-shell main .product-add-page .product-submit-actions .platform-update-split > button { width: 36px; min-width: 36px; padding: 0; justify-content: center; }
   .app-shell.stitch-shell main .product-add-page .product-submit-actions > button,
-  .app-shell.stitch-shell main .product-add-page .product-submit-actions .platform-update-split,
-  .app-shell.stitch-shell main .product-add-page .product-submit-actions .platform-update-split > button { box-sizing: border-box; height: 36px; min-height: 36px; }
+  .app-shell.stitch-shell main .product-add-page .product-submit-actions .platform-update-split { box-sizing: border-box; height: 36px; min-height: 36px; }
+  /* the two-part update button: its halves fill the frame edge to edge (34px inside the 1px border), and the one under
+     the finger gets the neutral hover of every other button */
+  .app-shell.stitch-shell main .product-add-page .product-submit-actions.product-submit-actions > .platform-update-split { padding: 0; }
+  .app-shell.stitch-shell main .product-add-page .product-submit-actions .platform-update-split > button { flex: none; width: 44px; min-width: 44px; height: 100%; min-height: 0; padding: 0; justify-content: center; }
+  .app-shell.stitch-shell main .product-add-page .product-submit-actions .platform-update-split > button:hover:not(:disabled) { color: var(--rv-color-ink); background: var(--rv-color-surface-soft); }
 }
 
 /* Phones: product pictures are reordered by holding and sliding (see the media strip handlers); the browser's own
@@ -466,4 +469,11 @@
 /* Phones: the variant rows keep a 12px gap from both sides of their framed list. */
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .product-add-page .variant-table-editor > :is(.variant-table-row, .variant-table-head) { padding-inline: 12px; }
+}
+
+/* Wider screens: the two-part update button keeps the width its halves need instead of being squeezed (which cut off
+   the arrow half at the frame's edge). */
+@media (min-width: 761px) {
+  .app-shell.stitch-shell main .product-add-page .product-submit-actions > .platform-update-split,
+  .app-shell.stitch-shell main .product-add-page .product-submit-actions .platform-update-split > .platform-update-settings { flex: none; }
 }
