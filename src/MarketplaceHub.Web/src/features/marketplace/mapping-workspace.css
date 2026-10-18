@@ -656,3 +656,11 @@
 @media (max-width: 760px) {
   .app-shell.stitch-shell main section.mapping-page .mapping-saved-table { padding: 10px 10px 0; }
 }
+
+/* Phones: in the attribute window the value field takes the room; the add and A–Z buttons stay narrow. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-add-value { gap: 6px; padding: 14px 16px; }
+  .app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-add-value button { padding: 0 10px !important; font-size: 13px !important; }
+  .app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-add-value .panel-attribute-sort-actions { flex: none; gap: 6px; }
+  .app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-add-value .panel-attribute-sort-actions button { width: 44px !important; min-width: 44px !important; padding: 0 !important; }
+}
