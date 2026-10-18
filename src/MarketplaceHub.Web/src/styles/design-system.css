@@ -12163,3 +12163,8 @@ html body :is(.nav-count, .rv-tab-count, .ss-count, .cs-count, .cm-count, .qi-co
 @media (max-width: 760px) {
   .app-shell.stitch-shell main section.content > :is(.jobs-reference-heading, .integration-reference-heading, .mapping-reference-heading).rv-page-head { align-items: stretch !important; }
 }
+
+/* Phones: tab strips scroll only sideways; a pixel of extra height never turns into an up-and-down scroll. */
+@media (max-width: 760px) {
+  .app-shell :is(.rv-tabs, [role="tablist"], .cm-nav, .cs-nav) { overflow-y: hidden; }
+}
