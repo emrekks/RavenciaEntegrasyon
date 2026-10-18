@@ -460,7 +460,6 @@ export function JobsPage({ me }: { me: Me }) {
     onSuccess: async (data, variables) => {
       setSelectedId(data.job.id)
       setFeedback({ message: variables.verb === 'retry' ? 'İşlem yeniden kuyruğa alındı.' : 'İşlem iptal edildi.', tone: variables.verb === 'retry' ? 'info' : 'success' })
-      showNewJobs()
       await Promise.all([client.invalidateQueries({ queryKey: ['jobs'] }), client.invalidateQueries({ queryKey: ['job', data.job.id] })])
     },
     onError: error => setFeedback({ message: error instanceof Error ? error.message : 'İşlem güncellenemedi.', tone: 'danger' })
@@ -474,35 +473,11 @@ export function JobsPage({ me }: { me: Me }) {
     onSuccess: async data => {
       setSelectedId(data.job.id)
       setFeedback({ message: 'Seçilen sipariş için tek seferlik fatura iletimi kuyruğa alındı. Genel dış yazma kapıları kapalı kaldı.', tone: 'info' })
-      showNewJobs()
       await Promise.all([client.invalidateQueries({ queryKey: ['jobs'] }), client.invalidateQueries({ queryKey: ['job', data.job.id] })])
     },
     onError: error => setFeedback({ message: error instanceof Error ? error.message : 'Tek seferlik fatura işlemi başlatılamadı.', tone: 'danger' })
   })
-  // The list refreshes every few seconds. Jobs already on screen keep updating in place, but new ones wait behind the
-  // "Yeni İşlem" button instead of pushing the rows down while someone is reading them. New jobs that would not show in
-  // the current tab or search are let in straight away, since they move nothing.
-  const [heldJobIds, setHeldJobIds] = useState<Set<string> | null>(null)
-  const liveJobs = useMemo(() => list.data ?? [], [list.data])
-  const inJobView = (job: JobSummary) => {
-    const term = search.trim().toLocaleLowerCase('tr-TR')
-    const categoryMatcher = categoryTabs.find(tab => tab.key === category)?.match ?? (() => true)
-    if (!categoryMatcher(job.jobType)) return false
-    if (!term) return true
-    return [job.jobType, job.status, job.lastErrorCode, job.lastErrorSummary, job.correlationId].some(value => value?.toLocaleLowerCase('tr-TR').includes(term))
-  }
-  const newJobs = heldJobIds ? liveJobs.filter(job => !heldJobIds.has(job.id)) : []
-  const newVisibleJobs = newJobs.filter(inJobView)
-  useEffect(() => { setHeldJobIds(null) }, [status, timeRange, category, search])
-  useEffect(() => {
-    if (!list.data) return
-    if (!heldJobIds) { setHeldJobIds(new Set(list.data.map(job => job.id))); return }
-    const unseenElsewhere = list.data.filter(job => !heldJobIds.has(job.id) && !inJobView(job))
-    if (unseenElsewhere.length) setHeldJobIds(new Set([...heldJobIds, ...unseenElsewhere.map(job => job.id)]))
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- runs when the list or the held set changes; inJobView reads the current filters
-  }, [list.data, heldJobIds])
-  const showNewJobs = () => setHeldJobIds(null)
-  const rawJobs = useMemo(() => heldJobIds ? liveJobs.filter(job => heldJobIds.has(job.id)) : liveJobs, [liveJobs, heldJobIds])
+  const rawJobs = list.data ?? []
   const rangeFiltered = useMemo(() => {
     if (timeRange === 'all') return rawJobs
     const rangeMs = timeRange === '7d' ? 7 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000
@@ -513,8 +488,14 @@ export function JobsPage({ me }: { me: Me }) {
     })
   }, [rawJobs, timeRange])
   const filtered = useMemo(() => {
-    return rangeFiltered.filter(inJobView)
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- inJobView only reads category and search
+    const term = search.trim().toLocaleLowerCase('tr-TR')
+    const categoryMatcher = categoryTabs.find(tab => tab.key === category)?.match ?? (() => true)
+    return rangeFiltered.filter(job => {
+      const matchCategory = categoryMatcher(job.jobType)
+      if (!matchCategory) return false
+      if (!term) return true
+      return [job.jobType, job.status, job.lastErrorCode, job.lastErrorSummary, job.correlationId].some(value => value?.toLocaleLowerCase('tr-TR').includes(term))
+    })
   }, [rangeFiltered, category, search])
   useEffect(() => { setPageNumber(1) }, [category, status, search, pageSize, timeRange])
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
@@ -534,7 +515,6 @@ export function JobsPage({ me }: { me: Me }) {
   const [successCount, runningCount, waitingCount, errorCount] = useRememberedTabCounts('İşlem durum özeti', (['success', 'running', 'waiting', 'error'] as const).map(key => ({ value: key, count: list.isLoading ? undefined : statusSummary[key] })))
   const categoryCounts = useMemo(() => new Map(categoryTabs.map(tab => [tab.key, rangeFiltered.filter(job => tab.match(job.jobType)).length])), [rangeFiltered])
   const refreshJobs = () => {
-    showNewJobs()
     void Promise.all([
       client.invalidateQueries({ queryKey: ['jobs'] }),
       selectedId ? client.invalidateQueries({ queryKey: ['job', selectedId] }) : Promise.resolve()
@@ -581,7 +561,6 @@ export function JobsPage({ me }: { me: Me }) {
         </div>
       </div>
       {list.isLoading ? <Busy text="İşlemler yükleniyor…" /> : list.isError ? <div role="alert" className="jobs-reference-state jobs-reference-state-error">İşlem listesi alınamadı.</div> : <>
-        <div className="jobs-list-wrap"><div className="jobs-new-slot">{newVisibleJobs.length > 0 && <button type="button" className="jobs-new-pill" onClick={showNewJobs}><JobsIcon name="refresh" />{newVisibleJobs.length.toLocaleString('tr-TR')} Yeni İşlem</button>}</div>
         <div className="jobs-reference-table-scroll"><table className="jobs-reference-table"><thead><tr><th>İşlem Türü</th><th>Durum</th><th>Deneme</th><th>Zaman</th><th>Correlation ID</th></tr></thead><tbody>
           {pageJobs.map(job => {
             const presentation = jobPresentation(job.jobType)
@@ -596,7 +575,7 @@ export function JobsPage({ me }: { me: Me }) {
             </tr>
           })}
           {filtered.length === 0 && <tr><td className="jobs-reference-empty" colSpan={6}>Seçili kategori ve filtrelerle eşleşen kayıt bulunamadı.</td></tr>}
-        </tbody></table></div></div>
+        </tbody></table></div>
         {filtered.length > 0 && <div className="jobs-reference-pagination"><strong>Toplam {filtered.length.toLocaleString('tr-TR')} kayıt</strong><Pagination className="jobs-reference-page-controls" page={currentPage} totalPages={totalPages} onPageChange={setPageNumber} onPrevious={() => setPageNumber(value => Math.max(1, value - 1))} onNext={() => setPageNumber(value => Math.min(totalPages, value + 1))} /></div>}
       </>}
     </div>
