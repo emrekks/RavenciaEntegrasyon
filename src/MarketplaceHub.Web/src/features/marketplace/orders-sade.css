@@ -7,18 +7,16 @@
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-has-select col.rr-c-order { width: 200px; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-buyer { width: 8%; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-prod,
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-has-select col.rr-c-prod { width: 23%; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-has-select col.rr-c-prod { width: 34%; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-price,
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-no-buyer col.rr-c-price { width: 8%; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-cargo { width: 10%; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-inv { width: 13%; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-status { width: 11%; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-act,
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-has-select col.rr-c-act { width: 13%; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-no-buyer col.rr-c-prod { width: 25%; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-no-buyer col.rr-c-prod { width: 39%; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-no-buyer col.rr-c-cargo { width: 10%; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-no-buyer col.rr-c-inv { width: 14%; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-no-buyer col.rr-c-status { width: 14%; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-no-buyer col.rr-c-act { width: 14%; }
 }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-invcell .rr-inv-trigger { gap: 4px; font-size: 12.5px; font-weight: 600; }
@@ -84,11 +82,10 @@
 @media (min-width: 1281px) {
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-buyer { width: 8%; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-prod,
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-has-select col.rr-c-prod { width: 20%; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-has-select col.rr-c-prod { width: 30%; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-price { width: 7%; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-cargo { width: 9%; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-inv { width: 14%; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-status { width: 10%; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-act,
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-has-select col.rr-c-act { width: 11%; }
 }
@@ -97,18 +94,16 @@
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-has-select col.rr-c-order { width: 176px; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-buyer { width: 7%; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-prod,
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-has-select col.rr-c-prod { width: 19%; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-has-select col.rr-c-prod { width: 28%; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-price { width: 7%; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-cargo { width: 9%; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-inv { width: 15%; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-status { width: 9%; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl col.rr-c-act,
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-has-select col.rr-c-act { width: 11%; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-no-buyer col.rr-c-prod { width: 21%; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-no-buyer col.rr-c-prod { width: 32%; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-no-buyer col.rr-c-price { width: 8%; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-no-buyer col.rr-c-cargo { width: 9%; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-no-buyer col.rr-c-inv { width: 15%; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-no-buyer col.rr-c-status { width: 11%; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-no-buyer col.rr-c-act { width: 12%; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-filters.rr-has-sort { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-filters.rr-has-sort .rr-fbtns { grid-column: 1 / -1; justify-content: flex-end; }
