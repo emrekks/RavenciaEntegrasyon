@@ -679,3 +679,13 @@
 
 /* The attribute record's values button: its list icon keeps a full 18px instead of being squeezed. */
 .app-shell.stitch-shell main section.mapping-page .panel-attribute-records .panel-attribute-record-actions > .panel-attribute-category-button::before { flex: none; width: 18px; height: 18px; }
+
+/* Brand mapping: Senkronize Et sits beside Eşleştirmeyi Kaydet at the foot of the card (side by side, half and half on
+   phones, under the brand count). The import and export buttons of the page head share one row on phones. */
+.app-shell.stitch-shell main section.mapping-page .brand-reference-action .brand-reference-buttons { display: flex; flex: none; gap: 8px; }
+.app-shell.stitch-shell main section.mapping-page .brand-reference-action .brand-reference-buttons > button { height: 36px; min-height: 36px; padding: 0 14px; justify-content: center; white-space: nowrap; }
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main section.mapping-page .brand-reference-action { display: grid; grid-template-columns: minmax(0, 1fr); justify-items: stretch; gap: 10px; text-align: left; }
+  .app-shell.stitch-shell main section.mapping-page .brand-reference-action .brand-reference-buttons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .app-shell.stitch-shell main section.mapping-page .mapping-reference-heading .mapping-transfer-actions:not(:has(.mam)) { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+}
