@@ -323,7 +323,7 @@
   .app-shell.stitch-shell main .cs-workspace .cs-nav > button { height: 46px; min-height: 46px; }
 }
 
-/* Anlık Bildirimler: one action under the status, and the terms the confirmation window lists. */
+/* Webhook (under Veri Eşitleme): one action under the status, and the terms the confirmation window lists. */
 .instant-notifications-actions { display: flex; gap: 8px; margin-top: 12px; }
 .instant-notifications-actions > button { min-height: 36px; }
 .instant-notifications-terms { margin: 0; padding-left: 18px; display: grid; gap: 8px; line-height: 1.5; }

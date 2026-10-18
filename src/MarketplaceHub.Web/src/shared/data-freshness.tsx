@@ -19,7 +19,7 @@ export function freshnessAge(lastSuccessAt: string, now: number): string {
 
 export function freshnessText(part: FreshnessPart | undefined, now: number): string | null {
   if (!part?.lastSuccessAt || part.connections === 0) return null
-  return `Son güncelleme ${freshnessAge(part.lastSuccessAt, now)}${part.instant ? ' · Anlık bildirim açık' : ''}`
+  return `Son güncelleme ${freshnessAge(part.lastSuccessAt, now)}${part.instant ? ' · Webhook açık' : ''}`
 }
 
 // One line under a page title telling when its data was last read from the marketplaces.

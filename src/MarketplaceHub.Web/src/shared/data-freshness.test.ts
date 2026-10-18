@@ -11,7 +11,7 @@ describe('data freshness', () => {
   })
 
   it('mentions order notifications only when they are on', () => {
-    expect(freshnessText({ kind: 'ORDERS', lastSuccessAt: '2026-10-18T11:59:25Z', instant: true, connections: 2 }, now)).toBe('Son güncelleme 35 sn önce · Anlık bildirim açık')
+    expect(freshnessText({ kind: 'ORDERS', lastSuccessAt: '2026-10-18T11:59:25Z', instant: true, connections: 2 }, now)).toBe('Son güncelleme 35 sn önce · Webhook açık')
     expect(freshnessText({ kind: 'RETURNS', lastSuccessAt: '2026-10-18T11:59:25Z', instant: false, connections: 2 }, now)).toBe('Son güncelleme 35 sn önce')
     expect(freshnessText({ kind: 'QUESTIONS', lastSuccessAt: null, instant: false, connections: 2 }, now)).toBeNull()
   })
