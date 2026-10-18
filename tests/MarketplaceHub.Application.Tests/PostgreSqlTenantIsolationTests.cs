@@ -1572,10 +1572,12 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             Assert.Equal(["regular-package"], orderPort.PackageReadCalls);
             Assert.Contains(processorDb.OperationalIssues.Local, issue => issue.Code == "RETURN_ORDER_HYDRATION_BUSY");
 
+            // Both sweep orders were taken, so the sweep is complete and the next starts six hours later.
             var persistedCursor = await processorDb.SyncCursors.SingleAsync(cursor => cursor.TenantId == tenant.Id
                 && cursor.ConnectionId == connection.Id
-                && cursor.ResourceType == "ORDER_INVOICE_RECONCILIATION");
-            Assert.Equal(OrderInvoiceReconciliationBatchPolicy.WriteCursor(regularOrderId), persistedCursor.OpaqueCursor);
+                && cursor.ResourceType == TrendyolInvoiceReconciliationPolicy.SweepCursorResource);
+            Assert.Null(persistedCursor.OpaqueCursor);
+            Assert.NotNull(persistedCursor.LastSuccessAt);
 
             var persistedPackages = await processorDb.ShipmentPackages.AsNoTracking()
                 .Where(package => package.TenantId == tenant.Id && package.ConnectionId == connection.Id)
@@ -1645,14 +1647,79 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             await using var verifyDb = fixture.CreateContext();
             var persistedCursor = await verifyDb.SyncCursors.AsNoTracking().SingleAsync(cursor => cursor.TenantId == tenant.Id
                 && cursor.ConnectionId == connection.Id
-                && cursor.ResourceType == "ORDER_INVOICE_RECONCILIATION");
+                && cursor.ResourceType == TrendyolInvoiceReconciliationPolicy.SweepCursorResource);
             Assert.Equal(OrderInvoiceReconciliationBatchPolicy.WriteCursor(orderIds[1]), persistedCursor.OpaqueCursor);
+            Assert.Null(persistedCursor.LastSuccessAt);
             var persistedPackages = await verifyDb.ShipmentPackages.AsNoTracking()
                 .Where(package => package.TenantId == tenant.Id && package.ConnectionId == connection.Id)
                 .ToDictionaryAsync(package => package.ExternalPackageId);
             Assert.Equal(MarketplaceInvoiceStatus.NotInvoiced, persistedPackages["budget-package-0"].MarketplaceInvoiceStatus);
             Assert.Equal(MarketplaceInvoiceStatus.NotInvoiced, persistedPackages["budget-package-1"].MarketplaceInvoiceStatus);
             Assert.Equal(MarketplaceInvoiceStatus.Unknown, persistedPackages["budget-package-2"].MarketplaceInvoiceStatus);
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task TrendyolInvoiceReconciliation_SweepsOnlyRecentUninvoicedShippedPackages()
+    {
+        var tenant = NewTenant("trendyol-invoice-sweep-scope");
+        var connection = NewQuestionConnection(tenant);
+        connection.PlatformCode = "TRENDYOL";
+        var ids = Enumerable.Range(1, 5).Select(index => Guid.Parse($"0199a5a1-1c00-7000-8000-00000000002{index}")).ToArray();
+        var orders = ids.Select((id, index) => NewInvoiceTestOrder(tenant.Id, connection.Id, id, $"sweep-order-{index}", isReturnClaim: false, fixture.Now)).ToArray();
+        var packages = ids.Select((id, index) => NewInvoiceTestPackage(tenant.Id, connection.Id, id, Guid.CreateVersion7(), $"sweep-package-{index}", fixture.Now)).ToArray();
+        // 0: delivered, uninvoiced, recent → read. 1: already invoiced → skipped.
+        // 2: new (not picked yet) → skipped. 3: ordered 120 days ago → skipped. 4: shipped, uninvoiced → read.
+        packages[0].MarketplaceInvoiceStatus = MarketplaceInvoiceStatus.NotInvoiced;
+        packages[1].MarketplaceInvoiceStatus = MarketplaceInvoiceStatus.Invoiced;
+        packages[2].Status = ShipmentPackageStatus.New;
+        packages[2].RawStatus = "Created";
+        orders[3].OrderedAt = fixture.Now.AddDays(-120);
+        packages[4].Status = ShipmentPackageStatus.Shipped;
+        packages[4].RawStatus = "Shipped";
+        var orderPort = new ReadOnlyOrderTestPort(new RemotePackage(
+            "sweep-package", null, "Delivered", fixture.Now, null, null, [],
+            GrossAmount: 100m, NetAmount: 100m,
+            Invoice: new RemotePackageInvoiceObservation("NotInvoiced", null, null, fixture.Now)));
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.Orders.AddRange(orders);
+            seedDb.ShipmentPackages.AddRange(packages);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            async Task RunAsync()
+            {
+                await using var processorDb = fixture.CreateContext();
+                var processor = new MarketplaceJobProcessor(
+                    processorDb,
+                    null!, null!, null!, null!, orderPort, null!, null!, null!, null!, null!,
+                    new ConfigurationBuilder().Build(), fixture.TimeProvider);
+                var result = await processor.ProcessAsync(
+                    tenant.Id,
+                    connection.Id,
+                    MarketplaceJobTypes.OrderInvoiceReconciliation,
+                    "{}",
+                    "trendyol-invoice-sweep-scope",
+                    CancellationToken.None);
+                Assert.True(result.Succeeded, result.ErrorSummary);
+            }
+
+            await RunAsync();
+            Assert.Equal(["sweep-package-0", "sweep-package-4"], orderPort.PackageReadCalls);
+
+            // The sweep just finished: a run within six hours reads nothing.
+            await RunAsync();
+            Assert.Equal(2, orderPort.PackageReadCalls.Count);
         }
         finally
         {

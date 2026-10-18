@@ -484,6 +484,28 @@ public static class MarketplaceInvoiceReconciliationCadencePolicy
         lastSuccessfulCheckAt is null
         || now - lastSuccessfulCheckAt.Value >= IntervalFor(platformStatus, hasUnresolvedLocalInvoice, orderCreatedAt, now);
 }
+// Trendyol invoice reconciliation reads only what can still change: packages whose local
+// invoice is not confirmed yet (every run) and the shipped or delivered packages of the last
+// 90 days the platform still shows as uninvoiced (one sweep every six hours). New, picking
+// and payment-pending packages receive their invoice state from the order stream.
+public static class TrendyolInvoiceReconciliationPolicy
+{
+    public const string SweepCursorResource = "ORDER_INVOICE_SWEEP";
+    public static readonly TimeSpan SweepInterval = TimeSpan.FromHours(6);
+    public static readonly TimeSpan SweepOrderWindow = TimeSpan.FromDays(90);
+    public static readonly ShipmentPackageStatus[] SweepStatuses =
+    [
+        ShipmentPackageStatus.ReadyToShip, ShipmentPackageStatus.Shipped, ShipmentPackageStatus.Delivered,
+        ShipmentPackageStatus.Undelivered, ShipmentPackageStatus.ReturnInTransit, ShipmentPackageStatus.Returned,
+        ShipmentPackageStatus.PartiallyCancelled
+    ];
+
+    // A sweep in progress (a saved position) always continues; otherwise one starts six hours after the last finished.
+    public static bool SweepDue(string? sweepPosition, DateTimeOffset? lastSweepCompletedAt, DateTimeOffset now) =>
+        !string.IsNullOrWhiteSpace(sweepPosition)
+        || lastSweepCompletedAt is null
+        || now - lastSweepCompletedAt.Value >= SweepInterval;
+}
 public sealed record RemotePackage(string ExternalPackageId, string? OriginExternalPackageId, string RawStatus, DateTimeOffset OccurredAt, string? CargoProviderExternalId, string? CargoTrackingNumber, IReadOnlyList<RemotePackageAllocation> Allocations, decimal GrossAmount = 0, decimal DiscountAmount = 0, decimal NetAmount = 0, RemotePackageInvoiceObservation? Invoice = null, string? CreatedBy = null, bool IsStatusObservation = false);
 public sealed record RemoteOrderRefund(string ExternalRefundId, DateTimeOffset OccurredAt, decimal Amount, string Currency, string RawJson);
 public sealed record RemoteOrder(string ExternalOrderId, string OrderNumber, DateTimeOffset OrderedAt, DateTimeOffset LastModifiedAt, string Currency, decimal GrossAmount, decimal DiscountAmount, decimal NetAmount, string CustomerSnapshotJson, string ShipmentAddressSnapshotJson, string InvoiceAddressSnapshotJson, IReadOnlyList<RemoteOrderLine> Lines, IReadOnlyList<RemotePackage> Packages, string RawJson, DateTimeOffset? ShipmentDueAt = null, string PaymentStatus = "UNKNOWN", string CancellationStatus = "NOT_CANCELLED", string RefundStatus = "NOT_REFUNDED", decimal RefundedAmount = 0, IReadOnlyList<RemoteOrderRefund>? Refunds = null, string? LifecycleStatus = null);
@@ -603,6 +625,10 @@ public interface IOrderPort
         Task.FromResult(AdapterResult<RemoteOrderPackage>.Failure(new(AdapterErrorClass.NotSupported, "ORDER_PACKAGE_READ_UNSUPPORTED", "Bu pazaryerinde paket ayrıntısı okuması desteklenmiyor.", null, null, null)));
     Task<AdapterResult<RemoteOrderPackage>> GetShipmentPackageAsync(AdapterContext context, string externalPackageId, DateTimeOffset? packageStatusOccurredAt, CancellationToken cancellationToken) =>
         GetShipmentPackageAsync(context, externalPackageId, cancellationToken);
+    // Invoice reads need only the package itself; an adapter that can find a package in more
+    // than one source stops at the first match instead of searching on for cargo fields.
+    Task<AdapterResult<RemoteOrderPackage>> GetShipmentPackageInvoiceAsync(AdapterContext context, string externalPackageId, DateTimeOffset? packageStatusOccurredAt, CancellationToken cancellationToken) =>
+        GetShipmentPackageAsync(context, externalPackageId, packageStatusOccurredAt, cancellationToken);
     Task<AdapterResult<PackageActionResult>> ExecutePackageActionAsync(AdapterContext context, PackageActionCommand command, CancellationToken cancellationToken);
     Task<AdapterResult<IReadOnlyList<RemoteCargoCompany>>> GetChangeableCargoCompaniesAsync(AdapterContext context, string externalPackageId, CancellationToken cancellationToken);
     Task<AdapterResult<IReadOnlyList<RemotePackageableLine>>> GetPackageableLineItemsAsync(AdapterContext context, string externalLineItemId, CancellationToken cancellationToken);

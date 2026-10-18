@@ -323,7 +323,16 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
     public async Task<AdapterResult<RemoteOrderPackage>> GetShipmentPackageAsync(AdapterContext context, string externalPackageId, CancellationToken cancellationToken)
         => await GetShipmentPackageAsync(context, externalPackageId, null, cancellationToken);
 
-    public async Task<AdapterResult<RemoteOrderPackage>> GetShipmentPackageAsync(AdapterContext context, string externalPackageId, DateTimeOffset? packageStatusOccurredAt, CancellationToken cancellationToken)
+    public Task<AdapterResult<RemoteOrderPackage>> GetShipmentPackageAsync(AdapterContext context, string externalPackageId, DateTimeOffset? packageStatusOccurredAt, CancellationToken cancellationToken)
+        => ReadShipmentPackageAsync(context, externalPackageId, packageStatusOccurredAt, stopAtV2Match: false, cancellationToken);
+
+    // Order V2 and the stream serve the same package record, and Trendyol fills invoiceLink only
+    // once a package is invoiced. A package V2 found without invoice fields has no invoice yet;
+    // reading the stream as well would only repeat that answer page by page.
+    public Task<AdapterResult<RemoteOrderPackage>> GetShipmentPackageInvoiceAsync(AdapterContext context, string externalPackageId, DateTimeOffset? packageStatusOccurredAt, CancellationToken cancellationToken)
+        => ReadShipmentPackageAsync(context, externalPackageId, packageStatusOccurredAt, stopAtV2Match: true, cancellationToken);
+
+    private async Task<AdapterResult<RemoteOrderPackage>> ReadShipmentPackageAsync(AdapterContext context, string externalPackageId, DateTimeOffset? packageStatusOccurredAt, bool stopAtV2Match, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(externalPackageId)) return AdapterResult<RemoteOrderPackage>.Failure(TrendyolErrorMapper.Contract());
         var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
@@ -374,6 +383,8 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
         }
         var v2RateLimit = v2Response?.RateLimit;
         var v2ReadError = v2Response?.IsSuccess == true ? null : v2LookupError;
+        if (stopAtV2Match && v2Package is not null)
+            return AdapterResult<RemoteOrderPackage>.Success(v2Package, v2RateLimit);
 
         if ((!string.IsNullOrWhiteSpace(v2Package?.Package.CargoProviderExternalId)
                 || !string.IsNullOrWhiteSpace(v2Package?.Package.CargoTrackingNumber))

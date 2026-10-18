@@ -51,6 +51,17 @@ public sealed class OrderInvoiceReconciliationBatchPolicyTests
         Assert.Equal([partial, regular, next], selected);
     }
 
+    [Fact]
+    public void TrendyolSweepContinuesFromItsPositionAndOtherwiseRunsEverySixHours()
+    {
+        var now = new DateTimeOffset(2026, 10, 18, 12, 0, 0, TimeSpan.Zero);
+
+        Assert.True(TrendyolInvoiceReconciliationPolicy.SweepDue(null, null, now));
+        Assert.True(TrendyolInvoiceReconciliationPolicy.SweepDue("\"0199a5a1-1c00-7000-8000-000000000001\"", now.AddMinutes(-5), now));
+        Assert.False(TrendyolInvoiceReconciliationPolicy.SweepDue(null, now.AddHours(-5), now));
+        Assert.True(TrendyolInvoiceReconciliationPolicy.SweepDue(null, now.AddHours(-6), now));
+    }
+
     private static OrderInvoiceReconciliationCandidate Candidate(int id) =>
         new(Guid.Parse($"0199a5a1-1c00-7000-8000-{id:D12}"), $"ORDER-{id}");
 }

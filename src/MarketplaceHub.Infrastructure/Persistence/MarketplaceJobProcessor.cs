@@ -3162,7 +3162,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     && package.Status != ShipmentPackageStatus.Cancelled))
             : DueInvoiceReconciliationOrders(tenantId, connectionId, now);
         SyncCursor? invoiceCursor = null;
-        List<string> cursorAfterOrder = [];
+        List<string?> cursorAfterOrder = [];
+        var sweepOrderIds = new HashSet<string>(StringComparer.Ordinal);
+        var sweepFinishesWithBatch = false;
         if (targetedOrderId is not null)
         {
             externalOrderIds = await eligibleOrders.OrderBy(order => order.Id)
@@ -3199,7 +3201,41 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
             var selected = HepsiburadaInvoiceReconciliationBatchPolicy.Select(afterCursor, wrapped, batchSize);
             externalOrderIds = selected.Select(candidate => candidate.ExternalOrderId).ToList();
-            cursorAfterOrder = selected.Select(HepsiburadaInvoiceReconciliationBatchPolicy.WriteCursor).ToList();
+            cursorAfterOrder = selected.Select(HepsiburadaInvoiceReconciliationBatchPolicy.WriteCursor).ToList<string?>();
+        }
+        else if (isTrendyol)
+        {
+            // Orders whose local invoice is not confirmed yet are read on every run. The other
+            // shipped or delivered packages still uninvoiced on Trendyol are read in one sweep
+            // every six hours; the sweep keeps its position, so a cut-short run resumes it.
+            var unresolved = await TrendyolUnresolvedInvoiceOrders(tenantId, connectionId)
+                .OrderBy(order => order.Id)
+                .Select(order => new OrderInvoiceReconciliationCandidate(order.Id, order.ExternalOrderId))
+                .Take(batchSize)
+                .ToListAsync(cancellationToken);
+            externalOrderIds = unresolved.Select(candidate => candidate.ExternalOrderId).ToList();
+            cursorAfterOrder = unresolved.Select(_ => (string?)null).ToList();
+            invoiceCursor = await Cursor(tenantId, connectionId, TrendyolInvoiceReconciliationPolicy.SweepCursorResource, cancellationToken);
+            var sweepRoom = batchSize - unresolved.Count;
+            if (sweepRoom > 0 && TrendyolInvoiceReconciliationPolicy.SweepDue(invoiceCursor.OpaqueCursor, invoiceCursor.LastSuccessAt, now))
+            {
+                var unresolvedIds = unresolved.Select(candidate => candidate.OrderId).ToList();
+                var sweepQuery = TrendyolInvoiceSweepOrders(tenantId, connectionId, now).Where(order => !unresolvedIds.Contains(order.Id));
+                if (OrderInvoiceReconciliationBatchPolicy.ReadCursor(invoiceCursor.OpaqueCursor) is { } sweepPosition)
+                    sweepQuery = sweepQuery.Where(order => order.Id.CompareTo(sweepPosition) > 0);
+                var sweep = await sweepQuery
+                    .OrderBy(order => order.Id)
+                    .Select(order => new OrderInvoiceReconciliationCandidate(order.Id, order.ExternalOrderId))
+                    .Take(sweepRoom)
+                    .ToListAsync(cancellationToken);
+                foreach (var candidate in sweep)
+                {
+                    externalOrderIds.Add(candidate.ExternalOrderId);
+                    cursorAfterOrder.Add(OrderInvoiceReconciliationBatchPolicy.WriteCursor(candidate.OrderId));
+                    sweepOrderIds.Add(candidate.ExternalOrderId);
+                }
+                sweepFinishesWithBatch = sweep.Count < sweepRoom;
+            }
         }
         else
         {
@@ -3230,7 +3266,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
             var selected = OrderInvoiceReconciliationBatchPolicy.Select(afterCursor, wrapped, batchSize);
             externalOrderIds = selected.Select(candidate => candidate.ExternalOrderId).ToList();
-            cursorAfterOrder = selected.Select(candidate => OrderInvoiceReconciliationBatchPolicy.WriteCursor(candidate.OrderId)).ToList();
+            cursorAfterOrder = selected.Select(candidate => OrderInvoiceReconciliationBatchPolicy.WriteCursor(candidate.OrderId)).ToList<string?>();
         }
 
         var totalOrders = externalOrderIds.Count;
@@ -3257,7 +3293,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 // order contract before reconciling package invoice data.
                 if (!await HydrateTrendyolReturnClaimOrder(tenantId, connectionId, externalOrderId, correlationId, cancellationToken))
                     return;
-                await ReconcileTrendyolPackageInvoices(tenantId, connectionId, externalOrderId, correlationId, cancellationToken);
+                await ReconcileTrendyolPackageInvoices(tenantId, connectionId, externalOrderId, correlationId, sweepOrderIds.Contains(externalOrderId), cancellationToken);
                 return;
             }
 
@@ -3310,9 +3346,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             }
 
             // Checkpoint: the finished order's changes and the cursor position are saved together.
-            if (invoiceCursor is not null && index < cursorAfterOrder.Count)
+            if (invoiceCursor is not null && index < cursorAfterOrder.Count && cursorAfterOrder[index] is { } position)
             {
-                invoiceCursor.OpaqueCursor = cursorAfterOrder[index];
+                invoiceCursor.OpaqueCursor = position;
                 invoiceCursor.Version++;
                 await db.SaveChangesAsync(cancellationToken);
             }
@@ -3328,6 +3364,14 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 await ReconcileHepsiburadaMissingInvoiceStatuses(tenantId, connectionId, correlationId, hepsiburadaInvoiceStatusUnavailable, cancellationToken);
             else
                 await ResolveIssue(tenantId, $"order-invoice-reconciliation:{connectionId}:invoice-status-contract", cancellationToken);
+        }
+
+        // The sweep is complete once its last orders are read; the next one starts six hours later.
+        if (isTrendyol && invoiceCursor is not null && sweepFinishesWithBatch && !stoppedByTimeBudget && !cancellationToken.IsCancellationRequested)
+        {
+            invoiceCursor.OpaqueCursor = null;
+            invoiceCursor.LastSuccessAt = timeProvider.GetUtcNow();
+            invoiceCursor.Version++;
         }
 
         if (invoiceCursor is not null || isTrendyol)
@@ -3383,6 +3427,49 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     || (order.OrderedAt >= recentOrderCutoff
                         ? package.MarketplaceInvoiceObservedAt == null || package.MarketplaceInvoiceObservedAt <= recentCheckCutoff
                         : package.MarketplaceInvoiceObservedAt == null || package.MarketplaceInvoiceObservedAt <= olderCheckCutoff))));
+    }
+
+    // Trendyol orders with a package whose local sale invoice is not confirmed on the platform yet.
+    private IQueryable<Order> TrendyolUnresolvedInvoiceOrders(Guid tenantId, Guid connectionId) =>
+        db.Orders.AsNoTracking()
+            .Where(order => order.TenantId == tenantId
+                && order.ConnectionId == connectionId
+                && !DashboardMetricPolicy.InvoiceExcludedOrderStatuses.Contains(order.DerivedStatus))
+            .Where(order => db.ShipmentPackages.Any(package => package.TenantId == tenantId
+                && package.ConnectionId == connectionId
+                && package.OrderId == order.Id
+                && package.Status != ShipmentPackageStatus.Cancelled
+                && db.Invoices.Any(invoice => invoice.TenantId == tenantId
+                    && invoice.OrderId == order.Id
+                    && invoice.OriginalInvoiceId == null
+                    && invoice.SequencePurpose == "SALE"
+                    && (invoice.Status != InvoiceStatus.Completed
+                        || db.MarketplaceDeliveryStates.Any(state => state.TenantId == tenantId
+                            && state.InvoiceId == invoice.Id
+                            && state.PackageId == package.Id
+                            && state.Status != "CONFIRMED")
+                        || !db.MarketplaceDeliveryStates.Any(state => state.TenantId == tenantId
+                            && state.InvoiceId == invoice.Id
+                            && state.PackageId == package.Id)
+                            && !db.MarketplaceDeliveries.Any(attempt => attempt.TenantId == tenantId
+                                && attempt.InvoiceId == invoice.Id
+                                && attempt.PackageId == package.Id
+                                && attempt.Status == "CONFIRMED")))));
+
+    // Trendyol orders of the last 90 days with a shipped or delivered package still uninvoiced on the platform.
+    private IQueryable<Order> TrendyolInvoiceSweepOrders(Guid tenantId, Guid connectionId, DateTimeOffset now)
+    {
+        var orderedAfter = now - TrendyolInvoiceReconciliationPolicy.SweepOrderWindow;
+        return db.Orders.AsNoTracking()
+            .Where(order => order.TenantId == tenantId
+                && order.ConnectionId == connectionId
+                && order.OrderedAt >= orderedAfter
+                && !DashboardMetricPolicy.InvoiceExcludedOrderStatuses.Contains(order.DerivedStatus))
+            .Where(order => db.ShipmentPackages.Any(package => package.TenantId == tenantId
+                && package.ConnectionId == connectionId
+                && package.OrderId == order.Id
+                && TrendyolInvoiceReconciliationPolicy.SweepStatuses.Contains(package.Status)
+                && package.MarketplaceInvoiceStatus != MarketplaceInvoiceStatus.Invoiced));
     }
 
     private Task<int> UpdateOrderInvoiceReconciliationProgressAsync(
@@ -3475,22 +3562,29 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         return true;
     }
 
-    private async Task ReconcileTrendyolPackageInvoices(Guid tenantId, Guid connectionId, string externalOrderId, string correlationId, CancellationToken cancellationToken)
+    // A sweep reads only the order's packages still uninvoiced on Trendyol; an unconfirmed local
+    // invoice or a requested refresh reads every package of the order.
+    private async Task ReconcileTrendyolPackageInvoices(Guid tenantId, Guid connectionId, string externalOrderId, string correlationId, bool sweep, CancellationToken cancellationToken)
     {
-        var candidates = await (from package in db.ShipmentPackages.AsNoTracking()
-                                join order in db.Orders.AsNoTracking()
-                                    on new { package.TenantId, package.OrderId } equals new { order.TenantId, OrderId = order.Id }
-                                where package.TenantId == tenantId
-                                    && package.ConnectionId == connectionId
-                                    && package.Status != ShipmentPackageStatus.Cancelled
-                                    && order.ExternalOrderId == externalOrderId
-                                select new { package.Id, package.ExternalPackageId, package.StatusOccurredAt })
+        var packages = from package in db.ShipmentPackages.AsNoTracking()
+                       join order in db.Orders.AsNoTracking()
+                           on new { package.TenantId, package.OrderId } equals new { order.TenantId, OrderId = order.Id }
+                       where package.TenantId == tenantId
+                           && package.ConnectionId == connectionId
+                           && package.Status != ShipmentPackageStatus.Cancelled
+                           && order.ExternalOrderId == externalOrderId
+                       select package;
+        if (sweep)
+            packages = packages.Where(package => TrendyolInvoiceReconciliationPolicy.SweepStatuses.Contains(package.Status)
+                && package.MarketplaceInvoiceStatus != MarketplaceInvoiceStatus.Invoiced);
+        var candidates = await packages
+            .Select(package => new { package.Id, package.ExternalPackageId, package.StatusOccurredAt })
             .ToListAsync(cancellationToken);
 
         foreach (var candidate in candidates)
         {
             TrackRequest();
-            var readback = await orders.GetShipmentPackageAsync(
+            var readback = await orders.GetShipmentPackageInvoiceAsync(
                 Context(tenantId, connectionId, correlationId, $"trendyol-invoice-package-read:{candidate.ExternalPackageId}"),
                 candidate.ExternalPackageId,
                 candidate.StatusOccurredAt,
