@@ -53,6 +53,7 @@ function questionStatus(status: string) {
   const normalized = status.toUpperCase()
   if (normalized === 'WAITING_FOR_ANSWER') return { label: 'Cevap Bekliyor', glyph: 'partial' as Glyph }
   if (normalized === 'ANSWER_SUBMITTED') return { label: 'Cevap Gönderildi · Doğrulanıyor', glyph: 'partial' as Glyph }
+  if (normalized === 'WAITING_FOR_APPROVE') return { label: 'Cevap Onay Bekliyor', glyph: 'partial' as Glyph }
   if (normalized === 'ANSWERED') return { label: 'Cevaplandı', glyph: 'done' as Glyph }
   if (normalized === 'EXPIRED' || normalized === 'UNANSWERED' || normalized === 'AUTOCLOSED') return { label: 'Süresi Doldu', glyph: 'none' as Glyph }
   if (normalized === 'REJECTED') return { label: 'Reddedildi', glyph: 'bad' as Glyph }

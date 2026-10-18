@@ -8,8 +8,6 @@ namespace MarketplaceHub.Infrastructure.Adapters.Trendyol;
 
 public sealed partial class TrendyolHttpClient : IQuestionPort
 {
-    private static readonly string[] QuestionStatuses = ["WAITING_FOR_ANSWER", "ANSWERED", "REPORTED", "REJECTED", "UNANSWERED"];
-
     public async Task<AdapterResult<MarketplaceQuestionPage>> ListQuestionsAsync(AdapterContext context, QuestionPollRequest query, CancellationToken cancellationToken)
     {
         var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);

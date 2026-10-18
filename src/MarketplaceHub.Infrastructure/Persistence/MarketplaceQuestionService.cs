@@ -8,7 +8,8 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort port, TimeProvider timeProvider, ILogger<MarketplaceQuestionService> logger) : IMarketplaceQuestionService
 {
-    private static readonly string[] TrendyolStatuses = ["WAITING_FOR_ANSWER", "ANSWERED", "REPORTED", "REJECTED", "UNANSWERED"];
+    // WAITING_FOR_APPROVE: an answer Trendyol has not approved yet.
+    private static readonly string[] TrendyolStatuses = ["WAITING_FOR_ANSWER", "WAITING_FOR_APPROVE", "ANSWERED", "REPORTED", "REJECTED", "UNANSWERED"];
     private static readonly string[] HepsiburadaStatuses = ["WAITING_FOR_ANSWER", "ANSWERED", "REJECTED", "EXPIRED"];
     private static readonly string[] N11Statuses = ["WAITING_FOR_ANSWER", "ANSWERED"];
     // Pazarama answers wait for its approval (shown as answered) and may be rejected.

@@ -8538,7 +8538,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 ? new ReturnPollWindow(null, null, storefront)
                 : new ReturnPollWindow(state.StartAt, state.EndAt, storefront);
             TrackRequest();
-            var result = await returns.PollAsync(Context(tenantId, connectionId, correlationId, $"return-sync:{storefront}:{state.Page}"), window, new(state.Page.ToString(), 50), cancellationToken);
+            var result = await returns.PollAsync(Context(tenantId, connectionId, correlationId, $"return-sync:{storefront}:{state.Page}"), window, new(state.Page.ToString(), 200), cancellationToken);
             if (!result.IsSuccess && state.StoreFrontIndex > 0 && state.Page == 0 && result.Error?.HttpStatus is 400 or 404)
             {
                 if (state.StoreFrontIndex + 1 < TrendyolReadStorefronts.ReturnCodes.Length)
@@ -9143,7 +9143,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             do
             {
                 TrackRequest();
-                var result = await returns.PollAsync(Context(tenantId, connectionId, correlationId, $"return-reconcile:{lookbackDays}:{storefront}:{page}"), new(end.AddDays(-lookbackDays), end, storefront), new(page.ToString(), 50), cancellationToken);
+                var result = await returns.PollAsync(Context(tenantId, connectionId, correlationId, $"return-reconcile:{lookbackDays}:{storefront}:{page}"), new(end.AddDays(-lookbackDays), end, storefront), new(page.ToString(), 200), cancellationToken);
                 if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
                 foreach (var _ in result.Value!.Items) TrackReceived();
                 foreach (var claim in result.Value!.Items) await UpsertReturn(tenantId, connectionId, correlationId, claim, productSnapshots, cancellationToken);
