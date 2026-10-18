@@ -200,7 +200,8 @@
 }
 
 /* New jobs wait behind a floating button: a zero-height sticky slot above the table, so showing or hiding it moves nothing */
-.app-shell.stitch-shell main .jobs-reference-page .jobs-new-slot { position: sticky; top: calc(var(--rv-topbar-height, 64px) + 8px); z-index: 6; display: flex; justify-content: center; height: 0; margin-bottom: calc(-1 * var(--rv-space-4)); overflow: visible; }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-list-wrap { min-width: 0; }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-new-slot { position: sticky; top: calc(var(--rv-topbar-height, 64px) + 8px); z-index: 6; display: flex; justify-content: center; height: 0; overflow: visible; }
 .app-shell.stitch-shell main .jobs-reference-page .jobs-new-pill { display: inline-flex; align-items: center; gap: 8px; height: 36px; min-height: 36px; margin-top: 8px; padding: 0 14px; color: #fff; background: var(--rv-color-primary); border: 0; border-radius: 12px; box-shadow: 0 8px 24px rgb(0 0 0 / 30%); cursor: pointer; font-size: 13px; font-weight: 500 !important; text-transform: none; animation: jobs-new-in .18s ease-out; }
 .app-shell.stitch-shell main .jobs-reference-page .jobs-new-pill:hover { background: var(--rv-color-primary-hover); }
 .app-shell.stitch-shell main .jobs-reference-page .jobs-new-pill svg { width: 15px; height: 15px; }

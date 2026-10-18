@@ -581,7 +581,7 @@ export function JobsPage({ me }: { me: Me }) {
         </div>
       </div>
       {list.isLoading ? <Busy text="İşlemler yükleniyor…" /> : list.isError ? <div role="alert" className="jobs-reference-state jobs-reference-state-error">İşlem listesi alınamadı.</div> : <>
-        <div className="jobs-new-slot">{newVisibleJobs.length > 0 && <button type="button" className="jobs-new-pill" onClick={showNewJobs}><JobsIcon name="refresh" />{newVisibleJobs.length.toLocaleString('tr-TR')} Yeni İşlem</button>}</div>
+        <div className="jobs-list-wrap"><div className="jobs-new-slot">{newVisibleJobs.length > 0 && <button type="button" className="jobs-new-pill" onClick={showNewJobs}><JobsIcon name="refresh" />{newVisibleJobs.length.toLocaleString('tr-TR')} Yeni İşlem</button>}</div>
         <div className="jobs-reference-table-scroll"><table className="jobs-reference-table"><thead><tr><th>İşlem Türü</th><th>Durum</th><th>Deneme</th><th>Zaman</th><th>Correlation ID</th></tr></thead><tbody>
           {pageJobs.map(job => {
             const presentation = jobPresentation(job.jobType)
@@ -596,7 +596,7 @@ export function JobsPage({ me }: { me: Me }) {
             </tr>
           })}
           {filtered.length === 0 && <tr><td className="jobs-reference-empty" colSpan={6}>Seçili kategori ve filtrelerle eşleşen kayıt bulunamadı.</td></tr>}
-        </tbody></table></div>
+        </tbody></table></div></div>
         {filtered.length > 0 && <div className="jobs-reference-pagination"><strong>Toplam {filtered.length.toLocaleString('tr-TR')} kayıt</strong><Pagination className="jobs-reference-page-controls" page={currentPage} totalPages={totalPages} onPageChange={setPageNumber} onPrevious={() => setPageNumber(value => Math.max(1, value - 1))} onNext={() => setPageNumber(value => Math.min(totalPages, value + 1))} /></div>}
       </>}
     </div>
