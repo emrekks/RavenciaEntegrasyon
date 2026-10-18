@@ -165,6 +165,7 @@
 /* live-only additions */
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard > .rr-bd, :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pcardm > .rr-bd { display: none; }
 /* while the report loads the trend, average and range keep their place but stay hidden, so they appear in place */
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-crows.rr-crows-wait > * { visibility: hidden; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc.rr-kc-wait :is(.rr-trend, .rr-avg, .rr-krange) { visibility: hidden; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mx.rr-mx.rr-off { color: var(--rr-muted); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mx.rr-mx.rr-off i, :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mx-foot .rr-legend i.rr-mx-l.rr-mx-l.rr-off, :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mx-l.rr-mx-l.rr-off { width: 10px; height: 2px; border: 0; border-radius: 1px; background: var(--rr-muted); }
