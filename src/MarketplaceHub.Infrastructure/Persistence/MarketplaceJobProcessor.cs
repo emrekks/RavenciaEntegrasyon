@@ -2497,6 +2497,28 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             .Select(order => (OrderLookupHint?)new OrderLookupHint(order.OrderedAt, order.LastRemoteModifiedAt, order.StoreFrontCode))
             .FirstOrDefaultAsync(cancellationToken);
 
+    private sealed record InvoiceDiscoveryCounts(int Stream, int Reconciliation, DateTimeOffset Since, string[] RecentReconciliationPackages);
+
+    private async Task NoteInvoiceDiscoveryAsync(ShipmentPackage package, string source, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        // One job may note several packages before it saves; reuse the cursor it already tracks.
+        var cursor = db.SyncCursors.Local.FirstOrDefault(x => x.TenantId == package.TenantId && x.ConnectionId == package.ConnectionId && x.ResourceType == "TRENDYOL_INVOICE_DISCOVERY")
+            ?? await Cursor(package.TenantId, package.ConnectionId, "TRENDYOL_INVOICE_DISCOVERY", cancellationToken);
+        InvoiceDiscoveryCounts? counts = null;
+        if (!string.IsNullOrWhiteSpace(cursor.OpaqueCursor))
+        {
+            try { counts = JsonSerializer.Deserialize<InvoiceDiscoveryCounts>(cursor.OpaqueCursor); }
+            catch (JsonException) { }
+        }
+        counts ??= new(0, 0, now, []);
+        counts = source == "reconciliation"
+            ? counts with { Reconciliation = counts.Reconciliation + 1, RecentReconciliationPackages = [.. counts.RecentReconciliationPackages.Append(package.ExternalPackageId).TakeLast(20)] }
+            : counts with { Stream = counts.Stream + 1 };
+        cursor.OpaqueCursor = JsonSerializer.Serialize(counts);
+        cursor.LastSuccessAt = now;
+        cursor.Version++;
+    }
+
     private static Dictionary<string, TrendyolStorefrontActivity> ReadStorefrontActivity(SyncCursor cursor)
     {
         if (!string.IsNullOrWhiteSpace(cursor.OpaqueCursor))
@@ -3681,7 +3703,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 var package = await db.ShipmentPackages.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Id == localId, cancellationToken);
                 if (package is null) continue;
                 TrackReceived();
-                await MergeMarketplaceInvoiceState(package, remotePackage, cancellationToken);
+                await MergeMarketplaceInvoiceState(package, remotePackage, cancellationToken, "reconciliation");
                 await ResolveIssue(tenantId, $"trendyol-invoice-package-read:{connectionId}:{localId}", cancellationToken);
                 observed.Add(localId);
             }
@@ -3880,7 +3902,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 cancellationToken);
             if (package is null) continue;
 
-            await MergeMarketplaceInvoiceState(package, readback.Value!.Package, cancellationToken);
+            await MergeMarketplaceInvoiceState(package, readback.Value!.Package, cancellationToken, "reconciliation");
             await ResolveIssue(tenantId, $"trendyol-invoice-package-read:{connectionId}:{candidate.Id}", cancellationToken);
             var orderSnapshot = readback.Value.OrderSnapshot;
             if (orderSnapshot is not null)
@@ -7516,7 +7538,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 }
             }
             var packageObservation = remotePackage with { Allocations = packageAllocations };
-            if (package is not null) await MergeMarketplaceInvoiceState(package, remotePackage, cancellationToken);
+            if (package is not null) await MergeMarketplaceInvoiceState(package, remotePackage, cancellationToken, isTrendyol ? "stream" : null);
             if (package is not null && package.Status == ShipmentPackageStatus.ManualReview && package.RawStatus == remotePackage.RawStatus && target != ShipmentPackageStatus.ManualReview) { package.Status = target; package.UpdatedAt = now; package.Version++; continue; }
             var eventAlreadyRecorded = knownEventIds.Contains(eventId);
             if (eventAlreadyRecorded)
@@ -7604,7 +7626,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     remotePackage.OccurredAt,
                     remotePackage.IsStatusObservation)
                 : PackageIngestionSafety.ShouldAccept(package.Status, package.StatusOccurredAt, target, remotePackage.OccurredAt));
-            if (package is null) { package = new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, OrderId = order.Id, ExternalPackageId = remotePackage.ExternalPackageId, CreatedBy = remotePackage.CreatedBy, Status = target, RawStatus = remotePackage.RawStatus, StatusOccurredAt = remotePackage.OccurredAt, CreatedAt = now, Version = 1 }; db.ShipmentPackages.Add(package); packagesByExternalId[remotePackage.ExternalPackageId] = package; telemetryInsertedCount++; await MergeMarketplaceInvoiceState(package, remotePackage, cancellationToken); }
+            if (package is null) { package = new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, OrderId = order.Id, ExternalPackageId = remotePackage.ExternalPackageId, CreatedBy = remotePackage.CreatedBy, Status = target, RawStatus = remotePackage.RawStatus, StatusOccurredAt = remotePackage.OccurredAt, CreatedAt = now, Version = 1 }; db.ShipmentPackages.Add(package); packagesByExternalId[remotePackage.ExternalPackageId] = package; telemetryInsertedCount++; await MergeMarketplaceInvoiceState(package, remotePackage, cancellationToken, isTrendyol ? "stream" : null); }
             else if (accept) { package.Status = target; package.RawStatus = remotePackage.RawStatus; package.StatusOccurredAt = remotePackage.OccurredAt; package.Version++; }
             else if (remotePackage.OccurredAt >= package.StatusOccurredAt && package.Status != target) await RecordIssue(tenantId, $"package-transition:{package.Id}:{remotePackage.RawStatus}", "PACKAGE_TRANSITION_REJECTED", "Out-of-order veya izin verilmeyen package geçişi mevcut durumu geriye götürmedi.", cancellationToken);
             if (package is not null && !remotePackage.IsStatusObservation && !string.IsNullOrWhiteSpace(remotePackage.CreatedBy)) package.CreatedBy = remotePackage.CreatedBy;
@@ -7729,8 +7751,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         }
     }
 
-    private async Task MergeMarketplaceInvoiceState(ShipmentPackage package, RemotePackage remotePackage, CancellationToken cancellationToken)
+    // discoverySource ("stream" or "reconciliation"), when given, counts which path first saw a
+    // Trendyol package become invoiced (plan step 0.9: do invoices uploaded outside the panel reach
+    // the order stream, or only the reconciliation sweep?).
+    private async Task MergeMarketplaceInvoiceState(ShipmentPackage package, RemotePackage remotePackage, CancellationToken cancellationToken, string? discoverySource = null)
     {
+        var wasInvoiced = package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Invoiced;
         var observedAt = timeProvider.GetUtcNow();
         var observation = remotePackage.Invoice;
         var incomingStatus = MarketplaceInvoiceStatePolicy.FromRemote(
@@ -7784,6 +7810,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             package.MarketplaceInvoiceRawStatus = observation?.RawStatus ?? package.MarketplaceInvoiceRawStatus;
             package.MarketplaceInvoiceSourceUpdatedAt = observation?.SourceUpdatedAt ?? package.MarketplaceInvoiceSourceUpdatedAt;
             package.MarketplaceInvoiceObservedAt = observedAt;
+            if (discoverySource is not null && !wasInvoiced && incomingStatus == MarketplaceInvoiceStatus.Invoiced)
+                await NoteInvoiceDiscoveryAsync(package, discoverySource, observedAt, cancellationToken);
         }
         else if (referenceChanged)
         {

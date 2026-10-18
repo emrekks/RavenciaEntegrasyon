@@ -1953,6 +1953,11 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 .ToDictionaryAsync(package => package.ExternalPackageId, package => package.MarketplaceInvoiceStatus);
             Assert.Equal(MarketplaceInvoiceStatus.Invoiced, invoiced["batch-package-0"]);
             Assert.Equal(MarketplaceInvoiceStatus.Invoiced, invoiced["batch-package-1"]);
+            // Both invoices were first seen by the reconciliation, not the order stream.
+            var discovery = await verifyDb.SyncCursors.AsNoTracking().SingleAsync(cursor => cursor.TenantId == tenant.Id && cursor.ResourceType == "TRENDYOL_INVOICE_DISCOVERY");
+            using var counts = JsonDocument.Parse(discovery.OpaqueCursor!);
+            Assert.Equal(2, counts.RootElement.GetProperty("Reconciliation").GetInt32());
+            Assert.Equal(0, counts.RootElement.GetProperty("Stream").GetInt32());
         }
         finally
         {
