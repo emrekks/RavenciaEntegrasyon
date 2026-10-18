@@ -514,7 +514,7 @@ public sealed partial class HepsiburadaHttpClient(
         if (account is null) return Failure<AdapterPageResult<RemoteOrder>>(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIAL_INVALID", "Hepsiburada bağlantı bilgileri bulunamadı.", HttpStatusCode.Unauthorized);
         if (window.ModifiedAfter is { } start && window.ModifiedBefore is { } end && end - start > TimeSpan.FromHours(24))
             return Failure<AdapterPageResult<RemoteOrder>>(AdapterErrorClass.Validation, "HEPSIBURADA_ORDER_WINDOW_TOO_LARGE", "Hepsiburada sipariş endpoint'i en fazla 24 saatlik tarih aralığı kabul eder.", HttpStatusCode.BadRequest);
-        var (offset, limit) = Page(page, settings.PageSize);
+        var (offset, limit) = Page(page, settings.PageSize, documentedMaximum: 100);
         var query = new List<string> { $"offset={offset.ToString(CultureInfo.InvariantCulture)}", $"limit={limit.ToString(CultureInfo.InvariantCulture)}" };
         if (window.ModifiedAfter is { } after) query.Add("begindate=" + Uri.EscapeDataString(after.UtcDateTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)));
         if (window.ModifiedBefore is { } before) query.Add("enddate=" + Uri.EscapeDataString(before.UtcDateTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)));
@@ -648,7 +648,7 @@ public sealed partial class HepsiburadaHttpClient(
         if (!IntegrationRuntimePolicy.AllowsManualRead(account.Connection))
             return await Unsupported<AdapterPageResult<RemoteMissingInvoicePackage>>("Hepsiburada eksik fatura listesi yalnız etkin veya doğrulanmış bağlantıdan okunabilir.");
 
-        var (offset, limit) = Page(page, settings.PageSize);
+        var (offset, limit) = Page(page, settings.PageSize, documentedMaximum: 50);
         var query = $"limit={limit.ToString(CultureInfo.InvariantCulture)}&offset={offset.ToString(CultureInfo.InvariantCulture)}";
         var response = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Get, MissingInvoicePackages(account, query), cancellationToken);
         if (!response.IsSuccess) return AdapterResult<AdapterPageResult<RemoteMissingInvoicePackage>>.Failure(response.Error!, response.RateLimit);
@@ -1251,10 +1251,12 @@ public sealed partial class HepsiburadaHttpClient(
         return true;
     }
 
-    private static (int Offset, int Limit) Page(AdapterPageRequest page, int configuredLimit)
+    // Hepsiburada's documented page limits: paid orders 100, the status and missing-invoice lists 50,
+    // the package lists 10 (the default for everything else).
+    private static (int Offset, int Limit) Page(AdapterPageRequest page, int configuredLimit, int documentedMaximum = 10)
     {
         var offset = int.TryParse(page.Cursor, NumberStyles.None, CultureInfo.InvariantCulture, out var parsed) ? Math.Max(0, parsed) : 0;
-        return (offset, Math.Clamp(page.Limit, 1, Math.Clamp(configuredLimit, 1, 10)));
+        return (offset, Math.Clamp(page.Limit, 1, Math.Max(Math.Clamp(configuredLimit, 1, 10), documentedMaximum)));
     }
 
     private static bool ConnectionWritesEnabled(string settingsJson)

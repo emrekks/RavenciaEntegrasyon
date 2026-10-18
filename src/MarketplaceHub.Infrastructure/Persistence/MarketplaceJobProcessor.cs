@@ -2042,7 +2042,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var page = await orders.PollAsync(
                 Context(tenantId, connectionId, correlationId, $"hepsiburada-orders:{state.WindowIndex}:{state.Offset}"),
                 new OrderPollWindow(windowStart, windowEnd),
-                new(state.Offset.ToString(System.Globalization.CultureInfo.InvariantCulture), 10),
+                new(state.Offset.ToString(System.Globalization.CultureInfo.InvariantCulture), 100),
                 cancellationToken);
             if (!page.IsSuccess) { TrackResultFailure(page.Error); throw JobProcessingException.FromAdapter(page.Error!); }
             foreach (var _ in page.Value!.Items) TrackReceived();
@@ -4041,7 +4041,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         IReadOnlyCollection<string> externalOrderIds,
         CancellationToken cancellationToken)
     {
-        const int pageSize = 10;
+        const int pageSize = 50;
         const int maxPages = 100;
         const string issueKeySuffix = "invoice-status-contract";
         var issueKey = $"order-invoice-reconciliation:{connectionId}:{issueKeySuffix}";
