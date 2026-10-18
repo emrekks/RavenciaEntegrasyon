@@ -399,3 +399,25 @@ html[data-theme="light"] .rv-drawer-logo { filter: invert(1); }
   html body :is(.rr-anchor-scrim, .rr-fopen > .rr-fscrim) { animation: rv-fade-in .18s ease-out; }
   html body .rr-fopen > .rr-filters { animation: rv-rise .26s cubic-bezier(.2, .8, .2, 1); }
 }
+
+/* Sign-in on phones: the form sits under the logo at the top instead of being centred in the screen, so the password
+   field and the sign-in button stay above the keyboard and the browser does not pan the page when a field is
+   tapped; the small capitals strip above the card is left out and the live notices sit closer together. */
+@media (max-width: 760px) {
+  html body .rv-auth-page > .rv-auth-stage { align-content: start; padding: 24px 16px 12px; }
+  html body .rv-auth-page .auth-focus-column { gap: 14px; }
+  html body .rv-auth-page .auth-focus-column .rv-auth-hero-brand { top: 0; min-height: 0; margin: 0 auto 2px; }
+  html body .rv-auth-page .auth-focus-column .rv-auth-hero-symbol { width: 40px; height: 40px; flex-basis: 40px; }
+  html body .rv-auth-page .auth-focus-column .rv-auth-hero-wordmark { width: 150px; }
+  html body .rv-auth-page .rv-auth-login-top { display: none; }
+  html body .rv-auth-page .auth-notification-label { padding-inline: 12px; }
+  html body .rv-auth-page .auth-notification-events { gap: 18px; padding: 0 12px; }
+  html body .rv-auth-page .auth-notification-event { min-width: 0; gap: 6px; }
+}
+/* Phones: the header no longer repeats the brand (the logo sits right under it); it names the place instead, with the
+   same layers mark the panel header uses. */
+@media (max-width: 760px) {
+  html body .rv-auth-page .rv-auth-header > .rv-auth-brand { display: none; }
+  html body .rv-auth-page .rv-auth-header > .rv-auth-context { display: inline-flex; align-items: center; gap: 8px; color: var(--rv-color-muted); font-size: 14px; font-weight: 500; }
+  html body .rv-auth-page .rv-auth-header > .rv-auth-context .ui-icon { width: 16px; height: 16px; color: var(--rv-color-subtle); }
+}

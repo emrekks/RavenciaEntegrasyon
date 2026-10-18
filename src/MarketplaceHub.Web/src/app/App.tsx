@@ -272,6 +272,7 @@ function AuthPageFrame({ ariaLabel, accessLabel, accessMeta, cardTitle, cardDesc
     </div>
     <header className="rv-auth-header">
       <div className="rv-auth-brand"><img className="rv-auth-symbol" src="/pack/brand/ravencia-symbol-transparent.png" alt="" /><span className="rv-auth-brand-name">Ravencia</span></div>
+      <span className="rv-auth-context"><UiIcon name="layers" /> Operasyon Merkezi</span>
       <span className="rv-auth-system-status"><i /> Sistem hazır</span>
     </header>
     <section className="rv-auth-stage" aria-label={ariaLabel}>

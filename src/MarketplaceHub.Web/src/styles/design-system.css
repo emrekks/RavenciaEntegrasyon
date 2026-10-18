@@ -12086,3 +12086,6 @@ html { scrollbar-gutter: stable; }
   .app-shell.stitch-shell .rv-topbar.is-hidden { transform: translateY(-100%); }
 }
 @media (max-width: 760px) and (prefers-reduced-motion: reduce) { .app-shell.stitch-shell .rv-topbar { transition: none; } }
+
+/* Sign-in header place name: shown on phones only (see responsive.css). */
+.rv-auth-page .rv-auth-context { display: none; }
