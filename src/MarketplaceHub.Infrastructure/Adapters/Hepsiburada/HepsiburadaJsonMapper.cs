@@ -562,6 +562,20 @@ internal static class HepsiburadaJsonMapper
         return (items.EnumerateArray().ToArray(), totalCount);
     }
 
+    // Lines without an order number are skipped: they cannot name an order to read again.
+    public static (IReadOnlyList<RemoteCancelledOrderLine> Items, int? TotalCount) CancelledOrderLines(JsonElement root)
+    {
+        var (items, totalCount) = PackagePage(root);
+        var result = new List<RemoteCancelledOrderLine>(items.Count);
+        foreach (var item in items)
+        {
+            var orderNumber = Text(item, "orderNumber", "OrderNumber", "orderNo");
+            if (string.IsNullOrWhiteSpace(orderNumber)) continue;
+            result.Add(new(orderNumber.Trim(), Text(item, "lineItemId", "LineItemId", "id"), Date(item, "cancelDate", "CancelDate", "cancelledDate")));
+        }
+        return (result, totalCount);
+    }
+
     public static (IReadOnlyList<RemoteMissingInvoicePackage> Items, int? TotalCount) MissingInvoicePackages(JsonElement root)
     {
         var (items, totalCount) = PackagePage(root);

@@ -738,3 +738,24 @@ public static class WebhookEventPath
     public static bool IsHepsiburadaOrderEvent(string? path) =>
         Normalize(path) is { } value && HepsiburadaOrderEvents.Contains(value[(value.LastIndexOf('/') + 1)..], StringComparer.Ordinal);
 }
+
+public sealed record CancellationReadWindow(DateTimeOffset Since, bool Wide);
+
+// Hepsiburada keeps its cancelled-order list for a month. The open-order scan already re-reads open
+// orders, so the list is a cross-check: the last day every 15 minutes, the month once a day.
+public static class HepsiburadaCancellationPolicy
+{
+    public const string CursorResource = "ORDER_CANCELLATIONS";
+    public const string WideCursorResource = "ORDER_CANCELLATIONS_WIDE";
+    public const int MaxPages = 20;
+    public const int MaxReadsPerRun = 25;
+    public static readonly TimeSpan Interval = TimeSpan.FromMinutes(15);
+    public static readonly TimeSpan WideInterval = TimeSpan.FromDays(1);
+
+    public static CancellationReadWindow? Window(DateTimeOffset? lastReadAt, DateTimeOffset? lastWideReadAt, DateTimeOffset now)
+    {
+        if (lastWideReadAt is not { } wide || now - wide >= WideInterval) return new(now.AddDays(-30), true);
+        if (lastReadAt is { } last && now - last < Interval) return null;
+        return new(now.AddDays(-1), false);
+    }
+}

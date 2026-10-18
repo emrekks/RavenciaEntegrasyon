@@ -2822,6 +2822,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             cursor.OpaqueCursor = externalOrderIds.Count == lifecycleBatchSize
                 ? (lifecycleOffset + externalOrderIds.Count).ToString(CultureInfo.InvariantCulture)
                 : null;
+            // Orders Hepsiburada lists as cancelled but the panel does not are read again now.
+            foreach (var cancelled in await HepsiburadaCancelledOrdersToRead(tenantId, connectionId, correlationId, cancellationToken))
+                if (!externalOrderIds.Contains(cancelled, StringComparer.Ordinal)) externalOrderIds.Add(cancelled);
         }
         else
         {

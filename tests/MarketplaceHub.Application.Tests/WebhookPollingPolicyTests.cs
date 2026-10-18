@@ -123,3 +123,29 @@ public sealed class WebhookEventPathTests
         Assert.Equal("57b1850c", MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.FindString(document.RootElement, "packageNumber"));
     }
 }
+
+public sealed class HepsiburadaCancellationPolicyTests
+{
+    private static readonly DateTimeOffset Now = new(2026, 10, 19, 12, 0, 0, TimeSpan.Zero);
+
+    [Fact]
+    public void CancelledOrdersAreReadForADayEveryQuarterHourAndForAMonthDaily()
+    {
+        Assert.Equal(new CancellationReadWindow(Now.AddDays(-30), true), HepsiburadaCancellationPolicy.Window(null, null, Now));
+        Assert.Equal(new CancellationReadWindow(Now.AddDays(-30), true), HepsiburadaCancellationPolicy.Window(Now.AddMinutes(-1), Now.AddHours(-25), Now));
+        Assert.Null(HepsiburadaCancellationPolicy.Window(Now.AddMinutes(-10), Now.AddHours(-2), Now));
+        Assert.Equal(new CancellationReadWindow(Now.AddDays(-1), false), HepsiburadaCancellationPolicy.Window(Now.AddMinutes(-16), Now.AddHours(-2), Now));
+    }
+
+    [Fact]
+    public void CancelledLinesWithoutAnOrderNumberAreSkipped()
+    {
+        using var document = System.Text.Json.JsonDocument.Parse("""{"totalCount":2,"items":[{"orderNumber":"4736002251","lineItemId":"l-1","cancelDate":"2026-10-18T10:00:00Z","cancelledBy":"Customer"},{"lineItemId":"l-2"}]}""");
+        var (items, total) = MarketplaceHub.Infrastructure.Adapters.Hepsiburada.HepsiburadaJsonMapper.CancelledOrderLines(document.RootElement);
+
+        Assert.Equal(2, total);
+        var line = Assert.Single(items);
+        Assert.Equal("4736002251", line.OrderNumber);
+        Assert.Equal("l-1", line.LineItemId);
+    }
+}

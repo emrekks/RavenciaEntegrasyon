@@ -668,6 +668,31 @@ public sealed partial class HepsiburadaHttpClient(
         }
     }
 
+    public async Task<AdapterResult<AdapterPageResult<RemoteCancelledOrderLine>>> ListCancelledOrderLinesAsync(AdapterContext context, DateTimeOffset since, DateTimeOffset until, AdapterPageRequest page, CancellationToken cancellationToken)
+    {
+        var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
+        if (account is null) return Failure<AdapterPageResult<RemoteCancelledOrderLine>>(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIAL_INVALID", "Hepsiburada bağlantı bilgileri bulunamadı.", HttpStatusCode.Unauthorized);
+        var (offset, limit) = Page(page, settings.PageSize, documentedMaximum: 50);
+        var query = string.Join('&',
+            $"offset={offset.ToString(CultureInfo.InvariantCulture)}",
+            $"limit={limit.ToString(CultureInfo.InvariantCulture)}",
+            "begindate=" + Uri.EscapeDataString(since.UtcDateTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)),
+            "enddate=" + Uri.EscapeDataString(until.UtcDateTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)));
+        var response = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Get, CancelledOrders(account, query), cancellationToken);
+        if (!response.IsSuccess) return AdapterResult<AdapterPageResult<RemoteCancelledOrderLine>>.Failure(response.Error!, response.RateLimit);
+        try
+        {
+            var (items, totalCount) = HepsiburadaJsonMapper.CancelledOrderLines(response.Value!.RootElement);
+            var nextOffset = offset + limit;
+            var hasMore = totalCount is { } total ? nextOffset < total : items.Count >= limit;
+            return AdapterResult<AdapterPageResult<RemoteCancelledOrderLine>>.Success(new(items, hasMore ? nextOffset.ToString(CultureInfo.InvariantCulture) : null, hasMore, totalCount), response.RateLimit);
+        }
+        catch (JsonException)
+        {
+            return Failure<AdapterPageResult<RemoteCancelledOrderLine>>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_CANCELLED_LIST_CONTRACT_INVALID", "Hepsiburada iptal edilen sipariş listesi beklenen sayfa sözleşmesiyle eşleşmiyor.", HttpStatusCode.BadGateway);
+        }
+    }
+
     public async Task<AdapterResult<PackageTrackingStatusSnapshot>> GetPackageTrackingInfoAsync(AdapterContext context, string packageNumber, CancellationToken cancellationToken)
     {
         var normalizedPackageNumber = packageNumber.Trim();
@@ -995,6 +1020,7 @@ public sealed partial class HepsiburadaHttpClient(
     internal static string Packages(HepsiburadaRequestContext context, string query) => $"packages/merchantid/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}?{query}";
     internal static string PackagesByStatus(HepsiburadaRequestContext context, string status, string query) => $"packages/merchantid/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}/{Uri.EscapeDataString(status)}?{query}";
     internal static string PackageTrackingInfo(string merchantId, string packageNumber) => $"packages/merchantid/{Uri.EscapeDataString(merchantId)}/packagenumber/{Uri.EscapeDataString(packageNumber)}";
+    internal static string CancelledOrders(HepsiburadaRequestContext context, string query) => $"orders/merchantid/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}/cancelled?{query}";
     internal static string MissingInvoicePackages(HepsiburadaRequestContext context, string query) => $"packages/merchantid/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}/missing-invoice?{query}";
     internal static string InvoiceLink(HepsiburadaRequestContext context, string packageNumber) => $"packages/merchantid/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}/packagenumber/{Uri.EscapeDataString(packageNumber)}/invoice";
     internal static string Listings(HepsiburadaRequestContext context, string query) => $"listings/merchantid/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}?{query}";
