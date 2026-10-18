@@ -1841,7 +1841,8 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             Assert.Equal("TR", batch.Hint?.StoreFrontCode);
             var olderRead = Assert.Single(orderPort.OrderReads);
             Assert.Equal("open-order-2", olderRead.OrderId);
-            Assert.Equal(now.AddDays(-35), olderRead.Hint?.LastModifiedAt);
+            // PostgreSQL keeps microseconds, so compare at that precision.
+            Assert.True(Math.Abs((now.AddDays(-35) - olderRead.Hint!.LastModifiedAt!.Value).TotalMilliseconds) < 1);
 
             // Within a day the older order is not read again; the recent batch is.
             await RunAsync();
