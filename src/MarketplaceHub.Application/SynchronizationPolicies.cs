@@ -449,3 +449,69 @@ public static class PriceInventoryOutboxPolicy
         return $"price-inventory:{connectionId:N}:revision:{revisionHash}";
     }
 }
+
+public sealed record TrendyolStorefrontActivity(DateTimeOffset? LastOrderAt, DateTimeOffset? LastProbedAt, DateTimeOffset? PausedUntil = null);
+
+// Trendyol serves international orders under separate storefront headers, and every stream
+// request is spaced five seconds apart. Order reads therefore visit Türkiye and the storefronts
+// that had an order in the last 90 days; each other storefront is probed now and then (one per
+// run) over the time since its last probe, so a storefront that starts selling becomes active.
+public static class TrendyolStorefrontPolicy
+{
+    public const string CursorResource = "TRENDYOL_STOREFRONTS";
+    public const string Home = "TR";
+    // Storefronts in Trendyol's published list; the others were read so far but are not listed.
+    public static readonly string[] Listed = ["TR", "DE", "SA", "AE", "GR", "SK", "RO", "CZ", "BG", "KW"];
+    public static readonly TimeSpan ActiveFor = TimeSpan.FromDays(90);
+    public static readonly TimeSpan ListedProbeInterval = TimeSpan.FromHours(6);
+    public static readonly TimeSpan UnlistedProbeInterval = TimeSpan.FromHours(24);
+    public static readonly TimeSpan UnlistedRejectionPause = TimeSpan.FromDays(30);
+    public static readonly TimeSpan MaximumProbeWindow = TimeSpan.FromDays(14);
+
+    public static bool IsListed(string code) => Listed.Contains(code, StringComparer.OrdinalIgnoreCase);
+
+    // Storefronts read on every run: Türkiye and those with an order in the last 90 days.
+    public static IReadOnlyList<string> Active(IReadOnlyList<string> codes, IReadOnlyDictionary<string, TrendyolStorefrontActivity> activity, DateTimeOffset now) =>
+        codes.Where(code => string.Equals(code, Home, StringComparison.OrdinalIgnoreCase)
+            || activity.TryGetValue(code, out var seen)
+                && seen.LastOrderAt is { } lastOrder && now - lastOrder <= ActiveFor
+                && !(seen.PausedUntil > now))
+            .ToArray();
+
+    // Storefronts read by a full scan: every storefront except those paused after a rejection.
+    public static IReadOnlyList<string> Readable(IReadOnlyList<string> codes, IReadOnlyDictionary<string, TrendyolStorefrontActivity> activity, DateTimeOffset now) =>
+        codes.Where(code => string.Equals(code, Home, StringComparison.OrdinalIgnoreCase)
+            || !(activity.TryGetValue(code, out var seen) && seen.PausedUntil > now))
+            .ToArray();
+
+    // The inactive storefront whose probe is longest overdue, or none.
+    public static string? NextProbe(IReadOnlyList<string> codes, IReadOnlyDictionary<string, TrendyolStorefrontActivity> activity, DateTimeOffset now)
+    {
+        var active = Active(codes, activity, now);
+        return codes
+            .Where(code => !active.Contains(code, StringComparer.OrdinalIgnoreCase))
+            .Select(code => (Code: code, Seen: activity.GetValueOrDefault(code)))
+            .Where(item => !(item.Seen?.PausedUntil > now)
+                && (item.Seen?.LastProbedAt is not { } probed
+                    || now - probed >= (IsListed(item.Code) ? ListedProbeInterval : UnlistedProbeInterval)))
+            .OrderBy(item => item.Seen?.LastProbedAt ?? DateTimeOffset.MinValue)
+            .Select(item => item.Code)
+            .FirstOrDefault();
+    }
+
+    // A probe reads the time since the storefront's last probe, at most one stream window.
+    public static DateTimeOffset ProbeStart(TrendyolStorefrontActivity? seen, DateTimeOffset now, TimeSpan overlap)
+    {
+        var oldest = now - MaximumProbeWindow;
+        var start = (seen?.LastProbedAt ?? oldest) - overlap;
+        return start < oldest ? oldest : start;
+    }
+
+    public static TrendyolStorefrontActivity Read(TrendyolStorefrontActivity? seen, DateTimeOffset now, bool receivedOrders) =>
+        new(receivedOrders ? now : seen?.LastOrderAt, now, null);
+
+    // A storefront the seller does not have answers 400/404. Listed ones are simply probed again
+    // later; unlisted ones are left alone for 30 days.
+    public static TrendyolStorefrontActivity Rejected(string code, TrendyolStorefrontActivity? seen, DateTimeOffset now) =>
+        new(seen?.LastOrderAt, now, IsListed(code) ? null : now + UnlistedRejectionPause);
+}

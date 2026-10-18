@@ -1728,6 +1728,76 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task TrendyolOrderSync_ReadsActiveStorefrontsAndProbesOneInactiveStorefrontPerRun()
+    {
+        var tenant = NewTenant("trendyol-active-storefronts");
+        var connection = NewQuestionConnection(tenant);
+        var orderPort = new StorefrontRecordingOrderPort();
+        var now = fixture.Now;
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.SyncCursors.Add(new SyncCursor
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenant.Id,
+                ConnectionId = connection.Id,
+                ResourceType = "ORDERS_HOT",
+                LastModifiedWatermark = now.AddMinutes(-1),
+                LastSuccessAt = now.AddMinutes(-1),
+                Version = 1
+            });
+            // DE sold two days ago; every other international storefront has never been probed.
+            seedDb.SyncCursors.Add(new SyncCursor
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenant.Id,
+                ConnectionId = connection.Id,
+                ResourceType = TrendyolStorefrontPolicy.CursorResource,
+                OpaqueCursor = JsonSerializer.Serialize(new Dictionary<string, TrendyolStorefrontActivity>
+                {
+                    ["DE"] = new(now.AddDays(-2), now.AddHours(-1))
+                }),
+                Version = 1
+            });
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            async Task RunAsync()
+            {
+                await using var processorDb = fixture.CreateContext();
+                var processor = new MarketplaceJobProcessor(
+                    processorDb,
+                    null!, null!, null!, null!, orderPort, null!, null!, null!, null!, null!,
+                    new ConfigurationBuilder().Build(), fixture.TimeProvider);
+                var result = await processor.ProcessAsync(
+                    tenant.Id,
+                    connection.Id,
+                    MarketplaceJobTypes.OrderSync,
+                    "{}",
+                    "trendyol-active-storefronts",
+                    CancellationToken.None);
+                Assert.True(result.Succeeded, result.ErrorSummary);
+            }
+
+            await RunAsync();
+            Assert.Equal(["TR", "DE", "AE"], orderPort.PolledStorefronts);
+
+            orderPort.PolledStorefronts.Clear();
+            await RunAsync();
+            Assert.Equal(["TR", "DE", "SA"], orderPort.PolledStorefronts);
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
     public async Task TargetedTrendyolOrderSync_UsesOrderNumberBeforeSuppliedPackage()
     {
         var tenant = NewTenant("trendyol-package-first-sync");
@@ -4195,6 +4265,41 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             onPackageRead?.Invoke();
             return Task.FromResult(AdapterResult<RemoteOrderPackage>.Success(new(externalOrderId, package, orderSnapshot)));
         }
+
+        public Task<AdapterResult<PackageActionResult>> ExecutePackageActionAsync(AdapterContext context, PackageActionCommand command, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<AdapterResult<IReadOnlyList<RemoteCargoCompany>>> GetChangeableCargoCompaniesAsync(AdapterContext context, string externalPackageId, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<AdapterResult<IReadOnlyList<RemotePackageableLine>>> GetPackageableLineItemsAsync(AdapterContext context, string externalLineItemId, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<AdapterResult<CreateOrderPackageResult>> CreateOrderPackageAsync(AdapterContext context, CreateOrderPackageCommand command, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<AdapterResult<bool>> CreateCommonLabelAsync(AdapterContext context, CommonLabelRequest request, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<AdapterResult<CommonLabelDocument>> GetCommonLabelAsync(AdapterContext context, string cargoTrackingNumber, CancellationToken cancellationToken, string format = "ZPL") =>
+            throw new NotSupportedException();
+
+        public Task<AdapterResult<StageTestOrderResult>> CreateStageTestOrderAsync(AdapterContext context, string barcode, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+    }
+
+    private sealed class StorefrontRecordingOrderPort : IOrderPort
+    {
+        public List<string?> PolledStorefronts { get; } = [];
+
+        public Task<AdapterResult<AdapterPageResult<RemoteOrder>>> PollAsync(AdapterContext context, OrderPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken)
+        {
+            PolledStorefronts.Add(window.StoreFrontCode);
+            return Task.FromResult(AdapterResult<AdapterPageResult<RemoteOrder>>.Success(new([], null, false)));
+        }
+
+        public Task<AdapterResult<RemoteOrder>> GetAsync(AdapterContext context, string externalOrderId, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
 
         public Task<AdapterResult<PackageActionResult>> ExecutePackageActionAsync(AdapterContext context, PackageActionCommand command, CancellationToken cancellationToken) =>
             throw new NotSupportedException();

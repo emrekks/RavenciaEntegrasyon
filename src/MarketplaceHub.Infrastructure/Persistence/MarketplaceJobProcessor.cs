@@ -2333,12 +2333,24 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // Do not let a stale successful watermark turn the first healthy run
         // into a narrow incremental read that permanently misses the gap.
         var retryAfterFailure = cursor.ConsecutiveFailureCount > 0 || !string.IsNullOrWhiteSpace(cursor.LastError);
-        var state = ReadOrderSyncState(cursor, now, overlap, allowBaseline, forceBaseline: allowBaseline && (full || !hasSnapshots || retryAfterFailure));
+        var storefrontCursor = await Cursor(tenantId, connectionId, TrendyolStorefrontPolicy.CursorResource, cancellationToken);
+        var storefrontActivity = ReadStorefrontActivity(storefrontCursor);
+        void NoteStorefront(string code, TrendyolStorefrontActivity seen)
+        {
+            storefrontActivity[code] = seen;
+            storefrontCursor.OpaqueCursor = JsonSerializer.Serialize(storefrontActivity);
+            storefrontCursor.Version++;
+        }
+        var state = ReadOrderSyncState(cursor, now, overlap, allowBaseline, forceBaseline: allowBaseline && (full || !hasSnapshots || retryAfterFailure),
+            activeStorefronts: TrendyolStorefrontPolicy.Active(TrendyolReadStorefronts.Codes, storefrontActivity, now),
+            readableStorefronts: TrendyolStorefrontPolicy.Readable(TrendyolReadStorefronts.Codes, storefrontActivity, now));
         var resetExpiredCursor = false;
+        var completed = false;
         do
         {
             var (modifiedAfter, modifiedBefore) = OrderWindow(state);
-            var storefront = TrendyolReadStorefronts.Codes[state.StoreFrontIndex];
+            var storefronts = OrderSyncStorefronts(state);
+            var storefront = storefronts[state.StoreFrontIndex];
             TrackRequest();
             var result = await orders.PollAsync(Context(tenantId, connectionId, correlationId, $"order-sync:{storefront}:{state.NextCursor ?? state.WindowIndex.ToString()}"), new(modifiedAfter, modifiedBefore, null, storefront), new(state.NextCursor, 200), cancellationToken);
             if (!result.IsSuccess && !resetExpiredCursor && !string.IsNullOrWhiteSpace(state.NextCursor) && result.Error is { Class: AdapterErrorClass.Validation, HttpStatus: 400 })
@@ -2355,7 +2367,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 // Some seller accounts do not expose every international storefront. A
                 // rejected optional storefront must not prevent TR or another storefront
                 // from being imported and persisted.
-                if (state.StoreFrontIndex + 1 < TrendyolReadStorefronts.Codes.Length)
+                NoteStorefront(storefront, TrendyolStorefrontPolicy.Rejected(storefront, storefrontActivity.GetValueOrDefault(storefront), now));
+                if (state.StoreFrontIndex + 1 < storefronts.Count)
                 {
                     state = state with { StoreFrontIndex = state.StoreFrontIndex + 1, NextCursor = null };
                     cursor.OpaqueCursor = SerializeOrderSyncState(state);
@@ -2379,6 +2392,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 cursor.LastModifiedWatermark = state.AnchorEnd;
                 cursor.Version++;
                 await db.SaveChangesAsync(cancellationToken);
+                completed = true;
                 break;
             }
             if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
@@ -2386,12 +2400,13 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             foreach (var issue in result.Value.Issues ?? [])
                 await RecordIssue(tenantId, $"order-contract:{connectionId}:{issue.Identity}:{issue.Code}", issue.Code, issue.Message, cancellationToken);
             await UpsertOrders(tenantId, connectionId, result.Value!.Items, cancellationToken);
+            NoteStorefront(storefront, TrendyolStorefrontPolicy.Read(storefrontActivity.GetValueOrDefault(storefront), now, result.Value.Items.Count > 0));
             if (result.Value.HasMore)
             {
                 if (string.IsNullOrWhiteSpace(result.Value.NextCursor)) throw new InvalidOperationException("Trendyol stream hasMore=true ancak nextCursor boş döndü.");
                 state = state with { NextCursor = result.Value.NextCursor };
             }
-            else if (state.StoreFrontIndex + 1 < TrendyolReadStorefronts.Codes.Length)
+            else if (state.StoreFrontIndex + 1 < storefronts.Count)
             {
                 state = state with { StoreFrontIndex = state.StoreFrontIndex + 1, NextCursor = null };
             }
@@ -2412,13 +2427,66 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 cursor.LastModifiedWatermark = state.AnchorEnd;
                 cursor.Version++;
                 await db.SaveChangesAsync(cancellationToken);
+                completed = true;
                 break;
             }
             cursor.OpaqueCursor = SerializeOrderSyncState(state);
             cursor.Version++;
             await db.SaveChangesAsync(cancellationToken);
         } while (!cancellationToken.IsCancellationRequested);
+
+        // A full scan already read every storefront; an incremental run probes at most one
+        // inactive storefront over the time since its last probe.
+        if (completed && state.Mode == OrderSyncMode.Incremental && !cancellationToken.IsCancellationRequested
+            && TrendyolStorefrontPolicy.NextProbe(TrendyolReadStorefronts.Codes, storefrontActivity, now) is { } probe)
+        {
+            var previous = storefrontActivity.GetValueOrDefault(probe);
+            var probeStart = TrendyolStorefrontPolicy.ProbeStart(previous, now, overlap);
+            var received = false;
+            string? nextCursor = null;
+            do
+            {
+                TrackRequest();
+                var page = await orders.PollAsync(Context(tenantId, connectionId, correlationId, $"order-sync-probe:{probe}:{nextCursor ?? "0"}"), new(probeStart, now, null, probe), new(nextCursor, 200), cancellationToken);
+                if (!page.IsSuccess)
+                {
+                    if (nextCursor is null && page.Error?.HttpStatus is 400 or 404)
+                    {
+                        NoteStorefront(probe, TrendyolStorefrontPolicy.Rejected(probe, previous, now));
+                        await db.SaveChangesAsync(cancellationToken);
+                    }
+                    else
+                    {
+                        // The probe is retried on the next run; the completed read above stays saved.
+                        TrackResultFailure(page.Error);
+                    }
+                    return true;
+                }
+                foreach (var _ in page.Value!.Items) TrackReceived();
+                foreach (var issue in page.Value.Issues ?? [])
+                    await RecordIssue(tenantId, $"order-contract:{connectionId}:{issue.Identity}:{issue.Code}", issue.Code, issue.Message, cancellationToken);
+                await UpsertOrders(tenantId, connectionId, page.Value.Items, cancellationToken);
+                received |= page.Value.Items.Count > 0;
+                nextCursor = page.Value.HasMore && !string.IsNullOrWhiteSpace(page.Value.NextCursor) ? page.Value.NextCursor : null;
+            } while (nextCursor is not null && !cancellationToken.IsCancellationRequested);
+            NoteStorefront(probe, TrendyolStorefrontPolicy.Read(previous, now, received));
+            await db.SaveChangesAsync(cancellationToken);
+        }
         return true;
+    }
+
+    private static Dictionary<string, TrendyolStorefrontActivity> ReadStorefrontActivity(SyncCursor cursor)
+    {
+        if (!string.IsNullOrWhiteSpace(cursor.OpaqueCursor))
+        {
+            try
+            {
+                if (JsonSerializer.Deserialize<Dictionary<string, TrendyolStorefrontActivity>>(cursor.OpaqueCursor) is { } saved)
+                    return new(saved, StringComparer.OrdinalIgnoreCase);
+            }
+            catch (JsonException) { }
+        }
+        return new(StringComparer.OrdinalIgnoreCase);
     }
 
     private async Task<bool> SyncShopifyOrders(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, string cursorResourceType, bool allowBaseline, CancellationToken cancellationToken)
@@ -6722,7 +6790,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     // TrendyolResilienceHandler; sleeping here as well only added idle time to every page.
     private const int DefaultOrderSyncOverlapSeconds = 120;
     private enum OrderSyncMode { Baseline, Incremental }
-    private sealed record OrderSyncState(string Version, OrderSyncMode Mode, DateTimeOffset AnchorEnd, DateTimeOffset StartAt, int WindowIndex, string? NextCursor, int StoreFrontIndex = 0);
+    // StoreFronts is the list this run visits; a state saved before the list existed visits every storefront.
+    private sealed record OrderSyncState(string Version, OrderSyncMode Mode, DateTimeOffset AnchorEnd, DateTimeOffset StartAt, int WindowIndex, string? NextCursor, int StoreFrontIndex = 0, string[]? StoreFronts = null);
     private sealed class CategoryAttributeContext(Category LocalCategory, string ExternalCategoryId, IReadOnlyDictionary<string, LocalCategoryAttribute> Attributes)
     {
         public Category LocalCategory { get; } = LocalCategory;
@@ -6734,14 +6803,18 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     }
     private sealed record LocalCategoryAttribute(AttributeDefinition Definition, ReferenceItem Remote, IReadOnlyList<ReferenceItem> Values, string Role);
 
-    private static OrderSyncState ReadOrderSyncState(SyncCursor cursor, DateTimeOffset now, TimeSpan overlap, bool allowBaseline, bool forceBaseline = false)
+    private static IReadOnlyList<string> OrderSyncStorefronts(OrderSyncState state) =>
+        state.StoreFronts is { Length: > 0 } storefronts ? storefronts : TrendyolReadStorefronts.Codes;
+
+    private static OrderSyncState ReadOrderSyncState(SyncCursor cursor, DateTimeOffset now, TimeSpan overlap, bool allowBaseline, bool forceBaseline = false,
+        IReadOnlyList<string>? activeStorefronts = null, IReadOnlyList<string>? readableStorefronts = null)
     {
         if (!forceBaseline && !string.IsNullOrWhiteSpace(cursor.OpaqueCursor))
         {
             try
             {
                 var state = JsonSerializer.Deserialize<OrderSyncState>(cursor.OpaqueCursor);
-                if (state is { Version: OrderSyncStateVersion, WindowIndex: >= 0, StoreFrontIndex: >= 0 } && state.StoreFrontIndex < TrendyolReadStorefronts.Codes.Length) return state;
+                if (state is { Version: OrderSyncStateVersion, WindowIndex: >= 0, StoreFrontIndex: >= 0 } && state.StoreFrontIndex < OrderSyncStorefronts(state).Count) return state;
             }
             catch (JsonException) { }
         }
@@ -6760,7 +6833,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var mode = baseline || anchor - start > OrderStreamWindowSpan
             ? OrderSyncMode.Baseline
             : OrderSyncMode.Incremental;
-        return new(OrderSyncStateVersion, mode, anchor, start, 0, null, 0);
+        // A multi-window scan reads every storefront the seller may have; a normal run only the active ones.
+        var storefronts = mode == OrderSyncMode.Baseline ? readableStorefronts : activeStorefronts;
+        return new(OrderSyncStateVersion, mode, anchor, start, 0, null, 0, storefronts is { Count: > 0 } ? [.. storefronts] : null);
     }
 
     private static (DateTimeOffset Start, DateTimeOffset End) OrderWindow(OrderSyncState state)
