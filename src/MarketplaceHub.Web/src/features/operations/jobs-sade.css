@@ -189,3 +189,12 @@
   .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table tbody .jobs-reference-row { row-gap: 10px !important; }
   .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table tbody .jobs-reference-row > td { padding: 0 !important; border-top: 0 !important; }
 }
+
+/* Wider screens: the job table already scrolls sideways, so correlation ids and attempt notes show whole on one line
+   instead of being cut. */
+@media (min-width: 761px) {
+  .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table :is(.jobs-reference-correlation, .jobs-reference-time small) { max-width: none !important; overflow: visible !important; text-overflow: clip !important; white-space: nowrap; }
+  .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table :is(th, td) { max-width: none; }
+  .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table.jobs-reference-table { min-width: 1090px; }
+  .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table :is(thead tr, tbody .jobs-reference-row, tbody > tr:not(.jobs-reference-row)) { grid-template-columns: minmax(240px, 1.9fr) minmax(150px, 1.05fr) minmax(86px, .6fr) minmax(164px, 1.05fr) minmax(300px, 1.1fr); }
+}

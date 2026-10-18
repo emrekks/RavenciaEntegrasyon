@@ -1038,3 +1038,8 @@ main .rr.rr-returns .rr-tbl.rr-tbl { min-width: 1210px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img.rr-img { width: calc(min(100vh - 170px, 640px) * 2 / 3 + 26px); max-width: calc(100vw - 32px); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img .rr-img-preview.rr-img-preview { width: 100%; height: auto; max-height: min(calc(100vh - 170px), 640px); min-height: 0; aspect-ratio: 2 / 3; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img .rr-m-head h2 { max-width: none; }
+/* product name keeps a little air above its codes */
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-pline > div > b:first-child { margin-bottom: 4px; }
+/* a state ring with a countdown: the countdown starts under the ring icon, not under the label */
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl .rr-ring > span:has(> small) { display: contents; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl .rr-ring > span > small { grid-column: 1 / -1; }

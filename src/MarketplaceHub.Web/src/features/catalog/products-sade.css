@@ -274,3 +274,10 @@
 /* quick stock/price buttons in the list: the hover tint has room around the text and no frame, like every other hover */
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-qbtn.rr-qbtn { margin: -4px -8px; padding: 4px 8px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qbtn.rr-qbtn:hover { border-color: transparent; }
+/* wider screens: the product table scrolls sideways inside its panel like the order table, and codes show whole */
+@media (min-width: 1101px) {
+main .rr.rr-products > .rr-panel { min-width: 0; }
+main .rr.rr-products .rr-tblwrap.rr-tblwrap { overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; }
+main .rr.rr-products .rr-ptbl.rr-ptbl { min-width: 1060px; }
+main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; white-space: nowrap; }
+}
