@@ -250,7 +250,10 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
         LogOrderResponseShape(response.Value!);
         try
         {
-            var mapped = TrendyolJsonMapper.Orders(response.Value!);
+            // Orders carry the storefront they were read under, so later targeted reads ask there first.
+            var read = TrendyolJsonMapper.Orders(response.Value!);
+            var storeFrontCode = string.IsNullOrWhiteSpace(window.StoreFrontCode) ? TrendyolLookupPolicy.HomeStoreFront : window.StoreFrontCode.Trim().ToUpperInvariant();
+            var mapped = read with { Items = [.. read.Items.Select(order => order with { StoreFrontCode = storeFrontCode })] };
             if (orderCursor is null) return AdapterResult<AdapterPageResult<RemoteOrder>>.Success(mapped, response.RateLimit);
 
             var next = mapped.HasMore
@@ -269,43 +272,43 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
         }
     }
 
-    public async Task<AdapterResult<RemoteOrder>> GetAsync(AdapterContext context, string externalOrderId, CancellationToken cancellationToken)
+    public Task<AdapterResult<RemoteOrder>> GetAsync(AdapterContext context, string externalOrderId, CancellationToken cancellationToken)
+        => GetAsync(context, externalOrderId, null, cancellationToken);
+
+    // Order V2 keeps one month of packages and takes at most two weeks per request; the stream
+    // keeps three months. A known order is read from its own storefront, by V2 while it is
+    // younger than a month and from the stream around its last change after that; an unknown
+    // order number is looked up in the last two weeks of every storefront, Türkiye first.
+    public async Task<AdapterResult<RemoteOrder>> GetAsync(AdapterContext context, string externalOrderId, OrderLookupHint? hint, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(externalOrderId)) return AdapterResult<RemoteOrder>.Failure(TrendyolErrorMapper.Contract());
         var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken); if (authorized is null) return AdapterResult<RemoteOrder>.Failure(TrendyolErrorMapper.Configuration());
         var normalizedOrderNumber = externalOrderId.Trim();
-        // Order V2 defaults an unbounded lookup to a short recent window.
-        // Supply its maximum supported two-week range so targeted recovery can
-        // find orders that have been in transit longer than the default window.
-        var lookupEnd = timeProvider.GetUtcNow();
-        var lookupStart = lookupEnd.AddDays(-14);
-        var dateFilters = $"startDate={lookupStart.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)}&endDate={lookupEnd.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)}";
+        var now = timeProvider.GetUtcNow();
+        var storefronts = TrendyolLookupPolicy.Storefronts(hint, TrendyolReadStorefronts.Codes);
         AdapterPageIssue? firstPageIssue = null;
-        // A direct order lookup is also used by the single-order sync flow.
-        // Unlike return hydration, that flow must search every storefront so
-        // international orders are not reported as missing.
-        foreach (var storeFrontCode in TrendyolReadStorefronts.Codes)
+        RateLimitMetadata? rateLimit = null;
+        if (TrendyolLookupPolicy.V2Window(hint, now) is { } window)
         {
-            var lookupFilters = $"{dateFilters}&orderNumber={Uri.EscapeDataString(normalizedOrderNumber)}&page=0&size=200";
-            var endpoints = new[]
+            var dateFilters = $"startDate={window.Start.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)}&endDate={window.End.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)}";
+            foreach (var storeFrontCode in storefronts)
             {
-                TrendyolEndpoints.Orders(authorized.Connection.ExternalStoreId) + "?" + lookupFilters,
-                TrendyolEndpoints.Orders(authorized.Connection.ExternalStoreId) + $"?{dateFilters}&orderNumber={Uri.EscapeDataString($"\"{normalizedOrderNumber}\"")}&page=0&size=200"
-            };
-            foreach (var endpoint in endpoints)
-            {
-                var response = await SendAsync(authorized, HttpMethod.Get, endpoint, null, cancellationToken, storeFrontCode: storeFrontCode);
+                var response = await SendAsync(authorized, HttpMethod.Get, TrendyolEndpoints.Orders(authorized.Connection.ExternalStoreId) + $"?{dateFilters}&orderNumber={Uri.EscapeDataString(normalizedOrderNumber)}&page=0&size=200", null, cancellationToken, storeFrontCode: storeFrontCode);
+                // Some order numbers are rejected unquoted; the quoted form is the documented fallback.
+                if (!response.IsSuccess && response.Error?.HttpStatus == 400)
+                    response = await SendAsync(authorized, HttpMethod.Get, TrendyolEndpoints.Orders(authorized.Connection.ExternalStoreId) + $"?{dateFilters}&orderNumber={Uri.EscapeDataString($"\"{normalizedOrderNumber}\"")}&page=0&size=200", null, cancellationToken, storeFrontCode: storeFrontCode);
                 if (!response.IsSuccess)
                 {
                     if (response.Error?.HttpStatus is 400 or 404) continue;
                     return AdapterResult<RemoteOrder>.Failure(response.Error!, response.RateLimit);
                 }
+                rateLimit = response.RateLimit;
                 try
                 {
                     var page = TrendyolJsonMapper.Orders(response.Value!);
                     firstPageIssue ??= page.Issues?.FirstOrDefault();
                     var order = TrendyolJsonMapper.MergeOrderPackages(page.Items, normalizedOrderNumber);
-                    if (order is not null) return AdapterResult<RemoteOrder>.Success(order, response.RateLimit);
+                    if (order is not null) return AdapterResult<RemoteOrder>.Success(order with { StoreFrontCode = storeFrontCode }, response.RateLimit);
                 }
                 catch (JsonException exception)
                 {
@@ -315,39 +318,82 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
             }
         }
 
+        // A known order V2 cannot serve is read from the stream around its last recorded change.
+        if (TrendyolLookupPolicy.StreamWindow(hint, now) is { } streamWindow)
+        {
+            var storeFrontCode = storefronts[0];
+            var packages = new List<RemoteOrder>();
+            string? nextCursor = null;
+            do
+            {
+                var query = new List<string>
+                {
+                    "size=200",
+                    "lastModifiedStartDate=" + streamWindow.Start.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture),
+                    "lastModifiedEndDate=" + streamWindow.End.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)
+                };
+                if (nextCursor is not null) query.Add("nextCursor=" + Uri.EscapeDataString(nextCursor));
+                var response = await SendAsync(authorized, HttpMethod.Get, TrendyolEndpoints.OrderStream(authorized.Connection.ExternalStoreId) + "?" + string.Join('&', query), null, cancellationToken, storeFrontCode: storeFrontCode);
+                if (!response.IsSuccess)
+                {
+                    if (response.Error?.HttpStatus is 400 or 404) break;
+                    return AdapterResult<RemoteOrder>.Failure(response.Error!, response.RateLimit);
+                }
+                rateLimit = response.RateLimit;
+                try
+                {
+                    var page = TrendyolJsonMapper.Orders(response.Value!);
+                    firstPageIssue ??= page.Issues?.FirstOrDefault();
+                    packages.AddRange(page.Items.Where(item => string.Equals(item.ExternalOrderId, normalizedOrderNumber, StringComparison.OrdinalIgnoreCase) || string.Equals(item.OrderNumber, normalizedOrderNumber, StringComparison.OrdinalIgnoreCase)));
+                    nextCursor = page.HasMore && !string.IsNullOrWhiteSpace(page.NextCursor) ? page.NextCursor : null;
+                }
+                catch (JsonException exception)
+                {
+                    logger.LogWarning(exception, "Trendyol order stream failed contract mapping during direct lookup for {ExternalOrderId}.", normalizedOrderNumber);
+                    return AdapterResult<RemoteOrder>.Failure(TrendyolErrorMapper.Contract());
+                }
+            } while (nextCursor is not null && !cancellationToken.IsCancellationRequested);
+            if (TrendyolJsonMapper.MergeOrderPackages(packages, normalizedOrderNumber) is { } streamed)
+                return AdapterResult<RemoteOrder>.Success(streamed with { StoreFrontCode = storeFrontCode }, rateLimit);
+        }
+
         if (firstPageIssue is not null)
             return AdapterResult<RemoteOrder>.Failure(new(AdapterErrorClass.ContractViolation, firstPageIssue.Code, firstPageIssue.Message, null, null, null));
         return AdapterResult<RemoteOrder>.Failure(new(AdapterErrorClass.NotFound, "REMOTE_ORDER_NOT_FOUND", "Platform siparişi bulunamadı.", 404, null, null));
     }
 
     public async Task<AdapterResult<RemoteOrderPackage>> GetShipmentPackageAsync(AdapterContext context, string externalPackageId, CancellationToken cancellationToken)
-        => await GetShipmentPackageAsync(context, externalPackageId, null, cancellationToken);
+        => await ReadShipmentPackageAsync(context, externalPackageId, new PackageLookup(null), cancellationToken);
 
     public Task<AdapterResult<RemoteOrderPackage>> GetShipmentPackageAsync(AdapterContext context, string externalPackageId, DateTimeOffset? packageStatusOccurredAt, CancellationToken cancellationToken)
-        => ReadShipmentPackageAsync(context, externalPackageId, packageStatusOccurredAt, stopAtV2Match: false, cancellationToken);
+        => ReadShipmentPackageAsync(context, externalPackageId, new PackageLookup(packageStatusOccurredAt), cancellationToken);
+
+    public Task<AdapterResult<RemoteOrderPackage>> GetShipmentPackageAsync(AdapterContext context, string externalPackageId, PackageLookup lookup, CancellationToken cancellationToken)
+        => ReadShipmentPackageAsync(context, externalPackageId, lookup, cancellationToken);
 
     // Order V2 and the stream serve the same package record, and Trendyol fills invoiceLink only
-    // once a package is invoiced. A package V2 found without invoice fields has no invoice yet;
-    // reading the stream as well would only repeat that answer page by page.
-    public Task<AdapterResult<RemoteOrderPackage>> GetShipmentPackageInvoiceAsync(AdapterContext context, string externalPackageId, DateTimeOffset? packageStatusOccurredAt, CancellationToken cancellationToken)
-        => ReadShipmentPackageAsync(context, externalPackageId, packageStatusOccurredAt, stopAtV2Match: true, cancellationToken);
-
-    private async Task<AdapterResult<RemoteOrderPackage>> ReadShipmentPackageAsync(AdapterContext context, string externalPackageId, DateTimeOffset? packageStatusOccurredAt, bool stopAtV2Match, CancellationToken cancellationToken)
+    // once a package is invoiced. For an invoice read (lookup.InvoiceOnly) a package V2 found
+    // without invoice fields has no invoice yet; reading the stream as well would only repeat
+    // that answer page by page.
+    private async Task<AdapterResult<RemoteOrderPackage>> ReadShipmentPackageAsync(AdapterContext context, string externalPackageId, PackageLookup lookup, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(externalPackageId)) return AdapterResult<RemoteOrderPackage>.Failure(TrendyolErrorMapper.Contract());
         var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (authorized is null) return AdapterResult<RemoteOrderPackage>.Failure(TrendyolErrorMapper.Configuration());
+        var packageStatusOccurredAt = lookup.StatusOccurredAt;
+        var stopAtV2Match = lookup.InvoiceOnly;
+        var storefronts = TrendyolLookupPolicy.Storefronts(lookup.Order, TrendyolReadStorefronts.Codes);
 
-        // Order V2 accepts date ranges of at most two weeks. Keep the targeted
-        // package lookup inside that limit; older known packages are recovered
-        // by the cursor stream below using their recorded status timestamp.
-        var packageReadEnd = timeProvider.GetUtcNow();
-        var packageReadStart = packageReadEnd.AddDays(-14);
-        var query = $"?startDate={packageReadStart.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)}&endDate={packageReadEnd.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)}&shipmentPackageIds={Uri.EscapeDataString(externalPackageId.Trim())}&size=200";
+        // Order V2 keeps a month of packages and accepts at most two weeks per request. A package
+        // of an order older than a month is read from the stream below, around its status time.
+        var v2Window = TrendyolLookupPolicy.V2Window(lookup.Order, timeProvider.GetUtcNow());
+        var query = v2Window is { } window
+            ? $"?startDate={window.Start.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)}&endDate={window.End.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)}&shipmentPackageIds={Uri.EscapeDataString(externalPackageId.Trim())}&size=200"
+            : null;
         AdapterResult<string>? v2Response = null;
         AdapterError? v2LookupError = null;
         RemoteOrderPackage? v2Package = null;
-        foreach (var storeFrontCode in TrendyolReadStorefronts.Codes)
+        foreach (var storeFrontCode in query is null ? Array.Empty<string>() : storefronts)
         {
             var response = await SendAsync(
                 authorized,
@@ -438,7 +484,7 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
 
                     var streamResponse = await SendAsync(authorized, HttpMethod.Get,
                         TrendyolEndpoints.OrderStream(authorized.Connection.ExternalStoreId) + "?" + string.Join('&', streamQuery),
-                        null, cancellationToken);
+                        null, cancellationToken, storeFrontCode: storefronts[0]);
                     if (!streamResponse.IsSuccess)
                     {
                         streamError = streamResponse.Error;

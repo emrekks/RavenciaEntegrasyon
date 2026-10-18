@@ -515,3 +515,42 @@ public static class TrendyolStorefrontPolicy
     public static TrendyolStorefrontActivity Rejected(string code, TrendyolStorefrontActivity? seen, DateTimeOffset now) =>
         new(seen?.LastOrderAt, now, IsListed(code) ? null : now + UnlistedRejectionPause);
 }
+
+// Where a targeted Trendyol read looks. Order V2 keeps one month of packages and takes at most
+// two weeks per request; the order stream keeps three months and filters by last change.
+public static class TrendyolLookupPolicy
+{
+    public const string HomeStoreFront = "TR";
+    public static readonly TimeSpan V2History = TimeSpan.FromDays(30);
+    public static readonly TimeSpan V2MaximumSpan = TimeSpan.FromDays(14);
+    public static readonly TimeSpan StreamMargin = TimeSpan.FromDays(6);
+
+    // A known order is read from its own storefront; an unknown one from every storefront, Türkiye first.
+    public static IReadOnlyList<string> Storefronts(OrderLookupHint? hint, IReadOnlyList<string> codes) =>
+        hint?.StoreFrontCode is { Length: > 0 } code ? [code.Trim().ToUpperInvariant()] : codes;
+
+    // The last two weeks for an unknown or recent order, the two weeks from its order date for a
+    // two-to-four-week-old order, and no V2 read at all for an order older than a month.
+    public static (DateTimeOffset Start, DateTimeOffset End)? V2Window(OrderLookupHint? hint, DateTimeOffset now)
+    {
+        if (hint?.OrderedAt is not { } orderedAt || orderedAt >= now - V2MaximumSpan) return (now - V2MaximumSpan, now);
+        var oldest = now - V2History;
+        if (orderedAt < oldest) return null;
+        var start = orderedAt.AddDays(-1);
+        if (start < oldest) start = oldest;
+        var end = start + V2MaximumSpan;
+        return (start, end > now ? now : end);
+    }
+
+    // A known order V2 cannot serve is read from the stream six days either side of its last
+    // recorded change; an order whose last change is older than the stream keeps is not read.
+    public static (DateTimeOffset Start, DateTimeOffset End)? StreamWindow(OrderLookupHint? hint, DateTimeOffset now)
+    {
+        if ((hint?.LastModifiedAt ?? hint?.OrderedAt) is not { } anchor) return null;
+        var oldest = now.AddMonths(-TrendyolOrderHistoryPolicy.StreamInitialLookbackMonths);
+        if (anchor < oldest || anchor > now) return anchor > now ? (now - StreamMargin, now) : null;
+        var start = anchor - StreamMargin;
+        var end = anchor + StreamMargin;
+        return (start < oldest ? oldest : start, end > now ? now : end);
+    }
+}

@@ -3483,6 +3483,10 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("ShipmentDueAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("StoreFrontCode")
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
 

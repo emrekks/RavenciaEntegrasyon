@@ -381,6 +381,8 @@ public sealed class Order
     public DateTimeOffset OrderedAt { get; set; }
     public DateTimeOffset? ShipmentDueAt { get; set; }
     public DateTimeOffset LastRemoteModifiedAt { get; set; }
+    // The marketplace storefront the order was read under (Trendyol: TR, DE, SA…); null until first seen.
+    public string? StoreFrontCode { get; set; }
     public required string CustomerSnapshotJson { get; set; }
     public required string ShipmentAddressSnapshotJson { get; set; }
     public required string InvoiceAddressSnapshotJson { get; set; }

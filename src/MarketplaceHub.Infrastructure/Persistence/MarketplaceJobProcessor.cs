@@ -2251,7 +2251,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 && !requestedPackageNumber.Any(char.IsControl);
 
             TrackRequest();
-            var single = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"order-get:{externalOrderId}"), externalOrderId.Trim(), cancellationToken);
+            var single = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"order-get:{externalOrderId}"), externalOrderId.Trim(), await OrderHint(tenantId, connectionId, externalOrderId.Trim(), cancellationToken), cancellationToken);
             if (single.IsSuccess)
             {
                 TrackReceived();
@@ -2292,7 +2292,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 var packageRead = await orders.GetShipmentPackageAsync(
                     Context(tenantId, connectionId, correlationId, $"targeted-order-package-read:{packageToRead.ExternalPackageId}"),
                     packageToRead.ExternalPackageId,
-                    packageToRead.StatusOccurredAt,
+                    new PackageLookup(packageToRead.StatusOccurredAt, await OrderHint(tenantId, connectionId, externalOrderId, cancellationToken)),
                     cancellationToken);
                 if (!packageRead.IsSuccess)
                 {
@@ -2474,6 +2474,13 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         }
         return true;
     }
+
+    // What the panel knows about an order, so a targeted read asks its storefront and date window first.
+    private Task<OrderLookupHint?> OrderHint(Guid tenantId, Guid connectionId, string externalOrderId, CancellationToken cancellationToken) =>
+        db.Orders.AsNoTracking()
+            .Where(order => order.TenantId == tenantId && order.ConnectionId == connectionId && order.ExternalOrderId == externalOrderId)
+            .Select(order => (OrderLookupHint?)new OrderLookupHint(order.OrderedAt, order.LastRemoteModifiedAt, order.StoreFrontCode))
+            .FirstOrDefaultAsync(cancellationToken);
 
     private static Dictionary<string, TrendyolStorefrontActivity> ReadStorefrontActivity(SyncCursor cursor)
     {
@@ -2774,7 +2781,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         foreach (var externalOrderId in externalOrderIds)
         {
             TrackRequest();
-            var result = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"order-lifecycle:{externalOrderId}"), externalOrderId, cancellationToken);
+            var result = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"order-lifecycle:{externalOrderId}"), externalOrderId, await OrderHint(tenantId, connectionId, externalOrderId, cancellationToken), cancellationToken);
             if (!result.IsSuccess)
             {
                 if (result.Error?.Class == AdapterErrorClass.NotFound) continue;
@@ -2863,7 +2870,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var result = await orders.GetShipmentPackageAsync(
                 Context(tenantId, connectionId, correlationId, $"trendyol-cargo-info:{candidate.ExternalPackageId}"),
                 candidate.ExternalPackageId,
-                candidate.PackageStatusOccurredAt,
+                new PackageLookup(candidate.PackageStatusOccurredAt, await OrderHint(tenantId, connectionId, candidate.OrderNumber, cancellationToken)),
                 cancellationToken);
             if (!result.IsSuccess)
             {
@@ -3174,7 +3181,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         foreach (var externalOrderId in externalOrderIds)
         {
             TrackRequest();
-            var result = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"order-reconcile:{externalOrderId}"), externalOrderId, cancellationToken);
+            var result = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"order-reconcile:{externalOrderId}"), externalOrderId, await OrderHint(tenantId, connectionId, externalOrderId, cancellationToken), cancellationToken);
             if (!result.IsSuccess)
             {
                 if (result.Error?.Class == AdapterErrorClass.NotFound) continue;
@@ -3604,6 +3611,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var result = await orders.GetAsync(
             Context(tenantId, connectionId, correlationId, $"trendyol-return-order-hydration:{externalOrderId}"),
             externalOrderId,
+            await OrderHint(tenantId, connectionId, externalOrderId, cancellationToken),
             cancellationToken);
         if (!result.IsSuccess)
         {
@@ -3645,6 +3653,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (sweep)
             packages = packages.Where(package => TrendyolInvoiceReconciliationPolicy.SweepStatuses.Contains(package.Status)
                 && package.MarketplaceInvoiceStatus != MarketplaceInvoiceStatus.Invoiced);
+        var hint = await OrderHint(tenantId, connectionId, externalOrderId, cancellationToken);
         var candidates = await packages
             .Select(package => new { package.Id, package.ExternalPackageId, package.StatusOccurredAt })
             .ToListAsync(cancellationToken);
@@ -3652,10 +3661,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         foreach (var candidate in candidates)
         {
             TrackRequest();
-            var readback = await orders.GetShipmentPackageInvoiceAsync(
+            var readback = await orders.GetShipmentPackageAsync(
                 Context(tenantId, connectionId, correlationId, $"trendyol-invoice-package-read:{candidate.ExternalPackageId}"),
                 candidate.ExternalPackageId,
-                candidate.StatusOccurredAt,
+                new PackageLookup(candidate.StatusOccurredAt, hint, InvoiceOnly: true),
                 cancellationToken);
             if (!readback.IsSuccess)
             {
@@ -7165,6 +7174,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             || TrendyolJsonMapper.IsReturnClaimReadModelSnapshot(order.CustomerSnapshotJson);
         if (!orderIsFresh) telemetrySkippedCount++;
         if (order is null) { order = new Order { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ExternalOrderId = remote.ExternalOrderId, OrderNumber = remote.OrderNumber, Currency = remote.Currency, CustomerSnapshotJson = remote.CustomerSnapshotJson, ShipmentAddressSnapshotJson = remote.ShipmentAddressSnapshotJson, InvoiceAddressSnapshotJson = remote.InvoiceAddressSnapshotJson, DerivedStatus = "NEW", ShipmentDueAt = remote.ShipmentDueAt, CreatedAt = now, Version = 1 }; db.Orders.Add(order); batch?.OrdersByExternalId.TryAdd(remote.ExternalOrderId, order); telemetryInsertedCount++; }
+        // An order never changes storefront; the first read that names it is kept for later targeted reads.
+        if (order.StoreFrontCode is null && !string.IsNullOrWhiteSpace(remote.StoreFrontCode)) order.StoreFrontCode = remote.StoreFrontCode;
         if (orderIsFresh)
         {
             var customerSnapshot = remote.CustomerSnapshotJson;
@@ -9162,9 +9173,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         }
         effect.CompletedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken);
         await RecordN11ShipmentWriteEvidenceAsync(tenantId, connectionId, payload.Action, cancellationToken);
-        var orderNumber = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.OrderId).Select(x => x.OrderNumber).SingleAsync(cancellationToken);
+        var readbackOrder = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.OrderId).Select(x => new { x.OrderNumber, Hint = new OrderLookupHint(x.OrderedAt, x.LastRemoteModifiedAt, x.StoreFrontCode) }).SingleAsync(cancellationToken);
         TrackRequest();
-        var readback = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"{job.EffectIdempotencyKey}:readback"), orderNumber, cancellationToken);
+        var readback = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"{job.EffectIdempotencyKey}:readback"), readbackOrder.OrderNumber, readbackOrder.Hint, cancellationToken);
         if (readback.IsSuccess) TrackReceived();
         if (readback.IsSuccess) await UpsertOrder(tenantId, connectionId, readback.Value!, cancellationToken);
         else { await RecordIssue(tenantId, $"shipment-readback:{connectionId}:{package.ExternalPackageId}:{payload.Action}", "SHIPMENT_ACTION_READBACK_PENDING", "Paket aksiyonu kabul edildi ancak anlık order read-back tamamlanamadı; planlı sync kesinleştirecek.", cancellationToken); await db.SaveChangesAsync(cancellationToken); }

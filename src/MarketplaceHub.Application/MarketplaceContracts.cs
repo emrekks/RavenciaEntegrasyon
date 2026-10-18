@@ -508,7 +508,11 @@ public static class TrendyolInvoiceReconciliationPolicy
 }
 public sealed record RemotePackage(string ExternalPackageId, string? OriginExternalPackageId, string RawStatus, DateTimeOffset OccurredAt, string? CargoProviderExternalId, string? CargoTrackingNumber, IReadOnlyList<RemotePackageAllocation> Allocations, decimal GrossAmount = 0, decimal DiscountAmount = 0, decimal NetAmount = 0, RemotePackageInvoiceObservation? Invoice = null, string? CreatedBy = null, bool IsStatusObservation = false);
 public sealed record RemoteOrderRefund(string ExternalRefundId, DateTimeOffset OccurredAt, decimal Amount, string Currency, string RawJson);
-public sealed record RemoteOrder(string ExternalOrderId, string OrderNumber, DateTimeOffset OrderedAt, DateTimeOffset LastModifiedAt, string Currency, decimal GrossAmount, decimal DiscountAmount, decimal NetAmount, string CustomerSnapshotJson, string ShipmentAddressSnapshotJson, string InvoiceAddressSnapshotJson, IReadOnlyList<RemoteOrderLine> Lines, IReadOnlyList<RemotePackage> Packages, string RawJson, DateTimeOffset? ShipmentDueAt = null, string PaymentStatus = "UNKNOWN", string CancellationStatus = "NOT_CANCELLED", string RefundStatus = "NOT_REFUNDED", decimal RefundedAmount = 0, IReadOnlyList<RemoteOrderRefund>? Refunds = null, string? LifecycleStatus = null);
+public sealed record RemoteOrder(string ExternalOrderId, string OrderNumber, DateTimeOffset OrderedAt, DateTimeOffset LastModifiedAt, string Currency, decimal GrossAmount, decimal DiscountAmount, decimal NetAmount, string CustomerSnapshotJson, string ShipmentAddressSnapshotJson, string InvoiceAddressSnapshotJson, IReadOnlyList<RemoteOrderLine> Lines, IReadOnlyList<RemotePackage> Packages, string RawJson, DateTimeOffset? ShipmentDueAt = null, string PaymentStatus = "UNKNOWN", string CancellationStatus = "NOT_CANCELLED", string RefundStatus = "NOT_REFUNDED", decimal RefundedAmount = 0, IReadOnlyList<RemoteOrderRefund>? Refunds = null, string? LifecycleStatus = null, string? StoreFrontCode = null);
+// The order as the panel last saw it: when it was placed, last changed and which storefront it belongs to.
+public sealed record OrderLookupHint(DateTimeOffset? OrderedAt, DateTimeOffset? LastModifiedAt, string? StoreFrontCode);
+// InvoiceOnly: the caller needs the package record itself, not its cargo fields, so the first match is final.
+public sealed record PackageLookup(DateTimeOffset? StatusOccurredAt, OrderLookupHint? Order = null, bool InvoiceOnly = false);
 public sealed record PackagePollWindow(DateTimeOffset? ModifiedAfter, DateTimeOffset? ModifiedBefore);
 public sealed record RemoteOrderPackage(string ExternalOrderId, RemotePackage Package, RemoteOrder? OrderSnapshot = null);
 public sealed record PackageTrackingStatusSnapshot(string PackageNumber, string? Status, string? CargoCompany, string? TrackingInfoCode, string? OrderNumber = null);
@@ -625,10 +629,12 @@ public interface IOrderPort
         Task.FromResult(AdapterResult<RemoteOrderPackage>.Failure(new(AdapterErrorClass.NotSupported, "ORDER_PACKAGE_READ_UNSUPPORTED", "Bu pazaryerinde paket ayrıntısı okuması desteklenmiyor.", null, null, null)));
     Task<AdapterResult<RemoteOrderPackage>> GetShipmentPackageAsync(AdapterContext context, string externalPackageId, DateTimeOffset? packageStatusOccurredAt, CancellationToken cancellationToken) =>
         GetShipmentPackageAsync(context, externalPackageId, cancellationToken);
-    // Invoice reads need only the package itself; an adapter that can find a package in more
-    // than one source stops at the first match instead of searching on for cargo fields.
-    Task<AdapterResult<RemoteOrderPackage>> GetShipmentPackageInvoiceAsync(AdapterContext context, string externalPackageId, DateTimeOffset? packageStatusOccurredAt, CancellationToken cancellationToken) =>
-        GetShipmentPackageAsync(context, externalPackageId, packageStatusOccurredAt, cancellationToken);
+    // What the panel already knows about an order lets an adapter ask the right place first
+    // (its storefront, a date window around it) instead of searching every source.
+    Task<AdapterResult<RemoteOrder>> GetAsync(AdapterContext context, string externalOrderId, OrderLookupHint? hint, CancellationToken cancellationToken) =>
+        GetAsync(context, externalOrderId, cancellationToken);
+    Task<AdapterResult<RemoteOrderPackage>> GetShipmentPackageAsync(AdapterContext context, string externalPackageId, PackageLookup lookup, CancellationToken cancellationToken) =>
+        GetShipmentPackageAsync(context, externalPackageId, lookup.StatusOccurredAt, cancellationToken);
     Task<AdapterResult<PackageActionResult>> ExecutePackageActionAsync(AdapterContext context, PackageActionCommand command, CancellationToken cancellationToken);
     Task<AdapterResult<IReadOnlyList<RemoteCargoCompany>>> GetChangeableCargoCompaniesAsync(AdapterContext context, string externalPackageId, CancellationToken cancellationToken);
     Task<AdapterResult<IReadOnlyList<RemotePackageableLine>>> GetPackageableLineItemsAsync(AdapterContext context, string externalLineItemId, CancellationToken cancellationToken);

@@ -3939,10 +3939,31 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             Assert.True(orderResult.IsSuccess, orderResult.Error?.SafeMessage);
             Assert.Equal("116483573775", orderResult.Value!.ExternalOrderId);
             var orderLookupRequests = requests.Requests.Skip(orderLookupStart).ToArray();
-            Assert.Equal(["TR", "TR", "AE"], storeFrontCodes.Skip(2));
-            Assert.All(orderLookupRequests, uri => Assert.Equal("116483573775", QueryValue(uri, "orderNumber")?.Trim('"')));
+            // The quoted order number is tried only after a 400, so a miss costs one request per storefront.
+            Assert.Equal(["TR", "AE"], storeFrontCodes.Skip(2));
+            Assert.Equal("AE", orderResult.Value.StoreFrontCode);
+            Assert.All(orderLookupRequests, uri => Assert.Equal("116483573775", QueryValue(uri, "orderNumber")));
             Assert.All(orderLookupRequests, uri => Assert.Equal(anchor.AddDays(-14).ToUnixTimeMilliseconds().ToString(), QueryValue(uri, "startDate")));
             Assert.All(orderLookupRequests, uri => Assert.Equal(anchor.ToUnixTimeMilliseconds().ToString(), QueryValue(uri, "endDate")));
+
+            // A known order is asked for in its own storefront only.
+            storeFrontCodes.Clear();
+            var knownOrder = new OrderLookupHint(anchor.AddDays(-3), anchor.AddDays(-1), "AE");
+            Assert.True((await client.GetAsync(context, "116483573775", knownOrder, CancellationToken.None)).IsSuccess);
+            Assert.True((await client.GetShipmentPackageAsync(context, "419428742", new PackageLookup(anchor.AddDays(-1), knownOrder, InvoiceOnly: true), CancellationToken.None)).IsSuccess);
+            Assert.Equal(["AE", "AE"], storeFrontCodes);
+
+            // An order older than Order V2's month is read from the stream around its last change.
+            storeFrontCodes.Clear();
+            var streamLookupStart = requests.Requests.Count;
+            var oldOrder = new OrderLookupHint(anchor.AddDays(-40), anchor.AddDays(-35), "AE");
+            var oldResult = await client.GetAsync(context, "116483573775", oldOrder, CancellationToken.None);
+            Assert.True(oldResult.IsSuccess, oldResult.Error?.SafeMessage);
+            var streamRequest = Assert.Single(requests.Requests.Skip(streamLookupStart));
+            Assert.Equal("/integration/order/sellers/seller-contract-test/orders/stream", streamRequest.AbsolutePath);
+            Assert.Equal(anchor.AddDays(-41).ToUnixTimeMilliseconds().ToString(), QueryValue(streamRequest, "lastModifiedStartDate"));
+            Assert.Equal(anchor.AddDays(-29).ToUnixTimeMilliseconds().ToString(), QueryValue(streamRequest, "lastModifiedEndDate"));
+            Assert.Equal(["AE"], storeFrontCodes);
         }
         finally
         {
