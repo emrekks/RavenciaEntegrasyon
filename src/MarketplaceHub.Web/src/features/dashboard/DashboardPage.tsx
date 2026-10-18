@@ -149,7 +149,7 @@ function RevenueChart({ points, previous, currency, value = point => point.amoun
 function KpiCell({ label, value, delta, note, avgLabel = 'Günlük ortalama', avg, min, max, position, on, onPick, loading }: { loading?: boolean; label: string; value: string; delta: [string, boolean] | null; note?: string; avgLabel?: string; avg: string; min: string; max: string; position: number; on?: boolean; onPick?: () => void }) {
   return <div className={`rr-kc${on ? ' rr-on' : ''}${onPick ? ' rr-pick' : ''}${loading ? ' rr-kc-wait' : ''}`} role={onPick ? 'tab' : undefined} aria-selected={onPick ? Boolean(on) : undefined} tabIndex={onPick ? 0 : undefined} onClick={onPick} onKeyDown={event => { if (onPick && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onPick() } }}>
     <small>{label}</small><strong className="rr-num">{value}</strong>
-    {delta ? <span className={`rr-trend ${delta[1] ? 'rr-up' : 'rr-down'}`}>{delta[1] ? ICONS.up : ICONS.down}{delta[0]}<em>önceki döneme göre</em></span> : <span className="rr-trend"><em>{note}</em></span>}
+    {delta ? <span className={`rr-trend ${delta[1] ? 'rr-up' : 'rr-down'}`}>{delta[1] ? ICONS.up : ICONS.down}<span className="rr-trend-v">{delta[0]}</span><em>önceki döneme göre</em></span> : <span className="rr-trend"><em>{note}</em></span>}
     <span className="rr-avg">{avgLabel} <b className="rr-num">{avg}</b></span>
     <div className="rr-krange" role="img" aria-label={`${min} – ${max}`}><span className="rr-kbar"><i style={{ left: `${Math.max(0, Math.min(1, position)) * 100}%` }} /></span><span className="rr-kends"><span className="rr-num">{min}</span><span className="rr-num">{max}</span></span></div>
   </div>

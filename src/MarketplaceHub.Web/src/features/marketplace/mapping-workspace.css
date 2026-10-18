@@ -606,3 +606,15 @@
   .app-shell.stitch-shell main section.mapping-page .mapping-saved-table tbody tr > td:nth-child(2) .ms-platform img { width: 22px; height: 22px; }
   .app-shell.stitch-shell main section.mapping-page .mapping-saved-table tbody tr > td:nth-child(5) .mapping-row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
 }
+/* saved mapping tables keep their column widths whatever rows they hold, so the header does not move when rows load or a platform tab changes; when the card is narrower than the table it scrolls sideways instead of cutting it */
+@media (min-width: 761px) {
+  .app-shell.stitch-shell main section.mapping-page .mapping-saved-table { overflow-x: auto; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-saved-table table { table-layout: fixed; min-width: 900px; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-saved-table th:nth-child(1) { width: 20%; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-saved-table th:nth-child(2) { width: 150px; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-saved-table th:nth-child(4) { width: 176px; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-saved-table th:nth-child(5) { width: 236px; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-saved-table.is-brand th:nth-child(1) { width: auto; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-saved-table.is-brand th:nth-child(5) { width: 110px; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-saved-table td { overflow-wrap: anywhere; }
+}
