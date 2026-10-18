@@ -15,6 +15,7 @@ import { JobQueueMetrics } from './JobQueueMetrics'
 import './jobs-responsive.css'
 import './jobs-sade.css'
 import { viewTabLabel } from '../../shared/view-tabs'
+import { useRememberedTabCounts } from '../../shared/tab-counts'
 
 type JobStatus = 'PENDING' | 'LEASED' | 'RETRY_SCHEDULED' | 'BLOCKED' | 'MANUAL_REVIEW' | 'SUCCEEDED' | 'DEAD' | 'CANCELLED'
 type JobSummary = {
@@ -511,6 +512,7 @@ export function JobsPage({ me }: { me: Me }) {
     error: rangeFiltered.filter(job => ['BLOCKED', 'MANUAL_REVIEW', 'DEAD'].includes(job.status)).length,
     cancelled: rangeFiltered.filter(job => job.status === 'CANCELLED').length
   }), [rangeFiltered])
+  const [successCount, runningCount, waitingCount, errorCount] = useRememberedTabCounts('İşlem durum özeti', (['success', 'running', 'waiting', 'error'] as const).map(key => ({ value: key, count: list.isLoading ? undefined : statusSummary[key] })))
   const categoryCounts = useMemo(() => new Map(categoryTabs.map(tab => [tab.key, rangeFiltered.filter(job => tab.match(job.jobType)).length])), [rangeFiltered])
   const refreshJobs = () => {
     void Promise.all([
@@ -547,10 +549,10 @@ export function JobsPage({ me }: { me: Me }) {
       <Tabs className="jobs-reference-tabs rv-view-tabs" ariaLabel="İşlem kategorileri" value={category} onChange={value => setCategory(value as JobCategory)} items={categoryTabs.filter(tab => tab.key !== 'SYSTEM').map(tab => ({ value: tab.key, label: viewTabLabel(({ ALL: 'all', ORDERS: 'order', PRICE_INVENTORY: 'price', CATALOG: 'product', INVOICES: 'invoice', RETURNS: 'return', SYSTEM: 'review' } as const)[tab.key], tab.label), count: list.isLoading ? undefined : categoryCounts.get(tab.key) ?? 0 }))} />
       <div className="jobs-reference-toolbar">
         <div className="jobs-reference-status-summary" aria-label="İşlem durum özeti">
-          <span className="success"><JobStateGlyph tone="success" />Başarılı <strong>{statusSummary.success}</strong></span>
-          <span className="running"><JobStateGlyph tone="running" />Çalışıyor <strong>{statusSummary.running}</strong></span>
-          <span className="waiting"><JobStateGlyph tone="waiting" />Bekliyor <strong>{statusSummary.waiting}</strong></span>
-          <span className="error"><JobStateGlyph tone="error" />Hata <strong>{statusSummary.error}</strong></span>
+          <span className="success"><JobStateGlyph tone="success" />Başarılı <strong>{successCount.count ?? 0}</strong></span>
+          <span className="running"><JobStateGlyph tone="running" />Çalışıyor <strong>{runningCount.count ?? 0}</strong></span>
+          <span className="waiting"><JobStateGlyph tone="waiting" />Bekliyor <strong>{waitingCount.count ?? 0}</strong></span>
+          <span className="error"><JobStateGlyph tone="error" />Hata <strong>{errorCount.count ?? 0}</strong></span>
           {statusSummary.cancelled > 0 && <span className="cancelled"><JobStateGlyph tone="cancelled" />İptal <strong>{statusSummary.cancelled}</strong></span>}
         </div>
         <div className="jobs-reference-toolbar-actions">
