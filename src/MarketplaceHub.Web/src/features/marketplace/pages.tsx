@@ -1,4 +1,5 @@
 import { marketplaceProductSearchUrl } from '../questions/marketplace-product-link'
+import { useRememberedHeight } from '../../shared/remembered-height'
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type FormEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import { createPortal, flushSync } from 'react-dom'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
@@ -2294,6 +2295,7 @@ function CategoryMappingWorkspace() {
     setSelectedPlatformCode(current => activeMappingConnectionsForPlatform(connections.data!.items, current).length ? current : availablePlatform.code)
   }, [connections.data])
   const localCategories = useQuery({ queryKey: ['categories', 'mapping'], queryFn: () => loadAllPages<LocalCategory>('/catalog/categories') })
+  const categoryListHeight = useRememberedHeight<HTMLDivElement>('category-library', localCategories.isLoading)
   const localAttributes = useQuery({ queryKey: ['attributes', 'mapping-builder'], queryFn: () => loadAllPages<LocalAttribute>('/catalog/attributes') })
   const references = useQuery({ queryKey: ['reference-categories', connectionId], queryFn: () => hubApi<ReferenceData>(`/reference-data/categories?connectionId=${encodeURIComponent(connectionId)}`), enabled: !!connectionId, retry: false })
   const mapping = useQuery({ queryKey: ['category-mapping', localId, connectionId], queryFn: () => hubApi<CatalogMapping | null>(`/mappings/categories/${localId}?connectionId=${encodeURIComponent(connectionId)}`), enabled: !!localId && !!connectionId, retry: false })
@@ -2525,7 +2527,7 @@ function CategoryMappingWorkspace() {
       <div className="mapping-local-manager-dialog mapping-local-manager-dialog-standalone">
         <form className="platform-category-create" onSubmit={event => { event.preventDefault(); createCategory.mutate() }}><label>Yeni Panel Kategorisi<input aria-label="Yeni panel kategorisi adı" maxLength={160} value={categoryName} onChange={event => setCategoryName(event.target.value)} placeholder="Örn. Anne Bluz" required /></label><button disabled={createCategory.isPending}>{createCategory.isPending ? 'Ekleniyor…' : 'Kategori Ekle'}</button></form>
         <div className="category-library-tools"><div className={categoryLibraryOpen ? 'category-library-search-control is-open' : 'category-library-search-control'}><input aria-label="Eklenen panel kategorilerinde ara" value={categoryLibrarySearch} onFocus={() => setCategoryLibraryOpen(true)} onClick={() => setCategoryLibraryOpen(true)} onChange={event => setCategoryLibrarySearch(event.target.value)} placeholder="Kategori ara…" /><button type="button" className="category-library-search-toggle" aria-label={categoryLibraryOpen ? 'Kategorileri kapat' : 'Kategorileri aç'} aria-expanded={categoryLibraryOpen} onMouseDown={event => event.preventDefault()} onClick={() => setCategoryLibraryOpen(value => !value)}><span aria-hidden="true" /></button></div><select aria-label="Panel kategorilerini sırala" value={categoryLibrarySort} onChange={event => setCategoryLibrarySort(event.target.value as 'NAME_ASC' | 'NAME_DESC')}><option value="NAME_ASC">A–Z</option><option value="NAME_DESC">Z–A</option></select><span>{filteredCategoryLibrary.length.toLocaleString('tr-TR')} sonuç</span></div>
-        <div className="category-library-list">{filteredCategoryLibrary.slice(0, 100).map(category => <span key={category.id} className={category.id === localId ? 'active' : ''}><button type="button" onClick={() => { setLocalId(category.id); setExternalId('') }}>{category.name}</button><button type="button" className="category-library-remove" aria-label="Kategoriyi kaldır" onClick={() => archiveCategory.mutate(category)} disabled={archiveCategory.isPending}><UiIcon name="close" /></button></span>)}</div>
+        <div className="category-library-list" ref={categoryListHeight.ref} style={categoryListHeight.style}>{filteredCategoryLibrary.slice(0, 100).map(category => <span key={category.id} className={category.id === localId ? 'active' : ''}><button type="button" onClick={() => { setLocalId(category.id); setExternalId('') }}>{category.name}</button><button type="button" className="category-library-remove" aria-label="Kategoriyi kaldır" onClick={() => archiveCategory.mutate(category)} disabled={archiveCategory.isPending}><UiIcon name="close" /></button></span>)}</div>
       </div>
     </article>
   )

@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useRememberedTabCounts } from './tab-counts'
 import { createPortal } from 'react-dom'
 import './view-tabs.css'
 
@@ -58,7 +59,8 @@ type ViewTabItem = { value: string; label: ReactNode; count?: ReactNode; countTo
 // Tabs with a "Diğer" menu: the values listed in `more` leave the row and open from a menu at its end, so long tab sets
 // (orders and returns have nine) fit on one line. When one of them is selected, the menu button shows it as active.
 // Tabs that still do not fit the row move into the menu too, last first (never the first tab or the selected one).
-export function ViewTabsWithMore({ items, more, value, onChange, ariaLabel, className }: { items: ViewTabItem[]; more: string[]; value: string; onChange: (value: string) => void; ariaLabel: string; className?: string }) {
+export function ViewTabsWithMore({ items: givenItems, more, value, onChange, ariaLabel, className }: { items: ViewTabItem[]; more: string[]; value: string; onChange: (value: string) => void; ariaLabel: string; className?: string }) {
+  const items = useRememberedTabCounts(ariaLabel, givenItems)
   const [open, setOpen] = useState(false)
   const [position, setPosition] = useState<{ top: number; right: number } | null>(null)
   const trigger = useRef<HTMLButtonElement>(null)

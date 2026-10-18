@@ -2547,6 +2547,9 @@
   .rv-topbar-search.rv-topbar-search-icon > span, .rv-topbar-search.rv-topbar-search-icon > kbd { display: none; }
   .rv-badge > i { width: 6px; height: 6px; flex: 0 0 6px; background: currentColor; border-radius: 50%; }
   .rv-button-loading-icon { animation: rv-spin .8s linear infinite; }
+.rv-button.is-loading { position: relative; }
+.rv-button.is-loading > .rv-button-hold { display: contents; visibility: hidden; }
+.rv-button.is-loading > .rv-button-busy { position: absolute; inset: 0; display: grid; place-items: center; }
 
   /* The mapping workspace uses a stable card grid; value lists open in a
      focused surface so the main comparison remains scannable. */
@@ -12052,6 +12055,9 @@ h1, h2, h3, h4, :is(.orders-control-bar, .invoice-reference-filters, .return-ref
 ::-webkit-scrollbar-thumb { background: transparent padding-box; border: 3px solid transparent; border-radius: 999px; }
 .is-scrolling::-webkit-scrollbar-thumb, .is-scrollbar-hover::-webkit-scrollbar-thumb { background-color: var(--rv-color-border-strong); }
 .is-scrollbar-hover::-webkit-scrollbar-thumb:hover { background-color: var(--rv-color-subtle); }
+/* The page keeps its scrollbar lane even while a page is short (a list still loading), so nothing jumps 12px sideways
+   when the content grows past the screen. The lane is invisible like the bar itself. */
+html { scrollbar-gutter: stable; }
 @supports (-moz-appearance: none) { * { scrollbar-width: thin; scrollbar-color: transparent transparent; } .is-scrolling, .is-scrollbar-hover { scrollbar-color: var(--rv-color-border-strong) transparent; } }
 
 

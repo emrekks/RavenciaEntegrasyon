@@ -390,7 +390,7 @@
 /* 1. Panel categories: create row, search row, chip grid */
 .app-shell.stitch-shell main section.mapping-page .platform-category-create { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px; }
 .app-shell.stitch-shell main section.mapping-page .category-library-tools { display: grid; grid-template-columns: minmax(0, 1fr) 96px auto; align-items: center; gap: 8px; }
-.app-shell.stitch-shell main section.mapping-page .category-library-tools > span { color: var(--rv-color-muted); font-size: 13px; white-space: nowrap; }
+.app-shell.stitch-shell main section.mapping-page .category-library-tools > span { min-width: 8ch; color: var(--rv-color-muted); font-size: 13px; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
 .app-shell.stitch-shell main section.mapping-page :is(.category-library-list, .category-chip-list) { gap: 6px; }
 .app-shell.stitch-shell main section.mapping-page :is(.category-library-list, .category-chip-list) > span { display: flex; align-items: center; height: 36px; min-height: 36px; padding: 0 6px 0 12px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; }
 .app-shell.stitch-shell main section.mapping-page :is(.category-library-list, .category-chip-list) > span:hover { background: var(--rv-color-surface-soft); }

@@ -262,3 +262,6 @@
   .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item:is(:hover, :focus, :focus-within) > div > small:not(.qi-sync-time) { display: flex; }
   .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item:nth-child(even) > div > small:not(.qi-sync-time) { left: auto; right: 8px; }
 }
+/* sync strip placeholders hold the strip's height while the states load; they show nothing */
+.app-shell.stitch-shell main .qi-page .qi-sync .rv-questions-sync-item.is-placeholder { visibility: hidden; }
+.app-shell.stitch-shell main .qi-page .qi-sync .rv-questions-sync-item.is-placeholder > .rv-question-platform-logo { display: block; }

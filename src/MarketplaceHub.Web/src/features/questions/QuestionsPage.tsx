@@ -65,6 +65,12 @@ function formatDate(value?: string | null) {
 }
 
 // The sync strip is narrow: a date from this year leaves the year out (the full date stays in the tooltip).
+// The sync strip keeps the height it had last time while the states load (placeholders in the same shape), so the inbox
+// under it does not jump down when the cards arrive.
+const syncCountKey = 'rv-question-sync-count'
+function rememberedSyncCount() { try { return Math.min(8, Math.max(1, Number(localStorage.getItem(syncCountKey)) || 4)) } catch { return 4 } }
+function rememberSyncCount(count: number) { try { if (count > 0) localStorage.setItem(syncCountKey, String(count)) } catch { /* storage unavailable */ } }
+
 function formatShortDate(value?: string | null) {
   if (!value) return '—'
   const date = new Date(value)
@@ -156,6 +162,7 @@ export function QuestionsPage() {
   const formatCount = (value: number | undefined) => value === undefined ? undefined : value.toLocaleString('tr-TR')
   const templates = useQuery({ queryKey: ['question-templates'], queryFn: () => hubApi<Template[]>('/question-templates'), staleTime: 30_000 })
   const syncStates = useQuery({ queryKey: ['questions', 'sync-state'], queryFn: () => hubApi<SyncState[]>('/questions/sync-state'), refetchInterval: 15_000 })
+  useEffect(() => { if (syncStates.data) rememberSyncCount(syncStates.data.length) }, [syncStates.data])
 
   const sync = useMutation({
     mutationFn: (request: { kind: string; platformCode?: string }) => hubApi<{ jobs: string[]; queuedConnections: number }>('/questions/sync', { method: 'POST', headers: { 'X-Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify(request) }),
@@ -246,7 +253,8 @@ export function QuestionsPage() {
     <header className="qi-head rv-page-head"><div><p className="qi-crumb">Müşteri İletişimi</p><h1>Ürün Soruları</h1><p>Ürün sorularını ve Hepsiburada ile Pazarama sipariş sorularını yönetin.</p></div><div className="qi-acts"><Button variant="secondary" onClick={() => setTemplatesOpen(true)}><UiIcon name="list" size={16} />Hazır Cevaplar<span className="qi-count">{templates.data?.length ?? 0}</span></Button><Button variant="secondary" onClick={() => sync.mutate({ kind })} loading={sync.isPending}><UiIcon name="refresh" size={16} /> Yenile</Button></div></header>
     <section className="rv-questions-sync qi-sync" aria-label="Soru aktarım durumu">
       {(syncStates.data ?? []).filter(item => tab !== 'ORDER' || ORDER_QUESTION_PLATFORMS.includes(item.platformCode)).map(item => { const summary = syncSummary(item, tab); return <div className="rv-questions-sync-item" tabIndex={0} data-platform={item.platformCode.toLowerCase()} key={item.connectionId} title={item.historyStartedAt ? `Aktarım başlangıcı: ${formatDate(item.historyStartedAt)}` : undefined}><img className={`rv-question-platform-logo ${platformLogoClass(item.platformCode)}`} src={platformLogoSource(item.platformCode) ?? undefined} alt="" aria-hidden="true" /><div><b>{item.storeName} <em>{summary.records}</em></b><small><StateGlyph state={summary.glyph} />{summary.state}</small><small className="qi-sync-time" title={item.lastSuccessAt ? `Son aktarım ${formatDate(item.lastSuccessAt)}` : item.lastError ?? undefined}>{item.lastSuccessAt ? `Son aktarım ${formatShortDate(item.lastSuccessAt)}` : item.lastError ?? ''}</small></div></div> })}
-      {!syncStates.data?.length && <span className="qi-sync-empty">Soru geçmişi bağlantılarınızdan arka planda alınır. İlk senkronizasyon sonrası aktarım durumu burada görünür.</span>}
+      {syncStates.isLoading && Array.from({ length: rememberedSyncCount() }, (_, index) => <div className="rv-questions-sync-item is-placeholder" aria-hidden="true" key={`placeholder-${index}`}><span className="rv-question-platform-logo" /><div><b>&nbsp;</b><small>&nbsp;</small><small className="qi-sync-time">&nbsp;</small></div></div>)}
+      {!syncStates.isLoading && !syncStates.data?.length && <span className="qi-sync-empty">Soru geçmişi bağlantılarınızdan arka planda alınır. İlk senkronizasyon sonrası aktarım durumu burada görünür.</span>}
     </section>
     {notice && <MessageToast message={notice} onClose={() => setNotice('')} />}
     <div className={`qi-inbox${detailOpen ? ' is-detail' : ''}`}>
