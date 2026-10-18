@@ -31,6 +31,9 @@ export function useOperationsRealtime(enabled: boolean) {
       for (const resource of resources) {
         for (const queryKey of queryKeysByResource[resource.toLowerCase()] ?? []) void client.invalidateQueries({ queryKey })
       }
+      // Job events are announced under the resource the job works on (orders, invoices...), so any change also refreshes the
+      // job list; it only refetches while the list is on screen.
+      if (resources.length && !resources.some(resource => resource.toLowerCase() === 'jobs')) void client.invalidateQueries({ queryKey: ['jobs'] })
     }
     connection.on('operationsChanged', ({ resources, events }: { resources?: string[]; events?: { eventId?: string }[] }) => {
       if (!seenEvents.shouldProcess((events ?? []).map(event => event.eventId))) return

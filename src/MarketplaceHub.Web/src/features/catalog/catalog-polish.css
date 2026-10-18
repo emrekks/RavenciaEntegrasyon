@@ -76,3 +76,16 @@
 
 /* 16px block rhythm: the workspace sits right under the toolbar, the page grid supplies the gap. */
 .app-shell.stitch-shell main .products-page > .product-catalog-workspace { margin-top: 0; }
+
+/* The back link has no frame: the arrow sits bare and the hover is the same quiet fill the other icon buttons use */
+.app-shell.stitch-shell main .product-heading-back .ui-icon { border-color: transparent; }
+.app-shell.stitch-shell main .product-heading-back:hover .ui-icon,
+.app-shell.stitch-shell main .product-heading-back:focus-visible .ui-icon { background: var(--rv-color-surface-soft); border-color: transparent; transform: none; }
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .product-add-page .product-heading-back { background: none; border: 0; border-radius: 7px; }
+  .app-shell.stitch-shell main .product-add-page .product-heading-back .ui-icon { width: 20px; height: 20px; padding: 0; background: none; border: 0; transform: none; }
+  .app-shell.stitch-shell main .product-add-page .product-heading-back:hover,
+  .app-shell.stitch-shell main .product-add-page .product-heading-back:focus-visible { background: var(--rv-color-surface-soft); }
+  .app-shell.stitch-shell main .product-add-page .product-heading-back:hover .ui-icon,
+  .app-shell.stitch-shell main .product-add-page .product-heading-back:focus-visible .ui-icon { background: none; }
+}
