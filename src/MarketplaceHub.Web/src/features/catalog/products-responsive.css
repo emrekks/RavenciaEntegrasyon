@@ -479,3 +479,14 @@
   .app-shell.stitch-shell main .product-add-page .product-submit-actions > .platform-update-split,
   .app-shell.stitch-shell main .product-add-page .product-submit-actions .platform-update-split > .platform-update-settings { flex: none; }
 }
+
+/* Phones: the variant stock table opened from a product card is a full-width popover over the card: colour names on the
+   left, one even column per size, rows divided by thin lines and a shadow to lift it off the buttons under it. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl .rr-vhover > .rr-vtip:not(.rr-vtip-empty) { right: 12px; left: 12px; max-height: 280px; padding: 6px 12px 8px; border-radius: 12px; box-shadow: 0 14px 36px rgb(0 0 0 / 38%); }
+  .app-shell.stitch-shell main .rr.rr-products .rr-ptbl .rr-vtab { width: 100% !important; table-layout: auto !important; }
+  .app-shell.stitch-shell main .rr.rr-products .rr-ptbl .rr-vtab :is(th, td) { padding: 7px 4px !important; font-size: 13px; }
+  .app-shell.stitch-shell main .rr.rr-products .rr-ptbl .rr-vtab thead th { padding-block: 4px 7px !important; color: var(--rv-color-subtle); font-size: 12px; font-weight: 600; }
+  .app-shell.stitch-shell main .rr.rr-products .rr-ptbl .rr-vtab :is(thead th:first-child, tbody th) { width: auto !important; padding-left: 0 !important; overflow: visible !important; text-overflow: clip !important; white-space: nowrap; text-align: left !important; }
+  .app-shell.stitch-shell main .rr.rr-products .rr-ptbl .rr-vtab tbody th { max-width: none; color: var(--rv-color-ink); font-weight: 500; }
+}

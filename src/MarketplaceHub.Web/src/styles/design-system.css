@@ -12172,3 +12172,6 @@ html body :is(.nav-count, .rv-tab-count, .ss-count, .cs-count, .cm-count, .qi-co
 /* Date range picker: days after today are greyed out and cannot be picked. */
 .date-range-picker-popover .date-range-picker-grid > button:disabled,
 .date-range-picker-popover .date-range-picker-grid > button:disabled:hover { color: var(--rv-color-subtle); background: none; border-color: transparent; opacity: .4; cursor: not-allowed; }
+
+/* Phones: the menu button's icon reads a little larger than the other top bar icons. */
+.app-shell.stitch-shell .rv-mobile-menu-toggle .ui-icon-menu { width: 20px !important; height: 20px !important; }
