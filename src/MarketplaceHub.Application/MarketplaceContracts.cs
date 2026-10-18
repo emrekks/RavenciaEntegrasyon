@@ -780,7 +780,13 @@ public sealed record InstantNotificationView(
     DateTimeOffset? RegisteredAt,
     DateTimeOffset? LastReceivedAt,
     int ReceivedLast24Hours,
-    string? Message);
+    string? Message,
+    WebhookSetupInstructions? Setup = null);
+
+// What the seller sends a marketplace that registers webhooks by hand (Hepsiburada): the base
+// address with its secret route, the Basic Auth user and password, and the paths it calls.
+// Shown once, when prepared; the panel keeps only hashes and protected copies.
+public sealed record WebhookSetupInstructions(string Environment, string BaseUrl, string Username, string Password, IReadOnlyList<string> Paths);
 
 public interface IInstantNotificationService
 {

@@ -24,6 +24,17 @@ public sealed class InstantNotificationService(
 {
     // Panel-managed subscriptions are marked by their Basic Auth user name prefix.
     internal const string ManagedUserPrefix = "ravencia-";
+    // Hepsiburada registers webhooks by hand (a request from the seller), so the panel only
+    // prepares the address and credentials; its subscriptions carry this marker instead of an id.
+    internal const string ManualRegistration = "MANUAL";
+    internal static readonly string[] HepsiburadaPaths =
+    [
+        "POST /orders", "POST /packages", "PUT /lineitems/{lineitemid}/cancel",
+        "PUT /packages/{packagenumber}/unpack", "PUT /packages/{packagenumber}/intransit",
+        "PUT /packages/{packagenumber}/deliver", "PUT /packages/{packagenumber}/undeliver",
+        "PUT /orders/{ordernumber}/shippingaddress",
+        "PUT /claims/awaitingaction", "PUT /claims/awaitingpreapproval", "PUT /claims/accept", "PUT /claims/reject", "POST /claims/packages"
+    ];
     private static readonly string[] ForbiddenUrlParts = ["trendyol", "dolap", "localhost"];
     private readonly IDataProtector protector = dataProtection.CreateProtector("MarketplaceHub.WebhookVerifier.v1");
 
@@ -31,9 +42,22 @@ public sealed class InstantNotificationService(
     {
         var connection = await ConnectionAsync(tenantId, connectionId, cancellationToken);
         if (connection is null) return NotFound();
-        if (connection.PlatformCode != "TRENDYOL") return ServiceResult<InstantNotificationView>.Ok(new("UNSUPPORTED", null, null, null, 0, "Bu pazaryeri için anlık bildirim henüz panelden açılamıyor."));
+        if (connection.PlatformCode is not ("TRENDYOL" or "HEPSIBURADA")) return ServiceResult<InstantNotificationView>.Ok(new("UNSUPPORTED", null, null, null, 0, "Bu pazaryeri için anlık bildirim henüz panelden açılamıyor."));
         var subscription = await ManagedSubscriptionAsync(tenantId, connectionId, cancellationToken);
         if (subscription is null) return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, null, "OFF", null, cancellationToken));
+        if (subscription.ExternalSubscriptionId == ManualRegistration)
+        {
+            // Nothing to ask Hepsiburada: the first notification shows that it has set the address up.
+            var quiet = subscription.LastReceivedAt is not { } last || timeProvider.GetUtcNow() - last > WebhookPollingPolicy.SilenceLimit;
+            var manualState = subscription.LastReceivedAt is null ? "WAITING" : quiet ? "QUIET" : "ACTIVE";
+            var manualMessage = manualState switch
+            {
+                "WAITING" => "Bilgiler hazır; Hepsiburada adresi tanımlayıp ilk bildirimi gönderene kadar siparişler düzenli kontrolle gelir.",
+                "QUIET" => "Son saatlerde Hepsiburada'dan bildirim gelmedi; siparişler düzenli kontrolle gelmeye devam ediyor.",
+                _ => "Bildirimler geliyor; sipariş kontrolü yedek olarak 15 dakikada bir yapılıyor."
+            };
+            return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, subscription, manualState, manualMessage, cancellationToken));
+        }
 
         var remote = await registrations.ListWebhooksAsync(Context(tenantId, connectionId, correlationId, "webhook-status"), cancellationToken);
         if (!remote.IsSuccess)
@@ -59,7 +83,7 @@ public sealed class InstantNotificationService(
     {
         var connection = await ConnectionAsync(tenantId, connectionId, cancellationToken);
         if (connection is null) return NotFound();
-        if (connection.PlatformCode != "TRENDYOL")
+        if (connection.PlatformCode is not ("TRENDYOL" or "HEPSIBURADA"))
             return ServiceResult<InstantNotificationView>.Fail("INSTANT_NOTIFICATIONS_UNSUPPORTED", "Bu pazaryeri için anlık bildirim henüz panelden açılamıyor.", 422);
         if (connection.Status is not ("ACTIVE" or "VERIFIED"))
             return ServiceResult<InstantNotificationView>.Fail("CONNECTION_INACTIVE", "Bağlantı pasif olduğu için anlık bildirim açılamaz.", 422);
@@ -84,10 +108,19 @@ public sealed class InstantNotificationService(
             Status = "ACTIVE",
             Version = 1
         };
+        var url = $"{baseUrl}/api/v1/hooks/{connection.PublicId:D}/{routeToken}";
+        if (connection.PlatformCode == "HEPSIBURADA")
+        {
+            // Prepared only: no request goes to Hepsiburada. The seller sends these details.
+            subscription.ExternalSubscriptionId = ManualRegistration;
+            db.WebhookSubscriptions.Add(subscription);
+            await db.SaveChangesAsync(cancellationToken);
+            var setup = new WebhookSetupInstructions(connection.Environment == "PRODUCTION" ? "Canlı" : "Test (SIT)", url, username, password, HepsiburadaPaths);
+            return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, subscription, "WAITING", "Bilgileri Hepsiburada'ya iletin. Şifre yalnız bu ekranda gösterilir.", cancellationToken) with { Setup = setup });
+        }
         db.WebhookSubscriptions.Add(subscription);
         await db.SaveChangesAsync(cancellationToken);
 
-        var url = $"{baseUrl}/api/v1/hooks/{connection.PublicId:D}/{routeToken}";
         var created = await registrations.CreateWebhookAsync(Context(tenantId, connectionId, correlationId, "webhook-create"), url, username, password, cancellationToken);
         if (!created.IsSuccess)
         {
@@ -109,7 +142,7 @@ public sealed class InstantNotificationService(
         if (connection is null) return NotFound();
         var subscription = await ManagedSubscriptionAsync(tenantId, connectionId, cancellationToken, tracked: true);
         if (subscription is null) return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, null, "OFF", null, cancellationToken));
-        if (subscription.ExternalSubscriptionId is { } externalId)
+        if (subscription.ExternalSubscriptionId is { } externalId && externalId != ManualRegistration)
         {
             var deleted = await registrations.DeleteWebhookAsync(Context(tenantId, connectionId, correlationId, "webhook-delete"), externalId, cancellationToken);
             if (!deleted.IsSuccess)

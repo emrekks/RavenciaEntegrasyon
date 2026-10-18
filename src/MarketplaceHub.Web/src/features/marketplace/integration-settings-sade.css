@@ -328,3 +328,9 @@
 .instant-notifications-actions > button { min-height: 36px; }
 .instant-notifications-terms { margin: 0; padding-left: 18px; display: grid; gap: 8px; line-height: 1.5; }
 .instant-notifications-terms small { color: var(--rv-color-muted); }
+
+/* Hepsiburada: the prepared webhook details, shown once to be sent to Hepsiburada. */
+.instant-notifications-setup { display: grid; gap: 10px; margin-top: 12px; }
+.instant-notifications-setup p { margin: 0; color: var(--rv-color-muted); font-size: 13px; }
+.instant-notifications-setup pre { margin: 0; padding: 12px; overflow-x: auto; border: 1px solid var(--rv-color-border); border-radius: 7px; background: var(--rv-color-surface-raised); font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.instant-notifications-setup button { justify-self: start; min-height: 36px; }

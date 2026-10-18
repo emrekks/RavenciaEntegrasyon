@@ -1091,8 +1091,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         {
             await using var cleanup = fixture.CreateContext();
             await cleanup.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM integration.rate_limit_usage WHERE \"Key\" IN ({foregroundKey}, {backgroundKey})");
-            await cleanup.PlatformConnections.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
-            await cleanup.Tenants.Where(x => x.Id == tenant.Id).ExecuteDeleteAsync();
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
         }
     }
 
@@ -2061,6 +2060,68 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 Assert.Equal("OFF", disabled.Value!.State);
             }
             Assert.Equal("remote-webhook-1", port.DeletedId);
+        }
+        finally
+        {
+            await using var cleanupDb = fixture.CreateContext();
+            await cleanupDb.InboxMessages.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanupDb.IntegrationJobs.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanupDb.WebhookSubscriptions.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task InstantNotifications_PrepareHepsiburadaWithoutCallingHepsiburada()
+    {
+        var tenant = NewTenant("hepsiburada-instant-notifications");
+        var connection = NewQuestionConnection(tenant);
+        connection.PlatformCode = "HEPSIBURADA";
+        var port = new RecordingWebhookPort();
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Marketplace:PublicBaseUrl"] = "https://panel.ravencia.com" }).Build();
+        var dataProtection = new EphemeralDataProtectionProvider();
+        var hasher = new TokenHasher(new byte[32]);
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            InstantNotificationService Service(AppDbContext db) => new(db, port, hasher, dataProtection, configuration, fixture.TimeProvider, NullLogger<InstantNotificationService>.Instance);
+
+            WebhookSetupInstructions setup;
+            await using (var db = fixture.CreateContext())
+            {
+                var prepared = await Service(db).EnableAsync(tenant.Id, connection.Id, "prepare", CancellationToken.None);
+                Assert.Null(prepared.Error);
+                Assert.Equal("WAITING", prepared.Value!.State);
+                setup = prepared.Value.Setup!;
+            }
+            Assert.Null(port.CreatedUrl);
+            Assert.StartsWith($"https://panel.ravencia.com/api/v1/hooks/{connection.PublicId:D}/", setup.BaseUrl);
+            Assert.Contains("PUT /lineitems/{lineitemid}/cancel", setup.Paths);
+
+            // Hepsiburada calls a path below the base address with the prepared Basic Auth.
+            await using (var db = fixture.CreateContext())
+            {
+                var receiver = new MarketplaceWebhookService(db, hasher, new MarketplaceHub.Infrastructure.Adapters.Hepsiburada.HepsiburadaWebhookVerifier(db, dataProtection), fixture.TimeProvider);
+                var basic = "Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes($"{setup.Username}:{setup.Password}"));
+                var headers = new Dictionary<string, string> { ["Authorization"] = basic, [WebhookEventPath.Header] = "lineitems/b17553de/cancel" };
+                var received = await receiver.ReceiveAsync(connection.PublicId, setup.BaseUrl.Split('/').Last(), Encoding.UTF8.GetBytes("""{"orderNumber":"0123456789","id":"b17553de","cancelledBy":"Customer"}"""), headers, "webhook-test", CancellationToken.None);
+                Assert.Null(received.Error);
+                Assert.True(await db.IntegrationJobs.AnyAsync(job => job.TenantId == tenant.Id && job.PayloadJson.Contains("ORDER_EVENT")));
+            }
+
+            await using (var db = fixture.CreateContext())
+            {
+                Assert.Equal("ACTIVE", (await Service(db).StatusAsync(tenant.Id, connection.Id, "status", CancellationToken.None)).Value!.State);
+                Assert.Equal("OFF", (await Service(db).DisableAsync(tenant.Id, connection.Id, "disable", CancellationToken.None)).Value!.State);
+            }
+            Assert.Null(port.DeletedId);
         }
         finally
         {
