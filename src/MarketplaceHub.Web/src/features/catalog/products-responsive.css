@@ -393,11 +393,26 @@
   .app-shell.stitch-shell main .product-add-page .variant-table-row > input { height: 36px; min-height: 36px; font-size: 13px; }
 }
 
-/* Phones: the product save bar keeps Kaydet and the platform update side by side and gives the third action its own
-   full-width line (its label ran out of a half-width cell); every button is 36px like the rest of the panel. */
+/* Phones: the product save bar is one line: Kaydet, the platform update as two icon buttons (their names stay in the
+   tooltips) and a short "Yayınla"; every button is 36px like the rest of the panel. */
 @media (max-width: 760px) {
-  .app-shell.stitch-shell main .product-add-page .product-submit-actions > button:last-child:nth-child(3) { grid-column: 1 / -1; justify-content: center; }
+  .app-shell.stitch-shell main .product-add-page .product-submit-actions { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 8px; }
+  .app-shell.stitch-shell main .product-add-page .product-submit-actions > button { min-width: 0; justify-content: center; padding: 0 10px; white-space: nowrap; }
+  .app-shell.stitch-shell main .product-add-page .product-submit-actions .platform-update-quick > span,
+  .app-shell.stitch-shell main .product-add-page .product-submit-actions .submit-label-long { display: none; }
+  .app-shell.stitch-shell main .product-add-page .product-submit-actions .platform-update-split > button { width: 36px; min-width: 36px; padding: 0; justify-content: center; }
   .app-shell.stitch-shell main .product-add-page .product-submit-actions > button,
   .app-shell.stitch-shell main .product-add-page .product-submit-actions .platform-update-split,
   .app-shell.stitch-shell main .product-add-page .product-submit-actions .platform-update-split > button { box-sizing: border-box; height: 36px; min-height: 36px; }
 }
+
+/* Phones: product pictures are reordered by holding and sliding (see the media strip handlers); the browser's own
+   hold menu (save image) and native drag are off so they do not take over the gesture; the remove button is a small
+   corner button instead of a 32×44 block over the picture. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .product-add-page .media-preview-strip :is(img, figure) { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; -webkit-user-drag: none; }
+  .app-shell.stitch-shell main .product-add-page .media-preview-strip .is-media-drag-over { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }
+  .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-remove-btn { top: 4px; right: 4px; width: 26px; min-width: 26px; height: 26px; min-height: 26px; padding: 0; border-radius: 7px; }
+  .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-remove-btn .ui-icon { width: 14px; height: 14px; }
+}
+@media (min-width: 761px) { .app-shell.stitch-shell main .product-add-page .product-submit-actions .submit-label-short { display: none; } }

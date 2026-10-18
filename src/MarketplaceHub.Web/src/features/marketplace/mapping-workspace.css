@@ -618,3 +618,26 @@
   .app-shell.stitch-shell main section.mapping-page .mapping-saved-table.is-brand th:nth-child(5) { width: 110px; }
   .app-shell.stitch-shell main section.mapping-page .mapping-saved-table td { overflow-wrap: anywhere; }
 }
+
+/* Category picker list (Beden Kategorileri…): one clear look in both themes. Rows split by hairlines, the chosen ones in
+   dark text with a violet check, the rest muted with no check; hover is a quiet fill. An older rule painted chosen rows
+   violet with white text and violet lines, depending on the order the stylesheets loaded. */
+.app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-category-list.panel-attribute-category-list > button { color: var(--rv-color-muted); background: none !important; border: 0; border-bottom: 1px solid var(--rv-color-border); border-radius: 0; box-shadow: none; }
+.app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-category-list.panel-attribute-category-list > button.active { color: var(--rv-color-ink); font-weight: 500 !important; }
+.app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-category-list.panel-attribute-category-list > button:hover { color: var(--rv-color-ink); background: var(--rv-color-surface-soft) !important; }
+.app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-category-list.panel-attribute-category-list > button > i { color: var(--rv-color-primary); }
+.app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-category-list.panel-attribute-category-list > button:not(.active) > i { visibility: hidden; }
+
+/* Phones: a saved attribute row keeps its name readable (the name had 89px and ran into the buttons): the categories
+   button becomes an icon like edit and delete; the category search keeps its toggle inside the 36px box. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .panel-attribute-records > article { gap: 8px; }
+  .app-shell.stitch-shell main .panel-attribute-records .panel-attribute-record-main { flex: 1 1 auto; min-width: 0; }
+  .app-shell.stitch-shell main .panel-attribute-records .panel-attribute-record-main > :is(strong, small) { overflow-wrap: anywhere; }
+  .app-shell.stitch-shell main .panel-attribute-records .panel-attribute-record-actions { flex: none; gap: 2px; }
+  .app-shell.stitch-shell main .panel-attribute-records .panel-attribute-category-button { display: grid; width: 34px; min-width: 34px; padding: 0; place-items: center; font-size: 0; }
+  .app-shell.stitch-shell main .panel-attribute-records .panel-attribute-category-button::before { content: ""; width: 16px; height: 16px; background: currentColor; -webkit-mask: no-repeat center / contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 4.5h12M2 8h12M2 11.5h8'/%3E%3C/svg%3E"); mask: no-repeat center / contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 4.5h12M2 8h12M2 11.5h8'/%3E%3C/svg%3E"); }
+  .app-shell.stitch-shell main .category-library-search-control { position: relative; }
+  .app-shell.stitch-shell main .category-library-search-control > input { padding-right: 36px; }
+  .app-shell.stitch-shell main .category-library-search-control > .category-library-search-toggle { top: 0; right: 0; width: 36px; min-width: 36px; height: 36px; min-height: 36px; padding: 0; }
+}

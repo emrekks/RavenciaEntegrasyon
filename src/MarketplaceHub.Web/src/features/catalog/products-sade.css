@@ -291,3 +291,20 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl .rr-qbtn.rr-qbtn:hover { background: none; border-color: transparent; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl .rr-qbtn > b { text-decoration: underline dotted; text-underline-offset: 3px; }
 }
+/* Bulk bar: the selection count carries the "select every page" link, so the separate notice above the list is not
+   needed on phones; short labels and an icon-only clear keep the phone bar to two lines. */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pbulk .rr-lbl-short, :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pbulk .rr-bulk-clear > .rr-ico { display: none; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pbulk .rr-bulk-count { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pbulk .rr-bulk-all.rr-bulk-all { height: auto; min-height: 0; padding: 0; font-weight: 500; }
+@media (max-width: 760px) {
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-xsel.rr-xsel { display: none; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-bulk.rr-pbulk { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 10px 12px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pbulk .rr-bulk-count { grid-column: 1 / -1; grid-row: 1; min-height: 36px; align-content: center; padding-right: 44px; font-size: 13px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pbulk .rr-bulk-clear.rr-bulk-clear { position: absolute; top: 10px; right: 12px; width: 36px; min-width: 36px; padding: 0; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pbulk .rr-bulk-clear > .rr-ico { display: block; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pbulk .rr-bulk-clear > span { display: none; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pbulk > .rr-btn:not(.rr-bulk-clear), :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pbulk > .rr-anchor { grid-row: 2; min-width: 0; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pbulk > .rr-btn:not(.rr-bulk-clear), :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pbulk > .rr-anchor > .rr-btn { width: 100%; padding: 0 8px; justify-content: center; white-space: nowrap; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pbulk .rr-lbl-long { display: none; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pbulk .rr-lbl-short { display: inline; }
+}

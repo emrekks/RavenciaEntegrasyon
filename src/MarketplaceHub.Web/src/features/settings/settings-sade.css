@@ -409,3 +409,19 @@
 }
 .app-shell.stitch-shell main .ss-page .ss-btn.is-quiet.is-icon { color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border-color: var(--rv-color-border-strong); }
 .app-shell.stitch-shell main .ss-page .ss-btn.is-quiet.is-icon:hover { background: var(--rv-color-surface-soft); }
+
+/* Phones: the label designer's work area stays inside its column (a wide child pushed the paper past the card edge and
+   it was cut); the two session buttons share one line with shorter labels; the save bars sit close to the bottom
+   again and their buttons share the width instead of running off the right. */
+@media (max-width: 760px) {
+  .ss-page .ss-dz-work { grid-template-columns: minmax(0, 1fr); }
+  .ss-page .ss-head-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+  .app-shell.stitch-shell main .ss-page .ss-head-actions > .ss-btn { min-width: 0; justify-content: center; padding: 0 8px; white-space: nowrap; }
+  .ss-page .ss-lbl-long { display: none; }
+  .ss-page .ss-pane:has(> .ss-bar) { padding-bottom: 8px; }
+  .ss-page .ss-bar { bottom: 8px; }
+  .ss-page .ss-bar-actions { display: grid; grid-auto-columns: minmax(0, 1fr); grid-auto-flow: column; }
+  .ss-page .ss-bar-actions:has(> .ss-btn.is-icon) { grid-template-columns: 40px; grid-auto-columns: minmax(0, 1fr); }
+  .app-shell.stitch-shell main .ss-page .ss-bar-actions .ss-btn { min-width: 0; justify-content: center; padding: 0 8px; white-space: nowrap; }
+}
+@media (min-width: 761px) { .ss-page .ss-lbl-short { display: none; } }

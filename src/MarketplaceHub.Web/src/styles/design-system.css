@@ -12078,3 +12078,11 @@ html { scrollbar-gutter: stable; }
 .platform-update-modal-body .platform-update-target-copy > small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
 .platform-update-modal-body .platform-update-content-toggle small,
 .platform-update-modal-body .platform-update-capability-note { font-size: 12.5px; line-height: 1.5; }
+
+/* Phones: the top bar stays at the top of the screen; scrolling down slides it away and scrolling up brings it back
+   (the shell already sets is-hidden from the scroll direction). */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell .rv-topbar { position: sticky; top: 0; z-index: var(--rv-z-sticky); transition: transform .22s ease; will-change: transform; }
+  .app-shell.stitch-shell .rv-topbar.is-hidden { transform: translateY(-100%); }
+}
+@media (max-width: 760px) and (prefers-reduced-motion: reduce) { .app-shell.stitch-shell .rv-topbar { transition: none; } }

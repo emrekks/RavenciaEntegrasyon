@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { variantOptionParts } from './variant-option-label'
 import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import { createPortal, flushSync } from 'react-dom'
@@ -289,14 +289,14 @@ function VariantHeaderActionMenu({ anchorRef, children }: { anchorRef: { current
   return createPortal(<div ref={menuRef} className="variant-header-action-menu variant-header-action-menu-portal" role="menu" data-variant-header-popover="true" style={position}>{children}</div>, document.body)
 }
 
-function LocalImagePreview({ file, alt, caption: _caption, onRemove, onZoom, draggable = false, isDragOver = false, onDragStart, onDragOver, onDrop, onDragEnd }: { file: File, alt: string, caption: string, onRemove?: () => void, onZoom?: (url: string) => void, draggable?: boolean, isDragOver?: boolean, onDragStart?: (event: DragEvent<HTMLElement>) => void, onDragOver?: (event: DragEvent<HTMLElement>) => void, onDrop?: (event: DragEvent<HTMLElement>) => void, onDragEnd?: () => void }) {
+function LocalImagePreview({ file, alt, caption: _caption, onRemove, onZoom, draggable = false, isDragOver = false, onDragStart, onDragOver, onDrop, onDragEnd, mediaIndex }: { file: File, alt: string, caption: string, mediaIndex?: number, onRemove?: () => void, onZoom?: (url: string) => void, draggable?: boolean, isDragOver?: boolean, onDragStart?: (event: DragEvent<HTMLElement>) => void, onDragOver?: (event: DragEvent<HTMLElement>) => void, onDrop?: (event: DragEvent<HTMLElement>) => void, onDragEnd?: () => void }) {
   const [url, setUrl] = useState('');
   useEffect(() => {
     const objectUrl = URL.createObjectURL(file);
     setUrl(objectUrl);
     return () => URL.revokeObjectURL(objectUrl);
   }, [file]);
-  return <figure className={`image-preview-card${draggable ? ' media-sortable' : ''}${isDragOver ? ' is-media-drag-over' : ''}`} draggable={draggable} onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop} onDragEnd={onDragEnd}><img src={url} alt={alt} className="clickable-thumb" draggable={false} onClick={() => onZoom?.(url)} title={draggable ? 'Sıralamak için sürükleyin; büyütmek için tıklayın' : 'Büyütmek için tıklayın'} />{onRemove && <button type="button" className="image-remove-btn" title="Görseli sil" onClick={e => { e.stopPropagation(); onRemove(); }}><UiIcon name="close" /></button>}</figure>;
+  return <figure data-media-kind={mediaIndex === undefined ? undefined : 'file'} data-media-index={mediaIndex} className={`image-preview-card${draggable ? ' media-sortable' : ''}${isDragOver ? ' is-media-drag-over' : ''}`} draggable={draggable} onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop} onDragEnd={onDragEnd}><img src={url} alt={alt} className="clickable-thumb" draggable={false} onClick={() => onZoom?.(url)} title={draggable ? 'Sıralamak için sürükleyin; büyütmek için tıklayın' : 'Büyütmek için tıklayın'} />{onRemove && <button type="button" className="image-remove-btn" title="Görseli sil" onClick={e => { e.stopPropagation(); onRemove(); }}><UiIcon name="close" /></button>}</figure>;
 }
 function ImageLightboxModal({ image, onClose }: { image: { url: string; title: string }; onClose: () => void }) {
   return <RrImagePreview title={image.title} sources={[image.url]} onClose={onClose} />
@@ -1192,7 +1192,7 @@ export function ProductsPage() {
       </table>}</div>
       {totalCount > 0 && <div className="rr-pager"><span>Toplam <b style={{ color: 'var(--rr-ink)' }}>{totalCount.toLocaleString('tr-TR')}</b> adet</span><div className="rr-pages"><button type="button" aria-label="Önceki" disabled={currentPage <= 1 || query.isFetching || pageJumping} onClick={() => setPageNumber(value => Math.max(1, value - 1))}><RrIcon name="left" /></button>{pageList.map(value => <button key={value} type="button" className={value === currentPage ? 'rr-on' : undefined} aria-current={value === currentPage ? 'page' : undefined} disabled={query.isFetching || pageJumping} onClick={() => void goToPage(value)}>{value}</button>)}<button type="button" aria-label="Sonraki" disabled={!(currentPage < totalPages && Boolean(nextPageCursor)) || query.isFetching || pageJumping} onClick={goToNextPage}><RrIcon name="right" /></button></div><label className="rr-jump">Sayfaya Git<input className="rr-in" type="number" min={1} max={totalPages} placeholder={`1–${totalPages}`} aria-label="Sayfa numarası" value={jumpPage} onChange={event => setJumpPage(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && Number(jumpPage) >= 1) { void goToPage(Math.floor(Number(jumpPage))); setJumpPage('') } }} /><button type="button" className="rr-btn" onClick={() => { if (Number(jumpPage) >= 1) { void goToPage(Math.floor(Number(jumpPage))); setJumpPage('') } }}>Git</button></label></div>}
     </div>
-    {selectedProductIds.length > 0 && <div className="rr-bulk" role="group" aria-label="Toplu işlemler"><span className="rr-grow">{selectedProductCardCount.toLocaleString('tr-TR')} ürün kartı seçildi</span><button type="button" className="rr-btn rr-quiet" onClick={() => { setSelectedProductIds([]); setSelectedProductCache({}); setAllProductsSelected(false) }}>Seçimi Temizle</button><button type="button" className="rr-btn" onClick={() => setStatusRequest({ productIds: [...selectedProductIds], status: 'ACTIVE' })}><RrIcon name="on" />Satışa Aç</button><button type="button" className="rr-btn" onClick={() => setQuickEdit({ productIds: selectedProductIds, mode: 'both' })}><RrIcon name="price" />Fiyat ve Stok Düzenle</button><RrAnchor trigger={(open, toggle) => <button type="button" className="rr-btn rr-primary" aria-haspopup="menu" aria-expanded={open} onClick={toggle}>Toplu İşlemler ({selectedProductCardCount.toLocaleString('tr-TR')})<RrIcon name="chev" /></button>}>{close => <div className="rr-bulk-menu">{bulkMenu(close)}</div>}</RrAnchor></div>}
+    {selectedProductIds.length > 0 && <div className="rr-bulk rr-pbulk" role="group" aria-label="Toplu işlemler"><span className="rr-grow rr-bulk-count"><span>{allProductsSelected ? 'Tüm ürün kartları seçildi' : `${selectedProductCardCount.toLocaleString('tr-TR')} ürün kartı seçildi`}</span>{hasMoreProductsToSelect && !allProductsSelected && <button type="button" className="rr-btn rr-link rr-bulk-all" onClick={() => void selectAllFilteredProducts()} disabled={selectingAllProducts}>{selectingAllProducts ? 'Seçiliyor…' : `Tümünü Seç (${totalCount.toLocaleString('tr-TR')})`}</button>}</span><button type="button" className="rr-btn rr-quiet rr-bulk-clear" aria-label="Seçimi Temizle" title="Seçimi Temizle" onClick={() => { setSelectedProductIds([]); setSelectedProductCache({}); setAllProductsSelected(false) }}><RrIcon name="close" /><span>Seçimi Temizle</span></button><button type="button" className="rr-btn" onClick={() => setStatusRequest({ productIds: [...selectedProductIds], status: 'ACTIVE' })}><RrIcon name="on" />Satışa Aç</button><button type="button" className="rr-btn" onClick={() => setQuickEdit({ productIds: selectedProductIds, mode: 'both' })}><RrIcon name="price" /><span className="rr-lbl-long">Fiyat ve Stok Düzenle</span><span className="rr-lbl-short">Fiyat · Stok</span></button><RrAnchor trigger={(open, toggle) => <button type="button" className="rr-btn rr-primary" aria-haspopup="menu" aria-expanded={open} onClick={toggle}><span className="rr-lbl-long">Toplu İşlemler ({selectedProductCardCount.toLocaleString('tr-TR')})</span><span className="rr-lbl-short">Toplu ({selectedProductCardCount.toLocaleString('tr-TR')})</span><RrIcon name="chev" /></button>}>{close => <div className="rr-bulk-menu">{bulkMenu(close)}</div>}</RrAnchor></div>}
     {statusRequest && <RrModal crumb="Toplu İşlem" title={statusRequest.status === 'ACTIVE' ? 'Satışa Aç' : 'Satışa Kapat'} desc={`${statusRequestGroups.length || statusRequest.productIds.length} ürün kartı ${statusRequest.status === 'ACTIVE' ? 'satışa açılacak' : 'arşive alınacak'}.`} size="sm" onClose={() => setStatusRequest(null)} foot={<><span className="rr-note" /><button type="button" className="rr-btn" onClick={() => setStatusRequest(null)}>Vazgeç</button><button type="button" className={`rr-btn ${statusRequest.status === 'ACTIVE' ? 'rr-primary' : 'rr-danger'}`} onClick={() => { const request = statusRequest; setStatusRequest(null); void bulkSetProductStatus(request.status, request.productIds) }}>{statusRequest.status === 'ACTIVE' ? 'Satışa Aç' : 'Satışa Kapat'}</button></>}>
       <div className="rr-sum">{statusRequestGroups.slice(0, 6).map(group => <div key={group.id}><RrThumb src={group.primary.primaryImageUrl} alt={group.primary.title} /><span>{group.primary.title}<small>{group.primary.modelCode || '—'} · {group.variants.length} varyant</small></span><RrBadge label={group.products.every(product => product.status === 'ACTIVE') ? 'Satışa Açık' : titleTr(productStatusLabel(group.primary.status))} /></div>)}</div>
       {statusRequestGroups.length > 6 && <p className="rr-lead">ve {statusRequestGroups.length - 6} ürün kartı daha</p>}
@@ -1976,6 +1976,20 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
   const [familyMediaOrderDirty, setFamilyMediaOrderDirty] = useState(false)
   const [draggedMedia, setDraggedMedia] = useState<{ kind: 'file' | 'url'; index: number } | null>(null); const [dragOverMedia, setDragOverMedia] = useState<{ kind: 'file' | 'url'; index: number } | null>(null)
   const [pointerDraggedVariantKey, setPointerDraggedVariantKey] = useState<string | null>(null)
+  // Touch screens have no drag and drop: holding a picture for a moment picks it up, sliding moves it and lifting the
+  // finger drops it on the picture underneath. Moving before the hold completes scrolls the page as usual; while a
+  // picture is held the page does not scroll (a non-passive touchmove stops it).
+  const mediaTouch = useRef<{ kind: 'file' | 'url'; index: number; target: number; x: number; y: number; timer: number; dragging: boolean } | null>(null)
+  const suppressMediaClick = useRef(false)
+  const mediaStripCleanup = useRef<(() => void) | null>(null)
+  const mediaStripRef = useCallback((node: HTMLDivElement | null) => {
+    mediaStripCleanup.current?.()
+    mediaStripCleanup.current = null
+    if (!node) return
+    const hold = (event: TouchEvent) => { if (mediaTouch.current?.dragging) event.preventDefault() }
+    node.addEventListener('touchmove', hold, { passive: false })
+    mediaStripCleanup.current = () => node.removeEventListener('touchmove', hold)
+  }, [])
   const pointerDraggedVariantRef = useRef<string | null>(null)
   const pointerDragSourceRef = useRef<HTMLDivElement | null>(null)
   const pointerDragIdRef = useRef<number | null>(null)
@@ -2296,6 +2310,51 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
     const orderedProductMediaUrls = mediaUrlsInPreferredOrder(mediaUrls, next)
     if (!mediaRefsEqual(orderedProductMediaUrls, mediaUrls)) updateField('mediaUrls', orderedProductMediaUrls.join('\n'))
     showFeedback(editProductId ? 'Görsel sırası diğer renklerle birlikte Kaydet’te uygulanacak.' : 'Görsel sırası güncellendi. Kalıcı olması için kaydedin.', 'info')
+  }
+  function startMediaTouch(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.pointerType === 'mouse' || submitting) return
+    const target = event.target as Element
+    const card = target.closest<HTMLElement>('[data-media-index]')
+    if (!card || target.closest('button')) return
+    const kind = card.dataset.mediaKind === 'file' ? 'file' : 'url'
+    const index = Number(card.dataset.mediaIndex)
+    const state = { kind, index, target: index, x: event.clientX, y: event.clientY, timer: 0, dragging: false } as NonNullable<typeof mediaTouch.current>
+    state.timer = window.setTimeout(() => {
+      state.dragging = true
+      setDraggedMedia({ kind, index })
+      setDragOverMedia({ kind, index })
+      navigator.vibrate?.(12)
+    }, 280)
+    mediaTouch.current = state
+  }
+  function moveMediaTouch(event: ReactPointerEvent<HTMLDivElement>) {
+    const state = mediaTouch.current
+    if (!state) return
+    if (!state.dragging) {
+      if (Math.hypot(event.clientX - state.x, event.clientY - state.y) > 8) cancelMediaTouch()
+      return
+    }
+    const card = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('[data-media-index]')
+    if (!card || (card.dataset.mediaKind === 'file' ? 'file' : 'url') !== state.kind) return
+    state.target = Number(card.dataset.mediaIndex)
+    setDragOverMedia({ kind: state.kind, index: state.target })
+  }
+  function endMediaTouch() {
+    const state = mediaTouch.current
+    if (!state?.dragging) { cancelMediaTouch(); return }
+    mediaTouch.current = null
+    suppressMediaClick.current = true
+    window.setTimeout(() => { suppressMediaClick.current = false }, 400)
+    if (state.kind === 'url') reorderMedia(state.index, state.target)
+    else reorderUploadedMedia(state.index, state.target)
+    setDraggedMedia(null); setDragOverMedia(null)
+  }
+  function cancelMediaTouch() {
+    const state = mediaTouch.current
+    if (!state) return
+    window.clearTimeout(state.timer)
+    mediaTouch.current = null
+    if (state.dragging) { setDraggedMedia(null); setDragOverMedia(null) }
   }
   function reorderUploadedMedia(sourceIndex: number, targetIndex: number) {
     const next = reorderItems(mediaFiles, sourceIndex, targetIndex)
@@ -3504,7 +3563,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
           <strong>{mediaFiles.length ? `${mediaFiles.length} dosya seçildi` : 'Ürün görsellerini dosya olarak seç'}</strong>
           <small>Adet sınırı yok · JPEG veya PNG · dosya başına en fazla 6 MB</small>
         </label>
-        {(mediaUrls.length > 0 || mediaFiles.length > 0 || familyOnlyMediaItems.length > 0) && <div className="media-preview-strip">
+        {(mediaUrls.length > 0 || mediaFiles.length > 0 || familyOnlyMediaItems.length > 0) && <div ref={mediaStripRef} className="media-preview-strip" onPointerDown={startMediaTouch} onPointerMove={moveMediaTouch} onPointerUp={endMediaTouch} onPointerCancel={cancelMediaTouch} onContextMenu={event => { if (mediaTouch.current) event.preventDefault() }} onClickCapture={event => { if (suppressMediaClick.current) { event.preventDefault(); event.stopPropagation() } }}>
           {visibleMediaUrls.map((url, index) => {
             const ownedUrl = mediaUrls.find(current => mediaImageKey(current) === mediaImageKey(url))
             const ownIndex = ownedUrl === undefined ? -1 : mediaUrls.findIndex(current => mediaImageKey(current) === mediaImageKey(url))
@@ -3513,7 +3572,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
             const deletingProductMedia = deletingProductMediaKey === mediaImageKey(url)
             const pendingKey = familyItem?.mediaIds.join(',') ?? ''
             const deleting = pendingKey !== '' && deletingFamilyMediaKey === pendingKey
-            return <figure key={`family-${mediaImageKey(url)}`} className={`image-preview-card media-sortable${isProductMedia ? '' : ' family-media-preview'} ${dragOverMedia?.kind === 'url' && dragOverMedia.index === index ? 'is-media-drag-over' : ''}`} draggable={!submitting && !deletingProductMediaKey} onDragStart={event => { setDraggedMedia({ kind: 'url', index }); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', `url:${index}`) }} onDragOver={event => { if (draggedMedia?.kind !== 'url') return; event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDragOverMedia({ kind: 'url', index }) }} onDrop={event => { event.preventDefault(); const transferValue = event.dataTransfer.getData('text/plain'); const transferIndex = transferValue.startsWith('url:') ? Number(transferValue.slice(4)) : draggedMedia?.kind === 'url' ? draggedMedia.index : -1; if (draggedMedia?.kind === 'url' && Number.isInteger(transferIndex)) reorderMedia(transferIndex, index) }} onDragEnd={() => { setDraggedMedia(null); setDragOverMedia(null) }}>
+            return <figure key={`family-${mediaImageKey(url)}`} data-media-kind="url" data-media-index={index} className={`image-preview-card media-sortable${isProductMedia ? '' : ' family-media-preview'} ${dragOverMedia?.kind === 'url' && dragOverMedia.index === index ? 'is-media-drag-over' : ''}`} draggable={!submitting && !deletingProductMediaKey} onDragStart={event => { setDraggedMedia({ kind: 'url', index }); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', `url:${index}`) }} onDragOver={event => { if (draggedMedia?.kind !== 'url') return; event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDragOverMedia({ kind: 'url', index }) }} onDrop={event => { event.preventDefault(); const transferValue = event.dataTransfer.getData('text/plain'); const transferIndex = transferValue.startsWith('url:') ? Number(transferValue.slice(4)) : draggedMedia?.kind === 'url' ? draggedMedia.index : -1; if (draggedMedia?.kind === 'url' && Number.isInteger(transferIndex)) reorderMedia(transferIndex, index) }} onDragEnd={() => { setDraggedMedia(null); setDragOverMedia(null) }}>
               <img src={url} alt={`${form.title || 'Ürün'} ${index + 1}`} className="clickable-thumb" draggable={false} onClick={() => setLightboxImage({ url, title: isProductMedia ? form.title || 'Ürün Görseli' : `${form.title || 'Ürün'} · Renk ailesi` })} title="Büyütmek için tıklayın" />
               {isProductMedia
                 ? <button type="button" className="image-remove-btn" disabled={deletingProductMedia || submitting} title="Görseli üründen hemen kaldır" aria-label="Görseli üründen hemen kaldır" onClick={event => { event.stopPropagation(); if (ownedUrl) void removeProductMedia(ownedUrl) }}><UiIcon name={deletingProductMedia ? 'loader' : 'close'} /></button>
@@ -3521,7 +3580,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
               <figcaption>{isProductMedia ? `${ownIndex === 0 ? 'Ana görsel' : `${ownIndex + 1}. görsel`} · sürükle` : 'Renk varyantı görseli · sürükle'}</figcaption>
             </figure>
           })}
-          {mediaFiles.map((item, index) => <LocalImagePreview key={item.id} file={item.file} alt={`${form.title || 'Ürün'} ${visibleMediaUrls.length + index + 1}`} caption={index === 0 && !visibleMediaUrls.length ? 'Ana görsel' : item.file.name} draggable={!submitting} isDragOver={dragOverMedia?.kind === 'file' && dragOverMedia.index === index} onDragStart={event => { setDraggedMedia({ kind: 'file', index }); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', `file:${index}`) }} onDragOver={event => { if (draggedMedia?.kind !== 'file') return; event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDragOverMedia({ kind: 'file', index }) }} onDrop={event => { event.preventDefault(); const transferValue = event.dataTransfer.getData('text/plain'); const transferIndex = transferValue.startsWith('file:') ? Number(transferValue.slice(5)) : draggedMedia?.kind === 'file' ? draggedMedia.index : -1; if (draggedMedia?.kind === 'file' && Number.isInteger(transferIndex)) reorderUploadedMedia(transferIndex, index) }} onDragEnd={() => { setDraggedMedia(null); setDragOverMedia(null) }} onRemove={() => setMediaFiles(files => files.filter(file => file.id !== item.id))} onZoom={url => setLightboxImage({ url, title: form.title || 'Ürün Görseli' })} />)}
+          {mediaFiles.map((item, index) => <LocalImagePreview key={item.id} mediaIndex={index} file={item.file} alt={`${form.title || 'Ürün'} ${visibleMediaUrls.length + index + 1}`} caption={index === 0 && !visibleMediaUrls.length ? 'Ana görsel' : item.file.name} draggable={!submitting} isDragOver={dragOverMedia?.kind === 'file' && dragOverMedia.index === index} onDragStart={event => { setDraggedMedia({ kind: 'file', index }); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', `file:${index}`) }} onDragOver={event => { if (draggedMedia?.kind !== 'file') return; event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDragOverMedia({ kind: 'file', index }) }} onDrop={event => { event.preventDefault(); const transferValue = event.dataTransfer.getData('text/plain'); const transferIndex = transferValue.startsWith('file:') ? Number(transferValue.slice(5)) : draggedMedia?.kind === 'file' ? draggedMedia.index : -1; if (draggedMedia?.kind === 'file' && Number.isInteger(transferIndex)) reorderUploadedMedia(transferIndex, index) }} onDragEnd={() => { setDraggedMedia(null); setDragOverMedia(null) }} onRemove={() => setMediaFiles(files => files.filter(file => file.id !== item.id))} onZoom={url => setLightboxImage({ url, title: form.title || 'Ürün Görseli' })} />)}
         </div>}
       </section>
 
@@ -3692,7 +3751,7 @@ export function NewProductPage({ editProductId }: { editProductId?: string } = {
       </div>
     </section>
 
-    <section className="product-submit-sticky"><div><strong>{editProductId ? 'Ürün düzenlemeye hazır' : 'Ürün bilgileri hazır'}</strong><p>{variantRows.length || 1} satış satırı · {selectedChannelIds.length} seçili kanal</p></div><div className="product-submit-actions">{editProductId ? <button type="submit" name="intent" value="save" className="secondary" data-submit-intent="save" form="product-creation-form" disabled={submitting}>{submitting ? 'Kaydediliyor…' : 'Kaydet'}</button> : <button type="submit" name="intent" value="create" className="secondary" data-submit-intent="create" form="product-creation-form" disabled={submitting}>{submitting ? 'Oluşturuluyor…' : 'Ürünü oluştur'}</button>}{editProductId && <div className="platform-update-split" role="group" aria-label="Platform güncelleme"><button type="button" className="platform-update-quick" onClick={startQuickPlatformUpdate} disabled={submitting || connections.isLoading} title="Seçili aktif platformlarda yalnız fiyat ve stoku güncelle"><span>Hızlı güncelle</span><UiIcon name="refresh" /></button><button type="button" className="platform-update-settings" onClick={openPlatformUpdateDialog} disabled={submitting || connections.isLoading} aria-label="Platform güncelleme ayarları" title="Platform güncelleme ayarları" aria-haspopup="dialog"><UiIcon name="arrowUp" /></button></div>}<button type="button" onClick={() => setWizardStep(2)}>Yayınlamaya devam et <UiIcon name="arrowRight" /></button></div></section>
+    <section className="product-submit-sticky"><div><strong>{editProductId ? 'Ürün düzenlemeye hazır' : 'Ürün bilgileri hazır'}</strong><p>{variantRows.length || 1} satış satırı · {selectedChannelIds.length} seçili kanal</p></div><div className="product-submit-actions">{editProductId ? <button type="submit" name="intent" value="save" className="secondary" data-submit-intent="save" form="product-creation-form" disabled={submitting}>{submitting ? 'Kaydediliyor…' : 'Kaydet'}</button> : <button type="submit" name="intent" value="create" className="secondary" data-submit-intent="create" form="product-creation-form" disabled={submitting}>{submitting ? 'Oluşturuluyor…' : 'Ürünü oluştur'}</button>}{editProductId && <div className="platform-update-split" role="group" aria-label="Platform güncelleme"><button type="button" className="platform-update-quick" onClick={startQuickPlatformUpdate} disabled={submitting || connections.isLoading} title="Seçili aktif platformlarda yalnız fiyat ve stoku güncelle"><span>Hızlı güncelle</span><UiIcon name="refresh" /></button><button type="button" className="platform-update-settings" onClick={openPlatformUpdateDialog} disabled={submitting || connections.isLoading} aria-label="Platform güncelleme ayarları" title="Platform güncelleme ayarları" aria-haspopup="dialog"><UiIcon name="arrowUp" /></button></div>}<button type="button" onClick={() => setWizardStep(2)}><span className="submit-label-long">Yayınlamaya devam et</span><span className="submit-label-short">Yayınla</span> <UiIcon name="arrowRight" /></button></div></section>
     <ErrorBox error={error ?? categories.error ?? brands.error ?? connections.error} onDismiss={dismissProductError} />
     <OperationFeedbackToast feedback={feedback} onClose={() => { setFeedback(null); setNotice('') }} />
     {barcodePasteMenuOpen && <VariantHeaderActionMenu anchorRef={barcodePasteActionRef}>

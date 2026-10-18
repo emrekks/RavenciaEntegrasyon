@@ -270,3 +270,14 @@
   .app-shell.stitch-shell main .cs-workspace .cs-pane .cs-issue-actions > button { height: 36px; min-height: 36px; padding: 0 14px; }
   .cs-workspace .cs-issue-actions > .cs-link { display: inline-flex; align-items: center; height: 36px; padding: 0 6px; }
 }
+/* Phones, connection overview: each fact is one line (label left, value right) with its note under it, in a box a
+   shade lighter than the pane like the other key/value boxes; cards use phone padding. */
+@media (max-width: 760px) {
+  .cs-workspace .cs-stats { background: var(--rv-color-surface-raised); }
+  .cs-workspace .cs-stats > div { grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; column-gap: 12px; padding: 10px 14px; }
+  .cs-workspace .cs-stats > div > small { grid-column: 1; grid-row: 1; }
+  .cs-workspace .cs-stats > div > b { grid-column: 2; grid-row: 1; font-size: 14px; text-align: right; }
+  .cs-workspace .cs-stats > div > span { grid-column: 1 / -1; }
+  .cs-workspace .cs-card { padding: 14px; }
+  .cs-workspace .cs-health-big b { font-size: 20px; }
+}

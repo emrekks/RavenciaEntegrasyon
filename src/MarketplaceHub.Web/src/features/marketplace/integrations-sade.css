@@ -149,3 +149,8 @@
   .app-shell.stitch-shell main .im-sade .im-fields { grid-template-columns: minmax(0, 1fr); padding: 16px; }
   .app-shell.stitch-shell main .im-sade :is(.integration-modal-header, .im-foot) { padding-inline: 16px; }
 }
+
+/* Phones: the card's connection tag is left out; it read poorly on the small card. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .integrations-reference-page .reference-integration-brand .reference-connection-state { display: none; }
+}
