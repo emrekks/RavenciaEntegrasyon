@@ -175,6 +175,11 @@ export function RrAnchor({ trigger, children, className }: { trigger: (open: boo
   return <span ref={ref} className={['rr-anchor', className].filter(Boolean).join(' ')}>{trigger(open, () => setOpen(value => !value))}{open && <span className="rr-anchor-scrim" aria-hidden="true" onClick={event => { event.stopPropagation(); setOpen(false) }} />}{open && children(() => setOpen(false))}</span>
 }
 
+// "Sayfa Başına": a short list that opens right under its box (a native select opens its own list over the box on phones).
+export function RrPageSize({ value, sizes, onChange }: { value: number; sizes: number[]; onChange: (size: number) => void }) {
+  return <span className="rr-psize">Sayfa Başına<RrAnchor className="rr-psize-anchor" trigger={(open, toggle) => <button type="button" className="rr-in rr-psize-btn" aria-haspopup="listbox" aria-expanded={open} aria-label={`Sayfa başına ${value} kayıt`} onClick={toggle}><span>{value}</span><RrIcon name="chev" /></button>}>{close => <div className="rr-pop rr-static rr-psize-pop" role="listbox" aria-label="Sayfa başına kayıt">{sizes.map(size => <button type="button" role="option" key={size} aria-selected={size === value} className={`rr-opt${size === value ? ' rr-on' : ''}`} onClick={() => { onChange(size); close() }}>{size}</button>)}</div>}</RrAnchor></span>
+}
+
 // Single-choice filter popover used under table heads and filter fields.
 export function RrColumnPop({ label, options, value, onPick, right, width = 240 }: { label: string; options: Array<{ value: string; label: string }>; value: string; onPick: (value: string) => void; right?: boolean; width?: number }) {
   const active = value !== 'ALL'
