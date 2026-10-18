@@ -8617,7 +8617,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         return false;
     }
 
-    // n11 lists claims by request date only, so every run re-reads a fixed request window to
+    // n11 lists claims by request date only, so a 45-day request window is re-read (every 30 minutes, see ReturnRereadPolicy) to
     // pick up later status changes (approval, denial, refund) of recent claims.
     private const int PazaramaReturnLookbackDays = 45;
     private const int PazaramaReturnInitialLookbackDays = 90;
@@ -8630,7 +8630,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var cursor = await Cursor(tenantId, connectionId, "RETURNS", cancellationToken);
         var now = timeProvider.GetUtcNow();
         var full = ReadBoolean(payloadJson, "forceFull") || cursor.LastSuccessAt is null;
-        var from = now.AddDays(-(full ? PazaramaReturnInitialLookbackDays : PazaramaReturnLookbackDays));
+        var wideCursor = await Cursor(tenantId, connectionId, ReturnRereadPolicy.WideCursorResource, cancellationToken);
+        var lookbackDays = ReturnRereadPolicy.LookbackDays(full, PazaramaReturnInitialLookbackDays, PazaramaReturnLookbackDays, wideCursor.LastSuccessAt, now);
+        var from = now.AddDays(-lookbackDays);
         var productSnapshots = new Dictionary<string, string?>(StringComparer.Ordinal);
         for (var windowStart = from; windowStart < now && !cancellationToken.IsCancellationRequested; windowStart = windowStart.AddDays(PazaramaReturnWindowDays))
         {
@@ -8652,12 +8654,20 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 page = int.TryParse(result.Value.NextCursor, NumberStyles.None, CultureInfo.InvariantCulture, out var next) && next > page ? next : page + 1;
             }
         }
+        NoteWideReturnRead(wideCursor, lookbackDays, PazaramaReturnLookbackDays, now);
         cursor.OpaqueCursor = null;
         cursor.LastModifiedWatermark = now;
         cursor.LastSuccessAt = timeProvider.GetUtcNow();
         cursor.Version++;
         await db.SaveChangesAsync(cancellationToken);
         return true;
+    }
+
+    private static void NoteWideReturnRead(SyncCursor wideCursor, int lookbackDays, int wideDays, DateTimeOffset now)
+    {
+        if (lookbackDays < wideDays) return;
+        wideCursor.LastSuccessAt = now;
+        wideCursor.Version++;
     }
 
     private async Task<RemoteReturnClaim> ResolvePazaramaReturnOrderLinesAsync(Guid tenantId, Guid connectionId, string correlationId, RemoteReturnClaim claim, CancellationToken cancellationToken)
@@ -8722,7 +8732,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var cursor = await Cursor(tenantId, connectionId, "RETURNS", cancellationToken);
         var now = timeProvider.GetUtcNow();
         var full = ReadBoolean(payloadJson, "forceFull") || cursor.LastSuccessAt is null;
-        var window = new ReturnPollWindow(now.AddDays(-(full ? N11ReturnInitialLookbackDays : N11ReturnLookbackDays)), now);
+        var wideCursor = await Cursor(tenantId, connectionId, ReturnRereadPolicy.WideCursorResource, cancellationToken);
+        var lookbackDays = ReturnRereadPolicy.LookbackDays(full, N11ReturnInitialLookbackDays, N11ReturnLookbackDays, wideCursor.LastSuccessAt, now);
+        var window = new ReturnPollWindow(now.AddDays(-lookbackDays), now);
         var productSnapshots = new Dictionary<string, string?>(StringComparer.Ordinal);
         var page = 0;
         while (!cancellationToken.IsCancellationRequested)
@@ -8739,6 +8751,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (!result.Value.HasMore) break;
             page = int.TryParse(result.Value.NextCursor, NumberStyles.None, CultureInfo.InvariantCulture, out var next) && next > page ? next : page + 1;
         }
+        NoteWideReturnRead(wideCursor, lookbackDays, N11ReturnLookbackDays, now);
         cursor.OpaqueCursor = null;
         cursor.LastModifiedWatermark = now;
         cursor.LastSuccessAt = timeProvider.GetUtcNow();

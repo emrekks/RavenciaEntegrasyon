@@ -688,3 +688,18 @@ public static class QuestionCadencePolicy
         return (int)Math.Min(stretched, MaximumSeconds);
     }
 }
+
+// n11 and Pazarama list claims by request date only, so a claim's later status changes are seen
+// only by re-reading older requests. Every run reads the last two days (new claims); the 45-day
+// re-read for status changes runs every 30 minutes instead of every three.
+public static class ReturnRereadPolicy
+{
+    public const string WideCursorResource = "RETURNS_WIDE";
+    public const int NarrowDays = 2;
+    public static readonly TimeSpan WideInterval = TimeSpan.FromMinutes(30);
+
+    public static int LookbackDays(bool full, int initialDays, int wideDays, DateTimeOffset? lastWideReadAt, DateTimeOffset now) =>
+        full ? initialDays
+        : lastWideReadAt is not { } last || now - last >= WideInterval ? wideDays
+        : NarrowDays;
+}

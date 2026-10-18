@@ -46,3 +46,17 @@ public sealed class QuestionCadencePolicyTests
     public void AConnectionWithoutQuestionsIsAskedEveryTenMinutes() =>
         Assert.Equal(600, QuestionCadencePolicy.IntervalSeconds(120, null, Now));
 }
+
+public sealed class ReturnRereadPolicyTests
+{
+    private static readonly DateTimeOffset Now = new(2026, 10, 18, 12, 0, 0, TimeSpan.Zero);
+
+    [Fact]
+    public void ClaimsAreReadNarrowlyEveryRunAndWidelyEveryHalfHour()
+    {
+        Assert.Equal(90, ReturnRereadPolicy.LookbackDays(true, 90, 45, Now.AddMinutes(-1), Now));
+        Assert.Equal(45, ReturnRereadPolicy.LookbackDays(false, 90, 45, null, Now));
+        Assert.Equal(2, ReturnRereadPolicy.LookbackDays(false, 90, 45, Now.AddMinutes(-10), Now));
+        Assert.Equal(45, ReturnRereadPolicy.LookbackDays(false, 90, 45, Now.AddMinutes(-31), Now));
+    }
+}
