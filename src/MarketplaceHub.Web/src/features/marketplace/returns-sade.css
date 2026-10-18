@@ -1027,11 +1027,11 @@ main .rr.rr:is(.rr-orders, .rr-returns) > .rr-panel { min-width: 0; }
 /* product facts are never cut and stay on one line; the product column is wide enough for them (the tables scroll sideways when the screen is narrow) */
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pline > div > small:not(.rr-card-only) { overflow: visible; text-overflow: clip; white-space: nowrap; }
 @media (min-width: 1101px) {
-main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl col.rr-c-prod { width: 260px; }
-main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl .rr-pline { grid-template-columns: 60px minmax(0, 1fr); gap: 10px; }
-main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl .rr-thumb { width: 60px; height: 90px; }
-main .rr.rr-orders .rr-tbl.rr-tbl { min-width: 1130px; }
-main .rr.rr-returns .rr-tbl.rr-tbl { min-width: 1210px; }
+main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl col.rr-c-prod { width: 276px; }
+main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl .rr-pline { grid-template-columns: 76px minmax(0, 1fr); gap: 10px; }
+main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl .rr-thumb { width: 76px; height: 114px; }
+main .rr.rr-orders .rr-tbl.rr-tbl { min-width: 1146px; }
+main .rr.rr-returns .rr-tbl.rr-tbl { min-width: 1226px; }
 }
 /* picture preview: no footer; the picture sits with the same 12px on every side and gets the footer's height */
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img .rr-m-body.rr-m-body { padding: 12px; }
