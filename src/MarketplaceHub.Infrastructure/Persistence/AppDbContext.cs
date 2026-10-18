@@ -182,7 +182,11 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         // entries first so the enumeration is not invalidated by that append.
         foreach (var entry in ChangeTracker.Entries().Where(x => x.State is EntityState.Added or EntityState.Modified).ToList())
         {
-            var change = OutboxChange(entry.Entity);
+            // A newly queued job is announced as a "jobs" change only, so the job list shows it at once without making
+            // the order or product screens reload for every scheduled job.
+            (Guid TenantId, string ResourceType, string AggregateType, Guid AggregateId, long? Version)? change = entry.Entity is IntegrationJob job
+                ? entry.State == EntityState.Added ? (job.TenantId, "jobs", "IntegrationJob", job.Id, job.Version) : null
+                : OutboxChange(entry.Entity);
             if (change is null || !existing.Add((change.Value.ResourceType, change.Value.AggregateType, change.Value.AggregateId))) continue;
             var now = DateTimeOffset.UtcNow;
             IntegrationOutboxEvents.Add(new IntegrationOutboxEvent

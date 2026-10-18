@@ -59,7 +59,12 @@ public sealed class OperationsRealtimeBroadcaster(IServiceScopeFactory scopes, I
                                 version = x.AggregateVersion,
                                 occurredAt = x.CreatedAt
                             }).ToArray();
-                            var resources = tenantEvents.Select(x => x.ResourceType).Distinct(StringComparer.Ordinal).ToArray();
+                            // Job events carry the resource the job works on (orders, invoices...); the job list listens for
+                            // "jobs", so it is added whenever a job changed.
+                            var resources = tenantEvents.Select(x => x.ResourceType)
+                                .Concat(tenantEvents.Any(x => x.AggregateType == "IntegrationJob") ? ["jobs"] : [])
+                                .Distinct(StringComparer.Ordinal)
+                                .ToArray();
                             await hub.Clients.Group(OperationsHub.TenantGroup(tenantEvents.Key.ToString("D")))
                                 .SendAsync("operationsChanged", new { resources, events = resourceEvents, occurredAt = now }, stoppingToken);
 
