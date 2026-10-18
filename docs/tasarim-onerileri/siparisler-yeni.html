@@ -607,7 +607,7 @@
   .opt.on, .menu > button.on { background: var(--hover); color: var(--ink); }
   @media (max-width: 1100px) { .tbl tr.sel, .tbl tr.sel td { background: var(--hover); } }
   /* product facts: one line each, label and value never split */
-  .pline small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pline small { white-space: nowrap; overflow: visible; text-overflow: clip; }
   .pline .card-only { display: none; }
   /* unit price column */
   .prices { display: grid; width: 100%; }
@@ -743,7 +743,7 @@
   .actcell .btn.lbl { min-width: 0; }
   .invcell .inv-trigger { white-space: nowrap; text-align: left; }
   .invcell .m > span { white-space: nowrap; }
-  .pline small:not(.card-only) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pline small:not(.card-only) { white-space: nowrap; overflow: visible; text-overflow: clip; }
   @media (max-width: 760px) { .ltbl :is(th, td):nth-child(n+3):not(:last-child) { display: none; } .ltbl td:first-child { overflow-wrap: anywhere; } }
 </style>
 </head>

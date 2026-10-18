@@ -727,7 +727,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl tr.rr-sel,
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl tr.rr-sel td { background: var(--rr-hover); }
 }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-pline small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-pline small { white-space: nowrap; overflow: visible; text-overflow: clip; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pline .rr-card-only { display: none; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-prices { display: grid; width: 100%; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-prices .rr-pr { display: grid; align-content: center; justify-items: center; gap: 2px; }
@@ -1024,3 +1024,10 @@ main .rr.rr:is(.rr-orders, .rr-returns) > .rr-panel { min-width: 0; }
 /* detail facts: the carrier logo sits over its tracking number */
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-facts .rr-fact-cargo.rr-fact-cargo { display: block; width: auto; max-width: 96px; height: 20px; margin: 2px 0 4px; object-fit: contain; object-position: left center; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-facts .rr-fact-track { font-size: 13px; }
+/* product facts are never cut and stay on one line; the product column is wide enough for them (the tables scroll sideways when the screen is narrow) */
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-pline > div > small:not(.rr-card-only) { overflow: visible; text-overflow: clip; white-space: nowrap; }
+@media (min-width: 1101px) {
+main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl col.rr-c-prod { width: 250px; }
+main .rr.rr-orders .rr-tbl.rr-tbl { min-width: 1120px; }
+main .rr.rr-returns .rr-tbl.rr-tbl { min-width: 1200px; }
+}

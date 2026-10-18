@@ -607,7 +607,7 @@
   .opt.on, .menu > button.on { background: var(--hover); color: var(--ink); }
   @media (max-width: 1100px) { .tbl tr.sel, .tbl tr.sel td { background: var(--hover); } }
   /* product facts: one line each, label and value never split */
-  .pline small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pline small { white-space: nowrap; overflow: visible; text-overflow: clip; }
   .pline .card-only { display: none; }
   /* unit price column */
   .prices { display: grid; width: 100%; }
