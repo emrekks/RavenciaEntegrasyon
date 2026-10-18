@@ -24,7 +24,7 @@ public static class JobPriorityPolicy
     /// when requested manually but stay in the background lane when the scheduler produces them.
     /// </param>
     public static bool IsUserAction(string jobType) => jobType is
-        MarketplaceJobTypes.ShipmentAction or MarketplaceJobTypes.ReturnAction or MarketplaceJobTypes.CommonLabel
+        MarketplaceJobTypes.ShipmentAction or MarketplaceJobTypes.ReturnAction or MarketplaceJobTypes.CommonLabel or MarketplaceJobTypes.PriceInventorySync
         or MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync or MarketplaceJobTypes.N11OrderSync or MarketplaceJobTypes.PazaramaOrderSync
         or InvoicingJobTypes.InvoiceSubmit or InvoicingJobTypes.MarketplaceDelivery or InvoicingJobTypes.ManualOrderInvoiceDelivery;
 

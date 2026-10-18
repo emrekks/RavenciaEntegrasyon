@@ -375,6 +375,11 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 invoice.UpdatedAt = timeProvider.GetUtcNow();
                 invoice.Version++;
                 await db.SaveChangesAsync(cancellationToken);
+                // A just-submitted invoice is checked again after 10, 30 and 60 seconds without using
+                // attempts; after five minutes the normal two-minute retry takes over.
+                var pendingFor = timeProvider.GetUtcNow() - (invoice.IssuedAt ?? invoice.UpdatedAt);
+                if (!cancellationPending && InvoicePendingPolicy.QuickRecheck(pendingFor) is { } quick)
+                    throw new JobProcessingException(JobExecutionResult.Deferred("INVOICE_REMOTE_PENDING", "Fatura sağlayıcıda işleniyor; birkaç saniye içinde yeniden kontrol edilecek.", quick));
                 throw new JobProcessingException(JobExecutionResult.Retry(cancellationPending ? "INVOICE_CANCELLATION_REMOTE_PENDING" : "INVOICE_REMOTE_PENDING", "Fatura sağlayıcıda işlenmeye devam ediyor.", TimeSpan.FromMinutes(2)));
             default:
                 invoice.Status = InvoiceStatus.ManualReview;
@@ -1729,7 +1734,9 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         var dedup = $"{jobType}:{invoiceId}:{suffix}";
         if (await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.JobType == jobType && x.JobDedupKey == dedup, cancellationToken)) return;
         var payload = JsonSerializer.Serialize(new { invoiceId });
-        db.IntegrationJobs.Add(new IntegrationJob { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, JobType = jobType, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = dedup, AvailableAt = timeProvider.GetUtcNow(), CorrelationId = correlationId, Version = 1 });
+        // Status check, document and marketplace delivery follow a submission the user waits for,
+        // so they run in the user lane.
+        db.IntegrationJobs.Add(new IntegrationJob { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, JobType = jobType, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = dedup, Priority = JobPriorityPolicy.UserAction, TriggerType = "user", AvailableAt = timeProvider.GetUtcNow(), CorrelationId = correlationId, Version = 1 });
     }
 
     private static readonly HashSet<string> AcceptedDeliveryStatuses = new(StringComparer.Ordinal)

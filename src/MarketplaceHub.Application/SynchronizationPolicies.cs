@@ -662,3 +662,13 @@ public static class ExternalEffectReconcilePolicy
         };
     }
 }
+
+// An e-invoice is usually accepted by the provider within seconds to a minute of submission.
+public static class InvoicePendingPolicy
+{
+    public static TimeSpan? QuickRecheck(TimeSpan pendingFor) =>
+        pendingFor < TimeSpan.FromSeconds(30) ? TimeSpan.FromSeconds(10)
+        : pendingFor < TimeSpan.FromMinutes(2) ? TimeSpan.FromSeconds(30)
+        : pendingFor < TimeSpan.FromMinutes(5) ? TimeSpan.FromSeconds(60)
+        : null;
+}
