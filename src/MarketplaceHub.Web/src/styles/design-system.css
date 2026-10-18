@@ -11027,15 +11027,28 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .invoice-workspace-internet-sales-toggle { display: inline-flex; align-items: center; gap: 8px; margin-right: auto; font-size: 13px; cursor: pointer; }
 .invoice-workspace-internet-sales-toggle input { flex: 0 0 auto; accent-color: var(--rv-color-primary); }
 .invoice-workspace-internet-sales-note { margin: -8px 0 0; }
-.invoice-workspace-preview-card { display: grid; gap: 16px; padding: 18px; border: 1px solid var(--rv-border, #343746); border-radius: 14px; background: var(--rv-surface-raised, #1e2029); }
+.invoice-workspace-preview-card { display: grid; gap: 16px; padding: 18px; color: var(--rv-color-ink); border: 1px solid var(--rv-color-border); border-radius: 12px; background: var(--rv-color-surface); }
 .invoice-workspace-preview-card + .invoice-workspace-preview-card { margin-top: 16px; }
 .invoice-workspace-preview-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .invoice-workspace-preview-heading > div { display: grid; gap: 4px; }
-.invoice-workspace-preview-heading > div span, .invoice-workspace-preview-facts dt, .invoice-workspace-preview-line small { color: var(--rv-text-muted, #a2a7b7); font-size: 12px; }
-.invoice-workspace-preview-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; }
-.invoice-workspace-preview-facts > div { min-width: 0; padding: 11px 12px; border-radius: 10px; background: rgb(255 255 255 / 3%); }
-.invoice-workspace-preview-facts dt { margin-bottom: 4px; }
-.invoice-workspace-preview-facts dd { margin: 0; overflow-wrap: anywhere; }
+.invoice-workspace-preview-heading > div span, .invoice-workspace-preview-facts dt, .invoice-workspace-preview-line small { color: var(--rv-color-muted); font-size: 12px; }
+/* Facts: four columns on desktop (name, tax number, invoice type, send date; the address over two
+   columns beside the package and carrier), two on tablets, one on phones. Every tile of a row has the
+   same height. */
+.invoice-workspace-preview-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-flow: row dense; gap: 10px; margin: 0; }
+.invoice-workspace-preview-facts > div { display: grid; align-content: start; gap: 4px; min-width: 0; min-height: 64px; padding: 10px 12px; border: 1px solid var(--rv-color-border); border-radius: 7px; background: var(--rv-color-surface-soft); }
+.invoice-workspace-preview-facts > .is-name { order: 1; }
+.invoice-workspace-preview-facts > .is-tax { order: 2; }
+.invoice-workspace-preview-facts > .is-type { order: 3; }
+.invoice-workspace-preview-facts > .is-date { order: 4; }
+.invoice-workspace-preview-facts > .is-address { order: 5; grid-column: span 2; }
+.invoice-workspace-preview-facts > .is-package { order: 6; }
+.invoice-workspace-preview-facts > .is-carrier { order: 7; }
+.invoice-workspace-preview-facts dt { margin: 0; }
+.invoice-workspace-preview-facts dd { margin: 0; color: var(--rv-color-ink); font-size: 14px; font-weight: 500; line-height: 1.45; overflow-wrap: anywhere; }
+@media (max-width: 1100px) {
+  .invoice-workspace-preview-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 .invoice-workspace-preview-lines { overflow-x: auto; border: 1px solid var(--rv-color-border-strong); border-radius: 8px; }
 .invoice-workspace-preview-line { display: grid; grid-template-columns: minmax(260px, 2.4fr) repeat(5, minmax(86px, .8fr)); align-items: stretch; min-width: 760px; border-top: 1px solid var(--rv-color-border); }
 .invoice-workspace-preview-line > * { display: flex; align-items: center; padding: 12px 14px; min-width: 0; }
@@ -11051,15 +11064,16 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .invoice-workspace-preview-thumb { flex: none; display: grid; place-items: center; width: 52px; height: 68px; overflow: hidden; border: 1px solid var(--rv-color-border); border-radius: 6px; background: var(--rv-color-surface-soft); color: var(--rv-color-subtle); }
 .invoice-workspace-preview-thumb img { width: 100%; height: 100%; object-fit: cover; }
 .invoice-workspace-preview-total { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px 20px; }
-.invoice-workspace-preview-total span { display: grid; gap: 3px; color: var(--rv-text-muted, #a2a7b7); font-size: 12px; }
-.invoice-workspace-preview-total strong { color: var(--rv-text, #f4f5f8); font-size: 14px; }
-.invoice-workspace-preview-total span:last-child strong { color: var(--rv-accent, #a579ff); font-size: 17px; }
-.invoice-workspace-preview-blocked { margin: 0; padding: 12px; border-radius: 10px; color: var(--rv-warning, #f6c66a); background: rgb(246 198 106 / 10%); }
-.invoice-workspace-preview-results { padding: 14px; border-radius: 12px; background: rgb(117 77 216 / 10%); }
+.invoice-workspace-preview-total span { display: grid; gap: 3px; color: var(--rv-color-muted); font-size: 12px; }
+.invoice-workspace-preview-total strong { color: var(--rv-color-ink); font-size: 14px; font-variant-numeric: tabular-nums; }
+.invoice-workspace-preview-total span:last-child strong { color: var(--rv-color-accent); font-size: 17px; }
+.invoice-workspace-preview-blocked { margin: 0; padding: 12px; border-radius: 7px; color: var(--rv-color-warning); background: var(--rv-color-warning-soft); }
+.invoice-workspace-preview-results { padding: 14px; color: var(--rv-color-ink); border-radius: 12px; background: var(--rv-color-accent-soft); }
 .invoice-workspace-preview-results h3 { margin: 0 0 8px; }
 .invoice-workspace-preview-results p { display: grid; gap: 4px; margin: 8px 0 0; }
 @media (max-width: 680px) {
   .invoice-workspace-preview-facts { grid-template-columns: minmax(0, 1fr); }
+  .invoice-workspace-preview-facts > .is-address { grid-column: auto; }
   .invoice-workspace-preview-heading { flex-direction: column; }
 }
 .invoice-upload-context > div {
