@@ -39,6 +39,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             .Select(x => x.ConnectionId!.Value)
             .Distinct()
             .ToListAsync(cancellationToken)).ToHashSet();
+        var webhookHealthy = await HealthyWebhookConnectionsAsync(now, cancellationToken);
         var reservedExecutionGroups = new HashSet<string>(StringComparer.Ordinal);
         var backgroundOrderReservations = new HashSet<Guid>();
 
@@ -49,6 +50,9 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             if (definition is null) continue;
 
             var interval = Math.Clamp(row.Policy.IntervalSeconds, 30, ScheduledOrderPollingCadencePolicy.MaximumIntervalSeconds);
+            // Healthy order notifications make the order polls a slower safety net.
+            if (webhookHealthy.Contains(row.Connection.Id) && WebhookPollingPolicy.StretchedIntervalSeconds(row.Policy.ResourceType) is { } stretched)
+                interval = Math.Max(interval, stretched);
             // Different scheduled job types can share one provider execution
             // lane (for example order sync and order reconciliation). Checking
             // the execution group keeps the queue coalesced before it reaches
@@ -135,6 +139,32 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             foreach (var entry in db.ChangeTracker.Entries<IntegrationJob>().Where(x => x.State == EntityState.Added)) entry.State = EntityState.Detached;
             return 0;
         }
+    }
+
+    internal async Task<HashSet<Guid>> HealthyWebhookConnectionsAsync(DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var subscriptions = await db.WebhookSubscriptions.AsNoTracking()
+            .Where(x => x.Status == "ACTIVE" && x.ExternalSubscriptionId != null)
+            .Select(x => new { x.TenantId, x.ConnectionId, x.LastReceivedAt, x.VerifiedAt })
+            .ToListAsync(cancellationToken);
+        var healthy = new HashSet<Guid>();
+        foreach (var subscription in subscriptions)
+        {
+            var health = await db.SyncCursors.AsNoTracking()
+                .Where(x => x.TenantId == subscription.TenantId && x.ConnectionId == subscription.ConnectionId && x.ResourceType == WebhookPollingPolicy.HealthCursorResource)
+                .Select(x => x.OpaqueCursor)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (WebhookPollingPolicy.IsHealthy(subscription.LastReceivedAt, subscription.VerifiedAt, WebhookGaps(health), now))
+                healthy.Add(subscription.ConnectionId);
+        }
+        return healthy;
+    }
+
+    internal static IReadOnlyList<DateTimeOffset> WebhookGaps(string? opaqueCursor)
+    {
+        if (string.IsNullOrWhiteSpace(opaqueCursor)) return [];
+        try { return JsonSerializer.Deserialize<DateTimeOffset[]>(opaqueCursor) ?? []; }
+        catch (JsonException) { return []; }
     }
 
     private async Task DisableProductAutomationAsync(CancellationToken cancellationToken)

@@ -584,3 +584,33 @@ public static class TrendyolLookupPolicy
         return (start < oldest ? oldest : start, end > now ? now : end);
     }
 }
+
+// While a marketplace's order notifications arrive, polling is only the safety net and runs less
+// often. A notification path is unhealthy when nothing arrived for six hours or when polling found
+// two orders the notifications had missed within a day; polling then returns to its own cadence.
+public static class WebhookPollingPolicy
+{
+    public const string HealthCursorResource = "WEBHOOK_HEALTH";
+    public static readonly TimeSpan SilenceLimit = TimeSpan.FromHours(6);
+    public static readonly TimeSpan GapWindow = TimeSpan.FromHours(24);
+    public static readonly TimeSpan RegistrationGrace = TimeSpan.FromMinutes(10);
+    public const int GapLimit = 2;
+
+    public static int? StretchedIntervalSeconds(string resourceType) => resourceType switch
+    {
+        "ORDERS" => 900,
+        "ORDER_RECOVERY" or "ORDER_LIFECYCLE" => 3600,
+        _ => null
+    };
+
+    public static bool IsHealthy(DateTimeOffset? lastReceivedAt, DateTimeOffset? registeredAt, IEnumerable<DateTimeOffset> gaps, DateTimeOffset now)
+    {
+        var lastSign = lastReceivedAt ?? registeredAt;
+        if (lastSign is null || now - lastSign.Value > SilenceLimit) return false;
+        return gaps.Count(gap => now - gap <= GapWindow) < GapLimit;
+    }
+
+    // An order polling inserted counts as missed only once the notifications had time to start.
+    public static bool CountsAsGap(DateTimeOffset? registeredAt, DateTimeOffset now) =>
+        registeredAt is { } registered && now - registered >= RegistrationGrace;
+}

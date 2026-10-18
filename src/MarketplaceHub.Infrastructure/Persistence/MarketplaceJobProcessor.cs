@@ -2361,6 +2361,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             readableStorefronts: TrendyolStorefrontPolicy.Readable(TrendyolReadStorefronts.Codes, storefrontActivity, now));
         var resetExpiredCursor = false;
         var completed = false;
+        var insertedBeforePoll = telemetryInsertedCount;
         do
         {
             var (modifiedAfter, modifiedBefore) = OrderWindow(state);
@@ -2450,6 +2451,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             await db.SaveChangesAsync(cancellationToken);
         } while (!cancellationToken.IsCancellationRequested);
 
+        // An order this poll had to insert while notifications are on is one the notifications missed.
+        if (completed && telemetryInsertedCount > insertedBeforePoll)
+            await NoteWebhookGapAsync(tenantId, connectionId, now, cancellationToken);
+
         // A full scan already read every storefront; an incremental run probes at most one
         // inactive storefront over the time since its last probe.
         if (completed && state.Mode == OrderSyncMode.Incremental && !cancellationToken.IsCancellationRequested
@@ -2496,6 +2501,21 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             .Where(order => order.TenantId == tenantId && order.ConnectionId == connectionId && order.ExternalOrderId == externalOrderId)
             .Select(order => (OrderLookupHint?)new OrderLookupHint(order.OrderedAt, order.LastRemoteModifiedAt, order.StoreFrontCode))
             .FirstOrDefaultAsync(cancellationToken);
+
+    private async Task NoteWebhookGapAsync(Guid tenantId, Guid connectionId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var registeredAt = await db.WebhookSubscriptions.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == "ACTIVE" && x.ExternalSubscriptionId != null)
+            .Select(x => x.VerifiedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (!WebhookPollingPolicy.CountsAsGap(registeredAt, now)) return;
+        var health = await Cursor(tenantId, connectionId, WebhookPollingPolicy.HealthCursorResource, cancellationToken);
+        var gaps = ScheduledJobProducer.WebhookGaps(health.OpaqueCursor).Where(gap => now - gap <= WebhookPollingPolicy.GapWindow).Append(now).ToArray();
+        health.OpaqueCursor = JsonSerializer.Serialize(gaps);
+        health.LastErrorAt = now;
+        health.Version++;
+        await db.SaveChangesAsync(cancellationToken);
+    }
 
     private sealed record InvoiceDiscoveryCounts(int Stream, int Reconciliation, DateTimeOffset Since, string[] RecentReconciliationPackages);
 

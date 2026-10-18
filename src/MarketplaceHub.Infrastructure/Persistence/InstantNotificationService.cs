@@ -40,11 +40,17 @@ public sealed class InstantNotificationService(
             return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, subscription, "UNKNOWN", $"Trendyol'daki durum okunamadı: {remote.Error!.SafeMessage}", cancellationToken));
         var match = remote.Value!.FirstOrDefault(webhook => webhook.Id == subscription.ExternalSubscriptionId);
         var state = match is null ? "MISSING" : match.Status == "ACTIVE" ? "ACTIVE" : "PASSIVE";
+        var gaps = ScheduledJobProducer.WebhookGaps(await db.SyncCursors.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == WebhookPollingPolicy.HealthCursorResource)
+            .Select(x => x.OpaqueCursor)
+            .FirstOrDefaultAsync(cancellationToken));
+        var healthy = WebhookPollingPolicy.IsHealthy(subscription.LastReceivedAt, subscription.VerifiedAt, gaps, timeProvider.GetUtcNow());
         var message = state switch
         {
             "MISSING" => "Trendyol'da bu bildirim kaydı bulunamadı; kapatıp yeniden açabilirsiniz.",
             "PASSIVE" => "Trendyol bildirimleri durdurmuş; panel bir saat içinde yeniden açar.",
-            _ => null
+            _ when !healthy => "Bildirimler son saatlerde beklenen siparişleri getirmedi; sipariş kontrolü dakikada bir sürüyor.",
+            _ => "Bildirimler düzenli geliyor; sipariş kontrolü yedek olarak 15 dakikada bir yapılıyor."
         };
         return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, subscription, state, message, cancellationToken));
     }
