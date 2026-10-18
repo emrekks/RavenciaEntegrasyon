@@ -459,3 +459,11 @@
   .app-shell.stitch-shell main .rr.rr-products .rr-acts .rr-lbl-short { display: inline; }
   .app-shell.stitch-shell main .rr.rr-products .rr-panel-h p { white-space: nowrap; }
 }
+
+/* A product without variants says so when its variant cell is hovered or tapped. */
+.app-shell.stitch-shell main .rr.rr-products .rr-vtip.rr-vtip-empty { width: 240px; max-width: calc(100vw - 48px); padding: 10px 12px; color: var(--rv-color-muted); font-size: 12.5px; font-weight: 400; line-height: 1.45; white-space: normal; }
+
+/* Phones: the variant rows keep a 12px gap from both sides of their framed list. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .product-add-page .variant-table-editor > :is(.variant-table-row, .variant-table-head) { padding-inline: 12px; }
+}
