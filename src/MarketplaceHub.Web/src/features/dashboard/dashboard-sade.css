@@ -294,3 +294,8 @@
 /* channel percentages and KPI trend values keep one width for every row and period, so the bars and the "önceki döneme göre" note do not move when the figures change */
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-crow > .rr-cv { min-width: 64px; font-variant-numeric: tabular-nums; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-trend .rr-trend-v { min-width: 8.5ch; font-variant-numeric: tabular-nums; }
+/* when the integration rows turn into grid cards the hover fills the whole row, not each cell with the gaps left bare */
+@media (max-width: 1100px) {
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt.rr-mxt tbody tr:hover { background: var(--rr-hover); }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt.rr-mxt tbody tr:hover td { background: none; }
+}

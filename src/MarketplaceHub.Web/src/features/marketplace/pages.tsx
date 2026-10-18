@@ -1345,7 +1345,7 @@ function IntegrationDetailWorkspace({ id, inline = false, onClose }: { id: strin
   const activeSection = settingsSections.find(section => section.key === settingsSection) ?? settingsSections[0]
   const metaLine = `${displayEnvironment === 'PRODUCTION' ? 'Production' : 'Stage'} · ${efaturam ? 'Yerel kapsam' : `Mağaza ${item.externalStoreId}`} · API ${item.apiVersion}`
     return <div className={`${rootClass} cs-workspace${inline ? ' is-inline' : ''}`}>
-    <header className="cs-head">{!inline && <Link to="/integrations" className="cs-back"><UiIcon name="arrowLeft" /> Platformlar</Link>}<img className={`cs-logo ${platformLogoClass(item.platformCode)}`} src={platformLogoSource(item.platformCode) ?? '/platforms/trendyol.png'} alt="" aria-hidden="true" /><div className="cs-head-copy"><h2>{item.displayName}</h2><p>{metaLine}</p></div><span className="cs-grow" /><span className={`cs-tag${readConnectionReady ? ' is-on' : ''}`}><MappingStateGlyph state={readConnectionReady ? 'done' : 'none'} />{statusLabel(item.status)}</span><span className="cs-tag">{stageManual ? 'Manuel akış' : 'Canlı akış'}</span>{onClose && <button type="button" className="cs-close" onClick={onClose} aria-label="Bağlantı ayarlarını kapat"><UiIcon name="close" /></button>}</header>
+    <header className="cs-head">{!inline && <Link to="/integrations" className="cs-back"><UiIcon name="arrowLeft" /> Platformlar</Link>}<img className={`cs-logo ${platformLogoClass(item.platformCode)}`} src={platformLogoSource(item.platformCode) ?? '/platforms/trendyol.png'} alt="" aria-hidden="true" /><div className="cs-head-copy"><h2>{item.displayName}</h2><p>{metaLine}</p></div><span className="cs-grow" /><span className="cs-tags-row"><span className={`cs-tag${readConnectionReady ? ' is-on' : ''}`}><MappingStateGlyph state={readConnectionReady ? 'done' : 'none'} />{statusLabel(item.status)}</span><span className="cs-tag">{stageManual ? 'Manuel akış' : 'Canlı akış'}</span></span>{onClose && <button type="button" className="cs-close" onClick={onClose} aria-label="Bağlantı ayarlarını kapat"><UiIcon name="close" /></button>}</header>
     <div className="cs-body"><nav className="cs-nav" aria-label="Ayar bölümleri">{settingsSections.map(section => <button type="button" key={section.key} className={section.key === activeSection.key ? 'is-on' : undefined} aria-current={section.key === activeSection.key ? 'true' : undefined} onClick={() => setSettingsSection(section.key)}><SettingsIcon name={section.icon} /><span>{section.label}</span>{section.badge ? <span className="cs-count is-warn">{section.badge}</span> : <span />}</button>)}</nav><section className="cs-pane" key={activeSection.key}>{activeSection.node}</section></div>
     {syncPolicyOpen && <SyncPolicyEditorModal policy={syncPolicyOpen} label={syncPolicyLabel(syncPolicyOpen.resourceType)} intervals={syncPolicyIntervals} overlaps={syncPolicyOverlaps} healthHelp={syncPolicyHealthHelp(syncPolicyOpen)} purpose={syncPolicyDescription(syncPolicyOpen.resourceType)} externalWriteBlocked={syncPolicyOpen.requiresExternalWrites === true && !item.externalWritesEnabled} saving={saveSyncPolicy.isPending} onClose={() => setSyncPolicyOpen(null)} onSave={values => saveSyncPolicy.mutate({ policy: syncPolicyOpen, ...values, closeModal: true })} />}
     <IntegrationFeedbackToast feedback={feedback} onClose={() => setFeedback(null)} />
@@ -2994,6 +2994,15 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
   const openRequired = requiredEntries.length - requiredReady
   const footerHint = openRequired ? `${openRequired} zorunlu alan bekliyor` : 'Zorunlu alanların hepsi hazır'
   const goToNext = nextOpenEntry ? () => setSelectedEntryKey(nextOpenEntry.key) : undefined
+  // On phones the field list is one sideways row; the chosen field (also when Sonraki Eksik picks it) is brought into view.
+  const fieldNavRef = useRef<HTMLElement>(null)
+  useEffect(() => {
+    const nav = fieldNavRef.current
+    const item = nav?.querySelector<HTMLElement>('.cm-item.is-selected')
+    if (!nav || !item || nav.scrollWidth <= nav.clientWidth) return
+    const navBox = nav.getBoundingClientRect(), itemBox = item.getBoundingClientRect()
+    nav.scrollLeft += itemBox.left - navBox.left - (navBox.width - itemBox.width) / 2
+  }, [activeEntry?.key])
   const dataLoading = references.isLoading || mappings.isLoading || categoryRequirements.isLoading
   const dataFailed = references.isError || mappings.isError || categoryRequirements.isError
   return <article className="panel mapping-step cm-card">
@@ -3015,7 +3024,7 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
     </div>
     {dataLoading ? <Busy text="Kategori özellikleri ve eşlemeler yükleniyor…" /> : dataFailed ? <div className="unknown"><strong>Güncel kategori özellik verisi alınamadı</strong><p>Seçili {platformLabel} kategorisinin özellik listesini yeniden eşitleyin.</p><button type="button" disabled={sync.isPending} onClick={() => sync.mutate()}>{sync.isPending ? 'Kuyruğa alınıyor…' : 'Kategori özelliklerini eşitle'}</button></div> : <>
       <div className="cm-layout">
-        <nav className="cm-nav" aria-label="Kategori özellikleri">
+        <nav ref={fieldNavRef} className="cm-nav" aria-label="Kategori özellikleri">
           {entryGroups.map(group => <Fragment key={group.title}>
             <button type="button" className={`cm-section${collapsedGroups.includes(group.title) ? ' is-collapsed' : ''}`} aria-expanded={!collapsedGroups.includes(group.title)} onClick={() => setCollapsedGroups(current => current.includes(group.title) ? current.filter(title => title !== group.title) : [...current, group.title])}><svg className="cm-section-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4.5 6.5 3.5 3.5 3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg><span>{group.title}</span><span>{group.items.filter(entry => entry.state === 'done').length} / {group.items.length}</span></button>
             {!collapsedGroups.includes(group.title) && group.items.map(entry => <button type="button" key={entry.key} className={`cm-item${entry.key === activeEntry?.key ? ' is-selected' : ''}`} aria-current={entry.key === activeEntry?.key ? 'true' : undefined} onClick={() => setSelectedEntryKey(entry.key)}><MappingStateGlyph state={entry.state} required={entry.required} /><span className="cm-name">{entry.name}</span><span className="cm-meta">{entry.meta}</span></button>)}

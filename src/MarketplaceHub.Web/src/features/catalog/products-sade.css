@@ -281,3 +281,13 @@ main .rr.rr-products .rr-tblwrap.rr-tblwrap { overflow-x: auto; overflow-y: hidd
 main .rr.rr-products .rr-ptbl.rr-ptbl { min-width: 1060px; }
 main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; white-space: nowrap; }
 }
+/* Phones: the variant list opens inside the product card at full card width (it opened from the variant cell and ran
+   off the right edge); the stock button has no fill on hover (a lighter box inside the grey panel, which stayed after a
+   tap) and shows it is editable by a dotted underline like the variant count. */
+@media (max-width: 760px) {
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl tbody tr { position: relative; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl td.rr-mid, :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl .rr-vhover { position: static; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl .rr-vhover > .rr-vtip { top: auto; right: 12px; left: 12px; width: auto; max-width: none; margin-top: 6px; transform: none; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl .rr-qbtn.rr-qbtn:hover { background: none; border-color: transparent; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl .rr-qbtn > b { text-decoration: underline dotted; text-underline-offset: 3px; }
+}

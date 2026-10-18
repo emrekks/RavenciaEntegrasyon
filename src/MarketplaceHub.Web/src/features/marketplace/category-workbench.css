@@ -405,3 +405,30 @@
 .app-shell.stitch-shell main .mapping-transfer-modal > footer { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 14px 24px; border-top: 1px solid var(--rv-color-border); }
 .app-shell.stitch-shell main .mapping-transfer-modal > footer .mapping-export-footer-hint { flex: 1; color: var(--rv-color-muted); font-size: 13px; }
 .app-shell.stitch-shell main .mapping-transfer-modal > footer > button { height: 36px; min-height: 36px; padding: 0 14px; border-radius: 7px; font-size: 14px; text-transform: none; }
+
+/* Phones: the window scrolls as one page; actions and the web color buttons sit in two columns instead of running off the
+   side; the field list is one row of chips that scrolls sideways (it was squeezed to nothing between the head and the
+   field); the category picker and the progress bar take the full width. */
+@media (max-width: 760px) {
+  .app-shell .panel.mapping-step.cm-card.cm-card { overflow-y: auto; }
+  .app-shell .panel.mapping-step.cm-card.cm-card .cm-layout { flex: none; grid-template-rows: auto auto; min-height: 0; }
+  .app-shell .panel.mapping-step.cm-card.cm-card .cm-context { display: grid; gap: 10px; }
+  .app-shell .panel.mapping-step.cm-card.cm-card .cm-context select { width: 100%; }
+  .app-shell .panel.mapping-step.cm-card.cm-card .cm-progress { width: 100%; min-width: 0; }
+  .app-shell .panel.mapping-step.cm-card.cm-card .cm-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; overflow: visible; }
+  .app-shell .panel.mapping-step.cm-card.cm-card .cm-actions > button { width: 100%; min-width: 0; margin-left: 0; padding: 0 8px; overflow: hidden; text-overflow: ellipsis; }
+  .app-shell .panel.mapping-step.cm-card.cm-card .cm-actions > button:last-child:nth-child(odd) { grid-column: 1 / -1; }
+  .app-shell .panel.mapping-step.cm-card.cm-card .cm-nav { display: flex; gap: 6px; max-height: none; padding: 10px 16px; overflow-x: auto; overflow-y: hidden; border-right: 0; border-bottom: 1px solid var(--rv-color-border); scrollbar-width: none; }
+  .app-shell .panel.mapping-step.cm-card.cm-card .cm-nav::-webkit-scrollbar { display: none; }
+  .app-shell .panel.mapping-step.cm-card.cm-card .cm-nav > .cm-section { display: none; }
+  .app-shell .panel.mapping-step.cm-card.cm-card .cm-nav > .cm-item { display: inline-flex; flex: none; align-items: center; gap: 6px; width: auto; height: 36px; min-height: 36px; padding: 0 12px; color: var(--rv-color-muted); white-space: nowrap; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; }
+  .app-shell .panel.mapping-step.cm-card.cm-card .cm-nav > .cm-item .cm-meta { display: none; }
+  .app-shell .panel.mapping-step.cm-card.cm-card .cm-nav > .cm-item.is-selected { color: var(--rv-color-ink); background: var(--rv-color-primary-soft); border-color: var(--rv-color-primary); }
+  .app-shell .panel.mapping-step.cm-card.cm-card :is(.cm-detail, .cm-webcolor) { overflow: visible; }
+  .app-shell.stitch-shell main .panel.mapping-step.cm-card.cm-card .cm-webcolor .value-mapping-heading { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .app-shell.stitch-shell main .panel.mapping-step.cm-card.cm-card .cm-webcolor .cm-webcolor-pick { display: grid; gap: 6px; width: 100%; }
+  .app-shell.stitch-shell main .panel.mapping-step.cm-card.cm-card .cm-webcolor .cm-webcolor-pick select { width: 100%; }
+  .app-shell.stitch-shell main .panel.mapping-step.cm-card.cm-card .cm-webcolor .cm-webcolor-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; width: 100%; }
+  .app-shell.stitch-shell main .panel.mapping-step.cm-card.cm-card .cm-webcolor .cm-webcolor-actions > button { width: 100%; min-width: 0; padding: 0 8px; overflow: hidden; font-size: 13px; white-space: nowrap; text-overflow: ellipsis; }
+  .app-shell .panel.mapping-step.cm-card.cm-card .cm-foot > button { flex: none; white-space: nowrap; }
+}
