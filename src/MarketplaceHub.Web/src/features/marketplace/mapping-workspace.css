@@ -586,7 +586,14 @@
   .app-shell.stitch-shell main section.mapping-page .mapping-category-builder > .mapping-builder-head > button { width: 100%; height: 36px; min-height: 36px; justify-content: center; }
   .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-reference-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-reference-grid > * { grid-column: 1; grid-row: auto; width: 100%; min-width: 0; }
-  .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-reference-grid > .mapping-link-rail { display: none; }
+  /* the link mark sits between the two category pickers, on a hairline */
+  .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-reference-grid { grid-template-rows: none !important; grid-auto-rows: auto !important; row-gap: 6px; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-reference-grid > .mapping-reference-local { order: 1; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-reference-grid > .mapping-link-rail { order: 2; display: flex !important; align-items: center; gap: 10px; width: 100%; height: 28px !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; color: var(--rv-color-primary); }
+  .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-reference-grid > .mapping-link-rail::before,
+  .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-reference-grid > .mapping-link-rail::after { content: ""; flex: 1; height: 1px; background: var(--rv-color-border-strong); }
+  .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-reference-grid > .mapping-link-rail .ui-icon { width: 18px; height: 18px; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-reference-grid > :not(.mapping-reference-local):not(.mapping-link-rail) { order: 3; }
   .app-shell.stitch-shell main section.mapping-page .mapping-category-builder > footer { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
   .app-shell.stitch-shell main section.mapping-page .mapping-category-builder > footer > button { width: 100%; justify-content: center; }
   .app-shell.stitch-shell main section.mapping-page .mapping-category-builder > footer > span { min-height: 3em; }

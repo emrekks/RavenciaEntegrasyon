@@ -62,3 +62,9 @@
   .rv-tabs.rv-tabs.rv-tabs.rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs:is(.ss-seg, .ss-seg2, .ss-itabs, .mapping-platform-tabs) > :is(button, a) :is(.rv-tab-label > svg, .rv-view-tab-icon, .rv-view-tab-logo) { display: none; }
   .rv-tabs.rv-tabs.rv-tabs.rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs:is(.ss-seg, .ss-seg2, .ss-itabs, .mapping-platform-tabs) > :is(button, a) .rv-tab-count { min-width: 18px; height: 18px; padding: 1px 5px 0; font-size: 11px; }
 }
+
+/* Phones: the five marketplace tabs of the mapping pages share one row, each as wide as its name. */
+@media (max-width: 760px) {
+  .rv-tabs.rv-tabs.rv-tabs.rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.mapping-platform-tabs { grid-template-columns: none !important; grid-auto-flow: column; grid-auto-columns: minmax(max-content, 1fr); gap: 2px !important; }
+  .rv-tabs.rv-tabs.rv-tabs.rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.mapping-platform-tabs > :is(button, a) { padding: 0 5px !important; font-size: 11.5px !important; }
+}
