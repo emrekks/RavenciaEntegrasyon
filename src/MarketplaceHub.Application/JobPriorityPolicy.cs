@@ -7,6 +7,9 @@ namespace MarketplaceHub.Application;
 /// </summary>
 public static class JobPriorityPolicy
 {
+    // Actions a user waits for (shipment and return actions, labels, a requested order refresh,
+    // invoice submission and delivery) run in their own worker lane, ahead of everything else.
+    public const int UserAction = -2;
     public const int InitialDataSync = -1;
     public const int Realtime = 0;
     public const int Writes = 1;
@@ -20,6 +23,14 @@ public static class JobPriorityPolicy
     /// True for jobs a user requested from the panel. A few recurring reads run in the hot lane
     /// when requested manually but stay in the background lane when the scheduler produces them.
     /// </param>
+    public static bool IsUserAction(string jobType) => jobType is
+        MarketplaceJobTypes.ShipmentAction or MarketplaceJobTypes.ReturnAction or MarketplaceJobTypes.CommonLabel
+        or MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync or MarketplaceJobTypes.N11OrderSync or MarketplaceJobTypes.PazaramaOrderSync
+        or InvoicingJobTypes.InvoiceSubmit or InvoicingJobTypes.MarketplaceDelivery or InvoicingJobTypes.ManualOrderInvoiceDelivery;
+
+    // Priority of a job a user requested from the panel.
+    public static int ForUser(string jobType) => IsUserAction(jobType) ? UserAction : For(jobType, userInitiated: true);
+
     public static int For(string jobType, bool userInitiated) => jobType switch
     {
         InvoicingJobTypes.InvoiceDueScan => InitialDataSync,

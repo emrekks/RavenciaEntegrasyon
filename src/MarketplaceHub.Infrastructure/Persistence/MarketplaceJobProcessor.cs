@@ -60,7 +60,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         {
             // Scheduled duplicates may coalesce, but another job cannot satisfy
             // a request for a specific order/package. Preserve that work for retry.
-            return MarketplaceSyncExecutionLock.ContentionResult(jobType, payloadJson);
+            var triggerType = jobId is { } leasedJobId
+                ? await db.IntegrationJobs.AsNoTracking().Where(x => x.Id == leasedJobId).Select(x => x.TriggerType).FirstOrDefaultAsync(cancellationToken)
+                : null;
+            return MarketplaceSyncExecutionLock.ContentionResult(jobType, payloadJson, triggerType);
         }
         await using (syncLock)
         {

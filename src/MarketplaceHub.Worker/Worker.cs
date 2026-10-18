@@ -63,6 +63,8 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         // Return reads and product-catalog syncs have dedicated lanes and are kept out of the
         // shared hot/background lanes so long reads cannot occupy their slots.
         var loops = new List<Task>();
+        // Jobs a user waits for (JobPriorityPolicy.UserAction) never queue behind syncs.
+        loops.AddRange(Lane("user", 2, slot => RunLeaseLaneAsync(slot, JobPriorityPolicy.UserAction, null, stoppingToken)));
         loops.AddRange(Lane("hot", 3, slot => RunLeaseLaneAsync(slot, hotPriorityCeiling, 0, stoppingToken, excludedJobTypes: [.. HepsiburadaOrderJobTypes, .. PazaramaOrderJobTypes, .. ReturnReadJobTypes])));
         loops.AddRange(Lane("returns-read", 1, slot => RunLeaseLaneAsync(slot, null, null, stoppingToken, includedJobTypes: ReturnReadJobTypes)));
         loops.AddRange(Lane("product-catalog", 1, slot => RunLeaseLaneAsync(slot, null, null, stoppingToken, includedJobTypes: ProductCatalogSyncJobTypes)));

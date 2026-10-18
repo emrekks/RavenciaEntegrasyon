@@ -271,7 +271,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             PayloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))),
             JobDedupKey = dedupKey,
             EffectIdempotencyKey = $"{InvoicingJobTypes.MarketplaceDelivery}:one-time:{invoice.Id:N}:{idempotencyKey}",
-            Priority = -1,
+            Priority = JobPriorityPolicy.UserAction,
             MaxAttempts = 1,
             Status = JobStatus.Pending,
             AvailableAt = now,

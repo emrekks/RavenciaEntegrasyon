@@ -96,8 +96,12 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
         return "connection";
     }
 
-    internal static JobExecutionResult ContentionResult(string jobType, string payloadJson)
+    internal static JobExecutionResult ContentionResult(string jobType, string payloadJson, string? triggerType = null)
     {
+        // Work a user asked for is never folded into a run that happens to hold the lock.
+        if (triggerType == "user")
+            return JobExecutionResult.Deferred("CONNECTION_OPERATION_BUSY",
+                "Bu bağlantıda süren işlem bitince isteğiniz hemen çalıştırılacak.", TimeSpan.FromSeconds(10));
         if (jobType is MarketplaceJobTypes.OrderInvoiceReconciliation
             or MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation
             or MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation)

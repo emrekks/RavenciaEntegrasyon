@@ -31,7 +31,7 @@ public sealed class MarketplaceWebhookService(AppDbContext db, TokenHasher token
         if (!jobExists)
         {
             var payload = JsonSerializer.Serialize(new { connectionId = connection.Id, externalMessageId, resourceType = envelope.ResourceType, rawJson = envelope.RawJson });
-            db.IntegrationJobs.Add(new IntegrationJob { Id = Guid.CreateVersion7(), TenantId = connection.TenantId, ConnectionId = connection.Id, JobType = jobType, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))), JobDedupKey = dedup, EffectIdempotencyKey = dedup, AvailableAt = now, CorrelationId = correlationId, Version = 1 });
+            db.IntegrationJobs.Add(new IntegrationJob { Id = Guid.CreateVersion7(), TenantId = connection.TenantId, ConnectionId = connection.Id, JobType = jobType, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))), JobDedupKey = dedup, EffectIdempotencyKey = dedup, TriggerType = "webhook", AvailableAt = now, CorrelationId = correlationId, Version = 1 });
         }
         try { await db.SaveChangesAsync(cancellationToken); }
         catch (DbUpdateException exception) when (IsDuplicateCandidate(exception))

@@ -122,3 +122,27 @@ public sealed class MarketplaceSyncContentionTests
         Assert.Equal(TimeSpan.FromMinutes(3), result.RetryAfter);
     }
 }
+
+public sealed class UserActionLaneTests
+{
+    [Theory]
+    [InlineData(MarketplaceJobTypes.ShipmentAction)]
+    [InlineData(MarketplaceJobTypes.ReturnAction)]
+    [InlineData(MarketplaceJobTypes.OrderSync)]
+    [InlineData(InvoicingJobTypes.InvoiceSubmit)]
+    public void UserRequestedActionsRunInTheUserLane(string jobType) =>
+        Assert.Equal(JobPriorityPolicy.UserAction, JobPriorityPolicy.ForUser(jobType));
+
+    [Fact]
+    public void LongUserRequestedReadsKeepTheirOwnLanes() =>
+        Assert.NotEqual(JobPriorityPolicy.UserAction, JobPriorityPolicy.ForUser(MarketplaceJobTypes.ProductSync));
+
+    [Fact]
+    public void AUserRequestIsDeferredRatherThanFoldedIntoTheRunningSync()
+    {
+        Assert.True(MarketplaceSyncExecutionLock.ContentionResult(MarketplaceJobTypes.OrderSync, "{}").Succeeded);
+        var user = MarketplaceSyncExecutionLock.ContentionResult(MarketplaceJobTypes.OrderSync, "{}", "user");
+        Assert.False(user.Succeeded);
+        Assert.True(user.RefundAttempt);
+    }
+}

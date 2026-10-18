@@ -58,7 +58,7 @@ public sealed class InvoiceSubmitJobRetryPolicyTests
     [Fact]
     public void InvoiceSubmitJobsUseHighestQueuePriority()
     {
-        Assert.Equal(-1, InvoicingBillingService.InvoiceJobPriority("INVOICE_SUBMIT"));
+        Assert.Equal(JobPriorityPolicy.UserAction, InvoicingBillingService.InvoiceJobPriority("INVOICE_SUBMIT"));
         Assert.Equal(0, InvoicingBillingService.InvoiceJobPriority("INVOICE_RECONCILE"));
     }
 

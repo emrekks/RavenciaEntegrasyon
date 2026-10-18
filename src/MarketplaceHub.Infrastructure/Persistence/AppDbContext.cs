@@ -168,7 +168,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             var metadata = IntegrationJobMetadataPolicy.FromJobType(entry.Entity.JobType);
             entry.Entity.ResourceType = metadata.ResourceType;
             entry.Entity.OperationType = metadata.OperationType;
-            entry.Entity.TriggerType = metadata.TriggerType;
+            // A job created for a user or by a webhook keeps saying so.
+            if (entry.Entity.TriggerType is not ("user" or "webhook")) entry.Entity.TriggerType = metadata.TriggerType;
         }
     }
 
