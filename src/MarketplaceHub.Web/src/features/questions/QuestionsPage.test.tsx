@@ -187,8 +187,8 @@ describe('QuestionsPage workspace flows', () => {
     select(selects[0], 'ty-store')
     act(() => button('Tarih Aralığı Seçin').click())
     const calendarDays = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.date-range-picker-grid button'))
-    act(() => calendarDays.find(day => day.textContent === '1')!.click())
-    const endDate = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.date-range-picker-grid button')).find(day => day.textContent === '5')!
+    act(() => calendarDays.find(day => day.getAttribute('aria-label') === '1 Ekim 2026')!.click())
+    const endDate = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.date-range-picker-grid button')).find(day => day.getAttribute('aria-label') === '5 Ekim 2026')!
     act(() => endDate.click())
     input(container.querySelector<HTMLInputElement>('.rv-questions-search input')!, 'bluz 01')
     await settle()
