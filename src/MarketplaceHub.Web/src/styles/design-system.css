@@ -12114,12 +12114,13 @@ html body :is(.nav-count, .rv-tab-count, .ss-count, .cs-count, .cm-count, .qi-co
 /* Saved mapping delete button is 36×36 like every icon button. */
 .app-shell.stitch-shell main .mapping-saved-table .mapping-row-actions .mapping-delete-button { width: 36px !important; min-width: 36px !important; height: 36px !important; min-height: 36px !important; padding: 0 !important; }
 
-/* Phones: a little less space between and inside the blocks of every page; settings save bars sit in the page instead
+/* Phones: a little less space between and inside the blocks of every page; save and publish bars sit in the page instead
    of sticking to the bottom. */
 @media (max-width: 760px) {
   .app-shell.stitch-shell main section.content { row-gap: 12px; }
   .app-shell.stitch-shell main section.content :is(.panel, .rr-panel, .product-step-card) { padding: 12px; }
   .app-shell.stitch-shell main .ss-page .ss-bar { position: static; }
+  .app-shell.stitch-shell main :is(.product-publish-step .publish-selection-footer, .settings-sticky-actions, .shipping-settings-actions) { position: static; box-shadow: none; backdrop-filter: none; }
 }
 
 /* Field help texts (the small note after a field) no longer sit under every input: they show as a tip above the field
