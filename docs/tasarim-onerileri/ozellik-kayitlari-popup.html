@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Özellik Kayıtları Önerileri</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#e1e4eb; --surface:#eaedf2; --raised:#f0f2f6; --soft:#dfe3ea; --line:#c9d0dc; --strong:#a4aec0; --ink:#2f3a4f; --muted:#525e77; --subtle:#69758d; --primary:#5b44d2; --psoft:#e0dcf6; --danger:#a2344f; --dsoft:#efd5dc; --accent:#0f7864; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 32px 24px 64px; color: var(--ink); background: var(--bg); font-family: Inter, system-ui, sans-serif; }
+  .intro { max-width: 1180px; margin: 0 auto 24px; }
+  .intro h1 { margin: 0 0 6px; font-size: 22px; font-weight: 600; }
+  .intro p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(540px, 1fr)); gap: 28px; max-width: 1180px; margin: 0 auto; }
+  .opt { display: grid; gap: 10px; align-content: start; }
+  .opt-head { display: flex; align-items: baseline; gap: 10px; }
+  .opt-head b { display: inline-grid; min-width: 26px; height: 26px; place-items: center; background: var(--psoft); border: 1px solid #b9aef0; border-radius: 7px; font-size: 13px; }
+  .opt-head strong { font-size: 15px; font-weight: 600; }
+  .opt > p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+  .stage { position: relative; min-height: 380px; padding: 16px; overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+  .records { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .rec { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 52px; padding: 8px 12px; background: var(--raised); border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
+  .rec:hover { background: var(--soft); }
+  .rec.on { border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
+  .rec strong { display: block; font-size: 14px; font-weight: 600; }
+  .rec small { color: var(--muted); font-size: 12px; }
+  .chev { width: 16px; height: 16px; color: var(--subtle); fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .pop { position: absolute; z-index: 5; display: grid; gap: 2px; width: 240px; padding: 6px; background: var(--raised); border: 1px solid var(--strong); border-radius: 12px; box-shadow: 0 16px 40px rgb(30 35 50 / 18%); }
+  .item { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 10px; border-radius: 7px; font-size: 13.5px; }
+  .item:hover { background: var(--soft); }
+  .item .ico { width: 16px; height: 16px; color: var(--muted); fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  .item.danger { color: var(--danger); } .item.danger .ico { color: var(--danger); }
+  .sep { height: 1px; margin: 4px 2px; background: var(--line); }
+  .pop-h { padding: 8px 10px 6px; }
+  .pop-h strong { font-size: 14px; } .pop-h small { display: block; color: var(--muted); font-size: 12px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 7px; font-size: 12.5px; }
+  .chip.add { color: var(--primary); border-style: dashed; border-color: #b9aef0; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 36px; padding: 0 14px; color: var(--ink); background: var(--raised); border: 1px solid var(--strong); border-radius: 7px; font: 500 13.5px Inter, sans-serif; }
+  .btn.primary { color: #fff; background: var(--primary); border-color: var(--primary); }
+  .btn.danger { color: var(--danger); border-color: #d9a7b4; background: var(--dsoft); }
+  .drawer { position: absolute; top: 0; right: 0; bottom: 0; z-index: 5; display: grid; grid-template-rows: auto auto 1fr auto; width: 300px; background: var(--raised); border-left: 1px solid var(--strong); box-shadow: -16px 0 40px rgb(30 35 50 / 14%); }
+  .dh { display: flex; align-items: flex-start; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+  .dh strong { font-size: 16px; } .dh small { display: block; color: var(--muted); font-size: 12px; }
+  .x { display: grid; width: 32px; height: 32px; place-items: center; color: var(--muted); border-radius: 7px; }
+  .tabs { display: flex; gap: 0; padding: 0 12px; border-bottom: 1px solid var(--line); }
+  .tab { position: relative; padding: 11px 10px; color: var(--muted); font-size: 13px; font-weight: 500; }
+  .tab.on { color: var(--ink); } .tab.on::after { content: ""; position: absolute; right: 6px; bottom: -1px; left: 6px; height: 2px; background: var(--primary); border-radius: 2px; }
+  .db { display: grid; align-content: start; gap: 10px; padding: 14px 16px; }
+  .df { display: flex; justify-content: space-between; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); }
+  .veil { position: absolute; inset: 0; z-index: 4; background: rgb(40 45 60 / 22%); }
+  .modal { position: absolute; top: 24px; left: 50%; z-index: 5; width: 430px; transform: translateX(-50%); background: var(--raised); border: 1px solid var(--strong); border-radius: 14px; box-shadow: 0 24px 60px rgb(30 35 50 / 22%); }
+  .sec { padding: 12px 16px; border-top: 1px solid var(--line); }
+  .sec h4 { margin: 0 0 8px; font-size: 13px; font-weight: 600; }
+  .check { display: flex; align-items: center; gap: 8px; height: 30px; font-size: 13px; }
+  .check i { width: 16px; height: 16px; border: 1.5px solid var(--strong); border-radius: 4px; }
+  .check.on i { background: var(--primary); border-color: var(--primary); }
+  .acc { grid-column: 1 / -1; display: grid; gap: 12px; padding: 14px; background: var(--raised); border: 1px solid var(--primary); border-radius: 10px; }
+  .acc-h { display: flex; align-items: center; justify-content: space-between; }
+  .acc-row { display: grid; grid-template-columns: 110px 1fr; gap: 10px; align-items: start; font-size: 13px; }
+  .acc-row > span { color: var(--muted); }
+  .sheet { position: absolute; right: 0; bottom: 0; left: 0; z-index: 5; display: grid; gap: 8px; padding: 10px 16px 18px; background: var(--raised); border-top: 1px solid var(--strong); border-radius: 16px 16px 0 0; box-shadow: 0 -16px 40px rgb(30 35 50 / 16%); }
+  .grip { width: 36px; height: 4px; margin: 0 auto 4px; background: var(--strong); border-radius: 2px; }
+  .big { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .big > div { display: grid; justify-items: center; gap: 6px; padding: 12px 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; font-size: 13px; font-weight: 500; text-align: center; }
+  .big > div small { color: var(--muted); font-size: 11.5px; font-weight: 400; }
+  .big > div.danger { color: var(--danger); }
+  .big svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></symbol>
+  <symbol id="i-tag" viewBox="0 0 24 24"><path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.2"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 7V4h4v3M6 7l1 13h10l1-13"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+</svg>
+<div class="intro">
+  <h1>Özellik Kayıtları — Tıklayınca Açılan Yapı</h1>
+  <p>Sağdaki Kategoriler / Düzenle / Sil düğmeleri kalkıyor; kaydın kendisine tıklanınca açılan yerden hepsi yapılıyor. Her öneride “Beden” kaydı açık hâlde gösterildi.</p>
+</div>
+<div class="grid">
+
+<section class="opt">
+  <div class="opt-head"><b>1</b><strong>Kaydın Altında Açılan Menü</strong></div>
+  <p>En hafif seçenek. Kayda tıklayınca hemen altında küçük bir menü açılır: Değerleri Düzenle, Kategoriler, Adını Değiştir, Kopyala, Sil. Bir şey seçilince ilgili pencere açılır.</p>
+  <div class="stage">
+    <div class="records">
+      <div class="rec on"><div><strong>Beden</strong><small>27 değer kaydedildi</small></div><svg class="chev"><use href="#i-down"/></svg></div>
+      <div class="rec"><div><strong>Renk</strong><small>101 değer kaydedildi</small></div><svg class="chev"><use href="#i-down"/></svg></div>
+      <div class="rec"><div><strong>Boy</strong><small>74 değer kaydedildi</small></div><svg class="chev"><use href="#i-down"/></svg></div>
+      <div class="rec"><div><strong>Cep</strong><small>31 değer kaydedildi</small></div><svg class="chev"><use href="#i-down"/></svg></div>
+    </div>
+    <div class="pop" style="top:74px;left:16px">
+      <div class="item"><svg class="ico"><use href="#i-list"/></svg>Değerleri Düzenle <span style="margin-left:auto;color:var(--subtle);font-size:12px">27</span></div>
+      <div class="item"><svg class="ico"><use href="#i-tag"/></svg>Kategoriler <span style="margin-left:auto;color:var(--subtle);font-size:12px">45 seçili</span></div>
+      <div class="item"><svg class="ico"><use href="#i-edit"/></svg>Adını Değiştir</div>
+      <div class="item"><svg class="ico"><use href="#i-copy"/></svg>Kopyala</div>
+      <div class="sep"></div>
+      <div class="item danger"><svg class="ico"><use href="#i-trash"/></svg>Sil</div>
+    </div>
+  </div>
+</section>
+
+<section class="opt">
+  <div class="opt-head"><b>2</b><strong>Sağdan Açılan Yan Panel</strong></div>
+  <p>Kayda tıklayınca sağdan bir panel açılır; liste solda görünmeye devam eder. Panelde Değerler, Kategoriler ve Ayarlar sekmeleri, altta Sil ve Kaydet var. Çok değerli özelliklerde en rahat düzenleme.</p>
+  <div class="stage">
+    <div class="records" style="grid-template-columns:1fr;width:200px">
+      <div class="rec on"><div><strong>Beden</strong><small>27 değer</small></div><svg class="chev"><use href="#i-chev"/></svg></div>
+      <div class="rec"><div><strong>Renk</strong><small>101 değer</small></div><svg class="chev"><use href="#i-chev"/></svg></div>
+      <div class="rec"><div><strong>Boy</strong><small>74 değer</small></div><svg class="chev"><use href="#i-chev"/></svg></div>
+    </div>
+    <div class="drawer">
+      <div class="dh"><div><strong>Beden</strong><small>Seçenek grubu · 27 değer</small></div><span class="x">✕</span></div>
+      <div class="tabs"><span class="tab on">Değerler</span><span class="tab">Kategoriler</span><span class="tab">Ayarlar</span></div>
+      <div class="db"><div class="chips"><span class="chip">S</span><span class="chip">M</span><span class="chip">L</span><span class="chip">XL</span><span class="chip">2XL</span><span class="chip">3XL</span><span class="chip">4XL</span><span class="chip">5XL</span><span class="chip">36</span><span class="chip">38</span><span class="chip add">+ Değer Ekle</span></div></div>
+      <div class="df"><span class="btn danger">Sil</span><span class="btn primary">Kaydet</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="opt">
+  <div class="opt-head"><b>3</b><strong>Ortada Tek Pencere</strong></div>
+  <p>Kayda tıklayınca ortada bir pencere açılır; değerler ve kategoriler aynı pencerede alt alta durur. Ad, değerler ve kategoriler tek seferde gözden geçirilip kaydedilir.</p>
+  <div class="stage" style="min-height:470px">
+    <div class="records"><div class="rec on"><div><strong>Beden</strong><small>27 değer kaydedildi</small></div></div><div class="rec"><div><strong>Renk</strong><small>101 değer kaydedildi</small></div></div></div>
+    <div class="veil"></div>
+    <div class="modal">
+      <div class="dh"><div><strong>Beden</strong><small>27 değer · 45 kategoride görünüyor</small></div><span class="x">✕</span></div>
+      <div class="sec"><h4>Değerler</h4><div class="chips"><span class="chip">S</span><span class="chip">M</span><span class="chip">L</span><span class="chip">XL</span><span class="chip">2XL</span><span class="chip">+22</span><span class="chip add">+ Ekle</span></div></div>
+      <div class="sec"><h4>Göründüğü Kategoriler</h4><div class="check on"><i></i>Alt - Üst Takım</div><div class="check on"><i></i>Bluz</div><div class="check"><i></i>Atlet</div></div>
+      <div class="df"><span class="btn danger">Özelliği Sil</span><span style="display:flex;gap:8px"><span class="btn">Vazgeç</span><span class="btn primary">Kaydet</span></span></div>
+    </div>
+  </div>
+</section>
+
+<section class="opt">
+  <div class="opt-head"><b>4</b><strong>Satır İçinde Genişleme</strong></div>
+  <p>Kayda tıklayınca kart yerinde genişler; değerler, kategoriler ve işlemler kartın içinde görünür. Sayfadan ayrılmadan, pencere açmadan çalışılır; başka karta tıklanınca öncekisi kapanır.</p>
+  <div class="stage">
+    <div class="records">
+      <div class="acc">
+        <div class="acc-h"><div><strong style="font-size:15px">Beden</strong> <small style="color:var(--muted)">· 27 değer</small></div><svg class="chev" style="transform:rotate(180deg)"><use href="#i-down"/></svg></div>
+        <div class="acc-row"><span>Değerler</span><div class="chips"><span class="chip">S</span><span class="chip">M</span><span class="chip">L</span><span class="chip">XL</span><span class="chip">+23</span><span class="chip add">+ Ekle</span></div></div>
+        <div class="acc-row"><span>Kategoriler</span><div style="font-size:13px">Alt - Üst Takım, Bluz, Elbise <span style="color:var(--primary)">+42 · Düzenle</span></div></div>
+        <div style="display:flex;justify-content:space-between"><span class="btn danger">Sil</span><span style="display:flex;gap:8px"><span class="btn">Adını Değiştir</span><span class="btn primary">Kaydet</span></span></div>
+      </div>
+      <div class="rec"><div><strong>Renk</strong><small>101 değer kaydedildi</small></div><svg class="chev"><use href="#i-down"/></svg></div>
+      <div class="rec"><div><strong>Boy</strong><small>74 değer kaydedildi</small></div><svg class="chev"><use href="#i-down"/></svg></div>
+    </div>
+  </div>
+</section>
+
+<section class="opt">
+  <div class="opt-head"><b>5</b><strong>Alttan Açılan İşlem Kartı</strong></div>
+  <p>Telefona en uygun seçenek. Kayda dokununca alttan bir kart çıkar: üç büyük işlem (Değerler, Kategoriler, Sil) ve kaydın özeti. Masaüstünde aynı kart kaydın altında açılır.</p>
+  <div class="stage">
+    <div class="records"><div class="rec on"><div><strong>Beden</strong><small>27 değer kaydedildi</small></div></div><div class="rec"><div><strong>Renk</strong><small>101 değer kaydedildi</small></div></div><div class="rec"><div><strong>Boy</strong><small>74 değer kaydedildi</small></div></div><div class="rec"><div><strong>Cep</strong><small>31 değer kaydedildi</small></div></div></div>
+    <div class="veil"></div>
+    <div class="sheet">
+      <div class="grip"></div>
+      <div class="dh" style="padding:4px 0 8px;border:0"><div><strong>Beden</strong><small>27 değer · 45 kategori</small></div><span class="x">✕</span></div>
+      <div class="big">
+        <div><svg><use href="#i-list"/></svg>Değerler<small>27 kayıt</small></div>
+        <div><svg><use href="#i-tag"/></svg>Kategoriler<small>45 seçili</small></div>
+        <div class="danger"><svg><use href="#i-trash"/></svg>Sil<small>geri alınamaz</small></div>
+      </div>
+      <div class="item" style="justify-content:center;color:var(--muted)"><svg class="ico"><use href="#i-edit"/></svg>Adını Değiştir</div>
+    </div>
+  </div>
+</section>
+
+</div>
+</body>
+</html>
