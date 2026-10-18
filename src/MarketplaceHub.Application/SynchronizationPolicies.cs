@@ -759,3 +759,19 @@ public static class HepsiburadaCancellationPolicy
         return new(now.AddDays(-1), false);
     }
 }
+
+// Pazarama lists orders by order date with their current item statuses. Open orders beyond one
+// run's per-order batch are read through the order-date windows of the last three months that
+// hold them (older open orders keep the per-order read).
+public static class PazaramaOpenOrderPolicy
+{
+    public const int MaxPagesPerWindow = 50;
+
+    public static DateTime? StartDay(IReadOnlyCollection<DateTimeOffset> openOrderedAt, int batchSize, DateTimeOffset now)
+    {
+        var floor = now.AddMonths(-PazaramaOrderHistoryPolicy.InitialLookbackMonths);
+        var recent = openOrderedAt.Where(orderedAt => orderedAt >= floor).ToArray();
+        if (recent.Length <= batchSize) return null;
+        return recent.Min().ToOffset(PazaramaOrderHistoryPolicy.TurkeyOffset).Date;
+    }
+}

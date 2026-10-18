@@ -2826,6 +2826,13 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             foreach (var cancelled in await HepsiburadaCancelledOrdersToRead(tenantId, connectionId, correlationId, cancellationToken))
                 if (!externalOrderIds.Contains(cancelled, StringComparer.Ordinal)) externalOrderIds.Add(cancelled);
         }
+        else if (platformCode == "PAZARAMA" && await SyncPazaramaOpenOrdersByWindow(tenantId, connectionId, correlationId, lifecycleBatchSize, cancellationToken))
+        {
+            cursor.LastModifiedWatermark = timeProvider.GetUtcNow();
+            cursor.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+            return true;
+        }
         else
         {
             externalOrderIds = await (from package in db.ShipmentPackages.AsNoTracking()

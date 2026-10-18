@@ -149,3 +149,18 @@ public sealed class HepsiburadaCancellationPolicyTests
         Assert.Equal("l-1", line.LineItemId);
     }
 }
+
+public sealed class PazaramaOpenOrderPolicyTests
+{
+    private static readonly DateTimeOffset Now = new(2026, 10, 19, 12, 0, 0, TimeSpan.Zero);
+
+    [Fact]
+    public void ManyOpenOrdersAreReadThroughTheirOrderDateWindows()
+    {
+        var few = Enumerable.Range(0, 25).Select(day => Now.AddDays(-day)).ToArray();
+        var many = few.Append(Now.AddDays(-40)).Append(Now.AddMonths(-5)).ToArray();
+
+        Assert.Null(PazaramaOpenOrderPolicy.StartDay(few, 25, Now));
+        Assert.Equal(Now.AddDays(-40).ToOffset(TimeSpan.FromHours(3)).Date, PazaramaOpenOrderPolicy.StartDay(many, 25, Now));
+    }
+}
