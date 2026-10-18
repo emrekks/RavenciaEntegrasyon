@@ -606,6 +606,12 @@ public sealed partial class HepsiburadaHttpClient(
                     }
                     catch (JsonException)
                     {
+                        // A row that still names its order makes the panel read that order by number.
+                        if (HepsiburadaJsonMapper.PackageOrderNumber(item) is { } unlinkedOrder)
+                        {
+                            issues.Add(new(HepsiburadaPackagePolicy.OrderToReadCode, unlinkedOrder, "Hepsiburada paket kaydı siparişe bağlanamadı; sipariş numarasıyla okunacak."));
+                            continue;
+                        }
                         var identity = HepsiburadaJsonMapper.PackageIdentity(item) ?? $"offset:{offset + rawItems.Count}";
                         issues.Add(new("HEPSIBURADA_PACKAGE_ORDER_LINK_MISSING", identity, "Hepsiburada paket/durum kaydında sipariş, paket kimliği veya olay tarihi yok; kayıt siparişe bağlanmadı."));
                     }

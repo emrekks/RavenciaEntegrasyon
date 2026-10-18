@@ -782,3 +782,12 @@ public static class PazaramaOpenOrderPolicy
         return recent.Min().ToOffset(PazaramaOrderHistoryPolicy.TurkeyOffset).Date;
     }
 }
+
+// Hepsiburada can package an order within a minute of payment, before the paid-order feed is read.
+// Package rows and the missing-invoice list then name orders the panel lacks; those are read by
+// order number, a few per run.
+public static class HepsiburadaPackagePolicy
+{
+    public const string OrderToReadCode = "HEPSIBURADA_PACKAGE_ORDER_TO_READ";
+    public const int MaxOrderReadsPerRun = 10;
+}

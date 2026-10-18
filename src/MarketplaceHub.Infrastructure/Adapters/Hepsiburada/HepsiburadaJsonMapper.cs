@@ -972,9 +972,21 @@ internal static class HepsiburadaJsonMapper
         };
     }
 
-    public static RemoteOrderPackage OrderPackage(JsonElement item)
+    // The open-package list has no order number of its own; each of its items names its order.
+    public static string? PackageOrderNumber(JsonElement item)
     {
         var orderNumber = Text(item, "orderNumber", "OrderNumber", "orderNo", "OrderNo");
+        if (!string.IsNullOrWhiteSpace(orderNumber)) return orderNumber;
+        var items = Find(item, "items", "Items", "lineItems", "LineItems", "orderItems", "OrderItems");
+        if (items.ValueKind != JsonValueKind.Array) return null;
+        return items.EnumerateArray()
+            .Select(line => Text(line, "orderNumber", "OrderNumber", "orderNo", "OrderNo"))
+            .FirstOrDefault(number => !string.IsNullOrWhiteSpace(number));
+    }
+
+    public static RemoteOrderPackage OrderPackage(JsonElement item)
+    {
+        var orderNumber = PackageOrderNumber(item);
         var packageNumber = Text(item, "packageNumber", "PackageNumber");
         if (string.IsNullOrWhiteSpace(orderNumber) || string.IsNullOrWhiteSpace(packageNumber))
             throw new JsonException("Hepsiburada paket yanıtında orderNumber veya packageNumber yok; güvenli sipariş eşlemesi yapılamadı.");

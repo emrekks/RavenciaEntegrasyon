@@ -2146,8 +2146,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 cancellationToken);
             if (!page.IsSuccess) { TrackResultFailure(page.Error); throw JobProcessingException.FromAdapter(page.Error!); }
             foreach (var item in page.Value!.Items) TrackReceived();
-            foreach (var issue in page.Value.Issues ?? [])
+            foreach (var issue in (page.Value.Issues ?? []).Where(issue => issue.Code != HepsiburadaPackagePolicy.OrderToReadCode))
                 await RecordIssue(tenantId, $"package-contract:{connectionId}:{issue.Identity}:{issue.Code}", issue.Code, issue.Message, cancellationToken);
+            await ReadMissingHepsiburadaOrdersAsync(tenantId, connectionId, correlationId,
+                (page.Value.Issues ?? []).Where(issue => issue.Code == HepsiburadaPackagePolicy.OrderToReadCode).Select(issue => issue.Identity), cancellationToken);
 
             foreach (var orderPackagesForOrder in page.Value.Items
                          .GroupBy(x => x.ExternalOrderId, StringComparer.Ordinal)
@@ -3660,10 +3662,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
         if (isHepsiburada)
         {
-            if (hepsiburadaInvoiceStatusUnavailable.Count > 0)
-                await ReconcileHepsiburadaMissingInvoiceStatuses(tenantId, connectionId, correlationId, hepsiburadaInvoiceStatusUnavailable, cancellationToken);
-            else
+            if (hepsiburadaInvoiceStatusUnavailable.Count == 0)
                 await ResolveIssue(tenantId, $"order-invoice-reconciliation:{connectionId}:invoice-status-contract", cancellationToken);
+            // The missing-invoice list is read every run: it also names orders the panel lacks.
+            await ReconcileHepsiburadaMissingInvoiceStatuses(tenantId, connectionId, correlationId, hepsiburadaInvoiceStatusUnavailable, cancellationToken);
         }
 
         // The sweep is complete once its last orders are read; the next one starts six hours later.
@@ -4062,6 +4064,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         const string issueKeySuffix = "invoice-status-contract";
         var issueKey = $"order-invoice-reconciliation:{connectionId}:{issueKeySuffix}";
         var missingInvoicePackageKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var missingInvoiceOrderNumbers = new HashSet<string>(StringComparer.Ordinal);
         var cursor = "0";
         var completeFeed = false;
 
@@ -4085,7 +4088,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             TrackReceived();
             var page = result.Value!;
             foreach (var item in page.Items)
+            {
                 missingInvoicePackageKeys.Add(HepsiburadaMissingInvoiceStatusPolicy.Key(item.OrderNumber, item.PackageNumber));
+                missingInvoiceOrderNumbers.Add(item.OrderNumber.Trim());
+            }
 
             if (!page.HasMore)
             {
@@ -4108,6 +4114,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 "Hepsiburada faturasız sipariş listesi güvenli sayfa sınırına kadar tamamlanmadı; eksik alanlı siparişlerin durumu değiştirilmedi.", cancellationToken);
             return;
         }
+
+        // Orders Hepsiburada lists without an invoice but the panel does not have (packaged before
+        // the paid-order feed saw them) are read now.
+        await ReadMissingHepsiburadaOrdersAsync(tenantId, connectionId, correlationId, missingInvoiceOrderNumbers, cancellationToken);
+        if (externalOrderIds.Count == 0) return;
 
         var ordersToReconcile = await db.Orders
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && externalOrderIds.Contains(x.ExternalOrderId))

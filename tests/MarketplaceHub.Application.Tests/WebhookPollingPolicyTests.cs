@@ -181,3 +181,29 @@ public sealed class QueueLaneTests
     public void JobsBelongToTheLaneOfTheirPriority(int priority, string lane) =>
         Assert.Equal(lane, MarketplaceHub.Infrastructure.Persistence.QueueHealthService.LaneFor(priority));
 }
+
+public sealed class HepsiburadaOpenPackageRowTests
+{
+    [Fact]
+    public void AnOpenPackageRowNamesItsOrderThroughItsItems()
+    {
+        // The documented open-package list row: no top-level order number, items carry it.
+        using var document = System.Text.Json.JsonDocument.Parse("""
+            {"id":"6ad4ab08-2a36-562c-3232-45d406060606","packageNumber":"5528399494","orderDate":"2026-10-18T14:18:00","status":"Packaged",
+             "items":[{"lineItemId":"l-1","orderNumber":"4588521195","hbSku":"HBCV000084MLD6","merchantSku":"MZ005S24","productName":"Anne Penye Bluz","quantity":1,"price":{"amount":525,"currency":"TRY"},"totalPrice":{"amount":525,"currency":"TRY"},"vatRate":10}]}
+            """);
+        var package = MarketplaceHub.Infrastructure.Adapters.Hepsiburada.HepsiburadaJsonMapper.OrderPackage(document.RootElement);
+
+        Assert.Equal("4588521195", package.ExternalOrderId);
+        Assert.Equal("5528399494", package.Package.ExternalPackageId);
+    }
+
+    [Fact]
+    public void ARowWithoutAPackageNumberStillNamesItsOrder()
+    {
+        using var document = System.Text.Json.JsonDocument.Parse("""{"id":"6ad4ab08","items":[{"orderNumber":"4091991027"}]}""");
+
+        Assert.Throws<System.Text.Json.JsonException>(() => MarketplaceHub.Infrastructure.Adapters.Hepsiburada.HepsiburadaJsonMapper.OrderPackage(document.RootElement));
+        Assert.Equal("4091991027", MarketplaceHub.Infrastructure.Adapters.Hepsiburada.HepsiburadaJsonMapper.PackageOrderNumber(document.RootElement));
+    }
+}
