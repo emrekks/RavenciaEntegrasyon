@@ -8,8 +8,9 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort port, TimeProvider timeProvider, ILogger<MarketplaceQuestionService> logger) : IMarketplaceQuestionService
 {
-    // WAITING_FOR_APPROVE: an answer Trendyol has not approved yet.
-    private static readonly string[] TrendyolStatuses = ["WAITING_FOR_ANSWER", "WAITING_FOR_APPROVE", "ANSWERED", "REPORTED", "REJECTED", "UNANSWERED"];
+    // WAITING_FOR_APPROVE: an answer Trendyol has not approved yet. New statuses go last so a history
+    // import under way keeps its saved status position.
+    private static readonly string[] TrendyolStatuses = ["WAITING_FOR_ANSWER", "ANSWERED", "REPORTED", "REJECTED", "UNANSWERED", "WAITING_FOR_APPROVE"];
     private static readonly string[] HepsiburadaStatuses = ["WAITING_FOR_ANSWER", "ANSWERED", "REJECTED", "EXPIRED"];
     private static readonly string[] N11Statuses = ["WAITING_FOR_ANSWER", "ANSWERED"];
     // Pazarama answers wait for its approval (shown as answered) and may be rejected.
@@ -89,8 +90,9 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
             && (row.PlatformCode == "TRENDYOL" || row.PlatformCode == "HEPSIBURADA" || row.PlatformCode == "N11" || row.PlatformCode == "PAZARAMA"), cancellationToken);
         if (connection is null) return new(0, 0, timeProvider.GetUtcNow(), "Pazaryeri bağlantısı bulunamadı.");
         var state = await db.MarketplaceQuestionSyncStates.SingleOrDefaultAsync(row => row.TenantId == tenantId && row.ConnectionId == connectionId, cancellationToken);
-        if (state is null) { state = new() { TenantId = tenantId, ConnectionId = connectionId, HistoryStartedAt = timeProvider.GetUtcNow().AddYears(-1) }; db.MarketplaceQuestionSyncStates.Add(state); await db.SaveChangesAsync(cancellationToken); }
-        state.HistoryStartedAt ??= timeProvider.GetUtcNow().AddYears(-1);
+        var initialHistoryStart = PlatformHistoryLimits.InitialStart(connection.PlatformCode, PlatformHistoryKind.Questions, timeProvider.GetUtcNow());
+        if (state is null) { state = new() { TenantId = tenantId, ConnectionId = connectionId, HistoryStartedAt = initialHistoryStart }; db.MarketplaceQuestionSyncStates.Add(state); await db.SaveChangesAsync(cancellationToken); }
+        state.HistoryStartedAt ??= initialHistoryStart;
         var initial = !state.HistoryImported;
         var now = timeProvider.GetUtcNow(); var added = 0; var updated = 0;
         string? failedRequestContext = null;
