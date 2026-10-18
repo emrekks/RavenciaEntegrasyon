@@ -449,3 +449,13 @@
   .app-shell.stitch-shell main .product-add-page :is(.product-step-grid, .product-identifiers-grid, #marketplace-pricing-panel) :is(input:not([type="checkbox"]):not([type="radio"]), select) { box-sizing: border-box; height: 43px; min-height: 43px; }
   .app-shell.stitch-shell main .product-add-page .product-submit-sticky.product-submit-sticky { position: static; }
 }
+
+/* Phones: the two heading buttons share the row half and half (the import one keeps a short name), the catalog count
+   stays on one line, and the frameless catalog list adds no side gap of its own to the page's. */
+.app-shell.stitch-shell main .rr.rr-products .rr-acts .rr-lbl-short { display: none; }
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .rr.rr-products > .rr-ph .rr-acts > .rr-btn { flex: 1 1 0; min-width: 0; justify-content: center; }
+  .app-shell.stitch-shell main .rr.rr-products .rr-acts .rr-lbl-long { display: none; }
+  .app-shell.stitch-shell main .rr.rr-products .rr-acts .rr-lbl-short { display: inline; }
+  .app-shell.stitch-shell main .rr.rr-products .rr-panel-h p { white-space: nowrap; }
+}

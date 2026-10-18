@@ -285,9 +285,7 @@ export function SystemSettingsPage() {
     if (key === 'auth') return status.data ? <SettingsGlyph state={totpEnabled ? 'done' : 'none'} /> : <svg className="ss-st" aria-hidden="true" style={{ visibility: 'hidden' }} />
     if (key === 'sessions') return sessionCount.count !== undefined ? <span className="ss-count rv-tab-count">{sessionCount.count}</span> : null
     if (key === 'database') return resetScopes.length ? <span className="ss-count rv-tab-count is-warn">{resetScopes.length}</span> : null
-    if (key === 'designer') return <span className="ss-count">{labelSettings.layout[labelFormat].length}</span>
     if (key === 'palette') return appearanceStatus.dirty ? <SettingsGlyph state="pending" /> : null
-    if (key === 'themes') return appearanceStatus.themeCount ? <span className="ss-count">{appearanceStatus.themeCount}</span> : null
     return null
   }
   function resetScopeOption(scope: string) {

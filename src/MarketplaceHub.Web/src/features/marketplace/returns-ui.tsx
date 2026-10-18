@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { InvoiceGlyph, type InvoiceGlyphKind } from '../invoicing/invoice-state-glyph'
+import { errorText, RetryRing } from '../../shared/components/AsyncState'
+import { autoRetryLine, useAutoRetry } from '../../shared/hooks/useAutoRetry'
 import './returns-sade.css'
 
 // Building blocks of the returns page, as drawn in docs/tasarim-onerileri/iadeler-yeni.html. Class names carry the
@@ -234,9 +236,9 @@ export function RrLoading({ text = 'Veriler yükleniyor…' }: { text?: string }
   return <div className="rr-state rr-loading" role="status" aria-live="polite"><span className="rr-mark"><img src="/pack/brand/ravencia-symbol-transparent.png" alt="" style={{ width: 30, height: 30, objectFit: 'contain' }} /></span><strong>{text}</strong><p>Bu birkaç saniye sürebilir.</p><span className="rr-bar"><i /></span></div>
 }
 export function RrError({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
-  const raw = error instanceof Error ? error.message : ''
-  const message = !raw || /failed to fetch|networkerror/i.test(raw) ? 'Sunucuya ulaşılamadı. İnternet bağlantınızı kontrol edip tekrar deneyin.' : raw
-  return <div className="rr-state rr-error" role="alert"><span className="rr-mark"><RrIcon name="alert" /></span><strong>Veriler alınamadı</strong><p>{message}</p>{onRetry && <button type="button" className="rr-btn" style={{ marginTop: 10 }} onClick={onRetry}><RrIcon name="refresh" />Tekrar Dene</button>}</div>
+  const retry = useAutoRetry(error, onRetry)
+  const message = error instanceof Error && error.message ? errorText(error) : 'Sunucuya ulaşılamadı. İnternet bağlantınızı kontrol edin.'
+  return <div className="rr-state rr-error" role="alert">{retry ? <RetryRing retry={retry} /> : <span className="rr-mark"><RrIcon name="alert" /></span>}<strong>Veriler alınamadı</strong><p>{message}{retry && <span aria-hidden="true"> {autoRetryLine(retry)}</span>}</p>{retry && <div className="rv-state-actions"><button type="button" className="rr-btn rr-primary" disabled={retry.retrying} onClick={retry.now}><RrIcon name="refresh" />{retry.stopped ? 'Tekrar Dene' : 'Şimdi Dene'}</button>{!retry.stopped && !retry.retrying && <button type="button" className="rr-btn rr-quiet" onClick={retry.stop}>Durdur</button>}</div>}</div>
 }
 
 // Every 2:3 product image: a framed button that opens the preview, with the unit count bubble.

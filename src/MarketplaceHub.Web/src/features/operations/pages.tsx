@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, type Me } from '../../shared/api'
 import { Pagination, Tabs, UiIcon, type UiIconName } from '../../shared/components'
 import { Busy } from '../../shared/components/AsyncState'
@@ -112,6 +112,9 @@ function jobStatusChip(status: JobStatus): JobStatusChip {
   if (status === 'CANCELLED') return 'cancelled'
   return 'error'
 }
+
+// The statuses each state filter stands for; the list asks the server for them so older jobs past the newest 2.000 show too.
+const jobChipStatuses: Record<JobStatusChip, JobStatus[]> = { success: ['SUCCEEDED'], running: ['LEASED'], waiting: ['PENDING', 'RETRY_SCHEDULED'], error: ['BLOCKED', 'MANUAL_REVIEW', 'DEAD'], cancelled: ['CANCELLED'] }
 
 type JobTypeIconName = 'price' | 'order' | 'invoice' | 'return' | 'product' | 'connection' | 'generic'
 type JobPresentation = { title: string; icon: JobTypeIconName; description: string }
@@ -456,9 +459,11 @@ export function JobsPage({ me }: { me: Me }) {
     return () => window.clearTimeout(timeout)
   }, [feedback])
   const elevated = ['OWNER', 'ADMINISTRATOR'].includes((me.role ?? '').toUpperCase())
+  const serverStatus = status || [...statusChips].sort().flatMap(chip => jobChipStatuses[chip]).join(',')
   const list = useQuery({
-    queryKey: ['jobs', status, timeRange],
-    queryFn: () => hubApi<JobSummary[]>(`/jobs${jobListQueryString(status, timeRange)}`),
+    queryKey: ['jobs', serverStatus, timeRange],
+    queryFn: () => hubApi<JobSummary[]>(`/jobs${jobListQueryString(serverStatus, timeRange)}`),
+    placeholderData: keepPreviousData,
     refetchInterval: 5000
   })
   const detail = useQuery({

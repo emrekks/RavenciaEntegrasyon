@@ -26,8 +26,15 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         var query = db.IntegrationJobs.AsNoTracking().Where(x => x.TenantId == tenantId);
         if (!string.IsNullOrWhiteSpace(listQuery.Status))
         {
-            if (!TryParseStatus(listQuery.Status, out var parsed)) return [];
-            query = query.Where(x => x.Status == parsed);
+            // One status or several separated by commas (the list's state filters ask for all of their statuses at once).
+            var statuses = new List<JobStatus>();
+            foreach (var part in listQuery.Status.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                if (!TryParseStatus(part, out var parsed)) return [];
+                statuses.Add(parsed);
+            }
+            if (statuses.Count == 0) return [];
+            query = query.Where(x => statuses.Contains(x.Status));
         }
         if (listQuery.Since is { } since) query = query.Where(x => x.CreatedAt >= since);
         if (listQuery.JobTypes is { Count: > 0 } jobTypes)

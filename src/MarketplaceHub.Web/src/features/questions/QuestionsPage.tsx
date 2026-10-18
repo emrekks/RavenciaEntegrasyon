@@ -147,7 +147,9 @@ export function QuestionsPage() {
   if (search.trim()) filters.set('search', search.trim())
   filters.set('sort', sort)
   filters.set('page', String(page)); filters.set('limit', '50')
-  const questions = useQuery({ queryKey: ['questions', kind, status, platform, connectionId, dateFrom, dateTo, search, sort, page], queryFn: () => hubApi<QuestionListPage>(`/questions?${filters.toString()}`), refetchInterval: 30_000, staleTime: 10_000 })
+  // Questions arrive from the marketplaces every few minutes, so the inbox and its counts read the local copy every two
+  // minutes (sync states every minute) instead of keeping the server busy.
+  const questions = useQuery({ queryKey: ['questions', kind, status, platform, connectionId, dateFrom, dateTo, search, sort, page], queryFn: () => hubApi<QuestionListPage>(`/questions?${filters.toString()}`), refetchInterval: 120_000, staleTime: 10_000 })
   const countQuery = (countKind: string, countStatus: QuestionStatus, scoped: boolean) => {
     const params = new URLSearchParams({ kind: countKind, status: countStatus, page: '1', limit: '1', sort })
     if (scoped) {
@@ -159,11 +161,11 @@ export function QuestionsPage() {
     }
     return hubApi<QuestionListPage>(`/questions?${params.toString()}`).then(result => result.totalCount)
   }
-  const statusCounts = useQueries({ queries: statusFilters.map(item => ({ queryKey: ['questions', 'count', kind, item.value, platform, connectionId, dateFrom, dateTo, search], queryFn: () => countQuery(kind, item.value, true), enabled: tab !== 'TEMPLATES', refetchInterval: 30_000, staleTime: 10_000 })) })
-  const waitingCounts = useQueries({ queries: (['PRODUCT', 'ORDER'] as const).map(countKind => ({ queryKey: ['questions', 'count', 'waiting', countKind], queryFn: () => countQuery(countKind, 'WAITING', false), refetchInterval: 30_000, staleTime: 10_000 })) })
+  const statusCounts = useQueries({ queries: statusFilters.map(item => ({ queryKey: ['questions', 'count', kind, item.value, platform, connectionId, dateFrom, dateTo, search], queryFn: () => countQuery(kind, item.value, true), enabled: tab !== 'TEMPLATES', refetchInterval: 120_000, staleTime: 10_000 })) })
+  const waitingCounts = useQueries({ queries: (['PRODUCT', 'ORDER'] as const).map(countKind => ({ queryKey: ['questions', 'count', 'waiting', countKind], queryFn: () => countQuery(countKind, 'WAITING', false), refetchInterval: 120_000, staleTime: 10_000 })) })
   const formatCount = (value: number | undefined) => value === undefined ? undefined : value.toLocaleString('tr-TR')
   const templates = useQuery({ queryKey: ['question-templates'], queryFn: () => hubApi<Template[]>('/question-templates'), staleTime: 30_000 })
-  const syncStates = useQuery({ queryKey: ['questions', 'sync-state'], queryFn: () => hubApi<SyncState[]>('/questions/sync-state'), refetchInterval: 15_000 })
+  const syncStates = useQuery({ queryKey: ['questions', 'sync-state'], queryFn: () => hubApi<SyncState[]>('/questions/sync-state'), refetchInterval: 60_000 })
   useEffect(() => { if (syncStates.data) rememberSyncCount(syncStates.data.length) }, [syncStates.data])
   const syncHeight = useRememberedHeight<HTMLElement>('question-sync', syncStates.isLoading)
 
@@ -296,7 +298,7 @@ export function QuestionsPage() {
             </button>
           })}
         </div>
-        <footer className="qi-foot"><span>{questions.isLoading ? 'Yükleniyor…' : `${totalCount.toLocaleString('tr-TR')} soru`}</span>{totalCount > 50 && <nav className="rv-questions-pagination" aria-label="Soru sayfaları"><Button size="sm" variant="secondary" disabled={page <= 1} onClick={() => setPage(value => Math.max(1, value - 1))}>Önceki</Button><span>Sayfa {page} / {pageCount}</span><Button size="sm" variant="secondary" disabled={page >= pageCount} onClick={() => setPage(value => value + 1)}>Sonraki</Button></nav>}<span className="qi-live"><i aria-hidden="true" />30 sn’de bir yenilenir</span></footer>
+        <footer className="qi-foot"><span>{questions.isLoading ? 'Yükleniyor…' : `${totalCount.toLocaleString('tr-TR')} soru`}</span>{totalCount > 50 && <nav className="rv-questions-pagination" aria-label="Soru sayfaları"><Button size="sm" variant="secondary" disabled={page <= 1} onClick={() => setPage(value => Math.max(1, value - 1))}>Önceki</Button><span>Sayfa {page} / {pageCount}</span><Button size="sm" variant="secondary" disabled={page >= pageCount} onClick={() => setPage(value => value + 1)}>Sonraki</Button></nav>}<span className="qi-live"><i aria-hidden="true" />2 dk’da bir yenilenir</span></footer>
       </div>
       <div className="qi-right">{detail}</div>
     </div>

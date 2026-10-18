@@ -12130,3 +12130,36 @@ html body :is(.nav-count, .rv-tab-count, .ss-count, .cs-count, .cm-count, .qi-co
 .app-shell.stitch-shell label:has(> :is(input, select, textarea) ~ :is(small, p):not([role="alert"]):not([class*="error"]))::after { content: "?"; position: absolute; top: 0; right: 0; display: grid; width: 15px; height: 15px; place-items: center; color: var(--rv-color-muted); border: 1px solid var(--rv-color-border-strong); border-radius: 50%; font-size: 10px; font-weight: 600; line-height: 1; pointer-events: none; }
 .app-shell.stitch-shell label > :is(input, select, textarea) ~ :is(small, p):not([role="alert"]):not([class*="error"]) { position: absolute; bottom: calc(100% + 6px); left: 0; z-index: 40; display: block; width: max-content; max-width: min(320px, 100%); padding: 8px 10px; color: var(--rv-color-surface); background: var(--rv-color-ink); border-radius: 8px; box-shadow: 0 8px 24px rgb(0 0 0 / 22%); font-size: 12px; font-weight: 400; line-height: 1.45; white-space: normal; opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .12s ease, visibility .12s; }
 .app-shell.stitch-shell label:is(:hover, :focus-within) > :is(input, select, textarea) ~ :is(small, p):not([role="alert"]):not([class*="error"]) { opacity: 1; visibility: visible; }
+
+/* Automatic retry of a failed load: a countdown ring in place of the warning mark, the seconds left in its middle,
+   and "Şimdi Dene" / "Durdur" side by side under the message. */
+.rv-retry-ring { position: relative; display: grid; width: 60px; height: 60px; place-items: center; color: var(--rv-color-ink); }
+.rv-retry-ring svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+.rv-retry-ring circle { fill: none; stroke-width: 4; }
+.rv-retry-ring .rv-retry-track { stroke: var(--rv-color-border); }
+.rv-retry-ring .rv-retry-value { stroke: var(--rv-color-primary); stroke-linecap: round; transition: stroke-dashoffset 1s linear; }
+.rv-retry-ring b { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.rv-retry-ring .ui-icon { color: var(--rv-color-muted); }
+.rv-retry-ring.is-busy svg { animation: rv-retry-turn 1s linear infinite; }
+.rv-retry-ring.is-busy .rv-retry-value { stroke-dasharray: 52 112; stroke-dashoffset: 0; transition: none; }
+@keyframes rv-retry-turn { from { transform: rotate(-90deg); } to { transform: rotate(270deg); } }
+@media (prefers-reduced-motion: reduce) { .rv-retry-ring.is-busy svg { animation-duration: 3s; } .rv-retry-ring .rv-retry-value { transition: none; } }
+.rv-state-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 10px; }
+.app-shell .rv-state-actions .rv-state-retry { height: 36px; min-height: 36px; margin-top: 0; padding: 0 14px; }
+.app-shell .rv-state-actions .rv-state-retry.is-primary { color: #fff; background: var(--rv-color-primary); border-color: var(--rv-color-primary); }
+.app-shell .rv-state-actions .rv-state-retry.is-primary:hover:not(:disabled) { background: var(--rv-color-primary-hover); }
+.app-shell .rv-state-actions .rv-state-retry:disabled { cursor: wait; opacity: .6; }
+.app-shell .rv-state-actions .rv-state-retry.is-quiet { color: var(--rv-color-muted); background: none; border-color: transparent; }
+.app-shell .rv-state-actions .rv-state-retry.is-quiet:hover { color: var(--rv-color-ink); background: var(--rv-color-surface-soft); }
+
+/* Phones: the frameless lists of products, orders and returns add no side gap to the page's own; the invoice list
+   loses the line over its first card. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main section.content.rr.rr:is(.rr-products, .rr-orders, .rr-returns) > .rr-panel { padding-inline: 0; }
+  .app-shell.stitch-shell main .invoice-reference-workspace .invoice-reference-table { border-top: 0; }
+}
+
+/* Phones: page headings that stack their title over the buttons keep the title on the left. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main section.content > :is(.jobs-reference-heading, .integration-reference-heading, .mapping-reference-heading).rv-page-head { align-items: stretch !important; }
+}

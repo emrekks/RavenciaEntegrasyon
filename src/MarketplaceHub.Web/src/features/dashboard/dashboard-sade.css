@@ -302,3 +302,8 @@
 /* the period buttons share the width equally and keep their labels in the middle */
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pf-tools .rr-seg.rr-seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pf-tools .rr-seg.rr-seg > button { justify-content: center; padding-inline: 12px; text-align: center; }
+/* phones: the four performance cards sit two by two inside the panel instead of a strip cut off at the right edge */
+@media (max-width: 760px) {
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kgrid.rr-kgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: visible; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kgrid.rr-kgrid > .rr-kc { width: auto; min-width: 0; }
+}
