@@ -417,6 +417,8 @@
   .app-shell .panel.mapping-step.cm-card.cm-card .cm-progress { width: 100%; min-width: 0; }
   .app-shell .panel.mapping-step.cm-card.cm-card .cm-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; overflow: visible; }
   .app-shell .panel.mapping-step.cm-card.cm-card .cm-actions > button { width: 100%; min-width: 0; margin-left: 0; padding: 0 8px; overflow: hidden; text-overflow: ellipsis; }
+  .app-shell .panel.mapping-step.cm-card.cm-card .cm-actions { grid-auto-flow: row dense; }
+  .app-shell .panel.mapping-step.cm-card.cm-card .cm-actions > button:has(.cm-count) { grid-column: 1 / -1; }
   .app-shell .panel.mapping-step.cm-card.cm-card .cm-actions > button:last-child:nth-child(odd) { grid-column: 1 / -1; }
   .app-shell .panel.mapping-step.cm-card.cm-card .cm-nav { display: flex; gap: 6px; max-height: none; padding: 10px 16px; overflow-x: auto; overflow-y: hidden; border-right: 0; border-bottom: 1px solid var(--rv-color-border); scrollbar-width: none; }
   .app-shell .panel.mapping-step.cm-card.cm-card .cm-nav::-webkit-scrollbar { display: none; }
@@ -428,7 +430,7 @@
   .app-shell.stitch-shell main .panel.mapping-step.cm-card.cm-card .cm-webcolor .value-mapping-heading { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
   .app-shell.stitch-shell main .panel.mapping-step.cm-card.cm-card .cm-webcolor .cm-webcolor-pick { display: grid; gap: 6px; width: 100%; }
   .app-shell.stitch-shell main .panel.mapping-step.cm-card.cm-card .cm-webcolor .cm-webcolor-pick select { width: 100%; }
-  .app-shell.stitch-shell main .panel.mapping-step.cm-card.cm-card .cm-webcolor .cm-webcolor-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; width: 100%; }
+  .app-shell.stitch-shell main .panel.mapping-step.cm-card.cm-card .cm-webcolor .cm-webcolor-actions { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; width: 100%; }
   .app-shell.stitch-shell main .panel.mapping-step.cm-card.cm-card .cm-webcolor .cm-webcolor-actions > button { width: 100%; min-width: 0; padding: 0 8px; overflow: hidden; font-size: 13px; white-space: nowrap; text-overflow: ellipsis; }
   .app-shell .panel.mapping-step.cm-card.cm-card .cm-foot > button { flex: none; white-space: nowrap; }
 }
