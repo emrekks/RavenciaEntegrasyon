@@ -46,3 +46,6 @@
 @media (max-width: 760px) {
   main .rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs { overflow-x: auto !important; overflow-y: hidden; scroll-padding-inline: 8px; overscroll-behavior-x: contain; }
 }
+/* a tab label reserves the width of the selected weight (a zero-height copy), so selecting a tab never moves the others */
+.rv-tabs.rv-view-tabs .rv-tab-text, .rv-view-tabs-menu .rv-tab-text { display: inline-grid; }
+.rv-tabs.rv-view-tabs .rv-tab-text::after, .rv-view-tabs-menu .rv-tab-text::after { content: attr(data-text); height: 0; overflow: hidden; visibility: hidden; font-weight: 500; pointer-events: none; user-select: none; }

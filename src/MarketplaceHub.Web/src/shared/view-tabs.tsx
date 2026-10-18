@@ -49,9 +49,10 @@ export function ViewTabIcon({ name }: { name: ViewTabIconName }) {
   return <svg className="rv-view-tab-icon" viewBox="0 0 16 16" aria-hidden="true">{icons[name]}</svg>
 }
 
-// Shorthand for a Tabs item: the label with its icon in front.
+// Shorthand for a Tabs item: the label with its icon in front. A text label keeps the width of its selected (heavier)
+// weight, so picking a tab does not nudge the tabs after it.
 export function viewTabLabel(name: ViewTabIconName, label: ReactNode) {
-  return <><ViewTabIcon name={name} />{label}</>
+  return <><ViewTabIcon name={name} />{typeof label === 'string' ? <span className="rv-tab-text" data-text={label}>{label}</span> : label}</>
 }
 
 type ViewTabItem = { value: string; label: ReactNode; count?: ReactNode; countTone?: 'warn' }
