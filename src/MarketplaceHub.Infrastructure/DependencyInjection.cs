@@ -121,6 +121,7 @@ public static class DependencyInjection
         services.AddScoped<IOrderPackageReadPort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
         services.AddScoped<IWebhookRegistrationPort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
         services.AddScoped<IInstantNotificationService, InstantNotificationService>();
+        services.AddScoped<IDataFreshnessService, DataFreshnessService>();
         services.AddScoped<ExternalEffectSweep>();
         services.AddScoped<IReturnPort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
         services.AddScoped<IQuestionPort>(provider => provider.GetRequiredService<MarketplacePortRouter>());

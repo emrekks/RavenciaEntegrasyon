@@ -127,6 +127,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 if (telemetryResource is not null) await RecordSyncCompletion(tenantId, connectionId.Value, telemetryResource, stopwatch.Elapsed, succeeded, succeeded ? null : "F3_JOB_REJECTED", cancellationToken);
                 return succeeded ? JobExecutionResult.Success() : JobExecutionResult.Blocked("F3_JOB_REJECTED", "Job payload, capability or current entity state did not permit the operation.");
             }
+            catch (JobProcessingException exception) when (exception.Result.Continues)
+            {
+                // A finished slice of a long read is progress, not a failure.
+                if (telemetryResource is not null) await RecordSyncCompletion(tenantId, connectionId.Value, telemetryResource, stopwatch.Elapsed, true, null, cancellationToken);
+                return exception.Result;
+            }
             catch (JobProcessingException exception)
             {
                 if (exception.Result.Kind == JobCompletionKind.Retry) telemetryRetryCount++;
@@ -2405,7 +2411,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     // Recovery is a low-priority backfill. Persist the next
                     // window and release the orders lane between windows so
                     // lifecycle/reconciliation jobs can repair current orders.
-                    if (cursorResourceType == "ORDERS_RECOVERY") return true;
+                    if (cursorResourceType == "ORDERS_RECOVERY") throw new JobProcessingException(JobExecutionResult.Continue("Sipariş geçmişinin sonraki penceresi birkaç saniye içinde okunacak."));
                     continue;
                 }
                 cursor.OpaqueCursor = null;
@@ -2438,7 +2444,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     cursor.OpaqueCursor = SerializeOrderSyncState(state);
                     cursor.Version++;
                     await db.SaveChangesAsync(cancellationToken);
-                    return true;
+                    throw new JobProcessingException(JobExecutionResult.Continue("Sipariş geçmişinin sonraki penceresi birkaç saniye içinde okunacak."));
                 }
             }
             else
@@ -7071,12 +7077,16 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     private static OrderSyncState ReadOrderSyncState(SyncCursor cursor, DateTimeOffset now, TimeSpan overlap, bool allowBaseline, bool forceBaseline = false,
         IReadOnlyList<string>? activeStorefronts = null, IReadOnlyList<string>? readableStorefronts = null)
     {
-        if (!forceBaseline && !string.IsNullOrWhiteSpace(cursor.OpaqueCursor))
+        if (!string.IsNullOrWhiteSpace(cursor.OpaqueCursor))
         {
             try
             {
                 var state = JsonSerializer.Deserialize<OrderSyncState>(cursor.OpaqueCursor);
-                if (state is { Version: OrderSyncStateVersion, WindowIndex: >= 0, StoreFrontIndex: >= 0 } && state.StoreFrontIndex < OrderSyncStorefronts(state).Count) return state;
+                // A baseline already under way continues even when a baseline is asked for again (an
+                // empty store, a retry after a failure); restarting it would read its first window forever.
+                if (state is { Version: OrderSyncStateVersion, WindowIndex: >= 0, StoreFrontIndex: >= 0 } && state.StoreFrontIndex < OrderSyncStorefronts(state).Count
+                    && (!forceBaseline || state.Mode == OrderSyncMode.Baseline && now - state.AnchorEnd < TimeSpan.FromDays(1)))
+                    return state;
             }
             catch (JsonException) { }
         }
@@ -7118,6 +7128,20 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     }
 
     private static string SerializeOrderSyncState(OrderSyncState state) => JsonSerializer.Serialize(state);
+
+    // How far a window-by-window order history read has come; null when no such read is under way.
+    internal static int? OrderBaselinePercent(string? opaqueCursor)
+    {
+        if (string.IsNullOrWhiteSpace(opaqueCursor)) return null;
+        try
+        {
+            var state = JsonSerializer.Deserialize<OrderSyncState>(opaqueCursor);
+            if (state is not { Mode: OrderSyncMode.Baseline } || state.AnchorEnd <= state.StartAt) return null;
+            var windows = (state.AnchorEnd - state.StartAt).Ticks / (OrderStreamWindowSpan.Ticks + TimeSpan.TicksPerMillisecond) + 1;
+            return (int)Math.Clamp(state.WindowIndex * 100L / windows, 0, 99);
+        }
+        catch (JsonException) { return null; }
+    }
 
     private async Task<bool> IngestWebhook(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {

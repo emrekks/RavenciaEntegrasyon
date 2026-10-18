@@ -774,7 +774,8 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
     internal static (string JobType, string PayloadJson)? CreateReturnActivationBootstrap(string platformCode, Guid connectionId)
     {
         var normalizedPlatform = platformCode.Trim().ToUpperInvariant();
-        if (normalizedPlatform is not ("TRENDYOL" or "HEPSIBURADA")) return null;
+        // n11 and Pazarama returns are part of the first import too, instead of waiting for the first scheduled read.
+        if (normalizedPlatform is not ("TRENDYOL" or "HEPSIBURADA" or "N11" or "PAZARAMA")) return null;
         return (
             MarketplaceJobTypes.ForPlatform(normalizedPlatform, MarketplaceJobTypes.ReturnSync),
             JsonSerializer.Serialize(new { connectionId, forceFull = true }));

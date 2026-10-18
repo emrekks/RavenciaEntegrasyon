@@ -790,6 +790,19 @@ public interface IInstantNotificationService
     // Reactivates registered webhooks the marketplace passivated (for example after the server was off).
     Task<int> ReactivatePassiveAsync(CancellationToken cancellationToken);
 }
+// Kind is ORDERS, RETURNS or QUESTIONS. LastSuccessAt is the oldest last read among the stores
+// (null before any read); Instant is true when every store sends order notifications.
+public sealed record DataFreshnessPart(string Kind, DateTimeOffset? LastSuccessAt, bool Instant, int Connections);
+public sealed record DataFreshnessView(IReadOnlyList<DataFreshnessPart> Parts);
+// State is DONE, RUNNING or QUEUED; Percent is known for order histories read window by window.
+public sealed record InitialImportPart(string Kind, string State, int? Percent);
+public sealed record InitialImportView(Guid ConnectionId, bool Running, IReadOnlyList<InitialImportPart> Parts);
+
+public interface IDataFreshnessService
+{
+    Task<DataFreshnessView> FreshnessAsync(Guid tenantId, CancellationToken cancellationToken);
+    Task<ServiceResult<InitialImportView>> InitialImportAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken);
+}
 public sealed record CreatedWebhookSubscription(WebhookSubscriptionView Subscription, Guid ConnectionPublicId, string RouteToken);
 public sealed record DeleteConnectionCommand(string Confirmation);
 public sealed record DataVisibilityCommand(bool Hidden);

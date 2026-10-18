@@ -1781,6 +1781,8 @@ public sealed class HepsiburadaAdapterTests
         Assert.Equal(connectionId, payload.RootElement.GetProperty("connectionId").GetGuid());
         Assert.True(payload.RootElement.GetProperty("forceFull").GetBoolean());
         Assert.Null(MarketplaceConnectionService.CreateReturnActivationBootstrap("TRENDYOL_EFATURAM", connectionId));
+        Assert.Equal(MarketplaceJobTypes.ReturnSync, MarketplaceConnectionService.CreateReturnActivationBootstrap("n11", connectionId)?.JobType);
+        Assert.Equal(MarketplaceJobTypes.ReturnSync, MarketplaceConnectionService.CreateReturnActivationBootstrap("PAZARAMA", connectionId)?.JobType);
     }
 
     [Fact]

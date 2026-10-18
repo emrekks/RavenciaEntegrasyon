@@ -60,3 +60,37 @@ public sealed class ReturnRereadPolicyTests
         Assert.Equal(45, ReturnRereadPolicy.LookbackDays(false, 90, 45, Now.AddMinutes(-31), Now));
     }
 }
+
+public sealed class PlatformHistoryLimitsTests
+{
+    private static readonly DateTimeOffset Now = new(2026, 10, 18, 12, 0, 0, TimeSpan.Zero);
+
+    [Theory]
+    [InlineData("TRENDYOL", 3)]
+    [InlineData("n11", 3)]
+    [InlineData("PAZARAMA", 3)]
+    [InlineData("hepsiburada", 1)]
+    public void FirstImportReadsThePlatformsHistoryButAtMostThreeMonths(string platform, int months)
+    {
+        foreach (var kind in Enum.GetValues<PlatformHistoryKind>())
+        {
+            Assert.Equal(months, PlatformHistoryLimits.InitialMonths(platform, kind));
+            Assert.Equal(Now.AddMonths(-months), PlatformHistoryLimits.InitialStart(platform, kind, Now));
+        }
+    }
+}
+
+public sealed class OrderBaselinePercentTests
+{
+    [Fact]
+    public void WindowByWindowHistoryReadReportsHowFarItCame()
+    {
+        const string baseline = """{"Version":"v","Mode":0,"AnchorEnd":"2026-10-18T00:00:00+00:00","StartAt":"2026-07-20T00:00:00+00:00","WindowIndex":3,"NextCursor":null}""";
+        const string incremental = """{"Version":"v","Mode":1,"AnchorEnd":"2026-10-18T00:00:00+00:00","StartAt":"2026-10-17T00:00:00+00:00","WindowIndex":0,"NextCursor":null}""";
+
+        Assert.Equal(42, MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.OrderBaselinePercent(baseline));
+        Assert.Null(MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.OrderBaselinePercent(incremental));
+        Assert.Null(MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.OrderBaselinePercent("{bozuk"));
+        Assert.Null(MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.OrderBaselinePercent(null));
+    }
+}

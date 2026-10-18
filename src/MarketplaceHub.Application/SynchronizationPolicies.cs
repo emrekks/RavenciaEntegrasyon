@@ -703,3 +703,19 @@ public static class ReturnRereadPolicy
         : lastWideReadAt is not { } last || now - last >= WideInterval ? wideDays
         : NarrowDays;
 }
+
+public enum PlatformHistoryKind { Orders, Returns, Questions }
+
+// How far back a new connection's first import reads: as far as the marketplace keeps each kind of
+// data, but never more than three months (the Trendyol order stream's limit). Hepsiburada keeps
+// orders for one month, and its returns and questions are read for the same month.
+public static class PlatformHistoryLimits
+{
+    public const int MaxInitialMonths = 3;
+
+    public static int InitialMonths(string? platformCode, PlatformHistoryKind kind) =>
+        platformCode?.Trim().ToUpperInvariant() == "HEPSIBURADA" ? 1 : MaxInitialMonths;
+
+    public static DateTimeOffset InitialStart(string? platformCode, PlatformHistoryKind kind, DateTimeOffset now) =>
+        now.AddMonths(-InitialMonths(platformCode, kind));
+}

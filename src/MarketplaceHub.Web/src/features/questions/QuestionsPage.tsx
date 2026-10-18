@@ -4,6 +4,7 @@ import { useRememberedTabCounts } from '../../shared/tab-counts'
 import { Link } from 'react-router'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, loadAllPages } from '../../shared/api'
+import { DataFreshnessNote } from '../../shared/data-freshness'
 import { marketplaceProductSearchUrl } from './marketplace-product-link'
 import { Button, EmptyState, LoadingState, Tabs, UiIcon } from '../../shared/components'
 import { platformLogoClass, platformLogoSource } from '../../shared/platform-logos'
@@ -258,7 +259,7 @@ export function QuestionsPage() {
   })()
 
   return <section className="content rv-questions-page qi-page">
-    <header className="qi-head rv-page-head"><div><p className="qi-crumb">Müşteri İletişimi</p><h1>Ürün Soruları</h1><p>Ürün sorularını ve Hepsiburada ile Pazarama sipariş sorularını yönetin.</p></div><div className="qi-acts"><Button variant="secondary" onClick={() => setTemplatesOpen(true)}><UiIcon name="list" size={16} />Hazır Cevaplar<span className="qi-count">{templates.data?.length ?? 0}</span></Button><Button variant="secondary" onClick={() => sync.mutate({ kind })} loading={sync.isPending}><UiIcon name="refresh" size={16} /> Yenile</Button></div></header>
+    <header className="qi-head rv-page-head"><div><p className="qi-crumb">Müşteri İletişimi</p><h1>Ürün Soruları</h1><p>Ürün sorularını ve Hepsiburada ile Pazarama sipariş sorularını yönetin.</p><DataFreshnessNote kind="QUESTIONS" /></div><div className="qi-acts"><Button variant="secondary" onClick={() => setTemplatesOpen(true)}><UiIcon name="list" size={16} />Hazır Cevaplar<span className="qi-count">{templates.data?.length ?? 0}</span></Button><Button variant="secondary" onClick={() => sync.mutate({ kind })} loading={sync.isPending}><UiIcon name="refresh" size={16} /> Yenile</Button></div></header>
     <section className="rv-questions-sync qi-sync" aria-label="Soru aktarım durumu" ref={syncHeight.ref} style={syncHeight.style}>
       {(syncStates.data ?? []).filter(item => tab !== 'ORDER' || ORDER_QUESTION_PLATFORMS.includes(item.platformCode)).map(item => { const summary = syncSummary(item, tab); return <div className="rv-questions-sync-item" tabIndex={0} data-platform={item.platformCode.toLowerCase()} key={item.connectionId} title={item.historyStartedAt ? `Aktarım başlangıcı: ${formatDate(item.historyStartedAt)}` : undefined}><img className={`rv-question-platform-logo ${platformLogoClass(item.platformCode)}`} src={platformLogoSource(item.platformCode) ?? undefined} alt="" aria-hidden="true" /><div><b>{item.storeName} <em>{summary.records}</em></b><small><StateGlyph state={summary.glyph} />{summary.state}</small><small className="qi-sync-time" title={item.lastSuccessAt ? `Son aktarım ${formatDate(item.lastSuccessAt)}` : item.lastError ?? undefined}>{item.lastSuccessAt ? `Son aktarım ${formatShortDate(item.lastSuccessAt)}` : item.lastError ?? ''}</small></div></div> })}
       {syncStates.isLoading && Array.from({ length: rememberedSyncCount() }, (_, index) => <div className="rv-questions-sync-item is-placeholder" aria-hidden="true" key={`placeholder-${index}`}><span className="rv-question-platform-logo" /><div><b>&nbsp;</b><small>&nbsp;</small><small className="qi-sync-time">&nbsp;</small></div></div>)}
