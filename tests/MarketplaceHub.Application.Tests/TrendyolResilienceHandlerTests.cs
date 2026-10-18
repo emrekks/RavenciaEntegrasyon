@@ -55,9 +55,9 @@ public sealed class TrendyolResilienceHandlerTests
         using var resilience = new TrendyolResilienceHandler(options, TimeProvider.System, state) { InnerHandler = downstream };
         using var client = new HttpClient(resilience);
 
-        using var first = await client.GetAsync("https://unit.test/integration/order/sellers/seller-42/orders/stream");
+        using var first = await client.GetAsync("https://unit.test/integration/order/sellers/seller-42/orders/stream?nextCursor=a");
         var started = DateTimeOffset.UtcNow;
-        using var second = await client.GetAsync("https://unit.test/integration/order/sellers/seller-42/orders/stream");
+        using var second = await client.GetAsync("https://unit.test/integration/order/sellers/seller-42/orders/stream?nextCursor=b");
 
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
         Assert.Equal(HttpStatusCode.OK, second.StatusCode);
@@ -79,8 +79,8 @@ public sealed class TrendyolResilienceHandlerTests
         using var downstream = new SequenceHandler(HttpStatusCode.OK, HttpStatusCode.OK);
         using var resilience = new TrendyolResilienceHandler(options, TimeProvider.System, new TrendyolResilienceState(options)) { InnerHandler = downstream };
         using var invoker = new HttpMessageInvoker(resilience);
-        using var first = new HttpRequestMessage(HttpMethod.Get, "https://unit.test/integration/order/sellers/seller-42/orders/stream");
-        using var second = new HttpRequestMessage(HttpMethod.Get, "https://unit.test/integration/order/sellers/seller-42/orders/stream");
+        using var first = new HttpRequestMessage(HttpMethod.Get, "https://unit.test/integration/order/sellers/seller-42/orders/stream?nextCursor=a");
+        using var second = new HttpRequestMessage(HttpMethod.Get, "https://unit.test/integration/order/sellers/seller-42/orders/stream?nextCursor=b");
         var released = DateTimeOffset.MinValue;
         second.Options.Set(TrendyolResilienceHandler.QuotaAcquiredKey, () => released = DateTimeOffset.UtcNow);
 
@@ -111,10 +111,47 @@ public sealed class TrendyolResilienceHandlerTests
         using var resilience = new TrendyolResilienceHandler(options, TimeProvider.System, new TrendyolResilienceState(options), shared) { InnerHandler = downstream };
         using var client = new HttpClient(resilience);
 
-        using var response = await client.GetAsync("https://unit.test/integration/order/sellers/seller-42/orders/stream");
+        using var response = await client.GetAsync("https://unit.test/integration/order/sellers/seller-42/orders/stream?nextCursor=a");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal(["trendyol:global:unit.test:anonymous", "trendyol:orders:unit.test:seller-42", "trendyol:orders:unit.test:seller-42:spacing"], shared.Keys);
+        Assert.Equal(["trendyol:global:unit.test:anonymous", "trendyol:orders:unit.test:seller-42:fg", "trendyol:orders:unit.test:seller-42:spacing"], shared.Keys);
+    }
+
+    [Fact]
+    public void OrderQuota_KeepsAForegroundShareAndSpacesOnlyThePagesOfOneStreamQuery()
+    {
+        var options = new TrendyolOptions { OrderRequestsPerInterval = 30, OrderForegroundShare = 0.4, OrderRequestMinimumInterval = TimeSpan.FromSeconds(5), OrderStreamStartMinimumInterval = TimeSpan.FromSeconds(1) };
+        using var start = new HttpRequestMessage(HttpMethod.Get, "https://unit.test/integration/order/sellers/seller-42/orders/stream?size=200");
+        using var page = new HttpRequestMessage(HttpMethod.Get, "https://unit.test/integration/order/sellers/seller-42/orders/stream?size=200&nextCursor=abc");
+        using var package = new HttpRequestMessage(HttpMethod.Get, "https://unit.test/integration/order/sellers/seller-42/v2/orders?shipmentPackageIds=1");
+
+        var foregroundStart = TrendyolResilienceHandler.OrderQuotaFor(start, options, background: false)!;
+        var backgroundPage = TrendyolResilienceHandler.OrderQuotaFor(page, options, background: true)!;
+        var backgroundPackage = TrendyolResilienceHandler.OrderQuotaFor(package, options, background: true)!;
+
+        Assert.Equal(("orders:unit.test:seller-42:fg", 12, TimeSpan.FromSeconds(1)), (foregroundStart.Bucket, foregroundStart.Limit, foregroundStart.Spacing));
+        Assert.Equal(("orders:unit.test:seller-42:bg", 18, TimeSpan.FromSeconds(5)), (backgroundPage.Bucket, backgroundPage.Limit, backgroundPage.Spacing));
+        Assert.Equal(TimeSpan.Zero, backgroundPackage.Spacing);
+        Assert.NotEqual(foregroundStart.SpacingBucket, backgroundPage.SpacingBucket);
+    }
+
+    [Fact]
+    public async Task BackgroundLane_DrawsFromTheBackgroundShare()
+    {
+        var options = Options.Create(new TrendyolOptions { MaxConcurrency = 1 });
+        var shared = new RecordingSharedLimiter();
+        using var downstream = new SequenceHandler(HttpStatusCode.OK);
+        using var resilience = new TrendyolResilienceHandler(options, TimeProvider.System, new TrendyolResilienceState(options), shared) { InnerHandler = downstream };
+        using var client = new HttpClient(resilience);
+
+        using (TrendyolQuotaLane.Enter(isBackground: true))
+        {
+            using var response = await client.GetAsync("https://unit.test/integration/order/sellers/seller-42/v2/orders?shipmentPackageIds=1");
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        }
+
+        Assert.Equal(["trendyol:global:unit.test:anonymous", "trendyol:orders:unit.test:seller-42:bg"], shared.Keys);
+        Assert.False(TrendyolQuotaLane.IsBackground);
     }
 
     [Fact]
@@ -129,7 +166,7 @@ public sealed class TrendyolResilienceHandlerTests
         using var response = await client.GetAsync("https://unit.test/integration/order/sellers/seller-42/v2/orders?shipmentPackageIds=1");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal(["trendyol:global:unit.test:anonymous", "trendyol:orders:unit.test:seller-42"], shared.Keys);
+        Assert.Equal(["trendyol:global:unit.test:anonymous", "trendyol:orders:unit.test:seller-42:fg"], shared.Keys);
     }
 
     [Fact]

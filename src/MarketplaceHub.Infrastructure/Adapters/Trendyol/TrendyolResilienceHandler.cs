@@ -136,20 +136,17 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
     private async Task WaitForQuotaAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         var globalBucket = GlobalRateBucketFor(request);
-        var orderBucket = RateBucketFor(request);
-        // Trendyol recommends at least 5 s between getShipmentPackagesStream calls; the 30/min
-        // quota covers both order endpoints, but the spacing only applies to the stream.
-        var spacing = IsOrderStream(request) ? options.OrderRequestMinimumInterval : TimeSpan.Zero;
+        var orderQuota = OrderQuotaFor(request, options, TrendyolQuotaLane.IsBackground);
         if (sharedLimiter is not null)
         {
             try
             {
                 await SharedRateLimits.WaitAsync(sharedLimiter, $"trendyol:{globalBucket}", SharedRateLimits.ForWindow(options.RequestsPerInterval, options.RequestInterval), timeProvider, cancellationToken);
-                if (orderBucket is not null)
+                if (orderQuota is { } quota)
                 {
-                    await SharedRateLimits.WaitAsync(sharedLimiter, $"trendyol:{orderBucket}", SharedRateLimits.ForWindow(options.OrderRequestsPerInterval, options.OrderRequestInterval), timeProvider, cancellationToken);
-                    if (spacing > TimeSpan.Zero)
-                        await SharedRateLimits.WaitAsync(sharedLimiter, $"trendyol:{orderBucket}:spacing", SharedRateLimits.ForSpacing(spacing), timeProvider, cancellationToken);
+                    await SharedRateLimits.WaitAsync(sharedLimiter, $"trendyol:{quota.Bucket}", SharedRateLimits.ForWindow(quota.Limit, options.OrderRequestInterval), timeProvider, cancellationToken);
+                    if (quota.Spacing > TimeSpan.Zero)
+                        await SharedRateLimits.WaitAsync(sharedLimiter, $"trendyol:{quota.SpacingBucket}", SharedRateLimits.ForSpacing(quota.Spacing), timeProvider, cancellationToken);
                 }
                 return;
             }
@@ -159,8 +156,32 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
             }
         }
         await WaitForRateWindowAsync(globalBucket, options.RequestsPerInterval, options.RequestInterval, cancellationToken);
-        if (orderBucket is not null)
-            await WaitForRateWindowAsync(orderBucket, options.OrderRequestsPerInterval, options.OrderRequestInterval, cancellationToken, spacing);
+        if (orderQuota is { } localQuota)
+        {
+            await WaitForRateWindowAsync(localQuota.Bucket, localQuota.Limit, options.OrderRequestInterval, cancellationToken);
+            if (localQuota.Spacing > TimeSpan.Zero)
+                await WaitForRateWindowAsync(localQuota.SpacingBucket, int.MaxValue, options.OrderRequestInterval, cancellationToken, localQuota.Spacing);
+        }
+    }
+
+    internal sealed record OrderQuota(string Bucket, int Limit, string SpacingBucket, TimeSpan Spacing);
+
+    // The seller's order quota covers the stream and Order V2. It is split so background reads
+    // can never use up what a new-order read or a user action needs. Trendyol recommends five
+    // seconds between stream calls; that spacing is kept between the pages of one query, while
+    // a read that starts a new query waits only for the shorter start spacing.
+    internal static OrderQuota? OrderQuotaFor(HttpRequestMessage request, TrendyolOptions options, bool background)
+    {
+        if (RateBucketFor(request) is not { } orderBucket) return null;
+        var total = Math.Max(2, options.OrderRequestsPerInterval);
+        var foreground = Math.Clamp((int)Math.Round(total * Math.Clamp(options.OrderForegroundShare, 0.1, 0.9)), 1, total - 1);
+        var limit = background ? total - foreground : foreground;
+        var bucket = $"{orderBucket}:{(background ? "bg" : "fg")}";
+        if (!IsOrderStream(request)) return new(bucket, limit, $"{orderBucket}:spacing", TimeSpan.Zero);
+        var nextPage = request.RequestUri?.Query.Contains("nextCursor=", StringComparison.OrdinalIgnoreCase) == true;
+        return nextPage
+            ? new(bucket, limit, $"{orderBucket}:spacing", options.OrderRequestMinimumInterval)
+            : new(bucket, limit, $"{orderBucket}:spacing:start", options.OrderStreamStartMinimumInterval);
     }
 
     internal static bool IsOrderStream(HttpRequestMessage request) =>

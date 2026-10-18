@@ -40,6 +40,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     public async Task<JobExecutionResult> ProcessAsync(Guid tenantId, Guid? connectionId, string jobType, string payloadJson, string correlationId, CancellationToken cancellationToken, Guid? jobId = null)
     {
         if (connectionId is null) return JobExecutionResult.Blocked("CONNECTION_REQUIRED", "Job requires a platform connection.");
+        using var quotaLane = TrendyolQuotaLane.Enter(isBackground: !UsesForegroundQuota(jobType));
         var connectionState = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId.Value).Select(x => new { x.PlatformCode, x.Status }).SingleOrDefaultAsync(cancellationToken);
         var platform = connectionState?.PlatformCode;
         if (!ActiveIntegrationScope.Contains(platform)) return JobExecutionResult.Blocked("CONNECTION_OUT_OF_SCOPE", "Connection is not active in the current integration scope.");
@@ -131,6 +132,13 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             }
         }
     }
+
+    // New-order reads, webhooks and user actions draw from the foreground share of the order
+    // quota; reconciliation, recovery and status scans from the background share.
+    internal static bool UsesForegroundQuota(string jobType) => jobType is
+        MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync or MarketplaceJobTypes.N11OrderSync or MarketplaceJobTypes.PazaramaOrderSync
+        or MarketplaceJobTypes.WebhookIngest or MarketplaceJobTypes.ShopifyWebhookIngest or MarketplaceJobTypes.HepsiburadaWebhookIngest
+        or MarketplaceJobTypes.ShipmentAction or MarketplaceJobTypes.ReturnAction;
 
     private static string? TelemetryResource(string jobType) => jobType switch
     {

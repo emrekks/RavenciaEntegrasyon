@@ -17,6 +17,12 @@ public sealed class TrendyolOptions
     // Trendyol recommends spacing stream reads by at least five seconds. The
     // rolling quota remains in place as a second safety net for concurrent jobs.
     public TimeSpan OrderRequestMinimumInterval { get; init; } = TimeSpan.FromSeconds(5);
+    // The five-second spacing applies between the pages of one stream query; reads that start a
+    // new query are only kept a second apart.
+    public TimeSpan OrderStreamStartMinimumInterval { get; init; } = TimeSpan.FromSeconds(1);
+    // Share of the order quota kept for new-order reads and user actions; background reads
+    // (reconciliation, recovery, status and invoice scans) share the rest.
+    public double OrderForegroundShare { get; init; } = 0.4;
     public int CircuitFailureThreshold { get; init; } = 5;
     public TimeSpan CircuitBreakDuration { get; init; } = TimeSpan.FromSeconds(30);
 }
