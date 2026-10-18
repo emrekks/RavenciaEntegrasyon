@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from 'react'
 import { useRememberedTabCounts } from '../tab-counts'
 import { UiIcon } from './UiIcon'
+import { lockPageScroll } from '../hooks/useScrollLock'
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
 export type ControlSize = 'sm' | 'md' | 'lg'
@@ -19,7 +20,6 @@ function useDialogSurface(open: boolean, onClose: () => void) {
   useEffect(() => {
     if (!open) return
     previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
-    const previousOverflow = document.body.style.overflow
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault()
@@ -43,14 +43,14 @@ function useDialogSurface(open: boolean, onClose: () => void) {
         first.focus()
       }
     }
-    document.body.style.overflow = 'hidden'
+    const unlockScroll = lockPageScroll()
     document.addEventListener('keydown', onKeyDown)
     window.requestAnimationFrame(() => {
       const first = surfaceRef.current?.querySelector<HTMLElement>('[autofocus], ' + focusableSelector)
       ;(first ?? surfaceRef.current)?.focus()
     })
     return () => {
-      document.body.style.overflow = previousOverflow
+      unlockScroll()
       document.removeEventListener('keydown', onKeyDown)
       window.requestAnimationFrame(() => previousFocusRef.current?.focus())
     }

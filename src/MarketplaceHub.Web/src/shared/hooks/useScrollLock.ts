@@ -7,8 +7,13 @@ const activeLocks = new Set<ScrollLock>()
 const mainLockStates = new Map<HTMLElement, MainLockState>()
 let previousBodyOverflow = ''
 
+// The value put back when the last lock goes. A lock never remembers 'hidden' as the page's own value: when two overlays
+// locked the page at once, the second one used to remember the first one's 'hidden' and put it back after both closed,
+// which left the page unable to scroll (the phone menu did this).
+const unlocked = (value: string) => value === 'hidden' ? '' : value
+
 function acquire(lockMain: boolean) {
-  if (!activeLocks.size) previousBodyOverflow = document.body.style.overflow
+  if (!activeLocks.size) previousBodyOverflow = unlocked(document.body.style.overflow)
 
   const main = lockMain ? document.querySelector<HTMLElement>('.app-shell.stitch-shell > main') : null
   if (main) {
@@ -16,7 +21,7 @@ function acquire(lockMain: boolean) {
     if (state) {
       state.count += 1
     } else {
-      mainLockStates.set(main, { count: 1, previousOverflow: main.style.overflow })
+      mainLockStates.set(main, { count: 1, previousOverflow: unlocked(main.style.overflow) })
     }
     main.style.overflow = 'hidden'
   }
@@ -42,6 +47,11 @@ function release(lock: ScrollLock) {
   }
 
   if (!activeLocks.size) document.body.style.overflow = previousBodyOverflow
+}
+
+/** Locks the page for an overlay that is not a hook user; call the returned function when it closes. */
+export function lockPageScroll(lockMain = false) {
+  return acquire(lockMain)
 }
 
 /** Keeps body and the application scroll owner locked until every overlay closes. */

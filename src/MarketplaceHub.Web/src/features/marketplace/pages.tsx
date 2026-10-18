@@ -27,7 +27,7 @@ import { returnReasonPresentation } from './return-reference-presentation'
 import { RrAnchor, RrBadge, RrError, RrFilterCard, RrIcon, RrImagePreview, RrLoading, RrLogo, RrModal, RrRing, RrThumb, RrWordmark, titleTr, type RingTone } from './returns-ui'
 import './orders-sade.css'
 import { externalWriteEvidenceState, externalWriteGroupState } from './external-write-group-state'
-import { useScrollLock } from '../../shared/hooks/useScrollLock'
+import { lockPageScroll, useScrollLock } from '../../shared/hooks/useScrollLock'
 import { appendNotification, integrationNotificationTarget, isExternalWriteMessage, normalizeNotificationKind, type NotificationDetail, type NotificationTarget } from '../../shared/notifications'
 import { resolveReturnStatus } from '../../shared/dashboard-operational-links'
 import { sortByTurkishName } from './attribute-sorting'
@@ -863,11 +863,10 @@ function ReferenceConnectionCard({ item, onSaved, onFeedback }: { item: Connecti
   const supportsInitialDataSync = item.platformCode === 'TRENDYOL' || item.platformCode === 'SHOPIFY' || item.platformCode === 'HEPSIBURADA' || item.platformCode === 'N11'
   useEffect(() => {
     if (!settingsOpen) return
-    const previousOverflow = document.body.style.overflow
     const closeOnEscape = (event: globalThis.KeyboardEvent) => { if (event.key === 'Escape') setSettingsOpen(false) }
-    document.body.style.overflow = 'hidden'
+    const unlockScroll = lockPageScroll()
     document.addEventListener('keydown', closeOnEscape)
-    return () => { document.body.style.overflow = previousOverflow; document.removeEventListener('keydown', closeOnEscape) }
+    return () => { unlockScroll(); document.removeEventListener('keydown', closeOnEscape) }
   }, [settingsOpen])
   useEffect(() => {
     if (!menuOpen) return
