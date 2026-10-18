@@ -50,6 +50,14 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             if (definition is null) continue;
 
             var interval = Math.Clamp(row.Policy.IntervalSeconds, 30, ScheduledOrderPollingCadencePolicy.MaximumIntervalSeconds);
+            // Questions are rare; a connection without a new question for a while is asked less often.
+            if (row.Policy.ResourceType == "QUESTIONS")
+            {
+                var lastQuestionAt = await db.MarketplaceQuestions.AsNoTracking()
+                    .Where(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id)
+                    .MaxAsync(x => (DateTimeOffset?)x.CreatedAt, cancellationToken);
+                interval = QuestionCadencePolicy.IntervalSeconds(interval, lastQuestionAt, now);
+            }
             // Healthy order notifications make the order polls a slower safety net.
             if (webhookHealthy.Contains(row.Connection.Id) && WebhookPollingPolicy.StretchedIntervalSeconds(row.Policy.ResourceType) is { } stretched)
                 interval = Math.Max(interval, stretched);
@@ -354,7 +362,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         new("RETURN_RECONCILE_MEDIUM", configuration.GetValue("MarketplaceSync:ReturnReconciliation:MediumIntervalSeconds", 3600), 0, configuration.GetValue("MarketplaceSync:ReturnReconciliation:MediumJitterSeconds", 120)),
         new("RETURN_RECONCILE_DAILY", configuration.GetValue("MarketplaceSync:ReturnReconciliation:DailyIntervalSeconds", 86_400), 0, configuration.GetValue("MarketplaceSync:ReturnReconciliation:DailyJitterSeconds", 900)),
         new("REFERENCE_DATA", configuration.GetValue("MarketplaceSync:ReferenceData:IntervalSeconds", 86_400), 0, configuration.GetValue("MarketplaceSync:ReferenceData:JitterSeconds", 60)),
-        new("QUESTIONS", configuration.GetValue("MarketplaceSync:Questions:IntervalSeconds", 60), 0, 0),
+        new("QUESTIONS", configuration.GetValue("MarketplaceSync:Questions:IntervalSeconds", 120), 0, 0),
         new("STOCK_RECONCILE_SHORT", configuration.GetValue("MarketplaceSync:StockReconciliation:ShortIntervalSeconds", 900), 0, configuration.GetValue("MarketplaceSync:StockReconciliation:ShortJitterSeconds", 30)),
         new("STOCK_RECONCILE_MEDIUM", configuration.GetValue("MarketplaceSync:StockReconciliation:MediumIntervalSeconds", 3600), 0, configuration.GetValue("MarketplaceSync:StockReconciliation:MediumJitterSeconds", 120)),
         new("STOCK_RECONCILE_DAILY", configuration.GetValue("MarketplaceSync:StockReconciliation:DailyIntervalSeconds", 86_400), 0, configuration.GetValue("MarketplaceSync:StockReconciliation:DailyJitterSeconds", 900)),
@@ -375,17 +383,20 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                 || current.IntervalSeconds == 480 && current.OverlapSeconds == 600 && (current.JitterSeconds == 0 || current.JitterSeconds == 30)
                 || current.IntervalSeconds == 540 && current.OverlapSeconds == 600 && (current.JitterSeconds == 0 || current.JitterSeconds == 30)
                 || current.IntervalSeconds == 900 && current.OverlapSeconds == 600 && (current.JitterSeconds == 0 || current.JitterSeconds == 30),
-            "ORDER_RECOVERY" => (current.IntervalSeconds == 900 || current.IntervalSeconds == 2700) && current.OverlapSeconds == 600 && (current.JitterSeconds == 0 || current.JitterSeconds == 30),
+            "ORDER_RECOVERY" => (current.IntervalSeconds == 900 || current.IntervalSeconds == 2700 || current.IntervalSeconds == 3600) && current.OverlapSeconds == 600 && (current.JitterSeconds == 0 || current.JitterSeconds == 30),
+            "QUESTIONS" => (current.IntervalSeconds == 60 || current.IntervalSeconds == 120) && current.OverlapSeconds == 0 && current.JitterSeconds == 0,
             "RETURNS" => current.IntervalSeconds == 60 && current.OverlapSeconds == 900 && current.JitterSeconds == 5
                 || current.IntervalSeconds == 180 && current.OverlapSeconds == 900 && (current.JitterSeconds == 0 || current.JitterSeconds == 10),
             "ORDER_LIFECYCLE" => current.IntervalSeconds == 180 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 10)
                 || (current.IntervalSeconds == 480 || current.IntervalSeconds == 540 || current.IntervalSeconds == 1800) && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 10),
             "ORDER_CARGO_INFO" => (current.IntervalSeconds == 300 || current.IntervalSeconds == 1800) && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 15),
-            "RETURN_LIFECYCLE" => current.IntervalSeconds == 180 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 10),
+            "RETURN_LIFECYCLE" => (current.IntervalSeconds == 180 || current.IntervalSeconds == 1800) && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 10),
             "ORDER_RECONCILE_SHORT" => (current.IntervalSeconds == 900 || current.IntervalSeconds == 2700 || current.IntervalSeconds == 3600) && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 30),
-            "RETURN_RECONCILE_SHORT" or "STOCK_RECONCILE_SHORT" => current.IntervalSeconds == 900 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 30),
+            "RETURN_RECONCILE_SHORT" => (current.IntervalSeconds == 900 || current.IntervalSeconds == 3600) && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 30),
+            "STOCK_RECONCILE_SHORT" => current.IntervalSeconds == 900 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 30),
             "ORDER_RECONCILE_MEDIUM" => (current.IntervalSeconds == 3600 || current.IntervalSeconds == 10_800 || current.IntervalSeconds == 21_600) && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 120),
-            "RETURN_RECONCILE_MEDIUM" or "STOCK_RECONCILE_MEDIUM" => current.IntervalSeconds == 3600 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 120),
+            "RETURN_RECONCILE_MEDIUM" => (current.IntervalSeconds == 3600 || current.IntervalSeconds == 21_600) && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 120),
+            "STOCK_RECONCILE_MEDIUM" => current.IntervalSeconds == 3600 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 120),
             "ORDER_RECONCILE_DAILY" => (current.IntervalSeconds == 86_400 || current.IntervalSeconds == 259_200) && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 900),
             "RETURN_RECONCILE_DAILY" or "STOCK_RECONCILE_DAILY" => current.IntervalSeconds == 86_400 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 900),
             "ORDER_INVOICE_RECONCILIATION" => current.OverlapSeconds == 0 && (platformCode == "HEPSIBURADA"

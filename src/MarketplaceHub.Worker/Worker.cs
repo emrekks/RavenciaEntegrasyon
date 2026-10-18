@@ -20,7 +20,9 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         MarketplaceJobTypes.ShopifyOrderReconciliation, MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation,
         MarketplaceJobTypes.HepsiburadaOrderSync, MarketplaceJobTypes.HepsiburadaOrderRecoverySync,
         MarketplaceJobTypes.HepsiburadaOrderStatusSync, MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation,
-        MarketplaceJobTypes.N11OrderSync, MarketplaceJobTypes.N11OrderRecoverySync
+        MarketplaceJobTypes.N11OrderSync, MarketplaceJobTypes.N11OrderRecoverySync,
+        // Pazarama order reads used to fall back to the 60-minute default ceiling.
+        MarketplaceJobTypes.PazaramaOrderSync, MarketplaceJobTypes.PazaramaOrderRecoverySync, MarketplaceJobTypes.PazaramaOrderStatusSync
     ];
     // Pazarama has no change filter on orders, so its status scan re-reads open orders one by one;
     // the three order flows run in their own lane so they never occupy the hot lane's slots.

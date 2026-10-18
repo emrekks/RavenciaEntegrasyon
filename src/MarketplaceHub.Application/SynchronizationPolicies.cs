@@ -672,3 +672,19 @@ public static class InvoicePendingPolicy
         : pendingFor < TimeSpan.FromMinutes(5) ? TimeSpan.FromSeconds(60)
         : null;
 }
+
+// Questions arrive a few times a month. The question check doubles its interval for every half
+// hour without a new question, up to ten minutes, and returns to its base when one arrives.
+public static class QuestionCadencePolicy
+{
+    public const int MaximumSeconds = 600;
+    public static readonly TimeSpan QuietStep = TimeSpan.FromMinutes(30);
+
+    public static int IntervalSeconds(int baseSeconds, DateTimeOffset? lastQuestionAt, DateTimeOffset now)
+    {
+        if (baseSeconds >= MaximumSeconds) return baseSeconds;
+        var quietSteps = lastQuestionAt is { } last ? (int)Math.Clamp((now - last) / QuietStep, 0, 8) : 8;
+        var stretched = baseSeconds * (1L << quietSteps);
+        return (int)Math.Min(stretched, MaximumSeconds);
+    }
+}

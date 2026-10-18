@@ -23,19 +23,31 @@ public static class ScheduledOrderPollingCadencePolicy
             return (1800, jitterSeconds);
         }
 
-        // Trendyol reconciliation re-reads whole stream windows, so the 1- and 3-day passes run
-        // hourly and every six hours; the 90-day pass stays daily.
-        if (string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase) && resourceType is "ORDER_RECONCILE_SHORT" or "ORDER_RECONCILE_MEDIUM")
+        // Trendyol and n11 reconciliation re-read whole windows, so the 1- and 3-day passes run hourly
+        // and every six hours; the 90-day pass stays daily. Trendyol return reconciliation follows suit.
+        if (platformCode?.ToUpperInvariant() is "TRENDYOL" or "N11" && resourceType is "ORDER_RECONCILE_SHORT" or "ORDER_RECONCILE_MEDIUM"
+            || string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase) && resourceType is "RETURN_RECONCILE_SHORT" or "RETURN_RECONCILE_MEDIUM")
         {
-            return (resourceType == "ORDER_RECONCILE_SHORT" ? 3600 : 21_600, jitterSeconds);
+            return (resourceType.EndsWith("_SHORT", StringComparison.Ordinal) ? 3600 : 21_600, jitterSeconds);
+        }
+
+        // The incremental return reads already bring status changes; the open-return scans of
+        // Trendyol and Hepsiburada are a half-hourly safety net.
+        if (platformCode?.ToUpperInvariant() is "TRENDYOL" or "HEPSIBURADA" && resourceType == "RETURN_LIFECYCLE")
+        {
+            return (1800, jitterSeconds);
         }
 
         if (string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase)
             && IsShopifyReadPolicy(resourceType))
         {
+            // New and changed orders every three minutes (read by updated_at); the open-order scan
+            // half-hourly; recovery hourly and incremental; reconciliation daily.
             var interval = resourceType switch
             {
-                "ORDERS" or "ORDER_LIFECYCLE" => 540,
+                "ORDERS" => 180,
+                "ORDER_LIFECYCLE" => 1800,
+                "ORDER_RECOVERY" => 3600,
                 _ => Math.Clamp(intervalSeconds, 30, MaximumIntervalSeconds / 3) * 3
             };
             var jitter = resourceType == "ORDERS" ? 30 : jitterSeconds;

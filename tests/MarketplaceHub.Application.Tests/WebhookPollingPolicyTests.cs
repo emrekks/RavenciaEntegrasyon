@@ -29,3 +29,20 @@ public sealed class WebhookPollingPolicyTests
         Assert.False(WebhookPollingPolicy.CountsAsGap(null, Now));
     }
 }
+
+public sealed class QuestionCadencePolicyTests
+{
+    private static readonly DateTimeOffset Now = new(2026, 10, 18, 12, 0, 0, TimeSpan.Zero);
+
+    [Theory]
+    [InlineData(10, 120)]
+    [InlineData(45, 240)]
+    [InlineData(70, 480)]
+    [InlineData(200, 600)]
+    public void QuietConnectionsAreAskedLessOften(int minutesSinceLastQuestion, int expectedSeconds) =>
+        Assert.Equal(expectedSeconds, QuestionCadencePolicy.IntervalSeconds(120, Now.AddMinutes(-minutesSinceLastQuestion), Now));
+
+    [Fact]
+    public void AConnectionWithoutQuestionsIsAskedEveryTenMinutes() =>
+        Assert.Equal(600, QuestionCadencePolicy.IntervalSeconds(120, null, Now));
+}
