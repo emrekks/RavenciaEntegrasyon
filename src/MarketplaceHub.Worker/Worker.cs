@@ -76,6 +76,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         loops.Add(RunJobNotificationListenerAsync(stoppingToken));
         if (schedulerEnabled) loops.Add(RunSchedulerAsync(stoppingToken));
         if (schedulerEnabled && configuration.GetValue("Worker:JobRetention:Enabled", true)) loops.Add(RunJobRetentionAsync(stoppingToken));
+        if (schedulerEnabled) loops.Add(RunWebhookUpkeepAsync(stoppingToken));
         await Task.WhenAll(loops);
     }
 
@@ -401,6 +402,33 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
                 catch (Exception exception) when (exception is not OperationCanceledException)
                 {
                     logger.LogError(exception, "Job retention pass failed");
+                }
+            }
+            while (await timer.WaitForNextTickAsync(stoppingToken));
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
+    }
+
+    // Trendyol passivates a webhook whose deliveries keep failing (for example while the server is
+    // off at night). Shortly after start and then hourly, registered webhooks found passive are
+    // reactivated; the startup recovery's incremental reads cover what was missed meanwhile.
+    private async Task RunWebhookUpkeepAsync(CancellationToken stoppingToken)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
+            using var timer = new PeriodicTimer(TimeSpan.FromHours(1));
+            do
+            {
+                try
+                {
+                    await using var scope = scopeFactory.CreateAsyncScope();
+                    var reactivated = await scope.ServiceProvider.GetRequiredService<IInstantNotificationService>().ReactivatePassiveAsync(stoppingToken);
+                    if (reactivated > 0) logger.LogInformation("Reactivated {Count} passive marketplace webhook(s)", reactivated);
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    logger.LogError(exception, "Webhook upkeep pass failed");
                 }
             }
             while (await timer.WaitForNextTickAsync(stoppingToken));

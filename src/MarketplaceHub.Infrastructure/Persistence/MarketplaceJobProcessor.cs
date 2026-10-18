@@ -2519,6 +2519,19 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         cursor.Version++;
     }
 
+    internal static string? TrendyolWebhookStorefront(string rawPackageJson)
+    {
+        try
+        {
+            using var package = JsonDocument.Parse(rawPackageJson);
+            return package.RootElement.TryGetProperty("orderCountryCode", out var country) && country.ValueKind == JsonValueKind.String
+                && country.GetString() is { Length: 2 } code && TrendyolReadStorefronts.Codes.Contains(code.ToUpperInvariant())
+                ? code.ToUpperInvariant()
+                : null;
+        }
+        catch (JsonException) { return null; }
+    }
+
     private static Dictionary<string, TrendyolStorefrontActivity> ReadStorefrontActivity(SyncCursor cursor)
     {
         if (!string.IsNullOrWhiteSpace(cursor.OpaqueCursor))
@@ -7130,8 +7143,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             AdapterPageResult<RemoteOrder> page; try { page = TrendyolJsonMapper.Orders(raw); } catch (JsonException) { return false; }
             foreach (var issue in page.Issues ?? [])
                 await RecordIssue(tenantId, $"order-webhook-contract:{connectionId}:{issue.Identity}:{issue.Code}", issue.Code, issue.Message, cancellationToken);
+            // The webhook carries no storefront header; orderCountryCode names the customer's
+            // storefront (TR, DE, AE…), which later targeted reads ask first.
             if (configuration.GetValue("Marketplace:PersistOrderSnapshots", true))
-                await UpsertOrders(tenantId, connectionId, page.Items, cancellationToken);
+                await UpsertOrders(tenantId, connectionId, [.. page.Items.Select(order => order with { StoreFrontCode = TrendyolWebhookStorefront(order.RawJson) })], cancellationToken);
         }
         var inbox = await db.InboxMessages.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Source == source && x.ExternalMessageId == externalMessageId, cancellationToken); if (inbox is not null) inbox.ProcessedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); return true;
     }

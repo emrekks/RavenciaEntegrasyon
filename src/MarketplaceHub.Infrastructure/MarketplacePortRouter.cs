@@ -16,7 +16,7 @@ public sealed class MarketplacePortRouter(
     HepsiburadaHttpClient hepsiburada,
     N11HttpClient n11,
     PazaramaHttpClient pazarama)
-    : IConnectionPort, IReferenceDataPort, IProductPort, IHepsiburadaProductMatchPort, IProductVisualLookupPort, IInventoryPricePort, IOrderPort, IOrderPackageReadPort, IReturnPort, IInvoiceMarketplacePort, IHepsiburadaInvoiceStatusPort, IQuestionPort, IOrderFinancePort
+    : IConnectionPort, IReferenceDataPort, IProductPort, IHepsiburadaProductMatchPort, IProductVisualLookupPort, IInventoryPricePort, IOrderPort, IOrderPackageReadPort, IWebhookRegistrationPort, IReturnPort, IInvoiceMarketplacePort, IHepsiburadaInvoiceStatusPort, IQuestionPort, IOrderFinancePort
 {
     private async Task<T> Resolve<T>(AdapterContext context) where T : class
     {
@@ -61,6 +61,10 @@ public sealed class MarketplacePortRouter(
     public async Task<AdapterResult<RemoteOrderPackage>> GetShipmentPackageAsync(AdapterContext context, string externalPackageId, DateTimeOffset? packageStatusOccurredAt, CancellationToken cancellationToken) => await (await Resolve<IOrderPort>(context)).GetShipmentPackageAsync(context, externalPackageId, packageStatusOccurredAt, cancellationToken);
     public async Task<AdapterResult<RemoteOrderPackage>> GetShipmentPackageAsync(AdapterContext context, string externalPackageId, PackageLookup lookup, CancellationToken cancellationToken) => await (await Resolve<IOrderPort>(context)).GetShipmentPackageAsync(context, externalPackageId, lookup, cancellationToken);
     public async Task<AdapterResult<RemoteOrder>> GetAsync(AdapterContext context, string externalOrderId, OrderLookupHint? hint, CancellationToken cancellationToken) => await (await Resolve<IOrderPort>(context)).GetAsync(context, externalOrderId, hint, cancellationToken);
+    public async Task<AdapterResult<IReadOnlyList<RemoteWebhook>>> ListWebhooksAsync(AdapterContext context, CancellationToken cancellationToken) => await (await Resolve<IWebhookRegistrationPort>(context)).ListWebhooksAsync(context, cancellationToken);
+    public async Task<AdapterResult<string>> CreateWebhookAsync(AdapterContext context, string url, string username, string password, CancellationToken cancellationToken) => await (await Resolve<IWebhookRegistrationPort>(context)).CreateWebhookAsync(context, url, username, password, cancellationToken);
+    public async Task<AdapterResult<bool>> DeleteWebhookAsync(AdapterContext context, string externalId, CancellationToken cancellationToken) => await (await Resolve<IWebhookRegistrationPort>(context)).DeleteWebhookAsync(context, externalId, cancellationToken);
+    public async Task<AdapterResult<bool>> ActivateWebhookAsync(AdapterContext context, string externalId, CancellationToken cancellationToken) => await (await Resolve<IWebhookRegistrationPort>(context)).ActivateWebhookAsync(context, externalId, cancellationToken);
     public async Task<AdapterResult<IReadOnlyList<RemoteOrder>>> GetShipmentPackagesAsync(AdapterContext context, IReadOnlyList<string> externalPackageIds, OrderLookupHint? hint, CancellationToken cancellationToken) => await (await Resolve<IOrderPort>(context)).GetShipmentPackagesAsync(context, externalPackageIds, hint, cancellationToken);
     public async Task<AdapterResult<AdapterPageResult<RemoteOrderPackage>>> PollPackagesAsync(AdapterContext context, PackagePollWindow window, AdapterPageRequest page, CancellationToken cancellationToken) => await (await Resolve<IOrderPackageReadPort>(context)).PollPackagesAsync(context, window, page, cancellationToken);
     public async Task<AdapterResult<PackageTrackingStatusSnapshot>> GetPackageTrackingInfoAsync(AdapterContext context, string packageNumber, CancellationToken cancellationToken) => await (await Resolve<IOrderPackageReadPort>(context)).GetPackageTrackingInfoAsync(context, packageNumber, cancellationToken);

@@ -756,6 +756,39 @@ public sealed record SyncPolicyView(
 public sealed record UpdateSyncPolicyCommand(int IntervalSeconds, int OverlapSeconds, int JitterSeconds, bool Enabled);
 public sealed record WebhookSubscriptionView(Guid Id, string AuthenticationType, string Status, string? ExternalSubscriptionId, DateTimeOffset? VerifiedAt, DateTimeOffset? LastReceivedAt, long Version);
 public sealed record CreateWebhookSubscriptionCommand(string AuthenticationType, string? Username, string? Password, string? ApiKey);
+
+// A webhook as the marketplace lists it. Status: ACTIVE or PASSIVE (Trendyol passivates a
+// webhook whose deliveries keep failing).
+public sealed record RemoteWebhook(string Id, string? Url, string Status, string? Username);
+
+// Registers the panel's order-notification endpoint at a marketplace. Called only when a user
+// turns notifications on or off, and by the worker to reactivate a webhook the marketplace passivated.
+public interface IWebhookRegistrationPort
+{
+    Task<AdapterResult<IReadOnlyList<RemoteWebhook>>> ListWebhooksAsync(AdapterContext context, CancellationToken cancellationToken);
+    Task<AdapterResult<string>> CreateWebhookAsync(AdapterContext context, string url, string username, string password, CancellationToken cancellationToken);
+    Task<AdapterResult<bool>> DeleteWebhookAsync(AdapterContext context, string externalId, CancellationToken cancellationToken);
+    Task<AdapterResult<bool>> ActivateWebhookAsync(AdapterContext context, string externalId, CancellationToken cancellationToken);
+}
+
+// State: UNSUPPORTED, OFF, ACTIVE, PASSIVE (the marketplace stopped delivering), MISSING (the
+// marketplace no longer has it), or UNKNOWN (the marketplace could not be asked).
+public sealed record InstantNotificationView(
+    string State,
+    string? Endpoint,
+    DateTimeOffset? RegisteredAt,
+    DateTimeOffset? LastReceivedAt,
+    int ReceivedLast24Hours,
+    string? Message);
+
+public interface IInstantNotificationService
+{
+    Task<ServiceResult<InstantNotificationView>> StatusAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken);
+    Task<ServiceResult<InstantNotificationView>> EnableAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken);
+    Task<ServiceResult<InstantNotificationView>> DisableAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken);
+    // Reactivates registered webhooks the marketplace passivated (for example after the server was off).
+    Task<int> ReactivatePassiveAsync(CancellationToken cancellationToken);
+}
 public sealed record CreatedWebhookSubscription(WebhookSubscriptionView Subscription, Guid ConnectionPublicId, string RouteToken);
 public sealed record DeleteConnectionCommand(string Confirmation);
 public sealed record DataVisibilityCommand(bool Hidden);

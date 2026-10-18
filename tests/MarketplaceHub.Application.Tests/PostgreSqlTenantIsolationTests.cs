@@ -1966,6 +1966,90 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task InstantNotifications_RegisterABasicAuthWebhookAndRemoveIt()
+    {
+        var tenant = NewTenant("trendyol-instant-notifications");
+        var connection = NewQuestionConnection(tenant);
+        var port = new RecordingWebhookPort();
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Marketplace:PublicBaseUrl"] = "https://panel.ravencia.com" }).Build();
+        var dataProtection = new EphemeralDataProtectionProvider();
+        var hasher = new TokenHasher(new byte[32]);
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            InstantNotificationService Service(AppDbContext db) => new(db, port, hasher, dataProtection, configuration, fixture.TimeProvider, NullLogger<InstantNotificationService>.Instance);
+
+            await using (var db = fixture.CreateContext())
+            {
+                var enabled = await Service(db).EnableAsync(tenant.Id, connection.Id, "enable", CancellationToken.None);
+                Assert.Null(enabled.Error);
+                Assert.Equal("ACTIVE", enabled.Value!.State);
+                Assert.DoesNotContain(port.CreatedUrl!.Split('/').Last(), enabled.Value.Endpoint);
+            }
+            Assert.StartsWith($"https://panel.ravencia.com/api/v1/hooks/{connection.PublicId:D}/", port.CreatedUrl);
+            Assert.StartsWith(InstantNotificationService.ManagedUserPrefix, port.CreatedUsername);
+
+            // The address Trendyol was given is accepted by the receiver with the same Basic Auth.
+            await using (var db = fixture.CreateContext())
+            {
+                var receiver = new MarketplaceWebhookService(db, hasher, new TrendyolWebhookVerifier(db, dataProtection), fixture.TimeProvider);
+                var routeToken = port.CreatedUrl!.Split('/').Last();
+                var basic = "Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes($"{port.CreatedUsername}:{port.CreatedPassword}"));
+                var received = await receiver.ReceiveAsync(connection.PublicId, routeToken, Encoding.UTF8.GetBytes("""{"content":[{"orderNumber":"1","shipmentPackageId":1}]}"""), new Dictionary<string, string> { ["Authorization"] = basic }, "webhook-test", CancellationToken.None);
+                Assert.Null(received.Error);
+            }
+
+            await using (var db = fixture.CreateContext())
+            {
+                var disabled = await Service(db).DisableAsync(tenant.Id, connection.Id, "disable", CancellationToken.None);
+                Assert.Equal("OFF", disabled.Value!.State);
+            }
+            Assert.Equal("remote-webhook-1", port.DeletedId);
+        }
+        finally
+        {
+            await using var cleanupDb = fixture.CreateContext();
+            await cleanupDb.InboxMessages.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanupDb.IntegrationJobs.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanupDb.WebhookSubscriptions.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    private sealed class RecordingWebhookPort : IWebhookRegistrationPort
+    {
+        public string? CreatedUrl { get; private set; }
+        public string? CreatedUsername { get; private set; }
+        public string? CreatedPassword { get; private set; }
+        public string? DeletedId { get; private set; }
+
+        public Task<AdapterResult<IReadOnlyList<RemoteWebhook>>> ListWebhooksAsync(AdapterContext context, CancellationToken cancellationToken) =>
+            Task.FromResult(AdapterResult<IReadOnlyList<RemoteWebhook>>.Success(CreatedUrl is null || DeletedId is not null ? [] : [new RemoteWebhook("remote-webhook-1", CreatedUrl, "ACTIVE", CreatedUsername)]));
+
+        public Task<AdapterResult<string>> CreateWebhookAsync(AdapterContext context, string url, string username, string password, CancellationToken cancellationToken)
+        {
+            (CreatedUrl, CreatedUsername, CreatedPassword) = (url, username, password);
+            return Task.FromResult(AdapterResult<string>.Success("remote-webhook-1"));
+        }
+
+        public Task<AdapterResult<bool>> DeleteWebhookAsync(AdapterContext context, string externalId, CancellationToken cancellationToken)
+        {
+            DeletedId = externalId;
+            return Task.FromResult(AdapterResult<bool>.Success(true));
+        }
+
+        public Task<AdapterResult<bool>> ActivateWebhookAsync(AdapterContext context, string externalId, CancellationToken cancellationToken) =>
+            Task.FromResult(AdapterResult<bool>.Success(true));
+    }
+
+    [PostgreSqlFact]
     public async Task TargetedTrendyolOrderSync_UsesOrderNumberBeforeSuppliedPackage()
     {
         var tenant = NewTenant("trendyol-package-first-sync");
