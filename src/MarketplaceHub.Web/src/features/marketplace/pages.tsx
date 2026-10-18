@@ -1081,7 +1081,7 @@ function InstantNotificationsPanel({ connectionId, connectionActive, platformCod
   const [feedback, setFeedback] = useState<IntegrationFeedback | null>(null)
   const change = useMutation({
     mutationFn: (on: boolean) => hubApi<InstantNotificationStatus>(`/connections/${connectionId}/instant-notifications`, on
-      ? { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, ...(shopify ? { body: JSON.stringify({ clientSecret: clientSecret.trim() }) } : {}) }
+      ? { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, ...(shopify && clientSecret.trim() ? { body: JSON.stringify({ clientSecret: clientSecret.trim() }) } : {}) }
       : { method: 'DELETE' }),
     onSuccess: (next, on) => {
       client.setQueryData(['instant-notifications', connectionId], { ...next, setup: null })
@@ -1130,16 +1130,16 @@ function InstantNotificationsPanel({ connectionId, connectionActive, platformCod
         <li>İlk bildirim gelene kadar siparişler düzenli kontrolle gelmeye devam eder.</li>
       </ul>
     </RrModal>}
-    {confirm === 'on' && data && shopify && <RrModal title="Webhook’u Aç" desc="Shopify’a sipariş bildirimi abonelikleri kaydedilecek." size="sm" locked={change.isPending} onClose={() => setConfirm(null)} foot={<><span className="rr-note" /><button type="button" className="rr-btn" disabled={change.isPending} onClick={() => setConfirm(null)}>Vazgeç</button><button type="button" className="rr-btn pri" disabled={change.isPending || !clientSecret.trim()} onClick={() => change.mutate(true)}>{change.isPending ? 'Açılıyor…' : 'Webhook’u Aç'}</button></>}>
+    {confirm === 'on' && data && shopify && <RrModal title="Webhook’u Aç" desc="Shopify’a sipariş bildirimi abonelikleri kaydedilecek." size="sm" locked={change.isPending} onClose={() => setConfirm(null)} foot={<><span className="rr-note" /><button type="button" className="rr-btn" disabled={change.isPending} onClick={() => setConfirm(null)}>Vazgeç</button><button type="button" className="rr-btn pri" disabled={change.isPending} onClick={() => change.mutate(true)}>{change.isPending ? 'Açılıyor…' : 'Webhook’u Aç'}</button></>}>
       <ul className="instant-notifications-terms">
         <li><strong>Adres:</strong> {data.endpoint} <small>(gizli bağlantı anahtarı panel tarafından üretilir)</small></li>
         <li><strong>Olaylar:</strong> sipariş oluşturuldu, güncellendi, iptal edildi, gönderildi, kısmen gönderildi ve para iadesi</li>
-        <li>Shopify her bildirimi uygulamanın gizli anahtarıyla imzalar; panel imzayı bu anahtarla doğrular.</li>
+        <li>Bildirim yalnız hangi siparişin değiştiğini söyler; panel o siparişi mevcut Shopify bağlantısıyla yeniden okur.</li>
         <li>Shopify başarısız gönderimlerden sonra bir aboneliği kaldırırsa panel bir saat içinde yeniden oluşturur.</li>
       </ul>
-      <label className="instant-notifications-secret">Uygulama Gizli Anahtarı (Client Secret)
+      <label className="instant-notifications-secret">Uygulama Gizli Anahtarı (İsteğe Bağlı)
         <input type="password" autoComplete="off" value={clientSecret} onChange={event => setClientSecret(event.target.value)} placeholder="shpss_…" />
-        <small>Shopify yönetici panelinde uygulamanın API kimlik bilgileri bölümünde yer alır; şifreli saklanır.</small>
+        <small>Girerseniz panel Shopify’ın her bildirime koyduğu imzayı da doğrular. Boş bırakabilirsiniz; bildirimler panelin ürettiği gizli adresle kabul edilir. Anahtar Shopify’da uygulamanın API kimlik bilgileri bölümündedir ve şifreli saklanır.</small>
       </label>
     </RrModal>}
     {confirm === 'on' && data && !hepsiburada && !shopify && <RrModal title="Webhook’u Aç" desc="Trendyol’a bir bildirim adresi kaydedilecek." size="sm" locked={change.isPending} onClose={() => setConfirm(null)} foot={<><span className="rr-note" /><button type="button" className="rr-btn" disabled={change.isPending} onClick={() => setConfirm(null)}>Vazgeç</button><button type="button" className="rr-btn rr-primary" disabled={change.isPending} onClick={() => change.mutate(true)}>{change.isPending ? 'Açılıyor…' : 'Webhook’u Aç'}</button></>}>

@@ -2134,7 +2134,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
-    public async Task InstantNotifications_ShopifyNeedsTheClientSecretAndVerifiesWithIt()
+    public async Task InstantNotifications_ShopifyVerifiesWithAGivenClientSecret()
     {
         var tenant = NewTenant("shopify-notifications");
         var connection = NewQuestionConnection(tenant);
@@ -2157,9 +2157,6 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
 
             await using (var db = fixture.CreateContext())
             {
-                var withoutSecret = await Service(db).EnableAsync(tenant.Id, connection.Id, "enable", CancellationToken.None);
-                Assert.Equal("SHOPIFY_CLIENT_SECRET_REQUIRED", withoutSecret.Error!.Code);
-                Assert.Null(port.CreatedUrl);
                 var enabled = await Service(db).EnableAsync(tenant.Id, connection.Id, "enable", CancellationToken.None, "shpss_test_secret");
                 Assert.Null(enabled.Error);
                 Assert.Equal("ACTIVE", enabled.Value!.State);
@@ -2175,6 +2172,54 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 var received = await receiver.ReceiveAsync(connection.PublicId, port.CreatedUrl!.Split('/').Last(), body, headers, "webhook-test", CancellationToken.None);
                 Assert.Null(received.Error);
                 Assert.True(await db.IntegrationJobs.AnyAsync(job => job.TenantId == tenant.Id && job.PayloadJson.Contains("REFUNDS")));
+            }
+        }
+        finally
+        {
+            await using var cleanupDb = fixture.CreateContext();
+            await cleanupDb.InboxMessages.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanupDb.IntegrationJobs.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanupDb.WebhookSubscriptions.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task InstantNotifications_ShopifyWithoutSecretAdmitsDeliveriesByTheirSecretRoute()
+    {
+        var tenant = NewTenant("shopify-route");
+        var connection = NewQuestionConnection(tenant);
+        connection.PlatformCode = "SHOPIFY";
+        var port = new RecordingWebhookPort();
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Marketplace:PublicBaseUrl"] = "https://panel.ravencia.com" }).Build();
+        var dataProtection = new EphemeralDataProtectionProvider();
+        var hasher = new TokenHasher(new byte[32]);
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using (var db = fixture.CreateContext())
+            {
+                var enabled = await new InstantNotificationService(db, port, hasher, dataProtection, configuration, fixture.TimeProvider, NullLogger<InstantNotificationService>.Instance)
+                    .EnableAsync(tenant.Id, connection.Id, "enable", CancellationToken.None);
+                Assert.Null(enabled.Error);
+                Assert.Equal("ROUTE_TOKEN", (await db.WebhookSubscriptions.SingleAsync(x => x.TenantId == tenant.Id)).AuthenticationType);
+            }
+
+            await using (var db = fixture.CreateContext())
+            {
+                var receiver = new MarketplaceWebhookService(db, hasher, new MarketplaceHub.Infrastructure.Adapters.Shopify.ShopifyWebhookVerifier(db, dataProtection), fixture.TimeProvider);
+                var headers = new Dictionary<string, string> { ["X-Shopify-Hmac-Sha256"] = "unverifiable", ["X-Shopify-Topic"] = "orders/updated", ["X-Shopify-Webhook-Id"] = "delivery-2" };
+                var received = await receiver.ReceiveAsync(connection.PublicId, port.CreatedUrl!.Split('/').Last(), Encoding.UTF8.GetBytes("""{"id":123}"""), headers, "webhook-test", CancellationToken.None);
+                Assert.Null(received.Error);
+                var wrongRoute = await receiver.ReceiveAsync(connection.PublicId, "wrong-route", Encoding.UTF8.GetBytes("""{"id":123}"""), headers, "webhook-test", CancellationToken.None);
+                Assert.NotNull(wrongRoute.Error);
             }
         }
         finally

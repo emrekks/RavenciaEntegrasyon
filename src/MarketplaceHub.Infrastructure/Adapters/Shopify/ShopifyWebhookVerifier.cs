@@ -27,9 +27,12 @@ public sealed class ShopifyWebhookVerifier(AppDbContext db, IDataProtectionProvi
         }
 
         // Shopify signs with the app's client secret; the API key field is an older place for it.
+        // A subscription made without the secret (ROUTE_TOKEN) is admitted by its secret route alone:
+        // the delivery only names an order, which the panel then reads from Shopify itself.
         var secret = payload?.ClientSecret ?? payload?.ApiKey;
         var signature = Header(headers, "X-Shopify-Hmac-Sha256");
-        if (string.IsNullOrWhiteSpace(secret) || string.IsNullOrWhiteSpace(signature) || !VerifySignature(rawBody.Span, signature, secret))
+        var routeOnly = subscription.AuthenticationType == "ROUTE_TOKEN" && string.IsNullOrWhiteSpace(secret);
+        if (!routeOnly && (string.IsNullOrWhiteSpace(secret) || string.IsNullOrWhiteSpace(signature) || !VerifySignature(rawBody.Span, signature, secret)))
             return AdapterResult<VerifiedWebhookEnvelope>.Failure(new(AdapterErrorClass.Authentication, "SHOPIFY_WEBHOOK_SIGNATURE_INVALID", "Shopify webhook imzası doğrulanamadı.", 401, null, null));
 
         // X-Shopify-Webhook-Id is the same on every retry of one delivery; Event-Id is shared by

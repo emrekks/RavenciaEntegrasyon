@@ -86,9 +86,14 @@ public sealed class InstantNotificationService(
         if (connection is null) return NotFound();
         if (connection.PlatformCode is not ("TRENDYOL" or "HEPSIBURADA" or "SHOPIFY"))
             return ServiceResult<InstantNotificationView>.Fail("INSTANT_NOTIFICATIONS_UNSUPPORTED", "Bu pazaryeri için anlık bildirim henüz panelden açılamıyor.", 422);
-        clientSecret = clientSecret?.Trim();
-        if (connection.PlatformCode == "SHOPIFY" && (string.IsNullOrWhiteSpace(clientSecret) || clientSecret.Length > 200))
-            return ServiceResult<InstantNotificationView>.Fail("SHOPIFY_CLIENT_SECRET_REQUIRED", "Shopify bildirimleri uygulamanın gizli anahtarıyla (client secret) imzalar; bildirimleri açmak için bu anahtarı girin.", 422);
+        // Shopify signs deliveries with the app's client secret. The connection's own secret is used
+        // when it has one; without it the secret route alone admits a delivery, which is safe because
+        // a Shopify notification only makes the panel read that order from Shopify again.
+        clientSecret = string.IsNullOrWhiteSpace(clientSecret)
+            ? connection.PlatformCode == "SHOPIFY" ? await StoredShopifyClientSecretAsync(tenantId, connectionId, cancellationToken) : null
+            : clientSecret.Trim();
+        if (clientSecret is { Length: > 200 })
+            return ServiceResult<InstantNotificationView>.Fail("SHOPIFY_CLIENT_SECRET_INVALID", "Shopify gizli anahtarı geçersiz.", 422);
         if (connection.Status is not ("ACTIVE" or "VERIFIED"))
             return ServiceResult<InstantNotificationView>.Fail("CONNECTION_INACTIVE", "Bağlantı pasif olduğu için anlık bildirim açılamaz.", 422);
         if (PublicBaseUrl() is not { } baseUrl)
@@ -109,7 +114,7 @@ public sealed class InstantNotificationService(
             ConnectionId = connectionId,
             RouteTokenHash = tokenHasher.Hash(routeToken),
             // Shopify signs each delivery (HMAC) with the client secret instead of Basic Auth.
-            AuthenticationType = shopify ? "HMAC_SHA256" : "BASIC_AUTHENTICATION",
+            AuthenticationType = shopify ? clientSecret is null ? "ROUTE_TOKEN" : "HMAC_SHA256" : "BASIC_AUTHENTICATION",
             ProtectedVerifierSecret = protector.Protect(JsonSerializer.Serialize(shopify ? new VerifierPayload(null, null, null, clientSecret) : new VerifierPayload(username, password, null, null))),
             Status = "ACTIVE",
             Version = 1
@@ -241,6 +246,26 @@ public sealed class InstantNotificationService(
         var query = db.WebhookSubscriptions.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == "ACTIVE" && x.ExternalSubscriptionId != null);
         return (tracked ? query : query.AsNoTracking()).OrderByDescending(x => x.Id).FirstOrDefaultAsync(cancellationToken);
     }
+
+    // The client secret of a Shopify connection saved with client credentials; token-only connections have none.
+    private async Task<string?> StoredShopifyClientSecretAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
+    {
+        var protectedPayload = await db.PlatformCredentials.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.RevokedAt == null)
+            .OrderByDescending(x => x.CreatedAt)
+            .Select(x => x.ProtectedPayload)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (protectedPayload is null) return null;
+        try
+        {
+            var stored = JsonSerializer.Deserialize<StoredShopifyCredential>(dataProtection.CreateProtector("MarketplaceHub.PlatformCredential.v1").Unprotect(protectedPayload));
+            var secret = stored?.ClientSecret ?? stored?.ApiSecret;
+            return string.IsNullOrWhiteSpace(secret) ? null : secret.Trim();
+        }
+        catch (Exception exception) when (exception is CryptographicException or JsonException) { return null; }
+    }
+
+    private sealed record StoredShopifyCredential(string? ClientSecret, string? ApiSecret);
 
     private AdapterContext Context(Guid tenantId, Guid connectionId, string correlationId, string purpose) =>
         new(tenantId, connectionId, correlationId, $"{purpose}:{connectionId:N}", timeProvider.GetUtcNow().AddSeconds(30));
