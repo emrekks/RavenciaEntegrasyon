@@ -1228,20 +1228,36 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     public async Task<ServiceResult<ShipmentView>> ProcessShipmentInstantAsync(Guid tenantId, Guid packageId, long expectedVersion, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
     {
         const string action = "PICKING";
-        const string effectType = "TRENDYOL_INSTANT_PICKING";
         var package = await db.ShipmentPackages.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == packageId, cancellationToken);
         if (package is null) return NotFound<ShipmentView>();
         if (package.Version != expectedVersion) return Precondition<ShipmentView>(package.Version);
         if (package.Status != ShipmentPackageStatus.New) return ServiceResult<ShipmentView>.Fail("SHIPMENT_ACTION_NOT_ALLOWED", "Yalnız yeni durumdaki paketler işleme alınabilir.", 409);
+        var platform = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.ConnectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        if (platform is not ("TRENDYOL" or "N11" or "PAZARAMA"))
+            return ServiceResult<ShipmentView>.Fail("SHIPMENT_ACTION_UNSUPPORTED", "Bu pazaryerinde siparişler panelden anlık işleme alınamıyor.", 422);
+        var effectType = $"{platform}_INSTANT_PICKING";
 
         var packageLines = await (from allocation in db.PackageLineAllocations.AsNoTracking()
                                   where allocation.TenantId == tenantId && allocation.PackageId == package.Id && allocation.AllocatedQuantity > 0
                                   join line in db.OrderLines.AsNoTracking() on new { allocation.TenantId, Id = allocation.OrderLineId } equals new { line.TenantId, line.Id }
                                   select new { line.ExternalLineId, allocation.AllocatedQuantity }).ToListAsync(cancellationToken);
-        if (packageLines.Count == 0 || packageLines.Any(line => !long.TryParse(line.ExternalLineId, out _) || line.AllocatedQuantity != decimal.Truncate(line.AllocatedQuantity) || line.AllocatedQuantity > int.MaxValue))
-            return ServiceResult<ShipmentView>.Fail("PICKING_LINES_REQUIRED", "Paket satırları Trendyol Picking isteği için hazırlanamadı.", 422);
-        var payload = JsonSerializer.Serialize(new { lines = packageLines.Select(line => new { lineId = long.Parse(line.ExternalLineId), quantity = (int)line.AllocatedQuantity }), @params = new { }, status = "Picking" });
-        var validation = ValidateShipmentAction(package, action, payload);
+        string payload;
+        ServiceError? validation;
+        if (platform == "PAZARAMA")
+        {
+            // Pazarama order items are GUIDs; the adapter sends one status request per item.
+            if (packageLines.Count == 0 || packageLines.Any(line => string.IsNullOrWhiteSpace(line.ExternalLineId) || line.AllocatedQuantity != decimal.Truncate(line.AllocatedQuantity) || line.AllocatedQuantity > int.MaxValue))
+                return ServiceResult<ShipmentView>.Fail("PICKING_LINES_REQUIRED", "Paket satırları Pazarama işleme alma isteği için hazırlanamadı.", 422);
+            payload = JsonSerializer.Serialize(new { lines = packageLines.Select(line => new { lineId = line.ExternalLineId, quantity = (int)line.AllocatedQuantity }), status = "Picking" });
+            validation = ValidatePazaramaShipmentAction(package, action, payload);
+        }
+        else
+        {
+            if (packageLines.Count == 0 || packageLines.Any(line => !long.TryParse(line.ExternalLineId, out _) || line.AllocatedQuantity != decimal.Truncate(line.AllocatedQuantity) || line.AllocatedQuantity > int.MaxValue))
+                return ServiceResult<ShipmentView>.Fail("PICKING_LINES_REQUIRED", "Paket satırları işleme alma isteği için hazırlanamadı.", 422);
+            payload = JsonSerializer.Serialize(new { lines = packageLines.Select(line => new { lineId = long.Parse(line.ExternalLineId), quantity = (int)line.AllocatedQuantity }), @params = new { }, status = "Picking" });
+            validation = platform == "N11" ? ValidateN11ShipmentAction(package, action, payload) : ValidateShipmentAction(package, action, payload);
+        }
         if (validation is not null) return ServiceResult<ShipmentView>.Fail(validation.Code, validation.Message, validation.Status, validation.FieldErrors);
         var stage = await IsStageConnection(tenantId, package.ConnectionId, cancellationToken);
         if (!stage && !await IsProductionConnection(tenantId, package.ConnectionId, cancellationToken)) return ServiceResult<ShipmentView>.Fail("ENVIRONMENT_INVALID", "Shipment işlemi yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);

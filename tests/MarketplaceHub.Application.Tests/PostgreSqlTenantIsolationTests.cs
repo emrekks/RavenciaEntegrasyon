@@ -2138,6 +2138,72 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task InstantPicking_SendsPazaramaGuidLineIds()
+    {
+        var tenant = NewTenant("pazarama-instant-picking");
+        var connection = NewQuestionConnection(tenant);
+        connection.PlatformCode = "PAZARAMA";
+        var orderId = Guid.CreateVersion7();
+        var order = NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, "pazarama-order", isReturnClaim: false, fixture.Now);
+        order.DerivedStatus = "NEW";
+        var package = NewInvoiceTestPackage(tenant.Id, connection.Id, orderId, Guid.CreateVersion7(), "pazarama-package", fixture.Now);
+        package.Status = ShipmentPackageStatus.New;
+        package.RawStatus = "Created";
+        var lineId = "3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d";
+        var line = new OrderLine { Id = Guid.CreateVersion7(), TenantId = tenant.Id, OrderId = orderId, ExternalLineId = lineId, Sku = "SKU-1", TitleSnapshot = "Test ürün", OrderedQuantity = 1, UnitPrice = 100, VatRate = 20, RawStatus = "Created" };
+        var port = new RecordingActionPort();
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.ConnectionSyncPolicies.Add(new ConnectionSyncPolicy { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ResourceType = MarketplaceExternalWritePolicies.Shipment, IntervalSeconds = 0, Enabled = true, Version = 1 });
+            seedDb.Orders.Add(order);
+            seedDb.OrderLines.Add(line);
+            seedDb.ShipmentPackages.Add(package);
+            seedDb.PackageLineAllocations.Add(new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PackageId = package.Id, OrderLineId = line.Id, AllocatedQuantity = 1, SourceEventId = "seed" });
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var service = new MarketplaceSalesService(db, null!, new ConfigurationBuilder().Build(), null!, port, null!, null!, fixture.TimeProvider);
+            var result = await service.ProcessShipmentInstantAsync(tenant.Id, package.Id, package.Version, "instant-picking:pazarama:v1", "pazarama-instant-picking", CancellationToken.None);
+
+            Assert.Null(result.Error);
+            using var sent = JsonDocument.Parse(port.Payload!);
+            Assert.Equal(lineId, sent.RootElement.GetProperty("lines")[0].GetProperty("lineId").GetString());
+            Assert.True(await db.ExternalEffectRecords.AnyAsync(x => x.TenantId == tenant.Id && x.EffectType == "PAZARAMA_INSTANT_PICKING" && x.CompletedAt != null));
+        }
+        finally
+        {
+            await using var cleanupDb = fixture.CreateContext();
+            await cleanupDb.ExternalEffectRecords.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanupDb.ConnectionSyncPolicies.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    private sealed class RecordingActionPort : IOrderPort
+    {
+        public string? Payload { get; private set; }
+        public Task<AdapterResult<PackageActionResult>> ExecutePackageActionAsync(AdapterContext context, PackageActionCommand command, CancellationToken cancellationToken)
+        {
+            Payload = command.PayloadJson;
+            return Task.FromResult(AdapterResult<PackageActionResult>.Success(new(command.ExternalPackageId, "Processing", null)));
+        }
+        public Task<AdapterResult<AdapterPageResult<RemoteOrder>>> PollAsync(AdapterContext context, OrderPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<RemoteOrder>> GetAsync(AdapterContext context, string externalOrderId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<IReadOnlyList<RemoteCargoCompany>>> GetChangeableCargoCompaniesAsync(AdapterContext context, string externalPackageId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<IReadOnlyList<RemotePackageableLine>>> GetPackageableLineItemsAsync(AdapterContext context, string externalLineItemId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<CreateOrderPackageResult>> CreateOrderPackageAsync(AdapterContext context, CreateOrderPackageCommand command, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<bool>> CreateCommonLabelAsync(AdapterContext context, CommonLabelRequest request, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<CommonLabelDocument>> GetCommonLabelAsync(AdapterContext context, string cargoTrackingNumber, CancellationToken cancellationToken, string format = "ZPL") => throw new NotSupportedException();
+        public Task<AdapterResult<StageTestOrderResult>> CreateStageTestOrderAsync(AdapterContext context, string barcode, CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
+
+    [PostgreSqlFact]
     public async Task TargetedTrendyolOrderSync_UsesOrderNumberBeforeSuppliedPackage()
     {
         var tenant = NewTenant("trendyol-package-first-sync");
