@@ -86,4 +86,13 @@
   :root .app-shell.stitch-shell main .cm-card.cm-card > :is(.cm-context, .cm-legend) { padding: var(--m-pad) !important; gap: 10px !important; }
   :root .app-shell.stitch-shell main .cm-card.cm-card .cm-nav { padding: 10px var(--m-pad) !important; }
   :root .app-shell.stitch-shell main .cm-card.cm-card .cm-detail { padding: var(--m-pad) !important; }
+
+  /* Order sync window fits one phone screen: the repeated section title goes, each source is one row with a one-line
+     detail under its name */
+  :root .rr-layer.rr-layer .rr-modal:has(#order-sync-form) :is(.rr-m-head .rr-crumb, .rr-m-body .rr-h3) { display: none !important; }
+  :root .rr-layer.rr-layer .rr-modal:has(#order-sync-form) .rr-srcs { gap: 6px !important; }
+  :root .rr-layer.rr-layer .rr-modal:has(#order-sync-form) .rr-src { min-height: 0 !important; padding: 8px 10px !important; gap: 10px !important; }
+  :root .rr-layer.rr-layer .rr-modal:has(#order-sync-form) .rr-src .rr-logo { width: 28px !important; height: 28px !important; }
+  :root .rr-layer.rr-layer .rr-modal:has(#order-sync-form) .rr-src > span { min-width: 0; }
+  :root .rr-layer.rr-layer .rr-modal:has(#order-sync-form) .rr-src small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }

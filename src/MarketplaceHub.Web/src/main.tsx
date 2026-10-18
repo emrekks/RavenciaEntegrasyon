@@ -9,6 +9,7 @@ import phoneSpacingStylesheet from './styles/phone-spacing.css?url'
 import { installScrollbarVisibility } from './shared/scrollbar-visibility'
 import { installDialogScrollLock } from './shared/hooks/useScrollLock'
 import { reloadForNewBuild } from './shared/lazy-page'
+import { installSheetSwipeClose } from './shared/sheet-swipe'
 
 // Phone and tablet rules for the main-bundle screens live in their own file, linked for small
 // screens only, so desktop never applies them and the main CSS budget stays as it is.
@@ -29,6 +30,7 @@ window.addEventListener('vite:preloadError', event => { if (reloadForNewBuild())
 
 installScrollbarVisibility()
 installDialogScrollLock()
+installSheetSwipeClose()
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 60_000, refetchOnWindowFocus: false } } })
 createRoot(document.getElementById('root')!).render(<StrictMode><QueryClientProvider client={queryClient}><BrowserRouter><App /></BrowserRouter></QueryClientProvider></StrictMode>)

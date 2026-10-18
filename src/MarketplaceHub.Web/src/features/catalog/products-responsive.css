@@ -414,8 +414,6 @@
    corner button instead of a 32×44 block over the picture. */
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .product-add-page .media-preview-strip :is(img, figure) { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; -webkit-user-drag: none; }
-  /* no browser pan or zoom starts on a picture, so nothing can cancel the hold; the page still scrolls by hand from it */
-  .app-shell.stitch-shell main .product-add-page .media-preview-strip figure { touch-action: none; }
   .app-shell.stitch-shell main .product-add-page .media-preview-strip .is-media-drag-over { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }
   .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-remove-btn { top: 4px; right: 4px; width: 26px; min-width: 26px; height: 26px; min-height: 26px; padding: 0; border-radius: 7px; }
   .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-remove-btn .ui-icon { width: 14px; height: 14px; }
@@ -465,8 +463,9 @@
   .app-shell.stitch-shell main .rr.rr-products .rr-panel-h p { white-space: nowrap; }
 }
 
-/* A product without variants says so when its variant cell is hovered or tapped. */
-.app-shell.stitch-shell main .rr.rr-products .rr-vtip.rr-vtip-empty { width: 240px; max-width: calc(100vw - 48px); padding: 10px 12px; color: var(--rv-color-muted); font-size: 12.5px; font-weight: 400; line-height: 1.45; white-space: normal; }
+/* A product without variants has nothing to open: its variant cell is plain text. */
+.app-shell.stitch-shell main .rr.rr-products .rr-vhover-none .rr-varcell { cursor: default; }
+.app-shell.stitch-shell main .rr.rr-products .rr-vhover-none .rr-varcell b { text-decoration: none; }
 
 /* Phones: the variant rows keep a 12px gap from both sides of their framed list. */
 @media (max-width: 760px) {
@@ -489,4 +488,47 @@
   .app-shell.stitch-shell main .rr.rr-products .rr-ptbl .rr-vtab thead th { padding-block: 4px 7px !important; color: var(--rv-color-subtle); font-size: 12px; font-weight: 600; }
   .app-shell.stitch-shell main .rr.rr-products .rr-ptbl .rr-vtab :is(thead th:first-child, tbody th) { width: auto !important; padding-left: 0 !important; overflow: visible !important; text-overflow: clip !important; white-space: nowrap; text-align: left !important; }
   .app-shell.stitch-shell main .rr.rr-products .rr-ptbl .rr-vtab tbody th { max-width: none; color: var(--rv-color-ink); font-weight: 500; }
+}
+
+/* The bulk actions menu over the selection bar stays above the dimmed page behind it, so its items can be tapped. */
+.app-shell.stitch-shell main .rr-bulk-menu > .rr-menu { z-index: 951 !important; }
+
+/* Phones: the variant stock popover is one box (the card rules for rows and cells stop at the inner table) and every
+   stock figure sits right under its size. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl .rr-vtab tr { margin: 0 !important; padding: 0 !important; background: none !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; }
+  .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl .rr-vtab :is(th, td) { border: 0 !important; }
+  .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl .rr-vtab :is(td, thead th:not(:first-child)) { padding: 7px 0 !important; text-align: center !important; }
+  .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl .rr-vtab thead th { border-bottom: 1px solid var(--rv-color-border) !important; }
+  .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl .rr-vtab tbody tr + tr > * { border-top: 1px solid color-mix(in srgb, var(--rv-color-border) 70%, transparent) !important; }
+}
+
+/* Phones, product editor:
+   - section heads: the number sits top left beside the title, the title's buttons (Tümünü Temizle) beside the title on
+     the right at 36px, the description under both;
+   - two fields side by side keep their inputs on one line even when one label takes two lines;
+   - the variant bulk edit window puts its two option pickers side by side. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .product-add-page .editor-section-title { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: start; column-gap: 12px; row-gap: 4px; }
+  .app-shell.stitch-shell main .product-add-page .editor-section-title > span { grid-column: 1; grid-row: 1 / span 2; align-self: start; }
+  .app-shell.stitch-shell main .product-add-page .editor-section-title > div:not(.product-media-header-actions) { display: contents; }
+  .app-shell.stitch-shell main .product-add-page .editor-section-title h2 { grid-column: 2; grid-row: 1; align-self: center; margin: 0; }
+  .app-shell.stitch-shell main .product-add-page .editor-section-title p { grid-column: 2 / -1; grid-row: 2; }
+  .app-shell.stitch-shell main .product-add-page .editor-section-title > .product-media-header-actions { grid-column: 3; grid-row: 1; align-self: center; flex: none; }
+  .app-shell.stitch-shell main .product-add-page .product-media-clear-all-button { height: 36px; min-height: 36px; padding: 0 12px; font-size: 13px; }
+  .app-shell.stitch-shell main .product-add-page .product-step-grid > label { display: grid; grid-template-rows: minmax(0, 1fr) auto; align-items: end; }
+  .app-shell.stitch-shell main .variant-bulk-edit-filters > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+}
+
+/* The variant filter's clear button keeps its label on one line. */
+.app-shell.stitch-shell main .product-add-page .variant-filter-clear { white-space: nowrap; }
+
+/* Picture order buttons: hidden on wider screens (pictures are dragged there); on phones a pair of arrows sits along the
+   bottom of every picture and moves it one place earlier or later. */
+.app-shell.stitch-shell main .product-add-page .media-move-buttons { display: none; }
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .product-add-page .media-preview-strip .media-move-buttons { position: absolute; right: 4px; bottom: 4px; left: 4px; z-index: 2; display: flex; justify-content: space-between; gap: 4px; }
+  .app-shell.stitch-shell main .product-add-page .media-preview-strip .media-move-buttons > button { display: grid; width: 34px; min-width: 0; height: 28px; min-height: 28px; padding: 0; place-items: center; color: #fff; background: rgb(15 16 22 / 72%); border: 1px solid rgb(255 255 255 / 18%); border-radius: 7px; box-shadow: none; }
+  .app-shell.stitch-shell main .product-add-page .media-preview-strip .media-move-buttons > button:disabled { opacity: .35; }
+  .app-shell.stitch-shell main .product-add-page .media-preview-strip .media-move-buttons .ui-icon { width: 16px; height: 16px; }
 }
