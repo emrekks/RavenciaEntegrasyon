@@ -164,3 +164,15 @@ public sealed class PazaramaOpenOrderPolicyTests
         Assert.Equal(Now.AddDays(-40).ToOffset(TimeSpan.FromHours(3)).Date, PazaramaOpenOrderPolicy.StartDay(many, 25, Now));
     }
 }
+
+public sealed class QueueLaneTests
+{
+    [Theory]
+    [InlineData(-2, "USER")]
+    [InlineData(-1, "INITIAL")]
+    [InlineData(0, "HOT")]
+    [InlineData(2, "HOT")]
+    [InlineData(3, "BACKGROUND")]
+    public void JobsBelongToTheLaneOfTheirPriority(int priority, string lane) =>
+        Assert.Equal(lane, MarketplaceHub.Infrastructure.Persistence.QueueHealthService.LaneFor(priority));
+}

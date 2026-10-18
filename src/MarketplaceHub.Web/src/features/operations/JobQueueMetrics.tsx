@@ -15,6 +15,17 @@ export type JobTypeMetric = {
   running: number
 }
 
+export type LaneMetric = { lane: 'USER' | 'INITIAL' | 'HOT' | 'BACKGROUND'; attempts: number; averageWaitSeconds: number | null; p95WaitSeconds: number | null; queued: number; running: number }
+export type QuotaUsage = { platformCode: string; storeName: string; lane: 'FOREGROUND' | 'BACKGROUND'; limitPerMinute: number; lastHourRequests: number; peakMinuteRequests: number; averagePerMinute: number }
+
+export const laneLabels: Record<LaneMetric['lane'], string> = { USER: 'Kullanıcı İşlemleri', INITIAL: 'İlk Aktarım', HOT: 'Yeni Veri', BACKGROUND: 'Arka Plan' }
+const quotaLaneLabels: Record<QuotaUsage['lane'], string> = { FOREGROUND: 'Yeni sipariş ve işlemler', BACKGROUND: 'Diğer okumalar' }
+
+// How full a quota ran over the last hour: the average requests per minute against the limit.
+export function quotaFullness(usage: QuotaUsage) {
+  return usage.limitPerMinute <= 0 ? null : Math.min(1, usage.averagePerMinute / usage.limitPerMinute)
+}
+
 export function formatMetricSeconds(seconds: number | null) {
   if (seconds == null) return '—'
   if (seconds < 1) return '<1 sn'
@@ -37,12 +48,45 @@ export function JobQueueMetrics({ hours, titleFor }: { hours: number; titleFor: 
     enabled: open,
     refetchInterval: open ? 30_000 : false
   })
+  const lanes = useQuery({
+    queryKey: ['jobs', 'metrics', 'lanes', hours],
+    queryFn: () => hubApi<LaneMetric[]>(`/jobs/metrics/lanes?hours=${hours}`),
+    enabled: open,
+    refetchInterval: open ? 30_000 : false
+  })
+  const quota = useQuery({
+    queryKey: ['jobs', 'metrics', 'quota'],
+    queryFn: () => hubApi<QuotaUsage[]>('/jobs/metrics/quota'),
+    enabled: open,
+    refetchInterval: open ? 60_000 : false
+  })
   const rows = metrics.data ?? []
   return <details className="job-queue-metrics" open={open} onToggle={event => setOpen(event.currentTarget.open)}>
     <summary>
       <span>Kuyruk Performansı</span>
       <small>Bekleme, çalışma süresi ve hata oranı · son {hours >= 168 ? '7 gün' : `${hours} saat`}</small>
     </summary>
+    {open && (lanes.data?.length || quota.data?.length) ? <div className="job-queue-overview">
+      {lanes.data?.length ? <section aria-label="Şeritler">
+        <h3>Şeritler</h3>
+        <div className="job-queue-lanes">{lanes.data.map(lane => <div key={lane.lane} className="job-queue-lane">
+          <strong>{laneLabels[lane.lane]}</strong>
+          <span>p95 bekleme <b>{formatMetricSeconds(lane.p95WaitSeconds)}</b></span>
+          <small>Kuyrukta {lane.queued} · Çalışıyor {lane.running} · {lane.attempts.toLocaleString('tr-TR')} deneme</small>
+        </div>)}</div>
+      </section> : null}
+      {quota.data?.length ? <section aria-label="Trendyol sipariş kotası">
+        <h3>Trendyol Sipariş Kotası <small>son 1 saat</small></h3>
+        <ul className="job-queue-quota">{quota.data.map(usage => {
+          const fullness = quotaFullness(usage)
+          return <li key={`${usage.storeName}-${usage.lane}`}>
+            <span>{quotaLaneLabels[usage.lane]}<small>{usage.storeName}</small></span>
+            <span className="job-queue-quota-bar" aria-hidden="true"><i style={{ width: `${Math.round((fullness ?? 0) * 100)}%` }} /></span>
+            <span className={fullness != null && fullness >= 0.8 ? 'job-queue-metrics-bad' : undefined}>ort. {usage.averagePerMinute.toLocaleString('tr-TR')}/dk · tepe {usage.peakMinuteRequests}/dk · sınır {usage.limitPerMinute}/dk{fullness == null ? '' : ` (%${Math.round(fullness * 100)})`}</span>
+          </li>
+        })}</ul>
+      </section> : null}
+    </div> : null}
     {open && (metrics.isLoading
       ? <p className="job-queue-metrics-state">Metrikler yükleniyor…</p>
       : metrics.isError

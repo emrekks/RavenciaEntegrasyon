@@ -175,6 +175,17 @@ public sealed record JobTypeMetricView(
 // status counts come from here to show real totals.
 public sealed record JobCountView(string Status, string JobType, int Count);
 
+// Lane is USER (actions a user started), INITIAL (first imports), HOT (new data) or BACKGROUND.
+public sealed record LaneMetricView(string Lane, int Attempts, double? AverageWaitSeconds, double? P95WaitSeconds, int Queued, int Running);
+// Lane is FOREGROUND (new-order reads, user actions) or BACKGROUND (every other order read).
+public sealed record QuotaUsageView(string PlatformCode, string StoreName, string Lane, int LimitPerMinute, int LastHourRequests, int PeakMinuteRequests, double AveragePerMinute);
+
+public interface IQueueHealthService
+{
+    Task<IReadOnlyList<LaneMetricView>> LanesAsync(Guid tenantId, TimeSpan window, CancellationToken cancellationToken);
+    Task<IReadOnlyList<QuotaUsageView>> QuotaAsync(Guid tenantId, CancellationToken cancellationToken);
+}
+
 public interface IJobOperationsService
 {
     Task<IReadOnlyList<JobCountView>> CountAsync(Guid tenantId, DateTimeOffset? since, CancellationToken cancellationToken);

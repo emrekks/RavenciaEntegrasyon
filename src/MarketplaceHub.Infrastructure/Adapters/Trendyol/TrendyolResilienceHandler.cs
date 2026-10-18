@@ -173,15 +173,22 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
     internal static OrderQuota? OrderQuotaFor(HttpRequestMessage request, TrendyolOptions options, bool background)
     {
         if (RateBucketFor(request) is not { } orderBucket) return null;
-        var total = Math.Max(2, options.OrderRequestsPerInterval);
-        var foreground = Math.Clamp((int)Math.Round(total * Math.Clamp(options.OrderForegroundShare, 0.1, 0.9)), 1, total - 1);
-        var limit = background ? total - foreground : foreground;
+        var (foreground, backgroundLimit) = OrderQuotaSplit(options);
+        var limit = background ? backgroundLimit : foreground;
         var bucket = $"{orderBucket}:{(background ? "bg" : "fg")}";
         if (!IsOrderStream(request)) return new(bucket, limit, $"{orderBucket}:spacing", TimeSpan.Zero);
         var nextPage = request.RequestUri?.Query.Contains("nextCursor=", StringComparison.OrdinalIgnoreCase) == true;
         return nextPage
             ? new(bucket, limit, $"{orderBucket}:spacing", options.OrderRequestMinimumInterval)
             : new(bucket, limit, $"{orderBucket}:spacing:start", options.OrderStreamStartMinimumInterval);
+    }
+
+    // Requests per order interval for new-order reads and user actions, and for everything else.
+    internal static (int Foreground, int Background) OrderQuotaSplit(TrendyolOptions options)
+    {
+        var total = Math.Max(2, options.OrderRequestsPerInterval);
+        var foreground = Math.Clamp((int)Math.Round(total * Math.Clamp(options.OrderForegroundShare, 0.1, 0.9)), 1, total - 1);
+        return (foreground, total - foreground);
     }
 
     internal static bool IsOrderStream(HttpRequestMessage request) =>

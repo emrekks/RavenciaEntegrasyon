@@ -1052,6 +1052,51 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task QueueHealth_ReportsTheTrendyolOrderQuotaOfTheLastHour()
+    {
+        var tenant = NewTenant("quota-usage");
+        var connection = NewQuestionConnection(tenant);
+        connection.ExternalStoreId = $"seller-{Guid.NewGuid():N}";
+        var foregroundKey = $"trendyol:orders:apigw.trendyol.com:{connection.ExternalStoreId}:fg";
+        var backgroundKey = $"trendyol:orders:apigw.trendyol.com:{connection.ExternalStoreId}:bg";
+        var now = fixture.Now;
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            await seedDb.SaveChangesAsync();
+            await seedDb.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO integration.rate_limit_usage ("Key", "Minute", "Requests") VALUES
+                ({foregroundKey}, {now.AddMinutes(-5)}, 4), ({foregroundKey}, {now.AddMinutes(-2)}, 8),
+                ({backgroundKey}, {now.AddMinutes(-3)}, 12), ({backgroundKey}, {now.AddHours(-2)}, 18)
+                """);
+        }
+
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var service = new QueueHealthService(db, Options.Create(new MarketplaceHub.Infrastructure.Adapters.Trendyol.TrendyolOptions()), fixture.TimeProvider);
+            var quota = await service.QuotaAsync(tenant.Id, CancellationToken.None);
+
+            var foreground = Assert.Single(quota, row => row.Lane == "FOREGROUND");
+            Assert.Equal(12, foreground.LimitPerMinute);
+            Assert.Equal(12, foreground.LastHourRequests);
+            Assert.Equal(8, foreground.PeakMinuteRequests);
+            var background = Assert.Single(quota, row => row.Lane == "BACKGROUND");
+            Assert.Equal(18, background.LimitPerMinute);
+            Assert.Equal(12, background.LastHourRequests);
+            Assert.Equal(4, (await service.LanesAsync(tenant.Id, TimeSpan.FromHours(1), CancellationToken.None)).Count);
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateContext();
+            await cleanup.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM integration.rate_limit_usage WHERE \"Key\" IN ({foregroundKey}, {backgroundKey})");
+            await cleanup.PlatformConnections.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanup.Tenants.Where(x => x.Id == tenant.Id).ExecuteDeleteAsync();
+        }
+    }
+
+    [PostgreSqlFact]
     public async Task SharedRateLimiter_TakesTokensUntilTheBucketIsEmptyThenReportsTheWait()
     {
         var key = $"test:rate:{Guid.NewGuid():N}";
@@ -1065,11 +1110,15 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             Assert.Equal(TimeSpan.Zero, await limiter.TryTakeAsync(key, 2, 0.1, CancellationToken.None));
             var wait = await limiter.TryTakeAsync(key, 2, 0.1, CancellationToken.None);
             Assert.InRange(wait.TotalSeconds, 8, 10.5);
+            // Only taken tokens are counted, per minute.
+            var counted = await connectionSource.Database.SqlQuery<int>($"SELECT coalesce(sum(\"Requests\"), 0)::int AS \"Value\" FROM integration.rate_limit_usage WHERE \"Key\" = {key}").SingleAsync();
+            Assert.Equal(2, counted);
         }
         finally
         {
             await using var cleanup = fixture.CreateContext();
             await cleanup.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM integration.rate_limit_buckets WHERE \"Key\" = {key}");
+            await cleanup.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM integration.rate_limit_usage WHERE \"Key\" = {key}");
         }
     }
 
