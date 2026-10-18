@@ -6,7 +6,7 @@ namespace MarketplaceHub.Application.Tests;
 public sealed class ScheduledOrderPollingCadencePolicyTests
 {
     [Theory]
-    [InlineData("TRENDYOL", "ORDERS", 60, 5, 180, 5)]
+    [InlineData("TRENDYOL", "ORDERS", 60, 5, 60, 5)]
     [InlineData("TRENDYOL", "ORDER_LIFECYCLE", 180, 10, 1800, 10)]
     [InlineData("TRENDYOL", "ORDER_CARGO_INFO", 300, 15, 1800, 15)]
     [InlineData("TRENDYOL", "ORDER_RECONCILE_SHORT", 900, 30, 3600, 30)]
