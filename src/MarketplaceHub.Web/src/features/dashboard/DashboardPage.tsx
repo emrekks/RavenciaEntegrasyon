@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
 import { Link } from 'react-router'
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
 import { DateRangePicker } from '../../shared/DateRangePicker'
 import { NoticeToast } from '../../shared/components/NoticeToast'
@@ -180,10 +180,10 @@ export function DashboardPage() {
   const report = rangeDates(range, from, to, now)
   const reportPrevious = previousRange(report.start, report.end)
   const reportKey = `${range}:${from}:${to}`
-  const reportQuery = useQuery({ queryKey: ['dashboard-revenue-series', reportKey, platform], queryFn: () => hubApi<RevenuePoint[]>(revenuePath(report.start, report.end, platform)), ...refresh })
-  const reportPreviousQuery = useQuery({ queryKey: ['dashboard-revenue-series-previous', reportKey, platform], queryFn: () => hubApi<RevenuePoint[]>(revenuePath(reportPrevious.start, reportPrevious.end, platform)), ...refresh })
-  const channelQuery = useQuery({ queryKey: ['dashboard-channel-revenue', reportKey, platforms], queryFn: () => Promise.all(platforms.map(async name => ({ platform: name, points: await hubApi<RevenuePoint[]>(revenuePath(report.start, report.end, name)) }))), enabled: platforms.length > 0, ...refresh })
-  const channelPreviousQuery = useQuery({ queryKey: ['dashboard-channel-revenue-previous', reportKey, platforms], queryFn: () => Promise.all(platforms.map(async name => ({ platform: name, points: await hubApi<RevenuePoint[]>(revenuePath(reportPrevious.start, reportPrevious.end, name)) }))), enabled: platforms.length > 0, ...refresh })
+  const reportQuery = useQuery({ placeholderData: keepPreviousData, queryKey: ['dashboard-revenue-series', reportKey, platform], queryFn: () => hubApi<RevenuePoint[]>(revenuePath(report.start, report.end, platform)), ...refresh })
+  const reportPreviousQuery = useQuery({ placeholderData: keepPreviousData, queryKey: ['dashboard-revenue-series-previous', reportKey, platform], queryFn: () => hubApi<RevenuePoint[]>(revenuePath(reportPrevious.start, reportPrevious.end, platform)), ...refresh })
+  const channelQuery = useQuery({ placeholderData: keepPreviousData, queryKey: ['dashboard-channel-revenue', reportKey, platforms], queryFn: () => Promise.all(platforms.map(async name => ({ platform: name, points: await hubApi<RevenuePoint[]>(revenuePath(report.start, report.end, name)) }))), enabled: platforms.length > 0, ...refresh })
+  const channelPreviousQuery = useQuery({ placeholderData: keepPreviousData, queryKey: ['dashboard-channel-revenue-previous', reportKey, platforms], queryFn: () => Promise.all(platforms.map(async name => ({ platform: name, points: await hubApi<RevenuePoint[]>(revenuePath(reportPrevious.start, reportPrevious.end, name)) }))), enabled: platforms.length > 0, ...refresh })
 
   const metrics = bootstrap.data?.metrics
   const series = reportQuery.data ?? []
@@ -257,7 +257,7 @@ export function DashboardPage() {
       </div>
       <div className="rr-pf-body">
         <div className="rr-pf-chart"><b className="rr-pf-label">{chartValues[metric][2]}{platform === 'ALL' ? '' : ` · ${platformName(platform)}`}</b>
-          {series.some(point => chartValues[metric][0](point) > 0) ? <RevenueChart key={metric} points={series} previous={previousSeries} currency={currency} value={chartValues[metric][0]} axis={chartValues[metric][1]} /> : <div className="rr-empty"><span className="rr-ei"><RrIcon name="box" /></span><b>Gelir Verisi Yok</b><span className="rr-lead">Bu dönem için gelir verisi bulunmuyor.</span></div>}
+          {reportQuery.isLoading ? <div className="rr-chart rr-chart-wait" aria-hidden="true" style={{ aspectRatio: '760 / 260' }} /> : series.some(point => chartValues[metric][0](point) > 0) ? <RevenueChart key={metric} points={series} previous={previousSeries} currency={currency} value={chartValues[metric][0]} axis={chartValues[metric][1]} /> : <div className="rr-empty"><span className="rr-ei"><RrIcon name="box" /></span><b>Gelir Verisi Yok</b><span className="rr-lead">Bu dönem için gelir verisi bulunmuyor.</span></div>}
           <div className="rr-legend"><span><i className="rr-lg-cur" />Bu Dönem</span><span><i className="rr-lg-prev" />Önceki Dönem</span></div></div>
         <div className="rr-pf-chan">
           <div className="rr-pf-chan-h"><b>Kanallara Göre Ciro</b>{platform !== 'ALL' && <span className="rr-ftag"><RrLogo code={platformCode(platform)} />{platformName(platform)}<button type="button" onClick={() => setPlatform('ALL')} aria-label="Platform süzgecini kaldır"><RrIcon name="close" /></button></span>}</div>

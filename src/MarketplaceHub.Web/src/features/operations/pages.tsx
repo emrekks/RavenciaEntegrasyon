@@ -544,7 +544,7 @@ export function JobsPage({ me }: { me: Me }) {
     </div>
     <JobQueueMetrics hours={timeRange === '24h' ? 24 : 168} titleFor={jobType => jobPresentation(jobType).title} />
     <div className="jobs-reference-canvas">
-      <Tabs className="jobs-reference-tabs rv-view-tabs" ariaLabel="İşlem kategorileri" value={category} onChange={value => setCategory(value as JobCategory)} items={categoryTabs.filter(tab => tab.key !== 'SYSTEM').map(tab => ({ value: tab.key, label: viewTabLabel(({ ALL: 'all', ORDERS: 'order', PRICE_INVENTORY: 'price', CATALOG: 'product', INVOICES: 'invoice', RETURNS: 'return', SYSTEM: 'review' } as const)[tab.key], tab.label), count: categoryCounts.get(tab.key) ?? 0 }))} />
+      <Tabs className="jobs-reference-tabs rv-view-tabs" ariaLabel="İşlem kategorileri" value={category} onChange={value => setCategory(value as JobCategory)} items={categoryTabs.filter(tab => tab.key !== 'SYSTEM').map(tab => ({ value: tab.key, label: viewTabLabel(({ ALL: 'all', ORDERS: 'order', PRICE_INVENTORY: 'price', CATALOG: 'product', INVOICES: 'invoice', RETURNS: 'return', SYSTEM: 'review' } as const)[tab.key], tab.label), count: list.isLoading ? undefined : categoryCounts.get(tab.key) ?? 0 }))} />
       <div className="jobs-reference-toolbar">
         <div className="jobs-reference-status-summary" aria-label="İşlem durum özeti">
           <span className="success"><JobStateGlyph tone="success" />Başarılı <strong>{statusSummary.success}</strong></span>
