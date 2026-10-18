@@ -648,3 +648,11 @@
 .app-shell.stitch-shell main section.mapping-page .mapping-saved-card .mapping-saved-header-tools > :is(input, .mapping-sort-button) { box-sizing: border-box; align-self: center; height: 48px !important; min-height: 48px !important; max-height: none !important; margin: 0; }
 .app-shell.stitch-shell main section.mapping-page .mapping-saved-card .mapping-saved-header-tools > .mapping-platform-tabs { align-self: center; }
 .app-shell.stitch-shell main section.mapping-page .mapping-saved-card .mapping-saved-header-tools > .mapping-sort-button { min-width: 64px; }
+
+/* The category search keeps its text clear of the magnifier button inside it. */
+.app-shell.stitch-shell main section.mapping-page .category-library-search-control > input { padding-right: 38px !important; }
+
+/* Phones: the saved mapping cards sit with an even gap inside their framed list. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main section.mapping-page .mapping-saved-table { padding: 10px 10px 0; }
+}

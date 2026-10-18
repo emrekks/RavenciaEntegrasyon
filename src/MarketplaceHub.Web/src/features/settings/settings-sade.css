@@ -425,3 +425,11 @@
   .app-shell.stitch-shell main .ss-page .ss-bar-actions .ss-btn { min-width: 0; justify-content: center; padding: 0 8px; white-space: nowrap; }
 }
 @media (min-width: 761px) { .ss-page .ss-lbl-short { display: none; } }
+
+/* Section sub-tabs: phones show a short name so every tab fits on one line, side by side. */
+.app-shell.stitch-shell main .ss-stabs .rv-tabs .rv-tab-text.ss-lbl-short { display: none; }
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .ss-stabs .rv-tabs .rv-tab-text.ss-lbl-long { display: none; }
+  .app-shell.stitch-shell main .ss-stabs .rv-tabs .rv-tab-text.ss-lbl-short { display: inline-grid; }
+  .rv-tabs.rv-tabs.rv-tabs.rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.ss-seg { grid-template-columns: none !important; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+}

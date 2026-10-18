@@ -14,7 +14,8 @@
 .cs-workspace .cs-head-copy h2 { margin: 0; font-size: 18px; font-weight: 600; line-height: 1.3; }
 .cs-workspace .cs-head-copy p { margin: 2px 0 0; color: var(--rv-color-muted); font-size: 13px; }
 .cs-workspace .cs-grow { flex: 1; }
-.cs-workspace .cs-tags-row { display: contents; }
+.cs-workspace .cs-title-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; }
+.cs-workspace .cs-tags-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .cs-workspace .cs-tag { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px 0 6px; color: var(--rv-color-muted); border: 1px solid var(--rv-color-border-strong); border-radius: 5px; font-size: 12px; font-weight: 500; white-space: nowrap; text-transform: capitalize; }
 .cs-workspace .cs-tag.is-on { color: var(--rv-color-ink); }
 .cs-workspace .cs-tag:not(:has(.cm-glyph)) { padding-left: 8px; }
@@ -257,12 +258,15 @@
 /* Phones: the head keeps logo, name and close on one line with the status tags under the name; a flow that needs
    attention shows its name on the full width and its actions on the line below, so the name never breaks word by word. */
 @media (max-width: 760px) {
-  .cs-workspace .cs-head { display: grid; grid-template-columns: 42px minmax(0, 1fr) 36px; align-items: start; column-gap: 12px; row-gap: 8px; }
+  .cs-workspace .cs-head { display: grid; grid-template-columns: 36px minmax(0, 1fr) 32px; align-items: center; column-gap: 10px; row-gap: 8px; }
+  .cs-workspace .cs-head > .cs-logo { width: 36px; height: 36px; }
   .cs-workspace .cs-head > .cs-logo { grid-column: 1; grid-row: 1; }
   .cs-workspace .cs-head > .cs-head-copy { grid-column: 2; grid-row: 1; align-self: center; }
   .cs-workspace .cs-head > .cs-grow { display: none; }
-  .app-shell.stitch-shell main .cs-workspace .cs-head > .cs-close { grid-column: 3; grid-row: 1; width: 36px; min-width: 36px; height: 36px; min-height: 36px; }
-  .cs-workspace .cs-head > .cs-tags-row { display: flex; flex-wrap: wrap; gap: 6px; grid-column: 2 / -1; }
+  .app-shell.stitch-shell main .cs-workspace .cs-head > .cs-close { grid-column: 3; grid-row: 1; align-self: center; width: 32px; min-width: 32px; height: 32px; min-height: 32px; margin-right: -6px; }
+  .cs-workspace .cs-title-line { gap: 4px 6px; }
+  .cs-workspace .cs-title-line .cs-tag { height: 20px; padding: 0 5px; gap: 4px; font-size: 11.5px; }
+  .cs-workspace .cs-title-line .cs-tag .cm-glyph { width: 12px; height: 12px; }
   .cs-workspace .cs-head-copy p { overflow-wrap: anywhere; }
   .cs-workspace .cs-issue { grid-template-columns: 16px minmax(0, 1fr); align-items: start; row-gap: 8px; }
   .cs-workspace .cs-issue > .cm-glyph, .cs-workspace .cs-issue > svg { margin-top: 2px; }
@@ -293,6 +297,15 @@
   .app-shell.stitch-shell main .cs-workspace .cs-frow:not(.is-head) > .cs-switch-field { grid-area: switch; }
   .cs-workspace .cs-chips { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); flex-wrap: nowrap; }
   .app-shell.stitch-shell main .cs-workspace .cs-chip { justify-content: center; min-width: 0; padding: 0 6px; font-size: 12.5px; white-space: nowrap; }
+}
+
+/* The write status tag sits to the right of its title, not under the text. */
+.app-shell.stitch-shell main .cs-workspace .cs-pane .integration-detail-write-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; column-gap: 12px; }
+.app-shell.stitch-shell main .cs-workspace .cs-pane .integration-detail-write-heading > .integration-detail-write-status { align-self: start; justify-self: end; margin: 2px 0 0; }
+
+/* Section tabs whenever they run across the top (up to 860px): the project tab look, with no fill on the selected,
+   hovered, focused or pressed tab. */
+@media (max-width: 860px) {
   .app-shell.stitch-shell main .cs-workspace .cs-nav { height: 48px; padding: 0 8px; scrollbar-width: none; }
   .app-shell.stitch-shell main .cs-workspace .cs-nav > button { position: relative; height: 47px; min-height: 47px; padding: 0 12px; color: var(--rv-color-muted); background: none; border: 0; border-radius: 0; }
   .app-shell.stitch-shell main .cs-workspace .cs-nav > button + button::before { content: ""; position: absolute; top: 50%; left: 0; width: 1px; height: 18px; background: var(--rv-color-border-strong); transform: translateY(-50%); }
@@ -300,8 +313,5 @@
   .app-shell.stitch-shell main .cs-workspace .cs-nav > button.is-on { color: var(--rv-color-ink); background: none; font-weight: 500; }
   .app-shell.stitch-shell main .cs-workspace .cs-nav > button.is-on::after { content: ""; position: absolute; right: 8px; bottom: 0; left: 8px; height: 2px; background: var(--rv-color-primary); border-radius: 2px; }
   .app-shell.stitch-shell main .cs-workspace .cs-nav > button > span:empty { display: none; }
+  .app-shell.stitch-shell main .cs-workspace .cs-nav > button:is(:hover, :focus, :focus-visible, :active, .is-on) { background: none !important; box-shadow: none; }
 }
-
-/* The write status tag sits to the right of its title, not under the text. */
-.app-shell.stitch-shell main .cs-workspace .cs-pane .integration-detail-write-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; column-gap: 12px; }
-.app-shell.stitch-shell main .cs-workspace .cs-pane .integration-detail-write-heading > .integration-detail-write-status { align-self: start; justify-self: end; margin: 2px 0 0; }
