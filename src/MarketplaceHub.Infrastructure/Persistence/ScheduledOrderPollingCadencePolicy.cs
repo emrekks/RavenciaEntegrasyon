@@ -22,6 +22,13 @@ public static class ScheduledOrderPollingCadencePolicy
             return (1800, jitterSeconds);
         }
 
+        // Trendyol reconciliation re-reads whole stream windows, so the 1- and 3-day passes run
+        // hourly and every six hours; the 90-day pass stays daily.
+        if (string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase) && resourceType is "ORDER_RECONCILE_SHORT" or "ORDER_RECONCILE_MEDIUM")
+        {
+            return (resourceType == "ORDER_RECONCILE_SHORT" ? 3600 : 21_600, jitterSeconds);
+        }
+
         if (string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase)
             && IsShopifyReadPolicy(resourceType))
         {

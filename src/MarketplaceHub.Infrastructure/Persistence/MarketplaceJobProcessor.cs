@@ -80,14 +80,17 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 else if (jobType == MarketplaceJobTypes.CommonLabel) directResult = await CommonLabel(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
                 else if (jobType == MarketplaceJobTypes.CapabilityProbe) directResult = await LabelCapabilityProbe(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
                 else if (jobType == MarketplaceJobTypes.StageTestOrder) directResult = await CreateStageTestOrder(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
+                else if (jobType == MarketplaceJobTypes.OrderReconciliation && platform == "TRENDYOL") directResult = await ReconcileTrendyolOrderWindows(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
                 if (directResult is not null)
                 {
-                    if (!directResult.Succeeded)
+                    // A finished slice of a long job is progress, not a failure.
+                    var completedSlice = directResult.Succeeded || directResult.Continues;
+                    if (!completedSlice)
                     {
                         telemetryFailedCount++;
                         if (directResult.Kind == JobCompletionKind.Retry) telemetryRetryCount++;
                     }
-                    if (telemetryResource is not null) await RecordSyncCompletion(tenantId, connectionId.Value, telemetryResource, stopwatch.Elapsed, directResult.Succeeded, directResult.ErrorCode, cancellationToken);
+                    if (telemetryResource is not null) await RecordSyncCompletion(tenantId, connectionId.Value, telemetryResource, stopwatch.Elapsed, completedSlice, completedSlice ? null : directResult.ErrorCode, cancellationToken);
                     return directResult;
                 }
                 var succeeded = jobType switch
@@ -3200,6 +3203,85 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         cursor.OpaqueCursor = (offset + packageBatch.Count).ToString(CultureInfo.InvariantCulture);
         cursor.Version++;
         await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private sealed record OrderReconcileState(DateTimeOffset AnchorEnd, int WindowIndex, int StoreFrontIndex, string? NextCursor, string[] StoreFronts);
+    private static readonly TimeSpan SliceBudget = TimeSpan.FromSeconds(30);
+
+    // Trendyol reconciliation re-reads the order stream over the last 1, 3 or 90 days (14-day
+    // windows, active storefronts) instead of asking for orders one by one. It works in slices of
+    // about 30 seconds and saves its place, so the shared orders lock is never held long and a
+    // new-order read waits at most one slice.
+    private async Task<JobExecutionResult> ReconcileTrendyolOrderWindows(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    {
+        var lookback = TimeSpan.FromDays(ReadBoundedInt(payloadJson, "lookbackDays", 1, 1, 90));
+        var startedAt = timeProvider.GetUtcNow();
+        var cursor = await Cursor(tenantId, connectionId, $"ORDER_RECONCILE_{(int)lookback.TotalDays}D", cancellationToken);
+        OrderReconcileState? state = null;
+        if (!string.IsNullOrWhiteSpace(cursor.OpaqueCursor))
+        {
+            try { state = JsonSerializer.Deserialize<OrderReconcileState>(cursor.OpaqueCursor); }
+            catch (JsonException) { }
+        }
+        // A pass left unfinished for a day starts over rather than finishing stale windows.
+        if (state is null || state.StoreFronts is not { Length: > 0 } || state.StoreFrontIndex >= state.StoreFronts.Length || startedAt - state.AnchorEnd > TimeSpan.FromDays(1))
+        {
+            var activity = ReadStorefrontActivity(await Cursor(tenantId, connectionId, TrendyolStorefrontPolicy.CursorResource, cancellationToken));
+            state = new(startedAt, 0, 0, null, [.. TrendyolStorefrontPolicy.Active(TrendyolReadStorefronts.Codes, activity, startedAt)]);
+        }
+
+        var oldest = state.AnchorEnd - lookback;
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            var end = state.AnchorEnd - TimeSpan.FromTicks(state.WindowIndex * (OrderStreamWindowSpan.Ticks + TimeSpan.TicksPerMillisecond));
+            var start = end - OrderStreamWindowSpan < oldest ? oldest : end - OrderStreamWindowSpan;
+            var storefront = state.StoreFronts[state.StoreFrontIndex];
+            TrackRequest();
+            var page = await orders.PollAsync(Context(tenantId, connectionId, correlationId, $"order-reconcile:{storefront}:{state.WindowIndex}:{state.NextCursor ?? "0"}"), new(start, end, null, storefront), new(state.NextCursor, 200), cancellationToken);
+            if (!page.IsSuccess)
+            {
+                if (state.NextCursor is not null && page.Error is { Class: AdapterErrorClass.Validation, HttpStatus: 400 })
+                    state = state with { NextCursor = null };
+                else if (state.StoreFrontIndex > 0 && state.NextCursor is null && page.Error?.HttpStatus is 400 or 404)
+                    state = state with { StoreFrontIndex = state.StoreFrontIndex + 1 };
+                else
+                {
+                    TrackResultFailure(page.Error);
+                    cursor.OpaqueCursor = JsonSerializer.Serialize(state);
+                    cursor.Version++;
+                    await db.SaveChangesAsync(cancellationToken);
+                    return JobExecutionResult.FromAdapterError(page.Error!);
+                }
+            }
+            else
+            {
+                foreach (var _ in page.Value!.Items) TrackReceived();
+                foreach (var issue in page.Value.Issues ?? [])
+                    await RecordIssue(tenantId, $"order-contract:{connectionId}:{issue.Identity}:{issue.Code}", issue.Code, issue.Message, cancellationToken);
+                await UpsertOrders(tenantId, connectionId, page.Value.Items, cancellationToken);
+                state = page.Value.HasMore && !string.IsNullOrWhiteSpace(page.Value.NextCursor)
+                    ? state with { NextCursor = page.Value.NextCursor }
+                    : state with { StoreFrontIndex = state.StoreFrontIndex + 1, NextCursor = null };
+            }
+
+            if (state.StoreFrontIndex >= state.StoreFronts.Length)
+            {
+                if (start <= oldest)
+                {
+                    cursor.OpaqueCursor = null;
+                    cursor.Version++;
+                    await db.SaveChangesAsync(cancellationToken);
+                    return JobExecutionResult.Success();
+                }
+                state = state with { WindowIndex = state.WindowIndex + 1, StoreFrontIndex = 0, NextCursor = null };
+            }
+            cursor.OpaqueCursor = JsonSerializer.Serialize(state);
+            cursor.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+            if (timeProvider.GetUtcNow() - startedAt >= SliceBudget)
+                return JobExecutionResult.Continue("Sipariş uzlaştırması kaldığı pencereden birkaç saniye içinde devam edecek.");
+        }
+        return JobExecutionResult.Continue("Sipariş uzlaştırması kaldığı pencereden devam edecek.");
     }
 
     private async Task<bool> ReconcileOrders(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)

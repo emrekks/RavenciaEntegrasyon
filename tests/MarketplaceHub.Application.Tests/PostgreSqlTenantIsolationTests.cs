@@ -1854,6 +1854,56 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task TrendyolOrderReconciliation_ReadsStreamWindowsInSlicesAndResumes()
+    {
+        var tenant = NewTenant("trendyol-reconcile-windows");
+        var connection = NewQuestionConnection(tenant);
+        var orderPort = new StorefrontRecordingOrderPort();
+        var clock = new SteppingTimeProvider(fixture.Now);
+        // Every stream page takes 20 seconds, so a 30-second slice reads two pages.
+        orderPort.OnPoll = () => clock.Advance(TimeSpan.FromSeconds(20));
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            async Task<JobExecutionResult> RunAsync()
+            {
+                await using var processorDb = fixture.CreateContext();
+                var processor = new MarketplaceJobProcessor(
+                    processorDb,
+                    null!, null!, null!, null!, orderPort, null!, null!, null!, null!, null!,
+                    new ConfigurationBuilder().Build(), clock);
+                return await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.OrderReconciliation, """{"lookbackDays":90}""", "trendyol-reconcile-windows", CancellationToken.None);
+            }
+
+            // 90 days = seven 14-day windows of the Türkiye storefront (the only active one).
+            var first = await RunAsync();
+            Assert.True(first.Continues);
+            Assert.Equal(2, orderPort.PolledWindows.Count);
+            var second = await RunAsync();
+            Assert.True(second.Continues);
+            Assert.Equal(4, orderPort.PolledWindows.Count);
+            await RunAsync();
+            var last = await RunAsync();
+            Assert.True(last.Succeeded, last.ErrorSummary);
+            Assert.Equal(7, orderPort.PolledWindows.Count);
+            Assert.All(orderPort.PolledStorefronts, storefront => Assert.Equal("TR", storefront));
+            Assert.Equal(fixture.Now.AddDays(-90), orderPort.PolledWindows[^1].ModifiedAfter);
+            Assert.Equal(orderPort.PolledWindows.Count, orderPort.PolledWindows.Select(window => window.ModifiedBefore).Distinct().Count());
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
     public async Task TargetedTrendyolOrderSync_UsesOrderNumberBeforeSuppliedPackage()
     {
         var tenant = NewTenant("trendyol-package-first-sync");
@@ -4368,6 +4418,8 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     private sealed class StorefrontRecordingOrderPort : IOrderPort
     {
         public List<string?> PolledStorefronts { get; } = [];
+        public List<OrderPollWindow> PolledWindows { get; } = [];
+        public Action? OnPoll { get; set; }
         public List<(IReadOnlyList<string> PackageIds, OrderLookupHint? Hint)> PackageBatches { get; } = [];
         public List<(string OrderId, OrderLookupHint? Hint)> OrderReads { get; } = [];
 
@@ -4386,6 +4438,8 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         public Task<AdapterResult<AdapterPageResult<RemoteOrder>>> PollAsync(AdapterContext context, OrderPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken)
         {
             PolledStorefronts.Add(window.StoreFrontCode);
+            PolledWindows.Add(window);
+            OnPoll?.Invoke();
             return Task.FromResult(AdapterResult<AdapterPageResult<RemoteOrder>>.Success(new([], null, false)));
         }
 

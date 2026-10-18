@@ -26,6 +26,11 @@ public sealed record JobExecutionResult(
     /// <summary>The job could not start yet (e.g. its connection lock is busy); retry later without consuming an attempt.</summary>
     public static JobExecutionResult Deferred(string code, string? summary = null, TimeSpan? retryAfter = null) =>
         new(JobCompletionKind.Retry, code, Safe(summary), retryAfter, null, RefundAttempt: true);
+    public const string ContinueCode = "SLICE_CONTINUES";
+    /// <summary>A long job finished one bounded slice and saved its position; it runs again shortly without consuming an attempt.</summary>
+    public static JobExecutionResult Continue(string summary, TimeSpan? retryAfter = null) =>
+        new(JobCompletionKind.Retry, ContinueCode, Safe(summary), retryAfter ?? TimeSpan.FromSeconds(2), null, RefundAttempt: true);
+    public bool Continues => Kind == JobCompletionKind.Retry && ErrorCode == ContinueCode;
     public static JobExecutionResult Retry(string code, string? summary = null, TimeSpan? retryAfter = null, string? remoteRequestId = null) =>
         new(JobCompletionKind.Retry, code, Safe(summary), retryAfter, remoteRequestId);
     public static JobExecutionResult Blocked(string code, string? summary = null, string? remoteRequestId = null) =>
