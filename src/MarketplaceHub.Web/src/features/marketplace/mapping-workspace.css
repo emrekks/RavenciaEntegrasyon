@@ -676,3 +676,6 @@
 @media (max-width: 760px) {
   .app-shell.stitch-shell main section.mapping-page .mapping-reference-card { padding: 12px; row-gap: 12px; }
 }
+
+/* The attribute record's values button: its list icon keeps a full 18px instead of being squeezed. */
+.app-shell.stitch-shell main section.mapping-page .panel-attribute-records .panel-attribute-record-actions > .panel-attribute-category-button::before { flex: none; width: 18px; height: 18px; }
