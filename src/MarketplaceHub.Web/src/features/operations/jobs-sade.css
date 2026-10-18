@@ -198,3 +198,11 @@
   .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table.jobs-reference-table { min-width: 1090px; }
   .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table :is(thead tr, tbody .jobs-reference-row, tbody > tr:not(.jobs-reference-row)) { grid-template-columns: minmax(240px, 1.9fr) minmax(150px, 1.05fr) minmax(86px, .6fr) minmax(164px, 1.05fr) minmax(300px, 1.1fr); }
 }
+
+/* New jobs wait behind a floating button: a zero-height sticky slot above the table, so showing or hiding it moves nothing */
+.app-shell.stitch-shell main .jobs-reference-page .jobs-new-slot { position: sticky; top: calc(var(--rv-topbar-height, 64px) + 8px); z-index: 6; display: flex; justify-content: center; height: 0; margin-bottom: calc(-1 * var(--rv-space-4)); overflow: visible; }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-new-pill { display: inline-flex; align-items: center; gap: 8px; height: 36px; min-height: 36px; margin-top: 8px; padding: 0 14px; color: #fff; background: var(--rv-color-primary); border: 0; border-radius: 12px; box-shadow: 0 8px 24px rgb(0 0 0 / 30%); cursor: pointer; font-size: 13px; font-weight: 500 !important; text-transform: none; animation: jobs-new-in .18s ease-out; }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-new-pill:hover { background: var(--rv-color-primary-hover); }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-new-pill svg { width: 15px; height: 15px; }
+@keyframes jobs-new-in { from { opacity: 0; transform: translateY(-6px); } }
+@media (prefers-reduced-motion: reduce) { .app-shell.stitch-shell main .jobs-reference-page .jobs-new-pill { animation: none; } }
