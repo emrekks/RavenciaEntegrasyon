@@ -2149,7 +2149,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             foreach (var issue in (page.Value.Issues ?? []).Where(issue => issue.Code != HepsiburadaPackagePolicy.OrderToReadCode))
                 await RecordIssue(tenantId, $"package-contract:{connectionId}:{issue.Identity}:{issue.Code}", issue.Code, issue.Message, cancellationToken);
             await ReadMissingHepsiburadaOrdersAsync(tenantId, connectionId, correlationId,
-                (page.Value.Issues ?? []).Where(issue => issue.Code == HepsiburadaPackagePolicy.OrderToReadCode).Select(issue => issue.Identity), cancellationToken);
+                (page.Value.Issues ?? []).Where(issue => issue.Code == HepsiburadaPackagePolicy.OrderToReadCode).Select(issue => (issue.Identity, (string?)null)), cancellationToken);
 
             foreach (var orderPackagesForOrder in page.Value.Items
                          .GroupBy(x => x.ExternalOrderId, StringComparer.Ordinal)
@@ -4064,7 +4064,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         const string issueKeySuffix = "invoice-status-contract";
         var issueKey = $"order-invoice-reconciliation:{connectionId}:{issueKeySuffix}";
         var missingInvoicePackageKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var missingInvoiceOrderNumbers = new HashSet<string>(StringComparer.Ordinal);
+        var missingInvoiceOrderNumbers = new List<(string OrderNumber, string? PackageNumber)>();
         var cursor = "0";
         var completeFeed = false;
 
@@ -4090,7 +4090,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             foreach (var item in page.Items)
             {
                 missingInvoicePackageKeys.Add(HepsiburadaMissingInvoiceStatusPolicy.Key(item.OrderNumber, item.PackageNumber));
-                missingInvoiceOrderNumbers.Add(item.OrderNumber.Trim());
+                missingInvoiceOrderNumbers.Add((item.OrderNumber, item.PackageNumber));
             }
 
             if (!page.HasMore)

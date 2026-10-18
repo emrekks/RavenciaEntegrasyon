@@ -11066,9 +11066,9 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .invoice-workspace-preview-total { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px 20px; }
 .invoice-workspace-preview-total span { display: grid; gap: 3px; color: var(--rv-color-muted); font-size: 12px; }
 .invoice-workspace-preview-total strong { color: var(--rv-color-ink); font-size: 14px; font-variant-numeric: tabular-nums; }
-.invoice-workspace-preview-total span:last-child strong { color: var(--rv-color-accent); font-size: 17px; }
+.invoice-workspace-preview-total span:last-child strong { color: var(--rv-color-primary); font-size: 17px; }
 .invoice-workspace-preview-blocked { margin: 0; padding: 12px; border-radius: 7px; color: var(--rv-color-warning); background: var(--rv-color-warning-soft); }
-.invoice-workspace-preview-results { padding: 14px; color: var(--rv-color-ink); border-radius: 12px; background: var(--rv-color-accent-soft); }
+.invoice-workspace-preview-results { padding: 14px; color: var(--rv-color-ink); border-radius: 12px; background: var(--rv-color-primary-soft); }
 .invoice-workspace-preview-results h3 { margin: 0 0 8px; }
 .invoice-workspace-preview-results p { display: grid; gap: 4px; margin: 8px 0 0; }
 @media (max-width: 680px) {

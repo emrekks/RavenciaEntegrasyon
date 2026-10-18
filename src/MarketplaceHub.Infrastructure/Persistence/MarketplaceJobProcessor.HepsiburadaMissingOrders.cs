@@ -1,35 +1,54 @@
+using System.Text.Json;
 using MarketplaceHub.Application;
+using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed partial class MarketplaceJobProcessor
 {
-    // Reads by number the Hepsiburada orders that package rows or the missing-invoice list name
-    // but the panel does not have. A failed read is noted and retried on the next run.
-    private async Task ReadMissingHepsiburadaOrdersAsync(Guid tenantId, Guid connectionId, string correlationId, IEnumerable<string> orderNumbers, CancellationToken cancellationToken)
+    // Reads by number the Hepsiburada orders that package rows or the missing-invoice list name but
+    // the panel does not have, and adds a package the list names to an order that lacks it (so the
+    // invoice can be made before the package ships). A failed read is noted and retried next run.
+    private async Task ReadMissingHepsiburadaOrdersAsync(Guid tenantId, Guid connectionId, string correlationId, IEnumerable<(string OrderNumber, string? PackageNumber)> references, CancellationToken cancellationToken)
     {
-        var named = orderNumbers.Where(number => !string.IsNullOrWhiteSpace(number)).Select(number => number.Trim()).Distinct(StringComparer.Ordinal).ToArray();
+        var named = references
+            .Where(reference => !string.IsNullOrWhiteSpace(reference.OrderNumber))
+            .Select(reference => (OrderNumber: reference.OrderNumber.Trim(), PackageNumber: string.IsNullOrWhiteSpace(reference.PackageNumber) ? null : reference.PackageNumber.Trim()))
+            .Distinct()
+            .ToArray();
         if (named.Length == 0) return;
-        var known = await db.Orders.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && named.Contains(x.ExternalOrderId))
-            .Select(x => x.ExternalOrderId)
+        var orderNumbers = named.Select(reference => reference.OrderNumber).Distinct(StringComparer.Ordinal).ToArray();
+        var known = await (from order in db.Orders.AsNoTracking()
+                           where order.TenantId == tenantId && order.ConnectionId == connectionId && orderNumbers.Contains(order.ExternalOrderId)
+                           select new
+                           {
+                               order.ExternalOrderId,
+                               Packages = db.ShipmentPackages.Where(package => package.TenantId == tenantId && package.OrderId == order.Id).Select(package => package.ExternalPackageId).ToList()
+                           })
             .ToListAsync(cancellationToken);
-        var received = new List<RemoteOrder>();
-        foreach (var orderNumber in named.Except(known, StringComparer.Ordinal).Take(HepsiburadaPackagePolicy.MaxOrderReadsPerRun))
+        var knownPackages = known.ToDictionary(order => order.ExternalOrderId, order => order.Packages.ToHashSet(StringComparer.OrdinalIgnoreCase), StringComparer.Ordinal);
+        var toRead = named
+            .Where(reference => !knownPackages.TryGetValue(reference.OrderNumber, out var packages)
+                || reference.PackageNumber is { } package && !packages.Contains(package))
+            .GroupBy(reference => reference.OrderNumber, StringComparer.Ordinal)
+            .Select(group => group.FirstOrDefault(reference => reference.PackageNumber is not null) is { PackageNumber: not null } withPackage ? withPackage : group.First())
+            .Take(HepsiburadaPackagePolicy.MaxOrderReadsPerRun)
+            .ToArray();
+        foreach (var (orderNumber, packageNumber) in toRead)
         {
-            TrackRequest();
-            var order = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"hepsiburada-missing-order:{orderNumber}"), orderNumber, cancellationToken);
-            if (!order.IsSuccess)
+            var issueKey = $"hepsiburada-missing-order:{connectionId}:{orderNumber}";
+            try
             {
-                TrackResultFailure(order.Error);
-                await RecordIssue(tenantId, $"hepsiburada-missing-order:{connectionId}:{orderNumber}", order.Error!.Code, $"Hepsiburada'da görünen {orderNumber} numaralı sipariş okunamadı; sonraki taramada yeniden denenecek. {order.Error.SafeMessage}", cancellationToken);
-                continue;
+                var payload = JsonSerializer.Serialize(new { connectionId, externalOrderId = orderNumber, packageNumber });
+                await SyncHepsiburadaOrders(tenantId, connectionId, payload, correlationId, "ORDERS", false, cancellationToken);
+                await ResolveIssue(tenantId, issueKey, cancellationToken);
             }
-            TrackReceived();
-            received.Add(order.Value!);
-            await ResolveIssue(tenantId, $"hepsiburada-missing-order:{connectionId}:{orderNumber}", cancellationToken);
+            catch (JobProcessingException exception)
+            {
+                await RecordIssue(tenantId, issueKey, exception.Result.ErrorCode ?? "HEPSIBURADA_MISSING_ORDER_UNREAD",
+                    $"Hepsiburada'da görünen {orderNumber} numaralı sipariş{(packageNumber is null ? "" : $" ({packageNumber} paketiyle)")} okunamadı; sonraki taramada yeniden denenecek. {exception.Result.ErrorSummary}", cancellationToken);
+            }
         }
-        if (received.Count > 0) await UpsertOrders(tenantId, connectionId, received, cancellationToken);
     }
 }
