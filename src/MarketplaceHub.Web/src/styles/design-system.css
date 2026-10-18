@@ -1450,6 +1450,7 @@
   .rich-text-editor-head > div:first-child, .rich-text-editor-meta { display: flex; min-width: 0; align-items: center; gap: var(--rv-space-2); }
   .rich-text-mode-note { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); font-weight: 600; }
   .rich-text-editor-meta { flex-wrap: wrap; justify-content: flex-end; color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); }
+  .rich-text-editor-meta > span { min-width: 14ch; text-align: right; font-variant-numeric: tabular-nums; }
   .rich-text-mode-switch { display: flex; gap: 2px; padding: 2px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-sm); }
   .rich-text-mode-switch button { min-height: 32px; padding: 5px 10px; color: var(--rv-color-muted); background: transparent; border: 0; border-radius: calc(var(--rv-radius-sm) - 2px); }
   .rich-text-mode-switch button.active { color: #fff; background: var(--rv-color-primary); }
@@ -2931,6 +2932,7 @@
   .bulk-option-sync-body { padding-inline: var(--rv-space-4); }
   .rich-text-editor-head { align-items: flex-start; flex-direction: column; }
   .rich-text-editor-meta { width: 100%; justify-content: space-between; }
+  .rich-text-editor-meta > span { text-align: left; }
   .marketplace-pricing-bars-head, .attribute-variant-action, .variant-filter-panel-head, .variant-table-toolbar, .product-submit-sticky { align-items: flex-start; flex-direction: column; }
   .marketplace-pricing-bar, .variant-filter-grid, .variant-bulk-editor { grid-template-columns: 1fr; }
   .quick-edit-filter-row, .quick-edit-fields { grid-template-columns: 1fr; }
