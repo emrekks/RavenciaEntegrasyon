@@ -645,6 +645,6 @@
 /* Saved mappings head: tabs, search and sort share one 48px line, all centred on it (the search and A–Z were 36px and
    sat higher than the tab card). */
 .app-shell.stitch-shell main section.mapping-page .mapping-saved-card .mapping-saved-header-tools.mapping-saved-header-tools { align-items: center; }
-.app-shell.stitch-shell main section.mapping-page .mapping-saved-card .mapping-saved-header-tools > :is(input, .mapping-sort-button) { box-sizing: border-box; align-self: center; height: 48px; min-height: 48px; margin: 0; }
+.app-shell.stitch-shell main section.mapping-page .mapping-saved-card .mapping-saved-header-tools > :is(input, .mapping-sort-button) { box-sizing: border-box; align-self: center; height: 48px !important; min-height: 48px !important; max-height: none !important; margin: 0; }
 .app-shell.stitch-shell main section.mapping-page .mapping-saved-card .mapping-saved-header-tools > .mapping-platform-tabs { align-self: center; }
 .app-shell.stitch-shell main section.mapping-page .mapping-saved-card .mapping-saved-header-tools > .mapping-sort-button { min-width: 64px; }
