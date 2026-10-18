@@ -720,13 +720,16 @@ public static class PlatformHistoryLimits
         now.AddMonths(-InitialMonths(platformCode, kind));
 }
 
-// The path below a webhook's base address, which names the event kind for Hepsiburada
-// (orders, packages, cancel, unpack, intransit, deliver, undeliver, address change).
+// The path below a webhook's base address names the event kind for Hepsiburada. Orders:
+// POST /orders, POST /packages, PUT /lineitems/{id}/cancel, PUT /packages/{number}/unpack,
+// /intransit, /deliver, /undeliver, PUT /orders/{number}/shippingaddress. Claims:
+// PUT /claims/awaitingaction, /claims/awaitingpreapproval, /claims/accept, /claims/reject,
+// POST /claims/packages.
 public static class WebhookEventPath
 {
     public const string Header = "X-Ravencia-Event-Path";
     private static readonly string[] HepsiburadaOrderEvents =
-        ["orders", "packages", "cancel", "cancelled", "unpack", "unpacked", "intransit", "deliver", "delivered", "undeliver", "undelivered", "address", "addresschange", "address-change", "shipping-address"];
+        ["orders", "packages", "cancel", "unpack", "intransit", "deliver", "undeliver", "shippingaddress"];
 
     public static string? Normalize(string? path)
     {
@@ -734,9 +737,13 @@ public static class WebhookEventPath
         return string.IsNullOrWhiteSpace(value) || value.Length > 120 ? null : value;
     }
 
-    // The last segment decides: "order/cancel" and "cancel" are both a cancellation.
+    public static bool IsHepsiburadaClaimEvent(string? path) =>
+        Normalize(path) is { } value && (value == "claims" || value.StartsWith("claims/", StringComparison.Ordinal));
+
+    // The last segment names an order event; anything under claims/ is a claim event.
     public static bool IsHepsiburadaOrderEvent(string? path) =>
-        Normalize(path) is { } value && HepsiburadaOrderEvents.Contains(value[(value.LastIndexOf('/') + 1)..], StringComparer.Ordinal);
+        Normalize(path) is { } value && !IsHepsiburadaClaimEvent(value)
+        && HepsiburadaOrderEvents.Contains(value[(value.LastIndexOf('/') + 1)..], StringComparer.Ordinal);
 }
 
 public sealed record CancellationReadWindow(DateTimeOffset Since, bool Wide);

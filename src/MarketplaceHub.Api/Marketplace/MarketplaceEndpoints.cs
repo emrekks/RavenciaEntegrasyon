@@ -341,7 +341,9 @@ public static class MarketplaceEndpoints
         if (stopwatch.Elapsed > TimeSpan.FromSeconds(4))
             http.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("MarketplaceHub.Webhooks")
                 .LogWarning("Webhook reply took {ElapsedMs} ms (connection {ConnectionPublicId}, path {EventPath}).", (long)stopwatch.Elapsed.TotalMilliseconds, connectionPublicId, eventPath ?? "/");
-        return result.Succeeded ? Results.Ok(new { accepted = true }) : Problem(http, result.Error!);
+        if (!result.Succeeded) return Problem(http, result.Error!);
+        // Hepsiburada's event paths answer 204 as its contracts show; the base address keeps its body.
+        return eventPath is null ? Results.Ok(new { accepted = true }) : Results.NoContent();
     }
     private static TenantContext? Tenant(HttpContext http) => http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
     private static string OperationCorrelation(HttpContext http) =>

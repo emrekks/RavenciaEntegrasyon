@@ -100,10 +100,13 @@ public sealed class WebhookEventPathTests
     [Theory]
     [InlineData("orders", true)]
     [InlineData("/Packages/", true)]
-    [InlineData("order/cancel", true)]
-    [InlineData("intransit", true)]
-    [InlineData("undeliver", true)]
+    [InlineData("lineitems/b17553de/cancel", true)]
+    [InlineData("packages/013105889/intransit", true)]
+    [InlineData("packages/013105889/undeliver", true)]
+    [InlineData("orders/869304129/shippingaddress", true)]
     [InlineData("claims", false)]
+    [InlineData("claims/packages", false)]
+    [InlineData("claims/awaitingpreapproval", false)]
     [InlineData(null, false)]
     [InlineData("", false)]
     public void HepsiburadaOrderEventsAreKnownByTheirLastPathSegment(string? path, bool orderEvent) =>
@@ -113,8 +116,10 @@ public sealed class WebhookEventPathTests
     public void AnOrderEventIsIdentifiedByItsPathAndContent()
     {
         var body = System.Text.Encoding.UTF8.GetBytes("""{"orderNumber":"4736002251","packages":[{"packageNumber":"57b1850c"}]}""");
-        var cancel = MarketplaceHub.Infrastructure.Adapters.Hepsiburada.HepsiburadaWebhookIdentity.Create(body, "cancel");
-        var deliver = MarketplaceHub.Infrastructure.Adapters.Hepsiburada.HepsiburadaWebhookIdentity.Create(body, "deliver");
+        var cancel = MarketplaceHub.Infrastructure.Adapters.Hepsiburada.HepsiburadaWebhookIdentity.Create(body, "lineitems/b17553de/cancel");
+        var deliver = MarketplaceHub.Infrastructure.Adapters.Hepsiburada.HepsiburadaWebhookIdentity.Create(body, "packages/57b1850c/deliver");
+        var preApproval = MarketplaceHub.Infrastructure.Adapters.Hepsiburada.HepsiburadaWebhookIdentity.Create("""{"notice":"x"}"""u8.ToArray(), "claims/awaitingpreapproval");
+        Assert.Equal("CLAIM_EVENT", preApproval!.ResourceType);
 
         Assert.Equal("ORDER_EVENT", cancel!.ResourceType);
         Assert.NotEqual(cancel.ExternalMessageId, deliver!.ExternalMessageId);

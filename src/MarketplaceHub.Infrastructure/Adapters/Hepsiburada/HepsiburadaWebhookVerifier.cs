@@ -88,6 +88,10 @@ internal static class HepsiburadaWebhookIdentity
                 identity = WebhookEventPath.Normalize(eventPath)!;
                 resourceType = "ORDER_EVENT";
             }
+            else if (ClaimEventIdentity(root, eventPath) is { } claimEvent)
+            {
+                (identity, resourceType) = claimEvent;
+            }
             else if (HepsiburadaJsonMapper.IsClaimPackageNotification(root))
             {
                 var package = HepsiburadaJsonMapper.ClaimPackageOrder(root);
@@ -105,6 +109,23 @@ internal static class HepsiburadaWebhookIdentity
             return new($"{resourceType.ToLowerInvariant()}:{identity}:{canonicalHash}", payloadHash, resourceType);
         }
         catch (JsonException) { return null; }
+    }
+
+    // A claim notification whose body is not a claim the mapper knows (for example the
+    // pre-approval notice) is a trigger: the claims are read again from Hepsiburada.
+    private static (string Identity, string ResourceType)? ClaimEventIdentity(JsonElement root, string? eventPath)
+    {
+        if (!WebhookEventPath.IsHepsiburadaClaimEvent(eventPath)) return null;
+        try
+        {
+            if (HepsiburadaJsonMapper.IsClaimPackageNotification(root)) return null;
+            _ = HepsiburadaJsonMapper.ReturnClaim(root);
+            return null;
+        }
+        catch (Exception exception) when (exception is JsonException or InvalidOperationException or KeyNotFoundException or FormatException)
+        {
+            return (WebhookEventPath.Normalize(eventPath)!, "CLAIM_EVENT");
+        }
     }
 
     private static string CanonicalJson(JsonElement value)

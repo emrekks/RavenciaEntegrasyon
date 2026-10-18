@@ -54,11 +54,11 @@ public sealed class MarketplaceWebhookEndpointTests
         context.Request.Method = "PUT";
         context.Request.Headers[WebhookEventPath.Header] = "forged";
 
-        var result = await MarketplaceEndpoints.ReceiveWebhookEvent(Guid.CreateVersion7(), "route-token", "/Orders/Cancel/", context, service);
+        var result = await MarketplaceEndpoints.ReceiveWebhookEvent(Guid.CreateVersion7(), "route-token", "/LineItems/B17553DE/Cancel/", context, service);
         await result.ExecuteAsync(context);
 
-        Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
-        Assert.Equal("orders/cancel", service.Headers[WebhookEventPath.Header]);
+        Assert.Equal(StatusCodes.Status204NoContent, context.Response.StatusCode);
+        Assert.Equal("lineitems/b17553de/cancel", service.Headers[WebhookEventPath.Header]);
 
         var plain = new RecordingWebhookService();
         var plainContext = NewContext(body, body.Length);
