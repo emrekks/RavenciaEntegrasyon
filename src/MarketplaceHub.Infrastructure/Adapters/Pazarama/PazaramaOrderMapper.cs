@@ -132,12 +132,16 @@ public static class PazaramaOrderMapper
 
     private static bool Shipped(string raw) => raw is "Shipped" or "Delivered" or "Undelivered" or "Returned";
 
-    // The furthest status among the items that are still part of the order; all cancelled is cancelled.
+    // The package status from the statuses of the items still in the order; all cancelled is cancelled.
     internal static string PackageStatus(IReadOnlyCollection<string> itemStatuses)
     {
         var active = itemStatuses.Where(status => status != "Cancelled").ToList();
         if (active.Count == 0) return "Cancelled";
-        return active.OrderByDescending(status => ShipmentPackageStatusPolicy.Rank(TrendyolShipmentPackageStatusPolicy.FromRemote(status))).First();
+        // An item Pazarama is cancelling holds the whole package; otherwise the package is where its least
+        // advanced item is, so an item still to be prepared is not hidden behind one already shipped. Each
+        // line keeps its own status and shipped quantity.
+        if (active.Contains("CancelRequested")) return "CancelRequested";
+        return active.OrderBy(status => ShipmentPackageStatusPolicy.Rank(TrendyolShipmentPackageStatusPolicy.FromRemote(status))).First();
     }
 
     private static string ItemSnapshot(JsonElement item, JsonElement product)

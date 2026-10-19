@@ -13,6 +13,13 @@ public sealed class PazaramaRateLimitHandler(
     ILogger<PazaramaRateLimitHandler>? logger = null) : DelegatingHandler
 {
     public static readonly HttpRequestOptionsKey<string> AccountKeyOption = new("MarketplaceHub.Pazarama.Account");
+    // Invoked once the request has its quota token, right before it is sent; the caller starts the request
+    // timeout there, so time spent waiting for the quota is not counted as a timeout.
+    public static readonly HttpRequestOptionsKey<Action> QuotaAcquiredKey = new("MarketplaceHub.Pazarama.QuotaAcquired");
+
+    // The seller behind the credentials (two connections of one seller share its quota), without the id itself.
+    public static string SellerKey(string clientId) =>
+        Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(clientId.Trim())))[..16];
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
@@ -30,6 +37,7 @@ public sealed class PazaramaRateLimitHandler(
                 logger?.LogWarning(exception, "Shared Pazarama rate limiter unavailable; sending without the shared quota");
             }
         }
+        if (request.Options.TryGetValue(QuotaAcquiredKey, out var onQuotaAcquired)) onQuotaAcquired();
         return await base.SendAsync(request, cancellationToken);
     }
 

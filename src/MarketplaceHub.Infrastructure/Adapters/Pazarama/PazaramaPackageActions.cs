@@ -46,10 +46,30 @@ public sealed partial class PazaramaHttpClient
             var status = action == "PICKING" ? PazaramaPackageActionMapper.PreparingStatus : PazaramaPackageActionMapper.NotSuppliedStatus;
             RateLimitMetadata? last = null;
             var done = 0;
-            foreach (var statusBody in PazaramaPackageActionMapper.StatusUpdates(orderNumber, command.PayloadJson, status))
+            // A retry after a run that stopped part way finds the first items already moved; Pazarama refuses
+            // to set a status an item already has. On a refusal the order is read once, and an item already in
+            // the target status counts as done.
+            IReadOnlyDictionary<string, string>? current = null;
+            var targetStatus = PazaramaOrderMapper.ItemStatus(status);
+            foreach (var (itemId, statusBody) in PazaramaPackageActionMapper.StatusUpdateTargets(orderNumber, command.PayloadJson, status))
             {
                 var result = await SendAsync(account, HttpMethod.Put, UpdateOrderStatus, cancellationToken, Json(statusBody));
                 last = result.RateLimit ?? last;
+                if (!result.IsSuccess && result.Error!.Class == AdapterErrorClass.Validation)
+                {
+                    if (current is null)
+                    {
+                        var read = await GetAsync(context, orderNumber.ToString(CultureInfo.InvariantCulture), cancellationToken);
+                        current = read.IsSuccess
+                            ? read.Value!.Lines.GroupBy(line => line.ExternalLineId, StringComparer.OrdinalIgnoreCase).ToDictionary(group => group.Key, group => group.First().RawStatus ?? "", StringComparer.OrdinalIgnoreCase)
+                            : new Dictionary<string, string>();
+                    }
+                    if (current.TryGetValue(itemId, out var itemStatus) && string.Equals(itemStatus, targetStatus, StringComparison.OrdinalIgnoreCase))
+                    {
+                        done++;
+                        continue;
+                    }
+                }
                 if (!result.IsSuccess)
                     return AdapterResult<PackageActionResult>.Failure(done == 0 ? result.Error! : result.Error! with { SafeMessage = $"{done} kalem işlendi, sonrası reddedildi: {result.Error!.SafeMessage}" }, result.RateLimit);
                 result.Value!.Dispose();
@@ -169,7 +189,11 @@ public static class PazaramaPackageActionMapper
             .ToList();
 
     public static IEnumerable<object> StatusUpdates(long orderNumber, string payloadJson, int status) =>
-        LineIds((JsonNode.Parse(payloadJson) as JsonObject)!).Select(id => (object)new { orderNumber, item = new { orderItemId = id, status } });
+        StatusUpdateTargets(orderNumber, payloadJson, status).Select(target => target.Body);
+
+    // Each item with the body that moves it to the status.
+    public static IEnumerable<(string ItemId, object Body)> StatusUpdateTargets(long orderNumber, string payloadJson, int status) =>
+        LineIds((JsonNode.Parse(payloadJson) as JsonObject)!).Select(id => (id, (object)new { orderNumber, item = new { orderItemId = id, status } }));
 
     public static string? OrderId(string orderRawJson)
     {

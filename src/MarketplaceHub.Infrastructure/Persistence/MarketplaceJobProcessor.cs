@@ -2734,10 +2734,20 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var now = timeProvider.GetUtcNow();
         var hasSnapshots = await db.Orders.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken);
         var baseline = allowBaseline && (full || !hasSnapshots);
-        var overlap = TimeSpan.FromSeconds(DefaultOrderSyncOverlapSeconds);
+        // The connection's overlap, at least ten minutes: n11 may index a change a little after its time.
+        var overlapSeconds = await db.ConnectionSyncPolicies.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "ORDERS")
+            .Select(x => (int?)x.OverlapSeconds)
+            .SingleOrDefaultAsync(cancellationToken) ?? 0;
+        var overlap = TimeSpan.FromSeconds(Math.Clamp(Math.Max(overlapSeconds, N11OrderHistoryPolicy.MinimumOverlapSeconds), 0, 86_399));
         foreach (var (windowStart, windowEnd) in N11OrderHistoryPolicy.Windows(N11OrderHistoryPolicy.Start(baseline, cursor.LastModifiedWatermark ?? (allowBaseline ? null : now.AddDays(-1)), overlap, now), now))
         {
+            // Pages are numbered and sorted by last change: a package changed while the window is walked moves to
+            // its end and shifts the rest up a place. When the window's count changes during the walk, it is
+            // walked once more so the shifted package is not skipped.
             string? page = null;
+            int? firstTotal = null, lastTotal = null;
+            var rewalked = false;
             do
             {
                 TrackRequest();
@@ -2751,7 +2761,15 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 foreach (var issue in result.Value.Issues ?? [])
                     await RecordIssue(tenantId, $"n11-order-contract:{connectionId}:{issue.Identity}:{issue.Code}", issue.Code, issue.Message, cancellationToken);
                 await UpsertOrders(tenantId, connectionId, result.Value.Items, cancellationToken);
+                if (page is null) firstTotal = result.Value.TotalCount;
+                lastTotal = result.Value.TotalCount;
                 page = result.Value.HasMore ? result.Value.NextCursor : null;
+                if (page is null && !rewalked && firstTotal is not null && lastTotal is not null && firstTotal != lastTotal)
+                {
+                    rewalked = true;
+                    page = "0";
+                    firstTotal = null;
+                }
             } while (page is not null && !cancellationToken.IsCancellationRequested);
 
             // Each finished window moves the watermark, so an interrupted run

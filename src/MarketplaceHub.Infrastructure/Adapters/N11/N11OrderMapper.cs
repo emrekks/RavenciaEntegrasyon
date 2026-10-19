@@ -37,7 +37,8 @@ public static class N11OrderMapper
         var page = Long(root, "page") ?? Long(root, "number") ?? 0;
         var totalPages = Long(root, "totalPages") ?? 0;
         var hasMore = content.GetArrayLength() > 0 && page + 1 < totalPages;
-        return new(LinkSplitPackages(rows), hasMore ? (page + 1).ToString(CultureInfo.InvariantCulture) : null, hasMore, null, issues);
+        var total = Long(root, "totalElements");
+        return new(LinkSplitPackages(rows), hasMore ? (page + 1).ToString(CultureInfo.InvariantCulture) : null, hasMore, total is > int.MaxValue ? int.MaxValue : (int?)total, issues);
     }
 
     private static RemoteOrder Package(JsonElement package, string orderNumber, List<AdapterPageIssue> issues)

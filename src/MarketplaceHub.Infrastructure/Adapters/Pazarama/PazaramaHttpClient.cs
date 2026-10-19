@@ -134,6 +134,8 @@ public sealed partial class PazaramaHttpClient(
 
     internal static string Day(DateTime value) => value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
+    private static readonly TimeSpan MaximumQuotaWait = TimeSpan.FromMinutes(5);
+
     private async Task<AdapterResult<JsonDocument>> SendAsync(PazaramaRequestContext account, HttpMethod method, string path, CancellationToken cancellationToken, HttpContent? content = null, TimeSpan? timeoutOverride = null)
     {
         var body = content is null ? null : await content.ReadAsStringAsync(cancellationToken);
@@ -147,11 +149,15 @@ public sealed partial class PazaramaHttpClient(
             if (body is not null) request.Content = new StringContent(body, Encoding.UTF8, mediaType ?? "application/json");
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.AccessToken);
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            request.Options.Set(PazaramaRateLimitHandler.AccountKeyOption, account.Connection.Id.ToString("N"));
+            request.Options.Set(PazaramaRateLimitHandler.AccountKeyOption, PazaramaRateLimitHandler.SellerKey(account.ClientId));
+            // The request timeout starts when the quota token is taken; the wait for it has its own, longer cap.
+            var requestTimeout = timeoutOverride ?? (settings.Timeout > TimeSpan.Zero && settings.Timeout < TimeSpan.FromMinutes(2) ? settings.Timeout : TimeSpan.FromSeconds(30));
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(requestTimeout + MaximumQuotaWait);
+            var quotaAcquired = false;
+            request.Options.Set(PazaramaRateLimitHandler.QuotaAcquiredKey, () => { quotaAcquired = true; timeout.CancelAfter(requestTimeout); });
             try
             {
-                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                timeout.CancelAfter(timeoutOverride ?? (settings.Timeout > TimeSpan.Zero && settings.Timeout < TimeSpan.FromMinutes(2) ? settings.Timeout : TimeSpan.FromSeconds(30)));
                 using var response = await clients.CreateClient(ClientName).SendAsync(request, timeout.Token);
                 var text = await response.Content.ReadAsStringAsync(timeout.Token);
                 var retryAfter = response.Headers.RetryAfter?.Delta
@@ -186,6 +192,9 @@ public sealed partial class PazaramaHttpClient(
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
+                // Never sent: the quota stayed full. This is not an "outcome unknown" write.
+                if (!quotaAcquired)
+                    return AdapterResult<JsonDocument>.Failure(new(AdapterErrorClass.RateLimit, "PAZARAMA_LOCAL_QUOTA_WAIT", "Pazarama istek kotası dolu olduğu için istek gönderilmedi; yeniden denenecek.", 429, TimeSpan.FromSeconds(15), null));
                 return AdapterResult<JsonDocument>.Failure(new(AdapterErrorClass.TransientNetwork, "PAZARAMA_TIMEOUT", "Pazarama isteği zaman aşımına uğradı.", null, TimeSpan.FromSeconds(15), null));
             }
             catch (HttpRequestException exception)

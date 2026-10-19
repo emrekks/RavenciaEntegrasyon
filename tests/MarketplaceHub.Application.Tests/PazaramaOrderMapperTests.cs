@@ -85,6 +85,14 @@ public sealed class PazaramaOrderMapperTests
     }
 
     [Fact]
+    public void AnItemStillToPrepareIsNotHiddenBehindAShippedOne()
+    {
+        Assert.Equal("Created", PazaramaOrderMapper.PackageStatus(["Shipped", "Created"]));
+        Assert.Equal("Picking", PazaramaOrderMapper.PackageStatus(["Delivered", "Picking", "Cancelled"]));
+        Assert.Equal("Cancelled", PazaramaOrderMapper.PackageStatus(["Cancelled", "Cancelled"]));
+    }
+
+    [Fact]
     public void AnItemBeingCancelledHoldsThePackageItShares()
     {
         Assert.Equal("CancelRequested", PazaramaOrderMapper.PackageStatus(["Picking", "CancelRequested", "Created"]));
@@ -115,11 +123,12 @@ public sealed class PazaramaOrderMapperTests
         Assert.Equal("Cancelled", Single(Item("a1", 6) + "," + Item("a2", 13, "bbb", "213")).Packages.Single().RawStatus);
 
     [Fact]
-    public void ThePackageFollowsTheFurthestActiveItem()
+    public void ThePackageFollowsItsLeastAdvancedActiveItem()
     {
         var order = Single(Item("a1", 5) + "," + Item("a2", 11, "bbb", "213"));
 
-        Assert.Equal("Delivered", order.Packages.Single().RawStatus);
+        // One item is still on its way, so the order is not delivered yet; each line keeps its own state.
+        Assert.Equal("Shipped", order.Packages.Single().RawStatus);
         var allocations = order.Packages.Single().Allocations;
         Assert.Equal(1m, allocations.Single(allocation => allocation.ExternalLineId == "a1").ShippedQuantity);
         Assert.Equal(0m, allocations.Single(allocation => allocation.ExternalLineId == "a1").DeliveredQuantity);
