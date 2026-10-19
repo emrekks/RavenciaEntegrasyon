@@ -1228,15 +1228,23 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 return JobExecutionResult.Blocked(current.Error.Code, current.Error.Message);
             }
             if (!string.Equals(current.Value!.PayloadHash, payload.PayloadHash, StringComparison.Ordinal)) return JobExecutionResult.Blocked("PRICE_INVENTORY_SUPERSEDED", "Fiyat veya stok yeni bir sürüme geçti; eski payload uzak sisteme gönderilmedi.");
-            if (await db.ExternalEffectRecords.AnyAsync(x => x.TenantId == tenantId && x.EffectType == MarketplaceJobTypes.PriceInventorySync && x.IdempotencyKey == job.EffectIdempotencyKey, cancellationToken)) return JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Önceki fiyat-stok çağrısının sonucu kesinleştirilemedi; tekrar gönderim engellendi.");
-            var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = MarketplaceJobTypes.PriceInventorySync, IdempotencyKey = job.EffectIdempotencyKey, CreatedAt = timeProvider.GetUtcNow() };
-            db.ExternalEffectRecords.Add(effect); await db.SaveChangesAsync(cancellationToken);
+            // Price and stock are sent as absolute values (Shopify sets stock against the quantity it reads
+            // first), and the payload is the current one (checked above). A send whose outcome is unknown,
+            // for example cut off by a deploy, is therefore sent again instead of waiting for review.
+            var effect = await db.ExternalEffectRecords.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.EffectType == MarketplaceJobTypes.PriceInventorySync && x.IdempotencyKey == job.EffectIdempotencyKey, cancellationToken);
+            if (effect is null)
+            {
+                effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = MarketplaceJobTypes.PriceInventorySync, IdempotencyKey = job.EffectIdempotencyKey, CreatedAt = timeProvider.GetUtcNow() };
+                db.ExternalEffectRecords.Add(effect);
+            }
+            else effect.CompletedAt = null;
+            await db.SaveChangesAsync(cancellationToken);
             TrackRequest();
             var submit = await inventoryPrice.PushPriceAndInventoryAsync(Context(tenantId, connectionId, correlationId, job.EffectIdempotencyKey) with { Operation = IntegrationOperation.Automatic }, payload.PayloadJson, cancellationToken);
             if (!submit.IsSuccess)
             {
                 TrackResultFailure(submit.Error);
-                if (IsAmbiguous(submit.Error!)) return JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Fiyat-stok çağrısının uygulanıp uygulanmadığı kesinleştirilemedi.", submit.Error!.RemoteRequestId);
+                if (IsAmbiguous(submit.Error!)) return JobExecutionResult.Retry("PRICE_INVENTORY_OUTCOME_UNKNOWN", "Fiyat-stok çağrısının sonucu kesinleşmedi; aynı değerler yeniden gönderilecek.", TimeSpan.FromSeconds(30), submit.Error!.RemoteRequestId);
                 db.ExternalEffectRecords.Remove(effect); await db.SaveChangesAsync(cancellationToken); return JobExecutionResult.FromAdapterError(submit.Error!);
             }
             effect.CompletedAt = timeProvider.GetUtcNow(); var op = submit.Value!;

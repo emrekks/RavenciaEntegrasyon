@@ -2,13 +2,15 @@ namespace MarketplaceHub.Domain;
 
 public static class JobRetryPolicy
 {
+    // About eight and a half minutes over the five retries, so a job outlasts a marketplace outage
+    // of several minutes instead of failing for good within two.
     private static readonly TimeSpan[] DefaultRetryDelays =
     [
-        TimeSpan.FromSeconds(2),
         TimeSpan.FromSeconds(5),
         TimeSpan.FromSeconds(15),
-        TimeSpan.FromSeconds(30),
-        TimeSpan.FromSeconds(60)
+        TimeSpan.FromMinutes(1),
+        TimeSpan.FromMinutes(2),
+        TimeSpan.FromMinutes(5)
     ];
 
     public const int DefaultMaxAttempts = 6;

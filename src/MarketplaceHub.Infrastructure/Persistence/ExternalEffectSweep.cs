@@ -13,18 +13,35 @@ public sealed class ExternalEffectSweep(AppDbContext db, TimeProvider timeProvid
     {
         var now = timeProvider.GetUtcNow();
         var verifyBefore = now - ExternalEffectReconcilePolicy.MinimumAgeForNotApplied;
-        var open = await db.ExternalEffectRecords
+        // Only records with work left are taken: one that already has its verification job, or an old
+        // record not yet due to be closed, is skipped, so a backlog of those cannot keep newer
+        // records from being verified.
+        var candidates = await db.ExternalEffectRecords.AsNoTracking()
             .Where(x => x.CompletedAt == null && x.CreatedAt <= verifyBefore)
+            .Select(x => new { x.Id, x.TenantId, x.CreatedAt, Verifiable = x.ConnectionId != null && x.Action != null })
+            .ToListAsync(cancellationToken);
+        var verificationKeys = candidates.Where(x => x.Verifiable).Select(x => ExternalEffectReconcilePolicy.JobDedupKey(x.Id)).ToArray();
+        var queued = (await db.IntegrationJobs.AsNoTracking()
+                .Where(x => verificationKeys.Contains(x.JobDedupKey))
+                .Select(x => new { x.TenantId, x.JobDedupKey })
+                .ToListAsync(cancellationToken))
+            .Select(x => (x.TenantId, x.JobDedupKey))
+            .ToHashSet();
+        var dueIds = candidates
+            .Where(x => x.Verifiable
+                ? !queued.Contains((x.TenantId, ExternalEffectReconcilePolicy.JobDedupKey(x.Id)))
+                : now - x.CreatedAt >= ExternalEffectReconcilePolicy.LegacyCloseAfter)
             .OrderBy(x => x.CreatedAt)
             .Take(100)
-            .ToListAsync(cancellationToken);
+            .Select(x => x.Id)
+            .ToArray();
+        if (dueIds.Length == 0) return 0;
+        var open = await db.ExternalEffectRecords.Where(x => dueIds.Contains(x.Id)).OrderBy(x => x.CreatedAt).ToListAsync(cancellationToken);
         var changed = 0;
         foreach (var effect in open)
         {
-            if (effect.ConnectionId is { } connectionId && effect.Action is not null)
+            if (effect.ConnectionId is not null && effect.Action is not null)
             {
-                var dedup = ExternalEffectReconcilePolicy.JobDedupKey(effect.Id);
-                if (await db.IntegrationJobs.AnyAsync(x => x.TenantId == effect.TenantId && x.JobDedupKey == dedup, cancellationToken)) continue;
                 db.IntegrationJobs.Add(ExternalEffectReconcilePolicy.NewJob(effect, now, now));
                 changed++;
             }

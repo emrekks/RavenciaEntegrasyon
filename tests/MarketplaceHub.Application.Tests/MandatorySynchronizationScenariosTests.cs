@@ -205,7 +205,7 @@ public sealed class MandatorySynchronizationScenariosTests
     {
         var error = TrendyolErrorMapper.FromStatus(HttpStatusCode.InternalServerError, null, "request-1");
         Assert.Equal(AdapterErrorClass.Remote5xx, error.Class);
-        Assert.InRange(JobRetryPolicy.DelayAfterAttempt(1, Guid.Empty), TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2.4));
+        Assert.InRange(JobRetryPolicy.DelayAfterAttempt(1, Guid.Empty), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(6));
     }
 
     [Fact]
@@ -293,7 +293,7 @@ public sealed class MandatorySynchronizationScenariosTests
     [Fact]
     public void RetrySchedule_IsExactlyTwoFiveFifteenThirtySixtySecondsBeforeJitter()
     {
-        Assert.Equal(new[] { 2d, 5d, 15d, 30d, 60d }, JobRetryPolicy.DefaultSchedule.Select(x => x.TotalSeconds));
+        Assert.Equal(new[] { 5d, 15d, 60d, 120d, 300d }, JobRetryPolicy.DefaultSchedule.Select(x => x.TotalSeconds));
     }
 
     [Fact]

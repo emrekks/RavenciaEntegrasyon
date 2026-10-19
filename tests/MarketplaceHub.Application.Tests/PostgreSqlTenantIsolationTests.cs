@@ -1096,6 +1096,44 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task EffectSweep_ReachesANewRecordBehindAHundredAlreadyQueued()
+    {
+        var tenant = NewTenant("effect-sweep");
+        var connection = NewQuestionConnection(tenant);
+        var now = fixture.TimeProvider.GetUtcNow();
+        ExternalEffectRecord Effect(int minutesAgo, string key) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, EffectType = "TRENDYOL_INSTANT_PICKING", IdempotencyKey = key, CreatedAt = now.AddMinutes(-minutesAgo), ConnectionId = connection.Id, TargetId = Guid.NewGuid(), Action = "PICKING" };
+        var queued = Enumerable.Range(0, 105).Select(index => Effect(60 + index, $"sweep-queued-{index}")).ToArray();
+        var fresh = Effect(5, "sweep-fresh");
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.ExternalEffectRecords.AddRange(queued);
+            seedDb.ExternalEffectRecords.Add(fresh);
+            seedDb.IntegrationJobs.AddRange(queued.Select(effect => ExternalEffectReconcilePolicy.NewJob(effect, now, now)));
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using (var db = fixture.CreateContext())
+                await new ExternalEffectSweep(db, fixture.TimeProvider).SweepAsync(CancellationToken.None);
+
+            await using var check = fixture.CreateContext();
+            var freshKey = ExternalEffectReconcilePolicy.JobDedupKey(fresh.Id);
+            Assert.True(await check.IntegrationJobs.AnyAsync(x => x.TenantId == tenant.Id && x.JobDedupKey == freshKey));
+            Assert.Equal(106, await check.IntegrationJobs.CountAsync(x => x.TenantId == tenant.Id));
+        }
+        finally
+        {
+            await using var cleanupDb = fixture.CreateContext();
+            await cleanupDb.IntegrationJobs.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanupDb.ExternalEffectRecords.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
     public async Task RunNow_StartsAFlowOnceAndRefusesStockWithoutWrites()
     {
         var tenant = NewTenant("run-now");
