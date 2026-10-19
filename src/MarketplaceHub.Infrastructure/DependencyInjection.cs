@@ -140,6 +140,7 @@ public static class DependencyInjection
         services.AddScoped<IMarketplaceSalesService, MarketplaceSalesService>();
         services.AddScoped<IMarketplaceQuestionService, MarketplaceQuestionService>();
         services.AddScoped<IMarketplaceWebhookService, MarketplaceWebhookService>();
+        services.AddScoped<IJobHandler, MarketplaceHub.Infrastructure.Jobs.Handlers.QuestionSyncJobHandler>();
         services.AddScoped<IMarketplaceJobProcessor, MarketplaceJobProcessor>();
         services.AddScoped<IMarketplaceReconciliationService, MarketplaceReconciliationService>();
         services.Configure<TrendyolEFaturamOptions>(configuration.GetSection(TrendyolEFaturamOptions.SectionName));

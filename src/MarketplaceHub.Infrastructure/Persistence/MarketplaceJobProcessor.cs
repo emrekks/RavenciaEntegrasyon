@@ -16,7 +16,7 @@ using Npgsql;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnectionPort connections, IReferenceDataPort references, IProductPort products, IInventoryPricePort inventoryPrice, IOrderPort orders, IHepsiburadaInvoiceStatusPort hepsiburadaInvoiceStatus, IOrderPackageReadPort orderPackages, IReturnPort returns, IMarketplaceQuestionService questions, IPrivateFileStorage files, IConfiguration configuration, TimeProvider timeProvider, IInvoicingBillingService? invoiceBilling = null) : IMarketplaceJobProcessor
+public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnectionPort connections, IReferenceDataPort references, IProductPort products, IInventoryPricePort inventoryPrice, IOrderPort orders, IHepsiburadaInvoiceStatusPort hepsiburadaInvoiceStatus, IOrderPackageReadPort orderPackages, IReturnPort returns, IMarketplaceQuestionService questions, IPrivateFileStorage files, IConfiguration configuration, TimeProvider timeProvider, IInvoicingBillingService? invoiceBilling = null, IEnumerable<IJobHandler>? handlers = null) : IMarketplaceJobProcessor
 {
     // The payload deadline is the authoritative approval bound. The worker currently
     // applies exponential backoff, but this ceiling also keeps retry accounting from
@@ -24,6 +24,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     private const int ProductApprovalReconcileMaxAttempts = (7 * 24 * 12) + 1;
     private const int MaxReferenceItems = 500_000;
     private const int MaxBrandReferenceItems = 2_000_000;
+    // The job types that have their own handler class; built here when the processor is made without DI.
+    private readonly IReadOnlyList<IJobHandler> jobHandlers = handlers?.ToArray() ?? [new MarketplaceHub.Infrastructure.Jobs.Handlers.QuestionSyncJobHandler(questions)];
     private int telemetryRequestCount;
     private int telemetryReceivedCount;
     private int telemetryChangedCount;
@@ -74,7 +76,19 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             try
             {
                 JobExecutionResult? directResult = null;
-                if (jobType == MarketplaceJobTypes.ProductCreate) directResult = await CreateProduct(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
+                // Job types moved to their own handler class run here, inside the lock and telemetry.
+                if (jobHandlers.FirstOrDefault(candidate => candidate.Handles(jobType)) is { } handler)
+                {
+                    var outcome = await handler.HandleAsync(new JobRequest(tenantId, connectionId.Value, jobType, payloadJson, correlationId, jobId), cancellationToken);
+                    telemetryRequestCount += outcome.Telemetry.Requests;
+                    telemetryReceivedCount += outcome.Telemetry.Received;
+                    telemetryInsertedCount += outcome.Telemetry.Inserted;
+                    telemetryUpdatedCount += outcome.Telemetry.Updated;
+                    telemetryChangedCount += outcome.Telemetry.Changed;
+                    telemetryFailedCount += outcome.Telemetry.Failed;
+                    directResult = outcome.Result;
+                }
+                else if (jobType == MarketplaceJobTypes.ProductCreate) directResult = await CreateProduct(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
                 else if (jobType == MarketplaceJobTypes.ProductApprovalReconcile) directResult = await ReconcileProductApproval(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
                 else if (jobType == MarketplaceJobTypes.ProductUpdate) directResult = await UpdateProduct(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
                 else if (jobType == MarketplaceJobTypes.ProductArchive) directResult = await ArchiveProduct(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken);
@@ -117,7 +131,6 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     MarketplaceJobTypes.ReturnStatusSync => await SyncOpenReturns(tenantId, connectionId.Value, correlationId, cancellationToken),
                     MarketplaceJobTypes.ReturnReconciliation => await ReconcileReturns(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                     MarketplaceJobTypes.StockReconciliation => await ReconcileStock(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
-                    MarketplaceJobTypes.QuestionSync => await SyncQuestions(tenantId, connectionId.Value, payloadJson, cancellationToken),
                     MarketplaceJobTypes.CatalogStructureImport => await ImportCatalogStructure(tenantId, connectionId.Value, payloadJson, correlationId, jobId, cancellationToken),
                     MarketplaceJobTypes.WebhookIngest or MarketplaceJobTypes.ShopifyWebhookIngest or MarketplaceJobTypes.HepsiburadaWebhookIngest => await IngestWebhook(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
                     MarketplaceJobTypes.ShipmentAction => await ShipmentAction(tenantId, connectionId.Value, payloadJson, correlationId, cancellationToken),
@@ -7309,21 +7322,6 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 await UpsertOrders(tenantId, connectionId, [.. page.Items.Select(order => order with { StoreFrontCode = TrendyolWebhookStorefront(order.RawJson) })], cancellationToken);
         }
         var inbox = await db.InboxMessages.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Source == source && x.ExternalMessageId == externalMessageId, cancellationToken); if (inbox is not null) inbox.ProcessedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); return true;
-    }
-
-    private async Task<bool> SyncQuestions(Guid tenantId, Guid connectionId, string payloadJson, CancellationToken cancellationToken)
-    {
-        string? kind;
-        try { using var payload = JsonDocument.Parse(payloadJson); kind = payload.RootElement.TryGetProperty("kind", out var value) ? value.GetString() : null; }
-        catch (JsonException) { return false; }
-        var result = await questions.SyncConnectionAsync(tenantId, connectionId, kind, cancellationToken);
-        telemetryRequestCount++;
-        telemetryReceivedCount += result.Added + result.Updated;
-        telemetryInsertedCount += result.Added;
-        telemetryUpdatedCount += result.Updated;
-        if (result.Error is not null) { telemetryFailedCount++; return false; }
-        telemetryChangedCount += result.Added + result.Updated;
-        return true;
     }
 
     private sealed class OrderIngestionBatch
