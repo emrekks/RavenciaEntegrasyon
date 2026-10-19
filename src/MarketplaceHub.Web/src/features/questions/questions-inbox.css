@@ -109,7 +109,8 @@
 .qi-page .qi-product strong a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .qi-page .qi-product small { overflow: hidden; color: var(--rv-color-subtle); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .app-shell.stitch-shell main .qi-page .qi-platform { display: inline-flex; align-items: center; gap: 8px; color: var(--rv-color-muted); font-size: 13px; }
-.qi-page .qi-platform img { box-sizing: border-box; width: 24px; height: 24px; object-fit: contain; border-radius: 5px; }
+/* flex: none: an older rule gives every picture in the question card a 62px flex basis, which stretched the logo frame. */
+.qi-page .qi-platform img { box-sizing: border-box; flex: none; width: 24px; height: 24px; object-fit: contain; border-radius: 5px; }
 .qi-page .qi-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; border-top: 1px solid var(--rv-color-border); }
 .qi-page .qi-facts > div { display: grid; align-content: center; gap: 4px; min-width: 0; min-height: 56px; padding: 8px 14px; border-left: 1px solid var(--rv-color-border); }
 .qi-page .qi-facts > div:first-child { border-left: 0; }
