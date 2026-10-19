@@ -126,7 +126,8 @@
 .ss-page .ss-ferr .ss-st { width: 14px; height: 14px; }
 
 /* Sticky apply bar */
-.ss-page .ss-bar { position: sticky; bottom: 0; margin-top: auto; z-index: 6; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 20px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; box-shadow: 0 -12px 30px rgb(0 0 0 / 30%); }
+/* The save bar floats 16px above the screen edge while the page scrolls under it, with a light shadow. */
+.ss-page .ss-bar { position: sticky; bottom: 16px; margin-top: auto; z-index: 6; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 20px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; box-shadow: 0 4px 14px rgb(0 0 0 / 10%); }
 .ss-page .ss-bar-copy { flex: 1 1 260px; display: grid; min-width: 0; }
 .ss-page .ss-bar-copy strong { font-size: 14px; font-weight: 600; }
 .ss-page .ss-bar-copy span { color: var(--rv-color-muted); font-size: 13px; }

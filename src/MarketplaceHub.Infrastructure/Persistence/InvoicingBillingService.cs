@@ -656,9 +656,11 @@ public sealed partial class InvoicingBillingService(
         return tabMatch && platformMatch && shipmentMatch && cargoMatch && invoiceMatch && actionMatch && dateMatch && searchMatch;
     }
 
+    // An invoice that was issued sits with the invoiced ones while it is being sent to the marketplace; only one that
+    // could not be issued or could not be delivered (with its reason shown) stays with those that have no invoice.
     internal static bool IsWorkspaceInvoiceUninvoiced(string invoiceStatus, bool canCreateInvoice, bool marketplaceInvoicePresent = false) =>
         !marketplaceInvoicePresent && (canCreateInvoice
-            || invoiceStatus is "FATURA_REDDEDILDI" or "FATURA_ISLENIYOR" or "FATURA_PLATFORMA_BEKLIYOR" or "FATURA_KONTROLDE" or "FATURA_PLATFORMA_AKTARILMADI");
+            || invoiceStatus is "FATURA_REDDEDILDI" or "FATURA_PLATFORMA_AKTARILMADI");
 
     private static bool HasMarketplaceInvoiceObservation(WorkspaceCandidate candidate) =>
         candidate.Package.MarketplaceInvoiceStatus is MarketplaceInvoiceStatus.Invoiced or MarketplaceInvoiceStatus.Received;
@@ -953,11 +955,14 @@ public sealed partial class InvoicingBillingService(
                 invoice?.HasConfirmedMarketplaceDelivery == true);
         }
 
-        if (invoice.Status is InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending or InvoiceStatus.MarketplaceFailed or InvoiceStatus.Submitted)
+        if (invoice.Status is InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending or InvoiceStatus.MarketplaceFailed or InvoiceStatus.Submitted
+            || invoice.Status == InvoiceStatus.ManualReview && !string.IsNullOrWhiteSpace(invoice.InvoiceNumber))
         {
             if (invoice.HasConfirmedMarketplaceDelivery) return "FATURA_KONTROLDE";
-            // The invoice exists at the provider. It is only a delivery problem once the platform leg failed or needs review; until then it is simply waiting to be sent.
-            var deliveryProblem = invoice.Status == InvoiceStatus.MarketplaceFailed
+            // The invoice exists at the provider. It is a delivery problem once the platform leg failed, needs review, or
+            // stopped with an error while waiting; until then it is simply on its way.
+            var deliveryProblem = invoice.Status is InvoiceStatus.MarketplaceFailed or InvoiceStatus.ManualReview
+                || invoice.Status == InvoiceStatus.MarketplacePending && !string.IsNullOrWhiteSpace(invoice.LastErrorCode)
                 || InvoiceMarketplaceRetryPolicy.IsDeliveryReview(invoice.Status, invoice.LastErrorCode)
                 || InvoiceMarketplaceRetryPolicy.CanRetryDelivery(invoice.Status, invoice.LastErrorCode);
             return deliveryProblem ? "FATURA_PLATFORMA_AKTARILMADI" : "FATURA_ISLENIYOR";

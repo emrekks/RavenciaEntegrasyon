@@ -69,10 +69,9 @@ public sealed class InvoiceDeliveryRecoveryPolicyTests
     }
 
     [Fact]
-    public void ConfirmsDelayedHepsiburadaReadbackOnlyForTheSameAuthorizedAcceptedAttempt()
+    public void ConfirmsDelayedHepsiburadaReadbackForTheAcceptedAttempt()
     {
         Assert.True(InvoiceDeliveryRecoveryPolicy.ConfirmsAcceptedHepsiburadaAttemptReadback(
-            isAuthorizedStageDocument: true,
             deliveryStatus: "UNKNOWN",
             deliveryErrorCode: InvoiceDeliveryRecoveryPolicy.HepsiburadaAcceptedButReadbackMissingErrorCode,
             observedMarketplaceStatus: MarketplaceInvoiceStatus.Invoiced,
@@ -81,20 +80,17 @@ public sealed class InvoiceDeliveryRecoveryPolicyTests
     }
 
     [Theory]
-    [InlineData(false, "UNKNOWN", InvoiceDeliveryRecoveryPolicy.HepsiburadaAcceptedButReadbackMissingErrorCode, MarketplaceInvoiceStatus.Invoiced, true)]
-    [InlineData(true, "FAILED", InvoiceDeliveryRecoveryPolicy.HepsiburadaAcceptedButReadbackMissingErrorCode, MarketplaceInvoiceStatus.Invoiced, true)]
-    [InlineData(true, "UNKNOWN", "DELIVERY_TIMEOUT", MarketplaceInvoiceStatus.Invoiced, true)]
-    [InlineData(true, "UNKNOWN", InvoiceDeliveryRecoveryPolicy.HepsiburadaAcceptedButReadbackMissingErrorCode, MarketplaceInvoiceStatus.NotInvoiced, true)]
-    [InlineData(true, "UNKNOWN", InvoiceDeliveryRecoveryPolicy.HepsiburadaAcceptedButReadbackMissingErrorCode, MarketplaceInvoiceStatus.Invoiced, false)]
+    [InlineData("FAILED", InvoiceDeliveryRecoveryPolicy.HepsiburadaAcceptedButReadbackMissingErrorCode, MarketplaceInvoiceStatus.Invoiced, true)]
+    [InlineData("UNKNOWN", "DELIVERY_TIMEOUT", MarketplaceInvoiceStatus.Invoiced, true)]
+    [InlineData("UNKNOWN", InvoiceDeliveryRecoveryPolicy.HepsiburadaAcceptedButReadbackMissingErrorCode, MarketplaceInvoiceStatus.NotInvoiced, true)]
+    [InlineData("UNKNOWN", InvoiceDeliveryRecoveryPolicy.HepsiburadaAcceptedButReadbackMissingErrorCode, MarketplaceInvoiceStatus.Invoiced, false)]
     public void DoesNotAcceptGenericOrStaleHepsiburadaInvoiceObservations(
-        bool isAuthorizedStageDocument,
         string deliveryStatus,
         string deliveryErrorCode,
         MarketplaceInvoiceStatus observedMarketplaceStatus,
         bool observedAfterAttempt)
     {
         Assert.False(InvoiceDeliveryRecoveryPolicy.ConfirmsAcceptedHepsiburadaAttemptReadback(
-            isAuthorizedStageDocument,
             deliveryStatus,
             deliveryErrorCode,
             observedMarketplaceStatus,

@@ -138,15 +138,15 @@ public static class InvoiceDeliveryRecoveryPolicy
         string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
         && failureCount >= HepsiburadaRemoteFailureLimit;
 
+    // Hepsiburada accepted the link for a package read empty just before it, but did not yet show an invoice; a later
+    // read that shows one confirms this delivery (Hepsiburada never reports which invoice number is attached).
     public static bool ConfirmsAcceptedHepsiburadaAttemptReadback(
-        bool isAuthorizedStageDocument,
         string? deliveryStatus,
         string? deliveryErrorCode,
         MarketplaceInvoiceStatus observedMarketplaceStatus,
         DateTimeOffset? observedAt,
         DateTimeOffset acceptedAttemptAt) =>
-        isAuthorizedStageDocument
-        && string.Equals(deliveryStatus, "UNKNOWN", StringComparison.Ordinal)
+        string.Equals(deliveryStatus, "UNKNOWN", StringComparison.Ordinal)
         && string.Equals(deliveryErrorCode, HepsiburadaAcceptedButReadbackMissingErrorCode, StringComparison.Ordinal)
         && observedMarketplaceStatus == MarketplaceInvoiceStatus.Invoiced
         && observedAt is { } readAt

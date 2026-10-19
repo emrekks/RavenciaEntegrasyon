@@ -841,9 +841,10 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 package.MarketplaceInvoiceUrl = liveReadback.Value.VerifiedInvoiceLink;
                 package.MarketplaceInvoiceObservedAt = readAt;
 
-                if (OneTimeInvoiceDeliveryPolicy.IsAuthorizedStageDocument(order?.OrderNumber, invoice.Id)
-                    && InvoiceDeliveryRecoveryPolicy.ConfirmsAcceptedHepsiburadaAttemptReadback(
-                        isAuthorizedStageDocument: true,
+                // The package was read empty right before the link was sent and Hepsiburada accepted the request, so an
+                // invoice it shows afterwards is this one; its read shows only that an invoice exists, never its number,
+                // which made every such delivery a "different invoice number" for manual review.
+                if (InvoiceDeliveryRecoveryPolicy.ConfirmsAcceptedHepsiburadaAttemptReadback(
                         state.Status,
                         state.ErrorCode,
                         package.MarketplaceInvoiceStatus,

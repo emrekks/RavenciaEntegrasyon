@@ -154,9 +154,12 @@ function invoiceFailureReason(code: string | null) {
     HEPSIBURADA_INVOICE_DELIVERY_READBACK_MISSING: 'Hepsiburada isteği aldı ama faturayı henüz göstermiyor. Birkaç dakika içinde yeniden kontrol edilir.',
     HEPSIBURADA_REMOTE_ERROR: 'Hepsiburada fatura iletimini kabul etmedi.',
     PLATFORM_INVOICE_STATUS_NOT_CLEAR: 'Pazaryeri fatura durumunu net bildirmedi. Pazaryeri panelinde kontrol edin.',
-    OPERATOR_CONFIRMED_NO_REMOTE_INVOICE: 'Portalda fatura olmadığı onaylandı; yeniden gönderilebilir.'
+    OPERATOR_CONFIRMED_NO_REMOTE_INVOICE: 'Portalda fatura olmadığı onaylandı; yeniden gönderilebilir.',
+    REMOTE_INVOICE_NUMBER_MISMATCH: 'Pazaryerinde bu faturayla eşleştirilemeyen bir fatura görünüyor. Pazaryeri panelinde kontrol edin.',
+    HEPSIBURADA_INVOICE_ALREADY_PRESENT: 'Hepsiburada pakette zaten bir fatura gösteriyor; üzerine yazılmadı.',
+    ONE_TIME_INVOICE_DELIVERY_ALREADY_ATTEMPTED: 'Önceki iletim belirsiz kaldı; ikinci kez otomatik gönderilmedi. Pazaryeri panelinde kontrol edin.'
   }
-  return labels[code ?? ''] ?? (code ? `İşlem tamamlanamadı: ${code}` : 'Ayrıntılar için faturayı açın.')
+  return labels[code ?? ''] ?? (code ? `İletilemedi: ${code}` : 'Ayrıntılar için faturayı açın.')
 }
 function invoiceFailureGuidance(code: string | null) {
   const labels: Record<string, string> = {

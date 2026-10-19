@@ -6,10 +6,12 @@ namespace MarketplaceHub.Application.Tests;
 public sealed class InvoiceWorkspaceTabPolicyTests
 {
     [Theory]
-    [InlineData("FATURA_ISLENIYOR", false, false, true)]
+    [InlineData("FATURA_ISLENIYOR", false, false, false)]
+    [InlineData("FATURA_PLATFORMA_BEKLIYOR", false, false, false)]
     [InlineData("FATURA_REDDEDILDI", false, false, true)]
+    [InlineData("FATURA_PLATFORMA_AKTARILMADI", false, false, true)]
     [InlineData("FATURA_BEKLIYOR", true, false, true)]
-    [InlineData("FATURA_KONTROLDE", false, false, true)]
+    [InlineData("FATURA_KONTROLDE", false, false, false)]
     [InlineData("FATURA_KESILDI", false, false, false)]
     [InlineData("FATURA_PLATFORMA_AKTARILMADI", false, true, false)]
     [InlineData("FATURA_BEKLIYOR", true, true, false)]
@@ -22,8 +24,9 @@ public sealed class InvoiceWorkspaceTabPolicyTests
     }
 
     [Fact]
-    public void LocalInvoiceAwaitingMarketplaceConfirmationRemainsInUninvoicedTab()
+    public void AnIssuedInvoiceOnItsWayToTheMarketplaceIsWithTheInvoicedOnes()
     {
-        Assert.True(InvoicingBillingService.IsWorkspaceInvoiceUninvoiced("FATURA_KONTROLDE", canCreateInvoice: false, marketplaceInvoicePresent: false));
+        Assert.False(InvoicingBillingService.IsWorkspaceInvoiceUninvoiced("FATURA_ISLENIYOR", canCreateInvoice: false, marketplaceInvoicePresent: false));
+        Assert.True(InvoicingBillingService.IsWorkspaceInvoiceUninvoiced("FATURA_PLATFORMA_AKTARILMADI", canCreateInvoice: false, marketplaceInvoicePresent: false));
     }
 }
