@@ -198,7 +198,16 @@
 .app-shell.stitch-shell main .qi-page .qi-sync .rv-questions-sync-item small { font-size: 12px !important; line-height: 1.4; }
 .app-shell.stitch-shell main .qi-page .qi-sync b { font-size: 14px; white-space: nowrap; }
 .qi-page .qi-item-logo img { object-fit: contain; }
-.qi-page .qi-facts dd { white-space: normal; overflow-wrap: anywhere; }
+/* Facts stay on one line (a long value ends with an ellipsis) and the status tag never breaks. When the
+   detail card is narrow (list and detail side by side on a tablet-width screen) the four facts sit two by two. */
+.qi-page .qi-facts dd { white-space: nowrap; }
+.qi-page .qi-tag { flex: none; max-width: 100%; white-space: nowrap; }
+.qi-page .qi-dcard { container-type: inline-size; }
+@container (max-width: 620px) {
+  .qi-page .qi-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .qi-page .qi-facts > div:nth-child(3) { border-left: 0; }
+  .qi-page .qi-facts > div:nth-child(n + 3) { border-top: 1px solid var(--rv-color-border); }
+}
 
 /* Fits one screen: head and sources take their height, the inbox fills the rest and only its lists scroll. */
 @media (min-width: 901px) {
