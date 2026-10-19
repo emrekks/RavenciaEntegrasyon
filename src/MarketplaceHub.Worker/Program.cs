@@ -15,6 +15,8 @@ DependencyInjection.ApplyFileBackedSecrets(builder.Configuration);
 // so incident logs were gone before anyone could read them. Failed commands are still logged as errors.
 builder.Services.AddSerilog(configuration => configuration
     .MinimumLevel.Override("Microsoft.EntityFrameworkCore.Database.Command", LogEventLevel.Warning)
+    // Log scopes (the job, its type, connection and correlation id) become properties of every line.
+    .Enrich.FromLogContext()
     .WriteTo.Console(new RenderedCompactJsonFormatter()));
 builder.Services.AddMarketplaceInfrastructure(builder.Configuration);
 builder.Services.Configure<HostOptions>(options => options.ShutdownTimeout = TimeSpan.FromSeconds(40));

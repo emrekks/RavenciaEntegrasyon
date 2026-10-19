@@ -210,6 +210,15 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
 
     private async Task ExecuteLeasedJobAsync(LeasedJob job, CancellationToken stoppingToken)
     {
+        // Every line logged while the job runs (processor, adapters, lease service) carries its context.
+        using var logScope = logger.BeginScope(new Dictionary<string, object?>
+        {
+            ["JobId"] = job.Id,
+            ["JobType"] = job.JobType,
+            ["TenantId"] = job.TenantId,
+            ["ConnectionId"] = job.ConnectionId,
+            ["CorrelationId"] = job.CorrelationId
+        });
         using var execution = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
         if (job.JobType is MarketplaceJobTypes.ProductSync or MarketplaceJobTypes.ShopifyProductSync or MarketplaceJobTypes.HepsiburadaProductSync or MarketplaceJobTypes.CatalogStructureImport)
         {

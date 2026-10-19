@@ -42,6 +42,7 @@ DependencyInjection.ApplyFileBackedSecrets(builder.Configuration);
 builder.Host.UseSerilog((_, configuration) => configuration
     .MinimumLevel.Override("Microsoft.AspNetCore.Hosting.Diagnostics", LogEventLevel.Warning)
     .MinimumLevel.Override("Microsoft.EntityFrameworkCore.Database.Command", LogEventLevel.Warning)
+    .Enrich.FromLogContext()
     .WriteTo.Console(new RenderedCompactJsonFormatter()));
 builder.Services.AddMarketplaceInfrastructure(builder.Configuration);
 builder.Services.AddScoped<BreakGlassService>();

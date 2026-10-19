@@ -7310,6 +7310,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     private async Task UpsertOrders(Guid tenantId, Guid connectionId, IReadOnlyList<RemoteOrder> remotes, CancellationToken cancellationToken, bool projectReservations = true)
     {
         if (remotes.Count == 0) return;
+        // A long read projects page after page through one context. Rows this call loads are released
+        // once the page is saved, so later SaveChanges calls do not walk every row read so far; rows the
+        // caller already tracked (its cursor, its job) stay tracked.
+        var trackedBefore = db.ChangeTracker.Entries().Select(entry => entry.Entity).ToHashSet(ReferenceEqualityComparer.Instance);
         var platformCode = await db.PlatformConnections.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.Id == connectionId)
             .Select(x => x.PlatformCode)
@@ -7407,6 +7411,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (projectReservations)
             await ProjectOrderReservations(tenantId, connectionId, batch.ReservationSources, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
+        foreach (var entry in db.ChangeTracker.Entries().Where(entry => entry.State == EntityState.Unchanged && !trackedBefore.Contains(entry.Entity)).ToList())
+            entry.State = EntityState.Detached;
     }
 
     private static RemoteOrder MergeHepsiburadaOrderLines(IEnumerable<RemoteOrder> candidates)
