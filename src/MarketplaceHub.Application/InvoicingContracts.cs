@@ -69,7 +69,10 @@ public sealed record ExternalInvoiceDeliveryReference(
     string? OrderNumber = null,
     string? ExternalOrderId = null,
     string? InvoiceNumber = null,
-    string? InvoiceLink = null);
+    string? InvoiceLink = null,
+    // Where the package can be found (order date, storefront, last status time), so a marketplace that
+    // searches by date window and storefront reads the right one instead of trying them all.
+    PackageLookup? Lookup = null);
 public sealed record InvoiceDeliveryStatus(
     string ExternalReference,
     string RawStatus,

@@ -2427,7 +2427,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var storefronts = OrderSyncStorefronts(state);
             var storefront = storefronts[state.StoreFrontIndex];
             TrackRequest();
-            var result = await orders.PollAsync(Context(tenantId, connectionId, correlationId, $"order-sync:{storefront}:{state.NextCursor ?? state.WindowIndex.ToString()}"), new(modifiedAfter, modifiedBefore, null, storefront), new(state.NextCursor, 200), cancellationToken);
+            var result = await orders.PollAsync(Context(tenantId, connectionId, correlationId, $"order-sync:{storefront}:{state.NextCursor ?? state.WindowIndex.ToString()}"), new(modifiedAfter, modifiedBefore, storefront), new(state.NextCursor, 200), cancellationToken);
             if (!result.IsSuccess && !resetExpiredCursor && !string.IsNullOrWhiteSpace(state.NextCursor) && result.Error is { Class: AdapterErrorClass.Validation, HttpStatus: 400 })
             {
                 // Stream cursors can expire. Restart once from the durable watermark; preserve all other
@@ -2526,7 +2526,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             do
             {
                 TrackRequest();
-                var page = await orders.PollAsync(Context(tenantId, connectionId, correlationId, $"order-sync-probe:{probe}:{nextCursor ?? "0"}"), new(probeStart, now, null, probe), new(nextCursor, 200), cancellationToken);
+                var page = await orders.PollAsync(Context(tenantId, connectionId, correlationId, $"order-sync-probe:{probe}:{nextCursor ?? "0"}"), new(probeStart, now, probe), new(nextCursor, 200), cancellationToken);
                 if (!page.IsSuccess)
                 {
                     if (nextCursor is null && page.Error?.HttpStatus is 400 or 404)
@@ -3373,7 +3373,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var start = end - OrderStreamWindowSpan < oldest ? oldest : end - OrderStreamWindowSpan;
             var storefront = state.StoreFronts[state.StoreFrontIndex];
             TrackRequest();
-            var page = await orders.PollAsync(Context(tenantId, connectionId, correlationId, $"order-reconcile:{storefront}:{state.WindowIndex}:{state.NextCursor ?? "0"}"), new(start, end, null, storefront), new(state.NextCursor, 200), cancellationToken);
+            var page = await orders.PollAsync(Context(tenantId, connectionId, correlationId, $"order-reconcile:{storefront}:{state.WindowIndex}:{state.NextCursor ?? "0"}"), new(start, end, storefront), new(state.NextCursor, 200), cancellationToken);
             if (!page.IsSuccess)
             {
                 if (state.NextCursor is not null && page.Error is { Class: AdapterErrorClass.Validation, HttpStatus: 400 })

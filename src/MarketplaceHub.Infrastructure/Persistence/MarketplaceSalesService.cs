@@ -2536,8 +2536,10 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
     internal static bool IsLegacyTrendyolExportPartner(string name) =>
         name.Contains("PM3", StringComparison.OrdinalIgnoreCase) && name.Contains("ARVATO", StringComparison.OrdinalIgnoreCase);
 
+    // A shipping deadline only: Trendyol's (extended) agreed hand-over date or a marketplace's due date;
+    // delivery estimates and modification times are not deadlines.
     private static DateTimeOffset? OperationalDueAt(string json) =>
-        JsonInstant(json, "agreedDeliveryDate", "estimatedDeliveryEndDate", "lastDeliveryDate", "deliveryDate", "estimatedDeliveryStartDate", "packageLastModifiedDate", "packageDeliveryDate", "packageEstimatedDeliveryDate", "dueDate", "shipmentDueDate", "deliveryDueAt");
+        JsonInstant(json, "extendedAgreedDeliveryDate", "agreedDeliveryDate", "dueDate", "shipmentDueDate", "deliveryDueAt");
 
     internal static string InvoiceLabel(Invoice? invoice, string customerJson, bool marketplaceDeliveryConfirmed = false) =>
         InvoiceLabel(invoice, customerJson, [], marketplaceDeliveryConfirmed);

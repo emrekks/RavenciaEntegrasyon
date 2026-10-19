@@ -84,7 +84,9 @@ public static class TrendyolJsonMapper
                     ReferencesAreAuthoritative: HasAnyProperty(package, "invoiceNumber", "invoiceNo", "invoiceSerialNumber")
                         && HasAnyProperty(package, "invoiceLink", "invoiceUrl", "invoiceDocumentUrl"));
                 var remotePackage = new RemotePackage(externalPackageId, FirstArrayText(package, "originPackageIds"), rawStatusPackage, modified, OrderCargoProvider(package), ScalarText(package, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber", "trackingInfoCode"), allocations, gross, discount, net, invoice, NormalizeCreatedBy(NullText(package, "createdBy")));
-                var dueAt = FlexibleInstant(package, "agreedDeliveryDate", "estimatedDeliveryEndDate", "lastDeliveryDate", "deliveryDate", "estimatedDeliveryStartDate", "packageLastModifiedDate", "packageDeliveryDate", "packageEstimatedDeliveryDate", "dueDate", "shipmentDueDate", "deliveryDueAt");
+                // The shipping deadline is the agreed hand-over date (extended when the seller extended it).
+                // The estimated delivery dates are the customer's delivery window, not a deadline for the seller.
+                var dueAt = FlexibleInstant(package, "extendedAgreedDeliveryDate", "agreedDeliveryDate");
                 rows.Add(new(orderNumber, orderNumber, ordered, modified, Text(package, "currencyCode"), gross, discount, net,
                     CustomerSnapshot(package),
                     ObjectSnapshot(package, "shipmentAddress"), ObjectSnapshot(package, "invoiceAddress"), lines, [remotePackage], package.GetRawText(), dueAt));

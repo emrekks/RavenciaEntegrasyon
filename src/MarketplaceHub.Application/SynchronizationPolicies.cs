@@ -56,13 +56,9 @@ public static class SynchronizationWindowPolicy
 public static class TrendyolOrderHistoryPolicy
 {
     public const int StreamInitialLookbackMonths = 3;
-    public const int LegacyEndpointMaxHistoryDays = 30;
 
     public static DateTimeOffset StreamInitialStart(DateTimeOffset anchor) =>
         anchor.AddMonths(-StreamInitialLookbackMonths);
-
-    public static DateTimeOffset LegacyEndpointInitialStart(DateTimeOffset anchor) =>
-        anchor.AddDays(-LegacyEndpointMaxHistoryDays);
 }
 
 // n11 lists shipment packages by last modification in windows of at most 15

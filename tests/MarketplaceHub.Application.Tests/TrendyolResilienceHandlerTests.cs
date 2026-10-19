@@ -25,6 +25,19 @@ public sealed class TrendyolResilienceHandlerTests
     }
 
     [Fact]
+    public void GlobalRateLimit_IsCountedPerEndpoint()
+    {
+        using var stock = new HttpRequestMessage(HttpMethod.Post, "https://unit.test/integration/inventory/sellers/seller-1/products/price-and-inventory");
+        using var orders = new HttpRequestMessage(HttpMethod.Get, "https://unit.test/integration/order/sellers/seller-1/orders/stream");
+        using var claims = new HttpRequestMessage(HttpMethod.Get, "https://unit.test/integration/order/sellers/seller-1/claims");
+        using var categories = new HttpRequestMessage(HttpMethod.Get, "https://unit.test/integration/product/categories/411/attributes");
+
+        var buckets = new[] { stock, orders, claims, categories }.Select(TrendyolResilienceHandler.GlobalRateBucketFor).ToArray();
+        Assert.Equal(4, buckets.Distinct().Count());
+        Assert.EndsWith(":integration/product/categories", buckets[3]);
+    }
+
+    [Fact]
     public void GlobalRateLimit_IsolatedByMarketplaceClientIdentity()
     {
         using var first = new HttpRequestMessage(HttpMethod.Get, "https://unit.test/integration/product/sellers/seller-1/products/approved");
@@ -114,7 +127,7 @@ public sealed class TrendyolResilienceHandlerTests
         using var response = await client.GetAsync("https://unit.test/integration/order/sellers/seller-42/orders/stream?nextCursor=a");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal(["trendyol:global:unit.test:anonymous", "trendyol:orders:unit.test:seller-42:fg", "trendyol:orders:unit.test:seller-42:spacing"], shared.Keys);
+        Assert.Equal(["trendyol:global:unit.test:anonymous:order-reads", "trendyol:orders:unit.test:seller-42:fg", "trendyol:orders:unit.test:seller-42:spacing"], shared.Keys);
     }
 
     [Fact]
@@ -150,7 +163,7 @@ public sealed class TrendyolResilienceHandlerTests
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         }
 
-        Assert.Equal(["trendyol:global:unit.test:anonymous", "trendyol:orders:unit.test:seller-42:bg"], shared.Keys);
+        Assert.Equal(["trendyol:global:unit.test:anonymous:order-reads", "trendyol:orders:unit.test:seller-42:bg"], shared.Keys);
         Assert.False(TrendyolQuotaLane.IsBackground);
     }
 
@@ -166,7 +179,7 @@ public sealed class TrendyolResilienceHandlerTests
         using var response = await client.GetAsync("https://unit.test/integration/order/sellers/seller-42/v2/orders?shipmentPackageIds=1");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal(["trendyol:global:unit.test:anonymous", "trendyol:orders:unit.test:seller-42:fg"], shared.Keys);
+        Assert.Equal(["trendyol:global:unit.test:anonymous:order-reads", "trendyol:orders:unit.test:seller-42:fg"], shared.Keys);
     }
 
     [Fact]

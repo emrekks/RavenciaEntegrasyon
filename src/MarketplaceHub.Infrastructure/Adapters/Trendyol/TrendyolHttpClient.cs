@@ -95,7 +95,9 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
     {
         var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (authorized is null) return AdapterResult<AdapterPageResult<RemoteCatalogProduct>>.Failure(TrendyolErrorMapper.Configuration());
-        var catalogPage = TrendyolCatalogCursorPolicy.Resolve(filter.IncludePendingApproval, page.Cursor);
+        var catalogPage = TrendyolCatalogCursorPolicy.Resolve(page.Cursor);
+        var incremental = filter.ModifiedAfter is not null;
+        var pending = catalogPage.Pass == TrendyolCatalogPass.PendingApproval;
         var size = Math.Clamp(page.Limit, 1, 100);
         var query = new List<string> { $"size={size}" };
         if (TryProductCursor(catalogPage.Cursor, out var pageNumber, out var nextPageToken))
@@ -106,25 +108,31 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
         else query.Add("page=0");
         if (!string.IsNullOrWhiteSpace(filter.Barcode)) query.Add("barcode=" + Uri.EscapeDataString(filter.Barcode));
         if (!string.IsNullOrWhiteSpace(filter.ProductMainId)) query.Add("productMainId=" + Uri.EscapeDataString(filter.ProductMainId));
-        if (!catalogPage.IsPendingApproval && !string.IsNullOrWhiteSpace(filter.ContentId)) query.Add("contentId=" + Uri.EscapeDataString(filter.ContentId));
-        if (filter.ModifiedAfter is not null && !catalogPage.IsPendingApproval)
+        if (!pending && !string.IsNullOrWhiteSpace(filter.ContentId)) query.Add("contentId=" + Uri.EscapeDataString(filter.ContentId));
+        if (filter.ModifiedAfter is { } modifiedAfter)
         {
-            query.Add("startDate=" + filter.ModifiedAfter.Value.ToUnixTimeMilliseconds());
-            query.Add("dateQueryType=VARIANT_MODIFIED_DATE");
+            // Approved products by variant or content change; waiting products by their last change.
+            query.Add("startDate=" + modifiedAfter.ToUnixTimeMilliseconds());
+            query.Add("dateQueryType=" + catalogPage.Pass switch
+            {
+                TrendyolCatalogPass.ContentChanged => "CONTENT_MODIFIED_DATE",
+                TrendyolCatalogPass.PendingApproval => "LAST_MODIFIED_DATE",
+                _ => "VARIANT_MODIFIED_DATE"
+            });
         }
-        if (catalogPage.IsPendingApproval) query.Add("status=pendingApproval");
-        var endpoint = catalogPage.IsPendingApproval
+        if (pending) query.Add("status=pendingApproval");
+        var endpoint = pending
             ? TrendyolEndpoints.UnapprovedProducts(authorized.Connection.ExternalStoreId)
             : TrendyolEndpoints.ApprovedProducts(authorized.Connection.ExternalStoreId);
         var response = await SendAsync(authorized, HttpMethod.Get, endpoint + "?" + string.Join('&', query), null, cancellationToken);
         if (!response.IsSuccess) return AdapterResult<AdapterPageResult<RemoteCatalogProduct>>.Failure(response.Error!, response.RateLimit);
         try
         {
-            var result = catalogPage.IsPendingApproval
+            var result = pending
                 ? TrendyolJsonMapper.PendingApprovalCatalogProducts(response.Value!)
                 : TrendyolJsonMapper.CatalogProducts(response.Value!);
             return AdapterResult<AdapterPageResult<RemoteCatalogProduct>>.Success(
-                TrendyolCatalogCursorPolicy.Advance(result, filter.IncludePendingApproval, catalogPage.IsPendingApproval),
+                TrendyolCatalogCursorPolicy.Advance(result, catalogPage.Pass, incremental, filter.IncludePendingApproval),
                 response.RateLimit);
         }
         catch (JsonException) { return AdapterResult<AdapterPageResult<RemoteCatalogProduct>>.Failure(TrendyolErrorMapper.Contract()); }
@@ -218,34 +226,13 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
     public async Task<AdapterResult<AdapterPageResult<RemoteOrder>>> PollAsync(AdapterContext context, OrderPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken)
     {
         var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken); if (authorized is null) return AdapterResult<AdapterPageResult<RemoteOrder>>.Failure(TrendyolErrorMapper.Configuration()); var query = new List<string> { $"size={Math.Clamp(page.Limit, 1, 200)}" };
-        var usePackageStatusApi = !string.IsNullOrWhiteSpace(window.PackageItemStatuses);
-        OrderWindowCursor? orderCursor = null;
-        if (usePackageStatusApi)
-        {
-            if (!TryOrderWindowCursor(page.Cursor, timeProvider.GetUtcNow(), out orderCursor))
-                return AdapterResult<AdapterPageResult<RemoteOrder>>.Failure(TrendyolErrorMapper.Contract());
-            query.Add($"page={orderCursor.Page}");
-            query.Add("status=" + Uri.EscapeDataString(window.PackageItemStatuses!));
-            query.Add("orderByField=PackageLastModifiedDate");
-            query.Add("orderByDirection=DESC");
-            var historyStart = TrendyolOrderHistoryPolicy.LegacyEndpointInitialStart(orderCursor.AnchorEnd);
-            var endDate = orderCursor.AnchorEnd - TimeSpan.FromTicks(orderCursor.WindowIndex * (OrderWindowSpan.Ticks + TimeSpan.TicksPerMillisecond));
-            var startDate = endDate - OrderWindowSpan;
-            if (startDate < historyStart) startDate = historyStart;
-            query.Add("startDate=" + startDate.ToUnixTimeMilliseconds());
-            query.Add("endDate=" + endDate.ToUnixTimeMilliseconds());
-        }
-        else
-        {
-            // packageItemStatuses is optional in the Stream contract. Omitting
-            // it makes this full-scan/incremental reader receive every
-            // package status, including marketplace-specific micro-export
-            // states that may not be represented by the public status list.
-            if (!string.IsNullOrWhiteSpace(page.Cursor)) query.Add("nextCursor=" + Uri.EscapeDataString(page.Cursor));
-        }
+        // packageItemStatuses is optional in the Stream contract. Omitting it makes this full-scan/incremental
+        // reader receive every package status, including marketplace-specific micro-export states that may
+        // not be represented by the public status list.
+        if (!string.IsNullOrWhiteSpace(page.Cursor)) query.Add("nextCursor=" + Uri.EscapeDataString(page.Cursor));
         if (window.ModifiedAfter is not null) query.Add("lastModifiedStartDate=" + window.ModifiedAfter.Value.ToUnixTimeMilliseconds());
         if (window.ModifiedBefore is not null) query.Add("lastModifiedEndDate=" + window.ModifiedBefore.Value.ToUnixTimeMilliseconds());
-        var endpoint = usePackageStatusApi ? TrendyolEndpoints.Orders(authorized.Connection.ExternalStoreId) : TrendyolEndpoints.OrderStream(authorized.Connection.ExternalStoreId);
+        var endpoint = TrendyolEndpoints.OrderStream(authorized.Connection.ExternalStoreId);
         var response = await SendAsync(authorized, HttpMethod.Get, endpoint + "?" + string.Join('&', query), null, cancellationToken, storeFrontCode: window.StoreFrontCode); if (!response.IsSuccess) return AdapterResult<AdapterPageResult<RemoteOrder>>.Failure(response.Error!, response.RateLimit);
         LogOrderResponseShape(response.Value!);
         try
@@ -254,16 +241,7 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
             var read = TrendyolJsonMapper.Orders(response.Value!);
             var storeFrontCode = string.IsNullOrWhiteSpace(window.StoreFrontCode) ? TrendyolLookupPolicy.HomeStoreFront : window.StoreFrontCode.Trim().ToUpperInvariant();
             var mapped = read with { Items = [.. read.Items.Select(order => order with { StoreFrontCode = storeFrontCode })] };
-            if (orderCursor is null) return AdapterResult<AdapterPageResult<RemoteOrder>>.Success(mapped, response.RateLimit);
-
-            var next = mapped.HasMore
-                ? orderCursor with { Page = orderCursor.Page + 1 }
-                : orderCursor with { WindowIndex = orderCursor.WindowIndex + 1, Page = 0 };
-            var nextEnd = next.AnchorEnd - TimeSpan.FromTicks(next.WindowIndex * (OrderWindowSpan.Ticks + TimeSpan.TicksPerMillisecond));
-            var historyStart = TrendyolOrderHistoryPolicy.LegacyEndpointInitialStart(next.AnchorEnd);
-            var hasMore = mapped.HasMore || nextEnd >= historyStart;
-            return AdapterResult<AdapterPageResult<RemoteOrder>>.Success(
-                new(mapped.Items, hasMore ? OrderWindowCursorValue(next) : null, hasMore, null, mapped.Issues), response.RateLimit);
+            return AdapterResult<AdapterPageResult<RemoteOrder>>.Success(mapped, response.RateLimit);
         }
         catch (JsonException exception)
         {
@@ -775,7 +753,9 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
     {
         if (string.IsNullOrWhiteSpace(reference.ExternalReference))
             return AdapterResult<InvoiceDeliveryStatus>.Failure(TrendyolErrorMapper.Contract());
-        var package = await GetShipmentPackageAsync(context, reference.ExternalReference, cancellationToken);
+        // With the order's date and storefront the package is read in its own window and storefront (one or two
+        // requests); without them every storefront is tried in the last 14 days only.
+        var package = await ReadShipmentPackageAsync(context, reference.ExternalReference, reference.Lookup ?? new PackageLookup(null), cancellationToken);
         if (!package.IsSuccess) return AdapterResult<InvoiceDeliveryStatus>.Failure(package.Error!, package.RateLimit);
         var invoice = package.Value?.Package.Invoice;
         if (invoice is null || string.IsNullOrWhiteSpace(invoice.RawStatus))
@@ -837,31 +817,6 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
         }
     }
     private static int Page(string? value) => int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var page) && page >= 0 ? page : 0;
-    private static readonly TimeSpan OrderWindowSpan = TimeSpan.FromDays(13);
-    private sealed record OrderWindowCursor(DateTimeOffset AnchorEnd, int WindowIndex, int Page);
-    private static string OrderWindowCursorValue(OrderWindowCursor cursor) =>
-        $"v2w:{cursor.AnchorEnd.ToUnixTimeMilliseconds()}:{cursor.WindowIndex}:{cursor.Page}";
-    private static bool TryOrderWindowCursor(string? value, DateTimeOffset now, out OrderWindowCursor cursor)
-    {
-        cursor = new(now, 0, 0);
-        if (string.IsNullOrWhiteSpace(value)) return true;
-        if (value.StartsWith("p:", StringComparison.Ordinal)
-            && int.TryParse(value.AsSpan(2), NumberStyles.None, CultureInfo.InvariantCulture, out var legacyPage)
-            && legacyPage >= 0)
-        {
-            cursor = new(now, 0, legacyPage);
-            return true;
-        }
-        var parts = value.Split(':', StringSplitOptions.None);
-        if (parts.Length != 4 || parts[0] != "v2w"
-            || !long.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out var anchorMilliseconds)
-            || !int.TryParse(parts[2], NumberStyles.None, CultureInfo.InvariantCulture, out var windowIndex)
-            || !int.TryParse(parts[3], NumberStyles.None, CultureInfo.InvariantCulture, out var page)
-            || windowIndex < 0 || page < 0)
-            return false;
-        try { cursor = new(DateTimeOffset.FromUnixTimeMilliseconds(anchorMilliseconds), windowIndex, page); return true; }
-        catch (ArgumentOutOfRangeException) { return false; }
-    }
     private static bool TryProductCursor(string? value, out int page, out string? token)
     {
         page = 0; token = null;

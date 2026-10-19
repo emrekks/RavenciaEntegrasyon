@@ -196,7 +196,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 {
                     var platformRead = await marketplace.QueryDeliveryAsync(
                         Context(tenantId, targetPackage.ConnectionId, correlationId, $"invoice-precheck:{invoice.Id:N}:{targetPackage.Id:N}", IntegrationOperation.Automatic),
-                        new(targetPackage.ExternalPackageId, order.OrderNumber, ShopifyOrderGid(order.ExternalOrderId)),
+                        WithLookup(new(targetPackage.ExternalPackageId, order.OrderNumber, ShopifyOrderGid(order.ExternalOrderId)), order, targetPackage),
                         cancellationToken);
                     if (!platformRead.IsSuccess)
                         await BlockFiscalSubmission(invoice, "MARKETPLACE_INVOICE_PRECHECK_FAILED",
@@ -492,7 +492,8 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             order.OrderNumber,
             platformCode == "SHOPIFY" ? ShopifyOrderGid(order.ExternalOrderId) : null,
             document.InvoiceNumber,
-            document.DocumentUrl);
+            document.DocumentUrl,
+            LookupFor(order.OrderedAt, order.LastRemoteModifiedAt, order.StoreFrontCode, package));
         var before = await marketplace.QueryDeliveryAsync(deliveryContext, reference, cancellationToken);
         if (!before.IsSuccess)
         {
@@ -698,7 +699,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         var package = await db.ShipmentPackages.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == targetPackageId && x.OrderId == invoice.OrderId, cancellationToken);
         var order = package is null
             ? null
-            : await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.OrderId).Select(x => new { x.OrderNumber, x.ExternalOrderId, x.CustomerSnapshotJson }).SingleOrDefaultAsync(cancellationToken);
+            : await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.OrderId).Select(x => new { x.OrderNumber, x.ExternalOrderId, x.CustomerSnapshotJson, x.OrderedAt, x.LastRemoteModifiedAt, x.StoreFrontCode }).SingleOrDefaultAsync(cancellationToken);
         if (package is null || package.ConnectionId != jobConnectionId) return false;
         var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.ConnectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
         var permanentDocument = await LoadPermanentInvoiceDocumentAsync(tenantId, invoice.Id, cancellationToken);
@@ -792,7 +793,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 var orderGid = ShopifyOrderGid(order?.ExternalOrderId);
                 var liveReadback = await marketplace.QueryDeliveryAsync(
                     Context(tenantId, package.ConnectionId, correlationId, $"delivery-recovery-read:{invoice.Id:N}"),
-                    new(state.ExternalReference ?? package.ExternalPackageId, order?.OrderNumber, orderGid, invoice.InvoiceNumber, unknownPermanentUrl),
+                    new(state.ExternalReference ?? package.ExternalPackageId, order?.OrderNumber, orderGid, invoice.InvoiceNumber, unknownPermanentUrl, LookupFor(order?.OrderedAt, order?.LastRemoteModifiedAt, order?.StoreFrontCode, package)),
                     cancellationToken);
                 if (!liveReadback.IsSuccess) throw JobProcessingException.FromAdapter(liveReadback.Error!);
                 if (HasExactDeliveryProof(liveReadback.Value!, invoice.InvoiceNumber, unknownPermanentUrl))
@@ -822,7 +823,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             {
                 var liveReadback = await marketplace.QueryDeliveryAsync(
                     Context(tenantId, package.ConnectionId, correlationId, $"delivery-recovery-read:{invoice.Id:N}"),
-                    new(package.ExternalPackageId, order?.OrderNumber),
+                    new(package.ExternalPackageId, order?.OrderNumber, Lookup: LookupFor(order?.OrderedAt, order?.LastRemoteModifiedAt, order?.StoreFrontCode, package)),
                     cancellationToken);
                 if (!liveReadback.IsSuccess)
                     throw JobProcessingException.FromAdapter(liveReadback.Error!);
@@ -924,7 +925,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         // not sufficient because the marketplace may have changed meanwhile.
         var beforeDelivery = await marketplace.QueryDeliveryAsync(
             Context(tenantId, package.ConnectionId, correlationId, $"delivery-precheck:{invoice.Id:N}:{package.Id:N}", IntegrationOperation.Automatic),
-            new(package.ExternalPackageId, order?.OrderNumber, ShopifyOrderGid(order?.ExternalOrderId)),
+            new(package.ExternalPackageId, order?.OrderNumber, ShopifyOrderGid(order?.ExternalOrderId), Lookup: LookupFor(order?.OrderedAt, order?.LastRemoteModifiedAt, order?.StoreFrontCode, package)),
             cancellationToken);
         if (!beforeDelivery.IsSuccess)
         {
@@ -1326,6 +1327,13 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
     private async Task<string?> LoadPermanentInvoiceUrlAsync(Guid tenantId, Guid invoiceId, CancellationToken cancellationToken) =>
         (await LoadPermanentInvoiceDocumentAsync(tenantId, invoiceId, cancellationToken))?.PermanentUrl;
 
+    // The order's date, last change and storefront and the package's last status time, for the marketplace read.
+    private static PackageLookup? LookupFor(DateTimeOffset? orderedAt, DateTimeOffset? lastModifiedAt, string? storeFrontCode, ShipmentPackage? package) =>
+        orderedAt is null ? null : new PackageLookup(package?.StatusOccurredAt, new OrderLookupHint(orderedAt, lastModifiedAt, storeFrontCode), InvoiceOnly: true);
+
+    private static ExternalInvoiceDeliveryReference WithLookup(ExternalInvoiceDeliveryReference reference, Order? order, ShipmentPackage? package) =>
+        reference with { Lookup = LookupFor(order?.OrderedAt, order?.LastRemoteModifiedAt, order?.StoreFrontCode, package) };
+
     private static string? ShopifyOrderGid(string? externalOrderId)
     {
         if (string.IsNullOrWhiteSpace(externalOrderId)) return null;
@@ -1377,7 +1385,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         if (string.IsNullOrWhiteSpace(state.ExternalReference))
             throw new JobProcessingException(JobExecutionResult.ManualReview("DELIVERY_REFERENCE_MISSING", "Gönderilmiş fatura bağlantısı için uzak referans bulunamadı."));
 
-        var order = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.OrderId).Select(x => new { x.OrderNumber, x.ExternalOrderId }).SingleOrDefaultAsync(cancellationToken);
+        var order = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.OrderId).Select(x => new { x.OrderNumber, x.ExternalOrderId, x.OrderedAt, x.LastRemoteModifiedAt, x.StoreFrontCode }).SingleOrDefaultAsync(cancellationToken);
         var permanentUrl = await LoadPermanentInvoiceUrlAsync(tenantId, invoice.Id, cancellationToken);
         if (submittedResult?.SameAttemptVerified == true
             && string.Equals(submittedResult.VerifiedInvoiceNumber, invoice.InvoiceNumber, StringComparison.Ordinal)
@@ -1391,7 +1399,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
 
         var confirmation = await marketplace.QueryDeliveryAsync(
             Context(tenantId, package.ConnectionId, correlationId, $"delivery-confirm:{state.Id:N}"),
-            new(state.ExternalReference, order?.OrderNumber, ShopifyOrderGid(order?.ExternalOrderId), invoice.InvoiceNumber, permanentUrl),
+            new(state.ExternalReference, order?.OrderNumber, ShopifyOrderGid(order?.ExternalOrderId), invoice.InvoiceNumber, permanentUrl, LookupFor(order?.OrderedAt, order?.LastRemoteModifiedAt, order?.StoreFrontCode, package)),
             cancellationToken);
         if (!confirmation.IsSuccess)
         {

@@ -288,11 +288,29 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
         return string.IsNullOrWhiteSpace(sellerId) ? null : $"orders:{uri.Host}:{sellerId}";
     }
 
+    // Trendyol's general limit (50 requests in 10 seconds) is per endpoint, so each endpoint family has its own
+    // window: a burst of stock updates no longer slows order, claim or invoice calls.
     internal static string GlobalRateBucketFor(HttpRequestMessage request)
     {
         var host = request.RequestUri?.Host ?? "unknown";
         var identity = request.Headers.UserAgent.ToString();
-        return string.IsNullOrWhiteSpace(identity) ? $"global:{host}:anonymous" : $"global:{host}:{identity}";
+        return $"global:{host}:{(string.IsNullOrWhiteSpace(identity) ? "anonymous" : identity)}:{EndpointFamily(request)}";
+    }
+
+    // The endpoint without its ids: the seller-scoped family (see CircuitFamily), or the first path segments.
+    internal static string EndpointFamily(HttpRequestMessage request)
+    {
+        var path = request.RequestUri?.AbsolutePath ?? string.Empty;
+        const string marker = "/sellers/";
+        var markerStart = path.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (markerStart >= 0)
+        {
+            var sellerStart = markerStart + marker.Length;
+            var sellerEnd = path.IndexOf('/', sellerStart);
+            if (sellerEnd < 0) sellerEnd = path.Length;
+            if (sellerEnd > sellerStart) return CircuitFamily(request, path, markerStart, sellerEnd);
+        }
+        return string.Join('/', path.Split('/', StringSplitOptions.RemoveEmptyEntries).Take(3)).ToLowerInvariant();
     }
 
     // One circuit per seller and endpoint family. Trendyol counts its quotas per service, so a 429 from
