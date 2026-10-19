@@ -1041,6 +1041,11 @@ main .rr.rr-returns .rr-tbl.rr-tbl { min-width: 1332px; }
 main .rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) { min-width: 1436px; }
 /* the longest line, "Kargo Teslimat No:" and a 16-digit number, needs 236px of text */
 main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-order { width: 264px; }
+/* with a selection column the checkbox and its gap (26px) sit inside the order cell, so the column and the table grow
+   by as much instead of the tracking number running over the cell border; the table scrolls sideways as before */
+main .rr.rr-returns .rr-tbl.rr-tbl.rr-has-select col.rr-c-order { width: 290px; }
+main .rr.rr-returns .rr-tbl.rr-tbl.rr-has-select { min-width: 1358px; }
+main .rr.rr-returns .rr-tbl.rr-tbl.rr-has-select:has(col.rr-c-buyer) { min-width: 1462px; }
 /* orders: the order facts ("Teslimat No:" and a 16-digit number) and the carrier's tracking number each stay on one line */
 main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-order { width: 268px; }
 main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-cargo { width: 144px; }
