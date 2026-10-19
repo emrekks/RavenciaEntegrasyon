@@ -757,6 +757,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         refused.PlatformCode = "PAZARAMA";
         refused.Environment = "PRODUCTION";
         refused.ApiVersion = "V1";
+        refused.ExternalStoreId = "seller-18";
         refused.Status = "DRAFT";
         refused.LastTestedAt = fixture.Now.AddHours(-2);
         refused.LastErrorCode = "PAZARAMA_CREDENTIALS_REJECTED";
