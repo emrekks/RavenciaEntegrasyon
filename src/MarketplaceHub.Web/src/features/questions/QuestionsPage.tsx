@@ -4,6 +4,7 @@ import { useRememberedTabCounts } from '../../shared/tab-counts'
 import { Link } from 'react-router'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, loadAllPages } from '../../shared/api'
+import { thumbnailUrl } from '../../shared/product-thumbnail'
 import { DataFreshnessNote } from '../../shared/data-freshness'
 import { marketplaceProductSearchUrl } from './marketplace-product-link'
 import { Button, EmptyState, LoadingState, Tabs, UiIcon } from '../../shared/components'
@@ -86,7 +87,8 @@ function formatShortDate(value?: string | null) {
 
 function displayPlatform(code: string) { return code === 'HEPSIBURADA' ? 'Hepsiburada' : code === 'N11' ? 'N11' : code === 'PAZARAMA' ? 'Pazarama' : 'Trendyol' }
 function QuestionProductImage({ src, connectionId, sku, barcode, modelCode, productName }: { src?: string | null; connectionId: string; sku?: string | null; barcode?: string | null; modelCode?: string | null; productName: string }) {
-  const sources = [...new Set([src, ...productImageFallbackUrls([barcode, sku, modelCode], connectionId, productName), ...(productName.trim() ? productImageFallbackUrls([], connectionId, productName) : [])].filter((value): value is string => Boolean(value)))]
+  // The CDN's small copy first, the original if that fails, then the panel's own product images.
+  const sources = [...new Set([src ? thumbnailUrl(src) : null, src, ...productImageFallbackUrls([barcode, sku, modelCode], connectionId, productName), ...(productName.trim() ? productImageFallbackUrls([], connectionId, productName) : [])].filter((value): value is string => Boolean(value)))]
   const sourceKey = sources.join('\u0000')
   const [sourceIndex, setSourceIndex] = useState(0)
   useEffect(() => setSourceIndex(0), [sourceKey])

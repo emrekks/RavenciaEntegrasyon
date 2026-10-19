@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
+import { thumbnailUrl } from '../../shared/product-thumbnail'
 import { createPortal } from 'react-dom'
 import { InvoiceGlyph, type InvoiceGlyphKind } from '../invoicing/invoice-state-glyph'
 import { errorText, RetryRing } from '../../shared/components/AsyncState'
@@ -259,18 +260,7 @@ export function RrError({ error, onRetry }: { error: unknown; onRetry?: () => vo
 }
 
 // Every 2:3 product image: a framed button that opens the preview, with the unit count bubble.
-// Marketplace CDNs link the full-size photo (Trendyol: about 145 KB, 1200 px). A thumbnail asks the CDN for a
-// small copy instead (Trendyol /mnresize/w/h/, about 10 KB WebP), sharp on high-density screens too.
-export function thumbnailUrl(src: string): string {
-  try {
-    const url = new URL(src)
-    if (url.hostname === 'cdn.dsmcdn.com' && !url.pathname.startsWith('/mnresize/')) {
-      url.pathname = '/mnresize/256/384' + url.pathname
-      return url.toString()
-    }
-  } catch { /* not an absolute address: used as it is */ }
-  return src
-}
+export { thumbnailUrl } from '../../shared/product-thumbnail'
 
 export function RrThumb({ src, quantity, large, small, onOpen, alt }: { src: string | null | undefined; quantity?: number; large?: boolean; small?: boolean; onOpen?: () => void; alt: string }) {
   // 0: the small CDN copy, 1: the original (when the small copy fails), 2: no picture.
