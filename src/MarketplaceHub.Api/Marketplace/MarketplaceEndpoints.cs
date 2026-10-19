@@ -346,9 +346,27 @@ public static class MarketplaceEndpoints
         if (stopwatch.Elapsed > TimeSpan.FromSeconds(4))
             http.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("MarketplaceHub.Webhooks")
                 .LogWarning("Webhook reply took {ElapsedMs} ms (connection {ConnectionPublicId}, path {EventPath}).", (long)stopwatch.Elapsed.TotalMilliseconds, connectionPublicId, eventPath ?? "/");
-        if (!result.Succeeded) return Problem(http, result.Error!);
+        if (!result.Succeeded)
+        {
+            // A refused delivery says why, with the body's outline only (its top-level names), never its content.
+            http.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("MarketplaceHub.Webhooks")
+                .LogWarning("Webhook refused with {Code} ({Status}) for connection {ConnectionPublicId}, path {EventPath}; body outline {Outline}.",
+                    result.Error!.Code, result.Error.Status, connectionPublicId, eventPath ?? "/", WebhookBodyOutline(body.Memory));
+            return Problem(http, result.Error!);
+        }
         // Hepsiburada's event paths answer 204 as its contracts show; the base address keeps its body.
         return eventPath is null ? Results.Ok(new { accepted = true }) : Results.NoContent();
+    }
+    internal static string WebhookBodyOutline(ReadOnlyMemory<byte> body)
+    {
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(body);
+            var root = document.RootElement;
+            if (root.ValueKind != System.Text.Json.JsonValueKind.Object) return $"{root.ValueKind} ({body.Length} bytes)";
+            return string.Join(',', root.EnumerateObject().Select(property => $"{property.Name}:{property.Value.ValueKind}").Take(20)) + $" ({body.Length} bytes)";
+        }
+        catch (System.Text.Json.JsonException) { return $"not JSON ({body.Length} bytes)"; }
     }
     private static TenantContext? Tenant(HttpContext http) => http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
     private static string OperationCorrelation(HttpContext http) =>
