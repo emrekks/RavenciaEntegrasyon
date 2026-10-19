@@ -173,7 +173,9 @@ public sealed partial class PazaramaHttpClient(
                 if (!response.IsSuccessStatusCode)
                 {
                     var error = Error(response.StatusCode, text, retryAfter);
-                    logger.LogWarning("Pazarama API isteği reddedildi. ConnectionId: {ConnectionId}, Path: {Path}, Status: {Status}, Code: {Code}, Message: {Message}", account.Connection.Id, request.RequestUri!.AbsolutePath, (int)response.StatusCode, error.Code, error.SafeMessage);
+                    // The answer's outline (field names or "JSON değil", its type and size, never its values) tells a gateway
+                    // or address block (an HTML page) from an API refusal when Pazarama sends no readable message.
+                    logger.LogWarning("Pazarama API isteği reddedildi. ConnectionId: {ConnectionId}, Path: {Path}, Status: {Status}, Code: {Code}, Message: {Message}, Body: {BodyShape} ({ContentType}, {BodyLength} bayt)", account.Connection.Id, request.RequestUri!.AbsolutePath, (int)response.StatusCode, error.Code, error.SafeMessage, ShapeOf(text), response.Content.Headers.ContentType?.MediaType ?? "içerik tipi yok", text.Length);
                     return AdapterResult<JsonDocument>.Failure(error, rate);
                 }
                 JsonDocument document;
