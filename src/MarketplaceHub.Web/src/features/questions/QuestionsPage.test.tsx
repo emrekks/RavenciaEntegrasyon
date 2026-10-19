@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const apiState = vi.hoisted(() => ({ calls: [] as Array<{ path: string; method: string; body?: string }>, templates: [] as Array<{ id: string; title: string; text: string; version: number; updatedAt: string }>, detail: null as any, answerFailure: false, templateId: 1, totalCount: 1 }))
+const apiState = vi.hoisted(() => ({ calls: [] as Array<{ path: string; method: string; body?: string }>, templates: [] as Array<{ id: string; title: string; text: string; version: number; updatedAt: string }>, detail: null as any, answerFailure: false, staleOnce: false, templateId: 1, totalCount: 1 }))
 
 vi.mock('../../shared/api', () => ({
   loadAllPages: vi.fn(async () => ({ items: [
@@ -42,6 +42,7 @@ vi.mock('../../shared/api', () => ({
     }
     if (path === '/questions/q-product/answer' || path === '/questions/q-order/answer') {
       if (apiState.answerFailure) throw new Error('Pazaryeri cevabı kabul etmedi.')
+      if (apiState.staleOnce) { apiState.staleOnce = false; apiState.detail = { ...apiState.detail, version: apiState.detail.version + 3 }; throw Object.assign(new Error('Soru yenilendi. Güncel kaydı açıp tekrar deneyin.'), { code: 'QUESTION_STALE', status: 412 }) }
       if (apiState.detail) apiState.detail = { ...apiState.detail, status: 'ANSWER_SUBMITTED', conversations: [...apiState.detail.conversations, { author: 'merchant', text: JSON.parse(body ?? '{}').text, createdAt: '2026-10-05T12:00:00Z' }] }
       return apiState.detail
     }
@@ -115,6 +116,7 @@ beforeEach(() => {
   apiState.templates = [{ id: 'template-1', title: 'Ölçü bilgisi', text: 'Ürün ölçülerini ürün sayfasında bulabilirsiniz.', version: 1, updatedAt: '2026-10-05T10:00:00Z' }]
   apiState.detail = createQuestion()
   apiState.answerFailure = false
+  apiState.staleOnce = false
   apiState.templateId = 2
   apiState.totalCount = 1
   container = document.createElement('div')
@@ -360,6 +362,19 @@ describe('QuestionsPage workspace flows', () => {
     act(() => button('Gönder').click())
     await settle()
     expect(container.querySelector('[role="alert"]')?.textContent).toBe('Pazaryeri cevabı kabul etmedi.')
+  })
+
+  it('sends the answer again with the current version when the question was refreshed in the background', async () => {
+    await renderPage()
+    apiState.staleOnce = true
+    const current = apiState.detail.version + 3
+    input(composer(), 'Ürün uzunluğu 65 cm. Ayrıntılar sayfada yazıyor.')
+    act(() => button('Gönder').click())
+    await settle()
+    const answers = apiState.calls.filter(call => call.path.endsWith('/answer'))
+    expect(answers).toHaveLength(2)
+    expect(JSON.parse(answers[1].body ?? '{}').version).toBe(current)
+    expect(container.querySelector('[role="alert"]')).toBeNull()
   })
 
   it('moves through every available result page and disables pagination at both ends', async () => {

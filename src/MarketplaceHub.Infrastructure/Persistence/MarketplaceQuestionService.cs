@@ -435,10 +435,21 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
             row.ProductName = remote.ProductName; row.ProductImageUrl = remote.ProductImageUrl; row.ProductSku = remote.ProductSku; row.ProductBarcode = remote.ProductBarcode; row.ProductModelCode = remote.ProductModelCode; row.ProductUrl = remote.ProductUrl ?? row.ProductUrl; row.CustomerName = remote.CustomerName; row.ExternalOrderNumber = remote.OrderNumber;
             row.HistoryJson = MergeHistory(row.HistoryJson, remote.Conversations); row.ExpiresAt = remote.ExpiresAt; row.LastRemoteModifiedAt = remote.LastModifiedAt;
             ReconcileAnswerSubmission(row, remote);
-            row.LastSyncedAt = now; row.Version++;
+            row.LastSyncedAt = now;
+            // The version moves only when the question really changed. Re-reading an unchanged question every
+            // few minutes used to move it too, so an answer typed in the meantime was refused as stale.
+            if (isNew || QuestionChanged(row)) row.Version++;
         }
         if (isNew) db.MarketplaceQuestions.Add(row);
         return isNew;
+    }
+
+    private bool QuestionChanged(MarketplaceQuestion row)
+    {
+        var entry = db.Entry(row);
+        entry.DetectChanges();
+        return entry.Properties.Any(property => property.IsModified
+            && property.Metadata.Name is not (nameof(MarketplaceQuestion.LastSyncedAt) or nameof(MarketplaceQuestion.Version)));
     }
 
     private static void ReconcileAnswerSubmission(MarketplaceQuestion row, RemoteMarketplaceQuestion remote)

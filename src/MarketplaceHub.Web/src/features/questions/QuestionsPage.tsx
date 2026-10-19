@@ -183,9 +183,22 @@ export function QuestionsPage() {
   })
   const deleteTemplate = useMutation({ mutationFn: (item: Template) => hubApi<void>(`/question-templates/${item.id}`, { method: 'DELETE', headers: { 'If-Match': `"v${item.version}"` } }), onSuccess: async () => { setNotice(''); await client.invalidateQueries({ queryKey: ['question-templates'] }) }, onError: error => setNotice(error instanceof Error ? error.message : 'Hazır cevap silinemedi.') })
   const sendAnswer = useMutation({
-    mutationFn: ({ id, version, text }: { id: string; version: number; text: string }) => hubApi<MarketplaceQuestion>(`/questions/${id}/answer`, { method: 'POST', headers: { 'X-Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ text, version }) }),
+    mutationFn: async ({ id, version, text }: { id: string; version: number; text: string }) => {
+      const post = (current: number) => hubApi<MarketplaceQuestion>(`/questions/${id}/answer`, { method: 'POST', headers: { 'X-Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ text, version: current }) })
+      try { return await post(version) }
+      catch (error) {
+        // The question was refreshed in the background since it was opened: it is read again and, while it
+        // still waits for an answer, the same text goes once more with the current version (the server checks
+        // the marketplace before sending, so the customer never gets it twice).
+        if ((error as { code?: string } | null)?.code !== 'QUESTION_STALE') throw error
+        const fresh = await hubApi<MarketplaceQuestion>(`/questions/${id}`)
+        if (fresh.status !== 'WAITING_FOR_ANSWER') throw error
+        return post(fresh.version)
+      }
+    },
     onSuccess: async (_data, variables) => { setNotice(''); setAnswerDrafts(current => ({ ...current, [variables.id]: '' })); await client.invalidateQueries({ queryKey: ['questions'] }) },
-    onError: error => setNotice(error instanceof Error ? error.message : 'Cevap gönderilemedi.'),
+    // The draft stays; the list is read again so the screen shows the question as it is now.
+    onError: async error => { setNotice(error instanceof Error ? error.message : 'Cevap gönderilemedi.'); await client.invalidateQueries({ queryKey: ['questions'] }) },
   })
 
   useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 30_000); return () => window.clearInterval(timer) }, [])
