@@ -3242,7 +3242,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 string? trackingCode = remotePackage?.CargoTrackingNumber;
                 var occurredAt = remotePackage?.OccurredAt ?? now;
 
-                if (remoteStatus == ShipmentPackageStatus.ManualReview)
+                // The order detail already read each of its packages' tracking info; a package is asked for on its
+                // own only when the detail does not list it.
+                if (remotePackage is null)
                 {
                     TrackRequest();
                     var tracking = await orderPackages.GetPackageTrackingInfoAsync(
@@ -9469,7 +9471,13 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 orderLine = await db.OrderLines.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.OrderId == order.Id && x.ExternalLineId == candidateId, cancellationToken);
                 if (orderLine is not null) break;
             }
-            if (orderLine is null) continue;
+            // A claimed line the order does not have is reported instead of dropped without a trace.
+            if (orderLine is null)
+            {
+                await RecordIssue(tenantId, $"return-line-unlinked:{connectionId}:{claim.ExternalClaimId}:{remoteLine.ExternalLineId}", "RETURN_LINE_ORDER_LINE_NOT_FOUND",
+                    $"{claim.ExternalClaimId} numaralı iadenin bir kalemi siparişteki kalemlerle eşleşmedi; iade bu kalem olmadan kaydedildi.", cancellationToken);
+                continue;
+            }
             var line = await db.ReturnLines.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ClaimId == claim.Id && x.ExternalLineId == remoteLine.ExternalLineId, cancellationToken);
             if (line is null) db.ReturnLines.Add(new ReturnLine { Id = Guid.CreateVersion7(), TenantId = tenantId, ClaimId = claim.Id, OrderLineId = orderLine.Id, ExternalLineId = remoteLine.ExternalLineId, Quantity = remoteLine.Quantity, RawStatus = remoteLine.RawStatus }); else { line.Quantity = remoteLine.Quantity; if (!string.IsNullOrWhiteSpace(remoteLine.RawStatus)) line.RawStatus = remoteLine.RawStatus; }
         }

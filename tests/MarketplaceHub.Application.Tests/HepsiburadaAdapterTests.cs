@@ -1748,8 +1748,9 @@ public sealed class HepsiburadaAdapterTests
         Assert.Equal(MarketplaceJobTypes.HepsiburadaReturnSync, MarketplaceJobTypes.ForPlatform("HEPSIBURADA", MarketplaceJobTypes.ReturnSync));
         Assert.Equal("claims/merchantId/merchant%2F17/status/awaitingpreapproval?offset=0&limit=10", HepsiburadaHttpClient.Claims(context, "awaitingpreapproval", "offset=0&limit=10"));
         Assert.Equal("claims/number/claim%2F17/preapprovalconfirm", HepsiburadaHttpClient.ConfirmClaimPreApproval(context, "claim/17"));
-        Assert.Equal("offset=20&limit=100&beginDate=2026-09-28%2012%3A15&endDate=2026-09-29%2012%3A15", HepsiburadaHttpClient.ClaimQuery(20, 101, DateTimeOffset.Parse("2026-09-28T12:15:00Z"), DateTimeOffset.Parse("2026-09-29T12:15:00Z")));
-        Assert.Equal("offset=0&limit=100&statusBeginDate=2026-09-28%2012%3A15&statusEndDate=2026-09-29%2012%3A15", HepsiburadaHttpClient.ClaimQuery(0, 100, null, null, DateTimeOffset.Parse("2026-09-28T12:15:00Z"), DateTimeOffset.Parse("2026-09-29T12:15:00Z")));
+        // Hepsiburada reads query dates as Turkey time: 12:15 UTC is sent as 15:15.
+        Assert.Equal("offset=20&limit=100&beginDate=2026-09-28%2015%3A15&endDate=2026-09-29%2015%3A15", HepsiburadaHttpClient.ClaimQuery(20, 101, DateTimeOffset.Parse("2026-09-28T12:15:00Z"), DateTimeOffset.Parse("2026-09-29T12:15:00Z")));
+        Assert.Equal("offset=0&limit=100&statusBeginDate=2026-09-28%2015%3A15&statusEndDate=2026-09-29%2015%3A15", HepsiburadaHttpClient.ClaimQuery(0, 100, null, null, DateTimeOffset.Parse("2026-09-28T12:15:00Z"), DateTimeOffset.Parse("2026-09-29T12:15:00Z")));
         Assert.Equal("api/categories/get-all-categories?leaf=true&status=ACTIVE&available=true&version=1&page=3&size=1000", HepsiburadaHttpClient.Categories(3, 1000));
         Assert.Equal("api/categories/category%2F11/attributes?version=2", HepsiburadaHttpClient.CategoryAttributes("category/11"));
         Assert.Equal("api/categories/11/attribute/color/values?version=5&page=2&size=1000", HepsiburadaHttpClient.AttributeValues("11", "color", 2, 1000));

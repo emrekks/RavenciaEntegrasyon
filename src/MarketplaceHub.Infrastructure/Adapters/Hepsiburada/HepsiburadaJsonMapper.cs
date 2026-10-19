@@ -661,9 +661,12 @@ internal static class HepsiburadaJsonMapper
         var data = Unwrap(root);
         var items = Find(data, "items", "cargoCompanies", "companies", "content");
         if (items.ValueKind == JsonValueKind.Undefined && data.ValueKind == JsonValueKind.Array) items = data;
-        if (items.ValueKind != JsonValueKind.Array) throw new JsonException("Hepsiburada değiştirilebilir kargo firması yanıtında liste yok.");
+        // A package with one possible carrier may come back as a single object instead of a list.
+        var single = items.ValueKind == JsonValueKind.Undefined && data.ValueKind == JsonValueKind.Object
+            && Text(data, "shortName", "cargoCompanyShortName", "code", "id") is not null;
+        if (items.ValueKind != JsonValueKind.Array && !single) throw new JsonException("Hepsiburada değiştirilebilir kargo firması yanıtında liste yok.");
         var companies = new List<RemoteCargoCompany>();
-        foreach (var item in items.EnumerateArray())
+        foreach (var item in single ? [data] : items.EnumerateArray().ToArray())
         {
             var shortName = Text(item, "shortName", "cargoCompanyShortName", "code", "id");
             var name = Text(item, "name", "cargoCompanyName", "displayName") ?? shortName;
@@ -1650,11 +1653,26 @@ internal static class HepsiburadaJsonMapper
         if (value.ValueKind == JsonValueKind.String && int.TryParse(value.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out number)) return number;
         return null;
     }
-    private static DateTimeOffset? Date(JsonElement element, params string[] names)
+    private static DateTimeOffset? Date(JsonElement element, params string[] names) => TurkeyDate(Text(element, names));
+
+    // Hepsiburada writes dates in Turkey time without an offset ("2026-10-19T14:19:58"): on live rows an
+    // order dated 14:19 was already stored by the panel at 11:21 UTC. A value with an offset or Z keeps it.
+    internal static readonly TimeSpan TurkeyOffset = TimeSpan.FromHours(3);
+
+    internal static DateTimeOffset? TurkeyDate(string? value)
     {
-        var value = Text(element, names);
-        return DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var date) ? date : null;
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var text = value.Trim();
+        if (System.Text.RegularExpressions.Regex.IsMatch(text, @"(Z|[+-]d{2}:?d{2})$"))
+            return DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal, out var withOffset) ? withOffset : null;
+        return DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out var local)
+            ? new DateTimeOffset(DateTime.SpecifyKind(local, DateTimeKind.Unspecified), TurkeyOffset).ToUniversalTime()
+            : null;
     }
+
+    // A query date the way Hepsiburada reads it: Turkey time, minutes.
+    internal static string QueryTime(DateTimeOffset value) =>
+        value.ToOffset(TurkeyOffset).ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
     private static JsonElement Find(JsonElement element, params string[] names) => TryFind(element, out var value, names) ? value : default;
     private static bool TryFind(JsonElement element, out JsonElement value, params string[] names)
     {

@@ -516,8 +516,8 @@ public sealed partial class HepsiburadaHttpClient(
             return Failure<AdapterPageResult<RemoteOrder>>(AdapterErrorClass.Validation, "HEPSIBURADA_ORDER_WINDOW_TOO_LARGE", "Hepsiburada sipariş endpoint'i en fazla 24 saatlik tarih aralığı kabul eder.", HttpStatusCode.BadRequest);
         var (offset, limit) = Page(page, settings.PageSize, documentedMaximum: 100);
         var query = new List<string> { $"offset={offset.ToString(CultureInfo.InvariantCulture)}", $"limit={limit.ToString(CultureInfo.InvariantCulture)}" };
-        if (window.ModifiedAfter is { } after) query.Add("begindate=" + Uri.EscapeDataString(after.UtcDateTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)));
-        if (window.ModifiedBefore is { } before) query.Add("enddate=" + Uri.EscapeDataString(before.UtcDateTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)));
+        if (window.ModifiedAfter is { } after) query.Add("begindate=" + Uri.EscapeDataString(HepsiburadaJsonMapper.QueryTime(after)));
+        if (window.ModifiedBefore is { } before) query.Add("enddate=" + Uri.EscapeDataString(HepsiburadaJsonMapper.QueryTime(before)));
         var response = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Get, Orders(account, string.Join('&', query)), cancellationToken);
         if (!response.IsSuccess) return AdapterResult<AdapterPageResult<RemoteOrder>>.Failure(response.Error!, response.RateLimit);
         try
@@ -682,8 +682,8 @@ public sealed partial class HepsiburadaHttpClient(
         var query = string.Join('&',
             $"offset={offset.ToString(CultureInfo.InvariantCulture)}",
             $"limit={limit.ToString(CultureInfo.InvariantCulture)}",
-            "begindate=" + Uri.EscapeDataString(since.UtcDateTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)),
-            "enddate=" + Uri.EscapeDataString(until.UtcDateTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)));
+            "begindate=" + Uri.EscapeDataString(HepsiburadaJsonMapper.QueryTime(since)),
+            "enddate=" + Uri.EscapeDataString(HepsiburadaJsonMapper.QueryTime(until)));
         var response = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Get, CancelledOrders(account, query), cancellationToken);
         if (!response.IsSuccess) return AdapterResult<AdapterPageResult<RemoteCancelledOrderLine>>.Failure(response.Error!, response.RateLimit);
         try
@@ -741,8 +741,8 @@ public sealed partial class HepsiburadaHttpClient(
             $"offset={offset.ToString(CultureInfo.InvariantCulture)}",
             $"limit={limit.ToString(CultureInfo.InvariantCulture)}"
         };
-        if (window.ModifiedAfter is { } after) query.Add("begindate=" + Uri.EscapeDataString(after.UtcDateTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)));
-        if (window.ModifiedBefore is { } before) query.Add("enddate=" + Uri.EscapeDataString(before.UtcDateTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)));
+        if (window.ModifiedAfter is { } after) query.Add("begindate=" + Uri.EscapeDataString(HepsiburadaJsonMapper.QueryTime(after)));
+        if (window.ModifiedBefore is { } before) query.Add("enddate=" + Uri.EscapeDataString(HepsiburadaJsonMapper.QueryTime(before)));
         return string.Join('&', query);
     }
 
@@ -981,6 +981,14 @@ public sealed partial class HepsiburadaHttpClient(
         using var content = new StringContent(body, Encoding.UTF8, "application/json");
         var path = InvoiceLink(account, invoice.PackageNumber);
         var response = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Put, path, content, cancellationToken);
+        if (!response.IsSuccess && response.Error!.HttpStatus == (int)HttpStatusCode.Conflict)
+        {
+            // 409: the package already has an invoice (another tool, or an earlier attempt of ours that landed).
+            // It is read back and handed to reconciliation instead of being recorded as a failed delivery.
+            var current = await QueryDeliveryAsync(context, new(invoice.PackageNumber, invoice.OrderNumber), cancellationToken);
+            if (current.IsSuccess && string.Equals(current.Value!.RawStatus, "INVOICED", StringComparison.Ordinal))
+                return AdapterResult<InvoiceDeliveryResult>.Failure(new(AdapterErrorClass.BusinessConflict, "HEPSIBURADA_INVOICE_ALREADY_PRESENT", "Hepsiburada paketin zaten faturalı olduğunu bildirdi; fatura eşleşmesi kontrol edilecek.", (int)HttpStatusCode.Conflict, null, response.Error.RemoteRequestId), current.RateLimit ?? response.RateLimit);
+        }
         if (!response.IsSuccess) return AdapterResult<InvoiceDeliveryResult>.Failure(response.Error!, response.RateLimit);
         var after = await QueryDeliveryAsync(context, new(invoice.PackageNumber, invoice.OrderNumber), cancellationToken);
         if (!after.IsSuccess) return AdapterResult<InvoiceDeliveryResult>.Failure(after.Error!, after.RateLimit);
@@ -1048,13 +1056,13 @@ public sealed partial class HepsiburadaHttpClient(
             $"limit={Math.Clamp(limit, 1, 100).ToString(CultureInfo.InvariantCulture)}"
         };
         if (beginDate is { } begin)
-            query.Add("beginDate=" + Uri.EscapeDataString(begin.UtcDateTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)));
+            query.Add("beginDate=" + Uri.EscapeDataString(HepsiburadaJsonMapper.QueryTime(begin)));
         if (endDate is { } end)
-            query.Add("endDate=" + Uri.EscapeDataString(end.UtcDateTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)));
+            query.Add("endDate=" + Uri.EscapeDataString(HepsiburadaJsonMapper.QueryTime(end)));
         if (statusBeginDate is { } statusBegin)
-            query.Add("statusBeginDate=" + Uri.EscapeDataString(statusBegin.UtcDateTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)));
+            query.Add("statusBeginDate=" + Uri.EscapeDataString(HepsiburadaJsonMapper.QueryTime(statusBegin)));
         if (statusEndDate is { } statusFinish)
-            query.Add("statusEndDate=" + Uri.EscapeDataString(statusFinish.UtcDateTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)));
+            query.Add("statusEndDate=" + Uri.EscapeDataString(HepsiburadaJsonMapper.QueryTime(statusFinish)));
         return string.Join('&', query);
     }
     internal static string Categories(int page, int limit) => $"api/categories/get-all-categories?leaf=true&status=ACTIVE&available=true&version=1&page={page.ToString(CultureInfo.InvariantCulture)}&size={limit.ToString(CultureInfo.InvariantCulture)}";
