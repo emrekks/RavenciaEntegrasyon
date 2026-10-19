@@ -1,11 +1,11 @@
 const platformLogoSources: Record<string, string> = {
-  N11: '/platforms/n11.png',
-  PTTAVM: '/platforms/pttavm.png',
-  PAZARAMA: '/platforms/pazarama.png',
-  TRENDYOL: '/platforms/trendyol.png',
-  TRENDYOL_EFATURAM: '/platforms/trendyol-efaturam.png',
-  HEPSIBURADA: '/platforms/hepsiburada.png',
-  SHOPIFY: '/platforms/shopify.png',
+  N11: '/platforms/n11.webp',
+  PTTAVM: '/platforms/pttavm.webp',
+  PAZARAMA: '/platforms/pazarama.webp',
+  TRENDYOL: '/platforms/trendyol.webp',
+  TRENDYOL_EFATURAM: '/platforms/trendyol-efaturam.webp',
+  HEPSIBURADA: '/platforms/hepsiburada.webp',
+  SHOPIFY: '/platforms/shopify.webp',
 }
 
 export function platformLogoSource(platformCode: string | null | undefined) {
@@ -14,12 +14,12 @@ export function platformLogoSource(platformCode: string | null | undefined) {
 }
 
 const orderPlatformLogoSources: Record<string, string> = {
-  N11: '/platforms/orders/n11.png',
-  PTTAVM: '/platforms/orders/pttavm.png',
-  PAZARAMA: '/platforms/orders/pazarama.png',
-  TRENDYOL: '/platforms/orders/trendyol.png',
-  HEPSIBURADA: '/platforms/orders/hepsiburada.png',
-  SHOPIFY: '/platforms/orders/shopify.png',
+  N11: '/platforms/orders/n11.webp',
+  PTTAVM: '/platforms/orders/pttavm.webp',
+  PAZARAMA: '/platforms/orders/pazarama.webp',
+  TRENDYOL: '/platforms/orders/trendyol.webp',
+  HEPSIBURADA: '/platforms/orders/hepsiburada.webp',
+  SHOPIFY: '/platforms/orders/shopify.webp',
 }
 
 // Order cards retain the compact artwork set; catalog and integration views

@@ -1065,7 +1065,7 @@ main .rr.rr-returns .rr-tbl.rr-tbl th .rr-hf { white-space: nowrap !important; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl th .rr-hf > .rr-anchor { top: calc(50% - 12px); transform: none; }
 /* quantity badge on product pictures: a little larger, and each count has its own colour so a multi-piece line stands
    out at a glance (1 violet, 2 blue, 3 green, 4 orange, 5 and more red) */
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-thumb .rr-qb.rr-qb { top: -7px; right: -7px; min-width: 22px; height: 22px; padding: 0 5px; color: #fff; background: #6d4fd8; border: 2px solid var(--rr-surface); border-radius: 999px; font-size: 11.5px; font-weight: 700; line-height: 1; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-thumb .rr-qb.rr-qb { top: -7px; right: -7px; display: block; box-sizing: border-box; min-width: 22px; height: 22px; padding: 0 4px; color: #fff; background: #6d4fd8; border: 2px solid var(--rr-surface); border-radius: 999px; font-size: 11.5px; font-weight: 700; line-height: 18px; text-align: center; font-variant-numeric: tabular-nums; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-thumb .rr-qb[data-q="2"] { background: #2f7fd8; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-thumb .rr-qb[data-q="3"] { background: #13906f; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-thumb .rr-qb[data-q="4"] { background: #d4660f; }

@@ -1096,6 +1096,63 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task Orders_SortByWhenTheyWereHandedToTheCarrier()
+    {
+        var tenant = NewTenant("ship-sort");
+        var connection = NewQuestionConnection(tenant);
+        var now = fixture.Now;
+        var early = NewInvoiceTestOrder(tenant.Id, connection.Id, Guid.CreateVersion7(), "ship-early", isReturnClaim: false, now);
+        var late = NewInvoiceTestOrder(tenant.Id, connection.Id, Guid.CreateVersion7(), "ship-late", isReturnClaim: false, now);
+        var never = NewInvoiceTestOrder(tenant.Id, connection.Id, Guid.CreateVersion7(), "ship-never", isReturnClaim: false, now);
+        never.DerivedStatus = "NEW";
+        OrderStatusHistory Shipped(Order order, DateTimeOffset at, string eventId) => new()
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            OrderId = order.Id,
+            CanonicalStatus = "SHIPPED",
+            RawStatus = "Shipped",
+            SourceEventId = eventId,
+            OccurredAt = at,
+            RecordedAt = at
+        };
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.Orders.AddRange(early, late, never);
+            // The first shipped status counts: a later repeat must not move the order.
+            seedDb.OrderStatusHistory.AddRange(Shipped(early, now.AddDays(-3), "early-1"), Shipped(early, now.AddHours(-1), "early-2"), Shipped(late, now.AddDays(-1), "late-1"));
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var sales = new MarketplaceSalesService(db,
+                new CursorCodec(new EphemeralDataProtectionProvider(), fixture.TimeProvider),
+                new ConfigurationBuilder().Build(), null!, null!, null!, null!, fixture.TimeProvider);
+
+            var newest = await sales.OrdersAsync(tenant.Id, 20, 1, null, new OrderListQuery(Sort: "SHIP_DESC"), CancellationToken.None);
+            Assert.Equal(["ship-late", "ship-early", "ship-never"], newest.Items.Select(order => order.OrderNumber));
+            Assert.Equal(now.AddDays(-3), newest.Items.Single(order => order.OrderNumber == "ship-early").ShippedAt);
+            Assert.Null(newest.Items.Single(order => order.OrderNumber == "ship-never").ShippedAt);
+
+            var oldest = await sales.OrdersAsync(tenant.Id, 20, 1, null, new OrderListQuery(Sort: "SHIP_ASC"), CancellationToken.None);
+            Assert.Equal(["ship-early", "ship-late", "ship-never"], oldest.Items.Select(order => order.OrderNumber));
+
+            var first = await sales.OrdersAsync(tenant.Id, 1, 1, null, new OrderListQuery(Sort: "SHIP_DESC"), CancellationToken.None);
+            var second = await sales.OrdersAsync(tenant.Id, 1, 1, first.NextCursor, new OrderListQuery(Sort: "SHIP_DESC"), CancellationToken.None);
+            var third = await sales.OrdersAsync(tenant.Id, 1, 1, second.NextCursor, new OrderListQuery(Sort: "SHIP_DESC"), CancellationToken.None);
+            Assert.Equal(["ship-late", "ship-early", "ship-never"], new[] { first, second, third }.Select(page => Assert.Single(page.Items).OrderNumber));
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
     public async Task EffectSweep_ReachesANewRecordBehindAHundredAlreadyQueued()
     {
         var tenant = NewTenant("effect-sweep");

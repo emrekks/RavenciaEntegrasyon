@@ -88,6 +88,14 @@ export function supportsSyncPolicy(platformCode: string, resourceType: string) {
   return platformCode !== 'HEPSIBURADA' || hepsiburadaReadSyncPolicies.has(resourceType)
 }
 
+// A check interval in the largest whole unit: 21600 → "6 saat", 2700 → "45 dakika", 90 → "90 saniye".
+export function syncIntervalText(seconds: number) {
+  if (seconds > 0 && seconds % 86400 === 0) return `${seconds / 86400} gün`
+  if (seconds > 0 && seconds % 3600 === 0) return `${seconds / 3600} saat`
+  if (seconds > 0 && seconds % 60 === 0) return `${seconds / 60} dakika`
+  return `${seconds} saniye`
+}
+
 export function syncPolicyIntervalChoices(intervals: Array<[number, string]>, requiresExternalWrites: boolean) {
   return intervals.filter(([seconds]) => requiresExternalWrites || seconds >= 30)
 }

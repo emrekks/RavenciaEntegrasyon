@@ -259,10 +259,26 @@ export function RrError({ error, onRetry }: { error: unknown; onRetry?: () => vo
 }
 
 // Every 2:3 product image: a framed button that opens the preview, with the unit count bubble.
+// Marketplace CDNs link the full-size photo (Trendyol: about 145 KB, 1200 px). A thumbnail asks the CDN for a
+// small copy instead (Trendyol /mnresize/w/h/, about 10 KB WebP), sharp on high-density screens too.
+export function thumbnailUrl(src: string): string {
+  try {
+    const url = new URL(src)
+    if (url.hostname === 'cdn.dsmcdn.com' && !url.pathname.startsWith('/mnresize/')) {
+      url.pathname = '/mnresize/256/384' + url.pathname
+      return url.toString()
+    }
+  } catch { /* not an absolute address: used as it is */ }
+  return src
+}
+
 export function RrThumb({ src, quantity, large, small, onOpen, alt }: { src: string | null | undefined; quantity?: number; large?: boolean; small?: boolean; onOpen?: () => void; alt: string }) {
-  const [failed, setFailed] = useState(false)
-  useEffect(() => setFailed(false), [src])
-  const content = <>{src && !failed ? <img src={src} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(true)} /> : null}{quantity ? <span className="rr-qb" data-q={Math.min(quantity, 5)} role="img" aria-label={`${quantity} adet`}>{quantity}</span> : null}</>
+  // 0: the small CDN copy, 1: the original (when the small copy fails), 2: no picture.
+  const [stage, setStage] = useState(0)
+  useEffect(() => setStage(0), [src])
+  const small0 = src ? thumbnailUrl(src) : null
+  const shown = !src || stage === 2 ? null : stage === 0 ? small0 : src
+  const content = <>{shown ? <img src={shown} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setStage(value => value === 0 && small0 !== src ? 1 : 2)} /> : null}{quantity ? <span className="rr-qb" data-q={Math.min(quantity, 5)} role="img" aria-label={`${quantity} adet`}>{quantity}</span> : null}</>
   const className = `rr-thumb${large ? ' rr-lg' : ''}${small ? ' rr-sm' : ''}`
   return onOpen ? <button type="button" className={className} onClick={event => { event.preventDefault(); event.stopPropagation(); onOpen() }} aria-label={`${alt} görselini büyüt`}>{content}</button> : <span className={className} role="img" aria-label={alt}>{content}</span>
 }

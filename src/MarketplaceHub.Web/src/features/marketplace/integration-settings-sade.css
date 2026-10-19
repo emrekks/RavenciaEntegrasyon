@@ -323,9 +323,27 @@
   .app-shell.stitch-shell main .cs-workspace .cs-nav > button { height: 46px; min-height: 46px; }
 }
 
-/* Webhook (under Veri Eşitleme): one action under the status, and the terms the confirmation window lists. */
-.instant-notifications-actions { display: flex; gap: 8px; margin-top: 12px; }
+/* Webhook (under Veri Eşitleme): the state and its one action share a strip; once on, the dates and the count sit
+   under it as facts; the confirmation window lists the terms. */
+.instant-notifications-status { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; padding: 12px 14px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 12px; }
+.instant-notifications-status > div:first-child { display: grid; gap: 2px; min-width: 0; }
+.instant-notifications-status small { color: var(--rv-color-muted); font-size: 12px; }
+.instant-notifications-status strong { display: inline-flex; align-items: center; gap: 8px; color: var(--rv-color-ink); font-size: 14px; font-weight: 600; }
+.instant-notifications-status strong > i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--rv-color-subtle); }
+.instant-notifications-status[data-state="ACTIVE"] strong > i { background: var(--rv-color-accent); box-shadow: 0 0 0 3px var(--rv-color-accent-soft); }
+.instant-notifications-status:is([data-state="PASSIVE"], [data-state="MISSING"], [data-state="UNKNOWN"], [data-state="QUIET"]) strong > i { background: var(--rv-color-warning); box-shadow: 0 0 0 3px var(--rv-color-warning-soft); }
+.instant-notifications-status[data-state="WAITING"] strong > i { background: var(--rv-color-primary); box-shadow: 0 0 0 3px var(--rv-color-primary-soft); }
+.instant-notifications-actions { display: flex; flex: none; gap: 8px; }
 .instant-notifications-actions > button { min-height: 36px; }
+.instant-notifications-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 10px 0 0; }
+.instant-notifications-facts > div { display: grid; gap: 2px; padding: 10px 12px; border: 1px solid var(--rv-color-border); border-radius: 7px; }
+.instant-notifications-facts dt { color: var(--rv-color-muted); font-size: 12px; }
+.instant-notifications-facts dd { margin: 0; color: var(--rv-color-ink); font-size: 13px; font-weight: 600; }
+.instant-notifications-message { margin: 10px 0 0; color: var(--rv-color-muted); font-size: 13px; line-height: 1.45; }
+@media (max-width: 760px) {
+  .instant-notifications-status { flex-wrap: wrap; }
+  .instant-notifications-actions, .instant-notifications-actions > button { width: 100%; }
+}
 .instant-notifications-terms { margin: 0; padding-left: 18px; display: grid; gap: 8px; line-height: 1.5; }
 .instant-notifications-terms small { color: var(--rv-color-muted); }
 

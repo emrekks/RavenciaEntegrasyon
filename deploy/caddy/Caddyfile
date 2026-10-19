@@ -35,7 +35,11 @@
     root * /srv
     @static_assets path /assets/*
     header @static_assets Cache-Control "public, max-age=31536000, immutable"
-    @application_shell not path /assets/*
+    # Logos, brand artwork and fonts keep their names across releases: cached for a day and
+    # refreshed in the background, instead of being downloaded again on every page.
+    @public_media path /platforms/* /pack/* /fonts/*
+    header @public_media Cache-Control "public, max-age=86400, stale-while-revalidate=604800"
+    @application_shell not path /assets/* /platforms/* /pack/* /fonts/*
     header @application_shell Cache-Control "no-store, no-cache, must-revalidate"
     try_files {path} /index.html
     file_server

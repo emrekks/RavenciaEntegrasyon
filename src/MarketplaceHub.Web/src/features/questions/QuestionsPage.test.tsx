@@ -165,8 +165,8 @@ describe('QuestionsPage workspace flows', () => {
     expect(lastQuestionRequest().get('status')).toBe('WAITING')
     expect(container.querySelector('[data-platform="trendyol"]')).not.toBeNull()
     expect(container.querySelector('[data-platform="hepsiburada"]')).not.toBeNull()
-    expect(container.querySelector('.rv-questions-sync-item img')?.getAttribute('src')).toBe('/platforms/trendyol.png')
-    expect(container.querySelector('[data-platform="hepsiburada"] .rv-question-platform-logo')?.getAttribute('src')).toBe('/platforms/hepsiburada.png')
+    expect(container.querySelector('.rv-questions-sync-item img')?.getAttribute('src')).toBe('/platforms/trendyol.webp')
+    expect(container.querySelector('[data-platform="hepsiburada"] .rv-question-platform-logo')?.getAttribute('src')).toBe('/platforms/hepsiburada.webp')
     expect(container.querySelector('[data-platform="trendyol"]')?.textContent).toContain('Geçmiş tamamlandı')
     expect(button('Yenile').querySelector('.ui-icon-refresh')).not.toBeNull()
     expect(apiState.calls.some(call => call.path === '/questions/sync' && JSON.parse(call.body ?? '{}').kind === 'ALL')).toBe(true)
@@ -342,11 +342,11 @@ describe('QuestionsPage workspace flows', () => {
     await renderPage()
 
     const context = container.querySelector('.rv-question-platform-context')!
-    expect(context.querySelector('img')?.getAttribute('src')).toBe('/platforms/trendyol.png')
+    expect(context.querySelector('img')?.getAttribute('src')).toBe('/platforms/trendyol.webp')
     expect(context.textContent).toContain('Trendyol')
     expect(container.querySelector('.qi-facts .qi-tag')?.textContent).toBe('Cevap Bekliyor')
     expect(container.querySelector('.qi-facts')?.textContent).toContain('Kalan Süre')
-    expect(container.querySelector('.qi-item-logo img')?.getAttribute('src')).toBe('/platforms/trendyol.png')
+    expect(container.querySelector('.qi-item-logo img')?.getAttribute('src')).toBe('/platforms/trendyol.webp')
   })
 
   it('renders the platform rejection when answer submission fails and refreshes the active question kind', async () => {

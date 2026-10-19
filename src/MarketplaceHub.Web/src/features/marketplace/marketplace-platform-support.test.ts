@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isActiveMarketplaceConnection, isMarketplacePlatformSelected, isOrderMarketplacePlatform, marketplacePlatformOptions, supportsSyncPolicy, supportsSyncPolicyManagement, syncPolicyIntervalChoices } from './marketplace-platform-support'
+import { isActiveMarketplaceConnection, isMarketplacePlatformSelected, isOrderMarketplacePlatform, marketplacePlatformOptions, supportsSyncPolicy, supportsSyncPolicyManagement, syncIntervalText, syncPolicyIntervalChoices } from './marketplace-platform-support'
 
 describe('Hepsiburada marketplace workspace support', () => {
   it('includes Hepsiburada in order platform filters', () => {
@@ -52,5 +52,14 @@ describe('Hepsiburada marketplace workspace support', () => {
 
     expect(syncPolicyIntervalChoices(intervals, false)).toEqual([[30, '30 saniye'], [60, '1 dakika']])
     expect(syncPolicyIntervalChoices(intervals, true)).toEqual(intervals)
+  })
+})
+
+describe('syncIntervalText', () => {
+  it('names an interval in its largest whole unit', () => {
+    expect(syncIntervalText(21600)).toBe('6 saat')
+    expect(syncIntervalText(259200)).toBe('3 gün')
+    expect(syncIntervalText(2700)).toBe('45 dakika')
+    expect(syncIntervalText(90)).toBe('90 saniye')
   })
 })

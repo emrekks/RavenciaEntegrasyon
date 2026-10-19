@@ -203,3 +203,11 @@
 }
 /* the unit price column keeps room for a four-digit amount with breathing space on both sides */
 @media (min-width: 761px) { main .rr.rr-orders .rr-tbl.rr-tbl col.rr-c-price { width: 90px; } }
+/* when the order was handed to the carrier, under its tracking number: a quiet label over the date */
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-cargocell small.rr-shipdate { display: grid; gap: 1px; margin-top: 2px; max-width: 100%; overflow: visible; white-space: normal; color: var(--rr-subtle); font-size: 11px; line-height: 14px; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-cargocell small.rr-shipdate b { color: var(--rr-ink); font-size: 12px; font-weight: 600; white-space: nowrap; }
+@media (max-width: 760px) {
+  /* phones: the cargo row wraps and the date takes a line of its own below the carrier and tracking number */
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-cargocell.rr-cargocell { flex-wrap: wrap; }
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-cargocell small.rr-shipdate { order: 9; flex-basis: 100%; display: flex; gap: 6px; margin-top: 0; }
+}

@@ -890,7 +890,9 @@ public sealed record OrderListView(
     IReadOnlyList<ShipmentView>? Packages = null,
     Guid? InvoiceId = null,
     string? InvoiceDocumentUrl = null,
-    IReadOnlyList<OrderInfoItem>? PlatformInfo = null);
+    IReadOnlyList<OrderInfoItem>? PlatformInfo = null,
+    // When the order first reached the carrier (its first "shipped" status); null when not seen.
+    DateTimeOffset? ShippedAt = null);
 // A label/value fact a marketplace adds to the order detail (n11 commission, tracking link, ...).
 public sealed record OrderInfoItem(string Label, string Value, string? Url = null);
 public sealed record OrderListQuery(

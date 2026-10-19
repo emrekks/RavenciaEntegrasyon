@@ -38,7 +38,24 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         {
             if (!cursors.TryDecodeOrder(after, out var cursorSort, out var cursorDueAt, out var cursorOrderedAt, out var cursorId) || cursorSort != sort)
                 throw new ArgumentException("Cursor geçersiz veya seçili sıralamayla uyuşmuyor.", nameof(after));
-            if (sort is "DUE_ASC" or "DUE_DESC")
+            if (sort is "SHIP_ASC" or "SHIP_DESC")
+            {
+                // The cursor's first date is the order's shipped time; orders never shipped come last.
+                var shipped = ShippedAtQuery(tenantId);
+                if (cursorDueAt is null)
+                    query = query.Where(x => shipped.Where(h => h.OrderId == x.Id).Min(h => (DateTimeOffset?)h.OccurredAt) == null && (sort == "SHIP_ASC"
+                        ? x.OrderedAt > cursorOrderedAt || x.OrderedAt == cursorOrderedAt && x.Id.CompareTo(cursorId) > 0
+                        : x.OrderedAt < cursorOrderedAt || x.OrderedAt == cursorOrderedAt && x.Id.CompareTo(cursorId) < 0));
+                else if (sort == "SHIP_ASC")
+                    query = query.Where(x => shipped.Where(h => h.OrderId == x.Id).Min(h => (DateTimeOffset?)h.OccurredAt) == null
+                        || shipped.Where(h => h.OrderId == x.Id).Min(h => (DateTimeOffset?)h.OccurredAt) > cursorDueAt
+                        || shipped.Where(h => h.OrderId == x.Id).Min(h => (DateTimeOffset?)h.OccurredAt) == cursorDueAt && (x.OrderedAt > cursorOrderedAt || x.OrderedAt == cursorOrderedAt && x.Id.CompareTo(cursorId) > 0));
+                else
+                    query = query.Where(x => shipped.Where(h => h.OrderId == x.Id).Min(h => (DateTimeOffset?)h.OccurredAt) == null
+                        || shipped.Where(h => h.OrderId == x.Id).Min(h => (DateTimeOffset?)h.OccurredAt) < cursorDueAt
+                        || shipped.Where(h => h.OrderId == x.Id).Min(h => (DateTimeOffset?)h.OccurredAt) == cursorDueAt && (x.OrderedAt < cursorOrderedAt || x.OrderedAt == cursorOrderedAt && x.Id.CompareTo(cursorId) < 0));
+            }
+            else if (sort is "DUE_ASC" or "DUE_DESC")
             {
                 if (cursorDueAt is null)
                     query = query.Where(x => x.ShipmentDueAt == null && (sort == "DUE_ASC"
@@ -54,8 +71,13 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                     ? query.Where(x => x.OrderedAt > cursorOrderedAt || x.OrderedAt == cursorOrderedAt && x.Id.CompareTo(cursorId) > 0)
                     : query.Where(x => x.OrderedAt < cursorOrderedAt || x.OrderedAt == cursorOrderedAt && x.Id.CompareTo(cursorId) < 0);
         }
+        var shippedHistory = ShippedAtQuery(tenantId);
         IQueryable<Order> orderedQuery = sort switch
         {
+            "SHIP_ASC" => query.OrderBy(x => shippedHistory.Where(h => h.OrderId == x.Id).Min(h => (DateTimeOffset?)h.OccurredAt) == null)
+                .ThenBy(x => shippedHistory.Where(h => h.OrderId == x.Id).Min(h => (DateTimeOffset?)h.OccurredAt)).ThenBy(x => x.OrderedAt).ThenBy(x => x.Id),
+            "SHIP_DESC" => query.OrderBy(x => shippedHistory.Where(h => h.OrderId == x.Id).Min(h => (DateTimeOffset?)h.OccurredAt) == null)
+                .ThenByDescending(x => shippedHistory.Where(h => h.OrderId == x.Id).Min(h => (DateTimeOffset?)h.OccurredAt)).ThenByDescending(x => x.OrderedAt).ThenByDescending(x => x.Id),
             "DUE_ASC" => query.OrderBy(x => x.ShipmentDueAt == null).ThenBy(x => x.ShipmentDueAt).ThenBy(x => x.OrderedAt).ThenBy(x => x.Id),
             "DUE_DESC" => query.OrderBy(x => x.ShipmentDueAt == null).ThenByDescending(x => x.ShipmentDueAt).ThenByDescending(x => x.OrderedAt).ThenByDescending(x => x.Id),
             "DATE_ASC" => query.OrderBy(x => x.OrderedAt).ThenBy(x => x.Id),
@@ -67,6 +89,9 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         var orderIds = orders.Select(x => x.Id).ToArray();
         var connectionIds = orders.Select(x => x.ConnectionId).Distinct().ToArray();
         var lines = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId)).ToListAsync(cancellationToken);
+        var shippedAtByOrder = await shippedHistory.Where(h => orderIds.Contains(h.OrderId))
+            .GroupBy(h => h.OrderId).Select(group => new { OrderId = group.Key, At = group.Min(h => h.OccurredAt) })
+            .ToDictionaryAsync(row => row.OrderId, row => row.At, cancellationToken);
         var packages = await CurrentShipmentPackages().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId)).OrderByDescending(x => x.StatusOccurredAt).ToListAsync(cancellationToken);
         var invoices = await db.Invoices.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId)
             && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))).OrderByDescending(x => x.CreatedAt).ToListAsync(cancellationToken);
@@ -187,12 +212,15 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
                 orderLines.Sum(x => OrderLinePresentationPolicy.ActiveQuantity(x.OrderedQuantity, x.CancelledQuantity)), customer.Email, customer.TaxOrIdentityNumber,
                 order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, order.GrossAmount, order.DiscountAmount,
                 lineViews, packageViews, invoice?.Id, invoiceDocumentUrl,
-                connection?.PlatformCode == "N11" ? N11OrderInfo(orderLines.Select(x => x.SourceSnapshotJson), order.CustomerSnapshotJson) : null);
+                connection?.PlatformCode == "N11" ? N11OrderInfo(orderLines.Select(x => x.SourceSnapshotJson), order.CustomerSnapshotJson) : null,
+                shippedAtByOrder.TryGetValue(order.Id, out var shippedAt) ? shippedAt : null);
         }).ToList();
         var hasMore = orders.Count > limit;
         var pageRows = rows.Take(limit).ToList();
         var last = orders.Take(limit).LastOrDefault();
-        var next = hasMore && last is not null ? cursors.EncodeOrder(sort, last.ShipmentDueAt, last.OrderedAt, last.Id) : null;
+        var next = hasMore && last is not null
+            ? cursors.EncodeOrder(sort, sort is "SHIP_ASC" or "SHIP_DESC" ? shippedAtByOrder.TryGetValue(last.Id, out var lastShippedAt) ? lastShippedAt : null : last.ShipmentDueAt, last.OrderedAt, last.Id)
+            : null;
         return new(pageRows, next, hasMore, totalCount);
     }
 
@@ -423,9 +451,15 @@ public sealed class MarketplaceSalesService(AppDbContext db, CursorCodec cursors
         _ => null
     };
 
+    // The first "shipped" status of each order: when it was handed to the carrier.
+    private IQueryable<OrderStatusHistory> ShippedAtQuery(Guid tenantId) =>
+        db.OrderStatusHistory.AsNoTracking().Where(h => h.TenantId == tenantId && h.CanonicalStatus == "SHIPPED");
+
     private static string NormalizeOrderSort(string? value) => value?.Trim().ToUpperInvariant() switch
     {
         "DATE_ASC" => "DATE_ASC",
+        "SHIP_ASC" => "SHIP_ASC",
+        "SHIP_DESC" => "SHIP_DESC",
         "DUE_ASC" => "DUE_ASC",
         "DUE_DESC" => "DUE_DESC",
         _ => "DATE_DESC"
