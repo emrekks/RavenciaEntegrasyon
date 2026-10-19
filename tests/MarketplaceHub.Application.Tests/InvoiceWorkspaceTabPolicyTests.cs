@@ -11,7 +11,8 @@ public sealed class InvoiceWorkspaceTabPolicyTests
     [InlineData("FATURA_REDDEDILDI", false, false, true)]
     [InlineData("FATURA_PLATFORMA_AKTARILMADI", false, false, true)]
     [InlineData("FATURA_BEKLIYOR", true, false, true)]
-    [InlineData("FATURA_KONTROLDE", false, false, false)]
+    [InlineData("FATURA_KONTROLDE", false, false, true)]
+    [InlineData("FATURA_KONTROLDE", false, true, false)]
     [InlineData("FATURA_KESILDI", false, false, false)]
     [InlineData("FATURA_PLATFORMA_AKTARILMADI", false, true, false)]
     [InlineData("FATURA_BEKLIYOR", true, true, false)]
@@ -29,4 +30,8 @@ public sealed class InvoiceWorkspaceTabPolicyTests
         Assert.False(InvoicingBillingService.IsWorkspaceInvoiceUninvoiced("FATURA_ISLENIYOR", canCreateInvoice: false, marketplaceInvoicePresent: false));
         Assert.True(InvoicingBillingService.IsWorkspaceInvoiceUninvoiced("FATURA_PLATFORMA_AKTARILMADI", canCreateInvoice: false, marketplaceInvoicePresent: false));
     }
+
+    [Fact]
+    public void AnInvoiceTheMarketplaceHasNotConfirmedStaysWithThoseWithoutAnInvoice() =>
+        Assert.True(InvoicingBillingService.IsWorkspaceInvoiceUninvoiced("FATURA_KONTROLDE", canCreateInvoice: false, marketplaceInvoicePresent: false));
 }

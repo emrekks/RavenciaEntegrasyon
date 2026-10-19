@@ -656,11 +656,13 @@ public sealed partial class InvoicingBillingService(
         return tabMatch && platformMatch && shipmentMatch && cargoMatch && invoiceMatch && actionMatch && dateMatch && searchMatch;
     }
 
-    // An invoice that was issued sits with the invoiced ones while it is being sent to the marketplace; only one that
-    // could not be issued or could not be delivered (with its reason shown) stays with those that have no invoice.
+    // An invoice that was issued sits with the invoiced ones while it is being sent to the marketplace; one that could
+    // not be issued or could not be delivered (its reason shown) stays with those that have no invoice. So does a
+    // "Faturası Mevcut" the marketplace has not confirmed: that label comes from the customer snapshot alone, a
+    // confirmed one carries the marketplace observation and is handled by the first condition.
     internal static bool IsWorkspaceInvoiceUninvoiced(string invoiceStatus, bool canCreateInvoice, bool marketplaceInvoicePresent = false) =>
         !marketplaceInvoicePresent && (canCreateInvoice
-            || invoiceStatus is "FATURA_REDDEDILDI" or "FATURA_PLATFORMA_AKTARILMADI");
+            || invoiceStatus is "FATURA_REDDEDILDI" or "FATURA_KONTROLDE" or "FATURA_PLATFORMA_AKTARILMADI");
 
     private static bool HasMarketplaceInvoiceObservation(WorkspaceCandidate candidate) =>
         candidate.Package.MarketplaceInvoiceStatus is MarketplaceInvoiceStatus.Invoiced or MarketplaceInvoiceStatus.Received;
