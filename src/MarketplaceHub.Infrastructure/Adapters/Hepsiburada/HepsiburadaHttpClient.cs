@@ -793,9 +793,15 @@ public sealed partial class HepsiburadaHttpClient(
                     && !string.Equals(remotePackage.Package.RawStatus, "Delivered", StringComparison.OrdinalIgnoreCase)
                 ? tracking.Status!
                 : remotePackage.Package.RawStatus;
+            // The tracking read has no event date. When it moves the package on (an Open package that is now in
+            // transit), the listed date belongs to the earlier state, so the change counts as observed now;
+            // otherwise a stored status time later than that date would make the newer state look stale.
+            var advanced = ShipmentPackageStatusPolicy.FromRemote(trackingStatus) != ShipmentPackageStatusPolicy.FromRemote(remotePackage.Package.RawStatus);
+            var observedAt = timeProvider.GetUtcNow();
             var enrichedPackage = remotePackage.Package with
             {
                 RawStatus = trackingStatus,
+                OccurredAt = advanced && observedAt > remotePackage.Package.OccurredAt ? observedAt : remotePackage.Package.OccurredAt,
                 CargoProviderExternalId = string.IsNullOrWhiteSpace(tracking.CargoCompany) ? remotePackage.Package.CargoProviderExternalId : tracking.CargoCompany,
                 CargoTrackingNumber = string.IsNullOrWhiteSpace(tracking.TrackingInfoCode) ? remotePackage.Package.CargoTrackingNumber : tracking.TrackingInfoCode
             };

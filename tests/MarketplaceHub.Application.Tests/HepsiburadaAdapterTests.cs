@@ -1241,6 +1241,36 @@ public sealed class HepsiburadaAdapterTests
         Assert.Equal("GET", request.Method);
         Assert.Equal("https://oms.example/packages/merchantid/merchant-19/packagenumber/5000031612", request.Uri.AbsoluteUri);
         Assert.Equal("Basic", request.AuthorizationScheme);
+        // The open package's date is its order date; the move to in transit is dated when it was seen.
+        Assert.True(result.Package.Package.OccurredAt > mappedPackage.Package.OccurredAt);
+    }
+
+    [Fact]
+    public async Task PackageTrackingReadKeepsTheListedDateWhenTheStatusDoesNotMove()
+    {
+        using var statusJson = JsonDocument.Parse("""{"orderNumber":"HB-2026-23","packageNumber":"5000031623","ShippedDate":"2026-09-30T12:15:00Z"}""");
+        var package = HepsiburadaJsonMapper.OrderStatusPackage(statusJson.RootElement, "shipped");
+        var handler = new CapturingHttpHandler("""[{"packageNumber":"5000031623","status":"InTransit","cargoCompany":"HepsiJet","trackingInfoCode":"tracking-23"}]""");
+        var client = CreateReadOnlyHepsiburadaClient(handler);
+        var account = new HepsiburadaRequestContext(
+            new MarketplaceHub.Domain.PlatformConnection
+            {
+                PlatformCode = "HEPSIBURADA",
+                Environment = "STAGE",
+                DisplayName = "fixture",
+                ExternalStoreId = "merchant-23",
+                Status = "ACTIVE",
+                ApiVersion = "V1.0"
+            },
+            new Uri("https://oms.example/"), new Uri("https://listing.example/"), "integrator", "fixture-key")
+        {
+            IntegratorName = "ravencia_tests/1.0"
+        };
+
+        var result = await client.ReadPackageTrackingInfoAsync(account, package, CancellationToken.None);
+
+        Assert.Equal("InTransit", result.Package.Package.RawStatus);
+        Assert.Equal(new DateTimeOffset(2026, 9, 30, 12, 15, 0, TimeSpan.Zero), result.Package.Package.OccurredAt);
     }
 
     [Fact]
