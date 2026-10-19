@@ -138,10 +138,10 @@ public static class N11ReturnMapper
         if (string.IsNullOrWhiteSpace(value)) return null;
         var text = value.Trim();
         string[] withOffset = ["yyyy-MM-ddzzz", "yyyy-MM-ddTHH:mm:sszzz"];
-        if (DateTimeOffset.TryParseExact(text, withOffset, CultureInfo.InvariantCulture, DateTimeStyles.None, out var offsetValue)) return offsetValue;
+        if (DateTimeOffset.TryParseExact(text, withOffset, CultureInfo.InvariantCulture, DateTimeStyles.None, out var offsetValue)) return offsetValue.ToUniversalTime();
         string[] turkeyTime = ["yyyy-MM-dd", "yyyy-MM-ddTHH:mm:ss", "dd/MM/yyyy", "dd/MM/yyyy HH:mm"];
         return DateTime.TryParseExact(text, turkeyTime, CultureInfo.InvariantCulture, DateTimeStyles.None, out var local)
-            ? new DateTimeOffset(DateTime.SpecifyKind(local, DateTimeKind.Unspecified), TimeSpan.FromHours(3))
+            ? new DateTimeOffset(DateTime.SpecifyKind(local, DateTimeKind.Unspecified), TimeSpan.FromHours(3)).ToUniversalTime()
             : null;
     }
 }

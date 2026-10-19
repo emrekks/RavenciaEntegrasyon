@@ -75,4 +75,16 @@ public sealed class N11QuestionTests
     {
         Assert.Equal(tokensPerSecond, N11RateLimitHandler.BucketShape(perMinute).TokensPerSecond, 6);
     }
+
+    // PostgreSQL stores only UTC instants: a Turkey-time value must come back with offset 0.
+    [Theory]
+    [InlineData("19/10/2026 14:19")]
+    [InlineData("2026-10-19T14:19:00")]
+    [InlineData("2026-10-19T14:19:00+03:00")]
+    public void N11DatesAreReturnedInUtc(string value)
+    {
+        var date = MarketplaceHub.Infrastructure.Adapters.N11.N11ReturnMapper.Date(value)!.Value;
+        Assert.Equal(TimeSpan.Zero, date.Offset);
+        Assert.Equal(new DateTimeOffset(2026, 10, 19, 11, 19, 0, TimeSpan.Zero), date);
+    }
 }
