@@ -329,9 +329,14 @@ public sealed partial class PazaramaHttpClient(
         return status switch
         {
             HttpStatusCode.Unauthorized => new(AdapterErrorClass.Authentication, "PAZARAMA_CREDENTIALS_REJECTED", "Pazarama erişimi reddetti. Pazarama satıcı panelinde Hesabım → Entegrasyon Bilgileri'ndeki güncel Client Id ve Client Secret değerlerini girin.", (int)status, null, null),
+            // A 403 that is an HTML page (seen live: 15 KB of text/html, no JSON) never reached Pazarama's API; its
+            // security gateway blocked the call, which comes and goes (one call passes, the next is blocked). The job
+            // keeps its attempt and the connection waits a quarter hour, as it does for a quota refusal.
+            HttpStatusCode.Forbidden when remote is null && LooksLikeHtml(body) => new(AdapterErrorClass.RateLimit, "PAZARAMA_GATEWAY_BLOCKED",
+                "Pazarama'nın güvenlik geçidi isteği engelledi (API yerine HTML sayfa döndü). Geçici olabilir; okumalar 15 dakika sonra yeniden denenir. Sürerse Pazarama destekten sunucu adresinin izinli listeye alınmasını isteyin.", (int)status, TimeSpan.FromMinutes(15), null),
             // 403 comes with a token Pazarama has just issued: the credentials are valid, Pazarama itself is refusing
-            // the account's API access (permission withdrawn, an address block or a fault on its side). Its own words
-            // are kept, and the connection waits instead of asking again every minute.
+            // the account's API access (permission withdrawn or a fault on its side). Its own words are kept, and the
+            // connection waits instead of asking again every minute.
             HttpStatusCode.Forbidden => new(AdapterErrorClass.Authentication, "PAZARAMA_ACCESS_DENIED", remote is null
                 ? "Pazarama bu hesabın API erişimini reddetti (403). Client Id ve Client Secret geçerli; erişimi Pazarama destek açar. Okumalar 15 dakika sonra yeniden denenir."
                 : $"Pazarama bu hesabın API erişimini reddetti (403): {remote}. Client Id ve Client Secret geçerli; erişimi Pazarama destek açar. Okumalar 15 dakika sonra yeniden denenir.", (int)status, TimeSpan.FromMinutes(15), null),
@@ -340,6 +345,12 @@ public sealed partial class PazaramaHttpClient(
             >= HttpStatusCode.InternalServerError => new(AdapterErrorClass.Remote5xx, "PAZARAMA_REMOTE_ERROR", "Pazarama servisi geçici olarak hata veriyor; işlem yeniden denenecek.", (int)status, retryAfter ?? TimeSpan.FromSeconds(30), null),
             _ => new(AdapterErrorClass.Validation, "PAZARAMA_REQUEST_REJECTED", remote is null ? "Pazarama isteği reddetti." : $"Pazarama isteği reddetti: {PazaramaErrorAdvice.WithAdvice(remote)}", (int)status, null, null)
         };
+    }
+
+    internal static bool LooksLikeHtml(string body)
+    {
+        var trimmed = body.AsSpan().TrimStart();
+        return trimmed.StartsWith("<!DOCTYPE", StringComparison.OrdinalIgnoreCase) || trimmed.StartsWith("<html", StringComparison.OrdinalIgnoreCase);
     }
 
     // A 200 answer can still say success=false; userMessage is meant for the seller.

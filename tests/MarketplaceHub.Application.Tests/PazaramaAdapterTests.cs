@@ -122,6 +122,21 @@ public sealed class PazaramaAdapterTests
     }
 
     [Fact]
+    public void AGatewayBlockPageIsNotAnAccessRefusal()
+    {
+        // Seen live: Pazarama's gateway answered 403 with a 15 KB HTML page, and the next call went through.
+        var error = PazaramaHttpClient.Error(HttpStatusCode.Forbidden, "<!DOCTYPE html><html><head><title>Access denied</title></head><body>...</body></html>", null);
+
+        Assert.Equal("PAZARAMA_GATEWAY_BLOCKED", error.Code);
+        Assert.Equal(AdapterErrorClass.RateLimit, error.Class);
+        Assert.Equal(TimeSpan.FromMinutes(15), error.RetryAfter);
+        Assert.Contains("izinli listeye", error.SafeMessage);
+        Assert.True(PazaramaHttpClient.LooksLikeHtml("  <html lang=\"en\">"));
+        Assert.False(PazaramaHttpClient.LooksLikeHtml("{\"userMessage\":\"x\"}"));
+        Assert.False(PazaramaHttpClient.LooksLikeHtml(""));
+    }
+
+    [Fact]
     public void ValidationProblemDetailsAreReadable()
     {
         Assert.Equal("StartDate zorunludur.", PazaramaHttpClient.RemoteMessage("""{"errors":{"StartDate":["StartDate zorunludur."]}}"""));
