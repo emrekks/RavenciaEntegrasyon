@@ -743,6 +743,32 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task OperationalIssueRetention_ResolvesIssuesNotSeenForAMonthAndKeepsTheRest()
+    {
+        var tenant = NewTenant("issue-retention");
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        var stale = NewIssue(tenant.Id, "stale");
+        stale.FirstSeenAt = stale.LastSeenAt = fixture.Now.AddDays(-45);
+        var fresh = NewIssue(tenant.Id, "fresh");
+        fresh.LastSeenAt = fixture.Now.AddDays(-3);
+        var alreadyResolved = NewIssue(tenant.Id, "resolved");
+        alreadyResolved.Status = IssueStatus.Resolved;
+        alreadyResolved.LastSeenAt = fixture.Now.AddDays(-60);
+        db.OperationalIssues.AddRange(stale, fresh, alreadyResolved);
+        await db.SaveChangesAsync();
+
+        var resolved = await new OperationalIssueRetentionService(db, fixture.TimeProvider).ResolveStaleAsync(TimeSpan.FromDays(30), CancellationToken.None);
+
+        Assert.Equal(1, resolved);
+        db.ChangeTracker.Clear();
+        Assert.Equal(IssueStatus.Resolved, (await db.OperationalIssues.SingleAsync(x => x.Id == stale.Id)).Status);
+        Assert.Equal(IssueStatus.Open, (await db.OperationalIssues.SingleAsync(x => x.Id == fresh.Id)).Status);
+        await transaction.RollbackAsync();
+    }
+
+    [PostgreSqlFact]
     public async Task SessionForDisabledTenant_DoesNotReceiveTenantClaims()
     {
         var tenant = NewTenant("disabled-tenant");

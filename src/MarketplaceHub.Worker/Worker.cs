@@ -68,6 +68,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         loops.Add(RunJobNotificationListenerAsync(stoppingToken));
         if (schedulerEnabled) loops.Add(RunSchedulerAsync(stoppingToken));
         if (schedulerEnabled && configuration.GetValue("Worker:JobRetention:Enabled", true)) loops.Add(RunJobRetentionAsync(stoppingToken));
+        if (schedulerEnabled && configuration.GetValue("Worker:IssueRetention:Enabled", true)) loops.Add(RunIssueRetentionAsync(stoppingToken));
         if (schedulerEnabled) loops.Add(RunWebhookUpkeepAsync(stoppingToken));
         if (schedulerEnabled) loops.Add(RunExternalEffectSweepAsync(stoppingToken));
         await Task.WhenAll(loops);
@@ -391,6 +392,33 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
                 catch (Exception exception) when (exception is not OperationCanceledException)
                 {
                     logger.LogError(exception, "Job retention pass failed");
+                }
+            }
+            while (await timer.WaitForNextTickAsync(stoppingToken));
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
+    }
+
+    // An open operational issue not seen for a month is closed daily, so the operations page shows what is
+    // happening now; a recurrence reopens the same record.
+    private async Task RunIssueRetentionAsync(CancellationToken stoppingToken)
+    {
+        var staleAfter = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("Worker:IssueRetention:StaleDays", 30), 7, 365));
+        try
+        {
+            await Task.Delay(TimeSpan.FromMinutes(15), stoppingToken);
+            using var timer = new PeriodicTimer(TimeSpan.FromHours(24));
+            do
+            {
+                try
+                {
+                    await using var scope = scopeFactory.CreateAsyncScope();
+                    var resolved = await scope.ServiceProvider.GetRequiredService<OperationalIssueRetentionService>().ResolveStaleAsync(staleAfter, stoppingToken);
+                    if (resolved > 0) logger.LogInformation("Issue retention resolved {Count} operational issue(s) not seen for {Days} days", resolved, staleAfter.TotalDays);
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    logger.LogError(exception, "Issue retention pass failed");
                 }
             }
             while (await timer.WaitForNextTickAsync(stoppingToken));

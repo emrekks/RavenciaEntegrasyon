@@ -96,6 +96,7 @@ public sealed class PazaramaAdapterTests
 
     [Theory]
     [InlineData(HttpStatusCode.Unauthorized, "PAZARAMA_CREDENTIALS_REJECTED", AdapterErrorClass.Authentication)]
+    [InlineData(HttpStatusCode.Forbidden, "PAZARAMA_ACCESS_DENIED", AdapterErrorClass.Authentication)]
     [InlineData(HttpStatusCode.TooManyRequests, "PAZARAMA_RATE_LIMITED", AdapterErrorClass.RateLimit)]
     [InlineData(HttpStatusCode.NotFound, "PAZARAMA_NOT_FOUND", AdapterErrorClass.NotFound)]
     [InlineData(HttpStatusCode.InternalServerError, "PAZARAMA_REMOTE_ERROR", AdapterErrorClass.Remote5xx)]
@@ -106,6 +107,18 @@ public sealed class PazaramaAdapterTests
 
         Assert.Equal(code, error.Code);
         Assert.Equal(@class, error.Class);
+    }
+
+    [Fact]
+    public void AccessDeniedKeepsPazaramasWordsAndWaitsFifteenMinutes()
+    {
+        // A 403 arrives with a token Pazarama has just issued, so the credentials are not the problem.
+        var error = PazaramaHttpClient.Error(HttpStatusCode.Forbidden, """{"userMessage":"Merchant API access is suspended"}""", null);
+
+        Assert.Equal("PAZARAMA_ACCESS_DENIED", error.Code);
+        Assert.Contains("Merchant API access is suspended", error.SafeMessage);
+        Assert.DoesNotContain("Client Id ve Client Secret değerlerini girin", error.SafeMessage);
+        Assert.Equal(TimeSpan.FromMinutes(15), error.RetryAfter);
     }
 
     [Fact]

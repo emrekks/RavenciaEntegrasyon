@@ -326,7 +326,13 @@ public sealed partial class PazaramaHttpClient(
         var remote = RemoteMessage(body);
         return status switch
         {
-            HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => new(AdapterErrorClass.Authentication, "PAZARAMA_CREDENTIALS_REJECTED", "Pazarama erişimi reddetti. Pazarama satıcı panelinde Hesabım → Entegrasyon Bilgileri'ndeki güncel Client Id ve Client Secret değerlerini girin.", (int)status, null, null),
+            HttpStatusCode.Unauthorized => new(AdapterErrorClass.Authentication, "PAZARAMA_CREDENTIALS_REJECTED", "Pazarama erişimi reddetti. Pazarama satıcı panelinde Hesabım → Entegrasyon Bilgileri'ndeki güncel Client Id ve Client Secret değerlerini girin.", (int)status, null, null),
+            // 403 comes with a token Pazarama has just issued: the credentials are valid, Pazarama itself is refusing
+            // the account's API access (permission withdrawn, an address block or a fault on its side). Its own words
+            // are kept, and the connection waits instead of asking again every minute.
+            HttpStatusCode.Forbidden => new(AdapterErrorClass.Authentication, "PAZARAMA_ACCESS_DENIED", remote is null
+                ? "Pazarama bu hesabın API erişimini reddetti (403). Client Id ve Client Secret geçerli; erişimi Pazarama destek açar. Okumalar 15 dakika sonra yeniden denenir."
+                : $"Pazarama bu hesabın API erişimini reddetti (403): {remote}. Client Id ve Client Secret geçerli; erişimi Pazarama destek açar. Okumalar 15 dakika sonra yeniden denenir.", (int)status, TimeSpan.FromMinutes(15), null),
             HttpStatusCode.TooManyRequests => new(AdapterErrorClass.RateLimit, "PAZARAMA_RATE_LIMITED", "Pazarama istek sınırına ulaşıldı; işlem biraz sonra yeniden denenecek.", (int)status, retryAfter ?? TimeSpan.FromSeconds(60), null),
             HttpStatusCode.NotFound => new(AdapterErrorClass.NotFound, "PAZARAMA_NOT_FOUND", remote is null ? "Pazarama istenen kaydı bulamadı." : $"Pazarama kaydı bulamadı: {remote}", (int)status, null, null),
             >= HttpStatusCode.InternalServerError => new(AdapterErrorClass.Remote5xx, "PAZARAMA_REMOTE_ERROR", "Pazarama servisi geçici olarak hata veriyor; işlem yeniden denenecek.", (int)status, retryAfter ?? TimeSpan.FromSeconds(30), null),

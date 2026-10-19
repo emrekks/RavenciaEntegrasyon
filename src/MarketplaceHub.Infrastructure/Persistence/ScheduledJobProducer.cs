@@ -61,6 +61,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             // Healthy order notifications make the order polls a slower safety net.
             if (webhookHealthy.Contains(row.Connection.Id) && WebhookPollingPolicy.StretchedIntervalSeconds(row.Policy.ResourceType) is { } stretched)
                 interval = Math.Max(interval, stretched);
+            interval = ScheduledOrderPollingCadencePolicy.ForEnvironment(interval, row.Connection.Environment);
             // Different scheduled job types can share one provider execution
             // lane (for example order sync and order reconciliation). Checking
             // the execution group keeps the queue coalesced before it reaches

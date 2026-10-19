@@ -6,6 +6,15 @@ namespace MarketplaceHub.Application.Tests;
 public sealed class ScheduledOrderPollingCadencePolicyTests
 {
     [Theory]
+    [InlineData("STAGE", 60, 600)]
+    [InlineData("stage", 180, 600)]
+    [InlineData("STAGE", 1800, 1800)]
+    [InlineData("PRODUCTION", 60, 60)]
+    [InlineData(null, 60, 60)]
+    public void ATestConnectionIsReadEveryTenMinutesAtMost(string? environment, int interval, int expected) =>
+        Assert.Equal(expected, ScheduledOrderPollingCadencePolicy.ForEnvironment(interval, environment));
+
+    [Theory]
     [InlineData("TRENDYOL", "ORDERS", 60, 5, 60, 5)]
     [InlineData("TRENDYOL", "ORDER_LIFECYCLE", 180, 10, 1800, 10)]
     [InlineData("TRENDYOL", "ORDER_CARGO_INFO", 300, 15, 1800, 15)]

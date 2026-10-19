@@ -48,6 +48,10 @@ public sealed record JobExecutionResult(
         AdapterErrorClass.TransientNetwork or AdapterErrorClass.Remote5xx =>
             Retry(error.Code, error.SafeMessage, error.RetryAfter, error.RemoteRequestId),
         AdapterErrorClass.InternalBug or AdapterErrorClass.ContractViolation => ManualReview(error.Code, error.SafeMessage, error.RemoteRequestId),
+        // Refused credentials or access do not change from one minute to the next: the connection's other jobs of
+        // the same group wait (five minutes unless the marketplace said how long) instead of each hitting the same wall.
+        AdapterErrorClass.Authentication =>
+            new(JobCompletionKind.Blocked, error.Code, Safe(error.SafeMessage), error.RetryAfter is { } wait && wait > TimeSpan.Zero ? wait : TimeSpan.FromMinutes(5), error.RemoteRequestId, BackOffConnection: true),
         _ => Blocked(error.Code, error.SafeMessage, error.RemoteRequestId)
     };
 

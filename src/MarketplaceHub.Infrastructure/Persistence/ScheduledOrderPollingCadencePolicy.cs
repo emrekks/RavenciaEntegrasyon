@@ -3,6 +3,12 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 public static class ScheduledOrderPollingCadencePolicy
 {
     public const int MaximumIntervalSeconds = 259_200;
+    // A test (stage) connection has no customers; it is read every ten minutes at most, so it neither
+    // spends the marketplace's test quota nor takes the worker lane from the production connection.
+    public const int StageMinimumIntervalSeconds = 600;
+
+    public static int ForEnvironment(int intervalSeconds, string? environment) =>
+        string.Equals(environment, "STAGE", StringComparison.OrdinalIgnoreCase) ? Math.Max(intervalSeconds, StageMinimumIntervalSeconds) : intervalSeconds;
 
     public static (int IntervalSeconds, int JitterSeconds) ForPlatform(
         string platformCode,
