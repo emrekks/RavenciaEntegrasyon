@@ -87,13 +87,13 @@ public static class MarketplaceEndpoints
             var order = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenant.TenantId && x.Id == id).Select(x => new { x.ConnectionId, x.OrderNumber, x.OrderedAt }).SingleOrDefaultAsync(http.RequestAborted);
             if (order is null) return Results.NotFound();
             var platform = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenant.TenantId && x.Id == order.ConnectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(http.RequestAborted);
-            if (platform != "PAZARAMA") return Results.Problem(title: "Finans bilgisi yalnız Pazarama siparişlerinde okunur.", statusCode: 422);
+            if (platform != "PAZARAMA") return Problem(http, new("ORDER_FINANCE_UNSUPPORTED", "Finans bilgisi yalnız Pazarama siparişlerinde okunur.", 422));
             var now = clock.GetUtcNow();
             var context = new AdapterContext(tenant.TenantId, order.ConnectionId, http.TraceIdentifier, $"order-finance:{id:N}", now.AddMinutes(1), Operation: IntegrationOperation.Manual);
             var result = await finance.GetOrderFinanceAsync(context, order.OrderNumber, order.OrderedAt.AddDays(-1), now.AddDays(1), http.RequestAborted);
             return result.IsSuccess
                 ? Results.Ok(new { readAt = now, transactions = result.Value!.Transactions, commissionInvoices = result.Value.CommissionInvoices })
-                : Results.Problem(title: result.Error!.SafeMessage, statusCode: result.Error.Class == AdapterErrorClass.Authentication ? 401 : 502, extensions: new Dictionary<string, object?> { ["code"] = result.Error.Code });
+                : Problem(http, new(result.Error!.Code, result.Error.SafeMessage, 502));
         });
         api.MapPut("/orders/{id:guid}/shopify-status", UpdateShopifyOrderStatusAsync);
         api.MapPost("/orders/{id:guid}/instant-process", async (Guid id, HttpContext http, AppDbContext db, IMarketplaceSalesService service, IMarketplaceJobProcessor marketplaceProcessor) =>
@@ -192,7 +192,7 @@ public static class MarketplaceEndpoints
         api.MapGet("/connections/{id:guid}/initial-import", async (Guid id, HttpContext http, IDataFreshnessService service) => Tenant(http) is { } tenant ? Result(await service.InitialImportAsync(tenant.TenantId, id, http.RequestAborted), Results.Ok) : Unauthorized(http));
         api.MapGet("/connections/{id:guid}/instant-notifications", async (Guid id, HttpContext http, IInstantNotificationService service) => Tenant(http) is { } tenant ? Result(await service.StatusAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted), Results.Ok) : Unauthorized(http));
         api.MapPost("/connections/{id:guid}/instant-notifications", async (Guid id, InstantNotificationCommand? command, HttpContext http, IInstantNotificationService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.EnableAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted, command?.ClientSecret), Results.Ok) : MissingContext(http));
-        api.MapDelete("/connections/{id:guid}/instant-notifications", async (Guid id, HttpContext http, IInstantNotificationService service) => Tenant(http) is { } tenant ? Result(await service.DisableAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted), Results.Ok) : Unauthorized(http));
+        api.MapDelete("/connections/{id:guid}/instant-notifications", async (Guid id, HttpContext http, IInstantNotificationService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.DisableAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted), Results.Ok) : MissingContext(http));
         // Hepsiburada sends every event kind to its own path below the base address, some with PUT.
         api.MapMethods("/hooks/{connectionPublicId:guid}/{routeToken}", ["POST", "PUT"], ReceiveWebhook).DisableAntiforgery().RequireRateLimiting("webhook");
         api.MapMethods("/hooks/{connectionPublicId:guid}/{routeToken}/{**eventPath}", ["POST", "PUT"], ReceiveWebhookEvent).DisableAntiforgery().RequireRateLimiting("webhook");
@@ -288,6 +288,7 @@ public static class MarketplaceEndpoints
     {
         const long maximumBytes = 10 * 1024 * 1024;
         if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        if (RequireIdempotency(http) is { } missingKey) return missingKey;
         if (!http.Request.HasFormContentType) return Problem(http, new("EVIDENCE_FORM_REQUIRED", "multipart/form-data body gereklidir.", 400));
         var form = await http.Request.ReadFormAsync(http.RequestAborted);
         var file = form.Files.GetFile("file");
@@ -360,9 +361,9 @@ public static class MarketplaceEndpoints
     private static bool TryIfMatch(HttpContext http, out long version, out IResult? failure) { var parsed = OptionalIfMatch(http, out failure); version = parsed ?? 0; if (failure is null && parsed is null) failure = Problem(http, new("PRECONDITION_REQUIRED", "If-Match gereklidir.", 428)); return failure is null; }
     private static long? OptionalIfMatch(HttpContext http, out IResult? failure) { failure = null; var value = http.Request.Headers.IfMatch.ToString(); if (string.IsNullOrWhiteSpace(value)) return null; if (value.Length >= 4 && value.StartsWith("\"v", StringComparison.Ordinal) && value.EndsWith('"') && long.TryParse(value[2..^1], out var version) && version > 0) return version; failure = Problem(http, new("INVALID_ETAG", "If-Match güçlü ETag biçiminde olmalıdır: \"v{version}\".", 400)); return null; }
     private static IResult WithEtag<T>(HttpContext http, ServiceResult<T> result, Func<T, long> version) { if (!result.Succeeded) return Problem(http, result.Error!); http.Response.Headers.ETag = $"\"v{version(result.Value!)}\""; return Results.Ok(result.Value); }
-    private static IResult Created<T>(ServiceResult<T> result, string collection) { if (!result.Succeeded) return Results.Json(ToProblem(result.Error!, null), statusCode: result.Error!.Status); var id = typeof(T).GetProperty("Id")?.GetValue(result.Value); return Results.Created(id is Guid guid ? $"{collection}/{guid:D}" : collection, result.Value); }
-    private static IResult Accepted(ServiceResult<Guid> result) => result.Succeeded ? Results.Accepted($"/api/v1/jobs/{result.Value:D}", new { jobId = result.Value }) : Results.Json(ToProblem(result.Error!, null), statusCode: result.Error!.Status);
-    private static IResult Result<T>(ServiceResult<T> result, Func<T, IResult> success) => result.Succeeded ? success(result.Value!) : Results.Json(ToProblem(result.Error!, null), statusCode: result.Error!.Status);
+    private static IResult Created<T>(ServiceResult<T> result, string collection) { if (!result.Succeeded) return Results.Json(ToProblem(result.Error!, null), statusCode: result.Error!.Status, contentType: "application/problem+json"); var id = typeof(T).GetProperty("Id")?.GetValue(result.Value); return Results.Created(id is Guid guid ? $"{collection}/{guid:D}" : collection, result.Value); }
+    private static IResult Accepted(ServiceResult<Guid> result) => result.Succeeded ? Results.Accepted($"/api/v1/jobs/{result.Value:D}", new { jobId = result.Value }) : Results.Json(ToProblem(result.Error!, null), statusCode: result.Error!.Status, contentType: "application/problem+json");
+    private static IResult Result<T>(ServiceResult<T> result, Func<T, IResult> success) => result.Succeeded ? success(result.Value!) : Results.Json(ToProblem(result.Error!, null), statusCode: result.Error!.Status, contentType: "application/problem+json");
     private static IResult Unauthorized(HttpContext http) => Problem(http, new("AUTHENTICATION_REQUIRED", "Aktif tenant oturumu gereklidir.", 401));
     private static IResult MissingContext(HttpContext http) => Tenant(http) is null ? Unauthorized(http) : RequireIdempotency(http) ?? Problem(http, new("REQUEST_INVALID", "İstek tamamlanamadı.", 400));
     private static IResult Problem(HttpContext http, ServiceError error) => Results.Json(ToProblem(error, http.TraceIdentifier), statusCode: error.Status, contentType: "application/problem+json");

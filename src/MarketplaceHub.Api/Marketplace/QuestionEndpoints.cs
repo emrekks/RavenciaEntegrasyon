@@ -13,7 +13,7 @@ public static class QuestionEndpoints
         api.MapGet("/questions", async (HttpContext http, IMarketplaceQuestionService service, string? kind, string? status, string? platform, Guid? connectionId, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, string? search, int? page, int? limit, string? sort) =>
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
-            return tenant is null ? Results.Unauthorized() : Results.Ok(await service.ListAsync(tenant.TenantId, new(kind ?? "ALL", status, platform, connectionId, dateFrom, dateTo, search, page ?? 1, limit ?? 50, sort ?? "NEWEST"), http.RequestAborted));
+            return tenant is null ? MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http) : Results.Ok(await service.ListAsync(tenant.TenantId, new(kind ?? "ALL", status, platform, connectionId, dateFrom, dateTo, search, page ?? 1, limit ?? 50, sort ?? "NEWEST"), http.RequestAborted));
         });
         api.MapGet("/questions/{id:guid}", async (Guid id, HttpContext http, IMarketplaceQuestionService service) =>
         {
@@ -24,10 +24,10 @@ public static class QuestionEndpoints
         api.MapPost("/questions/sync", async (QuestionSyncRequest request, HttpContext http, IMarketplaceQuestionService service) =>
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
-            if (tenant is null) return Results.Unauthorized();
-            if (!HasIdempotencyKey(http)) return Results.BadRequest(new { code = "IDEMPOTENCY_KEY_REQUIRED", title = "Idempotency-Key başlığı zorunludur." });
+            if (tenant is null) return MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http);
+            if (!HasIdempotencyKey(http)) return MarketplaceHub.Api.Security.ApiProblems.Of(http, "IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key başlığı zorunludur.", 400);
             if (!string.IsNullOrWhiteSpace(request.PlatformCode) && request.PlatformCode is not ("TRENDYOL" or "HEPSIBURADA"))
-                return Results.BadRequest(new { code = "QUESTION_SYNC_PLATFORM_INVALID", title = "Soru aktarımı için desteklenen platformu seçin." });
+                return MarketplaceHub.Api.Security.ApiProblems.Of(http, "QUESTION_SYNC_PLATFORM_INVALID", "Soru aktarımı için desteklenen platformu seçin.", 400);
             var db = http.RequestServices.GetRequiredService<AppDbContext>();
             var sales = http.RequestServices.GetRequiredService<IMarketplaceSalesService>();
             var connections = await db.PlatformConnections.AsNoTracking().Where(row => row.TenantId == tenant.TenantId
@@ -47,14 +47,14 @@ public static class QuestionEndpoints
         api.MapGet("/questions/sync-state", async (HttpContext http, IMarketplaceQuestionService service) =>
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
-            return tenant is null ? Results.Unauthorized() : Results.Ok(await service.SyncStatesAsync(tenant.TenantId, http.RequestAborted));
+            return tenant is null ? MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http) : Results.Ok(await service.SyncStatesAsync(tenant.TenantId, http.RequestAborted));
         });
         api.MapPost("/questions/{id:guid}/answer", async (Guid id, AnswerQuestionCommand command, HttpContext http, IMarketplaceQuestionService service) =>
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
-            if (tenant is null) return Results.Unauthorized();
+            if (tenant is null) return MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http);
             if (!ApiIdempotencyHeaderPolicy.TryGetKey(http.Request.Headers, out var key, out var conflictingKeys))
-                return Results.BadRequest(new { code = conflictingKeys ? "IDEMPOTENCY_KEY_CONFLICT" : "IDEMPOTENCY_KEY_REQUIRED", title = conflictingKeys ? "Idempotency-Key ile X-Idempotency-Key aynı değeri taşımalıdır." : "Idempotency-Key başlığı zorunludur." });
+                return MarketplaceHub.Api.Security.ApiProblems.Of(http, conflictingKeys ? "IDEMPOTENCY_KEY_CONFLICT" : "IDEMPOTENCY_KEY_REQUIRED", conflictingKeys ? "Idempotency-Key ile X-Idempotency-Key aynı değeri taşımalıdır." : "Idempotency-Key başlığı zorunludur.", 400);
             var result = await service.AnswerAsync(tenant.TenantId, tenant.UserId, id, command.Version, command.Text ?? "", key, http.TraceIdentifier, http.RequestAborted);
             if (!result.Succeeded) return Results.Json(new { code = result.Error!.Code, title = result.Error.Message, status = result.Error.Status }, statusCode: result.Error.Status, contentType: "application/problem+json");
             http.Response.Headers.ETag = $"\"v{result.Value!.Version}\"";
@@ -63,20 +63,20 @@ public static class QuestionEndpoints
         api.MapGet("/question-templates", async (HttpContext http, IMarketplaceQuestionService service) =>
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
-            return tenant is null ? Results.Unauthorized() : Results.Ok(await service.TemplatesAsync(tenant.TenantId, http.RequestAborted));
+            return tenant is null ? MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http) : Results.Ok(await service.TemplatesAsync(tenant.TenantId, http.RequestAborted));
         });
         api.MapPost("/question-templates", async (SaveQuestionTemplateCommand command, HttpContext http, IMarketplaceQuestionService service) =>
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
-            if (tenant is null) return Results.Unauthorized();
+            if (tenant is null) return MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http);
             var result = await service.SaveTemplateAsync(tenant.TenantId, null, null, command, http.RequestAborted);
             return result.Succeeded ? Results.Created($"/api/v1/question-templates/{result.Value!.Id:D}", result.Value) : Results.Json(new { code = result.Error!.Code, title = result.Error.Message }, statusCode: result.Error.Status);
         });
         api.MapPut("/question-templates/{id:guid}", async (Guid id, SaveQuestionTemplateCommand command, HttpContext http, IMarketplaceQuestionService service) =>
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
-            if (tenant is null) return Results.Unauthorized();
-            if (!TryVersion(http.Request.Headers.IfMatch, out var version)) return Results.BadRequest(new { code = "IF_MATCH_REQUIRED", title = "Güncelleme için geçerli If-Match sürümü zorunludur." });
+            if (tenant is null) return MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http);
+            if (!TryVersion(http.Request.Headers.IfMatch, out var version)) return MarketplaceHub.Api.Security.ApiProblems.Of(http, "IF_MATCH_REQUIRED", "Güncelleme için geçerli If-Match sürümü zorunludur.", 400);
             var result = await service.SaveTemplateAsync(tenant.TenantId, id, version, command, http.RequestAborted);
             if (!result.Succeeded) return Results.Json(new { code = result.Error!.Code, title = result.Error.Message }, statusCode: result.Error.Status);
             http.Response.Headers.ETag = $"\"v{result.Value!.Version}\"";
@@ -85,8 +85,8 @@ public static class QuestionEndpoints
         api.MapDelete("/question-templates/{id:guid}", async (Guid id, HttpContext http, IMarketplaceQuestionService service) =>
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
-            if (tenant is null) return Results.Unauthorized();
-            if (!TryVersion(http.Request.Headers.IfMatch, out var version)) return Results.BadRequest(new { code = "IF_MATCH_REQUIRED", title = "Silme için geçerli If-Match sürümü zorunludur." });
+            if (tenant is null) return MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http);
+            if (!TryVersion(http.Request.Headers.IfMatch, out var version)) return MarketplaceHub.Api.Security.ApiProblems.Of(http, "IF_MATCH_REQUIRED", "Silme için geçerli If-Match sürümü zorunludur.", 400);
             var result = await service.DeleteTemplateAsync(tenant.TenantId, id, version, http.RequestAborted);
             return result.Succeeded ? Results.NoContent() : Results.Json(new { code = result.Error!.Code, title = result.Error.Message }, statusCode: result.Error.Status);
         });

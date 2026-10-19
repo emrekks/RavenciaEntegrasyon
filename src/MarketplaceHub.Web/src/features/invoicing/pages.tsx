@@ -392,7 +392,7 @@ export function InvoicesPage() {
     refetchInterval: 30_000
   })
   const confirmDelivered = useMutation({
-    mutationFn: async (item: InvoiceWorkspace) => hubApi<{ confirmed: boolean }>(`/invoice-workspace/orders/${item.orderId}/confirm-marketplace-delivered`, { method: 'POST' }),
+    mutationFn: async (item: InvoiceWorkspace) => hubApi<{ confirmed: boolean }>(`/invoice-workspace/orders/${item.orderId}/confirm-marketplace-delivered`, { method: 'POST', headers: { 'Idempotency-Key': idempotency() } }),
     onSuccess: async (_result, item) => {
       setMessage(`#${item.orderNumber} nolu siparişin faturası pazaryerinde doğrulandı ve tamamlandı olarak işaretlendi.`, 'success')
       await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] })])
@@ -400,7 +400,7 @@ export function InvoicesPage() {
     onError: error => setMessage(error instanceof Error ? error.message : 'Fatura tamamlandı olarak işaretlenemedi.', 'error')
   })
   const replaceInvoice = useMutation({
-    mutationFn: async (item: InvoiceWorkspace) => hubApi<{ replaced: boolean }>(`/invoice-workspace/orders/${item.orderId}/replace-cancelled-invoice`, { method: 'POST' }),
+    mutationFn: async (item: InvoiceWorkspace) => hubApi<{ replaced: boolean }>(`/invoice-workspace/orders/${item.orderId}/replace-cancelled-invoice`, { method: 'POST', headers: { 'Idempotency-Key': idempotency() } }),
     onSuccess: async (_result, item) => {
       setMessage(`#${item.orderNumber} nolu siparişin eski faturası iptal olarak kapatıldı. Yeni fatura kesebilirsiniz.`, 'success')
       await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] })])
@@ -408,7 +408,7 @@ export function InvoicesPage() {
     onError: error => setMessage(error instanceof Error ? error.message : 'Eski fatura kapatılamadı.', 'error')
   })
   const noRemoteInvoice = useMutation({
-    mutationFn: async (item: InvoiceWorkspace) => hubApi<{ confirmed: boolean }>(`/invoice-workspace/orders/${item.orderId}/confirm-no-remote-invoice`, { method: 'POST' }),
+    mutationFn: async (item: InvoiceWorkspace) => hubApi<{ confirmed: boolean }>(`/invoice-workspace/orders/${item.orderId}/confirm-no-remote-invoice`, { method: 'POST', headers: { 'Idempotency-Key': idempotency() } }),
     onSuccess: async (_result, item) => {
       setMessage(`#${item.orderNumber} nolu siparişin faturası için yeniden gönderim açıldı. Faturayı tekrar oluşturabilirsiniz.`, 'success')
       await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] })])

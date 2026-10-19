@@ -128,6 +128,24 @@ public sealed class RoleAuthorizationMiddlewareTests
         Assert.True(called);
     }
 
+    [Theory]
+    [InlineData("READONLY", "/api/v1/invoices/11111111-1111-1111-1111-111111111111/documents/latest/content", false)]
+    [InlineData("ACCOUNTING", "/api/v1/invoices/11111111-1111-1111-1111-111111111111/documents/latest/content", true)]
+    [InlineData("READONLY", "/api/v1/shipments/11111111-1111-1111-1111-111111111111/documents/22222222-2222-2222-2222-222222222222/content", false)]
+    [InlineData("OPERATIONS", "/api/v1/shipments/11111111-1111-1111-1111-111111111111/documents/22222222-2222-2222-2222-222222222222/content", true)]
+    [InlineData("READONLY", "/api/v1/orders/11111111-1111-1111-1111-111111111111/finance", false)]
+    [InlineData("READONLY", "/api/v1/connections/11111111-1111-1111-1111-111111111111/instant-notifications/", false)]
+    [InlineData("ACCOUNTING", "/api/v1/returns/11111111-1111-1111-1111-111111111111/rejection-reasons", true)]
+    [InlineData("READONLY", "/api/v1/orders", true)]
+    [InlineData("READONLY", "/api/v1/files/product-media/11111111-1111-1111-1111-111111111111/content", true)]
+    [InlineData("", "/api/v1/public/invoice-documents/token/content", true)]
+    public async Task ReadsOfDocumentsAndLiveMarketplaceCallsNeedAWorkingRole(string role, string path, bool reachable)
+    {
+        var (called, _) = await Invoke(role, "GET", path);
+
+        Assert.Equal(reachable, called);
+    }
+
     [Fact]
     public async Task AdministratorRole_ReachesCredentialRoute()
     {

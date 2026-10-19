@@ -34,7 +34,13 @@ public sealed class IdempotencyMiddleware(RequestDelegate next)
             await next(context); return;
         }
 
-        if (key.Length > 256) { await next(context); return; }
+        // A key too long to store was let through unprotected; it is refused instead.
+        if (key.Length > 256)
+        {
+            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            await context.Response.WriteAsJsonAsync(new { code = "IDEMPOTENCY_KEY_INVALID", title = "Idempotency-Key en fazla 256 karakterdir.", status = 400, correlationId = context.TraceIdentifier, retryable = false }, context.RequestAborted);
+            return;
+        }
         context.Request.EnableBuffering(bufferThreshold: 64 * 1024, bufferLimit: MaximumRequestBytes);
         await using var requestBytes = new MemoryStream();
         try { await context.Request.Body.CopyToAsync(requestBytes, context.RequestAborted); }
@@ -46,7 +52,11 @@ public sealed class IdempotencyMiddleware(RequestDelegate next)
         }
         context.Request.Body.Position = 0;
         var route = context.Request.Path.Value ?? string.Empty;
-        var hashInput = Encoding.UTF8.GetBytes($"{context.Request.Method}\n{route}\n{context.Request.QueryString}\n");
+        // The version the request was made against is part of it: the same key with another If-Match is a
+        // different request, not a replay. Requests without If-Match hash exactly as before.
+        var ifMatch = context.Request.Headers.IfMatch.ToString();
+        var versionLine = string.IsNullOrEmpty(ifMatch) ? string.Empty : $"if-match:{ifMatch}\n";
+        var hashInput = Encoding.UTF8.GetBytes($"{context.Request.Method}\n{route}\n{context.Request.QueryString}\n{versionLine}");
         var combined = new byte[hashInput.Length + requestBytes.Length];
         hashInput.CopyTo(combined, 0); requestBytes.ToArray().CopyTo(combined, hashInput.Length);
         var hash = Convert.ToHexString(SHA256.HashData(combined));

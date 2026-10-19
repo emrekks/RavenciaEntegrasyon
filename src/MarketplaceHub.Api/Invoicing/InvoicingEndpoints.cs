@@ -78,18 +78,21 @@ public static class InvoicingEndpoints
         api.MapPost("/invoice-workspace/orders/{orderId:guid}/confirm-no-remote-invoice", async (Guid orderId, HttpContext http, IInvoicingBillingService service) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
+            if (RequireIdempotency(http) is { } missingKey) return missingKey;
             var result = await service.ConfirmNoRemoteInvoiceAsync(tenant.TenantId, orderId, http.TraceIdentifier, http.RequestAborted);
             return result.Succeeded ? Results.Ok(new { confirmed = true }) : Problem(http, result.Error!);
         });
         api.MapPost("/invoice-workspace/orders/{orderId:guid}/confirm-marketplace-delivered", async (Guid orderId, HttpContext http, IInvoicingBillingService service) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
+            if (RequireIdempotency(http) is { } missingKey) return missingKey;
             var result = await service.ConfirmMarketplaceDeliveredAsync(tenant.TenantId, orderId, http.TraceIdentifier, http.RequestAborted);
             return result.Succeeded ? Results.Ok(new { confirmed = true }) : Problem(http, result.Error!);
         });
         api.MapPost("/invoice-workspace/orders/{orderId:guid}/replace-cancelled-invoice", async (Guid orderId, HttpContext http, IInvoicingBillingService service) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
+            if (RequireIdempotency(http) is { } missingKey) return missingKey;
             var result = await service.ReplaceCancelledInvoiceAsync(tenant.TenantId, orderId, http.TraceIdentifier, http.RequestAborted);
             return result.Succeeded ? Results.Ok(new { replaced = true }) : Problem(http, result.Error!);
         });
@@ -601,9 +604,9 @@ public static class InvoicingEndpoints
     private static bool TryIfMatch(HttpContext http, out long version, out IResult? failure) { var parsed = OptionalIfMatch(http, out failure); version = parsed ?? 0; if (failure is null && parsed is null) failure = Problem(http, new("PRECONDITION_REQUIRED", "If-Match gereklidir.", 428)); return failure is null; }
     private static long? OptionalIfMatch(HttpContext http, out IResult? failure) { failure = null; var value = http.Request.Headers.IfMatch.ToString(); if (string.IsNullOrWhiteSpace(value)) return null; if (value.Length >= 4 && value.StartsWith("\"v", StringComparison.Ordinal) && value.EndsWith('"') && long.TryParse(value[2..^1], out var version) && version > 0) return version; failure = Problem(http, new("INVALID_ETAG", "If-Match güçlü ETag biçiminde olmalıdır: \"v{version}\".", 400)); return null; }
     private static IResult WithEtag<T>(HttpContext http, ServiceResult<T> result, Func<T, long> version) { if (!result.Succeeded) return Problem(http, result.Error!); http.Response.Headers.ETag = $"\"v{version(result.Value!)}\""; return Results.Ok(result.Value); }
-    private static IResult Created<T>(ServiceResult<T> result, string collection) { if (!result.Succeeded) return Results.Json(ToProblem(result.Error!, null), statusCode: result.Error!.Status); var id = typeof(T).GetProperty("Id")?.GetValue(result.Value); return Results.Created(id is Guid guid ? $"{collection}/{guid:D}" : collection, result.Value); }
-    private static IResult Accepted(ServiceResult<Guid> result) => result.Succeeded ? Results.Accepted($"/api/v1/jobs/{result.Value:D}", new { jobId = result.Value }) : Results.Json(ToProblem(result.Error!, null), statusCode: result.Error!.Status);
-    private static IResult Result<T>(ServiceResult<T> result, Func<T, IResult> success) => result.Succeeded ? success(result.Value!) : Results.Json(ToProblem(result.Error!, null), statusCode: result.Error!.Status);
+    private static IResult Created<T>(ServiceResult<T> result, string collection) { if (!result.Succeeded) return Results.Json(ToProblem(result.Error!, null), statusCode: result.Error!.Status, contentType: "application/problem+json"); var id = typeof(T).GetProperty("Id")?.GetValue(result.Value); return Results.Created(id is Guid guid ? $"{collection}/{guid:D}" : collection, result.Value); }
+    private static IResult Accepted(ServiceResult<Guid> result) => result.Succeeded ? Results.Accepted($"/api/v1/jobs/{result.Value:D}", new { jobId = result.Value }) : Results.Json(ToProblem(result.Error!, null), statusCode: result.Error!.Status, contentType: "application/problem+json");
+    private static IResult Result<T>(ServiceResult<T> result, Func<T, IResult> success) => result.Succeeded ? success(result.Value!) : Results.Json(ToProblem(result.Error!, null), statusCode: result.Error!.Status, contentType: "application/problem+json");
     private static IResult Stream(ServiceResult<(Stream Content, string MimeType, string FileName)> result, HttpContext http) { if (!result.Succeeded) return Problem(http, result.Error!); http.Response.Headers.CacheControl = "private, no-store"; return Results.File(result.Value.Content, result.Value.MimeType, result.Value.FileName, enableRangeProcessing: false); }
     private static IResult Unauthorized(HttpContext http) => Problem(http, new("AUTHENTICATION_REQUIRED", "Aktif tenant oturumu gereklidir.", 401));
     private static IResult MissingContext(HttpContext http) => Tenant(http) is null ? Unauthorized(http) : RequireIdempotency(http) ?? Problem(http, new("REQUEST_INVALID", "İstek tamamlanamadı.", 400));

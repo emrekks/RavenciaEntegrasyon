@@ -1084,7 +1084,7 @@ function InstantNotificationsPanel({ connectionId, connectionActive, platformCod
   const change = useMutation({
     mutationFn: (on: boolean) => hubApi<InstantNotificationStatus>(`/connections/${connectionId}/instant-notifications`, on
       ? { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, ...(shopify && clientSecret.trim() ? { body: JSON.stringify({ clientSecret: clientSecret.trim() }) } : {}) }
-      : { method: 'DELETE' }),
+      : { method: 'DELETE', headers: { 'Idempotency-Key': idempotency() } }),
     onSuccess: (next, on) => {
       client.setQueryData(['instant-notifications', connectionId], { ...next, setup: null })
       setConfirm(null)
@@ -2173,7 +2173,7 @@ function ReturnDecisionActions({ item, onNotice, onComplete, selectedLineIds: co
   async function uploadFile(file: File) {
     if (!file.size) return
     const body = new FormData(); body.set('file', file)
-    try { const asset = await hubApi<{ id: string }>('/files/return-evidence', { method: 'POST', body }); setEvidenceAssetIds(ids => ids.includes(asset.id) ? ids : [...ids, asset.id]); notifyReturn(onNotice, 'İade kanıtı güvenli depoya yüklendi.', 'success') } catch (error) { notifyReturn(onNotice, error instanceof Error ? error.message : 'Kanıt yüklenemedi.', 'error') }
+    try { const asset = await hubApi<{ id: string }>('/files/return-evidence', { method: 'POST', headers: { 'Idempotency-Key': idempotency() }, body }); setEvidenceAssetIds(ids => ids.includes(asset.id) ? ids : [...ids, asset.id]); notifyReturn(onNotice, 'İade kanıtı güvenli depoya yüklendi.', 'success') } catch (error) { notifyReturn(onNotice, error instanceof Error ? error.message : 'Kanıt yüklenemedi.', 'error') }
   }
   const decisionActions = item.allowedActions.filter(value => value === 'APPROVE' || value === 'REJECT' || value === 'PREAPPROVAL_CONFIRM')
   const decisionLabel = (value: string) => value === 'PREAPPROVAL_CONFIRM' ? 'İnceleme İçin Geri Gönder' : value === 'APPROVE' ? 'Onayla' : value === 'REJECT' ? 'Reddet' : titleTr(statusLabel(value))

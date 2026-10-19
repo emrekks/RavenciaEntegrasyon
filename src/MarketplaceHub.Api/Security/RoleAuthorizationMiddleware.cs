@@ -8,6 +8,8 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
     private static readonly HashSet<string> OperationalRoles = new(StringComparer.OrdinalIgnoreCase) { "OWNER", "ADMINISTRATOR", "OPERATIONS" };
     private static readonly HashSet<string> InvoiceRoles = new(StringComparer.OrdinalIgnoreCase) { "OWNER", "ADMINISTRATOR", "OPERATIONS", "ACCOUNTING" };
     private static readonly HashSet<string> AccountingRoles = new(StringComparer.OrdinalIgnoreCase) { "OWNER", "ADMINISTRATOR", "ACCOUNTING" };
+    // Every role that works with orders; READONLY is left out.
+    private static readonly HashSet<string> WorkingRoles = new(StringComparer.OrdinalIgnoreCase) { "OWNER", "ADMINISTRATOR", "OPERATIONS", "ACCOUNTING" };
 
     public async Task InvokeAsync(HttpContext context)
     {
@@ -17,16 +19,24 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
         if (segments.Length < 2
             || !segments[0].Equals("api", StringComparison.OrdinalIgnoreCase)
             || !segments[1].Equals("v1", StringComparison.OrdinalIgnoreCase)
-            || segments.Length > 2 && (segments[2].Equals("auth", StringComparison.OrdinalIgnoreCase) || segments[2].Equals("hooks", StringComparison.OrdinalIgnoreCase))
-            || HttpMethods.IsGet(context.Request.Method)
-            || HttpMethods.IsHead(context.Request.Method))
+            || segments.Length > 2 && (segments[2].Equals("auth", StringComparison.OrdinalIgnoreCase) || segments[2].Equals("hooks", StringComparison.OrdinalIgnoreCase) || segments[2].Equals("public", StringComparison.OrdinalIgnoreCase)))
+        {
+            await next(context);
+            return;
+        }
+
+        // Reads are open to every signed-in role, except documents (invoice PDFs, labels, error files) and
+        // reads that call a marketplace live and spend its quota.
+        var reading = HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method);
+        var required = reading ? ReadRoles(segments) : RequiredRoles(segments);
+        if (required is null)
         {
             await next(context);
             return;
         }
 
         var role = Normalize(context.User.FindFirstValue(ClaimTypes.Role));
-        var allowed = !string.IsNullOrEmpty(role) && RequiredRoles(segments).Contains(role);
+        var allowed = !string.IsNullOrEmpty(role) && required.Contains(role);
         if (allowed)
         {
             await next(context);
@@ -44,6 +54,27 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
             correlationId = context.TraceIdentifier,
             retryable = false
         }, context.RequestAborted);
+    }
+
+    // Null: any signed-in role may read it.
+    private static HashSet<string>? ReadRoles(string[] segments)
+    {
+        var area = segments.Length > 2 ? segments[2].ToLowerInvariant() : string.Empty;
+        var last = segments.Length > 3 ? segments[^1].ToLowerInvariant() : string.Empty;
+        return area switch
+        {
+            // Invoice documents (and the manual ones in the workspace) are for those who work with invoices.
+            "invoices" or "invoice-workspace" when last == "content" => InvoiceRoles,
+            // Shipping labels and documents, import error files.
+            "shipments" when last == "content" => OperationalRoles,
+            "imports" when last == "errors.csv" => OperationalRoles,
+            // Reads answered by a live marketplace call.
+            "connections" when last is "n11-shipment-templates" or "instant-notifications" or "product-matches" => WorkingRoles,
+            "orders" when last is "finance" or "product-image" => WorkingRoles,
+            "shipments" when last == "changeable-cargo-companies" => WorkingRoles,
+            "returns" when last == "rejection-reasons" => WorkingRoles,
+            _ => null
+        };
     }
 
     // segments[0..1] are "api" and "v1".
