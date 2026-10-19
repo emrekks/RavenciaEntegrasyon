@@ -139,8 +139,44 @@ public sealed partial class HepsiburadaHttpClient
             return Failure<CommonLabelDocument>(AdapterErrorClass.Validation, "HEPSIBURADA_LABEL_FORMAT_UNSUPPORTED", "Etiket biçimi ZPL, BASE64ZPL, PDF, PNG veya JPG olmalıdır.", HttpStatusCode.BadRequest);
         var response = await SendBytesAsync(account, account.OmsBaseAddress, PackageLabel(account.Connection.ExternalStoreId, cargoTrackingNumber, normalizedFormat), cancellationToken);
         if (!response.IsSuccess) return AdapterResult<CommonLabelDocument>.Failure(response.Error!, response.RateLimit);
-        if (response.Value!.Length is 0 or > 5 * 1024 * 1024) return Failure<CommonLabelDocument>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_LABEL_CONTRACT_INVALID", "Hepsiburada etiket içeriği boş veya 5 MiB sınırını aşıyor.", HttpStatusCode.BadGateway);
-        return AdapterResult<CommonLabelDocument>.Success(new(cargoTrackingNumber, normalizedFormat, response.Value), response.RateLimit);
+        var label = LabelContent(response.Value!, normalizedFormat);
+        if (label is null || label.Length is 0 or > 5 * 1024 * 1024) return Failure<CommonLabelDocument>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_LABEL_CONTRACT_INVALID", "Hepsiburada etiket içeriği boş, okunamadı veya 5 MiB sınırını aşıyor.", HttpStatusCode.BadGateway);
+        return AdapterResult<CommonLabelDocument>.Success(new(cargoTrackingNumber, normalizedFormat, label), response.RateLimit);
+    }
+
+    // The label service may answer with the file itself or with JSON {"format": ..., "data": [...]}
+    // whose entries are base64 (PDF, PNG, JPG, BASE64ZPL) or ZPL text, one per parcel. ZPL parcels are
+    // joined into one print job; for a binary format the first parcel is returned. Null when the JSON
+    // carries no usable label.
+    internal static byte[]? LabelContent(byte[] body, string format)
+    {
+        var start = Array.FindIndex(body, value => !char.IsWhiteSpace((char)value));
+        if (start < 0 || body[start] != (byte)'{') return body;
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            var root = document.RootElement;
+            JsonElement data = default;
+            foreach (var name in new[] { "data", "Data", "labels", "Labels" })
+                if (root.TryGetProperty(name, out data)) break;
+            var entries = data.ValueKind switch
+            {
+                JsonValueKind.Array => data.EnumerateArray().Where(entry => entry.ValueKind == JsonValueKind.String).Select(entry => entry.GetString()!).ToArray(),
+                JsonValueKind.String => [data.GetString()!],
+                _ => []
+            };
+            entries = entries.Where(entry => !string.IsNullOrWhiteSpace(entry)).ToArray();
+            if (entries.Length == 0) return null;
+            if (format == "BASE64ZPL") return System.Text.Encoding.ASCII.GetBytes(string.Join(string.Empty, entries));
+            if (format == "ZPL")
+                return System.Text.Encoding.UTF8.GetBytes(string.Join('\n', entries.Select(entry =>
+                    entry.TrimStart().StartsWith("^XA", StringComparison.Ordinal) ? entry : System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(entry)))));
+            return Convert.FromBase64String(entries[0]);
+        }
+        catch (Exception exception) when (exception is JsonException or FormatException)
+        {
+            return null;
+        }
     }
 
     internal static string ChangeableCargoCompanies(string merchantId, string packageNumber) =>

@@ -1287,6 +1287,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 string.Equals(localLine.MerchantSku, remoteLine.ExternalKey, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(localLine.HepsiburadaSku, remoteLine.ExternalKey, StringComparison.OrdinalIgnoreCase))))
             return JobExecutionResult.ManualReview("PRICE_INVENTORY_BATCH_CONTRACT_INVALID", "Hepsiburada fiyat-stok sonucu gönderilmeyen bir merchantSku/hbSku içeriyor.", payload.ExternalOperationId);
+        if (string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase))
+            return await RecordPazaramaPriceInventory(tenantId, connectionId, payload, offers, lineByBarcode, cancellationToken);
         var success = 0; var failed = 0;
         foreach (var line in payload.Lines)
         {
@@ -1489,6 +1491,43 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     }
 
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
+    // Pazarama takes price and stock in separate requests, so each is recorded on its own: a barcode whose
+    // stock was accepted keeps that even when its price was refused, and the next send carries only what
+    // is still due (Pazarama refuses a value it already holds).
+    private async Task<JobExecutionResult> RecordPazaramaPriceInventory(Guid tenantId, Guid connectionId, PriceInventoryJobPayload payload, IReadOnlyDictionary<Guid, ChannelOffer> offers, IReadOnlyDictionary<string, RemoteOperationLine> lineByBarcode, CancellationToken cancellationToken)
+    {
+        var parts = MarketplaceHub.Infrastructure.Adapters.Pazarama.PazaramaBatchMapper.ParseOperation(payload.ExternalOperationId);
+        var (priceCodes, stockCodes) = MarketplaceHub.Infrastructure.Adapters.Pazarama.PazaramaBatchMapper.PayloadCodes(payload.PayloadJson);
+        var priceSent = parts.Any(part => part.Kind == "p");
+        var stockSent = parts.Any(part => part.Kind == "s");
+        var priceNotSent = parts.FirstOrDefault(part => part.Kind == "p!")?.DataId;
+        var stockNotSent = parts.FirstOrDefault(part => part.Kind == "s!")?.DataId;
+        var success = 0; var failed = 0;
+        foreach (var line in payload.Lines)
+        {
+            var inPrice = priceCodes.Contains(line.Barcode);
+            var inStock = stockCodes.Contains(line.Barcode);
+            lineByBarcode.TryGetValue(line.Barcode, out var remote);
+            if (remote is null && (inPrice && priceSent || inStock && stockSent))
+                return JobExecutionResult.ManualReview("PRICE_INVENTORY_BATCH_CONTRACT_INVALID", "Fiyat-stok batch sonucu tüm barkodları içermiyor.", payload.ExternalOperationId);
+            var code = remote?.ErrorCode;
+            var priceOk = !inPrice || priceSent && code is not (MarketplaceHub.Infrastructure.Adapters.Pazarama.PazaramaBatchMapper.PriceRejected or MarketplaceHub.Infrastructure.Adapters.Pazarama.PazaramaBatchMapper.PriceAndStockRejected);
+            var stockOk = !inStock || stockSent && code is not (MarketplaceHub.Infrastructure.Adapters.Pazarama.PazaramaBatchMapper.StockRejected or MarketplaceHub.Infrastructure.Adapters.Pazarama.PazaramaBatchMapper.PriceAndStockRejected);
+            var offer = offers[line.OfferId];
+            if (priceOk) offer.LastPriceHash = line.PriceHash;
+            if (stockOk) offer.LastStockProjectionVersion = line.ProjectionVersion;
+            if (priceOk || stockOk) offer.Version++;
+            if (priceOk && stockOk) { success++; continue; }
+            failed++;
+            var issueCode = SafeCode(code ?? (!priceOk ? priceNotSent : stockNotSent)) ?? "PRICE_INVENTORY_LINE_REJECTED";
+            var what = !priceOk && !stockOk ? "fiyat ve stok" : !priceOk ? "fiyat" : "stok";
+            await RecordIssue(tenantId, $"price-inventory:{connectionId}:{line.Barcode}:{issueCode}", issueCode, $"Pazarama {what} güncellemesini almadı: {line.Barcode}{(remote?.Status is { Length: > 0 } reason && !string.Equals(reason, "FAIL", StringComparison.OrdinalIgnoreCase) ? " — " + reason : "")}.", cancellationToken);
+        }
+        await db.SaveChangesAsync(cancellationToken);
+        if (failed == 0) return JobExecutionResult.Success();
+        return success == 0 ? JobExecutionResult.Blocked("PRICE_INVENTORY_REJECTED", "Pazar yeri fiyat-stok batch içindeki tüm satırları reddetti.", payload.ExternalOperationId) : JobExecutionResult.ManualReview("PRICE_INVENTORY_PARTIAL_FAILURE", "Pazar yeri fiyat-stok batch kısmi başarısızlıkla tamamlandı.", payload.ExternalOperationId);
+    }
+
     private static bool IsAmbiguous(AdapterError error) => error.Class is AdapterErrorClass.TransientNetwork or AdapterErrorClass.Remote5xx or AdapterErrorClass.ContractViolation or AdapterErrorClass.InternalBug;
     private static bool HasItems(string payloadJson) { try { using var doc = JsonDocument.Parse(payloadJson); var root = doc.RootElement; return root.ValueKind == JsonValueKind.Array ? root.GetArrayLength() > 0 : root.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array && items.GetArrayLength() > 0; } catch (JsonException) { return false; } }
     private static string UpdatePayload(ProductUpdateJobPayload payload, string phase) => phase switch { "SUBMIT_UNAPPROVED" or "POLL_UNAPPROVED" => payload.UnapprovedPayloadJson, "SUBMIT_CONTENT" or "POLL_CONTENT" => payload.ApprovedContentPayloadJson, "SUBMIT_VARIANTS" or "POLL_VARIANTS" => payload.ApprovedVariantPayloadJson, "SUBMIT_DELIVERY" or "POLL_DELIVERY" => payload.ApprovedDeliveryPayloadJson, _ => "{}" };

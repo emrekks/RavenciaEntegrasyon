@@ -2004,6 +2004,25 @@ public sealed class HepsiburadaAdapterTests
     }
 
     [Fact]
+    public void LabelContentAcceptsTheFileItselfOrTheJsonEnvelope()
+    {
+        var raw = System.Text.Encoding.UTF8.GetBytes("^XA^FDraw^FS^XZ");
+        Assert.Same(raw, HepsiburadaHttpClient.LabelContent(raw, "ZPL"));
+
+        var zplJson = System.Text.Encoding.UTF8.GetBytes("""{"format":"ZPL","data":["^XA^FD1^FS^XZ","^XA^FD2^FS^XZ"]}""");
+        Assert.Equal("^XA^FD1^FS^XZ\n^XA^FD2^FS^XZ", System.Text.Encoding.UTF8.GetString(HepsiburadaHttpClient.LabelContent(zplJson, "ZPL")!));
+
+        var encodedZpl = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("^XA^FD3^FS^XZ"));
+        Assert.Equal("^XA^FD3^FS^XZ", System.Text.Encoding.UTF8.GetString(HepsiburadaHttpClient.LabelContent(System.Text.Encoding.UTF8.GetBytes($$"""{"data":["{{encodedZpl}}"]}"""), "ZPL")!));
+
+        var pdf = new byte[] { 0x25, 0x50, 0x44, 0x46, 0x2D };
+        Assert.Equal(pdf, HepsiburadaHttpClient.LabelContent(System.Text.Encoding.UTF8.GetBytes($$"""{"format":"PDF","data":["{{Convert.ToBase64String(pdf)}}"]}"""), "PDF"));
+
+        Assert.Null(HepsiburadaHttpClient.LabelContent(System.Text.Encoding.UTF8.GetBytes("""{"data":[]}"""), "PDF"));
+        Assert.Null(HepsiburadaHttpClient.LabelContent(System.Text.Encoding.UTF8.GetBytes("""{"data":["not base64!"]}"""), "PDF"));
+    }
+
+    [Fact]
     public void OrderDetailInvoiceStatusIsReadPerPackageFromTheLineItems()
     {
         using var json = JsonDocument.Parse("""

@@ -231,6 +231,42 @@ public sealed class PazaramaPriceInventoryTests
     }
 
     [Fact]
+    public void A_part_that_was_not_accepted_does_not_hold_the_other_back()
+    {
+        var parts = PazaramaBatchMapper.ParseOperation("s:bbb:2|p!:PAZARAMA_VALIDATION_FAILED:2");
+        Assert.Equal([("s", true), ("p", false)], parts.Select(x => (x.Family, x.Sent)));
+
+        var status = PazaramaBatchMapper.Merge("op", [
+            (parts[0], [new PazaramaBatchMapper.BatchItem("B1", PazaramaBatchMapper.BatchState.Succeeded, null), new PazaramaBatchMapper.BatchItem("B2", PazaramaBatchMapper.BatchState.Failed, "Stok geçersiz")]),
+            (parts[1], [])]);
+
+        Assert.Equal("COMPLETED", status.Status);
+        Assert.True(status.Lines.Single(x => x.ExternalKey == "B1").Succeeded);
+        Assert.Equal(PazaramaBatchMapper.StockRejected, status.Lines.Single(x => x.ExternalKey == "B2").ErrorCode);
+    }
+
+    [Fact]
+    public void A_barcode_refused_for_both_says_so()
+    {
+        var status = PazaramaBatchMapper.Merge("op", [
+            Part("p", 1, ("B1", PazaramaBatchMapper.BatchState.Failed)),
+            Part("s", 1, ("B1", PazaramaBatchMapper.BatchState.Failed))]);
+
+        Assert.Equal(PazaramaBatchMapper.PriceAndStockRejected, Assert.Single(status.Lines).ErrorCode);
+    }
+
+    [Fact]
+    public void Payload_codes_list_which_barcodes_carry_a_price_and_which_a_stock()
+    {
+        var (price, stock) = PazaramaBatchMapper.PayloadCodes("""{"price":[{"code":"B1","listPrice":10,"salePrice":9}],"stock":[{"code":"B1","stockCount":3},{"code":"B2","stockCount":0}]}""");
+
+        Assert.Equal(["B1"], price);
+        Assert.Equal(["B1", "B2"], stock.Order());
+        Assert.Equal("PAZARAMAX1", PazaramaBatchMapper.MarkerCode("PAZARAMA:X|1"));
+        Assert.Equal("PAZARAMA_REQUEST_REJECTED", PazaramaBatchMapper.MarkerCode(":|"));
+    }
+
+    [Fact]
     public void Fully_successful_operation_reports_every_barcode_as_done()
     {
         var status = PazaramaBatchMapper.Merge("op", [
