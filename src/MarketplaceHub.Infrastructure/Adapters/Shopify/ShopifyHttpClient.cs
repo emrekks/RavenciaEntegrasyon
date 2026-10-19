@@ -498,8 +498,8 @@ public sealed partial class ShopifyHttpClient(
                     results.Add(new(barcode, false, null, "SHOPIFY_INVENTORY_LOCATION_AMBIGUOUS", false, "REJECTED"));
                     continue;
                 }
-                var available = activeLevels[0].GetProperty("quantities").GetProperty("quantity");
-                if (!available.TryGetInt32(out var compareQuantity))
+                // quantities is a list of {name, quantity}, one per requested name.
+                if (AvailableQuantity(activeLevels[0]) is not { } compareQuantity)
                 {
                     results.Add(new(barcode, false, null, "SHOPIFY_INVENTORY_QUANTITY_MISSING", false, "REJECTED"));
                     continue;
@@ -855,6 +855,16 @@ public sealed partial class ShopifyHttpClient(
         && await CanWriteAsync(shop, context, capabilityTwo, cancellationToken);
 
     private static AdapterResult<T> WriteClosed<T>() => Fail<T>(AdapterErrorClass.NotSupported, "SHOPIFY_EXTERNAL_WRITE_CLOSED", "Shopify dış yazması kapalı, bağlantı etkin değil veya gerekli API izni doğrulanmadı.", HttpStatusCode.Forbidden);
+
+    // The level's "available" quantity from its quantities list; null when Shopify did not return it.
+    internal static int? AvailableQuantity(JsonElement level) =>
+        level.TryGetProperty("quantities", out var quantities) && quantities.ValueKind == JsonValueKind.Array
+            ? quantities.EnumerateArray()
+                .Where(entry => entry.ValueKind == JsonValueKind.Object
+                    && (!entry.TryGetProperty("name", out var name) || name.ValueKind != JsonValueKind.String || name.GetString() == "available"))
+                .Select(entry => entry.TryGetProperty("quantity", out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var amount) ? amount : (int?)null)
+                .FirstOrDefault(amount => amount is not null)
+            : null;
 
     private static bool HasUserErrors(JsonElement payload, out string? message)
     {

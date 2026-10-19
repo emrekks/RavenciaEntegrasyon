@@ -25,7 +25,7 @@ public sealed class N11AdapterTests
         var end = DateTimeOffset.FromUnixTimeMilliseconds(1_725_310_828_346);
 
         Assert.Equal("ms/product-query?page=0&size=1", N11HttpClient.ProductQuery(0, 1));
-        Assert.Equal("rest/delivery/v1/shipmentPackages?startDate=1724274054460&endDate=1725310828346&page=2&size=100&orderByDirection=DESC", N11HttpClient.ShipmentPackages(start, end, 2, 100));
+        Assert.Equal("rest/delivery/v1/shipmentPackages?startDate=1724274054460&endDate=1725310828346&page=2&size=100&orderByDirection=DESC&sender=ALL", N11HttpClient.ShipmentPackages(start, end, 2, 100));
     }
 
     [Fact]

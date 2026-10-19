@@ -167,7 +167,7 @@ public sealed class N11OrderMapperTests
         var start = DateTimeOffset.FromUnixTimeMilliseconds(1000);
         var end = DateTimeOffset.FromUnixTimeMilliseconds(2000);
 
-        Assert.Equal("rest/delivery/v1/shipmentPackages?startDate=1000&endDate=2000&page=0&size=100&orderByField=true&orderByDirection=ASC", N11HttpClient.ModifiedShipmentPackages(start, end, 0, 100));
-        Assert.Equal("rest/delivery/v1/shipmentPackages?orderNumber=203%2F1&page=0&size=100", N11HttpClient.OrderNumberPackages("203/1"));
+        Assert.Equal("rest/delivery/v1/shipmentPackages?startDate=1000&endDate=2000&page=0&size=100&orderByField=true&orderByDirection=ASC&sender=ALL", N11HttpClient.ModifiedShipmentPackages(start, end, 0, 100));
+        Assert.Equal("rest/delivery/v1/shipmentPackages?orderNumber=203%2F1&page=0&size=100&sender=ALL", N11HttpClient.OrderNumberPackages("203/1"));
     }
 }

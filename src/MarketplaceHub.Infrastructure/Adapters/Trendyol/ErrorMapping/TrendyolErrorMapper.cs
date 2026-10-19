@@ -8,9 +8,13 @@ internal static class TrendyolErrorMapper
 {
     public static AdapterError FromStatus(HttpStatusCode status, TimeSpan? retryAfter, string? remoteRequestId, string? vendorCode = null)
     {
-        var vendorReason = CargoProviderReason(vendorCode);
-        if (vendorReason is not null)
-            return new(AdapterErrorClass.Validation, vendorReason.Value.Code, vendorReason.Value.Message, (int)status, vendorReason.Value.RetryAfter, remoteRequestId);
+        // A vendor code decides the outcome only for a rejected request (4xx) and only when it is one of the
+        // documented cargo change codes. The local circuit breaker's 503 and coded 5xx answers stay retryable,
+        // and an unknown code on a 4xx keeps the class its HTTP status gives.
+        var code = (int)status;
+        if (code is >= 400 and < 500 && status is not (HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+            && CargoProviderReason(vendorCode) is { } vendorReason)
+            return new(AdapterErrorClass.Validation, vendorReason.Code, vendorReason.Message, code, vendorReason.RetryAfter, remoteRequestId);
 
         return status switch
         {
@@ -18,7 +22,8 @@ internal static class TrendyolErrorMapper
             HttpStatusCode.TooManyRequests => new(AdapterErrorClass.RateLimit, "REMOTE_RATE_LIMITED", "Platform hız sınırı yanıtı verdi.", 429, retryAfter, remoteRequestId),
             HttpStatusCode.NotFound => new(AdapterErrorClass.NotFound, "REMOTE_RESOURCE_NOT_FOUND", "Platform kaynağı bulunamadı.", 404, null, remoteRequestId),
             >= HttpStatusCode.InternalServerError => new(AdapterErrorClass.Remote5xx, "REMOTE_SERVER_ERROR", "Platform geçici sunucu hatası verdi.", (int)status, retryAfter, remoteRequestId),
-            _ => new(AdapterErrorClass.Validation, "REMOTE_REQUEST_REJECTED", "Trendyol isteği reddetti. Paket veya seçilen kargo firması değişikliğe uygun olmayabilir; paneldeki mevcut bilgi korundu.", (int)status, null, remoteRequestId)
+            HttpStatusCode.RequestTimeout => new(AdapterErrorClass.TransientNetwork, "REMOTE_TIMEOUT", "Platform isteği zaman aşımına uğradı.", 408, retryAfter, remoteRequestId),
+            _ => new(AdapterErrorClass.Validation, "REMOTE_REQUEST_REJECTED", "Trendyol isteği reddetti; paneldeki mevcut bilgi korundu.", (int)status, null, remoteRequestId)
         };
     }
 
@@ -35,7 +40,7 @@ internal static class TrendyolErrorMapper
             "CPE006" => ("CARGO_PROVIDER_CHANGE_REJECTED", "Trendyol bu paket için kargo firması değişikliğine izin vermedi. Paket veya teslimat koşulları değişikliğe uygun olmayabilir. Paneldeki mevcut kargo firması korundu.", null),
             "CPE007" => ("CARGO_PROVIDER_CHANGE_REJECTED", "Bu sipariş seçilen kargo firmasıyla teslimata uygun değil. Paneldeki mevcut kargo firması korundu.", null),
             "RTE003" => ("CARGO_PROVIDER_CHANGE_COOLDOWN", "Trendyol bu paket için son 5 dakika içinde kargo firması değişikliği aldı. 5 dakika dolunca tekrar deneyin.", TimeSpan.FromMinutes(5)),
-            _ => ("REMOTE_REQUEST_REJECTED", "Trendyol kargo firması değişikliğini reddetti. Paket değişikliğe uygun olmayabilir. Paneldeki mevcut kargo firması korundu.", null)
+            _ => null
         };
     }
 

@@ -217,6 +217,27 @@ public sealed class TrendyolResilienceHandlerTests
     }
 
     [Fact]
+    public async Task OrderQuota429_DoesNotStopTheSellersStockAndInvoiceRequests()
+    {
+        var options = Options.Create(new TrendyolOptions { MaxConcurrency = 1, RequestsPerInterval = 100, RequestInterval = TimeSpan.FromMilliseconds(1), OrderRequestsPerInterval = 100, OrderRequestInterval = TimeSpan.FromMilliseconds(1), OrderRequestMinimumInterval = TimeSpan.Zero, OrderStreamStartMinimumInterval = TimeSpan.Zero, CircuitFailureThreshold = 5 });
+        var state = new TrendyolResilienceState(options);
+        using var downstream = new RetryAfterHandler(TimeSpan.FromSeconds(30));
+        using var resilience = new TrendyolResilienceHandler(options, TimeProvider.System, state) { InnerHandler = downstream };
+        using var client = new HttpClient(resilience);
+
+        using var orders = await client.GetAsync("https://unit.test/integration/order/sellers/seller-1/orders/stream");
+        using var ordersAgain = await client.GetAsync("https://unit.test/integration/order/sellers/seller-1/v2/orders");
+        using var stock = await client.PostAsync("https://unit.test/integration/inventory/sellers/seller-1/products/price-and-inventory", new StringContent("{}"));
+        using var invoice = await client.PostAsync("https://unit.test/integration/sellers/seller-1/seller-invoice-links", new StringContent("{}"));
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, orders.StatusCode);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, ordersAgain.StatusCode);
+        Assert.Equal(HttpStatusCode.TooManyRequests, stock.StatusCode);
+        Assert.Equal(HttpStatusCode.TooManyRequests, invoice.StatusCode);
+        Assert.Equal(3, downstream.RequestCount);
+    }
+
+    [Fact]
     public void Circuit_IsolatedBySeller()
     {
         using var first = new HttpRequestMessage(HttpMethod.Get, "https://unit.test/integration/order/sellers/seller-1/orders/stream");

@@ -94,4 +94,64 @@ public sealed class RoleAuthorizationMiddlewareTests
         Assert.False(called);
         Assert.Equal(StatusCodes.Status403Forbidden, context.Response.StatusCode);
     }
+
+    [Theory]
+    [InlineData("PUT", "/api/v1/connections/11111111-1111-1111-1111-111111111111/credential")]
+    [InlineData("PUT", "/api/v1/connections/11111111-1111-1111-1111-111111111111/credential/")]
+    [InlineData("PUT", "/api/v1/connections/11111111-1111-1111-1111-111111111111//credential")]
+    [InlineData("POST", "/api/v1/connections/11111111-1111-1111-1111-111111111111/deep-delete/")]
+    [InlineData("POST", "/api/v1/connections/11111111-1111-1111-1111-111111111111/data-reset")]
+    [InlineData("PUT", "/api/v1/connections/11111111-1111-1111-1111-111111111111/data-visibility/")]
+    [InlineData("POST", "/api/v1/connections")]
+    [InlineData("POST", "/api/v1/connections/")]
+    [InlineData("PUT", "/api/v1/connections/11111111-1111-1111-1111-111111111111/capabilities/ORDER_READ/evidence/")]
+    [InlineData("POST", "/api/v1/connections/11111111-1111-1111-1111-111111111111/instant-notifications/")]
+    [InlineData("POST", "//api/v1/jobs/11111111-1111-1111-1111-111111111111/retry")]
+    [InlineData("POST", "/api/v1/settings/data-reset")]
+    public async Task OperationsRole_CannotReachAdministratorRoutesWithAnySlashSpelling(string method, string path)
+    {
+        var (called, status) = await Invoke("OPERATIONS", method, path);
+
+        Assert.False(called);
+        Assert.Equal(StatusCodes.Status403Forbidden, status);
+    }
+
+    [Theory]
+    [InlineData("PATCH", "/api/v1/connections/11111111-1111-1111-1111-111111111111")]
+    [InlineData("POST", "/api/v1/connections/11111111-1111-1111-1111-111111111111/sync-policies/ORDERS/runs")]
+    [InlineData("POST", "/api/v1/shipments/11111111-1111-1111-1111-111111111111/labels")]
+    [InlineData("POST", "/api/v1/products/")]
+    public async Task OperationsRole_KeepsDailyWorkRoutes(string method, string path)
+    {
+        var (called, _) = await Invoke("OPERATIONS", method, path);
+
+        Assert.True(called);
+    }
+
+    [Fact]
+    public async Task AdministratorRole_ReachesCredentialRoute()
+    {
+        var (called, _) = await Invoke("ADMINISTRATOR", "PUT", "/api/v1/connections/11111111-1111-1111-1111-111111111111/credential/");
+
+        Assert.True(called);
+    }
+
+    private static async Task<(bool Called, int Status)> Invoke(string role, string method, string path)
+    {
+        var context = new DefaultHttpContext
+        {
+            User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.Role, role)], "test"))
+        };
+        context.Request.Method = method;
+        context.Request.Path = path;
+        var called = false;
+        var middleware = new RoleAuthorizationMiddleware(_ =>
+        {
+            called = true;
+            return Task.CompletedTask;
+        });
+
+        await middleware.InvokeAsync(context);
+        return (called, context.Response.StatusCode);
+    }
 }

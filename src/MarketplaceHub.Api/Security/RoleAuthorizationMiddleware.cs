@@ -11,10 +11,13 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
 
     public async Task InvokeAsync(HttpContext context)
     {
-        var path = context.Request.Path;
-        if (!path.StartsWithSegments("/api/v1")
-            || path.StartsWithSegments("/api/v1/auth")
-            || path.StartsWithSegments("/api/v1/hooks")
+        // Rules compare whole segments of the path with empty segments dropped, so a trailing or doubled
+        // slash ("/credential/", "//deep-delete") meets the same rule as the route that serves it.
+        var segments = (context.Request.Path.Value ?? string.Empty).Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length < 2
+            || !segments[0].Equals("api", StringComparison.OrdinalIgnoreCase)
+            || !segments[1].Equals("v1", StringComparison.OrdinalIgnoreCase)
+            || segments.Length > 2 && (segments[2].Equals("auth", StringComparison.OrdinalIgnoreCase) || segments[2].Equals("hooks", StringComparison.OrdinalIgnoreCase))
             || HttpMethods.IsGet(context.Request.Method)
             || HttpMethods.IsHead(context.Request.Method))
         {
@@ -23,7 +26,7 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
         }
 
         var role = Normalize(context.User.FindFirstValue(ClaimTypes.Role));
-        var allowed = !string.IsNullOrEmpty(role) && RequiredRoles(path).Contains(role);
+        var allowed = !string.IsNullOrEmpty(role) && RequiredRoles(segments).Contains(role);
         if (allowed)
         {
             await next(context);
@@ -43,25 +46,35 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
         }, context.RequestAborted);
     }
 
-    private static HashSet<string> RequiredRoles(PathString path)
+    // segments[0..1] are "api" and "v1".
+    private static HashSet<string> RequiredRoles(string[] segments)
     {
-        if (path.StartsWithSegments("/api/v1/billing")) return AccountingRoles;
-        if (path.StartsWithSegments("/api/v1/invoices")) return InvoiceRoles;
-        if (path.StartsWithSegments("/api/v1/questions") || path.StartsWithSegments("/api/v1/question-templates")) return OperationalRoles;
-        if (path.StartsWithSegments("/api/v1/connections") && path.Value?.Contains("/capabilities/", StringComparison.OrdinalIgnoreCase) == true && path.Value.EndsWith("/evidence", StringComparison.OrdinalIgnoreCase)) return ElevatedRoles;
-        if (path.StartsWithSegments("/api/v1/connections") && path.Value?.EndsWith("/credential", StringComparison.OrdinalIgnoreCase) == true) return ElevatedRoles;
-        if (path.StartsWithSegments("/api/v1/shipments") && path.Value?.EndsWith("/label-capability-probes", StringComparison.OrdinalIgnoreCase) == true) return ElevatedRoles;
-        if (path.StartsWithSegments("/api/v1/connections") && path.Value?.EndsWith("/stage-test-order-jobs", StringComparison.OrdinalIgnoreCase) == true) return ElevatedRoles;
-        if (path.StartsWithSegments("/api/v1/connections") && path.Value?.EndsWith("/deep-delete", StringComparison.OrdinalIgnoreCase) == true) return ElevatedRoles;
-        // Registering or removing the marketplace's order notifications changes the store's settings there.
-        if (path.StartsWithSegments("/api/v1/connections") && path.Value?.EndsWith("/instant-notifications", StringComparison.OrdinalIgnoreCase) == true) return ElevatedRoles;
-        if (path.StartsWithSegments("/api/v1/connections")) return OperationalRoles;
-        if (path.StartsWithSegments("/api/v1/jobs")) return ElevatedRoles;
-        if (path.StartsWithSegments("/api/v1/catalog") || path.StartsWithSegments("/api/v1/products") || path.StartsWithSegments("/api/v1/files") ||
-            path.StartsWithSegments("/api/v1/imports") || path.StartsWithSegments("/api/v1/inventory") || path.StartsWithSegments("/api/v1/channel-offers") ||
-            path.StartsWithSegments("/api/v1/mappings") || path.StartsWithSegments("/api/v1/shipments") || path.StartsWithSegments("/api/v1/returns"))
-            return OperationalRoles;
-        return ElevatedRoles;
+        var area = segments.Length > 2 ? segments[2].ToLowerInvariant() : string.Empty;
+        var last = segments.Length > 3 ? segments[^1].ToLowerInvariant() : string.Empty;
+        switch (area)
+        {
+            case "billing":
+                return AccountingRoles;
+            case "invoices":
+                return InvoiceRoles;
+            case "questions" or "question-templates":
+                return OperationalRoles;
+            case "connections":
+                // Creating a connection stores the store's credentials, as rotating them does.
+                if (segments.Length == 3) return ElevatedRoles;
+                if (last == "evidence" && segments.Any(segment => segment.Equals("capabilities", StringComparison.OrdinalIgnoreCase))) return ElevatedRoles;
+                // Credentials, stage test orders, deleting, emptying or hiding a connection's data, and registering
+                // the marketplace's notifications (a setting on the store's side) are for administrators.
+                return last is "credential" or "stage-test-order-jobs" or "deep-delete" or "data-reset" or "data-visibility" or "instant-notifications"
+                    ? ElevatedRoles
+                    : OperationalRoles;
+            case "shipments":
+                return last == "label-capability-probes" ? ElevatedRoles : OperationalRoles;
+            case "catalog" or "products" or "files" or "imports" or "inventory" or "channel-offers" or "mappings" or "returns":
+                return OperationalRoles;
+            default:
+                return ElevatedRoles;
+        }
     }
 
     private static string Normalize(string? role) => role?.Replace("_", string.Empty, StringComparison.Ordinal).ToUpperInvariant() switch

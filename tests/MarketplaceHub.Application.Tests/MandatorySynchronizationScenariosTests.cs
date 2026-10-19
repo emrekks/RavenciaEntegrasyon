@@ -235,6 +235,20 @@ public sealed class MandatorySynchronizationScenariosTests
         Assert.DoesNotContain("CPE006", error.SafeMessage);
     }
 
+    [Theory]
+    [InlineData(HttpStatusCode.ServiceUnavailable, "LOCAL_CIRCUIT_OPEN", AdapterErrorClass.Remote5xx)]
+    [InlineData(HttpStatusCode.InternalServerError, "INTERNAL_ERROR", AdapterErrorClass.Remote5xx)]
+    [InlineData(HttpStatusCode.BadGateway, "CPE006", AdapterErrorClass.Remote5xx)]
+    [InlineData(HttpStatusCode.TooManyRequests, "QUOTA", AdapterErrorClass.RateLimit)]
+    [InlineData(HttpStatusCode.Unauthorized, "CPE001", AdapterErrorClass.Authentication)]
+    [InlineData(HttpStatusCode.BadRequest, "SOME.OTHER.CODE", AdapterErrorClass.Validation)]
+    public void Scenario11d_TrendyolVendorCode_DoesNotOverrideTheHttpClass(HttpStatusCode status, string vendorCode, AdapterErrorClass expected)
+    {
+        var error = TrendyolErrorMapper.FromStatus(status, null, "request-5", vendorCode);
+        Assert.Equal(expected, error.Class);
+        Assert.DoesNotContain("kargo", error.SafeMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public void Scenario12_CrashAfterCommit_UsesDeterministicPersistentStockOutboxKey()
     {

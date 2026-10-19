@@ -69,6 +69,8 @@ public sealed partial class N11HttpClient : IInvoiceMarketplacePort
                 return new(null, stored, orderNumber, invoiceNumber, null, "N11 fatura linki en fazla 2048 karakter olabilir.");
             if (!InvoiceLinkExtensions.Any(extension => uri.AbsolutePath.EndsWith(extension, StringComparison.OrdinalIgnoreCase)))
                 return new(null, stored, orderNumber, invoiceNumber, null, "N11 fatura linkinin pdf, png veya jpeg dosyasına işaret etmesi gerekir.");
+            if (!IsInvoiceNumber(invoiceNumber))
+                return new(null, stored, orderNumber, invoiceNumber, null, "N11 fatura numarasını 16 karakter olarak bekliyor: 3 harf veya rakam, 2020–2099 arası yıl ve 9 rakam (örnek: ABC2026000000001).");
             return new(link, stored, orderNumber, invoiceNumber, InvoiceDateTime(issuedAt.Value), null);
         }
         catch (JsonException)
@@ -77,10 +79,17 @@ public sealed partial class N11HttpClient : IInvoiceMarketplacePort
         }
     }
 
-    // The WSDL types invoiceDateTime as a plain string. n11's SOAP services use dd/MM/yyyy dates,
-    // so the invoice time is sent in Turkey time as dd/MM/yyyy HH:mm. Confirm on the first live save.
+    // n11's invoice link page asks for invoiceDateTime as a millisecond timestamp (sample 1780903800000),
+    // the same form the order list takes for its dates.
     internal static string InvoiceDateTime(DateTimeOffset issuedAt) =>
-        TimeZoneInfo.ConvertTime(issuedAt, TurkeyTimeZone).ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture);
+        issuedAt.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture);
+
+    // n11's invoice number rule: 3 letters or digits, a year from 2020 to 2099, then 9 digits.
+    internal static bool IsInvoiceNumber(string? value) =>
+        value is { Length: 16 }
+        && value[..3].All(char.IsAsciiLetterOrDigit)
+        && value[3..].All(char.IsAsciiDigit)
+        && int.Parse(value[3..7], CultureInfo.InvariantCulture) is >= 2020 and <= 2099;
 
     private static readonly TimeZoneInfo TurkeyTimeZone = FindTurkeyTimeZone();
 

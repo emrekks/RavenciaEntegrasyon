@@ -13,13 +13,14 @@ public sealed partial class N11HttpClient
     internal static readonly TimeSpan MaxOrderWindow = TimeSpan.FromDays(15);
     internal const int OrderPageSize = 100;
 
+    // sender=ALL also returns packages n11 ships from its own warehouse (n11depom); the default is SELLER only.
     // orderByField=true filters by the package's last modification, so status
     // changes of older orders come back in the incremental window as well.
     internal static string ModifiedShipmentPackages(DateTimeOffset start, DateTimeOffset end, int page, int size) =>
-        $"rest/delivery/v1/shipmentPackages?startDate={start.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)}&endDate={end.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)}&page={page.ToString(CultureInfo.InvariantCulture)}&size={size.ToString(CultureInfo.InvariantCulture)}&orderByField=true&orderByDirection=ASC";
+        $"rest/delivery/v1/shipmentPackages?startDate={start.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)}&endDate={end.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)}&page={page.ToString(CultureInfo.InvariantCulture)}&size={size.ToString(CultureInfo.InvariantCulture)}&orderByField=true&orderByDirection=ASC&sender=ALL";
 
     internal static string OrderNumberPackages(string orderNumber) =>
-        $"rest/delivery/v1/shipmentPackages?orderNumber={Uri.EscapeDataString(orderNumber)}&page=0&size={OrderPageSize.ToString(CultureInfo.InvariantCulture)}";
+        $"rest/delivery/v1/shipmentPackages?orderNumber={Uri.EscapeDataString(orderNumber)}&page=0&size={OrderPageSize.ToString(CultureInfo.InvariantCulture)}&sender=ALL";
 
     public async Task<AdapterResult<AdapterPageResult<RemoteOrder>>> PollAsync(AdapterContext context, OrderPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken)
     {

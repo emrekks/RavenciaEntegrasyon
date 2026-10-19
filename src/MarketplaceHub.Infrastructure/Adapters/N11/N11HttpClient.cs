@@ -47,7 +47,7 @@ public sealed partial class N11HttpClient(
 
     // Dates are epoch milliseconds; n11 lists at most 15 days per request.
     internal static string ShipmentPackages(DateTimeOffset start, DateTimeOffset end, int page, int size) =>
-        $"rest/delivery/v1/shipmentPackages?startDate={start.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)}&endDate={end.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)}&page={page.ToString(CultureInfo.InvariantCulture)}&size={size.ToString(CultureInfo.InvariantCulture)}&orderByDirection=DESC";
+        $"rest/delivery/v1/shipmentPackages?startDate={start.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)}&endDate={end.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)}&page={page.ToString(CultureInfo.InvariantCulture)}&size={size.ToString(CultureInfo.InvariantCulture)}&orderByDirection=DESC&sender=ALL";
 
     public async Task<AdapterResult<ConnectionIdentity>> TestAsync(AdapterContext context, CancellationToken cancellationToken)
     {

@@ -267,22 +267,38 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
         return string.IsNullOrWhiteSpace(identity) ? $"global:{host}:anonymous" : $"global:{host}:{identity}";
     }
 
+    // One circuit per seller and endpoint family. Trendyol counts its quotas per service, so a 429 from
+    // the order read quota (stream and Order V2) must not stop the seller's stock, price, claim or
+    // invoice requests, which have quotas of their own.
     internal static string CircuitKeyFor(HttpRequestMessage request)
     {
         var uri = request.RequestUri;
         if (uri is null) return "unknown:global";
         const string marker = "/sellers/";
-        var sellerStart = uri.AbsolutePath.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
-        if (sellerStart >= 0)
+        var path = uri.AbsolutePath;
+        var markerStart = path.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (markerStart >= 0)
         {
-            sellerStart += marker.Length;
-            var sellerEnd = uri.AbsolutePath.IndexOf('/', sellerStart);
-            if (sellerEnd < 0) sellerEnd = uri.AbsolutePath.Length;
+            var sellerStart = markerStart + marker.Length;
+            var sellerEnd = path.IndexOf('/', sellerStart);
+            if (sellerEnd < 0) sellerEnd = path.Length;
             if (sellerEnd > sellerStart)
-                return $"{uri.Host}:seller:{uri.AbsolutePath[sellerStart..sellerEnd]}";
+                return $"{uri.Host}:seller:{path[sellerStart..sellerEnd]}:{CircuitFamily(request, path, markerStart, sellerEnd)}";
         }
         var identity = request.Headers.UserAgent.ToString();
         return string.IsNullOrWhiteSpace(identity) ? $"{uri.Host}:global" : $"{uri.Host}:client:{identity}";
+    }
+
+    // "order-reads" for the shared order quota; otherwise the service before /sellers/ and the resource
+    // after the seller id, e.g. "inventory:products", "order:claims", "integration:seller-invoice-links".
+    private static string CircuitFamily(HttpRequestMessage request, string path, int markerStart, int sellerEnd)
+    {
+        if (RateBucketFor(request) is not null) return "order-reads";
+        var before = path[..markerStart].TrimEnd('/');
+        var service = before[(before.LastIndexOf('/') + 1)..];
+        var resource = path[sellerEnd..].Split('/', StringSplitOptions.RemoveEmptyEntries)
+            .FirstOrDefault(segment => !segment.Equals("v2", StringComparison.OrdinalIgnoreCase)) ?? string.Empty;
+        return $"{(service.Length == 0 ? "root" : service)}:{resource}".ToLowerInvariant();
     }
 
     private TimeSpan? RetryAfterDelay(System.Net.Http.Headers.RetryConditionHeaderValue? retryAfter)

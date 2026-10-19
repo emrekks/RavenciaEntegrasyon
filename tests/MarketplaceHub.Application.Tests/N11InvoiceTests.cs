@@ -27,7 +27,22 @@ public sealed class N11InvoiceTests
         Assert.Equal(PdfLink, request.Link);
         Assert.Equal(ContentLink, request.StoredLink);
         Assert.Equal("205412345678", request.OrderNumber);
-        Assert.Equal("15/10/2026 12:30", request.InvoiceDateTime);
+        Assert.Equal(issuedAt.ToString(System.Globalization.CultureInfo.InvariantCulture), request.InvoiceDateTime);
+    }
+
+    [Theory]
+    [InlineData("N112026000000001", true)]
+    [InlineData("RVN2026000000123", true)]
+    [InlineData("A1B2099123456789", true)]
+    [InlineData("RVN2019000000123", false)]
+    [InlineData("RVN20260000001", false)]
+    [InlineData("RVN202600000012X", false)]
+    [InlineData("RV-2026000000123", false)]
+    public void InvoiceNumberFollowsN11sRule(string number, bool valid)
+    {
+        Assert.Equal(valid, N11HttpClient.IsInvoiceNumber(number));
+        var request = N11HttpClient.InvoiceLinkRequest($$"""{"invoiceLink":"{{ContentLink}}","orderNumber":"205412345678","invoiceNumber":"{{number}}","invoiceDateTime":1780903800000}""");
+        Assert.Equal(valid, request.Error is null);
     }
 
     [Theory]
