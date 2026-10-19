@@ -137,13 +137,39 @@ repodaki plan üzerinden kontrol edildi.
 | H12 | Pazarama'da stok önce gidiyor, iki istek birbirinden bağımsız; her barkodun fiyatı ve stoku ayrı kaydediliyor |
 | Orta | 400 mesajları güvenli; n11 pencereleri 14 gün, iade/soru tarihleri Türkiye saati; Shopify HTML hata sayfası durum koduyla sınıflanıyor; Trendyol'da metin olarak gelen sayı sayfayı düşürmüyor; ölü kod silindi |
 
+### Dalga 2 sonrası kalanlar — tamam
+| Konu | Ne yapıldı |
+|---|---|
+| D7 metrik | `Meter` ve `ActivitySource` "MarketplaceHub": iş sayısı, sonucu ve süresi; pazaryeri isteği sayısı, durumu ve süresi (her istemcinin en içteki işleyicisi). `dotnet-counters` ile okunur; dışa aktarıcı eklenince toplanır |
+| Trendyol son tarih | Yalnız `extendedAgreedDeliveryDate` / `agreedDeliveryDate` (canlı: 473/473 siparişte dolu ve kayıtlı değerle aynı); tahmini teslim alanları son tarih sayılmıyor |
+| Trendyol fatura okuması | Sipariş tarihi, vitrin ve paket durum zamanıyla okunuyor; 14 vitrinin tamamını denemiyor, 14 günden eski paketleri de buluyor |
+| Trendyol genel kota | Belgelendiği gibi uç noktası başına 50/10 sn |
+| Trendyol ürün okuması | Artımlı okumada `CONTENT_MODIFIED_DATE` geçişi; onay bekleyenler `LAST_MODIFIED_DATE` ile artımlı |
+| Trendyol V2 10.000 sınırı | Bu sınıra takılabilecek tek yol (ulaşılmayan V2 durum dalı) ölü kodla birlikte silindi |
+| HB saat dilimi (d) | **Canlı veriyle doğrulandı:** HB tarihleri Türkiye saatiyle, ofsetsiz geliyor. Ofsetsiz tarihler +03:00 okunuyor, sorgu pencereleri Türkiye saatiyle gidiyor. Açık siparişler bir sonraki okumada düzeliyor; eski teslim edilmiş siparişlerin tarihi 3 saat ileri kalabilir |
+| HB `Offset` (d) | Kodda büyük harfli parametre yok; hepsi `offset` / `limit` |
+| HB talep `lineItemId` (d) | Okunuyor; eşleşmeyen iade kalemi artık sessizce atlanmıyor, operasyon kaydı açılıyor |
+| HB 409 | Fatura linki 409 dönerse paket geri okunuyor; faturalıysa iş başarısız değil uzlaştırmaya gidiyor |
+| HB diğer | Tek nesne kargo yanıtı destekleniyor; uzlaştırmada aynı paketin takip bilgisi ikinci kez okunmuyor |
+| Shopify tutarlar | Her pakete sipariş toplamı yazılıyordu; toplamlar paketlere kalem değeri oranında bölünüyor, tek paket aynı kalıyor |
+| Shopify maliyet (d) | Son 24 saatte maliyet hatası yok. 500 puan üstü sorgular loglanıyor; `MAX_COST_EXCEEDED` ayrı kodla tanınıyor ve sayfa küçültülerek yeniden deneniyor |
+| Shopify pencere | Sorguda `updated_at:<=`; yarım kalan okuma kendi penceresinde sürüyor; 20.000 kayda yaklaşınca son görülen değişiklikten yeni sorgu |
+| Shopify sürüm / token | Bağlantı ayardaki sürümle eşleşmek zorunda değil, farklı sürüm yanıtı loglanıyor; token önbelleği süreç ömrü boyunca ve kimlik bilgisiyle anahtarlı; `productByIdentifier` |
+| Pazarama | Kota beklemesi zaman aşımına sayılmıyor ("gönderilmedi" hatası); kota satıcı başına; yarıda kalan kalem güncellemesi tekrar denemede tamamlanıyor; paket durumu en az ilerlemiş kalemden (iptal süreci varsa beklemede) |
+| n11 | Örtüşme en az 10 dk; okuma sırasında pencere sayısı değişirse pencere yeniden okunuyor |
+| REST rol | Belge içerikleri ve canlı pazaryeri okumaları READONLY rolüne kapalı; herkese açık linkler açık |
+| REST idempotency | `If-Match` özetin parçası (gönderildiğinde); 256 karakterden uzun anahtar 400; beş yazma ucunda anahtar zorunlu ve web gönderiyor |
+| REST hata biçimi | Soru ve gösterge uçları problem+json; ortak yardımcılar problem+json içerik tipiyle; Pazarama finans ucunda pazaryeri kimlik sorunu 401 yerine 502 |
+| Yapı adım 2–3 | `JobTypeRegistry` (kilit grubu, öncelik, zaman aşımı ve ayarı, heartbeat, zaman aşımı sonrası bekleme); `IJobHandler` + dağıtıcı, ilk taşınan iş soru senkronu |
+
 ### İncelenip değiştirilmeyenler
 - Pazaryeri 401'i SPA oturumunu düşürmüyor; istemci yalnız CSRF belirtecini yeniliyor.
 - Pazarama token kilit sözlüğü kimlik bilgisi başına bir kayıt tutuyor; bağlantı sayısıyla sınırlı.
+- Herkese açık fatura linkleri süresiz kalıyor: Trendyol ve n11 linki müşteriye süresiz gösteriyor, süre koymak müşterinin faturasını koparır. İptal yolu mevcut (saklanan link değişince eski link çalışmaz).
+- HB fiyat-stok XML'inde virgüllü fiyat ürün ve stok yolunda tutarlı; yazma kapalı.
+- n11 iade onayında boş `splitQuantity`: dokümanı bulunamadı; kısmi onay arayüzde yok.
+- Trendyol'da reddedilen ürünler içe aktarılmıyor: ürün modeline yeni durum ister; barkod bazlı yayın durumu sorgusu bunları görüyor.
+- Sayfalama biçimleri (`after`, `page`, `pageNumber`) web'in kullandığı haliyle bırakıldı.
 
-### Kalanlar
-- (d) maddeleri: HB `Offset` büyük harf, talep listesinde `lineItemId`, HB tarih saat dilimi, Shopify sorgu maliyeti → SIT/canlı yanıtla doğrulanmalı.
-- Trendyol: kargoya son tarih alanı, 2026 ürün/fiyat kotaları için ayrı kova, V2 10.000 kayıt sınırı.
-- Shopify: vergi/iskonto/kargo eşlemesi, API sürümü bağımlılığı, `productByHandle`.
-- REST: GET uçlarında rol ayrımı, idempotency/`If-Match` tutarlılığı, herkese açık fatura linki süresi.
-- Bölüm 3'teki yapısal geçiş (JobTypeRegistry, IJobHandler, SyncRunner, ExternalWriteGuard): ayrı ve adım adım yapılacak bir çalışma; ilk adımı (gözlemlenebilirlik + D1–D4) tamamlandı.
+### Kalan yapısal geçiş
+- `PlatformCapabilities`, kalan işlerin handler'lara taşınması, `SyncRunner`, `ExternalWriteGuard` ve işlemcinin silinmesi. Her adım ayrı commit ve mevcut testlerle yapılacak; işlemci ~10.800 satır olduğu için birkaç oturumluk çalışma.
