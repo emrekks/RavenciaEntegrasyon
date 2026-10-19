@@ -122,6 +122,17 @@ public sealed class PazaramaAdapterTests
     }
 
     [Fact]
+    public void AGatewayBlockPageAtTheTokenServiceIsNotACredentialsRefusal()
+    {
+        var token = PazaramaHttpClient.TokenResponse(HttpStatusCode.Forbidden, "<!DOCTYPE html><html><body>blocked</body></html>");
+
+        Assert.False(token.IsSuccess);
+        Assert.Equal("PAZARAMA_GATEWAY_BLOCKED", token.Error!.Code);
+        Assert.Equal(AdapterErrorClass.RateLimit, token.Error.Class);
+        Assert.Equal("PAZARAMA_CREDENTIALS_REJECTED", PazaramaHttpClient.TokenResponse(HttpStatusCode.BadRequest, """{"error":"invalid_client"}""").Error!.Code);
+    }
+
+    [Fact]
     public void AGatewayBlockPageIsNotAnAccessRefusal()
     {
         // Seen live: Pazarama's gateway answered 403 with a 15 KB HTML page, and the next call went through.

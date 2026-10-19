@@ -262,6 +262,9 @@ public sealed partial class PazaramaHttpClient(
         }
         catch (JsonException) { }
         if ((int)status is >= 200 and < 300 && !string.IsNullOrWhiteSpace(accessToken) && !successFalse) return new(accessToken, expiresIn, null);
+        // The token service behind the same gateway: a 403 that is an HTML page never reached it (see Error()).
+        if (status == HttpStatusCode.Forbidden && LooksLikeHtml(body))
+            return new(null, TimeSpan.Zero, new(AdapterErrorClass.RateLimit, "PAZARAMA_GATEWAY_BLOCKED", "Pazarama'nın güvenlik geçidi oturum isteğini engelledi (API yerine HTML sayfa döndü). Geçici olabilir; 15 dakika sonra yeniden denenir. Sürerse Pazarama destekten sunucu adresinin izinli listeye alınmasını isteyin.", (int)status, TimeSpan.FromMinutes(15), null));
         if (error is "invalid_client" or "unauthorized_client" || status is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden || successFalse)
             return new(null, TimeSpan.Zero, new(AdapterErrorClass.Authentication, "PAZARAMA_CREDENTIALS_REJECTED", userMessage is null
                 ? "Pazarama Client Id ve Client Secret çiftini kabul etmedi. Pazarama satıcı panelinde Hesabım → Entegrasyon Bilgileri'ndeki güncel değerleri girin; orada yeni anahtar üretildiyse eskisi geçersiz olur."
