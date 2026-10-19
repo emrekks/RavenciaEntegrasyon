@@ -45,6 +45,8 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
                 var statusCode = (int)response.StatusCode;
                 var circuitSucceeded = statusCode < 500 && statusCode is not (408 or 429);
                 var remoteRetryAfter = statusCode == 429 ? RetryAfterDelay(response.Headers.RetryAfter) : null;
+                if (statusCode == 429 && RateBucketFor(request) is { } rateLimitedBucket)
+                    LogTierChange(rateLimitedBucket, tier => tier.RecordRateLimited(timeProvider.GetUtcNow()));
                 RecordResult(circuitKey, circuitSucceeded, halfOpen, remoteRetryAfter);
                 resultRecorded = true;
                 return response;
@@ -136,7 +138,11 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
     private async Task WaitForQuotaAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         var globalBucket = GlobalRateBucketFor(request);
-        var orderQuota = OrderQuotaFor(request, options, TrendyolQuotaLane.IsBackground);
+        int? learnedTotal = null;
+        if (RateBucketFor(request) is { } sellerBucket)
+            lock (state.SyncRoot) learnedTotal = state.OrderTierFor(sellerBucket).Limit(options.OrderRequestsPerInterval);
+        var orderQuota = OrderQuotaFor(request, options, TrendyolQuotaLane.IsBackground, learnedTotal);
+        var quotaWaitStarted = timeProvider.GetTimestamp();
         if (sharedLimiter is not null)
         {
             try
@@ -144,7 +150,9 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
                 await SharedRateLimits.WaitAsync(sharedLimiter, $"trendyol:{globalBucket}", SharedRateLimits.ForWindow(options.RequestsPerInterval, options.RequestInterval), timeProvider, cancellationToken);
                 if (orderQuota is { } quota)
                 {
+                    quotaWaitStarted = timeProvider.GetTimestamp();
                     await SharedRateLimits.WaitAsync(sharedLimiter, $"trendyol:{quota.Bucket}", SharedRateLimits.ForWindow(quota.Limit, options.OrderRequestInterval), timeProvider, cancellationToken);
+                    RecordQuotaPressure(request, quotaWaitStarted);
                     if (quota.Spacing > TimeSpan.Zero)
                         await SharedRateLimits.WaitAsync(sharedLimiter, $"trendyol:{quota.SpacingBucket}", SharedRateLimits.ForSpacing(quota.Spacing), timeProvider, cancellationToken);
                 }
@@ -158,10 +166,30 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
         await WaitForRateWindowAsync(globalBucket, options.RequestsPerInterval, options.RequestInterval, cancellationToken);
         if (orderQuota is { } localQuota)
         {
+            quotaWaitStarted = timeProvider.GetTimestamp();
             await WaitForRateWindowAsync(localQuota.Bucket, localQuota.Limit, options.OrderRequestInterval, cancellationToken);
+            RecordQuotaPressure(request, quotaWaitStarted);
             if (localQuota.Spacing > TimeSpan.Zero)
                 await WaitForRateWindowAsync(localQuota.SpacingBucket, int.MaxValue, options.OrderRequestInterval, cancellationToken, localQuota.Spacing);
         }
+    }
+
+    // A read that had to wait for the order quota itself (not for the page spacing) shows the quota is full.
+    private void RecordQuotaPressure(HttpRequestMessage request, long waitStarted)
+    {
+        if (timeProvider.GetElapsedTime(waitStarted) < TimeSpan.FromMilliseconds(500) || RateBucketFor(request) is not { } sellerBucket) return;
+        LogTierChange(sellerBucket, tier => tier.RecordPressure(timeProvider.GetUtcNow()));
+    }
+
+    private void LogTierChange(string sellerBucket, Func<TrendyolOrderTier, bool> record)
+    {
+        int? limit = null;
+        lock (state.SyncRoot)
+        {
+            var tier = state.OrderTierFor(sellerBucket);
+            if (record(tier)) limit = tier.Limit(options.OrderRequestsPerInterval);
+        }
+        if (limit is { } changed) logger?.LogInformation("Trendyol order quota for {SellerBucket} is now taken as {Limit} requests a minute", sellerBucket, changed);
     }
 
     internal sealed record OrderQuota(string Bucket, int Limit, string SpacingBucket, TimeSpan Spacing);
@@ -170,10 +198,10 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
     // can never use up what a new-order read or a user action needs. Trendyol recommends five
     // seconds between stream calls; that spacing is kept between the pages of one query, while
     // a read that starts a new query waits only for the shorter start spacing.
-    internal static OrderQuota? OrderQuotaFor(HttpRequestMessage request, TrendyolOptions options, bool background)
+    internal static OrderQuota? OrderQuotaFor(HttpRequestMessage request, TrendyolOptions options, bool background, int? learnedTotal = null)
     {
         if (RateBucketFor(request) is not { } orderBucket) return null;
-        var (foreground, backgroundLimit) = OrderQuotaSplit(options);
+        var (foreground, backgroundLimit) = OrderQuotaSplit(options, learnedTotal);
         var limit = background ? backgroundLimit : foreground;
         var bucket = $"{orderBucket}:{(background ? "bg" : "fg")}";
         if (!IsOrderStream(request)) return new(bucket, limit, $"{orderBucket}:spacing", TimeSpan.Zero);
@@ -184,9 +212,9 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
     }
 
     // Requests per order interval for new-order reads and user actions, and for everything else.
-    internal static (int Foreground, int Background) OrderQuotaSplit(TrendyolOptions options)
+    internal static (int Foreground, int Background) OrderQuotaSplit(TrendyolOptions options, int? learnedTotal = null)
     {
-        var total = Math.Max(2, options.OrderRequestsPerInterval);
+        var total = Math.Max(2, learnedTotal ?? options.OrderRequestsPerInterval);
         var foreground = Math.Clamp((int)Math.Round(total * Math.Clamp(options.OrderForegroundShare, 0.1, 0.9)), 1, total - 1);
         return (foreground, total - foreground);
     }
@@ -342,6 +370,18 @@ public sealed class TrendyolResilienceState
     internal Dictionary<string, DateTimeOffset> RateBucketLastTouched { get; } = new(StringComparer.Ordinal);
     internal Dictionary<string, DateTimeOffset> RateBucketLastStarted { get; } = new(StringComparer.Ordinal);
     public Dictionary<string, TrendyolCircuitState> Circuits { get; } = new(StringComparer.Ordinal);
+    // The learned order quota tier per seller (one entry per Trendyol seller this process serves).
+    private Dictionary<string, TrendyolOrderTier> OrderTiers { get; } = new(StringComparer.Ordinal);
+
+    internal TrendyolOrderTier OrderTierFor(string sellerBucket)
+    {
+        if (!OrderTiers.TryGetValue(sellerBucket, out var tier))
+        {
+            tier = new TrendyolOrderTier();
+            OrderTiers[sellerBucket] = tier;
+        }
+        return tier;
+    }
 
     internal void TrimIdleState(DateTimeOffset now, TimeSpan rateInterval)
     {
