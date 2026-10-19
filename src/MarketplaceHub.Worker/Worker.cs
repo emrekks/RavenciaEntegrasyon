@@ -12,26 +12,14 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
 {
     private static readonly string[] HepsiburadaOrderJobTypes =
         [MarketplaceJobTypes.HepsiburadaOrderSync, MarketplaceJobTypes.HepsiburadaOrderRecoverySync];
-    private static readonly string[] OrderReadSyncJobTypes =
-    [
-        MarketplaceJobTypes.OrderSync, MarketplaceJobTypes.OrderRecoverySync, MarketplaceJobTypes.OrderStatusSync,
-        MarketplaceJobTypes.OrderReconciliation, MarketplaceJobTypes.OrderInvoiceReconciliation, MarketplaceJobTypes.TrendyolOrderCargoInfoReconciliation,
-        MarketplaceJobTypes.ShopifyOrderSync, MarketplaceJobTypes.ShopifyOrderRecoverySync, MarketplaceJobTypes.ShopifyOrderStatusSync,
-        MarketplaceJobTypes.ShopifyOrderReconciliation, MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation,
-        MarketplaceJobTypes.HepsiburadaOrderSync, MarketplaceJobTypes.HepsiburadaOrderRecoverySync,
-        MarketplaceJobTypes.HepsiburadaOrderStatusSync, MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation,
-        MarketplaceJobTypes.N11OrderSync, MarketplaceJobTypes.N11OrderRecoverySync,
-        // Pazarama order reads used to fall back to the 60-minute default ceiling.
-        MarketplaceJobTypes.PazaramaOrderSync, MarketplaceJobTypes.PazaramaOrderRecoverySync, MarketplaceJobTypes.PazaramaOrderStatusSync
-    ];
+    private static readonly string[] OrderReadSyncJobTypes = [.. MarketplaceHub.Infrastructure.Jobs.JobTypeRegistry.OrderReadSyncJobTypes];
     // Pazarama has no change filter on orders, so its status scan re-reads open orders one by one;
     // the three order flows run in their own lane so they never occupy the hot lane's slots.
     private static readonly string[] PazaramaOrderJobTypes =
         [MarketplaceJobTypes.PazaramaOrderSync, MarketplaceJobTypes.PazaramaOrderRecoverySync, MarketplaceJobTypes.PazaramaOrderStatusSync];
     private static readonly string[] ReturnReadJobTypes =
         [MarketplaceJobTypes.ReturnSync, MarketplaceJobTypes.HepsiburadaReturnSync, MarketplaceJobTypes.ReturnStatusSync];
-    private static readonly string[] ProductCatalogSyncJobTypes =
-        [MarketplaceJobTypes.ProductSync, MarketplaceJobTypes.ShopifyProductSync, MarketplaceJobTypes.HepsiburadaProductSync, MarketplaceJobTypes.CatalogStructureImport];
+    private static readonly string[] ProductCatalogSyncJobTypes = [.. MarketplaceHub.Infrastructure.Jobs.JobTypeRegistry.ProductCatalogSyncJobTypes];
     private readonly string healthFile = configuration["Worker:HealthFile"] ?? "/tmp/marketplacehub-worker-heartbeat";
     private readonly TimeSpan schedulerScanInterval = TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("Worker:SchedulerScanSeconds", 5), 1, 30));
     private readonly int hotPriorityCeiling = Math.Clamp(configuration.GetValue("Worker:HotPriorityCeiling", 2), 0, 5);
@@ -223,39 +211,8 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         activity?.SetTag("job.id", job.Id).SetTag("job.type", job.JobType).SetTag("connection.id", job.ConnectionId).SetTag("correlation.id", job.CorrelationId);
         var executionStarted = System.Diagnostics.Stopwatch.GetTimestamp();
         using var execution = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
-        if (job.JobType is MarketplaceJobTypes.ProductSync or MarketplaceJobTypes.ShopifyProductSync or MarketplaceJobTypes.HepsiburadaProductSync or MarketplaceJobTypes.CatalogStructureImport)
-        {
-            var configuredMinutes = configuration.GetValue<double?>("Worker:ProductSyncTimeoutMinutes") ?? 60;
-            execution.CancelAfter(TimeSpan.FromMinutes(Math.Clamp(configuredMinutes, 1, 180)));
-        }
-        else if (IsOrderInvoiceReconciliationJob(job.JobType))
-        {
-            var configuredMinutes = configuration.GetValue<double?>("Worker:OrderInvoiceReconciliationTimeoutMinutes") ?? 15;
-            execution.CancelAfter(TimeSpan.FromMinutes(Math.Clamp(configuredMinutes, 1, 30)));
-        }
-        else if (job.JobType == MarketplaceJobTypes.TrendyolOrderCargoInfoReconciliation)
-        {
-            var configuredMinutes = configuration.GetValue<double?>("Worker:TrendyolCargoInfoTimeoutMinutes") ?? 30;
-            execution.CancelAfter(TimeSpan.FromMinutes(Math.Clamp(configuredMinutes, 1, 60)));
-        }
-        else if (job.JobType == MarketplaceJobTypes.OrderStatusSync)
-        {
-            var configuredMinutes = configuration.GetValue<double?>("Worker:TrendyolOrderStatusTimeoutMinutes") ?? 20;
-            execution.CancelAfter(TimeSpan.FromMinutes(Math.Clamp(configuredMinutes, 1, 60)));
-        }
-        else if (IsOrderReadSyncJob(job.JobType))
-        {
-            var configuredMinutes = configuration.GetValue<double?>("Worker:OrderReadSyncTimeoutMinutes")
-                ?? configuration.GetValue<double?>("Worker:OrderStatusSyncTimeoutMinutes")
-                ?? 10;
-            execution.CancelAfter(TimeSpan.FromMinutes(Math.Clamp(configuredMinutes, 1, 60)));
-        }
-        else
-        {
-            // Every other job type gets a generous ceiling so a hung call cannot hold a lane forever.
-            var configuredMinutes = configuration.GetValue<double?>("Worker:DefaultJobTimeoutMinutes") ?? 60;
-            execution.CancelAfter(TimeSpan.FromMinutes(Math.Clamp(configuredMinutes, 5, 180)));
-        }
+        // How long the job type may run (and the setting that changes it) is kept in the job type registry.
+        execution.CancelAfter(MarketplaceHub.Infrastructure.Jobs.JobTypeRegistry.TimeoutFor(job.JobType, configuration));
         using var heartbeatStop = StopLeaseHeartbeatOnExecutionTimeout(job.JobType)
             ? CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, execution.Token)
             : CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
@@ -335,15 +292,12 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         }
     }
 
-    internal static bool IsOrderReadSyncJob(string jobType) => Array.IndexOf(OrderReadSyncJobTypes, jobType) >= 0;
-    internal static bool IsProductCatalogSyncJob(string jobType) => Array.IndexOf(ProductCatalogSyncJobTypes, jobType) >= 0;
+    internal static bool IsOrderReadSyncJob(string jobType) => MarketplaceHub.Infrastructure.Jobs.JobTypeRegistry.IsOrderReadSync(jobType);
+    internal static bool IsProductCatalogSyncJob(string jobType) => MarketplaceHub.Infrastructure.Jobs.JobTypeRegistry.IsProductCatalogSync(jobType);
     internal static TimeSpan? RetryDelayAfterOrderReadTimeout(string jobType) =>
-        IsOrderReadSyncJob(jobType) ? TimeSpan.FromMinutes(3) : null;
-    internal static bool IsOrderInvoiceReconciliationJob(string jobType) => jobType is
-        MarketplaceJobTypes.OrderInvoiceReconciliation
-        or MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation
-        or MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation;
-    internal static bool StopLeaseHeartbeatOnExecutionTimeout(string jobType) => IsOrderInvoiceReconciliationJob(jobType);
+        MarketplaceHub.Infrastructure.Jobs.JobTypeRegistry.For(jobType).RetryAfterTimeout;
+    internal static bool IsOrderInvoiceReconciliationJob(string jobType) => MarketplaceHub.Infrastructure.Jobs.JobTypeRegistry.IsOrderInvoiceReconciliation(jobType);
+    internal static bool StopLeaseHeartbeatOnExecutionTimeout(string jobType) => MarketplaceHub.Infrastructure.Jobs.JobTypeRegistry.For(jobType).StopHeartbeatOnTimeout;
 
     private async Task<bool> MaintainLeaseAsync(LeasedJob job, CancellationTokenSource execution, CancellationToken cancellationToken)
     {
