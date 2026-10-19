@@ -1100,7 +1100,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     {
         var tenant = NewTenant("ship-sort");
         var connection = NewQuestionConnection(tenant);
-        var now = fixture.Now;
+        var now = DateTimeOffset.FromUnixTimeSeconds(fixture.Now.ToUnixTimeSeconds());
         var early = NewInvoiceTestOrder(tenant.Id, connection.Id, Guid.CreateVersion7(), "ship-early", isReturnClaim: false, now);
         var late = NewInvoiceTestOrder(tenant.Id, connection.Id, Guid.CreateVersion7(), "ship-late", isReturnClaim: false, now);
         var never = NewInvoiceTestOrder(tenant.Id, connection.Id, Guid.CreateVersion7(), "ship-never", isReturnClaim: false, now);
