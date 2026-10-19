@@ -77,6 +77,7 @@ public static class DependencyInjection
         services.AddTransient<TrendyolResilienceHandler>();
         services.AddHttpClient("Trendyol", client => client.Timeout = Timeout.InfiniteTimeSpan)
             .AddHttpMessageHandler<TrendyolResilienceHandler>()
+            .AddHttpMessageHandler(() => new MarketplaceHub.Infrastructure.Telemetry.MarketplaceRequestMetricsHandler("Trendyol"))
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AutomaticDecompression = System.Net.DecompressionMethods.All, PooledConnectionLifetime = TimeSpan.FromMinutes(10) });
         services.AddScoped<TrendyolAuthenticationHandler>();
         services.AddScoped<TrendyolHttpClient>();
@@ -84,6 +85,7 @@ public static class DependencyInjection
         services.AddTransient<MarketplaceCircuitBreakerHandler>();
         services.AddHttpClient("Shopify", client => client.Timeout = TimeSpan.FromSeconds(45))
             .AddHttpMessageHandler<MarketplaceCircuitBreakerHandler>()
+            .AddHttpMessageHandler(() => new MarketplaceHub.Infrastructure.Telemetry.MarketplaceRequestMetricsHandler("Shopify"))
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AutomaticDecompression = System.Net.DecompressionMethods.All, PooledConnectionLifetime = TimeSpan.FromMinutes(10) });
         services.AddScoped<ShopifyAuthenticationHandler>();
         services.AddScoped<ShopifyHttpClient>();
@@ -92,6 +94,7 @@ public static class DependencyInjection
         services.AddHttpClient("Hepsiburada", client => client.Timeout = Timeout.InfiniteTimeSpan)
             .AddHttpMessageHandler<HepsiburadaRateLimitHandler>()
             .AddHttpMessageHandler<MarketplaceCircuitBreakerHandler>()
+            .AddHttpMessageHandler(() => new MarketplaceHub.Infrastructure.Telemetry.MarketplaceRequestMetricsHandler("Hepsiburada"))
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AutomaticDecompression = System.Net.DecompressionMethods.All, PooledConnectionLifetime = TimeSpan.FromMinutes(10) });
         services.AddScoped<HepsiburadaAuthenticationHandler>();
         services.AddScoped<HepsiburadaHttpClient>();
@@ -99,6 +102,7 @@ public static class DependencyInjection
         services.AddHttpClient("N11", client => client.Timeout = Timeout.InfiniteTimeSpan)
             .AddHttpMessageHandler<N11RateLimitHandler>()
             .AddHttpMessageHandler<MarketplaceCircuitBreakerHandler>()
+            .AddHttpMessageHandler(() => new MarketplaceHub.Infrastructure.Telemetry.MarketplaceRequestMetricsHandler("N11"))
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AutomaticDecompression = System.Net.DecompressionMethods.All, PooledConnectionLifetime = TimeSpan.FromMinutes(10) });
         services.AddScoped<N11AuthenticationHandler>();
         services.AddScoped<N11HttpClient>();
@@ -107,6 +111,7 @@ public static class DependencyInjection
         services.AddHttpClient(PazaramaHttpClient.ClientName, client => client.Timeout = Timeout.InfiniteTimeSpan)
             .AddHttpMessageHandler<PazaramaRateLimitHandler>()
             .AddHttpMessageHandler<MarketplaceCircuitBreakerHandler>()
+            .AddHttpMessageHandler(() => new MarketplaceHub.Infrastructure.Telemetry.MarketplaceRequestMetricsHandler("Pazarama"))
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AutomaticDecompression = System.Net.DecompressionMethods.All, PooledConnectionLifetime = TimeSpan.FromMinutes(10) });
         services.AddScoped<PazaramaAuthenticationHandler>();
         services.AddScoped<PazaramaHttpClient>();

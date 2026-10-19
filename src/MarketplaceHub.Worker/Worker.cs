@@ -219,6 +219,9 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             ["ConnectionId"] = job.ConnectionId,
             ["CorrelationId"] = job.CorrelationId
         });
+        using var activity = MarketplaceHub.Infrastructure.Telemetry.MarketplaceHubTelemetry.Source.StartActivity($"job {job.JobType}");
+        activity?.SetTag("job.id", job.Id).SetTag("job.type", job.JobType).SetTag("connection.id", job.ConnectionId).SetTag("correlation.id", job.CorrelationId);
+        var executionStarted = System.Diagnostics.Stopwatch.GetTimestamp();
         using var execution = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
         if (job.JobType is MarketplaceJobTypes.ProductSync or MarketplaceJobTypes.ShopifyProductSync or MarketplaceJobTypes.HepsiburadaProductSync or MarketplaceJobTypes.CatalogStructureImport)
         {
@@ -284,6 +287,11 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         }
 
         var leaseHeld = await heartbeat;
+        var outcome = !leaseHeld ? "lease-lost" : result?.Kind.ToString() ?? "no-result";
+        var jobTags = new System.Diagnostics.TagList { { "job.type", job.JobType }, { "outcome", outcome } };
+        MarketplaceHub.Infrastructure.Telemetry.MarketplaceHubTelemetry.JobsCompleted.Add(1, jobTags);
+        MarketplaceHub.Infrastructure.Telemetry.MarketplaceHubTelemetry.JobDuration.Record(System.Diagnostics.Stopwatch.GetElapsedTime(executionStarted).TotalSeconds, jobTags);
+        activity?.SetTag("job.outcome", outcome).SetTag("job.error_code", result?.ErrorCode);
         // Cancellation during shutdown can also surface as a transient Retry (e.g. a cancelled HTTP/DB call).
         if (leaseHeld && stoppingToken.IsCancellationRequested && (result is null || result.Kind == JobCompletionKind.Retry))
         {
