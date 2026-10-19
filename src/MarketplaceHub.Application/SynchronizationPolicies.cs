@@ -71,7 +71,8 @@ public static class TrendyolOrderHistoryPolicy
 public static class N11OrderHistoryPolicy
 {
     public const int InitialLookbackMonths = 3;
-    public static readonly TimeSpan MaxWindow = TimeSpan.FromDays(15);
+    // n11 allows 15 days per query and silently trims a longer one; windows stay a day short of that.
+    public static readonly TimeSpan MaxWindow = TimeSpan.FromDays(14);
     public static readonly DateTimeOffset EarliestAvailable = new(2024, 11, 1, 0, 0, 0, TimeSpan.FromHours(3));
 
     public static DateTimeOffset Start(bool full, DateTimeOffset? watermark, TimeSpan overlap, DateTimeOffset now)

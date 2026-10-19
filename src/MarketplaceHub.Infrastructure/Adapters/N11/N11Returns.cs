@@ -132,10 +132,16 @@ public static class N11ReturnMapper
     };
 
     // xs:date answers usually come as yyyy-MM-dd (sometimes with an offset); dd/MM/yyyy is accepted too.
+    // A value without an offset is Turkey time, as n11's SOAP services use it.
     internal static DateTimeOffset? Date(string? value)
     {
         if (string.IsNullOrWhiteSpace(value)) return null;
-        string[] formats = ["yyyy-MM-dd", "yyyy-MM-ddzzz", "yyyy-MM-ddTHH:mm:ss", "yyyy-MM-ddTHH:mm:sszzz", "dd/MM/yyyy", "dd/MM/yyyy HH:mm"];
-        return DateTimeOffset.TryParseExact(value.Trim(), formats, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed) ? parsed : null;
+        var text = value.Trim();
+        string[] withOffset = ["yyyy-MM-ddzzz", "yyyy-MM-ddTHH:mm:sszzz"];
+        if (DateTimeOffset.TryParseExact(text, withOffset, CultureInfo.InvariantCulture, DateTimeStyles.None, out var offsetValue)) return offsetValue;
+        string[] turkeyTime = ["yyyy-MM-dd", "yyyy-MM-ddTHH:mm:ss", "dd/MM/yyyy", "dd/MM/yyyy HH:mm"];
+        return DateTime.TryParseExact(text, turkeyTime, CultureInfo.InvariantCulture, DateTimeStyles.None, out var local)
+            ? new DateTimeOffset(DateTime.SpecifyKind(local, DateTimeKind.Unspecified), TimeSpan.FromHours(3))
+            : null;
     }
 }

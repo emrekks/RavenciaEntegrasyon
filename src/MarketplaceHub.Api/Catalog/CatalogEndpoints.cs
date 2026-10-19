@@ -20,7 +20,7 @@ public static class CatalogEndpoints
         var api = endpoints.MapGroup("/api/v1").AddEndpointFilter(async (context, next) =>
         {
             try { return await next(context); }
-            catch (ArgumentException exception) { return Problem(context.HttpContext, new("INVALID_CURSOR", exception.Message, 400)); }
+            catch (ArgumentException exception) { var (code, message) = MarketplaceHub.Api.Security.RequestArgumentError.From(exception); return Problem(context.HttpContext, new(code, message, 400)); }
         });
 
         api.MapHepsiburadaProductMatchEndpoints();

@@ -17,7 +17,7 @@ public static class InvoicingEndpoints
 {
     public static IEndpointRouteBuilder MapInvoicingEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var api = endpoints.MapGroup("/api/v1").AddEndpointFilter(async (context, next) => { try { return await next(context); } catch (ArgumentException exception) { return Problem(context.HttpContext, new("INVALID_CURSOR", exception.Message, 400)); } });
+        var api = endpoints.MapGroup("/api/v1").AddEndpointFilter(async (context, next) => { try { return await next(context); } catch (ArgumentException exception) { var (code, message) = MarketplaceHub.Api.Security.RequestArgumentError.From(exception); return Problem(context.HttpContext, new(code, message, 400)); } });
 
         // The same document-bound link with a .pdf file name, for marketplaces (n11) that only accept
         // invoice links ending in a document extension. The stored link stays the /content form.

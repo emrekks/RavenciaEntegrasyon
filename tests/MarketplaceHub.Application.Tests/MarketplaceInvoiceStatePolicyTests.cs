@@ -337,6 +337,19 @@ public sealed class MarketplaceInvoiceStatePolicyTests
     }
 
     [Fact]
+    public void TrendyolNumbersSentAsTextDoNotDropThePage()
+    {
+        const string json = """
+            {"content":[{"id":"pkg-1","orderNumber":"ord-1","status":"Delivered","lastModifiedDate":"1760000000000","invoiceDateTime":"x","lines":[{"lineId":"line-1","stockCode":"SKU-1","productName":"Test","quantity":"2","lineItemPrice":"10.5","vatRate":"20"}]}]}
+            """;
+
+        var page = TrendyolJsonMapper.Orders(json);
+
+        var order = Assert.Single(page.Items);
+        Assert.Equal(2m, Assert.Single(order.Lines).Quantity);
+    }
+
+    [Fact]
     public void InvoiceIssueDate_DoesNotBlockLaterMarketplaceStatusTransition()
     {
         const string receivedJson = """

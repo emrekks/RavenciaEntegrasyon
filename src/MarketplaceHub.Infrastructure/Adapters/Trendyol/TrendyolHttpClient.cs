@@ -931,14 +931,6 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
         catch (JsonException) { return AdapterResult<StageTestOrderResult>.Failure(TrendyolErrorMapper.Contract()); }
     }
 
-    private async Task<AdapterResult<string>> SendClaimsReadAsync(TrendyolRequestContext context, string endpoint, CancellationToken cancellationToken)
-    {
-        var response = await SendAsync(context, HttpMethod.Get, endpoint, null, cancellationToken);
-        if (response.Error?.HttpStatus != (int)HttpStatusCode.NotFound) return response;
-        logger.LogWarning("Trendyol Türkiye claims GET returned HTTP 404 with storeFrontCode=TR; retrying the same documented V2 read endpoint without the international storefront header.");
-        return await SendAsync(context, HttpMethod.Get, endpoint, null, cancellationToken, includeStoreFrontCode: false);
-    }
-
     private async Task<AdapterResult<string>> SendAsync(TrendyolRequestContext context, HttpMethod method, string endpoint, HttpContent? content, CancellationToken cancellationToken, bool includeStoreFrontCode = true, Action<HttpRequestMessage>? configure = null, string? storeFrontCode = "TR")
     {
         using var request = TrendyolAuthenticationHandler.Create(context, method, endpoint, content, includeStoreFrontCode, storeFrontCode); configure?.Invoke(request); using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

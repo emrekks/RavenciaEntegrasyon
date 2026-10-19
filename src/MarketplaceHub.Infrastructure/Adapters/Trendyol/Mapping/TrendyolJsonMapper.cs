@@ -969,7 +969,7 @@ public static class TrendyolJsonMapper
     private static bool TryDecimal(JsonElement value, out decimal result, params string[] names)
     {
         foreach (var name in names)
-            if (value.TryGetProperty(name, out var item) && item.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined) && (item.TryGetDecimal(out result) || decimal.TryParse(item.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out result))) return true;
+            if (value.TryGetProperty(name, out var item) && item.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined) && (item.ValueKind == JsonValueKind.Number && item.TryGetDecimal(out result) || decimal.TryParse(item.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out result))) return true;
         result = 0;
         return false;
     }
@@ -984,15 +984,15 @@ public static class TrendyolJsonMapper
                 var nested = DecimalNullable(item, name is "price" ? "salePrice" : "listPrice");
                 if (nested is not null) return nested;
             }
-            else if (item.TryGetDecimal(out var result) || decimal.TryParse(item.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out result)) return result;
+            else if (item.ValueKind == JsonValueKind.Number && item.TryGetDecimal(out var result) || decimal.TryParse(item.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out result)) return result;
         }
         return null;
     }
-    private static long Long(JsonElement value, string name) => value.TryGetProperty(name, out var item) && item.TryGetInt64(out var result) ? result : 0;
+    private static long Long(JsonElement value, string name) => value.TryGetProperty(name, out var item) && item.ValueKind == JsonValueKind.Number && item.TryGetInt64(out var result) ? result : 0;
     private static long? NullableLong(JsonElement value, params string[] names)
     {
         foreach (var name in names)
-            if (value.TryGetProperty(name, out var item) && item.TryGetInt64(out var result)) return result;
+            if (value.TryGetProperty(name, out var item) && item.ValueKind == JsonValueKind.Number && item.TryGetInt64(out var result)) return result;
         return null;
     }
     private static bool Bool(JsonElement value, string name)
@@ -1013,13 +1013,13 @@ public static class TrendyolJsonMapper
         }
         return null;
     }
-    private static DateTimeOffset? Instant(JsonElement value, string name) => value.TryGetProperty(name, out var item) && item.TryGetInt64(out var milliseconds) ? DateTimeOffset.FromUnixTimeMilliseconds(milliseconds) : null;
+    private static DateTimeOffset? Instant(JsonElement value, string name) => value.TryGetProperty(name, out var item) && item.ValueKind == JsonValueKind.Number && item.TryGetInt64(out var milliseconds) ? DateTimeOffset.FromUnixTimeMilliseconds(milliseconds) : null;
     private static DateTimeOffset? FlexibleInstant(JsonElement value, params string[] names)
     {
         foreach (var name in names)
         {
             if (!value.TryGetProperty(name, out var item) || item.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined) continue;
-            if (item.TryGetInt64(out var milliseconds))
+            if (item.ValueKind == JsonValueKind.Number && item.TryGetInt64(out var milliseconds))
             {
                 try { return DateTimeOffset.FromUnixTimeMilliseconds(milliseconds); } catch (ArgumentOutOfRangeException) { }
             }

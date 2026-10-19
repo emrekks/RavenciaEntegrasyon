@@ -897,10 +897,15 @@ public sealed partial class ShopifyHttpClient(
         {
             using var response = await client.SendAsync(request, cancellationToken);
             var raw = await response.Content.ReadAsStringAsync(cancellationToken);
-            using var document = JsonDocument.Parse(raw);
-            var rate = ReadRateLimit(document);
+            // An error answer may be an HTML page (a 502 or 503 from Shopify's edge); it is classed by its
+            // status instead of failing as unreadable JSON.
+            JsonDocument? parsed = null;
+            try { parsed = JsonDocument.Parse(raw); }
+            catch (JsonException) when (!response.IsSuccessStatusCode) { }
+            using var document = parsed;
+            var rate = document is null ? null : ReadRateLimit(document);
             var remoteRequestId = response.Headers.TryGetValues("X-Request-ID", out var requestIds) ? requestIds.FirstOrDefault() : null;
-            if (!response.IsSuccessStatusCode)
+            if (!response.IsSuccessStatusCode || document is null)
             {
                 var retryAfter = response.Headers.RetryAfter?.Delta
                     ?? (response.Headers.RetryAfter?.Date is { } resetAt ? resetAt - DateTimeOffset.UtcNow : null);

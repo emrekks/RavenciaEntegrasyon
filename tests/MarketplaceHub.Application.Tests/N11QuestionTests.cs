@@ -26,7 +26,7 @@ public sealed class N11QuestionTests
         Assert.Equal("Beden: M beden kaç cm?", question.Text);
         Assert.Equal("Kadın Bluz", question.ProductName);
         Assert.Equal("https://img.example.com/1.jpg", question.ProductImageUrl);
-        Assert.Equal(new DateTimeOffset(2026, 10, 12, 0, 0, 0, TimeSpan.Zero), question.CreatedAt);
+        Assert.Equal(new DateTimeOffset(2026, 10, 12, 0, 0, 0, TimeSpan.FromHours(3)), question.CreatedAt);
         Assert.Empty(question.Conversations);
     }
 
@@ -38,7 +38,7 @@ public sealed class N11QuestionTests
         Assert.Equal("ANSWERED", question.Status);
         var reply = Assert.Single(question.Conversations);
         Assert.Equal("Göğüs 96 cm.", reply.Text);
-        Assert.Equal(new DateTimeOffset(2026, 10, 13, 0, 0, 0, TimeSpan.Zero), question.LastModifiedAt);
+        Assert.Equal(new DateTimeOffset(2026, 10, 13, 0, 0, 0, TimeSpan.FromHours(3)), question.LastModifiedAt);
     }
 
     [Fact]
