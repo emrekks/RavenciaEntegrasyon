@@ -4341,7 +4341,9 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             LastSuccessAt = fixture.Now.AddMinutes(-1),
             Version = 1
         };
-        var remote = NewRemoteQuestion("WAITING_FOR_ANSWER", [new("Customer", "Ürün birebir aynı mı?", fixture.Now.AddMinutes(-5))], fixture.Now.AddMinutes(-5));
+        // Marketplaces send milliseconds; the fixture clock has ticks PostgreSQL would round away.
+        var askedAt = DateTimeOffset.FromUnixTimeMilliseconds(fixture.Now.AddMinutes(-5).ToUnixTimeMilliseconds());
+        var remote = NewRemoteQuestion("WAITING_FOR_ANSWER", [new("Customer", "Ürün birebir aynı mı?", askedAt)], askedAt);
         var port = new WaitingQuestionListPort(remote);
 
         await using (var seedDb = fixture.CreateContext())
