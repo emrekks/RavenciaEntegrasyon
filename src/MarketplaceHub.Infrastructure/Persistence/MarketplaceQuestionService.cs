@@ -433,7 +433,11 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
             row.Kind = remote.Kind; row.Status = remote.Status;
             if (remote.Text.Length > 0) row.QuestionText = remote.Text;
             row.ProductName = remote.ProductName; row.ProductImageUrl = remote.ProductImageUrl; row.ProductSku = remote.ProductSku; row.ProductBarcode = remote.ProductBarcode; row.ProductModelCode = remote.ProductModelCode; row.ProductUrl = remote.ProductUrl ?? row.ProductUrl; row.CustomerName = remote.CustomerName; row.ExternalOrderNumber = remote.OrderNumber;
-            row.HistoryJson = MergeHistory(row.HistoryJson, remote.Conversations); row.ExpiresAt = remote.ExpiresAt; row.LastRemoteModifiedAt = remote.LastModifiedAt;
+            // HistoryJson is jsonb, so it comes back with PostgreSQL's key order and spacing; compare it in our own
+            // serialized form, or every re-read would look like a change.
+            var history = MergeHistory(row.HistoryJson, remote.Conversations);
+            if (history != MergeHistory(row.HistoryJson, [])) row.HistoryJson = history;
+            row.ExpiresAt = remote.ExpiresAt; row.LastRemoteModifiedAt = remote.LastModifiedAt;
             ReconcileAnswerSubmission(row, remote);
             row.LastSyncedAt = now;
             // The version moves only when the question really changed. Re-reading an unchanged question every

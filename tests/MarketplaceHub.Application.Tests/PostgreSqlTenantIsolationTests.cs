@@ -4327,6 +4327,53 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task QuestionSync_KeepsTheVersionOfAQuestionThatDidNotChange()
+    {
+        var tenant = NewTenant("question-version-stable");
+        var connection = NewQuestionConnection(tenant);
+        var syncState = new MarketplaceQuestionSyncState
+        {
+            TenantId = tenant.Id,
+            ConnectionId = connection.Id,
+            HistoryImported = true,
+            HistoryStartedAt = fixture.Now.AddYears(-1),
+            ProgressStatus = "IDLE",
+            LastSuccessAt = fixture.Now.AddMinutes(-1),
+            Version = 1
+        };
+        var remote = NewRemoteQuestion("WAITING_FOR_ANSWER", [new("Customer", "Ürün birebir aynı mı?", fixture.Now.AddMinutes(-5))], fixture.Now.AddMinutes(-5));
+        var port = new WaitingQuestionListPort(remote);
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.MarketplaceQuestionSyncStates.Add(syncState);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            async Task<long> SyncAndReadVersionAsync()
+            {
+                await using var db = fixture.CreateContext();
+                var service = new MarketplaceQuestionService(db, port, fixture.TimeProvider, NullLogger<MarketplaceQuestionService>.Instance);
+                var sync = await service.SyncConnectionAsync(tenant.Id, connection.Id, "PRODUCT", CancellationToken.None);
+                Assert.Null(sync.Error);
+                return await db.MarketplaceQuestions.AsNoTracking().Where(question => question.TenantId == tenant.Id).Select(question => question.Version).SingleAsync();
+            }
+
+            var first = await SyncAndReadVersionAsync();
+            Assert.Equal(first, await SyncAndReadVersionAsync());
+            Assert.Equal(first, await SyncAndReadVersionAsync());
+        }
+        finally
+        {
+            await DeleteQuestionSyncTestTenantAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
     public async Task TrendyolOrderStreamPoll_PreservesIncrementalDatesWithoutLegacyOrderDates()
     {
         var tenant = NewTenant("trendyol-order-stream-contract");
@@ -5065,6 +5112,21 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             throw new NotSupportedException();
 
         public Task<AdapterResult<ReturnActionResult>> ExecuteAsync(AdapterContext context, ReturnActionCommand command, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+    }
+
+    private sealed class WaitingQuestionListPort(RemoteMarketplaceQuestion remote) : IQuestionPort
+    {
+        public Task<AdapterResult<MarketplaceQuestionPage>> ListQuestionsAsync(AdapterContext context, QuestionPollRequest request, CancellationToken cancellationToken)
+        {
+            IReadOnlyList<RemoteMarketplaceQuestion> items = request.Status == remote.Status && request.Page == 0 ? [remote] : [];
+            return Task.FromResult(AdapterResult<MarketplaceQuestionPage>.Success(new(items, request.Page, items.Count == 0 ? 0 : 1, items.Count)));
+        }
+
+        public Task<AdapterResult<RemoteMarketplaceQuestion>> GetQuestionAsync(AdapterContext context, string questionId, string kind, CancellationToken cancellationToken) =>
+            Task.FromResult(AdapterResult<RemoteMarketplaceQuestion>.Success(remote));
+
+        public Task<AdapterResult<RemoteQuestionAnswerResult>> AnswerQuestionAsync(AdapterContext context, string questionId, string kind, string answer, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
     }
 
