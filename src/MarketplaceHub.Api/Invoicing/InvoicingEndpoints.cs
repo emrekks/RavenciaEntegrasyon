@@ -589,7 +589,7 @@ public static class InvoicingEndpoints
         }
         if (!command.Confirmed) return Problem(http, new("EXPLICIT_CONFIRMATION_REQUIRED", "Dış mali işlem için açık onay zorunludur.", 422));
         var user = await users.FindByIdAsync(tenant.UserId.ToString());
-        if (user is null || string.IsNullOrWhiteSpace(command.Password) || !await users.CheckPasswordAsync(user, command.Password)) return Problem(http, new("REAUTHENTICATION_FAILED", "İşlem için parola ile yeniden doğrulama başarısız.", 401));
+        if (!await MarketplaceHub.Api.Security.PasswordCheck.VerifyAsync(users, user, command.Password)) return Problem(http, new("REAUTHENTICATION_FAILED", "İşlem için parola ile yeniden doğrulama başarısız.", 401));
         long version = 0;
         if (requireVersion && !TryIfMatch(http, out version, out var failure)) return failure!;
         return Accepted(await enqueue(tenant.TenantId, version, http.Request.Headers["Idempotency-Key"].ToString()));

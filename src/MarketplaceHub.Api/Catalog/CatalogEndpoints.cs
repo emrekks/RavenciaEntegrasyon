@@ -161,17 +161,12 @@ public static class CatalogEndpoints
                 if (!Uri.TryCreate(asset.RelativePath, UriKind.Absolute, out var remoteUri) || remoteUri.Scheme != Uri.UriSchemeHttps || remoteUri.IsLoopback || string.Equals(remoteUri.Host, "localhost", StringComparison.OrdinalIgnoreCase)) return Results.NotFound();
                 try
                 {
-                    var client = clients.CreateClient();
-                    client.Timeout = TimeSpan.FromSeconds(12);
-                    client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (compatible; RavenciaMediaProxy/1.0)");
-                    using var response = await client.GetAsync(remoteUri, HttpCompletionOption.ResponseHeadersRead, http.RequestAborted);
-                    if (!response.IsSuccessStatusCode) return Results.NotFound();
-                    var contentType = response.Content.Headers.ContentType?.MediaType;
-                    if (string.IsNullOrWhiteSpace(contentType) || !contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)) return Results.NotFound();
-                    var bytes = await response.Content.ReadAsByteArrayAsync(http.RequestAborted);
-                    if (bytes.Length == 0 || bytes.Length > MaxUploadBytes) return Results.NotFound();
+                    // The proxy client connects only to public addresses, follows redirects itself and
+                    // stops reading past the upload limit.
+                    var image = await PublicNetwork.GetImageAsync(clients.CreateClient(PublicNetwork.ClientName), remoteUri, MaxUploadBytes, http.RequestAborted);
+                    if (image is not { } found) return Results.NotFound();
                     http.Response.Headers.CacheControl = "private, max-age=900";
-                    return Results.Bytes(bytes, contentType);
+                    return Results.Bytes(found.Bytes, found.ContentType);
                 }
                 catch (HttpRequestException) { return Results.NotFound(); }
                 catch (TaskCanceledException) { return Results.NotFound(); }
@@ -934,17 +929,7 @@ public static class CatalogEndpoints
         return Results.Ok(new { deletedCount = media.Count, version, productVersions = affectedProducts.ToDictionary(item => item.Id.ToString("D"), item => item.Version) });
     }
 
-    private static bool IsPublicAddress(IPAddress address)
-    {
-        if (IPAddress.IsLoopback(address) || address.Equals(IPAddress.Any) || address.Equals(IPAddress.IPv6Any) || address.Equals(IPAddress.None) || address.Equals(IPAddress.IPv6None)) return false;
-        if (address.AddressFamily == AddressFamily.InterNetworkV6) return !address.IsIPv6LinkLocal && !address.IsIPv6SiteLocal && !address.IsIPv6Multicast;
-        var bytes = address.GetAddressBytes();
-        return bytes[0] is not 0 and not 10 and not 127
-            && !(bytes[0] == 169 && bytes[1] == 254)
-            && !(bytes[0] == 172 && bytes[1] is >= 16 and <= 31)
-            && !(bytes[0] == 192 && bytes[1] == 168)
-            && bytes[0] < 224;
-    }
+    private static bool IsPublicAddress(IPAddress address) => PublicNetwork.IsPublic(address);
 
     private static bool IsPublicHost(string host)
     {

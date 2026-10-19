@@ -101,7 +101,7 @@ public static class AuthEndpoints
     {
         var session = RequireSession(context, SessionState.Active); if (session is null) return Forbidden();
         var user = await users.FindByIdAsync(session.UserId.ToString());
-        if (user is null || !await users.CheckPasswordAsync(user, request.Password)) return Results.Problem(statusCode: 401, title: "Reauthentication failed");
+        if (user is null || !await PasswordCheck.VerifyAsync(users, user, request.Password)) return Results.Problem(statusCode: 401, title: "Reauthentication failed");
         var security = await db.UserSecurities.SingleAsync(x => x.UserId == session.UserId, context.RequestAborted);
         if (security.TotpState == TotpState.Enabled && !await ValidateSecondFactorAsync(request, session.UserId, security, context, db, protection, totp, hasher, time))
             return Results.Problem(statusCode: 401, title: "Second factor verification failed");
@@ -218,7 +218,7 @@ public static class AuthEndpoints
     private static async Task<IResult> MfaDisableAsync(ReauthenticateRequest request, HttpContext context, UserManager<ApplicationUser> users, AppDbContext db, IDataProtectionProvider protection, TotpService totp, TokenHasher hasher, TimeProvider time)
     {
         var session = RequireSession(context, SessionState.Active); if (session is null) return Forbidden();
-        var user = await users.FindByIdAsync(session.UserId.ToString()); if (user is null || !await users.CheckPasswordAsync(user, request.Password)) return Results.Problem(statusCode: 401, title: "Reauthentication failed");
+        var user = await users.FindByIdAsync(session.UserId.ToString()); if (user is null || !await PasswordCheck.VerifyAsync(users, user, request.Password)) return Results.Problem(statusCode: 401, title: "Reauthentication failed");
         var security = await db.UserSecurities.SingleAsync(x => x.UserId == user.Id, context.RequestAborted);
         if (security.TotpState == TotpState.Enabled && !await ValidateSecondFactorAsync(request, session.UserId, security, context, db, protection, totp, hasher, time))
             return Results.Problem(statusCode: 401, title: "Second factor verification failed");
@@ -233,7 +233,7 @@ public static class AuthEndpoints
     private static async Task<IResult> RecoveryRegenerateAsync(ReauthenticateRequest request, HttpContext context, UserManager<ApplicationUser> users, AppDbContext db, IDataProtectionProvider protection, TotpService totp, TokenHasher hasher, TimeProvider time)
     {
         var session = RequireSession(context, SessionState.Active); if (session is null) return Forbidden();
-        var user = await users.FindByIdAsync(session.UserId.ToString()); if (user is null || !await users.CheckPasswordAsync(user, request.Password)) return Results.Problem(statusCode: 401, title: "Reauthentication failed");
+        var user = await users.FindByIdAsync(session.UserId.ToString()); if (user is null || !await PasswordCheck.VerifyAsync(users, user, request.Password)) return Results.Problem(statusCode: 401, title: "Reauthentication failed");
         var security = await db.UserSecurities.SingleAsync(x => x.UserId == user.Id, context.RequestAborted); if (security.TotpState != TotpState.Enabled) return Results.Problem(statusCode: 409, title: "MFA is not enabled");
         if (!await ValidateSecondFactorAsync(request, session.UserId, security, context, db, protection, totp, hasher, time))
             return Results.Problem(statusCode: 401, title: "Second factor verification failed");
