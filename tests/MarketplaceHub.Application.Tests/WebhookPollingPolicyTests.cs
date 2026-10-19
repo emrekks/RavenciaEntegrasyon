@@ -52,6 +52,34 @@ public sealed class WebhookPollingPolicyTests
     }
 }
 
+public sealed class ConnectionRetestPolicyTests
+{
+    private static readonly DateTimeOffset Now = new(2026, 10, 19, 19, 0, 0, TimeSpan.Zero);
+
+    [Theory]
+    [InlineData("PAZARAMA_GATEWAY_BLOCKED", true)]
+    [InlineData("TRENDYOL_RATE_LIMITED", true)]
+    [InlineData("N11_REMOTE_ERROR", true)]
+    [InlineData("HEPSIBURADA_TIMEOUT", true)]
+    [InlineData("REMOTE_TIMEOUT", true)]
+    [InlineData("PAZARAMA_CREDENTIALS_REJECTED", false)]
+    [InlineData("PAZARAMA_ACCESS_DENIED", false)]
+    [InlineData("SHOPIFY_REQUIRED_READ_SCOPE", false)]
+    [InlineData(null, false)]
+    public void OnlyFaultsThatComeAndGoAreRetried(string? code, bool transient) =>
+        Assert.Equal(transient, ConnectionRetestPolicy.IsTransient(code));
+
+    [Fact]
+    public void ADraftWhoseTestFailedOnAPassingFaultIsRetestedAfterAQuarterHour()
+    {
+        Assert.True(ConnectionRetestPolicy.ShouldRetest("DRAFT", Now.AddMinutes(-16), "PAZARAMA_GATEWAY_BLOCKED", Now));
+        Assert.False(ConnectionRetestPolicy.ShouldRetest("DRAFT", Now.AddMinutes(-5), "PAZARAMA_GATEWAY_BLOCKED", Now));
+        Assert.False(ConnectionRetestPolicy.ShouldRetest("DRAFT", null, "PAZARAMA_GATEWAY_BLOCKED", Now));
+        Assert.False(ConnectionRetestPolicy.ShouldRetest("DRAFT", Now.AddHours(-1), "PAZARAMA_CREDENTIALS_REJECTED", Now));
+        Assert.False(ConnectionRetestPolicy.ShouldRetest("VERIFIED", Now.AddHours(-1), "PAZARAMA_GATEWAY_BLOCKED", Now));
+    }
+}
+
 public sealed class QuestionCadencePolicyTests
 {
     private static readonly DateTimeOffset Now = new(2026, 10, 18, 12, 0, 0, TimeSpan.Zero);

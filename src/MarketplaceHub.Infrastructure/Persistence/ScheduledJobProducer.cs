@@ -18,6 +18,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         await DisableProductAutomationAsync(cancellationToken);
         await EnsureDefaultPoliciesAsync(cancellationToken);
         await DisableExternalWriteAutomationAsync(cancellationToken);
+        added += await RetestTransientDraftsAsync(now, cancellationToken);
         var policies = (await (from policy in db.ConnectionSyncPolicies.AsNoTracking()
                                join connection in db.PlatformConnections.AsNoTracking()
                                    on new { policy.TenantId, Id = policy.ConnectionId } equals new { connection.TenantId, connection.Id }
@@ -274,6 +275,32 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         if (connectionSettingsChanged || policies.Any(x => x.ResourceType is "STOCK_RECONCILE_SHORT" or "STOCK_RECONCILE_MEDIUM" or "STOCK_RECONCILE_DAILY"
             || MarketplaceExternalWritePolicies.IsPolicy(x.ResourceType)) || jobs.Count > 0)
             await db.SaveChangesAsync(cancellationToken);
+    }
+
+    // A draft connection whose last test failed on a passing fault (gateway block, quota, marketplace fault, timeout)
+    // is tested again every quarter hour, so it verifies itself once the marketplace recovers; see ConnectionRetestPolicy.
+    internal async Task<int> RetestTransientDraftsAsync(DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var drafts = await db.PlatformConnections.AsNoTracking()
+            .Where(x => x.Status == "DRAFT" && x.LastTestedAt != null && x.LastErrorCode != null
+                && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11" || x.PlatformCode == "PAZARAMA")
+                && db.PlatformCredentials.Any(credential => credential.ConnectionId == x.Id && credential.RevokedAt == null))
+            .Select(x => new { x.TenantId, x.Id, x.PlatformCode, x.Status, x.LastTestedAt, x.LastErrorCode })
+            .ToListAsync(cancellationToken);
+        var added = 0;
+        foreach (var draft in drafts)
+        {
+            if (!ConnectionRetestPolicy.ShouldRetest(draft.Status, draft.LastTestedAt, draft.LastErrorCode, now)) continue;
+            var jobType = MarketplaceJobTypes.ForPlatform(draft.PlatformCode, MarketplaceJobTypes.ConnectionTest);
+            var dedupPrefix = $"scheduled:connection-retest:{draft.Id:N}:";
+            var pending = await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == draft.TenantId && x.ConnectionId == draft.Id
+                && x.JobDedupKey.StartsWith(dedupPrefix) && (x.Status == JobStatus.Pending || x.Status == JobStatus.Leased || x.Status == JobStatus.RetryScheduled), cancellationToken);
+            if (pending) continue;
+            db.IntegrationJobs.Add(NewJob(draft.TenantId, draft.Id, jobType, $"{dedupPrefix}{now.ToUnixTimeSeconds()}", "{}", now, $"scheduler-retest-{Guid.NewGuid():N}"));
+            added++;
+        }
+        if (added > 0) await db.SaveChangesAsync(cancellationToken);
+        return added;
     }
 
     private async Task EnsureDefaultPoliciesAsync(CancellationToken cancellationToken)

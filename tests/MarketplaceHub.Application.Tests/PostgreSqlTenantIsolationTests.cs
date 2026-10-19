@@ -743,6 +743,46 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task ADraftConnectionWhoseTestFailedOnAPassingFaultIsRetestedOnceAQuarterHour()
+    {
+        var tenant = NewTenant("connection-retest");
+        var connection = NewQuestionConnection(tenant);
+        connection.PlatformCode = "PAZARAMA";
+        connection.Environment = "PRODUCTION";
+        connection.ApiVersion = "V1";
+        connection.Status = "DRAFT";
+        connection.LastTestedAt = fixture.Now.AddMinutes(-20);
+        connection.LastErrorCode = "PAZARAMA_GATEWAY_BLOCKED";
+        var refused = NewQuestionConnection(tenant);
+        refused.PlatformCode = "PAZARAMA";
+        refused.Environment = "PRODUCTION";
+        refused.ApiVersion = "V1";
+        refused.Status = "DRAFT";
+        refused.LastTestedAt = fixture.Now.AddHours(-2);
+        refused.LastErrorCode = "PAZARAMA_CREDENTIALS_REJECTED";
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.PlatformConnections.AddRange(connection, refused);
+        db.PlatformCredentials.AddRange(
+            new PlatformCredential { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, CredentialType = "PAZARAMA_CLIENT", ProtectedPayload = "protected", MaskedHint = "test", CreatedAt = fixture.Now, Version = 1 },
+            new PlatformCredential { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = refused.Id, CredentialType = "PAZARAMA_CLIENT", ProtectedPayload = "protected", MaskedHint = "test", CreatedAt = fixture.Now, Version = 1 });
+        await db.SaveChangesAsync();
+        var producer = new ScheduledJobProducer(db, fixture.TimeProvider, new ConfigurationBuilder().Build());
+
+        var first = await producer.RetestTransientDraftsAsync(fixture.Now, CancellationToken.None);
+        var second = await producer.RetestTransientDraftsAsync(fixture.Now, CancellationToken.None);
+
+        Assert.Equal(1, first);
+        Assert.Equal(0, second);
+        var job = Assert.Single(await db.IntegrationJobs.Where(x => x.TenantId == tenant.Id).ToListAsync());
+        Assert.Equal(connection.Id, job.ConnectionId);
+        Assert.Equal(MarketplaceJobTypes.PazaramaConnectionTest, job.JobType);
+        Assert.StartsWith($"scheduled:connection-retest:{connection.Id:N}:", job.JobDedupKey);
+        await transaction.RollbackAsync();
+    }
+
+    [PostgreSqlFact]
     public async Task OperationalIssueRetention_ResolvesIssuesNotSeenForAMonthAndKeepsTheRest()
     {
         var tenant = NewTenant("issue-retention");

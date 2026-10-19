@@ -621,6 +621,26 @@ public static class WebhookPollingPolicy
     public static DateTimeOffset MissedOrderCutoff(DateTimeOffset now, TimeSpan storedClockAhead) => now - DeliveryGrace + storedClockAhead;
 }
 
+// A connection whose credentials were just entered or renewed is a draft until a test passes. When that test fails
+// for a reason that comes and goes (a gateway block, a quota refusal, a marketplace fault, a timeout) it is run again
+// every quarter hour on its own, so the connection does not stay a draft, its reads stopped, after the marketplace
+// recovers. A refusal of the credentials themselves is not retried; the seller has to change them.
+public static class ConnectionRetestPolicy
+{
+    public static readonly TimeSpan Interval = TimeSpan.FromMinutes(15);
+
+    public static bool IsTransient(string? errorCode) =>
+        errorCode is not null && (errorCode.EndsWith("_GATEWAY_BLOCKED", StringComparison.Ordinal)
+            || errorCode.EndsWith("_RATE_LIMITED", StringComparison.Ordinal)
+            || errorCode.EndsWith("_REMOTE_ERROR", StringComparison.Ordinal)
+            || errorCode.EndsWith("_TIMEOUT", StringComparison.Ordinal)
+            || errorCode.EndsWith("_NETWORK_ERROR", StringComparison.Ordinal)
+            || errorCode is "REMOTE_TIMEOUT" or "REMOTE_UNAVAILABLE" or "REMOTE_RATE_LIMITED");
+
+    public static bool ShouldRetest(string status, DateTimeOffset? lastTestedAt, string? lastErrorCode, DateTimeOffset now) =>
+        status == "DRAFT" && lastTestedAt is { } tested && IsTransient(lastErrorCode) && now - tested >= Interval;
+}
+
 public enum EffectVerdict { Applied, NotApplied, Unknown }
 public enum ExternalEffectOutcome { Applied, NotApplied, Unresolved, Wait }
 
