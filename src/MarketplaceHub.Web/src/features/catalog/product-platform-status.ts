@@ -50,7 +50,8 @@ export function productPlatformDisplayState(
   if (isChecking || normalized.some(status => inProgressStatuses.has(status))) return 'processing'
   if (normalized.length > 0 && normalized.every(status => status === 'LIVE')) return 'active'
   if (normalized.some(status => status === 'LIVE' || status === 'PARTIAL_LIVE')) return 'partial'
-  if (normalized.some(status => errorStatuses.has(status))) return 'error'
+  // Some variants failed and the rest did not: partly working, not a whole failure.
+  if (normalized.some(status => errorStatuses.has(status))) return normalized.every(status => errorStatuses.has(status)) ? 'error' : 'partial'
 
   // A catalog import/mapping confirms that the local variants are connected
   // to marketplace variants; publication state remains a separate status.

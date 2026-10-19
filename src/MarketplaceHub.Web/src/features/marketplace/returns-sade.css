@@ -1057,6 +1057,11 @@ main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-act { width: 130px; }
 main .rr.rr-returns .rr-tbl.rr-tbl .rr-cargocell > small.rr-num { white-space: nowrap; }
 main .rr.rr-returns .rr-tbl.rr-tbl th .rr-hf { white-space: nowrap !important; }
 }
+/* Wide screens: the product column takes the extra room, so the order and carrier columns keep their own width
+   instead of the fixed table spreading it over every column (the order column grew to 375px at 1920). */
+@media (min-width: 1441px) {
+main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-prod { width: auto; }
+}
 /* picture preview: no footer; the picture sits with the same 12px on every side and gets the footer's height */
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img .rr-m-body.rr-m-body { padding: 12px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img.rr-img { width: calc(min(100vh - 170px, 640px) * 2 / 3 + 26px); max-width: calc(100vw - 32px); }

@@ -77,4 +77,9 @@ describe('product platform list status', () => {
     expect(productPlatformDisplayState(['BATCH_IN_PROGRESS'], false)).toBe('processing')
     expect(productPlatformDisplayState(['CREATE_REJECTED'], false)).toBe('error')
   })
+
+  it('shows a platform where only some variants failed as partly working', () => {
+    expect(productPlatformDisplayState(['LINKED', 'UPDATE_REJECTED'], false, 2)).toBe('partial')
+    expect(productPlatformDisplayState(['UPDATE_REJECTED', 'CREATE_REJECTED'], false, 2)).toBe('error')
+  })
 })

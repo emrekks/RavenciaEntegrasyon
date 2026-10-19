@@ -52,8 +52,11 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pm i { position: absolute; right: -3px; bottom: -3px; width: 10px; height: 10px; border: 2px solid var(--rr-surface); border-radius: 50%; background: var(--rr-subtle); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pm.rr-on i { background: var(--rr-ok); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pm.rr-part i { background: var(--rr-warn); }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pm.rr-link i,
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pm.rr-busy i { background: var(--rr-info); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pm.rr-link i { background: var(--rr-info); }
+/* An update on its way: the dot cycles red, green and blue until the marketplace answers. */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pm.rr-busy i { background: var(--rr-info); animation: rr-pm-rgb 1.8s linear infinite; }
+@keyframes rr-pm-rgb { 0%, 100% { background: #ef4444; } 33% { background: #22c55e; } 66% { background: #3b82f6; } }
+@media (prefers-reduced-motion: reduce) { :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pm.rr-busy i { animation: none; } }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pm.rr-err i { background: var(--rr-bad); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pm.rr-none .rr-logo { opacity: .28; filter: grayscale(1); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pm.rr-none i { display: none; }
