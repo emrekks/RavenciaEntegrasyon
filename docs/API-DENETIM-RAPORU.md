@@ -99,3 +99,51 @@ repodaki plan üzerinden kontrol edildi.
 3. **Dalga 3 (yapı):** bölüm 3'teki kademeli geçiş.
 
 (d) işaretli maddeler SIT veya canlı okuma ile doğrulanmadan değiştirilmemeli.
+
+---
+
+## 5. Uygulama durumu (19 Ekim 2026)
+
+### Dalga 1 — tamam
+| # | Ne yapıldı |
+|---|---|
+| G1 | Rol kuralları yolun tam segmentleriyle eşleşiyor; `/credential/`, `//deep-delete` gibi yazımlar artık doğru kurala düşüyor |
+| G2 | Bağlantı oluşturma, veri sıfırlama ve veri görünürlüğü yönetici (OWNER/ADMINISTRATOR) istiyor |
+| H1 | Satıcı kodu yalnız 4xx'te ve yalnız belgeli kargo kodları (CPE001–007, RTE003) için sınıfı belirliyor; yerel devre kesici 503'ü ve kodlu 5xx'ler yeniden deneniyor |
+| H2 | Devre kesici satıcı + uç ailesi bazında; sipariş kotasındaki 429 stok/fiyat/iade/fatura uçlarını kapatmıyor |
+| H3 | Shopify `quantities` listesinden `available` okunuyor |
+| H4 | n11 `invoiceDateTime` milisaniye zaman damgası (dokümandan doğrulandı) |
+| H5 | n11 fatura numarası 3+4+9 kuralıyla doğrulanıyor; sipariş paket okumalarında `sender=ALL` (dokümandan doğrulandı). İade servisinde `sender` alanı dokümanda bulunamadı, değiştirilmedi |
+| H6 | HB sipariş detayında fatura durumu her paket için kendi kalemlerinden okunuyor (canlı veride `items[].packageNumber/hasInvoice` doğrulandı). Detaydan paket üretimi eklenmedi: paketler paket listesi yolundan sağlıklı geliyor, detaydan üretim paket tutarlarını ezebilirdi |
+| H7 | HB paket olayları sipariş numarasını olay yolundan, paneldeki paketten/kalemden, en son HB'den buluyor; `unpack`'teki `orderNumbers[]` okunuyor |
+| H10 | Trendyol bölünmüş siparişte yerini yenisine bırakan paket toplamlara eklenmiyor |
+| H11 | Pazarama statü 18 → `CancelRequested` (Beklemede); hazırlanıyor görünmüyor |
+| D1 | Webhook ve etki doğrulama işleri "orders" kilit grubunda |
+| D3 | Tek heartbeat hatası, kira hâlâ geçerliyse işi iptal etmiyor |
+
+### Dalga 2 — tamam
+| # | Ne yapıldı |
+|---|---|
+| D2 | Sonucu belirsiz fiyat-stok gönderimi manuel incelemeye düşmüyor; aynı etki kaydıyla yeniden gönderiliyor (değerler mutlak, içerik güncel mi diye her gönderimde kontrol ediliyor) |
+| D4 | Bekleme planı 5 sn, 15 sn, 1 dk, 2 dk, 5 dk (~8,5 dk); deneme sayısı 6 kaldı (değiştirmek migration ister) |
+| D5 | Etki taraması yalnız işi kalan kayıtları alıyor |
+| D6 | `UpsertOrders` kaydettiği sayfanın kendi yüklediği satırlarını takipten çıkarıyor; çağıranın imleç/iş kayıtları korunuyor |
+| D7 | Worker ve API logları `LogContext`'ten zenginleşiyor; her iş JobId, JobType, TenantId, ConnectionId, CorrelationId kapsamında çalışıyor. Metrik/trace (Meter, ActivitySource) henüz yok |
+| G3 | Görsel proxy'si yalnız genel internet adreslerine bağlanıyor (bağlanma anında DNS çözülüp kontrol ediliyor), yönlendirmeleri kendi izliyor (en çok 3), boyut sınırında okumayı kesiyor |
+| G4 | Tüm yeniden doğrulamalar giriş kilidini paylaşıyor (5 hatalı parola → 15 dk) |
+| G5 | Webhook sınırı bağlantı başına 1200/dk |
+| H8 | HB etiketi JSON zarfı (`data[]`) gelirse çözülüyor, dosya gelirse eskisi gibi; HB dokümanına erişilemediği için iki biçim de destekleniyor |
+| H9 | **Hata değil.** Canlı veride `unitPrice + merchantDiscount.unitPrice` yuvarlak liste fiyatını veriyor (509,25 + 15,75 = 525,00): `totalPrice` zaten indirimli ödenen tutar. Net ve fatura doğru. Brütü değiştirmek fatura kalem kontrolünü bozacağı için dokunulmadı |
+| H12 | Pazarama'da stok önce gidiyor, iki istek birbirinden bağımsız; her barkodun fiyatı ve stoku ayrı kaydediliyor |
+| Orta | 400 mesajları güvenli; n11 pencereleri 14 gün, iade/soru tarihleri Türkiye saati; Shopify HTML hata sayfası durum koduyla sınıflanıyor; Trendyol'da metin olarak gelen sayı sayfayı düşürmüyor; ölü kod silindi |
+
+### İncelenip değiştirilmeyenler
+- Pazaryeri 401'i SPA oturumunu düşürmüyor; istemci yalnız CSRF belirtecini yeniliyor.
+- Pazarama token kilit sözlüğü kimlik bilgisi başına bir kayıt tutuyor; bağlantı sayısıyla sınırlı.
+
+### Kalanlar
+- (d) maddeleri: HB `Offset` büyük harf, talep listesinde `lineItemId`, HB tarih saat dilimi, Shopify sorgu maliyeti → SIT/canlı yanıtla doğrulanmalı.
+- Trendyol: kargoya son tarih alanı, 2026 ürün/fiyat kotaları için ayrı kova, V2 10.000 kayıt sınırı.
+- Shopify: vergi/iskonto/kargo eşlemesi, API sürümü bağımlılığı, `productByHandle`.
+- REST: GET uçlarında rol ayrımı, idempotency/`If-Match` tutarlılığı, herkese açık fatura linki süresi.
+- Bölüm 3'teki yapısal geçiş (JobTypeRegistry, IJobHandler, SyncRunner, ExternalWriteGuard): ayrı ve adım adım yapılacak bir çalışma; ilk adımı (gözlemlenebilirlik + D1–D4) tamamlandı.
