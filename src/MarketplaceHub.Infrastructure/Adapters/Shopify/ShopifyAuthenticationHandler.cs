@@ -16,12 +16,16 @@ public sealed class ShopifyAuthenticationHandler(
     ILogger<ShopifyAuthenticationHandler> logger)
 {
     private readonly IDataProtector protector = dataProtection.CreateProtector("MarketplaceHub.PlatformCredential.v1");
-    private readonly ConcurrentDictionary<Guid, CachedToken> tokens = new();
+    // Shared by every request and job of the process (the handler itself is scoped), keyed by the credential
+    // so a rotated credential never reuses the old token.
+    private static readonly ConcurrentDictionary<(Guid ConnectionId, Guid CredentialId), CachedToken> Tokens = new();
 
     public async Task<ShopifyRequestContext?> LoadAsync(Guid tenantId, Guid connectionId, string apiVersion, CancellationToken cancellationToken)
     {
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(
-            x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "SHOPIFY" && x.ApiVersion == apiVersion,
+            // The API version comes from the server's settings; the version stored on the connection is the one it
+            // was last verified with, so raising the setting does not cut every connection off.
+            x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "SHOPIFY",
             cancellationToken);
         var credential = await db.PlatformCredentials.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.RevokedAt == null)
@@ -57,14 +61,15 @@ public sealed class ShopifyAuthenticationHandler(
             return null;
         }
 
-        var token = await AccessTokenAsync(connectionId, shop, payload, cancellationToken);
+        var token = await AccessTokenAsync((connectionId, credential.Id), shop, payload, cancellationToken);
         if (token is null) return null;
         return new(connection, shop, apiVersion, token.Token, token.ExpiresAt);
     }
 
-    private async Task<CachedToken?> AccessTokenAsync(Guid connectionId, string shop, ShopifyCredentialPayload payload, CancellationToken cancellationToken)
+    private async Task<CachedToken?> AccessTokenAsync((Guid ConnectionId, Guid CredentialId) key, string shop, ShopifyCredentialPayload payload, CancellationToken cancellationToken)
     {
-        if (tokens.TryGetValue(connectionId, out var cached) && cached.ExpiresAt > DateTimeOffset.UtcNow.AddMinutes(1)) return cached;
+        var connectionId = key.ConnectionId;
+        if (Tokens.TryGetValue(key, out var cached) && cached.ExpiresAt > DateTimeOffset.UtcNow.AddMinutes(1)) return cached;
 
         var endpoint = new Uri($"https://{shop}.myshopify.com/admin/oauth/access_token");
         using var client = clients.CreateClient("Shopify");
@@ -91,7 +96,7 @@ public sealed class ShopifyAuthenticationHandler(
             var expiresIn = json.RootElement.TryGetProperty("expires_in", out var expiryElement) && expiryElement.TryGetInt32(out var seconds) ? seconds : 86_400;
             if (string.IsNullOrWhiteSpace(accessToken)) return null;
             cached = new(accessToken, DateTimeOffset.UtcNow.AddSeconds(Math.Max(60, expiresIn)));
-            tokens[connectionId] = cached;
+            Tokens[key] = cached;
             return cached;
         }
         catch (HttpRequestException exception)

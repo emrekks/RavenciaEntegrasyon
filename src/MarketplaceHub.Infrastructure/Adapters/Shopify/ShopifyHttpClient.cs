@@ -291,12 +291,12 @@ public sealed partial class ShopifyHttpClient(
             return Fail<RemoteOperationRef>(AdapterErrorClass.Validation, "SHOPIFY_PRODUCT_SKUS_INVALID", "Shopify ürün yayınındaki varyant SKU değerleri boş veya yinelenen olamaz.", HttpStatusCode.BadRequest);
 
         var existingProductResult = await QueryAsync(shop,
-            "query($handle:String!){productByHandle(handle:$handle){id metafield(namespace:\"marketplacehub\",key:\"ravencia_product_id\"){value}}}",
+            "query($handle:String!){productByIdentifier(identifier:{handle:$handle}){id metafield(namespace:\"marketplacehub\",key:\"ravencia_product_id\"){value}}}",
             new { handle }, cancellationToken);
         if (!existingProductResult.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(existingProductResult.Error!, existingProductResult.RateLimit);
         try
         {
-            var existingProduct = existingProductResult.Value!.RootElement.GetProperty("productByHandle");
+            var existingProduct = existingProductResult.Value!.RootElement.GetProperty("productByIdentifier");
             if (existingProduct.ValueKind == JsonValueKind.Object)
             {
                 var ownerId = existingProduct.TryGetProperty("metafield", out var owner) && owner.ValueKind == JsonValueKind.Object
@@ -538,6 +538,12 @@ public sealed partial class ShopifyHttpClient(
         var first = Math.Clamp(page.Limit, 1, Math.Clamp(settings.OrderPageSize, 1, 250));
         var query = BuildOrderQuery(window);
         var result = await QueryOrderAsync(shop, new { first, after = page.Cursor, query }, single: false, cancellationToken);
+        // Over the cost ceiling: the same page is asked again with a quarter of the orders, down to one.
+        while (!result.IsSuccess && result.Error?.Code == QueryCostExceededCode && first > 1)
+        {
+            first = Math.Max(1, first / 4);
+            result = await QueryOrderAsync(shop, new { first, after = page.Cursor, query }, single: false, cancellationToken);
+        }
         if (!result.IsSuccess) return AdapterResult<AdapterPageResult<RemoteOrder>>.Failure(result.Error!, result.RateLimit);
         try
         {
@@ -904,7 +910,12 @@ public sealed partial class ShopifyHttpClient(
             catch (JsonException) when (!response.IsSuccessStatusCode) { }
             using var document = parsed;
             var rate = document is null ? null : ReadRateLimit(document);
+            if (document is not null) LogQueryCost(document, context.Shop);
             var remoteRequestId = response.Headers.TryGetValues("X-Request-ID", out var requestIds) ? requestIds.FirstOrDefault() : null;
+            // Shopify answers with the oldest supported version when the asked one is retired.
+            if (response.Headers.TryGetValues("X-Shopify-API-Version", out var servedVersions) && servedVersions.FirstOrDefault() is { Length: > 0 } servedVersion
+                && !string.Equals(servedVersion, context.ApiVersion, StringComparison.OrdinalIgnoreCase))
+                logger.LogWarning("Shopify served API version {ServedVersion} instead of {RequestedVersion} for {Shop}", servedVersion, context.ApiVersion, context.Shop);
             if (!response.IsSuccessStatusCode || document is null)
             {
                 var retryAfter = response.Headers.RetryAfter?.Delta
@@ -920,6 +931,9 @@ public sealed partial class ShopifyHttpClient(
                     ? code.GetString()
                     : null;
                 var throttled = string.Equals(errorCode, "THROTTLED", StringComparison.OrdinalIgnoreCase);
+                // A query over Shopify's single-query cost ceiling: the caller may ask again for a smaller page.
+                if (string.Equals(errorCode, "MAX_COST_EXCEEDED", StringComparison.OrdinalIgnoreCase))
+                    return Failure<JsonDocument>(new(AdapterErrorClass.Validation, QueryCostExceededCode, "Shopify sorgusu tek sorgu maliyet sınırını aştı.", (int)response.StatusCode, null, remoteRequestId), rate);
                 var accessDenied = string.Equals(errorCode, "ACCESS_DENIED", StringComparison.OrdinalIgnoreCase)
                     || string.Equals(errorCode, "FORBIDDEN", StringComparison.OrdinalIgnoreCase);
                 var deniedField = firstError.TryGetProperty("path", out var path)
@@ -1087,6 +1101,8 @@ public sealed partial class ShopifyHttpClient(
                 DecimalOrNull(discount, "amount") ?? 0,
                 DecimalOrNull(money, "amount") ?? 0));
         }
+
+        packages = SplitOrderAmounts(packages, lines, DecimalOrNull(money, "amount") ?? 0, DecimalOrNull(discount, "amount") ?? 0);
 
         var refunds = order.TryGetProperty("refunds", out var refundsElement) && refundsElement.ValueKind == JsonValueKind.Array
             ? refundsElement.EnumerateArray().Select(refund => new RemoteOrderRefund(
@@ -1433,7 +1449,13 @@ public sealed partial class ShopifyHttpClient(
         return new Guid(bytes.AsSpan(0, 16)).ToString("D");
     }
     private static string ShortId(string? value) => string.IsNullOrWhiteSpace(value) ? "" : value.Split('/').Last();
-    private static string? BuildOrderQuery(OrderPollWindow window) => window.ModifiedAfter is { } from ? $"updated_at:>={from.UtcDateTime:yyyy-MM-ddTHH:mm:ssZ}" : null;
+    internal static string? BuildOrderQuery(OrderPollWindow window)
+    {
+        var terms = new List<string>(2);
+        if (window.ModifiedAfter is { } from) terms.Add($"updated_at:>={from.UtcDateTime:yyyy-MM-ddTHH:mm:ssZ}");
+        if (window.ModifiedBefore is { } until) terms.Add($"updated_at:<={until.UtcDateTime:yyyy-MM-ddTHH:mm:ssZ}");
+        return terms.Count == 0 ? null : string.Join(' ', terms);
+    }
     private static AdapterError MapHttpError(HttpStatusCode status, string body, TimeSpan? retryAfter = null, string? remoteRequestId = null) => status switch
     {
         HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => new(AdapterErrorClass.Authentication, "SHOPIFY_ACCESS_DENIED", "Shopify erişim izni reddedildi.", (int)status, null, remoteRequestId),
@@ -1441,6 +1463,55 @@ public sealed partial class ShopifyHttpClient(
         >= HttpStatusCode.InternalServerError => new(AdapterErrorClass.Remote5xx, "SHOPIFY_REMOTE_ERROR", "Shopify geçici bir sunucu hatası döndürdü.", (int)status, retryAfter ?? TimeSpan.FromSeconds(15), remoteRequestId),
         _ => new(AdapterErrorClass.Validation, "SHOPIFY_HTTP_ERROR", $"Shopify isteği reddedildi ({(int)status}).", (int)status, null, remoteRequestId)
     };
+    internal const string QueryCostExceededCode = "SHOPIFY_QUERY_COST_EXCEEDED";
+
+    // Shopify gives the order's totals only. Each package used to carry the whole order total, so an order
+    // with two fulfillments counted twice. The totals are shared by the value of each package's lines
+    // (allocated quantity x unit price); the last package takes the rounding rest, so the packages add up
+    // to the order. A single package keeps the order totals exactly as before.
+    internal static List<RemotePackage> SplitOrderAmounts(List<RemotePackage> packages, IReadOnlyList<RemoteOrderLine> lines, decimal total, decimal discount)
+    {
+        if (packages.Count == 0) return packages;
+        var prices = lines.GroupBy(line => line.ExternalLineId, StringComparer.Ordinal).ToDictionary(group => group.Key, group => group.First().UnitPrice, StringComparer.Ordinal);
+        var weights = packages.Select(package => package.Allocations.Sum(allocation => allocation.AllocatedQuantity * prices.GetValueOrDefault(allocation.ExternalLineId))).ToArray();
+        var weightTotal = weights.Sum();
+        if (weightTotal <= 0)
+        {
+            weights = packages.Select((package, index) => index == 0 ? 1m : 0m).ToArray();
+            weightTotal = 1m;
+        }
+        var lastWeighted = Array.FindLastIndex(weights, weight => weight > 0);
+        var result = new List<RemotePackage>(packages.Count);
+        decimal totalLeft = total, discountLeft = discount;
+        for (var index = 0; index < packages.Count; index++)
+        {
+            decimal packageTotal, packageDiscount;
+            if (weights[index] <= 0) packageTotal = packageDiscount = 0m;
+            else if (index == lastWeighted) (packageTotal, packageDiscount) = (totalLeft, discountLeft);
+            else
+            {
+                var share = weights[index] / weightTotal;
+                packageTotal = Math.Round(total * share, 2, MidpointRounding.AwayFromZero);
+                packageDiscount = Math.Round(discount * share, 2, MidpointRounding.AwayFromZero);
+            }
+            totalLeft -= packageTotal;
+            discountLeft -= packageDiscount;
+            result.Add(packages[index] with { GrossAmount = packageTotal, DiscountAmount = packageDiscount, NetAmount = packageTotal });
+        }
+        return result;
+    }
+
+    // Queries close to Shopify's 1000-point ceiling are logged with their requested and actual cost, so the
+    // nested page sizes can be tuned from real numbers.
+    private void LogQueryCost(JsonDocument document, string shop)
+    {
+        if (!document.RootElement.TryGetProperty("extensions", out var extensions) || !extensions.TryGetProperty("cost", out var cost)
+            || !cost.TryGetProperty("requestedQueryCost", out var requestedElement) || !requestedElement.TryGetInt32(out var requested)) return;
+        if (requested < 500) return;
+        int? actual = cost.TryGetProperty("actualQueryCost", out var actualElement) && actualElement.ValueKind == JsonValueKind.Number && actualElement.TryGetInt32(out var actualValue) ? actualValue : null;
+        logger.LogInformation("Shopify query for {Shop} requested {RequestedCost} points (actual {ActualCost})", shop, requested, actual);
+    }
+
     private static RateLimitMetadata? ReadRateLimit(JsonDocument document)
     {
         if (!document.RootElement.TryGetProperty("extensions", out var extensions)

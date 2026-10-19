@@ -2658,30 +2658,40 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             now,
             baselineCursor?.LastSuccessAt);
         var readsBaseline = allowBaseline && modifiedAfter == ShopifyOrderHistoryPolicy.InitialWindowStart(now);
+        // A read stopped between pages resumes in the window its page cursor belongs to.
+        var resumed = ShopifyOrderHistoryPolicy.Decode(cursor.OpaqueCursor);
+        var window = resumed ?? new ShopifyOrderHistoryPolicy.ResumableWindow(modifiedAfter, now, 0, null);
+        if (resumed is not null) readsBaseline = false;
+        var latestSeen = window.From;
         do
         {
             TrackRequest();
             var result = await orders.PollAsync(
-                Context(tenantId, connectionId, correlationId, $"shopify-order-sync:{cursor.OpaqueCursor ?? "0"}"),
-                new OrderPollWindow(modifiedAfter, now, null),
-                new(cursor.OpaqueCursor, 100),
+                Context(tenantId, connectionId, correlationId, $"shopify-order-sync:{window.Cursor ?? "0"}"),
+                new OrderPollWindow(window.From, window.Until, null),
+                new(window.Cursor, 100),
                 cancellationToken);
             if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
             foreach (var _ in result.Value!.Items) TrackReceived();
             foreach (var issue in result.Value.Issues ?? [])
                 await RecordIssue(tenantId, $"shopify-order-contract:{connectionId}:{issue.Identity}:{issue.Code}", issue.Code, issue.Message, cancellationToken);
             await UpsertOrders(tenantId, connectionId, result.Value.Items, cancellationToken, projectReservations: false);
+            foreach (var item in result.Value.Items)
+                if (latestSeen is null || item.LastModifiedAt > latestSeen) latestSeen = item.LastModifiedAt;
             if (result.Value.HasMore)
             {
                 if (string.IsNullOrWhiteSpace(result.Value.NextCursor)) throw new InvalidOperationException("Shopify sipariş sayfası hasMore=true ancak nextCursor boş döndü.");
-                cursor.OpaqueCursor = result.Value.NextCursor;
+                window = window.Pages + 1 >= ShopifyOrderHistoryPolicy.PagesBeforeRestart && latestSeen is { } restartFrom
+                    ? window with { From = restartFrom, Pages = 0, Cursor = null }
+                    : window with { Pages = window.Pages + 1, Cursor = result.Value.NextCursor };
+                cursor.OpaqueCursor = ShopifyOrderHistoryPolicy.Encode(window);
                 cursor.Version++;
                 await db.SaveChangesAsync(cancellationToken);
                 continue;
             }
 
             cursor.OpaqueCursor = null;
-            cursor.LastModifiedWatermark = now.AddSeconds(-60);
+            cursor.LastModifiedWatermark = window.Until.AddSeconds(-60);
             cursor.Version++;
             if (readsBaseline && baselineCursor is not null)
             {
