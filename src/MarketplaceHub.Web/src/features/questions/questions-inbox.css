@@ -207,7 +207,7 @@
 .qi-page .qi-facts dd { white-space: nowrap; }
 .qi-page .qi-tag { flex: none; max-width: 100%; white-space: nowrap; }
 .qi-page .qi-dcard { container-type: inline-size; }
-@container (max-width: 620px) {
+@container (max-width: 500px) {
   .qi-page .qi-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .qi-page .qi-facts > div:nth-child(3) { border-left: 0; }
   .qi-page .qi-facts > div:nth-child(n + 3) { border-top: 1px solid var(--rv-color-border); }
@@ -287,4 +287,28 @@
 .rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.qi-tabs > :is(button, a) { flex: 1 1 0; }
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item b { flex-wrap: nowrap; white-space: nowrap; }
+}
+
+/* Wider screens give the reading pane the room: each store's import status is one compact chip (logo, name, record
+   count, state mark) on a single row, its state and last import shown on hover or focus; a store that is importing
+   or failed says so in the chip. The facts stay one row down to a 500px card and the answer box starts at two lines,
+   growing with the text. */
+@media (min-width: 901px) {
+  .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync { display: flex; flex-wrap: wrap; gap: 8px; overflow: visible; background: none; border: 0; border-radius: 0; }
+  .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item { position: relative; display: flex !important; align-items: center; gap: 8px; min-height: 0; height: 36px; padding: 0 12px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border) !important; border-radius: 7px; outline: none; }
+  .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item:focus-visible { border-color: var(--rv-color-primary) !important; }
+  .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item > img { width: 20px; height: 20px; border-radius: 5px; }
+  .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item > div { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item b { font-size: 13px; }
+  .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item b em { margin-left: 2px; font-size: 12.5px; }
+  .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .qi-sync-state { white-space: nowrap; }
+  .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .qi-sync-state.is-done > span,
+  .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .qi-sync-unit,
+  .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .qi-sync-time { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item[data-detail]:is(:hover, :focus-visible)::after { content: attr(data-detail); position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; padding: 6px 10px; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: 0 8px 20px rgb(0 0 0 / 18%); font-size: 12px; white-space: nowrap; pointer-events: none; }
+  .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item.is-placeholder { width: 150px; }
+  .qi-page .qi-detail-head { padding: 12px 16px; }
+  .qi-page .qi-facts > div { min-height: 48px; padding: 6px 12px; }
+  .app-shell.stitch-shell main .qi-page .qi-composer { padding: 12px 16px 14px; }
+  .app-shell.stitch-shell main .qi-page .qi-composer textarea { min-height: 60px; max-height: 180px; field-sizing: content; }
 }
