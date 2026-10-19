@@ -118,16 +118,16 @@ public sealed partial class ShopifyHttpClient(
         evidence.Add(Probe(MarketplaceCapabilities.ProductRead, identity, "https://shopify.dev/docs/api/admin-graphql/latest/objects/Product", products, "GraphQL ürün ve varyant okuması", now, "read_products,read_inventory"));
         evidence.Add(Probe(MarketplaceCapabilities.OrderRead, identity, "https://shopify.dev/docs/api/admin-graphql/latest/objects/Order", orders, "GraphQL sipariş, müşteri ve teslimat durumu okuması", now, "read_orders,read_customers"));
         evidence.Add(Probe(MarketplaceCapabilities.ReferenceRead, identity, "https://shopify.dev/docs/api/admin-graphql/latest/queries/taxonomy", categories, "GraphQL ürün taksonomisi kategori okuması", now, "read_products"));
-        evidence.Add(ScopeEvidence(MarketplaceCapabilities.PriceWrite, identity, "https://shopify.dev/docs/api/admin-graphql/2026-07/mutations/productVariantsBulkUpdate", scopesResult, scopes, ["write_products"], now));
-        evidence.Add(ScopeEvidence(MarketplaceCapabilities.ProductWrite, identity, "https://shopify.dev/docs/api/admin-graphql/2026-07/mutations/productSet", scopesResult, scopes, ["write_products"], now));
-        evidence.Add(ScopeEvidence(MarketplaceCapabilities.InventoryWrite, identity, "https://shopify.dev/docs/api/admin-graphql/2026-07/mutations/inventorySetQuantities", scopesResult, scopes, ["write_inventory"], now));
-        evidence.Add(ScopeEvidence(MarketplaceCapabilities.PublicationRead, identity, "https://shopify.dev/docs/api/admin-graphql/2026-07/queries/publications", scopesResult, scopes, ["read_publications"], now));
-        evidence.Add(ScopeEvidence(MarketplaceCapabilities.PublicationWrite, identity, "https://shopify.dev/docs/api/admin-graphql/2026-07/mutations/publishablePublish", scopesResult, scopes, ["write_publications"], now));
-        evidence.Add(ScopeEvidence(MarketplaceCapabilities.ShipmentWrite, identity, "https://shopify.dev/docs/api/admin-graphql/2026-07/objects/Fulfillment", scopesResult, scopes, ["write_assigned_fulfillment_orders", "write_merchant_managed_fulfillment_orders", "write_third_party_fulfillment_orders"], now));
-        evidence.Add(ScopeEvidence(MarketplaceCapabilities.ReturnRead, identity, "https://shopify.dev/docs/api/admin-graphql/2026-07/objects/Return", scopesResult, scopes, ["read_returns", "read_marketplace_returns"], now));
-        evidence.Add(ScopeEvidence(MarketplaceCapabilities.ReturnWrite, identity, "https://shopify.dev/docs/api/admin-graphql/2026-07/mutations/returnApproveRequest", scopesResult, scopes, ["write_returns", "write_marketplace_returns"], now));
+        evidence.Add(ScopeEvidence(MarketplaceCapabilities.PriceWrite, identity, "https://shopify.dev/docs/api/admin-graphql/2026-10/mutations/productVariantsBulkUpdate", scopesResult, scopes, ["write_products"], now));
+        evidence.Add(ScopeEvidence(MarketplaceCapabilities.ProductWrite, identity, "https://shopify.dev/docs/api/admin-graphql/2026-10/mutations/productSet", scopesResult, scopes, ["write_products"], now));
+        evidence.Add(ScopeEvidence(MarketplaceCapabilities.InventoryWrite, identity, "https://shopify.dev/docs/api/admin-graphql/2026-10/mutations/inventorySetQuantities", scopesResult, scopes, ["write_inventory"], now));
+        evidence.Add(ScopeEvidence(MarketplaceCapabilities.PublicationRead, identity, "https://shopify.dev/docs/api/admin-graphql/2026-10/queries/publications", scopesResult, scopes, ["read_publications"], now));
+        evidence.Add(ScopeEvidence(MarketplaceCapabilities.PublicationWrite, identity, "https://shopify.dev/docs/api/admin-graphql/2026-10/mutations/publishablePublish", scopesResult, scopes, ["write_publications"], now));
+        evidence.Add(ScopeEvidence(MarketplaceCapabilities.ShipmentWrite, identity, "https://shopify.dev/docs/api/admin-graphql/2026-10/objects/Fulfillment", scopesResult, scopes, ["write_assigned_fulfillment_orders", "write_merchant_managed_fulfillment_orders", "write_third_party_fulfillment_orders"], now));
+        evidence.Add(ScopeEvidence(MarketplaceCapabilities.ReturnRead, identity, "https://shopify.dev/docs/api/admin-graphql/2026-10/objects/Return", scopesResult, scopes, ["read_returns", "read_marketplace_returns"], now));
+        evidence.Add(ScopeEvidence(MarketplaceCapabilities.ReturnWrite, identity, "https://shopify.dev/docs/api/admin-graphql/2026-10/mutations/returnApproveRequest", scopesResult, scopes, ["write_returns", "write_marketplace_returns"], now));
         evidence.Add(ScopeEvidence(InvoicingCapabilities.InvoiceDeliver, identity, "https://shopify.dev/docs/api/admin-graphql/latest/mutations/metafieldsSet", scopesResult, scopes, ["write_orders"], now));
-        evidence.Add(new(MarketplaceCapabilities.LabelWrite, "NOT_SUPPORTED", identity.ApiVersion, identity.Environment, identity.ExternalStoreId, "https://shopify.dev/docs/api/admin-graphql/2026-07/objects/Fulfillment", identity.ApiVersion, null, null, "Shopify Admin API sipariş takibi sunar; taşıyıcı etiketi satın alma/oluşturma bu API kapsamına dahil değildir.", null, now));
+        evidence.Add(new(MarketplaceCapabilities.LabelWrite, "NOT_SUPPORTED", identity.ApiVersion, identity.Environment, identity.ExternalStoreId, "https://shopify.dev/docs/api/admin-graphql/2026-10/objects/Fulfillment", identity.ApiVersion, null, null, "Shopify Admin API sipariş takibi sunar; taşıyıcı etiketi satın alma/oluşturma bu API kapsamına dahil değildir.", null, now));
         return AdapterResult<IReadOnlyList<CapabilityEvidence>>.Success(evidence, products.RateLimit ?? orders.RateLimit ?? categories.RateLimit);
     }
 
@@ -1043,7 +1043,7 @@ public sealed partial class ShopifyHttpClient(
         var currency = money.GetProperty("currencyCode").GetString() ?? "TRY";
         var financialStatus = order.GetProperty("displayFinancialStatus").GetString() ?? "OPEN";
         var lines = order.GetProperty("lineItems").GetProperty("nodes").EnumerateArray().Select(line => MapOrderLine(line, financialStatus)).ToList();
-        // In the 2026-07 Admin API, Order.fulfillments is returned as a
+        // Since the 2026-07 Admin API, Order.fulfillments is returned as a
         // direct list. Its nested fulfillmentLineItems field remains a
         // connection and is mapped from nodes below.
         var fulfillments = order.GetProperty("fulfillments").EnumerateArray().ToList();

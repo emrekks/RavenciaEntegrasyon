@@ -89,7 +89,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         var environment = platform is "SHOPIFY" or "N11" or "PAZARAMA" ? "PRODUCTION" : requestedEnvironment;
         var apiVersion = command.ApiVersion.Trim();
         if (platform == "TRENDYOL" && !string.Equals(apiVersion, "V2", StringComparison.OrdinalIgnoreCase)) return Invalid<ConnectionView>("apiVersion", "Trendyol marketplace bağlantısı yalnız Product Integration V2 kullanır.");
-        if (platform == "SHOPIFY" && !string.Equals(apiVersion, "2026-07", StringComparison.OrdinalIgnoreCase)) return Invalid<ConnectionView>("apiVersion", "Shopify bağlantısı yalnız GraphQL Admin API 2026-07 kullanır.");
+        if (platform == "SHOPIFY" && !string.Equals(apiVersion, "2026-10", StringComparison.OrdinalIgnoreCase)) return Invalid<ConnectionView>("apiVersion", "Shopify bağlantısı yalnız GraphQL Admin API 2026-10 kullanır.");
         if (platform == "HEPSIBURADA" && !string.Equals(apiVersion, "V1.0", StringComparison.OrdinalIgnoreCase)) return Invalid<ConnectionView>("apiVersion", "Hepsiburada bağlantısı sipariş/listeleme API sürümü V1.0 ile pinlenmelidir.");
         if (platform == "N11" && !string.Equals(apiVersion, "V1", StringComparison.OrdinalIgnoreCase)) return Invalid<ConnectionView>("apiVersion", "N11 bağlantısı REST API sürümü V1 ile pinlenmelidir.");
         if (platform == "PAZARAMA" && !string.Equals(apiVersion, "V1", StringComparison.OrdinalIgnoreCase)) return Invalid<ConnectionView>("apiVersion", "Pazarama bağlantısı API sürümü V1 ile pinlenmelidir.");
