@@ -19,6 +19,16 @@ public sealed class WebhookPollingPolicyTests
     }
 
     [Fact]
+    public void SilenceCountsOnlyWhenThereWereOrdersToDeliver()
+    {
+        // A store without orders for seven hours has a quiet webhook, not a broken one.
+        Assert.True(WebhookPollingPolicy.IsHealthy(Now.AddHours(-7), Now.AddDays(-3), [], Now, ordersArrivedSinceLastSign: false));
+        Assert.False(WebhookPollingPolicy.IsHealthy(Now.AddHours(-7), Now.AddDays(-3), [], Now, ordersArrivedSinceLastSign: true));
+        // Two missed orders break it whatever the silence says.
+        Assert.False(WebhookPollingPolicy.IsHealthy(Now.AddMinutes(-5), Now.AddDays(-3), [Now.AddHours(-2), Now.AddHours(-1)], Now, ordersArrivedSinceLastSign: false));
+    }
+
+    [Fact]
     public void OnlyOrderPollsAreStretchedAndRightAfterRegistrationNothingCountsAsMissed()
     {
         Assert.Equal(900, WebhookPollingPolicy.StretchedIntervalSeconds("ORDERS"));
@@ -247,6 +257,20 @@ public sealed class QueueLaneTests
     [InlineData(3, "BACKGROUND")]
     public void JobsBelongToTheLaneOfTheirPriority(int priority, string lane) =>
         Assert.Equal(lane, MarketplaceHub.Infrastructure.Persistence.QueueHealthService.LaneFor(priority));
+}
+
+public sealed class HepsiburadaStatusListCadenceTests
+{
+    private static readonly DateTimeOffset Now = new(2026, 10, 19, 19, 0, 0, TimeSpan.Zero);
+
+    [Fact]
+    public void TheShippedDeliveredAndUndeliveredListsRideAlongEveryFiveMinutesOrOnAFullRead()
+    {
+        Assert.True(HepsiburadaPackagePolicy.ShouldReadStatusLists(null, Now, fullRead: false));
+        Assert.False(HepsiburadaPackagePolicy.ShouldReadStatusLists(Now.AddMinutes(-1), Now, fullRead: false));
+        Assert.True(HepsiburadaPackagePolicy.ShouldReadStatusLists(Now.AddMinutes(-5), Now, fullRead: false));
+        Assert.True(HepsiburadaPackagePolicy.ShouldReadStatusLists(Now.AddMinutes(-1), Now, fullRead: true));
+    }
 }
 
 public sealed class HepsiburadaOpenPackageRowTests

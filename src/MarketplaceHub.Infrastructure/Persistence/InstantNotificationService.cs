@@ -67,7 +67,8 @@ public sealed class InstantNotificationService(
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == WebhookPollingPolicy.HealthCursorResource)
             .Select(x => x.OpaqueCursor)
             .FirstOrDefaultAsync(cancellationToken));
-        var healthy = WebhookPollingPolicy.IsHealthy(subscription.LastReceivedAt, subscription.VerifiedAt, gaps, timeProvider.GetUtcNow());
+        var healthy = WebhookPollingPolicy.IsHealthy(subscription.LastReceivedAt, subscription.VerifiedAt, gaps, timeProvider.GetUtcNow(),
+            await ScheduledJobProducer.OrdersArrivedSinceAsync(db, tenantId, connectionId, subscription.LastReceivedAt ?? subscription.VerifiedAt, cancellationToken));
         var message = state switch
         {
             "MISSING" => $"{PlatformName(connection.PlatformCode)}'da bu bildirim kaydı bulunamadı; kapatıp yeniden açabilirsiniz.",

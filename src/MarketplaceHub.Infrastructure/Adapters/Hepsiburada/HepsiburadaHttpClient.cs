@@ -564,6 +564,11 @@ public sealed partial class HepsiburadaHttpClient(
     {
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return Failure<AdapterPageResult<RemoteOrderPackage>>(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIAL_INVALID", "Hepsiburada bağlantı bilgileri bulunamadı.", HttpStatusCode.Unauthorized);
+        return await PollPackagesAsync(account, window, page, cancellationToken);
+    }
+
+    internal async Task<AdapterResult<AdapterPageResult<RemoteOrderPackage>>> PollPackagesAsync(HepsiburadaRequestContext account, PackagePollWindow window, AdapterPageRequest page, CancellationToken cancellationToken)
+    {
         if (window.ModifiedAfter is { } start && window.ModifiedBefore is { } end && (end < start || end - start > TimeSpan.FromHours(24)))
             return Failure<AdapterPageResult<RemoteOrderPackage>>(AdapterErrorClass.Validation, "HEPSIBURADA_PACKAGE_WINDOW_INVALID", "Hepsiburada paket listelemesi artan ve en fazla 24 saatlik tarih aralığı kabul eder.", HttpStatusCode.BadRequest);
 
@@ -582,7 +587,7 @@ public sealed partial class HepsiburadaHttpClient(
             // The generic package list only returns Open packages. Hepsiburada
             // exposes shipped/delivered/undelivered packages through separate
             // read-only endpoints, each with a 30-day lookback and max limit 50.
-            foreach (var status in new[] { "shipped", "delivered", "undelivered" })
+            foreach (var status in window.IncludeStatusLists ? new[] { "shipped", "delivered", "undelivered" } : [])
             {
                 var statusResponse = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Get, PackagesByStatus(account, status, query), cancellationToken);
                 if (!statusResponse.IsSuccess)

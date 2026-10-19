@@ -1332,6 +1332,38 @@ public sealed class HepsiburadaAdapterTests
     }
 
     [Fact]
+    public async Task TheMinuteReadLeavesTheStatusListsOutWhenAsked()
+    {
+        var handler = new CapturingHttpHandler("""{"items":[],"totalCount":0}""");
+        var client = CreateReadOnlyHepsiburadaClient(handler);
+        var account = new HepsiburadaRequestContext(
+            new MarketplaceHub.Domain.PlatformConnection
+            {
+                PlatformCode = "HEPSIBURADA",
+                Environment = "PRODUCTION",
+                DisplayName = "fixture",
+                ExternalStoreId = "merchant-24",
+                Status = "ACTIVE",
+                ApiVersion = "V1.0"
+            },
+            new Uri("https://oms.example/"), new Uri("https://listing.example/"), "integrator", "fixture-key")
+        {
+            IntegratorName = "ravencia_tests/1.0"
+        };
+        var now = new DateTimeOffset(2026, 10, 19, 19, 0, 0, TimeSpan.Zero);
+
+        var minute = await client.PollPackagesAsync(account, new PackagePollWindow(now.AddHours(-1), now, IncludeStatusLists: false), new("0", 10), CancellationToken.None);
+        var requestsWithoutLists = handler.Requests.Count;
+        var fiveMinute = await client.PollPackagesAsync(account, new PackagePollWindow(now.AddHours(-1), now), new("0", 10), CancellationToken.None);
+
+        Assert.True(minute.IsSuccess, minute.Error?.SafeMessage);
+        Assert.True(fiveMinute.IsSuccess, fiveMinute.Error?.SafeMessage);
+        Assert.Equal(1, requestsWithoutLists);
+        Assert.Equal(5, handler.Requests.Count);
+        Assert.Contains(handler.Requests.Skip(1), request => request.Uri.AbsolutePath.EndsWith("/shipped", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void PackageMapperDoesNotGuessOrderFromInternalId()
     {
         using var json = JsonDocument.Parse("""

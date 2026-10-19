@@ -601,10 +601,13 @@ public static class WebhookPollingPolicy
         _ => null
     };
 
-    public static bool IsHealthy(DateTimeOffset? lastReceivedAt, DateTimeOffset? registeredAt, IEnumerable<DateTimeOffset> gaps, DateTimeOffset now)
+    // Silence counts against the notifications only when there was something to deliver: a store without orders
+    // for six hours has a quiet webhook, not a broken one (a broken one shows up as missed orders anyway).
+    public static bool IsHealthy(DateTimeOffset? lastReceivedAt, DateTimeOffset? registeredAt, IEnumerable<DateTimeOffset> gaps, DateTimeOffset now, bool ordersArrivedSinceLastSign = true)
     {
         var lastSign = lastReceivedAt ?? registeredAt;
-        if (lastSign is null || now - lastSign.Value > SilenceLimit) return false;
+        if (lastSign is null) return false;
+        if (now - lastSign.Value > SilenceLimit && ordersArrivedSinceLastSign) return false;
         return gaps.Count(gap => now - gap <= GapWindow) < GapLimit;
     }
 
@@ -816,4 +819,11 @@ public static class HepsiburadaPackagePolicy
 {
     public const string OrderToReadCode = "HEPSIBURADA_PACKAGE_ORDER_TO_READ";
     public const int MaxOrderReadsPerRun = 10;
+    // New orders and open packages are read every minute; the shipped, delivered and undelivered lists (three
+    // more requests a run) change rarely and are read every five minutes, or on a full read.
+    public const string StatusListsCursorResource = "HEPSIBURADA_PACKAGE_STATUS_LISTS";
+    public static readonly TimeSpan StatusListInterval = TimeSpan.FromMinutes(5);
+
+    public static bool ShouldReadStatusLists(DateTimeOffset? lastReadAt, DateTimeOffset now, bool fullRead) =>
+        fullRead || lastReadAt is null || now - lastReadAt.Value >= StatusListInterval;
 }

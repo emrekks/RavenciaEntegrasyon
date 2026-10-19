@@ -88,7 +88,8 @@ public sealed class DataFreshnessService(AppDbContext db, TimeProvider timeProvi
                 .Where(x => x.TenantId == tenantId && x.ConnectionId == subscription.ConnectionId && x.ResourceType == WebhookPollingPolicy.HealthCursorResource)
                 .Select(x => x.OpaqueCursor)
                 .FirstOrDefaultAsync(cancellationToken);
-            if (WebhookPollingPolicy.IsHealthy(subscription.LastReceivedAt, subscription.VerifiedAt, ScheduledJobProducer.WebhookGaps(health), now))
+            if (WebhookPollingPolicy.IsHealthy(subscription.LastReceivedAt, subscription.VerifiedAt, ScheduledJobProducer.WebhookGaps(health), now,
+                    await ScheduledJobProducer.OrdersArrivedSinceAsync(db, tenantId, subscription.ConnectionId, subscription.LastReceivedAt ?? subscription.VerifiedAt, cancellationToken)))
                 healthy.Add(subscription.ConnectionId);
         }
         return healthy;

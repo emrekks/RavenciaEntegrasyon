@@ -164,11 +164,19 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                 .Where(x => x.TenantId == subscription.TenantId && x.ConnectionId == subscription.ConnectionId && x.ResourceType == WebhookPollingPolicy.HealthCursorResource)
                 .Select(x => x.OpaqueCursor)
                 .FirstOrDefaultAsync(cancellationToken);
-            if (WebhookPollingPolicy.IsHealthy(subscription.LastReceivedAt, subscription.VerifiedAt, WebhookGaps(health), now))
+            if (WebhookPollingPolicy.IsHealthy(subscription.LastReceivedAt, subscription.VerifiedAt, WebhookGaps(health), now,
+                    await OrdersArrivedSinceAsync(db, subscription.TenantId, subscription.ConnectionId, subscription.LastReceivedAt ?? subscription.VerifiedAt, cancellationToken)))
                 healthy.Add(subscription.ConnectionId);
         }
         return healthy;
     }
+
+    // Whether any order of the connection reached the panel after the notifications' last sign of life; a quiet
+    // store's silence is then not held against its webhook.
+    internal static Task<bool> OrdersArrivedSinceAsync(AppDbContext db, Guid tenantId, Guid connectionId, DateTimeOffset? since, CancellationToken cancellationToken) =>
+        since is null
+            ? Task.FromResult(false)
+            : db.Orders.AsNoTracking().AnyAsync(order => order.TenantId == tenantId && order.ConnectionId == connectionId && order.CreatedAt > since.Value, cancellationToken);
 
     // Missed orders are kept as {"missed":[...]}. The earlier bare list also counted orders the poll merely read
     // before their notification arrived, so it is not trusted and reads as no misses.

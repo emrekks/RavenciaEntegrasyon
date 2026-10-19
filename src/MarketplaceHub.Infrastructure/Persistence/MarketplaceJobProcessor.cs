@@ -2178,6 +2178,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (start < oldestAvailable) start = oldestAvailable;
             state = new(HepsiburadaPackageSyncStateVersion, anchor, start, 0, 0);
         }
+        // The shipped, delivered and undelivered lists ride along every five minutes (always on a full read or a
+        // continued one), so the minute-by-minute read is one list request instead of four.
+        var statusListsCursor = await Cursor(tenantId, connectionId, HepsiburadaPackagePolicy.StatusListsCursorResource, cancellationToken);
+        var includeStatusLists = HepsiburadaPackagePolicy.ShouldReadStatusLists(statusListsCursor.LastSuccessAt, now, full || forceBaseline || state.WindowIndex > 0 || state.Offset > 0);
 
         while (true)
         {
@@ -2201,10 +2205,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             TrackRequest();
             var page = await orderPackages.PollPackagesAsync(
                 Context(tenantId, connectionId, correlationId, $"hepsiburada-packages:{state.WindowIndex}:{state.Offset}"),
-                new PackagePollWindow(windowStart, windowEnd),
+                new PackagePollWindow(windowStart, windowEnd, includeStatusLists),
                 new(state.Offset.ToString(System.Globalization.CultureInfo.InvariantCulture), 10),
                 cancellationToken);
             if (!page.IsSuccess) { TrackResultFailure(page.Error); throw JobProcessingException.FromAdapter(page.Error!); }
+            if (includeStatusLists && statusListsCursor.LastSuccessAt != now) { statusListsCursor.LastSuccessAt = now; statusListsCursor.Version++; }
             foreach (var item in page.Value!.Items) TrackReceived();
             foreach (var issue in (page.Value.Issues ?? []).Where(issue => issue.Code != HepsiburadaPackagePolicy.OrderToReadCode))
                 await RecordIssue(tenantId, $"package-contract:{connectionId}:{issue.Identity}:{issue.Code}", issue.Code, issue.Message, cancellationToken);

@@ -514,7 +514,9 @@ public sealed record RemoteOrder(string ExternalOrderId, string OrderNumber, Dat
 public sealed record OrderLookupHint(DateTimeOffset? OrderedAt, DateTimeOffset? LastModifiedAt, string? StoreFrontCode);
 // InvoiceOnly: the caller needs the package record itself, not its cargo fields, so the first match is final.
 public sealed record PackageLookup(DateTimeOffset? StatusOccurredAt, OrderLookupHint? Order = null, bool InvoiceOnly = false);
-public sealed record PackagePollWindow(DateTimeOffset? ModifiedAfter, DateTimeOffset? ModifiedBefore);
+// IncludeStatusLists: Hepsiburada's shipped, delivered and undelivered lists change rarely, so the minute-by-minute
+// read can leave them out and take them every few minutes (HepsiburadaPackagePolicy).
+public sealed record PackagePollWindow(DateTimeOffset? ModifiedAfter, DateTimeOffset? ModifiedBefore, bool IncludeStatusLists = true);
 public sealed record RemoteOrderPackage(string ExternalOrderId, RemotePackage Package, RemoteOrder? OrderSnapshot = null);
 public sealed record PackageTrackingStatusSnapshot(string PackageNumber, string? Status, string? CargoCompany, string? TrackingInfoCode, string? OrderNumber = null);
 
