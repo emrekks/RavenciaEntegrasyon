@@ -28,6 +28,28 @@ public sealed class WebhookPollingPolicyTests
         Assert.True(WebhookPollingPolicy.CountsAsGap(Now.AddMinutes(-30), Now));
         Assert.False(WebhookPollingPolicy.CountsAsGap(null, Now));
     }
+
+    [Fact]
+    public void AnOrderThePollReadsBeforeItsNotificationIsNotAMiss()
+    {
+        // Trendyol order times are stored three hours ahead (Turkey wall time); the cut-off moves with them.
+        var cutoff = WebhookPollingPolicy.MissedOrderCutoff(Now, TimeSpan.FromHours(3));
+        Assert.Equal(Now.AddHours(3).AddMinutes(-10), cutoff);
+        Assert.False(Now.AddHours(3).AddSeconds(-20) <= cutoff);
+        Assert.True(Now.AddHours(3).AddMinutes(-30) <= cutoff);
+    }
+
+    [Fact]
+    public void OnlyMissesKeptInTheCurrentFormatCount()
+    {
+        var missed = new[] { Now.AddHours(-1) };
+        var cursor = MarketplaceHub.Infrastructure.Persistence.ScheduledJobProducer.WebhookGapsCursor(missed);
+
+        Assert.Equal(missed, MarketplaceHub.Infrastructure.Persistence.ScheduledJobProducer.WebhookGaps(cursor));
+        // The earlier bare list also held orders read moments before their notification; it no longer counts.
+        Assert.Empty(MarketplaceHub.Infrastructure.Persistence.ScheduledJobProducer.WebhookGaps("""["2026-10-18T11:00:00+00:00","2026-10-18T11:30:00+00:00"]"""));
+        Assert.Empty(MarketplaceHub.Infrastructure.Persistence.ScheduledJobProducer.WebhookGaps("{bozuk"));
+    }
 }
 
 public sealed class QuestionCadencePolicyTests

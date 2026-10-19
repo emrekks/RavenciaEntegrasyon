@@ -168,12 +168,22 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         return healthy;
     }
 
+    // Missed orders are kept as {"missed":[...]}. The earlier bare list also counted orders the poll merely read
+    // before their notification arrived, so it is not trusted and reads as no misses.
     internal static IReadOnlyList<DateTimeOffset> WebhookGaps(string? opaqueCursor)
     {
         if (string.IsNullOrWhiteSpace(opaqueCursor)) return [];
-        try { return JsonSerializer.Deserialize<DateTimeOffset[]>(opaqueCursor) ?? []; }
+        try
+        {
+            using var document = JsonDocument.Parse(opaqueCursor);
+            return document.RootElement.ValueKind == JsonValueKind.Object && document.RootElement.TryGetProperty("missed", out var missed)
+                ? missed.Deserialize<DateTimeOffset[]>() ?? []
+                : [];
+        }
         catch (JsonException) { return []; }
     }
+
+    internal static string WebhookGapsCursor(IEnumerable<DateTimeOffset> missed) => JsonSerializer.Serialize(new { missed });
 
     private async Task DisableProductAutomationAsync(CancellationToken cancellationToken)
     {

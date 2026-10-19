@@ -2523,8 +2523,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             await db.SaveChangesAsync(cancellationToken);
         } while (!cancellationToken.IsCancellationRequested);
 
-        // An order this poll had to insert while notifications are on is one the notifications missed.
-        if (completed && telemetryInsertedCount > insertedBeforePoll)
+        // An order this poll had to insert while notifications are on, and that was old enough for its
+        // notification to have come, is one the notifications missed.
+        var missedOrderCutoff = WebhookPollingPolicy.MissedOrderCutoff(now, TimeSpan.FromHours(3));
+        if (completed && telemetryInsertedCount > insertedBeforePoll
+            && await db.Orders.AsNoTracking().AnyAsync(order => order.TenantId == tenantId && order.ConnectionId == connectionId
+                && order.CreatedAt >= now && order.OrderedAt <= missedOrderCutoff, cancellationToken))
             await NoteWebhookGapAsync(tenantId, connectionId, now, cancellationToken);
 
         // A full scan already read every storefront; an incremental run probes at most one
@@ -2583,7 +2587,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (!WebhookPollingPolicy.CountsAsGap(registeredAt, now)) return;
         var health = await Cursor(tenantId, connectionId, WebhookPollingPolicy.HealthCursorResource, cancellationToken);
         var gaps = ScheduledJobProducer.WebhookGaps(health.OpaqueCursor).Where(gap => now - gap <= WebhookPollingPolicy.GapWindow).Append(now).ToArray();
-        health.OpaqueCursor = JsonSerializer.Serialize(gaps);
+        health.OpaqueCursor = ScheduledJobProducer.WebhookGapsCursor(gaps);
         health.LastErrorAt = now;
         health.Version++;
         await db.SaveChangesAsync(cancellationToken);

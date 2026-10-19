@@ -611,6 +611,14 @@ public static class WebhookPollingPolicy
     // An order polling inserted counts as missed only once the notifications had time to start.
     public static bool CountsAsGap(DateTimeOffset? registeredAt, DateTimeOffset now) =>
         registeredAt is { } registered && now - registered >= RegistrationGrace;
+
+    // The one-minute poll usually reads a new order seconds before its notification arrives (measured: an order
+    // inserted 20 s after it was placed, its notification 2 s later). Such an order is a race, not a miss; only an
+    // order older than this when polling inserted it shows that the notifications did not bring it.
+    public static readonly TimeSpan DeliveryGrace = TimeSpan.FromMinutes(10);
+
+    // Trendyol order times are stored as Turkey wall time (three hours ahead of UTC), so the cut-off moves with them.
+    public static DateTimeOffset MissedOrderCutoff(DateTimeOffset now, TimeSpan storedClockAhead) => now - DeliveryGrace + storedClockAhead;
 }
 
 public enum EffectVerdict { Applied, NotApplied, Unknown }
