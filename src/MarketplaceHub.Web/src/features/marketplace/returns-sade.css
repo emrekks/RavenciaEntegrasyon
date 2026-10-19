@@ -1037,8 +1037,15 @@ main .rr.rr-orders .rr-tbl.rr-tbl { min-width: 1146px; }
 main .rr.rr-returns .rr-tbl.rr-tbl { min-width: 1308px; }
 /* returns: each column gets the width its values need (the status column had far more than its badge) so tracking
    numbers, reasons and headings stay on one line; the table scrolls sideways like orders when the screen is narrower */
-main .rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) { min-width: 1412px; }
-main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-order { width: 240px; }
+main .rr.rr-returns .rr-tbl.rr-tbl { min-width: 1332px; }
+main .rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) { min-width: 1436px; }
+/* the longest line, "Kargo Teslimat No:" and a 16-digit number, needs 236px of text */
+main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-order { width: 264px; }
+/* orders: the order facts ("Teslimat No:" and a 16-digit number) and the carrier's tracking number each stay on one line */
+main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-order { width: 268px; }
+main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-cargo { width: 144px; }
+main .rr.rr.rr-orders .rr-tbl.rr-tbl .rr-ordercell small.rr-num,
+main .rr.rr.rr-orders .rr-tbl.rr-tbl .rr-cargocell > small.rr-num { white-space: nowrap; }
 main .rr.rr-returns .rr-tbl.rr-tbl .rr-ordercell :is(small, .rr-on-no) { white-space: nowrap; }
 main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-buyer { width: 104px; }
 main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-price { width: 100px; }

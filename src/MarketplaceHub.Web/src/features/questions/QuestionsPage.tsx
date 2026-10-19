@@ -51,6 +51,12 @@ function StateGlyph({ state }: { state: Glyph }) {
 function dateKey(date: Date) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}` }
 function lastDays(days: number) { const end = new Date(); const start = new Date(); start.setDate(start.getDate() - (days - 1)); return { from: dateKey(start), to: dateKey(end) } }
 
+function answerWarning(platformCode: string): { title: string; message: string } | null {
+  if (platformCode === 'N11') return { title: 'Cevap Bir Kez Gönderilir', message: 'N11’de bir soruya yalnızca bir kez cevap verilir ve sonradan değiştirilemez.' }
+  if (platformCode === 'PAZARAMA') return { title: 'Cevap Pazarama Onayına Gider', message: 'Pazarama’da cevap önce Pazarama onayına düşer; onaylanmadan müşteriye görünmez ve reddedilebilir.' }
+  return null
+}
+
 function questionStatus(status: string) {
   const normalized = status.toUpperCase()
   if (normalized === 'WAITING_FOR_ANSWER') return { label: 'Cevap Bekliyor', glyph: 'partial' as Glyph }
@@ -135,6 +141,8 @@ export function QuestionsPage() {
   const [sort, setSort] = useState('NEWEST')
   const [page, setPage] = useState(1)
   const [answerDrafts, setAnswerDrafts] = useState<Record<string, string>>({})
+  // N11 and Pazarama answers cannot be taken back once sent; the panel's own dialog says why before sending.
+  const [confirmAnswer, setConfirmAnswer] = useState<{ id: string; version: number; text: string; title: string; message: string } | null>(null)
   const [now, setNow] = useState(Date.now())
   const [notice, setNotice] = useState('')
   const [templateTitle, setTemplateTitle] = useState('')
@@ -249,7 +257,7 @@ export function QuestionsPage() {
     const draft = answerDrafts[row.id] ?? ''
     const minLength = row.platformCode === 'TRENDYOL' ? 10 : 1
     const length = draft.trim().length
-    const send = () => { if (length >= minLength && length <= 2000 && !sendAnswer.isPending) { if (row.platformCode === 'N11' && !window.confirm('N11’de bir soruya yalnızca bir kez cevap verilir ve sonradan değiştirilemez. Cevap gönderilsin mi?')) return; if (row.platformCode === 'PAZARAMA' && !window.confirm('Pazarama’da cevap önce Pazarama onayına düşer; onaylanmadan müşteriye görünmez ve reddedilebilir. Cevap gönderilsin mi?')) return; sendAnswer.mutate({ id: row.id, version: row.version, text: draft }) } }
+    const send = () => { if (length >= minLength && length <= 2000 && !sendAnswer.isPending) { const warning = answerWarning(row.platformCode); if (warning) setConfirmAnswer({ id: row.id, version: row.version, text: draft, ...warning }); else sendAnswer.mutate({ id: row.id, version: row.version, text: draft }) } }
     const next = nextWaiting(row.id)
     return <article className="qi-detail" aria-label="Seçili soru">
       <div className="qi-detail-head">
@@ -319,6 +327,9 @@ export function QuestionsPage() {
       </div>
       <div className="qi-right">{detail}</div>
     </div>
+    <Modal open={confirmAnswer !== null} title={confirmAnswer?.title ?? ''} description={confirmAnswer?.message} className="qi-confirm-modal" onClose={() => setConfirmAnswer(null)} footer={<><Button variant="secondary" onClick={() => setConfirmAnswer(null)}>Vazgeç</Button><Button onClick={() => { if (confirmAnswer) sendAnswer.mutate({ id: confirmAnswer.id, version: confirmAnswer.version, text: confirmAnswer.text }); setConfirmAnswer(null) }}>Cevabı Gönder</Button></>}>
+      <p className="qi-confirm-text">{confirmAnswer?.text}</p>
+    </Modal>
     <Modal open={templatesOpen} title="Hazır Cevaplar" description={`${templates.data?.length ?? 0} kayıtlı cevap · Tüm pazaryerlerinde ortak kullanılır.`} className="qi-templates-modal" onClose={() => { setTemplatesOpen(false); setEditingTemplate(null); setTemplateTitle(''); setTemplateText('') }}>
       <section className="rv-question-templates">
         <div className="rv-question-template-editor"><h3>{editingTemplate ? 'Hazır Cevabı Düzenle' : 'Yeni Hazır Cevap'}</h3><label>Başlık<input value={templateTitle} maxLength={120} onChange={event => setTemplateTitle(event.target.value)} placeholder="Örn. Ürün ölçü tablosu" /></label><label>Cevap Metni<textarea rows={4} maxLength={2000} value={templateText} onChange={event => setTemplateText(event.target.value)} placeholder="Müşteriye gönderilecek cevabı yazın" /><small>{templateText.length}/2000</small></label><div className="rv-question-template-actions"><Button variant="secondary" onClick={() => { setEditingTemplate(null); setTemplateTitle(''); setTemplateText('') }} disabled={!editingTemplate && !templateTitle && !templateText}>Temizle</Button><Button onClick={() => saveTemplate.mutate()} disabled={!templateTitle.trim() || !templateText.trim()} loading={saveTemplate.isPending}>{editingTemplate ? 'Değişiklikleri Kaydet' : 'Hazır Cevabı Oluştur'}</Button></div></div>

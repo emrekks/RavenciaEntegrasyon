@@ -293,6 +293,22 @@ describe('QuestionsPage workspace flows', () => {
     expect(JSON.parse(answerRequest?.body ?? '{}')).toEqual({ text: 'Ürün uzunluğu 65 cm olarak ölçülmüştür.', version: 2 })
   })
 
+  it('asks in the panel dialog, not the browser, before an N11 answer that cannot be changed', async () => {
+    apiState.detail = { ...createQuestion(), platformCode: 'N11' }
+    const browserConfirm = vi.spyOn(window, 'confirm')
+    await renderPage()
+    input(composer(), 'Ürün uzunluğu 65 cm olarak ölçülmüştür.')
+    act(() => button('Gönder').click())
+    await settle()
+    expect(browserConfirm).not.toHaveBeenCalled()
+    expect(apiState.calls.some(call => call.path === '/questions/q-product/answer')).toBe(false)
+    expect(document.querySelector('.qi-confirm-modal')?.textContent).toContain('Cevap Bir Kez Gönderilir')
+    act(() => button('Cevabı Gönder').click())
+    await settle()
+    expect(apiState.calls.find(call => call.path === '/questions/q-product/answer')?.method).toBe('POST')
+    browserConfirm.mockRestore()
+  })
+
   it('shows the question date for answered questions instead of an expired reply deadline', async () => {
     apiState.detail = { ...createQuestion(), expiresAt: '2026-10-04T09:00:00Z' }
     await renderPage()

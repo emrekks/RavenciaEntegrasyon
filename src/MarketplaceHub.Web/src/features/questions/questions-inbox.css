@@ -149,6 +149,9 @@
 
 /* Quick replies popup */
 .qi-templates-modal { width: min(720px, calc(100vw - 32px)); }
+/* The answer about to be sent, shown once more under the platform's warning. */
+.qi-confirm-modal { width: min(480px, calc(100vw - 32px)); }
+.qi-confirm-text { margin: 0; max-height: 220px; overflow: auto; padding: 12px 14px; color: var(--rv-color-ink); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 7px; font-size: 13.5px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
 .qi-templates-modal .rv-question-templates { display: grid; gap: 16px; margin: 0; }
 .app-shell.stitch-shell main .qi-templates-modal .rv-question-template-editor { display: grid; gap: 12px; margin: 0; padding: 16px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 12px; box-shadow: none; }
 .qi-templates-modal :is(.rv-question-template-editor, .rv-question-template-list) h3 { margin: 0; font-size: 14px; font-weight: 600; }
