@@ -48,8 +48,25 @@ public sealed class TrendyolWebhookIdentityTests
         Assert.Equal(firstIdentity.Value.ExternalMessageId, reversedIdentity.Value.ExternalMessageId);
     }
 
+    [Fact]
+    public void ALivePackageObjectIsReadAsAOnePackagePage()
+    {
+        // Live Trendyol deliveries carry the package itself, not the documented {"content":[...]} page.
+        const string single = "{\"id\":\"pkg-1\",\"orderNumber\":\"ord-1\",\"status\":\"Created\",\"lastModifiedDate\":1760000000000}";
+        const string page = "{\"content\":[{\"id\":\"pkg-1\",\"orderNumber\":\"ord-1\",\"status\":\"Created\",\"lastModifiedDate\":1760000000000}]}";
+
+        var singleIdentity = TrendyolWebhookIdentity.Create(System.Text.Encoding.UTF8.GetBytes(single));
+        var pageIdentity = TrendyolWebhookIdentity.Create(System.Text.Encoding.UTF8.GetBytes(page));
+
+        Assert.NotNull(singleIdentity);
+        Assert.Equal(pageIdentity!.Value.ExternalMessageId, singleIdentity.Value.ExternalMessageId);
+        using var normalized = System.Text.Json.JsonDocument.Parse(singleIdentity.Value.PageJson);
+        Assert.Equal("ord-1", Assert.Single(normalized.RootElement.GetProperty("content").EnumerateArray()).GetProperty("orderNumber").GetString());
+    }
+
     [Theory]
     [InlineData("{}")]
+    [InlineData("{\"id\":\"pkg-1\"}")]
     [InlineData("{\"content\":null}")]
     [InlineData("{\"content\":\"not-an-array\"}")]
     [InlineData("not-json")]

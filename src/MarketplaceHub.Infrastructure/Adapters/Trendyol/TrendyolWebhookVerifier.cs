@@ -20,7 +20,7 @@ public sealed class TrendyolWebhookVerifier(AppDbContext db, IDataProtectionProv
         if (payload is null || !Authorized(subscription.AuthenticationType, payload, headers)) return AdapterResult<VerifiedWebhookEnvelope>.Failure(new(AdapterErrorClass.Authentication, "WEBHOOK_AUTHENTICATION_FAILED", "Webhook kimlik doğrulaması başarısız.", 401, null, null));
         var identity = TrendyolWebhookIdentity.Create(rawBody);
         if (identity is null) return AdapterResult<VerifiedWebhookEnvelope>.Failure(TrendyolErrorMapper.Contract());
-        return AdapterResult<VerifiedWebhookEnvelope>.Success(new(identity.Value.ExternalMessageId, identity.Value.PayloadHash, "ORDERS", Encoding.UTF8.GetString(rawBody.Span)));
+        return AdapterResult<VerifiedWebhookEnvelope>.Success(new(identity.Value.ExternalMessageId, identity.Value.PayloadHash, "ORDERS", identity.Value.PageJson));
     }
 
     private static bool Authorized(string type, VerifierPayload payload, IReadOnlyDictionary<string, string> headers)
@@ -36,28 +36,41 @@ public sealed class TrendyolWebhookVerifier(AppDbContext db, IDataProtectionProv
 
 internal static class TrendyolWebhookIdentity
 {
-    public static (string ExternalMessageId, string PayloadHash)? Create(ReadOnlyMemory<byte> rawBody)
+    // The documented body is a package page ({"content":[...]}); live deliveries carry one package object on its own.
+    // Both are accepted and handed on as a page, so the order mapper reads them the same way.
+    public static (string ExternalMessageId, string PayloadHash, string PageJson)? Create(ReadOnlyMemory<byte> rawBody)
     {
         try
         {
             using var document = JsonDocument.Parse(rawBody);
             var root = document.RootElement;
-            if (root.ValueKind != JsonValueKind.Object
-                || !root.TryGetProperty("content", out var content)
-                || content.ValueKind != JsonValueKind.Array)
-                return null;
+            if (root.ValueKind != JsonValueKind.Object) return null;
+            JsonElement[] packages;
+            string pageJson;
+            if (root.TryGetProperty("content", out var content))
+            {
+                if (content.ValueKind != JsonValueKind.Array) return null;
+                packages = [.. content.EnumerateArray()];
+                pageJson = Encoding.UTF8.GetString(rawBody.Span);
+            }
+            else if (root.TryGetProperty("orderNumber", out _))
+            {
+                packages = [root];
+                pageJson = "{\"content\":[" + Encoding.UTF8.GetString(rawBody.Span) + "]}";
+            }
+            else return null;
 
             // Trendyol retries the complete package body and does not provide a
             // webhook event id. Normalize the package collection so whitespace,
             // object-property order, or page metadata cannot create a second job.
-            var normalizedPackages = content.EnumerateArray()
+            var normalizedPackages = packages
                 .Select(CanonicalJson)
                 .OrderBy(value => value, StringComparer.Ordinal)
                 .ToArray();
             var normalized = string.Join('\n', normalizedPackages);
             var eventHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalized)));
             var payloadHash = Convert.ToHexString(SHA256.HashData(rawBody.Span));
-            return ($"content:{eventHash}", payloadHash);
+            return ($"content:{eventHash}", payloadHash, pageJson);
         }
         catch (JsonException)
         {
