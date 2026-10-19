@@ -2004,6 +2004,26 @@ public sealed class HepsiburadaAdapterTests
     }
 
     [Fact]
+    public void OrderDetailInvoiceStatusIsReadPerPackageFromTheLineItems()
+    {
+        using var json = JsonDocument.Parse("""
+            {"orderNumber":"4001","items":[
+              {"id":"l-1","packageNumber":"pkg-1","hasInvoice":true},
+              {"id":"l-2","packageNumber":"pkg-1","hasInvoice":true},
+              {"id":"l-3","packageNumber":"pkg-2","hasInvoice":false}
+            ]}
+            """);
+
+        var statuses = HepsiburadaJsonMapper.PackageInvoiceStatuses(json.RootElement);
+        Assert.Equal("INVOICED", statuses["pkg-1"]);
+        Assert.Equal("NOT_INVOICED", statuses["pkg-2"]);
+        Assert.Equal("INVOICED", HepsiburadaJsonMapper.InvoiceObservationForPackage(json.RootElement, "pkg-1")!.RawStatus);
+        Assert.Equal("NOT_INVOICED", HepsiburadaJsonMapper.InvoiceObservationForPackage(json.RootElement, "pkg-2")!.RawStatus);
+        Assert.Null(HepsiburadaJsonMapper.InvoiceObservationForPackage(json.RootElement, "pkg-9"));
+        Assert.Null(HepsiburadaJsonMapper.InvoiceStatus(json.RootElement));
+    }
+
+    [Fact]
     public void MissingInvoiceMapperReadsOrderPackageAndCurrentStatus()
     {
         using var json = JsonDocument.Parse("""

@@ -22,6 +22,11 @@ public static class JobRetryPolicy
         return TimeSpan.FromTicks(leaseDuration.Ticks / 4);
     }
 
+    // A heartbeat that fails (a database blip) is not a lost lease: the job keeps running while its
+    // lease would still be valid at the next heartbeat.
+    public static bool KeepRunningAfterHeartbeatFailure(TimeSpan sinceLastRenewal, TimeSpan leaseDuration) =>
+        sinceLastRenewal + HeartbeatInterval(leaseDuration) < leaseDuration;
+
     public static TimeSpan DelayAfterAttempt(int attemptCount, Guid jobId)
     {
         if (attemptCount <= 0) throw new ArgumentOutOfRangeException(nameof(attemptCount));

@@ -157,12 +157,15 @@ public static class TrendyolJsonMapper
             })
             .ToList();
 
+        // A package split off another replaces it, so the replaced package stays in the list (its status is
+        // still tracked) but no longer counts towards the order totals.
+        var currentPackages = currentPackageCandidates.Select(x => x.Package).ToList();
         return latest with
         {
             LastModifiedAt = matches.Max(x => x.LastModifiedAt),
-            GrossAmount = packages.Sum(x => x.GrossAmount),
-            DiscountAmount = packages.Sum(x => x.DiscountAmount),
-            NetAmount = packages.Sum(x => x.NetAmount),
+            GrossAmount = currentPackages.Sum(x => x.GrossAmount),
+            DiscountAmount = currentPackages.Sum(x => x.DiscountAmount),
+            NetAmount = currentPackages.Sum(x => x.NetAmount),
             Lines = lines,
             Packages = packages
         };

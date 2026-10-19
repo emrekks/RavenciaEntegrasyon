@@ -482,7 +482,16 @@ internal static class HepsiburadaJsonMapper
     {
         var order = Unwrap(root);
         var packages = Find(order, "packages", "Packages", "shipments", "Shipments");
-        if (packages.ValueKind != JsonValueKind.Array) return InvoiceObservation(order);
+        if (packages.ValueKind != JsonValueKind.Array)
+        {
+            // The order detail has no package list: each line item names its package and whether
+            // that package has an invoice, so one package is judged by its own items only.
+            var groups = ItemPackageGroups(order);
+            if (groups.Count == 0) return InvoiceObservation(order);
+            return groups.TryGetValue(packageNumber.Trim(), out var items) && UniformItemInvoiceStatus(items) is { } itemStatus
+                ? new RemotePackageInvoiceObservation(itemStatus, null, null, null)
+                : null;
+        }
 
         foreach (var package in packages.EnumerateArray())
         {
@@ -497,9 +506,14 @@ internal static class HepsiburadaJsonMapper
     {
         var order = Unwrap(root);
         var packages = Find(order, "packages", "Packages", "shipments", "Shipments");
-        if (packages.ValueKind != JsonValueKind.Array) return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
         var statuses = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (packages.ValueKind != JsonValueKind.Array)
+        {
+            foreach (var (packageNumber, items) in ItemPackageGroups(order))
+                if (UniformItemInvoiceStatus(items) is { } itemStatus) statuses[packageNumber] = itemStatus;
+            return statuses;
+        }
+
         foreach (var package in packages.EnumerateArray())
         {
             var packageNumber = Text(package, "packageNumber", "PackageNumber", "packageId", "PackageId", "id", "Id");
@@ -508,6 +522,25 @@ internal static class HepsiburadaJsonMapper
                 statuses[packageNumber.Trim()] = invoiceStatus;
         }
         return statuses;
+    }
+
+    // Line items grouped by the package number each one carries (Hepsiburada's order detail).
+    internal static IReadOnlyDictionary<string, IReadOnlyList<JsonElement>> ItemPackageGroups(JsonElement order)
+    {
+        var lines = Find(order, "lineItems", "LineItems", "items", "Items", "orderItems", "OrderItems");
+        if (lines.ValueKind == JsonValueKind.Object && TryFind(lines, out var nested, "items", "Items", "lineItems", "LineItems")) lines = nested;
+        if (lines.ValueKind != JsonValueKind.Array) return new Dictionary<string, IReadOnlyList<JsonElement>>(StringComparer.OrdinalIgnoreCase);
+        return lines.EnumerateArray()
+            .Select(item => (Package: Text(item, "packageNumber", "PackageNumber")?.Trim(), Item: item))
+            .Where(entry => !string.IsNullOrEmpty(entry.Package))
+            .GroupBy(entry => entry.Package!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => (IReadOnlyList<JsonElement>)group.Select(entry => entry.Item).ToArray(), StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static string? UniformItemInvoiceStatus(IEnumerable<JsonElement> items)
+    {
+        var statuses = items.Select(InvoiceStatusValue).Distinct(StringComparer.Ordinal).ToArray();
+        return statuses.Length == 1 ? statuses[0] : null;
     }
 
     private static string? UniformInvoiceStatus(JsonElement elements)
@@ -1354,8 +1387,11 @@ internal static class HepsiburadaJsonMapper
                 : MergeInvoiceAddress(invoiceEnvelope, invoiceAddress);
         }
         var modified = Date(order, "lastStatusUpdateDate", "LastStatusUpdateDate", "lastModifiedAt", "LastModifiedAt") ?? orderedAt.Value;
+        // Without an order-level flag the order counts as invoiced only when every line agrees; a
+        // multi-package order whose packages differ has no single answer.
+        var lineInvoiceFlags = lineItems.Select(item => Boolean(item, "hasInvoice", "HasInvoice")).Distinct().ToArray();
         var invoiceUploaded = Boolean(order, "hasInvoice", "HasInvoice")
-            ?? lineItems.Select(item => Boolean(item, "hasInvoice", "HasInvoice")).FirstOrDefault(value => value.HasValue);
+            ?? (lineInvoiceFlags.Length == 1 ? lineInvoiceFlags[0] : null);
         var packages = Packages(order, lines, orderedAt.Value, invoiceUploaded);
         var dueAt = Date(order, "dueDate", "DueDate", "shipmentDueAt", "ShipmentDueAt")
             ?? lineItems.Select(item => Date(item, "dueDate", "DueDate", "shipmentDueAt", "ShipmentDueAt")).FirstOrDefault(value => value.HasValue);

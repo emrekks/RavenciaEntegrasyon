@@ -295,6 +295,8 @@ public static class ShipmentPackageStatusPolicy
         "RETURN_IN_TRANSIT" or "RETURNINTRANSIT" => ShipmentPackageStatus.ReturnInTransit,
         "RETURNED" => ShipmentPackageStatus.Returned,
         "AWAITING" or "UNPACKED" or "AT_COLLECTION_POINT" => ShipmentPackageStatus.OnHold,
+        // The marketplace has started cancelling the package (Pazarama item status 18): it must not ship.
+        "CANCELREQUESTED" or "CANCEL_REQUESTED" => ShipmentPackageStatus.OnHold,
         _ => ShipmentPackageStatus.ManualReview
     };
 

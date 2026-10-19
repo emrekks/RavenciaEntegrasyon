@@ -339,5 +339,19 @@ public sealed class MandatorySynchronizationScenariosTests
         Assert.Equal("shipment-actions", MarketplaceSyncExecutionLock.GroupFor("SHIPMENT_ACTION"));
         Assert.Equal("returns", MarketplaceSyncExecutionLock.GroupFor("RETURN_SYNC"));
         Assert.NotEqual(MarketplaceSyncExecutionLock.GroupFor("TRENDYOL_ORDER_SYNC"), MarketplaceSyncExecutionLock.GroupFor("RETURN_SYNC"));
+        Assert.Equal("orders", MarketplaceSyncExecutionLock.GroupFor(MarketplaceJobTypes.WebhookIngest));
+        Assert.Equal("orders", MarketplaceSyncExecutionLock.GroupFor(MarketplaceJobTypes.HepsiburadaWebhookIngest));
+        Assert.Equal("orders", MarketplaceSyncExecutionLock.GroupFor(MarketplaceJobTypes.ExternalEffectReconcile));
+    }
+
+    [Theory]
+    [InlineData(30, true)]
+    [InlineData(60, true)]
+    [InlineData(89, true)]
+    [InlineData(90, false)]
+    [InlineData(150, false)]
+    public void HeartbeatFailure_KeepsTheJobWhileItsLeaseIsStillValid(int secondsSinceRenewal, bool keepRunning)
+    {
+        Assert.Equal(keepRunning, JobRetryPolicy.KeepRunningAfterHeartbeatFailure(TimeSpan.FromSeconds(secondsSinceRenewal), TimeSpan.FromMinutes(2)));
     }
 }

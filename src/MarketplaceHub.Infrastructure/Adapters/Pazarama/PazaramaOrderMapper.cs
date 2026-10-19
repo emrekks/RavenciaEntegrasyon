@@ -119,7 +119,9 @@ public static class PazaramaOrderMapper
     internal static string ItemStatus(int code) => code switch
     {
         3 => "Created",
-        12 or 18 => "Picking",
+        12 => "Picking",
+        // "İptal süreci başlatıldı": Pazarama is cancelling the item, so it is held rather than prepared.
+        18 => "CancelRequested",
         6 or 13 => "Cancelled",
         5 or 16 or 19 => "Shipped",
         11 or 7 or 9 => "Delivered",

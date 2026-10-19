@@ -331,14 +331,27 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
     private async Task<bool> MaintainLeaseAsync(LeasedJob job, CancellationTokenSource execution, CancellationToken cancellationToken)
     {
         using var timer = new PeriodicTimer(JobRetryPolicy.HeartbeatInterval(JobRetryPolicy.DefaultLeaseDuration));
+        var lastRenewal = DateTimeOffset.UtcNow;
         try
         {
             while (await timer.WaitForNextTickAsync(cancellationToken))
             {
-                await using var scope = scopeFactory.CreateAsyncScope();
-                var jobs = scope.ServiceProvider.GetRequiredService<IJobLeaseService>();
-                if (await jobs.HeartbeatAsync(job.Id, job.LeaseToken, JobRetryPolicy.DefaultLeaseDuration, cancellationToken))
+                bool renewed;
+                try
                 {
+                    await using var scope = scopeFactory.CreateAsyncScope();
+                    var jobs = scope.ServiceProvider.GetRequiredService<IJobLeaseService>();
+                    renewed = await jobs.HeartbeatAsync(job.Id, job.LeaseToken, JobRetryPolicy.DefaultLeaseDuration, cancellationToken);
+                }
+                catch (Exception exception) when (!(exception is OperationCanceledException && cancellationToken.IsCancellationRequested)
+                    && JobRetryPolicy.KeepRunningAfterHeartbeatFailure(DateTimeOffset.UtcNow - lastRenewal, JobRetryPolicy.DefaultLeaseDuration))
+                {
+                    logger.LogWarning(exception, "Job {JobId} heartbeat failed; the lease is still valid, retrying at the next tick", job.Id);
+                    continue;
+                }
+                if (renewed)
+                {
+                    lastRenewal = DateTimeOffset.UtcNow;
                     TouchHealthFile();
                     continue;
                 }

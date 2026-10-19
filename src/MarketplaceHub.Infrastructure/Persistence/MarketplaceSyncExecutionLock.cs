@@ -88,6 +88,10 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
         // invoice fields. Keeping it out of the full order-read lane prevents
         // a long order scan from starving invoice status refreshes.
         if (type == MarketplaceJobTypes.OrderInvoiceReconciliation) return "order-invoices";
+        // Webhook deliveries and the read-back of uncertain marketplace writes update the same orders
+        // and packages as the order reads; sharing their lock avoids version conflicts and the
+        // retries (and quota) those cost.
+        if (type.EndsWith("_WEBHOOK_INGEST", StringComparison.Ordinal) || type == MarketplaceJobTypes.ExternalEffectReconcile) return "orders";
         if (type.Contains("ORDER", StringComparison.Ordinal) || type.Contains("SHIPMENT", StringComparison.Ordinal)) return "orders";
         if (type.Contains("RETURN", StringComparison.Ordinal) || type.Contains("CLAIM", StringComparison.Ordinal)) return "returns";
         if (type.Contains("STOCK", StringComparison.Ordinal) || type.Contains("INVENTORY", StringComparison.Ordinal) || type.Contains("PRICE", StringComparison.Ordinal)) return "stock";

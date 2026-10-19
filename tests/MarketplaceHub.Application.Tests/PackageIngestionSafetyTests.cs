@@ -150,6 +150,29 @@ public sealed class PackageIngestionSafetyTests
     }
 
     [Fact]
+    public void SplitPackageOrder_CountsAReplacedPackageOnceInTheTotals()
+    {
+        var occurredAt = DateTimeOffset.Parse("2026-09-09T10:00:00Z");
+        var line = new RemoteOrderLine("line-1", "SKU-1", "BAR-1", "Ürün", 1, 100, 20, "Created");
+        var parent = new RemotePackage("parent", null, "UnSupplied", occurredAt, null, null, [new RemotePackageAllocation("line-1", 1, 0, 0, 0, 0)])
+        {
+            GrossAmount = 100m,
+            DiscountAmount = 10m,
+            NetAmount = 90m
+        };
+        var replacement = parent with { ExternalPackageId = "replacement", OriginExternalPackageId = "parent", RawStatus = "Created", OccurredAt = occurredAt.AddMinutes(1) };
+        var first = new RemoteOrder("order-1", "order-1", occurredAt, occurredAt, "TRY", 100, 10, 90, "{}", "{}", "{}", [line], [parent], "{}");
+        var second = first with { LastModifiedAt = occurredAt.AddMinutes(1), Packages = [replacement] };
+
+        var merged = TrendyolJsonMapper.MergeOrderPackages([first, second], "order-1")!;
+
+        Assert.Equal(2, merged.Packages.Count);
+        Assert.Equal(100m, merged.GrossAmount);
+        Assert.Equal(10m, merged.DiscountAmount);
+        Assert.Equal(90m, merged.NetAmount);
+    }
+
+    [Fact]
     public void PackageIdentityGuardRejectsTheSamePackageAcrossDifferentOrders()
     {
         var occurredAt = DateTimeOffset.Parse("2026-09-09T10:00:00Z");

@@ -127,6 +127,23 @@ public sealed class WebhookEventPathTests
         Assert.Equal("4736002251", MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.FindString(document.RootElement, "OrderNumber"));
         Assert.Equal("57b1850c", MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.FindString(document.RootElement, "packageNumber"));
     }
+
+    [Fact]
+    public void APackageEventFindsItsPackageInThePathAndUnpackListsItsOrders()
+    {
+        var deliver = MarketplaceHub.Infrastructure.Adapters.Hepsiburada.HepsiburadaWebhookIdentity.Create("""{"deliveredDate":"2026-10-19T10:00:00"}"""u8.ToArray(), "packages/57b1850c/deliver");
+        var messageId = $"{Guid.NewGuid():N}:{deliver!.ExternalMessageId}";
+
+        var path = MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.OrderEventPath(messageId);
+        Assert.Equal("packages/57b1850c/deliver", path);
+        Assert.Equal(("packages", "57b1850c"), MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.HepsiburadaEventReference(path));
+        Assert.Equal(("lineitems", "b17553de"), MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.HepsiburadaEventReference("lineitems/b17553de/cancel"));
+        Assert.Null(MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.HepsiburadaEventReference("orders"));
+        Assert.Null(MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.OrderEventPath("returns:claim-1:ABC"));
+
+        using var unpack = System.Text.Json.JsonDocument.Parse("""{"packageNumber":"57b1850c","orderNumbers":["4736002251","4736002252"]}""");
+        Assert.Equal(["4736002251", "4736002252"], MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.FindStrings(unpack.RootElement, "orderNumbers"));
+    }
 }
 
 public sealed class HepsiburadaCancellationPolicyTests

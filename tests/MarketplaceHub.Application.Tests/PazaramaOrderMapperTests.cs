@@ -69,7 +69,7 @@ public sealed class PazaramaOrderMapperTests
     [Theory]
     [InlineData(3, "Created", ShipmentPackageStatus.New)]
     [InlineData(12, "Picking", ShipmentPackageStatus.Processing)]
-    [InlineData(18, "Picking", ShipmentPackageStatus.Processing)]
+    [InlineData(18, "CancelRequested", ShipmentPackageStatus.OnHold)]
     [InlineData(5, "Shipped", ShipmentPackageStatus.Shipped)]
     [InlineData(16, "Shipped", ShipmentPackageStatus.Shipped)]
     [InlineData(19, "Shipped", ShipmentPackageStatus.Shipped)]
@@ -82,6 +82,13 @@ public sealed class PazaramaOrderMapperTests
     {
         Assert.Equal(raw, PazaramaOrderMapper.ItemStatus(code));
         Assert.Equal(expected, TrendyolShipmentPackageStatusPolicy.FromRemote(PazaramaOrderMapper.PackageStatus([raw])));
+    }
+
+    [Fact]
+    public void AnItemBeingCancelledHoldsThePackageItShares()
+    {
+        Assert.Equal("CancelRequested", PazaramaOrderMapper.PackageStatus(["Picking", "CancelRequested", "Created"]));
+        Assert.Equal(ShipmentPackageStatus.OnHold, ShipmentPackageStatusPolicy.FromRemote("CancelRequested"));
     }
 
     [Fact]
