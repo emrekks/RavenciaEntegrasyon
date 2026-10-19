@@ -1663,12 +1663,15 @@ internal static class HepsiburadaJsonMapper
     {
         if (string.IsNullOrWhiteSpace(value)) return null;
         var text = value.Trim();
-        if (System.Text.RegularExpressions.Regex.IsMatch(text, @"(Z|[+-]d{2}:?d{2})$"))
+        if (HasOffset(text))
             return DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out var withOffset) ? withOffset.ToUniversalTime() : null;
         return DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out var local)
             ? new DateTimeOffset(DateTime.SpecifyKind(local, DateTimeKind.Unspecified), TurkeyOffset).ToUniversalTime()
             : null;
     }
+
+    // True when the text ends with Z or an offset such as +03:00 / +0300.
+    internal static bool HasOffset(string text) => System.Text.RegularExpressions.Regex.IsMatch(text, @"(Z|[+-]\d{2}:?\d{2})$");
 
     // A query date the way Hepsiburada reads it: Turkey time, minutes.
     internal static string QueryTime(DateTimeOffset value) =>
