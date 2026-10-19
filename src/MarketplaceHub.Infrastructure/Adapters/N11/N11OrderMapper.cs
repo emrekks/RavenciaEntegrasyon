@@ -123,12 +123,24 @@ public static class N11OrderMapper
 
     // Keeps the raw package fields and adds the names the panel and invoicing
     // read for every platform (customerName, customerFirstName/LastName, email).
+    // Since 3 August 2026 n11 marks pickup and delivery point orders with deliveryAddressType (KTN,
+    // EASYPOINT, PUP): shippingAddress is then the point's address and the customer's name and contact
+    // are in billingAddress, so the customer is read from there and the order carries the point type.
+    internal static string? DeliveryPointType(JsonElement package) =>
+        Text(package, "deliveryAddressType") is { Length: > 0 } type && !string.Equals(type, "null", StringComparison.OrdinalIgnoreCase) ? type.Trim().ToUpperInvariant() : null;
+
     internal static string CustomerSnapshot(JsonElement package)
     {
         var snapshot = JsonNode.Parse(package.GetRawText())!.AsObject();
         snapshot.Remove("lines");
-        var fullName = Text(package, "customerfullName")
-            ?? (package.TryGetProperty("billingAddress", out var billing) ? Text(billing, "fullName") : null);
+        var deliveryPoint = DeliveryPointType(package);
+        var billingName = package.TryGetProperty("billingAddress", out var billing) ? Text(billing, "fullName") : null;
+        var fullName = deliveryPoint is null ? Text(package, "customerfullName") ?? billingName : billingName ?? Text(package, "customerfullName");
+        if (deliveryPoint is not null)
+        {
+            snapshot["deliveryPointType"] = deliveryPoint;
+            if (billing.ValueKind == JsonValueKind.Object && Text(billing, "gsm") is { } billingPhone) snapshot["phone"] = billingPhone;
+        }
         if (fullName is not null)
         {
             var (first, last) = SplitName(fullName);
@@ -158,6 +170,12 @@ public static class N11OrderMapper
             snapshot["lastName"] = last;
         }
         if (Text(address, "gsm") is { } phone) snapshot["phone"] = phone;
+        // The shipping address of a point order is the point itself, not the customer's home.
+        if (field == "shippingAddress" && DeliveryPointType(package) is { } deliveryPoint)
+        {
+            snapshot["isDeliveryPoint"] = true;
+            snapshot["deliveryPointType"] = deliveryPoint;
+        }
         return snapshot.ToJsonString();
     }
 

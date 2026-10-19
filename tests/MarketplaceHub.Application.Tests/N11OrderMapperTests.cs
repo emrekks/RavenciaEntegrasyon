@@ -25,6 +25,34 @@ public sealed class N11OrderMapperTests
         """;
 
     [Fact]
+    public void APickupPointOrderKeepsTheCustomerFromTheBillingAddressAndMarksThePoint()
+    {
+        // n11, 3 August 2026: deliveryAddressType marks pickup/delivery point orders; shippingAddress is the
+        // point, the customer's name and contact are in billingAddress.
+        const string page = """
+            {"page":0,"totalPages":1,"content":[{
+              "orderNumber":"203872347999","id":"112999455244999","deliveryAddressType":"EASYPOINT",
+              "customerfullName":"Ayşe Yılmaz","customerEmail":"ayse@example.com",
+              "billingAddress":{"address":"Çiçek Sok. 5","city":"İstanbul","district":"Kadıköy","fullName":"Ayşe Yılmaz","gsm":"5551112233"},
+              "shippingAddress":{"address":"Easypoint Kadıköy Şubesi, Bağdat Cad. 1","city":"İstanbul","district":"Kadıköy","fullName":"Easypoint Kadıköy","gsm":"2161112233"},
+              "lines":[{"orderLineId":"L1","quantity":1,"productName":"Bluz","stockCode":"BLZ-1","price":100,"sellerInvoiceAmount":100,"totalSellerDiscountPrice":0}],
+              "lastModifiedDate":1724323386203,"shipmentPackageStatus":"Created"}]}
+            """;
+
+        var order = Assert.Single(N11OrderMapper.Packages(page).Items);
+
+        using var customer = JsonDocument.Parse(order.CustomerSnapshotJson);
+        Assert.Equal("Ayşe Yılmaz", customer.RootElement.GetProperty("customerName").GetString());
+        Assert.Equal("EASYPOINT", customer.RootElement.GetProperty("deliveryPointType").GetString());
+        Assert.Equal("5551112233", customer.RootElement.GetProperty("phone").GetString());
+        using var shipping = JsonDocument.Parse(order.ShipmentAddressSnapshotJson);
+        Assert.True(shipping.RootElement.GetProperty("isDeliveryPoint").GetBoolean());
+        Assert.Equal("Easypoint Kadıköy", shipping.RootElement.GetProperty("fullName").GetString());
+        using var home = JsonDocument.Parse(N11OrderMapper.Packages(DocumentedPage).Items[0].ShipmentAddressSnapshotJson);
+        Assert.False(home.RootElement.TryGetProperty("isDeliveryPoint", out _));
+    }
+
+    [Fact]
     public void DocumentedPackageMapsToAnOrderWithLinesAmountsAndDates()
     {
         var page = N11OrderMapper.Packages(DocumentedPage);
