@@ -8,7 +8,9 @@ public static class HepsiburadaPackageStatusReconciliationPolicy
     public const string CursorResourceType = "HEPSIBURADA_PACKAGE_STATUS_RECONCILIATION";
     public const int DefaultBatchSize = 10;
     public const int MaximumBatchSize = 50;
-    public static readonly TimeSpan DefaultInterval = TimeSpan.FromHours(24);
+    // Hepsiburada's order detail lists no packages, so a package whose move the package lists missed (shipped
+    // between two windows) is only corrected here. Hourly keeps such a package at most an hour behind.
+    public static readonly TimeSpan DefaultInterval = TimeSpan.FromHours(1);
 
     public static bool ShouldRun(DateTimeOffset? lastCompletedAt, bool hasContinuation, DateTimeOffset now, TimeSpan interval) =>
         hasContinuation
