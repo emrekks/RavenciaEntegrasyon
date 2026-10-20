@@ -7,7 +7,8 @@ import { api, ApiRequestError, backgroundPollHeaders, hubApi, setUnauthorizedHan
 import { Drawer, ErrorBoundary, ErrorBox, Modal, UiIcon, type UiIconName } from '../shared/components'
 import { AttributesPage, AttributeMappingPage, BrandsPage, CategoriesPage, ImportDetailPage, ImportsPage, NewProductPage, ProductDetailPage, ProductsPage, IntegrationDetailPage, IntegrationsPage, MappingPage, OrdersPage, QuestionsPage, ReturnDetailPage, ReturnsPage, ShipmentDetailPage, ShipmentsPage, InvoiceDetailPage, InvoicesPage, JobsPage } from './route-components'
 import { useOperationsRealtime } from './hooks/useOperationsRealtime'
-import { releaseOrphanedScrollLock } from '../shared/hooks/useScrollLock'
+import { releaseOrphanedScrollLock, useScrollLock } from '../shared/hooks/useScrollLock'
+import { useMediaQuery } from '../shared/hooks/useMediaQuery'
 import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFontFamilyCss, appearanceFontScale, useAppearanceSettings } from '../features/settings/appearance-settings'
 import { readNotificationHistory, subscribeNotificationHistory, type AppNotification } from '../shared/notifications'
 import { orderNavigationCount, type OrderNavigationSummary } from '../shared/order-navigation-count'
@@ -235,13 +236,13 @@ const authActivity = [
   { id: 'price', platform: 'Hepsiburada', message: 'Fiyat listesi senkronize edildi', time: '8 dk', tone: 'hepsiburada' },
 ] as const
 
+// The same query as the phone sign-in rules in styles/responsive.css.
+const authFitsOneScreen = '(max-width: 640px) and (min-height: 560px)'
+
 function AuthPageFrame({ ariaLabel, accessLabel, accessMeta, cardTitle, cardDescription, progressStep = 1, children, footerMeta = 'Ravencia Workspace', topAction }: { ariaLabel: string; accessLabel: string; accessMeta: string; cardTitle: string; cardDescription: string; progressStep?: 1 | 2 | 3; children: ReactNode; footerMeta?: string; topAction?: ReactNode }) {
-  // Phones: the sign-in screen holds the page still. A class set here (not html:has(.rv-auth-page)) is removed for sure
-  // when the screen goes; iOS Safari kept the :has() lock after signing in, so pages did not scroll until a reload.
-  useEffect(() => {
-    document.documentElement.classList.add('rv-auth-lock'); document.body.classList.add('rv-auth-lock')
-    return () => { document.documentElement.classList.remove('rv-auth-lock'); document.body.classList.remove('rv-auth-lock') }
-  }, [])
+  // Phones where the sign-in screen fits one screen: it holds the page still through the one counted page lock, which
+  // is released for sure when the screen goes (iOS Safari kept an html:has(.rv-auth-page) lock after signing in).
+  useScrollLock(useMediaQuery(authFitsOneScreen), false, { root: true })
   return <main className="rv-auth-page rv-auth-single">
     <div className="rv-auth-atmosphere" aria-hidden="true">
       <span className="auth-aurora auth-aurora-primary" />

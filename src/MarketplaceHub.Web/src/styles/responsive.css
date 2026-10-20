@@ -371,9 +371,9 @@ html[data-theme="light"] .rv-drawer-logo { filter: invert(1); }
   html body .app-shell.stitch-shell main .content .mam { padding: 0; }
 }
 
-/* Phone sign-in fits one screen: no page scroll, decorative copy dropped. */
+/* Phone sign-in fits one screen: no page scroll (the sign-in screen holds the counted page lock with `root`, see
+   App.tsx authFitsOneScreen — keep the two queries equal), decorative copy dropped. */
 @media (max-width: 640px) and (min-height: 560px) {
-  html.rv-auth-lock, body.rv-auth-lock { height: 100%; overflow: hidden; overscroll-behavior: none; }
   .rv-auth-page { box-sizing: border-box; height: 100dvh; min-height: 0; overflow: hidden; }
   .rv-auth-page :is(.rv-auth-lede, .rv-auth-kicker, .rv-auth-page-footer) { display: none; }
   .rv-auth-page .rv-auth-hero-brand { min-height: 0; margin-bottom: 8px; }
