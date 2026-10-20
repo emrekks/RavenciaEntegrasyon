@@ -1497,22 +1497,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         invoice.Version++;
     }
 
-    private static bool IsMicroExport(string? customerSnapshotJson)
-    {
-        if (string.IsNullOrWhiteSpace(customerSnapshotJson)) return false;
-        try
-        {
-            using var document = JsonDocument.Parse(customerSnapshotJson);
-            var root = document.RootElement;
-            if (root.TryGetProperty("micro", out var micro) && micro.ValueKind == JsonValueKind.True) return true;
-            if (root.TryGetProperty("microExport", out var microExport) && microExport.ValueKind == JsonValueKind.True) return true;
-            if (root.TryGetProperty("3pByTrendyol", out var thirdParty) && thirdParty.ValueKind == JsonValueKind.True) return true;
-            foreach (var name in new[] { "shipmentPackageType", "orderType" })
-                if (root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String && (value.GetString()?.Contains("MICRO", StringComparison.OrdinalIgnoreCase) == true || value.GetString()?.Contains("İHRAC", StringComparison.OrdinalIgnoreCase) == true)) return true;
-        }
-        catch (JsonException) { }
-        return false;
-    }
+    private static bool IsMicroExport(string? customerSnapshotJson) => InvoiceIssuePolicy.IsMicroExport(customerSnapshotJson);
 
     private async Task<bool> FetchDocument(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {

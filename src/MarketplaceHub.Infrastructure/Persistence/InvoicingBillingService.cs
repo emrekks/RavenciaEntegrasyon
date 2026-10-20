@@ -1077,6 +1077,11 @@ public sealed partial class InvoicingBillingService(
 
     public async Task<ServiceResult<InvoiceDetailView>> CreateDraftAsync(Guid tenantId, CreateInvoiceCommand command, string idempotencyKey, CancellationToken cancellationToken)
     {
+        // An adjustment would still be sent as a full SATIS e-Archive outside the order's one-invoice guard,
+        // so a second fiscal invoice for the same goods could reach the tax authority. Refused until a real
+        // IADE flow (IADE type, original number/date, accepted original) exists.
+        if (command.OriginalInvoiceId is not null)
+            return Refuse<InvoiceDetailView>(InvoiceIssuePolicy.AdjustmentFlowUnavailable);
         var existing = await db.Invoices.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.IdempotencyKey == idempotencyKey, cancellationToken);
         if (existing is not null) return await GetAsync(tenantId, existing.Id, cancellationToken);
         await using var mutationTransaction = command.OriginalInvoiceId is null && db.Database.CurrentTransaction is null
@@ -1127,6 +1132,8 @@ public sealed partial class InvoicingBillingService(
             .Where(x => x.TenantId == tenantId && x.OrderId == order.Id && x.Status != ShipmentPackageStatus.Cancelled)
             .ToListAsync(cancellationToken);
         var invoiceType = InvoiceAmounts.TrendyolInvoiceType(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson);
+        if (InvoiceIssuePolicy.Refusal(invoiceType, order.Currency, order.CustomerSnapshotJson) is { } refusal)
+            return Refuse<InvoiceDetailView>(refusal);
         if (command.OriginalInvoiceId is null && invoiceType == "EARSIVFATURA")
         {
             if (!IsValidFiscalDeliveryPackage(selectedPackage is null ? null : new(
@@ -1300,6 +1307,18 @@ public sealed partial class InvoicingBillingService(
             return ServiceResult<InvoiceDetailView>.Fail("SHOPIFY_MANUAL_INVOICE_ONLY", "Shopify belge kayıtları mali taslak olarak doğrulanamaz; panelde yalnızca yüklenen belge ve manuel durum izlenir.", 422);
         if (!InvoiceStateMachine.CanTransition(invoice.Status, InvoiceStatus.Validating)) return ServiceResult<InvoiceDetailView>.Fail("INVOICE_STATE_INVALID", "Fatura mevcut durumdan doğrulanamaz.", 409);
         invoice.Status = InvoiceStatus.Validating; invoice.Version++; invoice.UpdatedAt = timeProvider.GetUtcNow();
+        var orderCustomerJson = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == invoice.OrderId)
+            .Select(x => x.CustomerSnapshotJson).SingleOrDefaultAsync(cancellationToken);
+        var issueRefusal = invoice.OriginalInvoiceId is not null
+            ? InvoiceIssuePolicy.AdjustmentFlowUnavailable
+            : InvoiceIssuePolicy.Refusal(invoice.InvoiceType, invoice.Currency, orderCustomerJson);
+        if (issueRefusal is not null)
+        {
+            // The draft keeps the reason so the workspace shows it; nothing reaches the provider.
+            invoice.Status = InvoiceStatus.ValidationFailed; invoice.LastErrorCode = issueRefusal.Code; invoice.Version++; invoice.UpdatedAt = timeProvider.GetUtcNow();
+            await db.SaveChangesAsync(cancellationToken);
+            return Refuse<InvoiceDetailView>(issueRefusal);
+        }
         var policy = await db.InvoicePolicies.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.Id == invoice.InvoicePolicyId, cancellationToken);
         var lines = await db.InvoiceLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.InvoiceId == id).ToListAsync(cancellationToken);
         var failures = new List<string>();
@@ -1311,24 +1330,26 @@ public sealed partial class InvoicingBillingService(
         if (providerConnection is null) failures.Add("ACTIVE_CONNECTION_REQUIRED");
         else if (!IntegrationRuntimePolicy.IsStage(providerConnection) && (Unapproved(policy.RoundingRule) || Unapproved(policy.DueRule) || Unapproved(policy.AdjustmentRule))) failures.Add("FISCAL_POLICY_UNAPPROVED");
         if (invoice.InvoiceType is not ("TEMELFATURA" or "EARSIVFATURA")) failures.Add("INVOICE_TYPE_INVALID");
+        InvoiceFiscalDeliveryPackageSnapshot? deliveryPackage = null;
+        var receiverSnapshot = await db.InvoicePartySnapshots.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id && x.Role == "RECEIVER", cancellationToken);
+        if (receiverSnapshot is not null)
+        {
+            try
+            {
+                using var snapshot = JsonDocument.Parse(_partyProtector.Unprotect(receiverSnapshot.ProtectedContent));
+                deliveryPackage = ReadFiscalDeliveryPackage(snapshot.RootElement);
+                // The identifier checked here is the one the provider payload will carry.
+                if (!RecipientTaxIdentityIsValid(invoice.InvoiceType, SnapshotString(snapshot.RootElement, "CustomerSnapshotJson"), SnapshotString(snapshot.RootElement, "InvoiceAddressSnapshotJson")))
+                    failures.Add(InvoiceIssuePolicy.RecipientTaxIdInvalidCode);
+            }
+            catch (Exception exception) when (exception is System.Security.Cryptography.CryptographicException or JsonException)
+            {
+                failures.Add("INVOICE_PARTY_SNAPSHOT_INVALID");
+            }
+        }
         if (invoice.InvoiceType == "EARSIVFATURA")
         {
-            InvoiceFiscalDeliveryPackageSnapshot? deliveryPackage = null;
-            var receiverSnapshot = await db.InvoicePartySnapshots.AsNoTracking()
-                .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id && x.Role == "RECEIVER", cancellationToken);
-            if (receiverSnapshot is not null)
-            {
-                try
-                {
-                    using var snapshot = JsonDocument.Parse(_partyProtector.Unprotect(receiverSnapshot.ProtectedContent));
-                    deliveryPackage = ReadFiscalDeliveryPackage(snapshot.RootElement);
-                }
-                catch (Exception exception) when (exception is System.Security.Cryptography.CryptographicException or JsonException)
-                {
-                    failures.Add("INVOICE_PARTY_SNAPSHOT_INVALID");
-                }
-            }
-
             // Order-level invoices intentionally keep PackageId null so the
             // order's one-invoice guard and all-package marketplace delivery
             // remain intact. E-Archive delivery data is frozen in the receiver
@@ -1362,6 +1383,11 @@ public sealed partial class InvoicingBillingService(
             return ServiceResult<Guid>.Fail("SHOPIFY_MANUAL_INVOICE_ONLY", "Shopify manuel belge kayıtları E-Faturam’a gönderilemez.", 422);
         if (await IsMarketplaceInvoiceCreationDisabledAsync(tenantId, invoice.OrderId, cancellationToken))
             return ServiceResult<Guid>.Fail(MarketplaceInvoiceCreationPolicy.DisabledErrorCode, MarketplaceInvoiceCreationPolicy.DisabledMessage, 422);
+        // Drafts validated before these gates existed must not reach the provider either.
+        var submitCustomerJson = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == invoice.OrderId)
+            .Select(x => x.CustomerSnapshotJson).SingleOrDefaultAsync(cancellationToken);
+        if ((invoice.OriginalInvoiceId is not null ? InvoiceIssuePolicy.AdjustmentFlowUnavailable : InvoiceIssuePolicy.Refusal(invoice.InvoiceType, invoice.Currency, submitCustomerJson)) is { } submitRefusal)
+            return Refuse<Guid>(submitRefusal);
         var safePreProviderRetry = CanRetryPreProviderFailure(invoice.Status, invoice.LastErrorCode, invoice.ExternalReference);
         if (invoice.Status != InvoiceStatus.Ready && !safePreProviderRetry)
             return ServiceResult<Guid>.Fail("INVOICE_STATE_INVALID", "Fatura mevcut durumdan E-Faturam gönderimine geçemez.", 409);
@@ -1549,6 +1575,20 @@ public sealed partial class InvoicingBillingService(
         && package.StatusOccurredAt is { } sentAt
         && sentAt != default
         && TrendyolCarrierCatalog.TryResolve(package.CargoProviderExternalId, out _);
+
+    // A consumer e-Archive carries the fixed 11111111111 identifier; every other recipient must hold a
+    // TCKN or VKN whose check digits are right, otherwise the provider or the tax authority rejects it later.
+    internal static bool RecipientTaxIdentityIsValid(string invoiceType, string customerSnapshotJson, string invoiceAddressSnapshotJson)
+    {
+        var (taxId, isCorporate) = TrendyolEFaturamCanonicalPayload.ResolveRecipientTaxIdentity(customerSnapshotJson, invoiceAddressSnapshotJson, invoiceType);
+        if (invoiceType == "EARSIVFATURA" && !isCorporate) return true;
+        return TurkishTaxIdentity.IsValid(taxId);
+    }
+
+    private static string SnapshotString(JsonElement root, string property) =>
+        root.ValueKind == JsonValueKind.Object && root.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString() ?? "{}"
+            : "{}";
 
     internal static InvoiceFiscalDeliveryPackageSnapshot? ReadFiscalDeliveryPackage(JsonElement root)
     {
@@ -1780,6 +1820,7 @@ public sealed partial class InvoicingBillingService(
     }
     private static InvoicePolicyView Map(InvoicePolicy value) => new(value.Id, value.ProviderConnectionId, value.TriggerState, value.PackageScope, value.DueRule, value.RoundingRule, value.AdjustmentRule, value.AutoSubmit, value.Version);
     private static ServiceResult<T> Invalid<T>(string field, string message) => ServiceResult<T>.Fail("VALIDATION_FAILED", message, 422, new Dictionary<string, string[]> { [field] = [message] });
+    private static ServiceResult<T> Refuse<T>(InvoiceIssueRefusal refusal) => ServiceResult<T>.Fail(refusal.Code, refusal.Message, 422);
     private static ServiceResult<T> NotFound<T>() => ServiceResult<T>.Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", 404);
     private static ServiceResult<T> Precondition<T>(long version) => ServiceResult<T>.Fail("CONCURRENCY_CONFLICT", $"Kayıt sürümü değişti; güncel sürüm v{version}.", 412);
     private static ServiceResult<T> PreconditionRequired<T>() => ServiceResult<T>.Fail("PRECONDITION_REQUIRED", "Mevcut kayıt için If-Match gereklidir.", 428);

@@ -72,4 +72,22 @@ public sealed class InvoiceAmountsTests
         Assert.Equal("EARSIVFATURA", InvoiceAmounts.TrendyolInvoiceType("{\"commercial\":false}", "{\"invoiceAddress\":{\"eInvoiceAvailable\":true}}"));
         Assert.Equal("EARSIVFATURA", InvoiceAmounts.TrendyolInvoiceType("{\"commercial\":true}", "{}"));
     }
+
+    [Fact]
+    public void Reads_e_invoice_availability_from_the_flat_trendyol_invoice_address_snapshot()
+    {
+        // TrendyolJsonMapper stores the invoiceAddress object itself as the snapshot root.
+        const string flat = "{\"company\":\"Örnek A.Ş.\",\"taxNumber\":\"1234567890\",\"eInvoiceAvailable\":true}";
+
+        Assert.Equal("TEMELFATURA", InvoiceAmounts.TrendyolInvoiceType("{\"commercial\":true}", flat));
+        Assert.Equal("EARSIVFATURA", InvoiceAmounts.TrendyolInvoiceType("{\"commercial\":true}", "{\"eInvoiceAvailable\":false}"));
+        Assert.Equal("EARSIVFATURA", InvoiceAmounts.TrendyolInvoiceType("{\"commercial\":false}", flat));
+    }
+
+    [Fact]
+    public void Flat_e_invoice_flag_wins_over_a_nested_one()
+    {
+        Assert.Equal("EARSIVFATURA", InvoiceAmounts.TrendyolInvoiceType("{\"commercial\":true}", "{\"eInvoiceAvailable\":false,\"invoiceAddress\":{\"eInvoiceAvailable\":true}}"));
+        Assert.Equal("EARSIVFATURA", InvoiceAmounts.TrendyolInvoiceType("[]", "[]"));
+    }
 }

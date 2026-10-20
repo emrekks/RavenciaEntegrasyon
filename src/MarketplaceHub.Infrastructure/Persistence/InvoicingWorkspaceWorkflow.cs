@@ -160,7 +160,7 @@ public sealed partial class InvoicingBillingService
                     if (!validated.Succeeded || validated.Value!.Status != InvoiceStatus.Ready.ToString().ToUpperInvariant())
                     {
                         await transaction.CommitAsync(cancellationToken);
-                        results.Add(new(confirmation.PackageId, invoice.Id, null, "VALIDATION_FAILED", "REVIEW", validated.Succeeded ? validated.Value!.LastErrorCode ?? "Fatura doğrulanamadı." : validated.Error!.Message));
+                        results.Add(new(confirmation.PackageId, invoice.Id, null, "VALIDATION_FAILED", "REVIEW", validated.Succeeded ? InvoiceIssuePolicy.DescribeValidationCode(validated.Value!.LastErrorCode) : validated.Error!.Message));
                         continue;
                     }
                     invoice = await db.Invoices.SingleAsync(item => item.TenantId == tenantId && item.Id == invoice.Id, cancellationToken);
@@ -248,8 +248,8 @@ public sealed partial class InvoicingBillingService
         var corporate = TrendyolEFaturamCanonicalPayload.IsCorporateRecipient(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, taxIdentity);
         var customerType = corporate ? "Kurumsal" : "Bireysel";
         if (!corporate) taxIdentity = "11111111111";
-        else if (taxIdentity.Length is not (10 or 11) || taxIdentity.Any(character => !char.IsAsciiDigit(character)))
-            return ServiceResult<InvoiceWorkspacePreviewItem>.Fail("EFATURAM_CORPORATE_TAX_ID_REQUIRED", "Kurumsal müşteri için geçerli 10 haneli vergi numarası veya 11 haneli T.C. kimlik numarası eksik.", 422);
+        else if (!TurkishTaxIdentity.IsValid(taxIdentity))
+            return ServiceResult<InvoiceWorkspacePreviewItem>.Fail("EFATURAM_CORPORATE_TAX_ID_REQUIRED", "Kurumsal müşteri için geçerli 10 haneli vergi numarası veya 11 haneli T.C. kimlik numarası eksik ya da kontrol hanesi hatalı.", 422);
         var customerName = InvoiceWorkspaceCustomerName(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
         string? deliveryCarrierName = null;
         DateTimeOffset? deliverySentAt = null;
@@ -290,6 +290,11 @@ public sealed partial class InvoicingBillingService
                     ? MarketplaceInvoiceCreationPolicy.UnsupportedFiscalProviderMessage
                     : MarketplaceInvoiceCreationPolicy.DisabledMessage
                 : InvoiceDeliveryEnvironmentPolicy.DescribeMismatch(provider.Environment, marketplace.Environment);
+        if (existing is null && InvoiceIssuePolicy.Refusal(invoiceType, order.Currency, order.CustomerSnapshotJson) is { } issueRefusal)
+        {
+            canCreate = false;
+            blockedReason = issueRefusal.Message;
+        }
         var nextAction = manualDocument is not null ? "MANUAL_DOCUMENT_PRESENT" : existing is null ? "CREATE_AND_SUBMIT" : existing.Status switch
         {
             _ when InvoiceMarketplaceRetryPolicy.CanRetryDelivery(existing.Status, existing.LastErrorCode) => "DELIVERY_ONLY",
