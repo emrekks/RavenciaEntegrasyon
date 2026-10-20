@@ -419,6 +419,11 @@ public sealed partial class HepsiburadaHttpClient(
             return await Unsupported<RemoteOperationStatus>("Hepsiburada auth biçimi SIT hesabında doğrulanana kadar trackingId sorgulanmadı.");
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return Failure<RemoteOperationStatus>(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIAL_INVALID", "Hepsiburada bağlantı bilgileri bulunamadı.", HttpStatusCode.Unauthorized);
+        return await GetOperationAsync(account, externalOperationId, cancellationToken);
+    }
+
+    internal async Task<AdapterResult<RemoteOperationStatus>> GetOperationAsync(HepsiburadaRequestContext account, string externalOperationId, CancellationToken cancellationToken)
+    {
         if (!IntegrationRuntimePolicy.AllowsManualRead(account.Connection)) return await Unsupported<RemoteOperationStatus>("Hepsiburada import durumu yalnız etkin veya doğrulanmış bağlantıda okunabilir.");
         if (string.IsNullOrWhiteSpace(externalOperationId) || externalOperationId.Length > 240)
             return Failure<RemoteOperationStatus>(AdapterErrorClass.Validation, "HEPSIBURADA_TRACKING_ID_INVALID", "Hepsiburada trackingId geçersiz.", HttpStatusCode.BadRequest);
@@ -583,6 +588,7 @@ public sealed partial class HepsiburadaHttpClient(
         try
         {
             var query = PackageListQuery(offset, limit, window);
+            var statusListQuery = PackageListQuery(offset, limit, window, openList: false);
             var response = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Get, Packages(account, query), cancellationToken);
             if (!response.IsSuccess) return AdapterResult<AdapterPageResult<RemoteOrderPackage>>.Failure(response.Error!, response.RateLimit);
 
@@ -596,7 +602,7 @@ public sealed partial class HepsiburadaHttpClient(
             // read-only endpoints, each with a 30-day lookback and max limit 50.
             foreach (var status in window.IncludeStatusLists ? new[] { "shipped", "delivered", "undelivered" } : [])
             {
-                var statusResponse = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Get, PackagesByStatus(account, status, query), cancellationToken);
+                var statusResponse = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Get, PackagesByStatus(account, status, statusListQuery), cancellationToken);
                 if (!statusResponse.IsSuccess)
                     return AdapterResult<AdapterPageResult<RemoteOrderPackage>>.Failure(statusResponse.Error!, statusResponse.RateLimit ?? rateLimit);
                 var statusPage = HepsiburadaJsonMapper.PackagePage(statusResponse.Value!.RootElement);
@@ -641,7 +647,9 @@ public sealed partial class HepsiburadaHttpClient(
             {
                 // A package the lists already show as delivered, undelivered, cancelled or returned cannot move on
                 // through the tracking read; asking for it anyway made every page cost one extra request per row.
-                if (HasTerminalListStatus(item))
+                // G13: only when the list already names the carrier and the tracking number, so a package first
+                // seen delivered or undelivered still gets its cargo company once.
+                if (SkipsTrackingRead(item))
                 {
                     items.Add(item);
                     continue;
@@ -753,17 +761,25 @@ public sealed partial class HepsiburadaHttpClient(
         }
     }
 
-    private static string PackageListQuery(int offset, int limit, PackagePollWindow window)
+    // C7: the package-list schema copy names the page start "Offset" (capital O); with a lower-case "offset" the
+    // service may ignore it and return the first page again. Confirm on SIT with a read past the first page.
+    // The shipped/delivered/undelivered lists keep the lower-case "offset" they are known to accept.
+    internal static string PackageListQuery(int offset, int limit, PackagePollWindow window, bool openList = true)
     {
         var query = new List<string>
         {
-            $"offset={offset.ToString(CultureInfo.InvariantCulture)}",
+            $"{(openList ? "Offset" : "offset")}={offset.ToString(CultureInfo.InvariantCulture)}",
             $"limit={limit.ToString(CultureInfo.InvariantCulture)}"
         };
         if (window.ModifiedAfter is { } after) query.Add("begindate=" + Uri.EscapeDataString(HepsiburadaJsonMapper.QueryTime(after)));
         if (window.ModifiedBefore is { } before) query.Add("enddate=" + Uri.EscapeDataString(HepsiburadaJsonMapper.QueryTime(before)));
         return string.Join('&', query);
     }
+
+    internal static bool SkipsTrackingRead(RemoteOrderPackage package) =>
+        HasTerminalListStatus(package)
+        && !string.IsNullOrWhiteSpace(package.Package.CargoProviderExternalId)
+        && !string.IsNullOrWhiteSpace(package.Package.CargoTrackingNumber);
 
     internal static bool HasTerminalListStatus(RemoteOrderPackage package) =>
         ShipmentPackageStatusPolicy.FromRemote(package.Package.RawStatus) is ShipmentPackageStatus.Delivered
@@ -1099,6 +1115,13 @@ public sealed partial class HepsiburadaHttpClient(
     internal static string Categories(int page, int limit) => $"api/categories/get-all-categories?leaf=true&status=ACTIVE&available=true&version=1&page={page.ToString(CultureInfo.InvariantCulture)}&size={limit.ToString(CultureInfo.InvariantCulture)}";
     internal static string ProductImportUpload() => "api/products/import?version=1";
     internal static string ProductImportStatus(string trackingId, int page, int size) => $"api/products/status/{Uri.EscapeDataString(trackingId)}?version=1&page={page.ToString(CultureInfo.InvariantCulture)}&size={size.ToString(CultureInfo.InvariantCulture)}";
+    internal static bool IsProductUpdatePath(string path) => path.Contains("/ticket-api/", StringComparison.OrdinalIgnoreCase);
+
+    // C21: the mpop ticket-api schema names Bearer authentication while the panel sends Basic. A 401 there is
+    // told apart from a wrong service key (the order and listing calls with the same key may work); confirm on SIT.
+    internal static AdapterError ProductUpdateAuthenticationRejected(string? requestId) => new(AdapterErrorClass.Authentication, "HEPSIBURADA_PRODUCT_UPDATE_AUTH_REJECTED",
+        "Hepsiburada ürün güncelleme servisi (ticket-api) Basic kimliği reddetti (401). Servis Bearer token bekliyor olabilir; sipariş ve listeleme kimliği bundan etkilenmez.", 401, null, requestId);
+
     internal static string ProductUpdateUpload() => "/ticket-api/api/integrator/import?version=1";
     internal static string ProductUpdateStatus(string trackingId, int page, int size) => $"/ticket-api/api/integrator/status/{Uri.EscapeDataString(trackingId)}?version=1&page={page.ToString(CultureInfo.InvariantCulture)}&size={size.ToString(CultureInfo.InvariantCulture)}";
     internal static string InventoryUpload(HepsiburadaRequestContext context) => $"listings/merchantid/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}/inventory-uploads";
@@ -1202,11 +1225,13 @@ public sealed partial class HepsiburadaHttpClient(
     internal static string CategoryAttributes(string categoryId) => $"api/categories/{Uri.EscapeDataString(categoryId)}/attributes?version=2";
     internal static string AttributeValues(string categoryId, string attributeId, int page, int limit) => $"api/categories/{Uri.EscapeDataString(categoryId)}/attribute/{Uri.EscapeDataString(attributeId)}/values?version=5&page={page.ToString(CultureInfo.InvariantCulture)}&size={limit.ToString(CultureInfo.InvariantCulture)}";
 
-    private static bool TryClaimStatus(string? value, out string status)
+    internal static bool TryClaimStatus(string? value, out string status)
     {
         var normalized = value?.Trim().Replace("_", "", StringComparison.Ordinal).Replace("-", "", StringComparison.Ordinal);
         var match = ClaimStatuses.FirstOrDefault(candidate => string.Equals(candidate, normalized, StringComparison.OrdinalIgnoreCase));
-        status = match?.ToLowerInvariant() ?? "";
+        // C31: the claims path takes the status in its documented PascalCase (e.g. NewRequest); other casings
+        // are answered "Wrong Claim Status".
+        status = match ?? "";
         return match is not null;
     }
 
@@ -1237,7 +1262,9 @@ public sealed partial class HepsiburadaHttpClient(
             {
                 var retryAfter = response.Headers.RetryAfter?.Delta
                     ?? (response.Headers.RetryAfter?.Date is { } retryDate ? retryDate - timeProvider.GetUtcNow() : null);
-                var error = Error(response.StatusCode, retryAfter ?? rate?.RetryAfter, requestId);
+                var error = response.StatusCode == HttpStatusCode.Unauthorized && IsProductUpdatePath(path)
+                    ? ProductUpdateAuthenticationRejected(requestId)
+                    : Error(response.StatusCode, retryAfter ?? rate?.RetryAfter, requestId);
                 var invoiceErrorDetails = method == HttpMethod.Put
                     && path.EndsWith("/invoice", StringComparison.OrdinalIgnoreCase)
                     ? SafeInvoiceErrorDetails(body)
@@ -1320,12 +1347,14 @@ public sealed partial class HepsiburadaHttpClient(
 
     internal static bool ApplyAuthentication(HttpRequestMessage request, HepsiburadaRequestContext context)
     {
+        // C20: the integrator name is sent as written (spaces allowed) as long as it is printable ASCII; the
+        // product-token parser refused names with spaces and every request was blocked locally. A Turkish letter or
+        // a control character still cannot go in a header and stops the request here.
         var integratorName = (context.IntegratorName ?? context.Username).Trim();
-        if (integratorName.Length == 0 || !ProductInfoHeaderValue.TryParse(integratorName, out var userAgent) || userAgent.Product is null)
+        if (integratorName.Length == 0 || !integratorName.All(character => character is >= ' ' and <= '~'))
             return false;
         request.Headers.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes($"{context.Username}:{context.Password}")));
-        request.Headers.UserAgent.Add(userAgent);
-        return true;
+        return request.Headers.TryAddWithoutValidation("User-Agent", integratorName);
     }
 
     // Hepsiburada's documented page limits: paid orders 100, the status and missing-invoice lists 50,

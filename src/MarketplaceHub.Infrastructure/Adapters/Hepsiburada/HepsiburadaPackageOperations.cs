@@ -132,6 +132,11 @@ public sealed partial class HepsiburadaHttpClient
             return await Unsupported<CommonLabelDocument>("Hepsiburada auth biçimi SIT hesabında doğrulanana kadar etiket okunmadı.");
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return Failure<CommonLabelDocument>(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIAL_INVALID", "Hepsiburada bağlantı bilgileri bulunamadı.", HttpStatusCode.Unauthorized);
+        return await GetCommonLabelAsync(account, cargoTrackingNumber, format, cancellationToken);
+    }
+
+    internal async Task<AdapterResult<CommonLabelDocument>> GetCommonLabelAsync(HepsiburadaRequestContext account, string cargoTrackingNumber, string format, CancellationToken cancellationToken)
+    {
         if (!IntegrationRuntimePolicy.AllowsManualRead(account.Connection)) return await Unsupported<CommonLabelDocument>("Hepsiburada etiketi yalnız etkin veya doğrulanmış bağlantıdan okunabilir.");
         if (string.IsNullOrWhiteSpace(cargoTrackingNumber) || cargoTrackingNumber.Any(char.IsWhiteSpace)) return Failure<CommonLabelDocument>(AdapterErrorClass.Validation, "HEPSIBURADA_PACKAGE_ID_INVALID", "Paket numarası geçersiz.", HttpStatusCode.BadRequest);
         var normalizedFormat = (format ?? string.Empty).Trim().ToUpperInvariant();
@@ -220,11 +225,17 @@ public sealed partial class HepsiburadaHttpClient
             && command.LineItems.Select(line => line.LineItemId).Distinct(StringComparer.Ordinal).Count() == command.LineItems.Count;
     }
 
+    // C17: the label endpoint answers 400 when the package has no common (shared) barcode label, e.g. it does
+    // not ship with a carrier that prints Hepsiburada's common label. Said plainly instead of a generic 400.
+    internal static AdapterError NoCommonLabel(string? requestId) => new(AdapterErrorClass.Validation, "HEPSIBURADA_COMMON_LABEL_UNAVAILABLE",
+        "Hepsiburada bu paket için ortak barkodlu etiket vermedi (400). Paketin kargo firması ortak barkod kullanmıyor olabilir; etiketi kargo firmasının sisteminden alın.", 400, null, requestId);
+
     private async Task<AdapterResult<byte[]>> SendBytesAsync(HepsiburadaRequestContext context, Uri baseAddress, string path, CancellationToken cancellationToken)
     {
         if (!string.Equals(settings.AuthenticationMode, "BASIC", StringComparison.OrdinalIgnoreCase))
             return AdapterResult<byte[]>.Failure(new(AdapterErrorClass.NotSupported, "HEPSIBURADA_AUTHENTICATION_UNVERIFIED", "Hepsiburada auth biçimi SIT hesabında doğrulanana kadar bağlantı isteği gönderilmedi.", null, null, null));
-        var client = clients.CreateClient("Hepsiburada");
+        // C42: the same bounded client as every other Hepsiburada call (the body is also capped below).
+        var client = clients.CreateBoundedClient("Hepsiburada");
         using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(baseAddress, path));
         if (!ApplyAuthentication(request, context))
             return Failure<byte[]>(AdapterErrorClass.Validation, "HEPSIBURADA_INTEGRATOR_NAME_INVALID", "Hepsiburada entegratör adı geçerli bir User-Agent kimliği olmalıdır.", HttpStatusCode.UnprocessableEntity);
@@ -233,6 +244,8 @@ public sealed partial class HepsiburadaHttpClient
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("image/png"));
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("image/jpeg"));
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/plain"));
+        // C17: the label service answers JSON ({"format", "data": [...]}) as well as the file itself.
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         using var timeout = new QuotaAwareTimeout(request, HepsiburadaRateLimitHandler.QuotaAcquiredKey, RequestTimeout, cancellationToken);
         try
         {
@@ -242,7 +255,9 @@ public sealed partial class HepsiburadaHttpClient
             if (!response.IsSuccessStatusCode)
             {
                 var retryAfter = response.Headers.RetryAfter?.Delta ?? (response.Headers.RetryAfter?.Date is { } retryDate ? retryDate - timeProvider.GetUtcNow() : null);
-                var error = Error(response.StatusCode, retryAfter ?? rate?.RetryAfter, requestId);
+                var error = response.StatusCode == HttpStatusCode.BadRequest
+                    ? NoCommonLabel(requestId)
+                    : Error(response.StatusCode, retryAfter ?? rate?.RetryAfter, requestId);
                 return AdapterResult<byte[]>.Failure(error, rate);
             }
             if (response.Content.Headers.ContentLength is > 5 * 1024 * 1024)

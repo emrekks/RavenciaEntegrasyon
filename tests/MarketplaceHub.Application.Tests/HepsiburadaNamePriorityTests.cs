@@ -58,7 +58,7 @@ public sealed class HepsiburadaNamePriorityTests
     }
 
     [Fact]
-    public async Task ThePackagePollReadsTrackingOnlyForPackagesThatCanStillMove()
+    public async Task ThePackagePollReadsTrackingForMovingPackagesAndForFinishedOnesWithoutACarrier()
     {
         var handler = new Routes();
         var client = new HepsiburadaHttpClient(new Factory(handler), null!, Options.Create(new HepsiburadaOptions { AuthenticationMode = "BASIC" }), TimeProvider.System, new ConfigurationBuilder().Build(), NullLogger<HepsiburadaHttpClient>.Instance);
@@ -72,10 +72,31 @@ public sealed class HepsiburadaNamePriorityTests
 
         Assert.True(result.IsSuccess, result.Error?.Code);
         Assert.Equal(2, result.Value!.Items.Count);
-        var tracking = Assert.Single(handler.Paths, path => path.Contains("/packagenumber/", StringComparison.Ordinal));
-        Assert.EndsWith("/packagenumber/PKG-OPEN", tracking);
+        // G13: a package first seen delivered has no carrier yet, so its tracking read still runs once.
+        var tracking = handler.Paths.Where(path => path.Contains("/packagenumber/", StringComparison.Ordinal)).Order(StringComparer.Ordinal).ToArray();
+        Assert.Equal(2, tracking.Length);
+        Assert.EndsWith("/packagenumber/PKG-DONE", tracking[0]);
+        Assert.EndsWith("/packagenumber/PKG-OPEN", tracking[1]);
         Assert.Equal("InTransit", result.Value.Items.Single(item => item.Package.ExternalPackageId == "PKG-OPEN").Package.RawStatus);
-        Assert.Equal("Delivered", result.Value.Items.Single(item => item.Package.ExternalPackageId == "PKG-DONE").Package.RawStatus);
+        var done = result.Value.Items.Single(item => item.Package.ExternalPackageId == "PKG-DONE").Package;
+        Assert.Equal("Delivered", done.RawStatus);
+        Assert.Equal("Aras", done.CargoProviderExternalId);
+    }
+
+    [Theory]
+    [InlineData("Delivered", "Aras", "T-1", true)]
+    [InlineData("Delivered", null, "T-1", false)]
+    [InlineData("Undelivered", "Aras", null, false)]
+    [InlineData("Shipped", "Aras", "T-1", false)]
+    public void TheTrackingReadIsSkippedOnlyForAFinishedPackageWithCarrierAndTrackingKnown(string rawStatus, string? provider, string? tracking, bool skipped) =>
+        Assert.Equal(skipped, HepsiburadaHttpClient.SkipsTrackingRead(new("HB-1", new RemotePackage("PKG", null, rawStatus, DateTimeOffset.UnixEpoch, provider, tracking, []))));
+
+    [Fact]
+    public void TheOpenPackageListStartsAtTheDocumentedCapitalOffsetAndTheStatusListsKeepTheirs()
+    {
+        var window = new PackagePollWindow(null, null);
+        Assert.Equal("Offset=20&limit=10", HepsiburadaHttpClient.PackageListQuery(20, 10, window));
+        Assert.Equal("offset=20&limit=10", HepsiburadaHttpClient.PackageListQuery(20, 10, window, openList: false));
     }
 
     [Theory]
@@ -99,6 +120,7 @@ public sealed class HepsiburadaNamePriorityTests
             lock (Paths) Paths.Add(path);
             var body = path switch
             {
+                _ when path.EndsWith("/packagenumber/PKG-DONE", StringComparison.Ordinal) => """[{"packageNumber":"PKG-DONE","status":"Delivered","cargoCompany":"Aras","trackingInfoCode":"T-2"}]""",
                 _ when path.Contains("/packagenumber/", StringComparison.Ordinal) => """[{"packageNumber":"PKG-OPEN","status":"InTransit","cargoCompany":"HepsiJet","trackingInfoCode":"T-1"}]""",
                 _ when path.EndsWith("/delivered", StringComparison.Ordinal) => """{"items":[{"orderNumber":"HB-DONE","packageNumber":"PKG-DONE","DeliveredDate":"2026-10-20T10:00:00"}],"totalCount":1}""",
                 _ when path.EndsWith("/shipped", StringComparison.Ordinal) || path.EndsWith("/undelivered", StringComparison.Ordinal) => """{"items":[],"totalCount":0}""",

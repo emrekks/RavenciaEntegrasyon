@@ -81,7 +81,8 @@ internal static class HepsiburadaQuestionMapper
         var root = document.RootElement; var rows = FindArray(root, "content", "issues", "items", "data");
         var items = rows.Select(item => Map(item, query.Kind)).Where(item => item is not null).Select(item => item!).ToArray();
         var totalPages = Number(root, "totalPages", "totalPageCount", "pages") ?? (items.Length < query.Size ? query.Page : query.Page + 1);
-        var total = Number(root, "totalElements", "totalCount", "total", "count") ?? items.Length;
+        // C32: the ask-to-seller list names its counts totalItemCount / totalPageCount.
+        var total = Number(root, "totalItemCount", "totalElements", "totalCount", "total", "count") ?? items.Length;
         return new(items, query.Page, totalPages, total);
     }
     public static RemoteMarketplaceQuestion? Single(JsonDocument document, string kind)
@@ -112,13 +113,14 @@ internal static class HepsiburadaQuestionMapper
         var id = Text(item, "issueNumber", "number", "id"); if (string.IsNullOrWhiteSpace(id)) return null;
         var product = Property(item, "product"); var rawStatus = Text(item, "status") ?? "WaitingForAnswer";
         var status = rawStatus.Replace("_", "", StringComparison.Ordinal).Replace("-", "", StringComparison.Ordinal).ToUpperInvariant() switch
-        { "1" or "WAITINGFORANSWER" => "WAITING_FOR_ANSWER", "2" or "ANSWERED" => "ANSWERED", "3" or "REJECTED" => "REJECTED", "4" or "AUTOCLOSED" => "EXPIRED", _ => rawStatus.ToUpperInvariant() };
+        // C33: 7 is "Satıcı iletişime geçti" (the seller contacted the customer): the question is handled.
+        { "1" or "WAITINGFORANSWER" => "WAITING_FOR_ANSWER", "2" or "ANSWERED" or "7" or "SELLERCONTACTED" => "ANSWERED", "3" or "REJECTED" => "REJECTED", "4" or "AUTOCLOSED" => "EXPIRED", _ => rawStatus.ToUpperInvariant() };
         var created = Date(item, "createdAt", "creationDate", "createdDate") ?? DateTimeOffset.UnixEpoch; var modified = Date(item, "lastModifiedAt", "lastModifiedDate", "modifiedAt") ?? created;
         var conversations = FindArray(item, "conversations").Select(message => new RemoteQuestionConversation(Text(message, "from", "author", "sender") ?? "Customer", Text(message, "content", "text", "message") ?? "", Date(message, "createdAt", "creationDate", "date") ?? created, Text(message, "rejectReason", "rejectionReason", "reason"))).ToList();
         if (conversations.Count == 0 && Text(item, "lastContent") is { Length: > 0 } latest) conversations.Add(new(status == "WAITING_FOR_ANSWER" ? "Customer" : "Merchant", latest, modified, Text(item, "rejectReason", "rejectionReason")));
         var customerQuestion = conversations.FirstOrDefault(message => message.Author.Contains("customer", StringComparison.OrdinalIgnoreCase))?.Text
             ?? Text(item, "questionText", "question", "lastContent") ?? conversations.FirstOrDefault()?.Text ?? "";
-        return new(id, kind, status, customerQuestion, Text(product, "name", "productName", "title"), HepsiburadaJsonMapper.ImageUrl(product) ?? HepsiburadaJsonMapper.ImageUrl(item), Text(product, "sku", "merchantSku", "sellerSku"), Text(product, "barcode", "productBarcode"), Text(product, "modelCode"), Text(item, "customerName"), Text(item, "orderNumber", "orderNo", "orderId"), created, Date(item, "expireDate"), modified, conversations);
+        return new(id, kind, status, customerQuestion, Text(product, "name", "productName", "title"), HepsiburadaJsonMapper.ImageUrl(product) ?? HepsiburadaJsonMapper.ImageUrl(item), Text(product, "stockCode", "sku", "merchantSku", "sellerSku"), Text(product, "barcode", "productBarcode"), Text(product, "modelCode"), Text(item, "customerName"), Text(item, "orderNumber", "orderNo", "orderId"), created, Date(item, "expireDate"), modified, conversations);
     }
     public static string ToRemoteStatus(string status) => status switch { "WAITING_FOR_ANSWER" => "1", "ANSWERED" => "2", "REJECTED" => "3", "EXPIRED" => "4", _ => status };
     private static JsonElement Property(JsonElement item, string name) => item.ValueKind == JsonValueKind.Object && item.EnumerateObject().FirstOrDefault(property => property.Name.Equals(name, StringComparison.OrdinalIgnoreCase)).Value is { } value ? value : default;

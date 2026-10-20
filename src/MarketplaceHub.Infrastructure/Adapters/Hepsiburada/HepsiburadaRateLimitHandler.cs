@@ -44,6 +44,9 @@ public sealed class HepsiburadaRateLimitHandler(
         if (host.StartsWith("oms-", StringComparison.OrdinalIgnoreCase)) return ("oms", 600);
         if (host.StartsWith("mpop", StringComparison.OrdinalIgnoreCase)) return ("catalog", 180);
         if (host.StartsWith("listing-", StringComparison.OrdinalIgnoreCase)) return ("listing", 100);
+        // C18: the ask-to-seller (questions) host had no bucket at all. Its quota is not documented, so a
+        // conservative 60 a minute is shared by the API and every worker.
+        if (host.StartsWith("api-asktoseller", StringComparison.OrdinalIgnoreCase)) return ("asktoseller", 60);
         return null;
     }
 
