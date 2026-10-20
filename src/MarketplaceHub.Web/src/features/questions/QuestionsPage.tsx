@@ -32,7 +32,12 @@ type MarketplaceQuestion = {
 }
 type Notice = { message: string; kind: 'success' | 'error' | 'info' }
 // A question the seller still has to answer: a new one, or one whose answer the marketplace rejected.
-export const isAnswerable = (status: string) => status === 'WAITING_FOR_ANSWER' || status === 'REJECTED'
+// Hepsiburada's "rejected" is the question closed after the seller reported it; elsewhere a rejected answer may be
+// rewritten until the question expires (the same rule as the server's IsOpenRejection).
+export const isClosedRejection = (row: { status: string; platformCode: string; expiresAt?: string | null }, now = Date.now()) =>
+  row.status === 'REJECTED' && (row.platformCode === 'HEPSIBURADA' || (row.expiresAt != null && new Date(row.expiresAt).getTime() <= now))
+export const isAnswerable = (status: string, row?: { platformCode: string; expiresAt?: string | null }) =>
+  status === 'WAITING_FOR_ANSWER' || (status === 'REJECTED' && !(row && isClosedRejection({ status, ...row })))
 // The latest reason a marketplace gave for rejecting an answer to this question.
 const rejectionReasonOf = (row: MarketplaceQuestion) => [...(row.conversations ?? [])].reverse().find(message => message.rejectionReason)?.rejectionReason ?? null
 // Opening the page refreshes questions only when a store was not read for this long; the scheduled sync does the rest.
@@ -225,7 +230,7 @@ export function QuestionsPage() {
         // the marketplace before sending, so the customer never gets it twice).
         if ((error as { code?: string } | null)?.code !== 'QUESTION_STALE') throw error
         const fresh = await hubApi<MarketplaceQuestion>(`/questions/${id}`)
-        if (!isAnswerable(fresh.status)) throw error
+        if (!isAnswerable(fresh.status, fresh)) throw error
         return post(fresh.version)
       }
     },
@@ -274,13 +279,13 @@ export function QuestionsPage() {
   const codesOf = (row: MarketplaceQuestion) => [row.productSku && `SKU ${row.productSku}`, row.productModelCode && `Model ${row.productModelCode}`, row.productBarcode && `Barkod ${row.productBarcode}`].filter(Boolean).join(' · ') || 'Ürün kodu bilgisi yok'
   const isSeller = (author: string) => author.toLowerCase().includes('merchant') || author.toLowerCase().includes('seller')
   const openQuestion = (id: string) => { setSelectedId(id); setDetailOpen(true) }
-  const nextWaiting = (id: string) => { const waiting = rows.filter(item => isAnswerable(item.status)); const index = waiting.findIndex(item => item.id === id); return waiting[index + 1] ?? waiting.find(item => item.id !== id) }
+  const nextWaiting = (id: string) => { const waiting = rows.filter(item => isAnswerable(item.status, item)); const index = waiting.findIndex(item => item.id === id); return waiting[index + 1] ?? waiting.find(item => item.id !== id) }
 
   const detail = (() => {
     if (!selected) return <div className="qi-empty"><EmptyState>{questions.isLoading ? 'Sorular yükleniyor…' : 'Soldan bir soru seçin.'}</EmptyState></div>
     const row = selected
     const state = questionStatus(row.status)
-    const waiting = isAnswerable(row.status)
+    const waiting = isAnswerable(row.status, row)
     const deadline = waiting ? questionDeadline(row.expiresAt, now) : null
     const previousMessages = visibleQuestionConversation(row.conversations ?? [], row.questionText)
     const productHref = productHrefOf(row)
@@ -311,7 +316,7 @@ export function QuestionsPage() {
         <textarea rows={2} maxLength={2000} value={draft} onChange={event => setAnswerDrafts(current => ({ ...current, [row.id]: event.target.value }))} onKeyDown={event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); send() } }} placeholder="Cevabınızı yazın…" aria-label="Soruya cevap" />
         <div className="qi-composer-foot"><span className="rv-answer-bar-meta">{length}/{row.platformCode === 'TRENDYOL' ? '10–2000' : '1–2000'} karakter · Ctrl+Enter ile gönderin{row.platformCode === 'N11' ? ' · N11’de cevap bir kez verilir, değiştirilemez' : ''}</span><div>{next && <Button variant="secondary" onClick={() => setSelectedId(next.id)}>Sonraki Soru</Button>}<Button onClick={send} loading={sendAnswer.isPending} disabled={length < minLength || length > 2000}>Gönder</Button></div></div>
         {sendAnswer.isError && sendAnswer.variables?.id === row.id && <p className="rv-question-send-error" role="alert">{sendAnswer.error instanceof Error ? sendAnswer.error.message : 'Cevap gönderilemedi.'}</p>}
-      </div> : <div className="qi-closed"><StateGlyph state={state.glyph} />{state.label}{row.status === 'ANSWER_SUBMITTED' ? ' · Pazaryeri onayı bekleniyor' : ''}</div>}
+      </div> : <div className="qi-closed"><StateGlyph state={state.glyph} />{state.label}{row.status === 'ANSWER_SUBMITTED' ? ' · Pazaryeri onayı bekleniyor' : ''}{isClosedRejection(row) ? ` · Pazaryerince kapatıldı${rejection ? ` (${rejection})` : ''}, cevap beklemiyor` : ''}</div>}
     </article>
   })()
 
@@ -348,7 +353,7 @@ export function QuestionsPage() {
         <div className="qi-list">
           {questions.isLoading ? <LoadingState>Sorular yükleniyor…</LoadingState> : questions.isError ? <EmptyState>Sorular alınamadı. Biraz sonra yeniden deneyin.</EmptyState> : rows.length === 0 ? <EmptyState>Bu filtrelerde soru bulunamadı. Geçmiş aktarımı tamamlandıkça erişilebilen sorular listelenir.</EmptyState> : rows.map(row => {
             const state = questionStatus(row.status)
-            const deadline = isAnswerable(row.status) ? questionDeadline(row.expiresAt, now) : null
+            const deadline = isAnswerable(row.status, row) ? questionDeadline(row.expiresAt, now) : null
             return <button type="button" className={`qi-item rv-question-card${selected?.id === row.id ? ' is-on' : ''}`} key={row.id} aria-current={selected?.id === row.id ? 'true' : undefined} onClick={() => openQuestion(row.id)}>
               <span className="qi-item-logo"><img className={platformLogoClass(row.platformCode)} src={platformLogoSource(row.platformCode) ?? undefined} alt={displayPlatform(row.platformCode)} /></span>
               <span className="qi-item-top"><b>{row.customerName || 'Müşteri'}</b><span>{row.productName || (row.kind === 'ORDER' ? 'Sipariş Sorusu' : 'Ürün')}</span></span>

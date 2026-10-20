@@ -29,6 +29,12 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         var status => [status]
     };
 
+    // A rejection the seller can still answer: Trendyol and Pazarama reject the seller's answer, which may be rewritten
+    // until the question expires. Hepsiburada's "rejected" (status 3) is the question itself closed after the seller
+    // reported it ("Sorunuz satıcı tarafından yanıtlanmamıştır … Ret nedeni: Reklam"): nothing is waiting there.
+    internal static bool IsOpenRejection(string status, string platformCode, DateTimeOffset? expiresAt, DateTimeOffset now) =>
+        status == "REJECTED" && platformCode != "HEPSIBURADA" && (expiresAt is null || expiresAt > now);
+
     public async Task<MarketplaceQuestionListPage> ListAsync(Guid tenantId, QuestionListQuery query, CancellationToken cancellationToken)
     {
         var rows = from question in db.MarketplaceQuestions.AsNoTracking()
@@ -41,7 +47,17 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         if (!string.IsNullOrWhiteSpace(query.Status) && !query.Status.Equals("ALL", StringComparison.OrdinalIgnoreCase))
         {
             var statuses = StatusesOf(query.Status);
-            rows = rows.Where(row => statuses.Contains(row.Question.Status));
+            var filter = query.Status.Trim().ToUpperInvariant();
+            var now = timeProvider.GetUtcNow();
+            // A closed rejection (see IsOpenRejection) leaves "Cevap Bekleyenler" for "Diğer Durumlar".
+            if (filter == "WAITING")
+                rows = rows.Where(row => row.Question.Status == "WAITING_FOR_ANSWER"
+                    || (row.Question.Status == "REJECTED" && row.Connection.PlatformCode != "HEPSIBURADA" && (row.Question.ExpiresAt == null || row.Question.ExpiresAt > now)));
+            else if (filter == "OTHER")
+                rows = rows.Where(row => statuses.Contains(row.Question.Status)
+                    || (row.Question.Status == "REJECTED" && (row.Connection.PlatformCode == "HEPSIBURADA" || (row.Question.ExpiresAt != null && row.Question.ExpiresAt <= now))));
+            else
+                rows = rows.Where(row => statuses.Contains(row.Question.Status));
         }
         if (!string.IsNullOrWhiteSpace(query.PlatformCode)) rows = rows.Where(row => row.Connection.PlatformCode == query.PlatformCode.Trim().ToUpperInvariant());
         if (query.ConnectionId is { } connectionId) rows = rows.Where(row => row.Connection.Id == connectionId);
@@ -232,6 +248,8 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         // A rejected answer may be written again.
         if (!reconcilingPriorSubmission && question.Status is not ("WAITING_FOR_ANSWER" or "ANSWER_SUBMITTED" or "REJECTED")) return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_CLOSED", "Bu soru artık cevap beklemiyor.", 409);
         var connection = await db.PlatformConnections.AsNoTracking().SingleAsync(row => row.TenantId == tenantId && row.Id == question.ConnectionId, cancellationToken);
+        if (!reconcilingPriorSubmission && question.Status == "REJECTED" && !IsOpenRejection(question.Status, connection.PlatformCode, question.ExpiresAt, timeProvider.GetUtcNow()))
+            return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_CLOSED", "Bu soru pazaryerince kapatıldı (şikayet edildi veya süresi doldu); cevap gönderilemez.", 409);
         if (!reconcilingPriorSubmission && QuestionAnswerPolicy.Validate(connection.PlatformCode, answer) is { } invalid)
             return ServiceResult<MarketplaceQuestionView>.Fail(invalid.Code, invalid.Message, 422);
         var context = new AdapterContext(tenantId, question.ConnectionId, correlationId, idempotencyKey, timeProvider.GetUtcNow().AddMinutes(2), Operation: IntegrationOperation.Manual);

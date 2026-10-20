@@ -102,7 +102,9 @@ public static class QuestionEndpoints
         return endpoints;
     }
 
-    private static bool HasIdempotencyKey(HttpContext http) => ApiIdempotencyHeaderPolicy.TryGetKey(http.Request.Headers, out var key, out _) && Guid.TryParse(key, out _);
+    // Any non-empty key: the panel prefixes its keys with a scope ("question-sync:{uuid}"), which a GUID-only check refused
+    // with "Idempotency-Key başlığı zorunludur" (20 Oct 2026, the questions page's Yenile button).
+    private static bool HasIdempotencyKey(HttpContext http) => ApiIdempotencyHeaderPolicy.TryGetKey(http.Request.Headers, out var key, out _) && !string.IsNullOrWhiteSpace(key) && key.Length <= 200;
     private static bool TryVersion(string? value, out long version)
     {
         version = 0;
