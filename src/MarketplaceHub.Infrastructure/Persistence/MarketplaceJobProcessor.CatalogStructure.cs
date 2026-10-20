@@ -333,7 +333,7 @@ public sealed partial class MarketplaceJobProcessor
 
         var roots = await db.Categories.Where(x => x.TenantId == tenantId && x.IsActive && x.ParentId == null).ToListAsync(cancellationToken);
         // The same marketplace path already created a panel category in an earlier import.
-        var samePath = roots.FirstOrDefault(x => x.NormalizedName == pathKey);
+        var samePath = roots.FirstOrDefault(x => x.NormalizedName == pathKey) ?? roots.FirstOrDefault(x => CatalogKeyNormalizer.SameKey(x.NormalizedName, pathKey));
         CategoryReuseResult decision;
         Category? category = null;
         if (samePath is not null)

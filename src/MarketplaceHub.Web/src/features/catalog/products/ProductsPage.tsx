@@ -1,5 +1,5 @@
 // Ürünler (/products).
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { variantOptionParts } from '../variant-option-label'
 import { Link, useNavigate } from 'react-router'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -12,7 +12,8 @@ import { RrAnchor, RrBadge, RrColumnPop, RrError, RrFilterCard, RrHeadCell, RrIc
 import { appendNotification } from '../../../shared/notifications'
 import { updateVariantGroupSelection, variantGroupSelectionState } from '../variant-bulk-edit'
 import { productPlatformDisplayLabel, productPlatformDisplayState } from '../product-platform-status'
-import { nextProductCatalogSort, sortProductGroups, type ProductCatalogSort } from '../product-catalog-sorting'
+import { nextProductCatalogSort, productCatalogSortOptions, productCatalogSortScopeNote, sortProductGroups, type ProductCatalogSort } from '../product-catalog-sorting'
+import { applyVariantStockSets, bulkEditSummary, isStaleStockError, parseStockInput, setVariantOnHand, stockErrorMessage, stockTarget, type VariantStockSet } from '../variant-stock-set'
 import { activeProductSyncJobs as filterActiveProductSyncJobs, productSyncJobsFinished, productSyncJobsPath } from '../product-sync-tracking'
 import { productImportConnection, singleProductLookupLabel } from '../product-import-platforms'
 import { productImportOptionVisibility as getProductImportOptionVisibility, type ProductImportMethod, type ProductImportMode } from '../product-import-options'
@@ -136,6 +137,14 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
   const [openColorGroups, setOpenColorGroups] = useState<string[]>([])
   const [listPrice, setListPrice] = useState(''); const [salePrice, setSalePrice] = useState(''); const [stockAmount, setStockAmount] = useState('')
   const [stockAction, setStockAction] = useState<'SET' | 'ADD' | 'SUBTRACT'>('SET'); const [notice, setNotice] = useState(''); const [saving, setSaving] = useState(false)
+  // The stock each variant had when this dialog opened (or after this dialog saved it): the value a bulk change is
+  // computed from and sent as the expected current stock. A refused (stale) change resets it to the refreshed list.
+  const stockBaseline = useRef<Map<string, number>>(new Map())
+  const resetStockBaseline = useRef(false)
+  useEffect(() => {
+    for (const item of variants) if (resetStockBaseline.current || !stockBaseline.current.has(item.variant.id)) stockBaseline.current.set(item.variant.id, item.variant.onHand)
+    resetStockBaseline.current = false
+  })
   const selectedSet = new Set(selectionDraft)
   const activeSelection = selectionDraft
   const activeSelectedSet = selectedSet
@@ -165,25 +174,46 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
     const list = listPrice === '' ? null : Number(listPrice); const sale = salePrice === '' ? null : Number(salePrice); const amount = stockAmount === '' ? null : Number(stockAmount)
     if ((list != null && (!Number.isFinite(list) || list < 0)) || (sale != null && (!Number.isFinite(sale) || sale < 0)) || (list != null && sale != null && list < sale) || (amount != null && (!Number.isFinite(amount) || amount < 0))) { const message = 'Değerleri kontrol edin; negatif fiyat/stok veya hatalı fiyat sıralaması kullanılamaz.'; setNotice(message); onResult?.(message, 'error'); return }
     setSaving(true); setNotice('Seçilen varyantlar güncelleniyor…')
+    // Every selected variant is attempted; a failure is recorded and the rest still go out. Stock is sent as an
+    // absolute value against the stock this dialog opened with, so a change made meanwhile is refused, not undone.
+    const failures: Array<{ sku: string; message: string }> = []
+    const stockUpdates: VariantStockSet[] = []
+    let anyStale = false
     try {
       for (const item of sortedVariants.filter(value => targetSelectionSet.has(value.variant.id))) {
         const variant = item.variant
         if (priceRequested) {
-          const connectionId = variant.offerId ? '' : connections[0]?.id ?? ''; const nextSale = sale ?? variant.salePrice ?? variant.listPrice ?? 0; const nextList = list ?? variant.listPrice ?? nextSale
-          if (nextList < nextSale) throw new Error(`${variant.sku}: liste fiyatı satış fiyatından küçük olamaz.`)
-          const body = { connectionId, variantId: variant.id, listPrice: nextList, salePrice: nextSale, currency: variant.currency || 'TRY', vatRate: variant.vatRate ?? 10, vatInclusion: variant.vatInclusion || 'INCLUDED', roundingMode: variant.roundingMode || 'HALF_EVEN', safetyStock: variant.safetyStock ?? 0, status: variant.offerStatus || 'ACTIVE', reason: 'Toplu ürün fiyat düzenleme' }
-          if (variant.offerId) { if (variant.offerVersion == null) throw new Error(`${variant.sku}: fiyat sürümü eksik.`); await hubApi(`/channel-offers/${variant.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${variant.offerVersion}"` }, body: JSON.stringify(body) }) }
-          else { if (!connectionId) throw new Error('İlk fiyat için aktif platform bağlantısı bulunamadı.'); await hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify(body) }) }
+          try {
+            const connectionId = variant.offerId ? '' : connections[0]?.id ?? ''; const nextSale = sale ?? variant.salePrice ?? variant.listPrice ?? 0; const nextList = list ?? variant.listPrice ?? nextSale
+            if (nextList < nextSale) throw new Error('liste fiyatı satış fiyatından küçük olamaz.')
+            const body = { connectionId, variantId: variant.id, listPrice: nextList, salePrice: nextSale, currency: variant.currency || 'TRY', vatRate: variant.vatRate ?? 10, vatInclusion: variant.vatInclusion || 'INCLUDED', roundingMode: variant.roundingMode || 'HALF_EVEN', safetyStock: variant.safetyStock ?? 0, status: variant.offerStatus || 'ACTIVE', reason: 'Toplu ürün fiyat düzenleme' }
+            if (variant.offerId) { if (variant.offerVersion == null) throw new Error('fiyat sürümü eksik.'); await hubApi(`/channel-offers/${variant.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${variant.offerVersion}"` }, body: JSON.stringify(body) }) }
+            else { if (!connectionId) throw new Error('ilk fiyat için aktif platform bağlantısı bulunamadı.'); await hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify(body) }) }
+          } catch (error) {
+            if (isStaleStockError(error)) anyStale = true
+            failures.push({ sku: variant.sku, message: `fiyat: ${error instanceof Error ? error.message : 'kaydedilemedi'}` })
+          }
         }
         if (stockRequested && amount != null) {
-          const target = stockAction === 'SET' ? amount : stockAction === 'ADD' ? variant.onHand + amount : variant.onHand - amount
-          if (target < 0) throw new Error(`${variant.sku}: stok sıfırın altına inemez.`)
-          const delta = target - variant.onHand
-          if (delta !== 0) await hubApi(`/inventory/${variant.id}/adjustments`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ quantityDelta: delta, reason: 'Toplu ürün stok düzenleme', sourceEventId: newIdempotencyKey() }) })
+          const expected = stockBaseline.current.get(variant.id) ?? variant.onHand
+          const target = stockTarget(stockAction, amount, expected)
+          if (target < 0) failures.push({ sku: variant.sku, message: 'stok sıfırın altına inemez.' })
+          else stockUpdates.push({ variantId: variant.id, sku: variant.sku, onHand: target, expectedOnHand: expected })
         }
       }
-      await onChanged(); onResult?.(`${targetSelection.length} varyant başarıyla güncellendi.`, 'success'); onClose()
-    } catch (error) { const message = error instanceof Error ? error.message : 'Toplu düzenleme tamamlanamadı.'; setNotice(`Başarısız: ${message}`); onResult?.(message, 'error') } finally { setSaving(false) }
+      const stockResult = await applyVariantStockSets(stockUpdates, update => setVariantOnHand(update, 'Toplu ürün stok düzenleme'))
+      for (const saved of stockResult.saved) stockBaseline.current.set(saved.variantId, saved.onHand)
+      for (const failed of stockResult.failed) { if (failed.stale) anyStale = true; failures.push({ sku: failed.sku, message: `stok: ${failed.message}` }) }
+    } finally {
+      await onChanged().catch(() => undefined)
+      setSaving(false)
+    }
+    const summary = bulkEditSummary(targetSelection.length, failures)
+    if (!failures.length) { onResult?.(summary, 'success'); onClose(); return }
+    const staleHint = anyStale ? ' Değişen değerler yenilendi; kontrol edip yeniden uygulayın.' : ''
+    setNotice(`Başarısız: ${summary}${staleHint}`); onResult?.(summary, 'error')
+    // The refreshed list is the user's new baseline once they have been told the stock changed.
+    if (anyStale) resetStockBaseline.current = true
   }
   const toggleColorGroup = (color: string) => setOpenColorGroups(current => current.includes(color) ? current.filter(item => item !== color) : [...current, color])
   return <RrModal crumb={mode === 'stock' ? 'Hızlı Stok Güncelleme' : 'Toplu Düzenleme'} title={contextTitle} desc={contextModelCode ? `Model Kodu: ${contextModelCode}` : undefined} size="lg" locked={saving} onClose={onClose} foot={<><span className="rr-note">{activeSelection.length ? <><b>{activeSelection.length} varyant</b> seçildi</> : 'Varyant seçimi bekleniyor'}</span><button type="button" className="rr-btn" onClick={onClose} disabled={saving}>Vazgeç</button><button type="submit" form="product-quick-edit-form" className="rr-btn rr-primary" disabled={saving || !selectionDraft.length}>{saving ? 'Uygulanıyor…' : 'Seçilenlere Uygula'}</button></>}>
@@ -198,7 +228,7 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
           const selectedCount = items.filter(item => selectedSet.has(item.variant.id)).length
           const groupSelection = variantGroupSelectionState(items.map(item => item.variant.id), selectedSet)
           const groupLabel = colorLabels[color] || formatCatalogOptionLabel(color)
-          return <div className={`rr-vgroup${isOpen ? ' rr-open' : ''}`} key={color}><div className="rr-vg-h"><input type="checkbox" className="rr-cb" checked={groupSelection.checked} data-mixed={groupSelection.indeterminate ? '' : undefined} aria-label={`${groupLabel} rengindeki tüm varyantları seç`} onChange={event => setSelectionDraft(current => updateVariantGroupSelection(current, items.map(item => item.variant.id), event.currentTarget.checked))} /><button type="button" className="rr-vg-t" aria-expanded={isOpen} onClick={() => toggleColorGroup(color)}><b>{groupLabel}</b><small>{selectedCount ? `${selectedCount}/${items.length} seçili` : `${items.length} varyant`}</small><RrIcon name="chev" /></button></div>{isOpen && items.map(item => { const parts = variantOptionParts(item.variant.optionSignature); return <div className={`rr-vline${selectedSet.has(item.variant.id) ? '' : ' rr-off'}`} key={item.variant.id}><input type="checkbox" className="rr-cb" checked={selectedSet.has(item.variant.id)} onChange={() => toggle(item.variant.id)} aria-label={`${item.variant.optionSignature || item.variant.sku} varyantını seç`} /><span><b>{parts.length ? parts.map(part => part.value).join(' · ') : 'Varyant'}</b><small>Stok Kodu: {item.variant.sku}</small></span><QuickEditVariantControls variant={item.variant} connections={connections} onChanged={onChanged} showPrice={mode !== 'stock'} onSelect={() => setSelectionDraft(current => current.includes(item.variant.id) ? current : [...current, item.variant.id])} /></div> })}</div>
+          return <div className={`rr-vgroup${isOpen ? ' rr-open' : ''}`} key={color}><div className="rr-vg-h"><input type="checkbox" className="rr-cb" checked={groupSelection.checked} data-mixed={groupSelection.indeterminate ? '' : undefined} aria-label={`${groupLabel} rengindeki tüm varyantları seç`} onChange={event => setSelectionDraft(current => updateVariantGroupSelection(current, items.map(item => item.variant.id), event.currentTarget.checked))} /><button type="button" className="rr-vg-t" aria-expanded={isOpen} onClick={() => toggleColorGroup(color)}><b>{groupLabel}</b><small>{selectedCount ? `${selectedCount}/${items.length} seçili` : `${items.length} varyant`}</small><RrIcon name="chev" /></button></div>{isOpen && items.map(item => { const parts = variantOptionParts(item.variant.optionSignature); return <div className={`rr-vline${selectedSet.has(item.variant.id) ? '' : ' rr-off'}`} key={item.variant.id}><input type="checkbox" className="rr-cb" checked={selectedSet.has(item.variant.id)} onChange={() => toggle(item.variant.id)} aria-label={`${item.variant.optionSignature || item.variant.sku} varyantını seç`} /><span><b>{parts.length ? parts.map(part => part.value).join(' · ') : 'Varyant'}</b><small>Stok Kodu: {item.variant.sku}</small></span><QuickEditVariantControls variant={item.variant} connections={connections} onChanged={onChanged} onStockSaved={(variantId, onHand) => stockBaseline.current.set(variantId, onHand)} showPrice={mode !== 'stock'} onSelect={() => setSelectionDraft(current => current.includes(item.variant.id) ? current : [...current, item.variant.id])} /></div> })}</div>
         })}
       </section>
       <section className="rr-step"><header><span className="rr-stepn">2</span><div className="rr-h3">{mode === 'stock' ? 'Stok Değerini Düzenle' : mode === 'price' ? 'Fiyat Değerini Düzenle' : 'Fiyat ve Stok Değerini Düzenle'}</div><small className="rr-lead">{activeSelection.length ? `${activeSelection.length} seçili varyanta uygulanacak` : 'Varyant seçimi bekleniyor'}</small></header>
@@ -209,15 +239,15 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
     </form>
   </RrModal>
 }
-function QuickEditVariantControls({ variant, connections, onChanged, onSelect, showPrice = true }: { variant: Variant; connections: MarketplaceConnection[]; onChanged: () => Promise<unknown>; onSelect: () => void; showPrice?: boolean }) {
+function QuickEditVariantControls({ variant, connections, onChanged, onSelect, onStockSaved, showPrice = true }: { variant: Variant; connections: MarketplaceConnection[]; onChanged: () => Promise<unknown>; onSelect: () => void; onStockSaved?: (variantId: string, onHand: number) => void; showPrice?: boolean }) {
   const [price, setPrice] = useState(variant.salePrice ?? variant.listPrice ?? '')
-  // The stock field follows the server while it is untouched; only a value the person typed is saved, as the
-  // difference from the stock they saw when they started typing (audit 2026-10-20 W2: an untouched stale field
-  // sent "old − latest" and put a sold unit back).
+  // The field shows the loaded stock until the user types; fresh data replaces it only while it is untouched, and a
+  // save sends the typed value as an absolute stock against the value shown when editing started.
   const [stock, setStock] = useState(String(variant.onHand))
-  const [stockBase, setStockBase] = useState<number | null>(null)
+  const [stockDirty, setStockDirty] = useState(false)
+  const [stockBase, setStockBase] = useState(variant.onHand)
   const [stockError, setStockError] = useState('')
-  useEffect(() => { if (stockBase === null) setStock(String(variant.onHand)) }, [variant.onHand, stockBase])
+  useEffect(() => { if (!stockDirty) { setStock(String(variant.onHand)); setStockBase(variant.onHand) } }, [stockDirty, variant.onHand])
   const [savingPrice, setSavingPrice] = useState(false); const [savingStock, setSavingStock] = useState(false)
   async function savePrice() {
     const salePrice = Number(price); if (savingPrice || price === '' || !Number.isFinite(salePrice) || salePrice < 0 || salePrice === (variant.salePrice ?? variant.listPrice ?? 0)) return
@@ -228,17 +258,27 @@ function QuickEditVariantControls({ variant, connections, onChanged, onSelect, s
     try { if (variant.offerId) { if (variant.offerVersion == null) return; await hubApi(`/channel-offers/${variant.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${variant.offerVersion}"` }, body: JSON.stringify(body) }) } else await hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify(body) }); await onChanged() } finally { setSavingPrice(false) }
   }
   async function saveStock() {
-    if (savingStock || stockBase === null) return
-    const target = Number(stock)
-    if (stock.trim() === '' || !Number.isInteger(target) || target < 0) { setStockError('Stok 0 veya daha büyük bir tam sayı olmalıdır.'); setStock(String(variant.onHand)); setStockBase(null); return }
-    const delta = target - stockBase
-    if (delta === 0) { setStockBase(null); return }
+    if (savingStock || !stockDirty) return
+    const parsed = parseStockInput(stock)
+    if (parsed.kind === 'empty') { setStockError('Stok boş bırakılamaz; değişiklik kaydedilmedi.'); setStockDirty(false); return }
+    if (parsed.kind === 'invalid') { setStockError('Stok sıfır veya pozitif bir tam sayı olmalıdır.'); return }
+    if (parsed.value === stockBase) { setStockError(''); setStockDirty(false); return }
     setSavingStock(true); setStockError('')
-    try { await hubApi(`/inventory/${variant.id}/adjustments`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ quantityDelta: delta, reason: 'Hızlı varyant stok düzenleme', sourceEventId: newIdempotencyKey() }) }); await onChanged() }
-    catch (reason) { setStockError(reason instanceof Error ? reason.message : 'Stok kaydedilemedi.') }
-    finally { setSavingStock(false); setStockBase(null) }
+    try {
+      await setVariantOnHand({ variantId: variant.id, sku: variant.sku, onHand: parsed.value, expectedOnHand: stockBase }, 'Hızlı varyant stok düzenleme')
+      onStockSaved?.(variant.id, parsed.value)
+      setStockBase(parsed.value)
+      setStockDirty(false)
+    } catch (error) {
+      setStockError(stockErrorMessage(error))
+      // A refused change keeps nothing local: the field shows the stock the server now holds.
+      if (isStaleStockError(error)) setStockDirty(false)
+    } finally {
+      setSavingStock(false)
+      await onChanged().catch(() => undefined)
+    }
   }
-  return <><label className="rr-mini"><small>Stok</small><input className="rr-in rr-num" aria-label={`${variant.sku} stok`} value={stock} onFocus={onSelect} onChange={event => { onSelect(); if (stockBase === null) setStockBase(variant.onHand); setStockError(''); setStock(event.target.value) }} onBlur={() => void saveStock()} type="number" min="0" step="1" disabled={savingStock} aria-invalid={stockError ? true : undefined} title={stockError || undefined} /></label>{showPrice && <label className="rr-mini"><small>Fiyat</small><input className="rr-in rr-num" aria-label={`${variant.sku} fiyat`} value={price} onFocus={onSelect} onChange={event => { onSelect(); setPrice(event.target.value === '' ? '' : Number(event.target.value)) }} onBlur={() => void savePrice()} type="number" min="0" step="0.01" disabled={savingPrice} /></label>}</>
+  return <><label className="rr-mini"><small>Stok</small><input className="rr-in rr-num" aria-label={`${variant.sku} stok`} aria-invalid={stockError ? true : undefined} title={stockError || undefined} value={stock} onFocus={onSelect} onChange={event => { onSelect(); setStockError(''); if (!stockDirty) setStockBase(variant.onHand); setStockDirty(true); setStock(event.target.value) }} onBlur={() => void saveStock()} type="number" min="0" step="1" disabled={savingStock} />{stockError && <small className="rr-field-error" role="alert">{stockError}</small>}</label>{showPrice && <label className="rr-mini"><small>Fiyat</small><input className="rr-in rr-num" aria-label={`${variant.sku} fiyat`} value={price} onFocus={onSelect} onChange={event => { onSelect(); setPrice(event.target.value === '' ? '' : Number(event.target.value)) }} onBlur={() => void savePrice()} type="number" min="0" step="0.01" disabled={savingPrice} /></label>}</>
 }
 function lowStockModelCode(group: ProductGroup) {
   return group.products.map(product => product.modelCode).find(value => value?.trim())
@@ -445,7 +485,7 @@ export function ProductsPage() {
   const activeProductSyncJobs = useMemo(() => filterActiveProductSyncJobs(productSyncJobsQuery.data ?? []), [productSyncJobsQuery.data])
   const cancelProductSync = useMutation({ mutationFn: (jobId: string) => hubApi(`/jobs/${jobId}/cancel`, { method: 'POST', headers: { 'Idempotency-Key': `cancel-product-import:${jobId}` } }), onSuccess: () => { void productSyncJobsQuery.refetch(); void client.invalidateQueries({ queryKey: ['jobs'] }) } })
   const quickEditProducts = quickEdit
-    ? quickEdit.productIds.map(id => selectedProductCache[id] ?? products.find(product => product.id === id)).filter((product): product is Product => Boolean(product))
+    ? quickEdit.productIds.map(id => products.find(product => product.id === id) ?? selectedProductCache[id]).filter((product): product is Product => Boolean(product))
     : []
   const selectedProductCardCount = useMemo(() => productRowsAsCards(Object.values(selectedProductCache)).length, [selectedProductCache])
   const nextPageCursor = query.data?.nextCursor ?? null
@@ -699,7 +739,8 @@ export function ProductsPage() {
   const tabCount = (value: string) => { const count = value === '' ? summaryQuery.data?.totalCount : value === 'ACTIVE' ? summaryQuery.data?.activeCount : value === 'DRAFT' ? draftCountQuery.data?.totalCount : archivedCountQuery.data?.totalCount; return count == null ? '…' : count.toLocaleString('tr-TR') }
   const stockOptions = [{ value: 'ALL', label: 'Tüm Stoklar' }, { value: 'OUT', label: 'Stoksuz' }, { value: 'LOW', label: 'Düşük Stok' }, { value: 'OK', label: 'Yeterli Stok' }]
   const statusOptions = statusTabs.map(([value, label]) => ({ value: value || 'ALL', label }))
-  const sortOptions: Array<[string, string]> = [['default', 'Varsayılan'], ['price-desc', 'Satış Fiyatına Göre Azalan'], ['price-asc', 'Satış Fiyatına Göre Artan'], ['stock-desc', 'Stok Miktarına Göre Azalan'], ['stock-asc', 'Stok Miktarına Göre Artan']]
+  const sortOptions = productCatalogSortOptions
+  const sortScopeNote = productCatalogSortScopeNote(catalogSort)
   const sortValue = catalogSort ? `${catalogSort.field}-${catalogSort.direction}` : 'default'
   const setSortValue = (value: string) => { if (value === 'default') setCatalogSort(null); else { const [field, direction] = value.split('-') as ['price' | 'stock', 'asc' | 'desc']; setCatalogSort({ field, direction }) } }
   const platformPop = (close: () => void) => <div className="rr-pop" role="dialog" style={{ minWidth: 290 }}><div className="rr-ph"><span>Platform Durumu<small className="rr-ph-sub">Ürün eşleşmelerini platforma göre filtrele</small></span>{platform && <button type="button" className="rr-btn rr-link" onClick={() => { setPlatform(''); close() }}>Temizle</button>}</div><button type="button" className={`rr-opt${platform ? '' : ' rr-on'}`} onClick={() => { setPlatform(''); close() }}><span className="rr-radio" aria-hidden="true" /><span className="rr-grow">Tüm Platformlar<small className="rr-opt-sub">Platform ayrımı olmadan göster</small></span></button><div className="rr-sep" />{productPlatformFilterGroups.map(group => { const open = expandedPlatformGroup === group.label; const selectedOption = group.options.find(option => option.value === platform); return <div key={group.label} className={`rr-acc${open ? ' rr-open' : ''}`}><button type="button" className="rr-opt" aria-expanded={open} onClick={() => setExpandedPlatformGroup(value => value === group.label ? null : group.label)}><RrLogo code={group.label.toLocaleUpperCase('tr-TR').replace('İ', 'I')} /><span className="rr-grow">{group.label}<small className="rr-opt-sub">{selectedOption ? `${selectedOption.label} · Seçili` : 'Durum Seçin'}</small></span><RrIcon name="chev" /></button>{open && <div className="rr-acc-b">{group.options.map(option => { const on = platform === option.value; return <button key={option.value} type="button" className={`rr-opt${on ? ' rr-on' : ''}`} role="radio" aria-checked={on} onClick={() => { setPlatform(option.value); close() }}><span className="rr-radio" aria-hidden="true" /><span className="rr-grow">{option.label}<small className="rr-opt-sub">{option.label === 'Aktif' ? 'Tüm varyantlar eşleşti' : option.label === 'Kısmi' ? 'Bazı varyantlar eşleşti' : 'Eşleşme bulunamadı'}</small></span></button> })}</div>}</div> })}{platforms.filter(item => !productPlatformFilterGroups.some(group => group.label.localeCompare(item, 'tr-TR', { sensitivity: 'base' }) === 0)).map(item => <button key={item} type="button" className={`rr-opt${platform === item ? ' rr-on' : ''}`} onClick={() => { setPlatform(item); close() }}><span className="rr-radio" aria-hidden="true" /><span className="rr-grow">{item}<small className="rr-opt-sub">Platform eşleşmelerini göster</small></span></button>)}</div>
@@ -723,15 +764,15 @@ export function ProductsPage() {
     </div>
     {selectionMode && <div className="rr-selbar" role="region" aria-label="Seçim modu"><button type="button" className="rr-btn rr-quiet" onClick={exitSelectionMode}>İptal</button><span className="rr-grow">{selectedProductCardCount} ürün kartı seçildi</span><button type="button" className="rr-btn" onClick={toggleAllVisible}>{allVisibleSelected ? 'Seçimi Kaldır' : 'Tümünü Seç'}</button></div>}
     {(query.error ?? summaryQuery.error ?? connectionsQuery.error) && <RrError error={query.error ?? summaryQuery.error ?? connectionsQuery.error} onRetry={() => { void query.refetch(); void summaryQuery.refetch() }} />}
-    <div className="rr-panel"><div className="rr-panel-h"><div><h2>Ürün Kataloğu</h2><p>Toplam {totalCount.toLocaleString('tr-TR')} ürün</p></div><RrPageSize value={pageSize} sizes={[20, 50, 100]} onChange={setPageSize} /></div>
+    <div className="rr-panel"><div className="rr-panel-h"><div><h2>Ürün Kataloğu</h2><p>Toplam {totalCount.toLocaleString('tr-TR')} ürün{sortScopeNote && <span className="rr-sort-scope" role="note"> · {sortScopeNote}</span>}</p></div><RrPageSize value={pageSize} sizes={[20, 50, 100]} onChange={setPageSize} /></div>
       {selectedProductIds.length > 0 && hasMoreProductsToSelect && <div className="rr-xsel" role="status"><span><b>{allProductsSelected ? 'Tüm ürün kartları seçildi.' : `${selectedProductCardCount.toLocaleString('tr-TR')} ürün kartı seçildi.`}</b> {allProductsSelected ? `${selectedProductIds.length.toLocaleString('tr-TR')} katalog kaydı toplu işlemlere dahil.` : 'Diğer sayfalardaki kartlar seçime dahil değil.'}</span>{allProductsSelected ? <button type="button" className="rr-btn rr-link" onClick={() => { setSelectedProductIds([]); setSelectedProductCache({}); setAllProductsSelected(false) }}>Seçimi Temizle</button> : <button type="button" className="rr-btn rr-link" onClick={() => void selectAllFilteredProducts()} disabled={selectingAllProducts}>{selectingAllProducts ? 'Tüm sayfalar seçiliyor…' : `Tüm ${totalCount.toLocaleString('tr-TR')} Kaydı Seç`}</button>}</div>}
       <div className="rr-tblwrap">{query.isLoading && !pageProducts.length ? <RrLoading text="Ürünler yükleniyor…" /> : <table className="rr-tbl rr-ptbl">
         <colgroup><col className="rr-c-pd" /><col className="rr-c-var" /><col className="rr-c-pr" /><col className="rr-c-st" /><col className="rr-c-pl" /><col className="rr-c-status" /><col className="rr-c-act" /></colgroup>
         <thead><tr>
           <RrHeadCell label="Ürün Detayı" extra={<input type="checkbox" className="rr-cb" checked={allVisibleSelected} onChange={toggleAllVisible} aria-label={`${pageProductGroups.length} ürün kartının tümünü seç`} style={{ marginRight: 8 }} />} />
           <RrHeadCell label="Varyant" />
-          <RrHeadCell label="Fiyat" sort={catalogSort?.field === 'price' ? catalogSort.direction : null} onSort={() => toggleCatalogSort('price')} />
-          <RrHeadCell label="Stok" sort={catalogSort?.field === 'stock' ? catalogSort.direction : null} onSort={() => toggleCatalogSort('stock')} active={Boolean(stock)} pop={columnPop('Stok Durumu', stockOptions, stock, setStock)} />
+          <RrHeadCell label={catalogSort?.field === 'price' ? 'Fiyat (Bu Sayfada)' : 'Fiyat'} sort={catalogSort?.field === 'price' ? catalogSort.direction : null} onSort={() => toggleCatalogSort('price')} />
+          <RrHeadCell label={catalogSort?.field === 'stock' ? 'Stok (Bu Sayfada)' : 'Stok'} sort={catalogSort?.field === 'stock' ? catalogSort.direction : null} onSort={() => toggleCatalogSort('stock')} active={Boolean(stock)} pop={columnPop('Stok Durumu', stockOptions, stock, setStock)} />
           <RrHeadCell label="Platform Durumu" active={Boolean(platform)} pop={platformPop} />
           <RrHeadCell label="Durum" active={Boolean(status)} pop={columnPop('Ürün Durumu', statusOptions, status, setStatus, true)} />
           <RrHeadCell label="İşlemler" />

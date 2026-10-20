@@ -92,6 +92,11 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
             var legacyMapping = await Query(mappingType).SingleOrDefaultAsync(x => x.TenantId == tenantId && x.LocalId == localId && x.ConnectionId == command.ConnectionId && x.ScopeExternalId == scope, cancellationToken);
             if (legacyMapping is not null && legacyMapping.Version == expectedVersion) mapping = legacyMapping;
         }
+        // K25: a category or brand maps to one remote record per scope (unique index); a second one is a
+        // conflict the user resolves by editing the existing mapping, not a 500.
+        if (mapping is null && mappingType is ("categories" or "brands")
+            && await Query(mappingType).AnyAsync(x => x.TenantId == tenantId && x.LocalId == localId && x.ConnectionId == command.ConnectionId && x.ScopeExternalId == scope, cancellationToken))
+            return ServiceResult<CatalogMappingView>.Fail("MAPPING_EXISTS", "Bu kayıt için eşleme zaten var; mevcut eşlemeyi düzenleyin.", 409);
         if (mapping is null)
         {
             mapping = New(mappingType);

@@ -12,7 +12,18 @@ export function titleCaseTr(value: string) {
   return value.trim().split(/\s+/).filter(Boolean).map(word => word.split('/').map(titleWord).join('/')).join(' ')
 }
 
+// Two signature shapes exist: the legacy upper-cased "BEDEN=L|RENK=MAVİ" and the unified display form
+// "Renk: Mavi | Beden: L". The legacy one is title-cased; the display form already carries its labels.
 export function variantOptionParts(signature: string | null | undefined) {
-  return (signature ?? '').split('|').map(part => part.split('=')).filter(pair => pair.length === 2 && pair[1].trim())
-    .map(([name, value]) => ({ name: titleCaseTr(name), value: titleCaseTr(value) }))
+  return (signature ?? '').split('|').flatMap(part => {
+    const equals = part.indexOf('=')
+    const colon = part.indexOf(':')
+    const legacy = equals >= 0 && (colon < 0 || equals < colon)
+    const index = legacy ? equals : colon
+    if (index < 0) return []
+    const name = part.slice(0, index).trim()
+    const value = part.slice(index + 1).trim()
+    if (!name || !value) return []
+    return [legacy ? { name: titleCaseTr(name), value: titleCaseTr(value) } : { name, value }]
+  })
 }

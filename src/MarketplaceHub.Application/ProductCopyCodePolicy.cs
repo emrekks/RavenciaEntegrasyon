@@ -34,5 +34,5 @@ public static class ProductCopyCodePolicy
         }
     }
 
-    private static string Normalize(string value) => value.Trim().ToUpperInvariant();
+    private static string Normalize(string value) => CatalogKeyNormalizer.Key(value);
 }

@@ -86,6 +86,63 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
         return ServiceResult<InventoryItemView>.Ok(Map(item, sku));
     }
 
+    // W2/W3/W18: the panel sends the stock the user typed together with the stock the user saw. The change is
+    // applied only while MAIN on-hand still equals that value, so a sale, return or another tab in between is
+    // never overwritten by a delta computed against a stale number (409 STOCK_CHANGED instead).
+    public async Task<ServiceResult<InventoryItemView>> SetOnHandAsync(Guid tenantId, Guid userId, Guid variantId, StockSetCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
+    {
+        if (command.OnHand < 0) return Invalid<InventoryItemView>("onHand", "Stok negatif olamaz.");
+        if (command.OnHand > 1_000_000_000m) return Invalid<InventoryItemView>("onHand", "Stok miktarı çok büyük.");
+        if (string.IsNullOrWhiteSpace(command.Reason) || string.IsNullOrWhiteSpace(command.SourceEventId)) return Invalid<InventoryItemView>("reason", "Reason ve sourceEventId zorunludur.");
+        var existing = await db.StockLedgerEntries.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.IdempotencyKey == idempotencyKey, cancellationToken);
+        if (existing is not null)
+        {
+            var prior = await FindItemAsync(tenantId, existing.InventoryItemId, cancellationToken);
+            return prior is null ? NotFound<InventoryItemView>() : ServiceResult<InventoryItemView>.Ok(prior);
+        }
+
+        await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
+        var item = await db.InventoryItems.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.VariantId == variantId && x.LocationCode == "MAIN", cancellationToken);
+        if (item is null) return NotFound<InventoryItemView>();
+        var target = decimal.Round(command.OnHand, 4, MidpointRounding.ToEven);
+        var sku = await db.ProductVariants.Where(x => x.TenantId == tenantId && x.Id == item.VariantId).Select(x => x.Sku).SingleAsync(cancellationToken);
+        if (item.OnHand == target)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return ServiceResult<InventoryItemView>.Ok(Map(item, sku));
+        }
+        if (item.OnHand != decimal.Round(command.ExpectedOnHand, 4, MidpointRounding.ToEven))
+            return ServiceResult<InventoryItemView>.Fail("STOCK_CHANGED", $"Stok başka bir işlemle değişti; güncel stok {item.OnHand.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)}. Sayfayı yenileyip tekrar deneyin.", 409);
+        var delta = target - item.OnHand;
+        var reserved = await db.StockReservations.Where(x => x.TenantId == tenantId && x.InventoryItemId == item.Id && x.Status == ReservationStatus.Active).SumAsync(x => (decimal?)x.Quantity, cancellationToken) ?? 0;
+        item.OnHand = target;
+        item.Reserved = reserved;
+        item.Available = InventoryProjection.Available(target, reserved);
+        item.ProjectionVersion++;
+        item.Version++;
+        var now = timeProvider.GetUtcNow();
+        db.StockLedgerEntries.Add(new StockLedgerEntry
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenantId,
+            InventoryItemId = item.Id,
+            MovementType = "MANUAL_ADJUSTMENT",
+            QuantityDelta = delta,
+            SourceType = "MANUAL",
+            SourceId = command.Reason.Trim(),
+            SourceEventId = command.SourceEventId.Trim(),
+            IdempotencyKey = idempotencyKey,
+            OccurredAt = now,
+            RecordedAt = now,
+            ActorUserId = userId,
+            CorrelationId = correlationId
+        });
+        await StockProjectionOutbox.EnqueueAsync(db, tenantId, [new StockProjectionChange(item.VariantId, item.ProjectionVersion, $"manual:{command.SourceEventId.Trim()}")], now, cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return ServiceResult<InventoryItemView>.Ok(Map(item, sku));
+    }
+
     public async Task<ServiceResult<ChannelOfferView>> GetOfferAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
     {
         var offer = await db.ChannelOffers.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);

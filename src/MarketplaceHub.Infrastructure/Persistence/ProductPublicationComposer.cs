@@ -112,7 +112,7 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
         var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId && x.Status != ProductStatus.Archived).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         if (variants.Count == 0) return Fail("PRODUCT_VARIANT_REQUIRED", "Yayın için en az bir etkin varyant gerekir.");
         if (variants.Count > 1000) return Fail("PRODUCT_BATCH_LIMIT_EXCEEDED", "Tek yayın isteğinde en fazla 1000 varyant gönderilebilir.");
-        if (variants.Any(x => string.IsNullOrWhiteSpace(x.Barcode) || x.Barcode.Trim().Length > 40 || !IsValidBarcode(x.Barcode.Trim()))) return Fail("BARCODE_INVALID", "Tüm varyantlarda en fazla 40 karakterlik; yalnız harf, rakam, nokta, tire veya alt çizgi içeren barkod bulunmalıdır.");
+        if (variants.Any(x => string.IsNullOrWhiteSpace(x.Barcode) || x.Barcode.Trim().Length > 40 || !IsValidBarcode(x.Barcode.Trim()))) return Fail("BARCODE_INVALID", "Tüm varyantlarda en fazla 40 karakterlik; yalnız Türkçe karakter içermeyen harf, rakam, nokta, tire veya alt çizgiden oluşan barkod bulunmalıdır.");
         if (variants.Select(x => x.Barcode!.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Count() != variants.Count) return Fail("BARCODE_DUPLICATE", "Yayınlanan varyant barkodları benzersiz olmalıdır.");
         if (await ConnectionDuplicateAsync(db, tenantId, connectionId, variants.Select(x => x.Id).ToArray(), variants.Select(x => x.Barcode!.Trim()).ToArray(), [], cancellationToken) is { } takenBarcode)
             return Fail("BARCODE_DUPLICATE", ConnectionDuplicateMessage(takenBarcode), status: 409);
@@ -426,7 +426,7 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
 
     private static string NormalizeLabel(string value) => value.Trim().ToUpperInvariant();
 
-    private static bool IsValidBarcode(string value) => value.All(character => char.IsLetterOrDigit(character) || character is '.' or '-' or '_');
+    private static bool IsValidBarcode(string value) => value.All(character => char.IsAsciiLetterOrDigit(character) || character is '.' or '-' or '_');
 
     public static bool IsPublicHttpsUrl(string value)
     {
