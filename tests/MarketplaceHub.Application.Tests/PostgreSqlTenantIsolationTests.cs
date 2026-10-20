@@ -1129,7 +1129,9 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         try
         {
             await using var db = fixture.CreateContext();
-            var metrics = await new JobOperationsService(db, fixture.TimeProvider).MetricsAsync(tenant.Id, TimeSpan.FromHours(24), CancellationToken.None);
+            var metrics = await new JobOperationsService(db, fixture.TimeProvider).MetricsAsync(tenant.Id, TimeSpan.FromHours(24), null, CancellationToken.None);
+            // These jobs have no connection, so a platform choice leaves them out of every card.
+            Assert.DoesNotContain(await new JobOperationsService(db, fixture.TimeProvider).MetricsAsync(tenant.Id, TimeSpan.FromHours(24), ["TRENDYOL"], CancellationToken.None), row => row.JobType == MarketplaceJobTypes.OrderSync);
 
             var orderSync = Assert.Single(metrics, row => row.JobType == MarketplaceJobTypes.OrderSync);
             Assert.Equal(2, orderSync.Attempts);

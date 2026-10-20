@@ -231,7 +231,7 @@ public interface IJobOperationsService
 {
     // Platforms (connection PlatformCode values) limits the counts to jobs of those connections; jobs without a connection count only without it.
     Task<IReadOnlyList<JobCountView>> CountAsync(Guid tenantId, DateTimeOffset? since, IReadOnlyList<string>? platforms, CancellationToken cancellationToken);
-    Task<IReadOnlyList<JobTypeMetricView>> MetricsAsync(Guid tenantId, TimeSpan window, CancellationToken cancellationToken);
+    Task<IReadOnlyList<JobTypeMetricView>> MetricsAsync(Guid tenantId, TimeSpan window, IReadOnlyList<string>? platforms, CancellationToken cancellationToken);
     Task<IReadOnlyList<JobSummaryView>> ListAsync(Guid tenantId, JobListQuery query, CancellationToken cancellationToken);
     // Cursor-paged list: Items holds at most EffectiveLimit jobs; NextCursor continues after the last one.
     Task<ServiceResult<PageResult<JobSummaryView>>> PageAsync(Guid tenantId, JobListQuery query, CancellationToken cancellationToken);

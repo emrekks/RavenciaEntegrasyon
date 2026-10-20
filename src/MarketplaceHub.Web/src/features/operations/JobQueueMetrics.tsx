@@ -40,11 +40,12 @@ export function failureRate(metric: JobTypeMetric) {
 
 // Queue health per job type: how long jobs wait before they start, how long they run and how
 // often they fail. Loaded only while the panel is open.
-export function JobQueueMetrics({ hours, titleFor }: { hours: number; titleFor: (jobType: string) => string }) {
+// platform (a connection platform code such as TRENDYOL) narrows the per-type cards like the list; lanes and quotas stay global.
+export function JobQueueMetrics({ hours, titleFor, platform = null }: { hours: number; titleFor: (jobType: string) => string; platform?: string | null }) {
   const [open, setOpen] = useState(false)
   const metrics = useQuery({
-    queryKey: ['jobs', 'metrics', hours],
-    queryFn: () => hubApi<JobTypeMetric[]>(`/jobs/metrics?hours=${hours}`),
+    queryKey: ['jobs', 'metrics', hours, platform],
+    queryFn: () => hubApi<JobTypeMetric[]>(`/jobs/metrics?hours=${hours}${platform ? `&platform=${encodeURIComponent(platform)}` : ''}`),
     enabled: open,
     refetchInterval: open ? 30_000 : false
   })

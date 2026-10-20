@@ -110,10 +110,13 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         }).ToList();
     }
 
-    public async Task<IReadOnlyList<JobTypeMetricView>> MetricsAsync(Guid tenantId, TimeSpan window, CancellationToken cancellationToken)
+    // platforms keeps the jobs of those connection platforms, like the list and the counts (none = every job).
+    public async Task<IReadOnlyList<JobTypeMetricView>> MetricsAsync(Guid tenantId, TimeSpan window, IReadOnlyList<string>? platforms, CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
         var since = now - window;
+        var codes = (platforms ?? []).Select(code => code.Trim().ToUpperInvariant()).Where(code => code.Length > 0).Distinct().ToArray();
+        var anyPlatform = codes.Length == 0;
         var attempts = await db.Database.SqlQuery<JobAttemptMetricRow>($"""
             SELECT job."JobType" AS "JobType",
                    count(*)::int AS "Attempts",
@@ -130,9 +133,11 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
                 THEN EXTRACT(EPOCH FROM attempt."StartedAt" - job."AvailableAt")::double precision END AS seconds) wait
             CROSS JOIN LATERAL (SELECT EXTRACT(EPOCH FROM attempt."CompletedAt" - attempt."StartedAt")::double precision AS seconds) run
             WHERE attempt."TenantId" = {tenantId} AND attempt."StartedAt" >= {since}
+              AND ({anyPlatform} OR EXISTS (SELECT 1 FROM integration.platform_connections connection
+                  WHERE connection."TenantId" = {tenantId} AND connection."Id" = job."ConnectionId" AND connection."PlatformCode" = ANY({codes})))
             GROUP BY job."JobType"
             """).ToListAsync(cancellationToken);
-        var queue = await db.IntegrationJobs.AsNoTracking()
+        var queue = await OfPlatforms(db.IntegrationJobs.AsNoTracking(), tenantId, platforms)
             .Where(job => job.TenantId == tenantId && (job.Status == JobStatus.Leased
                 || ((job.Status == JobStatus.Pending || job.Status == JobStatus.RetryScheduled) && job.AvailableAt <= now)))
             .GroupBy(job => job.JobType)
