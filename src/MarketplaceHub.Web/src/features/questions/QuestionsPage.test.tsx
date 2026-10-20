@@ -439,7 +439,9 @@ describe('QuestionsPage workspace flows', () => {
     expect(container.querySelector('.qi-detail')?.textContent).toContain('Ürün boyu kaç santimetredir?')
     apiState.emptyList = true
     await act(async () => { await client.invalidateQueries({ queryKey: ['questions'] }) })
-    await settle()
+    // The emptied list arrives first, the question's own read right after it.
+    for (let attempt = 0; attempt < 20 && !apiState.calls.some(call => call.path === '/questions/q-product'); attempt++) await settle(25)
+    await settle(50)
 
     expect(container.querySelector('.qi-detail')?.textContent).toContain('Ürün boyu kaç santimetredir?')
     expect(apiState.calls.some(call => call.path === '/questions/q-product')).toBe(true)
