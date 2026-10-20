@@ -5045,8 +5045,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 var normalized = NormalizeCatalogKey(valueText, 320);
                 if (!categoryContext.ObservedVariantValueKeys.Add($"{mapped.Definition.Id:D}:{normalized}"))
                     continue;
-                var value = db.AttributeValues.Local.FirstOrDefault(x => x.TenantId == tenantId && x.AttributeId == mapped.Definition.Id && x.NormalizedValue == normalized)
-                    ?? await db.AttributeValues.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.AttributeId == mapped.Definition.Id && x.NormalizedValue == normalized, cancellationToken);
+                var valueKeys = CatalogLookupKeys(valueText, 320);
+                var value = db.AttributeValues.Local.FirstOrDefault(x => x.TenantId == tenantId && x.AttributeId == mapped.Definition.Id && CatalogKeyNormalizer.SameKey(x.NormalizedValue, normalized, 320))
+                    ?? await db.AttributeValues.Where(x => x.TenantId == tenantId && x.AttributeId == mapped.Definition.Id && valueKeys.Contains(x.NormalizedValue)).OrderBy(x => x.NormalizedValue == normalized ? 0 : 1).ThenBy(x => x.Id).FirstOrDefaultAsync(cancellationToken);
                 if (value is not null)
                 {
                     value.IsActive = true;
@@ -5075,23 +5076,26 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var normalized = NormalizeCatalogKey(remoteCategory.Path, 160);
         var legacyNormalized = NormalizeCatalogKey(remoteCategory.Name, 160);
         if (string.IsNullOrWhiteSpace(normalized)) normalized = NormalizeCatalogKey(leafName, 160);
-        category ??= db.Categories.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ParentId is null && (x.NormalizedName == normalized || x.NormalizedName == legacyNormalized))
-            ?? await db.Categories.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ParentId == null && (x.NormalizedName == normalized || x.NormalizedName == legacyNormalized), cancellationToken);
+        var categoryKeys = CatalogLookupKeys(remoteCategory.Path).Concat(CatalogLookupKeys(remoteCategory.Name)).Concat(CatalogLookupKeys(leafName)).Distinct(StringComparer.Ordinal).ToArray();
+        category ??= db.Categories.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ParentId is null && (CatalogKeyNormalizer.SameKey(x.NormalizedName, normalized) || CatalogKeyNormalizer.SameKey(x.NormalizedName, legacyNormalized)))
+            ?? await db.Categories.Where(x => x.TenantId == tenantId && x.ParentId == null && categoryKeys.Contains(x.NormalizedName)).OrderBy(x => x.NormalizedName == normalized ? 0 : x.NormalizedName == legacyNormalized ? 1 : 2).ThenBy(x => x.Id).FirstOrDefaultAsync(cancellationToken);
         if (category is null)
         {
             var now = timeProvider.GetUtcNow();
             category = new Category { Id = Guid.CreateVersion7(), TenantId = tenantId, Name = leafName, NormalizedName = normalized, Path = leafName, Depth = 0, IsLeaf = true, IsActive = true, CreatedAt = now, UpdatedAt = now, Version = 1 };
             db.Categories.Add(category);
         }
-        else
+        else if (db.Entry(category).State != EntityState.Added)
         {
-            category.Name = leafName;
-            category.NormalizedName = normalized;
-            category.Path = leafName;
-            category.IsLeaf = true;
-            category.IsActive = true;
-            category.UpdatedAt = timeProvider.GetUtcNow();
-            category.Version++;
+            // K13: an existing panel category keeps its name, path and active state; only its leaf flag
+            // follows its children (a category the user split is no longer a leaf).
+            var isLeaf = !await db.Categories.AnyAsync(x => x.TenantId == tenantId && x.ParentId == category.Id && x.IsActive, cancellationToken);
+            if (category.IsLeaf != isLeaf)
+            {
+                category.IsLeaf = isLeaf;
+                category.UpdatedAt = timeProvider.GetUtcNow();
+                category.Version++;
+            }
         }
 
         if (mapping is null)
@@ -5242,8 +5246,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         foreach (var remoteValue in values)
         {
             var normalizedValue = NormalizeCatalogKey(remoteValue.Name, 320);
-            var value = db.AttributeValues.Local.FirstOrDefault(x => x.TenantId == tenantId && x.AttributeId == attribute.Id && x.NormalizedValue == normalizedValue)
-                ?? await db.AttributeValues.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.AttributeId == attribute.Id && x.NormalizedValue == normalizedValue, cancellationToken);
+            var valueKeys = CatalogLookupKeys(remoteValue.Name, 320);
+            var value = db.AttributeValues.Local.FirstOrDefault(x => x.TenantId == tenantId && x.AttributeId == attribute.Id && CatalogKeyNormalizer.SameKey(x.NormalizedValue, normalizedValue, 320))
+                ?? await db.AttributeValues.Where(x => x.TenantId == tenantId && x.AttributeId == attribute.Id && valueKeys.Contains(x.NormalizedValue)).OrderBy(x => x.NormalizedValue == normalizedValue ? 0 : 1).ThenBy(x => x.Id).FirstOrDefaultAsync(cancellationToken);
             if (value is null)
             {
                 value = new AttributeValue { Id = Guid.CreateVersion7(), TenantId = tenantId, AttributeId = attribute.Id, Value = Short(remoteValue.Name, 320), NormalizedValue = normalizedValue, SortOrder = remoteValue.SortOrder ?? 0, IsActive = true, Version = 1 };
@@ -5645,7 +5650,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     .Where(x => x.TenantId == tenantId && localIds.Contains(x.Id) && !trackedIds.Contains(x.Id) && x.AttributeId == mapped.Definition.Id && x.IsActive)
                     .ToListAsync(cancellationToken));
                 var remoteKey = NormalizeCatalogKey(remoteValue.Name, 320);
-                var chosen = mappedValues.FirstOrDefault(value => value.NormalizedValue == remoteKey)
+                var chosen = mappedValues.FirstOrDefault(value => CatalogKeyNormalizer.SameKey(value.NormalizedValue, remoteKey, 320))
                     ?? mappings
                         .OrderByDescending(mapping => mapping.VerifiedAt ?? DateTimeOffset.MinValue)
                         .ThenByDescending(mapping => mapping.Id)
@@ -5667,8 +5672,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 if (fallback is not null) return fallback;
             }
         }
-        return db.AttributeValues.Local.FirstOrDefault(x => x.TenantId == tenantId && x.AttributeId == mapped.Definition.Id && x.IsActive && x.NormalizedValue == normalized)
-            ?? await db.AttributeValues.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.AttributeId == mapped.Definition.Id && x.IsActive && x.NormalizedValue == normalized, cancellationToken);
+        var normalizedKeys = CatalogLookupKeys(remoteValueText, 320);
+        return db.AttributeValues.Local.FirstOrDefault(x => x.TenantId == tenantId && x.AttributeId == mapped.Definition.Id && x.IsActive && CatalogKeyNormalizer.SameKey(x.NormalizedValue, normalized, 320))
+            ?? await db.AttributeValues.AsNoTracking().Where(x => x.TenantId == tenantId && x.AttributeId == mapped.Definition.Id && x.IsActive && normalizedKeys.Contains(x.NormalizedValue)).OrderBy(x => x.NormalizedValue == normalized ? 0 : 1).ThenBy(x => x.Id).FirstOrDefaultAsync(cancellationToken);
     }
 
     // crossMatchCodes (n11): the seller stock code may be the panel barcode
@@ -5691,8 +5697,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var modelCodes = !preferBarcode
             ? remoteVariants.Select(variant => variant.ModelCode?.Trim()).Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value!).Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
             : Array.Empty<string>();
-        var barcodes = remoteVariants.Select(variant => NormalizeCatalogKey(variant.Barcode, 160)).Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value!).Distinct(StringComparer.Ordinal).ToArray();
-        var skus = remoteVariants.Select(variant => NormalizeCatalogKey(variant.Sku, 160)).Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value!).Distinct(StringComparer.Ordinal).ToArray();
+        // Both stored key forms (shared key and legacy panel form) are looked up until the recompute.
+        var barcodes = CatalogKeyNormalizer.LookupKeys(remoteVariants.Select(variant => variant.Barcode));
+        var skus = CatalogKeyNormalizer.LookupKeys(remoteVariants.Select(variant => variant.Sku));
         var rawSkus = remoteVariants.Select(variant => variant.Sku?.Trim()).Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value!).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         if (modelCodes.Length == 0 && barcodes.Length == 0 && skus.Length == 0) return false;
 
@@ -5769,12 +5776,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var remoteModelCode = NormalizeCatalogKey(remote.ModelCode, 160);
             var barcodeMatches = string.IsNullOrWhiteSpace(remoteBarcode)
                 ? []
-                : localVariants.Where(variant => string.Equals(variant.BarcodeNormalized, remoteBarcode, StringComparison.Ordinal)
-                    || crossMatchCodes && string.Equals(variant.SkuNormalized, remoteBarcode, StringComparison.Ordinal)).ToList();
+                : localVariants.Where(variant => CatalogKeyNormalizer.SameKey(variant.BarcodeNormalized, remoteBarcode)
+                    || crossMatchCodes && CatalogKeyNormalizer.SameKey(variant.SkuNormalized, remoteBarcode)).ToList();
             var skuMatches = string.IsNullOrWhiteSpace(remoteSku)
                 ? []
-                : localVariants.Where(variant => string.Equals(variant.SkuNormalized, remoteSku, StringComparison.Ordinal)
-                    || crossMatchCodes && string.Equals(variant.BarcodeNormalized, remoteSku, StringComparison.Ordinal)
+                : localVariants.Where(variant => CatalogKeyNormalizer.SameKey(variant.SkuNormalized, remoteSku)
+                    || crossMatchCodes && CatalogKeyNormalizer.SameKey(variant.BarcodeNormalized, remoteSku)
                     || preferBarcode && string.Equals(NormalizeCatalogKey(variant.ModelCode, 160), remoteSku, StringComparison.Ordinal)).ToList();
             var modelMatches = !preferBarcode && string.IsNullOrWhiteSpace(remoteModelCode)
                 ? []
@@ -5955,12 +5962,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             else
             {
                 var sku = Short(string.IsNullOrWhiteSpace(remote.Sku) ? remote.Barcode ?? remote.ExternalVariantId : remote.Sku, 160);
-                var skuNormalized = NormalizeCatalogKey(sku, 160);
-                var barcodeNormalized = NormalizeCatalogKey(remote.Barcode, 160);
+                var skuKeys = CatalogLookupKeys(sku);
+                var barcodeKeys = CatalogLookupKeys(remote.Barcode);
                 var candidates = await db.ProductVariants
                     .Where(x => x.TenantId == tenantId && x.ProductId == product.Id
-                        && ((skuNormalized != "" && x.SkuNormalized == skuNormalized)
-                            || (barcodeNormalized != "" && x.BarcodeNormalized == barcodeNormalized)))
+                        && (skuKeys.Contains(x.SkuNormalized)
+                            || (x.BarcodeNormalized != null && barcodeKeys.Contains(x.BarcodeNormalized))))
                     .Take(2)
                     .ToListAsync(cancellationToken);
                 if (candidates.Count == 1) variant = candidates[0];
@@ -6028,20 +6035,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             // variants across more than one local product.
             var allowCrossProductVariantMatch = preferBarcode && onlyExistingVariants;
             var observedPlatform = observedPlatformName ?? (matchBySku ? "N11" : "Shopify");
-            var identityCodes = snapshot.Variants
-                .Select(variant => variant.Barcode)
-                .Select(value => NormalizeCatalogKey(value, 160))
-                .Where(value => !string.IsNullOrWhiteSpace(value))
-                .Select(value => value!)
+            var identityCodes = CatalogKeyNormalizer.LookupKeys(snapshot.Variants.Select(variant => variant.Barcode))
                 .ToHashSet(StringComparer.Ordinal);
             // n11 keys every listing by the seller stock code, which is the
             // panel SKU; the barcode is only the fallback there.
             var skuCodes = matchBySku
-                ? snapshot.Variants
-                    .Select(variant => NormalizeCatalogKey(variant.Sku, 160))
-                    .Where(value => !string.IsNullOrWhiteSpace(value))
-                    .Select(value => value!)
-                    .ToHashSet(StringComparer.Ordinal)
+                ? CatalogKeyNormalizer.LookupKeys(snapshot.Variants.Select(variant => variant.Sku)).ToHashSet(StringComparer.Ordinal)
                 : [];
             if (identityCodes.Count > 0 || skuCodes.Count > 0)
             {
@@ -6333,9 +6332,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 var barcodeKey = NormalizeCatalogKey(remote.Barcode, 160);
                 var candidates = localVariants
                     .Where(variant =>
-                        skuKey.Length > 0 && string.Equals(variant.SkuNormalized, skuKey, StringComparison.Ordinal)
-                        || externalSkuKey.Length > 0 && string.Equals(variant.SkuNormalized, externalSkuKey, StringComparison.Ordinal)
-                        || barcodeKey.Length > 0 && string.Equals(variant.BarcodeNormalized, barcodeKey, StringComparison.Ordinal))
+                        skuKey.Length > 0 && CatalogKeyNormalizer.SameKey(variant.SkuNormalized, skuKey)
+                        || externalSkuKey.Length > 0 && CatalogKeyNormalizer.SameKey(variant.SkuNormalized, externalSkuKey)
+                        || barcodeKey.Length > 0 && CatalogKeyNormalizer.SameKey(variant.BarcodeNormalized, barcodeKey))
                     .Select(variant => variant.Id)
                     .Distinct()
                     .ToArray();
@@ -6420,13 +6419,13 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (preferBarcode)
             {
                 if (!string.IsNullOrWhiteSpace(barcodeNormalized))
-                    variant ??= variants.FirstOrDefault(x => x.BarcodeNormalized == barcodeNormalized);
+                    variant ??= variants.FirstOrDefault(x => CatalogKeyNormalizer.SameKey(x.BarcodeNormalized, barcodeNormalized));
             }
             else
             {
-                variant ??= variants.FirstOrDefault(x => x.SkuNormalized == skuNormalized);
+                variant ??= variants.FirstOrDefault(x => CatalogKeyNormalizer.SameKey(x.SkuNormalized, skuNormalized));
                 if (variant is null && !string.IsNullOrWhiteSpace(barcodeNormalized))
-                    variant = variants.FirstOrDefault(x => x.BarcodeNormalized == barcodeNormalized);
+                    variant = variants.FirstOrDefault(x => CatalogKeyNormalizer.SameKey(x.BarcodeNormalized, barcodeNormalized));
             }
             if (variant is null) continue;
 
@@ -6504,17 +6503,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     {
         var normalized = NormalizeCatalogKey(name, 160);
         if (string.IsNullOrWhiteSpace(normalized)) return null;
-        var brand = db.Brands.Local.FirstOrDefault(x => x.TenantId == tenantId && x.NormalizedName == normalized)
-            ?? await db.Brands.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.NormalizedName == normalized, cancellationToken);
-        if (brand is not null)
-        {
-            var nextName = Short(name!.Trim(), 160);
-            if (brand.Name != nextName || !brand.IsActive)
-            {
-                brand.Name = nextName; brand.IsActive = true; brand.UpdatedAt = timeProvider.GetUtcNow(); brand.Version++;
-            }
-            return brand;
-        }
+        var keys = CatalogLookupKeys(name);
+        var brand = db.Brands.Local.FirstOrDefault(x => x.TenantId == tenantId && CatalogKeyNormalizer.SameKey(x.NormalizedName, normalized))
+            ?? await db.Brands.Where(x => x.TenantId == tenantId && keys.Contains(x.NormalizedName)).OrderBy(x => x.NormalizedName == normalized ? 0 : 1).ThenBy(x => x.Id).FirstOrDefaultAsync(cancellationToken);
+        // The brand belongs to the panel once it exists: the import neither renames it (the user may have
+        // corrected the spelling) nor revives one the user switched off; products then stay without a brand.
+        if (brand is not null) return brand.IsActive ? brand : null;
         brand = new Brand { Id = Guid.CreateVersion7(), TenantId = tenantId, Name = Short(name!.Trim(), 160), NormalizedName = normalized, IsActive = true, CreatedAt = timeProvider.GetUtcNow(), UpdatedAt = timeProvider.GetUtcNow(), Version = 1 };
         db.Brands.Add(brand);
         return brand;
@@ -6590,15 +6584,17 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var normalized = NormalizeCatalogKey(leafName, 160);
         if (string.IsNullOrWhiteSpace(normalized)) return null;
         var legacyNormalized = NormalizeCatalogKey(name, 160);
-        var category = db.Categories.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ParentId == null && (x.NormalizedName == normalized || x.NormalizedName == legacyNormalized))
-            ?? await db.Categories.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ParentId == null && (x.NormalizedName == normalized || x.NormalizedName == legacyNormalized), cancellationToken);
+        var keys = CatalogLookupKeys(leafName).Concat(CatalogLookupKeys(name)).Distinct(StringComparer.Ordinal).ToArray();
+        var category = db.Categories.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ParentId == null && (CatalogKeyNormalizer.SameKey(x.NormalizedName, normalized) || CatalogKeyNormalizer.SameKey(x.NormalizedName, legacyNormalized)))
+            ?? await db.Categories.Where(x => x.TenantId == tenantId && x.ParentId == null && keys.Contains(x.NormalizedName)).OrderBy(x => x.NormalizedName == normalized ? 0 : 1).ThenBy(x => x.Id).FirstOrDefaultAsync(cancellationToken);
         if (category is not null)
         {
-            if (category.Name != leafName || category.NormalizedName != normalized || category.Path != leafName || !category.IsActive || !category.IsLeaf)
-            {
-                category.Name = leafName; category.NormalizedName = normalized; category.Path = leafName; category.IsActive = true; category.IsLeaf = true; category.UpdatedAt = timeProvider.GetUtcNow(); category.Version++;
-            }
-            return category;
+            // A panel category keeps its name, path and state. Its leaf flag follows its children: a category
+            // the user split into sub-categories is no longer a leaf and cannot take products.
+            if (!category.IsActive) return null;
+            var isLeaf = !await db.Categories.AnyAsync(x => x.TenantId == tenantId && x.ParentId == category.Id && x.IsActive, cancellationToken);
+            if (category.IsLeaf != isLeaf) { category.IsLeaf = isLeaf; category.UpdatedAt = timeProvider.GetUtcNow(); category.Version++; }
+            return isLeaf ? category : null;
         }
         category = new Category { Id = Guid.CreateVersion7(), TenantId = tenantId, Name = leafName, NormalizedName = normalized, Path = leafName, Depth = 0, IsLeaf = true, IsActive = true, CreatedAt = timeProvider.GetUtcNow(), UpdatedAt = timeProvider.GetUtcNow(), Version = 1 };
         db.Categories.Add(category);
@@ -6611,7 +6607,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var skuNormalized = NormalizeCatalogKey(sku, 160);
         if (string.IsNullOrWhiteSpace(skuNormalized)) return null;
         var barcode = string.IsNullOrWhiteSpace(remote.Barcode) ? null : Short(remote.Barcode.Trim(), 160);
-        var barcodeNormalized = NormalizeCatalogKey(barcode, 160);
+        // A variant without a barcode stores NULL: "" would collide under the unique (tenant, barcode) index
+        // with the next barcode-less variant (K14).
+        var barcodeNormalized = NullIfEmpty(NormalizeCatalogKey(barcode, 160));
+        var skuKeys = CatalogLookupKeys(sku);
+        var barcodeKeys = CatalogLookupKeys(barcode);
         var externalVariantId = Short(remote.ExternalVariantId, 256);
         var optionSignature = categoryContext is null ? OptionSignature(remote.Options) : await PanelOptionSignatureAsync(tenantId, connectionId, categoryContext, remote.Options, cancellationToken);
         var link = await db.MarketplaceVariantLinks.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == externalVariantId, cancellationToken);
@@ -6623,25 +6623,27 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             // inside the resolved local parent product.
             if (linkedVariant is not null
                 && linkedVariant.ProductId == product.Id
-                && (!preferBarcode || string.Equals(linkedVariant.BarcodeNormalized, barcodeNormalized, StringComparison.Ordinal)))
+                && (!preferBarcode || CatalogKeyNormalizer.SameKey(linkedVariant.BarcodeNormalized, barcodeNormalized) || string.IsNullOrEmpty(linkedVariant.BarcodeNormalized) && barcodeNormalized is null))
                 variant = linkedVariant;
         }
-        if (preferBarcode && !string.IsNullOrWhiteSpace(barcodeNormalized))
-            variant ??= db.ProductVariants.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ProductId == product.Id && x.BarcodeNormalized == barcodeNormalized)
-                ?? await db.ProductVariants.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == product.Id && x.BarcodeNormalized == barcodeNormalized, cancellationToken);
-        if (preferBarcode && onlyExistingVariants && variant is null && !string.IsNullOrWhiteSpace(barcodeNormalized))
-            variant = db.ProductVariants.Local.FirstOrDefault(x => x.TenantId == tenantId && x.BarcodeNormalized == barcodeNormalized)
-                ?? await db.ProductVariants.Where(x => x.TenantId == tenantId && x.BarcodeNormalized == barcodeNormalized).OrderBy(x => x.Id).FirstOrDefaultAsync(cancellationToken);
+        // Lookups accept both stored key forms and prefer the shared key, so a legacy row and a recomputed
+        // row of the same code never make a single-row lookup throw.
+        if (preferBarcode && barcodeNormalized is not null)
+            variant ??= db.ProductVariants.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ProductId == product.Id && CatalogKeyNormalizer.SameKey(x.BarcodeNormalized, barcodeNormalized))
+                ?? await db.ProductVariants.Where(x => x.TenantId == tenantId && x.ProductId == product.Id && x.BarcodeNormalized != null && barcodeKeys.Contains(x.BarcodeNormalized)).OrderBy(x => x.BarcodeNormalized == barcodeNormalized ? 0 : 1).ThenBy(x => x.Id).FirstOrDefaultAsync(cancellationToken);
+        if (preferBarcode && onlyExistingVariants && variant is null && barcodeNormalized is not null)
+            variant = db.ProductVariants.Local.FirstOrDefault(x => x.TenantId == tenantId && CatalogKeyNormalizer.SameKey(x.BarcodeNormalized, barcodeNormalized))
+                ?? await db.ProductVariants.Where(x => x.TenantId == tenantId && x.BarcodeNormalized != null && barcodeKeys.Contains(x.BarcodeNormalized)).OrderBy(x => x.BarcodeNormalized == barcodeNormalized ? 0 : 1).ThenBy(x => x.Id).FirstOrDefaultAsync(cancellationToken);
         if (!preferBarcode)
-            variant ??= db.ProductVariants.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ProductId == product.Id && x.SkuNormalized == skuNormalized)
-                ?? await db.ProductVariants.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.SkuNormalized == skuNormalized, cancellationToken);
+            variant ??= db.ProductVariants.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ProductId == product.Id && CatalogKeyNormalizer.SameKey(x.SkuNormalized, skuNormalized))
+                ?? await db.ProductVariants.Where(x => x.TenantId == tenantId && skuKeys.Contains(x.SkuNormalized)).OrderBy(x => x.ProductId == product.Id ? 0 : 1).ThenBy(x => x.SkuNormalized == skuNormalized ? 0 : 1).ThenBy(x => x.Id).FirstOrDefaultAsync(cancellationToken);
         if (variant is not null && variant.ProductId != product.Id && !(preferBarcode && onlyExistingVariants))
         {
             await RecordIssue(tenantId, $"product-sync-variant-conflict:{connectionId}:{externalVariantId}", "PRODUCT_VARIANT_CONFLICT", "Pazar yeri varyantı başka bir yerel üründe kullanılan stok koduyla eşleşti; mevcut kayıt korunarak atlandı.", cancellationToken);
             return null;
         }
-        if (!preferBarcode && variant is null && !string.IsNullOrWhiteSpace(barcodeNormalized))
-            variant = await db.ProductVariants.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == product.Id && x.BarcodeNormalized == barcodeNormalized, cancellationToken);
+        if (!preferBarcode && variant is null && barcodeNormalized is not null)
+            variant = await db.ProductVariants.Where(x => x.TenantId == tenantId && x.ProductId == product.Id && x.BarcodeNormalized != null && barcodeKeys.Contains(x.BarcodeNormalized)).OrderBy(x => x.BarcodeNormalized == barcodeNormalized ? 0 : 1).ThenBy(x => x.Id).FirstOrDefaultAsync(cancellationToken);
         if (variant is null && onlyExistingVariants)
             return null;
 
@@ -6656,9 +6658,13 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         {
             var nextModelCode = preferBarcode ? null : Short(remote.ModelCode, 160);
             var nextStatus = remote.Archived ? ProductStatus.Archived : ProductStatus.Active;
-            if (!observeOnly && (variant.SortOrder != sortOrder || variant.Sku != sku || variant.SkuNormalized != skuNormalized || variant.Barcode != barcode || variant.BarcodeNormalized != barcodeNormalized || variant.ModelCode != nextModelCode || variant.OptionSignature != optionSignature || variant.Status != nextStatus))
+            // A stored key in the legacy form that names the same code is kept until the data recompute, so
+            // rewriting it can never collide with another row under the unique index. "" becomes NULL.
+            var nextSkuNormalized = CatalogKeyNormalizer.SameKey(variant.SkuNormalized, skuNormalized) ? variant.SkuNormalized : skuNormalized;
+            var nextBarcodeNormalized = CatalogKeyNormalizer.SameKey(variant.BarcodeNormalized, barcodeNormalized) ? variant.BarcodeNormalized : barcodeNormalized;
+            if (!observeOnly && (variant.SortOrder != sortOrder || variant.Sku != sku || variant.SkuNormalized != nextSkuNormalized || variant.Barcode != barcode || variant.BarcodeNormalized != nextBarcodeNormalized || variant.ModelCode != nextModelCode || variant.OptionSignature != optionSignature || variant.Status != nextStatus))
             {
-                variant.SortOrder = sortOrder; variant.Sku = sku; variant.SkuNormalized = skuNormalized; variant.Barcode = barcode; variant.BarcodeNormalized = barcodeNormalized; variant.ModelCode = nextModelCode; variant.OptionSignature = optionSignature; variant.Status = nextStatus; variant.UpdatedAt = now; variant.Version++;
+                variant.SortOrder = sortOrder; variant.Sku = sku; variant.SkuNormalized = nextSkuNormalized; variant.Barcode = barcode; variant.BarcodeNormalized = nextBarcodeNormalized; variant.ModelCode = nextModelCode; variant.OptionSignature = optionSignature; variant.Status = nextStatus; variant.UpdatedAt = now; variant.Version++;
                 telemetryUpdatedCount++;
             }
         }
@@ -7020,8 +7026,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
     private static bool IsRealColorOptionKey(string value) => IsColorOptionKey(value) && !IsWebColorOptionKey(value);
 
-    // True when the local option signature ("Renk: Mavi | Beden: XL | ...")
-    // carries the same colour and size values as the remote options. Remote
+    // True when the local option signature carries the same colour and size values as the remote options.
+    // It reads both stored forms ("Renk: Mavi | Beden: XL" and the old panel "RENK=MAVI|BEDEN=XL"). Remote
     // options without a colour or size cannot narrow a model-code match.
     internal static bool SameColorAndSize(string? localSignature, IReadOnlyDictionary<string, string> remoteOptions)
     {
@@ -7029,11 +7035,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             .Where(option => IsRealColorOptionKey(option.Key) || IsSizeOptionKey(option.Key))
             .ToList();
         if (axes.Count == 0 || string.IsNullOrWhiteSpace(localSignature)) return false;
-        var local = localSignature.Split(" | ", StringSplitOptions.RemoveEmptyEntries)
-            .Select(part => part.Split(": ", 2))
-            .Where(pair => pair.Length == 2)
-            .GroupBy(pair => NormalizeCatalogKey(pair[0], 80), StringComparer.Ordinal)
-            .ToDictionary(group => group.Key, group => NormalizeCatalogKey(CleanCatalogOptionValue(group.First()[1]), 120), StringComparer.Ordinal);
+        var local = VariantOptionSignature.ParseKeyed(localSignature);
         return axes.All(option => local.TryGetValue(NormalizeCatalogKey(option.Key, 80), out var value)
             && string.Equals(value, NormalizeCatalogKey(CleanCatalogOptionValue(option.Value), 120), StringComparison.Ordinal));
     }
@@ -7147,11 +7149,15 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             optionKey = NormalizeCatalogKey(panelLabel, 160);
             if (categoryContext is not null && !processedPanelOptions.Add(optionKey)) continue;
             valueKey = NormalizeCatalogKey(panelValue, 160);
-            var option = db.ProductOptions.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ProductId == productId && x.NormalizedKey == optionKey)
-                ?? await db.ProductOptions.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.NormalizedKey == optionKey, cancellationToken);
+            // Panel-created options may still hold the legacy key form ("BEDEN/YAŞ" for "Beden/Yaş"); match
+            // both so the import reuses them instead of adding a second option group.
+            var optionKeys = CatalogLookupKeys(panelLabel);
+            var valueKeys = CatalogLookupKeys(panelValue);
+            var option = db.ProductOptions.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ProductId == productId && CatalogKeyNormalizer.SameKey(x.NormalizedKey, optionKey))
+                ?? await db.ProductOptions.Where(x => x.TenantId == tenantId && x.ProductId == productId && optionKeys.Contains(x.NormalizedKey)).OrderBy(x => x.NormalizedKey == optionKey ? 0 : 1).ThenBy(x => x.Id).FirstOrDefaultAsync(cancellationToken);
             if (option is null) { option = new ProductOption { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = productId, Label = Short(panelLabel, 160), NormalizedKey = optionKey, SortOrder = order }; db.ProductOptions.Add(option); }
-            var optionValue = db.ProductOptionValues.Local.FirstOrDefault(x => x.TenantId == tenantId && x.OptionId == option.Id && x.NormalizedKey == valueKey)
-                ?? await db.ProductOptionValues.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.OptionId == option.Id && x.NormalizedKey == valueKey, cancellationToken);
+            var optionValue = db.ProductOptionValues.Local.FirstOrDefault(x => x.TenantId == tenantId && x.OptionId == option.Id && CatalogKeyNormalizer.SameKey(x.NormalizedKey, valueKey))
+                ?? await db.ProductOptionValues.Where(x => x.TenantId == tenantId && x.OptionId == option.Id && valueKeys.Contains(x.NormalizedKey)).OrderBy(x => x.NormalizedKey == valueKey ? 0 : 1).ThenBy(x => x.Id).FirstOrDefaultAsync(cancellationToken);
             if (optionValue is null) { optionValue = new ProductOptionValue { Id = Guid.CreateVersion7(), TenantId = tenantId, OptionId = option.Id, Label = Short(panelValue, 160), NormalizedKey = valueKey, SortOrder = order }; db.ProductOptionValues.Add(optionValue); }
             var assignment = db.VariantOptionValues.Local.FirstOrDefault(x => x.TenantId == tenantId && x.VariantId == variantId && x.OptionId == option.Id)
                 ?? await db.VariantOptionValues.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.VariantId == variantId && x.OptionId == option.Id, cancellationToken);
@@ -7220,30 +7226,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
     private static string ProductTitle(string? title, string externalId) => Short(string.IsNullOrWhiteSpace(title) ? $"Pazar yeri ürünü {externalId}" : title.Trim(), 320);
     private static string CleanCatalogOptionValue(string? value) => string.IsNullOrWhiteSpace(value) ? "" : value.Trim().Trim('"', '“', '”').Trim();
-    private static string OptionSignature(IReadOnlyDictionary<string, string> options)
-    {
-        const int maximumLength = 512;
-        var signature = new StringBuilder(maximumLength);
-        var orderedOptions = options
-            .OrderBy(pair => IsRealColorOptionKey(pair.Key) ? 0 : IsSizeOptionKey(pair.Key) ? 1 : IsWebColorOptionKey(pair.Key) ? 3 : 2)
-            .ThenBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase);
-
-        foreach (var pair in orderedOptions)
-        {
-            var key = Short(pair.Key, 80);
-            var value = Short(CleanCatalogOptionValue(pair.Value), 120);
-            if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(value)) continue;
-
-            var part = $"{key}: {value}";
-            var separatorLength = signature.Length == 0 ? 0 : 3;
-            if (signature.Length + separatorLength + part.Length > maximumLength) break;
-
-            if (separatorLength > 0) signature.Append(" | ");
-            signature.Append(part);
-        }
-
-        return signature.ToString();
-    }
+    private static string OptionSignature(IReadOnlyDictionary<string, string> options) => VariantOptionSignature.Build(options);
     private TimeSpan ProductUpdatePollDelay(DateTimeOffset submittedAt)
     {
         var now = timeProvider.GetUtcNow();
@@ -7266,18 +7249,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     }
 
     private static string Short(string? value, int maximum) => string.IsNullOrWhiteSpace(value) ? "" : value.Trim().Length <= maximum ? value.Trim() : value.Trim()[..maximum];
-    private static string NormalizeCatalogKey(string? value, int maximum)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return "";
-        var form = value.Trim().Normalize(System.Text.NormalizationForm.FormD);
-        var builder = new StringBuilder(form.Length);
-        foreach (var ch in form)
-        {
-            if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(ch) == System.Globalization.UnicodeCategory.NonSpacingMark) continue;
-            if (char.IsLetterOrDigit(ch)) builder.Append(char.ToUpperInvariant(ch)); else if (builder.Length > 0 && builder[^1] != '-') builder.Append('-');
-        }
-        return builder.ToString().Trim('-')[..Math.Min(maximum, builder.ToString().Trim('-').Length)];
-    }
+    // The shared catalog key (CatalogKeyNormalizer); the panel uses the same one, so SKU, barcode, option,
+    // brand and category keys written here and there agree.
+    private static string NormalizeCatalogKey(string? value, int maximum) => CatalogKeyNormalizer.Key(value, maximum);
+    private static string[] CatalogLookupKeys(string? value, int maximum = CatalogKeyNormalizer.DefaultMaximum) => CatalogKeyNormalizer.LookupKeys(value, maximum);
+    private static string? NullIfEmpty(string? value) => string.IsNullOrEmpty(value) ? null : value;
     private static string ImageMime(string url) => new Uri(url).AbsolutePath.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ? "image/png" : "image/jpeg";
 
     // Bump the durable state version so the next order sync starts a bounded

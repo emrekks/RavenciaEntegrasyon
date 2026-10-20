@@ -30,7 +30,8 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             if (parent is null) return NotFound<CategoryView>();
         }
         var normalized = Normalize(name);
-        var existing = await db.Categories.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ParentId == command.ParentId && x.NormalizedName == normalized, cancellationToken);
+        var keys = LookupKeys(name);
+        var existing = await db.Categories.Where(x => x.TenantId == tenantId && x.ParentId == command.ParentId && keys.Contains(x.NormalizedName)).OrderBy(x => x.NormalizedName == normalized ? 0 : 1).ThenBy(x => x.Id).FirstOrDefaultAsync(cancellationToken);
         if (existing?.IsActive == true) return Conflict<CategoryView>("CATEGORY_DUPLICATE", "Aynı üst kategoride bu ad zaten var.");
         var now = timeProvider.GetUtcNow();
         if (existing is not null)
@@ -61,7 +62,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             parent = await db.Categories.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == parentId, cancellationToken); if (parent is null) return NotFound<CategoryView>();
             var descendants = await DescendantIdsAsync(tenantId, id, cancellationToken); if (descendants.Contains(parentId)) return Conflict<CategoryView>("CATEGORY_PARENT_CYCLE", "Kategori kendi altına taşınamaz.");
         }
-        var normalized = Normalize(command.Name); if (await db.Categories.AnyAsync(x => x.TenantId == tenantId && x.Id != id && x.ParentId == command.ParentId && x.NormalizedName == normalized, cancellationToken)) return Conflict<CategoryView>("CATEGORY_DUPLICATE", "Aynı üst kategoride bu ad zaten var.");
+        var normalized = Normalize(command.Name); var nameKeys = LookupKeys(command.Name); if (await db.Categories.AnyAsync(x => x.TenantId == tenantId && x.Id != id && x.ParentId == command.ParentId && nameKeys.Contains(x.NormalizedName), cancellationToken)) return Conflict<CategoryView>("CATEGORY_DUPLICATE", "Aynı üst kategoride bu ad zaten var.");
         var previousParent = category.ParentId; category.Name = command.Name.Trim(); category.NormalizedName = normalized; category.ParentId = command.ParentId; category.Path = parent is null ? category.Name : $"{parent.Path} / {category.Name}"; category.Depth = parent is null ? 0 : parent.Depth + 1; category.IsActive = command.IsActive; category.Version++; category.UpdatedAt = timeProvider.GetUtcNow();
         await RebuildDescendantPathsAsync(category, cancellationToken); await RefreshLeafAsync(tenantId, previousParent, cancellationToken); await RefreshLeafAsync(tenantId, command.ParentId, cancellationToken); await db.SaveChangesAsync(cancellationToken); return ServiceResult<CategoryView>.Ok(MapCategory(category));
     }
@@ -74,8 +75,8 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
 
     public async Task<ServiceResult<BrandView>> CreateBrandAsync(Guid tenantId, CreateBrandCommand command, CancellationToken cancellationToken)
     {
-        var name = command.Name.Trim(); if (name.Length is < 1 or > 160) return Invalid<BrandView>("name", "Marka adı 1-160 karakter olmalıdır."); var normalized = Normalize(name);
-        if (await db.Brands.AnyAsync(x => x.TenantId == tenantId && x.NormalizedName == normalized, cancellationToken)) return Conflict<BrandView>("BRAND_DUPLICATE", "Bu marka zaten var.");
+        var name = command.Name.Trim(); if (name.Length is < 1 or > 160) return Invalid<BrandView>("name", "Marka adı 1-160 karakter olmalıdır."); var normalized = Normalize(name); var keys = LookupKeys(name);
+        if (await db.Brands.AnyAsync(x => x.TenantId == tenantId && keys.Contains(x.NormalizedName), cancellationToken)) return Conflict<BrandView>("BRAND_DUPLICATE", "Bu marka zaten var.");
         var now = timeProvider.GetUtcNow(); var brand = new Brand { Id = Guid.CreateVersion7(), TenantId = tenantId, Name = name, NormalizedName = normalized, CreatedAt = now, UpdatedAt = now };
         db.Brands.Add(brand); await db.SaveChangesAsync(cancellationToken); return ServiceResult<BrandView>.Ok(MapBrand(brand));
     }
@@ -89,7 +90,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     public async Task<ServiceResult<BrandView>> UpdateBrandAsync(Guid tenantId, Guid id, long expectedVersion, UpdateBrandCommand command, CancellationToken cancellationToken)
     {
         var brand = await db.Brands.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken); if (brand is null) return NotFound<BrandView>(); if (brand.Version != expectedVersion) return Precondition<BrandView>(brand.Version);
-        var normalized = Normalize(command.Name); if (await db.Brands.AnyAsync(x => x.TenantId == tenantId && x.Id != id && x.NormalizedName == normalized, cancellationToken)) return Conflict<BrandView>("BRAND_DUPLICATE", "Bu marka zaten var.");
+        var normalized = Normalize(command.Name); var nameKeys = LookupKeys(command.Name); if (await db.Brands.AnyAsync(x => x.TenantId == tenantId && x.Id != id && nameKeys.Contains(x.NormalizedName), cancellationToken)) return Conflict<BrandView>("BRAND_DUPLICATE", "Bu marka zaten var.");
         brand.Name = command.Name.Trim(); brand.NormalizedName = normalized; brand.IsActive = command.IsActive; brand.UpdatedAt = timeProvider.GetUtcNow(); brand.Version++; await db.SaveChangesAsync(cancellationToken); return ServiceResult<BrandView>.Ok(MapBrand(brand));
     }
 
@@ -105,9 +106,9 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     public async Task<ServiceResult<AttributeView>> CreateAttributeAsync(Guid tenantId, CreateAttributeCommand command, CancellationToken cancellationToken)
     {
         if (!TryAttributeType(command.DataType, out var dataType)) return Invalid<AttributeView>("dataType", "İzinli tipler TEXT, NUMBER, SINGLE_SELECT, MULTI_SELECT ve BOOLEAN'dır.");
-        var code = Normalize(command.Code); if (code.Length is < 1 or > 96) return Invalid<AttributeView>("code", "Özellik kodu geçersizdir.");
+        var code = NormalizeCode(command.Code); if (code.Length is < 1 or > 96) return Invalid<AttributeView>("code", "Özellik kodu geçersizdir.");
         var requestedValues = command.Values
-            .Select(value => new { Value = value.Value.Trim(), NormalizedValue = Normalize(value.Value), value.SortOrder })
+            .Select(value => new { Value = value.Value.Trim(), NormalizedValue = NormalizeValue(value.Value), value.SortOrder })
             .ToList();
         if (requestedValues.GroupBy(value => value.NormalizedValue).Any(group => group.Count() > 1)) return Invalid<AttributeView>("values", "Aynı özellik değeri tekrarlanamaz.");
         if (dataType is AttributeDataType.SingleSelect or AttributeDataType.MultiSelect && requestedValues.Count == 0) return Invalid<AttributeView>("values", "Seçimli özellik en az bir değer ister.");
@@ -132,7 +133,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                 .ToListAsync(cancellationToken);
             foreach (var requestedValue in requestedValues)
             {
-                var previousValue = existingValues.FirstOrDefault(value => value.NormalizedValue == requestedValue.NormalizedValue);
+                var previousValue = existingValues.FirstOrDefault(value => CatalogKeyNormalizer.SameKey(value.NormalizedValue, requestedValue.NormalizedValue, 320));
                 if (previousValue is not null)
                 {
                     previousValue.IsActive = true;
@@ -195,17 +196,17 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         {
             return Invalid<AttributeView>("values", "Yalnız metin veya seçim tipindeki özelliklere seçenek değeri eklenebilir.");
         }
-        var normalized = values.Select(x => Normalize(x.Value)).ToArray();
+        var normalized = values.Select(x => NormalizeValue(x.Value)).ToArray();
         if (normalized.Length == 0 || normalized.Any(string.IsNullOrWhiteSpace) || normalized.Distinct().Count() != normalized.Length) return Invalid<AttributeView>("values", "En az bir benzersiz ve boş olmayan seçenek değeri girin.");
         var existing = await db.AttributeValues.Where(x => x.TenantId == tenantId && x.AttributeId == attributeId).OrderBy(x => x.SortOrder).ToListAsync(cancellationToken);
-        if (existing.Any(x => x.IsActive && normalized.Contains(x.NormalizedValue))) return Conflict<AttributeView>("ATTRIBUTE_VALUE_DUPLICATE", "Seçenek değerlerinden biri bu özellikte zaten var.");
+        if (existing.Any(x => x.IsActive && normalized.Any(key => CatalogKeyNormalizer.SameKey(x.NormalizedValue, key, 320)))) return Conflict<AttributeView>("ATTRIBUTE_VALUE_DUPLICATE", "Seçenek değerlerinden biri bu özellikte zaten var.");
         var nextSort = existing.Count == 0 ? 0 : existing.Max(x => x.SortOrder) + 1;
         var now = timeProvider.GetUtcNow();
         var additions = new List<AttributeValue>();
         foreach (var (value, index) in values.Select((value, index) => (value, index)))
         {
             var normalizedValue = normalized[index];
-            var inactiveValue = existing.FirstOrDefault(item => !item.IsActive && item.NormalizedValue == normalizedValue);
+            var inactiveValue = existing.FirstOrDefault(item => !item.IsActive && CatalogKeyNormalizer.SameKey(item.NormalizedValue, normalizedValue, 320));
             if (inactiveValue is not null)
             {
                 inactiveValue.IsActive = true;
@@ -232,20 +233,22 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             .Select(x => x.ValueId!.Value)
             .Distinct()
             .ToListAsync(cancellationToken);
-        var optionKey = Normalize(attribute.Name);
+        var optionNameKeys = LookupKeys(attribute.Name);
         var optionValueKeys = await (from option in db.ProductOptions.AsNoTracking()
                                      join optionValue in db.ProductOptionValues.AsNoTracking() on new { option.TenantId, OptionId = option.Id } equals new { optionValue.TenantId, optionValue.OptionId }
-                                     where option.TenantId == tenantId && option.NormalizedKey == optionKey
+                                     where option.TenantId == tenantId && optionNameKeys.Contains(option.NormalizedKey)
                                      select optionValue.NormalizedKey)
             .Distinct()
             .ToListAsync(cancellationToken);
         var assignedIds = assigned.ToHashSet();
-        var optionKeys = optionValueKeys.ToHashSet(StringComparer.Ordinal);
+        // Option values and attribute values may be stored in the shared or the legacy form; compare both
+        // as shared keys.
+        var optionKeys = optionValueKeys.Select(value => CatalogKeyNormalizer.Key(value)).ToHashSet(StringComparer.Ordinal);
         var used = (await db.AttributeValues.AsNoTracking()
                 .Where(x => x.TenantId == tenantId && x.AttributeId == attributeId && x.IsActive)
                 .Select(x => new { x.Id, x.NormalizedValue })
                 .ToListAsync(cancellationToken))
-            .Where(value => assignedIds.Contains(value.Id) || optionKeys.Contains(value.NormalizedValue))
+            .Where(value => assignedIds.Contains(value.Id) || optionKeys.Contains(CatalogKeyNormalizer.Key(value.NormalizedValue)))
             .Select(value => value.Id)
             .ToList();
         return ServiceResult<IReadOnlyList<Guid>>.Ok(used);
@@ -270,11 +273,12 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var attribute = await db.AttributeDefinitions.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == attributeId && x.IsActive, cancellationToken);
         if (attribute is null) return ServiceResult<AttributeView>.Fail("ATTRIBUTE_NOT_FOUND", "Özellik bulunamadı.", 404);
         if (attribute.Version != expectedVersion) return Precondition<AttributeView>(attribute.Version);
-        var normalized = Normalize(command.Value);
+        var normalized = NormalizeValue(command.Value);
         if (string.IsNullOrWhiteSpace(normalized)) return Invalid<AttributeView>("value", "Değer boş olamaz.");
         var value = await db.AttributeValues.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.AttributeId == attributeId && x.Id == valueId && x.IsActive, cancellationToken);
         if (value is null) return ServiceResult<AttributeView>.Fail("ATTRIBUTE_VALUE_NOT_FOUND", "Seçenek değeri bulunamadı.", 404);
-        if (await db.AttributeValues.AnyAsync(x => x.TenantId == tenantId && x.AttributeId == attributeId && x.IsActive && x.Id != valueId && x.NormalizedValue == normalized, cancellationToken))
+        var valueKeys = LookupKeys(command.Value, 320);
+        if (await db.AttributeValues.AnyAsync(x => x.TenantId == tenantId && x.AttributeId == attributeId && x.IsActive && x.Id != valueId && valueKeys.Contains(x.NormalizedValue), cancellationToken))
             return Conflict<AttributeView>("ATTRIBUTE_VALUE_DUPLICATE", "Bu özellikte aynı değer zaten var.");
         value.Value = command.Value.Trim();
         value.NormalizedValue = normalized;
@@ -704,14 +708,16 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
 
         var normalizedSkus = command.Variants.Select(x => Normalize(x.Sku)).ToArray();
         if (normalizedSkus.Any(string.IsNullOrWhiteSpace) || normalizedSkus.Distinct().Count() != normalizedSkus.Length) return Invalid<ProductView>("variants", "SKU boş veya tekrarlı olamaz.");
-        if (await db.ProductVariants.AnyAsync(x => x.TenantId == tenantId && normalizedSkus.Contains(x.SkuNormalized), cancellationToken)) return Conflict<ProductView>("SKU_CONFLICT_REVIEW_REQUIRED", "SKU başka bir varyantla çakışıyor; otomatik birleştirme yapılmadı.");
-        var normalizedBarcodes = command.Variants.Where(x => !string.IsNullOrWhiteSpace(x.Barcode)).Select(x => Normalize(x.Barcode!)).ToArray();
-        if (normalizedBarcodes.Distinct().Count() != normalizedBarcodes.Length || await db.ProductVariants.AnyAsync(x => x.TenantId == tenantId && x.BarcodeNormalized != null && normalizedBarcodes.Contains(x.BarcodeNormalized), cancellationToken)) return Conflict<ProductView>("BARCODE_CONFLICT_REVIEW_REQUIRED", "Barkod başka bir varyantla çakışıyor; otomatik birleştirme yapılmadı.");
+        var skuKeys = CatalogKeyNormalizer.LookupKeys(command.Variants.Select(x => x.Sku));
+        if (await db.ProductVariants.AnyAsync(x => x.TenantId == tenantId && skuKeys.Contains(x.SkuNormalized), cancellationToken)) return Conflict<ProductView>("SKU_CONFLICT_REVIEW_REQUIRED", "SKU başka bir varyantla çakışıyor; otomatik birleştirme yapılmadı.");
+        var normalizedBarcodes = command.Variants.Select(x => NormalizeBarcode(x.Barcode)).OfType<string>().ToArray();
+        var barcodeKeys = CatalogKeyNormalizer.LookupKeys(command.Variants.Select(x => x.Barcode));
+        if (normalizedBarcodes.Distinct().Count() != normalizedBarcodes.Length || await db.ProductVariants.AnyAsync(x => x.TenantId == tenantId && x.BarcodeNormalized != null && barcodeKeys.Contains(x.BarcodeNormalized), cancellationToken)) return Conflict<ProductView>("BARCODE_CONFLICT_REVIEW_REQUIRED", "Barkod başka bir varyantla çakışıyor; otomatik birleştirme yapılmadı.");
 
         var now = timeProvider.GetUtcNow();
         var productStatus = command.Status == "ACTIVE" ? ProductStatus.Active : (command.Status == "ARCHIVED" ? ProductStatus.Archived : ProductStatus.Draft); var product = new Product { Id = Guid.CreateVersion7(), TenantId = tenantId, Title = command.Title.Trim(), Description = command.Description.Trim(), BrandId = command.BrandId, CategoryId = command.CategoryId, DefaultListPrice = command.DefaultListPrice, DefaultSalePrice = command.DefaultSalePrice, Status = productStatus, CreatedAt = now, UpdatedAt = now };
         if (command.Variants.Any(variant => variant.CostPrice is < 0)) return Invalid<ProductView>("variants", "Maliyet negatif olamaz.");
-        var variants = command.Variants.Select((variant, index) => new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = product.Id, SortOrder = index, Sku = variant.Sku.Trim(), SkuNormalized = Normalize(variant.Sku), Barcode = NullTrim(variant.Barcode), BarcodeNormalized = string.IsNullOrWhiteSpace(variant.Barcode) ? null : Normalize(variant.Barcode), ModelCode = NullTrim(variant.ModelCode), OptionSignature = Signature(variant.Options), Status = productStatus, Weight = PositiveOrNull(variant.Weight), Width = PositiveOrNull(variant.Width), Height = PositiveOrNull(variant.Height), Length = PositiveOrNull(variant.Length), Desi = PositiveOrNull(variant.Desi), CostPrice = NonNegativeOrNull(variant.CostPrice), DefaultListPrice = variant.DefaultListPrice, DefaultSalePrice = variant.DefaultSalePrice, CreatedAt = now, UpdatedAt = now }).ToList();
+        var variants = command.Variants.Select((variant, index) => new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = product.Id, SortOrder = index, Sku = variant.Sku.Trim(), SkuNormalized = Normalize(variant.Sku), Barcode = NullTrim(variant.Barcode), BarcodeNormalized = NormalizeBarcode(variant.Barcode), ModelCode = NullTrim(variant.ModelCode), OptionSignature = Signature(variant.Options), Status = productStatus, Weight = PositiveOrNull(variant.Weight), Width = PositiveOrNull(variant.Width), Height = PositiveOrNull(variant.Height), Length = PositiveOrNull(variant.Length), Desi = PositiveOrNull(variant.Desi), CostPrice = NonNegativeOrNull(variant.CostPrice), DefaultListPrice = variant.DefaultListPrice, DefaultSalePrice = variant.DefaultSalePrice, CreatedAt = now, UpdatedAt = now }).ToList();
         db.Products.Add(product);
         db.ProductVariants.AddRange(variants);
         db.ProductAttributeAssignments.AddRange(globalAssignments.Select(x => Assignment(tenantId, product.Id, null, x)));
@@ -767,10 +773,6 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             .OrderBy(x => x.SortOrder).ThenBy(x => x.Id)
             .ToListAsync(cancellationToken);
 
-        var usedSkus = (await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId).Select(x => x.SkuNormalized).ToListAsync(cancellationToken)).ToHashSet(StringComparer.Ordinal);
-        var usedBarcodes = (await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.BarcodeNormalized != null).Select(x => x.BarcodeNormalized!).ToListAsync(cancellationToken)).ToHashSet(StringComparer.Ordinal);
-        var usedModelCodes = (await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ModelCode != null).Select(x => x.ModelCode!).ToListAsync(cancellationToken)).Select(Normalize).ToHashSet(StringComparer.Ordinal);
-
         var now = timeProvider.GetUtcNow();
         var copyProductIds = new Dictionary<Guid, Guid>(sourceProducts.Count);
         var copies = new List<Product>(sourceProducts.Count);
@@ -796,6 +798,12 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         }
 
         var token = copyProductIds[productId].ToString("N")[..8];
+        // Every copy code carries the token, so only stored codes containing it can collide; load those
+        // instead of every code of the tenant.
+        var tokenKey = token.ToUpperInvariant();
+        var usedSkus = (await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.SkuNormalized.Contains(tokenKey)).Select(x => x.SkuNormalized).ToListAsync(cancellationToken)).Select(value => Normalize(value)).ToHashSet(StringComparer.Ordinal);
+        var usedBarcodes = (await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.BarcodeNormalized != null && x.BarcodeNormalized.Contains(tokenKey)).Select(x => x.BarcodeNormalized!).ToListAsync(cancellationToken)).Select(value => Normalize(value)).ToHashSet(StringComparer.Ordinal);
+        var usedModelCodes = (await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ModelCode != null && x.ModelCode.ToUpper().Contains(tokenKey)).Select(x => x.ModelCode!).ToListAsync(cancellationToken)).Select(value => Normalize(value)).ToHashSet(StringComparer.Ordinal);
         var modelCodeCopies = new Dictionary<string, string>(StringComparer.Ordinal);
         var newVariants = new List<ProductVariant>(sourceVariants.Count);
         var variantIdMap = new Dictionary<Guid, Guid>(sourceVariants.Count);
@@ -829,7 +837,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                 Sku = sku,
                 SkuNormalized = Normalize(sku),
                 Barcode = barcode,
-                BarcodeNormalized = barcode is null ? null : Normalize(barcode),
+                BarcodeNormalized = NormalizeBarcode(barcode),
                 ModelCode = modelCode,
                 OptionSignature = sourceVariant.OptionSignature,
                 Status = ProductStatus.Draft,
@@ -1037,14 +1045,18 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             var updatesById = variantUpdates.ToDictionary(x => x.Id);
             var proposedSkus = existingVariants.Select(variant => Normalize(updatesById.TryGetValue(variant.Id, out var update) ? update.Sku : variant.Sku)).ToArray();
             if (proposedSkus.Any(string.IsNullOrWhiteSpace) || proposedSkus.Distinct().Count() != proposedSkus.Length) return Invalid<ProductView>("variantUpdates", "Stok kodları boş veya tekrarlı olamaz.");
-            var proposedBarcodes = existingVariants.Select(variant => updatesById.TryGetValue(variant.Id, out var update) ? Normalize(update.Barcode ?? string.Empty) : variant.BarcodeNormalized).Where(value => !string.IsNullOrWhiteSpace(value)).Cast<string>().ToArray();
+            var proposedBarcodes = existingVariants.Select(variant => updatesById.TryGetValue(variant.Id, out var update) ? NormalizeBarcode(update.Barcode) : NormalizeBarcode(variant.Barcode)).OfType<string>().ToArray();
             if (proposedBarcodes.Distinct().Count() != proposedBarcodes.Length) return Conflict<ProductView>("BARCODE_CONFLICT_REVIEW_REQUIRED", "Barkodlar ürün içinde benzersiz olmalıdır.");
-            if (await db.ProductVariants.AnyAsync(x => x.TenantId == tenantId && !familyVariantProductIds.Contains(x.ProductId) && (proposedSkus.Contains(x.SkuNormalized) || x.BarcodeNormalized != null && proposedBarcodes.Contains(x.BarcodeNormalized)), cancellationToken)) return Conflict<ProductView>("VARIANT_CODE_CONFLICT_REVIEW_REQUIRED", "Stok kodu veya barkod başka bir varyantla çakışıyor.");
+            var proposedSkuKeys = CatalogKeyNormalizer.LookupKeys(existingVariants.Select(variant => updatesById.TryGetValue(variant.Id, out var update) ? update.Sku : variant.Sku));
+            var proposedBarcodeKeys = CatalogKeyNormalizer.LookupKeys(existingVariants.Select(variant => updatesById.TryGetValue(variant.Id, out var update) ? update.Barcode : variant.Barcode));
+            if (await db.ProductVariants.AnyAsync(x => x.TenantId == tenantId && !familyVariantProductIds.Contains(x.ProductId) && (proposedSkuKeys.Contains(x.SkuNormalized) || x.BarcodeNormalized != null && proposedBarcodeKeys.Contains(x.BarcodeNormalized)), cancellationToken)) return Conflict<ProductView>("VARIANT_CODE_CONFLICT_REVIEW_REQUIRED", "Stok kodu veya barkod başka bir varyantla çakışıyor.");
             var updatedAt = timeProvider.GetUtcNow();
             foreach (var update in variantUpdates)
             {
                 var variant = existingVariants.Single(x => x.Id == update.Id);
-                variant.Sku = update.Sku.Trim(); variant.SkuNormalized = Normalize(update.Sku); variant.Barcode = NullTrim(update.Barcode); variant.BarcodeNormalized = string.IsNullOrWhiteSpace(update.Barcode) ? null : Normalize(update.Barcode); variant.ModelCode = NullTrim(update.ModelCode); variant.CostPrice = NonNegativeOrNull(update.CostPrice); if (update.DefaultListPrice is decimal variantDefaultListPrice) variant.DefaultListPrice = variantDefaultListPrice; if (update.DefaultSalePrice is decimal variantDefaultSalePrice) variant.DefaultSalePrice = variantDefaultSalePrice; variant.SortOrder = Math.Max(0, update.SortOrder);
+                // A stored key in the legacy form that still names the same code is kept until the data
+                // recompute, so an unchanged code never collides with itself under the unique index.
+                variant.Sku = update.Sku.Trim(); if (!CatalogKeyNormalizer.SameKey(variant.SkuNormalized, update.Sku)) variant.SkuNormalized = Normalize(update.Sku); variant.Barcode = NullTrim(update.Barcode); if (!CatalogKeyNormalizer.SameKey(variant.BarcodeNormalized, update.Barcode)) variant.BarcodeNormalized = NormalizeBarcode(update.Barcode); variant.ModelCode = NullTrim(update.ModelCode); variant.CostPrice = NonNegativeOrNull(update.CostPrice); if (update.DefaultListPrice is decimal variantDefaultListPrice) variant.DefaultListPrice = variantDefaultListPrice; if (update.DefaultSalePrice is decimal variantDefaultSalePrice) variant.DefaultSalePrice = variantDefaultSalePrice; variant.SortOrder = Math.Max(0, update.SortOrder);
                 if (update.Options is not null) variant.OptionSignature = Signature(update.Options);
                 variant.UpdatedAt = updatedAt; variant.Version++;
             }
@@ -1080,9 +1092,11 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             if (optionValidation is not null) return ServiceResult<ProductView>.Fail(optionValidation.Code, optionValidation.Message, optionValidation.Status, optionValidation.FieldErrors);
             var normalizedSkus = variantsToCreate.Select(x => Normalize(x.Sku)).ToArray();
             if (normalizedSkus.Any(string.IsNullOrWhiteSpace) || normalizedSkus.Distinct().Count() != normalizedSkus.Length) return Invalid<ProductView>("variantsToCreate", "SKU boş veya tekrarlı olamaz.");
-            if (await db.ProductVariants.AnyAsync(x => x.TenantId == tenantId && normalizedSkus.Contains(x.SkuNormalized) && !variantIdsToDelete.Contains(x.Id), cancellationToken)) return Conflict<ProductView>("SKU_CONFLICT_REVIEW_REQUIRED", "SKU başka bir varyantla çakışıyor; otomatik birleştirme yapılmadı.");
-            var normalizedBarcodes = variantsToCreate.Where(x => !string.IsNullOrWhiteSpace(x.Barcode)).Select(x => Normalize(x.Barcode!)).ToArray();
-            if (normalizedBarcodes.Distinct().Count() != normalizedBarcodes.Length || await db.ProductVariants.AnyAsync(x => x.TenantId == tenantId && x.BarcodeNormalized != null && normalizedBarcodes.Contains(x.BarcodeNormalized) && !variantIdsToDelete.Contains(x.Id), cancellationToken)) return Conflict<ProductView>("BARCODE_CONFLICT_REVIEW_REQUIRED", "Barkod başka bir varyantla çakışıyor; otomatik birleştirme yapılmadı.");
+            var createSkuKeys = CatalogKeyNormalizer.LookupKeys(variantsToCreate.Select(x => x.Sku));
+            if (await db.ProductVariants.AnyAsync(x => x.TenantId == tenantId && createSkuKeys.Contains(x.SkuNormalized) && !variantIdsToDelete.Contains(x.Id), cancellationToken)) return Conflict<ProductView>("SKU_CONFLICT_REVIEW_REQUIRED", "SKU başka bir varyantla çakışıyor; otomatik birleştirme yapılmadı.");
+            var normalizedBarcodes = variantsToCreate.Select(x => NormalizeBarcode(x.Barcode)).OfType<string>().ToArray();
+            var createBarcodeKeys = CatalogKeyNormalizer.LookupKeys(variantsToCreate.Select(x => x.Barcode));
+            if (normalizedBarcodes.Distinct().Count() != normalizedBarcodes.Length || await db.ProductVariants.AnyAsync(x => x.TenantId == tenantId && x.BarcodeNormalized != null && createBarcodeKeys.Contains(x.BarcodeNormalized) && !variantIdsToDelete.Contains(x.Id), cancellationToken)) return Conflict<ProductView>("BARCODE_CONFLICT_REVIEW_REQUIRED", "Barkod başka bir varyantla çakışıyor; otomatik birleştirme yapılmadı.");
 
             var globalAssignments = command.Attributes ?? await db.ProductAttributeAssignments.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == id && x.VariantId == null).Select(x => new ProductAttributeCommand(x.AttributeId, x.ValueId, x.TextValue, x.NumberValue, x.BooleanValue, x.SortOrder)).ToListAsync(cancellationToken);
             if (command.CategoryId is Guid categoryId)
@@ -1103,7 +1117,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                 "DRAFT" => ProductStatus.Draft,
                 _ => product.Status
             };
-            var newVariants = variantsToCreate.Select((variant, index) => new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = id, SortOrder = Math.Max(0, variant.SortOrder), Sku = variant.Sku.Trim(), SkuNormalized = Normalize(variant.Sku), Barcode = NullTrim(variant.Barcode), BarcodeNormalized = string.IsNullOrWhiteSpace(variant.Barcode) ? null : Normalize(variant.Barcode), ModelCode = NullTrim(variant.ModelCode), OptionSignature = Signature(variant.Options), Status = newVariantStatus, Weight = PositiveOrNull(variant.Weight), Width = PositiveOrNull(variant.Width), Height = PositiveOrNull(variant.Height), Length = PositiveOrNull(variant.Length), Desi = PositiveOrNull(variant.Desi), CostPrice = NonNegativeOrNull(variant.CostPrice), DefaultListPrice = variant.DefaultListPrice, DefaultSalePrice = variant.DefaultSalePrice, CreatedAt = now, UpdatedAt = now }).ToList();
+            var newVariants = variantsToCreate.Select((variant, index) => new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = id, SortOrder = Math.Max(0, variant.SortOrder), Sku = variant.Sku.Trim(), SkuNormalized = Normalize(variant.Sku), Barcode = NullTrim(variant.Barcode), BarcodeNormalized = NormalizeBarcode(variant.Barcode), ModelCode = NullTrim(variant.ModelCode), OptionSignature = Signature(variant.Options), Status = newVariantStatus, Weight = PositiveOrNull(variant.Weight), Width = PositiveOrNull(variant.Width), Height = PositiveOrNull(variant.Height), Length = PositiveOrNull(variant.Length), Desi = PositiveOrNull(variant.Desi), CostPrice = NonNegativeOrNull(variant.CostPrice), DefaultListPrice = variant.DefaultListPrice, DefaultSalePrice = variant.DefaultSalePrice, CreatedAt = now, UpdatedAt = now }).ToList();
             db.ProductVariants.AddRange(newVariants);
             for (var index = 0; index < newVariants.Count; index++) db.ProductAttributeAssignments.AddRange((variantsToCreate[index].Attributes ?? []).Select(x => Assignment(tenantId, id, newVariants[index].Id, x)));
             await PersistVariantOptionsAsync(tenantId, id, newVariants, variantsToCreate, cancellationToken);
@@ -1888,8 +1902,9 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         foreach (var optionGroup in optionRows)
         {
             var first = optionGroup.First();
-            var option = db.ProductOptions.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ProductId == productId && x.NormalizedKey == optionGroup.Key)
-                ?? await db.ProductOptions.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.NormalizedKey == optionGroup.Key, cancellationToken);
+            var optionKeys = LookupKeys(first.Key);
+            var option = db.ProductOptions.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ProductId == productId && CatalogKeyNormalizer.SameKey(x.NormalizedKey, optionGroup.Key))
+                ?? await db.ProductOptions.Where(x => x.TenantId == tenantId && x.ProductId == productId && optionKeys.Contains(x.NormalizedKey)).OrderBy(x => x.NormalizedKey == optionGroup.Key ? 0 : 1).ThenBy(x => x.Id).FirstOrDefaultAsync(cancellationToken);
             if (option is null)
             {
                 option = new ProductOption { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = productId, Label = first.Key.Trim(), NormalizedKey = optionGroup.Key, SortOrder = optionRows.IndexOf(optionGroup) };
@@ -1898,8 +1913,9 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             foreach (var row in optionGroup)
             {
                 var valueKey = Normalize(row.Value);
-                var optionValue = db.ProductOptionValues.Local.FirstOrDefault(x => x.TenantId == tenantId && x.OptionId == option.Id && x.NormalizedKey == valueKey)
-                    ?? await db.ProductOptionValues.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.OptionId == option.Id && x.NormalizedKey == valueKey, cancellationToken);
+                var valueKeys = LookupKeys(row.Value);
+                var optionValue = db.ProductOptionValues.Local.FirstOrDefault(x => x.TenantId == tenantId && x.OptionId == option.Id && CatalogKeyNormalizer.SameKey(x.NormalizedKey, valueKey))
+                    ?? await db.ProductOptionValues.Where(x => x.TenantId == tenantId && x.OptionId == option.Id && valueKeys.Contains(x.NormalizedKey)).OrderBy(x => x.NormalizedKey == valueKey ? 0 : 1).ThenBy(x => x.Id).FirstOrDefaultAsync(cancellationToken);
                 if (optionValue is null)
                 {
                     optionValue = new ProductOptionValue { Id = Guid.CreateVersion7(), TenantId = tenantId, OptionId = option.Id, Label = row.Value.Trim(), NormalizedKey = valueKey, SortOrder = optionGroup.Select(x => Normalize(x.Value)).Distinct(StringComparer.Ordinal).ToList().IndexOf(valueKey) };
@@ -2027,7 +2043,13 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
 
     private Guid Decode(string? cursor) => cursors.TryDecode(cursor, out var id) ? id : throw new ArgumentException("Cursor geçersiz veya süresi dolmuş.", nameof(cursor));
     private PageResult<TView> Page<TEntity, TView>(List<TEntity> rows, int limit, Func<TEntity, TView> map) where TEntity : class { var hasMore = rows.Count > limit; var items = rows.Take(limit).Select(map).ToList(); var next = hasMore ? cursors.Encode((Guid)typeof(TEntity).GetProperty("Id")!.GetValue(rows[limit - 1])!) : null; return new(items, next, hasMore); }
-    private static string Normalize(string value) => value.Trim().ToUpperInvariant();
+    // Shared catalog key (CatalogKeyNormalizer) for codes, names and option keys; attribute values allow 320.
+    private static string Normalize(string value) => CatalogKeyNormalizer.Key(value);
+    private static string NormalizeValue(string value) => CatalogKeyNormalizer.Key(value, 320);
+    private static string? NormalizeBarcode(string? value) => CatalogKeyNormalizer.Key(value) is { Length: > 0 } key ? key : null;
+    private static string[] LookupKeys(string? value, int maximum = CatalogKeyNormalizer.DefaultMaximum) => CatalogKeyNormalizer.LookupKeys(value, maximum);
+    // Attribute codes are identifiers chosen by the user, not matching keys; they keep their old form.
+    private static string NormalizeCode(string value) => value.Trim().ToUpperInvariant();
     private static string NormalizeRequirementRole(string? value) => string.Equals(value?.Trim(), "OPTION", StringComparison.OrdinalIgnoreCase) ? "OPTION" : "ATTRIBUTE";
     internal static bool IsWebColorAttributeName(string? value)
     {
@@ -2035,7 +2057,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         return normalized is "WEBCOLOR" or "WEBCOLOUR" or "WEBRENK";
     }
     private static string? NullTrim(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
-    private static string Signature(IReadOnlyDictionary<string, string>? options) => options is null || options.Count == 0 ? "-" : string.Join('|', options.OrderBy(x => x.Key, StringComparer.Ordinal).Select(x => $"{Normalize(x.Key)}={Normalize(x.Value)}"));
+    private static string Signature(IReadOnlyDictionary<string, string>? options) => VariantOptionSignature.Build(options, empty: "-");
     private static bool TryAttributeType(string value, out AttributeDataType result) { result = value.Trim().ToUpperInvariant() switch { "TEXT" => AttributeDataType.Text, "NUMBER" => AttributeDataType.Number, "SINGLE_SELECT" => AttributeDataType.SingleSelect, "MULTI_SELECT" => AttributeDataType.MultiSelect, "BOOLEAN" => AttributeDataType.Boolean, _ => (AttributeDataType)(-1) }; return Enum.IsDefined(result); }
     private static bool TryProductStatus(string value, out ProductStatus result) => Enum.TryParse(value, true, out result);
     private static CategoryView MapCategory(Category value) => new(value.Id, value.ParentId, value.Name, value.Path, value.Depth, value.IsLeaf, value.IsActive, value.Version);

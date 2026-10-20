@@ -107,7 +107,7 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
                            select new { productMedia.VariantId, productMedia.SortOrder, asset.Id, asset.Classification, asset.RelativePath, asset.MimeType }).ToListAsync(cancellationToken);
         var title = (profile.TitleOverride ?? product.Title).Trim();
         var description = (profile.DescriptionOverride ?? product.Description).Trim();
-        if (!title.StartsWith(brandName, StringComparison.OrdinalIgnoreCase) || (title.Length > brandName.Length && char.IsLetterOrDigit(title[brandName.Length])))
+        if (!StartsWithBrand(title, brandName))
             return Fail("PRODUCT_TITLE_BRAND_PREFIX_REQUIRED", "Hepsiburada ürün başlığı marka adıyla başlamalıdır.", "title");
         if (title.Length is < 1 or > 200) return Fail("PRODUCT_TITLE_INVALID", "Hepsiburada ürün başlığı 1-200 karakter olmalıdır.");
         if (description.Length is < 1 or > 30000) return Fail("PRODUCT_DESCRIPTION_INVALID", "Hepsiburada ürün açıklaması 1-30000 karakter olmalıdır.");
@@ -129,7 +129,9 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
 
             var assignedMedia = media.Where(x => x.VariantId == variant.Id).ToList();
             var relevantMedia = assignedMedia.Count > 0 ? assignedMedia : media.Where(x => x.VariantId is null).ToList();
-            if (relevantMedia.Any(item => !string.Equals(item.MimeType, "image/jpeg", StringComparison.OrdinalIgnoreCase) && !string.Equals(item.MimeType, "image/png", StringComparison.OrdinalIgnoreCase))) return Fail("PRODUCT_MEDIA_MIME_INVALID", $"'{variant.Sku}' ürün görselleri JPEG veya PNG olmalıdır.");
+            // Only uploaded files have a verified MIME type; a registered URL is stored as image/remote and
+            // Hepsiburada fetches and checks it itself (K4).
+            if (relevantMedia.Any(item => item.Classification == "PRODUCT_MEDIA" && !string.Equals(item.MimeType, "image/jpeg", StringComparison.OrdinalIgnoreCase) && !string.Equals(item.MimeType, "image/png", StringComparison.OrdinalIgnoreCase))) return Fail("PRODUCT_MEDIA_MIME_INVALID", $"'{variant.Sku}' ürün görselleri JPEG veya PNG olmalıdır.");
             var directUrls = relevantMedia.Where(x => x.Classification == "PRODUCT_MEDIA_URL").Select(x => x.RelativePath.Trim()).ToList();
             if (directUrls.Any(url => !ProductPublicationComposer.IsPublicHttpsUrl(url))) return Fail("PRODUCT_MEDIA_PUBLIC_URL_INVALID", $"'{variant.Sku}' için görsel adresleri geçerli herkese açık HTTPS adresi olmalıdır.");
             var imageUrls = relevantMedia.Select(item => item.Classification == "PRODUCT_MEDIA_URL" ? item.RelativePath.Trim() : ProductPublicationComposer.BuildPublicProductMediaUrl(configuration["Marketplace:PublicBaseUrl"], item.Id))
@@ -334,6 +336,16 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
     }
 
     private static string Normalize(string value) => value.Trim().ToUpperInvariant();
+
+    // The title must open with the brand as a whole word. Compared on the shared catalog key, so case,
+    // Turkish İ/ı/i and accents do not matter ("İpek Şal" starts with brand "ipek").
+    internal static bool StartsWithBrand(string title, string brandName)
+    {
+        var titleKey = CatalogKeyNormalizer.Key(title, 1024);
+        var brandKey = CatalogKeyNormalizer.Key(brandName, 1024);
+        return brandKey.Length > 0 && (titleKey == brandKey || titleKey.StartsWith(brandKey + "-", StringComparison.Ordinal));
+    }
+
     private static ServiceResult<ProductPublicationDraft> NotFound() => ServiceResult<ProductPublicationDraft>.Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", 404);
     private static ServiceResult<ProductPublicationDraft> Fail(string code, string message, string? field = null, int status = 422) => ServiceResult<ProductPublicationDraft>.Fail(code, message, status, field is null ? null : new Dictionary<string, string[]> { [field] = [message] });
 }
