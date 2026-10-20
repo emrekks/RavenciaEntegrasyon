@@ -58,7 +58,7 @@ function Shell({ me }: { me: Me }) {
   const invoiceWorkspaceSummary = useQuery({ queryKey: ['invoice-workspace-summary'], queryFn: () => hubApi<{ dueSoonCount: number; uninvoicedCount?: number }>('/invoice-workspace/summary'), staleTime: 30_000, refetchOnWindowFocus: true })
   // The menu counts poll only while the tab is on screen, and say they are automatic (hubPoll) so the server does not count
   // them as the person using the panel (otherwise an open tab would never reach the idle sign-out).
-  const orderSummary = useQuery({ queryKey: ['orders', 'summary', []], queryFn: () => hubPoll<OrderNavigationSummary>('/orders/summary'), staleTime: 30_000, refetchOnMount: 'always', refetchOnWindowFocus: true, refetchInterval: 15_000 })
+  const orderSummary = useQuery({ queryKey: ['orders', 'summary', []], queryFn: () => hubPoll<OrderNavigationSummary>('/orders/summary?tabs=PENDING'), staleTime: 30_000, refetchOnMount: 'always', refetchOnWindowFocus: true, refetchInterval: 15_000 })
   const questionWaitingSummary = useQuery({ queryKey: ['questions', 'navigation-waiting'], queryFn: () => hubPoll<{ totalCount: number }>(questionWaitingSummaryPath), staleTime: 30_000, refetchInterval: 60_000, refetchOnWindowFocus: true })
   const [sidebarPinned, setSidebarPinned] = useState(() => localStorage.getItem('ravencia.sidebarPinned') !== 'false')
   const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false)

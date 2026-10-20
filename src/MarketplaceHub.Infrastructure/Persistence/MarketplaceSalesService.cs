@@ -553,13 +553,42 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
     public Task<OrderSummaryView> OrderSummaryAsync(Guid tenantId, string? platform, CancellationToken cancellationToken) =>
         OrderSummaryAsync(tenantId, new OrderListQuery(Platform: platform), cancellationToken);
 
+    // A cached answer per tenant, filters and tab set. Every open panel page polls the menu counter; without
+    // this, identical counts ran side by side and their memory took the database over its limit (live
+    // 20 Oct 2026: PostgreSQL killed by the out-of-memory killer while several 15-tab counts ran).
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTimeOffset At, OrderSummaryView View)> OrderSummaryCache = new();
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> OrderSummaryGates = new();
+    internal static readonly TimeSpan OrderSummaryCacheLifetime = TimeSpan.FromSeconds(20);
+
     // Each counter is the number of distinct orders its tab lists for the same filters (date,
     // search, platform, cargo, invoice, label): the tab query itself, counted once per tab in a
-    // single round trip.
-    public async Task<OrderSummaryView> OrderSummaryAsync(Guid tenantId, OrderListQuery options, CancellationToken cancellationToken)
+    // single round trip. Only the requested tabs are counted.
+    public async Task<OrderSummaryView> OrderSummaryAsync(Guid tenantId, OrderListQuery options, CancellationToken cancellationToken, IReadOnlyCollection<string>? tabs = null, bool allowCached = false)
+    {
+        var requested = tabs is null ? OrderSummaryTabs : OrderSummaryTabs.Where(tab => tabs.Contains(tab, StringComparer.OrdinalIgnoreCase)).ToArray();
+        if (requested.Length == 0) requested = OrderSummaryTabs;
+        if (!allowCached) return await CountOrderSummaryAsync(tenantId, options, requested, cancellationToken);
+
+        var key = $"{tenantId:N}|{string.Join(',', requested)}|{JsonSerializer.Serialize(options)}";
+        if (OrderSummaryCache.TryGetValue(key, out var cached) && DateTimeOffset.UtcNow - cached.At < OrderSummaryCacheLifetime) return cached.View;
+        var gate = OrderSummaryGates.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            // A request that waited behind an identical one takes its answer.
+            if (OrderSummaryCache.TryGetValue(key, out cached) && DateTimeOffset.UtcNow - cached.At < OrderSummaryCacheLifetime) return cached.View;
+            var view = await CountOrderSummaryAsync(tenantId, options, requested, cancellationToken);
+            if (OrderSummaryCache.Count > 1000) OrderSummaryCache.Clear();
+            OrderSummaryCache[key] = (DateTimeOffset.UtcNow, view);
+            return view;
+        }
+        finally { gate.Release(); }
+    }
+
+    private async Task<OrderSummaryView> CountOrderSummaryAsync(Guid tenantId, OrderListQuery options, string[] requested, CancellationToken cancellationToken)
     {
         IQueryable<string>? tagged = null;
-        foreach (var tab in OrderSummaryTabs)
+        foreach (var tab in requested)
         {
             var tabName = tab;
             var rows = FilteredOrders(tenantId, options with { Status = tab, Sort = null }).Select(_ => tabName);

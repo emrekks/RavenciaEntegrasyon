@@ -36,6 +36,13 @@ public sealed class OrderListDeepAuditPostgreSqlTests(PostgreSqlTenantIsolationF
             Assert.Equal(1, summary.ManualReview);
             Assert.Equal(1, summary.Undelivered);
 
+            // The menu counter asks for one tab only: that counter matches, the others are not counted, and a cached
+            // answer is the same.
+            var menu = await service.OrderSummaryAsync(tenantId, all, CancellationToken.None, ["PENDING"], allowCached: true);
+            Assert.Equal(summary.Pending, menu.Pending);
+            Assert.Equal(0, menu.All);
+            Assert.Equal(menu, await service.OrderSummaryAsync(tenantId, all, CancellationToken.None, ["PENDING"], allowCached: true));
+
             // The counters follow the list's other filters too.
             var searched = await service.OrderSummaryAsync(tenantId, all with { Search = "ışık" }, CancellationToken.None);
             Assert.Equal(1, searched.All);

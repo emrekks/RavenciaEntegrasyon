@@ -55,7 +55,8 @@ services:
     volumes: [pg_data:/var/lib/postgresql]
     # API and Worker cap each Npgsql pool at 25 (app_db_connection.txt); 150 leaves
     # room for both services' pools, LISTEN, migrate, backup and psql sessions.
-    # shared_buffers/effective_cache_size fit the 1 GiB container limit on an 8 GiB host;
+    # shared_buffers/effective_cache_size fit the 2 GiB container limit on an 8 GiB host (1 GiB left too little
+    # room for query memory: PostgreSQL was killed by the out-of-memory killer four times on 20 Oct 2026);
     # statements slower than 2 s are logged.
     command:
       - postgres
@@ -80,7 +81,7 @@ services:
     logging: *local_logging
     deploy:
       resources:
-        limits: { memory: 1024M, cpus: "1.50" }
+        limits: { memory: 2048M, cpus: "1.50" }
 
   migrate:
     <<: *app

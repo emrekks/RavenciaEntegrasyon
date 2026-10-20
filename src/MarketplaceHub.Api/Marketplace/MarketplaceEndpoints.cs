@@ -86,9 +86,13 @@ public static class MarketplaceEndpoints
                 ? await service.MarkLabelPrintedAsync(tenant.TenantId, id, http.RequestAborted) ? Results.NoContent() : Results.NotFound()
                 : Unauthorized(http));
         // Tab counters for the same filters as GET /orders (the status tab itself is ignored).
-        api.MapGet("/orders/summary", async (HttpContext http, IMarketplaceSalesService service, string? search, string? platform, string? platforms, string? listing, string? cargo, string? invoice, string? invoiceType, string? invoiceRegion, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, bool? labelPrinted) =>
+        api.MapGet("/orders/summary", async (HttpContext http, IMarketplaceSalesService service, string? search, string? platform, string? platforms, string? listing, string? cargo, string? invoice, string? invoiceType, string? invoiceRegion, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, bool? labelPrinted, string? tabs) =>
             Tenant(http) is { } tenant
-                ? Results.Ok(await service.OrderSummaryAsync(tenant.TenantId, OrderQuery(null, search, platform, platforms, listing, cargo, invoice, invoiceType, invoiceRegion, dateFrom, dateTo, null, labelPrinted), http.RequestAborted))
+                // A caller naming its tabs (the menu counter) or polling in the background shares a recent identical
+                // answer; the orders page itself counts afresh after an action.
+                ? Results.Ok(await service.OrderSummaryAsync(tenant.TenantId, OrderQuery(null, search, platform, platforms, listing, cargo, invoice, invoiceType, invoiceRegion, dateFrom, dateTo, null, labelPrinted), http.RequestAborted,
+                    string.IsNullOrWhiteSpace(tabs) ? null : tabs.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+                    allowCached: !string.IsNullOrWhiteSpace(tabs) || http.Request.Headers["X-Background-Poll"] == "1"))
                 : Unauthorized(http));
         api.MapPost("/orders/shopify-csv-import", ImportShopifyOrdersAsync).DisableAntiforgery();
         api.MapGet("/orders/product-image", async (HttpContext http, IMarketplaceSalesService service, string? barcode, Guid? connectionId, string? productName) => Tenant(http) is { } tenant ? Result(await service.ProductImageAsync(tenant.TenantId, barcode, http.TraceIdentifier, http.RequestAborted, connectionId, productName), value => Results.Redirect(value)) : Unauthorized(http)).RequireSameOriginFetch();

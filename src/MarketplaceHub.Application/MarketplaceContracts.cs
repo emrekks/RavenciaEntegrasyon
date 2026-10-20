@@ -1149,7 +1149,9 @@ public interface IMarketplaceSalesService
 {
     Task<PageResult<OrderListView>> OrdersAsync(Guid tenantId, int limit, int page, string? after, OrderListQuery query, CancellationToken cancellationToken);
     Task<bool> MarkLabelPrintedAsync(Guid tenantId, Guid orderId, CancellationToken cancellationToken);
-    Task<OrderSummaryView> OrderSummaryAsync(Guid tenantId, OrderListQuery query, CancellationToken cancellationToken);
+    // tabs: only these counters are computed (the others answer 0); null computes every tab. allowCached lets a
+    // polling caller share a recent identical answer instead of running the count again.
+    Task<OrderSummaryView> OrderSummaryAsync(Guid tenantId, OrderListQuery query, CancellationToken cancellationToken, IReadOnlyCollection<string>? tabs = null, bool allowCached = false);
     Task<ServiceResult<string>> ProductImageAsync(Guid tenantId, string? barcode, string correlationId, CancellationToken cancellationToken, Guid? connectionId = null, string? productName = null);
     Task<ServiceResult<OrderDetailView>> OrderAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
     Task<PageResult<ShipmentView>> ShipmentsAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken);
