@@ -344,7 +344,8 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
 
     // A draft connection whose last test failed on a passing fault (gateway block, quota, marketplace fault, timeout)
     // is tested again every quarter hour, so it verifies itself once the marketplace recovers. One whose credentials
-    // were refused is tested again hourly for a day while its credential stays unchanged; see ConnectionRetestPolicy.
+    // were refused is tested again with a doubling pause (1, 2, 4, 8, 16 hours) for a day while its credential stays
+    // unchanged; see ConnectionRetestPolicy.
     internal async Task<int> RetestTransientDraftsAsync(DateTimeOffset now, CancellationToken cancellationToken)
     {
         var drafts = await db.PlatformConnections.AsNoTracking()
