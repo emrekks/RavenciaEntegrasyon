@@ -344,6 +344,7 @@ public sealed class PostgreSqlInvoiceLinkRevocationTests(PostgreSqlTenantIsolati
         await db.ShipmentPackages.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.Orders.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.PlatformConnections.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.IntegrationOutboxEvents.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.Tenants.Where(row => row.Id == tenantId).ExecuteDeleteAsync();
     }
 

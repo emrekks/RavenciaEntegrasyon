@@ -242,6 +242,7 @@ public sealed class ReturnListPostgreSqlTests(PostgreSqlTenantIsolationFixture f
         await db.OrderLines.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.Orders.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.PlatformConnections.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.IntegrationOutboxEvents.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.Tenants.Where(row => row.Id == tenantId).ExecuteDeleteAsync();
     }
 }

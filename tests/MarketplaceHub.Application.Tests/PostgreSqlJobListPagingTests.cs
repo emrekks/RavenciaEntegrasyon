@@ -65,6 +65,7 @@ public sealed class PostgreSqlJobListPagingTests(PostgreSqlTenantIsolationFixtur
             await using var cleanup = fixture.CreateContext();
             await cleanup.JobAttempts.Where(x => tenantIds.Contains(x.TenantId)).ExecuteDeleteAsync();
             await cleanup.IntegrationJobs.Where(x => tenantIds.Contains(x.TenantId)).ExecuteDeleteAsync();
+            await cleanup.IntegrationOutboxEvents.Where(x => tenantIds.Contains(x.TenantId)).ExecuteDeleteAsync();
             await cleanup.Tenants.Where(x => tenantIds.Contains(x.Id)).ExecuteDeleteAsync();
         }
     }
@@ -121,6 +122,7 @@ public sealed class PostgreSqlJobListPagingTests(PostgreSqlTenantIsolationFixtur
             await cleanup.JobAttempts.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
             await cleanup.IntegrationJobs.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
             await cleanup.PlatformConnections.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanup.IntegrationOutboxEvents.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
             await cleanup.Tenants.Where(x => x.Id == tenant.Id).ExecuteDeleteAsync();
         }
     }
