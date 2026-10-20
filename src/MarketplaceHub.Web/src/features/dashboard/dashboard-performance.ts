@@ -38,10 +38,10 @@ export function periodDays(range: Range, custom: { from: string; to: string }, t
     if (!dayPattern.test(custom.from) || !dayPattern.test(custom.to)) return null
     return custom.from <= custom.to ? { from: custom.from, to: custom.to } : { from: custom.to, to: custom.from }
   }
-  // "Bugün" is today so far; 7/30/90 days are the whole Istanbul days that ended at today's 00:00 (today's unfinished
-  // day pulled the chart's last point to zero and the range bar's low end to 0).
+  // "Bugün" is today so far; 7/30/90 days are Istanbul calendar days ending with today, counted as a whole day and
+  // compared with the whole days before them (no same-hour cut).
   if (range === 'today') return { from: today, to: today }
-  return { from: addDays(today, -Number(range)), to: addDays(today, -1) }
+  return { from: addDays(today, 1 - Number(range)), to: today }
 }
 
 const inChannel = (row: { connectionId: string }, channel: string) => channel === 'ALL' || row.connectionId === channel
@@ -98,13 +98,6 @@ export function channelTotals(performance: Performance, currency: string): Chann
       previousAmount: sum(performance.previous, connectionId).reduce((total, row) => total + row.amount, 0),
     }
   }).filter(channel => channel.amount > 0 || channel.orders > 0).sort((left, right) => right.amount - left.amount || right.orders - left.orders)
-}
-
-/** What the comparison is against, in words: a period still running is compared up to the same time of day. */
-export function comparisonText(range: Range, performance: Performance | undefined) {
-  if (!performance?.partialDay) return range === 'today' ? 'dünle karşılaştırma' : 'önceki eşit dönemle karşılaştırma'
-  const time = new Intl.DateTimeFormat('tr-TR', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: 'Europe/Istanbul' }).format(new Date(performance.currentEnd))
-  return range === 'today' ? `dünle aynı saate (${time}) kadar karşılaştırma` : `önceki eşit dönemle, aynı saate (${time}) kadar karşılaştırma`
 }
 
 const csvCell = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`

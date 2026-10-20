@@ -414,8 +414,9 @@ public static class DashboardRevenuePolicy
     public static decimal Amount(decimal netAmount, decimal grossAmount) => netAmount > 0 ? netAmount : grossAmount;
 }
 
-// The chosen calendar days and the previous period of equal elapsed time. A period that ends today runs until now,
-// so the previous one stops at the same time of day: "today until 10:00" is compared with "yesterday until 10:00".
+// The chosen calendar days and the previous period of equal length. "Today" alone runs until now and is compared with
+// yesterday until the same time of day; a period of several days counts today as a day and is compared with whole
+// days (owner's call, 21 Oct 2026: the 30 days end on the 21st, not at the current hour).
 public sealed record DashboardPerformancePeriod(
     DateOnly From,
     DateOnly To,
@@ -447,7 +448,7 @@ public sealed record DashboardPerformancePeriod(
         var previousFrom = start.AddDays(-days);
         var previousStart = LocalMidnight(previousFrom, timezone);
         return ServiceResult<DashboardPerformancePeriod>.Ok(new(start, end, previousFrom, end.AddDays(-days),
-            currentStart, currentEnd, previousStart, previousStart + (currentEnd - currentStart), partial));
+            currentStart, currentEnd, previousStart, days > 1 ? LocalMidnight(end.AddDays(1 - days), timezone) : previousStart + (currentEnd - currentStart), partial));
     }
 
     private static DateTimeOffset LocalMidnight(DateOnly day, TimeZoneInfo timezone) =>

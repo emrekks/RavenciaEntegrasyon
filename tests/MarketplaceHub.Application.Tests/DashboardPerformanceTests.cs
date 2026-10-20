@@ -29,14 +29,15 @@ public sealed class DashboardPerformanceTests
     }
 
     [Fact]
-    public void Last_seven_days_compare_with_the_seven_days_before_up_to_the_same_time_of_day()
+    public void Last_seven_days_including_today_compare_with_the_seven_whole_days_before()
     {
         var period = DashboardPerformancePeriod.Resolve(new DateOnly(2026, 10, 14), new DateOnly(2026, 10, 20), Now, Istanbul).Value!;
 
         Assert.Equal(new DateOnly(2026, 10, 7), period.PreviousFrom);
         Assert.Equal(new DateOnly(2026, 10, 13), period.PreviousTo);
-        Assert.Equal(period.CurrentEnd - period.CurrentStart, period.PreviousEnd - period.PreviousStart);
-        Assert.Equal(Now.AddDays(-7), period.PreviousEnd);
+        Assert.Equal(Now, period.CurrentEnd);
+        Assert.Equal(new DateTimeOffset(2026, 10, 6, 21, 0, 0, TimeSpan.Zero), period.PreviousStart);
+        Assert.Equal(new DateTimeOffset(2026, 10, 13, 21, 0, 0, TimeSpan.Zero), period.PreviousEnd);
     }
 
     [Fact]

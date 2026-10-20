@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { matrixCellText } from './DashboardPage'
-import { addDays, channelTotals, comparisonText, dayKeys, daySeries, hourSeries, istanbulHour, otherCurrencies, periodDays, primaryCurrency, revenueReport, type Performance, type PerformanceRow } from './dashboard-performance'
+import { addDays, channelTotals, dayKeys, daySeries, hourSeries, istanbulHour, otherCurrencies, periodDays, primaryCurrency, revenueReport, type Performance, type PerformanceRow } from './dashboard-performance'
 
 const row = (day: string, connectionId: string, amount: number, extra: Partial<PerformanceRow> = {}): PerformanceRow =>
   ({ day, connectionId, currency: 'TRY', amount, orderCount: 1, productQuantity: 2, packageCount: 1, returnedAmount: 0, returnedOrderCount: 0, ...extra })
@@ -14,10 +14,10 @@ const performance = (current: PerformanceRow[], previous: PerformanceRow[] = [],
 })
 
 describe('dashboard periods', () => {
-  it('asks for today so far, or for whole Istanbul days ending at today 00:00', () => {
+  it('asks for today so far, or for Istanbul days ending with today', () => {
     expect(periodDays('today', { from: '', to: '' }, '2026-10-20')).toEqual({ from: '2026-10-20', to: '2026-10-20' })
-    expect(periodDays('7', { from: '', to: '' }, '2026-10-20')).toEqual({ from: '2026-10-13', to: '2026-10-19' })
-    expect(periodDays('30', { from: '', to: '' }, '2026-03-01')).toEqual({ from: '2026-01-30', to: '2026-02-28' })
+    expect(periodDays('7', { from: '', to: '' }, '2026-10-20')).toEqual({ from: '2026-10-14', to: '2026-10-20' })
+    expect(periodDays('30', { from: '', to: '' }, '2026-03-01')).toEqual({ from: '2026-01-31', to: '2026-03-01' })
   })
 
   it('a half-picked custom range asks for nothing, a reversed one is put in order', () => {
@@ -31,11 +31,6 @@ describe('dashboard periods', () => {
     expect(dayKeys('2026-10-02', '2026-10-01')).toEqual([])
   })
 
-  it('says the comparison stops at the same time of day while the period runs', () => {
-    expect(comparisonText('today', performance([], [], true))).toBe('dünle aynı saate (10:30) kadar karşılaştırma')
-    expect(comparisonText('7', performance([], [], true))).toContain('aynı saate (10:30) kadar')
-    expect(comparisonText('30', performance([], [], false))).toBe('önceki eşit dönemle karşılaştırma')
-  })
 })
 
 describe('dashboard performance', () => {
