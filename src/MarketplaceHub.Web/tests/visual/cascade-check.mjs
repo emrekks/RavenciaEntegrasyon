@@ -6,6 +6,7 @@
 import { execFileSync } from 'node:child_process'
 import { resolve } from 'node:path'
 import { collect, compareCascades, describe, workingTree } from './cascade.mjs'
+import { isDeadSelector, liveClassTest } from './dead-selectors.mjs'
 
 const argument = (name, fallback) => { const at = process.argv.indexOf(`--${name}`); return at > 0 ? process.argv[at + 1] : fallback }
 const base = argument('base', 'HEAD')
@@ -21,9 +22,15 @@ const revision = {
 const started = Date.now()
 const before = collect(revision)
 const after = collect(workingTree(web))
-const { changed, problems, added, removed } = compareCascades(before, after)
-const harmful = removed.filter(declaration => !declaration.dominated)
-console.log(`${before.declarations.length} -> ${after.declarations.length} declarations; ${changed} identities moved or changed; ${added.length} added, ${removed.length} removed (${removed.length - harmful.length} always lost on their own selector), ${problems.length} competing pairs changed winner (${Math.round((Date.now() - started) / 1000)} s)`)
+const { changed, problems: allProblems, added, removed } = compareCascades(before, after)
+// A removed declaration is harmless when it always lost on its own selector, or when its selector can never match
+// (it needs a class no source file mentions, see dead-selectors.mjs).
+const isLive = liveClassTest(workingTree(web), web)
+const dead = removed.filter(declaration => !declaration.dominated && isDeadSelector(declaration.selector, isLive))
+const harmful = removed.filter(declaration => !declaration.dominated && !isDeadSelector(declaration.selector, isLive))
+// Two declarations of which one can never match do not really compete.
+const problems = allProblems.filter(problem => !isDeadSelector(problem.declaration.selector, isLive) && !isDeadSelector(problem.other.selector, isLive))
+console.log(`${before.declarations.length} -> ${after.declarations.length} declarations; ${changed} identities moved or changed; ${added.length} added, ${removed.length} removed (${removed.length - harmful.length - dead.length} always lost on their own selector, ${dead.length} on selectors that cannot match), ${problems.length} competing pairs changed winner (${Math.round((Date.now() - started) / 1000)} s)`)
 for (const declaration of added.slice(0, limit)) console.log(`  + ${describe(declaration)}`)
 for (const declaration of harmful.slice(0, limit)) console.log(`  - ${describe(declaration)}`)
 for (const problem of problems.slice(0, limit)) console.log(`  ! ${describe(problem.declaration)}\n      vs ${describe(problem.other)}\n      winner ${problem.before} -> ${problem.after}`)

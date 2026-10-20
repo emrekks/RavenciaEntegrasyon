@@ -79,23 +79,85 @@ export function specificity(selector) {
 }
 export const compareSpecificity = (a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]
 
-// The rightmost compound of a selector: its classes and element type (null = any element). Pseudo-elements keep
-// their own namespace so ::before rules only compete with ::before rules.
+// Splits at top-level occurrences of the given characters (not inside parentheses or brackets).
+function splitTopLevel(text, separators) {
+  const parts = []
+  let depth = 0
+  let current = ''
+  for (const character of text) {
+    if (character === '(' || character === '[') depth += 1
+    else if (character === ')' || character === ']') depth -= 1
+    if (depth === 0 && separators.includes(character)) { parts.push(current); current = ''; continue }
+    current += character
+  }
+  parts.push(current)
+  return parts.map(part => part.trim()).filter(Boolean)
+}
+
+// The rightmost compound of a selector as alternatives (one per branch of an :is()/:where()/:matches() in it), each
+// with its classes and element type (null = any element). :not()/:has()/:nth-*() do not narrow it. Pseudo-elements
+// keep their own namespace so ::before rules only compete with ::before rules.
 export function subject(selector) {
-  const parts = selector.split(/\s*(?<![\\(][^)]*)[\s>+~]\s*(?![^(]*\))/).filter(Boolean)
-  const last = parts.at(-1) ?? selector
-  const outer = last.replace(/\((?:[^()]|\([^()]*\))*\)/g, '')
+  const last = splitTopLevel(selector, [' ', '>', '+', '~']).at(-1) ?? selector
+  const groups = [...last.matchAll(/:(?:is|where|matches)\(((?:[^()]|\((?:[^()]|\([^()]*\))*\))*)\)/g)].map(match => splitTopLevel(match[1], [',']).flatMap(argument => subject(argument).alternatives))
+  const outer = last.replace(/\((?:[^()]|\((?:[^()]|\([^()]*\))*\))*\)/g, '')
   const classes = [...outer.matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)].map(match => match[1])
   const type = /^[a-zA-Z][\w-]*/.exec(outer)?.[0]?.toLowerCase() ?? null
   const pseudo = /::?(before|after|placeholder|marker|selection|backdrop|-webkit-[\w-]+|file-selector-button)/.exec(outer)?.[1] ?? ''
-  return { classes, type, pseudo }
+  let alternatives = [{ classes, type }]
+  for (const group of groups) {
+    alternatives = alternatives.flatMap(base => group.map(branch => ({ classes: [...base.classes, ...branch.classes], type: base.type ?? branch.type })))
+  }
+  return { alternatives, pseudo, classes: [...new Set(alternatives.flatMap(alternative => alternative.classes))], unclassed: alternatives.some(alternative => !alternative.classes.length) }
+}
+
+// Element types a class is used on, from the TSX: only for classes whose every mention in the source is a static
+// className on a known element (Link/NavLink render <a>); anything else (dynamic classes, classList) stays unknown.
+export function elementTypes(source) {
+  const files = source.list().filter(file => !/\.test\.tsx?$/.test(file))
+  const texts = files.map(file => source.read(file))
+  const seen = new Map()
+  const mentions = new Map()
+  for (const text of texts) {
+    for (const match of text.matchAll(/<([A-Za-z][\w.]*)\s((?:[^<>{}]|\{[^{}]*\})*?)className=(?:"([^"]*)"|'([^']*)'|\{'([^']*)'\}|\{"([^"]*)"\})/g)) {
+      const tag = /^[a-z]/.test(match[1]) ? match[1] : match[1] === 'Link' || match[1] === 'NavLink' ? 'a' : null
+      for (const name of (match[3] ?? match[4] ?? match[5] ?? match[6]).split(/\s+/).filter(Boolean)) {
+        const list = seen.get(name) ?? []
+        list.push(tag)
+        seen.set(name, list)
+      }
+    }
+  }
+  const all = texts.join('\n')
+  for (const name of seen.keys()) mentions.set(name, all.split(name).length - 1)
+  const types = new Map()
+  for (const [name, tags] of seen) {
+    if (tags.includes(null) || mentions.get(name) !== tags.length) continue
+    types.set(name, new Set(tags))
+  }
+  return types
+}
+
+function tagsOf(alternative, types) {
+  if (alternative.type) return new Set([alternative.type])
+  let tags = null
+  for (const name of alternative.classes) {
+    const known = types?.get(name)
+    if (!known) continue
+    tags = tags ? new Set([...tags].filter(tag => known.has(tag))) : new Set(known)
+  }
+  return tags
 }
 
 export function mayMatchSameElement(left, right) {
   if (left.pseudo !== right.pseudo) return false
-  if (left.type && right.type && left.type !== right.type) return false
-  if (!left.classes.length || !right.classes.length) return true
-  return left.classes.some(name => right.classes.includes(name))
+  return left.alternatives.some(mine => right.alternatives.some(theirs => {
+    const myTags = mine.tags ?? null
+    const theirTags = theirs.tags ?? null
+    if (myTags && theirTags && ![...myTags].some(tag => theirTags.has(tag))) return false
+    if (!mine.classes.length || !theirs.classes.length) return true
+    return mine.classes.some(name => theirs.classes.includes(name))
+  }))
 }
 
 const physical = name => name
@@ -116,7 +178,17 @@ export function propertiesOverlap(a, b) {
 }
 
 // Every declaration with its cascade facts, read through `source` (workingTree(web) or a git revision).
-export function collect(source, { groups = loadGroups(source) } = {}) {
+export function collect(source, { groups = loadGroups(source), types = elementTypes(source) } = {}) {
+  const subjects = new Map()
+  const subjectOf = selector => {
+    let found = subjects.get(selector)
+    if (!found) {
+      found = subject(selector)
+      for (const alternative of found.alternatives) alternative.tags = tagsOf(alternative, types)
+      subjects.set(selector, found)
+    }
+    return found
+  }
   const declarations = []
   let rules = 0
   for (const group of groups) {
@@ -145,7 +217,7 @@ export function collect(source, { groups = loadGroups(source) } = {}) {
         const media = [group.media ? `@media ${group.media}` : '', ...contexts].filter(Boolean).join(' / ')
         for (const selector of rule.selectors) {
           const clean = selector.replace(/\s+/g, ' ').trim()
-          const facts = { file, group: group.name, groupRank: group.rank, layer, media, selector: clean, specificity: specificity(clean), subject: subject(clean), line: rule.source?.start?.line }
+          const facts = { file, group: group.name, groupRank: group.rank, layer, media, selector: clean, specificity: specificity(clean), subject: subjectOf(clean), line: rule.source?.start?.line }
           let at = 0
           for (const node of rule.nodes ?? []) {
             if (node.type !== 'decl') continue
@@ -197,17 +269,14 @@ function indexByFamily(declarations) {
   const byKey = new Map()
   const byFamily = new Map()
   const push = (map, key, value) => { const list = map.get(key); if (list) list.push(value); else map.set(key, [value]) }
-  const occurrences = new Map()
   for (const declaration of declarations) {
-    // The n-th declaration with the same selector, media, property and value (a selector repeated in two files).
-    const base = identity(declaration)
-    const nth = (occurrences.get(base) ?? 0) + 1
-    occurrences.set(base, nth)
-    declaration.identity = nth === 1 ? base : `${base}#${nth}`
+    // The same selector, media, property and value may occur more than once (a selector repeated in two files):
+    // one identity, several occurrences.
+    declaration.identity = identity(declaration)
     push(byIdentity, declaration.identity, declaration)
     const family = familyOf(declaration.property)
     push(byFamily, family, declaration)
-    if (!declaration.subject.classes.length) push(byKey, `${family}|`, declaration)
+    if (declaration.subject.unclassed) push(byKey, `${family}|`, declaration)
     for (const name of declaration.subject.classes) push(byKey, `${family}|.${name}`, declaration)
   }
   return { byIdentity, byKey, byFamily }
@@ -215,22 +284,26 @@ function indexByFamily(declarations) {
 
 function competitors(indexed, declaration) {
   const family = familyOf(declaration.property)
-  if (!declaration.subject.classes.length) return indexed.byFamily.get(family) ?? []
+  if (declaration.subject.unclassed) return indexed.byFamily.get(family) ?? []
   return [...(indexed.byKey.get(`${family}|`) ?? []), ...declaration.subject.classes.flatMap(name => indexed.byKey.get(`${family}|.${name}`) ?? [])]
 }
 
-// Declarations whose cascade facts may differ: added, removed, repeated, moved to another group/layer/importance, or
-// moved inside their group (found as the stable identities outside the longest run that kept its order).
+// Identities whose cascade facts may differ: added, removed, a different number of occurrences, an occurrence moved
+// to another group/layer/importance, or moved inside its group (found as the occurrences outside the longest run
+// that kept its order).
 function changedIdentities(before, after) {
   const changed = new Set()
   const factKey = declaration => `${declaration.group}|${declaration.layer}|${declaration.important}|${declaration.specificity}`
+  const facts = list => list.map(factKey).sort().join('\n')
   const stableByGroup = new Map()
   for (const [key, list] of after.byIdentity) {
     const old = before.byIdentity.get(key)
-    if (!old || old.length !== 1 || list.length !== 1 || factKey(old[0]) !== factKey(list[0])) { changed.add(key); continue }
-    const group = stableByGroup.get(list[0].group) ?? []
-    group.push([old[0].sequence, list[0].sequence, key])
-    stableByGroup.set(list[0].group, group)
+    if (!old || old.length !== list.length || facts(old) !== facts(list)) { changed.add(key); continue }
+    list.forEach((declaration, at) => {
+      const group = stableByGroup.get(declaration.group) ?? []
+      group.push([old[at].sequence, declaration.sequence, key])
+      stableByGroup.set(declaration.group, group)
+    })
   }
   for (const key of before.byIdentity.keys()) if (!after.byIdentity.has(key)) changed.add(key)
   for (const entries of stableByGroup.values()) {
@@ -254,22 +327,24 @@ function changedIdentities(before, after) {
   return changed
 }
 
+// Which of two identities sets the value where both apply: 'own' when one occurrence of it beats every occurrence of
+// the other, 'other' the other way round, '?' when that depends on chunk load order, '' when they do not compete.
 function outcome(indexed, ownKey, otherKey) {
-  const results = []
-  for (const own of indexed.byIdentity.get(ownKey) ?? []) {
-    for (const other of indexed.byIdentity.get(otherKey) ?? []) {
-      if (own.value === other.value && own.property === other.property) continue
-      if (!competes(own, other)) continue
-      results.push(wins(own, other))
-    }
-  }
-  return results.sort().join(',')
+  const own = indexed.byIdentity.get(ownKey) ?? []
+  const other = indexed.byIdentity.get(otherKey) ?? []
+  if (!own.length || !other.length) return ''
+  if (own[0].value === other[0].value && own[0].property === other[0].property) return ''
+  if (!competes(own[0], other[0])) return ''
+  if (own.some(mine => other.every(theirs => wins(mine, theirs) === 1))) return 'own'
+  if (other.some(theirs => own.every(mine => wins(theirs, mine) === 1))) return 'other'
+  return '?'
 }
 
 /**
- * Compares the cascade before and after an edit: for every declaration the edit touched, each competing declaration
- * must keep the same winner. An order that was unknown before (two chunks) and stays the same unknown is accepted —
- * that ambiguity exists today and is not made by the edit. Returns one problem per pair whose winner changed.
+ * Compares the cascade before and after an edit: for every identity the edit touched, each competing declaration
+ * must keep the same winner. An order that was unknown before (two chunks) and stays unknown is accepted — that
+ * ambiguity exists today and is not made by the edit. Returns one problem per pair whose winner changed, plus the
+ * declarations that appeared or disappeared altogether.
  */
 export function compareCascades(beforeCollection, afterCollection) {
   const before = indexByFamily(beforeCollection.declarations)
@@ -277,12 +352,13 @@ export function compareCascades(beforeCollection, afterCollection) {
   const changed = changedIdentities(before, after)
   const problems = []
   const seen = new Set()
-  // A declaration that appears or disappears changes styles by definition: those are listed for review, not proved.
+  // A declaration that appears changes styles by definition: listed for review, not proved.
   const added = [...after.byIdentity.keys()].filter(key => !before.byIdentity.has(key)).map(key => after.byIdentity.get(key)[0])
-  // A removed declaration is harmless when, on the same selector and media, a declaration of the same property that
-  // still exists always beat it (the merge of a duplicate selector drops exactly those).
+  // One that disappears is harmless when, on the same selector and media, a declaration of the same property that
+  // still exists always beat it (merging a duplicate selector drops exactly those).
   const removed = [...before.byIdentity.keys()].filter(key => !after.byIdentity.has(key)).flatMap(key => before.byIdentity.get(key)).map(declaration => {
-    const dominated = beforeCollection.declarations.some(other => other !== declaration && other.selector === declaration.selector && other.media === declaration.media && other.property === declaration.property && after.byIdentity.has(other.identity) && wins(other, declaration) === 1)
+    const covers = other => other.property === declaration.property || (!declaration.property.startsWith('--') && declaration.property.startsWith(`${other.property}-`))
+    const dominated = beforeCollection.declarations.some(other => other !== declaration && other.selector === declaration.selector && other.media === declaration.media && covers(other) && after.byIdentity.has(other.identity) && wins(other, declaration) === 1)
     return { ...declaration, dominated }
   })
   for (const key of changed) {
@@ -296,13 +372,10 @@ export function compareCascades(beforeCollection, afterCollection) {
       seen.add(pairKey)
       const was = outcome(before, key, otherKey)
       const now = outcome(after, key, otherKey)
-      if (was === now) continue
-      problems.push({
-        declaration: after.byIdentity.get(key)[0],
-        other: (after.byIdentity.get(otherKey) ?? before.byIdentity.get(otherKey))[0],
-        before: was || 'no competition',
-        after: now || 'no competition',
-      })
+      // A competitor that is gone or new is reported with the removed/added declarations.
+      if (was === now || !before.byIdentity.has(otherKey) || !after.byIdentity.has(otherKey)) continue
+      if (was === '?' && now === '?') continue
+      problems.push({ declaration: after.byIdentity.get(key)[0], other: after.byIdentity.get(otherKey)[0], before: was || 'no competition', after: now || 'no competition' })
     }
   }
   return { changed: changed.size, problems, added, removed }
