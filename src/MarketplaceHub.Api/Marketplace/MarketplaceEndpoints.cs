@@ -78,14 +78,18 @@ public static class MarketplaceEndpoints
 
         api.MapGet("/orders", async (HttpContext http, IMarketplaceSalesService service, int? limit, int? page, string? after, string? status, string? search, string? platform, string? platforms, string? listing, string? cargo, string? invoice, string? invoiceType, string? invoiceRegion, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, string? sort, bool? labelPrinted) =>
             Tenant(http) is { } tenant
-                ? Results.Ok(await service.OrdersAsync(tenant.TenantId, PageSize(limit), PageNumber(page), after, new(status, search, platform, listing, cargo, invoice, invoiceType, invoiceRegion, dateFrom, dateTo, sort, platforms?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), labelPrinted), http.RequestAborted))
+                ? Results.Ok(await service.OrdersAsync(tenant.TenantId, PageSize(limit), PageNumber(page), after, OrderQuery(status, search, platform, platforms, listing, cargo, invoice, invoiceType, invoiceRegion, dateFrom, dateTo, sort, labelPrinted), http.RequestAborted))
                 : Unauthorized(http));
         // Records that a shipping label of the order was printed, so every computer sees it.
         api.MapPost("/orders/{id:guid}/label-printed", async (Guid id, HttpContext http, IMarketplaceSalesService service) =>
             Tenant(http) is { } tenant
                 ? await service.MarkLabelPrintedAsync(tenant.TenantId, id, http.RequestAborted) ? Results.NoContent() : Results.NotFound()
                 : Unauthorized(http));
-        api.MapGet("/orders/summary", async (HttpContext http, IMarketplaceSalesService service, string? platform) => Tenant(http) is { } tenant ? Results.Ok(await service.OrderSummaryAsync(tenant.TenantId, platform, http.RequestAborted)) : Unauthorized(http));
+        // Tab counters for the same filters as GET /orders (the status tab itself is ignored).
+        api.MapGet("/orders/summary", async (HttpContext http, IMarketplaceSalesService service, string? search, string? platform, string? platforms, string? listing, string? cargo, string? invoice, string? invoiceType, string? invoiceRegion, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, bool? labelPrinted) =>
+            Tenant(http) is { } tenant
+                ? Results.Ok(await service.OrderSummaryAsync(tenant.TenantId, OrderQuery(null, search, platform, platforms, listing, cargo, invoice, invoiceType, invoiceRegion, dateFrom, dateTo, null, labelPrinted), http.RequestAborted))
+                : Unauthorized(http));
         api.MapPost("/orders/shopify-csv-import", ImportShopifyOrdersAsync).DisableAntiforgery();
         api.MapGet("/orders/product-image", async (HttpContext http, IMarketplaceSalesService service, string? barcode, Guid? connectionId, string? productName) => Tenant(http) is { } tenant ? Result(await service.ProductImageAsync(tenant.TenantId, barcode, http.TraceIdentifier, http.RequestAborted, connectionId, productName), value => Results.Redirect(value)) : Unauthorized(http)).RequireSameOriginFetch();
         api.MapGet("/orders/{id:guid}", async (Guid id, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant ? WithEtag(http, await service.OrderAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http));
@@ -159,53 +163,13 @@ public static class MarketplaceEndpoints
         return endpoints;
     }
 
-    private static async Task<IResult> UpdateShopifyOrderStatusAsync(Guid id, ShopifyOrderStatusCommand command, HttpContext http, AppDbContext db, TimeProvider timeProvider)
+    // If-Match carries the order version the operator saw (audit 2026-10-20 S20).
+    private static async Task<IResult> UpdateShopifyOrderStatusAsync(Guid id, ShopifyOrderStatusCommand command, HttpContext http, IMarketplaceSalesService service)
     {
         if (Tenant(http) is not { } tenant) return Unauthorized(http);
         if (RequireIdempotency(http) is { } idempotencyFailure) return idempotencyFailure;
-
-        var status = command.Status?.Trim().ToUpperInvariant();
-        if (status is not ("NEW" or "PROCESSING" or "ON_HOLD" or "READY_TO_SHIP" or "SHIPPED" or "UNDELIVERED" or "DELIVERED" or "RETURN_IN_TRANSIT" or "RETURNED" or "CANCELLED"))
-            return Problem(http, new("SHOPIFY_ORDER_STATUS_INVALID", "Shopify sipariş durumu geçersiz.", 422));
-
-        var order = await db.Orders.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Id == id, http.RequestAborted);
-        if (order is null) return Problem(http, new("RESOURCE_NOT_FOUND", "Sipariş kaydı bulunamadı.", 404));
-
-        var platform = await db.PlatformConnections.AsNoTracking()
-            .Where(x => x.TenantId == tenant.TenantId && x.Id == order.ConnectionId)
-            .Select(x => x.PlatformCode)
-            .SingleOrDefaultAsync(http.RequestAborted);
-        if (platform != "SHOPIFY") return Problem(http, new("SHOPIFY_ORDER_ONLY", "Bu manuel durum akışı yalnız Shopify siparişleri için kullanılabilir.", 422));
-
-        var now = timeProvider.GetUtcNow();
-        order.DerivedStatus = status;
-        order.UpdatedAt = now;
-        order.Version++;
-        db.OrderStatusHistory.Add(new OrderStatusHistory
-        {
-            Id = Guid.CreateVersion7(),
-            TenantId = tenant.TenantId,
-            OrderId = order.Id,
-            CanonicalStatus = status,
-            RawStatus = $"MANUAL_SHOPIFY_STATUS:{status}",
-            SourceEventId = $"manual:shopify-status:{now.UtcTicks}:{Guid.NewGuid():N}",
-            OccurredAt = now,
-            RecordedAt = now
-        });
-        db.AuditLogs.Add(new AuditLog
-        {
-            TenantId = tenant.TenantId,
-            ActorUserId = tenant.UserId,
-            Action = "SHOPIFY_ORDER_STATUS_MANUAL",
-            TargetType = "Order",
-            TargetId = id.ToString("D"),
-            Reason = status,
-            CorrelationId = http.TraceIdentifier,
-            CreatedAt = now
-        });
-        await db.SaveChangesAsync(http.RequestAborted);
-        http.Response.Headers.ETag = $"\"v{order.Version}\"";
-        return Results.Ok(new { id = order.Id, status, version = order.Version });
+        if (!TryIfMatch(http, out var version, out var failure)) return failure!;
+        return WithEtag(http, await service.SetShopifyOrderStatusAsync(tenant.TenantId, tenant.UserId, id, version, command.Status, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted), x => x.Version);
     }
 
     private sealed record ShopifyOrderStatusCommand(string Status);
@@ -399,6 +363,8 @@ public static class MarketplaceEndpoints
     private static ReturnListQuery ReturnQuery(string? status, string? customer, string? orderNumber, string? claimCode, string? barcode, string? reason, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, string? search, string? platforms, string? cargo, string? reasonKey, string? invoiceStatus, string? sort) =>
         new(status, customer, orderNumber, claimCode, barcode, reason, dateFrom, dateTo, search,
             platforms?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), cargo, reasonKey, invoiceStatus, sort);
+    private static OrderListQuery OrderQuery(string? status, string? search, string? platform, string? platforms, string? listing, string? cargo, string? invoice, string? invoiceType, string? invoiceRegion, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, string? sort, bool? labelPrinted) =>
+        new(status, search, platform, listing, cargo, invoice, invoiceType, invoiceRegion, dateFrom, dateTo, sort, platforms?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), labelPrinted);
     private static int PageNumber(int? page) => page is null ? 1 : page is >= 1 and <= 100_000 ? page.Value : throw new ArgumentException("page 1-100000 arasında olmalıdır.");
     private static IResult? RequireIdempotency(HttpContext http) => string.IsNullOrWhiteSpace(http.Request.Headers["Idempotency-Key"]) ? Problem(http, new("IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key başlığı zorunludur.", 400)) : http.Request.Headers["Idempotency-Key"].ToString().Length > 256 ? Problem(http, new("IDEMPOTENCY_KEY_INVALID", "Idempotency-Key en fazla 256 karakterdir.", 400)) : null;
     private static bool TryIfMatch(HttpContext http, out long version, out IResult? failure) { var parsed = OptionalIfMatch(http, out failure); version = parsed ?? 0; if (failure is null && parsed is null) failure = Problem(http, new("PRECONDITION_REQUIRED", "If-Match gereklidir.", 428)); return failure is null; }

@@ -34,10 +34,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
     {
         // The panel is a local read model. Remote reads belong to the scheduled worker.
         var sort = NormalizeOrderSort(queryOptions.Sort);
-        var query = db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId
-            && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")));
-        query = ExcludeStaleUnpackagedHepsiburadaOrders(query, tenantId);
-        ApplyOrderFilters(ref query, queryOptions, tenantId);
+        var query = FilteredOrders(tenantId, queryOptions);
         // Count the filtered result set before applying the page cursor. Counting
         // after the cursor made the total shrink on every subsequent page and
         // caused the frontend to hide valid later pages.
@@ -208,7 +205,9 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                 var barcode = string.IsNullOrWhiteSpace(x.Barcode) ? variant?.Barcode : x.Barcode;
                 return new OrderLineView(x.Id, x.Sku, barcode, x.TitleSnapshot, x.OrderedQuantity, x.CancelledQuantity, x.ShippedQuantity, x.DeliveredQuantity, x.ReturnedQuantity, x.UnitPrice, x.VatRate, x.RawStatus, x.VariantId ?? variant?.Id, variant?.ModelCode ?? source.ModelCode, variant?.OptionSignature ?? source.OptionSignature, imageUrl ?? (variant is null ? null : imageUrls.GetValueOrDefault(variant.Id)));
             }).ToList();
-            var packageViews = orderPackages.Select(x => Map(x, order.OrderNumber)).ToList();
+            // Live packages first (each still by its latest event): the card, its label and its
+            // actions take the first package, which must not be a cancelled split package.
+            var packageViews = orderPackages.OrderBy(x => x.Status == ShipmentPackageStatus.Cancelled ? 1 : 0).Select(x => Map(x, order.OrderNumber)).ToList();
             return new OrderListView(
                 order.Id, order.OrderNumber, displayStatus, order.Currency, order.NetAmount, order.OrderedAt,
                 orderLines.Count, orderPackages.Count, order.Version,
@@ -234,6 +233,21 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
     }
 
     private static readonly string[] OrderListSupportedFilters = ["labelPrinted"];
+
+    // The order list's rows for these options: orders of active connections, without the stale
+    // unpackaged Hepsiburada ones, through every list filter (status tab included). The tab
+    // counters run the same query per tab, so a counter always equals its tab's list total.
+    internal IQueryable<Order> FilteredOrders(Guid tenantId, OrderListQuery options)
+    {
+        var query = db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId
+            && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")));
+        query = ExcludeStaleUnpackagedHepsiburadaOrders(query, tenantId);
+        ApplyOrderFilters(ref query, options, tenantId);
+        return query;
+    }
+
+    // The tabs the order summary counts; "ALL" is the list without a status tab.
+    internal static readonly string[] OrderSummaryTabs = ["ALL", "NEW", "PROCESSING", "SHIPPED", "DELIVERED", "RESENT", "ON_HOLD", "CANCELLED", "RETURNED", "RETURN_IN_TRANSIT", "PARTIALLY_CANCELLED", "MANUAL_REVIEW", "PENDING", "PAYMENT_PENDING", "UNDELIVERED"];
 
     // The first print is kept; printing again later does not move it. A plain column update: the
     // order's version and the worker's concurrent writes are not touched.
@@ -439,9 +453,14 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             // Nor against its e-mail fields: the list no longer shows the e-mail.
             var searchCustomer = SearchesCustomerSnapshot(search);
             var customerPattern = CustomerSnapshotSearchPattern(search);
-            query = query.Where(x => x.OrderNumber.Contains(search) || x.ExternalOrderId.Contains(search) || (searchCustomer && Regex.IsMatch(x.CustomerSnapshotJson, customerPattern))
+            // Case-insensitive, the Turkish way too: the term is also tried in its Turkish lower
+            // and upper forms (ILIKE folds only what the database locale knows).
+            var (asTyped, lower, upper) = SearchPatterns(search);
+            query = query.Where(x => EF.Functions.ILike(x.OrderNumber, asTyped, LikeEscape) || EF.Functions.ILike(x.ExternalOrderId, asTyped, LikeEscape)
+                || (searchCustomer && Regex.IsMatch(x.CustomerSnapshotJson, customerPattern, RegexOptions.IgnoreCase))
                 || db.OrderLines.Any(line => line.TenantId == x.TenantId && line.OrderId == x.Id
-                    && (line.TitleSnapshot.Contains(search) || line.Sku.Contains(search) || (line.Barcode != null && line.Barcode.Contains(search)))));
+                    && (EF.Functions.ILike(line.TitleSnapshot, asTyped, LikeEscape) || EF.Functions.ILike(line.TitleSnapshot, lower, LikeEscape) || EF.Functions.ILike(line.TitleSnapshot, upper, LikeEscape)
+                        || EF.Functions.ILike(line.Sku, asTyped, LikeEscape) || (line.Barcode != null && EF.Functions.ILike(line.Barcode, asTyped, LikeEscape)))));
         }
 
         var platforms = options.Platforms?.Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value.Trim().ToUpperInvariant()).Distinct().ToArray() ?? [];
@@ -479,6 +498,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         "PARTIALLY_CANCELLED" => [ShipmentPackageStatus.PartiallyCancelled],
         "MANUAL_REVIEW" => [ShipmentPackageStatus.ManualReview],
         "PAYMENT_PENDING" => [ShipmentPackageStatus.PaymentPending],
+        "UNDELIVERED" => [ShipmentPackageStatus.Undelivered],
         _ => null
     };
 
@@ -537,83 +557,26 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         .Where(group => group.Select(candidate => candidate.Variant.Id).Distinct().Count() == 1)
         .ToDictionary(group => group.Key, group => group.First().Variant, StringComparer.OrdinalIgnoreCase);
 
-    public async Task<OrderSummaryView> OrderSummaryAsync(Guid tenantId, string? platform, CancellationToken cancellationToken)
+    public Task<OrderSummaryView> OrderSummaryAsync(Guid tenantId, string? platform, CancellationToken cancellationToken) =>
+        OrderSummaryAsync(tenantId, new OrderListQuery(Platform: platform), cancellationToken);
+
+    // Each counter is the number of distinct orders its tab lists for the same filters (date,
+    // search, platform, cargo, invoice, label): the tab query itself, counted once per tab in a
+    // single round trip.
+    public async Task<OrderSummaryView> OrderSummaryAsync(Guid tenantId, OrderListQuery options, CancellationToken cancellationToken)
     {
-        // Marketplace status tabs are package-based. Counting Orders here made
-        // split packages and the provider's package counters incomparable.
-        var resendCreators = new[] { "transfer", "resend", "replacement" };
-        var manuallyOverriddenShopifyOrders = CurrentManualShopifyOrderStatuses(tenantId);
-        var packages = CurrentShipmentPackages().Where(x => x.TenantId == tenantId
-            && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
-                && !db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && connection.PlatformCode == "SHOPIFY"
-                    && x.ExternalPackageId.StartsWith("order:") && x.ExternalPackageId.EndsWith(":remainder")));
-        var platformCode = platform?.Trim().ToUpperInvariant();
-        if (!string.IsNullOrWhiteSpace(platformCode) && platformCode != "ALL")
-            packages = packages.Where(x => db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED") && connection.PlatformCode == platformCode));
-
-        var summary = await packages
-            .GroupBy(_ => 1)
-            .Select(group => new OrderSummaryView(
-                group.Count(),
-                group.Count(x => x.Status == ShipmentPackageStatus.New),
-                group.Count(x => x.Status == ShipmentPackageStatus.Processing || x.Status == ShipmentPackageStatus.ReadyToShip),
-                group.Count(x => manuallyOverriddenShopifyOrders.Any(order => order.Id == x.OrderId)
-                    ? manuallyOverriddenShopifyOrders.Any(order => order.Id == x.OrderId && order.DerivedStatus == "SHIPPED")
-                    : x.Status == ShipmentPackageStatus.Shipped
-                        || x.Status == ShipmentPackageStatus.Undelivered
-                            && !db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId
-                                && connection.Id == x.ConnectionId
-                                && connection.PlatformCode == "HEPSIBURADA")),
-                group.Count(x => manuallyOverriddenShopifyOrders.Any(order => order.Id == x.OrderId)
-                    ? manuallyOverriddenShopifyOrders.Any(order => order.Id == x.OrderId && order.DerivedStatus == "DELIVERED")
-                    : x.Status == ShipmentPackageStatus.Delivered),
-                group.Count(x => x.OriginExternalPackageId != null && x.Status != ShipmentPackageStatus.Cancelled && x.CreatedBy != null && resendCreators.Contains(x.CreatedBy)),
-                group.Count(x => x.Status == ShipmentPackageStatus.OnHold
-                    || x.Status == ShipmentPackageStatus.Undelivered
-                        && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId
-                            && connection.Id == x.ConnectionId
-                            && connection.PlatformCode == "HEPSIBURADA")),
-                group.Count(x => x.Status == ShipmentPackageStatus.Cancelled
-                    && (!db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == x.ConnectionId && connection.PlatformCode == "SHOPIFY")
-                        || db.Orders.Any(order => order.TenantId == x.TenantId && order.Id == x.OrderId && order.DerivedStatus == "CANCELLED"))),
-                group.Count(x => x.Status == ShipmentPackageStatus.Returned),
-                group.Count(x => x.Status == ShipmentPackageStatus.ReturnInTransit),
-                group.Count(x => x.Status == ShipmentPackageStatus.PartiallyCancelled),
-                group.Count(x => x.Status == ShipmentPackageStatus.ManualReview),
-                0,
-                0,
-                group.Count(x => x.Status == ShipmentPackageStatus.PaymentPending)))
-            .SingleOrDefaultAsync(cancellationToken) ?? new OrderSummaryView(0, 0, 0, 0, 0, 0, 0);
-
-        var pendingOrders = db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId
-            && DashboardMetricPolicy.PendingOrderStatuses.Contains(order.DerivedStatus)
-            && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == order.ConnectionId
-                && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")));
-        pendingOrders = ExcludeStaleUnpackagedHepsiburadaOrders(pendingOrders, tenantId);
-        if (!string.IsNullOrWhiteSpace(platformCode) && platformCode != "ALL")
-            pendingOrders = pendingOrders.Where(order => db.PlatformConnections.Any(connection => connection.TenantId == tenantId
-                && connection.Id == order.ConnectionId && connection.PlatformCode == platformCode
-                && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")));
-
-        var unpackagedNewOrderCount = platformCode is null or "" or "ALL" or "HEPSIBURADA"
-            ? await HepsiburadaUnpackagedNewOrders(tenantId).CountAsync(cancellationToken)
-            : 0;
-        var unpackagedOnHoldOrderCount = platformCode is null or "" or "ALL" or "HEPSIBURADA"
-            ? await HepsiburadaUnpackagedOnHoldOrders(tenantId).CountAsync(cancellationToken)
-            : 0;
-        var unpackagedDeliveredOrderCount = platformCode is null or "" or "ALL" or "HEPSIBURADA"
-            ? await HepsiburadaUnpackagedDeliveredOrders(tenantId).CountAsync(cancellationToken)
-            : 0;
-        const int unverifiedOrderCount = 0;
-        return summary with
+        IQueryable<string>? tagged = null;
+        foreach (var tab in OrderSummaryTabs)
         {
-            All = summary.All + unpackagedNewOrderCount + unpackagedOnHoldOrderCount + unpackagedDeliveredOrderCount + unverifiedOrderCount,
-            New = summary.New + unpackagedNewOrderCount,
-            OnHold = summary.OnHold + unpackagedOnHoldOrderCount,
-            Delivered = summary.Delivered + unpackagedDeliveredOrderCount,
-            Pending = await pendingOrders.CountAsync(cancellationToken),
-            Unverified = unverifiedOrderCount
-        };
+            var tabName = tab;
+            var rows = FilteredOrders(tenantId, options with { Status = tab, Sort = null }).Select(_ => tabName);
+            tagged = tagged is null ? rows : tagged.Concat(rows);
+        }
+        var counts = await tagged!.GroupBy(tab => tab).Select(group => new { Tab = group.Key, Count = group.Count() })
+            .ToDictionaryAsync(row => row.Tab, row => row.Count, cancellationToken);
+        int Count(string tab) => counts.GetValueOrDefault(tab);
+        return new OrderSummaryView(Count("ALL"), Count("NEW"), Count("PROCESSING"), Count("SHIPPED"), Count("DELIVERED"), Count("RESENT"), Count("ON_HOLD"),
+            Count("CANCELLED"), Count("RETURNED"), Count("RETURN_IN_TRANSIT"), Count("PARTIALLY_CANCELLED"), Count("MANUAL_REVIEW"), Count("PENDING"), 0, Count("PAYMENT_PENDING"), Count("UNDELIVERED"));
     }
 
     internal IQueryable<Order> CurrentManualShopifyOrderStatuses(Guid tenantId) => db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId
@@ -671,19 +634,6 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
     internal IQueryable<Order> ExcludeStaleUnpackagedHepsiburadaOrders(IQueryable<Order> query, Guid tenantId)
     {
         return query.ExcludeStaleUnpackaged(db, tenantId, timeProvider.GetUtcNow());
-    }
-
-    internal IQueryable<ReturnClaim> ExcludeStaleHepsiburadaReturns(IQueryable<ReturnClaim> query, Guid tenantId)
-    {
-        var anchor = timeProvider.GetUtcNow();
-        var lookbackStart = HepsiburadaReturnHistoryPolicy.InitialStatusChangeStart(anchor);
-        return query.Where(claim => !db.PlatformConnections.Any(connection => connection.TenantId == tenantId
-                && connection.Id == claim.ConnectionId
-                && connection.PlatformCode == "HEPSIBURADA")
-            || db.Orders.Any(order => order.TenantId == tenantId
-                && order.Id == claim.OrderId
-                && order.OrderedAt >= lookbackStart
-                && order.OrderedAt <= anchor));
     }
 
     public async Task<ServiceResult<OrderDetailView>> OrderAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
@@ -927,11 +877,39 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         return image is not null ? ServiceResult<string>.Ok(image) : NotFound<string>();
     }
 
+    // The shipments page: live packages only (no split parent, resent original or placeholder),
+    // the latest status change first, paged by (StatusOccurredAt, Id) (audit 2026-10-20 S18).
+    private const string ShipmentCursorSort = "SHIPMENTS";
+
     public async Task<PageResult<ShipmentView>> ShipmentsAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken)
     {
-        var afterId = Decode(after); var query = db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))); if (afterId != Guid.Empty) query = query.Where(x => x.Id.CompareTo(afterId) > 0); if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<ShipmentPackageStatus>(status, true, out var parsed)) query = query.Where(x => x.Status == parsed);
-        var rows = await (from package in query orderby package.Id join order in db.Orders.AsNoTracking() on new { package.TenantId, package.OrderId } equals new { order.TenantId, OrderId = order.Id } select new { Package = package, order.OrderNumber }).Take(limit + 1).ToListAsync(cancellationToken);
-        return Page(rows.Select(x => Map(x.Package, x.OrderNumber)).ToList(), limit, x => x.Id);
+        var query = CurrentShipmentPackages().Where(x => x.TenantId == tenantId && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")));
+        if (!string.IsNullOrWhiteSpace(status) && !string.Equals(status.Trim(), "ALL", StringComparison.OrdinalIgnoreCase))
+        {
+            var parsed = ShipmentStatusFilter(status) ?? throw new ArgumentException("Gönderi durumu filtresi tanınmıyor.", nameof(status));
+            query = query.Where(x => x.Status == parsed);
+        }
+        if (!string.IsNullOrWhiteSpace(after))
+        {
+            if (!cursors.TryDecodeOrder(after, out var cursorSort, out _, out var cursorAt, out var cursorId) || cursorSort != ShipmentCursorSort)
+                throw new ArgumentException("Cursor geçersiz veya süresi dolmuş.", nameof(after));
+            query = query.Where(x => x.StatusOccurredAt < cursorAt || x.StatusOccurredAt == cursorAt && x.Id.CompareTo(cursorId) < 0);
+        }
+        var rows = await (from package in query
+                          join order in db.Orders.AsNoTracking() on new { package.TenantId, package.OrderId } equals new { order.TenantId, OrderId = order.Id }
+                          orderby package.StatusOccurredAt descending, package.Id descending
+                          select new { Package = package, order.OrderNumber }).Take(limit + 1).ToListAsync(cancellationToken);
+        var hasMore = rows.Count > limit;
+        var items = rows.Take(limit).ToList();
+        var last = items.LastOrDefault();
+        return new(items.Select(x => Map(x.Package, x.OrderNumber)).ToList(), hasMore && last is not null ? cursors.EncodeOrder(ShipmentCursorSort, null, last.Package.StatusOccurredAt, last.Package.Id) : null, hasMore);
+    }
+
+    // The page's filter values are the wire names (READY_TO_SHIP); the enum names are accepted too.
+    internal static ShipmentPackageStatus? ShipmentStatusFilter(string value)
+    {
+        var compact = value.Trim().Replace("_", string.Empty, StringComparison.Ordinal);
+        return Enum.TryParse<ShipmentPackageStatus>(compact, true, out var parsed) && Enum.IsDefined(parsed) && !compact.All(char.IsDigit) ? parsed : null;
     }
 
     public async Task<ServiceResult<ShipmentDetailView>> ShipmentAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
@@ -957,6 +935,12 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                 .Where(action => evidencedActions.Contains(action, StringComparer.OrdinalIgnoreCase))
                 .ToArray();
         }
+        // Only the actions the package's state allows are offered; a superseded package (a split
+        // parent, a resent original) takes none.
+        if (row.PlatformCode is "TRENDYOL" or "N11")
+            actions = actions.Where(action => (row.PlatformCode == "N11" ? N11ShipmentActionStateError(row.Package, action) : ShipmentActionStateError(row.Package, action)) is null).ToArray();
+        if (!await CurrentShipmentPackages().AnyAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken))
+            actions = [];
         IReadOnlyList<string> formats;
         if (row.PlatformCode == "HEPSIBURADA")
         {
@@ -1116,6 +1100,49 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         _ = await EnqueueOrderSyncAsync(tenantId, connection.Id, order.OrderNumber, false, correlationId, cancellationToken);
         return ServiceResult<CreateOrderPackageResult>.Ok(result.Value!);
     }
+
+    // A panel status for a Shopify order (Shopify has no shipping workflow of its own here). It is
+    // written on the order version the operator saw, under the order jobs' lock, once per request
+    // key, and it names the status the marketplace data gave at that moment: it stays until that
+    // marketplace status changes (ShopifyManualStatusPolicy).
+    public async Task<ServiceResult<ShopifyOrderStatusResult>> SetShopifyOrderStatusAsync(Guid tenantId, Guid userId, Guid orderId, long expectedVersion, string? status, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
+    {
+        var normalizedStatus = status?.Trim().ToUpperInvariant();
+        if (normalizedStatus is not ("NEW" or "PROCESSING" or "ON_HOLD" or "READY_TO_SHIP" or "SHIPPED" or "UNDELIVERED" or "DELIVERED" or "RETURN_IN_TRANSIT" or "RETURNED" or "CANCELLED"))
+            return ServiceResult<ShopifyOrderStatusResult>.Fail("SHOPIFY_ORDER_STATUS_INVALID", "Shopify sipariş durumu geçersiz.", 422);
+        var connectionId = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == orderId).Select(x => (Guid?)x.ConnectionId).SingleOrDefaultAsync(cancellationToken);
+        if (connectionId is null) return NotFound<ShopifyOrderStatusResult>();
+        var platform = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        if (platform != "SHOPIFY") return ServiceResult<ShopifyOrderStatusResult>.Fail("SHOPIFY_ORDER_ONLY", "Bu manuel durum akışı yalnız Shopify siparişleri için kullanılabilir.", 422);
+
+        await using var ordersLock = await OrdersProjectionLockAsync(connectionId.Value, cancellationToken);
+        var order = await db.Orders.SingleAsync(x => x.TenantId == tenantId && x.Id == orderId, cancellationToken);
+        var sourceEventId = ShopifyManualStatusPolicy.SourceEventId(RemoteDerivedStatus(await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == orderId).ToListAsync(cancellationToken), order.DerivedStatus), idempotencyKey);
+        // The same request again (same key): it was applied; answer with the order as it is.
+        var replay = await db.OrderStatusHistory.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == orderId && x.SourceEventId.EndsWith(ShopifyManualStatusPolicy.KeySuffix(idempotencyKey)))
+            .Select(x => x.CanonicalStatus).FirstOrDefaultAsync(cancellationToken);
+        if (replay is not null) return ServiceResult<ShopifyOrderStatusResult>.Ok(new(order.Id, order.DerivedStatus, order.Version));
+        if (order.Version != expectedVersion) return Precondition<ShopifyOrderStatusResult>(order.Version);
+
+        var now = timeProvider.GetUtcNow();
+        order.DerivedStatus = normalizedStatus;
+        order.UpdatedAt = now;
+        order.Version++;
+        db.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, CanonicalStatus = normalizedStatus, RawStatus = $"{ShopifyManualStatusPolicy.RawStatusPrefix}{normalizedStatus}", SourceEventId = sourceEventId, OccurredAt = now, RecordedAt = now });
+        db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = userId, Action = "SHOPIFY_ORDER_STATUS_MANUAL", TargetType = "Order", TargetId = orderId.ToString("D"), Reason = normalizedStatus, CorrelationId = correlationId, CreatedAt = now });
+        try { await db.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateConcurrencyException)
+        {
+            db.ChangeTracker.Clear();
+            var latest = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == orderId).Select(x => x.Version).SingleAsync(cancellationToken);
+            return Precondition<ShopifyOrderStatusResult>(latest);
+        }
+        return ServiceResult<ShopifyOrderStatusResult>.Ok(new(order.Id, normalizedStatus, order.Version));
+    }
+
+    // The order status the marketplace packages give (what the order would show without a manual status).
+    private static string RemoteDerivedStatus(IReadOnlyCollection<ShipmentPackage> packages, string fallback) =>
+        ShipmentPackageSupersession.StatusSources(packages) is { } sources ? Wire(ShipmentPackageStatusPolicy.Aggregate(sources)) : fallback;
 
     internal static string HepsiburadaPackageReservationSettledKey(string effectPrefix, Guid effectId) => $"{effectPrefix}:reconciled:{effectId:N}";
 
@@ -1507,6 +1534,25 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
 
         var package = await db.ShipmentPackages.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == packageId, cancellationToken);
         if (package is null) return NotFound<ShipmentView>();
+        // Only Trendyol changes a package's carrier through this request; the other marketplaces
+        // have their own flow (Hepsiburada) or none (audit 2026-10-20 S17).
+        var platform = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.ConnectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        if (platform != "TRENDYOL") return ServiceResult<ShipmentView>.Fail("CARGO_PROVIDER_CHANGE_UNSUPPORTED", "Kargo firması değişikliği panelden yalnız Trendyol paketlerinde yapılabilir.", 422);
+
+        var normalizedKey = idempotencyKey.Trim();
+        // A resend of a change that went through answers with the carrier that change asked for
+        // (its recorded expected value), before the version check the change itself moved on.
+        var existing = await db.ExternalEffectRecords.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.EffectType == effectType && x.IdempotencyKey == normalizedKey, cancellationToken);
+        if (existing is not null)
+        {
+            if (existing.TargetId is { } target && target != package.Id) return ServiceResult<ShipmentView>.Fail("IDEMPOTENCY_KEY_CONFLICT", "Bu Idempotency-Key başka bir paket için kullanılmış.", 409);
+            if (existing.CompletedAt is null) return Verifying<ShipmentView>();
+            var replayOrderNumber = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.OrderId).Select(x => x.OrderNumber).SingleOrDefaultAsync(cancellationToken);
+            if (replayOrderNumber is null) return NotFound<ShipmentView>();
+            return string.IsNullOrWhiteSpace(existing.ExpectedValue)
+                ? ServiceResult<ShipmentView>.Ok(Map(package, replayOrderNumber))
+                : await ProjectCargoProviderAsync(tenantId, package, existing.ExpectedValue, replayOrderNumber, correlationId, cancellationToken);
+        }
         if (package.Version != expectedVersion) return Precondition<ShipmentView>(package.Version);
 
         var validation = ValidateShipmentAction(package, action, command.PayloadJson);
@@ -1530,14 +1576,6 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
 
         var orderNumber = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.OrderId).Select(x => x.OrderNumber).SingleOrDefaultAsync(cancellationToken);
         if (orderNumber is null) return NotFound<ShipmentView>();
-
-        var normalizedKey = idempotencyKey.Trim();
-        var existing = await db.ExternalEffectRecords.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.EffectType == effectType && x.IdempotencyKey == normalizedKey, cancellationToken);
-        if (existing is not null)
-        {
-            if (existing.CompletedAt is null) return Verifying<ShipmentView>();
-            return await ProjectCargoProviderAsync(tenantId, package, cargoProvider, orderNumber, correlationId, cancellationToken);
-        }
 
         var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = effectType, IdempotencyKey = normalizedKey, CreatedAt = timeProvider.GetUtcNow(), ConnectionId = package.ConnectionId, TargetId = package.Id, Action = "CHANGE_CARGO_PROVIDER", ExpectedValue = cargoProvider };
         db.ExternalEffectRecords.Add(effect);
@@ -1724,9 +1762,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                 && (x.Status == "ACTIVE" || x.Status == "VERIFIED"), cancellationToken);
 
     private IQueryable<ReturnClaim> ReturnBaseQuery(Guid tenantId) =>
-        ExcludeStaleHepsiburadaReturns(db.ReturnClaims.AsNoTracking().Where(x => x.TenantId == tenantId
-            && x.Status != ReturnClaimStatus.Cancelled
-            && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))), tenantId);
+        OrderQueueQueries.ListedReturns(db, tenantId, timeProvider.GetUtcNow());
 
     // One list view per claim, in the claims' order.
     private async Task<List<ReturnListView>> ReturnViewsAsync(Guid tenantId, List<ReturnClaim> claims, CancellationToken cancellationToken)
@@ -1903,20 +1939,27 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         var searchCustomer = search is not null && SearchesCustomerSnapshot(search);
         var customerPattern = CustomerSnapshotSearchPattern(search ?? string.Empty);
         if (!string.IsNullOrWhiteSpace(search))
-            query = query.Where(claim => claim.ExternalClaimId.Contains(search)
-                || (claim.ReasonCode != null && claim.ReasonCode.Contains(search))
-                || (claim.ReasonText != null && claim.ReasonText.Contains(search))
+        {
+            // The page's own search ignores case the Turkish way; this database pre-filter must
+            // never be narrower than it.
+            var (asTyped, lower, upper) = SearchPatterns(search);
+            query = query.Where(claim => EF.Functions.ILike(claim.ExternalClaimId, asTyped, LikeEscape)
+                || (claim.ReasonCode != null && EF.Functions.ILike(claim.ReasonCode, asTyped, LikeEscape))
+                || (claim.ReasonText != null && (EF.Functions.ILike(claim.ReasonText, asTyped, LikeEscape) || EF.Functions.ILike(claim.ReasonText, lower, LikeEscape) || EF.Functions.ILike(claim.ReasonText, upper, LikeEscape)))
                 || db.Orders.Any(order => order.TenantId == claim.TenantId && order.Id == claim.OrderId
-                    && (order.OrderNumber.Contains(search) || (searchCustomer && Regex.IsMatch(order.CustomerSnapshotJson, customerPattern))))
+                    && (EF.Functions.ILike(order.OrderNumber, asTyped, LikeEscape) || (searchCustomer && Regex.IsMatch(order.CustomerSnapshotJson, customerPattern, RegexOptions.IgnoreCase))))
                 || db.ReturnLines.Any(returnLine => returnLine.TenantId == claim.TenantId && returnLine.ClaimId == claim.Id
                     && db.OrderLines.Any(line => line.TenantId == returnLine.TenantId && line.Id == returnLine.OrderLineId
-                        && ((line.Barcode != null && line.Barcode.Contains(search)) || line.Sku.Contains(search)))));
+                        && ((line.Barcode != null && EF.Functions.ILike(line.Barcode, asTyped, LikeEscape)) || EF.Functions.ILike(line.Sku, asTyped, LikeEscape)
+                            || EF.Functions.ILike(line.TitleSnapshot, asTyped, LikeEscape) || EF.Functions.ILike(line.TitleSnapshot, lower, LikeEscape) || EF.Functions.ILike(line.TitleSnapshot, upper, LikeEscape)))));
+        }
 
         var customer = options.Customer?.Trim();
         if (!string.IsNullOrWhiteSpace(customer))
         {
             var customerFilterPattern = CustomerSnapshotSearchPattern(customer);
-            query = query.Where(x => db.Orders.Any(order => order.TenantId == x.TenantId && order.Id == x.OrderId && (Regex.IsMatch(order.CustomerSnapshotJson, customerFilterPattern) || order.OrderNumber.Contains(customer))));
+            var customerNumber = SearchPatterns(customer).AsTyped;
+            query = query.Where(x => db.Orders.Any(order => order.TenantId == x.TenantId && order.Id == x.OrderId && (Regex.IsMatch(order.CustomerSnapshotJson, customerFilterPattern, RegexOptions.IgnoreCase) || EF.Functions.ILike(order.OrderNumber, customerNumber, LikeEscape))));
         }
         var orderNumber = options.OrderNumber?.Trim();
         if (!string.IsNullOrWhiteSpace(orderNumber))
@@ -2422,7 +2465,9 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             && command.LineItems.All(line => line.OrderLineId != Guid.Empty && line.Quantity is > 0 and <= 10000);
     }
 
-    private static ServiceError? ValidateShipmentAction(ShipmentPackage package, string action, string payloadJson)
+    // Whether a Trendyol package action fits the package's state; the shipment detail offers only
+    // the actions that pass (audit 2026-10-20 S7), and a request is refused with the same reason.
+    internal static ServiceError? ShipmentActionStateError(ShipmentPackage package, string action)
     {
         var supported = new HashSet<string>(StringComparer.Ordinal) { "PICKING", "INVOICED", "TRACKING_NUMBER", "CANCEL_ITEMS", "SPLIT", "MULTI_SPLIT", "CHANGE_CARGO_PROVIDER", "ALTERNATIVE_DELIVERY", "MANUAL_DELIVER", "MANUAL_RETURN" };
         if (!supported.Contains(action)) return new("SHIPMENT_ACTION_UNSUPPORTED", "Paket aksiyonu tanınmıyor.", 422);
@@ -2430,7 +2475,16 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         if (action == "PICKING" && package.Status is not (ShipmentPackageStatus.New or ShipmentPackageStatus.OnHold)) return new("SHIPMENT_STATE_CONFLICT", "PICKING yalnız NEW/ON_HOLD paket için gönderilebilir.", 409);
         if (action == "INVOICED" && package.Status != ShipmentPackageStatus.Processing) return new("SHIPMENT_STATE_CONFLICT", "INVOICED yalnız PROCESSING paket için gönderilebilir.", 409);
         if (action == "TRACKING_NUMBER" && package.Status is not (ShipmentPackageStatus.Processing or ShipmentPackageStatus.ReadyToShip)) return new("SHIPMENT_STATE_CONFLICT", "TRACKING_NUMBER yalnız PICKING/INVOICED paket için gönderilebilir.", 409);
-        if ((action is "CANCEL_ITEMS" or "SPLIT" or "MULTI_SPLIT" or "CHANGE_CARGO_PROVIDER") && package.Status is (ShipmentPackageStatus.Shipped or ShipmentPackageStatus.Delivered or ShipmentPackageStatus.Returned or ShipmentPackageStatus.Cancelled)) return new("SHIPMENT_STATE_CONFLICT", "Bu aksiyon sevk edilmiş veya terminal paket için kullanılamaz.", 409);
+        if ((action is "CANCEL_ITEMS" or "SPLIT" or "MULTI_SPLIT" or "CHANGE_CARGO_PROVIDER" or "ALTERNATIVE_DELIVERY") && package.Status is (ShipmentPackageStatus.Shipped or ShipmentPackageStatus.Delivered or ShipmentPackageStatus.Undelivered or ShipmentPackageStatus.ReturnInTransit or ShipmentPackageStatus.Returned or ShipmentPackageStatus.Cancelled or ShipmentPackageStatus.ManualReview)) return new("SHIPMENT_STATE_CONFLICT", "Bu aksiyon sevk edilmiş veya terminal paket için kullanılamaz.", 409);
+        // A package is marked delivered or returned by hand only after it reached the carrier.
+        if (action == "MANUAL_DELIVER" && package.Status is not (ShipmentPackageStatus.Shipped or ShipmentPackageStatus.Undelivered)) return new("SHIPMENT_STATE_CONFLICT", "Elle teslim yalnız kargodaki veya teslim edilemeyen paket için yapılabilir.", 409);
+        if (action == "MANUAL_RETURN" && package.Status is not (ShipmentPackageStatus.Shipped or ShipmentPackageStatus.Undelivered or ShipmentPackageStatus.ReturnInTransit)) return new("SHIPMENT_STATE_CONFLICT", "Elle iade yalnız kargodaki, teslim edilemeyen veya iade yolundaki paket için yapılabilir.", 409);
+        return null;
+    }
+
+    private static ServiceError? ValidateShipmentAction(ShipmentPackage package, string action, string payloadJson)
+    {
+        if (ShipmentActionStateError(package, action) is { } stateError) return stateError;
         if (action is "MANUAL_DELIVER" or "MANUAL_RETURN") return null;
         try
         {
@@ -2460,7 +2514,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
 
     // n11 offers approving (Picking) and splitting through its API; a package
     // can only be split after it was approved.
-    private static ServiceError? ValidateN11ShipmentAction(ShipmentPackage package, string action, string payloadJson)
+    internal static ServiceError? N11ShipmentActionStateError(ShipmentPackage package, string action)
     {
         if (!MarketplaceJobProcessor.N11ShipmentActions.Contains(action, StringComparer.Ordinal))
             return new("SHIPMENT_ACTION_UNSUPPORTED", "N11 için yalnız siparişi işleme alma, paket bölme, işçilik bedeli ve lojistik toplama talebi desteklenir; diğer işlemleri N11 satıcı panelinden yapın.", 422);
@@ -2469,6 +2523,14 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             return new("SHIPMENT_STATE_CONFLICT", "Sevk edilmiş veya terminal pakette N11 işlemi yapılamaz.", 409);
         if (action is "SPLIT" or "MULTI_SPLIT" or "SPLIT_BY_QUANTITY" or "COLLECTION_REQUEST" && package.Status != ShipmentPackageStatus.Processing)
             return new("SHIPMENT_STATE_CONFLICT", "Bu N11 işlemi yalnız işleme alınmış (Picking) paketlerde yapılabilir.", 409);
+        if (action == "PICKING" && package.Status is not (ShipmentPackageStatus.New or ShipmentPackageStatus.OnHold))
+            return new("SHIPMENT_STATE_CONFLICT", "PICKING yalnız NEW/ON_HOLD paket için gönderilebilir.", 409);
+        return null;
+    }
+
+    private static ServiceError? ValidateN11ShipmentAction(ShipmentPackage package, string action, string payloadJson)
+    {
+        if (N11ShipmentActionStateError(package, action) is { } stateError) return stateError;
         if (action is "SPLIT_BY_QUANTITY" or "LABOR_COST" or "COLLECTION_REQUEST")
         {
             try { return MarketplaceHub.Infrastructure.Adapters.N11.N11PackageActionMapper.Body(action, payloadJson) is null ? new("SHIPMENT_ACTION_PAYLOAD_INVALID", "N11 işlem içeriği okunamadı.", 422) : null; }
@@ -2911,7 +2973,10 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
     internal static ShipmentPackage? SelectDisplayPackage(IEnumerable<ShipmentPackage> packages, string? platformCode)
     {
         var ordered = packages.OrderByDescending(x => x.StatusOccurredAt).ThenByDescending(x => x.UpdatedAt).ToList();
-        if (!string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase)) return ordered.FirstOrDefault();
+        // The package an order card shows is a live one; a cancelled split package only when
+        // nothing else is left.
+        if (!string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase))
+            return ordered.FirstOrDefault(x => x.Status != ShipmentPackageStatus.Cancelled) ?? ordered.FirstOrDefault();
 
         var visible = ordered.Where(x => !(x.ExternalPackageId.StartsWith("order:", StringComparison.OrdinalIgnoreCase)
             && x.ExternalPackageId.EndsWith(":remainder", StringComparison.OrdinalIgnoreCase))).ToList();
@@ -3029,18 +3094,34 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
 
     internal static bool SearchesCustomerSnapshot(string term) => term.Any(char.IsLetter);
 
+    private const string LikeEscape = "\\";
+
+    // "%term%" for ILIKE as typed, in Turkish lower case and in Turkish upper case, with the LIKE
+    // wildcards of the term escaped (a "%" in the term is a percent sign).
+    internal static (string AsTyped, string Lower, string Upper) SearchPatterns(string term)
+    {
+        static string Pattern(string value) => "%" + value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("%", "\\%", StringComparison.Ordinal).Replace("_", "\\_", StringComparison.Ordinal) + "%";
+        return (Pattern(term), Pattern(term.ToLower(TurkishCulture)), Pattern(term.ToUpper(TurkishCulture)));
+    }
+
     // A PostgreSQL (and .NET) regular expression that finds the term in a customer snapshot value
     // whose key is not an e-mail field ("email", "customerEmail", ...): a list search matches names
-    // and places, never e-mail addresses. Matching stays case-sensitive, as the plain search was.
+    // and places, never e-mail addresses. It is matched case-insensitively (~*), and the term's
+    // Turkish lower and upper forms are alternatives, so "ışık" finds "IŞIK" and "istanbul" "İSTANBUL".
     internal static string CustomerSnapshotSearchPattern(string term)
     {
-        var escaped = new StringBuilder(term.Length * 2);
-        foreach (var ch in term)
+        static string Escape(string value)
         {
-            if (char.IsAsciiLetterOrDigit(ch) || ch == '_' || ch > 127) escaped.Append(ch);
-            else escaped.Append('\\').Append(ch);
+            var escaped = new StringBuilder(value.Length * 2);
+            foreach (var ch in value)
+            {
+                if (char.IsAsciiLetterOrDigit(ch) || ch == '_' || ch > 127) escaped.Append(ch);
+                else escaped.Append('\\').Append(ch);
+            }
+            return escaped.ToString();
         }
-        return "\"(?![A-Za-z0-9_]*[Mm][Aa][Ii][Ll]\")[A-Za-z0-9_]*\"\\s*:\\s*\"[^\"]*" + escaped;
+        var variants = new[] { term, term.ToLower(TurkishCulture), term.ToUpper(TurkishCulture) }.Distinct(StringComparer.Ordinal).Select(Escape);
+        return "\"(?![A-Za-z0-9_]*[Mm][Aa][Ii][Ll]\")[A-Za-z0-9_]*\"\\s*:\\s*\"[^\"]*(?:" + string.Join('|', variants) + ")";
     }
 
     internal static string? MaskIdentityNumber(string? value)
@@ -3168,8 +3249,6 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                orderby connection.Id
                select connection).FirstOrDefaultAsync(cancellationToken);
 
-    private Guid Decode(string? cursor) => cursors.TryDecode(cursor, out var id) ? id : throw new ArgumentException("Cursor geçersiz veya süresi dolmuş.", nameof(cursor));
-    private PageResult<T> Page<T>(List<T> rows, int limit, Func<T, Guid> id) { var hasMore = rows.Count > limit; var items = rows.Take(limit).ToList(); return new(items, hasMore ? cursors.Encode(id(items[^1])) : null, hasMore); }
     private static ShipmentView Map(ShipmentPackage x, string orderNumber) => new(x.Id, x.OrderId, orderNumber, x.ExternalPackageId, Wire(x.Status), x.RawStatus, x.CargoTrackingNumber, x.StatusOccurredAt, x.Version, x.CargoProviderExternalId, ShipmentPackageClassification.IsResend(x.CreatedBy, x.OriginExternalPackageId));
     private static string Wire<T>(T value) where T : Enum => string.Concat(value.ToString().Select((ch, index) => char.IsUpper(ch) && index > 0 ? "_" + ch : ch.ToString())).ToUpperInvariant();
     private const string VerifyingCode = "EXTERNAL_EFFECT_VERIFYING";

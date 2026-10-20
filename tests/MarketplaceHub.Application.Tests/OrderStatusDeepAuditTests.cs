@@ -152,6 +152,38 @@ public sealed class OrderStatusDeepAuditTests
         Assert.Equal(hepsiburada, CommonLabelCarrierPolicy.SupportsHepsiburada(carrier));
     }
 
+    // S7: the shipment detail offers only the actions the package state allows.
+    [Theory]
+    [InlineData(ShipmentPackageStatus.New, "PICKING", true)]
+    [InlineData(ShipmentPackageStatus.Processing, "PICKING", false)]
+    [InlineData(ShipmentPackageStatus.Processing, "CANCEL_ITEMS", true)]
+    [InlineData(ShipmentPackageStatus.Shipped, "CANCEL_ITEMS", false)]
+    [InlineData(ShipmentPackageStatus.Delivered, "MANUAL_DELIVER", false)]
+    [InlineData(ShipmentPackageStatus.Shipped, "MANUAL_DELIVER", true)]
+    [InlineData(ShipmentPackageStatus.New, "MANUAL_RETURN", false)]
+    [InlineData(ShipmentPackageStatus.Undelivered, "MANUAL_RETURN", true)]
+    [InlineData(ShipmentPackageStatus.Shipped, "ALTERNATIVE_DELIVERY", false)]
+    [InlineData(ShipmentPackageStatus.Cancelled, "CHANGE_CARGO_PROVIDER", false)]
+    public void Shipment_actions_follow_the_package_state(ShipmentPackageStatus status, string action, bool allowed)
+    {
+        var package = new ShipmentPackage { ExternalPackageId = "P", RawStatus = status.ToString(), Status = status };
+
+        Assert.Equal(allowed, MarketplaceSalesService.ShipmentActionStateError(package, action) is null);
+    }
+
+    // S18: the shipments page filter takes the wire names; an unknown value is refused, not ignored.
+    [Theory]
+    [InlineData("READY_TO_SHIP", ShipmentPackageStatus.ReadyToShip)]
+    [InlineData("ready_to_ship", ShipmentPackageStatus.ReadyToShip)]
+    [InlineData("Shipped", ShipmentPackageStatus.Shipped)]
+    [InlineData("RETURN_IN_TRANSIT", ShipmentPackageStatus.ReturnInTransit)]
+    [InlineData("3", null)]
+    [InlineData("LATE", null)]
+    public void Shipment_status_filter_maps_wire_names(string value, ShipmentPackageStatus? expected)
+    {
+        Assert.Equal(expected, MarketplaceSalesService.ShipmentStatusFilter(value));
+    }
+
     [Fact]
     public void Settled_package_reservation_moves_to_its_own_key()
     {

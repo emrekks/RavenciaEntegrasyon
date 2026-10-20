@@ -116,6 +116,74 @@ public sealed class OrderPackageDeepAuditPostgreSqlTests(PostgreSqlTenantIsolati
         }
     }
 
+    // S18: live packages only, the latest status change first, paged by (StatusOccurredAt, Id).
+    [PostgreSqlFact]
+    public async Task ShipmentsPage_ListsLivePackagesNewestFirstAndFiltersByWireStatus()
+    {
+        var seed = await SeedAsync("oa-shp", "TRENDYOL", lineQuantity: 1);
+        try
+        {
+            await using (var db = fixture.CreateContext())
+            {
+                var parent = Package(seed, "oa-parent", ShipmentPackageStatus.Cancelled, "UnPacked");
+                parent.StatusOccurredAt = DateTimeOffset.UtcNow.AddMinutes(-1);
+                var child = Package(seed, "oa-child", ShipmentPackageStatus.ReadyToShip, "Invoiced");
+                child.OriginExternalPackageId = "oa-parent";
+                child.StatusOccurredAt = DateTimeOffset.UtcNow.AddMinutes(-30);
+                db.ShipmentPackages.AddRange(parent, child);
+                await db.SaveChangesAsync();
+            }
+            await using var service = fixture.CreateContext();
+            var sales = new MarketplaceSalesService(service, new CursorCodec(new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider(), fixture.TimeProvider), new ConfigurationBuilder().Build(), null!, null!, null!, null!, TimeProvider.System);
+
+            var first = await sales.ShipmentsAsync(seed.TenantId, 1, null, null, CancellationToken.None);
+            var second = await sales.ShipmentsAsync(seed.TenantId, 1, first.NextCursor, null, CancellationToken.None);
+            var ready = await sales.ShipmentsAsync(seed.TenantId, 10, null, "READY_TO_SHIP", CancellationToken.None);
+
+            Assert.Equal("oa-child", Assert.Single(first.Items).ExternalPackageId);
+            Assert.True(first.HasMore);
+            Assert.Equal("oa-shp-pkg", Assert.Single(second.Items).ExternalPackageId);
+            Assert.False(second.HasMore);
+            Assert.Equal("oa-child", Assert.Single(ready.Items).ExternalPackageId);
+            await Assert.ThrowsAsync<ArgumentException>(() => sales.ShipmentsAsync(seed.TenantId, 10, null, "LATE", CancellationToken.None));
+        }
+        finally
+        {
+            await CleanupAsync(seed.TenantId);
+        }
+    }
+
+    // S17: only Trendyol packages change carrier here; a resent change answers with the carrier it asked for.
+    [PostgreSqlFact]
+    public async Task CargoChange_IsTrendyolOnlyAndAResendProjectsTheRecordedCarrier()
+    {
+        var hepsiburada = await SeedAsync("oa-hbc", "HEPSIBURADA", lineQuantity: 1);
+        var trendyol = await SeedAsync("oa-tyc", "TRENDYOL", lineQuantity: 1);
+        try
+        {
+            var port = new RecordingOrderPort();
+            await using (var db = fixture.CreateContext())
+            {
+                var refused = await NewService(db, port).ChangeCargoProviderInstantAsync(hepsiburada.TenantId, hepsiburada.PackageId, 1, new("CHANGE_CARGO_PROVIDER", """{"cargoProvider":"ARASMP"}"""), "oa-hbc:key", "oa-hbc", CancellationToken.None);
+                Assert.Equal(422, refused.Error!.Status);
+                db.ExternalEffectRecords.Add(new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = trendyol.TenantId, EffectType = "TRENDYOL_INSTANT_CARGO_PROVIDER_CHANGE", IdempotencyKey = "oa-tyc:key", CreatedAt = DateTimeOffset.UtcNow, CompletedAt = DateTimeOffset.UtcNow, Outcome = "APPLIED", ConnectionId = trendyol.ConnectionId, TargetId = trendyol.PackageId, Action = "CHANGE_CARGO_PROVIDER", ExpectedValue = "ARASMP" });
+                await db.SaveChangesAsync();
+            }
+            await using var resend = fixture.CreateContext();
+            // An old version and another carrier in the body: the recorded change answers.
+            var replay = await NewService(resend, port).ChangeCargoProviderInstantAsync(trendyol.TenantId, trendyol.PackageId, 0, new("CHANGE_CARGO_PROVIDER", """{"cargoProvider":"TEXMP"}"""), "oa-tyc:key", "oa-tyc", CancellationToken.None);
+
+            Assert.Null(replay.Error);
+            Assert.Equal("ARASMP", replay.Value!.CargoProviderName);
+            Assert.Empty(port.Actions);
+        }
+        finally
+        {
+            await CleanupAsync(hepsiburada.TenantId);
+            await CleanupAsync(trendyol.TenantId);
+        }
+    }
+
     private static OrderPackageCreateRequest Request(Guid lineId, int quantity) =>
         new("PKG-BARCODE", "HX", "HepsiJet", "Panel", 1, 1, "Depo", "Standart", [new(lineId, quantity)]);
 

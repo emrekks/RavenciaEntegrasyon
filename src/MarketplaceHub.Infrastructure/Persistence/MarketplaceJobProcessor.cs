@@ -8061,13 +8061,17 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         }
         if (isShopify)
         {
-            var manualStatus = await db.OrderStatusHistory.AsNoTracking()
-                .Where(x => x.TenantId == tenantId && x.OrderId == order.Id && x.RawStatus.StartsWith("MANUAL_SHOPIFY_STATUS:"))
+            var manualStatus = await db.OrderStatusHistory
+                .Where(x => x.TenantId == tenantId && x.OrderId == order.Id && x.RawStatus.StartsWith(ShopifyManualStatusPolicy.RawStatusPrefix))
                 .OrderByDescending(x => x.OccurredAt)
-                .Select(x => new { x.CanonicalStatus, x.OccurredAt })
                 .FirstOrDefaultAsync(cancellationToken);
-            if (manualStatus is not null && manualStatus.OccurredAt >= order.LastRemoteModifiedAt)
+            if (manualStatus is not null && ShopifyManualStatusPolicy.StillHolds(manualStatus.OccurredAt, ShopifyManualStatusPolicy.RemoteStatusAt(manualStatus.SourceEventId), order.LastRemoteModifiedAt, order.DerivedStatus))
+            {
                 order.DerivedStatus = manualStatus.CanonicalStatus;
+                // Still valid after this read: the lists treat a manual status as current while it
+                // is not older than the order's last marketplace change.
+                if (manualStatus.OccurredAt < order.LastRemoteModifiedAt) manualStatus.OccurredAt = order.LastRemoteModifiedAt;
+            }
         }
         if (projectReservations && batch is null)
             await ProjectOrderReservations(tenantId, connectionId, lines.Values.Select(line => (line, remote.LastModifiedAt)).ToList(), cancellationToken);
