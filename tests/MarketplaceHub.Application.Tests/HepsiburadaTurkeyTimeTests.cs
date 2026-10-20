@@ -27,6 +27,10 @@ public sealed class HepsiburadaTurkeyTimeTests
     [InlineData("2026-10-19T14:19:58+03", true)]
     [InlineData("2026-10-19T14:19:58.377+03", true)]
     [InlineData("2026-10-19T14:19+03", true)]
+    [InlineData("2026-10-19 14:19:58 +03:00", true)]
+    [InlineData("2026-10-19 14:19:58 -0500", true)]
+    [InlineData("2026-10-19 14:19:58.377 +03", true)]
+    [InlineData("2026-10-19 14:19:58+03:00", true)]
     [InlineData("2026-10-19 14:19:58", false)]
     [InlineData("2026-10-19T14:19:58", false)]
     [InlineData("2026-10-19T14:19:58.377", false)]
@@ -38,6 +42,16 @@ public sealed class HepsiburadaTurkeyTimeTests
     [Fact]
     public void AnHoursOnlyOffsetIsKept() =>
         Assert.Equal(new DateTimeOffset(2026, 10, 19, 11, 19, 58, TimeSpan.Zero), MarketplaceHub.Infrastructure.Adapters.TurkeyTime.Parse("2026-10-19T14:19:58+03"));
+
+    // An offset written after a space is still an offset; the value is not shifted by another three hours.
+    [Theory]
+    [InlineData("2026-10-20 14:30:00 +03:00", 11)]
+    [InlineData("2026-10-20 14:30:00+03:00", 11)]
+    [InlineData("2026-10-20 14:30:00 +00:00", 14)]
+    [InlineData("2026-10-20 14:30:00 Z", 14)]
+    [InlineData("2026-10-20 14:30:00", 11)]
+    public void AnOffsetAfterASpaceIsKept(string text, int utcHour) =>
+        Assert.Equal(new DateTimeOffset(2026, 10, 20, utcHour, 30, 0, TimeSpan.Zero), MarketplaceHub.Infrastructure.Adapters.TurkeyTime.Parse(text));
 
     // C13: the documented "GMT+3 epoch" reading, stated once and not applied to any request.
     [Fact]

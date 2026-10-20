@@ -10,9 +10,7 @@ internal sealed record HepsiburadaInvoiceDeliveryRequest(
     Uri InvoiceLink,
     string ArrangementDate,
     string ContentType,
-    string InvoiceNumber,
-    string? SerialNumber = null,
-    string? RowNumber = null);
+    string InvoiceNumber);
 
 internal static class HepsiburadaInvoiceDeliveryPolicy
 {
@@ -79,8 +77,7 @@ internal static class HepsiburadaInvoiceDeliveryPolicy
                 return false;
             }
 
-            var (serialNumber, rowNumber) = SplitInvoiceNumber(invoiceNumber);
-            request = new(packageNumber, orderNumber, invoiceLink, arrangementDate.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture), documentType, invoiceNumber, serialNumber, rowNumber);
+            request = new(packageNumber, orderNumber, invoiceLink, arrangementDate.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture), documentType, invoiceNumber);
             error = string.Empty;
             return true;
         }
@@ -91,9 +88,9 @@ internal static class HepsiburadaInvoiceDeliveryPolicy
         }
     }
 
-    private static readonly JsonSerializerOptions BodyOptions = new() { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull };
-
-    // The PUT .../invoice body. serialNumber and rowNumber are left out when the number cannot be split (needs SIT confirmation).
+    // The PUT .../invoice body exactly as live deliveries have been accepted (204): a MIME contentType and no
+    // serialNumber/rowNumber. A schema copy shows contentType "pdf"/"html" and the split invoice number; that shape was
+    // never confirmed against Hepsiburada, so the live-proven body stays until SIT shows the other one is required.
     public static string Body(HepsiburadaInvoiceDeliveryRequest invoice) => JsonSerializer.Serialize(new
     {
         arrangementDate = invoice.ArrangementDate,
@@ -105,32 +102,18 @@ internal static class HepsiburadaInvoiceDeliveryPolicy
                 arrangementDate = invoice.ArrangementDate,
                 contentType = invoice.ContentType,
                 invoiceLink = invoice.InvoiceLink.AbsoluteUri,
-                orderNumber = invoice.OrderNumber,
-                serialNumber = invoice.SerialNumber,
-                rowNumber = invoice.RowNumber
+                orderNumber = invoice.OrderNumber
             }
         }
-    }, BodyOptions);
+    });
 
-    // NEEDS SIT CONFIRMATION: the invoice schema documents contentType as "pdf" or "html" (not a MIME type) and
-    // serialNumber/rowNumber as the parts of the invoice number; checked against the documentation only, not yet
-    // against Hepsiburada's SIT environment. A MIME type from the stored document is accepted and mapped.
+    // The stored document's MIME type is sent as is (lower case); a bare "pdf"/"html" is mapped back to it.
     internal static string? DocumentContentType(string? value) => value?.Trim().ToLowerInvariant() switch
     {
-        "pdf" or "application/pdf" => "pdf",
-        "html" or "text/html" => "html",
+        "pdf" or "application/pdf" => "application/pdf",
+        "html" or "text/html" => "text/html",
         _ => null
     };
-
-    // A GİB invoice number is a three-character serial and a thirteen-digit row (year and sequence), e.g.
-    // DAP2026000000016 -> DAP / 2026000000016. Any other number (a hand-entered one) is sent without the split.
-    internal static (string? SerialNumber, string? RowNumber) SplitInvoiceNumber(string invoiceNumber)
-    {
-        var value = invoiceNumber.Trim();
-        return value.Length == 16 && value[..3].All(char.IsAsciiLetterOrDigit) && value[3..].All(char.IsAsciiDigit)
-            ? (value[..3], value[3..])
-            : (null, null);
-    }
 
     private static string? String(JsonElement element, string name) =>
         element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String

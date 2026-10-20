@@ -248,9 +248,53 @@ public sealed partial class HepsiburadaHttpClient
     }
 
     // C17: the label endpoint answers 400 when the package has no common (shared) barcode label, e.g. it does
-    // not ship with a carrier that prints Hepsiburada's common label. Said plainly instead of a generic 400.
+    // not ship with a carrier that prints Hepsiburada's common label. That explanation is given only when the
+    // response itself says so; any other 400 (wrong format, wrong package state...) shows Hepsiburada's own text.
     internal static AdapterError NoCommonLabel(string? requestId) => new(AdapterErrorClass.Validation, "HEPSIBURADA_COMMON_LABEL_UNAVAILABLE",
         "Hepsiburada bu paket için ortak barkodlu etiket vermedi (400). Paketin kargo firması ortak barkod kullanmıyor olabilir; etiketi kargo firmasının sisteminden alın.", 400, null, requestId);
+
+    internal static AdapterError LabelRejected(string body, string? requestId)
+    {
+        var details = LabelErrorDetails(body);
+        if (details is not null && SaysNoCommonLabel(details)) return NoCommonLabel(requestId);
+        return new(AdapterErrorClass.Validation, "HEPSIBURADA_LABEL_REJECTED",
+            details is null
+                ? "Hepsiburada etiket isteğini reddetti (400) ve neden bildirmedi."
+                : $"Hepsiburada etiket isteğini reddetti (400): {details}", 400, null, requestId);
+    }
+
+    private static readonly string[] CommonLabelPhrases =
+        ["ortak barkod", "ortak etiket", "common barcode", "common label", "commonbarcode", "commonlabel", "common_label", "common_barcode"];
+
+    internal static bool SaysNoCommonLabel(string details) =>
+        CommonLabelPhrases.Any(phrase => details.Contains(phrase, StringComparison.OrdinalIgnoreCase));
+
+    // Hepsiburada's code/message fields (JSON) or a short plain-text body, with links, e-mails and long ids masked.
+    internal static string? LabelErrorDetails(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body)) return null;
+        var details = HepsiburadaHttpClient.SafeInvoiceErrorDetails(body);
+        if (details is not null) return details;
+        var text = body.Trim();
+        if (text.StartsWith('{') || text.StartsWith('[') || text.StartsWith('<')) return null;
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"https?://\S+", "[url]", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b", "[email]");
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"(?<!\d)\d{10,11}(?!\d)", "[id]");
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"\s+", " ").Trim();
+        if (text.Length == 0) return null;
+        return text.Length <= 300 ? text : text[..300];
+    }
+
+    private static async Task<string> ReadBoundedTextAsync(HttpContent content, int maxBytes, CancellationToken cancellationToken)
+    {
+        await using var stream = await content.ReadAsStreamAsync(cancellationToken);
+        var buffer = new byte[maxBytes];
+        var total = 0;
+        int read;
+        while (total < maxBytes && (read = await stream.ReadAsync(buffer.AsMemory(total, maxBytes - total), cancellationToken)) > 0)
+            total += read;
+        return Encoding.UTF8.GetString(buffer, 0, total);
+    }
 
     private async Task<AdapterResult<byte[]>> SendBytesAsync(HepsiburadaRequestContext context, Uri baseAddress, string path, CancellationToken cancellationToken)
     {
@@ -278,7 +322,7 @@ public sealed partial class HepsiburadaHttpClient
             {
                 var retryAfter = response.Headers.RetryAfter?.Delta ?? (response.Headers.RetryAfter?.Date is { } retryDate ? retryDate - timeProvider.GetUtcNow() : null);
                 var error = response.StatusCode == HttpStatusCode.BadRequest
-                    ? NoCommonLabel(requestId)
+                    ? LabelRejected(await ReadBoundedTextAsync(response.Content, 16 * 1024, timeout.Token), requestId)
                     : Error(response.StatusCode, retryAfter ?? rate?.RetryAfter, requestId);
                 return AdapterResult<byte[]>.Failure(error, rate);
             }

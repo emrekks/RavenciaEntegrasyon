@@ -42,14 +42,16 @@ public sealed partial class N11HttpClient : IInvoiceMarketplacePort
             ? AdapterResult<InvoiceDeliveryStatus>.Success(new(reference.ExternalReference, "NOT_INVOICED", IsTerminal: true))
             : Failure<InvoiceDeliveryStatus>(AdapterErrorClass.NotSupported, "N11_INVOICE_READBACK_UNSUPPORTED", "N11 gönderilen fatura linkini geri okuma servisi sunmuyor.", HttpStatusCode.NotImplemented));
 
-    // C8: a success answer (SendSoapAsync already required result/status=success) that echoes this link and this
-    // order proves the attempt. n11 echoes invoiceNumber only for e-export orders, so a missing number is not a
-    // mismatch; a different one is.
+    // C8: a success answer (SendSoapAsync already required result/status=success) that echoes this link proves the
+    // attempt. The order number and invoiceNumber are checked only when n11 echoes them (it is not proven that
+    // every answer carries the order number, and n11 echoes invoiceNumber only for e-export orders): a missing echo
+    // is not a mismatch, a different one is.
     internal static bool InvoiceLinkVerified(System.Xml.Linq.XElement response, N11InvoiceLinkRequest request)
     {
+        var echoedOrder = Child(response, "orderNumber");
         var echoedNumber = Child(response, "invoiceNumber");
         return string.Equals(Child(response, "url"), request.Link, StringComparison.Ordinal)
-            && string.Equals(Child(response, "orderNumber"), request.OrderNumber, StringComparison.Ordinal)
+            && (string.IsNullOrWhiteSpace(echoedOrder) || string.Equals(echoedOrder, request.OrderNumber, StringComparison.Ordinal))
             && (echoedNumber is null || string.Equals(echoedNumber, request.InvoiceNumber, StringComparison.Ordinal));
     }
 

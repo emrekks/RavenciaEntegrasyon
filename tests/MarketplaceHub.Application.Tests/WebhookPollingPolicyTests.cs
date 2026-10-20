@@ -101,13 +101,19 @@ public sealed class ConnectionRetestPolicyTests
         Assert.Equal(refusal, ConnectionRetestPolicy.IsAuthRefusal(code));
 
     [Fact]
-    public void ARefusedButUnchangedCredentialIsRetestedHourlyForADay()
+    public void ARefusedButUnchangedCredentialIsRetestedWithADoublingPauseForADay()
     {
-        // The identity service refused the credentials saved three hours ago; the last test was an hour ago.
-        Assert.True(ConnectionRetestPolicy.ShouldRetest("DRAFT", Now.AddMinutes(-61), "PAZARAMA_CREDENTIALS_REJECTED", Now, Now.AddHours(-3)));
-        Assert.True(ConnectionRetestPolicy.ShouldRetest("DRAFT", Now.AddMinutes(-61), "PAZARAMA_ACCESS_DENIED", Now, Now.AddHours(-3)));
-        // Hourly, not every quarter hour.
-        Assert.False(ConnectionRetestPolicy.ShouldRetest("DRAFT", Now.AddMinutes(-30), "PAZARAMA_CREDENTIALS_REJECTED", Now, Now.AddHours(-3)));
+        // The identity service refused the credentials saved two hours ago, first right after the save: an hour later.
+        Assert.True(ConnectionRetestPolicy.ShouldRetest("DRAFT", Now.AddMinutes(-61), "PAZARAMA_CREDENTIALS_REJECTED", Now, Now.AddMinutes(-122)));
+        Assert.True(ConnectionRetestPolicy.ShouldRetest("DRAFT", Now.AddMinutes(-61), "PAZARAMA_ACCESS_DENIED", Now, Now.AddMinutes(-122)));
+        // At least an hour, not every quarter hour.
+        Assert.False(ConnectionRetestPolicy.ShouldRetest("DRAFT", Now.AddMinutes(-30), "PAZARAMA_CREDENTIALS_REJECTED", Now, Now.AddMinutes(-31)));
+        // Refused for two hours at the last test: the next retest waits two hours, not one.
+        Assert.False(ConnectionRetestPolicy.ShouldRetest("DRAFT", Now.AddMinutes(-61), "PAZARAMA_CREDENTIALS_REJECTED", Now, Now.AddHours(-3)));
+        Assert.True(ConnectionRetestPolicy.ShouldRetest("DRAFT", Now.AddMinutes(-121), "PAZARAMA_CREDENTIALS_REJECTED", Now, Now.AddHours(-4)));
+        // Refused for eight hours: eight hours of quiet.
+        Assert.False(ConnectionRetestPolicy.ShouldRetest("DRAFT", Now.AddHours(-7), "PAZARAMA_CREDENTIALS_REJECTED", Now, Now.AddHours(-15)));
+        Assert.True(ConnectionRetestPolicy.ShouldRetest("DRAFT", Now.AddHours(-8), "PAZARAMA_CREDENTIALS_REJECTED", Now, Now.AddHours(-16)));
         // A day after the credential was saved the retries stop.
         Assert.False(ConnectionRetestPolicy.ShouldRetest("DRAFT", Now.AddHours(-2), "PAZARAMA_CREDENTIALS_REJECTED", Now, Now.AddHours(-25)));
         // Credentials changed after the refused test: the new ones get their own test, not a retry.

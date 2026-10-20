@@ -835,7 +835,8 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         refused.Status = "DRAFT";
         refused.LastTestedAt = fixture.Now.AddHours(-2);
         refused.LastErrorCode = "PAZARAMA_CREDENTIALS_REJECTED";
-        // The identity service refused credentials saved three hours ago (an outage on its side): retried hourly.
+        // The identity service refused credentials saved three hours ago (an outage on its side); refused for an hour
+        // at the last test two hours ago, so the doubling pause (one hour) is over: retried.
         var refusedDuringOutage = NewQuestionConnection(tenant);
         refusedDuringOutage.PlatformCode = "PAZARAMA";
         refusedDuringOutage.Environment = "PRODUCTION";

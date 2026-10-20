@@ -69,6 +69,28 @@ public sealed class HepsiburadaContractTests
     }
 
     [Theory]
+    [InlineData("""{"message":"Package status is not suitable for label"}""", "Package status is not suitable for label")]
+    [InlineData("Invalid format parameter", "Invalid format parameter")]
+    [InlineData("", "neden bildirmedi")]
+    public async Task AnyOtherLabel400ShowsHepsiburadasOwnReason(string body, string expected)
+    {
+        var handler = new Script(new HttpResponseMessage(HttpStatusCode.BadRequest) { Content = new StringContent(body, Encoding.UTF8, "text/plain") });
+
+        var result = await Client(new Factory(handler)).GetCommonLabelAsync(Account(), "PKG-1", "ZPL", CancellationToken.None);
+
+        Assert.Equal("HEPSIBURADA_LABEL_REJECTED", result.Error?.Code);
+        Assert.Contains(expected, result.Error!.SafeMessage, StringComparison.Ordinal);
+        Assert.DoesNotContain("ortak barkod", result.Error.SafeMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ATurkishCommonBarcodeRefusalIsRecognised()
+    {
+        Assert.Equal("HEPSIBURADA_COMMON_LABEL_UNAVAILABLE", HepsiburadaHttpClient.LabelRejected("""{"message":"Bu paket için ortak barkod bulunamadı"}""", null).Code);
+        Assert.Equal("HEPSIBURADA_LABEL_REJECTED", HepsiburadaHttpClient.LabelRejected("""{"message":"Paket bulunamadı"}""", null).Code);
+    }
+
+    [Theory]
     [InlineData("Ravencia Entegrasyon", true)]
     [InlineData("ravencia_tests/1.0", true)]
     [InlineData("Ravencİa", false)]

@@ -730,9 +730,11 @@ public static class ConnectionRetestPolicy
             || errorCode is "REMOTE_TIMEOUT" or "REMOTE_UNAVAILABLE" or "REMOTE_RATE_LIMITED");
 
     // A marketplace's identity service can refuse good credentials while it is itself failing (Pazarama answered
-    // "Oturum bilgileriniz alınamadı" with HTTP 400 during a Cloudflare outage). Such a refusal is retried once an
-    // hour, but only while the credential the test used is still the active one and for at most a day after it was
-    // saved (the first refusal follows its save); after that the seller has to look at the credentials.
+    // "Oturum bilgileriniz alınamadı" with HTTP 400 during a Cloudflare outage). Such a refusal is retried only while
+    // the credential the test used is still the active one, for at most a day after it was saved (the first refusal
+    // follows its save), and with a doubling pause: the next retest waits as long as the credential had already
+    // been refused (at least an hour), i.e. about 1, 2, 4, 8 and 16 hours after the save, five retests in all instead
+    // of one every hour. After that, or once the seller saves new credentials, the seller's own test decides.
     public static readonly TimeSpan AuthRefusalInterval = TimeSpan.FromHours(1);
     public static readonly TimeSpan AuthRefusalWindow = TimeSpan.FromHours(24);
 
@@ -748,8 +750,13 @@ public static class ConnectionRetestPolicy
         return IsAuthRefusal(lastErrorCode)
             && credentialSavedAt is { } saved && saved <= tested
             && now - saved < AuthRefusalWindow
-            && now - tested >= AuthRefusalInterval;
+            && now - tested >= AuthRefusalPause(saved, tested);
     }
+
+    // The pause before the next retest of a refused credential: as long as it had been refused when last tested
+    // (tested - saved), never less than AuthRefusalInterval.
+    public static TimeSpan AuthRefusalPause(DateTimeOffset credentialSavedAt, DateTimeOffset lastTestedAt) =>
+        lastTestedAt - credentialSavedAt > AuthRefusalInterval ? lastTestedAt - credentialSavedAt : AuthRefusalInterval;
 }
 
 public enum EffectVerdict { Applied, NotApplied, Unknown }

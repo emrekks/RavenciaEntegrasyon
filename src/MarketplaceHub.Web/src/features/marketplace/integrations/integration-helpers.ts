@@ -54,7 +54,8 @@ export function writeIntegrationListState(current: URLSearchParams, patch: Parti
 }
 
 // Trendyol asks for "User-Agent: {sellerId} - {IntegratorName}" (name: up to 30 ASCII letters or digits). The
-// worker only logs a warning for another format, so this is advice; a non-ASCII identity cannot be sent at all.
+// worker only logs a warning for another format, so this is advice; a non-ASCII identity cannot be sent at all, so
+// that 'error' blocks the new-connection form (the server refuses it on save as well).
 export function trendyolUserAgentNotice(identity: string, sellerId: string): { kind: 'warning' | 'error', message: string } | null {
   const value = identity.trim()
   if (!value) return null

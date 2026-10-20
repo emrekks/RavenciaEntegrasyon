@@ -31,8 +31,11 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
         // An open circuit answers before the quota is touched: a request that is refused locally must not
         // spend a token of the seller's quota (or wait for one).
         var circuitKey = CircuitKeyFor(request);
-        if (!TryEnterCircuit(circuitKey, out var probeCandidate, out var circuitRetryAfter, out var openedForQuota)) return CircuitOpenResponse(circuitRetryAfter, openedForQuota);
-        var halfOpen = false;
+        // The half-open probe is claimed before any quota token is taken, so only the probe spends one; the
+        // others are refused locally. A probe still queueing for its token after ProbeQuotaWaitLimit no longer
+        // keeps the family out (G11): the next request may take the probe over.
+        if (!TryEnterCircuit(circuitKey, out var probe, out var circuitRetryAfter, out var openedForQuota)) return CircuitOpenResponse(circuitRetryAfter, openedForQuota);
+        var halfOpen = probe is not null;
         var resultRecorded = false;
         var concurrencyHeld = false;
         try
@@ -40,9 +43,7 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
             // Wait for the quota before taking a concurrency slot, so reads queued behind the order-read
             // spacing do not hold the slots that product and stock requests need.
             await WaitForQuotaAsync(request, cancellationToken);
-            // G11: the half-open probe is claimed only once the quota token is held; a probe waiting minutes for
-            // the order-read spacing no longer keeps every other request of the family out.
-            if (probeCandidate && !TryClaimHalfOpen(circuitKey, out halfOpen, out circuitRetryAfter, out openedForQuota))
+            if (probe is not null && !TryStartProbe(circuitKey, probe, out halfOpen, out circuitRetryAfter, out openedForQuota))
                 return CircuitOpenResponse(circuitRetryAfter, openedForQuota);
             await state.Concurrency.WaitAsync(cancellationToken);
             concurrencyHeld = true;
@@ -74,14 +75,18 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
         }
         finally
         {
-            if (halfOpen && !resultRecorded) ReleaseHalfOpen(circuitKey);
+            if (halfOpen && !resultRecorded && probe is not null) ReleaseHalfOpen(circuitKey, probe);
             if (concurrencyHeld) state.Concurrency.Release();
         }
     }
 
-    // probeCandidate: the break is over and no probe is out, so this request may become the probe once it
-    // holds its quota token (TryClaimHalfOpen).
-    private bool TryEnterCircuit(string circuitKey, out bool probeCandidate, out TimeSpan? retryAfter, out bool openedForQuota)
+    // How long a claimed probe may queue for its quota token before another request may take the probe over.
+    internal static readonly TimeSpan ProbeQuotaWaitLimit = TimeSpan.FromSeconds(10);
+
+    // probe: the break is over and this request now owns the half-open probe; it is claimed here, before the
+    // quota is touched, so requests refused in the meantime spend no token. A probe that is already sent, or that
+    // has queued for its token for less than ProbeQuotaWaitLimit, keeps the others out.
+    private bool TryEnterCircuit(string circuitKey, out object? probe, out TimeSpan? retryAfter, out bool openedForQuota)
     {
         lock (state.SyncRoot)
         {
@@ -89,7 +94,7 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
             state.TrimIdleState(now, TimeSpan.FromMinutes(1));
             var circuit = state.CircuitFor(circuitKey);
             circuit.LastTouchedAt = now;
-            probeCandidate = false;
+            probe = null;
             retryAfter = null;
             openedForQuota = circuit.OpenedForQuota;
             if (circuit.OpenUntil is null) return true;
@@ -98,33 +103,40 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
                 retryAfter = circuit.OpenUntil.Value - now;
                 return false;
             }
-            if (circuit.HalfOpenRequestActive) return false;
-            probeCandidate = true;
+            if (circuit.HalfOpenRequestActive
+                && (circuit.ProbeSent || now - circuit.ProbeClaimedAt < ProbeQuotaWaitLimit))
+                return false;
+            probe = new object();
+            circuit.HalfOpenRequestActive = true;
+            circuit.ProbeOwner = probe;
+            circuit.ProbeClaimedAt = now;
+            circuit.ProbeSent = false;
             return true;
         }
     }
 
-    private bool TryClaimHalfOpen(string circuitKey, out bool halfOpen, out TimeSpan? retryAfter, out bool openedForQuota)
+    // The probe holds its quota token: it is sent if it still owns the probe. If a later request took the probe
+    // over (this one queued too long), it goes as an ordinary request once that probe closed the circuit and is
+    // refused otherwise.
+    private bool TryStartProbe(string circuitKey, object probe, out bool halfOpen, out TimeSpan? retryAfter, out bool openedForQuota)
     {
         lock (state.SyncRoot)
         {
             var now = timeProvider.GetUtcNow();
             var circuit = state.CircuitFor(circuitKey);
             circuit.LastTouchedAt = now;
-            halfOpen = false;
             retryAfter = null;
             openedForQuota = circuit.OpenedForQuota;
-            // Another probe closed the circuit meanwhile: this request goes as an ordinary one.
-            if (circuit.OpenUntil is null) return true;
-            if (now < circuit.OpenUntil)
+            if (ReferenceEquals(circuit.ProbeOwner, probe) && circuit.HalfOpenRequestActive)
             {
-                retryAfter = circuit.OpenUntil.Value - now;
-                return false;
+                circuit.ProbeSent = true;
+                halfOpen = true;
+                return true;
             }
-            if (circuit.HalfOpenRequestActive) return false;
-            circuit.HalfOpenRequestActive = true;
-            halfOpen = true;
-            return true;
+            halfOpen = false;
+            if (circuit.OpenUntil is null) return true;
+            if (now < circuit.OpenUntil) retryAfter = circuit.OpenUntil.Value - now;
+            return false;
         }
     }
 
@@ -141,10 +153,14 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
                 circuit.OpenUntil = null;
                 circuit.OpenedForQuota = false;
                 circuit.HalfOpenRequestActive = false;
+                circuit.ProbeOwner = null;
+                circuit.ProbeSent = false;
                 return;
             }
 
             circuit.HalfOpenRequestActive = false;
+            circuit.ProbeOwner = null;
+            circuit.ProbeSent = false;
             circuit.ConsecutiveFailures++;
             if (remoteRetryAfter is { } retryAfter && retryAfter > TimeSpan.Zero)
             {
@@ -162,13 +178,16 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
         }
     }
 
-    private void ReleaseHalfOpen(string circuitKey)
+    private void ReleaseHalfOpen(string circuitKey, object probe)
     {
         lock (state.SyncRoot)
         {
             var circuit = state.CircuitFor(circuitKey);
-            circuit.HalfOpenRequestActive = false;
             circuit.LastTouchedAt = timeProvider.GetUtcNow();
+            if (!ReferenceEquals(circuit.ProbeOwner, probe)) return;
+            circuit.HalfOpenRequestActive = false;
+            circuit.ProbeOwner = null;
+            circuit.ProbeSent = false;
         }
     }
 
@@ -494,5 +513,10 @@ public sealed class TrendyolCircuitState
     // The circuit was opened by a 429 with Retry-After (a quota stop), not by failures.
     public bool OpenedForQuota { get; set; }
     public bool HalfOpenRequestActive { get; set; }
+    // The request that owns the half-open probe, when it claimed it, and whether it has been sent (it holds its
+    // quota token). A claimed probe that is not sent yet is still queueing for its token.
+    internal object? ProbeOwner { get; set; }
+    internal DateTimeOffset ProbeClaimedAt { get; set; }
+    internal bool ProbeSent { get; set; }
     public DateTimeOffset LastTouchedAt { get; set; }
 }
