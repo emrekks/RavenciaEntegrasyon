@@ -971,8 +971,8 @@ public sealed partial class InvoicingBillingService(
                 || InvoiceMarketplaceRetryPolicy.CanRetryDelivery(invoice.Status, invoice.LastErrorCode);
             return deliveryProblem ? "FATURA_PLATFORMA_AKTARILMADI" : "FATURA_ISLENIYOR";
         }
-        if (invoice.Status is InvoiceStatus.Submitting or InvoiceStatus.UnknownResult)
-            return FiscalSubmissionLabel(invoice.Status, invoice.LastErrorCode, invoice.ExternalReference);
+        if (SharedFiscalLabel(invoice.Status, invoice.LastErrorCode, invoice.ExternalReference) is { } shared)
+            return shared;
         if (invoice.Status == InvoiceStatus.Completed)
             return "FATURA_KONTROLDE";
 
@@ -985,6 +985,19 @@ public sealed partial class InvoicingBillingService(
             connection.PlatformCode,
             invoice?.HasConfirmedMarketplaceDelivery == true);
     }
+
+    internal const string AdjustmentRequiredLabel = "FATURA_DUZELTME_GEREKLI";
+
+    // The fiscal states the orders page and the invoice workspace label alike (MarketplaceSalesService uses this too):
+    // a submission refused before the provider created anything, a lost answer, a submission in flight, and an issued
+    // invoice whose order was cancelled or returned (AdjustmentRequired: e-Archive cancellation or a return invoice is
+    // due). Null for every other state; each page adds its own view of the marketplace delivery.
+    internal static string? SharedFiscalLabel(InvoiceStatus status, string? lastErrorCode, string? externalReference) => status switch
+    {
+        InvoiceStatus.Submitting or InvoiceStatus.UnknownResult => FiscalSubmissionLabel(status, lastErrorCode, externalReference),
+        InvoiceStatus.AdjustmentRequired => AdjustmentRequiredLabel,
+        _ => null
+    };
 
     // A submission the provider refused before creating anything is an error the operator can retry, not
     // work in progress; a submission whose answer was lost is uncertain, not rejected.
@@ -1458,7 +1471,11 @@ public sealed partial class InvoicingBillingService(
         if (invoice is null) return NotFound<Guid>();
         if (await IsShopifyManualInvoiceAsync(tenantId, invoice, cancellationToken)) return ServiceResult<Guid>.Fail("SHOPIFY_MANUAL_INVOICE_ONLY", "Shopify manuel belge kayıtlarında dış iptal işlemi yapılamaz.", 422);
         if (invoice.InvoiceType != "EARSIVFATURA") return ServiceResult<Guid>.Fail("EINVOICE_CANCELLATION_WORKFLOW_REQUIRED", "Bu otomatik iptal servisi yalnız E-Arşiv faturalar içindir; E-Fatura için mevzuata uygun itiraz/iptal süreci manuel yürütülmelidir.", 422);
-        return await EnqueueWrite(tenantId, id, expectedVersion, idempotencyKey, correlationId, InvoicingJobTypes.InvoiceCancellation, InvoicingCapabilities.InvoiceCancel, [InvoiceStatus.Accepted, InvoiceStatus.Completed, InvoiceStatus.AdjustmentRequired], InvoiceStatus.CancellationPending, cancellationToken);
+        var queued = await EnqueueWrite(tenantId, id, expectedVersion, idempotencyKey, correlationId, InvoicingJobTypes.InvoiceCancellation, InvoicingCapabilities.InvoiceCancel, [InvoiceStatus.Accepted, InvoiceStatus.Completed, InvoiceStatus.AdjustmentRequired], InvoiceStatus.CancellationPending, cancellationToken);
+        // A delivery still waiting in the queue would send the link of an invoice that is being cancelled.
+        if (queued.Succeeded && await InvoiceAdjustmentTracking.CancelPendingDeliveryJobsAsync(db, tenantId, id, timeProvider.GetUtcNow(), cancellationToken) > 0)
+            await db.SaveChangesAsync(cancellationToken);
+        return queued;
     }
 
     public async Task<ServiceResult<Guid>> EnqueueReconcileAsync(Guid tenantId, Guid id, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
@@ -1656,10 +1673,30 @@ public sealed partial class InvoicingBillingService(
     // Submit leaves an invoice in Submitting with an error code only when the provider definitely did not
     // create it: a refusal before or at the fiscal request (authorization, capability, sign-in, quota, gate).
     // Outcome-unknown answers move to UnknownResult instead, and the code is cleared while a request is in flight.
+    // Only the codes below prove that: any other code (a new adapter code, a code left by a job that stopped mid-request)
+    // keeps the invoice "in progress" until it is reconciled, so a possibly created invoice is never sent twice.
     internal static bool IsStoppedBeforeProvider(InvoiceStatus status, string? lastErrorCode, string? externalReference) =>
         status == InvoiceStatus.Submitting
         && string.IsNullOrWhiteSpace(externalReference)
-        && !string.IsNullOrWhiteSpace(lastErrorCode);
+        && lastErrorCode is not null
+        && PreProviderRefusalCodes.Contains(lastErrorCode);
+
+    // Sign-in, authorization, capability, quota and the marketplace's invoice creation switch: each is answered before
+    // the provider creates anything (TrendyolEFaturamErrorMapper, InvoiceSubmissionOutcomePolicy, Submit's creation gate).
+    internal static readonly IReadOnlySet<string> PreProviderRefusalCodes = new HashSet<string>(StringComparer.Ordinal)
+    {
+        InvoiceSubmissionOutcomePolicy.SignInUnavailableCode,
+        "EFATURAM_SIGNIN_SCOPE_MISSING",
+        "EFATURAM_AUTHENTICATION_FAILED",
+        "EFATURAM_ACCESS_TOKEN_REJECTED",
+        "EFATURAM_ACCESS_TOKEN_EXPIRED",
+        "EFATURAM_ACCESS_TOKEN_NOT_ACTIVE",
+        "EFATURAM_OPERATION_FORBIDDEN",
+        "EFATURAM_CONFIGURATION_UNAVAILABLE",
+        "EFATURAM_RATE_LIMITED",
+        "CAPABILITY_NOT_VERIFIED",
+        MarketplaceInvoiceCreationPolicy.DisabledErrorCode
+    };
 
     internal static bool CanReconcileWithProvider(InvoiceStatus status, string? externalReference) =>
         !string.IsNullOrWhiteSpace(externalReference)

@@ -62,11 +62,37 @@ internal static class InvoiceAdjustmentTracking
             .ToListAsync(cancellationToken);
         foreach (var state in states)
             AppendDeliveryHistory(db, state, RevocationRequiredStatus, state.ExternalReference, LinkRevocationRequiredCode, now);
+        await CancelPendingDeliveryJobsAsync(db, invoice.TenantId, invoice.Id, now, cancellationToken);
         if (states.Count > 0)
             await UpsertIssueAsync(db, invoice.TenantId, LinkRevocationIssueKey(invoice.Id), LinkRevocationRequiredCode,
                 $"{invoice.InvoiceNumber ?? "Fatura"} sağlayıcıda iptal edildi ancak pazaryerine iletilen fatura bağlantısı duruyor. Fatura detayındaki “Pazaryeri Fatura Linkleri” bölümünden kaldırın veya oradaki adımları izleyin; kaldırılmadan yeni fatura iletilemez.", now, cancellationToken);
         await ResolveIssueAsync(db, invoice.TenantId, AdjustmentIssueKey(invoice.Id), now, cancellationToken);
         return states.Count;
+    }
+
+    /// <summary>
+    /// Cancels the invoice's marketplace delivery jobs that have not started (Pending or RetryScheduled) once the invoice
+    /// is being cancelled or its links must come off. A leased job keeps its lease (the worker owns it); the delivery
+    /// itself refuses a cancelled invoice and a state in link removal (InvoiceDeliveryGuardPolicy).
+    /// </summary>
+    public static async Task<int> CancelPendingDeliveryJobsAsync(AppDbContext db, Guid tenantId, Guid invoiceId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        // Every delivery job is keyed "{type}:{invoiceId}:..." (panel, automatic, recovery), so the key prefix finds them.
+        var keyPrefix = $"{InvoicingJobTypes.MarketplaceDelivery}:{invoiceId}:";
+        var jobs = await db.IntegrationJobs
+            .Where(job => job.TenantId == tenantId && job.JobType == InvoicingJobTypes.MarketplaceDelivery
+                && job.JobDedupKey.StartsWith(keyPrefix)
+                && (job.Status == JobStatus.Pending || job.Status == JobStatus.RetryScheduled))
+            .ToListAsync(cancellationToken);
+        foreach (var job in jobs)
+        {
+            job.Status = JobStatus.Cancelled;
+            job.CompletedAt = now;
+            job.LastErrorCode = InvoiceDeliveryGuardPolicy.CancelledJobCode;
+            job.LastErrorSummary = "Fatura iptal sürecine girdiği için pazaryeri teslimi durduruldu.";
+            job.Version++;
+        }
+        return jobs.Count;
     }
 
     // Closes the link revocation issue once no link of the invoice is left to remove (tracked changes included).
