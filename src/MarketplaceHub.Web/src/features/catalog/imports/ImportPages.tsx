@@ -13,6 +13,17 @@ import { importSessionPollInterval } from './import-status'
 type ImportSession = Versioned & { sourceType: string; status: string; totalRows: number; validRows: number; errorRows: number; reviewRows: number; sourceAssetId: string | null }
 type Candidate = Versioned & { matchRule: string; safeSummary: string; productId: string | null; variantId: string | null }
 
+// Preview rows carry warnings (an unknown or ambiguous category, a switched-off brand) in the summary.
+function candidateWarnings(safeSummary: string): string[] {
+  try {
+    const parsed: unknown = JSON.parse(safeSummary)
+    if (!parsed || typeof parsed !== 'object' || !('warnings' in parsed) || !Array.isArray(parsed.warnings)) return []
+    return parsed.warnings.filter((item): item is string => typeof item === 'string')
+  } catch {
+    return []
+  }
+}
+
 function useImportTask() {
   const [error, setError] = useState<unknown>()
   const pending = useMutation({ mutationFn: (task: () => Promise<unknown>) => task(), onMutate: () => setError(undefined), onError: reason => setError(reason) })
@@ -100,6 +111,6 @@ export function ImportDetailPage() {
       {session.data.status === 'READY_TO_APPLY' && <button type="button" disabled={pending.isPending} onClick={() => job('apply')}>Kararları Uygula</button>}
       {session.data.errorRows > 0 && <a className="button-link secondary" href={`/api/v1/imports/${id}/errors.csv`}>Hataları İndir</a>}
     </div>
-    {candidates.data?.items.map(candidate => <article className="candidate" key={candidate.id}><div><Tag>{candidate.matchRule}</Tag><code>{candidate.safeSummary}</code></div><div className="actions"><button type="button" disabled={pending.isPending} onClick={() => decide(candidate, 'CREATE')}>Yeni</button>{candidate.productId && <button type="button" disabled={pending.isPending} onClick={() => decide(candidate, 'LINK')}>Eşle</button>}<button type="button" className="secondary" disabled={pending.isPending} onClick={() => decide(candidate, 'SKIP')}>Atla</button></div></article>)}
+    {candidates.data?.items.map(candidate => <article className="candidate" key={candidate.id}><div><Tag>{candidate.matchRule}</Tag><code>{candidate.safeSummary}</code>{candidateWarnings(candidate.safeSummary).map(warning => <p className="rv-field-hint" role="note" key={warning}>{warning}</p>)}</div><div className="actions"><button type="button" disabled={pending.isPending} onClick={() => decide(candidate, 'CREATE')}>Yeni</button>{candidate.productId && <button type="button" disabled={pending.isPending} onClick={() => decide(candidate, 'LINK')}>Eşle</button>}<button type="button" className="secondary" disabled={pending.isPending} onClick={() => decide(candidate, 'SKIP')}>Atla</button></div></article>)}
   </Page>
 }

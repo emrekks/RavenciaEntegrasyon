@@ -74,6 +74,56 @@ public sealed class ImportFileReaderTests
         Assert.Contains("satır 3", error.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void QuoteInsideAnUnquotedField_IsALiteralCharacter()
+    {
+        var rows = Read(Encoding.UTF8.GetBytes("Ürün;SKU;Stok\n24\" Monitör;M-24;3\nKlavye;K-1; \"5\"\n"));
+
+        Assert.Equal(2, rows.Count);
+        Assert.Equal("24\" Monitör", rows[0].Values["title"]);
+        Assert.Equal("M-24", rows[0].Values["sku"]);
+        Assert.Equal("3", rows[0].Values["stock"]);
+        Assert.Equal("K-1", rows[1].Values["sku"]);
+        Assert.Equal("5", rows[1].Values["stock"]);
+    }
+
+    [Fact]
+    public void Utf16AndUtf8ByteOrderMarks_AreDecodedAndDropped()
+    {
+        const string content = "Ürün\tSKU\nİpek Şal\tŞAL-1\n";
+        foreach (var bytes in new[] { Encoding.Unicode.GetPreamble().Concat(Encoding.Unicode.GetBytes(content)).ToArray(), Encoding.BigEndianUnicode.GetPreamble().Concat(Encoding.BigEndianUnicode.GetBytes(content)).ToArray() })
+        {
+            var row = Assert.Single(Read(bytes));
+            Assert.Equal("İpek Şal", row.Values["title"]);
+            Assert.Equal("ŞAL-1", row.Values["sku"]);
+        }
+
+        // A UTF-8 BOM in front of bytes that are not valid UTF-8 (Windows-1254 body) is not left in the header.
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        var mixed = Encoding.UTF8.GetPreamble().Concat(Encoding.GetEncoding(1254).GetBytes("Ürün;SKU\nŞal;Ş-1\n")).ToArray();
+        Assert.Equal("Ş-1", Assert.Single(Read(mixed)).Values["sku"]);
+    }
+
+    [Fact]
+    public void CategoryName_MatchesMarketplacePathKeysByLeafNameOrFullPath_AndWarnsWhenAmbiguous()
+    {
+        var tayt = new ImportJobProcessor.ImportCategoryLookup.Leaf(Guid.NewGuid(), "Tayt", "Giyim / Alt Giyim / Tayt", "GIYIM-ALT-GIYIM-TAYT");
+        var panelShirt = new ImportJobProcessor.ImportCategoryLookup.Leaf(Guid.NewGuid(), "Gömlek", "Gömlek", "GOMLEK");
+        var womenSocks = new ImportJobProcessor.ImportCategoryLookup.Leaf(Guid.NewGuid(), "Çorap", "Kadın / Çorap", "KADIN-CORAP");
+        var menSocks = new ImportJobProcessor.ImportCategoryLookup.Leaf(Guid.NewGuid(), "Çorap", "Erkek / Çorap", "ERKEK-CORAP");
+        var names = new[] { "Tayt", "giyim / alt giyim / tayt", "Gömlek", "Çorap", "Kadın / Çorap", "Ceket" };
+        var lookup = ImportJobProcessor.ImportCategoryLookup.Build([tayt, panelShirt, womenSocks, menSocks], names);
+
+        Assert.Equal(tayt.Id, lookup.Resolve("Tayt"));
+        Assert.Equal(tayt.Id, lookup.Resolve("giyim / alt giyim / tayt"));
+        Assert.Equal(panelShirt.Id, lookup.Resolve("Gömlek"));
+        Assert.Equal(womenSocks.Id, lookup.Resolve("Kadın / Çorap"));
+        Assert.Null(lookup.Resolve("Çorap", out var ambiguous));
+        Assert.Contains("birden fazla", ambiguous, StringComparison.Ordinal);
+        Assert.Null(lookup.Resolve("Ceket", out var missing));
+        Assert.Contains("yok", missing, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("1234.5", "1234.5")]
     [InlineData("1234,5", "1234.5")]

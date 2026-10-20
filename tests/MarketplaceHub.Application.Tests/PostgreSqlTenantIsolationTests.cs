@@ -618,6 +618,102 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task UpdateProductAsync_WhenEditorSendsTheWholeFamily_TouchesOnlySiblingsWhoseDataChanged()
+    {
+        var tenant = NewTenant("family-save");
+        var modelCode = $"MODEL-{Guid.NewGuid():N}";
+        Product NewProduct(string title, ProductStatus status) => new()
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            Title = title,
+            Description = "Family save test",
+            Status = status,
+            DefaultListPrice = 0m,
+            DefaultSalePrice = 0m,
+            CreatedAt = fixture.Now,
+            UpdatedAt = fixture.Now,
+            Version = 1
+        };
+        ProductVariant NewVariant(Product owner, string color, ProductStatus status)
+        {
+            var code = $"FAM-{color}-{Guid.NewGuid():N}";
+            return new ProductVariant
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenant.Id,
+                ProductId = owner.Id,
+                Sku = code,
+                SkuNormalized = code,
+                ModelCode = modelCode,
+                OptionSignature = $"Renk: {color}",
+                Status = status,
+                DefaultSalePrice = 100m,
+                DefaultListPrice = 100m,
+                CreatedAt = fixture.Now,
+                UpdatedAt = fixture.Now,
+                Version = 1
+            };
+        }
+        var primary = NewProduct("Siyah", ProductStatus.Draft);
+        var archivedSibling = NewProduct("Kırmızı", ProductStatus.Archived);
+        var draftSibling = NewProduct("Mavi", ProductStatus.Draft);
+        var pricedSibling = NewProduct("Yeşil", ProductStatus.Draft);
+        var primaryVariant = NewVariant(primary, "Siyah", ProductStatus.Draft);
+        var archivedVariant = NewVariant(archivedSibling, "Kırmızı", ProductStatus.Archived);
+        var draftVariant = NewVariant(draftSibling, "Mavi", ProductStatus.Draft);
+        var pricedVariant = NewVariant(pricedSibling, "Yeşil", ProductStatus.Draft);
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.Products.AddRange(primary, archivedSibling, draftSibling, pricedSibling);
+        db.ProductVariants.AddRange(primaryVariant, archivedVariant, draftVariant, pricedVariant);
+        await db.SaveChangesAsync();
+        var service = new CatalogService(db, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider, new MemoryCache(new MemoryCacheOptions()));
+        UpdateVariantCommand Row(ProductVariant variant, int order, decimal salePrice = 100m) =>
+            new(variant.Id, variant.Sku, null, modelCode, order, new Dictionary<string, string> { ["Renk"] = variant.OptionSignature["Renk: ".Length..] }, DefaultListPrice: 100m, DefaultSalePrice: salePrice);
+
+        // The editor always sends the family's status and every family row; only the green row changes.
+        var saved = await service.UpdateProductAsync(
+            tenant.Id,
+            primary.Id,
+            primary.Version,
+            new UpdateProductCommand(primary.Title, primary.Description, null, null, Status: "DRAFT", VariantUpdates: [Row(primaryVariant, 0), Row(archivedVariant, 0), Row(draftVariant, 0), Row(pricedVariant, 0, salePrice: 90m)]),
+            CancellationToken.None);
+        Assert.True(saved.Succeeded, saved.Error?.Message);
+        db.ChangeTracker.Clear();
+        var products = await db.Products.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToDictionaryAsync(x => x.Id);
+        Assert.Equal(ProductStatus.Archived, products[archivedSibling.Id].Status);
+        Assert.Equal(1, products[archivedSibling.Id].Version);
+        Assert.Equal(1, products[draftSibling.Id].Version);
+        Assert.Equal(2, products[pricedSibling.Id].Version);
+        var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToDictionaryAsync(x => x.Id);
+        Assert.Equal(1, variants[archivedVariant.Id].Version);
+        Assert.Equal(1, variants[draftVariant.Id].Version);
+        Assert.Equal(90m, variants[pricedVariant.Id].DefaultSalePrice);
+
+        // Activating the family moves the siblings that were on the same status, never the archived colour.
+        var activated = await service.UpdateProductAsync(
+            tenant.Id,
+            primary.Id,
+            products[primary.Id].Version,
+            new UpdateProductCommand(primary.Title, primary.Description, null, null, Status: "ACTIVE", VariantUpdates: [Row(primaryVariant, 0), Row(archivedVariant, 0), Row(draftVariant, 0), Row(pricedVariant, 0, salePrice: 90m)]),
+            CancellationToken.None);
+        Assert.True(activated.Succeeded, activated.Error?.Message);
+        db.ChangeTracker.Clear();
+        products = await db.Products.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToDictionaryAsync(x => x.Id);
+        Assert.Equal(ProductStatus.Active, products[primary.Id].Status);
+        Assert.Equal(ProductStatus.Active, products[draftSibling.Id].Status);
+        Assert.Equal(ProductStatus.Archived, products[archivedSibling.Id].Status);
+        Assert.Equal(1, products[archivedSibling.Id].Version);
+        variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToDictionaryAsync(x => x.Id);
+        Assert.Equal(ProductStatus.Archived, variants[archivedVariant.Id].Status);
+        Assert.Equal(ProductStatus.Active, variants[draftVariant.Id].Status);
+
+        await transaction.RollbackAsync();
+    }
+
+    [PostgreSqlFact]
     public async Task ReceiveAsync_WhenSameWebhookArrivesConcurrently_CreatesOneInboxMessageAndOneJob()
     {
         var tenant = NewTenant("webhook");

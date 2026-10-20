@@ -97,7 +97,11 @@ public static class VariantOptionSignature
     {
         if (string.IsNullOrWhiteSpace(signature)) return [];
         var result = new List<KeyValuePair<string, string>>();
-        foreach (var part in signature.Split('|', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        // Options are separated by " | "; a bare '|' may be part of a value ("Renk: Siyah|Beyaz"). Only the
+        // old panel form ("RENK=MAVI|BEDEN=XL", '=' before any ':') used the bare '|' as separator.
+        var parts = signature.Split(" | ", StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .SelectMany(part => IsLegacyPart(part) ? part.Split('|', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries) : [part]);
+        foreach (var part in parts)
         {
             var colon = part.IndexOf(':');
             var equals = part.IndexOf('=');
@@ -122,6 +126,13 @@ public static class VariantOptionSignature
     public static bool IsColorName(string? name) => CatalogKeyNormalizer.Key(name, 320).Replace("-", "", StringComparison.Ordinal) is "RENK" or "COLOR" or "COLOUR";
     public static bool IsWebColorName(string? name) => CatalogKeyNormalizer.Key(name, 320).Replace("-", "", StringComparison.Ordinal) is "WEBCOLOR" or "WEBCOLOUR" or "WEBRENK";
     public static bool IsSizeName(string? name) => CatalogKeyNormalizer.Key(name, 320).Replace("-", "", StringComparison.Ordinal) is "BEDEN" or "SIZE" or "SIZ" or "NUMARA" or "NUMBER";
+
+    private static bool IsLegacyPart(string part)
+    {
+        var equals = part.IndexOf('=');
+        var colon = part.IndexOf(':');
+        return equals > 0 && (colon < 0 || equals < colon);
+    }
 
     private static int AxisRank(string name) => IsWebColorName(name) ? 3 : IsColorName(name) ? 0 : IsSizeName(name) ? 1 : 2;
     private static string CleanValue(string? value) => string.IsNullOrWhiteSpace(value) ? "" : value.Trim().Trim('"', '“', '”').Trim();

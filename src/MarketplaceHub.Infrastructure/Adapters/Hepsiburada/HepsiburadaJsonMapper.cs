@@ -182,7 +182,7 @@ internal static class HepsiburadaJsonMapper
             item.GetRawText(),
             images,
             // Hepsiburada names the desi "kg" in its catalog attributes (the publication sends it so).
-            Desi: ImportedDesi.From(Decimal(item, "desi", "Desi", "dimensionalWeight", "kg")));
+            Desi: Desi(item));
         return new(
             simple.ExternalProductId,
             Text(item, "productMainId", "ProductMainId", "productId", "ProductId"),
@@ -235,7 +235,7 @@ internal static class HepsiburadaJsonMapper
             false,
             null, null, null, null, null,
             item.GetRawText(),
-            Desi: ImportedDesi.From(Decimal(item, "desi", "Desi", "dimensionalWeight", "kg")));
+            Desi: Desi(item));
         return new(
             identity,
             Text(item, "VaryantGroupID", "variantGroupId", "productId"),
@@ -272,6 +272,37 @@ internal static class HepsiburadaJsonMapper
             }
         }
         return result;
+    }
+
+    private static readonly string[] DesiFieldNames = ["desi", "Desi", "dimensionalWeight", "kg"];
+
+    // Hepsiburada gives the desi as a top-level field or, in its catalog models, as the "kg"/"desi"
+    // entry of an attribute list (baseAttributes, ...); text values may use a decimal comma.
+    private static decimal? Desi(JsonElement item)
+    {
+        var direct = Find(item, DesiFieldNames);
+        if (direct.ValueKind == JsonValueKind.Object) direct = Find(direct, "amount", "Amount", "value", "Value");
+        if (ImportedDesi.FromJson(direct) is { } desi) return desi;
+        foreach (var key in StructureAttributeKeys)
+        {
+            if (!TryFind(item, out var source, key)) continue;
+            if (source.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var property in source.EnumerateObject())
+                    if (DesiFieldNames.Contains(property.Name, StringComparer.OrdinalIgnoreCase) && ImportedDesi.FromText(StructureValue(property.Value)) is { } nested) return nested;
+            }
+            else if (source.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var entry in source.EnumerateArray().Where(entry => entry.ValueKind == JsonValueKind.Object))
+                {
+                    var names = new[] { Text(entry, "name", "Name", "attributeName"), Text(entry, "id", "Id", "attributeId", "key", "Key") };
+                    if (names.Any(name => name is not null && DesiFieldNames.Contains(name.Trim(), StringComparer.OrdinalIgnoreCase))
+                        && ImportedDesi.FromText(StructureValue(Find(entry, "value", "Value", "values", "Values", "attributeValue", "valueName"))) is { } listed)
+                        return listed;
+                }
+            }
+        }
+        return null;
     }
 
     private static string? StructureValue(JsonElement value) => value.ValueKind switch

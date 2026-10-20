@@ -83,6 +83,9 @@ public sealed class CatalogKeyNormalizerTests
         Assert.Equal(new Dictionary<string, string> { ["RENK"] = "MAVI", ["BEDEN"] = "XL" }, VariantOptionSignature.ParseKeyed("RENK=MAVI|BEDEN=XL"));
         Assert.Equal(new Dictionary<string, string> { ["RENK"] = "MAVI", ["BEDEN"] = "XL" }, VariantOptionSignature.ParseKeyed("Renk: Mavi | Beden: XL"));
         Assert.Empty(VariantOptionSignature.Parse("-"));
+        // A bare '|' inside a value of the current form is part of the value.
+        Assert.Equal(new Dictionary<string, string> { ["RENK"] = "SIYAH-BEYAZ", ["BEDEN"] = "XL" }, VariantOptionSignature.ParseKeyed("Renk: Siyah|Beyaz | Beden: XL"));
+        Assert.Equal("Siyah|Beyaz", Assert.Single(VariantOptionSignature.Parse("Renk: Siyah|Beyaz")).Value);
         Assert.Equal("36:38", VariantOptionSignature.Parse("Beden: 36:38").Single().Value);
     }
 
