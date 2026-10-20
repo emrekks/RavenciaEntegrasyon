@@ -67,7 +67,7 @@ public sealed partial class PazaramaHttpClient : IInventoryPricePort
 
     public async Task<AdapterResult<RemoteOperationStatus>> GetOperationAsync(AdapterContext context, string externalOperationId, CancellationToken cancellationToken)
     {
-        if (externalOperationId.StartsWith("b:", StringComparison.Ordinal) || externalOperationId.StartsWith("i:", StringComparison.Ordinal))
+        if (externalOperationId.StartsWith("b:", StringComparison.Ordinal) || externalOperationId.StartsWith("c:", StringComparison.Ordinal) || externalOperationId.StartsWith("i:", StringComparison.Ordinal))
             return await GetProductOperationAsync(context, externalOperationId, cancellationToken);
         var parts = PazaramaBatchMapper.ParseOperation(externalOperationId);
         if (parts.Count == 0)

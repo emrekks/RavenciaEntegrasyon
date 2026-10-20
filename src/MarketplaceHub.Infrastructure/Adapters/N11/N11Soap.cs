@@ -30,12 +30,11 @@ public sealed partial class N11HttpClient
         request.Headers.TryAddWithoutValidation("SOAPAction", "\"\"");
         request.Options.Set(N11RateLimitHandler.AccountKeyOption, account.AppKey);
         if (rateBucket is not null) request.Options.Set(N11RateLimitHandler.BucketKey, rateBucket);
+        // A named slow bucket (1/min) may queue the call for a minute or more; the request timeout starts once it has its token.
+        using var timeout = new QuotaAwareTimeout(request, N11RateLimitHandler.QuotaAcquiredKey, RequestTimeout, cancellationToken);
         try
         {
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            // A named slow bucket (1/min) may queue the call for up to a minute before it is sent.
-            timeout.CancelAfter((settings.Timeout > TimeSpan.Zero && settings.Timeout < TimeSpan.FromMinutes(2) ? settings.Timeout : TimeSpan.FromSeconds(30)) + (rateBucket is null ? TimeSpan.Zero : TimeSpan.FromSeconds(75)));
-            using var response = await clients.CreateClient("N11").SendAsync(request, timeout.Token);
+            using var response = await clients.CreateBoundedClient("N11").SendAsync(request, timeout.Token);
             var body = await response.Content.ReadAsStringAsync(timeout.Token);
             if (response.StatusCode == HttpStatusCode.TooManyRequests)
                 return AdapterResult<XElement>.Failure(new(AdapterErrorClass.RateLimit, "N11_RATE_LIMITED", "N11 istek sınırına ulaşıldı; işlem biraz sonra yeniden denenecek.", 429, response.Headers.RetryAfter?.Delta ?? TimeSpan.FromSeconds(60), null));
@@ -51,6 +50,7 @@ public sealed partial class N11HttpClient
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
+            if (!timeout.QuotaAcquired) return LocalQuotaWait<XElement>();
             return AdapterResult<XElement>.Failure(new(AdapterErrorClass.TransientNetwork, "N11_TIMEOUT", "N11 isteği zaman aşımına uğradı.", null, TimeSpan.FromSeconds(15), null));
         }
         catch (HttpRequestException exception)

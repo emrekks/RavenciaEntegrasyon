@@ -224,7 +224,7 @@ public sealed class TrendyolResilienceHandlerTests
         using var second = await client.GetAsync("https://unit.test/second");
 
         Assert.Equal(HttpStatusCode.TooManyRequests, first.StatusCode);
-        Assert.Equal(HttpStatusCode.ServiceUnavailable, second.StatusCode);
+        Assert.Equal(HttpStatusCode.TooManyRequests, second.StatusCode);
         Assert.True(second.Headers.RetryAfter?.Delta >= TimeSpan.FromSeconds(29));
         Assert.Equal(1, downstream.RequestCount);
     }
@@ -244,7 +244,7 @@ public sealed class TrendyolResilienceHandlerTests
         using var invoice = await client.PostAsync("https://unit.test/integration/sellers/seller-1/seller-invoice-links", new StringContent("{}"));
 
         Assert.Equal(HttpStatusCode.TooManyRequests, orders.StatusCode);
-        Assert.Equal(HttpStatusCode.ServiceUnavailable, ordersAgain.StatusCode);
+        Assert.Equal(HttpStatusCode.TooManyRequests, ordersAgain.StatusCode);
         Assert.Equal(HttpStatusCode.TooManyRequests, stock.StatusCode);
         Assert.Equal(HttpStatusCode.TooManyRequests, invoice.StatusCode);
         Assert.Equal(3, downstream.RequestCount);

@@ -64,4 +64,8 @@ public sealed record TrendyolEFaturamAccessContext(
     string? Issuer = null,
     string? Audience = null,
     bool? HasInvoiceCreatePrivilege = null,
-    bool? HasInvoiceReadPrivilege = null);
+    bool? HasInvoiceReadPrivilege = null)
+{
+    // The generated ToString would print the bearer token.
+    public override string ToString() => $"TrendyolEFaturamAccessContext {{ CompanyId = {CompanyId}, ExpiresAt = {ExpiresAt:O} }}";
+}

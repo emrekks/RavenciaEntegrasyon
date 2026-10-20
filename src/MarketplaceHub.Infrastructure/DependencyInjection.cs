@@ -93,16 +93,16 @@ public static class DependencyInjection
         services.AddScoped<ShopifyWebhookVerifier>();
         services.AddTransient<HepsiburadaRateLimitHandler>();
         services.AddHttpClient("Hepsiburada", client => client.Timeout = Timeout.InfiniteTimeSpan)
-            .AddHttpMessageHandler<HepsiburadaRateLimitHandler>()
             .AddHttpMessageHandler<MarketplaceCircuitBreakerHandler>()
+            .AddHttpMessageHandler<HepsiburadaRateLimitHandler>()
             .AddHttpMessageHandler(() => new MarketplaceHub.Infrastructure.Telemetry.MarketplaceRequestMetricsHandler("Hepsiburada"))
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AutomaticDecompression = System.Net.DecompressionMethods.All, PooledConnectionLifetime = TimeSpan.FromMinutes(10) });
         services.AddScoped<HepsiburadaAuthenticationHandler>();
         services.AddScoped<HepsiburadaHttpClient>();
         services.AddTransient<N11RateLimitHandler>();
         services.AddHttpClient("N11", client => client.Timeout = Timeout.InfiniteTimeSpan)
-            .AddHttpMessageHandler<N11RateLimitHandler>()
             .AddHttpMessageHandler<MarketplaceCircuitBreakerHandler>()
+            .AddHttpMessageHandler<N11RateLimitHandler>()
             .AddHttpMessageHandler(() => new MarketplaceHub.Infrastructure.Telemetry.MarketplaceRequestMetricsHandler("N11"))
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AutomaticDecompression = System.Net.DecompressionMethods.All, PooledConnectionLifetime = TimeSpan.FromMinutes(10) });
         services.AddScoped<N11AuthenticationHandler>();
@@ -110,8 +110,8 @@ public static class DependencyInjection
         services.AddSingleton<PazaramaTokenCache>();
         services.AddTransient<PazaramaRateLimitHandler>();
         services.AddHttpClient(PazaramaHttpClient.ClientName, client => client.Timeout = Timeout.InfiniteTimeSpan)
-            .AddHttpMessageHandler<PazaramaRateLimitHandler>()
             .AddHttpMessageHandler<MarketplaceCircuitBreakerHandler>()
+            .AddHttpMessageHandler<PazaramaRateLimitHandler>()
             .AddHttpMessageHandler(() => new MarketplaceHub.Infrastructure.Telemetry.MarketplaceRequestMetricsHandler("Pazarama"))
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AutomaticDecompression = System.Net.DecompressionMethods.All, PooledConnectionLifetime = TimeSpan.FromMinutes(10) });
         services.AddScoped<PazaramaAuthenticationHandler>();

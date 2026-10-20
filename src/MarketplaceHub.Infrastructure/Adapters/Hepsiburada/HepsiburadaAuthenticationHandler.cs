@@ -143,11 +143,14 @@ public sealed class HepsiburadaAuthenticationHandler(
     private sealed record CredentialPayload(string ApiKey, string ApiSecret)
     {
         public string? IntegratorName { get; init; }
+        public override string ToString() => nameof(CredentialPayload);
     }
 }
 
 public sealed record HepsiburadaRequestContext(PlatformConnection Connection, Uri OmsBaseAddress, Uri ListingBaseAddress, string Username, string Password)
 {
+    // The generated ToString would print the service key; a logged or thrown context must not leak it.
+    public override string ToString() => $"HepsiburadaRequestContext {{ ConnectionId = {Connection.Id} }}";
     public string? IntegratorName { get; init; }
     public Uri? CatalogBaseAddress { get; init; }
     public Uri? QuestionBaseAddress { get; init; }

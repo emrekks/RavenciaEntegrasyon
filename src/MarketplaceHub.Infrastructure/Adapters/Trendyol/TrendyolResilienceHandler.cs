@@ -28,16 +28,19 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
-        // Wait for the quota before taking a concurrency slot, so reads queued behind the order-read
-        // spacing do not hold the slots that product and stock requests need.
-        await WaitForQuotaAsync(request, cancellationToken);
-        await state.Concurrency.WaitAsync(cancellationToken);
-        var halfOpen = false;
-        var resultRecorded = false;
+        // An open circuit answers before the quota is touched: a request that is refused locally must not
+        // spend a token of the seller's quota (or wait for one).
         var circuitKey = CircuitKeyFor(request);
+        if (!TryEnterCircuit(circuitKey, out var halfOpen, out var circuitRetryAfter, out var openedForQuota)) return CircuitOpenResponse(circuitRetryAfter, openedForQuota);
+        var resultRecorded = false;
+        var concurrencyHeld = false;
         try
         {
-            if (!TryEnterCircuit(circuitKey, out halfOpen, out var circuitRetryAfter)) return CircuitOpenResponse(circuitRetryAfter);
+            // Wait for the quota before taking a concurrency slot, so reads queued behind the order-read
+            // spacing do not hold the slots that product and stock requests need.
+            await WaitForQuotaAsync(request, cancellationToken);
+            await state.Concurrency.WaitAsync(cancellationToken);
+            concurrencyHeld = true;
             if (request.Options.TryGetValue(QuotaAcquiredKey, out var onQuotaAcquired)) onQuotaAcquired();
             try
             {
@@ -67,11 +70,11 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
         finally
         {
             if (halfOpen && !resultRecorded) ReleaseHalfOpen(circuitKey);
-            state.Concurrency.Release();
+            if (concurrencyHeld) state.Concurrency.Release();
         }
     }
 
-    private bool TryEnterCircuit(string circuitKey, out bool halfOpen, out TimeSpan? retryAfter)
+    private bool TryEnterCircuit(string circuitKey, out bool halfOpen, out TimeSpan? retryAfter, out bool openedForQuota)
     {
         lock (state.SyncRoot)
         {
@@ -81,6 +84,7 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
             circuit.LastTouchedAt = now;
             halfOpen = false;
             retryAfter = null;
+            openedForQuota = circuit.OpenedForQuota;
             if (circuit.OpenUntil is null) return true;
             if (now < circuit.OpenUntil)
             {
@@ -105,6 +109,7 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
             {
                 circuit.ConsecutiveFailures = 0;
                 circuit.OpenUntil = null;
+                circuit.OpenedForQuota = false;
                 circuit.HalfOpenRequestActive = false;
                 return;
             }
@@ -116,10 +121,14 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
                 var boundedRetryAfter = TimeSpan.FromMinutes(Math.Min(retryAfter.TotalMinutes, 15));
                 circuit.ConsecutiveFailures = Math.Max(circuit.ConsecutiveFailures, Math.Clamp(options.CircuitFailureThreshold, 2, 50));
                 circuit.OpenUntil = now.Add(boundedRetryAfter);
+                circuit.OpenedForQuota = true;
                 return;
             }
             if (halfOpen || circuit.ConsecutiveFailures >= Math.Clamp(options.CircuitFailureThreshold, 2, 50))
+            {
                 circuit.OpenUntil = circuit.LastTouchedAt.Add(options.CircuitBreakDuration <= TimeSpan.Zero ? TimeSpan.FromSeconds(30) : options.CircuitBreakDuration);
+                circuit.OpenedForQuota = false;
+            }
         }
     }
 
@@ -358,9 +367,11 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
         return null;
     }
 
-    private static HttpResponseMessage CircuitOpenResponse(TimeSpan? retryAfter)
+    // A circuit opened by Trendyol's own 429 answers 429 as well, so the job keeps its attempt and the
+    // connection backs off (as the shared circuit breaker does); any other open circuit answers 503.
+    private static HttpResponseMessage CircuitOpenResponse(TimeSpan? retryAfter, bool openedForQuota)
     {
-        var response = new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+        var response = new HttpResponseMessage(openedForQuota ? HttpStatusCode.TooManyRequests : HttpStatusCode.ServiceUnavailable)
         {
             Content = new StringContent("{\"code\":\"LOCAL_CIRCUIT_OPEN\"}")
         };
@@ -446,6 +457,8 @@ public sealed class TrendyolCircuitState
 {
     public int ConsecutiveFailures { get; set; }
     public DateTimeOffset? OpenUntil { get; set; }
+    // The circuit was opened by a 429 with Retry-After (a quota stop), not by failures.
+    public bool OpenedForQuota { get; set; }
     public bool HalfOpenRequestActive { get; set; }
     public DateTimeOffset LastTouchedAt { get; set; }
 }
