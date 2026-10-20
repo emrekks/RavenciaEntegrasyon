@@ -492,58 +492,9 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
                 if (modifiedStart < historyCutoff) modifiedStart = historyCutoff;
                 var modifiedEnd = statusOccurredAt.AddDays(6);
                 if (modifiedEnd > now) modifiedEnd = now;
-                string? nextCursor = null;
-
-                // The stream retains three months of history while the package
-                // endpoint is date-limited. Scan only a 12-day window around
-                // the locally recorded delivery time, using cursor pagination.
-                while (modifiedStart < modifiedEnd)
-                {
-                    var streamQuery = new List<string>
-                    {
-                        "size=200",
-                        "lastModifiedStartDate=" + modifiedStart.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture),
-                        "lastModifiedEndDate=" + modifiedEnd.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)
-                    };
-                    if (!string.IsNullOrWhiteSpace(nextCursor))
-                        streamQuery.Add("nextCursor=" + Uri.EscapeDataString(nextCursor));
-
-                    var streamResponse = await SendAsync(authorized, HttpMethod.Get,
-                        TrendyolEndpoints.OrderStream(authorized.Connection.ExternalStoreId) + "?" + string.Join('&', streamQuery),
-                        null, cancellationToken, storeFrontCode: storefronts[0]);
-                    if (!streamResponse.IsSuccess)
-                    {
-                        streamError = streamResponse.Error;
-                        break;
-                    }
-
-                    try
-                    {
-                        var streamedPackage = TrendyolJsonMapper.ShipmentPackage(streamResponse.Value!, externalPackageId.Trim());
-                        var selectedDirectPackage = v2Package;
-                        var mergedStreamPackage = TrendyolJsonMapper.PreferShipmentPackageWithCargo(streamedPackage, selectedDirectPackage);
-                        if (HasPackageReadbackValue(streamedPackage) && HasPackageReadbackValue(mergedStreamPackage))
-                        {
-                            logger.LogInformation("Trendyol package read returned provider={ProviderPresent}, tracking={TrackingPresent}, invoice={InvoicePresent} from historical stream.",
-                                !string.IsNullOrWhiteSpace(mergedStreamPackage!.Package.CargoProviderExternalId),
-                                !string.IsNullOrWhiteSpace(mergedStreamPackage!.Package.CargoTrackingNumber),
-                                HasInvoiceObservation(mergedStreamPackage));
-                            return AdapterResult<RemoteOrderPackage>.Success(mergedStreamPackage!,
-                                streamResponse.RateLimit ?? v2RateLimit);
-                        }
-
-                        var mapped = TrendyolJsonMapper.Orders(streamResponse.Value!);
-                        if (!mapped.HasMore) break;
-                        if (string.IsNullOrWhiteSpace(mapped.NextCursor))
-                            return AdapterResult<RemoteOrderPackage>.Failure(TrendyolErrorMapper.Contract(), streamResponse.RateLimit);
-                        // The resilience handler spaces stream pages; no extra sleep is needed here.
-                        nextCursor = mapped.NextCursor;
-                    }
-                    catch (JsonException)
-                    {
-                        return AdapterResult<RemoteOrderPackage>.Failure(TrendyolErrorMapper.Contract(), streamResponse.RateLimit);
-                    }
-                }
+                var scan = await ScanPackageStreamAsync(authorized, externalPackageId.Trim(), v2Package, v2RateLimit, modifiedStart, modifiedEnd, storefronts[0], cancellationToken);
+                if (scan.Result is { } found) return found;
+                streamError = scan.StreamError;
             }
         }
 
@@ -572,10 +523,69 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
             : AdapterResult<RemoteOrderPackage>.Failure(error, v2RateLimit);
     }
 
-    private static bool HasInvoiceObservation(RemoteOrderPackage? package) => package?.Package.Invoice is { } invoice
-        && (!string.IsNullOrWhiteSpace(invoice.RawStatus)
-            || !string.IsNullOrWhiteSpace(invoice.InvoiceNumber)
-            || !string.IsNullOrWhiteSpace(invoice.InvoiceUrl));
+    // A stream page is 200 packages and pages are spaced 5 s apart; twenty pages (4,000 packages, about two
+    // minutes) cover the 12-day window of a busy seller without letting one package lookup hold the order quota.
+    internal const int MaxPackageStreamPages = 20;
+
+    // The stream retains three months of history while the package endpoint is date-limited. Scan only the
+    // window around the locally recorded status time, using cursor pagination; each page is parsed once.
+    internal async Task<(AdapterResult<RemoteOrderPackage>? Result, AdapterError? StreamError)> ScanPackageStreamAsync(
+        TrendyolRequestContext authorized, string externalPackageId, RemoteOrderPackage? v2Package, RateLimitMetadata? v2RateLimit,
+        DateTimeOffset modifiedStart, DateTimeOffset modifiedEnd, string storefront, CancellationToken cancellationToken)
+    {
+        string? nextCursor = null;
+        for (var page = 1; modifiedStart < modifiedEnd; page++)
+        {
+            if (page > MaxPackageStreamPages)
+            {
+                logger.LogWarning("Trendyol package {PackageId} was not found in {Pages} historical stream pages; the scan stopped.", externalPackageId, MaxPackageStreamPages);
+                return (null, null);
+            }
+            var streamQuery = new List<string>
+            {
+                "size=200",
+                "lastModifiedStartDate=" + modifiedStart.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture),
+                "lastModifiedEndDate=" + modifiedEnd.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)
+            };
+            if (!string.IsNullOrWhiteSpace(nextCursor))
+                streamQuery.Add("nextCursor=" + Uri.EscapeDataString(nextCursor));
+
+            var streamResponse = await SendAsync(authorized, HttpMethod.Get,
+                TrendyolEndpoints.OrderStream(authorized.Connection.ExternalStoreId) + "?" + string.Join('&', streamQuery),
+                null, cancellationToken, storeFrontCode: storefront);
+            if (!streamResponse.IsSuccess) return (null, streamResponse.Error);
+
+            try
+            {
+                var mapped = TrendyolJsonMapper.Orders(streamResponse.Value!);
+                var streamedPackage = TrendyolJsonMapper.ShipmentPackage(mapped, externalPackageId);
+                var mergedStreamPackage = TrendyolJsonMapper.PreferShipmentPackageWithCargo(streamedPackage, v2Package);
+                if (HasPackageReadbackValue(streamedPackage) && HasPackageReadbackValue(mergedStreamPackage))
+                {
+                    logger.LogInformation("Trendyol package read returned provider={ProviderPresent}, tracking={TrackingPresent}, invoice={InvoicePresent} from historical stream.",
+                        !string.IsNullOrWhiteSpace(mergedStreamPackage!.Package.CargoProviderExternalId),
+                        !string.IsNullOrWhiteSpace(mergedStreamPackage!.Package.CargoTrackingNumber),
+                        HasInvoiceObservation(mergedStreamPackage));
+                    return (AdapterResult<RemoteOrderPackage>.Success(mergedStreamPackage!, streamResponse.RateLimit ?? v2RateLimit), null);
+                }
+
+                if (!mapped.HasMore) return (null, null);
+                if (string.IsNullOrWhiteSpace(mapped.NextCursor))
+                    return (AdapterResult<RemoteOrderPackage>.Failure(TrendyolErrorMapper.Contract(), streamResponse.RateLimit), null);
+                // The resilience handler spaces stream pages; no extra sleep is needed here.
+                nextCursor = mapped.NextCursor;
+            }
+            catch (JsonException)
+            {
+                return (AdapterResult<RemoteOrderPackage>.Failure(TrendyolErrorMapper.Contract(), streamResponse.RateLimit), null);
+            }
+        }
+        return (null, null);
+    }
+
+    // Whether the read brought invoice values (status, number or link); an authoritative "no invoice" without
+    // values is not a readback value here (TrendyolJsonMapper.HasInvoiceObservation counts that too).
+    private static bool HasInvoiceObservation(RemoteOrderPackage? package) => TrendyolJsonMapper.HasInvoiceValue(package?.Package.Invoice);
 
     private static bool HasPackageReadbackValue(RemoteOrderPackage? package) =>
         !string.IsNullOrWhiteSpace(package?.Package.CargoProviderExternalId)
@@ -651,8 +661,8 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
 
     public async Task<AdapterResult<AdapterPageResult<RemoteReturnClaim>>> PollAsync(AdapterContext context, ReturnPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken)
     {
-        var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken); if (authorized is null) return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Failure(TrendyolErrorMapper.Configuration()); var query = new List<string> { $"size={Math.Clamp(page.Limit, 1, 200)}", $"page={Page(page.Cursor)}" }; if (window.ModifiedAfter is not null) query.Add("startDate=" + window.ModifiedAfter.Value.ToUnixTimeMilliseconds()); if (window.ModifiedBefore is not null) query.Add("endDate=" + window.ModifiedBefore.Value.ToUnixTimeMilliseconds());
-        var endpoint = TrendyolEndpoints.Claims(authorized.Connection.ExternalStoreId) + "?" + string.Join('&', query);
+        var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken); if (authorized is null) return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Failure(TrendyolErrorMapper.Configuration());
+        var endpoint = ClaimsEndpoint(authorized.Connection.ExternalStoreId, page.Limit, Page(page.Cursor), window);
         // The documented getClaims endpoint is global and does not define the
         // order-stream storeFrontCode header. Keep this read independent from
         // storefront selection so international claims are not hidden or timed out.
@@ -660,10 +670,10 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
         // claimItemStatus is supplied. Read each documented status so the
         // local model also receives WaitingInAction (the seller's shipped tab).
         if (string.Equals(authorized.Connection.Environment, "PRODUCTION", StringComparison.OrdinalIgnoreCase))
-            return await PollClaimsByStatusAsync(authorized, endpoint, page, cancellationToken);
+            return await PollClaimsByStatusAsync(authorized, window, page, cancellationToken);
         var response = await SendAsync(authorized, HttpMethod.Get, endpoint, null, cancellationToken, storeFrontCode: null);
         if (response.Error?.HttpStatus == (int)HttpStatusCode.NotFound && string.Equals(authorized.Connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase))
-            return await PollClaimsByStatusAsync(authorized, endpoint, page, cancellationToken);
+            return await PollClaimsByStatusAsync(authorized, window, page, cancellationToken);
         if (!response.IsSuccess) return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Failure(response.Error!, response.RateLimit);
         try { return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Success(TrendyolJsonMapper.Returns(response.Value!), response.RateLimit); } catch (JsonException) { return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Failure(TrendyolErrorMapper.Contract()); }
     }
@@ -828,26 +838,62 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
     }
     private static bool TryParts(string? value, out string categoryId, out string attributeId) { var parts = value?.Split('/', 2, StringSplitOptions.RemoveEmptyEntries) ?? []; categoryId = parts.ElementAtOrDefault(0) ?? ""; attributeId = parts.ElementAtOrDefault(1) ?? ""; return parts.Length == 2; }
 
-    private async Task<AdapterResult<AdapterPageResult<RemoteReturnClaim>>> PollClaimsByStatusAsync(TrendyolRequestContext context, string endpoint, AdapterPageRequest page, CancellationToken cancellationToken)
+    internal static readonly string[] ClaimStatuses = ["Created", "WaitingInAction", "WaitingFraudCheck", "Accepted", "Cancelled", "Rejected", "Unresolved", "InAnalysis"];
+
+    internal static string ClaimsEndpoint(string sellerId, int limit, int pageNumber, ReturnPollWindow window, string? claimItemStatus = null)
+    {
+        var query = new List<string> { $"size={Math.Clamp(limit, 1, 200).ToString(CultureInfo.InvariantCulture)}", $"page={pageNumber.ToString(CultureInfo.InvariantCulture)}" };
+        if (window.ModifiedAfter is { } after) query.Add("startDate=" + after.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture));
+        if (window.ModifiedBefore is { } before) query.Add("endDate=" + before.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture));
+        if (claimItemStatus is not null) query.Add("claimItemStatus=" + claimItemStatus);
+        return TrendyolEndpoints.Claims(sellerId) + "?" + string.Join('&', query);
+    }
+
+    // Each status bucket pages on its own: the cursor "s:Created=2,Accepted=5" names the next page of every
+    // bucket that still has claims, so an exhausted bucket is not asked again for empty pages. A plain page
+    // number (or no cursor) reads every bucket at that page.
+    internal static IReadOnlyList<(string Status, int Page)> ClaimBucketPages(string? cursor)
+    {
+        if (cursor is not null && cursor.StartsWith("s:", StringComparison.Ordinal))
+        {
+            var pages = new List<(string Status, int Page)>();
+            foreach (var entry in cursor[2..].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                var parts = entry.Split('=');
+                if (parts.Length == 2 && ClaimStatuses.Contains(parts[0], StringComparer.Ordinal) && int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out var number))
+                    pages.Add((parts[0], number));
+            }
+            if (pages.Count > 0) return pages;
+        }
+        var shared = Page(cursor);
+        return ClaimStatuses.Select(status => (status, shared)).ToArray();
+    }
+
+    internal static string? ClaimBucketCursor(IReadOnlyList<(string Status, int Page)> nextPages) =>
+        nextPages.Count == 0 ? null : "s:" + string.Join(',', nextPages.Select(next => $"{next.Status}={next.Page.ToString(CultureInfo.InvariantCulture)}"));
+
+    private async Task<AdapterResult<AdapterPageResult<RemoteReturnClaim>>> PollClaimsByStatusAsync(TrendyolRequestContext context, ReturnPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken)
     {
         logger.LogInformation("Trendyol claims are read with the documented claimItemStatus buckets so all seller return tabs are synchronized.");
-        string[] statuses = ["Created", "WaitingInAction", "WaitingFraudCheck", "Accepted", "Cancelled", "Rejected", "Unresolved", "InAnalysis"];
+        var buckets = ClaimBucketPages(page.Cursor);
         var claims = new List<RemoteReturnClaim>();
-        var hasMore = false;
+        var nextPages = new List<(string Status, int Page)>();
         RateLimitMetadata? rateLimit = null;
-        var responses = await Task.WhenAll(statuses.Select(status =>
-            SendAsync(context, HttpMethod.Get, endpoint + "&claimItemStatus=" + status, null, cancellationToken, storeFrontCode: null)));
-        foreach (var response in responses)
+        var responses = await Task.WhenAll(buckets.Select(bucket =>
+            SendAsync(context, HttpMethod.Get, ClaimsEndpoint(context.Connection.ExternalStoreId, page.Limit, bucket.Page, window, bucket.Status), null, cancellationToken, storeFrontCode: null)));
+        for (var index = 0; index < responses.Length; index++)
         {
+            var response = responses[index];
+            var bucket = buckets[index];
             rateLimit = response.RateLimit ?? rateLimit;
             if (response.Error?.HttpStatus == (int)HttpStatusCode.NotFound) continue;
             if (!response.IsSuccess) return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Failure(response.Error!, response.RateLimit);
             try
             {
                 var result = TrendyolJsonMapper.Returns(response.Value!);
-                logger.LogInformation("Trendyol claims bucket {Status} returned {Count} claims.", statuses[Array.IndexOf(responses, response)], result.Items.Count);
+                logger.LogInformation("Trendyol claims bucket {Status} page {Page} returned {Count} claims.", bucket.Status, bucket.Page, result.Items.Count);
                 claims.AddRange(result.Items);
-                hasMore |= result.HasMore;
+                if (result.HasMore) nextPages.Add((bucket.Status, bucket.Page + 1));
             }
             catch (JsonException) { return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Failure(TrendyolErrorMapper.Contract(), response.RateLimit); }
         }
@@ -868,8 +914,8 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
             };
         }).OrderByDescending(x => x.LastModifiedAt).ToArray();
         logger.LogInformation("Trendyol claims status buckets merged to {Count} unique claims: {Statuses}.", uniqueClaims.Length, string.Join(",", uniqueClaims.GroupBy(x => x.RawStatus).Select(x => $"{x.Key}:{x.Count()}")));
-        var nextCursor = hasMore ? (Page(page.Cursor) + 1).ToString(CultureInfo.InvariantCulture) : null;
-        return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Success(new(uniqueClaims, nextCursor, hasMore), rateLimit);
+        var nextCursor = ClaimBucketCursor(nextPages);
+        return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Success(new(uniqueClaims, nextCursor, nextCursor is not null), rateLimit);
     }
 
     public async Task<AdapterResult<StageTestOrderResult>> CreateStageTestOrderAsync(AdapterContext context, string barcode, CancellationToken cancellationToken)
@@ -900,7 +946,7 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
         request.Options.Set(TrendyolResilienceHandler.QuotaAcquiredKey, () => { quotaAcquired = true; linked.CancelAfter(timeout); });
         try
         {
-            using var response = await clients.CreateClient("Trendyol").SendAsync(request, HttpCompletionOption.ResponseHeadersRead, linked.Token); var retryAfter = response.Headers.RetryAfter?.Delta; var rate = new RateLimitMetadata(null, response.Headers.RetryAfter?.Date, retryAfter); var remoteRequestId = response.Headers.TryGetValues("x-request-id", out var values) ? values.FirstOrDefault() : null;
+            using var response = await clients.CreateClient("Trendyol").SendAsync(request, HttpCompletionOption.ResponseHeadersRead, linked.Token); var retryAfter = RetryAfterDelay(response.Headers.RetryAfter, timeProvider.GetUtcNow()); var rate = new RateLimitMetadata(null, response.Headers.RetryAfter?.Date, retryAfter); var remoteRequestId = response.Headers.TryGetValues("x-request-id", out var values) ? values.FirstOrDefault() : null;
             if (!response.IsSuccessStatusCode)
             {
                 var vendorCode = TrendyolErrorMapper.SafeVendorCode(await response.Content.ReadAsStringAsync(linked.Token));
@@ -920,6 +966,14 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
     }
 
     private static readonly TimeSpan MaximumQuotaWait = TimeSpan.FromMinutes(10);
+
+    // Retry-After as seconds or as an HTTP date; a date in the past means no wait.
+    internal static TimeSpan? RetryAfterDelay(System.Net.Http.Headers.RetryConditionHeaderValue? header, DateTimeOffset now)
+    {
+        if (header?.Delta is { } delta) return delta > TimeSpan.Zero ? delta : null;
+        if (header?.Date is { } date && date - now is var wait && wait > TimeSpan.Zero) return wait;
+        return null;
+    }
 
     private static TimeSpan RequestTimeout(TimeSpan configured) => configured > TimeSpan.Zero
         ? TimeSpan.FromSeconds(Math.Clamp(configured.TotalSeconds, 5, 300))

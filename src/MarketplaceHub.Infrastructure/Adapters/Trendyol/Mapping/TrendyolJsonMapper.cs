@@ -40,8 +40,9 @@ public static class TrendyolJsonMapper
                                 throw new JsonException($"Order line {externalLineId} has no valid positive quantity.");
                             if (!TryDecimal(line, out var unitPrice, "lineItemPrice", "lineUnitPrice", "lineGrossAmount", "price", "amount") || unitPrice < 0)
                                 throw new JsonException($"Order line {externalLineId} has no valid unit price.");
-                            if (!TryDecimal(line, out var vatRate, "vatRate", "vatBaseAmount") || vatRate < 0)
-                                throw new JsonException($"Order line {externalLineId} has no valid VAT value.");
+                            // vatBaseAmount is an amount, not a rate: a line without vatRate is reported, never taxed by a guess.
+                            if (!TryDecimal(line, out var vatRate, "vatRate") || vatRate is < 0 or > 100)
+                                throw new JsonException($"Order line {externalLineId} has no valid VAT rate.");
                             var barcode = NullText(line, "barcode");
                             var sku = Text(line, "stockCode", "merchantSku");
                             if (string.IsNullOrWhiteSpace(sku)) sku = barcode ?? "";
@@ -173,10 +174,14 @@ public static class TrendyolJsonMapper
         };
     }
 
-    public static RemoteOrderPackage? ShipmentPackage(string json, string externalPackageId)
+    public static RemoteOrderPackage? ShipmentPackage(string json, string externalPackageId) =>
+        string.IsNullOrWhiteSpace(externalPackageId) ? null : ShipmentPackage(Orders(json), externalPackageId);
+
+    // The package from an already mapped page, so a page that is also paged on is parsed once.
+    public static RemoteOrderPackage? ShipmentPackage(AdapterPageResult<RemoteOrder> page, string externalPackageId)
     {
         if (string.IsNullOrWhiteSpace(externalPackageId)) return null;
-        var order = Orders(json).Items.FirstOrDefault(candidate =>
+        var order = page.Items.FirstOrDefault(candidate =>
             candidate.Packages.Any(package => string.Equals(package.ExternalPackageId, externalPackageId, StringComparison.Ordinal)));
         if (order is null) return null;
         var package = order.Packages.FirstOrDefault(candidate =>
@@ -248,11 +253,16 @@ public static class TrendyolJsonMapper
     private static string? FirstText(string? preferred, string? other) =>
         string.IsNullOrWhiteSpace(preferred) ? other : preferred;
 
-    private static bool HasInvoiceObservation(RemotePackageInvoiceObservation? invoice) => invoice is not null
+    // The invoice fields Trendyol sent: a status, a number or a link.
+    internal static bool HasInvoiceValue(RemotePackageInvoiceObservation? invoice) => invoice is not null
         && (!string.IsNullOrWhiteSpace(invoice.RawStatus)
             || !string.IsNullOrWhiteSpace(invoice.InvoiceNumber)
-            || !string.IsNullOrWhiteSpace(invoice.InvoiceUrl)
-            || invoice.ReferencesAreAuthoritative);
+            || !string.IsNullOrWhiteSpace(invoice.InvoiceUrl));
+
+    // An invoice value, or an authoritative statement that the package has no invoice references (which must
+    // still win over an older observation that had them).
+    internal static bool HasInvoiceObservation(RemotePackageInvoiceObservation? invoice) =>
+        HasInvoiceValue(invoice) || invoice?.ReferencesAreAuthoritative == true;
 
     private static bool HasAnyProperty(JsonElement value, params string[] names) =>
         value.ValueKind == JsonValueKind.Object
