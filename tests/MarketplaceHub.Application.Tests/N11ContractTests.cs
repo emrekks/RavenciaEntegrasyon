@@ -19,6 +19,10 @@ public sealed class N11ContractTests
     [InlineData("<url>" + Link + "</url><orderNumber>205400000000</orderNumber>", false)]
     [InlineData("<url>https://panel.example.com/other.pdf</url><orderNumber>205412345678</orderNumber>", false)]
     [InlineData("<orderNumber>205412345678</orderNumber>", false)]
+    // An answer that echoes the link but not the order number is still verified by the link.
+    [InlineData("<url>" + Link + "</url>", true)]
+    [InlineData("<url>" + Link + "</url><orderNumber></orderNumber>", true)]
+    [InlineData("<url>" + Link + "</url><invoiceNumber>RVN2026000000999</invoiceNumber>", false)]
     public void ADomesticInvoiceLinkIsVerifiedByTheEchoedLinkAndOrder(string echoed, bool verified)
     {
         var request = N11HttpClient.InvoiceLinkRequest($$"""{"invoiceLink":"{{Link}}","orderNumber":"205412345678","invoiceNumber":"RVN2026000000123","invoiceDateTime":1780903800000}""");
