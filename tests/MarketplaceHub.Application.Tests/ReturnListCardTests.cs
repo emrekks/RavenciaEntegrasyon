@@ -74,6 +74,10 @@ public sealed class ReturnListCardTests
         Assert.False(MarketplaceSalesService.MatchesReturnSearch(view, [First], "gömlek"));
         Assert.True(MarketplaceSalesService.MatchesReturnSearch(view, [Second], "GÖMLEK"));
         Assert.True(MarketplaceSalesService.MatchesReturnSearch(view, [First], "  "));
+        // The i letters fold like the database pre-filter: "kirmizi" and "KIRMIZI" find "Kırmızı" (O3).
+        Assert.True(MarketplaceSalesService.MatchesReturnSearch(view, [First], "kirmizi"));
+        Assert.True(MarketplaceSalesService.MatchesReturnSearch(view, [First], "KIRMIZI"));
+        Assert.True(MarketplaceSalesService.MatchesReturnSearch(view, [First], "İPEK"));
     }
 
     [Fact]

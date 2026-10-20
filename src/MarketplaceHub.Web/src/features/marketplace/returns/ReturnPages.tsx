@@ -5,6 +5,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { hubApi, loadAllPages } from '../../../shared/api'
 import { cargoCarrier, cargoLabel } from '../../../shared/components'
 import { newIdempotencyKey } from '../../../shared/idempotency'
+import { sendStockDisposition, type PendingDispositionKeys } from './return-disposition-key'
 import { useMediaQuery } from '../../../shared/hooks/useMediaQuery'
 import { NoticeToast } from '../../../shared/components/NoticeToast'
 import { statusLabel } from '../../../shared/status-labels'
@@ -439,7 +440,9 @@ export function ReturnDetailPage() {
   const query = useQuery({ queryKey: ['return', id], queryFn: () => hubApi<ReturnDetail>(`/returns/${id}`) })
   // Each stock decision is its own request: a decision does not change the return's version, so a key
   // made from the version and the body would replay the first of two equal decisions (audit 2026-10-20 W11).
-  const dispositionRequest = useMutation({ mutationFn: ({ body, key }: { body: string; key: string }) => hubApi(`/returns/${id}/stock-dispositions`, { method: 'POST', headers: { 'Idempotency-Key': key }, body }) })
+  // The key is kept per pending decision instead (sendStockDisposition): a resend after a lost answer replays it.
+  const dispositionRequest = useMutation({ mutationFn: ({ body, lineId }: { body: string; lineId: string }) => sendStockDisposition(pendingDispositionKeys.current, id, lineId, body, key => hubApi(`/returns/${id}/stock-dispositions`, { method: 'POST', headers: { 'Idempotency-Key': key }, body })) })
+  const pendingDispositionKeys = useRef<PendingDispositionKeys>(new Map())
   const dispositionInFlight = useRef(false)
   async function disposition(event: FormEvent<HTMLFormElement>, line: ReturnLine) {
     event.preventDefault()
@@ -448,7 +451,7 @@ export function ReturnDetailPage() {
     const data = new FormData(event.currentTarget)
     try {
       const kind = String(data.get('disposition'))
-      await dispositionRequest.mutateAsync({ key: `return-stock-disposition:${id}:${newIdempotencyKey()}`, body: JSON.stringify({ returnLineId: line.id, disposition: kind, quantity: Number(data.get('quantity')), reason: data.get('reason') }) })
+      await dispositionRequest.mutateAsync({ lineId: line.id, body: JSON.stringify({ returnLineId: line.id, disposition: kind, quantity: Number(data.get('quantity')), reason: data.get('reason') }) })
       notifyReturn(setNotice, kind === 'PASS' ? 'İade stok kararı kaydedildi; ürün stoğa eklendi.' : 'İade stok kararı kaydedildi; stok değişmedi.', 'success')
       await Promise.all([client.invalidateQueries({ queryKey: ['return', id] }), ...(kind === 'PASS' ? [client.invalidateQueries({ queryKey: ['products'] })] : [])])
     } catch (reason) { notifyReturn(setNotice, reason instanceof Error ? reason.message : 'Stok kararı kaydedilemedi.', 'error') }

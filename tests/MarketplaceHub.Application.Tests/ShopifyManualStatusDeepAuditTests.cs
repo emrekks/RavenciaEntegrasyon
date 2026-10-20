@@ -68,23 +68,50 @@ public sealed class ShopifyManualStatusPostgreSqlTests(PostgreSqlTenantIsolation
         }
         finally
         {
-            await using var db = fixture.CreateContext();
-            await db.JobAttempts.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
-            await db.IntegrationJobs.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
-            await db.IntegrationOutboxEvents.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
-            await db.AuditLogs.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
-            await db.OrderStatusHistory.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
-            await db.ShipmentPackages.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
-            await db.Orders.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
-            await db.PlatformConnections.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
-            await db.Tenants.Where(row => row.Id == tenantId).ExecuteDeleteAsync();
+            await CleanupAsync(tenantId);
         }
+    }
+
+    // A second panel status on an order without package statuses records the marketplace status,
+    // not the first panel status (which order.DerivedStatus holds by then).
+    [PostgreSqlFact]
+    public async Task SecondManualStatusRecordsTheMarketplaceStatusNotThePreviousPanelStatus()
+    {
+        var (tenantId, orderId) = await SeedAsync(withPackage: false);
+        try
+        {
+            await using (var db = fixture.CreateContext())
+                Assert.Null((await NewService(db).SetShopifyOrderStatusAsync(tenantId, Guid.CreateVersion7(), orderId, 1, "SHIPPED", "first-key", "sh", CancellationToken.None)).Error);
+            await using (var db = fixture.CreateContext())
+                Assert.Null((await NewService(db).SetShopifyOrderStatusAsync(tenantId, Guid.CreateVersion7(), orderId, 2, "DELIVERED", "second-key", "sh", CancellationToken.None)).Error);
+            await using var verify = fixture.CreateContext();
+            var rows = await verify.OrderStatusHistory.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == orderId).ToListAsync();
+            Assert.Equal(["NEW", "NEW"], rows.Select(row => ShopifyManualStatusPolicy.RemoteStatusAt(row.SourceEventId)));
+        }
+        finally
+        {
+            await CleanupAsync(tenantId);
+        }
+    }
+
+    private async Task CleanupAsync(Guid tenantId)
+    {
+        await using var db = fixture.CreateContext();
+        await db.JobAttempts.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.IntegrationJobs.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.IntegrationOutboxEvents.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.AuditLogs.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.OrderStatusHistory.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.ShipmentPackages.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.Orders.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.PlatformConnections.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.Tenants.Where(row => row.Id == tenantId).ExecuteDeleteAsync();
     }
 
     private MarketplaceSalesService NewService(AppDbContext db) =>
         new(db, null!, new ConfigurationBuilder().Build(), null!, null!, null!, null!, TimeProvider.System);
 
-    private async Task<(Guid TenantId, Guid OrderId)> SeedAsync()
+    private async Task<(Guid TenantId, Guid OrderId)> SeedAsync(bool withPackage = true)
     {
         var now = DateTimeOffset.UtcNow;
         var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"shm-{Guid.NewGuid():N}"[..16], DisplayName = "shm", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = now, UpdatedAt = now, Version = 1 };
@@ -94,7 +121,7 @@ public sealed class ShopifyManualStatusPostgreSqlTests(PostgreSqlTenantIsolation
         db.Tenants.Add(tenant);
         db.PlatformConnections.Add(connection);
         db.Orders.Add(order);
-        db.ShipmentPackages.Add(new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, OrderId = order.Id, ExternalPackageId = "order:shm:remainder", Status = ShipmentPackageStatus.New, RawStatus = "UNFULFILLED", StatusOccurredAt = now.AddDays(-1), CreatedAt = now, UpdatedAt = now, Version = 1 });
+        if (withPackage) db.ShipmentPackages.Add(new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, OrderId = order.Id, ExternalPackageId = "order:shm:remainder", Status = ShipmentPackageStatus.New, RawStatus = "UNFULFILLED", StatusOccurredAt = now.AddDays(-1), CreatedAt = now, UpdatedAt = now, Version = 1 });
         await db.SaveChangesAsync();
         return (tenant.Id, order.Id);
     }

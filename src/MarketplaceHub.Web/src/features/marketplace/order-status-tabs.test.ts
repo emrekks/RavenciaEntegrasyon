@@ -2,19 +2,21 @@ import { describe, expect, it } from 'vitest'
 import { orderStatusMoreTabs, orderStatusTabs, resolveOrderStatusTab } from './order-status-tabs'
 
 describe('order status tabs', () => {
-  it('removes the duplicate pending and unverified tabs while keeping New canonical', () => {
+  it('gives payment pending, unverified and the pending queue a tab of their own in the more menu', () => {
     const values: string[] = orderStatusTabs.map(([value]) => value)
-    expect(values).not.toContain('PENDING')
-    expect(values).not.toContain('UNVERIFIED')
-    expect(values).toContain('NEW')
-    expect(values).not.toContain('PAYMENT_PENDING')
+    for (const status of ['PAYMENT_PENDING', 'UNVERIFIED', 'PENDING']) {
+      expect(values).toContain(status)
+      expect(orderStatusMoreTabs).toContain(status)
+    }
+    expect(new Set(values).size).toBe(values.length)
   })
 
-  it('redirects legacy pending links to New', () => {
-    expect(resolveOrderStatusTab('PENDING')).toBe('NEW')
-    expect(resolveOrderStatusTab('pending')).toBe('NEW')
-    expect(resolveOrderStatusTab('PAYMENT_PENDING')).toBe('NEW')
-    expect(resolveOrderStatusTab('UNVERIFIED')).toBe('ALL')
+  it('opens the tab a link names, so the dashboard pending link lists what its counter counts', () => {
+    expect(resolveOrderStatusTab('PENDING')).toBe('PENDING')
+    expect(resolveOrderStatusTab('pending')).toBe('PENDING')
+    expect(resolveOrderStatusTab('PAYMENT_PENDING')).toBe('PAYMENT_PENDING')
+    expect(resolveOrderStatusTab('UNVERIFIED')).toBe('UNVERIFIED')
+    expect(resolveOrderStatusTab('READY_TO_SHIP')).toBe('PROCESSING')
     expect(resolveOrderStatusTab(null)).toBe('ALL')
     expect(resolveOrderStatusTab('CANCELLED')).toBe('CANCELLED')
   })

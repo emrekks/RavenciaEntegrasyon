@@ -1,4 +1,5 @@
 using System.Data;
+using System.Linq.Expressions;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -7,6 +8,7 @@ using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Query;
 using Microsoft.Extensions.Configuration;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
@@ -196,7 +198,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             var unverifiedWithoutPackage = OpenOrderLifecyclePolicy.IsHepsiburadaOrderUnverifiedWithoutPackage(
                 connection?.PlatformCode,
                 order.DerivedStatus,
-                orderPackages.Count,
+                orderPackages.Count(candidate => candidate.Status != ShipmentPackageStatus.Cancelled),
                 order.OrderedAt,
                 now);
             var displayStatus = unverifiedWithoutPackage ? "UNVERIFIED" : order.DerivedStatus;
@@ -250,7 +252,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
     }
 
     // The tabs the order summary counts; "ALL" is the list without a status tab.
-    internal static readonly string[] OrderSummaryTabs = ["ALL", "NEW", "PROCESSING", "SHIPPED", "DELIVERED", "RESENT", "ON_HOLD", "CANCELLED", "RETURNED", "RETURN_IN_TRANSIT", "PARTIALLY_CANCELLED", "MANUAL_REVIEW", "PENDING", "PAYMENT_PENDING", "UNDELIVERED"];
+    internal static readonly string[] OrderSummaryTabs = ["ALL", "NEW", "PROCESSING", "SHIPPED", "DELIVERED", "RESENT", "ON_HOLD", "CANCELLED", "RETURNED", "RETURN_IN_TRANSIT", "PARTIALLY_CANCELLED", "MANUAL_REVIEW", "PENDING", "UNVERIFIED", "PAYMENT_PENDING", "UNDELIVERED"];
 
     // The first print is kept; printing again later does not move it. A plain column update: the
     // order's version and the worker's concurrent writes are not touched.
@@ -380,71 +382,58 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         {
             var derivedStatuses = DerivedStatusesForOrderTab(status);
             var packageStatuses = PackageStatusesForOrderTab(status);
-            query = status == "CANCELLED"
-                ? query.Where(order => order.DerivedStatus == "CANCELLED"
+            var unpackagedNew = HepsiburadaUnpackagedNewOrders(tenantId);
+            var unpackagedOnHold = HepsiburadaUnpackagedOnHoldOrders(tenantId);
+            var unpackagedDelivered = HepsiburadaUnpackagedDeliveredOrders(tenantId);
+            Expression<Func<Order, bool>> marketplaceRule = status == "CANCELLED"
+                ? order => order.DerivedStatus == "CANCELLED"
                     || (!db.PlatformConnections.Any(connection => connection.TenantId == order.TenantId && connection.Id == order.ConnectionId && connection.PlatformCode == "SHOPIFY")
-                        && currentPackages.Any(package => package.TenantId == order.TenantId && package.OrderId == order.Id && package.Status == ShipmentPackageStatus.Cancelled)))
-                : status == "UNVERIFIED"
-                ? query.Where(_ => false)
+                        && currentPackages.Any(package => package.TenantId == order.TenantId && package.OrderId == order.Id && package.Status == ShipmentPackageStatus.Cancelled))
                 : derivedStatuses is not null
-                ? query.Where(order => derivedStatuses.Contains(order.DerivedStatus))
+                ? order => derivedStatuses.Contains(order.DerivedStatus)
                 : packageStatuses is not null
                 ? status switch
                 {
-                    "NEW" => query.Where(order => currentPackages.Any(package => package.TenantId == order.TenantId
+                    "NEW" => order => currentPackages.Any(package => package.TenantId == order.TenantId
                             && package.OrderId == order.Id
                             && packageStatuses.Contains(package.Status))
-                        || HepsiburadaUnpackagedNewOrders(tenantId).Any(newOrder => newOrder.Id == order.Id)),
-                    "ON_HOLD" => query.Where(order => currentPackages.Any(package => package.TenantId == order.TenantId
+                        || unpackagedNew.Any(newOrder => newOrder.Id == order.Id),
+                    "ON_HOLD" => order => currentPackages.Any(package => package.TenantId == order.TenantId
                             && package.OrderId == order.Id
                             && (packageStatuses.Contains(package.Status)
                                 || package.Status == ShipmentPackageStatus.Undelivered
                                     && db.PlatformConnections.Any(connection => connection.TenantId == package.TenantId
                                         && connection.Id == package.ConnectionId
                                         && connection.PlatformCode == "HEPSIBURADA")))
-                        || HepsiburadaUnpackagedOnHoldOrders(tenantId).Any(holdOrder => holdOrder.Id == order.Id)),
-                    "DELIVERED" => query.Where(order =>
-                        db.PlatformConnections.Any(connection => connection.TenantId == order.TenantId
-                            && connection.Id == order.ConnectionId
-                            && connection.PlatformCode == "SHOPIFY")
-                        && db.OrderStatusHistory.Any(history => history.TenantId == order.TenantId
-                            && history.OrderId == order.Id
-                            && history.RawStatus.StartsWith("MANUAL_SHOPIFY_STATUS:")
-                            && history.CanonicalStatus == order.DerivedStatus
-                            && history.OccurredAt >= order.LastRemoteModifiedAt)
-                            ? order.DerivedStatus == "DELIVERED"
-                            : currentPackages.Any(package => package.TenantId == order.TenantId
-                                && package.OrderId == order.Id
-                                && packageStatuses.Contains(package.Status))
-                                || HepsiburadaUnpackagedDeliveredOrders(tenantId).Any(deliveredOrder => deliveredOrder.Id == order.Id)),
-                    "SHIPPED" => query.Where(order =>
-                        db.PlatformConnections.Any(connection => connection.TenantId == order.TenantId
-                            && connection.Id == order.ConnectionId
-                            && connection.PlatformCode == "SHOPIFY")
-                        && db.OrderStatusHistory.Any(history => history.TenantId == order.TenantId
-                            && history.OrderId == order.Id
-                            && history.RawStatus.StartsWith("MANUAL_SHOPIFY_STATUS:")
-                            && history.CanonicalStatus == order.DerivedStatus
-                            && history.OccurredAt >= order.LastRemoteModifiedAt)
-                            ? order.DerivedStatus == "SHIPPED"
-                            : currentPackages.Any(package => package.TenantId == order.TenantId
-                                && package.OrderId == order.Id
-                                && packageStatuses.Contains(package.Status)
-                                && (package.Status != ShipmentPackageStatus.Undelivered
-                                    || !db.PlatformConnections.Any(connection => connection.TenantId == package.TenantId
-                                        && connection.Id == package.ConnectionId
-                                        && connection.PlatformCode == "HEPSIBURADA")))),
-                    _ => query.Where(order => currentPackages.Any(package => package.TenantId == order.TenantId
+                        || unpackagedOnHold.Any(holdOrder => holdOrder.Id == order.Id),
+                    "DELIVERED" => order => currentPackages.Any(package => package.TenantId == order.TenantId
+                            && package.OrderId == order.Id
+                            && packageStatuses.Contains(package.Status))
+                        || unpackagedDelivered.Any(deliveredOrder => deliveredOrder.Id == order.Id),
+                    "SHIPPED" => order => currentPackages.Any(package => package.TenantId == order.TenantId
                         && package.OrderId == order.Id
-                        && packageStatuses.Contains(package.Status)))
+                        && packageStatuses.Contains(package.Status)
+                        && (package.Status != ShipmentPackageStatus.Undelivered
+                            || !db.PlatformConnections.Any(connection => connection.TenantId == package.TenantId
+                                && connection.Id == package.ConnectionId
+                                && connection.PlatformCode == "HEPSIBURADA"))),
+                    _ => order => currentPackages.Any(package => package.TenantId == order.TenantId
+                        && package.OrderId == order.Id
+                        && packageStatuses.Contains(package.Status))
                 }
                 : status switch
                 {
                     // originPackageIds is also present for split/cancel packages;
                     // only Trendyol's explicit creator marker identifies a resend.
-                    "RESENT" => query.Where(x => currentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.OriginExternalPackageId != null && package.Status != ShipmentPackageStatus.Cancelled && package.CreatedBy != null && resendCreators.Contains(package.CreatedBy))),
-                    _ => query.Where(x => x.DerivedStatus == status)
+                    "RESENT" => x => currentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.OriginExternalPackageId != null && package.Status != ShipmentPackageStatus.Cancelled && package.CreatedBy != null && resendCreators.Contains(package.CreatedBy)),
+                    // UNVERIFIED (a Hepsiburada order known only from a claim) and any other order status.
+                    _ => x => x.DerivedStatus == status
                 };
+            // A Shopify order with a current panel status (O13) is in the tabs of that status only,
+            // never in the tabs of its packages: its badge shows the panel status.
+            var manualOrders = CurrentManualShopifyOrderStatuses(tenantId);
+            var manualStatuses = ManualShopifyStatusesForOrderTab(status);
+            query = query.Where(WithManualShopifyStatus(order => manualOrders.Any(manual => manual.Id == order.Id), order => manualStatuses.Contains(order.DerivedStatus), marketplaceRule));
         }
 
         var search = options.Search?.Trim();
@@ -456,14 +445,15 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             // Nor against its e-mail fields: the list no longer shows the e-mail.
             var searchCustomer = SearchesCustomerSnapshot(search);
             var customerPattern = CustomerSnapshotSearchPattern(search);
-            // Case-insensitive, the Turkish way too: the term is also tried in its Turkish lower
-            // and upper forms (ILIKE folds only what the database locale knows).
-            var (asTyped, lower, upper) = SearchPatterns(search);
+            // Case-insensitive, the Turkish way too: the product title and the term are both folded
+            // (TurkishSearchText), so "ışık" finds "Işıklı" on the en_US database.
+            var (asTyped, folded) = SearchPatterns(search);
+            var titleMatches = db.OrderLines.Where(TurkishSearchText.FoldedILike<OrderLine>(line => line.TitleSnapshot, folded, LikeEscape));
             query = query.Where(x => EF.Functions.ILike(x.OrderNumber, asTyped, LikeEscape) || EF.Functions.ILike(x.ExternalOrderId, asTyped, LikeEscape)
                 || (searchCustomer && Regex.IsMatch(x.CustomerSnapshotJson, customerPattern, RegexOptions.IgnoreCase))
+                || titleMatches.Any(line => line.TenantId == x.TenantId && line.OrderId == x.Id)
                 || db.OrderLines.Any(line => line.TenantId == x.TenantId && line.OrderId == x.Id
-                    && (EF.Functions.ILike(line.TitleSnapshot, asTyped, LikeEscape) || EF.Functions.ILike(line.TitleSnapshot, lower, LikeEscape) || EF.Functions.ILike(line.TitleSnapshot, upper, LikeEscape)
-                        || EF.Functions.ILike(line.Sku, asTyped, LikeEscape) || (line.Barcode != null && EF.Functions.ILike(line.Barcode, asTyped, LikeEscape)))));
+                    && (EF.Functions.ILike(line.Sku, asTyped, LikeEscape) || (line.Barcode != null && EF.Functions.ILike(line.Barcode, asTyped, LikeEscape)))));
         }
 
         var platforms = options.Platforms?.Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value.Trim().ToUpperInvariant()).Distinct().ToArray() ?? [];
@@ -510,6 +500,26 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         "PENDING" => DashboardMetricPolicy.PendingOrderStatuses,
         _ => null
     };
+
+    // The panel statuses (SetShopifyOrderStatusAsync) a Shopify order is listed under in a tab.
+    internal static string[] ManualShopifyStatusesForOrderTab(string status) => status switch
+    {
+        "PROCESSING" => ["PROCESSING", "READY_TO_SHIP"],
+        "PENDING" => DashboardMetricPolicy.PendingOrderStatuses,
+        "RESENT" => [],
+        _ => [status]
+    };
+
+    // order => isManual(order) ? manualRule(order) : marketplaceRule(order), as one predicate.
+    private static Expression<Func<Order, bool>> WithManualShopifyStatus(Expression<Func<Order, bool>> isManual, Expression<Func<Order, bool>> manualRule, Expression<Func<Order, bool>> marketplaceRule)
+    {
+        var order = marketplaceRule.Parameters[0];
+        Expression Body(Expression<Func<Order, bool>> rule) => ReplacingExpressionVisitor.Replace(rule.Parameters[0], order, rule.Body);
+        var manual = Body(isManual);
+        return Expression.Lambda<Func<Order, bool>>(
+            Expression.OrElse(Expression.AndAlso(manual, Body(manualRule)), Expression.AndAlso(Expression.Not(manual), marketplaceRule.Body)),
+            order);
+    }
 
     // The first "shipped" status of each order: when it was handed to the carrier.
     private IQueryable<OrderStatusHistory> ShippedAtQuery(Guid tenantId) =>
@@ -598,7 +608,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             .ToDictionaryAsync(row => row.Tab, row => row.Count, cancellationToken);
         int Count(string tab) => counts.GetValueOrDefault(tab);
         return new OrderSummaryView(Count("ALL"), Count("NEW"), Count("PROCESSING"), Count("SHIPPED"), Count("DELIVERED"), Count("RESENT"), Count("ON_HOLD"),
-            Count("CANCELLED"), Count("RETURNED"), Count("RETURN_IN_TRANSIT"), Count("PARTIALLY_CANCELLED"), Count("MANUAL_REVIEW"), Count("PENDING"), 0, Count("PAYMENT_PENDING"), Count("UNDELIVERED"));
+            Count("CANCELLED"), Count("RETURNED"), Count("RETURN_IN_TRANSIT"), Count("PARTIALLY_CANCELLED"), Count("MANUAL_REVIEW"), Count("PENDING"), Count("UNVERIFIED"), Count("PAYMENT_PENDING"), Count("UNDELIVERED"));
     }
 
     internal IQueryable<Order> CurrentManualShopifyOrderStatuses(Guid tenantId) => db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId
@@ -611,6 +621,8 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             && history.CanonicalStatus == order.DerivedStatus
             && history.OccurredAt >= order.LastRemoteModifiedAt));
 
+    // "Unpackaged" means no live package: a package the panel unpacked (UNPACKED_BY_PANEL, history
+    // only) or a cancelled one leaves the order unpackaged again, so it is back in Yeni (O14).
     private IQueryable<Order> HepsiburadaUnpackagedNewOrders(Guid tenantId)
     {
         var verificationCutoff = OpenOrderLifecyclePolicy.HepsiburadaUnpackagedOrderVerificationCutoff(timeProvider.GetUtcNow());
@@ -622,7 +634,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                     && connection.Id == order.ConnectionId
                     && connection.PlatformCode == "HEPSIBURADA"
                     && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
-                && !db.ShipmentPackages.Any(package => package.TenantId == tenantId && package.OrderId == order.Id));
+                && !CurrentShipmentPackages().Any(package => package.TenantId == tenantId && package.OrderId == order.Id && package.Status != ShipmentPackageStatus.Cancelled));
     }
 
     internal IQueryable<Order> HepsiburadaUnpackagedOnHoldOrders(Guid tenantId)
@@ -636,7 +648,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                     && connection.Id == order.ConnectionId
                     && connection.PlatformCode == "HEPSIBURADA"
                     && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
-                && !db.ShipmentPackages.Any(package => package.TenantId == tenantId && package.OrderId == order.Id));
+                && !CurrentShipmentPackages().Any(package => package.TenantId == tenantId && package.OrderId == order.Id && package.Status != ShipmentPackageStatus.Cancelled));
     }
 
     internal IQueryable<Order> HepsiburadaUnpackagedDeliveredOrders(Guid tenantId)
@@ -650,7 +662,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                     && connection.Id == order.ConnectionId
                     && connection.PlatformCode == "HEPSIBURADA"
                     && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
-                && !db.ShipmentPackages.Any(package => package.TenantId == tenantId && package.OrderId == order.Id));
+                && !CurrentShipmentPackages().Any(package => package.TenantId == tenantId && package.OrderId == order.Id && package.Status != ShipmentPackageStatus.Cancelled));
     }
 
     internal IQueryable<Order> ExcludeStaleUnpackagedHepsiburadaOrders(IQueryable<Order> query, Guid tenantId)
@@ -1139,7 +1151,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
 
         await using var ordersLock = await OrdersProjectionLockAsync(connectionId.Value, cancellationToken);
         var order = await db.Orders.SingleAsync(x => x.TenantId == tenantId && x.Id == orderId, cancellationToken);
-        var sourceEventId = ShopifyManualStatusPolicy.SourceEventId(RemoteDerivedStatus(await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == orderId).ToListAsync(cancellationToken), order.DerivedStatus), idempotencyKey);
+        var sourceEventId = ShopifyManualStatusPolicy.SourceEventId(RemoteDerivedStatus(await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == orderId).ToListAsync(cancellationToken), await RemoteOrderStatusAsync(order, cancellationToken)), idempotencyKey);
         // The same request again (same key): it was applied; answer with the order as it is.
         var replay = await db.OrderStatusHistory.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == orderId && x.SourceEventId.EndsWith(ShopifyManualStatusPolicy.KeySuffix(idempotencyKey)))
             .Select(x => x.CanonicalStatus).FirstOrDefaultAsync(cancellationToken);
@@ -1165,6 +1177,25 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
     // The order status the marketplace packages give (what the order would show without a manual status).
     private static string RemoteDerivedStatus(IReadOnlyCollection<ShipmentPackage> packages, string fallback) =>
         ShipmentPackageSupersession.StatusSources(packages) is { } sources ? Wire(ShipmentPackageStatusPolicy.Aggregate(sources)) : fallback;
+
+    // The order status the marketplace gave, for an order without package statuses. While a panel
+    // status holds, order.DerivedStatus is that panel status: the marketplace status is the one its
+    // history row recorded, else the latest marketplace history status. Recording the old panel
+    // status as the marketplace's let the next marketplace read drop the new panel status although
+    // the marketplace had not changed (ShopifyManualStatusPolicy.StillHolds).
+    private async Task<string> RemoteOrderStatusAsync(Order order, CancellationToken cancellationToken)
+    {
+        var manual = await db.OrderStatusHistory.AsNoTracking()
+            .Where(x => x.TenantId == order.TenantId && x.OrderId == order.Id && x.RawStatus.StartsWith(ShopifyManualStatusPolicy.RawStatusPrefix)
+                && x.CanonicalStatus == order.DerivedStatus && x.OccurredAt >= order.LastRemoteModifiedAt)
+            .OrderByDescending(x => x.OccurredAt).Select(x => x.SourceEventId).FirstOrDefaultAsync(cancellationToken);
+        if (manual is null) return order.DerivedStatus;
+        return ShopifyManualStatusPolicy.RemoteStatusAt(manual)
+            ?? await db.OrderStatusHistory.AsNoTracking()
+                .Where(x => x.TenantId == order.TenantId && x.OrderId == order.Id && !x.RawStatus.StartsWith(ShopifyManualStatusPolicy.RawStatusPrefix))
+                .OrderByDescending(x => x.OccurredAt).Select(x => x.CanonicalStatus).FirstOrDefaultAsync(cancellationToken)
+            ?? order.DerivedStatus;
+    }
 
     internal static string HepsiburadaPackageReservationSettledKey(string effectPrefix, Guid effectId) => $"{effectPrefix}:reconciled:{effectId:N}";
 
@@ -1964,16 +1995,20 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         {
             // The page's own search ignores case the Turkish way; this database pre-filter must
             // never be narrower than it.
-            var (asTyped, lower, upper) = SearchPatterns(search);
+            // The reason and the product title are folded the Turkish way on both sides (TurkishSearchText).
+            var (asTyped, folded) = SearchPatterns(search);
+            var reasonCodeMatches = db.ReturnClaims.Where(TurkishSearchText.FoldedILike<ReturnClaim>(claim => claim.ReasonCode, folded, LikeEscape));
+            var reasonTextMatches = db.ReturnClaims.Where(TurkishSearchText.FoldedILike<ReturnClaim>(claim => claim.ReasonText, folded, LikeEscape));
+            var titleMatches = db.OrderLines.Where(TurkishSearchText.FoldedILike<OrderLine>(line => line.TitleSnapshot, folded, LikeEscape));
             query = query.Where(claim => EF.Functions.ILike(claim.ExternalClaimId, asTyped, LikeEscape)
-                || (claim.ReasonCode != null && EF.Functions.ILike(claim.ReasonCode, asTyped, LikeEscape))
-                || (claim.ReasonText != null && (EF.Functions.ILike(claim.ReasonText, asTyped, LikeEscape) || EF.Functions.ILike(claim.ReasonText, lower, LikeEscape) || EF.Functions.ILike(claim.ReasonText, upper, LikeEscape)))
+                || reasonCodeMatches.Any(match => match.TenantId == claim.TenantId && match.Id == claim.Id)
+                || reasonTextMatches.Any(match => match.TenantId == claim.TenantId && match.Id == claim.Id)
                 || db.Orders.Any(order => order.TenantId == claim.TenantId && order.Id == claim.OrderId
                     && (EF.Functions.ILike(order.OrderNumber, asTyped, LikeEscape) || (searchCustomer && Regex.IsMatch(order.CustomerSnapshotJson, customerPattern, RegexOptions.IgnoreCase))))
                 || db.ReturnLines.Any(returnLine => returnLine.TenantId == claim.TenantId && returnLine.ClaimId == claim.Id
-                    && db.OrderLines.Any(line => line.TenantId == returnLine.TenantId && line.Id == returnLine.OrderLineId
-                        && ((line.Barcode != null && EF.Functions.ILike(line.Barcode, asTyped, LikeEscape)) || EF.Functions.ILike(line.Sku, asTyped, LikeEscape)
-                            || EF.Functions.ILike(line.TitleSnapshot, asTyped, LikeEscape) || EF.Functions.ILike(line.TitleSnapshot, lower, LikeEscape) || EF.Functions.ILike(line.TitleSnapshot, upper, LikeEscape)))));
+                    && (titleMatches.Any(line => line.TenantId == returnLine.TenantId && line.Id == returnLine.OrderLineId)
+                        || db.OrderLines.Any(line => line.TenantId == returnLine.TenantId && line.Id == returnLine.OrderLineId
+                            && ((line.Barcode != null && EF.Functions.ILike(line.Barcode, asTyped, LikeEscape)) || EF.Functions.ILike(line.Sku, asTyped, LikeEscape))))));
         }
 
         var customer = options.Customer?.Trim();
@@ -3121,12 +3156,13 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
 
     private const string LikeEscape = "\\";
 
-    // "%term%" for ILIKE as typed, in Turkish lower case and in Turkish upper case, with the LIKE
-    // wildcards of the term escaped (a "%" in the term is a percent sign).
-    internal static (string AsTyped, string Lower, string Upper) SearchPatterns(string term)
+    // "%term%" for ILIKE as typed, and Turkish-folded (TurkishSearchText.Fold) for a column folded the
+    // same way (TurkishSearchText.FoldedILike), with the LIKE wildcards of the term escaped (a "%" in
+    // the term is a percent sign).
+    internal static (string AsTyped, string Folded) SearchPatterns(string term)
     {
         static string Pattern(string value) => "%" + value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("%", "\\%", StringComparison.Ordinal).Replace("_", "\\_", StringComparison.Ordinal) + "%";
-        return (Pattern(term), Pattern(term.ToLower(TurkishCulture)), Pattern(term.ToUpper(TurkishCulture)));
+        return (Pattern(term), Pattern(TurkishSearchText.Fold(term)));
     }
 
     // A PostgreSQL (and .NET) regular expression that finds the term in a customer snapshot value

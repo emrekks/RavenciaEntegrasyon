@@ -3026,9 +3026,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     || (order.OrderedAt >= unpackagedCutoff
                         && (includeUnpackagedNewOrders && order.DerivedStatus == "NEW"
                             || includeUnpackagedOnHoldOrders && order.DerivedStatus == "ON_HOLD")
+                        // Unpackaged as the order list counts it (O14): a package the panel unpacked
+                        // (UNPACKED_BY_PANEL, cancelled) leaves the order to be read again.
                         && !db.ShipmentPackages.Any(package => package.TenantId == tenantId
                             && package.ConnectionId == connectionId
-                            && package.OrderId == order.Id))));
+                            && package.OrderId == order.Id
+                            && package.Status != ShipmentPackageStatus.Cancelled))));
 
             // Keyset paging: the set shrinks as packages are delivered, so an offset would skip the orders
             // that slid into the pages already read. The cursor keeps the last order id read instead.

@@ -64,15 +64,17 @@ public sealed partial class MarketplaceSalesService
     }
 
     // The page's search: any of the card's buyer, order, claim, barcode, reason or line fields
-    // contains the term, ignoring case the Turkish way.
+    // contains the term, ignoring case the Turkish way and with the i letters folded like the
+    // database pre-filter (TurkishSearchText): "ışık" and "işik" both find "Işıklı".
     internal static bool MatchesReturnSearch(ReturnListView view, IReadOnlyCollection<Guid> lineIds, string term)
     {
-        var needle = term.Trim().ToLower(TurkishCulture);
+        static string Fold(string value) => TurkishSearchText.Fold(value.ToLower(TurkishCulture));
+        var needle = Fold(term.Trim());
         if (needle.Length == 0) return true;
         var lines = (view.Lines ?? []).Where(line => lineIds.Contains(line.Id));
         return new[] { view.CustomerName, view.OrderNumber, view.ExternalClaimId, view.PrimaryBarcode, view.ReasonText, view.ReasonCode }
             .Concat(lines.SelectMany(line => new[] { line.Sku, line.Barcode, line.Title }))
-            .Any(candidate => candidate?.ToLower(TurkishCulture).Contains(needle, StringComparison.Ordinal) == true);
+            .Any(candidate => candidate is not null && Fold(candidate).Contains(needle, StringComparison.Ordinal));
     }
 
     // The platform, cargo and reason choices of the page as a database filter (MatchesReturnRefinements).
