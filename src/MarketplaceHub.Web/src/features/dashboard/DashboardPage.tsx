@@ -8,6 +8,8 @@ import { dashboardOperationalLinks } from '../../shared/dashboard-operational-li
 import { InvoiceGlyph } from '../invoicing/invoice-state-glyph'
 import { RrIcon, RrLogo } from '../marketplace/returns-ui'
 import './dashboard-sade.css'
+import { formatDate, formatIstanbul } from '../../shared/format-date'
+import { formatMoney } from '../../shared/format-money'
 
 // The overview page, as drawn in docs/tasarim-onerileri/genel-bakis-yeni.html.
 
@@ -61,7 +63,7 @@ function previousRange(start: Date, end: Date) {
   return { start: new Date(previousEnd.getTime() - Math.max(day, end.getTime() - start.getTime())), end: previousEnd }
 }
 const revenuePath = (from: Date, to: Date, platform = 'ALL') => `/dashboard/revenue-series?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}&platform=${encodeURIComponent(platform)}`
-const money = (amount: number, currency = 'TRY') => new Intl.NumberFormat('tr-TR', { style: 'currency', currency: currency || 'TRY', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount)
+const money = (amount: number, currency = 'TRY') => formatMoney(amount, currency || 'TRY', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
 const count = (value: number) => value.toLocaleString('tr-TR', { maximumFractionDigits: 0 })
 function trend(current: number, previous: number): [string, boolean] {
   if (previous <= 0) return [current > 0 ? '%100' : '%0', true]
@@ -76,8 +78,9 @@ function age(timestamp: string | null) {
   const hours = Math.floor(minutes / 60)
   return hours < 48 ? `${hours} sa önce` : `${Math.floor(hours / 24)} gün önce`
 }
-const dayLong = (day: string) => new Date(day).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', weekday: 'long' })
-const dayShort = (day: string) => { const date = new Date(day); return date.getDate() === 1 ? date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' }).replace(/\.$/, '') : String(date.getDate()) }
+const dayLong = (day: string) => formatIstanbul(day, { day: 'numeric', month: 'long', year: 'numeric', weekday: 'long' })
+// Series days are Istanbul calendar days (YYYY-MM-DD): the day number is read from the key, not the browser clock.
+const dayShort = (day: string) => { const dayOfMonth = Number(day.slice(8, 10)); return dayOfMonth === 1 ? formatIstanbul(day, { day: 'numeric', month: 'short' }).replace(/\.$/, '') : String(dayOfMonth) }
 function axisLabel(value: number) {
   if (!value) return '₺0'
   return value >= 1000 ? `₺${(value / 1000).toLocaleString('tr-TR', { maximumFractionDigits: 1 })} B` : `₺${count(value)}`
@@ -226,7 +229,7 @@ export function DashboardPage() {
   ]
   function downloadReport() {
     const escape = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`
-    const csvRows = [['Tarih', 'Ciro', 'Sipariş', 'Para Birimi'], ...series.map(point => [new Date(point.day).toLocaleDateString('tr-TR'), point.amount.toLocaleString('tr-TR', { maximumFractionDigits: 2 }), point.orderCount, point.currency])]
+    const csvRows = [['Tarih', 'Ciro', 'Sipariş', 'Para Birimi'], ...series.map(point => [formatDate(point.day), point.amount.toLocaleString('tr-TR', { maximumFractionDigits: 2 }), point.orderCount, point.currency])]
     const url = URL.createObjectURL(new Blob([`﻿${csvRows.map(row => row.map(escape).join(';')).join('\r\n')}`], { type: 'text/csv;charset=utf-8' }))
     const link = document.createElement('a')
     const name = `ravencia-rapor-${dateKey(new Date())}.csv`

@@ -196,8 +196,8 @@ describe('QuestionsPage workspace flows', () => {
     await settle()
     let params = lastQuestionRequest()
     expect(params.get('connectionId')).toBe('ty-store')
-    expect(params.get('dateFrom')).toBe(new Date('2026-10-01T00:00:00').toISOString())
-    expect(params.get('dateTo')).toBe(new Date('2026-10-05T23:59:59').toISOString())
+    expect(params.get('dateFrom')).toBe('2026-10-01T00:00:00.000+03:00')
+    expect(params.get('dateTo')).toBe('2026-10-05T23:59:59.999+03:00')
     expect(params.get('search')).toBe('bluz 01')
     expect(container.querySelector('.qi-filter-btn')?.textContent).toContain('2')
 

@@ -4,6 +4,7 @@ import { hubApi } from '../../shared/api'
 import { RrError, RrIcon, RrLoading, RrLogo, RrModal, RrThumb } from './returns-ui'
 import { integrationNotificationTarget, isExternalWriteMessage, type NotificationTarget } from '../../shared/notifications'
 import { allocateStock } from './return-stock-allocation'
+import { formatIstanbul } from '../../shared/format-date'
 
 export type ReturnApproveRow = {
   id: string
@@ -122,7 +123,7 @@ export function ReturnApproveDialog({ open, claimId, version, marketplaceName, o
   const allSelected = groups.length > 0 && selected.length === groups.length
   const orderFacts = [
     ['Müşteri', order.customer],
-    ['Sipariş Tarihi', order.orderedAt ? new Date(order.orderedAt).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : null],
+    ['Sipariş Tarihi', order.orderedAt ? formatIstanbul(order.orderedAt, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : null],
     ['Paket No', order.packageNumber],
     ['İade Kodu', order.claimCode],
     ['İade Sebebi', order.reason]

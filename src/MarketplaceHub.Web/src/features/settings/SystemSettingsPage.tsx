@@ -11,6 +11,7 @@ import { readVisualThemePreference, setVisualThemePreference, visualThemeChangeE
 import { useRememberedTabCounts } from '../../shared/tab-counts'
 import './settings-sade.css'
 import '../../shared/view-tabs.css'
+import { formatIstanbul } from '../../shared/format-date'
 
 type SecurityStatus = { totpState: string; recoveryCodesRemaining: number }
 type SecuritySession = { id: string; state: string; current: boolean; issuedAt: string; lastSeenAt: string; expiresAt: string }
@@ -43,7 +44,7 @@ function settingsSectionFrom(value: string | null): SettingsSectionKey {
 }
 
 function formatSettingsDate(value: string) {
-  return new Date(value).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+  return formatIstanbul(value, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
 const settingsIconPaths: Record<SettingsIconName, ReactNode> = {

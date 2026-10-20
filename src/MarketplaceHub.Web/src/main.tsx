@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { App } from './app/App'
+import { ErrorBoundary } from './shared/components/ErrorBoundary'
 import './app.css'
 import responsiveStylesheet from './styles/responsive.css?url'
 import phoneSpacingStylesheet from './styles/phone-spacing.css?url'
@@ -36,4 +37,4 @@ installSheetSwipeClose()
 // One quick repeat for server and network failures; a client error (4xx) would answer the same way again.
 const retryOnce = (failureCount: number, error: unknown) => failureCount < 1 && !(error instanceof ApiRequestError && error.status < 500)
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: retryOnce, staleTime: 60_000, refetchOnWindowFocus: false } } })
-createRoot(document.getElementById('root')!).render(<StrictMode><QueryClientProvider client={queryClient}><BrowserRouter><App /></BrowserRouter></QueryClientProvider></StrictMode>)
+createRoot(document.getElementById('root')!).render(<StrictMode><QueryClientProvider client={queryClient}><BrowserRouter><ErrorBoundary title="Panel açılamadı"><App /></ErrorBoundary></BrowserRouter></QueryClientProvider></StrictMode>)

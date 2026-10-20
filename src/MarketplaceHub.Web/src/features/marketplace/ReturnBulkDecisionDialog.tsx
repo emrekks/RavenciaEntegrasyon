@@ -4,6 +4,7 @@ import { hubApi } from '../../shared/api'
 import { RrBadge, RrIcon, RrLogo, RrModal, RrThumb } from './returns-ui'
 import { integrationNotificationTarget, isExternalWriteMessage, type NotificationTarget } from '../../shared/notifications'
 import { allocateStock, totalUnits } from './return-stock-allocation'
+import { formatIstanbul } from '../../shared/format-date'
 
 export type BulkDecisionLine = {
   id: string
@@ -189,7 +190,7 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
       return <article className="rr-ocard" key={item.id}>
         <header>
           <RrLogo code={item.platformCode} />
-          <div><b>{item.orderNumber}</b><span className="rr-osfacts"><span>Müşteri: <b>{item.customerName}</b></span>{item.orderedAt && <span>Sipariş Tarihi: <b className="rr-num">{new Date(item.orderedAt).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</b></span>}{item.packageNumber && <span>Paket No: <b className="rr-num">{item.packageNumber}</b></span>}</span></div>
+          <div><b>{item.orderNumber}</b><span className="rr-osfacts"><span>Müşteri: <b>{item.customerName}</b></span>{item.orderedAt && <span>Sipariş Tarihi: <b className="rr-num">{formatIstanbul(item.orderedAt, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</b></span>}{item.packageNumber && <span>Paket No: <b className="rr-num">{item.packageNumber}</b></span>}</span></div>
           {state ? <RrBadge label={state} /> : <span className="rr-reason-tip" tabIndex={0}><RrBadge label="İşlem Tamamlanamadı" tone="bad" /><span className="rr-reason-pop" role="tooltip"><b>İşlem Tamamlanamadı</b>{outcome?.message}</span></span>}
         </header>
         <section>

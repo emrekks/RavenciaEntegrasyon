@@ -48,6 +48,7 @@ import { productImportOptionVisibility as getProductImportOptionVisibility, type
 import { productPlatformFilterGroups } from './product-platform-filter'
 import { formatPanelColorValue } from '../marketplace/color-value-format'
 import { ViewTabsWithMore, viewTabLabel } from '../../shared/view-tabs'
+import { formatMoney } from '../../shared/format-money'
 
 type Versioned = { id: string; version: number }
 type Category = Versioned & { name: string; path: string; depth: number; isLeaf: boolean; isActive: boolean }
@@ -549,7 +550,6 @@ function VariantMediaPickerModal({
   </div>
 }
 const Tag = ({ children }: { children: ReactNode }) => <span className="tag">{children}</span>
-const money = (value: number | null | undefined, currency = 'TRY') => value == null ? '—' : new Intl.NumberFormat('tr-TR', { style: 'currency', currency }).format(value)
 function Page({ title, eyebrow, action, className, children }: { title: string; eyebrow: string; action?: ReactNode; className?: string; children: ReactNode }) { const productBack = className?.includes('product-add-page'); return <section className={`content stitch-page ${className ?? ''}`}><div className={`page-heading${productBack ? ' product-page-heading' : ''}`}><div className={productBack ? 'product-page-heading-copy' : undefined}>{productBack && <Link className="product-heading-back" to="/products" aria-label="Ürünler listesine dön"><UiIcon name="arrowLeft" /><span>Ürünler</span></Link>}<div className={productBack ? 'product-page-heading-title' : undefined}><p className="eyebrow">{eyebrow}</p><h1>{title}</h1></div></div>{action}</div>{children}</section> }
 
 type QuickEditMode = 'stock' | 'price' | 'both'
@@ -854,7 +854,7 @@ function ProductColorRows({ group, selected, onSelect, selectionMode: _selection
   return <tr className={selected ? 'rr-sel' : undefined}>
     <td className="rr-wide"><div className="rr-prodcell"><input type="checkbox" className="rr-cb" aria-label={`${product.title} ürün grubunu seç`} checked={selected} onChange={onSelect} /><RrThumb src={product.primaryImageUrl} alt={product.title} onOpen={product.primaryImageUrl ? () => onImageClick(product.primaryImageUrl!, product.title) : undefined} /><div><b title={product.title}>{product.title}</b><small><span>Model Kodu:</span> <b className="rr-num">{modelCode}</b></small></div></div></td>
     <td className="rr-mid" data-l="Varyant"><span className={variantDisplayGroups.length > 0 ? 'rr-vhover' : 'rr-vhover rr-vhover-none'} tabIndex={variantDisplayGroups.length > 0 ? 0 : undefined}><span className="rr-varcell"><b>{group.products.length} seçenek</b><small>{group.variants.length} varyant</small></span>{variantDisplayGroups.length > 0 && <span className="rr-tip rr-vtip" role="tooltip"><table className="rr-vtab"><thead><tr><th />{variantSizes.map(size => <th key={size}>{size}</th>)}</tr></thead><tbody>{variantDisplayGroups.map(item => <tr key={item.label}><th title={item.label}>{item.label}</th>{variantSizes.map(size => { const value = item.values.find(entry => entry.label === size); return <td key={size} className={value == null ? 'rr-none' : value.quantity === 0 ? 'rr-empty' : value.quantity < 5 ? 'rr-low' : undefined}>{value == null ? '—' : value.quantity}</td> })}</tr>)}</tbody></table></span>}</span></td>
-    <td className="rr-mid" data-l="Fiyat"><button type="button" className="rr-qbtn" title="Fiyatı hızlı düzenle" aria-label={`${product.title}: fiyatı düzenle`} onClick={() => onQuickEdit('price')}><b className="rr-num">{money(startingPrice ?? 0, product.currency)}</b>{listPrice != null && <small className="rr-num">{money(listPrice, product.currency)}</small>}</button></td>
+    <td className="rr-mid" data-l="Fiyat"><button type="button" className="rr-qbtn" title="Fiyatı hızlı düzenle" aria-label={`${product.title}: fiyatı düzenle`} onClick={() => onQuickEdit('price')}><b className="rr-num">{formatMoney(startingPrice ?? 0, product.currency)}</b>{listPrice != null && <small className="rr-num">{formatMoney(listPrice, product.currency)}</small>}</button></td>
     <td className="rr-mid" data-l="Stok"><button type="button" className={`rr-qbtn${totalStock === 0 ? ' rr-zero' : ''}`} title="Stoğu hızlı düzenle" aria-label={`${product.title}: stoğu düzenle`} onClick={() => onQuickEdit('stock')}><b className="rr-num">{totalStock}</b><small>{totalStock === 0 ? 'Stoksuz' : 'adet'}</small></button></td>
     <td className="rr-mid" data-l="Platform Durumu"><div className="rr-pmarks">{platformMarks.map(mark => <span key={mark.code} className={`rr-pm rr-${mark.state}`} tabIndex={0} data-tip={mark.label} aria-label={mark.label}><RrLogo code={mark.code} /><i /></span>)}</div></td>
     <td className="rr-mid" data-l="Durum"><RrRing tone={ringTone} progress={ringProgress} label={statusLabelText} /></td>

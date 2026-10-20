@@ -1,4 +1,5 @@
 export * from './AsyncState'
+export * from './ErrorBoundary'
 export * from './UiIcon'
 export * from './ToneIcon'
 export * from './DesignSystem'

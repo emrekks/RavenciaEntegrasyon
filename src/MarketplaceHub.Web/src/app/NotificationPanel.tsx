@@ -4,6 +4,7 @@ import './notification-panel.css'
 import { describeNotification } from '../shared/notification-describe'
 import { ViewTabIcon, type ViewTabIconName } from '../shared/view-tabs'
 import { clearNotificationHistory, markAllNotificationsRead, markNotificationRead, type AppNotification } from '../shared/notifications'
+import { formatDateTime, formatIstanbul } from '../shared/format-date'
 
 type Filter = 'ALL' | 'UNREAD' | 'ERROR'
 
@@ -30,11 +31,11 @@ function relativeTime(iso: string) {
   const minutes = Math.floor((Date.now() - created.getTime()) / 60000)
   if (minutes < 1) return 'Az önce'
   if (minutes < 60) return `${minutes} dk önce`
-  return created.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+  return formatIstanbul(created, { hour: '2-digit', minute: '2-digit' })
 }
 
 function dayDate(iso: string) {
-  return new Date(iso).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', weekday: 'long' })
+  return formatIstanbul(iso, { day: 'numeric', month: 'long', weekday: 'long' })
 }
 
 function dayLabel(iso: string) {
@@ -43,7 +44,7 @@ function dayLabel(iso: string) {
   const yesterday = new Date(today.getTime() - 86_400_000)
   if (created.toDateString() === today.toDateString()) return 'Bugün'
   if (created.toDateString() === yesterday.toDateString()) return 'Dün'
-  return created.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })
+  return formatIstanbul(created, { day: 'numeric', month: 'long' })
 }
 
 type ItemProps = { notification: AppNotification; expanded: boolean; onToggle: () => void; onOpen: (href: string) => void }
@@ -56,13 +57,13 @@ function NotificationItem({ notification, expanded, onToggle, onOpen }: ItemProp
     <div className="rv-notification-history-copy rv-notification-card">
       <div className="rv-notification-history-top">
         <strong>{presentation.title}</strong>
-        {unread && <i className="rv-notification-unread-dot" aria-label="Okunmadı" />}<time dateTime={notification.createdAt} title={new Date(notification.createdAt).toLocaleString('tr-TR')}>{relativeTime(notification.createdAt)}</time>
+        {unread && <i className="rv-notification-unread-dot" aria-label="Okunmadı" />}<time dateTime={notification.createdAt} title={formatDateTime(notification.createdAt)}>{relativeTime(notification.createdAt)}</time>
       </div>
       <p>{presentation.summary}</p>
       {expanded && <dl className="rv-notification-detail">
         {describeNotification(notification).map(fact => <div key={fact.label}><dt>{fact.label}</dt><dd className={fact.tone ? `is-${fact.tone}` : undefined}>{fact.value}</dd></div>)}
         {notification.details?.map((detail, index) => <div key={`${detail.label}:${index}`}><dt>{detail.label}</dt><dd className={detail.tone ? `is-${detail.tone}` : undefined}>{detail.value}</dd></div>)}
-        <div><dt>Zaman</dt><dd>{new Date(notification.createdAt).toLocaleString('tr-TR')}</dd></div>
+        <div><dt>Zaman</dt><dd>{formatDateTime(notification.createdAt)}</dd></div>
       </dl>}
       <div className="rv-notification-foot">
         {notification.href && <button type="button" className="rv-notification-go" onClick={() => onOpen(notification.href!)}><span>{notification.actionLabel ?? 'Sayfaya Git'}</span><UiIcon name="arrowRight" size={14} /></button>}

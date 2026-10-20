@@ -17,6 +17,7 @@ import { Modal } from '../../shared/components'
 import { MessageToast } from '../../shared/components/NoticeToast'
 import './questions-inbox.css'
 import { viewTabLabel } from '../../shared/view-tabs'
+import { formatIstanbul, istanbulDayBoundary } from '../../shared/format-date'
 
 type MarketplaceQuestion = {
   id: string; connectionId: string; platformCode: string; storeName: string; externalQuestionId: string; kind: string; status: string
@@ -72,7 +73,7 @@ function questionStatus(status: string) {
 function formatDate(value?: string | null) {
   if (!value) return '—'
   const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? '—' : new Intl.DateTimeFormat('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(date).replace(' ', ' · ')
+  return Number.isNaN(date.getTime()) ? '—' : formatIstanbul(date, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).replace(' ', ' · ')
 }
 
 // The sync strip is narrow: a date from this year leaves the year out (the full date stays in the tooltip).
@@ -154,8 +155,8 @@ export function QuestionsPage() {
   const filters = new URLSearchParams({ kind, status })
   if (platform !== 'ALL') filters.set('platform', platform)
   if (connectionId !== 'ALL') filters.set('connectionId', connectionId)
-  if (dateFrom) filters.set('dateFrom', new Date(`${dateFrom}T00:00:00`).toISOString())
-  if (dateTo) filters.set('dateTo', new Date(`${dateTo}T23:59:59`).toISOString())
+  if (dateFrom) filters.set('dateFrom', istanbulDayBoundary(dateFrom))
+  if (dateTo) filters.set('dateTo', istanbulDayBoundary(dateTo, true))
   if (search.trim()) filters.set('search', search.trim())
   filters.set('sort', sort)
   filters.set('page', String(page)); filters.set('limit', '50')
@@ -167,8 +168,8 @@ export function QuestionsPage() {
     if (scoped) {
       if (platform !== 'ALL') params.set('platform', platform)
       if (connectionId !== 'ALL') params.set('connectionId', connectionId)
-      if (dateFrom) params.set('dateFrom', new Date(`${dateFrom}T00:00:00`).toISOString())
-      if (dateTo) params.set('dateTo', new Date(`${dateTo}T23:59:59`).toISOString())
+      if (dateFrom) params.set('dateFrom', istanbulDayBoundary(dateFrom))
+      if (dateTo) params.set('dateTo', istanbulDayBoundary(dateTo, true))
       if (search.trim()) params.set('search', search.trim())
     }
     return hubApi<QuestionListPage>(`/questions?${params.toString()}`).then(result => result.totalCount)

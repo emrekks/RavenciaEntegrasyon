@@ -1,3 +1,4 @@
+import { formatDateTime } from '../../shared/format-date'
 type SyncPolicyStalledAlertProps = {
   lastCursorAdvancedAt?: string | null
   cursorStagnantSince?: string | null
@@ -7,7 +8,7 @@ type SyncPolicyStalledAlertProps = {
 function displayTime(value?: string | null) {
   if (!value) return 'Henüz yok'
   const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? 'Henüz yok' : date.toLocaleString('tr-TR')
+  return Number.isNaN(date.getTime()) ? 'Henüz yok' : formatDateTime(date)
 }
 
 function TimeValue({ value }: { value?: string | null }) {
