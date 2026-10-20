@@ -397,12 +397,14 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         // A platform refresh updates the card content, but must not reshuffle the
         // catalog. Keep the list in its original insertion order instead of the
         // mutable UpdatedAt order.
-        var allProducts = await query.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id).ToListAsync(cancellationToken);
+        // K7 (partial): the family grouping, the stock and platform filters and the paging still run over the
+        // whole filtered catalog, but on narrow rows (no descriptions, no variant details) joined in SQL instead
+        // of id lists; full rows are read only for the page. A stored family key with SQL paging is the full fix.
+        var allProducts = await query.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id).Select(ProductShape).ToListAsync(cancellationToken);
         var allProductIds = allProducts.Select(x => x.Id).ToArray();
-        var allVariants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && allProductIds.Contains(x.ProductId)).ToListAsync(cancellationToken);
-        var variantIds = allVariants.Select(variant => variant.Id).ToArray();
+        var allVariants = await VariantShapes(tenantId).Where(x => query.Any(product => product.Id == x.ProductId)).ToListAsync(cancellationToken);
         var inventoryByVariant = await db.InventoryItems.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.LocationCode == "MAIN" && variantIds.Contains(x.VariantId))
+            .Where(x => x.TenantId == tenantId && x.LocationCode == "MAIN" && query.Any(product => db.ProductVariants.Any(variant => variant.TenantId == tenantId && variant.Id == x.VariantId && variant.ProductId == product.Id)))
             .GroupBy(x => x.VariantId)
             .Select(group => new { VariantId = group.Key, TotalStock = group.Sum(x => x.OnHand) })
             .ToDictionaryAsync(x => x.VariantId, x => x.TotalStock, cancellationToken);
@@ -462,9 +464,10 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             .Where(x => afterId == Guid.Empty || x.Primary.CreatedAt < afterCreatedAt || x.Primary.CreatedAt == afterCreatedAt && x.Primary.Id.CompareTo(afterId) < 0)
             .Take(limit)
             .ToList();
-        var products = pageFamilies.SelectMany(x => x.Products).ToList();
-        var ids = products.Select(x => x.Id).ToHashSet();
-        var variants = allVariants.Where(x => ids.Contains(x.ProductId)).ToList();
+        var pageProductIds = pageFamilies.SelectMany(x => x.Products).Select(x => x.Id).ToArray();
+        var fullProducts = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && pageProductIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
+        var products = pageProductIds.Where(fullProducts.ContainsKey).Select(productId => fullProducts[productId]).ToList();
+        var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && pageProductIds.Contains(x.ProductId)).ToListAsync(cancellationToken);
         var views = await BuildProductViewsAsync(tenantId, products, variants, cancellationToken);
         var lastFamily = pageFamilies.LastOrDefault();
         var hasMore = lastFamily is not null && families.Any(x => x.Primary.CreatedAt < lastFamily.Primary.CreatedAt || x.Primary.CreatedAt == lastFamily.Primary.CreatedAt && x.Primary.Id.CompareTo(lastFamily.Primary.Id) < 0);
@@ -472,6 +475,12 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     }
 
     private sealed record ProductFamily(string Key, Product Primary, IReadOnlyList<Product> Products);
+
+    // Narrow rows for catalog-wide grouping and counting; never saved or shown as they are.
+    private static readonly System.Linq.Expressions.Expression<Func<Product, Product>> ProductShape = x => new Product { Id = x.Id, TenantId = x.TenantId, Title = "", Description = "", Status = x.Status, CreatedAt = x.CreatedAt, UpdatedAt = x.UpdatedAt, Version = x.Version };
+    private IQueryable<ProductVariant> VariantShapes(Guid tenantId) => db.ProductVariants.AsNoTracking()
+        .Where(x => x.TenantId == tenantId)
+        .Select(x => new ProductVariant { Id = x.Id, TenantId = x.TenantId, ProductId = x.ProductId, Sku = "", SkuNormalized = "", ModelCode = x.ModelCode, OptionSignature = x.OptionSignature, Status = x.Status });
 
     private static string ProductFamilyKey(Product product, IReadOnlyList<ProductVariant> variants)
     {
@@ -484,9 +493,8 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var products = await VisibleProducts(tenantId)
             .Select(x => new { x.Id, x.Status })
             .ToListAsync(cancellationToken);
-        var variants = await db.ProductVariants.AsNoTracking()
-            .Where(x => x.TenantId == tenantId)
-            .ToListAsync(cancellationToken);
+        // K7 (partial): only the columns the stock counts need.
+        var variants = await VariantShapes(tenantId).ToListAsync(cancellationToken);
         var inventoryByVariant = await db.InventoryItems.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.LocationCode == "MAIN")
             .GroupBy(x => x.VariantId)
@@ -1123,6 +1131,17 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             await PersistVariantOptionsAsync(tenantId, id, newVariants, variantsToCreate, cancellationToken);
             await EnsureMainInventoryAsync(tenantId, newVariants, cancellationToken);
         }
+        // K5: other products of the model-code family whose rows this save changes are local edits too.
+        var familyProductIdsToProtect = existingVariants
+            .Where(variant => variant.ProductId != id && (command.Status is not null || variantIdsToDelete.Contains(variant.Id) || variantUpdates.Any(update => update.Id == variant.Id)))
+            .Select(variant => variant.ProductId)
+            .ToHashSet();
+        // A sibling whose every row is deleted keeps no empty ACTIVE product card behind: it is archived.
+        var emptiedFamilyProductIds = existingVariants
+            .GroupBy(variant => variant.ProductId)
+            .Where(group => group.Key != id && group.All(variant => variantIdsToDelete.Contains(variant.Id)))
+            .Select(group => group.Key)
+            .ToHashSet();
         await using var variantPurgeTransaction = variantIdsToDelete.Count > 0 && db.Database.CurrentTransaction is null ? await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken) : null;
         if (variantIdsToDelete.Count > 0)
         {
@@ -1210,6 +1229,18 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             db.ProductAttributeAssignments.AddRange(command.Attributes.Select(x => Assignment(tenantId, id, null, x)));
         }
         await MarkMarketplaceLinksDirtyAsync(tenantId, id, cancellationToken);
+        if (familyProductIdsToProtect.Count > 0)
+        {
+            var siblings = await db.Products.Where(x => x.TenantId == tenantId && familyProductIdsToProtect.Contains(x.Id)).ToListAsync(cancellationToken);
+            foreach (var sibling in siblings)
+            {
+                if (emptiedFamilyProductIds.Contains(sibling.Id)) { sibling.Status = ProductStatus.Archived; sibling.ArchivedAt ??= product.UpdatedAt; }
+                else if (command.Status is not null) sibling.Status = productStatus;
+                sibling.UpdatedAt = product.UpdatedAt;
+                sibling.Version++;
+            }
+            await CatalogLocalEdits.MarkLinksDirtyAsync(db, tenantId, familyProductIdsToProtect, CatalogLocalEdits.ProductField, cancellationToken);
+        }
         await db.SaveChangesAsync(cancellationToken);
         if (variantPurgeTransaction is not null) await variantPurgeTransaction.CommitAsync(cancellationToken);
         return await GetProductAsync(tenantId, id, cancellationToken);
@@ -2014,13 +2045,14 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
 
         if (!string.IsNullOrWhiteSpace(search))
         {
-            var pattern = $"%{search.Trim()}%";
+            // K23: "%" and "_" typed by the user are literal characters, not wildcards.
+            var pattern = $"%{EscapeLike(search.Trim())}%";
             query = query.Where(product =>
-                EF.Functions.ILike(product.Title, pattern) ||
+                EF.Functions.ILike(product.Title, pattern, LikeEscape) ||
                 db.ProductVariants.Any(variant => variant.TenantId == tenantId && variant.ProductId == product.Id &&
-                    (EF.Functions.ILike(variant.Sku, pattern) ||
-                     (variant.Barcode != null && EF.Functions.ILike(variant.Barcode, pattern)) ||
-                     (variant.ModelCode != null && EF.Functions.ILike(variant.ModelCode, pattern)))));
+                    (EF.Functions.ILike(variant.Sku, pattern, LikeEscape) ||
+                     (variant.Barcode != null && EF.Functions.ILike(variant.Barcode, pattern, LikeEscape)) ||
+                     (variant.ModelCode != null && EF.Functions.ILike(variant.ModelCode, pattern, LikeEscape)))));
         }
 
         if (!string.IsNullOrWhiteSpace(platform))
@@ -2090,6 +2122,8 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         var normalized = value?.Replace(" ", "", StringComparison.Ordinal).Replace("-", "", StringComparison.Ordinal).Replace("_", "", StringComparison.Ordinal).ToUpperInvariant();
         return normalized is "WEBCOLOR" or "WEBCOLOUR" or "WEBRENK";
     }
+    private const string LikeEscape = "\\";
+    internal static string EscapeLike(string value) => value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("%", "\\%", StringComparison.Ordinal).Replace("_", "\\_", StringComparison.Ordinal);
     private static string? NullTrim(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     private static string Signature(IReadOnlyDictionary<string, string>? options) => VariantOptionSignature.Build(options, empty: "-");
     private static bool TryAttributeType(string value, out AttributeDataType result) { result = value.Trim().ToUpperInvariant() switch { "TEXT" => AttributeDataType.Text, "NUMBER" => AttributeDataType.Number, "SINGLE_SELECT" => AttributeDataType.SingleSelect, "MULTI_SELECT" => AttributeDataType.MultiSelect, "BOOLEAN" => AttributeDataType.Boolean, _ => (AttributeDataType)(-1) }; return Enum.IsDefined(result); }
